@@ -43,6 +43,21 @@ struct Filter {
     /// The relation passed over (argument 9, `FUN_140c32b50`: 0 friends, 1 neutrals, 2
     /// enemies, 3 itself; −1 none).
     spared: i32,
+    /// Argument 8: only objects the unit reaches count (slot 0x3d0).
+    reach: bool,
+}
+
+/// `ClosestObject`'s count (`FUN_140c488b0`, `DAT_143e6f92c`): the owners from 1 to 8 of the
+/// records the lists read, every record marking its owner (`record+8`) before any test; Gaia
+/// is not counted.
+fn players_seen(found: &[Vec<Record>; 5]) -> u32 {
+    let mut seen = [false; 9];
+    for record in found.iter().flatten() {
+        if let Some(s) = seen.get_mut(usize::from(record.owner)) {
+            *s = true;
+        }
+    }
+    seen[1..].iter().map(|&s| u32::from(s)).sum()
 }
 
 /// The pastures, whose workers and livestock `ClosestObject` counts (`FUN_140c488b0`, raw
@@ -1567,6 +1582,7 @@ impl Spatial {
                 master,
                 workers,
                 spared,
+                reach: reaching,
             } => {
                 let filter = Filter {
                     group,
@@ -1575,6 +1591,7 @@ impl Spatial {
                     master,
                     workers,
                     spared,
+                    reach: reaching,
                 };
                 let checks = (moving, shuns, farm);
                 let id = self.closest_object(v, me, player, found, filter, reach, checks)?;
@@ -1583,6 +1600,7 @@ impl Spatial {
                     enemies: !found[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
+                    players: players_seen(found),
                 })
             }
             Pick::Look => Ok(Found {
@@ -1590,6 +1608,7 @@ impl Spatial {
                 enemies: !found[4].is_empty(),
                 position: None,
                 fresh,
+                players: 0,
             }),
             Pick::Attack { lowest, seeker } => {
                 let id =
@@ -1599,6 +1618,7 @@ impl Spatial {
                     enemies: !found[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
+                    players: 0,
                 })
             }
         }
@@ -1715,7 +1735,7 @@ impl Spatial {
                 if class_10 && shuns(p)? {
                     continue;
                 }
-                if !reach(record.id, CLOSEST_RANGE)? {
+                if filter.reach && !reach(record.id, CLOSEST_RANGE)? {
                     continue;
                 }
                 match best {
@@ -1908,9 +1928,23 @@ impl Spatial {
         }
     }
 
-    /// An ownership change's world part (`FUN_14120f800`): the object's place and records take
-    /// the new owner, and its sight moves to the new owner's map ([`Visibility::owner_changed`]).
-    pub fn change_owner(&mut self, id: i32, new: usize, los: f32) -> Result<(), Unsupported> {
+    /// An ownership change's records ([`Visibility::records_owner`]), which come first.
+    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), Unsupported> {
+        self.sight
+            .as_mut()
+            .map_or(Ok(()), |v| v.records_owner(id, new))
+    }
+
+    /// An ownership change's world part (`FUN_14120f800`, once the new owner has the master):
+    /// the object's place takes the new owner, and an object that `sees` moves its sight to the
+    /// new owner's map with `los` ([`Visibility::owner_changed`]).
+    pub fn change_owner(
+        &mut self,
+        id: i32,
+        new: usize,
+        los: f32,
+        sees: bool,
+    ) -> Result<(), Unsupported> {
         let Some(p) = self.objects.get_mut(&id) else {
             return Err(Unsupported(
                 "an ownership change of an object the world does not hold",
@@ -1919,7 +1953,7 @@ impl Spatial {
         p.player = new;
         let (position, radius) = (p.position, p.radius);
         if let Some(v) = self.sight.as_mut() {
-            v.owner_changed(id, position, radius, new, los)?;
+            v.owner_changed(id, position, radius, (new, los), sees);
         }
         Ok(())
     }
@@ -2055,10 +2089,11 @@ impl Spatial {
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
-    /// main building's place and UMV entry.
-    pub fn combat_sight(&mut self, id: i32) -> Result<(), Unsupported> {
+    /// main building's place and UMV entry. The changed mask of an object others take over by
+    /// seeing it is the answer.
+    pub fn combat_sight(&mut self, id: i32) -> Result<Option<u64>, Unsupported> {
         let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) else {
-            return Ok(());
+            return Ok(None);
         };
         let main = self.annexes.get(&id).and_then(|main| {
             let place = self.objects.get(main)?.position;

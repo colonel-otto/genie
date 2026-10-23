@@ -12,7 +12,7 @@
 //! its walk), then its unit AI. An object whose update returns 1 leaves: the last object takes its
 //! slot and updates there in the same tick.
 
-use crate::artifact::Artifact;
+use crate::artifact::{Artifact, Handover};
 use crate::attack::Strike;
 use crate::build::{BUILD, BuildAction, BuildTask, Builder, Completion, Construction, Site, Walk};
 use crate::checkpoint::TopAction;
@@ -198,6 +198,14 @@ pub struct Unit {
     /// entries of mode 16 put in at its completion and take out at its death
     /// (`FUN_1411e6580`).
     pub store: Vec<(i16, f32)>,
+    /// `+0x6c0` (`FUN_141185010`): the master of its own its master pointer (`+0xa0`) reads, a
+    /// copy (`FUN_141186d10`, the master's slot 0x48) of the one it read when it took it; None
+    /// while it reads its player's. An ownership change gives it one ([`change_hands`]).
+    pub own_master: Option<Box<Master>>,
+    /// `+0x6b8`: the copy of its old owner's death-spawn master (`+0x5e4`) an ownership change
+    /// took ([`change_hands`]), which its death spawn makes its dead object of
+    /// (`FUN_1411a5090`); None for none.
+    pub dead_master: Option<Box<Master>>,
 }
 
 /// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the
@@ -807,6 +815,9 @@ struct Context<'a> {
     /// The unit's update stopped before its unit AI for the caller's work order
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
     ai_resume: Option<AiResume>,
+    /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]): the
+    /// update ends with the takeover ([`Step::Captured`]).
+    taken_over: Option<usize>,
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
@@ -867,6 +878,11 @@ struct Context<'a> {
     mode_680: i32,
     /// The game mode is one of `FUN_141302540`'s ([`scenario_mode`]).
     scenario: bool,
+    /// The game mode's descriptor flag `+0x9c` ([`standard_mode`]) and each player's computer
+    /// flag and `mAllowCapturingGaiaUnits`, which a takeover by sight reads
+    /// ([`crate::visibility::sight_taker`]).
+    standard: bool,
+    sight_takers: &'a [(bool, bool)],
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
     attribute_adds: Vec<(i16, f32)>,
@@ -941,6 +957,9 @@ pub(crate) struct Wait {
 struct Foreign<'a> {
     before: &'a [Player],
     after: &'a [Player],
+    /// The live list of the player whose list is out, once its object changed hands: that
+    /// object's AI part reads it as another player's ([`OwnerView`]).
+    left: Option<(usize, &'a [Unit])>,
 }
 
 impl<'a> Foreign<'a> {
@@ -949,13 +968,19 @@ impl<'a> Foreign<'a> {
         let skip = self.before.len() + 1;
         let before = self.before.iter().enumerate();
         let after = self.after.iter().enumerate().map(|(q, p)| (q + skip, p));
-        before.chain(after).find_map(|(q, p)| {
-            p.objects
-                .iter()
-                .chain(&p.sleeping)
-                .find(|u| u.id == id)
-                .map(|u| (q, u))
-        })
+        before
+            .chain(after)
+            .find_map(|(q, p)| {
+                p.objects
+                    .iter()
+                    .chain(&p.sleeping)
+                    .find(|u| u.id == id)
+                    .map(|u| (q, u))
+            })
+            .or_else(|| {
+                let (q, list) = self.left?;
+                list.iter().find(|u| u.id == id).map(|u| (q, u))
+            })
     }
 
     /// Player `q`, unless it is the one whose list is out.
@@ -965,6 +990,56 @@ impl<'a> Foreign<'a> {
             std::cmp::Ordering::Less => self.before.get(q),
             std::cmp::Ordering::Equal => None,
             std::cmp::Ordering::Greater => self.after.get(q - own - 1),
+        }
+    }
+}
+
+/// What a unit's AI part reads of its owner's side ([`Unit::ai_part`]): the owner, its other
+/// objects, the other players' lists, its masters, diplomacy, attributes, civ and construction
+/// rate. A unit another player took over in its update reads its new owner's, with its old
+/// owner's list among the others' (`RGE_Combat_Object::update` reads the owner after the
+/// change).
+#[derive(Clone, Copy)]
+struct OwnerView<'a> {
+    player: usize,
+    others: &'a [Unit],
+    foreign: Foreign<'a>,
+    masters: Option<&'a Masters>,
+    relations: &'a [u8],
+    attributes: &'a [f32],
+    civ: u8,
+    construction_rate: f32,
+}
+
+impl<'a> OwnerView<'a> {
+    /// The owner's side: player `new`'s when the unit changed hands to it in its update, else
+    /// the updating player's (`c`, its other objects `others`).
+    fn of<'c: 'a>(c: &Context<'c>, others: &'a [Unit], new: Option<usize>) -> Self {
+        let own = Self {
+            player: c.player,
+            others,
+            foreign: c.foreign,
+            masters: c.masters,
+            relations: c.relations,
+            attributes: c.attributes,
+            civ: c.civ,
+            construction_rate: c.construction_rate,
+        };
+        let Some((new, q)) = new.and_then(|new| Some((new, c.foreign.player(new)?))) else {
+            return own;
+        };
+        Self {
+            player: new,
+            others: &q.objects,
+            foreign: Foreign {
+                left: Some((c.player, others)),
+                ..c.foreign
+            },
+            masters: c.every_masters.get(new),
+            relations: &q.relations,
+            attributes: &q.attributes,
+            civ: q.civ,
+            construction_rate: q.construction_rate,
         }
     }
 }
@@ -1543,7 +1618,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 }
             }
         }
-        unit.clear_own_actions()?;
+        let by = Releaser {
+            id: unit.id,
+            class: master.class,
+            player: self.player,
+        };
+        unit.clear_own_actions(self.releases, by)?;
         unit.attack_count = 0;
         crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
         let mover = unit
@@ -2401,8 +2481,9 @@ impl Unit {
     /// `MoveTo`'s teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
     /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
     /// A Build waiting without its foundation (state 3) goes with nothing to release
-    /// (`FUN_140aadbf0`), its own Attack and an Enter let their target go; other actions'
-    /// teardowns are not modelled.
+    /// (`FUN_140aadbf0`), its own Attack, an Enter and an Artifact let their target go, a Fly
+    /// gives the unit its top speed as its animation speed; other actions' teardowns are not
+    /// modelled.
     fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
         let by = self.releaser(c);
         let sprite = c.streams.get(Stream::Sprite);
@@ -2418,6 +2499,20 @@ impl Unit {
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
+    ) -> Result<(), Unsupported> {
+        self.tear_down_actions(releases, by)?;
+        if self.life.state == 2 {
+            self.show_standing(masters, graphics, sprite)?;
+        }
+        Ok(())
+    }
+
+    /// The action list's clearing (`FUN_140a98620`) as the unit's stops run it: each action's
+    /// teardown, the targets they let go (`by` the unit) into `releases`.
+    fn tear_down_actions(
+        &mut self,
+        releases: &mut Vec<(i32, Releaser)>,
+        by: Releaser,
     ) -> Result<(), Unsupported> {
         // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
         if let Some(mut a) = self.attack.take() {
@@ -2456,15 +2551,27 @@ impl Unit {
             }
             releases.push((e.target, by));
         }
-        self.clear_own_actions()?;
-        if self.life.state == 2
-            && let Some(m) = self.mover.as_mut()
-        {
+        self.clear_own_actions(releases, by)
+    }
+
+    /// The unit's slot 0x68 with its master's standing sprite (slot 0x798's, the master's
+    /// `+0x470`): its top speed becomes the standing sprite's ([`Mover::shows_standing`]) and,
+    /// where the slice holds its sprite, the sprite starts ([`crate::attack::set_sprite`] on the
+    /// Sprite stream). Its master is its own or its owner's (`masters`).
+    fn show_standing(
+        &mut self,
+        masters: Option<&Masters>,
+        graphics: &std::collections::BTreeMap<i16, Graphic>,
+        sprite: &mut Well512,
+    ) -> Result<(), Unsupported> {
+        if let Some(m) = self.mover.as_mut() {
             m.shows_standing();
         }
-        if self.life.state == 2 && self.sprite.is_some() {
-            let standing = masters
-                .and_then(|m| m.get(self.life.master_id))
+        if self.sprite.is_some() {
+            let standing = self
+                .own_master
+                .as_deref()
+                .or_else(|| masters.and_then(|m| m.get(self.life.master_id)))
                 .map(|m| m.standing_sprite)
                 .and_then(|id| graphics.get(&id).copied())
                 .ok_or(Unsupported("a stopped unit without its standing sprite"))?;
@@ -2474,11 +2581,37 @@ impl Unit {
     }
 
     /// The action list's clearing (`FUN_140a98620`): each action's teardown (a `MoveTo`'s, also
-    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work and a wait for a
-    /// foundation go; the others the slice holds are not modelled.
-    fn clear_own_actions(&mut self) -> Result<(), Unsupported> {
+    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work, a wait for a
+    /// foundation, an Artifact (its target let go, `by` the unit, into `releases`) and a Fly go;
+    /// the others the slice holds are not modelled.
+    fn clear_own_actions(
+        &mut self,
+        releases: &mut Vec<(i32, Releaser)>,
+        by: Releaser,
+    ) -> Result<(), Unsupported> {
         // a wait for a foundation goes: its teardown is the base one's, which lets no target go
         self.wait_solidify = None;
+        // the Artifact's teardown (FUN_140aab0d0): it lets its target go, and its MoveTo's stops
+        // the unit
+        if let Some(mut a) = self.artifact.take() {
+            let (walked, released) = a.tear_down();
+            if walked && let Some(m) = self.mover.as_mut() {
+                m.stop()?;
+            }
+            if let Some(t) = released {
+                releases.push((t, by));
+            }
+        }
+        // the Fly's (FUN_140a84750): the unit's animation speed (`+0x7b8`) takes its top speed
+        // (slot 0x208), then its MoveTo's teardown stops it
+        if let Some(f) = self.fly.take() {
+            self.anim_speed = Some(self.mover.as_ref().map_or(0.0, |m| m.stats.speed));
+            if f.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+        }
         if self
             .build
             .as_ref()
@@ -2487,9 +2620,7 @@ impl Unit {
             self.build = None;
         }
         let held = [
-            (self.artifact.is_some(), "an Artifact"),
             (self.build.is_some(), "a Build"),
-            (self.fly.is_some(), "a Fly"),
             (self.hunt.is_some(), "a Hunt"),
             (self.gather.is_some(), "a Gather"),
             (self.attack.is_some(), "an Attack"),
@@ -2498,9 +2629,7 @@ impl Unit {
         ];
         if let Some(&(_, what)) = held.iter().find(|(h, _)| *h) {
             return Err(Unsupported(match what {
-                "an Artifact" => "a unit AI's stop of an action list with an Artifact",
                 "a Build" => "a unit AI's stop of an action list with a Build at work",
-                "a Fly" => "a unit AI's stop of an action list with a Fly",
                 "a Hunt" => "a unit AI's stop of an action list with a Hunt",
                 "a Gather" => "a unit AI's stop of an action list with a Gather",
                 "an Attack" => "a unit AI's stop of an action list with an Attack",
@@ -2563,6 +2692,7 @@ impl Unit {
                         return Err(Unsupported("two BuildObjects in one update"));
                     }
                 }
+                Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
             }
@@ -2827,6 +2957,7 @@ impl Unit {
                     master: -1,
                     workers: if class == 49 { 1 } else { -1 },
                     spared: -1,
+                    reach: true,
                 },
             };
             let me = Me {
@@ -4268,7 +4399,7 @@ impl Unit {
     fn named_units(
         &self,
         c: &Context<'_>,
-        others: &[Self],
+        view: &OwnerView<'_>,
         master: Option<&Master>,
     ) -> Result<Vec<crate::unit_ai::UnitSeen>, Unsupported> {
         let Some(ai) = self.ai.as_ref() else {
@@ -4295,11 +4426,12 @@ impl Unit {
         ids.dedup();
         let mut seen = Vec::new();
         for id in ids {
-            let found = others
+            let found = view
+                .others
                 .iter()
                 .find(|u| u.id == id)
-                .map(|u| (c.player, u))
-                .or_else(|| c.foreign.find(id));
+                .map(|u| (view.player, u))
+                .or_else(|| view.foreign.find(id));
             let (Some((owner, u)), Some(p)) = (found, c.spatial.get(id)) else {
                 continue;
             };
@@ -5814,12 +5946,16 @@ impl Unit {
         }
         if !self.life.is_alive() {
             // RGE_Action_Object::update deletes a dead object's action list: the Artifact's
-            // MoveTo's teardown (0x140aa1f30) stops the unit (slot 0x5d0)
-            if let Some(artifact) = self.artifact.take()
-                && artifact.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
+            // teardown lets its target go, and its MoveTo's (0x140aa1f30) stops the unit (slot
+            // 0x5d0)
+            if let Some(mut artifact) = self.artifact.take() {
+                let (walked, released) = artifact.tear_down();
+                if walked && let Some(m) = self.mover.as_mut() {
+                    m.stop()?;
+                }
+                if let Some(t) = released {
+                    c.releases.push((t, self.releaser(c)));
+                }
             }
             if let Some(explore) = self.explore.take()
                 && explore.move_to.is_some()
@@ -5904,14 +6040,19 @@ impl Unit {
             action_state: self.top_action().map_or(0, |a| a.state),
         };
         let mut captured = None;
+        let by = self.releaser(c);
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             let dt = c.dt;
             let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
-            // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit
+            // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit,
+            // quiet or not; the action lets its target go
             if ended.is_some()
                 && let Some(m) = self.mover.as_mut()
             {
                 m.stop()?;
+            }
+            if let Some(t) = ended.and_then(|e| e.released) {
+                c.releases.push((t, by));
             }
             // FUN_14107cc90: an object of the combat types whose +0x924 is 0 never changes hands
             let capture = c
@@ -5927,11 +6068,33 @@ impl Unit {
             let new = artifact.step(dt, searches, &mut || {
                 spatial.artifact_owner(id, attribute_97)
             })?;
-            if let Some(kind) = ended {
+            // the check's sub-actions went: a walking MoveTo's teardown stops the unit
+            if let Some(Handover::Taken { walked: true, .. }) = new
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+            if let Some(kind) = ended.and_then(|e| e.notify) {
                 self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
             }
-            if let Some(new) = new {
-                captured = Some((new, self.capture(c, others, new)?));
+            match new {
+                Some(Handover::Taken { new, .. }) => {
+                    let (main, also) = self.capture(c, others, new)?;
+                    captured = Some(Captured { new, main, also });
+                }
+                // state 100: the unit's stop (slot 0x148), then slot 0x70 to Gaia
+                Some(Handover::ToGaia) => {
+                    let class = self.placed_class(c)?;
+                    self.capture_stop(c, class)?;
+                    if self.change_owner(c, 0)? {
+                        captured = Some(Captured {
+                            new: 0,
+                            main: true,
+                            also: Vec::new(),
+                        });
+                    }
+                }
+                None => {}
             }
         }
         // what the footprint clearing of the Build's set_state(7) reads (FUN_1415c3620) of
@@ -7038,25 +7201,49 @@ impl Unit {
             let moving = self.mover.as_ref().is_some_and(Mover::is_moving);
             c.pathing.refresh(self.id, &p, moving, m.outline);
         }
-        // RGE_Combat_Object::update after the actions: the object's sight mask
-        if self.combat {
-            c.spatial.combat_sight(self.id)?;
+        // RGE_Combat_Object::update after the actions: the object's sight mask; a changed mask of
+        // an object others take over by seeing it (`+0x924` 1) gives it to the first player that
+        // sees it ([`crate::visibility::sight_taker`]) when that one has its master
+        let mut captured = captured;
+        if self.combat
+            && let Some(mask) = c.spatial.combat_sight(self.id)?
+            && let Some(q) =
+                crate::visibility::sight_taker(mask, c.player, c.standard, c.sight_takers)
+            && c.every_masters
+                .get(q)
+                .is_some_and(|m| m.get(self.life.master_id).is_some())
+        {
+            self.take_by_sight(c, q)?;
+            captured = Some(Captured {
+                new: q,
+                main: true,
+                also: Vec::new(),
+            });
         }
         let busy = self.top_action_kind().is_some() || self.unmodelled_action.is_some();
-        let master = c.masters.and_then(|ms| ms.get(self.life.master_id));
+        // the unit's master: its own (a captured unit's copy), else its owner's
+        let master = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
         let class = master.map(|ms| ms.class);
         // a captured unit's unit AI runs as its new owner's (RGE_Combat_Object::update reads the
         // owner then): on that player's turn, with its time as it stands
         let (turn, player, computer) = match &captured {
-            Some((new, _)) => (
-                (*new == c.player_turn)
-                    .then(|| c.player_time.get(*new).copied())
+            Some(k) if k.main => (
+                (k.new == c.player_turn)
+                    .then(|| c.player_time.get(k.new).copied())
                     .flatten(),
-                *new,
-                c.computers.get(*new).copied().unwrap_or(false),
+                k.new,
+                c.computers.get(k.new).copied().unwrap_or(false),
             ),
-            None => (c.turn, c.player, c.computer),
+            _ => (c.turn, c.player, c.computer),
         };
+        let view = OwnerView::of(
+            c,
+            others,
+            captured.as_ref().filter(|k| k.main).map(|k| k.new),
+        );
         // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
         // FUN_140c68980 for a unit not inside another; a dead unit's full update only adds the
         // world's dt to its time since the last enemy sighting (`+0x1b4`) before it returns
@@ -7125,7 +7312,22 @@ impl Unit {
                 master: self.life.master_id,
                 scenario: c.scenario,
                 task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
-                target: c.ai_target?,
+                // a new owner sees the target with its own map
+                target: match c.ai_target? {
+                    Some(t) if view.player != c.player => {
+                        let [x, y, _] = t.position;
+                        let (tx, ty) = (
+                            crate::checkpoint::cvttss2si(x),
+                            crate::checkpoint::cvttss2si(y),
+                        );
+                        Some(crate::unit_ai::Seen {
+                            visible: c.spatial.visible(view.player, x as i32, y as i32),
+                            sight: c.spatial.tile_sight(view.player, tx, ty).unwrap_or(0),
+                            ..t
+                        })
+                    }
+                    t => t,
+                },
                 under_attack: self.under_attack,
                 id: self.id,
                 anim_speed: self.anim_speed,
@@ -7134,7 +7336,7 @@ impl Unit {
                 } else {
                     Some(self.top_action().map_or(0, |a| a.state))
                 },
-                units: self.named_units(c, others, master)?,
+                units: self.named_units(c, &view, master)?,
                 group: c
                     .groups
                     .get(self.group.id)
@@ -7188,19 +7390,19 @@ impl Unit {
                             object,
                             sprite,
                             world_time: c.world_time,
-                            construction_rate: c.construction_rate,
-                            others,
+                            construction_rate: view.construction_rate,
+                            others: view.others,
                             zones: c.zones,
-                            foreign: c.foreign,
+                            foreign: view.foreign,
                             every: c.every_masters,
-                            masters: c.masters,
+                            masters: view.masters,
                             graphics: c.graphics,
                             takes: &mut c.takes,
                             releases: &mut c.releases,
                             waits: &mut c.waits,
-                            relations: c.relations,
-                            attributes: c.attributes,
-                            civ: c.civ,
+                            relations: view.relations,
+                            attributes: view.attributes,
+                            civ: view.civ,
                             drop_sites: c.drop_sites,
                         };
                         match turn {
@@ -7216,8 +7418,15 @@ impl Unit {
             };
             self.apply(effects, class, c)?;
         }
-        if let Some((new, also)) = captured {
-            return Ok(Step::Captured(new, also));
+        if let Some(new) = c.taken_over.take() {
+            captured = Some(Captured {
+                new,
+                main: true,
+                also: Vec::new(),
+            });
+        }
+        if let Some(k) = captured {
+            return Ok(Step::Captured(k));
         }
         Ok(leaves)
     }
@@ -7225,70 +7434,136 @@ impl Unit {
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
     /// `FUN_14108c050` -> `FUN_14106fa60`): its Artifact action's slot 0x38 (the unit AI of a
     /// class other than livestock would stop too, which is not modelled), then the ownership
-    /// change (slot 0x70, [`Unit::change_owner`]); a livestock's new owner (not Gaia) then takes
-    /// Gaia's livestock in state 2 on the tiles it sees within 3 of the animal's tile, x then y,
-    /// each the same way. Returns the others taken; the lists' moves and the storage are the
-    /// caller's. The new owner's computer AI part (`FUN_140aab130`), the local player's sound and
+    /// change (slot 0x70, [`Unit::change_owner`]); a livestock whose owner is then not Gaia has
+    /// its new owner take Gaia's livestock in state 2 on the tiles it sees within 3 of the
+    /// animal's tile, x then y, each the same way. Returns whether the animal changed hands and
+    /// the others taken; the lists' moves, the storage and the class counters are the caller's.
+    /// The new owner's computer AI part (`FUN_140aab130`), the local player's sound and
     /// statistics are not held.
     fn capture(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
         new: usize,
-    ) -> Result<Vec<i32>, Unsupported> {
-        let class = c
-            .spatial
-            .get(self.id)
-            .map(|p| p.class)
-            .ok_or(Unsupported("a captured object the world does not hold"))?;
-        if class != LIVESTOCK && self.ai.is_some() {
-            return Err(Unsupported("a captured unit's unit AI stop (slot 0xb0)"));
-        }
-        if self.artifact.as_mut().is_some_and(Artifact::stop) {
-            self.mover
-                .as_mut()
-                .ok_or(Unsupported("a walking animal without movement state"))?
-                .stop()?;
-        }
-        self.change_owner(c, new)?;
+    ) -> Result<(bool, Vec<i32>), Unsupported> {
+        let class = self.placed_class(c)?;
+        self.capture_stop(c, class)?;
+        let changed = self.change_owner(c, new)?;
+        // the scan reads the owner after the change: the old one when `new` lacks the master
         let mut taken = Vec::new();
-        if class == LIVESTOCK && new != 0 {
+        if class == LIVESTOCK && (if changed { new } else { c.player }) != 0 {
             scan_livestock(c, others, self.position, new, &mut taken)?;
         }
-        Ok(taken)
+        Ok((changed, taken))
     }
 
-    /// The ownership change (slot 0x70, `FUN_14120f800`) of an object whose new owner has its
-    /// master: the world's part ([`Spatial::change_owner`], the new owner's master's line of sight
-    /// for livestock's own master copy, `FUN_141186d10`) and its Artifact's wait (the owner's).
-    /// Not held: `+0x6a8`, the names (`FUN_141189810`), the special-object list
-    /// (`FUN_141677380`, `+0x30c` bit 0), the class counters (`FUN_141226060`: none for
-    /// livestock), the own master copy itself (the slice keeps reading the new owner's master
-    /// by id).
-    fn change_owner(&mut self, c: &mut Context<'_>, new: usize) -> Result<(), Unsupported> {
-        let master = c
-            .every_masters
-            .get(new)
-            .and_then(|m| m.get(self.life.master_id))
-            .ok_or(Unsupported(
-                "an ownership change to a player without the master",
-            ))?;
-        if self.life.inside.is_some() {
-            return Err(Unsupported(
-                "an ownership change of an object inside another",
-            ));
+    /// The master class the world files the captured object under.
+    fn placed_class(&self, c: &Context<'_>) -> Result<i16, Unsupported> {
+        c.spatial
+            .get(self.id)
+            .map(|p| p.class)
+            .ok_or(Unsupported("a captured object the world does not hold"))
+    }
+
+    /// The stop (slot 0x148, `FUN_14108c050`) of an animal or artifact of master class `class`
+    /// from inside its update: the action object's stop (`FUN_14106fa60`: `+0x88a` 0, the top
+    /// action's slot 0x38: the Artifact's, [`Artifact::stop`], keeps the action list: a walk's
+    /// `MoveTo` goes and stops the unit, the target is let go, and the unit shows its standing
+    /// sprite; without an Artifact the list goes, an animal or an artifact holding no Hunt,
+    /// Gather, Build or Attack, whose slot 0x38 would keep it); then a unit AI of any class but
+    /// livestock, not on action 0x2c2, stops (slot 0xb0 with 0: the order ends, the unit's
+    /// stopAction) and forgets its targets (`FUN_140c4dcb0`), unless the unit's top action
+    /// (slot 0x438) is a trade (0x6f) with a load of a kind (COMISS 0, amount; JNC: an amount
+    /// that is not a number keeps it).
+    fn capture_stop(&mut self, c: &mut Context<'_>, class: i16) -> Result<(), Unsupported> {
+        let by = self.releaser(c);
+        if let Some(artifact) = self.artifact.as_mut() {
+            let (walked, released) = artifact.stop();
+            if walked {
+                self.mover
+                    .as_mut()
+                    .ok_or(Unsupported("a walking animal without movement state"))?
+                    .stop()?;
+            }
+            if let Some(t) = released {
+                c.releases.push((t, by));
+            }
+            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+        } else {
+            // any other top action's slot 0x38 is the base's false for what an animal or an
+            // artifact holds (a `MoveTo` of its own), and the list goes
+            self.tear_down_actions(&mut c.releases, by)?;
         }
-        c.spatial.change_owner(self.id, new, master.line_of_sight)?;
-        if let Some(a) = self.artifact.as_mut() {
-            a.gaia = new == 0;
+        let top = self.top_action_kind().map_or(-1, i32::from);
+        let trading = top == TRADE_ACTION
+            && crate::fmath::below_or_unordered(0.0, self.life.amount)
+            && self.life.attribute_type != -1;
+        if class != LIVESTOCK
+            && !trading
+            && let Some(ai) = self.ai.as_mut()
+            && ai.current_action != CAPTURE_KEEPS_ACTION
+        {
+            let mut fx = Vec::new();
+            let place = ([self.position[0], self.position[1]], class);
+            ai.stop_with(false, Some(place), &mut fx)?;
+            ai.forget_targets();
+            self.apply(fx, Some(class), c)?;
         }
-        // the unit AI's notifies go with the world time (FUN_140c5dc10), then the unit tells it
-        // it changed hands (0x20b with the new owner)
-        if let Some(ai) = self.ai.as_mut() {
-            ai.clear_notifies(c.world_time)?;
-        }
-        self.post_own(OWNER_CHANGED, [new as i32, 0, 0])?;
         Ok(())
+    }
+
+    /// The unit's slot 0x70 as its unit AI asks it ([`Effect::ChangeOwner`], the artifact's
+    /// processIdle `FUN_140c1e410`): a combat unit's ([`Unit::change_owner`]); once it changed
+    /// hands the caller moves it to the new owner's list after the update ([`Step::Captured`]).
+    /// A building's (`FUN_1411cd860`) is not modelled.
+    fn ai_change_owner(&mut self, new: usize, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        let master = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
+        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
+            return Err(HANDS_LEFT);
+        }
+        if self.change_owner(c, new)? {
+            c.taken_over = Some(new);
+        }
+        Ok(())
+    }
+
+    /// `RGE_Combat_Object::update`'s takeover by sight of the unit by player `new`, which has its
+    /// master: slot 0x70 ([`Unit::change_owner`]), then `+0x924` goes 0. The local player's
+    /// sound and its capture notice (`FUN_1414c3380`) are not simulation. Not modelled: a
+    /// building's slot 0x70 (`FUN_1411cd860`) and a siege weapon's (class 13) drop of the units
+    /// it carries (`FUN_14120f800` with `FUN_141192d10`).
+    fn take_by_sight(&mut self, c: &mut Context<'_>, new: usize) -> Result<(), Unsupported> {
+        let master = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
+        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
+            return Err(HANDS_LEFT);
+        }
+        if master.is_some_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
+            return Err(HANDS_LEFT);
+        }
+        let _ = self.change_owner(c, new)?;
+        self.capture_flag = 0;
+        if let Some(s) = c.spatial.sight.as_mut().and_then(|v| v.seer_mut(self.id)) {
+            s.capture = 0;
+        }
+        Ok(())
+    }
+
+    /// The ownership change (slot 0x70, [`change_hands`]) of the unit, from its owner to `new`:
+    /// false when `new` has not its master.
+    fn change_owner(&mut self, c: &mut Context<'_>, new: usize) -> Result<bool, Unsupported> {
+        change_hands(
+            self,
+            (c.player, new),
+            c.every_masters,
+            c.spatial,
+            c.world_time,
+        )
     }
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on its unit AI's move: a unit of class 51 or 54
@@ -7478,6 +7753,26 @@ const POPULATION: i16 = 4;
 /// The livestock class (`-0xe72` raw).
 const LIVESTOCK: i16 = 58;
 
+/// The siege class (`-0xe9f` raw), whose ownership change drops the units it carries
+/// (`FUN_14120f800`).
+const SIEGE_CLASS: i16 = 13;
+
+/// The ownership changes the slice does not model: a building's (its slot 0x70,
+/// `FUN_1411cd860`: its annexes', its production queue's and researches', its garrison's, its
+/// object and technology on capture, then the combat object's), which a takeover by sight and
+/// the artifact's ask for one reach, and a siege weapon's with units inside (`FUN_14120f800`'s
+/// class 13 branch: `FUN_141192d10`, each unit's leave, slot 0x1a8, with the siege weapon's slot
+/// 0x1b0, and the rest destroyed, slot 0xd0).
+const HANDS_LEFT: Unsupported =
+    Unsupported("an ownership change of a building or of a siege weapon with units inside");
+
+/// The trade action's type (slot 0x438), whose load keeps a captured unit's unit AI going
+/// (`FUN_14108c050`).
+const TRADE_ACTION: i32 = 0x6f;
+
+/// The unit AI's action that a capture's stop leaves alone (`FUN_14108c050`).
+const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
+
 /// `FUN_140aab570`'s scan after a livestock's capture: Gaia's livestock in state 2 whose tile
 /// the new owner sees (`FUN_141663500`), within 3 tiles of `at` (x outer, y inner); each is taken
 /// in turn, with its own scan. Two on one tile would need the tile's object list order.
@@ -7514,19 +7809,16 @@ fn scan_livestock(
                 [k] => {
                     let mut unit = std::mem::take(&mut others[k]);
                     let done = (|| {
-                        if unit.artifact.as_mut().is_some_and(Artifact::stop) {
-                            unit.mover
-                                .as_mut()
-                                .ok_or(Unsupported("a walking animal without movement state"))?
-                                .stop()?;
-                        }
+                        unit.capture_stop(c, LIVESTOCK)?;
                         unit.change_owner(c, new)
                     })();
                     let (id, position) = (unit.id, unit.position);
                     others[k] = unit;
-                    done?;
-                    taken.push(id);
-                    scan_livestock(c, others, position, new, taken)?;
+                    // without the master the animal stays Gaia's, which scans nothing
+                    if done? {
+                        taken.push(id);
+                        scan_livestock(c, others, position, new, taken)?;
+                    }
                 }
                 _ => {
                     return Err(Unsupported(
@@ -7547,16 +7839,26 @@ enum Step {
     Leave,
     /// It moves to its player's sleeping list.
     Sleep,
-    /// A player took it (and these other objects of its player) over: they move to the end of
-    /// that player's list.
-    Captured(usize, Vec<i32>),
+    /// A player took it or other objects of its player over ([`Captured`]).
+    Captured(Captured),
+}
+
+/// What a takeover in an object's update did ([`Step::Captured`]): player `new` took the object
+/// (`main`; without the master it stays) and then `also`, other objects of its player, in order.
+/// Those taken move to the end of the new owner's list; their storage and class counters move
+/// with them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Captured {
+    new: usize,
+    main: bool,
+    also: Vec<i32>,
 }
 
 /// What a unit's update hands its unit AI part when that runs after the caller gave the work its
 /// builder found ([`Unit::ai_part`]): a takeover and the step the update ends with.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct AiResume {
-    captured: Option<(usize, Vec<i32>)>,
+    captured: Option<Captured>,
     leaves: Step,
 }
 
@@ -8128,6 +8430,14 @@ impl Turns {
                     radius: master.radius,
                     visible: self.spatial.visible(viewer, x as i32, y as i32),
                     flags: master.object_flags,
+                    sight: self
+                        .spatial
+                        .tile_sight(
+                            viewer,
+                            crate::checkpoint::cvttss2si(x),
+                            crate::checkpoint::cvttss2si(y),
+                        )
+                        .unwrap_or(0),
                 }));
             }
         }
@@ -8293,54 +8603,58 @@ impl Turns {
         Ok(())
     }
 
-    /// Slot 0x70 (`FUN_14120f800`) to Gaia of the object at `j` of player `q`, from outside its
-    /// update ([`Unit::change_owner`]'s parts, the class counters ([`count_class`]) and the list
-    /// and storage moves of a capture).
+    /// Slot 0x70 ([`change_hands`]) to Gaia of the object at `j` of player `q`, from outside its
+    /// update: once Gaia has its master it leaves `q`'s list (`FUN_141630930`, the last object
+    /// in its place) for the end of Gaia's (`FUN_14167f670` -> `FUN_141616200`) with its
+    /// attributes ([`Turns::hand_over_attributes`]). Its only callers give livestock, which
+    /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
+    /// on the Player stream).
     fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), Unsupported> {
-        let u = &self.players[q].objects[j];
-        let (id, master_id) = (u.id, u.life.master_id);
-        if u.life.inside.is_some() {
-            return Err(Unsupported(
-                "an ownership change of an object inside another",
-            ));
+        let mut unit = std::mem::take(&mut self.players[q].objects[j]);
+        let changed = change_hands(
+            &mut unit,
+            (q, 0),
+            &self.masters,
+            &mut self.spatial,
+            self.world_time,
+        );
+        self.players[q].objects[j] = unit;
+        if !changed? {
+            return Ok(());
         }
-        let gaia_master =
-            self.masters
-                .first()
-                .and_then(|m| m.get(master_id))
-                .ok_or(Unsupported(
-                    "an ownership change to a player without the master",
-                ))?;
-        let los = gaia_master.line_of_sight;
-        let own = self.masters.get(q).and_then(|m| m.get(master_id));
-        let storage = own.map(|m| m.storage.clone()).unwrap_or_default();
-        // the class counters leave the old owner and come to Gaia (FUN_141226060 with -1, then 1)
-        if let Some(m) = own {
-            count_class(&mut self.players[q].attributes, m, -1.0);
-            count_class(&mut self.players[0].attributes, m, 1.0);
-        }
-        self.spatial.change_owner(id, 0, los)?;
-        let world_time = self.world_time;
-        let mut unit = self.players[q].objects.swap_remove(j);
-        if let Some(a) = unit.artifact.as_mut() {
-            a.gaia = true;
-        }
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.clear_notifies(world_time)?;
-        }
-        unit.post_own(OWNER_CHANGED, [0, 0, 0])?;
-        for &(kind, amount, flag) in &storage {
-            if kind < 0 {
-                continue;
-            }
-            if matches!(flag, 2 | 16 | 32) {
-                self.players[q].add_attribute(kind, -amount)?;
-            }
-            if matches!(flag, 1 | 2 | 32) {
-                self.players[0].add_attribute(kind, amount)?;
-            }
-        }
+        let unit = self.players[q].objects.swap_remove(j);
+        let handed = self.hand_over_attributes(q, 0, &unit);
         self.players[0].objects.push(unit);
+        handed
+    }
+
+    /// The attributes an ownership change ([`change_hands`]) moves with object `u` from player
+    /// `old` to `new`, by its master of its own, in the order of `FUN_14120f800`: the storage
+    /// the old owner loses (`FUN_1411a56c0` with 1: flags 2, 16 and 32, the amount's sign
+    /// flipped), its class counters ([`count_class`], −1 for the old owner, then 1 for the new)
+    /// and the storage the new owner gains (`FUN_141193860`: flags 1, 2 and 32). The lists'
+    /// moves come between the first two, which nothing here reads.
+    fn hand_over_attributes(
+        &mut self,
+        old: usize,
+        new: usize,
+        u: &Unit,
+    ) -> Result<(), Unsupported> {
+        let Some(m) = u.own_master.as_deref() else {
+            return Ok(());
+        };
+        for &(kind, amount, flag) in &m.storage {
+            if 0 <= kind && matches!(flag, 2 | 16 | 32) {
+                self.players[old].add_attribute(kind, -amount)?;
+            }
+        }
+        count_class(&mut self.players[old].attributes, m, -1.0);
+        count_class(&mut self.players[new].attributes, m, 1.0);
+        for &(kind, amount, flag) in &m.storage {
+            if 0 <= kind && matches!(flag, 1 | 2 | 32) {
+                self.players[new].add_attribute(kind, amount)?;
+            }
+        }
         Ok(())
     }
 }
@@ -8715,6 +9029,10 @@ pub struct Turns {
     /// The history period (`world+0x8b8`, `time_slice`): the `.dat`'s, which the world reads
     /// after its constructor's [`HISTORY_PERIOD`] ([`crate::history::History::update`]).
     pub history_period: i32,
+    /// Each player's `mAllowCapturingGaiaUnits` (`player+0x670`, saved; false for a player it
+    /// lacks): a computer player takes Gaia's objects over by seeing them in the game modes
+    /// outside the standard ones ([`crate::visibility::sight_taker`]).
+    pub allow_gaia_capture: Vec<bool>,
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
@@ -8915,6 +9233,7 @@ impl Turns {
             groups: crate::group::UnitGroups::default(),
             dt_seconds: 0.0,
             history_period: HISTORY_PERIOD,
+            allow_gaia_capture: Vec::new(),
         }
     }
 
@@ -9553,6 +9872,8 @@ impl Turns {
             roo_called: false,
             rice,
             store: Vec::new(),
+            own_master: None,
+            dead_master: None,
         });
         self.building_place(player, id, &made, position, desolid);
         if foundation && 0 < made.build_time {
@@ -10500,6 +10821,7 @@ impl Turns {
                     foreign: Foreign {
                         before: &*before,
                         after: &*after,
+                        left: None,
                     },
                     every: &self.masters,
                     masters: self.masters.get(p),
@@ -11429,6 +11751,15 @@ impl Turns {
                 .map(|q| q.attributes.get(97).copied().unwrap_or(0.0))
                 .collect();
             let computers: Vec<bool> = self.players.iter().map(|q| q.computer).collect();
+            let sight_takers: Vec<(bool, bool)> = self
+                .players
+                .iter()
+                .enumerate()
+                .map(|(q, player)| {
+                    let allows = self.allow_gaia_capture.get(q).copied();
+                    (player.computer, allows.unwrap_or(false))
+                })
+                .collect();
             let attribute_204 = self
                 .players
                 .iter()
@@ -11515,6 +11846,8 @@ impl Turns {
                     attribute_204,
                     mode_680: self.mode_680,
                     scenario: scenario_mode(self.game_mode),
+                    standard: standard_mode(self.game_mode),
+                    sight_takers: &sight_takers,
                     attribute_adds: Vec::new(),
                     techs_done: Vec::new(),
                     carts: Vec::new(),
@@ -11522,6 +11855,7 @@ impl Turns {
                     work_order: None,
                     gate_toggle: false,
                     ai_resume: resume.take(),
+                    taken_over: None,
                     order_on_target: None,
                     hunt_objects: Vec::new(),
                     gather_objects: Vec::new(),
@@ -11533,7 +11867,11 @@ impl Turns {
                     relations: &player.relations,
                     leads: None,
                     zones: &mut self.zones,
-                    foreign: Foreign { before, after },
+                    foreign: Foreign {
+                        before,
+                        after,
+                        left: None,
+                    },
                 };
                 let mut result = unit.update(&mut c, &mut player.objects);
                 if let Some(w) = watch {
@@ -11879,41 +12217,23 @@ impl Turns {
                         player.sleeping.push(asleep);
                         i += 1;
                     }
-                    Ok(Step::Captured(new, also)) => {
+                    Ok(Step::Captured(Captured { new, main, also })) => {
                         // the old owner's list loses them (FUN_1411664a0, the last in each
-                        // place; the loop goes on past the first) and the new owner's gains them
-                        // (FUN_141616200); the storage: the old owner loses flags 2, 16 and 32
-                        // (FUN_1411a56c0 with 1), the new one gains flags 1, 2 and 32
-                        // (FUN_141193860)
-                        let mut moved = vec![player.objects.swap_remove(i)];
+                        // place; the loop goes on past the first) and the new owner's gains
+                        // them (FUN_141616200), each with its attributes
+                        // ([`Turns::hand_over_attributes`])
+                        let mut moved = Vec::new();
+                        if main {
+                            moved.push(player.objects.swap_remove(i));
+                        }
                         for id in also {
                             if let Some(k) = player.objects.iter().position(|u| u.id == id) {
                                 moved.push(player.objects.swap_remove(k));
                             }
                         }
-                        let mut transfer = Vec::new();
-                        for u in &moved {
-                            let storage = self
-                                .masters
-                                .get(p)
-                                .and_then(|m| m.get(u.life.master_id))
-                                .map(|m| m.storage.clone())
-                                .unwrap_or_default();
-                            transfer.extend(storage);
-                        }
                         let mut failed = None;
-                        for &(kind, amount, flag) in &transfer {
-                            if kind < 0 {
-                                continue;
-                            }
-                            if matches!(flag, 2 | 16 | 32)
-                                && let Err(e) = self.players[p].add_attribute(kind, -amount)
-                            {
-                                let _ = failed.get_or_insert(e);
-                            }
-                            if matches!(flag, 1 | 2 | 32)
-                                && let Err(e) = self.players[new].add_attribute(kind, amount)
-                            {
+                        for u in &moved {
+                            if let Err(e) = self.hand_over_attributes(p, new, u) {
                                 let _ = failed.get_or_insert(e);
                             }
                         }
@@ -11981,6 +12301,14 @@ impl Turns {
 #[must_use]
 pub const fn scenario_mode(game_mode: i32) -> bool {
     matches!(game_mode, 3 | 4 | 5 | 15)
+}
+
+/// `FUN_141302450`: the game mode's descriptor (`DAT_143f6b330[mode]`, the first for a mode above
+/// 16) has `+0x9c` 1, as `FUN_1412d99e0` makes them (`FUN_1412d9360`'s fifth argument): all but
+/// the scenario modes 3, 4, 5, 14 and 15.
+#[must_use]
+pub const fn standard_mode(game_mode: i32) -> bool {
+    !matches!(game_mode, 3 | 4 | 5 | 14 | 15)
 }
 
 /// The owner's attributes 237, 238 and 239: a built farm's bonus ([`Completion::farm_bonus`]);
@@ -12226,6 +12554,77 @@ pub(crate) fn count_class(attributes: &mut [f32], master: &Master, by: f32) {
     if master.class == crate::spawn::VILLAGER || CIVILIAN_CLASSES.contains(&master.class) {
         add(37);
     }
+}
+
+/// The master types whose death-spawn master an ownership change copies (`FUN_14120f800`'s
+/// switch on the master's `+0x8`): static to moving objects, combat units and buildings.
+const DEAD_COPY_TYPES: [u8; 6] = [10, 20, 30, 40, 70, 80];
+
+/// `FUN_14120f800`, slot 0x70 of a combat object (`TRIBE_Combat_Object`'s): unit `u` of player
+/// `old` goes to player `new` (`masters`, every player's). First its records take the new owner
+/// ([`Spatial::records_owner`]); without its master in the new owner's table (`player+0x28`)
+/// nothing else changes and the answer is false. Then, in order: its sight goes from the old
+/// owner's map (slot 0x1d8) when it sees (state 2, not inside another); its master's death
+/// spawn (`+0x5e4`) in the old owner's table becomes its dead master ([`Unit::dead_master`], a
+/// copy of type 10 to 40, 70 or 80) unless it has one; its owner
+/// changes; it takes a master of its own (`FUN_141186d10`: a copy of the master it reads unless
+/// it has one, [`Unit::own_master`]) with the new owner's master's `fog_visibility` (`+0x605`)
+/// and, for livestock (class 58), line of sight (`+0x5d0`); its sight comes to the new owner's
+/// map with that line of sight (slot 0x1d0); its unit AI's notifies go with `world_time`
+/// (`FUN_140c5dc10`) and it tells its unit AI it changed hands (slot 0x328, 0x20b with the new
+/// owner). The caller's: the storage (`FUN_1411a56c0` with 1 for the old owner,
+/// `FUN_141193860` for the new), the lists (the players' slots 0x2d8 and 0x2d0) and the class
+/// counters ([`count_class`], −1 then 1), from the master of its own, and the units a siege
+/// weapon (class 13) carries. Not simulation: the names (`FUN_141189810`, `+0x6a8`, `+0x758`,
+/// `+0x770`), the old owner's selection (`FUN_141677380` for `+0x30c` bit 0), the log line and
+/// the message of game mode 12 for master 1377; nor are the slot 0xa8 calls on the copies (the
+/// masters' graphics).
+pub(crate) fn change_hands(
+    u: &mut Unit,
+    (old, new): (usize, usize),
+    masters: &[Masters],
+    spatial: &mut Spatial,
+    world_time: u32,
+) -> Result<bool, Unsupported> {
+    spatial.records_owner(u.id, new)?;
+    let Some(to) = masters.get(new).and_then(|m| m.get(u.life.master_id)) else {
+        return Ok(false);
+    };
+    let old_table = masters.get(old);
+    let mut own = match u.own_master.take() {
+        Some(own) => own,
+        None => Box::new(
+            old_table
+                .and_then(|m| m.get(u.life.master_id))
+                .ok_or(Unsupported(
+                    "an ownership change of an object whose master the slice does not have",
+                ))?
+                .clone(),
+        ),
+    };
+    // the dead master comes before the copy (FUN_141186d10), from the master it reads
+    if u.dead_master.is_none() && 0 <= own.death_spawns[0] {
+        u.dead_master = old_table
+            .and_then(|m| m.get(own.death_spawns[0]))
+            .filter(|d| DEAD_COPY_TYPES.contains(&d.kind))
+            .map(|d| Box::new(d.clone()));
+    }
+    own.fog_visibility = to.fog_visibility;
+    if own.class == LIVESTOCK {
+        own.line_of_sight = to.line_of_sight;
+    }
+    let los = own.line_of_sight;
+    u.own_master = Some(own);
+    let sees = u.life.state == 2 && u.life.inside.is_none();
+    spatial.change_owner(u.id, new, los, sees)?;
+    if let Some(a) = u.artifact.as_mut() {
+        a.gaia = new == 0;
+    }
+    if let Some(ai) = u.ai.as_mut() {
+        ai.clear_notifies(world_time)?;
+    }
+    u.post_own(OWNER_CHANGED, [new as i32, 0, 0])?;
+    Ok(true)
 }
 
 pub(crate) fn victim_of(
@@ -13397,6 +13796,7 @@ mod tests {
         let foreign = Foreign {
             before: &players[..1],
             after: &players[2..],
+            left: None,
         };
         assert_eq!(foreign.player(0).map(|p| p.relations[0]), Some(0));
         assert!(foreign.player(1).is_none());
@@ -13423,6 +13823,7 @@ mod tests {
         let own = Foreign {
             before: none,
             after: none,
+            left: None,
         };
         assert_eq!(wait_progress(10028, &t.players[1].objects, own), Some(0.0));
         assert_eq!(wait_progress(77, &t.players[1].objects, own), None);
@@ -13430,6 +13831,7 @@ mod tests {
         let other = Foreign {
             before: none,
             after: &players[1..],
+            left: None,
         };
         assert_eq!(wait_progress(10028, &[], other), Some(0.0));
     }
@@ -14246,6 +14648,774 @@ mod tests {
         let why = Unsupported("QUEUE at two buildings");
         t.tick_with(104, &[Command::Unmodelled { player: 0, why }]);
         assert_eq!(t.players[0].unsupported, Some((1, 0, why)));
+    }
+
+    /// The masters of the ownership changes' tests, by player: Gaia's (0), player 1's and
+    /// player 2's archer 4 (class 0, its dead archer 3 of type 10; line of sight 6, 7, 8; fog
+    /// visibility 0, 1, 2; hit points 30, 35, 40) and sheep 705 (class 58; line of sight 2, 3,
+    /// 4; fog visibility 0, 1, 2; food 100); player 2 lacks the dead archer, and the dead
+    /// archer of player 1 is of type 25 (a doppelganger's, which the copy leaves).
+    fn hands_masters() -> Vec<Masters> {
+        let table = |p: u8| {
+            let archer = Master {
+                id: 4,
+                kind: 70,
+                class: 0,
+                line_of_sight: 6.0 + f32::from(p),
+                fog_visibility: p,
+                hit_points: 30 + 5 * i16::from(p),
+                death_spawns: [3, -1],
+                storage: vec![(4, 1.0, 2), (11, 0.0, 0), (-1, 0.0, 0)],
+                ..Master::default()
+            };
+            let dead = Master {
+                id: 3,
+                kind: if p == 1 { 25 } else { 10 },
+                class: 0,
+                hit_points: 9 + i16::from(p),
+                ..Master::default()
+            };
+            let sheep = Master {
+                id: 705,
+                kind: 70,
+                class: LIVESTOCK,
+                line_of_sight: 2.0 + f32::from(p),
+                fog_visibility: p,
+                storage: vec![(16, 100.0, 1)],
+                ..Master::default()
+            };
+            if p == 2 {
+                Masters::new([archer, sheep])
+            } else {
+                Masters::new([archer, dead, sheep])
+            }
+        };
+        vec![table(0), table(1), table(2)]
+    }
+
+    /// A 40 × 40 world of three players' sight with the registry, holding object `id` of
+    /// player `p`, class `class` and master `master` at (10.5, 10.5) in player `p`'s registry
+    /// list, its sight on.
+    fn hands_world(id: i32, p: usize, class: i16, master: i16, los: f32) -> Spatial {
+        let n = 40 * 40;
+        let mut s = Spatial::new([40, 40]);
+        let mut v = crate::visibility::Visibility::new(
+            40,
+            40,
+            (0..3)
+                .map(|_| crate::visibility::VisibleMap {
+                    counts: vec![-1; n],
+                    explored: 0,
+                })
+                .collect(),
+            vec![0; n],
+            Vec::new(),
+            0,
+            vec![false; 3],
+        );
+        let mut r = crate::registry::Registry::new(3, 65);
+        r.entries.entry(id).or_default().mask = 1 << p;
+        r.update_unit(id, p as u8, [10.5, 10.5], [0.2, 0.2], class, 0, 1 << p)
+            .unwrap();
+        v.registry = Some(r);
+        let at = [10.5, 10.5, 0.0];
+        v.add_seer(
+            id,
+            Seer {
+                player: p,
+                master,
+                los,
+                state: 2,
+                explored: true,
+                building: None,
+                umv: 0,
+                capture: capture_kind(p, class, master),
+                kind: 70,
+            },
+        );
+        let _ = v.sight_on(id, at, [0.2, 0.2], false, false);
+        s.sight = Some(v);
+        s.insert(
+            id,
+            Placed {
+                position: at,
+                radius: [0.2, 0.2],
+                class,
+                player: p,
+                master,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        s
+    }
+
+    /// A live unit `id` of master `master` with a unit AI holding a notify.
+    fn hands_unit(id: i32, master: i16) -> Unit {
+        let mut ai = UnitAi::default();
+        ai.notifies
+            .push(Notify::own(id, crate::unit_ai::DAMAGED, [1, 2, 3]));
+        Unit {
+            id,
+            position: [10.5, 10.5, 0.0],
+            life: Lifecycle {
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            ai: Some(ai),
+            combat: true,
+            ..Unit::default()
+        }
+    }
+
+    /// `FUN_14120f800` on MarvinBlue/426048681's Gaia archer 21712 (master 4) that player 1
+    /// takes over: its records and place take player 1, its sight moves from Gaia's map to
+    /// player 1's with Gaia's line of sight, it takes a master of its own (a copy of Gaia's,
+    /// with player 1's fog visibility) and a copy of Gaia's dead archer, its unit AI's notifies
+    /// go with the world time and it tells its unit AI it changed hands.
+    #[test]
+    fn a_taken_gaia_archer_keeps_a_copy_of_gaia_s_master_with_its_new_owner_s_fog() {
+        let masters = hands_masters();
+        let mut s = hands_world(21712, 0, 0, 4, 6.0);
+        let mut u = hands_unit(21712, 4);
+        assert_eq!(
+            change_hands(&mut u, (0, 1), &masters, &mut s, 1250),
+            Ok(true)
+        );
+        let own = u.own_master.as_deref().unwrap();
+        assert_eq!(
+            (own.hit_points, own.line_of_sight, own.fog_visibility),
+            (30, 6.0, 1)
+        );
+        assert_eq!(u.dead_master.as_deref().map(|d| d.hit_points), Some(9));
+        assert_eq!(s.get(21712).map(|p| p.player), Some(1));
+        let v = s.sight.as_ref().unwrap();
+        let r = v.registry.as_ref().unwrap();
+        assert_eq!(r.lists[0][0][0].owner, 1);
+        let seer = v.seer(21712).copied().unwrap();
+        assert_eq!((seer.player, seer.los), (1, 6.0));
+        let tile = |x: usize, y: usize| y * 40 + x;
+        assert_eq!(v.maps[0].counts[tile(10, 10)], 0);
+        assert_eq!(v.maps[1].counts[tile(16, 10)], 1);
+        let ai = u.ai.as_ref().unwrap();
+        assert_eq!(ai.last_update_time, 1250);
+        assert_eq!(ai.notifies, [Notify::own(21712, OWNER_CHANGED, [1, 0, 0])]);
+    }
+
+    /// `FUN_14120f800` on a sheep: its master of its own takes the new owner's line of sight
+    /// (class 58), which its sight on the new owner's map reads; its master has no death spawn.
+    /// A master of its own it had stays (with the new fog visibility), and so does a dead
+    /// master; a dead master of a type the copy leaves (25) gives none.
+    #[test]
+    fn a_taken_sheep_sees_with_its_new_owner_s_line_of_sight() {
+        let masters = hands_masters();
+        let mut s = hands_world(9520, 1, LIVESTOCK, 705, 3.0);
+        let mut u = hands_unit(9520, 705);
+        assert_eq!(change_hands(&mut u, (1, 2), &masters, &mut s, 0), Ok(true));
+        let own = u.own_master.as_deref().unwrap();
+        assert_eq!((own.line_of_sight, own.fog_visibility), (4.0, 2));
+        assert_eq!(u.dead_master, None);
+        let v = s.sight.as_ref().unwrap();
+        assert_eq!(v.seer(9520).map(|s| s.los), Some(4.0));
+        assert_eq!(v.maps[2].counts[10 * 40 + 14], 1);
+        // back to player 1: the copy stays, with player 1's fog and line of sight
+        assert_eq!(change_hands(&mut u, (2, 1), &masters, &mut s, 0), Ok(true));
+        let own = u.own_master.as_deref().unwrap();
+        assert_eq!((own.line_of_sight, own.fog_visibility), (3.0, 1));
+        // player 1's archer: its dead archer is of type 25, and none is copied
+        let mut s = hands_world(7, 1, 0, 4, 7.0);
+        let mut a = hands_unit(7, 4);
+        assert_eq!(change_hands(&mut a, (1, 0), &masters, &mut s, 0), Ok(true));
+        assert_eq!(a.dead_master, None);
+        // a dead master it holds stays
+        let held = Box::new(Master {
+            id: 3,
+            hit_points: 99,
+            ..Master::default()
+        });
+        a.dead_master = Some(held.clone());
+        assert_eq!(change_hands(&mut a, (0, 1), &masters, &mut s, 0), Ok(true));
+        assert_eq!(a.dead_master, Some(held));
+        assert_eq!(a.own_master.as_deref().map(|m| m.hit_points), Some(35));
+    }
+
+    /// `FUN_14120f800` for a new owner whose table lacks the master writes the new owner into
+    /// the records and changes nothing else; one inside another (or not in state 2) changes
+    /// hands without moving its sight.
+    #[test]
+    fn an_ownership_change_without_the_master_writes_the_records_alone() {
+        let mut masters = hands_masters();
+        masters[2] = Masters::new([]);
+        let mut s = hands_world(21712, 0, 0, 4, 6.0);
+        let before = s.sight.as_ref().unwrap().maps.clone();
+        let mut u = hands_unit(21712, 4);
+        assert_eq!(change_hands(&mut u, (0, 2), &masters, &mut s, 9), Ok(false));
+        let v = s.sight.as_ref().unwrap();
+        assert_eq!(v.registry.as_ref().unwrap().lists[0][0][0].owner, 2);
+        assert_eq!(v.maps, before);
+        assert_eq!(v.seer(21712).map(|s| s.player), Some(0));
+        assert_eq!(s.get(21712).map(|p| p.player), Some(0));
+        assert_eq!(
+            (u.own_master.is_none(), u.dead_master.is_none()),
+            (true, true)
+        );
+        assert_eq!(u.ai.as_ref().unwrap().notifies.len(), 1);
+        u.life.inside = Some(100);
+        assert_eq!(change_hands(&mut u, (0, 1), &masters, &mut s, 9), Ok(true));
+        let v = s.sight.as_ref().unwrap();
+        assert_eq!(v.maps, before);
+        assert_eq!(v.seer(21712).map(|s| (s.player, s.los)), Some((1, 6.0)));
+        assert_eq!(s.get(21712).map(|p| p.player), Some(1));
+    }
+
+    /// `RGE_Combat_Object::update` on MarvinBlue/426048681's Gaia archer 21712 in update 1: its
+    /// mask now holds player 1's bit, so player 1 takes it over (slot 0x70) and `+0x924` goes 0;
+    /// it leaves Gaia's list for the end of player 1's, its class count with it (attribute 40).
+    /// A player whose table lacks the master ends the loop without taking it; outside the
+    /// standard modes a computer player that does not allow it is passed over.
+    #[test]
+    fn a_gaia_archer_a_player_sees_goes_to_that_player() {
+        let world = |masters: Vec<Masters>, computer: bool, mode: i32| {
+            let mut t = Turns::new(
+                0,
+                1,
+                0,
+                vec![0, 0, 0],
+                vec![
+                    Player {
+                        objects: vec![Unit {
+                            ai: None,
+                            capture_flag: 1,
+                            ..hands_unit(21712, 4)
+                        }],
+                        attributes: vec![0.0; 300],
+                        ..Player::default()
+                    },
+                    Player {
+                        objects: vec![live(500)],
+                        attributes: vec![0.0; 300],
+                        computer,
+                        kind: if computer { 3 } else { 1 },
+                        ..Player::default()
+                    },
+                    Player {
+                        attributes: vec![0.0; 300],
+                        ..Player::default()
+                    },
+                ],
+            );
+            t.game_mode = mode;
+            t.players[0].attributes[40] = 1.0;
+            t.masters = masters;
+            t.spatial = hands_world(21712, 0, 0, 4, 6.0);
+            let v = t.spatial.sight.as_mut().unwrap();
+            v.unified[10 * 40 + 10] = 0b111;
+            t
+        };
+        let mut t = world(hands_masters(), false, 0);
+        t.tick(100);
+        assert_eq!(t.players[0].objects.len(), 0);
+        let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+        assert_eq!(ids, [500, 21712]);
+        let archer = &t.players[1].objects[1];
+        assert_eq!(archer.capture_flag, 0);
+        assert_eq!(
+            archer.own_master.as_deref().map(|m| m.fog_visibility),
+            Some(1)
+        );
+        let v = t.spatial.sight.as_ref().unwrap();
+        assert_eq!(v.seer(21712).map(|s| (s.player, s.capture)), Some((1, 0)));
+        assert_eq!(
+            [t.players[0].attributes[40], t.players[1].attributes[40]],
+            [0.0, 1.0]
+        );
+        // player 1 lacks the master: the loop ends with it, and Gaia keeps the archer
+        let mut masters = hands_masters();
+        masters[1] = Masters::new([]);
+        let mut t = world(masters, false, 0);
+        t.tick(100);
+        assert_eq!(t.players[0].objects[0].capture_flag, 1);
+        assert_eq!(t.spatial.get(21712).map(|p| p.player), Some(0));
+        // a computer player 1 in a scenario passes it to player 2
+        let mut t = world(hands_masters(), true, 3);
+        t.tick(100);
+        assert_eq!(t.players[2].objects.len(), 1);
+        assert_eq!(t.spatial.get(21712).map(|p| p.player), Some(2));
+        // unless it allows taking Gaia's units
+        let mut t = world(hands_masters(), true, 3);
+        t.allow_gaia_capture = vec![false, true, false];
+        t.tick(100);
+        assert_eq!(t.spatial.get(21712).map(|p| p.player), Some(1));
+    }
+
+    /// A world for the teardowns: player 1 holds the sheep 20 (master 705), the bird 30 (96),
+    /// the villager 40 (83) and town centres 9149 and 9150 (109, one worker each); player 2 (an
+    /// ally) holds the foundation 10028 (70) with one builder.
+    fn teardown_world() -> Turns {
+        let walker = crate::hunt::tests::walker();
+        let unit = |id, master| Unit {
+            id,
+            position: [10.5, 10.5, 0.0],
+            mover: Some(walker.clone()),
+            life: Lifecycle {
+                master_id: master,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let tc = |id| Unit {
+            id,
+            position: [20.0, 20.0, 0.0],
+            workers: 1,
+            combat: true,
+            life: Lifecycle {
+                master_id: 109,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let foundation = Unit {
+            id: 10028,
+            position: [30.0, 30.0, 0.0],
+            workers: 1,
+            life: Lifecycle {
+                state: 0,
+                master_id: 70,
+                ..Lifecycle::default()
+            },
+            construction: Some(Construction {
+                progress: 0.0,
+                desolid: false,
+                builders: 1,
+                hit_points: 550,
+                build_time: 25,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: true,
+            }),
+            ..Unit::default()
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                Player::default(),
+                Player {
+                    objects: vec![
+                        unit(20, 705),
+                        unit(30, 96),
+                        unit(40, 83),
+                        tc(9149),
+                        tc(9150),
+                    ],
+                    relations: vec![0, 1, 2],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![foundation],
+                    relations: vec![0, 2, 1],
+                    ..Player::default()
+                },
+            ],
+        );
+        let master = |id, kind, class| Master {
+            id,
+            kind,
+            class,
+            ..Master::default()
+        };
+        let table = Masters::new([
+            master(705, 70, LIVESTOCK),
+            master(96, 70, 11),
+            master(83, 70, 4),
+            master(109, 80, 52),
+            master(70, 80, 3),
+        ]);
+        t.masters = vec![table.clone(), table.clone(), table];
+        t
+    }
+
+    /// The action list's clearing (`FUN_140a98620`): the Artifact's teardown (`FUN_140aab0d0`)
+    /// lets its town centre go and its `MoveTo`'s stops the sheep; the Fly's (`FUN_140a84750`)
+    /// gives the bird its top speed as its animation speed, then its `MoveTo`'s stops it; the
+    /// Enter's lets its building go; a counted builder's Build leaves another player's
+    /// foundation's builders (`Turns::leave_builders`) and lets it go; a wait for a foundation
+    /// goes.
+    #[test]
+    fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
+        let mut t = teardown_world();
+        t.players[1].objects[0].artifact = Some(Artifact {
+            target: 9149,
+            goal: Some([20.0, 20.0, 0.0]),
+            walk_to: Some((crate::move_to::Goal::Target(9149), 1.0)),
+            move_to: Some(MoveTo::Moving),
+            ..Artifact::new(false)
+        });
+        t.clear_actions(1, 0).unwrap();
+        let sheep = &t.players[1].objects[0];
+        assert_eq!(sheep.artifact, None);
+        assert!(sheep.mover.as_ref().unwrap().speed_stopped);
+        assert_eq!(t.players[1].objects[3].workers, 0);
+        let bird = &mut t.players[1].objects[1];
+        bird.fly = Some(Fly {
+            state: 3,
+            timer: 1.0,
+            move_to: Some(MoveTo::Moving),
+            goal: Some([12.0, 12.0, 0.0]),
+            home: [10.0, 10.0],
+            task: crate::masters::Task::default(),
+        });
+        bird.mover.as_mut().unwrap().stats.speed = 1.3;
+        t.clear_actions(1, 1).unwrap();
+        let bird = &t.players[1].objects[1];
+        assert_eq!((bird.fly, bird.anim_speed), (None, Some(1.3)));
+        assert!(bird.mover.as_ref().unwrap().speed_stopped);
+        let villager = &mut t.players[1].objects[2];
+        villager.enter = Some(crate::garrison::EnterAction {
+            target: 9150,
+            state: 3,
+            move_to: None,
+            point: [20.0, 20.0, 0.0],
+            range: 0.0,
+            timer: 0.0,
+            retry: true,
+            task_class: 0,
+        });
+        villager.wait_solidify = Some(crate::wait_solidify::WaitSolidify::new(
+            crate::masters::Task::default(),
+            10028,
+        ));
+        t.clear_actions(1, 2).unwrap();
+        let villager = &t.players[1].objects[2];
+        assert_eq!((villager.enter, villager.wait_solidify), (None, None));
+        assert!(!villager.mover.as_ref().unwrap().speed_stopped);
+        assert_eq!(t.players[1].objects[4].workers, 0);
+        t.players[1].objects[2].build = Some(BuildAction {
+            target: 10028,
+            state: 3,
+            move_to: None,
+            goal: None,
+            task: BuildTask {
+                range: 0.0,
+                work_value: 0.0,
+                work_rate: 1.0,
+            },
+            added: true,
+            timer: 0.0,
+        });
+        t.clear_actions(1, 2).unwrap();
+        let foundation = &t.players[2].objects[0];
+        assert_eq!(foundation.workers, 0);
+        assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
+    }
+
+    /// The Artifact's move to an object (slot 8 with an object, `FUN_140aaca30`): the old target
+    /// is let go, then the new one taken (slot 0x68 twice, `+0x60` 0).
+    #[test]
+    fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
+        let mut t = teardown_world();
+        for (id, at) in [(9149, [20.0, 20.0]), (9150, [25.0, 20.0])] {
+            t.spatial.insert(
+                id,
+                Placed {
+                    position: [at[0], at[1], 0.0],
+                    radius: [2.0, 2.0],
+                    class: 52,
+                    player: 1,
+                    master: 109,
+                    obstruction_type: 2,
+                    buildable_on: 0,
+                    tall: true,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        t.players[1].objects[0].artifact = Some(Artifact::new(false));
+        t.artifact_take_object(1, 0, 9149).unwrap();
+        assert_eq!(t.players[1].objects[3].workers, 2);
+        t.artifact_take_object(1, 0, 9150).unwrap();
+        assert_eq!(
+            [
+                t.players[1].objects[3].workers,
+                t.players[1].objects[4].workers
+            ],
+            [1, 2]
+        );
+        let a = t.players[1].objects[0].artifact.unwrap();
+        assert_eq!((a.target, a.goal), (9150, Some([25.0, 20.0, 0.0])));
+        assert!(
+            t.players[1].objects[0]
+                .mover
+                .as_ref()
+                .unwrap()
+                .speed_stopped
+        );
+    }
+
+    /// The artifact's unit AI in a tick, with Gaia's torch 7 (master 854, class 1, a combat
+    /// unit): on Gaia's turn its processMisc (`FUN_140c21d40`) finds player 1's villager 500,
+    /// the one player's object in its lists, and asks its unit to change hands (slot 0x70); the
+    /// torch leaves Gaia's list for the end of player 1's.
+    #[test]
+    fn a_gaia_torch_goes_to_the_one_player_near_it() {
+        let master = |id, class, los| Master {
+            id,
+            kind: 70,
+            class,
+            line_of_sight: los,
+            radius: [0.2, 0.2],
+            ..Master::default()
+        };
+        let table = Masters::new([master(854, 1, 4.0), master(83, 4, 4.0)]);
+        let torch = Unit {
+            ai: Some(UnitAi {
+                ai_type: crate::unit_ai::ARTIFACT_AI,
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                idle_timeout: 5000,
+                adjusted_idle_timeout: 4000,
+                retarget_timer: 1000,
+                ..UnitAi::default()
+            }),
+            ..hands_unit(7, 854)
+        };
+        let villager = Unit {
+            position: [11.5, 10.5, 0.0],
+            ai: None,
+            ..hands_unit(500, 83)
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                Player {
+                    objects: vec![torch],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![villager],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.masters = vec![table.clone(), table.clone(), table];
+        t.spatial = hands_world(7, 0, 1, 854, 4.0);
+        t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
+        t.spatial.insert(
+            500,
+            Placed {
+                position: [11.5, 10.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: 1,
+                master: 83,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        let v = t.spatial.sight.as_mut().unwrap();
+        v.add_seer(
+            500,
+            Seer {
+                player: 1,
+                master: 83,
+                los: 4.0,
+                state: 2,
+                explored: true,
+                building: None,
+                umv: 0,
+                capture: 0,
+                kind: 70,
+            },
+        );
+        let r = v.registry.as_mut().unwrap();
+        r.entries.entry(500).or_default().mask = 0b11;
+        r.update_unit(500, 1, [11.5, 10.5], [0.2, 0.2], 4, 0, 0b11)
+            .unwrap();
+        t.tick(100);
+        assert_eq!(t.players[0].objects.len(), 0);
+        let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+        assert_eq!(ids, [500, 7]);
+        assert_eq!(t.spatial.get(7).map(|p| p.player), Some(1));
+        let torch = &t.players[1].objects[1];
+        assert_eq!(torch.own_master.as_deref().map(|m| m.id), Some(854));
+        let ai = torch.ai.as_ref().unwrap();
+        assert_eq!(ai.notifies, [Notify::own(7, OWNER_CHANGED, [1, 0, 0])]);
+        assert_eq!(ai.idle_timer, 0);
+    }
+
+    /// The livestock capture in a tick (`FUN_140aab570` from the Artifact's check in the second
+    /// update): player 1's villager stands beside Gaia's sheep 9520, which stops (its Artifact's
+    /// slot 0x38: the standing sprite's speed) and goes to player 1 (slot 0x70: a master of its
+    /// own with player 1's line of sight), the end of player 1's list, with its food (storage
+    /// flag 1 to the new owner).
+    #[test]
+    fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
+        let mut walker = crate::hunt::tests::walker();
+        walker.velocity = None;
+        walker.stats.speed = 0.8;
+        walker.stats.stand_speed = 0.5;
+        let sheep = Unit {
+            artifact: Some(Artifact::new(true)),
+            mover: Some(walker),
+            ai: None,
+            ..hands_unit(9520, 705)
+        };
+        let villager = Unit {
+            position: [11.5, 10.5, 0.0],
+            ai: None,
+            ..hands_unit(500, 83)
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                Player {
+                    objects: vec![sheep],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![villager],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+            ],
+        );
+        let mut masters = hands_masters();
+        for m in &mut masters {
+            *m = Masters::new(m.iter().cloned().chain([Master {
+                id: 83,
+                kind: 70,
+                class: 4,
+                radius: [0.2, 0.2],
+                ..Master::default()
+            }]));
+        }
+        t.masters = masters;
+        t.spatial = hands_world(9520, 0, LIVESTOCK, 705, 2.0);
+        t.spatial.relations = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
+        t.spatial.insert(
+            500,
+            Placed {
+                position: [11.5, 10.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: 1,
+                master: 83,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        t.spatial.sight.as_mut().unwrap().add_seer(
+            500,
+            Seer {
+                player: 1,
+                master: 83,
+                los: 4.0,
+                state: 2,
+                explored: true,
+                building: None,
+                umv: 0,
+                capture: 0,
+                kind: 70,
+            },
+        );
+        t.tick(100);
+        assert_eq!(t.players[0].objects.len(), 1);
+        t.tick(100);
+        assert_eq!(t.players[0].objects.len(), 0);
+        let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+        assert_eq!(ids, [500, 9520]);
+        let sheep = &t.players[1].objects[1];
+        assert_eq!(
+            sheep.own_master.as_deref().map(|m| m.line_of_sight),
+            Some(3.0)
+        );
+        assert_eq!(sheep.mover.as_ref().map(|m| m.stats.speed), Some(0.5));
+        assert_eq!(sheep.artifact.map(|a| a.gaia), Some(false));
+        assert_eq!(t.players[1].attributes[16], 100.0);
+        assert_eq!(t.spatial.get(9520).map(|p| p.player), Some(1));
+    }
+
+    /// `FUN_141302450`: the scenario modes' descriptors have `+0x9c` 0; a mode above 16 reads the
+    /// first descriptor's.
+    #[test]
+    fn the_standard_modes_are_all_but_the_scenario_ones() {
+        let standard: Vec<i32> = (0..=17).filter(|&m| standard_mode(m)).collect();
+        assert_eq!(standard, [0, 1, 2, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17]);
+        assert!(standard_mode(-1));
+    }
+
+    /// The attributes an ownership change moves with its object, by its master of its own: the
+    /// old owner loses storage flags 2, 16 and 32 and counts one archer less (40), the new one
+    /// counts one more and gains flags 1, 2 and 32.
+    #[test]
+    fn an_object_changing_hands_takes_its_storage_and_class_counts_along() {
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0],
+            vec![
+                Player {
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.players[0].attributes[4] = 5.0;
+        t.players[0].attributes[40] = 2.0;
+        let mut u = hands_unit(1, 4);
+        t.hand_over_attributes(0, 1, &u).unwrap();
+        assert_eq!(t.players[0].attributes[4], 5.0);
+        u.own_master = hands_masters()[0].get(4).cloned().map(Box::new);
+        t.hand_over_attributes(0, 1, &u).unwrap();
+        assert_eq!(
+            [t.players[0].attributes[4], t.players[0].attributes[40]],
+            [4.0, 1.0]
+        );
+        assert_eq!(
+            [t.players[1].attributes[4], t.players[1].attributes[40]],
+            [1.0, 1.0]
+        );
+        assert_eq!(t.players[1].attributes[11], 0.0);
     }
 
     /// MarvinBlue/426048731's update 1250: 10029's second hit kills its sheep 9520 (2 hit points,

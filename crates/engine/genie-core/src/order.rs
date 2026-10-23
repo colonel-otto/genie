@@ -1262,20 +1262,24 @@ impl Turns {
     }
 
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
-    /// [`crate::artifact::Artifact::take_object`]): livestock (class 58) goes to a building
-    /// within 1, to the town centre (master 109) at its point; a `MoveTo` it walked goes, whose
-    /// teardown stops the unit (slot 0x5d0).
+    /// [`crate::artifact::Artifact::take_object`]): its old target is let go (slot 0x180,
+    /// [`Turns::release`]), then the target, in a state below 7, taken (slot 0x178,
+    /// [`Turns::take`]); livestock (class 58) goes to a building within 1, to the town centre
+    /// (master 109) at its point; a `MoveTo` it walked goes, whose teardown stops the unit (slot
+    /// 0x5d0).
     pub(crate) fn artifact_take_object(
         &mut self,
         player: usize,
         idx: usize,
         target: i32,
     ) -> Result<(), Unsupported> {
+        let by = self.releaser(player, idx);
         let unit = &self.players[player].objects[idx];
         let livestock = self.master_of(player, unit.life.master_id)?.class == LIVESTOCK;
         let (tp, t) = self.object(target).ok_or(Unsupported(
             "an Artifact's move to an object the slice does not hold",
         ))?;
+        let alive = t.life.state < 7;
         let t_master = self.master_of(tp, t.life.master_id)?;
         let to_building = livestock && t_master.kind == BUILDING;
         let to_town_centre = livestock && t_master.id == TOWN_CENTRE;
@@ -1287,12 +1291,19 @@ impl Turns {
                 "an Artifact's move to an object without a place",
             ))?;
         let unit = &mut self.players[player].objects[idx];
-        let walked = unit
-            .artifact
-            .as_mut()
-            .is_some_and(|a| a.take_object(target, at, to_building, to_town_centre));
+        let (walked, targets) = unit.artifact.as_mut().map_or_else(
+            || (false, crate::artifact::Targets::default()),
+            |a| a.take_object((target, alive), at, to_building, to_town_centre),
+        );
+        if let Some(t) = targets.released {
+            self.release(t, by)?;
+        }
+        if let Some(t) = targets.taken {
+            self.take(t);
+        }
         if walked {
-            unit.mover
+            self.players[player].objects[idx]
+                .mover
                 .as_mut()
                 .ok_or(Unsupported("a walker without movement state"))?
                 .stop()?;
@@ -3816,18 +3827,38 @@ impl Turns {
     }
 
     /// The action list's clearing (`FUN_140a98620`): each action's teardown. A Build action takes
-    /// its builder out of the foundation's builders (`FUN_140aadbf0`); a `MoveTo`'s teardown stops
-    /// the unit (slot 0x5d0); the Build and the Hunt release their targets (slot 0x180,
-    /// [`Turns::release`]). A building's make action is in its production's own list, which
-    /// stays.
+    /// a counted builder out of the foundation's builders (`FUN_140aadbf0`,
+    /// [`Turns::leave_builders`]); a `MoveTo`'s teardown stops the unit (slot 0x5d0); the base
+    /// teardown (`FUN_140a73fc0`) of the Build, the Hunt, the Gather, the Attack, the Artifact
+    /// (`FUN_140aab0d0`) and the Enter (`FUN_140a85bf0`) releases their targets (slot 0x180,
+    /// [`Turns::release`]); the Fly's (`FUN_140a84750`) first gives the unit's animation speed
+    /// (`+0x7b8`) its top speed (slot 0x208); a wait for a foundation's (`0x140ae8780`) holds no
+    /// target. A building's make action is in its production's own list, which stays.
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
         let by = self.releaser(player, idx);
         let objects = &mut self.players[player].objects;
         let unit = &mut objects[idx];
-        if unit.artifact.is_some() || unit.fly.is_some() || unit.enter.is_some() {
-            return Err(Unsupported(
-                "clearing an action list the slice does not model",
-            ));
+        unit.wait_solidify = None;
+        let artifact = unit.artifact.take().map(|mut a| a.tear_down());
+        if artifact.is_some_and(|(walked, _)| walked)
+            && let Some(m) = unit.mover.as_mut()
+        {
+            m.stop()?;
+        }
+        if let Some(fly) = unit.fly.take() {
+            let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+            unit.anim_speed = Some(speed);
+            if fly.move_to.is_some()
+                && let Some(m) = unit.mover.as_mut()
+            {
+                m.stop()?;
+            }
+        }
+        let enter = unit.enter.take();
+        if enter.is_some_and(|e| e.move_to.is_some())
+            && let Some(m) = unit.mover.as_mut()
+        {
+            m.stop()?;
         }
         let build = unit.build.take();
         let explore = unit.explore.take();
@@ -3864,16 +3895,15 @@ impl Turns {
         }
         if let Some(b) = build {
             if b.added {
-                let site = objects
-                    .iter_mut()
-                    .find(|u| u.id == b.target)
-                    .and_then(|u| u.construction.as_mut())
-                    .ok_or(Unsupported(
-                        "a builder's foundation the slice does not hold",
-                    ))?;
-                site.builders = site.builders.saturating_sub(1);
+                self.leave_builders(b.target)?;
             }
             self.release(b.target, by)?;
+        }
+        if let Some(t) = artifact.and_then(|(_, released)| released) {
+            self.release(t, by)?;
+        }
+        if let Some(e) = enter {
+            self.release(e.target, by)?;
         }
         if let Some(h) = hunt {
             self.release(h.target, by)?;

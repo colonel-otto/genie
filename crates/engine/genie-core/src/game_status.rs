@@ -485,11 +485,15 @@ impl Turns {
             crate::artifact::ARTIFACT_TYPE => {
                 let unit = &mut self.players[p].objects[idx];
                 let artifact = unit.artifact.as_mut().expect("its top action");
-                if artifact.stop() {
+                let (walked, released) = artifact.stop();
+                if walked {
                     unit.mover
                         .as_mut()
                         .ok_or(Unsupported("a walking animal without movement state"))?
                         .stop()?;
+                }
+                if let Some(t) = released {
+                    self.release(t, by)?;
                 }
                 self.standing_sprite(p, idx)?;
             }

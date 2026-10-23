@@ -262,6 +262,30 @@ pub fn capture_kind(player: usize, class: i16, master: i16) -> u8 {
     kind
 }
 
+/// `RGE_Combat_Object::update`'s takeover by sight (`0x14107dfb0`, once the registry took a
+/// changed `mask` of an object with `+0x924` 1, [`Visibility::combat_sight`]): the players from
+/// 1 on, in order, each with its computer flag (`player+0x10 == 3`) and its
+/// `mAllowCapturingGaiaUnits` (`+0x670`). Outside the game modes whose descriptor's `+0x9c` is 1
+/// (`standard`, `FUN_141302450`) a computer player that does not allow it is passed over; the
+/// test `DAT_143e76fc3` guards before (`FUN_140ca6be0` on the AI's table) is never run, the
+/// flag being 0 in the image and never written. The first other player than `owner` whose bit
+/// is in `mask` ends the loop: it is the answer, which takes the object when it has its master.
+#[must_use]
+pub fn sight_taker(
+    mask: u64,
+    owner: usize,
+    standard: bool,
+    players: &[(bool, bool)],
+) -> Option<usize> {
+    players
+        .iter()
+        .enumerate()
+        .skip(1)
+        .filter(|&(_, &(computer, allows))| standard || !computer || allows)
+        .map(|(q, _)| q)
+        .find(|&q| q != owner && mask & (1u64 << (q & 63)) != 0)
+}
+
 /// The tile of a position as `new_position` files the object (`0x1411a58b0`): the position held
 /// on the map (`DAT_142eb1e9c` below its size), the tile held on the map.
 fn tile_of(v: f32, size: i32) -> i32 {
@@ -1016,8 +1040,8 @@ impl Visibility {
     /// is the unified map's word at its tile with those of its UMV entry's tiles on the map; an
     /// annex not yet dead (state below 7) reads its main building's (`main`: its place and UMV
     /// entry), with no test of the map's edge. A changed mask updates the registry with the place
-    /// read, the master's radii and class (`Update_Unit_Info`). An object another player takes
-    /// over by seeing it (`+0x924` 1) is not modelled.
+    /// read, the master's radii and class (`Update_Unit_Info`), and is the answer for an object
+    /// another player takes over by seeing it (`+0x924` 1, [`sight_taker`]).
     ///
     /// # Panics
     ///
@@ -1031,12 +1055,12 @@ impl Visibility {
         radius: [f32; 2],
         class: i16,
         main: Option<([f32; 3], u8)>,
-    ) -> Result<(), Unsupported> {
+    ) -> Result<Option<u64>, Unsupported> {
         let Some(s) = self.seers.get(&id).copied() else {
-            return Ok(());
+            return Ok(None);
         };
         if self.registry.is_none() || id < 0 {
-            return Ok(());
+            return Ok(None);
         }
         let annex = main.filter(|_| s.state < 7 && s.building.is_some());
         let ([x, y, _], umv, edge) = match annex {
@@ -1062,7 +1086,7 @@ impl Visibility {
         let registry = self.registry.as_mut().expect("checked above");
         let old = registry.entry(id).map_or(0, |e| e.mask);
         if mask == old {
-            return Ok(());
+            return Ok(None);
         }
         registry.entries.entry(id).or_default().mask = mask;
         registry.update_unit(
@@ -1074,13 +1098,7 @@ impl Visibility {
             old & 0xffff_ffff,
             mask,
         )?;
-        let others = mask & 0xffff & !(1 << owner) & !1;
-        if s.capture == 1 && others != 0 {
-            return Err(Unsupported(
-                "an object another player takes over by seeing it",
-            ));
-        }
-        Ok(())
+        Ok((s.capture == 1).then_some(mask))
     }
 
     /// The registry's part of a combat object's new place (`FUN_14108c320`): its records follow.
@@ -1138,35 +1156,42 @@ impl Visibility {
         Ok(())
     }
 
-    /// An ownership change's sight (`FUN_14120f800`): the object's records keep their place in
-    /// every list with the new owner's id; an object in state 2 and not inside another loses its
-    /// sight on the old owner's map and gains it, with `los` (a livestock's own master takes the
-    /// new owner's master's line of sight), on the new one's.
+    /// An ownership change's records (`FUN_14120f800`, first of all and whatever the new owner's
+    /// masters): an object with an id (`+0x8` not below 0) writes the new owner's id into each of
+    /// its records (`+0x8b0`..`+0x8f0`), which keep their place in every list.
+    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), Unsupported> {
+        match self.registry.as_mut() {
+            Some(r) if 0 <= id => r.owner_changed(id, new),
+            _ => Ok(()),
+        }
+    }
+
+    /// An ownership change's sight (`FUN_14120f800`, once the new owner has the master): an
+    /// object that `sees` (state 2 and not inside another) loses its sight on the old owner's map
+    /// (slot 0x1d8 with the old owner) and gains it on the new one's (slot 0x1d0) with `los`, the
+    /// line of sight of the master of its own the change gave it (a livestock's takes the new
+    /// owner's).
     pub fn owner_changed(
         &mut self,
         id: i32,
         position: [f32; 3],
         radius: [f32; 2],
-        new: usize,
-        los: f32,
-    ) -> Result<(), Unsupported> {
-        let Some(s) = self.seers.get(&id).copied() else {
-            return Ok(());
-        };
-        if let Some(r) = self.registry.as_mut() {
-            r.owner_changed(id, new)?;
+        (new, los): (usize, f32),
+        sees: bool,
+    ) {
+        if !self.seers.contains_key(&id) {
+            return;
         }
-        if s.state == 2 {
+        if sees {
             self.sight_off(id, position, radius, false, false);
         }
         if let Some(s) = self.seers.get_mut(&id) {
             s.player = new;
             s.los = los;
         }
-        if s.state == 2 {
+        if sees {
             let _ = self.sight_on(id, position, radius, false, false);
         }
-        Ok(())
     }
 
     /// A building's construction completes (`FUN_1411dbb70` with 2): once built, the sight of its
@@ -1246,6 +1271,89 @@ mod tests {
             y,
             ..VisibleResource::default()
         }
+    }
+
+    /// `RGE_Combat_Object::update`'s takeover by sight: the first player from 1 on but the owner
+    /// whose bit the mask holds; outside the standard modes a computer player takes over only
+    /// when it allows taking Gaia's units.
+    #[test]
+    fn the_first_other_player_that_sees_the_object_takes_it_over() {
+        let humans = [(false, false); 4];
+        assert_eq!(sight_taker(0b0111, 0, true, &humans), Some(1));
+        assert_eq!(sight_taker(0b0110, 1, true, &humans), Some(2));
+        assert_eq!(sight_taker(0b0001, 1, true, &humans), None);
+        assert_eq!(sight_taker(1 << 33 | 0b10, 1, true, &humans), None);
+        let ai = [(false, false), (true, false), (false, false), (true, true)];
+        assert_eq!(sight_taker(0b1110, 0, false, &ai), Some(2));
+        assert_eq!(sight_taker(0b1010, 0, false, &ai), Some(3));
+        assert_eq!(sight_taker(0b0010, 0, false, &ai), None);
+        assert_eq!(sight_taker(0b0010, 0, true, &ai), Some(1));
+    }
+
+    /// The combat object's sight answers a changed mask only for an object others take over by
+    /// seeing it (`+0x924` 1), once the registry took it.
+    #[test]
+    fn a_changed_mask_is_the_answer_for_an_object_taken_over_by_sight() {
+        let mut v = world(3);
+        v.registry = Some(Registry::new(3, 65));
+        let mut gaia = unit(0, 2.0);
+        gaia.capture = 1;
+        v.add_seer(7, gaia);
+        v.add_seer(8, unit(0, 2.0));
+        let i = 10 * 120 + 10;
+        v.unified[i] = 0b011;
+        let at = [10.5, 10.5, 0.0];
+        assert_eq!(
+            v.combat_sight(7, 0, at, [0.2, 0.2], 6, None),
+            Ok(Some(0b011))
+        );
+        assert_eq!(v.combat_sight(7, 0, at, [0.2, 0.2], 6, None), Ok(None));
+        assert_eq!(v.combat_sight(8, 0, at, [0.2, 0.2], 6, None), Ok(None));
+        let r = v.registry.as_ref().unwrap();
+        assert_eq!(r.entry(8).map(|e| e.mask), Some(0b011));
+        assert_eq!(r.lists[1][6].len(), 2);
+    }
+
+    /// `FUN_14120f800`: an object with an id writes the new owner into its records in every
+    /// list (`+0x8b0`..); one without an id has none to write.
+    #[test]
+    fn an_ownership_change_writes_the_new_owner_into_the_object_s_records() {
+        let mut v = world(3);
+        let mut r = Registry::new(3, 65);
+        r.entries.entry(7).or_default().mask = 0b11;
+        r.update_unit(7, 0, [10.5, 10.5], [0.2, 0.2], 6, 0, 0b11)
+            .unwrap();
+        v.registry = Some(r);
+        v.records_owner(7, 2).unwrap();
+        v.records_owner(-5, 2).unwrap();
+        let r = v.registry.as_ref().unwrap();
+        assert_eq!([r.lists[0][6][0].owner, r.lists[1][6][0].owner], [2, 2]);
+        assert_eq!(r.lists[2][6].len(), 0);
+    }
+
+    /// `FUN_14120f800`'s sight: an object that sees loses its sight on the old owner's map
+    /// (slot 0x1d8) and gains it, with its new master's line of sight, on the new one's (slot
+    /// 0x1d0); one that does not see (inside another, or not in state 2) changes owner and line
+    /// of sight alone.
+    #[test]
+    fn an_ownership_change_moves_the_sight_of_an_object_that_sees() {
+        let at = [10.5, 10.5, 0.0];
+        let mut v = world(3);
+        v.add_seer(7, unit(0, 2.0));
+        let _ = v.sight_on(7, at, [0.2, 0.2], false, false);
+        let tile = |x: i32, y: i32| (y * 120 + x) as usize;
+        assert_eq!(v.maps[0].counts[tile(12, 10)], 1);
+        v.owner_changed(7, at, [0.2, 0.2], (1, 3.0), true);
+        assert_eq!(v.maps[0].counts[tile(12, 10)], 0);
+        assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
+        assert_eq!(v.maps[1].counts[tile(14, 10)], -1);
+        let s = v.seer(7).copied().unwrap();
+        assert_eq!((s.player, s.los), (1, 3.0));
+        v.owner_changed(7, at, [0.2, 0.2], (2, 4.0), false);
+        assert_eq!(v.maps[1].counts[tile(13, 10)], 1);
+        assert_eq!(v.maps[2].counts[tile(10, 10)], -1);
+        let s = v.seer(7).copied().unwrap();
+        assert_eq!((s.player, s.los), (2, 4.0));
     }
 
     /// `AddResource` (`FUN_141288830`): the record goes last in its group's list at the object's
