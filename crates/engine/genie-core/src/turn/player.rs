@@ -38,6 +38,9 @@ pub struct Player {
     /// Every attribute as saved (the first four are `resources`, which the slice keeps); the
     /// task finder reads attribute 95, the work command a task's enabling resource.
     pub attributes: Vec<f32>,
+    /// `+0x658` (saved, the save's second attribute array): per attribute what the player's
+    /// generation tasks made and did not give yet ([`crate::abilities::store`]).
+    pub generated: Vec<f32>,
     /// The civ (`player+0x738`), which drop sites read.
     pub civ: u8,
     /// `relation[i]` (`player+0x260`): how the player stands to player i.
@@ -166,6 +169,14 @@ impl Player {
     pub(crate) fn stop(&mut self, tick: u32, why: Unsupported) {
         let _ = self.unsupported.get_or_insert((tick, 0, why));
         self.stopped = true;
+    }
+
+    /// Attribute `i` (`player+0x100`, decoded; the first four are [`Player::resources`]), None
+    /// past its count (`+0x90`, the saved attributes').
+    #[must_use]
+    pub fn attribute(&self, i: usize) -> Option<f32> {
+        let value = self.attributes.get(i).copied()?;
+        Some(if i < 4 { self.resources[i] } else { value })
     }
 
     /// `FUN_141616820` for the attributes an object's storage holds: the attribute's value grows

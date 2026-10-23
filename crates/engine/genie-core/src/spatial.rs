@@ -546,6 +546,13 @@ impl Spatial {
             .any(|o| o.position[0] as i32 == x && o.position[1] as i32 == y && pred(o))
     }
 
+    /// The map tile's object list (`+0x1b` count, `+0x28` array) of tile (`x`, `y`) in its
+    /// order, the ghosts' ids among them; none off the map.
+    #[must_use]
+    pub fn tile_list(&self, x: i32, y: i32) -> &[i32] {
+        self.tiles.list(x, y)
+    }
+
     /// The objects whose centre is on tile (`x`, `y`): the map tile's object list (`+0x1b` count,
     /// `+0x28` array), in its order, without the ghosts.
     pub fn objects_on(&self, x: i32, y: i32) -> impl Iterator<Item = (i32, &Placed)> + '_ {

@@ -23,6 +23,10 @@ pub struct Task {
     pub object_id: i16,
     /// `+0x14`, `combat_level` (`enable_targeting`): the task is for a target's combat level.
     pub combat_level: u8,
+    /// `+0x15`, `combat_level_flag`: a generation task (151, [`crate::abilities`]) of a combat
+    /// unit with bit 1 or of a building with bit 2 works on its own; a removal reward task (161)
+    /// not 0 pays the master's cost of its resource times the rate.
+    pub combat_level_flag: u8,
     /// `+0x16`: the terrain the task is for, -1 for none.
     pub terrain: i16,
     /// `+0x18`, `owner_type` (`target_diplomacy`): whose targets.
@@ -55,6 +59,10 @@ pub struct Task {
     /// `+0x40`..`+0x58`: the moving, proceeding, working and carrying sprites (graphic ids, -1 for
     /// none).
     pub sprites: [i16; 4],
+    /// `+0x60` and `+0x78`: the event ids (`mEventId`) of the gathering and the deposit sound,
+    /// as the task's load (`FUN_141062470`) leaves them; a terrain look task (159) names its
+    /// dying and its undead sprite with them ([`crate::abilities`]).
+    pub sound_events: [i32; 2],
 }
 
 /// A task for any target, with no resource, terrain or requirement.
@@ -66,6 +74,7 @@ impl Default for Task {
             object_group: -1,
             object_id: -1,
             combat_level: 0,
+            combat_level_flag: 0,
             terrain: -1,
             owner_type: 0,
             holding_attr: 0,
@@ -80,6 +89,7 @@ impl Default for Task {
             work_flag: 0,
             enablement: -1,
             sprites: [-1; 4],
+            sound_events: [0; 2],
         }
     }
 }
@@ -148,6 +158,10 @@ pub struct BuildingMaster {
     /// `+0x9ba`, `transform_unit`: the master it transforms into (−1 for none); a gate with one
     /// is in its player's gate list (`+0x1360`, `FUN_141616200`).
     pub transform_unit: i16,
+    /// `+0x960`, the `.dat`'s `destruction_graphic_id` (the save's third building sprite): the
+    /// sprite a building that dies before it is built shows (`RGE_Static_Object::update`), −1
+    /// for none.
+    pub destruction_sprite: i16,
 }
 
 /// The master values the task finder and the work command read.

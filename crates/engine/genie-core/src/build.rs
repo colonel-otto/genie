@@ -2537,6 +2537,7 @@ mod tests {
                 annex_offsets: [[0.0; 2]; 4],
                 head_unit: -1,
                 transform_unit: -1,
+                destruction_sprite: -1,
             }),
             ..Master::default()
         };

@@ -571,10 +571,6 @@ impl Turns {
         j: usize,
         kill: crate::damage::Kill,
     ) -> Result<(), Unsupported> {
-        const PEACEFUL: [i16; 26] = [
-            1, 3, 5, 7, 8, 9, 10, 11, 14, 15, 16, 27, 29, 30, 31, 32, 33, 34, 38, 39, 40, 48, 52,
-            58, 60, 63,
-        ];
         if self.players[q].computer {
             return Err(Unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",
@@ -607,6 +603,41 @@ impl Turns {
                 self.players[q].add_attribute(kind, 1.0)?;
             }
         }
+        self.count_kill_of(q, &master, ap)?;
+        if kill.to_gaia {
+            self.give_gaia(q, j)?;
+        }
+        Ok(())
+    }
+
+    /// `FUN_1412005b0` on the object `id` killed for player `killer` (a movement damage's,
+    /// [`crate::abilities`]): the counts of [`Turns::killed`] by its master (its own one, else
+    /// its player's).
+    ///
+    /// # Errors
+    ///
+    /// An object the slice does not hold, and an attribute whose change the slice does not
+    /// model.
+    pub(crate) fn count_kill(&mut self, id: i32, killer: usize) -> Result<(), Unsupported> {
+        let (q, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
+        let master = u
+            .own_master
+            .as_deref()
+            .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
+            .ok_or(crate::build::NOT_HELD)?
+            .clone();
+        self.count_kill_of(q, &master, killer)
+    }
+
+    /// `FUN_1412005b0`'s counts of a kill of an object of player `q` and `master` for player `ap`:
+    /// unless its class is one of the non-military ones (`FUN_141188b20`) `ap` counts a kill
+    /// (attribute 20) and `q` a loss (154); `ap` counts it against `q` (300 + `q`) and `q`
+    /// against `ap` (325 + `ap`); both count its paid cost (170 and 152, and 400 + `q`).
+    fn count_kill_of(&mut self, q: usize, master: &Master, ap: usize) -> Result<(), Unsupported> {
+        const PEACEFUL: [i16; 26] = [
+            1, 3, 5, 7, 8, 9, 10, 11, 14, 15, 16, 27, 29, 30, 31, 32, 33, 34, 38, 39, 40, 48, 52,
+            58, 60, 63,
+        ];
         if !PEACEFUL.contains(&master.class) {
             self.players[ap].add_attribute(20, 1.0)?;
             self.players[q].add_attribute(154, 1.0)?;
@@ -622,9 +653,6 @@ impl Turns {
         self.players[ap].add_attribute(170, cost)?;
         self.players[q].add_attribute(152, cost)?;
         self.players[ap].add_attribute(q as i16 + 400, cost)?;
-        if kill.to_gaia {
-            self.give_gaia(q, j)?;
-        }
         Ok(())
     }
 

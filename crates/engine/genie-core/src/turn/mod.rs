@@ -34,8 +34,8 @@ pub use crate::turn::command::{Command, GatherPoint, Order};
 pub use crate::turn::player::{Formations, Player};
 pub(crate) use crate::turn::unit::EnterWorld;
 pub use crate::turn::unit::Unit;
-pub(crate) use crate::turn::unit::annexes_of;
 use crate::turn::unit::{AiResume, Captured, Step, same_members};
+pub(crate) use crate::turn::unit::{annexes_of, give_load};
 pub(crate) use crate::turn::view::DropWorld;
 use crate::turn::view::{Context, Foreign};
 pub(crate) use crate::turn::world::{
@@ -1121,7 +1121,8 @@ impl Turns {
                 let carts = std::mem::take(&mut c.carts);
                 let completions = std::mem::take(&mut c.completions);
                 let work_order = c.work_order.take();
-                let (blasted, own_killed) = (std::mem::take(&mut c.blasted), c.own_killed.take());
+                let (mut blasted, own_killed) =
+                    (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), std::mem::take(&mut c.refund));
                 let (annex_states, cleared) = (
                     std::mem::take(&mut c.annex_states),
@@ -1144,6 +1145,7 @@ impl Turns {
                     result = result.and(Err(e));
                 }
                 self.spatial.set_gait(unit.id, unit.gait());
+                let id = unit.id;
                 player.objects[i] = unit;
                 // each made object's add to its player (slot 0x2d0) filed it in the tracker
                 for m in &made {
@@ -1272,6 +1274,25 @@ impl Turns {
                     && let Err(e) = self.remains(p, master, at, facet)
                 {
                     result = result.and(Err(e));
+                }
+                // TRIBE_Combat_Object::update's passive abilities (FUN_1412072f0, once, with the
+                // update's unit AI part) as the object's owner after its update; a removal
+                // reward's command comes back as the recording's own
+                if ai_resume.is_none()
+                    && let Ok(step) = &result
+                {
+                    let (owner, leaves) = match step {
+                        Step::Captured(k) if k.main => (k.new, false),
+                        Step::Leave => (p, true),
+                        _ => (p, false),
+                    };
+                    let mut pending = crate::abilities::Pending {
+                        victim: victim.as_mut(),
+                        blasted: &mut blasted,
+                    };
+                    if let Err(e) = self.abilities((id, p, i), owner, leaves, &mut pending) {
+                        result = Err(e);
+                    }
                 }
                 // TRIBE_Building_Object::update: the production after the combat update (once,
                 // with the update's unit AI part)

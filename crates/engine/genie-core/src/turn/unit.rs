@@ -139,6 +139,9 @@ pub struct Unit {
     /// `+0x91c`, `attack_timer`: the time until it may attack again; `mReloadStinger` and
     /// `mReloadPowerup` (`+0xb40`, `+0xa28`), which change its reload time.
     pub attack_timer: f32,
+    /// What its master's passive abilities keep on it ([`crate::abilities`]): the movement damage
+    /// timer, the attack timer's rate and its terrain look.
+    pub abilities: crate::abilities::Abilities,
     /// `mReloadStinger` (`+0xb40`), added to its master's reload time.
     pub reload_stinger: f32,
     /// `mReloadPowerup` (`+0xa28`), taken off its master's reload time.
@@ -6057,7 +6060,7 @@ impl Unit {
 /// statistics (slot 0xb8) and the local player's tracker (`FUN_14097daf0`) are not held. With 1
 /// the resources would go to the allies too when the player shares (`sharing`, `+0x1426`,
 /// `FUN_14165d040`): a sharing player with allies is not modelled.
-pub(in crate::turn) fn give_load(
+pub(crate) fn give_load(
     (relations, sharing): (&[Vec<u8>], bool),
     player: usize,
     adds: &mut Vec<(i16, f32)>,
