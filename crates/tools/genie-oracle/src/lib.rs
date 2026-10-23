@@ -4568,7 +4568,7 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
 }
 
 /// [`saved_objects`] of a read header.
-fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
+pub(crate) fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
     let sections = header.players();
     let section = sections.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
     Ok(live(section)

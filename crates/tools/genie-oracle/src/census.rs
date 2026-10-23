@@ -182,31 +182,33 @@ pub struct Divergence {
     pub differences: Vec<String>,
 }
 
-/// The recording run from its header as the census runs it, player `player`'s objects compared
-/// after each update `u` from `first` to `last` with the game's save that holds the state after
-/// update `u` (`save(u)`; the tick oracle's per-update saves name it `u - 1`, a missing save is
-/// skipped): the first update whose objects differ, None when none of the saves does. The run
-/// stops early at the player's stop, which ends what it can say.
+/// The recording run from its header as the census runs it, the objects of each of `players`
+/// compared after each update `u` from `first` to `last` with the game's save that holds the state
+/// after update `u` (`save(u)`, read once for all players; the tick oracle's per-update saves name
+/// it `u - 1`, a missing save is skipped): per player, the first update whose objects differ,
+/// None when none does. A player's comparisons end at its stop (what follows says nothing of the
+/// port) or its first divergence; the run ends when every player's have.
 ///
 /// # Errors
 ///
-/// When the recording, its header or a save cannot be read.
-pub fn header_divergence(
+/// When the recording, its header or a save cannot be read, or a player is not in it.
+pub fn header_divergences(
     recording: &[u8],
     masters: Option<&MasterTable>,
-    player: u32,
+    players: &[u32],
     (first, last): (usize, usize),
     save: &mut dyn FnMut(usize) -> Option<Vec<u8>>,
-) -> Result<Option<Divergence>, Error> {
+) -> Result<Vec<Option<Divergence>>, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let sections = header.players();
     let mut turns = header_slice(&header, masters);
     let mut decoder = Decoder::default();
-    let p = player as usize;
-    if turns.players.len() <= p {
-        return Err(Error::NoSuchPlayer(player));
+    if let Some(&p) = players.iter().find(|&&p| turns.players.len() <= p as usize) {
+        return Err(Error::NoSuchPlayer(p));
     }
+    let mut out: Vec<Option<Divergence>> = vec![None; players.len()];
+    let mut done = vec![false; players.len()];
     for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
         run(
             &mut turns,
@@ -215,8 +217,11 @@ pub fn header_divergence(
             &sections,
         );
         let update = i + 1;
-        if turns.players[p].unsupported.is_some() {
-            return Ok(None);
+        for (k, &p) in players.iter().enumerate() {
+            done[k] |= turns.players[p as usize].unsupported.is_some();
+        }
+        if done.iter().all(|&d| d) {
+            break;
         }
         if update < first {
             continue;
@@ -224,16 +229,43 @@ pub fn header_divergence(
         let Some(game) = save(update) else {
             continue;
         };
-        let differences = crate::object_differences(
-            &crate::object_rows(&turns, p),
-            &crate::saved_objects(&game, player)?,
-        );
-        if !differences.is_empty() {
-            return Ok(Some(Divergence {
-                update,
-                differences,
-            }));
+        let saved = de::chapters(&game)?[0];
+        let saved = saved.header()?;
+        for (k, &p) in players.iter().enumerate() {
+            if done[k] {
+                continue;
+            }
+            let differences = crate::object_differences(
+                &crate::object_rows(&turns, p as usize),
+                &crate::header_objects(&saved, p)?,
+            );
+            if !differences.is_empty() {
+                out[k] = Some(Divergence {
+                    update,
+                    differences,
+                });
+                done[k] = true;
+            }
         }
     }
-    Ok(None)
+    Ok(out)
+}
+
+/// [`header_divergences`] of one player.
+///
+/// # Errors
+///
+/// As [`header_divergences`].
+pub fn header_divergence(
+    recording: &[u8],
+    masters: Option<&MasterTable>,
+    player: u32,
+    window: (usize, usize),
+    save: &mut dyn FnMut(usize) -> Option<Vec<u8>>,
+) -> Result<Option<Divergence>, Error> {
+    Ok(
+        header_divergences(recording, masters, &[player], window, save)?
+            .pop()
+            .flatten(),
+    )
 }
