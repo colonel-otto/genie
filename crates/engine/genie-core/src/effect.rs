@@ -652,11 +652,6 @@ pub enum Change {
     Multiply,
 }
 
-/// The classes the player's object tracker files under no class or apart from the buildings'
-/// pending list (`FUN_141658430`): 51 and 54 count as done from the start.
-const NEVER_PENDING: [i16; 2] = [51, 54];
-/// The tracker's ids run below this (`FUN_141658430`: a master id of 9000 or more is none).
-const TRACKED_MASTERS: i16 = 9000;
 /// The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
 /// headroom (4), and current population (11) and 19, which hold its magnitude.
 const HEADROOM: i16 = 4;
@@ -669,61 +664,6 @@ const OBJECT_HP_CAP: f32 = 32767.0;
 /// A multiply's rounding (`DAT_142e7f384`, 0.5).
 const ROUND: f32 = crate::image::effect::ROUND;
 
-/// The key a player's object tracker (`player+0x18`) files an object under (`FUN_141658430`):
-/// its key master (the stack unit a building master names, else its own; the unit lines' table
-/// that keys some masters by their line's, `FUN_140fdd6c0`, is not held), the key master's class
-/// when below 100 (none for an annex: a head and no annexes of its own), and whether it waits in
-/// the pending lists (a building, but of class 51 or 54, until its completion moves it,
-/// `FUN_14104eac0`). None: the tracker's default key (−1), for a master the player lacks or one
-/// of 9000 or more.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct TrackerKey {
-    master: i16,
-    class: Option<i16>,
-    pending: bool,
-}
-
-fn tracker_key(masters: &Masters, u: &Unit) -> Option<TrackerKey> {
-    let m = masters
-        .get(u.life.master_id)
-        .filter(|m| m.id < TRACKED_MASTERS)?;
-    let mut key = m;
-    let mut classed = true;
-    let mut flagged = false;
-    if m.kind == master_type::BUILDING {
-        if let Some(b) = m.building.as_ref() {
-            if b.stack_unit != -1 {
-                key = masters
-                    .get(b.stack_unit)
-                    .filter(|s| s.id < TRACKED_MASTERS)?;
-            }
-            if b.head_unit != -1 && b.annexes[0] == -1 {
-                classed = false;
-            }
-        }
-        flagged = true;
-    }
-    let class = (classed && (0..100).contains(&key.class)).then_some(key.class);
-    if class.is_some_and(|c| NEVER_PENDING.contains(&c)) {
-        flagged = false;
-    }
-    // a building leaves the pending lists when its build points reach its build time (its
-    // state 2); one dying still pending never got there
-    let done = match u.life.state {
-        0 | 1 => false,
-        2 => true,
-        _ => u
-            .construction
-            .as_ref()
-            .is_none_or(|c| f32::from(c.build_time) <= c.progress),
-    };
-    Some(TrackerKey {
-        master: key.id,
-        class,
-        pending: flagged && !done,
-    })
-}
-
 impl Turns {
     /// What the masters' setters read of the world for player `p` ([`AttributeWorld`]): the
     /// sprite table (the `.dat`'s graphics), no handicap (`player+0x668`, not held: none in the
@@ -734,63 +674,51 @@ impl Turns {
         move |id| i16::try_from(id).is_ok_and(|id| graphics.contains_key(&id))
     }
 
-    /// The ids of player `p`'s objects its tracker files under class `class` (`FUN_14104f8f0`,
-    /// key class + 900) and those pending under it (`FUN_14104f9e0`, key class + 90900), each
-    /// in the player's lists' order: the live objects, then the sleeping ones (the tracker's
-    /// own order, by filing, is not held; the changes to the objects do not depend on it).
+    /// The ids player `p`'s tracker files under class `class` (`FUN_14104f8f0`, key class + 900)
+    /// and those pending under it (`FUN_14104f9e0`, key class + 90900), each in the tracker's
+    /// order (a queued unit's place holds −1, which no object has).
     fn tracked_class(&self, p: usize, class: i16) -> (Vec<i32>, Vec<i32>) {
-        let (mut done, mut pending) = (Vec::new(), Vec::new());
-        let Some(masters) = self.masters.get(p) else {
-            return (done, pending);
-        };
-        let player = &self.players[p];
-        for u in player.objects.iter().chain(&player.sleeping) {
-            match tracker_key(masters, u) {
-                Some(k) if k.class == Some(class) && !k.pending => done.push(u.id),
-                Some(k) if k.class == Some(class) => pending.push(u.id),
-                _ => {}
-            }
-        }
-        (done, pending)
+        let t = &self.players[p].tracker;
+        let key = i32::from(class) + crate::tracker::CLASS_KEY;
+        (
+            t.list(key).to_vec(),
+            t.list(key + crate::tracker::PENDING).to_vec(),
+        )
     }
 
-    /// The ids of player `p`'s done objects its tracker files under key master `key`
-    /// (`FUN_14104f560`'s list of one key, whatever the objects' masters), in the player's lists'
-    /// order.
+    /// The ids player `p`'s tracker files as done under key master `key` (`FUN_14104f560`'s list
+    /// of one key, whatever the objects' masters), in the tracker's order.
     fn tracked_key(&self, p: usize, key: i16) -> Vec<i32> {
-        let Some(masters) = self.masters.get(p) else {
-            return Vec::new();
-        };
-        let player = &self.players[p];
-        player
-            .objects
-            .iter()
-            .chain(&player.sleeping)
-            .filter(|u| tracker_key(masters, u).is_some_and(|k| k.master == key && !k.pending))
-            .map(|u| u.id)
-            .collect()
+        self.players[p].tracker.list(i32::from(key)).to_vec()
     }
 
-    /// The ids of player `p`'s objects of master `master` its tracker files under it
-    /// (`FUN_14104f960`; `FUN_14165a860` keeps those of that very master), and for a building
-    /// master those pending under it, or under the stack unit it heads (`FUN_14104fa50`, key
-    /// + 90000), whatever their masters.
+    /// The ids player `p`'s tracker files under master `master` (`FUN_14104f960`), of which
+    /// `FUN_14165a860` keeps those of that very master; and for a building master those pending
+    /// under it, or under the stack unit it heads (`FUN_14104fa50`, key + 90000), whatever their
+    /// masters. Each in the tracker's order.
     fn tracked_master(&self, p: usize, master: &Master) -> (Vec<i32>, Vec<i32>) {
-        let (mut done, mut pending) = (Vec::new(), Vec::new());
-        let Some(masters) = self.masters.get(p) else {
-            return (done, pending);
-        };
         let player = &self.players[p];
-        let objects = || player.objects.iter().chain(&player.sleeping);
-        for u in objects().filter(|u| u.life.master_id == master.id) {
-            if tracker_key(masters, u).is_some_and(|k| k.master == master.id && !k.pending) {
-                done.push(u.id);
-            }
-        }
+        let of_master = |id: &i32| {
+            player
+                .objects
+                .iter()
+                .chain(&player.sleeping)
+                .any(|u| u.id == *id && u.life.master_id == master.id)
+        };
+        let done: Vec<i32> = player
+            .tracker
+            .list(i32::from(master.id))
+            .iter()
+            .copied()
+            .filter(of_master)
+            .collect();
+        let mut pending = Vec::new();
         if master_type::BUILDING <= master.kind {
             let stack = master.building.as_ref().map_or(-1, |b| b.stack_unit);
-            let key = masters
-                .get(stack)
+            let key = self
+                .masters
+                .get(p)
+                .and_then(|m| m.get(stack))
                 .filter(|s| {
                     s.kind == master_type::BUILDING
                         && s.building
@@ -798,11 +726,10 @@ impl Turns {
                             .is_some_and(|b| b.head_unit == master.id)
                 })
                 .map_or(master.id, |s| s.id);
-            for u in objects() {
-                if tracker_key(masters, u).is_some_and(|k| k.master == key && k.pending) {
-                    pending.push(u.id);
-                }
-            }
+            pending = player
+                .tracker
+                .list(i32::from(key) + crate::tracker::PENDING)
+                .to_vec();
         }
         (done, pending)
     }
@@ -2221,6 +2148,8 @@ mod tests {
                 d: 770.0,
             },
         ];
+        // the load files the objects in the players' trackers
+        t.load_trackers();
         t.do_effect(0, &loom, None).unwrap();
         let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
         // (25 + 15) × 10 / 25 = 16
@@ -2230,6 +2159,22 @@ mod tests {
     }
 
     /// A unit of `master` with `hp` hit points.
+    /// A building's construction whose build points reached its build time: built, so the load
+    /// completes it in its player's tracker ([`Turns::load_trackers`]).
+    fn built() -> crate::build::Construction {
+        crate::build::Construction {
+            progress: 1.0,
+            desolid: false,
+            builders: 0,
+            hit_points: 1,
+            build_time: 1,
+            record: crate::spatial::Obstruction { kind: 0, class: 0 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        }
+    }
+
     fn unit_of(id: i32, master: i16, hp: f32) -> Unit {
         let mut u = Unit {
             id,
@@ -2271,6 +2216,8 @@ mod tests {
             combat(7, 6, 60),
         ])];
         // set master 4's hit points to 90: its unit keeps its share, 30 × 90 / 60 = 45
+        // the load files the objects in the players' trackers
+        t.load_trackers();
         t.do_effect(0, &[attribute(0, 4, 6, 0, 90.0)], None)
             .unwrap();
         let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
@@ -2329,8 +2276,10 @@ mod tests {
     fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
         let mut main = unit_of(20, 30, 100.0);
         main.life.master_id = 30;
+        main.construction = Some(built());
         let mut annex = unit_of(21, 31, 50.0);
         annex.annex_of = Some(20);
+        annex.construction = Some(built());
         let mut foundation = unit_of(22, 30, 10.0);
         foundation.life.state = 0;
         let player = Player {
@@ -2356,6 +2305,8 @@ mod tests {
             building(31, 100, 30, [-1; 4]),
         ])];
         // multiply the class's hit points by 1.5: every object's hit points × 1.5 + 0.5
+        // the load files the objects in the players' trackers
+        t.load_trackers();
         t.do_effect(0, &[attribute(5, -1, 3, 0, 1.5)], None)
             .unwrap();
         let hp: Vec<f32> = t.players[0].objects.iter().map(|u| u.life.hp).collect();
@@ -2426,6 +2377,8 @@ mod tests {
         house.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
         t.masters = vec![Masters::new([house])];
         t.players[0].attributes[4] = 10.0;
+        // the load files the objects in the players' trackers
+        t.load_trackers();
         t.do_effect(0, &[attribute(0, 70, -1, 21, 15.0)], None)
             .unwrap();
         assert_eq!(t.players[0].attributes[4], 30.0);
@@ -2502,6 +2455,7 @@ mod tests {
     fn a_farm_food_change_grows_the_farms_food() {
         let mut farm = unit_of(5, 50, 480.0);
         farm.life.amount = 75.0;
+        farm.construction = Some(built());
         farm.make = Some(crate::make::MakeAction {
             state: 1,
             remaining: 100.0,
@@ -2519,6 +2473,8 @@ mod tests {
         t.masters = vec![Masters::new([master])];
         t.players[0].attributes[31] = 1.0;
         t.players[0].attributes[36] = 175.0;
+        // the load files the objects in the players' trackers
+        t.load_trackers();
         t.do_effect(0, &[attribute(1, 36, 1, -1, 75.0)], None)
             .unwrap();
         assert_eq!(t.players[0].attributes[36], 250.0);

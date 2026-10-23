@@ -267,13 +267,10 @@ impl Turns {
         Ok(())
     }
 
-    /// `FUN_1416597e0(owner, 0)`: the first object of the owner's tracker of the town-centre
-    /// masters (109, 444) that the world holds; the slice takes any live one of the owner's.
+    /// `FUN_1416597e0(owner, 0)`: the owner's tracker files a town centre the world holds
+    /// ([`Turns::town_centre_at`]).
     fn has_town_centre(&self, owner: usize) -> bool {
-        self.players[owner]
-            .objects
-            .iter()
-            .any(|u| matches!(u.life.master_id, 109 | 444) && u.life.state < 7)
+        self.town_centre_at(owner, 0).is_some()
     }
 
     /// The base destroy (`FUN_14118f1e0`) of object `id` of player `owner`: below state 7 its

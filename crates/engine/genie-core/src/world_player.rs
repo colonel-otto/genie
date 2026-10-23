@@ -523,6 +523,19 @@ impl Turns {
             .find(|&id| self.object(id).is_some_and(|(_, u)| u.life.state == 2))
     }
 
+    /// `FUN_1416597e0(player, n)`: the `n`-th object the world holds (`FUN_1415417a0`, in any
+    /// state) among the ids player `p`'s tracker files under masters 109 and 444 (`FUN_14104f560`,
+    /// `FUN_14104f4b0`: the first list, then the second).
+    #[must_use]
+    pub fn town_centre_at(&self, p: usize, n: usize) -> Option<i32> {
+        let tracker = &self.players[p].tracker;
+        TOWN_CENTRES
+            .iter()
+            .flat_map(|&k| tracker.list(k).iter().copied())
+            .filter(|&id| self.object(id).is_some())
+            .nth(n)
+    }
+
     /// `FUN_141658a30`: player `p`'s town centres not dying (state below 3): those its tracker
     /// files under masters 109 and 444, then those waiting under 109's pending list
     /// (`FUN_14104fa50`, key + 90000).
@@ -1187,6 +1200,27 @@ mod tests {
             ..VictoryTimes::default()
         };
         assert!(!nan.running());
+    }
+
+    /// `FUN_1416597e0`: the tracker's town centres in its order, 109's list then 444's, those the
+    /// world holds in any state; the `n`-th of them.
+    #[test]
+    fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
+        let key = |master| Key {
+            master,
+            class: 3,
+            pending: false,
+            military: false,
+        };
+        let mut t = world();
+        t.players[1].objects = vec![object(7, 444, 2), object(5, 109, 3), object(6, 109, 2)];
+        // 9 is filed but gone from the world
+        for (id, master) in [(5, 109), (9, 109), (6, 109), (7, 444)] {
+            t.players[1].tracker.add(id, key(master));
+        }
+        let all: Vec<Option<i32>> = (0..4).map(|n| t.town_centre_at(1, n)).collect();
+        assert_eq!(all, [Some(5), Some(6), Some(7), None]);
+        assert_eq!(t.town_centre_at(2, 0), None);
     }
 
     /// Sudden death: the first built town centre found sets the latch; once set, a player
