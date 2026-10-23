@@ -202,9 +202,19 @@ pub struct UniqueUnit {
 }
 
 /// The game's tech tree table (`FUN_140c7e080`: the game object's `+0xa60`, or `+0xa68` for a
-/// local player's civilisation in `FUN_140e9a7e0`'s list) by civilisation index (`0x20` bytes
-/// each: its buildings, count `+0x10`), and each civilisation's unique unit by its index
-/// (`FUN_140e87930`). Empty, as genie-oracle leaves it, every tree lookup finds nothing.
+/// local player's civilisation in `FUN_140e9a7e0`'s list, 14 and 17) by civilisation index
+/// (`0x20` bytes each: its buildings, count `+0x10`), and each civilisation's unique unit by its
+/// index (`FUN_140e87930`, `civilizations.json`'s `unique_unit_upgrade_id`, `unique_unit_id`,
+/// `elite_unique_unit_id`).
+///
+/// The game's data load (`FUN_140c81bd0`) reads `futuravailableunits.json` into `+0xa60` and
+/// `paphosfutureavailableunits.json` into `+0xa68` (`FUN_1414f3720`): civilisation indices 0 to
+/// the full tech tree's (`FUN_140c7e6f0`), each its name's buildings (`ID`) with their units
+/// (`ID`, `RequiredUnitID`, `RequiredAge`, `RequiredTechID`, `FUN_1414f5c40`), the last
+/// `FullTechCiv`'s. With the game's `+0x680` at 0, as genie and the tick oracle hold it, that is
+/// index 0 alone: a player of civilisation 1 or more without the full tech tree finds no
+/// civilisation in it, as in the empty table genie-oracle leaves; the full tech tree's index 0
+/// is not loaded yet.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TechTree {
     /// The civilisations' buildings.
