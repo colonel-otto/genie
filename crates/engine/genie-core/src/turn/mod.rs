@@ -1035,6 +1035,7 @@ impl Turns {
                     pauses: Vec::new(),
                     releases: Vec::new(),
                     takes: Vec::new(),
+                    builder_leaves: Vec::new(),
                     made: Vec::new(),
                     ghost_deaths: Vec::new(),
                     started: Vec::new(),
@@ -1120,6 +1121,7 @@ impl Turns {
                 let gate_toggle = std::mem::take(&mut c.gate_toggle);
                 let ai_resume = c.ai_resume.take();
                 let releases = std::mem::take(&mut c.releases);
+                let builder_leaves = std::mem::take(&mut c.builder_leaves);
                 let (takes, made) = (std::mem::take(&mut c.takes), std::mem::take(&mut c.made));
                 let (ghost_deaths, started, unwatched, evacuations) = (
                     std::mem::take(&mut c.ghost_deaths),
@@ -1383,6 +1385,11 @@ impl Turns {
                 }
                 for id in takes {
                     self.take(id);
+                }
+                for id in builder_leaves {
+                    if let Err(e) = self.leave_builders(id) {
+                        result = result.and(Err(e));
+                    }
                 }
                 for (id, by) in releases {
                     if let Err(e) = self.release(id, by) {

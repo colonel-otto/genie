@@ -12,7 +12,7 @@ use crate::spatial::{Placed, Spatial};
 use crate::tasks::{Actor, Diplomacy};
 use crate::turn::command::{Command, GatherPoint};
 use crate::turn::player::Player;
-use crate::turn::unit::{LIVESTOCK, Unit, give_load};
+use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::turn::view::{Foreign, Wait, patrol_information};
 use crate::turn::world::{
     SideWorld, World, change_hands, count_class, task_search, task_target_with, wait_progress,
@@ -2394,6 +2394,190 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     let foundation = &t.players[2].objects[0];
     assert_eq!(foundation.workers, 0);
     assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
+}
+
+/// A world for the deaths: Gaia holds the tree 50 (master 349, type 15, one worker) and the boar
+/// 60 (master 48, type 70, one worker, a unit AI that counts the hunter 41 among its attackers);
+/// player 1 holds the villagers 40 (gathering the tree), 41 (hunting the boar) and 42 (a counted
+/// builder of its foundation 10028, one builder, one worker), each with hit points 0.
+fn deaths_world() -> Turns {
+    let dead = |id| Unit {
+        id,
+        position: [10.5, 10.5, 0.0],
+        life: Lifecycle {
+            class: Class::Animated,
+            hp: 0.0,
+            master_id: 83,
+            master: Some(MasterData::default()),
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    let chop = crate::hunt::tests::hunting(50).task;
+    let tree = crate::gather::Resource {
+        id: 50,
+        position: [12.5, 10.5, 0.0],
+        class: 15,
+        master: 349,
+        player: 0,
+        workers: 0,
+        drop_site: false,
+        gap: 1.0,
+        radius: [0.5, 0.5],
+    };
+    let rate = crate::gather::StopRate {
+        work_rate: 1.0,
+        capacity: 10.0,
+        productivity: 1.0,
+    };
+    let gather = crate::gather::GatherAction::new(chop, &tree, false, rate).unwrap();
+    let mut villagers = vec![dead(40), dead(41), dead(42)];
+    villagers[0].gather = Some(crate::gather::GatherAction { state: 7, ..gather });
+    villagers[1].hunt = Some(crate::hunt::tests::hunting(60));
+    villagers[2].build = Some(BuildAction {
+        target: 10028,
+        state: 7,
+        move_to: None,
+        goal: None,
+        task: BuildTask {
+            range: 0.0,
+            work_value: 1.0,
+            work_rate: 1.0,
+        },
+        added: true,
+        timer: 0.0,
+    });
+    let gaia = vec![
+        Unit {
+            id: 50,
+            position: [12.5, 10.5, 0.0],
+            workers: 1,
+            life: Lifecycle {
+                master_id: 349,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        },
+        Unit {
+            id: 60,
+            position: [14.5, 10.5, 0.0],
+            workers: 1,
+            combat: true,
+            ai: Some(UnitAi {
+                attackers: vec![41],
+                ..building()
+            }),
+            life: Lifecycle {
+                class: Class::Animated,
+                master_id: 48,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        },
+    ];
+    let foundation = Unit {
+        id: 10028,
+        position: [30.0, 30.0, 0.0],
+        workers: 1,
+        life: Lifecycle {
+            state: 0,
+            master_id: 70,
+            ..Lifecycle::default()
+        },
+        construction: Some(Construction {
+            progress: 0.0,
+            desolid: false,
+            builders: 1,
+            hit_points: 550,
+            build_time: 25,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: true,
+        }),
+        ..Unit::default()
+    };
+    // player 1's turn: the boar's unit AI keeps its attackers
+    let mut t = Turns::new(
+        0,
+        1,
+        1,
+        vec![0, 0],
+        vec![
+            Player {
+                objects: gaia,
+                ..Player::default()
+            },
+            Player {
+                objects: villagers.into_iter().chain([foundation]).collect(),
+                relations: vec![0, 1],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    let master = |id, kind, class| Master {
+        id,
+        kind,
+        class,
+        ..Master::default()
+    };
+    let table = Masters::new([
+        master(349, 15, 15),
+        master(48, 70, 9),
+        master(83, 70, 4),
+        master(70, 80, 3),
+    ]);
+    t.masters = vec![table.clone(), table];
+    t
+}
+
+/// `RGE_Action_Object::update` (`0x14106ac90`) deletes a dead unit's action list in the update
+/// of its death (`FUN_140a98620`), before any action's update: the Gather lets its tree go (no
+/// worker left, it goes to sleep), the Hunt lets its boar go (notify 699 from the hunter, its
+/// class 4), the Build takes its builder out of the foundation's builders and lets it go.
+#[test]
+fn a_dead_unit_s_actions_go_and_let_their_targets_go_in_the_update_of_its_death() {
+    let mut t = deaths_world();
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    let villagers = &t.players[1].objects;
+    for v in &villagers[..3] {
+        assert!(5 <= v.life.state, "{} died", v.id);
+        assert_eq!(v.top_action(), None, "{} lost its actions", v.id);
+    }
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
+    let boar = &t.players[0].objects[1];
+    assert_eq!(boar.workers, 0);
+    let notify = boar.ai.as_ref().unwrap().notifies.last().copied();
+    assert_eq!(
+        notify.map(|n| (n.caller, n.kind, n.p[0])),
+        Some((41, crate::unit_ai::NO_LONGER_ON_ME, 4))
+    );
+    let foundation = &villagers[3];
+    assert_eq!(foundation.workers, 0);
+    assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
+}
+
+/// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
+/// any other object's 2).
+#[test]
+fn only_the_wonder_keeps_its_actions_past_state_2() {
+    let life = |master_id, state| Lifecycle {
+        state,
+        master_id,
+        ..Lifecycle::default()
+    };
+    assert!(!loses_actions(&life(83, 2)));
+    assert!(loses_actions(&life(83, 3)));
+    assert!(!loses_actions(&life(276, 5)));
+    assert!(loses_actions(&life(276, 6)));
 }
 
 /// The Artifact's move to an object (slot 8 with an object, `FUN_140aaca30`): the old target

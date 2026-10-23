@@ -4105,102 +4105,20 @@ impl Turns {
         }
     }
 
-    /// The action list's clearing (`FUN_140a98620`): each action's teardown. A Build action takes
-    /// a counted builder out of the foundation's builders (`FUN_140aadbf0`,
-    /// [`Turns::leave_builders`]); a `MoveTo`'s teardown stops the unit (slot 0x5d0); the base
-    /// teardown (`FUN_140a73fc0`) of the Build, the Hunt, the Gather, the Attack, the Artifact
-    /// (`FUN_140aab0d0`) and the Enter (`FUN_140a85bf0`) releases their targets (slot 0x180,
-    /// [`Turns::release`]); the Fly's (`FUN_140a84750`) first gives the unit's animation speed
-    /// (`+0x7b8`) its top speed (slot 0x208); a wait for a foundation's (`0x140ae8780`) holds no
-    /// target. A building's make action is in its production's own list, which stays.
+    /// The action list's clearing (`FUN_140a98620`) of object `idx` of player `player`: each
+    /// action's teardown ([`Unit::delete_actions`]), then what they leave to the world: a
+    /// counted builder leaves its building (`FUN_140aadbf0` before its base teardown,
+    /// [`Turns::leave_builders`]), then the targets go (slot 0x180, [`Turns::release`]). A
+    /// building's production is a list of its own, which stays.
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
         let by = self.releaser(player, idx);
-        let objects = &mut self.players[player].objects;
-        let unit = &mut objects[idx];
-        unit.wait_solidify = None;
-        let artifact = unit.artifact.take().map(|mut a| a.tear_down());
-        if artifact.is_some_and(|(walked, _)| walked)
-            && let Some(m) = unit.mover.as_mut()
-        {
-            m.stop()?;
+        let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
+        self.players[player].objects[idx].delete_actions(&mut releases, &mut builder_leaves, by)?;
+        for id in builder_leaves {
+            self.leave_builders(id)?;
         }
-        if let Some(fly) = unit.fly.take() {
-            let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-            unit.anim_speed = Some(speed);
-            if fly.move_to.is_some()
-                && let Some(m) = unit.mover.as_mut()
-            {
-                m.stop()?;
-            }
-        }
-        let enter = unit.enter.take();
-        if enter.is_some_and(|e| e.move_to.is_some())
-            && let Some(m) = unit.mover.as_mut()
-        {
-            m.stop()?;
-        }
-        let build = unit.build.take();
-        let explore = unit.explore.take();
-        let mut mover = unit.mover.as_mut();
-        // an Explore's teardown (0x140a87dd0): its MoveTo's stops the unit
-        if explore.is_some_and(|e| e.move_to.is_some())
-            && let Some(m) = mover.as_deref_mut()
-        {
-            m.stop()?;
-        }
-        if let Some(b) = build
-            && b.move_to.is_some()
-            && let Some(m) = mover.as_deref_mut()
-        {
-            m.stop()?;
-        }
-        let hunt = unit.hunt.take();
-        if let Some(mut h) = hunt {
-            h.tear_down(mover.as_deref_mut())?;
-        }
-        let gather = unit.gather.take();
-        if let Some(mut g) = gather {
-            g.tear_down(mover.as_deref_mut())?;
-        }
-        // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
-        let attack = unit.attack.take();
-        if let Some(mut a) = attack {
-            a.tear_down(mover.as_deref_mut())?;
-        }
-        if unit.move_to.take().is_some()
-            && let Some(m) = mover
-        {
-            m.stop()?;
-        }
-        if let Some(b) = build {
-            if b.added {
-                self.leave_builders(b.target)?;
-            }
-            self.release(b.target, by)?;
-        }
-        if let Some(t) = artifact.and_then(|(_, released)| released) {
-            self.release(t, by)?;
-        }
-        if let Some(e) = enter {
-            self.release(e.target, by)?;
-        }
-        if let Some(h) = hunt {
-            self.release(h.target, by)?;
-        }
-        // the base teardown (FUN_140a73fc0) lets the target, then the second target go
-        if let Some(g) = gather {
-            for t in [g.target, g.carry_to] {
-                if t != -1 {
-                    self.release(t, by)?;
-                }
-            }
-        }
-        if let Some(a) = attack {
-            for t in [a.target, a.target2] {
-                if t != -1 {
-                    self.release(t, by)?;
-                }
-            }
+        for (id, by) in releases {
+            self.release(id, by)?;
         }
         Ok(())
     }

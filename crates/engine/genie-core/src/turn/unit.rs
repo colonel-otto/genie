@@ -27,7 +27,7 @@ use crate::turn::world::{
 use crate::turn::{
     ARMED_FIREPOWER, BUILDING_KIND, BUILDING_TERRAIN, DROP_SITE_MASTERS, EJECT_SHARE,
     GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, Gate, MONASTERY, SEARCH_AGAIN, SEARCH_NEEDED,
-    SPEED_EPSILON, TREE_NEAR, TREE_SEARCH_WITHIN, VILLAGER_CLASS, gate_units,
+    SPEED_EPSILON, TREE_NEAR, TREE_SEARCH_WITHIN, VILLAGER_CLASS, WONDER, gate_units,
 };
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, Notify, Search,
@@ -237,6 +237,13 @@ pub(crate) fn annexes_of(id: i32, objects: &[Unit]) -> Vec<i32> {
         .collect();
     annexes.sort_unstable();
     annexes
+}
+
+/// `RGE_Action_Object::update` (`0x14106ac90`): the action list of an object past state 2 goes
+/// (`FUN_140a98620`), the Wonder's (master 276, `0x61b0` raw) only past state 5.
+pub(in crate::turn) const fn loses_actions(life: &Lifecycle) -> bool {
+    let last = if life.master_id == WONDER { 5 } else { 2 };
+    last < life.state
 }
 
 impl Unit {
@@ -671,81 +678,49 @@ impl Unit {
         Ok(true)
     }
 
-    /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes (`FUN_140a98620`; a
-    /// `MoveTo`'s teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
-    /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
-    /// A Build waiting without its foundation (state 3) goes with nothing to release
-    /// (`FUN_140aadbf0`), its own Attack, an Enter and an Artifact let their target go, a Fly
-    /// gives the unit its top speed as its animation speed; other actions' teardowns are not
-    /// modelled.
+    /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::delete_actions`])
+    /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
+    /// [`crate::attack::set_sprite`]) where the slice holds its sprite.
     pub(in crate::turn) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
         let by = self.releaser(c);
         let sprite = c.streams.get(Stream::Sprite);
-        self.stop_with(&mut c.releases, by, c.masters, c.graphics, sprite)
+        let lets = (&mut c.releases, &mut c.builder_leaves);
+        self.stop_with(lets, by, c.masters, c.graphics, sprite)
     }
 
     /// [`Unit::stop_action`] on the parts of the world it changes: the targets its actions let
-    /// go (`by` the unit), its masters and sprites, and the Sprite stream.
+    /// go and the foundations its Build leaves (`by` the unit, [`Unit::delete_actions`]), its
+    /// masters and sprites, and the Sprite stream.
     pub(in crate::turn) fn stop_with(
         &mut self,
-        releases: &mut Vec<(i32, Releaser)>,
+        (releases, builder_leaves): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>),
         by: Releaser,
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
     ) -> Result<(), Unsupported> {
-        self.tear_down_actions(releases, by)?;
+        self.tear_down_actions(releases, builder_leaves, by)?;
         if self.life.state == 2 {
             self.show_standing(masters, graphics, sprite)?;
         }
         Ok(())
     }
 
-    /// The action list's clearing (`FUN_140a98620`) as the unit's stops run it: each action's
-    /// teardown, the targets they let go (`by` the unit) into `releases`.
+    /// The action list's clearing (`FUN_140a98620`) as the unit's own commands and stops run it
+    /// ([`Unit::delete_actions`]); an action the slice does not hold has a teardown it cannot
+    /// run.
     pub(in crate::turn) fn tear_down_actions(
         &mut self,
         releases: &mut Vec<(i32, Releaser)>,
+        builder_leaves: &mut Vec<i32>,
         by: Releaser,
     ) -> Result<(), Unsupported> {
-        // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
-        if let Some(mut a) = self.attack.take() {
-            a.tear_down(self.mover.as_mut())?;
-            for t in [a.target, a.target2] {
-                if t != -1 {
-                    releases.push((t, by));
-                }
-            }
+        if self.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "a unit AI's stop of an action list the slice does not model",
+            ));
         }
-        // the Hunt's teardown: its sub-actions go (an Attack's or MoveTo's stops the unit) and the
-        // base teardown lets its target go
-        if let Some(mut h) = self.hunt.take() {
-            h.tear_down(self.mover.as_mut())?;
-            if h.target != -1 {
-                releases.push((h.target, by));
-            }
-        }
-        // the Gather's teardown: its MoveTo's stops the unit and the base teardown lets its
-        // target, then its second target go
-        if let Some(mut g) = self.gather.take() {
-            g.tear_down(self.mover.as_mut())?;
-            for t in [g.target, g.carry_to] {
-                if t != -1 {
-                    releases.push((t, by));
-                }
-            }
-        }
-        // the Enter's teardown: its MoveTo's stops the unit, and the base teardown
-        // (FUN_140a73fc0) lets the building go (slot 0x180; its `+0x60` is 0)
-        if let Some(e) = self.enter.take() {
-            if e.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
-            releases.push((e.target, by));
-        }
-        self.clear_own_actions(releases, by)
+        self.delete_actions(releases, builder_leaves, by)
     }
 
     /// The unit's slot 0x68 with its master's standing sprite (slot 0x798's, the master's
@@ -774,30 +749,47 @@ impl Unit {
         Ok(())
     }
 
-    /// The action list's clearing (`FUN_140a98620`): each action's teardown (a `MoveTo`'s, also
-    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work, a wait for a
-    /// foundation, an Artifact (its target let go, `by` the unit, into `releases`) and a Fly go;
-    /// the others the slice holds are not modelled.
-    pub(in crate::turn) fn clear_own_actions(
+    /// The action list's deletion (`FUN_140a98620`), the one every caller shares (the unit's
+    /// death, its stops and commands, [`crate::turn::Turns::clear_actions`]): each action's
+    /// destructor. A `MoveTo`'s (`FUN_140aa1f30`, an action's sub-action's too) stops the unit
+    /// (slot 0x5d0). The base teardown (`FUN_140a73fc0`) lets the target go (slot 0x180) unless
+    /// the action is quiet (`+0x60`; the Hunt's Attack is, so only the Hunt lets its target go),
+    /// then the second target, into `releases` with the unit as `by`. The Build's
+    /// (`FUN_140aadbf0`) first takes a counted builder (`+0x68`) out of its building's builders
+    /// (`FUN_140aaddb0`, `+0x9e8`), its foundation into `builder_leaves`
+    /// ([`crate::turn::Turns::leave_builders`]); the Artifact's (`FUN_140aab0d0`) lets its
+    /// target go and its `MoveTo`'s stops the unit; the Fly's (`FUN_140a84750`) gives the unit
+    /// its top speed as its animation speed (slot 0x208 into `+0x7b8`); the missile's lets its
+    /// target and the object it was fired from go. The Make, the wait for a foundation
+    /// (`0x140ae8780`) and the Explore (`0x140a87dd0`) hold no target. A building's production
+    /// is a list of its own, which stays. Of the list's deletion itself, the next action's slot
+    /// 0x28 for a unit below state 3 needs a second action, which the slice never holds.
+    ///
+    /// # Errors
+    ///
+    /// The unit's stop that the motion step does not model.
+    pub(crate) fn delete_actions(
         &mut self,
         releases: &mut Vec<(i32, Releaser)>,
+        builder_leaves: &mut Vec<i32>,
         by: Releaser,
     ) -> Result<(), Unsupported> {
-        // a wait for a foundation goes: its teardown is the base one's, which lets no target go
+        let mut release = |t: i32| {
+            if t != -1 {
+                releases.push((t, by));
+            }
+        };
         self.wait_solidify = None;
-        // the Artifact's teardown (FUN_140aab0d0): it lets its target go, and its MoveTo's stops
-        // the unit
+        self.make = None;
         if let Some(mut a) = self.artifact.take() {
             let (walked, released) = a.tear_down();
             if walked && let Some(m) = self.mover.as_mut() {
                 m.stop()?;
             }
             if let Some(t) = released {
-                releases.push((t, by));
+                release(t);
             }
         }
-        // the Fly's (FUN_140a84750): the unit's animation speed (`+0x7b8`) takes its top speed
-        // (slot 0x208), then its MoveTo's teardown stops it
         if let Some(f) = self.fly.take() {
             self.anim_speed = Some(self.mover.as_ref().map_or(0.0, |m| m.stats.speed));
             if f.move_to.is_some()
@@ -806,43 +798,52 @@ impl Unit {
                 m.stop()?;
             }
         }
-        if self
-            .build
-            .as_ref()
-            .is_some_and(|b| b.state == 3 && b.target == -1 && b.move_to.is_none())
+        if let Some(e) = self.enter.take() {
+            if e.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+            release(e.target);
+        }
+        if let Some(b) = self.build.take() {
+            if b.added {
+                builder_leaves.push(b.target);
+            }
+            release(b.target);
+            if b.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+        }
+        if self.explore.take().is_some_and(|e| e.move_to.is_some())
+            && let Some(m) = self.mover.as_mut()
         {
-            self.build = None;
+            m.stop()?;
         }
-        let held = [
-            (self.build.is_some(), "a Build"),
-            (self.hunt.is_some(), "a Hunt"),
-            (self.gather.is_some(), "a Gather"),
-            (self.attack.is_some(), "an Attack"),
-            (self.enter.is_some(), "an Enter"),
-            (self.unmodelled_action.is_some(), "an action not held"),
-        ];
-        if let Some(&(_, what)) = held.iter().find(|(h, _)| *h) {
-            return Err(Unsupported(match what {
-                "a Build" => "a unit AI's stop of an action list with a Build at work",
-                "a Hunt" => "a unit AI's stop of an action list with a Hunt",
-                "a Gather" => "a unit AI's stop of an action list with a Gather",
-                "an Attack" => "a unit AI's stop of an action list with an Attack",
-                "an Enter" => "a unit AI's stop of an action list with an Enter",
-                _ => "a unit AI's stop of an action list the slice does not model",
-            }));
+        if let Some(mut h) = self.hunt.take() {
+            h.tear_down(self.mover.as_mut())?;
+            release(h.target);
         }
-        // the Explore's teardown (0x140a87dd0): its MoveTo's stops the unit (slot 0x5d0)
-        if self.explore.take().is_some_and(|e| e.move_to.is_some()) {
-            self.mover
-                .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
-                .stop()?;
+        if let Some(mut g) = self.gather.take() {
+            g.tear_down(self.mover.as_mut())?;
+            release(g.target);
+            release(g.carry_to);
         }
-        if self.move_to.take().is_some() {
-            self.mover
-                .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
-                .stop()?;
+        if let Some(mut a) = self.attack.take() {
+            a.tear_down(self.mover.as_mut())?;
+            release(a.target);
+            release(a.target2);
+        }
+        if self.move_to.take().is_some()
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.stop()?;
+        }
+        if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
+            release(a.target);
+            release(a.fired_from);
         }
         Ok(())
     }
@@ -4213,52 +4214,11 @@ impl Unit {
         if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
             return Err(e);
         }
-        if !self.life.is_alive() {
-            // RGE_Action_Object::update deletes a dead object's action list: the Artifact's
-            // teardown lets its target go, and its MoveTo's (0x140aa1f30) stops the unit (slot
-            // 0x5d0)
-            if let Some(mut artifact) = self.artifact.take() {
-                let (walked, released) = artifact.tear_down();
-                if walked && let Some(m) = self.mover.as_mut() {
-                    m.stop()?;
-                }
-                if let Some(t) = released {
-                    c.releases.push((t, self.releaser(c)));
-                }
-            }
-            if let Some(explore) = self.explore.take()
-                && explore.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
-            // a Make's teardown is the base one's: it holds no target; a wait for a foundation's
-            // too
-            self.make = None;
-            self.wait_solidify = None;
-            // a MoveTo of its own: its teardown stops the unit, and the base teardown
-            // (FUN_140a73fc0) lets its target go (slot 0x180; its `+0x60` is 0)
-            if let Some(move_to) = self.move_to.take() {
-                if let Some(m) = self.mover.as_mut() {
-                    m.stop()?;
-                }
-                if move_to.target != -1 {
-                    c.releases.push((move_to.target, self.releaser(c)));
-                }
-            }
-            // an Attack's teardown, then the base teardown's releases
-            self.delete_attack(c)?;
-            // the missile action's teardown (FUN_140a73fc0) lets its target and the object it was
-            // fired from go (slot 0x180)
-            if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
-                let by = self.releaser(c);
-                c.releases.extend(
-                    [a.target, a.fired_from]
-                        .into_iter()
-                        .filter(|&t| t != -1)
-                        .map(|t| (t, by)),
-                );
-            }
+        // RGE_Action_Object::update (0x14106ac90), after the moving update: an object past
+        // state 2 (the Wonder past state 5) loses its action list (FUN_140a98620)
+        if loses_actions(&self.life) {
+            let by = self.releaser(c);
+            self.delete_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         }
         // RGE_Action_Object::update with no action in state 2 starts the master's default task
         // (slot 0x7f0): a bird's Fly, whose first update comes in the next tick
@@ -5692,6 +5652,7 @@ impl Unit {
                             graphics: c.graphics,
                             takes: &mut c.takes,
                             releases: &mut c.releases,
+                            builder_leaves: &mut c.builder_leaves,
                             waits: &mut c.waits,
                             relations: view.relations,
                             attributes: view.attributes,
@@ -5844,7 +5805,7 @@ impl Unit {
         } else {
             // any other top action's slot 0x38 is the base's false for what an animal or an
             // artifact holds (a `MoveTo` of its own), and the list goes
-            self.tear_down_actions(&mut c.releases, by)?;
+            self.tear_down_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         }
         let top = self.top_action_kind().map_or(-1, i32::from);
         let trading = top == TRADE_ACTION
