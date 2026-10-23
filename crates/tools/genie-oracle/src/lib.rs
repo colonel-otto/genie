@@ -3473,6 +3473,7 @@ impl Decoder {
                     player: c.commp_id as usize,
                     building: c.u_id,
                     count: c.field_0x08 as i16,
+                    buildings: c.ids.clone(),
                     tech: c.t_id,
                     target: c.q_id,
                     shift: c.field_0x10 != 0,
@@ -3827,22 +3828,27 @@ fn queue_command(packet: &de::command::MultiQueue, sections: &[PlayerSection<'_>
         player,
         why: Unsupported(why),
     };
-    let Some(&building) = packet.ids.first() else {
-        return unmodelled("a QUEUE packet without a building");
-    };
-    if packet.num != 1 {
-        return unmodelled("QUEUE at several buildings");
-    }
     if sections.get(player).is_none() {
         return unmodelled("QUEUE by a player the save does not have");
     }
     Command::Queue {
         player,
-        building,
+        buildings: queue_buildings(packet),
         unit: packet.t_id,
         amount: packet.count.max(0) as u16,
         button: packet.button_location_id,
     }
+}
+
+/// QUEUE's buildings: the first `num` of the ids that follow (the dispatcher's check reads that
+/// many, `FUN_140e6b250` with `num`).
+fn queue_buildings(packet: &de::command::MultiQueue) -> Vec<i32> {
+    packet
+        .ids
+        .iter()
+        .take(usize::from(packet.num))
+        .copied()
+        .collect()
 }
 
 /// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
@@ -6631,6 +6637,25 @@ mod tests {
         assert_eq!(d.command(&patrol(4, vec![9397, 9398], 1, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 0, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 11, 0), &[]), None);
+    }
+
+    /// QUEUE (0x81): `num` buildings of the ids that follow (a packet may hold more), the unit
+    /// at `+0xc`, its count at `+0xe` (below 0 none) and the button at `+0x10`.
+    #[test]
+    fn a_queue_packet_decodes_its_buildings() {
+        let packet = de::command::MultiQueue {
+            commp_id: 1,
+            num: 2,
+            gap_0x06: [0; 4],
+            b_id: 0,
+            t_id: 83,
+            count: 5,
+            button_location_id: 1,
+            ids: vec![9, 10, 11],
+        }
+        .encode();
+        let decoded = de::command::MultiQueue::decode(&packet).expect("the layout");
+        assert_eq!(queue_buildings(&decoded), [9, 10]);
     }
 
     /// GAME (0x67) sub-command 6: a cheat code, the player at `+0x8` and the code at `+0xa`.

@@ -10,7 +10,7 @@ use crate::move_to::MoveTo;
 use crate::rng::{Stream, Streams, Well512};
 use crate::spatial::{Placed, Spatial};
 use crate::tasks::{Actor, Diplomacy};
-use crate::turn::command::{Command, GatherPoint};
+use crate::turn::command::{Command, GatherPoint, ResearchAt};
 use crate::turn::player::Player;
 use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::turn::view::{Foreign, Wait, patrol_information};
@@ -1477,7 +1477,7 @@ fn town_centre(id: i32) -> Unit {
 fn queue(building: i32, unit: i16, amount: u16) -> Command {
     Command::Queue {
         player: 0,
-        building,
+        buildings: vec![building],
         unit,
         amount,
         button: -1,
@@ -1959,7 +1959,7 @@ fn a_queued_villager_is_male_or_female_by_an_action_stream_draw() {
 }
 
 #[test]
-fn a_queue_the_player_cannot_pay_queues_nothing_and_a_missing_building_stops_the_player() {
+fn a_queue_the_player_cannot_pay_or_at_a_missing_building_queues_nothing() {
     // too little food for the villager (46 here): no entry, no cost, no draw (records/
     // 425906646's update 31: player 5's refused QUEUE leaves player 6's draws alone)
     let mut poor = one_player(vec![centre(9)], [40.0, 0.0, 0.0, 0.0]);
@@ -1978,9 +1978,70 @@ fn a_queue_the_player_cannot_pay_queues_nothing_and_a_missing_building_stops_the
         poor.streams.get(Stream::Action).draws,
         idle.streams.get(Stream::Action).draws
     );
+    // the packet's check drops a building the world lacks and refuses the packet
     let mut missing = one_player(vec![centre(9)], [200.0; 4]);
     missing.tick_with(104, &[queue(9 - 1, 83, 1)]);
-    assert!(missing.players[0].unsupported.is_some());
+    assert!(missing.players[0].unsupported.is_none());
+    assert_eq!(missing.players[0].resources, [200.0; 4]);
+}
+
+/// `FUN_141614450` over two town centres: unit by unit the one with room and the least load
+/// (`FUN_1411d0e90`) takes it, the last pick kept on a tie: five of master 99 (25 seconds each)
+/// go to 9, 10, 10, 9, 9.
+#[test]
+fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
+    let several = |amount| Command::Queue {
+        player: 0,
+        buildings: vec![9, 10],
+        unit: 99,
+        amount,
+        button: -1,
+    };
+    let total = |t: &Turns, k: usize| {
+        t.players[0].objects[k]
+            .production
+            .as_ref()
+            .map_or(0, |p| p.queue.total)
+    };
+    let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
+    t.tick_with(104, &[several(5)]);
+    assert_eq!((total(&t, 0), total(&t, 1)), (3, 2));
+    // a centre with work queued: 25 seconds less the work done the update gave it
+    let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
+    t.tick_with(104, &[queue(9, 99, 1)]);
+    let Some(crate::production::Making::Unit(make)) = t.players[0].objects[0]
+        .production
+        .as_ref()
+        .and_then(|p| p.action)
+    else {
+        panic!("a make action");
+    };
+    assert_eq!(t.production_load(0, 0), 25.0 - make.progress);
+    assert_eq!(t.production_load(0, 1), 0.0);
+    // the empty one takes the first, then the loaded one the second (25 above its load)
+    t.tick_with(104, &[several(2)]);
+    assert_eq!((total(&t, 0), total(&t, 1)), (2, 1));
+}
+
+/// RESEARCH's building (`0x140e7e270`): with more than one listed, the least loaded of the
+/// packet's and the listed ones the world holds; a tie keeps the one taken; one alone is the
+/// packet's.
+#[test]
+fn a_research_at_several_buildings_takes_the_least_loaded() {
+    let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
+    t.tick_with(104, &[queue(9, 99, 1)]);
+    let at = |building, count, buildings: Vec<i32>| ResearchAt {
+        building,
+        count,
+        buildings,
+        tech: 0,
+        target: -1,
+        shift: false,
+    };
+    assert_eq!(t.least_loaded(0, &at(9, 3, vec![9, 77, 10])), 10);
+    assert_eq!(t.least_loaded(0, &at(10, 2, vec![10, 9])), 10);
+    assert_eq!(t.least_loaded(0, &at(9, 1, vec![9, 10])), 9);
+    assert_eq!(t.least_loaded(0, &at(77, 1, vec![])), -1);
 }
 
 /// `FUN_1411cbc40`: a queue adds its units' population to attribute 80 (the queued units),
@@ -2037,7 +2098,7 @@ fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
 fn queued_units_join_the_last_entry_and_a_full_buffer_grows() {
     let with = |amount, button| Command::Queue {
         player: 0,
-        building: 9,
+        buildings: vec![9],
         unit: 99,
         amount,
         button,
