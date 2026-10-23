@@ -286,22 +286,80 @@ impl crate::turn::Turns {
             if crate::fmath::below_or_unordered(REACH, gap) {
                 continue;
             }
-            let mut i = self.players[owner].objects[idx].garrison.len();
-            while 0 < i {
-                i -= 1;
-                let Some(&inside) = self.players[owner].objects[idx].garrison.get(i) else {
-                    continue;
-                };
-                // any player's unit; an id the world no longer holds is a null entry
-                let Some((up, u)) = self.object(inside) else {
-                    continue;
-                };
-                let um = self.master_of(up, u.life.master_id)?;
-                if UNIT <= um.kind && (um.class == VILLAGER_CLASS || um.id == MASTER_1808) {
-                    let _ = self.back_to_work(Some((owner, idx)), inside)?;
-                }
+            self.workers_out(owner, idx)?;
+        }
+        self.workers_back(owner)
+    }
+
+    /// `ALL_BACK_TO_WORK` (`do_command` 0x8c; another player's object only while players may
+    /// order each other's, [`crate::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is
+    /// not held): `FUN_141617420` for the owner of object `id`, as the bell's end
+    /// ([`crate::turn::Turns::end_town_bell`]) without its flags: each of the owner's live
+    /// objects, in the list's order, in state 2, not inside another (`+0x2f0`), of type 80, that
+    /// takes villagers (`FUN_1411ccb60` with 1) and is within [`REACH`] of the object
+    /// (`COMISS`/`JC`: a NaN gap is out) lets its villagers and units of master 1808 out back to
+    /// work, from the last in; then the units its owner's tracker files under class 4 and master
+    /// 1808 not inside another go back from where they are. The game screen's flag (`+0x1874`) is
+    /// not simulation.
+    pub(crate) fn all_back_to_work(&mut self, player: usize, id: i32) -> Result<(), Unsupported> {
+        let Some((owner, _)) = self.object(id) else {
+            return Ok(());
+        };
+        if owner != player && !self.settings.cheats_enabled {
+            return Ok(());
+        }
+        let (at, radius) = self.ground(id)?;
+        let mut k = 0;
+        while k < self.players[owner].objects.len() {
+            let idx = k;
+            k += 1;
+            let b = &self.players[owner].objects[idx];
+            let m = self.master_of(owner, b.life.master_id)?;
+            let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
+            if b.life.state != 2
+                || b.life.inside.is_some()
+                || m.kind != BUILDING
+                || !takes_villagers
+            {
+                continue;
+            }
+            let (b_at, b_radius) = self.ground(b.id)?;
+            // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
+            let gap = footprint_gap_squared(b_at, b_radius, at, radius);
+            if crate::fmath::below_or_unordered(REACH, gap) {
+                continue;
+            }
+            self.workers_out(owner, idx)?;
+        }
+        self.workers_back(owner)
+    }
+
+    /// The building at `idx` of player `owner` lets each unit inside of type 70 or more that is a
+    /// villager (class 4) or of master 1808 back to work, from the last in
+    /// ([`crate::turn::Turns::back_to_work`]; its sound, slot 0x4c0, is not simulation).
+    fn workers_out(&mut self, owner: usize, idx: usize) -> Result<(), Unsupported> {
+        let mut i = self.players[owner].objects[idx].garrison.len();
+        while 0 < i {
+            i -= 1;
+            let Some(&inside) = self.players[owner].objects[idx].garrison.get(i) else {
+                continue;
+            };
+            // any player's unit; an id the world no longer holds is a null entry
+            let Some((up, u)) = self.object(inside) else {
+                continue;
+            };
+            let um = self.master_of(up, u.life.master_id)?;
+            if UNIT <= um.kind && (um.class == VILLAGER_CLASS || um.id == MASTER_1808) {
+                let _ = self.back_to_work(Some((owner, idx)), inside)?;
             }
         }
+        Ok(())
+    }
+
+    /// Every unit player `owner`'s tracker files under class 4 (`FUN_14104f8f0`) and master
+    /// 1808 (`FUN_14104f960`), in that order, not inside another (`+0x2f0`) goes back to work
+    /// from where it is.
+    fn workers_back(&mut self, owner: usize) -> Result<(), Unsupported> {
         let tracker = &self.players[owner].tracker;
         let mut ids = tracker.class_list(i32::from(VILLAGER_CLASS)).to_vec();
         ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
@@ -583,6 +641,42 @@ mod tests {
             tracked(&mut t, VILLAGER, &[1001]);
             t.town_bell(1, 100, false).unwrap();
             assert_eq!(goal(&t, 1001), (None, true));
+        }
+        #[test]
+        fn all_back_to_work_lets_the_villagers_out_and_sends_the_others_back_leaving_the_flag() {
+            // ALL_BACK_TO_WORK (do_command 0x8c, FUN_141617420): as the bell's end, but with no
+            // bell flag to test or drop: villager 1000 comes out of the centre toward its
+            // record, 1001 outside, filed under class 4, walks back to its record's point
+            let world = || {
+                let mut t = let_out_world();
+                t.object_mut(100).unwrap().1.town_bell.flag = true;
+                inside_tc(&mut t, 1, 1000, VILLAGER);
+                walker(&mut t, 1, 1001, VILLAGER, [5.5, 5.5]);
+                for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5])] {
+                    let v = &mut t.object_mut(id).unwrap().1.town_bell;
+                    v.flag = true;
+                    v.work = crate::town_bell::BackToWork {
+                        point,
+                        ..crate::town_bell::BackToWork::NONE
+                    };
+                }
+                tracked(&mut t, VILLAGER, &[1000, 1001]);
+                t
+            };
+            let mut t = world();
+            t.all_back_to_work(1, 100).unwrap();
+            assert!(t.object(100).unwrap().1.town_bell.flag);
+            let v = t.object(1000).unwrap().1;
+            assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
+            let u = t.object(1001).unwrap().1;
+            assert_eq!(
+                (u.move_to.and_then(|m| m.goal), u.town_bell.flag),
+                (Some([3.5, 3.5, 0.0]), false)
+            );
+            // another player's command does nothing without the game's cheats
+            let mut t = world();
+            t.all_back_to_work(2, 100).unwrap();
+            assert_eq!(t.object(1000).unwrap().1.life.inside, Some(100));
         }
     }
 

@@ -149,6 +149,14 @@ pub enum Command {
         /// Its buildings.
         ids: Vec<i32>,
     },
+    /// `ALL_BACK_TO_WORK` (0x8c, the object at `+4`): its owner's buildings near it let their
+    /// villagers out to work and the others go back ([`Turns::all_back_to_work`]).
+    AllBackToWork {
+        /// The player.
+        player: usize,
+        /// The object (a town centre).
+        id: i32,
+    },
     /// `TOWN_BELL` (0x7f, `do_command` case 0x7f): the town centre `id` rings its owner's bell
     /// (`activate`) or ends it ([`Turns::town_bell`]).
     TownBell {
@@ -507,6 +515,11 @@ impl Turns {
             }
             Command::GoBackToWork { player, ref ids } => {
                 if let Err(e) = self.go_back_to_work(player, ids) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::AllBackToWork { player, id } => {
+                if let Err(e) = self.all_back_to_work(player, id) {
                     self.stop_player(player, e);
                 }
             }

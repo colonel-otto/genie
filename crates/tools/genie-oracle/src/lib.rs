@@ -3617,6 +3617,13 @@ impl Decoder {
                     ids: vec![c.u_id],
                 });
             }
+            // ALL_BACK_TO_WORK: the object (+4)
+            Packet::AllBackToWork(c) => {
+                return Some(Command::AllBackToWork {
+                    player: c.commp_id as usize,
+                    id: c.u_id,
+                });
+            }
             // TOWN_BELL: the town centre (+4) and the ring or its end (+8, a byte)
             Packet::TownBell(c) => {
                 return Some(Command::TownBell {
@@ -6742,6 +6749,23 @@ mod tests {
                 attribute: 2,
                 times: 5,
                 buy: false,
+            })
+        );
+    }
+
+    /// `ALL_BACK_TO_WORK` (0x8c): the issuer and the object at `+4`.
+    #[test]
+    fn an_all_back_to_work_packet_decodes_its_object() {
+        let packet = de::command::AllBackToWork {
+            commp_id: 3,
+            u_id: 4321,
+        }
+        .encode();
+        assert_eq!(
+            Decoder::default().command(&packet, &[]),
+            Some(Command::AllBackToWork {
+                player: 3,
+                id: 4321,
             })
         );
     }
