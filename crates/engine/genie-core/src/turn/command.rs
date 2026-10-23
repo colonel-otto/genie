@@ -1806,6 +1806,7 @@ impl Turns {
                 true,
                 self.streams.get(Stream::Ai),
             )?;
+            self.remember_order(player, idx, (BUILD_ORDER, BUILD_ACTION))?;
         }
         // the install (slot 0x808): the action list clears (its actions' teardowns), then
         // holds the Build

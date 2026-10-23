@@ -871,6 +871,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             target: u.ai.as_ref().map(|a| a.current_target),
             gap_squared: footprint_gap_squared(self.unit.position, me.radius, p.position, p.radius),
             position: p.position,
+            hp: u.life.hp,
         }))
     }
 

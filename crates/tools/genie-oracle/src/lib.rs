@@ -2043,6 +2043,26 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
         hunted: None,
         last_update_time: ai.last_update_time_value,
         attackers: ai.temp_int.clone(),
+        // the order history in the save's order, the newest first (the load appends each at the
+        // tail, `0x140c4efc0`)
+        order_history: ai
+            .oh
+            .iter()
+            .map(|e| genie_core::unit_ai::OrderRecord {
+                order: e.new_oh_order,
+                action: e.new_oh_action,
+                time: e.new_oh_time,
+                position: vec3(&e.new_oh_position),
+                target: e.new_oh_target_id,
+                category: e.new_oh_target_attack_category,
+                target_position: vec3(&e.new_oh_target_position),
+            })
+            .collect(),
+        retries: ai
+            .retarget_entries
+            .iter()
+            .map(|e| (e.target_id, e.timeout))
+            .collect(),
         orders: ai
             .temp_order
             .iter()

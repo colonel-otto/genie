@@ -346,6 +346,7 @@ impl Turns {
                 clears,
                 self.streams.get(crate::rng::Stream::Ai),
             )?;
+            self.remember_order(player, idx, (ENTER_ORDER, ENTER_ACTION))?;
         }
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];

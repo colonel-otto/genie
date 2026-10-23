@@ -382,6 +382,77 @@ fn placeable(t: &mut Turns) {
     ));
 }
 
+/// `FUN_140c42080` after a notify of a new action: a unit AI with a target the world holds
+/// remembers the order with the world's time, both places and the target's attack category by
+/// its master (an archer, class 0: 3); one whose target is gone, or on a point, remembers none.
+#[test]
+fn an_order_on_a_target_joins_the_unit_ai_s_history() {
+    let master = |id, class| Master {
+        id,
+        kind: 70,
+        class,
+        ..Master::default()
+    };
+    let unit = |id, position, target| Unit {
+        id,
+        position,
+        ai: Some(UnitAi {
+            current_target: target,
+            ..UnitAi::default()
+        }),
+        life: Lifecycle {
+            master_id: if id == 1 { 74 } else { 4 },
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let player = |objects| Player {
+        objects,
+        attributes: vec![0.0; 300],
+        ..Player::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0, 0],
+        vec![
+            player(vec![]),
+            player(vec![
+                unit(1, [10.0, 11.0, 0.0], 2),
+                unit(3, [1.0, 1.0, 0.0], 99),
+            ]),
+            player(vec![unit(2, [20.0, 21.0, 1.0], -1)]),
+        ],
+    );
+    let table = Masters::new([master(74, 6), master(4, 0)]);
+    t.masters = vec![table.clone(), table.clone(), table];
+    t.world_time = 4321;
+    t.remember_order(1, 0, (700, 600)).unwrap();
+    t.remember_order(1, 1, (700, 600)).unwrap();
+    let history = |i: usize| {
+        t.players[1].objects[i]
+            .ai
+            .as_ref()
+            .unwrap()
+            .order_history
+            .clone()
+    };
+    assert_eq!(
+        history(0),
+        [crate::unit_ai::OrderRecord {
+            order: 700,
+            action: 600,
+            time: 4321,
+            position: [10.0, 11.0, 0.0],
+            target: 2,
+            category: 3,
+            target_position: [20.0, 21.0, 1.0],
+        }]
+    );
+    assert_eq!(history(1), []);
+}
+
 /// FLARE (`0x140e7bfd0`) at a point without a target: each player's flare comes at the point
 /// with height 0, which the static `new_position` (slot 0x58, slot 0x60 `FUN_141193a10`) puts
 /// on the ground, as 426048706's flare of update 2486 stands at 4 on raised ground.

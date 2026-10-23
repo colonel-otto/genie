@@ -2725,6 +2725,7 @@ impl Turns {
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
+            self.remember_order(player, idx, (700, 600))?;
         }
         Ok(true)
     }
@@ -2882,6 +2883,7 @@ impl Turns {
                         clears,
                         self.streams.get(Stream::Ai),
                     )?;
+                    self.remember_order(player, idx, (HUNT_ORDER, HUNT_ACTION))?;
                 }
                 true
             }
@@ -2916,6 +2918,11 @@ impl Turns {
                             point,
                             clears,
                             self.streams.get(Stream::Ai),
+                        )?;
+                        self.remember_order(
+                            player,
+                            idx,
+                            (crate::ai_kinds::ORDER_GATHER, crate::unit_ai::GATHER_ACTION),
                         )?;
                     }
                 }
@@ -3041,6 +3048,7 @@ impl Turns {
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
+            self.remember_order(player, idx, (order, action))?;
         }
         if alive || class == 51 {
             if target == -1 {
@@ -3244,6 +3252,11 @@ impl Turns {
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
+            self.remember_order(
+                player,
+                idx,
+                (crate::unit_ai::BUILD_ORDER, crate::unit_ai::BUILD_ACTION),
+            )?;
         }
         self.clear_actions(player, idx)?;
         self.players[player].objects[idx].build = Some(crate::build::BuildAction::start(
@@ -3279,6 +3292,11 @@ impl Turns {
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
+            )?;
+            self.remember_order(
+                player,
+                idx,
+                (crate::unit_ai::BUILD_ORDER, crate::unit_ai::BUILD_ACTION),
             )?;
         }
         Ok(())
@@ -3466,6 +3484,7 @@ impl Turns {
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
+            self.remember_order(player, idx, (700, 600))?;
         }
         self.clear_actions(player, idx)?;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
@@ -4048,6 +4067,11 @@ impl Turns {
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
+            self.remember_order(
+                player,
+                idx,
+                (crate::ai_kinds::ORDER_GATHER, crate::unit_ai::GATHER_ACTION),
+            )?;
         }
         self.clear_actions(player, idx)?;
         let computer = self.players[player].computer;
@@ -4136,6 +4160,7 @@ impl Turns {
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
+            self.remember_order(player, idx, (HUNT_ORDER, HUNT_ACTION))?;
         }
         self.clear_actions(player, idx)?;
         let engagement = self.engagement(player, idx, target)?;
@@ -4261,6 +4286,46 @@ impl Turns {
                 .map_or(-1, |m| m.class),
             player,
         }
+    }
+
+    /// `FUN_140c42080` after the notify of a new action (`FUN_14106e4e0`, the combat object's
+    /// `FUN_14121c890`, the attack order of `FUN_14161b970`) of object `idx` of player `player`:
+    /// with a target the world holds (`FUN_1415417a0`), its unit AI remembers `order` and
+    /// `action` on it ([`crate::unit_ai::UnitAi::remember_order`]) at the world's time, with the
+    /// unit's place and the target's (slot 0x520) and the target's attack category by its master
+    /// ([`crate::best_target::category`]: its own, else its owner's). An order on a point (no
+    /// target) records nothing.
+    pub(crate) fn remember_order(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (order, action): (i32, i32),
+    ) -> Result<(), GenieError> {
+        let u = &self.players[player].objects[idx];
+        let Some(target) = u.ai.as_ref().map(|a| a.current_target).filter(|&t| 0 <= t) else {
+            return Ok(());
+        };
+        let position = u.position;
+        let Some((q, t)) = self.object(target) else {
+            return Ok(());
+        };
+        let class = match t.own_master.as_deref() {
+            Some(m) => m.class,
+            None => self.master_of(q, t.life.master_id)?.class,
+        };
+        let record = crate::unit_ai::OrderRecord {
+            order,
+            action,
+            time: self.world_time,
+            position,
+            target,
+            category: crate::best_target::category(t.life.master_id, class),
+            target_position: t.position,
+        };
+        if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
+            ai.remember_order(record);
+        }
+        Ok(())
     }
 
     /// The action list's clearing (`FUN_140a98620`) of object `idx` of player `player`: each

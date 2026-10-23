@@ -426,7 +426,37 @@ pub struct UnitAi {
     /// (`FUN_140b43f30`), which a boar's damage notify adds to and the full update prunes; the
     /// save's `numberUnits` and `tempInt`.
     pub attackers: Vec<i32>,
+    /// The order history (`+0x78`'s list, the newest at `+0xa8` first, count `+0xb8`; the
+    /// save's `ohCount` entries): the orders on a target ([`UnitAi::remember_order`]),
+    /// `bestUnitToAttack`'s weights by attack category.
+    pub order_history: Vec<OrderRecord>,
+    /// The retarget entries (`+0x1d8` count, `+0x1e0` array): targets `bestUnitToAttack` could
+    /// not path to, each with the world time until which it ignores them (`FUN_140c42320`); the
+    /// full update lets the expired go ([`UnitAi::expire_retries`]).
+    pub retries: Vec<(i32, u32)>,
 }
+
+/// An order on a target in a unit AI's history (`FUN_140c42080`, a node of `+0x78`'s list).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct OrderRecord {
+    /// The order (`mOrder`).
+    pub order: i32,
+    /// The action (`mAction`).
+    pub action: i32,
+    /// The world time it was given (`mTime`).
+    pub time: u32,
+    /// The unit's place then (slot 0x520, `mPosition`).
+    pub position: [f32; 3],
+    /// The target (`mTargetID`).
+    pub target: i32,
+    /// The target's attack category ([`crate::best_target::category`], `mTargetAttackCategory`).
+    pub category: i32,
+    /// The target's place then (`mTargetPosition`).
+    pub target_position: [f32; 3],
+}
+
+/// The order history's length (`FUN_140c42080`: a ninth order recycles the oldest).
+pub const ORDER_HISTORY: usize = 8;
 
 /// A hunted animal's part of its unit AI (`TribeHuntedAnimalUnitAIModule`, factory type 2), set
 /// when the AI is made (`FUN_140c11920`) and not saved: a loaded game makes it from the loaded
@@ -1773,6 +1803,8 @@ pub struct Home {
 pub struct Surroundings {
     /// The unit's position (`+0x3c8`, `+0x4c8`, `+0x5a8`).
     pub position: [f32; 3],
+    /// Its hit points (`+0x278`).
+    pub hp: f32,
     /// Its top speed (slot 0x208, `FUN_141202c70`; 0 for a unit that does not move), the map's
     /// size in tiles and the world's dt in seconds (`world+0x164`).
     pub speed: f32,
@@ -1939,6 +1971,8 @@ pub struct UnitSeen {
     pub gap_squared: f32,
     /// Its place.
     pub position: [f32; 3],
+    /// Its hit points (`+0x278`).
+    pub hp: f32,
 }
 
 /// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`); as
@@ -2616,7 +2650,46 @@ impl UnitAi {
             buffered: Vec::new(),
             commanded: false,
             attackers: Vec::new(),
+            order_history: Vec::new(),
+            retries: Vec::new(),
         }
+    }
+
+    /// `FUN_140c42080` once the world holds the target (the callers' `FUN_1415417a0`; an order on
+    /// a point records nothing): the order joins the history first, a ninth recycling the
+    /// oldest ([`ORDER_HISTORY`]).
+    pub fn remember_order(&mut self, record: OrderRecord) {
+        self.order_history.insert(0, record);
+        self.order_history.truncate(ORDER_HISTORY);
+    }
+
+    /// The full update's start (`0x140c66b10`): its retarget entries by the world's objects
+    /// (`seen`, [`UnitSide::seen_unit`]): a target the world no longer holds or below 1 hit point
+    /// (`COMISS`, a NaN stays) empties them all; otherwise one whose time (`timeout`) is not past
+    /// `now` stays and the others go, in order.
+    ///
+    /// # Errors
+    ///
+    /// What the world's lookup does not model.
+    pub fn expire_retries(
+        &mut self,
+        now: u32,
+        seen: &mut dyn FnMut(i32) -> Result<Option<UnitSeen>, GenieError>,
+    ) -> Result<(), GenieError> {
+        let mut i = 0;
+        while i < self.retries.len() {
+            let (target, timeout) = self.retries[i];
+            if seen(target)?.is_none_or(|u| u.hp < 1.0) {
+                self.retries.clear();
+                break;
+            }
+            if now < timeout {
+                i += 1;
+            } else {
+                let _ = self.retries.remove(i);
+            }
+        }
+        Ok(())
     }
 
     /// `FUN_140c41bc0`: the idle timeout (`+0x168`) is `timeout`, then slot 0x1a8 redraws the
@@ -3637,6 +3710,7 @@ impl UnitAi {
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
         let mut fx = Vec::new();
+        self.expire_retries(world_time, &mut |id| Self::world_object(id, at, side))?;
         self.target_block(at, computer, ai, side, &mut fx)?;
         self.keep_attackers(at, side);
         // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
@@ -6665,6 +6739,7 @@ impl UnitAi {
                     at.size,
                 ),
                 position: at.position,
+                hp: at.hp,
             }));
         }
         at.unit(id)
@@ -7761,12 +7836,62 @@ mod tests {
                 target: None,
                 gap_squared: 0.0,
                 position: [101.5, 158.5, 0.0],
+                hp: 0.0,
             }))
         }
         fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
             self.walks.push(attacker);
             Ok(())
         }
+    }
+
+    /// `FUN_140c42080`: an order joins the history first; a ninth recycles the oldest.
+    #[test]
+    fn the_order_history_keeps_the_eight_newest_first() {
+        let mut ai = UnitAi::default();
+        for t in 0..10 {
+            ai.remember_order(OrderRecord {
+                order: 700,
+                action: 600,
+                time: t,
+                target: 100 + t as i32,
+                category: 1,
+                ..OrderRecord::default()
+            });
+        }
+        let targets: Vec<i32> = ai.order_history.iter().map(|r| r.target).collect();
+        assert_eq!(targets, [109, 108, 107, 106, 105, 104, 103, 102]);
+    }
+
+    /// The full update's start (`0x140c66b10`): an expired retarget entry goes and a live one
+    /// stays; a target gone or below 1 hit point empties them all.
+    #[test]
+    fn the_retarget_entries_expire_and_a_dead_target_empties_them() {
+        let seen = |hp: f32| UnitSeen {
+            hp,
+            ..UnitSeen::default()
+        };
+        let mut ai = UnitAi {
+            retries: vec![(1, 900), (2, 1100), (3, 1000)],
+            ..UnitAi::default()
+        };
+        ai.expire_retries(1000, &mut |_| Ok(Some(seen(5.0))))
+            .unwrap();
+        assert_eq!(ai.retries, [(2, 1100)]);
+        let mut ai = UnitAi {
+            retries: vec![(1, 2000), (2, 2000)],
+            ..UnitAi::default()
+        };
+        ai.expire_retries(1000, &mut |id| Ok((id == 1).then(|| seen(5.0))))
+            .unwrap();
+        assert_eq!(ai.retries, []);
+        let mut ai = UnitAi {
+            retries: vec![(1, 2000)],
+            ..UnitAi::default()
+        };
+        ai.expire_retries(1000, &mut |_| Ok(Some(seen(0.5))))
+            .unwrap();
+        assert_eq!(ai.retries, []);
     }
 
     /// `AskForHelp` (`FUN_140c42ce0`): an attacker the world does not hold asks nothing; else the
@@ -9253,6 +9378,8 @@ mod tests {
                 buffered: Vec::new(),
                 commanded: false,
                 attackers: Vec::new(),
+                order_history: Vec::new(),
+                retries: Vec::new(),
             }
         );
     }

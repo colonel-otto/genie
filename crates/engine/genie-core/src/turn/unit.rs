@@ -2963,6 +2963,7 @@ impl Unit {
                 target: u.ai.as_ref().map(|a| a.current_target),
                 gap_squared: footprint_gap_squared(self.position, me.radius, p.position, p.radius),
                 position: p.position,
+                hp: u.life.hp,
             });
         }
         Ok(seen)
@@ -6096,6 +6097,7 @@ impl Unit {
             };
             let at = Surroundings {
                 position: self.position,
+                hp: self.life.hp,
                 speed: self.mover.as_ref().map_or(0.0, |m| m.stats.speed),
                 map: c.spatial.map,
                 dt_seconds: c.dt_seconds,

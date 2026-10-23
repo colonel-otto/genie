@@ -38,6 +38,7 @@ pub mod abilities;
 pub mod ai_kinds;
 pub mod artifact;
 pub mod attack;
+pub mod best_target;
 pub mod build;
 pub mod checkpoint;
 pub mod damage;
