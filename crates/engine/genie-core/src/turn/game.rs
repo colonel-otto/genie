@@ -1,0 +1,419 @@
+//! GAME (0x67): `TRIBE_Command::do_command`'s case (`0x140e77b00`), which lets a player's
+//! sub-command for another player through only with the game's cheats, and its switch on the
+//! sub-command (`FUN_140e7c330`, [`Turns::game`]).
+//!
+//! 158041: the switch `FUN_140e7c330`; the world player's lookup `FUN_14152fe40`; the cases'
+//! handlers are named at each.
+
+use crate::farm_queue::{FARM, PASTURE};
+use crate::turn::Turns;
+use crate::unit_ai::Unsupported;
+
+/// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GameCommand {
+    /// Byte 1, the comm player who sent it (`FUN_140e6b210` maps it to a world player; the
+    /// slice takes the two as equal).
+    pub issuer: usize,
+    /// `+4`: the sub-command ([`sub`]).
+    pub sub: u16,
+    /// `+8`: the world player it is for.
+    pub player: i16,
+    /// `+0xa`: a second player, a count, a code or a flag (its low byte).
+    pub a: i16,
+    /// `+0xc`: the game speed of sub-command 1.
+    pub speed: f32,
+    /// `+0x10`: a relation, or an AI setting's value (its low byte for some).
+    pub value: u32,
+}
+
+/// GAME's sub-commands (`+4`), named as aoc-mgz's `GameActionModeEnum` and by their handlers.
+/// The switch has no case for the others (2, 3, 7, 8, 0xc, 0xf, 0x17 and up): they do nothing.
+pub mod sub {
+    /// The player at `+8` changes its relation to the player at `+0xa` (slot 0x30).
+    pub const DIPLOMACY: u16 = 0;
+    /// The game speed (`+0xc`).
+    pub const SPEED: u16 = 1;
+    /// The quick-build cheat (`FUN_140c91630`).
+    pub const QUICK_BUILD: u16 = 4;
+    /// The allied victory flag (`FUN_1416765b0`).
+    pub const ALLIED_VICTORY: u16 = 5;
+    /// A cheat code (`FUN_1415c92c0`).
+    pub const CHEAT: u16 = 6;
+    /// The production queue's flag (`+0x1358`).
+    pub const PRODUCTION_QUEUE: u16 = 9;
+    /// Treason, the old Spies (`FUN_141620400`).
+    pub const TREASON: u16 = 0xa;
+    /// One of a computer player's AI settings.
+    pub const AI_SETTING: u16 = 0xb;
+    /// The mill's queue buys farms (`FUN_141617130` with master 0x32).
+    pub const FARM_QUEUE: u16 = 0xd;
+    /// The mill's queue gives farms back (`FUN_141630f10` with master 0x32).
+    pub const FARM_UNQUEUE: u16 = 0xe;
+    /// The automatic farm queue flips (`FUN_14163a5f0`).
+    pub const AUTO_FARM_QUEUE: u16 = 0x10;
+    /// The dock's queue buys fish traps (`FUN_141616540`).
+    pub const FISH_TRAP_QUEUE: u16 = 0x11;
+    /// The dock's queue gives fish traps back (`FUN_1416308f0`).
+    pub const FISH_TRAP_UNQUEUE: u16 = 0x12;
+    /// The automatic fish trap queue flips (`FUN_14163a610`).
+    pub const AUTO_FISH_TRAP_QUEUE: u16 = 0x13;
+    /// The offensive posture flips (slot 0xa0, `FUN_14163a630`).
+    pub const POSTURE: u16 = 0x14;
+    /// The mill's queue buys pastures (`FUN_141617130` with master 0x761).
+    pub const PASTURE_QUEUE: u16 = 0x15;
+    /// The mill's queue gives pastures back (`FUN_141630f10` with master 0x761).
+    pub const PASTURE_UNQUEUE: u16 = 0x16;
+    /// A sub-command `do_command` lets through for any player (with 1 and 4).
+    pub const OPEN_0XF: u16 = 0xf;
+}
+
+/// A cheat with the game's cheats on: the cheat code's handler (`FUN_1415c62c0`) and the
+/// quick-build cheat's instant work (`+0xc14`, which the work actions take as 0) are not modelled.
+pub(crate) const CHEAT: Unsupported = Unsupported("a cheat code (FUN_1415c62c0)");
+
+impl GameCommand {
+    /// `+8` as a world player of `count` players (`FUN_14152fe40`: none outside 0 to count − 1).
+    #[must_use]
+    pub fn target(&self, count: usize) -> Option<usize> {
+        usize::try_from(self.player).ok().filter(|&p| p < count)
+    }
+}
+
+impl Turns {
+    /// `do_command`'s gate of GAME (`0x140e77b00` case 0x67; the packet's length, at least 0x14,
+    /// is the decoder's): with the issuing player in the world, a sub-command other than 1, 4
+    /// and 0xf for another player runs only with the game's cheats
+    /// ([`crate::settings::Settings::cheats_enabled`]); without the issuing player it does not
+    /// run. The world's `+0xb12` (the disable-verification cheat), which would let either
+    /// through, is not held.
+    pub(crate) fn game_allowed(&self, g: &GameCommand) -> bool {
+        if self.players.get(g.issuer).is_none() {
+            return false;
+        }
+        matches!(g.sub, sub::SPEED | sub::QUICK_BUILD | sub::OPEN_0XF)
+            || i32::from(g.player) == g.issuer as i32
+            || self.settings.cheats_enabled
+    }
+
+    /// GAME (0x67): `do_command`'s gate ([`Turns::game_allowed`]), then `FUN_140e7c330`'s switch
+    /// on the sub-command ([`sub`]). Each case of a player looks it up first (`FUN_14152fe40`);
+    /// one outside the world would be a null the game dereferences, which a recording that
+    /// played on never holds: the case does nothing.
+    ///
+    /// - 0, diplomacy: with `allianceLocked` 0 ([`Turns::alliance_locked`]) the player's slot
+    ///   0x30 toward the player at `+0xa` with the relation at `+0x10`
+    ///   ([`Turns::set_diplomacy`]).
+    /// - 1, the game speed: the options' `+0x65` (`mSpeedLocked`) unset, `+0xc` clamped to the
+    ///   speed table's (`FUN_141324bd0`: 1.0 up to 2.0 in a game of several players, 8.0 alone)
+    ///   goes to the game timer (`FUN_140d7a450`, its `+0x10`) and the options' `mGameSpeed`
+    ///   (`+0x44`), with a chat line. A playback's update time is the recording's (the
+    ///   timer's multiplier only paces the updates), so nothing the simulation reads changes.
+    /// - 4, the quick-build cheat: with the game's cheats the game's `+0xc14` takes the player
+    ///   at `+8` ([`Turns::instant_work`]); not 0, the work actions would do their work at once,
+    ///   which they do not model: the player stops ([`CHEAT`]).
+    /// - 5, allied victory: with `allianceLocked` 0 the player's `+0x2d0` takes the byte at
+    ///   `+0xa` (`FUN_1416765b0`), then the world's teams ([`Turns::resolve_teams`]).
+    /// - 6, a cheat code (`FUN_1415c92c0`): nothing without the game's cheats; with them the
+    ///   world's `+0x818` sets and the cheat runs (`FUN_1415c62c0`), not modelled ([`CHEAT`]).
+    /// - 9: the player's `prod_queue_on` (`+0x1358`) takes the byte at `+0xa`; then each of its
+    ///   live buildings (master type 80) with an interface reason (`+0xc02`, not held) posts the
+    ///   interface's event 0x7d and clears it.
+    /// - 0xa, Treason: with a castle (`FUN_14160ffb0`) the pending debit of gold lowers by 400
+    ///   (`FUN_141630ef0`), then the treason runs ([`Turns::treason`]).
+    /// - 0xb, an AI setting: for a computer player (`FUN_141659cf0`: type 3) the setting `+0xa`
+    ///   takes `+0x10` ([`Turns::set_ai_setting`]).
+    /// - 0xd, 0xe, 0x15, 0x16: the mill's queue buys or gives back `+0xa` farms (0x32) or
+    ///   pastures (0x761) ([`Turns::queue_farms`], [`Turns::unqueue_farms`]).
+    /// - 0x10, 0x13: `autoFarmQueue` (`+0x1424`, `FUN_14163a5f0`) or `autoFishTrapQueue`
+    ///   (`+0x1425`, `FUN_14163a610`) flips.
+    /// - 0x11, 0x12: the dock's queue buys or gives back `+0xa` fish traps
+    ///   ([`Turns::queue_fish_traps`], [`Turns::unqueue_fish_traps`]).
+    /// - 0x14: the offensive posture (`+0x71c`, slot 0xa0 `FUN_14163a630`, Gaia's too) flips
+    ///   between 0 and 1.
+    pub(crate) fn game(&mut self, g: &GameCommand) -> Result<(), Unsupported> {
+        if !self.game_allowed(g) {
+            return Ok(());
+        }
+        let n = self.players.len();
+        let target = g.target(n);
+        match g.sub {
+            sub::DIPLOMACY if self.alliance_locked == 0 => {
+                if let Some(p) = target {
+                    self.set_diplomacy(p, i32::from(g.a), g.value)?;
+                }
+            }
+            sub::QUICK_BUILD if self.settings.cheats_enabled => {
+                self.instant_work = i32::from(g.player);
+                if self.instant_work != 0 {
+                    return Err(CHEAT);
+                }
+            }
+            sub::ALLIED_VICTORY if self.alliance_locked == 0 => {
+                if let Some(p) = target {
+                    self.players[p].allied_victory = g.a as u8;
+                    self.resolve_teams();
+                }
+            }
+            sub::CHEAT if self.settings.cheats_enabled => return Err(CHEAT),
+            sub::PRODUCTION_QUEUE => {
+                if let Some(p) = target {
+                    self.players[p].production_queue_on = g.a as u8;
+                }
+            }
+            sub::TREASON => {
+                if let Some(p) = target
+                    && self.has_treason_building(p)
+                {
+                    self.players[p].pending_debit[GOLD] -= TREASON_COST;
+                    self.treason(p)?;
+                }
+            }
+            sub::AI_SETTING => {
+                if let Some(p) = target
+                    && self.players[p].computer
+                {
+                    self.set_ai_setting(p, g.a, g.value);
+                }
+            }
+            sub::FARM_QUEUE | sub::PASTURE_QUEUE => {
+                if let Some(p) = target {
+                    let master = if g.sub == sub::FARM_QUEUE {
+                        FARM
+                    } else {
+                        PASTURE
+                    };
+                    let _ = self.queue_farms(p, i32::from(g.a), master)?;
+                }
+            }
+            sub::FARM_UNQUEUE | sub::PASTURE_UNQUEUE => {
+                if let Some(p) = target {
+                    let master = if g.sub == sub::FARM_UNQUEUE {
+                        FARM
+                    } else {
+                        PASTURE
+                    };
+                    let _ = self.unqueue_farms(p, i32::from(g.a), master)?;
+                }
+            }
+            sub::AUTO_FARM_QUEUE => {
+                if let Some(p) = target {
+                    let owner = &mut self.players[p];
+                    owner.auto_farm_queue = !owner.auto_farm_queue;
+                }
+            }
+            sub::FISH_TRAP_QUEUE => {
+                if let Some(p) = target {
+                    let _ = self.queue_fish_traps(p, i32::from(g.a))?;
+                }
+            }
+            sub::FISH_TRAP_UNQUEUE => {
+                if let Some(p) = target {
+                    let _ = self.unqueue_fish_traps(p, i32::from(g.a))?;
+                }
+            }
+            sub::AUTO_FISH_TRAP_QUEUE => {
+                if let Some(p) = target {
+                    let owner = &mut self.players[p];
+                    owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
+                }
+            }
+            sub::POSTURE => {
+                if let Some(p) = target {
+                    let owner = &mut self.players[p];
+                    owner.posture = i32::from(owner.posture == 0);
+                }
+            }
+            // 1 (the game speed) changes nothing a playback's simulation reads; 0 and 5 with
+            // `allianceLocked`, 4 and 6 without cheats, and the sub-commands without a case do
+            // nothing
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// `FUN_140e7c330`'s case 0xb on computer player `p`: its inner switch on the setting
+    /// `setting` (`+0xa`) with `value` (`+0x10`). A byte setting takes the value's low byte, a
+    /// flag `value == 1` (6, 7; 8 tests the low byte), `value != 1` (0xb) or `value != 0` (0xe,
+    /// 0x10, 0x12, 0x13); 0xd the value as a float (`CVTSI2SS` of the zero-extended 32 bits),
+    /// 0xf and 0x11 the value as it is. 0x13 is `mAllowCapturingGaiaUnits` (`+0x670`,
+    /// [`Turns::allow_gaia_capture`]). Another setting changes nothing.
+    pub(crate) fn set_ai_setting(&mut self, p: usize, setting: i16, value: u32) {
+        let byte = value as u8;
+        if setting == 0x13 {
+            if self.allow_gaia_capture.len() <= p {
+                self.allow_gaia_capture.resize(p + 1, false);
+            }
+            self.allow_gaia_capture[p] = value != 0;
+            return;
+        }
+        let owner = &mut self.players[p];
+        let s = &mut owner.ai_settings;
+        match setting {
+            1 => owner.dodge_chance = byte,
+            2 => owner.keep_distance_chance = byte,
+            3 => s.easiest_reaction_percentage = i32::from(byte),
+            4 => s.easier_reaction_percentage = i32::from(byte),
+            5 => s.task_ungrouped_soldiers = byte,
+            6 => s.may_attack_walls = value == 1,
+            7 => s.livestock_only_to_tc = value == 1,
+            8 => s.disable_build_help = byte == 1,
+            9 => s.local_targeting_mode = i32::from(byte),
+            10 => s.targeting_factor_scalar = i32::from(byte),
+            0xb => s.trade_attack_evasion = value != 1,
+            0xc => s.boar_lure_destination = byte,
+            0xd => s.preferred_trade_distance = value as f32,
+            0xe => s.disable_tower_priority = value != 0,
+            0xf => s.attack_move_max_distance = value as i32,
+            0x10 => s.villager_attack_reset = value != 0,
+            0x11 => s.disable_villager_garrison = value as i32,
+            0x12 => s.allow_serjeant_building = value != 0,
+            _ => {}
+        }
+    }
+}
+
+/// The pending debit's entry of gold (`FUN_141630ef0` with 3).
+const GOLD: usize = 3;
+/// What Treason's command takes off the pending debit of gold (`DAT_142eb5bd4`, 400.0).
+const TREASON_COST: f32 = 400.0;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::turn::Player;
+
+    /// Gaia and three players with 300 attributes each.
+    fn world() -> Turns {
+        let player = || Player {
+            attributes: vec![0.0; 300],
+            diplomacy: vec![0; 9],
+            ..Player::default()
+        };
+        Turns::new(
+            0,
+            1,
+            0,
+            vec![0; 4],
+            vec![player(), player(), player(), player()],
+        )
+    }
+
+    fn game(issuer: usize, sub: u16, player: i16, a: i16, value: u32) -> GameCommand {
+        GameCommand {
+            issuer,
+            sub,
+            player,
+            a,
+            speed: 0.0,
+            value,
+        }
+    }
+
+    /// `do_command`'s gate: a sub-command for another player runs only with the game's cheats,
+    /// 1, 4 and 0xf for anyone; an issuer outside the world runs nothing.
+    #[test]
+    fn a_sub_command_for_another_player_needs_the_game_s_cheats() {
+        let mut t = world();
+        assert!(t.game_allowed(&game(1, sub::POSTURE, 1, 0, 0)));
+        assert!(!t.game_allowed(&game(1, sub::POSTURE, 2, 0, 0)));
+        assert!(t.game_allowed(&game(1, sub::SPEED, 2, 0, 0)));
+        assert!(t.game_allowed(&game(1, sub::QUICK_BUILD, 2, 0, 0)));
+        assert!(t.game_allowed(&game(1, sub::OPEN_0XF, 2, 0, 0)));
+        assert!(!t.game_allowed(&game(9, sub::POSTURE, 9, 0, 0)));
+        t.settings.cheats_enabled = true;
+        assert!(t.game_allowed(&game(1, sub::POSTURE, 2, 0, 0)));
+        // refused: nothing changes
+        let mut t = world();
+        t.game(&game(1, sub::POSTURE, 2, 0, 0)).unwrap();
+        assert_eq!(t.players[2].posture, 0);
+    }
+
+    /// 0x10, 0x13 and 0x14 flip their flags; a player outside the world changes nothing.
+    #[test]
+    fn the_toggles_flip_the_player_s_flags() {
+        let mut t = world();
+        t.game(&game(1, sub::AUTO_FARM_QUEUE, 1, 0, 0)).unwrap();
+        t.game(&game(1, sub::AUTO_FISH_TRAP_QUEUE, 1, 0, 0))
+            .unwrap();
+        t.game(&game(1, sub::POSTURE, 1, 0, 0)).unwrap();
+        let p = &t.players[1];
+        assert!(p.auto_farm_queue && p.auto_fishtrap_queue);
+        assert_eq!(p.posture, 1);
+        t.game(&game(1, sub::POSTURE, 1, 0, 0)).unwrap();
+        assert_eq!(t.players[1].posture, 0);
+        t.settings.cheats_enabled = true;
+        let before = t.players.clone();
+        t.game(&game(1, sub::POSTURE, 7, 0, 0)).unwrap();
+        t.game(&game(1, sub::POSTURE, -1, 0, 0)).unwrap();
+        assert_eq!(t.players, before);
+    }
+
+    /// 6 and 4 do nothing without the game's cheats; with them the cheat is not modelled. 4 with
+    /// player 0 turns the instant work off, which is the game's state the slice holds.
+    #[test]
+    fn a_cheat_does_nothing_without_the_game_s_cheats() {
+        let mut t = world();
+        let before = t.players.clone();
+        t.game(&game(1, sub::CHEAT, 1, 4, 0)).unwrap();
+        t.game(&game(1, sub::QUICK_BUILD, 1, 0, 0)).unwrap();
+        assert_eq!(t.players, before);
+        assert_eq!(t.instant_work, 0);
+        t.settings.cheats_enabled = true;
+        assert_eq!(t.game(&game(1, sub::CHEAT, 1, 4, 0)), Err(CHEAT));
+        assert_eq!(t.game(&game(1, sub::QUICK_BUILD, 2, 0, 0)), Err(CHEAT));
+        assert_eq!(t.instant_work, 2);
+        assert_eq!(t.game(&game(1, sub::QUICK_BUILD, 0, 0, 0)), Ok(()));
+        assert_eq!(t.instant_work, 0);
+    }
+
+    /// 1 changes nothing the simulation reads; 9 sets `prod_queue_on` to the byte at `+0xa`.
+    #[test]
+    fn the_speed_changes_nothing_and_9_sets_the_production_queue_flag() {
+        let mut t = world();
+        let before = t.players.clone();
+        let mut speed = game(1, sub::SPEED, 1, 0, 0);
+        speed.speed = 2.0;
+        t.game(&speed).unwrap();
+        assert_eq!(t.players, before);
+        t.game(&game(1, sub::PRODUCTION_QUEUE, 1, 0x101, 0))
+            .unwrap();
+        assert_eq!(t.players[1].production_queue_on, 1);
+    }
+
+    /// 0xb sets a computer player's setting from `+0x10` as its case reads it; a human
+    /// player's stays.
+    #[test]
+    fn an_ai_setting_goes_to_a_computer_player_only() {
+        let mut t = world();
+        t.players[2].computer = true;
+        t.settings.cheats_enabled = true;
+        t.game(&game(1, sub::AI_SETTING, 1, 1, 30)).unwrap();
+        assert_eq!(t.players[1].dodge_chance, 0);
+        let set = |t: &mut Turns, setting: i16, value: u32| {
+            t.game(&game(1, sub::AI_SETTING, 2, setting, value))
+                .unwrap();
+        };
+        set(&mut t, 1, 0x1_1e);
+        set(&mut t, 2, 40);
+        set(&mut t, 3, 0x1_05);
+        set(&mut t, 6, 0x101);
+        set(&mut t, 7, 1);
+        set(&mut t, 8, 0x101);
+        set(&mut t, 0xb, 1);
+        set(&mut t, 0xd, 0xffff_ffff);
+        set(&mut t, 0xe, 2);
+        set(&mut t, 0xf, 0xffff_fff0);
+        set(&mut t, 0x13, 5);
+        set(&mut t, 0x14, 5);
+        let p = &t.players[2];
+        assert_eq!((p.dodge_chance, p.keep_distance_chance), (0x1e, 40));
+        let s = p.ai_settings;
+        assert_eq!(s.easiest_reaction_percentage, 5);
+        assert!(!s.may_attack_walls && s.livestock_only_to_tc && s.disable_build_help);
+        assert!(!s.trade_attack_evasion && s.disable_tower_priority);
+        assert_eq!(s.preferred_trade_distance, 4_294_967_296.0);
+        assert_eq!(s.attack_move_max_distance, -16);
+        assert!(t.allow_gaia_capture[2]);
+    }
+}

@@ -125,32 +125,9 @@ pub enum Command {
         /// Why its command is not modelled.
         why: Unsupported,
     },
-    /// GAME (0x67, `0x140e7c330`) sub-commands 0x10 and 0x13: the player's `autoFarmQueue`
-    /// (`+0x1424`) or `autoFishTrapQueue` (`+0x1425`) flips (`fishtrap` true for 0x13). The other
-    /// sub-commands are the decoder's [`Command::Unmodelled`].
-    AutoQueue {
-        /// The player.
-        player: usize,
-        /// The fish trap queue flips (0x13), else the farm queue (0x10).
-        fishtrap: bool,
-    },
-    /// GAME (0x67, `0x140e7c330`) sub-command 0x14 [`default_stance`]: the player's offensive
-    /// posture (`+0x71c`, `WorldPlayer` slot 0x14 `FUN_14163a630`) flips between 0 and 1.
-    Posture {
-        /// The player.
-        player: usize,
-    },
-    /// GAME (0x67, `0x140e7c330`) sub-command 6 (`FUN_1415c92c0`): a cheat code of the player at
-    /// `+8`. Without the game's cheats (`mCheatsEnabled`,
-    /// [`crate::settings::Settings::cheats_enabled`]) it does nothing; with them the world's
-    /// `+0x818` sets and the cheat runs (`FUN_1415c62c0`), which is not modelled. (`do_command`
-    /// lets a player's cheat for another player through only with cheats or `+0xb12`.)
-    Cheat {
-        /// The player at `+8`.
-        player: usize,
-        /// The cheat's code (`+0xa`).
-        code: i16,
-    },
+    /// GAME (0x67): `do_command`'s case and its switch on the sub-command (`0x140e7c330`,
+    /// [`Turns::game`]).
+    Game(crate::turn::GameCommand),
     /// `BUILDING_COMMAND_QUEUE` (0x2d, `0x140e64310`): the objects `ids` (at most a human
     /// player's 60) queue a step to `target` (−1 for none) or `point` ([`Turns::command_queue`]).
     CommandQueue {
@@ -484,17 +461,12 @@ impl Turns {
             Command::Unmodelled { player, why } => {
                 self.stop_player(player, why);
             }
-            Command::AutoQueue { player, fishtrap } => {
-                let owner = &mut self.players[player];
-                if fishtrap {
-                    owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
-                } else {
-                    owner.auto_farm_queue = !owner.auto_farm_queue;
+            Command::Game(ref g) => {
+                // what the slice cannot model stops the player the sub-command is for
+                if let Err(e) = self.game(g) {
+                    let p = g.target(self.players.len()).unwrap_or(g.issuer);
+                    self.stop_player(p, e);
                 }
-            }
-            Command::Posture { player } => {
-                let owner = &mut self.players[player];
-                owner.posture = i32::from(owner.posture == 0);
             }
             Command::Trade {
                 player,
@@ -506,11 +478,6 @@ impl Turns {
                     self.buy(player, attribute, times);
                 } else {
                     self.sell(player, attribute, times);
-                }
-            }
-            Command::Cheat { player, code: _ } => {
-                if self.settings.cheats_enabled {
-                    self.stop_player(player, Unsupported("a cheat code (FUN_1415c62c0)"));
                 }
             }
             Command::Gate { player, id } => {

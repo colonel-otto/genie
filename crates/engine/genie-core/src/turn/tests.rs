@@ -3981,15 +3981,22 @@ fn building_short_of_its_build_time_dies(state: u8) {
 }
 
 /// GAME's cheat code (sub-command 6, `FUN_1415c92c0`): without the game's cheats it does
-/// nothing; with them the cheat would run, which the slice does not model.
+/// nothing; with them the cheat would run, which the slice does not model: its player stops.
 #[test]
 fn a_cheat_code_does_nothing_without_the_game_s_cheats() {
     let mut t = sent_off_world(vec![]);
     let before = t.players.clone();
-    t.run(&Command::Cheat { player: 1, code: 4 });
+    let cheat = Command::Game(GameCommand {
+        issuer: 1,
+        sub: 6,
+        player: 1,
+        a: 4,
+        ..GameCommand::default()
+    });
+    t.run(&cheat);
     assert_eq!(t.players, before);
     t.settings.cheats_enabled = true;
-    t.run(&Command::Cheat { player: 1, code: 4 });
+    t.run(&cheat);
     assert!(t.players[1].stopped);
 }
 

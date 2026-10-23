@@ -51,6 +51,9 @@ pub struct Settings {
     pub villager_force_drop: bool,
     /// `mCheatsEnabled` (`+0x1074`, `FUN_1412ffe00`): players may order each other's units.
     pub cheats_enabled: bool,
+    /// `mTeamsLocked` (`+0x64`): the world's teams stay as the game began
+    /// ([`crate::turn::Turns::resolve_teams`]).
+    pub teams_locked: bool,
 }
 
 impl Settings {

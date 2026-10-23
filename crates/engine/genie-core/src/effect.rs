@@ -1470,7 +1470,7 @@ impl Turns {}
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
 /// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
 /// 0x78, [`Turns::rebuild_vision`]) and the player's map files every tile its masks reach as new
-/// (`FUN_141285cb0`).
+/// ([`Turns::refill_tiles`], `FUN_141285cb0`).
 const ALLIED_VISION: i16 = 0x32;
 /// The attribute that shares every player's sight (0xb7): the masks are rebuilt.
 const SHARED_VISION: i16 = 0xb7;
@@ -1485,9 +1485,6 @@ const FARM_EXPONENT: i16 = 31;
 /// The masters whose objects' food a farm-food change grows (`DAT_142f925d0`'s keys: 50, 1187,
 /// 1897, 1893), in that order.
 const FARMS: [i16; 4] = [50, 1187, 1897, 1893];
-/// The bits of the unified map a player's masks name players by (`FUN_141285cb0`'s
-/// `0x1ffffff01ffffff`).
-const PLAYER_BITS: u64 = 0x01ff_ffff_01ff_ffff;
 
 impl Turns {
     /// Slot 0x1b0 (`FUN_141620c70`) of player `p` on resource `attribute` with `amount`: every
@@ -1629,26 +1626,12 @@ impl Turns {
     }
 
     /// Attribute 0x32's side effect: player `p`'s allied vision (`+0x2cc`) on, the masks rebuilt
-    /// (the world's slot 0x78, `FUN_1415e92b0`) and `FUN_141285cb0`: each tile of the map
-    /// (rows, then columns) whose unified word has a player bit of the player's visible or
-    /// explored mask joins its new tiles (`FUN_14165d500`).
+    /// (the world's slot 0x78, `FUN_1415e92b0`) and its tile list refilled
+    /// ([`Turns::refill_tiles`], `FUN_141285cb0`).
     fn allied_vision_on(&mut self, p: usize) -> Result<(), Unsupported> {
         self.players[p].allied_vision = true;
         self.rebuild_vision()?;
-        let [visible, explored] = self.spatial.vision(p);
-        if let Some(sight) = self.spatial.sight.as_mut() {
-            let (w, h) = (sight.width, sight.height);
-            for y in 0..h {
-                for x in 0..w {
-                    let word = sight.unified[(y * w + x) as usize];
-                    let seen =
-                        (visible & word & PLAYER_BITS) != 0 || (explored & word & PLAYER_BITS) != 0;
-                    if seen && let Some(list) = sight.new_tiles.get_mut(p) {
-                        list.push([x, y]);
-                    }
-                }
-            }
-        }
+        self.refill_tiles(p);
         Ok(())
     }
 

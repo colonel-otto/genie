@@ -17,6 +17,7 @@
 //! lookups and releases across the players (`world`).
 
 mod command;
+mod game;
 mod player;
 mod unit;
 mod view;
@@ -31,7 +32,8 @@ use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::tasks::DropSite;
 pub use crate::turn::command::{Command, GatherPoint, Order};
-pub use crate::turn::player::{Formations, Player};
+pub use crate::turn::game::GameCommand;
+pub use crate::turn::player::{AiSettings, Formations, Player};
 pub(crate) use crate::turn::unit::EnterWorld;
 pub use crate::turn::unit::Unit;
 use crate::turn::unit::{AiResume, Captured, Step, same_members};
@@ -542,6 +544,16 @@ pub struct Turns {
     /// The game's tech tree table and its civilisations' unique units, which the defeat check's
     /// count of the units a building will train reads ([`crate::world_player::TechTree`]).
     pub tech_tree: crate::world_player::TechTree,
+    /// `allianceLocked` (`world+0xc`, saved): GAME's diplomacy and allied victory change nothing
+    /// while it is not 0.
+    pub alliance_locked: i32,
+    /// The world's teams (`+0x984`..`+0x9a0`, `playerTeams[i]`, saved as bytes): player i's
+    /// team at i − 1, 1 alone ([`Turns::resolve_teams`]).
+    pub teams: [i32; 8],
+    /// The game's `+0xc14` (`FUN_140c884c0`, saved as a byte): the player of the quick-build
+    /// cheat (GAME 4), 0 without; while it is not 0 every work is done at once, which the work
+    /// actions do not model (they take it as 0).
+    pub instant_work: i32,
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
@@ -604,6 +616,9 @@ impl Turns {
             allow_gaia_capture: Vec::new(),
             local_player: 0,
             tech_tree: crate::world_player::TechTree::default(),
+            alliance_locked: 0,
+            teams: [1; 8],
+            instant_work: 0,
         }
     }
 

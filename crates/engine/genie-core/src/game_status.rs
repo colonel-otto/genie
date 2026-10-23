@@ -68,15 +68,16 @@ struct Count {
 }
 
 impl Count {
-    /// Player `i` of `status`, with the allied victory flag and the relations both ways to the
-    /// first player still playing (`relation` 0: allied; `FUN_141667f70`).
-    const fn add(&mut self, i: usize, status: u8, allied_victory: bool, relations: (u8, u8)) {
+    /// Player `i` of `status`, with the allied victory flag (`+0x2d0`, tested for 0) and the
+    /// relations both ways to the first player still playing (`relation` 0: allied;
+    /// `FUN_141667f70`).
+    const fn add(&mut self, i: usize, status: u8, allied_victory: u8, relations: (u8, u8)) {
         match status {
             PLAYING => {
                 self.playing += 1;
                 if self.first != 0 && self.side != 0 {
                     // another side unless the two count each other's victory as their own
-                    if !allied_victory || relations.0 != 0 || relations.1 != 0 {
+                    if allied_victory == 0 || relations.0 != 0 || relations.1 != 0 {
                         self.side = -1;
                     }
                 } else {
@@ -222,7 +223,7 @@ impl Turns {
         if p.game_status == LOST || p.victory != 2 {
             return Ok(p.game_status);
         }
-        if p.allied_victory {
+        if p.allied_victory != 0 {
             return Err(Unsupported(
                 "a player's victory with its allies' (allied victory)",
             ));
@@ -1450,18 +1451,18 @@ mod tests {
     #[test]
     fn one_side_left_after_a_resignation_ends_a_conquest_game() {
         let mut c = Count::default();
-        c.add(1, LOST, false, (0, 0));
-        c.add(2, PLAYING, false, (0, 0));
+        c.add(1, LOST, 0, (0, 0));
+        c.add(2, PLAYING, 0, (0, 0));
         assert_eq!((c.playing, c.side, c.lost, c.won), (1, 1, 1, 0));
         // two players still playing, enemies: two sides
         let mut c = Count::default();
-        c.add(1, PLAYING, false, (0, 0));
-        c.add(2, PLAYING, false, (3, 3));
+        c.add(1, PLAYING, 0, (0, 0));
+        c.add(2, PLAYING, 0, (3, 3));
         assert_eq!((c.playing, c.side), (2, -1));
         // allies with the allied victory are one side
         let mut c = Count::default();
-        c.add(1, PLAYING, true, (0, 0));
-        c.add(2, PLAYING, true, (0, 0));
+        c.add(1, PLAYING, 1, (0, 0));
+        c.add(2, PLAYING, 1, (0, 0));
         assert_eq!((c.playing, c.side), (2, 1));
     }
 }

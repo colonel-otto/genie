@@ -2154,6 +2154,16 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 relations: p.world_player().base.relation.clone(),
                 auto_farm_queue: p.world_player().auto_farm_queue != 0,
                 auto_fishtrap_queue: p.world_player().auto_fish_trap_queue != 0,
+                farm_queue: p.world_player().farm_queue_count,
+                fish_trap_queue: p.world_player().fish_trap_queue_count,
+                production_queue_on: p.world_player().prod_queue_on,
+                diplomacy: p
+                    .world_player()
+                    .per_player
+                    .iter()
+                    .map(|e| e.diplomacy)
+                    .collect(),
+                ai_settings: ai_settings(&p.world_player().base),
                 formations: genie_core::turn::Formations {
                     auto: p.world_player().base.auto_formations != 0,
                     influence: p.world_player().base.formation_influence_distance,
@@ -2177,7 +2187,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 resigned: p.world_player().base.resigned & 2 == 0
                     && p.world_player().base.resigned != 0,
                 dropped: p.world_player().base.resigned & 2 != 0,
-                allied_victory: p.world_player().base.allied_victory != 0,
+                allied_victory: p.world_player().base.allied_victory,
                 allied_vision: p.world_player().base.allied_los_enable != 0,
                 // the reveal of the enemies' town centres (attribute 209) is done once any
                 // mTCFlared bit is set; the saved map then already holds the revealed tiles
@@ -2229,6 +2239,11 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     turns.market = market(&header.world);
     turns.recycling.next_id = world.next_reusable_object_id;
     turns.local_player = usize::try_from(world.local_player_index).unwrap_or(0);
+    turns.alliance_locked = world.alliance_locked;
+    // the world's teams (+0x984, `playerTeams[i]`, saved as bytes)
+    for (team, &saved) in turns.teams.iter_mut().zip(&header.world.player_teams) {
+        *team = i32::from(saved);
+    }
     let none = TerrainTable::default();
     let terrain = masters.map_or(&none, |t| &t.terrain);
     turns.spatial = spatial(header, terrain);
@@ -2412,6 +2427,32 @@ pub const fn settings(
         selected_content_mode: o.selected_content_mode,
         villager_force_drop: o.villager_force_drop != 0,
         cheats_enabled: o.cheats_enabled != 0,
+        teams_locked: o.teams_locked != 0,
+    }
+}
+
+/// A player's AI settings as saved (`WorldPlayerBase::save`, `FUN_14166b820`), which GAME's
+/// sub-command 0xb sets.
+const fn ai_settings(
+    b: &genie_save::generated::world::WorldPlayerBase,
+) -> genie_core::turn::AiSettings {
+    genie_core::turn::AiSettings {
+        easiest_reaction_percentage: b.easiest_reaction_percentage,
+        easier_reaction_percentage: b.easier_reaction_percentage,
+        task_ungrouped_soldiers: b.task_ungrouped_soldiers,
+        may_attack_walls: b.may_attack_walls != 0,
+        livestock_only_to_tc: b.livestock_only_to_tc != 0,
+        disable_build_help: b.disable_build_help != 0,
+        local_targeting_mode: b.local_targeting_mode,
+        targeting_factor_scalar: b.targeting_factor_scalar,
+        preferred_trade_distance: b.preferred_trade_distance,
+        disable_tower_priority: b.disable_tower_priority != 0,
+        trade_attack_evasion: b.trade_attack_evasion != 0,
+        villager_attack_reset: b.villager_attack_reset != 0,
+        boar_lure_destination: b.boar_lure_destination,
+        attack_move_max_distance: b.attack_move_max_distance,
+        disable_villager_garrison: b.disable_villager_garrison,
+        allow_serjeant_building: b.allow_serjeant_building != 0,
     }
 }
 
@@ -3726,25 +3767,17 @@ impl Decoder {
                         .collect(),
                 });
             }
-            // GAME's toggles of the automatic farm and fish trap queues; the player is at +8
-            Packet::Game(g) if matches!(g.field_0x04, 0x10 | 0x13) => {
-                return Some(Command::AutoQueue {
-                    player: usize::try_from(g.field_0x08).ok()?,
-                    fishtrap: g.field_0x04 == 0x13,
-                });
-            }
-            // GAME's cheat code; the player is at +8, the code at +0xa
-            Packet::Game(g) if g.field_0x04 == 6 => {
-                return Some(Command::Cheat {
-                    player: usize::try_from(g.field_0x08).ok()?,
-                    code: g.field_0x0a,
-                });
-            }
-            // GAME's toggle of the offensive posture; the player is at +8
-            Packet::Game(g) if g.field_0x04 == 0x14 => {
-                return Some(Command::Posture {
-                    player: usize::try_from(g.field_0x08).ok()?,
-                });
+            // GAME: the sub-command at +4, its player at +8 and arguments at +0xa, +0xc, +0x10
+            // (do_command's gate and the switch are the core's)
+            Packet::Game(g) => {
+                return Some(Command::Game(genie_core::turn::GameCommand {
+                    issuer: usize::from(g.commp_id),
+                    sub: g.field_0x04,
+                    player: g.field_0x08,
+                    a: g.field_0x0a,
+                    speed: g.field_0x0c,
+                    value: g.field_0x10,
+                }));
             }
             other => {
                 // a command the decoder does not turn into the slice's stops its player (byte 1
@@ -6729,25 +6762,30 @@ mod tests {
         assert_eq!(queue_buildings(&decoded), [9, 10]);
     }
 
-    /// GAME (0x67) sub-command 6: a cheat code, the player at `+0x8` and the code at `+0xa`.
+    /// GAME (0x67): the issuer (byte 1), the sub-command at `+0x4`, its player at `+0x8` and
+    /// its arguments at `+0xa`, `+0xc` and `+0x10`, whatever the sub-command.
     #[test]
-    fn a_game_packet_of_sub_command_6_decodes_a_cheat() {
+    fn a_game_packet_decodes_its_fields() {
         let packet = de::command::Game {
-            commp_id: 2,
-            field_0x04: 6,
+            commp_id: 8,
+            field_0x04: 0,
             gap_0x06: [0; 2],
-            field_0x08: 2,
-            field_0x0a: 104,
-            field_0x0c: 0.0,
-            field_0x10: 0,
+            field_0x08: 8,
+            field_0x0a: 3,
+            field_0x0c: 3.0,
+            field_0x10: 3,
         }
         .encode();
         assert_eq!(
             Decoder::default().command(&packet, &[]),
-            Some(Command::Cheat {
-                player: 2,
-                code: 104
-            })
+            Some(Command::Game(genie_core::turn::GameCommand {
+                issuer: 8,
+                sub: 0,
+                player: 8,
+                a: 3,
+                speed: 3.0,
+                value: 3,
+            }))
         );
     }
 

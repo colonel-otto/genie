@@ -826,7 +826,7 @@ impl Turns {
         let unit = &self.players[up].objects[ui];
         let made = self.master_of(up, unit.life.master_id)?.clone();
         if bm.class == 13 {
-            return Err(Unsupported("an unload of a siege building (class 13)"));
+            return Err(SIEGE_UNLOAD);
         }
         if made.class == WHOLE_SHARE_CLASS || made.class == 58 {
             return Err(Unsupported(
@@ -1463,6 +1463,11 @@ const WAIT_SECONDS: f32 = 1.0;
 /// The class of siege weapons, whose own place an Enter's point keeps (`FUN_140a85f30`, the
 /// short `0xd`).
 const SIEGE_CLASS: i16 = 13;
+
+/// An unload of a siege building or tower (class 13: its spot search `FUN_141192d10` and the
+/// unit's leave), not modelled.
+pub(crate) const SIEGE_UNLOAD: Unsupported =
+    Unsupported("an unload of a siege building (class 13)");
 
 /// A unit's Enter action (`RGE_Action_Enter`, type 3): it walks to a building or a transport and
 /// enters it.
