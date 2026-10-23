@@ -602,8 +602,8 @@ impl Turns {
     /// either direct (`+0x14`) or to a unit AI with every queued order ready (`FUN_140c4dfa0`),
     /// takes the order itself (slot 0x128); any other unit AI queues order `0x2db` on the target at
     /// the unit's point (slot 0x28, or without a centroid slot 0x30, which shows the point it
-    /// queues: priority 100, the order's point shown, ready when direct). The readiness pass after
-    /// an order neither queued nor direct (`FUN_140c42b60`) is not modelled.
+    /// queues: priority 100, the order's point shown, ready when direct); after an order neither
+    /// queued nor direct the readiness pass ([`readiness_pass`]).
     fn interact_unit(
         &mut self,
         player: usize,
@@ -703,9 +703,7 @@ impl Turns {
             .ok_or(Unsupported("unreachable: no unit AI"))?;
         let _ = ai.queue_order(state, queued, false, false)?;
         if !order.queued && !order.direct {
-            return Err(Unsupported(
-                "the readiness pass after an order neither queued nor direct (FUN_140c42b60)",
-            ));
+            readiness_pass(&mut ai.orders);
         }
         Ok(())
     }
@@ -2242,9 +2240,7 @@ impl Turns {
             };
             let _ = ai.queue_order(state, queued, false, false)?;
             if !order.queued && !order.direct {
-                return Err(Unsupported(
-                    "the readiness pass after a move neither queued nor direct (FUN_140c42b60)",
-                ));
+                readiness_pass(&mut ai.orders);
             }
             return Ok(());
         }
@@ -4574,6 +4570,21 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
 /// `+0xa40`, `+0xa50` and `+0x9f8`, empties the powerup map (`+0xa98`, count `+0xaa0`), sets
 /// `+0xa2c` to slot 0x1b8 × 0.05 and takes a sight powerup (`+0xad4`) off (slots 0x1d8, 0x1d0):
 /// none of them is held.
+/// `FUN_140c42b60` with 1, the readiness pass after a MOVE's or INTERACT's order that is
+/// neither queued nor direct: from the last queued order to the first, one not ready becomes
+/// ready and one already ready leaves the queue (the orders after it move up).
+fn readiness_pass(orders: &mut Vec<crate::unit_ai::QueuedOrder>) {
+    let mut i = orders.len();
+    while 0 < i {
+        i -= 1;
+        if orders[i].ready {
+            let _ = orders.remove(i);
+        } else {
+            orders[i].ready = true;
+        }
+    }
+}
+
 const fn clear_powerups(unit: &mut Unit) {
     unit.attack_powerup = 0.0;
     unit.reload_powerup = 0.0;
@@ -5207,6 +5218,28 @@ mod tests {
         t.transform_object(1, 60, 1650).unwrap();
         assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
         assert_eq!(t.players[1].objects[0].firepower, 7.0);
+    }
+
+    /// `FUN_140c42b60` with 1: from the last order to the first, an order not ready becomes
+    /// ready and a ready one leaves the queue, the others keeping their order.
+    #[test]
+    fn the_readiness_pass_readies_the_unready_and_drops_the_ready() {
+        let order = |order, ready| crate::unit_ai::QueuedOrder {
+            order,
+            ready,
+            ..crate::unit_ai::QueuedOrder::default()
+        };
+        let mut orders = vec![
+            order(1, true),
+            order(2, false),
+            order(3, true),
+            order(4, false),
+        ];
+        readiness_pass(&mut orders);
+        assert_eq!(orders, [order(2, true), order(4, true)]);
+        let mut none: Vec<crate::unit_ai::QueuedOrder> = Vec::new();
+        readiness_pass(&mut none);
+        assert_eq!(none.len(), 0);
     }
 
     /// `FUN_14106ff70`'s carried-resource test: a gather or hunt task of another resource than
