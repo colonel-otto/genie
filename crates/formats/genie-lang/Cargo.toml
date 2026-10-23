@@ -13,6 +13,7 @@ readme = "./README.md"
 exclude = ["test/dlls"]
 
 [dependencies]
+genie-error = { path = "../../base/genie-error" }
 byteorder.workspace = true
 encoding_rs.workspace = true
 encoding_rs_io.workspace = true

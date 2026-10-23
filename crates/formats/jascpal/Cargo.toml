@@ -13,6 +13,7 @@ readme = "./README.md"
 
 
 [dependencies]
+genie-error = { path = "../../base/genie-error" }
 nom = { version = "7.1.1", default-features = false, features = ["std"] }
 rgb.workspace = true
 thiserror.workspace = true

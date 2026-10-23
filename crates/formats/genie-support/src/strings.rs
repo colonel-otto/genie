@@ -225,3 +225,96 @@ pub trait ReadStringsExt: Read {
 }
 
 impl<T> ReadStringsExt for T where T: Read {}
+
+impl From<DecodeStringError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: DecodeStringError) -> Self {
+        Self::invalid_input("a string that does not decode as WINDOWS-1252").with_source(e)
+    }
+}
+
+impl From<EncodeStringError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: EncodeStringError) -> Self {
+        Self::invalid_input("a string that does not encode as WINDOWS-1252").with_source(e)
+    }
+}
+
+impl From<ReadStringError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ReadStringError) -> Self {
+        let to = match &e {
+            ReadStringError::DecodeStringError(_) => {
+                Self::invalid_input("a string that does not decode as WINDOWS-1252")
+            }
+            ReadStringError::IoError(_) => Self::io("a read or write that failed"),
+        };
+        to.with_source(e)
+    }
+}
+
+impl From<WriteStringError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: WriteStringError) -> Self {
+        let to = match &e {
+            WriteStringError::EncodeStringError(_) => {
+                Self::invalid_input("a string that does not encode as WINDOWS-1252")
+            }
+            WriteStringError::IoError(_) => Self::io("a read or write that failed"),
+        };
+        to.with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn string_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = DecodeStringError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a string that does not decode as WINDOWS-1252"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = EncodeStringError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a string that does not encode as WINDOWS-1252"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = ReadStringError::IoError(io::Error::other("x")).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (genie_error::ErrorKind::Io, "a read or write that failed")
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError =
+            WriteStringError::EncodeStringError(EncodeStringError).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a string that does not encode as WINDOWS-1252"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

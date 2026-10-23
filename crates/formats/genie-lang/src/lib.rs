@@ -837,3 +837,52 @@ fn escape(source: &str, quoted: bool) -> String {
     }
     escaped
 }
+
+impl From<LoadError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: LoadError) -> Self {
+        let to = match &e {
+            LoadError::PeError(_) => Self::invalid_input("a language DLL that does not read"),
+            LoadError::IoError(_) => Self::io("a read or write that failed"),
+            LoadError::ParseIntError(_) => Self::invalid_input("a string id that is no number"),
+        };
+        to.with_source(e)
+    }
+}
+
+impl From<ParseLangFileTypeError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseLangFileTypeError) -> Self {
+        Self::invalid_input("a language file type this reader does not know").with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn language_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = LoadError::IoError(io::Error::other("x")).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (genie_error::ErrorKind::Io, "a read or write that failed")
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = ParseLangFileTypeError("x".to_owned()).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a language file type this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

@@ -13,6 +13,7 @@ readme = "./README.md"
 exclude = ["*.drs"]
 
 [dependencies]
+genie-error = { path = "../../base/genie-error" }
 byteorder.workspace = true
 sorted-vec = "0.8.0"
 thiserror.workspace = true

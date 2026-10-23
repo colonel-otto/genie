@@ -13,6 +13,7 @@ readme = "./README.md"
 exclude = ["test/campaigns"]
 
 [dependencies]
+genie-error = { path = "../../base/genie-error" }
 byteorder.workspace = true
 chardet = "0.2.4"
 encoding_rs.workspace = true

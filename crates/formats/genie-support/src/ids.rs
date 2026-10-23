@@ -263,6 +263,15 @@ try_from_string_key!(i32);
 try_from_string_key!(u16);
 try_from_string_key!(i16);
 
+impl From<TryFromStringKeyError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: TryFromStringKeyError) -> Self {
+        Self::invalid_input("a string key that does not fit the integer").with_source(e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +306,25 @@ mod tests {
         } else {
             panic!();
         }
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn a_string_key_error_converts_into_a_genie_error() {
+        let e: genie_error::GenieError = TryFromStringKeyError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a string key that does not fit the integer"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
     }
 }

@@ -334,6 +334,19 @@ impl std::fmt::Display for Palette {
     }
 }
 
+impl From<ReadPaletteError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ReadPaletteError) -> Self {
+        let to = match &e {
+            ReadPaletteError::IoError(_) => Self::io("a read or write that failed"),
+            ReadPaletteError::ParseError => Self::invalid_input("a palette that does not parse"),
+        };
+        to.with_source(e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,5 +421,25 @@ mod tests {
             pal.to_string(),
             "JASC-PAL\r\n0100\r\n2\r\n0 0 0\r\n255 255 255\r\n".to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn palette_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = ReadPaletteError::ParseError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a palette that does not parse"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
     }
 }

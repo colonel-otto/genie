@@ -290,3 +290,79 @@ impl Scenario {
         self.format.triggers.as_mut()
     }
 }
+
+impl From<Error> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: Error) -> Self {
+        let to = match &e {
+            Error::MissingFileNameError => Self::invalid_input("a scenario without a file name"),
+            Error::UnsupportedFormatVersionError(_) => {
+                Self::unsupported("a scenario format version this reader does not take")
+            }
+            Error::TooManyDisabledTechsError(_) => {
+                Self::invalid_input("more disabled technologies than the version takes")
+            }
+            Error::CannotDisableTechsError => {
+                Self::unsupported("disabled technologies in a version without them")
+            }
+            Error::CannotDisableUnitsError => {
+                Self::unsupported("disabled units in a version without them")
+            }
+            Error::TooManyDisabledBuildingsError(..) => {
+                Self::invalid_input("more disabled buildings than the version takes")
+            }
+            Error::CannotDisableBuildingsError => {
+                Self::unsupported("disabled buildings in a version without them")
+            }
+            Error::DecodeStringError(_) => Self::invalid_input("a string that does not decode"),
+            Error::EncodeStringError(_) => Self::invalid_input("a string that does not encode"),
+            Error::ParseDiplomaticStanceError(_)
+            | Error::ParseDataSetError(_)
+            | Error::ParseDLCPackageError(_)
+            | Error::ParseStartingAgeError(_)
+            | Error::ParseAIErrorCodeError(_)
+            | Error::ParseVictoryConditionStateError(_) => {
+                Self::invalid_input("an id this reader does not know")
+            }
+            Error::IoError(_) => Self::io("a read or write that failed"),
+        };
+        to.with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn scenario_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = Error::MissingFileNameError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a scenario without a file name"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = Error::CannotDisableTechsError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::Unsupported,
+                "disabled technologies in a version without them"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = Error::IoError(io::Error::other("x")).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (genie_error::ErrorKind::Io, "a read or write that failed")
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

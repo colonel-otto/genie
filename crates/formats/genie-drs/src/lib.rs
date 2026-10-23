@@ -363,6 +363,15 @@ pub type DRSTableIterator<'a> = slice::Iter<'a, DRSTable>;
 /// An iterator over DRS resource metadata structs.
 pub type DRSResourceIterator<'a> = slice::Iter<'a, DRSResource>;
 
+impl From<ParseResourceTypeError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseResourceTypeError) -> Self {
+        Self::invalid_input("a resource type that is no 4 characters").with_source(e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,5 +400,25 @@ mod tests {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn a_resource_type_error_converts_into_a_genie_error() {
+        let e: genie_error::GenieError = ParseResourceTypeError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a resource type that is no 4 characters"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
     }
 }

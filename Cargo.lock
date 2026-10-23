@@ -469,6 +469,7 @@ dependencies = [
  "byteorder",
  "chardet",
  "encoding_rs",
+ "genie-error",
  "genie-scx",
  "thiserror",
 ]
@@ -495,6 +496,7 @@ version = "0.2.1"
 dependencies = [
  "anyhow",
  "byteorder",
+ "genie-error",
  "sorted-vec",
  "thiserror",
 ]
@@ -532,6 +534,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "flate2",
+ "genie-error",
  "genie-lang",
  "thiserror",
 ]
@@ -553,6 +556,7 @@ dependencies = [
  "byteorder",
  "encoding_rs",
  "encoding_rs_io",
+ "genie-error",
  "genie-support",
  "pelite",
  "thiserror",
@@ -606,6 +610,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "flate2",
+ "genie-error",
  "genie-support",
  "log",
  "nohash-hasher",
@@ -621,6 +626,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "encoding_rs",
+ "genie-error",
  "thiserror",
 ]
 
@@ -726,6 +732,7 @@ name = "jascpal"
 version = "0.1.1"
 dependencies = [
  "anyhow",
+ "genie-error",
  "nom",
  "rgb",
  "thiserror",

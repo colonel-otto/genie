@@ -310,3 +310,38 @@ impl<W: Write> CampaignWriter<W> {
         Ok(self.into_inner())
     }
 }
+
+impl From<WriteCampaignError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: WriteCampaignError) -> Self {
+        let to = match &e {
+            WriteCampaignError::IoError(_) => Self::io("a read or write that failed"),
+            WriteCampaignError::NotFoundError(_) => {
+                Self::invalid_input("a campaign scenario without its data")
+            }
+        };
+        to.with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn campaign_write_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = WriteCampaignError::NotFoundError(2).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a campaign scenario without its data"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

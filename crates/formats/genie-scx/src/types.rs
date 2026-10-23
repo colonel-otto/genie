@@ -503,3 +503,77 @@ impl VersionBundle {
         self.data >= 1.28
     }
 }
+
+impl From<ParseDiplomaticStanceError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseDiplomaticStanceError) -> Self {
+        Self::invalid_input("a diplomatic stance id this reader does not know").with_source(e)
+    }
+}
+
+impl From<ParseDataSetError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseDataSetError) -> Self {
+        Self::invalid_input("a data set id this reader does not know").with_source(e)
+    }
+}
+
+impl From<ParseDLCPackageError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseDLCPackageError) -> Self {
+        Self::invalid_input("a DLC package id this reader does not know").with_source(e)
+    }
+}
+
+impl From<ParseStartingAgeError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseStartingAgeError) -> Self {
+        Self::invalid_input("a starting age id this reader does not know").with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn id_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = ParseDiplomaticStanceError(9).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a diplomatic stance id this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = ParseDataSetError(9).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a data set id this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = ParseDLCPackageError(9).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a DLC package id this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

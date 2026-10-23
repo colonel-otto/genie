@@ -62,3 +62,37 @@ impl AutoToWK {
         }
     }
 }
+
+impl From<ConvertError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ConvertError) -> Self {
+        let to = match &e {
+            ConvertError::InvalidVersion => {
+                Self::unsupported("a scenario version the converter does not take")
+            }
+        };
+        to.with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn a_convert_error_converts_into_a_genie_error() {
+        let e: genie_error::GenieError = ConvertError::InvalidVersion.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::Unsupported,
+                "a scenario version the converter does not take"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

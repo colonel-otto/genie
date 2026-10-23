@@ -1515,3 +1515,32 @@ fn write_opt_string_key(mut output: impl Write, opt_key: Option<&StringKey>) -> 
     })?;
     Ok(())
 }
+
+impl From<ParseUnitBaseClassError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseUnitBaseClassError) -> Self {
+        Self::invalid_input("a unit base class this reader does not know").with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn a_unit_base_class_error_converts_into_a_genie_error() {
+        let e: genie_error::GenieError = ParseUnitBaseClassError(9).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a unit base class this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

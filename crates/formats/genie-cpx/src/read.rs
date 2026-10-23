@@ -306,6 +306,30 @@ where
     }
 }
 
+impl From<ReadCampaignError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ReadCampaignError) -> Self {
+        let to = match &e {
+            ReadCampaignError::DecodeStringError => {
+                Self::invalid_input("a campaign string that does not decode")
+            }
+            ReadCampaignError::IoError(_) => Self::io("a read or write that failed"),
+            ReadCampaignError::MissingNameError => {
+                Self::invalid_input("a campaign or scenario without a name")
+            }
+            ReadCampaignError::NotFoundError => {
+                Self::invalid_input("a scenario the campaign does not hold")
+            }
+            ReadCampaignError::ParseSCXError(_) => {
+                Self::invalid_input("a campaign scenario that does not read")
+            }
+        };
+        to.with_source(e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,5 +479,31 @@ mod tests {
         */
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn campaign_read_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = ReadCampaignError::NotFoundError.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a scenario the campaign does not hold"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = ReadCampaignError::IoError(io::Error::other("x")).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (genie_error::ErrorKind::Io, "a read or write that failed")
+        );
+        assert!(std::error::Error::source(&e).is_some());
     }
 }

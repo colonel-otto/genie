@@ -460,6 +460,38 @@ where
     }
 }
 
+impl From<SyncError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: SyncError) -> Self {
+        let to = match &e {
+            SyncError::UnexpectedSync(_) => {
+                Self::invalid_input("a sync message earlier than the log header said")
+            }
+            SyncError::ExpectedSync => Self::invalid_input("a time message where a sync was due"),
+        };
+        to.with_source(e)
+    }
+}
+
+impl From<Error> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: Error) -> Self {
+        let to = match &e {
+            Error::IoError(_) => Self::io("a read or write that failed"),
+            Error::SyncError(_) => Self::invalid_input("sync messages out of step"),
+            Error::DecodeStringError(_) => Self::invalid_input("a string that does not decode"),
+            Error::ReadScenarioError(_) => {
+                Self::invalid_input("an embedded scenario that does not read")
+            }
+        };
+        to.with_source(e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,5 +535,31 @@ mod tests {
             println!("{:?}", act?);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn recording_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = SyncError::ExpectedSync.into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a time message where a sync was due"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = Error::IoError(io::Error::other("x")).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (genie_error::ErrorKind::Io, "a read or write that failed")
+        );
+        assert!(std::error::Error::source(&e).is_some());
     }
 }

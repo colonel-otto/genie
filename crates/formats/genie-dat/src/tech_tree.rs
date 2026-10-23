@@ -709,3 +709,68 @@ impl TechTreeTech {
 fn invalid_data<E: std::error::Error + Sized + Send + Sync + 'static>(err: E) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, err)
 }
+
+impl From<ParseTechTreeStatusError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseTechTreeStatusError) -> Self {
+        Self::invalid_input("a tech tree node status this reader does not know").with_source(e)
+    }
+}
+
+impl From<ParseTechTreeTypeError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseTechTreeTypeError) -> Self {
+        Self::invalid_input("a tech tree node type this reader does not know").with_source(e)
+    }
+}
+
+impl From<ParseTechTreeDependencyTypeError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: ParseTechTreeDependencyTypeError) -> Self {
+        Self::invalid_input("a tech tree dependency type this reader does not know").with_source(e)
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn tech_tree_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = ParseTechTreeStatusError(9).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a tech tree node status this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = ParseTechTreeTypeError(9).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a tech tree node type this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+        let e: genie_error::GenieError = ParseTechTreeDependencyTypeError(9).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a tech tree dependency type this reader does not know"
+            )
+        );
+        assert!(std::error::Error::source(&e).is_some());
+    }
+}

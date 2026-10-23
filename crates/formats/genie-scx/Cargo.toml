@@ -13,6 +13,7 @@ readme = "./README.md"
 exclude = ["test/scenarios"]
 
 [dependencies]
+genie-error = { path = "../../base/genie-error" }
 byteorder.workspace = true
 flate2.workspace = true
 genie-support = { version = "^1.0.0", path = "../genie-support", features = [

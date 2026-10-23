@@ -1489,6 +1489,41 @@ impl<'a> IntoIterator for &'a mut HotkeyInfo {
     }
 }
 
+impl From<IndexError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: IndexError) -> Self {
+        let to = match &e {
+            IndexError::GroupIndex(_) => {
+                Self::invalid_input("a hotkey group index past the groups")
+            }
+            IndexError::HotkeyIndex(_) => {
+                Self::invalid_input("a hotkey index past the group's hotkeys")
+            }
+        };
+        to.with_source(e)
+    }
+}
+
+impl From<GroupIndexError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: GroupIndexError) -> Self {
+        Self::invalid_input("a hotkey group index past the groups").with_source(e)
+    }
+}
+
+impl From<HotkeyIndexError> for genie_error::GenieError {
+    /// The error as a [`genie_error::GenieError`]: its kind and reason, the original as the
+    /// source.
+    #[track_caller]
+    fn from(e: HotkeyIndexError) -> Self {
+        Self::invalid_input("a hotkey index past the group's hotkeys").with_source(e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1734,5 +1769,28 @@ mod tests {
         let hotkeys = vec![h0, h1, h2, h3, h4, h5];
         assert_eq!(Some(&hotkeys), map.get(&65));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod genie_error_tests {
+    use super::*;
+
+    /// The errors convert into `GenieError`s with their kinds and reasons, the original as
+    /// source.
+    #[test]
+    fn index_errors_convert_into_genie_errors() {
+        let e: genie_error::GenieError = GroupIndexError::new(5, 3).into();
+        assert_eq!(
+            (e.kind(), e.reason()),
+            (
+                genie_error::ErrorKind::InvalidInput,
+                "a hotkey group index past the groups"
+            )
+        );
+        let e: genie_error::GenieError =
+            IndexError::HotkeyIndex(HotkeyIndexError::new(9, 2)).into();
+        assert_eq!(e.reason(), "a hotkey index past the group's hotkeys");
+        assert!(std::error::Error::source(&e).is_some());
     }
 }
