@@ -270,10 +270,10 @@ impl Turns {
         }
         let mut from_queue = !auto;
         if auto {
-            let masters = self
-                .masters
-                .get(p)
-                .ok_or(Unsupported("a reseed without the player's masters"))?;
+            let Some(masters) = self.masters.get(p) else {
+                // unreachable: the gatherer's master was found in this table above
+                return Ok(false);
+            };
             if cost_test(masters, master, ONE_FARM, false, &self.players[p])? {
                 if !pay(masters, master, ONE_FARM, &mut self.players[p])? {
                     return Ok(false);
