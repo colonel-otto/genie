@@ -1,0 +1,12 @@
+#!/bin/sh
+# The commit gate: CI's rustfmt and clippy jobs (.github/workflows/ci.yml), run before each
+# commit so a commit cannot fail them. Enable it once per clone (worktrees share the setting):
+#
+#     git config core.hooksPath .githooks
+#
+# It checks the working tree, not only what is staged. It honours CARGO_TARGET_DIR. Skip it
+# once with `git commit --no-verify`.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+cargo fmt --all --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
