@@ -234,6 +234,10 @@ pub enum Effect {
     /// slot 0x380 builds it, then the AI's action becomes the build action and its target the
     /// foundation (the caller's, `Turns::build_object`, after the update).
     BuildObject(i32),
+    /// The unit's ownership change (its slot 0x70, `FUN_14120f800` for a combat unit,
+    /// `FUN_1411cd860` for a building) to the player, which the artifact's processIdle asks of
+    /// it (`FUN_140c1e410`); the unit runs it as it applies the effects.
+    ChangeOwner(usize),
 }
 
 /// What a full update that took an order on a target ([`Effect::OrderOnTarget`]) leaves for
@@ -454,6 +458,18 @@ pub const BUILDING_CARED: [i32; 39] = [
     50, 51, 53, 54, 55, 56, 57, 19, 59, 52, 49, 39, 42, 61,
 ];
 
+/// The artifact's factory type (`TribeArtifactUnitAIModule`, class 1's: relic carts, the
+/// monument, the torches, the rock church, the emperor in a litter, the treasure chest); its
+/// slot 0x1e0 (`FUN_140c16de0`) answers it.
+pub const ARTIFACT_AI: u32 = 14;
+
+/// The classes an artifact cares about (`+0x190`, `TribeArtifactUnitAIModule`'s constructor
+/// `FUN_140c11340`: the 0x84 bytes it copies from `DAT_142ef90f0` on, then 61).
+pub const ARTIFACT_CARED: [i32; 33] = [
+    0, 4, 26, 24, 6, 35, 25, 17, 12, 23, 36, 28, 18, 13, 22, 20, 2, 21, 44, 46, 43, 45, 47, 50, 51,
+    53, 54, 55, 56, 57, 19, 59, 61,
+];
+
 /// The classes a tower cares about (`+0x190`, `TribeTowerUnitAIModule`'s constructor
 /// `FUN_140c12960`): the soldier's and 10.
 pub const TOWER_CARED: [i32; 40] = [
@@ -500,6 +516,9 @@ pub enum Pick {
         /// The relation passed over (argument 9: 0 friends, 1 neutrals, 2 enemies, 3 itself;
         /// −1 none).
         spared: i32,
+        /// Argument 8: only objects the unit reaches count (slot 0x3d0); every caller but the
+        /// artifact's passes 1.
+        reach: bool,
     },
     /// `bestUnitToAttack` (`FUN_140c44680`) with no current target and no extra objects, as the
     /// idle checks call it: of the relations from enemies down to `lowest` (2 in the scenario
@@ -1262,6 +1281,10 @@ pub struct Found {
     pub position: Option<[f32; 3]>,
     /// Its query ran (else it read the last answer).
     pub fresh: bool,
+    /// `ClosestObject`'s count of the players but Gaia whose objects the lists read hold
+    /// (`DAT_143e6f92c`, `numberDifferentPlayerObjectsVisible`); 0 from the other picks, which
+    /// do not count.
+    pub players: u32,
 }
 
 impl Found {
@@ -1271,6 +1294,7 @@ impl Found {
         enemies: false,
         position: None,
         fresh: true,
+        players: 0,
     };
 }
 
@@ -1483,6 +1507,9 @@ pub struct Seen {
     pub visible: bool,
     /// Its master's `object_flags` (`+0x654`).
     pub flags: u32,
+    /// The viewer's test of its tile (`FUN_1416635e0`, [`crate::spatial::Spatial::tile_sight`]):
+    /// 0xf seen, 0x80 explored, else 0.
+    pub sight: u8,
 }
 
 /// The class whose busy units skip the idle check (`-0xe98` raw).
@@ -1532,6 +1559,9 @@ enum Retarget {
     /// The villagers' override (8, `0x140c21da0`, [`UnitAi::civilian_misc`]), which never
     /// reaches the check either.
     Civilian,
+    /// The artifact's override (14, `FUN_140c21d40`, [`UnitAi::artifact_misc`]): its
+    /// processIdle, no check.
+    Artifact,
 }
 
 const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
@@ -1539,6 +1569,7 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
         // villagers (0x140c21da0) and livestock (0x140c21f20) return 9 from slot 73
         8 => Ok(Retarget::Civilian),
         19 => Ok(Retarget::Never),
+        ARTIFACT_AI => Ok(Retarget::Artifact),
         // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
         // slot 72 FUN_140c1fb70), transport ship (11, slot 72 0x140c21d20), soldier (13, slot 72
         // FUN_140c20db0), tower (15, the base's slot 72 FUN_140c564c0), building (17, slot 72
@@ -1552,6 +1583,8 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
 const IDLE_TIMEOUT: u32 = 3000;
 /// The tower's idle timeout (`FUN_140c12960`'s `FUN_140c41bc0` with 1000).
 const TOWER_IDLE_TIMEOUT: u32 = 1000;
+/// The artifact's idle timeout (`FUN_140c11340`'s `FUN_140c41bc0` with 5000).
+const ARTIFACT_IDLE_TIMEOUT: u32 = 5000;
 /// The villager class (`-0xea8` raw): a boar attacking one turns furious.
 const CLASS_VILLAGER: i16 = 4;
 /// The desired target distance (`+0x5c`) the constructor sets.
@@ -1715,26 +1748,32 @@ impl UnitAi {
     /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. The factory (`FUN_141215a90`)
     /// picks the type's constructor; the building's (17, `TribeBuildingUnitAIModule`
     /// `0x140c11470`, whose cared classes are [`BUILDING_CARED`]), the tower's (15,
-    /// `FUN_140c12960`: its idle timeout 1000, a fourth draw for the adjusted one) and the civilian's (8,
-    /// `TribeCivilianUnitAIModule` `0x140c115d0`, [`CIVILIAN_CARED`]) are modelled, both of which
-    /// set the stance (`+0x1a9`) to 0 after the base's 3; for any other type nothing is drawn.
+    /// `FUN_140c12960`: its idle timeout 1000, a fourth draw for the adjusted one), the
+    /// artifact's (14, `FUN_140c11340`, [`ARTIFACT_CARED`]: its idle timeout 5000, a fourth draw)
+    /// and the civilian's (8, `TribeCivilianUnitAIModule` `0x140c115d0`, [`CIVILIAN_CARED`]) are
+    /// modelled, each of which sets the stance (`+0x1a9`) to 0 after the base's 3; for any other
+    /// type nothing is drawn.
     pub const fn constructed(
         ai_type: u32,
         position: [f32; 3],
         ai: &mut Well512,
     ) -> Result<Self, Unsupported> {
-        if !matches!(ai_type, 8 | 17 | TOWER_AI) {
+        if !matches!(ai_type, 8 | 17 | TOWER_AI | ARTIFACT_AI) {
             return Err(Unsupported("constructor of a unit-AI type not modelled"));
         }
         let last_retarget_time = ai.rand15() % 500;
         let mut adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
-        // the tower's (FUN_140c12960): FUN_140c41bc0(1000) sets its idle timeout, whose slot
-        // 0x1a8 draws its adjusted one again
+        // the tower's (FUN_140c12960) and the artifact's (FUN_140c11340): FUN_140c41bc0 (1000,
+        // 5000) sets the idle timeout, whose slot 0x1a8 draws the adjusted one again
         let mut idle_timeout = IDLE_TIMEOUT;
         if ai_type == TOWER_AI {
             idle_timeout = TOWER_IDLE_TIMEOUT;
             adjusted_idle_timeout = self::adjusted_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
+        }
+        if ai_type == ARTIFACT_AI {
+            idle_timeout = ARTIFACT_IDLE_TIMEOUT;
+            adjusted_idle_timeout = self::adjusted_idle_timeout(ARTIFACT_IDLE_TIMEOUT, ai);
         }
         Ok(Self {
             ai_type,
@@ -2136,6 +2175,7 @@ impl UnitAi {
                 master: -1,
                 workers: -1,
                 spared: -1,
+                reach: true,
             },
         })?;
         self.alert(found, at.dt_seconds);
@@ -2211,6 +2251,7 @@ impl UnitAi {
                 master: -1,
                 workers: -1,
                 spared: -1,
+                reach: true,
             },
         };
         let mut reach = if at.mode_1 {
@@ -2271,6 +2312,7 @@ impl UnitAi {
             }
             SOLDIER_AI => self.soldier_idle(at, computer, side, fx),
             TOWER_AI => self.tower_idle(at, computer, side, fx),
+            ARTIFACT_AI => self.artifact_idle(at, side, fx),
             17 | 19 => Ok(false),
             _ => Err(Unsupported(
                 "processIdle (slot 0x240) of a unit-AI type not modelled",
@@ -2573,6 +2615,7 @@ impl UnitAi {
             // gave the AI, which the caller runs after the update: the check is not run then
             Retarget::Civilian if !ordered => self.civilian_misc(at, &mut fx)?,
             Retarget::Civilian | Retarget::Never => {}
+            Retarget::Artifact => self.artifact_misc(at, side, &mut fx)?,
         }
         if ordered {
             self.idle_part_before_order(busy, at)?;
@@ -2770,6 +2813,7 @@ impl UnitAi {
                 master: -1,
                 workers: if class == 49 { 1 } else { -1 },
                 spared: -1,
+                reach: true,
             },
         })?;
         self.alert(found, at.dt_seconds);
@@ -2840,6 +2884,7 @@ impl UnitAi {
                     master: -1,
                     workers: -1,
                     spared,
+                    reach: true,
                 },
             })?;
             self.alert(found, at.dt_seconds);
@@ -2971,7 +3016,7 @@ impl UnitAi {
             return Ok(());
         }
         match retarget {
-            Retarget::Never | Retarget::Civilian
+            Retarget::Never | Retarget::Civilian | Retarget::Artifact
                 if working || moving || moving_to || moved || waiting =>
             {
                 Ok(())
@@ -3947,10 +3992,133 @@ impl UnitAi {
                     Ok(BREAK)
                 }
             },
+            ARTIFACT_AI => self.artifact_notify(n, time, at, computer, ai_rng, side, fx),
             _ => Err(Unsupported(
                 "the notify handler of a unit-AI type not modelled",
             )),
         }
+    }
+
+    /// The artifact's notify handler (slot 0x238, `FUN_140c21f70`): the kinds it lets be (500,
+    /// 0x1f6 to 0x1f8, 0x1fd to 0x200, 0x202, 0x203, 0x20b, 0x20f, 0x259 to 0x262, 0x265 to
+    /// 0x269, 0x278, 699 and 0x2be) go on; a unit attacking it (600) joins its attackers
+    /// (`FUN_140b43f30`) and puts its unit under attack (`FUN_14119d2d0` with 1); a unit sent off
+    /// a footprint (0x216, 0x21b) is the base handler's. A completion, failure or invalidation
+    /// of its action (without an order its action value, with one the order's action: action +
+    /// 100 = order) and a moved target the world no longer holds or that its owner no longer
+    /// sees (`FUN_1416635e0` not 0xf) end in its stop, as any other kind does ("Unprocessed
+    /// notify"): the target goes (`FUN_140c5e1e0`), the action stops (slot 0xb0 with 1) and slot
+    /// 0x48 hands the notify to the owner (its alerts, not held). Each answers 2.
+    #[allow(clippy::too_many_arguments)]
+    fn artifact_notify(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let stops = match n.kind {
+            500
+            | 0x1f6..=0x1f8
+            | 0x1fd..=0x200
+            | 0x202
+            | 0x203
+            | OWNER_CHANGED
+            | 0x20f
+            | 0x259..=0x262
+            | 0x265..=0x269
+            | 0x278
+            | 699
+            | 0x2be => false,
+            ACTION_FAILED | ACTION_COMPLETED | ACTION_INVALIDATED => {
+                if self.current_order == -1 {
+                    self.current_action == n.p[0]
+                } else {
+                    self.current_action + 100 == self.current_order
+                }
+            }
+            // "Target is still visible.": the world holds the target, which its owner sees
+            TARGET_MOVED => !at
+                .target
+                .is_some_and(|t| self.current_target != -1 && t.sight == 0xf),
+            SENT_OFF | SENT_OFF_GROUP => {
+                return self.base_notify(n, time, at, computer, ai_rng, side, fx);
+            }
+            600 => {
+                let _ = self.add_attacker(n.caller);
+                side.set_under_attack(true);
+                false
+            }
+            _ => true,
+        };
+        if stops {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// The artifact's processIdle (slot 72, `FUN_140c1e410`, factory type 14): `ClosestObject`
+    /// (`FUN_140c488b0`) of any class it cares about, relation, state, master and workers from
+    /// its place, the reach test only for a unit that moves (slot 0x208 above 0), which sets the
+    /// alert mode ([`UnitAi::alert`]). While the lists hold the objects of at most one player
+    /// but Gaia (`DAT_143e6f92c` below 2, [`Found::players`]), the object found, when the world
+    /// holds it and another player owns it, takes the artifact over: the unit's slot 0x70 to its
+    /// owner ([`Effect::ChangeOwner`]), and processIdle produced (6, true); else 5.
+    fn artifact_idle(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        let found = side.closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius: search_radius(at.los, at.search_radius),
+            classes: &ARTIFACT_CARED,
+            size: at.size,
+            pick: Pick::Closest {
+                group: -1,
+                relation: -1,
+                state: -1,
+                master: -1,
+                workers: -1,
+                spared: -1,
+                reach: 0.0 < at.speed,
+            },
+        })?;
+        self.alert(found, at.dt_seconds);
+        if found.players < 2
+            && found.id != -1
+            && let Some(u) = side.seen_unit(found.id)?
+            && u.owner != at.player
+        {
+            fx.push(Effect::ChangeOwner(u.owner));
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// The artifact's slot 73 (`FUN_140c21d40`): its processIdle (slot 0x240 with 1,
+    /// [`UnitAi::artifact_idle`]); once another player took it over (6) its target goes
+    /// (`FUN_140c5e1e0`), its action stops (slot 0xb0 with 1) and its idle timer is 0 (it
+    /// answers 10), else 9. With an order on a target taken in the same update, the game runs the
+    /// order's work first; the slice's runs after the update (the caller's,
+    /// [`Effect::OrderOnTarget`]).
+    fn artifact_misc(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if self.artifact_idle(at, side, fx)? {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            self.idle_timer = 0;
+        }
+        Ok(())
     }
 
     /// The base handler (`FUN_140c589c0`) for the kinds the slice posts: a completed action
@@ -5778,6 +5946,7 @@ mod tests {
                 enemies: id != -1,
                 position: Some([0.0; 3]),
                 fresh: true,
+                players: 0,
             })
         }
         fn attack(
@@ -5883,6 +6052,7 @@ mod tests {
                 enemies: self.found != -1,
                 position: Some([10.0, 11.0, 0.0]),
                 fresh: true,
+                players: 0,
             })
         }
         fn attack(
@@ -6517,6 +6687,283 @@ mod tests {
         );
     }
 
+    /// The artifact's unit AI (14, `TribeArtifactUnitAIModule` `FUN_140c11340`, the rock church's):
+    /// the base's three draws, then `FUN_140c41bc0(5000)`: its idle timeout 5000 and a fourth
+    /// draw for its adjusted one (`r % 2500 + 3750`), stance 0, five notify slots. The recording
+    /// 426048706 holds rock churches of base 5000 with adjusted ones of 3881 and 6012.
+    #[test]
+    fn a_new_artifact_unit_ai_draws_four_timers() {
+        let mut r = rng();
+        let ai = UnitAi::constructed(ARTIFACT_AI, [136.0, 100.0, 0.0], &mut r).unwrap();
+        let mut expected = rng();
+        let (a, _, c, d) = (
+            expected.rand15(),
+            expected.rand15(),
+            expected.rand15(),
+            expected.rand15(),
+        );
+        assert_eq!(r.draws, 4);
+        assert_eq!(
+            (
+                ai.ai_type,
+                ai.last_retarget_time,
+                ai.retarget_timer,
+                ai.idle_timeout,
+                ai.adjusted_idle_timeout,
+                ai.stance,
+                ai.notify_capacity,
+            ),
+            (
+                ARTIFACT_AI,
+                a % 500,
+                750 + c % 500,
+                5000,
+                d % 2500 + 3750,
+                0,
+                5
+            )
+        );
+    }
+
+    /// What the artifact's tests answer: the search's answer and the owner of the object found,
+    /// with the searches asked (their radius, classes and reach test) and the unit's
+    /// under-attack value.
+    struct ArtifactSide {
+        found: Found,
+        owner: Option<usize>,
+        searches: Vec<(f32, Vec<i32>, bool)>,
+        under_attack: bool,
+    }
+
+    impl ArtifactSide {
+        fn finding(id: i32, players: u32, owner: Option<usize>) -> Self {
+            Self {
+                found: Found {
+                    id,
+                    players,
+                    position: Some([140.0, 100.0, 0.0]),
+                    ..Found::NONE
+                },
+                owner,
+                searches: Vec::new(),
+                under_attack: false,
+            }
+        }
+    }
+
+    impl UnitSide for ArtifactSide {
+        fn closest(&mut self, search: &Search<'_>) -> Result<Found, Unsupported> {
+            let reach = match search.pick {
+                Pick::Closest { reach, .. } => reach,
+                _ => true,
+            };
+            self.searches
+                .push((search.radius, search.classes.to_vec(), reach));
+            Ok(self.found)
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+            Ok(Attacked {
+                attacks: false,
+                posted: Vec::new(),
+            })
+        }
+        fn set_under_attack(&mut self, value: bool) {
+            self.under_attack = value;
+        }
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Ok(None)
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Ok(None)
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Ok(None)
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+            Ok(self.owner.map(|owner| UnitSeen {
+                id,
+                owner,
+                ..UnitSeen::default()
+            }))
+        }
+    }
+
+    /// A Gaia rock church (MarvinBlue/426048706's 7108: line of sight 5, no speed) and what it
+    /// stands on.
+    fn rock_church() -> (UnitAi, Surroundings) {
+        let ai = UnitAi {
+            ai_type: ARTIFACT_AI,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            idle_timeout: 5000,
+            adjusted_idle_timeout: 3881,
+            retarget_timer: 1224,
+            ..UnitAi::default()
+        };
+        let at = Surroundings {
+            position: [136.0, 100.0, 0.0],
+            size: [2.0, 2.0],
+            los: 5.0,
+            search_radius: 5.0,
+            player: 0,
+            state: 2,
+            class: 1,
+            kind: 80,
+            ..Surroundings::default()
+        };
+        (ai, at)
+    }
+
+    /// The artifact's processIdle (`FUN_140c1e410`): `ClosestObject` over its cared classes from
+    /// its place within its line of sight and a tile, without the reach test for a unit that
+    /// does not move; the object found takes it over for its owner (slot 0x70, 6) while the
+    /// lists hold one player's objects at most; two players, none found, the world without it
+    /// or its own owner's leave it (5).
+    #[test]
+    fn the_artifact_goes_to_the_owner_of_the_closest_object_one_player_sees() {
+        let (mut ai, at) = rock_church();
+        let mut side = ArtifactSide::finding(500, 1, Some(2));
+        let mut fx = Vec::new();
+        let took = ai.process_idle(&at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(took, Ok(true));
+        assert_eq!(fx, [Effect::ChangeOwner(2)]);
+        assert_eq!(side.searches, [(6.0, ARTIFACT_CARED.to_vec(), false)]);
+        for (players, id, owner) in [
+            (2, 500, Some(2)),
+            (1, -1, Some(2)),
+            (1, 500, None),
+            (0, 500, Some(0)),
+        ] {
+            let mut side = ArtifactSide::finding(id, players, owner);
+            let mut fx = Vec::new();
+            let took = ai.process_idle(&at, false, &mut rng(), &mut side, &mut fx);
+            assert_eq!((took, fx), (Ok(false), vec![]));
+        }
+        // a moving one asks for the reach test
+        let walking = Surroundings { speed: 0.8, ..at };
+        let mut side = ArtifactSide::finding(-1, 0, None);
+        let _ = ai.process_idle(&walking, false, &mut rng(), &mut side, &mut Vec::new());
+        assert!(side.searches[0].2);
+    }
+
+    /// The artifact's slot 73 (`FUN_140c21d40`) in its full update: its processIdle every
+    /// update; a takeover forgets its target, stops its action (slot 0xb0 with 1) after the
+    /// ownership change, and its idle timer is 0.
+    #[test]
+    fn the_artifact_s_update_hands_it_over_then_stops() {
+        let (mut ai, at) = rock_church();
+        ai.idle_timer = 900;
+        let mut side = ArtifactSide::finding(500, 1, Some(3));
+        let fx = ai
+            .update(100, 5000, false, &at, &mut rng(), &mut side)
+            .unwrap();
+        assert_eq!(fx, [Effect::ChangeOwner(3), Effect::Stop]);
+        assert_eq!((ai.current_target, ai.idle_timer), (-1, 0));
+        // nobody near: nothing, the idle timer runs
+        let (mut ai, at) = rock_church();
+        let mut side = ArtifactSide::finding(-1, 0, None);
+        let fx = ai
+            .update(100, 5000, false, &at, &mut rng(), &mut side)
+            .unwrap();
+        assert_eq!(fx, []);
+        assert_eq!(ai.idle_timer, 100);
+    }
+
+    /// The artifact's notify handler (`FUN_140c21f70`): the kinds it lets be go on; a unit
+    /// attacking it joins its attackers and puts it under attack; its own action's completion or
+    /// failure (with an order, the order's action) and any kind it does not know end in its
+    /// stop; a moved target it still sees goes on, one it does not see ends.
+    #[test]
+    fn the_artifact_s_notifies_stop_it_or_go_on() {
+        let run = |ai: &mut UnitAi, kind: i32, p: [i32; 3], at: &Surroundings| {
+            let n = Notify {
+                caller: 500,
+                recipient: 7108,
+                kind,
+                p,
+            };
+            let mut side = ArtifactSide::finding(-1, 0, None);
+            let mut fx = Vec::new();
+            let r = ai.handle(n, 0, at, false, &mut rng(), &mut side, &mut fx);
+            (r, fx, side.under_attack)
+        };
+        let (mut ai, at) = rock_church();
+        for kind in [
+            500,
+            0x1f7,
+            0x1ff,
+            0x202,
+            OWNER_CHANGED,
+            0x25d,
+            0x268,
+            699,
+            0x2be,
+        ] {
+            assert_eq!(run(&mut ai, kind, [0; 3], &at), (Ok(GO_ON), vec![], false));
+        }
+        assert_eq!(run(&mut ai, 600, [0; 3], &at), (Ok(GO_ON), vec![], true));
+        assert_eq!(ai.attackers, [500]);
+        ai.current_action = 0x262;
+        ai.current_target = 9;
+        assert_eq!(
+            run(&mut ai, ACTION_COMPLETED, [0x261, 0, 0], &at),
+            (Ok(GO_ON), vec![], false)
+        );
+        assert_eq!(
+            run(&mut ai, ACTION_FAILED, [0x262, 0, 0], &at),
+            (Ok(GO_ON), vec![Effect::Stop], false)
+        );
+        assert_eq!((ai.current_action, ai.current_target), (-1, -1));
+        // with an order: its action's (action + 100 = order)
+        ai.current_order = 0x2c6;
+        ai.current_action = 0x262;
+        assert_eq!(
+            run(&mut ai, ACTION_COMPLETED, [0x1, 0, 0], &at),
+            (Ok(GO_ON), vec![Effect::Stop], false)
+        );
+        let unknown = run(&mut ai, 0x210, [0; 3], &at);
+        assert_eq!(unknown, (Ok(GO_ON), vec![Effect::Stop], false));
+        // a moved target it sees goes on; one it does not see stops it
+        ai.current_target = 9;
+        let seen = Surroundings {
+            target: Some(Seen {
+                sight: 0xf,
+                ..Seen::default()
+            }),
+            ..at.clone()
+        };
+        assert_eq!(
+            run(&mut ai, TARGET_MOVED, [0; 3], &seen),
+            (Ok(GO_ON), vec![], false)
+        );
+        let explored = Surroundings {
+            target: Some(Seen {
+                sight: 0x80,
+                ..Seen::default()
+            }),
+            ..at
+        };
+        assert_eq!(
+            run(&mut ai, TARGET_MOVED, [0; 3], &explored),
+            (Ok(GO_ON), vec![Effect::Stop], false)
+        );
+    }
+
     /// The tower's unit AI (15, `TribeTowerUnitAIModule` `FUN_140c12960`, a town centre's with
     /// its volley missile): the base's three draws, then `FUN_140c41bc0(1000)`: its idle timeout
     /// 1000 and a fourth draw for its adjusted idle timeout (`r % 500 + 750`). records/428759682
@@ -6942,6 +7389,7 @@ mod tests {
                 enemies: true,
                 position: Some([33.5, 106.5, 0.0]),
                 fresh: true,
+                players: 0,
             })
         };
         let moved = u
@@ -7838,6 +8286,7 @@ mod tests {
                 enemies: false,
                 position: Some([0.0; 3]),
                 fresh: true,
+                players: 0,
             })
         };
         assert!(u.update(28, 0, false, &at, &mut rng(), &mut found).is_err());
@@ -8552,6 +9001,7 @@ mod tests {
             radius: [0.2, 0.2],
             visible: true,
             flags: 0,
+            sight: 0xf,
         };
         let target_at = Surroundings {
             target: Some(seen),
@@ -8723,6 +9173,7 @@ mod tests {
                 enemies: true,
                 position: None,
                 fresh: true,
+                players: 0,
             })
         };
         let fx = u
@@ -9086,6 +9537,7 @@ mod tests {
                 enemies: false,
                 position: Some([31.5, 106.5, 0.0]),
                 fresh: true,
+                players: 0,
             })
         };
         let moved = u
@@ -9105,6 +9557,7 @@ mod tests {
                 enemies: false,
                 position: Some([3.5, 4.5, 0.0]),
                 fresh: true,
+                players: 0,
             })
         };
         let moved = u

@@ -43,6 +43,21 @@ struct Filter {
     /// The relation passed over (argument 9, `FUN_140c32b50`: 0 friends, 1 neutrals, 2
     /// enemies, 3 itself; −1 none).
     spared: i32,
+    /// Argument 8: only objects the unit reaches count (slot 0x3d0).
+    reach: bool,
+}
+
+/// `ClosestObject`'s count (`FUN_140c488b0`, `DAT_143e6f92c`): the owners from 1 to 8 of the
+/// records the lists read, every record marking its owner (`record+8`) before any test; Gaia
+/// is not counted.
+fn players_seen(found: &[Vec<Record>; 5]) -> u32 {
+    let mut seen = [false; 9];
+    for record in found.iter().flatten() {
+        if let Some(s) = seen.get_mut(usize::from(record.owner)) {
+            *s = true;
+        }
+    }
+    seen[1..].iter().map(|&s| u32::from(s)).sum()
 }
 
 /// The pastures, whose workers and livestock `ClosestObject` counts (`FUN_140c488b0`, raw
@@ -1567,6 +1582,7 @@ impl Spatial {
                 master,
                 workers,
                 spared,
+                reach: reaching,
             } => {
                 let filter = Filter {
                     group,
@@ -1575,6 +1591,7 @@ impl Spatial {
                     master,
                     workers,
                     spared,
+                    reach: reaching,
                 };
                 let checks = (moving, shuns, farm);
                 let id = self.closest_object(v, me, player, found, filter, reach, checks)?;
@@ -1583,6 +1600,7 @@ impl Spatial {
                     enemies: !found[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
+                    players: players_seen(found),
                 })
             }
             Pick::Look => Ok(Found {
@@ -1590,6 +1608,7 @@ impl Spatial {
                 enemies: !found[4].is_empty(),
                 position: None,
                 fresh,
+                players: 0,
             }),
             Pick::Attack { lowest, seeker } => {
                 let id =
@@ -1599,6 +1618,7 @@ impl Spatial {
                     enemies: !found[4].is_empty(),
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
+                    players: 0,
                 })
             }
         }
@@ -1715,7 +1735,7 @@ impl Spatial {
                 if class_10 && shuns(p)? {
                     continue;
                 }
-                if !reach(record.id, CLOSEST_RANGE)? {
+                if filter.reach && !reach(record.id, CLOSEST_RANGE)? {
                     continue;
                 }
                 match best {

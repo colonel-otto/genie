@@ -815,6 +815,9 @@ struct Context<'a> {
     /// The unit's update stopped before its unit AI for the caller's work order
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
     ai_resume: Option<AiResume>,
+    /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]): the
+    /// update ends with the takeover ([`Step::Captured`]).
+    taken_over: Option<usize>,
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
@@ -1615,7 +1618,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 }
             }
         }
-        unit.clear_own_actions()?;
+        let by = Releaser {
+            id: unit.id,
+            class: master.class,
+            player: self.player,
+        };
+        unit.clear_own_actions(self.releases, by)?;
         unit.attack_count = 0;
         crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
         let mover = unit
@@ -2473,8 +2481,9 @@ impl Unit {
     /// `MoveTo`'s teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
     /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
     /// A Build waiting without its foundation (state 3) goes with nothing to release
-    /// (`FUN_140aadbf0`), its own Attack and an Enter let their target go; other actions'
-    /// teardowns are not modelled.
+    /// (`FUN_140aadbf0`), its own Attack, an Enter and an Artifact let their target go, a Fly
+    /// gives the unit its top speed as its animation speed; other actions' teardowns are not
+    /// modelled.
     fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
         let by = self.releaser(c);
         let sprite = c.streams.get(Stream::Sprite);
@@ -2528,7 +2537,7 @@ impl Unit {
             }
             releases.push((e.target, by));
         }
-        self.clear_own_actions()?;
+        self.clear_own_actions(releases, by)?;
         if self.life.state == 2
             && let Some(m) = self.mover.as_mut()
         {
@@ -2546,11 +2555,37 @@ impl Unit {
     }
 
     /// The action list's clearing (`FUN_140a98620`): each action's teardown (a `MoveTo`'s, also
-    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work and a wait for a
-    /// foundation go; the others the slice holds are not modelled.
-    fn clear_own_actions(&mut self) -> Result<(), Unsupported> {
+    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work, a wait for a
+    /// foundation, an Artifact (its target let go, `by` the unit, into `releases`) and a Fly go;
+    /// the others the slice holds are not modelled.
+    fn clear_own_actions(
+        &mut self,
+        releases: &mut Vec<(i32, Releaser)>,
+        by: Releaser,
+    ) -> Result<(), Unsupported> {
         // a wait for a foundation goes: its teardown is the base one's, which lets no target go
         self.wait_solidify = None;
+        // the Artifact's teardown (FUN_140aab0d0): it lets its target go, and its MoveTo's stops
+        // the unit
+        if let Some(mut a) = self.artifact.take() {
+            let (walked, released) = a.tear_down();
+            if walked && let Some(m) = self.mover.as_mut() {
+                m.stop()?;
+            }
+            if let Some(t) = released {
+                releases.push((t, by));
+            }
+        }
+        // the Fly's (FUN_140a84750): the unit's animation speed (`+0x7b8`) takes its top speed
+        // (slot 0x208), then its MoveTo's teardown stops it
+        if let Some(f) = self.fly.take() {
+            self.anim_speed = Some(self.mover.as_ref().map_or(0.0, |m| m.stats.speed));
+            if f.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+        }
         if self
             .build
             .as_ref()
@@ -2559,9 +2594,7 @@ impl Unit {
             self.build = None;
         }
         let held = [
-            (self.artifact.is_some(), "an Artifact"),
             (self.build.is_some(), "a Build"),
-            (self.fly.is_some(), "a Fly"),
             (self.hunt.is_some(), "a Hunt"),
             (self.gather.is_some(), "a Gather"),
             (self.attack.is_some(), "an Attack"),
@@ -2570,9 +2603,7 @@ impl Unit {
         ];
         if let Some(&(_, what)) = held.iter().find(|(h, _)| *h) {
             return Err(Unsupported(match what {
-                "an Artifact" => "a unit AI's stop of an action list with an Artifact",
                 "a Build" => "a unit AI's stop of an action list with a Build at work",
-                "a Fly" => "a unit AI's stop of an action list with a Fly",
                 "a Hunt" => "a unit AI's stop of an action list with a Hunt",
                 "a Gather" => "a unit AI's stop of an action list with a Gather",
                 "an Attack" => "a unit AI's stop of an action list with an Attack",
@@ -2635,6 +2666,7 @@ impl Unit {
                         return Err(Unsupported("two BuildObjects in one update"));
                     }
                 }
+                Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
             }
@@ -2899,6 +2931,7 @@ impl Unit {
                     master: -1,
                     workers: if class == 49 { 1 } else { -1 },
                     spared: -1,
+                    reach: true,
                 },
             };
             let me = Me {
@@ -7240,14 +7273,18 @@ impl Unit {
                 task_0x69: master.is_some_and(|m| m.tasks.iter().any(|t| t.action_type == 0x69)),
                 // a new owner sees the target with its own map
                 target: match c.ai_target? {
-                    Some(t) if view.player != c.player => Some(crate::unit_ai::Seen {
-                        visible: c.spatial.visible(
-                            view.player,
-                            t.position[0] as i32,
-                            t.position[1] as i32,
-                        ),
-                        ..t
-                    }),
+                    Some(t) if view.player != c.player => {
+                        let [x, y, _] = t.position;
+                        let (tx, ty) = (
+                            crate::checkpoint::cvttss2si(x),
+                            crate::checkpoint::cvttss2si(y),
+                        );
+                        Some(crate::unit_ai::Seen {
+                            visible: c.spatial.visible(view.player, x as i32, y as i32),
+                            sight: c.spatial.tile_sight(view.player, tx, ty).unwrap_or(0),
+                            ..t
+                        })
+                    }
                     t => t,
                 },
                 under_attack: self.under_attack,
@@ -7340,6 +7377,13 @@ impl Unit {
             };
             self.apply(effects, class, c)?;
         }
+        if let Some(new) = c.taken_over.take() {
+            captured = Some(Captured {
+                new,
+                main: true,
+                also: Vec::new(),
+            });
+        }
         if let Some(k) = captured {
             return Ok(Step::Captured(k));
         }
@@ -7366,9 +7410,6 @@ impl Unit {
             .get(self.id)
             .map(|p| p.class)
             .ok_or(Unsupported("a captured object the world does not hold"))?;
-        if class != LIVESTOCK && self.ai.is_some() {
-            return Err(Unsupported("a captured unit's unit AI stop (slot 0xb0)"));
-        }
         let (walked, released) = self.artifact.as_mut().map_or((false, None), Artifact::stop);
         if walked {
             self.mover
@@ -7379,6 +7420,25 @@ impl Unit {
         if let Some(t) = released {
             c.releases.push((t, self.releaser(c)));
         }
+        // FUN_14108c050's unit AI part: a unit AI of any class but livestock, not on action
+        // 0x2c2, stops (slot 0xb0 with 0: the order ends, the unit's stopAction) and forgets its
+        // targets (FUN_140c4dcb0), unless the unit's top action (slot 0x438) is 0x6f with a load
+        // (COMISS 0, amount; JNC: an amount that is not a number keeps it) of a kind
+        let top = self.top_action_kind().map_or(-1, i32::from);
+        let loaded = top == LOADED_ACTION
+            && crate::fmath::below_or_unordered(0.0, self.life.amount)
+            && self.life.attribute_type != -1;
+        if class != LIVESTOCK
+            && !loaded
+            && let Some(ai) = self.ai.as_mut()
+            && ai.current_action != CAPTURE_KEEPS_ACTION
+        {
+            let mut fx = Vec::new();
+            let place = ([self.position[0], self.position[1]], class);
+            ai.stop_with(false, Some(place), &mut fx)?;
+            ai.forget_targets();
+            self.apply(fx, Some(class), c)?;
+        }
         let changed = self.change_owner(c, new)?;
         // the scan reads the owner after the change: the old one when `new` lacks the master
         let mut taken = Vec::new();
@@ -7386,6 +7446,24 @@ impl Unit {
             scan_livestock(c, others, self.position, new, &mut taken)?;
         }
         Ok((changed, taken))
+    }
+
+    /// The unit's slot 0x70 as its unit AI asks it ([`Effect::ChangeOwner`], the artifact's
+    /// processIdle `FUN_140c1e410`): a combat unit's ([`Unit::change_owner`]); once it changed
+    /// hands the caller moves it to the new owner's list after the update ([`Step::Captured`]).
+    /// A building's (`FUN_1411cd860`) is not modelled.
+    fn ai_change_owner(&mut self, new: usize, c: &mut Context<'_>) -> Result<(), Unsupported> {
+        let master = self
+            .own_master
+            .as_deref()
+            .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
+        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
+            return Err(BUILDING_HANDS);
+        }
+        if self.change_owner(c, new)? {
+            c.taken_over = Some(new);
+        }
+        Ok(())
     }
 
     /// `RGE_Combat_Object::update`'s takeover by sight of the unit by player `new`, which has its
@@ -7398,11 +7476,12 @@ impl Unit {
             .own_master
             .as_deref()
             .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
-        let building = master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING);
-        let carries = master.is_some_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty();
-        if building || carries {
+        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
+            return Err(BUILDING_HANDS);
+        }
+        if master.is_some_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
             return Err(Unsupported(
-                "an object another player takes over by seeing it",
+                "a siege weapon another player takes over with units inside (FUN_141192d10)",
             ));
         }
         let _ = self.change_owner(c, new)?;
@@ -7615,6 +7694,19 @@ const LIVESTOCK: i16 = 58;
 /// The siege class (`-0xe9f` raw), whose ownership change drops the units it carries
 /// (`FUN_14120f800`).
 const SIEGE_CLASS: i16 = 13;
+
+/// A building's ownership change (its slot 0x70, `FUN_1411cd860`: its annexes', its
+/// production queue's and researches', its garrison's, its object and technology on capture,
+/// then the combat object's), which the slice does not model; a takeover by sight and the
+/// artifact's ask for one.
+const BUILDING_HANDS: Unsupported = Unsupported("a building's ownership change (FUN_1411cd860)");
+
+/// The top action type (slot 0x438) whose load keeps a captured unit's unit AI going
+/// (`FUN_14108c050`).
+const LOADED_ACTION: i32 = 0x6f;
+
+/// The unit AI's action that a capture's stop leaves alone (`FUN_14108c050`).
+const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
 
 /// `FUN_140aab570`'s scan after a livestock's capture: Gaia's livestock in state 2 whose tile
 /// the new owner sees (`FUN_141663500`), within 3 tiles of `at` (x outer, y inner); each is taken
@@ -8284,6 +8376,14 @@ impl Turns {
                     radius: master.radius,
                     visible: self.spatial.visible(viewer, x as i32, y as i32),
                     flags: master.object_flags,
+                    sight: self
+                        .spatial
+                        .tile_sight(
+                            viewer,
+                            crate::checkpoint::cvttss2si(x),
+                            crate::checkpoint::cvttss2si(y),
+                        )
+                        .unwrap_or(0),
                 }));
             }
         }
@@ -11701,6 +11801,7 @@ impl Turns {
                     work_order: None,
                     gate_toggle: false,
                     ai_resume: resume.take(),
+                    taken_over: None,
                     order_on_target: None,
                     hunt_objects: Vec::new(),
                     gather_objects: Vec::new(),
@@ -15004,6 +15105,111 @@ mod tests {
                 .unwrap()
                 .speed_stopped
         );
+    }
+
+    /// The artifact's unit AI in a tick, with Gaia's torch 7 (master 854, class 1, a combat
+    /// unit): on Gaia's turn its processMisc (`FUN_140c21d40`) finds player 1's villager 500,
+    /// the one player's object in its lists, and asks its unit to change hands (slot 0x70); the
+    /// torch leaves Gaia's list for the end of player 1's.
+    #[test]
+    fn a_gaia_torch_goes_to_the_one_player_near_it() {
+        let master = |id, class, los| Master {
+            id,
+            kind: 70,
+            class,
+            line_of_sight: los,
+            radius: [0.2, 0.2],
+            ..Master::default()
+        };
+        let table = Masters::new([master(854, 1, 4.0), master(83, 4, 4.0)]);
+        let torch = Unit {
+            ai: Some(UnitAi {
+                ai_type: crate::unit_ai::ARTIFACT_AI,
+                current_order: -1,
+                current_action: -1,
+                current_target: -1,
+                idle_timeout: 5000,
+                adjusted_idle_timeout: 4000,
+                retarget_timer: 1000,
+                ..UnitAi::default()
+            }),
+            ..hands_unit(7, 854)
+        };
+        let villager = Unit {
+            position: [11.5, 10.5, 0.0],
+            ai: None,
+            ..hands_unit(500, 83)
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                Player {
+                    objects: vec![torch],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![villager],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+            ],
+        );
+        t.masters = vec![table.clone(), table.clone(), table];
+        t.spatial = hands_world(7, 0, 1, 854, 4.0);
+        t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
+        t.spatial.insert(
+            500,
+            Placed {
+                position: [11.5, 10.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: 1,
+                master: 83,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        let v = t.spatial.sight.as_mut().unwrap();
+        v.add_seer(
+            500,
+            Seer {
+                player: 1,
+                master: 83,
+                los: 4.0,
+                state: 2,
+                explored: true,
+                building: None,
+                umv: 0,
+                capture: 0,
+                kind: 70,
+            },
+        );
+        let r = v.registry.as_mut().unwrap();
+        r.entries.entry(500).or_default().mask = 0b11;
+        r.update_unit(500, 1, [11.5, 10.5], [0.2, 0.2], 4, 0, 0b11)
+            .unwrap();
+        t.tick(100);
+        assert_eq!(t.players[0].objects.len(), 0);
+        let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+        assert_eq!(ids, [500, 7]);
+        assert_eq!(t.spatial.get(7).map(|p| p.player), Some(1));
+        let torch = &t.players[1].objects[1];
+        assert_eq!(torch.own_master.as_deref().map(|m| m.id), Some(854));
+        let ai = torch.ai.as_ref().unwrap();
+        assert_eq!(ai.notifies, [Notify::own(7, OWNER_CHANGED, [1, 0, 0])]);
+        assert_eq!(ai.idle_timer, 0);
     }
 
     /// `FUN_141302450`: the scenario modes' descriptors have `+0x9c` 0; a mode above 16 reads the
