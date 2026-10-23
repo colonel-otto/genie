@@ -2701,10 +2701,12 @@ fn deaths_world() -> Turns {
             },
         ],
     );
+    // no dying graphic (-1): slot 0x7a0 gives the master's, which these masters lack
     let master = |id, kind, class| Master {
         id,
         kind,
         class,
+        death_sprite: -1,
         ..Master::default()
     };
     let table = Masters::new([
@@ -2767,6 +2769,10 @@ fn a_build_on_an_annex_counts_its_builder_in_the_main_building() {
     assert_eq!(t.counted_building(50), Ok(Some(50)));
     assert_eq!(t.counted_building(999), Ok(None));
     t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
     let builders = |id| {
         t.players[1]
             .objects

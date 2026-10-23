@@ -271,9 +271,11 @@ mod tests {
         let value = copy.raw();
         let draws: Vec<&String> = lines.iter().filter(|l| l.contains(DRAWS)).collect();
         assert_eq!(draws.len(), 1, "{lines:?}");
+        // the path as the compiler gives it (`file!()`, backslashes on Windows)
         let head = format!(
-            "TRACE {DRAWS} stream=4 draw={} value={value} at=crates/engine/genie-core/src/trace.rs:{line}:",
-            copy.draws
+            "TRACE {DRAWS} stream=4 draw={} value={value} at={}:{line}:",
+            copy.draws,
+            file!()
         );
         assert!(draws[0].starts_with(&head), "{} against {head}", draws[0]);
         // a generator outside the streams, and a helper of two steps
