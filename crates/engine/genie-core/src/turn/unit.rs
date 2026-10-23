@@ -1793,6 +1793,8 @@ impl Unit {
                     return Err(Unsupported("two build commands in one update"));
                 }
             }
+            // state 0xf2's walk ended: the caller reseeds after the update
+            crate::gather::Next::Reseed { arrived } => c.reseed = Some(arrived),
             crate::gather::Next::Stay | crate::gather::Next::Done => {}
         }
         Ok(())

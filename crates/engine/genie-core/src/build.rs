@@ -1964,9 +1964,7 @@ impl Construction {
             .building
             .ok_or(Unsupported("a completion of a master that is no building"))?;
         if done.attribute_204 {
-            return Err(Unsupported(
-                "a completion with a player's attribute 204 (FUN_14152bcb0)",
-            ));
+            return Err(crate::diplomacy::REVEAL_UNITS);
         }
         // FUN_1411c6bd0 (its build points are its build time already: FUN_1411cc430 wrote them)
         let first = done.first_part(site.construction)?;

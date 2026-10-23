@@ -485,6 +485,9 @@ pub struct BuildSite<'a> {
     pub placement: [i16; 4],
     /// The world's zone mode (`+0x820`, `FUN_1415e8e10`).
     pub zones: bool,
+    /// The objects the scan passes over (`p12` and, for a building, its annexes, `FUN_14123d090`):
+    /// none for BUILD, a reseeding gatherer's old target ([`crate::turn::Turns::reseed`]).
+    pub own: &'a [i32],
 }
 
 /// The hill mode's test of a tile of the box (`FUN_141123f80`'s `p7` part, the master's
@@ -682,6 +685,9 @@ pub fn build_placement(
         for tx in x0..=x1 {
             let (seen, visible) = (map.explored(player, tx, ty), map.visible(player, tx, ty));
             for o in map.objects(tx, ty)? {
+                if site.own.contains(&o.id) {
+                    continue;
+                }
                 if !(seen && visible) {
                     let fog = if seen { o.fog_visibility } else { 1 };
                     if fog == 3 {
@@ -2851,6 +2857,7 @@ mod tests {
             hill_mode: 0,
             placement: [-1; 4],
             zones: false,
+            own: &[],
         };
         let test = |o: Near, masks: [u64; 2]| {
             build_placement(&site, &Fogged(vec![o], masks), [21.0, 21.0]).unwrap()

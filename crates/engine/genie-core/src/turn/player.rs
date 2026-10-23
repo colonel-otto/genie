@@ -21,6 +21,47 @@ pub struct Formations {
     pub column_to_line_distance: i32,
 }
 
+/// The settings of a player's AI the GAME command's sub-command 0xb sets one by one
+/// (`FUN_140e7c330`'s inner switch), each saved (`WorldPlayerBase::save`, `FUN_14166b820`) and
+/// read by its unit AIs. The two chances it sets too are [`Player::dodge_chance`] and
+/// [`Player::keep_distance_chance`], and `mAllowCapturingGaiaUnits` is
+/// [`crate::turn::Turns::allow_gaia_capture`].
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AiSettings {
+    /// `easiest_reaction_percentage` (`+0x608`, setting 3).
+    pub easiest_reaction_percentage: i32,
+    /// `easier_reaction_percentage` (`+0x60c`, setting 4).
+    pub easier_reaction_percentage: i32,
+    /// `task_ungrouped_soldiers` (`+0x610`, setting 5).
+    pub task_ungrouped_soldiers: u8,
+    /// `may_attack_walls` (`+0x611`, setting 6).
+    pub may_attack_walls: bool,
+    /// `livestock_only_to_tc` (`+0x612`, setting 7).
+    pub livestock_only_to_tc: bool,
+    /// `disable_build_help` (`+0x613`, setting 8).
+    pub disable_build_help: bool,
+    /// `local_targeting_mode` (`+0x614`, setting 9).
+    pub local_targeting_mode: i32,
+    /// `targeting_factor_scalar` (`+0x618`, setting 10).
+    pub targeting_factor_scalar: i32,
+    /// `preferredTradeDistance` (`+0x61c`, setting 0xd).
+    pub preferred_trade_distance: f32,
+    /// `disableTowerPriority` (`+0x620`, setting 0xe).
+    pub disable_tower_priority: bool,
+    /// `tradeAttackEvasion` (`+0x621`, setting 0xb).
+    pub trade_attack_evasion: bool,
+    /// `mVillagerAttackReset` (`+0x622`, setting 0x10).
+    pub villager_attack_reset: bool,
+    /// `boarLureDestination` (`+0x623`, setting 0xc).
+    pub boar_lure_destination: u8,
+    /// `mAttackMoveMaxDistance` (`+0x624`, setting 0xf).
+    pub attack_move_max_distance: i32,
+    /// `mDisableVillagerGarrison` (`+0x650`, setting 0x11).
+    pub disable_villager_garrison: i32,
+    /// `mAllowSerjeantBuilding` (`+0x660`, setting 0x12).
+    pub allow_serjeant_building: bool,
+}
+
 /// One player's objects in live-list order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Player {
@@ -48,11 +89,24 @@ pub struct Player {
     /// The sleeping objects, in their list's order: they are not updated; a unit's work on one
     /// wakes it.
     pub sleeping: Vec<Unit>,
-    /// `autoFarmQueue` (`+0x1424`) and `autoFishTrapQueue` (`+0x1425`), which GAME 0x10 and 0x13
-    /// flip; nothing the slice models reads them yet.
+    /// `autoFarmQueue` (`+0x1424`, saved), which GAME 0x10 flips: a farmer whose farm ran out
+    /// buys another one without the mill's queue (`FUN_141618260`).
     pub auto_farm_queue: bool,
-    /// `autoFishTrapQueue` (`+0x1425`).
+    /// `autoFishTrapQueue` (`+0x1425`, saved), which GAME 0x13 flips (`FUN_141618270`).
     pub auto_fishtrap_queue: bool,
+    /// `farm_queue_count` (`+0x141c`, saved): the farms and pastures the mill's queue paid for
+    /// (GAME 0xd and 0x15 buy, 0xe and 0x16 take back, [`crate::farm_queue`]).
+    pub farm_queue: i32,
+    /// `fishTrapQueueCount` (`+0x1420`, saved): the fish traps the dock's queue paid for (GAME
+    /// 0x11 buys, 0x12 takes back).
+    pub fish_trap_queue: i32,
+    /// `prod_queue_on` (`+0x1358`, saved): GAME 9 sets it; nothing in the simulation reads it.
+    pub production_queue_on: u8,
+    /// `diplomacy[i]` (`+0xe12`, saved, 9 entries): the stance toward player i a diplomacy change
+    /// set (1 or 2 enemy, 3 neutral, 4 or 5 ally; [`crate::diplomacy`]).
+    pub diplomacy: Vec<u8>,
+    /// The settings a computer player's GAME 0xb sets (`+0x608`..`+0x670`, saved).
+    pub ai_settings: AiSettings,
     /// The order splitter's settings (`+0x6c0` `mAutoFormations`, `+0x6c4`
     /// `mFormationInfluenceDistance`, `+0x6c8` `mBreakAutoFormationsBySpeed`).
     pub formations: Formations,
@@ -73,8 +127,9 @@ pub struct Player {
     pub resigned: bool,
     /// `+0x8c`: its resignation was a drop from the game.
     pub dropped: bool,
-    /// `allied_victory` (`+0x2d0`, saved): its allies' victory counts as its own.
-    pub allied_victory: bool,
+    /// `allied_victory` (`+0x2d0`, saved, a byte GAME 5 sets): its allies' victory counts as its
+    /// own while it is not 0; the teams count it only at 1 ([`crate::diplomacy`]).
+    pub allied_victory: u8,
     /// Its victory conditions' state (`player+0x68`'s `+0x20`, the save's `victory`): 2 when
     /// they are met (`FUN_1414f35d0`).
     pub victory: u8,

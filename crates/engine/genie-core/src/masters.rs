@@ -174,6 +174,10 @@ pub struct Master {
     /// `+0x158`, the `.dat`'s `copy_id`: the master a garrison order asks a building about
     /// (`FUN_141621220`).
     pub copy_id: i16,
+    /// `+0x260`, the `.dat`'s `base_id` (the master load `FUN_1411319f0` turns 768 into 420 and
+    /// 770 into 691): the master whose availability says whether the player can make this one
+    /// (`FUN_141663f80`, [`crate::turn::Turns::can_make`]); an upgrade's copy keeps it.
+    pub base_id: i16,
     /// `+0x410`.
     pub class: i16,
     /// `+0x7b8`, the `.dat`'s `TaskSwapGroup` (the save does not carry it); 0 for none.
@@ -1210,14 +1214,16 @@ impl Master {
     /// The master copy, slot 8 (`FUN_1411252b0` and its overrides up to the building's
     /// `FUN_14123c4e0`), as an upgrade of a master to another of its type runs it: this master
     /// takes `other`'s values (its tasks, costs, train locations, damage sprites and every other
-    /// list copied) but keeps its id, its class, its availability and its disabling (and its
-    /// `+0x260`, `+0x5ec`, `+0x738` and, keeping its id, the interface's names: not held). The
+    /// list copied) but keeps its id, its class, its availability, its disabling and its base id
+    /// (`+0x260`; its `+0x5ec`, `+0x738` and, keeping its id, the interface's names: not held). The
     /// action master's work rate takes `other`'s times this one's handicapped rate (`+0x79c`)
     /// when the two differ: not held, taken equal.
     pub fn copy_from(&mut self, other: &Self) {
         let (id, class, available, disabled) = (self.id, self.class, self.available, self.disabled);
+        let base_id = self.base_id;
         *self = other.clone();
         self.id = id;
+        self.base_id = base_id;
         self.class = class;
         self.available = available;
         self.disabled = disabled;
@@ -2836,18 +2842,19 @@ mod tests {
     }
 
     /// The master copy (slot 8, `Master::copy_from`): every value but the id, class,
-    /// availability and disabling.
+    /// availability, disabling and base id (`+0x260`).
     #[test]
     fn a_master_copy_keeps_its_id_class_and_flags() {
         let mut militia = master(74, 1, vec![task(7, -1, -1, 0.0)]);
         militia.class = 6;
         militia.available = true;
+        militia.base_id = 74;
         let mut man = master(75, 2, vec![task(7, -1, -1, 0.0), task(3, 3, -1, 0.0)]);
         man.class = 7;
         man.hit_points = 45;
         man.disabled = true;
         militia.copy_from(&man);
-        assert_eq!((militia.id, militia.class), (74, 6));
+        assert_eq!((militia.id, militia.class, militia.base_id), (74, 6, 74));
         assert!(militia.available && !militia.disabled);
         assert_eq!((militia.hit_points, militia.tasks.len()), (45, 2));
         assert_eq!(militia.task_by_group, 2);

@@ -55,6 +55,9 @@ pub struct Settings {
     /// `FUN_141461190`) fills its players' zones only while a treaty holds (`FUN_141461c00`);
     /// the slice holds no treaty.
     pub treaty_length: u32,
+    /// `mTeamsLocked` (`+0x64`): the world's teams stay as the game began
+    /// ([`crate::turn::Turns::resolve_teams`]).
+    pub teams_locked: bool,
 }
 
 impl Settings {

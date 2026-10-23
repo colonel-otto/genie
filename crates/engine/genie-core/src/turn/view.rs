@@ -204,6 +204,9 @@ pub(in crate::turn) struct Context<'a> {
     /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
     /// a target not built yet), which the caller runs after the update ([`Turns::build_command`]).
     pub(in crate::turn) build_command: Option<i32>,
+    /// A Gather's walk back to reseed ended (state 0xf2, whether it arrived), which the caller
+    /// reseeds after the update ([`Turns::reseed_after_walk`]).
+    pub(in crate::turn) reseed: Option<bool>,
     /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
     /// runs after the update ([`Turns::move_aside`]).
     pub(in crate::turn) move_aside: Vec<AiMove>,
