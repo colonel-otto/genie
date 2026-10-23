@@ -940,12 +940,12 @@ impl Unit {
                     let class = class.ok_or(Unsupported(
                         "an AI move of a master the slice does not have",
                     ))?;
-                    let released = match e {
-                        Effect::Move(m) => self.ai_move(m, class)?,
-                        _ => self.restore_patrol(class)?,
+                    let m = match e {
+                        Effect::Move(m) => Some(m),
+                        _ => self.restore_patrol(),
                     };
-                    if let Some(t) = released {
-                        c.releases.push((t, self.releaser(c)));
+                    if let Some(m) = m {
+                        self.ai_move(m, class, c)?;
                     }
                 }
                 Effect::MoveAside(m) => c.move_aside.push(m),
@@ -5379,6 +5379,7 @@ impl Unit {
                 fire: None,
                 can_move,
                 stance,
+                state_position: self.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position),
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
@@ -5515,6 +5516,7 @@ impl Unit {
                 fire: None,
                 can_move,
                 stance,
+                state_position: self.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position),
                 posted: Vec::new(),
                 queue_empty: self.ai.as_ref().is_some_and(|ai| ai.orders.is_empty()),
                 world_time,
@@ -5830,6 +5832,7 @@ impl Unit {
                             attributes: view.attributes,
                             civ: view.civ,
                             drop_sites: c.drop_sites,
+                            mode_680: c.mode_680,
                         };
                         // an order on a target comes only from a full update, on the owner's turn
                         match (turn, after) {
@@ -5892,18 +5895,11 @@ impl Unit {
     /// `restorePatrolInformation`'s unit part ([`crate::unit_ai::Effect::RestorePatrol`]): its own
     /// waypoints go (slot 0x450) and become the saved patrol's points (slot 0x448 each, as x, y
     /// and height), and it moves to the saved waypoint (slot 0x340: range 0, forced, running; a
-    /// waypoint outside the path is the game's static zero point). Returns the target the
-    /// replaced `MoveTo` let go ([`Unit::ai_move`]).
-    pub(in crate::turn) fn restore_patrol(
-        &mut self,
-        class: i16,
-    ) -> Result<Option<i32>, Unsupported> {
-        let Some(ai) = self.ai.as_ref() else {
-            return Ok(None);
-        };
-        let Some(saved) = ai.patrol_path.as_ref() else {
-            return Ok(None);
-        };
+    /// waypoint outside the path is the game's static zero point): that move, the caller's
+    /// ([`Unit::ai_move`]). None without a saved patrol.
+    pub(in crate::turn) fn restore_patrol(&mut self) -> Option<AiMove> {
+        let ai = self.ai.as_ref()?;
+        let saved = ai.patrol_path.as_ref()?;
         let points = saved.path.points.clone();
         let w = usize::try_from(ai.patrol_waypoint)
             .ok()
@@ -5916,13 +5912,12 @@ impl Unit {
                 m.add_user_waypoint(p[0], p[2], p[1]);
             }
         }
-        let run = AiMove {
+        Some(AiMove {
             point: [w[0], w[2], w[1]],
             range: 0.0,
             force: true,
             walk: false,
-        };
-        self.ai_move(run, class)
+        })
     }
 
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
@@ -6076,76 +6071,159 @@ impl Unit {
         )
     }
 
-    /// The unit's slot 0x340 (`FUN_141216c50`) on its unit AI's move: a unit of class 51 or 54
-    /// (packing) is not modelled; any other runs `FUN_1410866e0`. Without `force`, a `MoveTo` to the
-    /// same point (its `+0x38`..`+0x40`) stands. Then the current action's slot 0x40 may take the
-    /// point: an Artifact's (`FUN_140aaca30`, [`Artifact::take_point`]; a `MoveTo` it walked goes and
-    /// stops the unit) does, a `MoveTo`'s (`FUN_140a78490`) never (other actions are not modelled).
-    /// Otherwise a `MoveTo` to the point within the range (`FUN_140aa0d30`; its sprite, the master's
-    /// walking or running one, is not held) replaces the action list (`FUN_140a98620`: the old
-    /// `MoveTo` stops the unit) and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100`
-    /// gives a unit far from the point state 3). Returns the target the old `MoveTo` let go,
-    /// which the caller releases.
+    /// The unit's slot 0x340 on its unit AI's move ([`Unit::ai_move_with`]), what it lets go and
+    /// the standing sprite of a `MoveTo` that fails at its start into the context `c`.
     pub(in crate::turn) fn ai_move(
         &mut self,
         m: AiMove,
         class: i16,
-    ) -> Result<Option<i32>, Unsupported> {
-        if matches!(class, 51 | 54) {
-            return Err(Unsupported("an AI move of a unit of class 51 or 54"));
-        }
-        let top = self.top_action_kind();
-        if !m.force
-            && top == Some(crate::move_to::MOVE_TO)
-            && self.move_to.is_some_and(|mt| mt.goal == Some(m.point))
-        {
-            return Ok(None);
-        }
-        if self.unmodelled_action.is_some() {
+        c: &mut Context<'_>,
+    ) -> Result<(), Unsupported> {
+        let by = self.releaser(c);
+        let sprite_rng = c.streams.get(Stream::Sprite);
+        self.ai_move_with(
+            m,
+            (class, c.player),
+            (&mut c.releases, &mut c.builder_leaves, by),
+            (c.masters, c.graphics, sprite_rng),
+        )
+    }
+
+    /// The unit's slot 0x340 (`FUN_141216c50`) on a move to `m.point` its unit AI gives it (also
+    /// its move off a footprint, [`crate::turn::Turns::move_aside`]), the unit of `class` of
+    /// player `player`. An unpacked trebuchet (class 54) packs instead (its Pack action,
+    /// `FUN_140ad4ff0` through slot 0x808), which is not modelled; a packed one (class 51) whose
+    /// head action packs or unpacks (types `0x7c`, `0x7d`) does nothing, and the slice holds no such
+    /// action, so it moves as any other: `FUN_1410866e0`. Without `m.force` a head `MoveTo` whose
+    /// point (`+0x38`..`+0x40`, [`MoveToAction::point`]) is `m.point` stands: the move is done.
+    /// Then the head action's slot 0x40 may take the point ([`Unit::head_takes_point`]; the
+    /// target it lets go into `releases`). Otherwise a `MoveTo` to the point within `m.range`
+    /// (`FUN_140aa0d30`, the master's walking sprite with `m.walk`, else its running one; the
+    /// sprite is not held) is made, the action list is cleared (`FUN_140a98620`,
+    /// [`Unit::clear_own_actions`]: the teardowns let their targets go into `releases` and a
+    /// counted builder's foundation into `builder_leaves`, by `by`) and the `MoveTo` installed and
+    /// started (slot 0x808, `FUN_14106e990`: its slot 0x70 sees an empty list; `FUN_140a977e0`
+    /// starts an action of a unit below state 3, which the unit AI's moves are, and
+    /// [`MoveToAction::to_point`]); one that ends at its start shows the standing sprite of the
+    /// unit's master in `look` ([`Unit::shows_standing_sprite`]).
+    pub(crate) fn ai_move_with(
+        &mut self,
+        m: AiMove,
+        (class, player): (i16, usize),
+        (releases, builder_leaves, by): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>, Releaser),
+        (masters, graphics, sprite_rng): (
+            Option<&Masters>,
+            &std::collections::BTreeMap<i16, Graphic>,
+            &mut Well512,
+        ),
+    ) -> Result<(), Unsupported> {
+        if class == UNPACKED_TREBUCHET {
             return Err(Unsupported(
-                "an AI move of a unit with an action (its slot 0x40)",
+                "an AI move of an unpacked trebuchet (class 54: its Pack action, FUN_140ad4ff0)",
             ));
         }
-        match top {
+        if !m.force
+            && self.top_action_kind() == Some(crate::move_to::MOVE_TO)
+            && self
+                .move_to
+                .and_then(|mt| mt.point(self.mover.as_ref()))
+                .is_some_and(|p| p == m.point)
+        {
+            return Ok(());
+        }
+        match self.head_takes_point(m.point, player)? {
+            PointMove::Taken(released) => {
+                if let Some(t) = released {
+                    releases.push((t, by));
+                }
+                return Ok(());
+            }
+            PointMove::Declined => {}
+        }
+        self.clear_own_actions(releases, builder_leaves, by)?;
+        let move_to = MoveToAction::to_point(m.point, m.range, !m.walk, self.mover.as_mut());
+        if move_to.shows_standing() {
+            self.shows_standing_sprite(masters, graphics, sprite_rng)?;
+        }
+        self.move_to = Some(move_to);
+        Ok(())
+    }
+
+    /// The head action's slot 0x40 on a move to `point` without a target object (its second
+    /// argument 0), the unit of player `player`. An empty list takes nothing
+    /// (`FUN_140a98730`), nor does the base slot (`FUN_140a78490`, which answers 0) of a `MoveTo`,
+    /// an Explore, a Build (`0x140aade60`), an Attack, an Enter, a Fly, a missile, a Make or a
+    /// wait for a foundation. The Artifact's (`FUN_140aaca30`) takes it
+    /// ([`Artifact::take_point`]; a `MoveTo` it walked goes and stops the unit); the Hunt's
+    /// (`FUN_140ac52c0`, [`HuntAction::take_move`]) unless its task has a work range; the
+    /// Gather's (`0x140a8b740`, [`crate::gather::GatherAction::take_move`]) always. The Hunt and
+    /// the Gather let their target go (slot 0x68 with none), which [`PointMove::Taken`] names
+    /// for the caller to release; their second target stays.
+    ///
+    /// # Errors
+    ///
+    /// An action the slice does not hold, and what the Hunt's and the Gather's walks do not
+    /// model.
+    pub(crate) fn head_takes_point(
+        &mut self,
+        point: [f32; 3],
+        player: usize,
+    ) -> Result<PointMove, Unsupported> {
+        if self.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "slot 0x40 of an action the slice does not hold",
+            ));
+        }
+        match self.top_action_kind() {
+            None
+            | Some(
+                crate::move_to::MOVE_TO
+                | crate::explore::EXPLORE
+                | BUILD
+                | crate::attack::ATTACK
+                | crate::garrison::ENTER
+                | crate::fly::FLY
+                | crate::missile::MISSILE
+                | crate::make::MAKE
+                | crate::wait_solidify::WAIT_SOLIDIFY,
+            ) => Ok(PointMove::Declined),
             Some(crate::artifact::ARTIFACT_TYPE) => {
-                let walked = self
-                    .artifact
-                    .as_mut()
-                    .is_some_and(|a| a.take_point(m.point));
+                let walked = self.artifact.as_mut().is_some_and(|a| a.take_point(point));
                 if walked {
                     self.mover
                         .as_mut()
                         .ok_or(Unsupported("a walker without movement state"))?
                         .stop()?;
                 }
-                return Ok(None);
+                Ok(PointMove::Taken(None))
             }
-            Some(crate::move_to::MOVE_TO) | None => {}
-            Some(_) => {
-                return Err(Unsupported(
-                    "an AI move of a unit with an action (its slot 0x40)",
-                ));
+            Some(crate::hunt::HUNT) => {
+                let (held, my_pasture) = (self.life.amount, self.my_pasture);
+                let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+                    return Err(Unsupported("a hunter without its hunt or movement state"));
+                };
+                let old = hunt.target;
+                if !hunt.take_move(None, point, player, held, false, my_pasture, 0.0, mover)? {
+                    return Ok(PointMove::Declined);
+                }
+                Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
+            }
+            Some(crate::gather::GATHER) => {
+                let held = self.life.amount;
+                let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut())
+                else {
+                    return Err(Unsupported(
+                        "a gatherer without its gather or movement state",
+                    ));
+                };
+                let old = gather.target;
+                gather.take_move(None, point, player, held, mover)?;
+                Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
+            }
+            Some(other) => {
+                unreachable!("a top action of type {other}, which top_action never holds")
             }
         }
-        // the old MoveTo's teardown (0x140aa1f30): it stops the unit, and the base teardown lets
-        // its target go (slot 0x180, the caller's)
-        let mut released = None;
-        if let Some(old) = self.move_to.take() {
-            self.mover
-                .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
-                .stop()?;
-            released = Some(old.target).filter(|&t| t != -1);
-        }
-        self.move_to = Some(MoveToAction {
-            state: MoveTo::Start,
-            goal: Some(m.point),
-            target: -1,
-            range: m.range,
-            run: !m.walk,
-            wait: crate::move_to::MoveWait::default(),
-        });
-        Ok(released)
     }
 
     /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object (in
@@ -6193,7 +6271,7 @@ impl Unit {
             range,
             (true, livestock),
         )?;
-        if move_to.arrived() {
+        if move_to.shows_standing() {
             self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }
         self.move_to = Some(move_to);
@@ -6223,6 +6301,20 @@ impl Unit {
         Ok(())
     }
 }
+
+/// What the head action's slot 0x40 did with a move to a point ([`Unit::head_takes_point`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PointMove {
+    /// It answered 0 (an empty list, the base slot, a Hunt whose task has a work range): the
+    /// caller's `MoveTo` replaces the actions.
+    Declined,
+    /// It answered 1: the action walks there itself. The target it let go (slot 0x68 with none),
+    /// if any, which the caller releases.
+    Taken(Option<i32>),
+}
+
+/// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.
+const UNPACKED_TREBUCHET: i16 = 54;
 
 /// The player's slot 0xf8 (`FUN_141616820`) with 1 and 1 on a unit's load: the resource and its
 /// gathered total (166 to 168; gold's 49 and 169), which the caller adds after the update; the

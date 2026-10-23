@@ -1453,7 +1453,7 @@ impl Turns {
             0.0,
             (false, livestock),
         )?;
-        if move_to.arrived() {
+        if move_to.shows_standing() {
             unit.shows_standing_sprite(
                 self.masters.get(player),
                 &self.graphics,
@@ -1465,11 +1465,12 @@ impl Turns {
     }
 
     /// The head action's slot 0x40 (`FUN_140a97730`) on a move of the unit at `idx` to `point`,
-    /// toward the object `target` if any: true when the action takes the move. An empty list
-    /// takes nothing, nor does the base slot (`FUN_140a78490`) of a `MoveTo`, an Explore, a Build
-    /// (0x140aade60), an Attack, an Enter, a Fly, a missile or a Make. The Artifact's
-    /// (`FUN_140aaca30`) always takes it: toward an object ([`Turns::artifact_take_object`]), or
-    /// to the point, where a `MoveTo` it walked goes and stops the unit; the Hunt's
+    /// toward the object `target` if any: true when the action takes the move. Without a target
+    /// it is the unit's own [`crate::turn::Unit::head_takes_point`], whose released target goes
+    /// here ([`Turns::release`]). Toward an object, an empty list takes nothing, nor does the
+    /// base slot (`FUN_140a78490`) of a `MoveTo`, an Explore, a Build (0x140aade60), an Attack,
+    /// an Enter, a Fly, a missile, a Make or a wait for a foundation. The Artifact's
+    /// (`FUN_140aaca30`) always takes it ([`Turns::artifact_take_object`]); the Hunt's
     /// (`0x140ac52c0`, [`Turns::hunt_take_move`]) and the Gather's (`0x140a8b740`,
     /// [`Turns::gather_take_move`]) decide themselves.
     fn head_takes_move(
@@ -1480,6 +1481,17 @@ impl Turns {
         point: [f32; 3],
     ) -> Result<bool, Unsupported> {
         let unit = &mut self.players[player].objects[idx];
+        let Some(target) = target else {
+            return match unit.head_takes_point(point, player)? {
+                crate::turn::PointMove::Declined => Ok(false),
+                crate::turn::PointMove::Taken(released) => {
+                    if let Some(t) = released {
+                        self.release(t, self.releaser(player, idx))?;
+                    }
+                    Ok(true)
+                }
+            };
+        };
         if unit.unmodelled_action.is_some() {
             return Err(Unsupported(
                 "slot 0x40 of an action the slice does not hold",
@@ -1495,20 +1507,11 @@ impl Turns {
                 | crate::garrison::ENTER
                 | crate::fly::FLY
                 | crate::missile::MISSILE
-                | crate::make::MAKE,
+                | crate::make::MAKE
+                | crate::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(false),
             Some(crate::artifact::ARTIFACT_TYPE) => {
-                if let Some(t) = target {
-                    self.artifact_take_object(player, idx, t)?;
-                    return Ok(true);
-                }
-                let walked = unit.artifact.as_mut().is_some_and(|a| a.take_point(point));
-                if walked {
-                    unit.mover
-                        .as_mut()
-                        .ok_or(Unsupported("a walker without movement state"))?
-                        .stop()?;
-                }
+                self.artifact_take_object(player, idx, target)?;
                 Ok(true)
             }
             Some(HUNT) => self.hunt_take_move(player, idx, target, point),
@@ -2298,27 +2301,28 @@ impl Turns {
             && !stop_after_kill
             && self.head_takes_move(player, idx, None, point)?;
         if !taken {
-            // the MoveTo to the point (FUN_140aa0d30, range 0) and its install (slot 0x808)
+            // the MoveTo to the point (FUN_140aa0d30: range 0, the walking sprite) and its
+            // install (slot 0x808: the MoveTo's slot 0x70, FUN_140a78050, does nothing; the list
+            // clears, then the start)
             self.clear_actions(player, idx)?;
             let unit = &mut self.players[player].objects[idx];
-            unit.move_to = Some(crate::move_to::MoveToAction {
-                run: false,
-                // FUN_140aa2100: no target, so far from it: state 3 for a unit with speed
-                state: crate::move_to::MoveTo::Start,
-                goal: Some(point),
-                target: -1,
-                range: 0.0,
-                wait: crate::move_to::MoveWait::default(),
-            });
+            let move_to =
+                crate::move_to::MoveToAction::to_point(point, 0.0, false, unit.mover.as_mut());
+            if move_to.shows_standing() {
+                unit.shows_standing_sprite(
+                    self.masters.get(player),
+                    &self.graphics,
+                    self.streams.get(Stream::Sprite),
+                )?;
+            }
+            unit.move_to = Some(move_to);
         }
         Ok(taken)
     }
 
-    /// The unit's slot 0x340 (`FUN_141216c50`) forced, from its unit AI's move off a footprint
-    /// (slot 0x148): a unit of class 51 or 54 (packing) is not modelled; any other runs
-    /// `FUN_1410866e0`: its head action's slot 0x40 may take the point
-    /// ([`Turns::head_takes_move`]), else a `MoveTo` to the point
-    /// within the move's range, walking or running, replaces its actions.
+    /// The unit's slot 0x340 from its unit AI's move off a footprint (slot 0x148,
+    /// [`crate::turn::Unit::ai_move_with`]); then what its actions let go: a counted builder
+    /// leaves its building ([`Turns::leave_builders`]), the targets go ([`Turns::release`]).
     pub(crate) fn move_aside(
         &mut self,
         player: usize,
@@ -2327,24 +2331,23 @@ impl Turns {
     ) -> Result<(), Unsupported> {
         let unit = &self.players[player].objects[idx];
         let class = self.master_of(player, unit.life.master_id)?.class;
-        if matches!(class, CLASS_51 | CLASS_54) {
-            return Err(Unsupported(
-                "a move off a footprint of a unit of class 51 or 54",
-            ));
+        let by = self.releaser(player, idx);
+        let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
+        self.players[player].objects[idx].ai_move_with(
+            m,
+            (class, player),
+            (&mut releases, &mut builder_leaves, by),
+            (
+                self.masters.get(player),
+                &self.graphics,
+                self.streams.get(Stream::Sprite),
+            ),
+        )?;
+        for id in builder_leaves {
+            self.leave_builders(id)?;
         }
-        let point = m.point;
-        let taken = self.head_takes_move(player, idx, None, point)?;
-        if !taken {
-            self.clear_actions(player, idx)?;
-            let unit = &mut self.players[player].objects[idx];
-            unit.move_to = Some(crate::move_to::MoveToAction {
-                run: !m.walk,
-                state: crate::move_to::MoveTo::Start,
-                goal: Some(point),
-                target: -1,
-                range: m.range,
-                wait: crate::move_to::MoveWait::default(),
-            });
+        for (id, by) in releases {
+            self.release(id, by)?;
         }
         Ok(())
     }
@@ -3417,7 +3420,18 @@ impl Turns {
             posted,
             ready,
             failed,
-        } = crate::attack::Attack::command(target, &e, arms, visible, tp, mover)?;
+            failed_first,
+        } = crate::attack::Attack::command(
+            (target, &self.spatial),
+            &e,
+            arms,
+            (visible, tp),
+            mover,
+        )?;
+        if failed_first {
+            // readyToAttack's set_state(13) before the start's set_state(4)
+            unit.anim_speed = Some(1.0);
+        }
         if arrived {
             return Err(Unsupported("an attack task whose MoveTo starts arrived"));
         }
@@ -3446,6 +3460,7 @@ impl Turns {
                 .as_ref()
                 .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
             let stance = unit.ai.as_ref().map_or(0, |ai| ai.stance);
+            let state_position = unit.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position);
             let queue_empty = unit.ai.as_ref().is_some_and(|ai| ai.orders.is_empty());
             let walk = Walk {
                 mover: unit.mover.as_mut(),
@@ -3472,6 +3487,7 @@ impl Turns {
                 fire: None,
                 can_move,
                 stance,
+                state_position,
                 posted: Vec::new(),
                 queue_empty,
                 world_time,
@@ -3686,33 +3702,28 @@ impl Turns {
     }
 
     /// The Gather's slot 0x40 (`0x140a8b740`, [`crate::gather::GatherAction::take_move`]) on a
-    /// move of the gatherer at `idx` to `point`, toward the object `target` if any: always taken;
-    /// the targets that changed are let go and taken.
+    /// move of the gatherer at `idx` to `point` toward the object `target`: always taken; the
+    /// targets that changed are let go and taken.
     pub(crate) fn gather_take_move(
         &mut self,
         player: usize,
         idx: usize,
-        target: Option<i32>,
+        target: i32,
         point: [f32; 3],
     ) -> Result<bool, Unsupported> {
-        let moved_to = match target {
-            Some(t) => {
-                let (tp, o) = self
-                    .object(t)
-                    .ok_or(Unsupported("a move to an object the slice does not hold"))?;
-                let tm = self.master_of(tp, o.life.master_id)?;
-                let (at, radius) = (o.position, tm.radius);
-                let unit = &self.players[player].objects[idx];
-                let me = self.master_of(player, unit.life.master_id)?;
-                Some(crate::gather::MoveTarget {
-                    id: t,
-                    player: tp,
-                    drop_site: self.drops_at_main(player, idx, t)?,
-                    gap: crate::movement::footprint_gap(unit.position, me.radius, at, radius),
-                })
-            }
-            None => None,
-        };
+        let (tp, o) = self
+            .object(target)
+            .ok_or(Unsupported("a move to an object the slice does not hold"))?;
+        let tm = self.master_of(tp, o.life.master_id)?;
+        let (at, radius) = (o.position, tm.radius);
+        let unit = &self.players[player].objects[idx];
+        let me = self.master_of(player, unit.life.master_id)?;
+        let moved_to = Some(crate::gather::MoveTarget {
+            id: target,
+            player: tp,
+            drop_site: self.drops_at_main(player, idx, target)?,
+            gap: crate::movement::footprint_gap(unit.position, me.radius, at, radius),
+        });
         let by = self.releaser(player, idx);
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
@@ -3760,8 +3771,8 @@ impl Turns {
             .contains(&main_master))
     }
 
-    /// The Hunt's slot 0x40 from a move ([`HuntAction::take_move`]) with `target` (None for a
-    /// point) and `point`: true when it takes it. The target it had goes (slot 0x68 with none:
+    /// The Hunt's slot 0x40 from a move toward the object `target` ([`HuntAction::take_move`])
+    /// with `point`: true when it takes it. The target it had goes (slot 0x68 with none:
     /// [`Turns::release`]), and a drop site it carries its load to becomes its second target
     /// (`FUN_140a7a190`: [`Turns::take`]).
     ///
@@ -3770,21 +3781,13 @@ impl Turns {
         &mut self,
         player: usize,
         idx: usize,
-        target: Option<i32>,
+        target: i32,
         point: [f32; 3],
     ) -> Result<bool, Unsupported> {
-        let quarry = match target {
-            Some(t) => {
-                let mut q = self.quarry(player, t)?;
-                q.drop_site = self.drops_at_main(player, idx, t)?;
-                Some(q)
-            }
-            None => None,
-        };
-        let gap = match target {
-            Some(t) => self.engagement(player, idx, t)?.gap,
-            None => 0.0,
-        };
+        let mut q = self.quarry(player, target)?;
+        q.drop_site = self.drops_at_main(player, idx, target)?;
+        let quarry = Some(q);
+        let gap = self.engagement(player, idx, target)?.gap;
         let by = self.releaser(player, idx);
         let unit = &mut self.players[player].objects[idx];
         let (held, my_pasture) = (unit.life.amount, unit.my_pasture);

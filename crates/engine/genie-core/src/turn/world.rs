@@ -433,20 +433,17 @@ impl Turns {
                 player.objects.iter().find(|u| u.id == id).map(|u| (p, u))
             })?;
         let master = self.masters.get(p)?.get(u.life.master_id)?;
-        let attributes = &self.players[p].attributes;
-        let terrain = self.spatial.terrain.as_ref();
-        let mut v = victim_of(u, master, attributes, p, terrain, self.mode_680);
         let world = World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        v.allied = [
-            world.allied(attacker, p, true),
-            world.allied(p, attacker, true),
-        ];
-        v.uncertain = self.spatial.get(id).is_none_or(|o| o.unknown.is_some());
-        v.tile_place = self.spatial.tile_place(id);
-        Some(v)
+        Some(victim_in(
+            u,
+            (p, master, &self.players[p].attributes),
+            (attacker, &world),
+            &self.spatial,
+            self.mode_680,
+        ))
     }
 
     /// The object `id` as the unit AI of a unit of player `viewer` finds it in the world's object
@@ -1406,6 +1403,24 @@ pub(crate) fn change_hands(
     }
     u.post_own(OWNER_CHANGED, [new as i32, 0, 0])?;
     Ok(true)
+}
+
+/// What a hit of an attacker of player `attacker` reads of the object `u` of player `p`, of
+/// `master`, its player's `attributes` ([`victim_of`]): its relations to the attacker's player
+/// both ways (`dip`, [`Diplomacy::allied`] with allies), whether its place is a guess (the world
+/// `spatial` holds it as unknown, or not at all) and its place in its tile's list.
+pub(crate) fn victim_in(
+    u: &Unit,
+    (p, master, attributes): (usize, &Master, &[f32]),
+    (attacker, dip): (usize, &dyn Diplomacy),
+    spatial: &Spatial,
+    mode_680: i32,
+) -> Victim {
+    let mut v = victim_of(u, master, attributes, p, spatial.terrain.as_ref(), mode_680);
+    v.allied = [dip.allied(attacker, p, true), dip.allied(p, attacker, true)];
+    v.uncertain = spatial.get(u.id).is_none_or(|o| o.unknown.is_some());
+    v.tile_place = spatial.tile_place(u.id);
+    v
 }
 
 /// What a hit reads of the object `u` of player `p` ([`Victim`]): its master's values and its
