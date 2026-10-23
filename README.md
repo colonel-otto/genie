@@ -62,5 +62,4 @@ library in your installer, for example as a DLL that the game links to. CaptureA
 that needs no separate licence: it can talk to genie as a separate program over gRPC on localhost,
 as it talks to the game today.
 
-We want to work with you, not around you. If you have questions, wishes or concerns, please open an
-issue at https://github.com/librematch/genie.
+We want to work with you, not around you. If you have questions, wishes or concerns, please start a discussion at https://github.com/librematch/genie/discussions.
