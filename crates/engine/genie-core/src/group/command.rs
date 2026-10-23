@@ -17,6 +17,10 @@ pub const MOVE_COMMAND: i32 = 1;
 const NEW_PATH_FLAGS: u32 = 6;
 /// The plans a path level may still try (`FUN_140f9b800`, `FUN_140f98e80`).
 const CONTINUE: i32 = 10;
+/// A patrol's leg goes back and forth when its point is at least this far from the group on
+/// the ground (`commandMoveTo` at 0x141010ddb, `DAT_14330ebb8`; the image role
+/// `group::PATROL_LEG_REACH` is still to add).
+const PATROL_LEG_REACH: f32 = 5.0;
 
 /// The queued commands on a target `checkQueuedOrders` hands to `FUN_14100fc50` when the world
 /// holds the target (its switch's cases 3 and `0x2713`).
@@ -32,7 +36,7 @@ const ATTACK_COMMANDS: [i32; 4] = [7, 9, 0x68, 0x7d];
 pub struct MoveTo {
     /// `param_5`: the path level's range.
     pub range: f32,
-    /// `param_6`.
+    /// `param_6`: a patrol's leg, whose path loops.
     pub leg: bool,
     /// `param_7`: the group forgets its target (`mCurrentTarget`).
     pub forget_target: bool,
@@ -217,8 +221,11 @@ impl Turns {
     /// `hold`, sets flags `0xc000`. Below [`EPSILON`] of top speed nothing moves (false). The
     /// path (a new one, flags [`NEW_PATH_FLAGS`], made now) runs from the group's place through
     /// its waypoints (which it empties) to the point at the group's desired height, its flags
-    /// bit 0 off and bit 1 on; flags bit 11 ends set only with `hold`, which also clears the
-    /// path's bit 0 (`keep_flag`'s bit 11 is cleared again after it). Measured, under two points
+    /// bit 0 off and bit 1 on; a patrol's leg (`leg`) loops instead (bit 0 on) and goes back and
+    /// forth (bit 1) when the point is at least [`PATROL_LEG_REACH`] from the group on the ground
+    /// (`COMISS`/`JBE` at 0x141010de3: a NaN distance too). Flags bit 11 ends set only with
+    /// `hold`, which also clears the path's bit 0 (`keep_flag`'s bit 11 is cleared again after
+    /// it, and a leg leaves it to `hold` alone). Measured, under two points
     /// or at most [`EPSILON`] of length (`COMISS`/`JC` at 0x141010e2a: a NaN length keeps it) it
     /// is none. The group's path data resets ([`PathData`]'s `FUN_140f98e80`) and takes it
     /// (`FUN_140f9b800`: range, target, waypoint 1, state 2) as waypoint level 2 (that level even
@@ -229,12 +236,9 @@ impl Turns {
     /// column without a path or when the player's `mMinColumnDistance` is below its length,
     /// `COMISS`/`JNC` at 0x141010fc8, a NaN too; else a line). Flags bit 8 is set. True.
     ///
-    /// Not modelled: `leg` (a patrol's leg: its path's bit 1 by the distance to the point
-    /// against 5, `DAT_14330ebb8`, which has no image role for it yet).
-    ///
     /// # Errors
     ///
-    /// A leg, a horde, a queued command the queue cannot run ([`Turns::check_queued_orders`]),
+    /// A horde, a queued command the queue cannot run ([`Turns::check_queued_orders`]),
     /// or what the members' stop and the formation do not model.
     ///
     /// # Panics
@@ -248,11 +252,6 @@ impl Turns {
         point: [f32; 2],
         how: MoveTo,
     ) -> Result<bool, Unsupported> {
-        if how.leg {
-            return Err(Unsupported(
-                "commandMoveTo of a patrol's leg (param_6: the 5.0 of DAT_14330ebb8)",
-            ));
-        }
         let world_time = self.world_time;
         let g = self
             .groups
@@ -322,9 +321,22 @@ impl Turns {
             let _ = path.push(w);
         }
         g.waypoints.clear();
-        let _ = path.push([point[0], g.desired_height, point[1]]);
-        let mut path_flags = NEW_PATH_FLAGS & !1 | 2;
-        // `keep_flag` sets bit 11 (0x141010dc1), which the hold's test then decides again
+        let at = [point[0], g.desired_height, point[1]];
+        let _ = path.push(at);
+        let mut path_flags = if how.leg {
+            let mut d = crate::fmath::sub(g.motion.position[0], at);
+            d[1] = 0.0;
+            let length = crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+            if crate::fmath::at_most_or_unordered(PATROL_LEG_REACH, length) {
+                NEW_PATH_FLAGS | 1 | 2
+            } else {
+                (NEW_PATH_FLAGS | 1) & !2
+            }
+        } else {
+            NEW_PATH_FLAGS & !1 | 2
+        };
+        // `keep_flag` sets bit 11 (0x141010dc1) off a leg, which the hold's test then decides
+        // again
         if how.hold {
             path_flags &= !1;
             g.flags |= 0x800;
@@ -758,5 +770,37 @@ mod tests {
                 .unwrap()
         );
         assert!(t.groups.get(1).unwrap().motion.paths[0].has_path);
+    }
+
+    /// `param_6` (a patrol's leg): the path loops (bit 0) and goes back and forth (bit 1) from 5
+    /// tiles on the ground (`COMISS`/`JBE`: a NaN distance too); flags bit 11 clears, `0xc000`
+    /// stays off for a leg on a patrol.
+    #[test]
+    fn a_patrol_s_leg_loops_and_turns_back_from_five_tiles() {
+        let leg = MoveTo {
+            leg: true,
+            forget_target: true,
+            direct: true,
+            ..MoveTo::default()
+        };
+        for (point, flags) in [([4.9, 0.0], 7 & !2), ([3.0, 4.0], 7), ([f32::NAN, 0.0], 7)] {
+            let mut t = moving_world();
+            t.groups.get_mut(1).unwrap().flags = 0x800;
+            assert!(t.command_move_to(1, -1, point, leg).unwrap());
+            let g = t.groups.get(1).unwrap();
+            assert_eq!(
+                (g.motion.paths[0].path_flags, g.flags & 0x800),
+                (flags, 0),
+                "{point:?}"
+            );
+        }
+        // the group patrols already: a leg leaves flags 0xc000 off
+        let mut t = moving_world();
+        let mut top = PathData::without_path();
+        top.has_path = true;
+        top.path_flags = 1;
+        t.groups.get_mut(1).unwrap().motion.paths = vec![top];
+        assert!(t.command_move_to(1, -1, [8.0, 0.0], leg).unwrap());
+        assert_eq!(t.groups.get(1).unwrap().flags & 0xc000, 0);
     }
 }

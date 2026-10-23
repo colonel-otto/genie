@@ -28,6 +28,37 @@ pub struct Velocity {
     pub acceleration: Vec3,
 }
 
+/// What a `MoveTo`'s update in state 3 (`0x140aa2a70`) reads of its unit's AI for its path
+/// request ([`Mover::request_path_asked`]); [`PathAsk::default`] is a `MoveTo` without that say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PathAsk {
+    /// A unit already in range ends the `MoveTo` (`set_state` 1): one with a unit AI not on a
+    /// patrol order (711, 733); else the path request runs.
+    pub ends_in_range: bool,
+    /// `param_7` 1: the path loops (its flags' bit 0), on a patrol order.
+    pub patrol: bool,
+    /// `param_8` 1: the path goes back and forth (bit 1).
+    pub back_and_forth: bool,
+    /// `param_9`: the waypoint of the saved patrol the unit walks on from, −1 for a new path from
+    /// the unit to the goal.
+    pub resume: i32,
+    /// `param_10`: 1 (`Some(true)`) the unit attack-moves (`+0x7fb`) and the path does not loop,
+    /// 0 it no longer does, 2 (`None`) it stays as it was.
+    pub attack_move: Option<bool>,
+}
+
+impl Default for PathAsk {
+    fn default() -> Self {
+        Self {
+            ends_in_range: true,
+            patrol: false,
+            back_and_forth: false,
+            resume: -1,
+            attack_move: None,
+        }
+    }
+}
+
 /// One level of a unit's path data (`+0x858`; each level's parent at `+8`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PathData {
@@ -159,6 +190,11 @@ pub struct Mover {
     /// of the static part): the other units of an order to several (`FUN_14118c790`), which the
     /// short pather ignores for a top path made this update. A stop empties it.
     pub ignore_units: Vec<i32>,
+    /// The unit's own waypoints (`+0x7f0`, count `+0x7fc`; the save's `userDefinedWaypoints`),
+    /// in the game's layout (x, height, y): a patrol's points before its last (slot 0x448,
+    /// [`Mover::add_user_waypoint`]), which the next path request walks through and empties
+    /// ([`Mover::request_path_asked`]).
+    pub user_waypoints: Vec<Vec3>,
     /// `+0x7ec`, `turn_towards_time`: the world time in seconds of its last facet step toward a
     /// target (`FUN_141162db0`).
     pub last_turn: f32,
@@ -280,6 +316,9 @@ fn overlap(a: Vec3, [ar, ad]: [f32; 2], b: Vec3, [br, bd]: [f32; 2]) -> f32 {
     fmath::minss(x, y)
 }
 
+/// A unit's own waypoint on a tile's edge moves this far into the tile (`FUN_14114e920`,
+/// `DAT_142e7f384`; the image role `movement::USER_WAYPOINT_MIDDLE` is still to add).
+const USER_WAYPOINT_MIDDLE: f32 = 0.5;
 /// How far level 0's look ahead reaches on its parent's path, squared (`DAT_14330ebcc`).
 const LOOK_AHEAD: f32 = crate::image::movement::LOOK_AHEAD;
 /// `FUN_141142750` grows the walk's query by the unit's radius times `DAT_142e7f384`.
@@ -691,6 +730,9 @@ enum Next {
     Dispatch,
     /// The step returns.
     Done(Motion),
+    /// The step's end on a loop back at its first waypoint (`LAB_141155637`,
+    /// [`Mover::loop_end`]).
+    LoopEnd,
 }
 
 /// Where the motion step goes on after a level's path request.
@@ -888,6 +930,8 @@ impl Mover {
         // the walk's kept hits, which the step's short paths include (`DAT_143f4a000`, its count
         // `local_19bc`, 0 at the step's start)
         let mut include = Vec::new();
+        // the waypoint the step's walk last went for (`local_1860`), zero before one
+        let mut walked = [0.0; 3];
         loop {
             // a level without a path ends the step (`LAB_14115582c`), as no level does
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
@@ -929,6 +973,7 @@ impl Mover {
                     Next::Again => continue,
                     Next::Dispatch => {}
                     Next::Done(m) => return Ok(m),
+                    Next::LoopEnd => return self.loop_end(dt, walked),
                 }
             }
             match self.paths[0].state {
@@ -937,6 +982,7 @@ impl Mover {
                     Next::Again => continue,
                     // a link of another type: on past the request (state 4 or 5) to the walk
                     Next::Dispatch => {}
+                    Next::LoopEnd => unreachable!("only a reached waypoint ends a loop's step"),
                 },
                 2 => {
                     let plan = plan
@@ -953,8 +999,17 @@ impl Mover {
             }
             let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
             let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
-            let walked = self.walk(me, dt, world, pathing, goal, (now, computer), &mut include);
-            if let Next::Done(m) = walked? {
+            let step = self.walk(
+                me,
+                dt,
+                world,
+                pathing,
+                goal,
+                (now, computer),
+                &mut include,
+                &mut walked,
+            )?;
+            if let Next::Done(m) = step {
                 return Ok(m);
             }
         }
@@ -966,6 +1021,7 @@ impl Mover {
     /// reaches it marks it reached and the walk goes on. A walk to a target ends in range of it
     /// (the waypoint reached); a walk to a point with a range ends where its top path ends (the
     /// unit stops, the step returns 2). A walk that may meet an obstruction is not modelled.
+    /// `walked` takes the waypoint once it is not left behind (`local_1860`).
     #[allow(clippy::too_many_arguments)]
     fn walk(
         &mut self,
@@ -976,6 +1032,7 @@ impl Mover {
         goal: Goal<'_>,
         (now, computer): (u32, bool),
         include: &mut Vec<i32>,
+        walked: &mut Vec3,
     ) -> Result<Next, Unsupported> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
@@ -998,6 +1055,7 @@ impl Mover {
             Reach::Short if 2 < self.substitute_count => self.paths[0].flags |= 3,
             Reach::Short => {}
         }
+        *walked = waypoint;
         if self.stats.radius.iter().all(|&r| 0.0 < r) {
             // FUN_14114e8a0 ignores the unit itself (and a building's annexes), then
             // FUN_14114cc60 asks for the step's hits, grown by the unit's radius times 1
@@ -1079,14 +1137,35 @@ impl Mover {
         Ok(Next::Done(Motion::Moving))
     }
 
+    /// The motion step's end on a loop back at its first waypoint (`LAB_141155637`): the unit
+    /// turns toward its own forward vector on the ground (`FUN_141194060` with 3 holds, which
+    /// zeroes the height; `FUN_141027d00` divides by the length; [`Mover::steer`]), controls its
+    /// speed toward `walked` (slot 0x630, [`Mover::control_speed`]) and, its level waiting for a
+    /// path (state 2), stops (slot 0x5d0).
+    fn loop_end(&mut self, dt: f32, walked: Vec3) -> Result<Motion, Unsupported> {
+        let mut d = self.forward;
+        d[1] = 0.0;
+        let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        let direction = [d[0] / length, d[1] / length, d[2] / length];
+        let clipped = self.steer(direction, dt)?;
+        self.control_speed(walked, clipped);
+        if self.paths.first().is_some_and(|l| l.state == 2) {
+            self.stop()?;
+        }
+        Ok(Motion::Moving)
+    }
+
     /// The waypoint the level walks to was reached (`LAB_14115136c`, the level's bit 0): with
     /// bit 1 the unit takes the waypoint's place (slot 0x58, the position setter); the level moves
     /// on to its next waypoint, dropping those too near the map's edge for the unit
     /// (`FUN_140f98d50`). Then (`LAB_14115192d`) a level with waypoints left waits for a path to
     /// the next (state 2, not level 0); at its last, a unit not yet in range of where it was going
     /// steps back to the waypoint it left and asks again, else the level arrived (state 4). Level
-    /// 0 on a level 1 parent looks ahead first ([`Mover::look_ahead`]). A looping path and a
-    /// waypoint some object stands on are not modelled.
+    /// 0 on a level 1 parent looks ahead first ([`Mover::look_ahead`]). A loop (the path's flags
+    /// bit 0) moves on from the waypoint reached instead (`FUN_140f98bc0` with 1,
+    /// [`looping_next`]) and waits for a path to it (state 2): back at its first waypoint the step
+    /// ends ([`Mover::loop_end`]), else on to the level's state. A waypoint some object stands on
+    /// is not modelled.
     fn reached(
         &mut self,
         me: &mut Me,
@@ -1122,9 +1201,14 @@ impl Mover {
             debug_assert!(removed, "a waypoint below -1");
         }
         if level.path_flags & 1 != 0 {
-            return Err(Unsupported(
-                "a looping path's next waypoint (FUN_140f98bc0)",
-            ));
+            let reached = level.waypoint - 1;
+            level.waypoint = looping_next(level, reached);
+            level.state = 2;
+            return Ok(if level.waypoint == 0 {
+                Next::LoopEnd
+            } else {
+                Next::Dispatch
+            });
         }
         let next = level.waypoint + 1;
         if level.level != 0 && next < level.points.len() as i32 {
@@ -2529,12 +2613,8 @@ impl Mover {
             .filter(|p| !p.is_empty())
     }
 
-    /// The path request of a `MoveTo` (`FUN_14114e410`, without waypoints of its own): one level of
-    /// path data, the top (level 2), whose path runs from the unit to the goal (`x, y, z` on the
-    /// map) unless the two are less than 1e-7 apart on the ground, in state 2: the next motion step
-    /// plans the path to walk. A unit with future path data (`+0x860`) or waypoints of its own
-    /// (`+0x7fc`) goes another way, which the slice does not model (it holds neither). The path is
-    /// made `now`.
+    /// The path request of a `MoveTo` without its unit AI's say ([`Mover::request_path_asked`]
+    /// with [`PathAsk::default`]).
     pub fn request_path(
         &mut self,
         from: [f32; 3],
@@ -2543,29 +2623,102 @@ impl Mover {
         target: i32,
         now: u32,
     ) {
+        self.request_path_asked(from, goal, range, target, now, PathAsk::default());
+    }
+
+    /// The path request of a `MoveTo` (`FUN_14114e410`): one level of path data, the top (level
+    /// 2), in state 2: the next motion step plans the path to walk. Its path (a new one, flags 6,
+    /// made `now`) runs from the unit (`from`, `x, y, z` on the map; `FUN_140f95a50`) through the
+    /// unit's own waypoints, which go (slot 0x450), to the goal unless that is less than 1e-7
+    /// from the last point on the ground (`FUN_140f95a10` each, which leaves out a point equal to
+    /// the one before). A saved patrol's waypoint ([`PathAsk::resume`]) leaves out the unit's
+    /// place and the goal and the level walks on from that waypoint; a path still empty then
+    /// runs from the unit to the goal on the ground (height 0). The path loops with
+    /// [`PathAsk::patrol`] (its flags' bit 0), goes back and forth with
+    /// [`PathAsk::back_and_forth`] (bit 1); an attack move does not loop and sets `+0x7fb`, which
+    /// none clears ([`PathAsk::attack_move`]). A unit with future path data (`+0x860`) goes
+    /// another way, which the slice does not model (it holds none).
+    pub fn request_path_asked(
+        &mut self,
+        from: [f32; 3],
+        goal: [f32; 3],
+        range: f32,
+        target: i32,
+        now: u32,
+        ask: PathAsk,
+    ) {
         let start = vector(from);
-        let end = vector(goal);
-        let mut points = vec![start];
-        let mut d = fmath::sub(end, start);
-        d[1] = 0.0;
-        if EPSILON < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]) {
-            points.push(end);
+        let mut path = Path::default();
+        if ask.resume == -1 {
+            let _ = path.insert(0, start);
         }
-        // a new path's flags are 6 (FUN_140f8f5d0); the request clears bits 0 and 1. The walked
-        // level, if any, is reset for it (FUN_140f98e80: its repath time stays)
-        let path_flags = 6 & !1 & !2;
+        for &w in &self.user_waypoints {
+            let _ = path.push(w);
+        }
+        self.clear_user_waypoints();
+        if ask.resume == -1 {
+            let end = vector(goal);
+            let last = point_or_zero(&path, path.points.len() as i32 - 1);
+            let mut d = fmath::sub(end, last);
+            d[1] = 0.0;
+            if EPSILON < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]) {
+                let _ = path.push(end);
+            }
+        }
+        if path.points.is_empty() {
+            let _ = path.insert(0, start);
+            let _ = path.push([goal[0], 0.0, goal[1]]);
+        }
+        // a new path's flags are 6 (FUN_14152eea0); bit 0 by the patrol, cleared again by an
+        // attack move, then bit 1 by the back and forth. The walked level, if any, is reset for
+        // it (FUN_140f98e80: its repath time stays)
+        let mut path_flags = if ask.patrol { 6 | 1 } else { 6 & !1 };
+        match ask.attack_move {
+            Some(true) => {
+                path_flags &= !1;
+                self.attack_moving = true;
+            }
+            Some(false) => self.attack_moving = false,
+            None => {}
+        }
+        path_flags = if ask.back_and_forth {
+            path_flags | 2
+        } else {
+            path_flags & !2
+        };
         let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
         self.paths = vec![PathData {
             level: 2,
-            points,
+            points: path.points,
             path_flags,
-            waypoint: 1,
+            waypoint: if ask.resume == -1 { 1 } else { ask.resume },
             state: 2,
             range,
             target,
             repath_time,
             ..PathData::new(now)
         }];
+    }
+
+    /// Slot 0x448 (`FUN_14114e920`): a waypoint of the unit's own at `x`, `y` and height `z`,
+    /// held as (x, height, y); an x or y less than 1e-7 above a whole number (`floorf`, `COMISS`,
+    /// `JBE`: not a NaN) moves to that tile's middle. Its array's growth (5, then twice) fails only
+    /// without memory.
+    pub fn add_user_waypoint(&mut self, x: f32, y: f32, z: f32) {
+        let snap = |v: f32| {
+            let whole = libm::floorf(v);
+            if (v - whole).abs() < EPSILON {
+                whole + USER_WAYPOINT_MIDDLE
+            } else {
+                v
+            }
+        };
+        self.user_waypoints.push([snap(x), z, snap(y)]);
+    }
+
+    /// Slot 0x450 (`FUN_141070ce0`): the unit's own waypoints go (their count `+0x7fc` 0).
+    pub fn clear_user_waypoints(&mut self) {
+        self.user_waypoints.clear();
     }
 
     /// The unit vector on the ground from `from` to `to` (slot 194, `0x14114f210`); the forward
@@ -3481,6 +3634,7 @@ mod tests {
             moved_at: [28.0, 89.0, 0.0],
             substitute_count: 0,
             ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
             last_turn: 0.0,
             angle: 0.0,
             move_to_point: None,
@@ -4034,6 +4188,50 @@ mod tests {
         m.paths[0].linked_type = 0;
         assert!(matches!(m.arrived(goal), Ok(Next::Dispatch)));
         assert_eq!(m.paths.len(), 2);
+    }
+
+    /// `LAB_14115136c` on a loop (the path's flags bit 0): the level moves on from the waypoint
+    /// reached (`FUN_140f98bc0` with 1) and waits for a path (state 2), on to its state; back at
+    /// its first waypoint the step ends (`LAB_141155637`): the unit turns toward its own forward
+    /// vector and, its level in state 2, stops.
+    #[test]
+    fn a_loop_s_reached_waypoint_moves_on_and_its_first_ends_the_step() {
+        let looping = |waypoint| {
+            let mut m = builder_9177();
+            m.paths = vec![level(2, &[[28.0, 89.0], [30.0, 88.0], [32.0, 89.0]], 3)];
+            let l = &mut m.paths[0];
+            l.target = -1;
+            l.path_flags = 1;
+            l.waypoint = waypoint;
+            l.flags = 1;
+            m
+        };
+        let mut world = Spatial::new([120, 120]);
+        let mut me = Me {
+            id: 9177,
+            position: [30.0, 88.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let goal = Goal {
+            target: None,
+            gap: FAR,
+            to_end: FAR,
+        };
+        let mut m = looping(1);
+        let next = m.reached(&mut me, &mut world, None, goal, 0);
+        assert!(matches!(next, Ok(Next::Dispatch)));
+        assert_eq!((m.paths[0].waypoint, m.paths[0].state), (2, 2));
+        let mut m = looping(2);
+        let next = m.reached(&mut me, &mut world, None, goal, 0);
+        assert!(matches!(next, Ok(Next::LoopEnd)));
+        assert_eq!((m.paths[0].waypoint, m.paths[0].state), (0, 2));
+        let mut m = looping(2);
+        me.position = [32.0, 89.0, 0.0];
+        m.moved_at = me.position;
+        assert_eq!(m.motion(&mut me, DT, &mut world, None), Ok(Motion::Moving));
+        assert_eq!((m.paths[0].waypoint, m.paths[0].state), (0, 2));
+        assert_eq!(m.velocity.unwrap().velocity, [0.0; 3]);
     }
 
     /// `0x141150f00`: a level whose target is gone walks as to a point (`FUN_1415417a0` finds
@@ -4655,5 +4853,94 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(walker_9177.pauses, [(9175, 0.0 + DT)]);
+    }
+
+    /// `FUN_14114e920` (slot 0x448): a unit's own waypoint is held as (x, height, y); a
+    /// coordinate less than 1e-7 above a whole number moves to the tile's middle, the height
+    /// stays; a NaN stays (`COMISS`, `JBE`). Slot 0x450 (`FUN_141070ce0`) empties the list.
+    #[test]
+    fn a_user_waypoint_on_a_tile_edge_moves_to_the_tile_s_middle() {
+        let mut m = builder_9177();
+        m.add_user_waypoint(25.0, 20.0, 1.0);
+        m.add_user_waypoint(25.25, 20.000_000_1, 0.0);
+        m.add_user_waypoint(f32::NAN, 7.75, 2.0);
+        assert_eq!(m.user_waypoints[0], [25.5, 1.0, 20.5]);
+        // 20.000_000_1 is 20.0 as an f32: on the edge
+        assert_eq!(m.user_waypoints[1], [25.25, 0.0, 20.5]);
+        assert!(m.user_waypoints[2][0].is_nan());
+        assert_eq!(m.user_waypoints[2][1..], [2.0, 7.75]);
+        m.clear_user_waypoints();
+        assert_eq!(m.user_waypoints, Vec::<Vec3>::new());
+    }
+
+    /// `FUN_14114e410`: the unit's own waypoints come between its place and the goal and go;
+    /// a goal less than 1e-7 on the ground from the last of them is left out. A patrol's path
+    /// loops (flags bit 0), a far one goes back and forth (bit 1); an attack move (1) clears bit
+    /// 0 and sets `+0x7fb`, 0 clears it, none leaves it.
+    #[test]
+    fn a_patrol_s_path_request_walks_the_own_waypoints_and_takes_the_patrol_flags() {
+        let mut m = builder_9177();
+        m.user_waypoints = vec![[25.5, 0.0, 20.5], [26.5, 0.0, 20.5]];
+        let ask = PathAsk {
+            patrol: true,
+            back_and_forth: true,
+            attack_move: Some(false),
+            ..PathAsk::default()
+        };
+        m.attack_moving = true;
+        m.request_path_asked([20.0, 20.0, 0.0], [30.0, 20.0, 0.0], 0.0, -1, 500, ask);
+        let top = &m.paths[0];
+        assert_eq!(
+            top.points,
+            vec![
+                [20.0, 0.0, 20.0],
+                [25.5, 0.0, 20.5],
+                [26.5, 0.0, 20.5],
+                [30.0, 0.0, 20.0]
+            ]
+        );
+        assert_eq!((top.path_flags, top.waypoint, top.state), (7, 1, 2));
+        assert_eq!(m.user_waypoints, Vec::<Vec3>::new());
+        assert!(!m.attack_moving);
+        // the goal on the last waypoint is left out; an attack move does not loop
+        m.user_waypoints = vec![[30.0, 0.0, 20.0]];
+        let ask = PathAsk {
+            patrol: true,
+            attack_move: Some(true),
+            ..PathAsk::default()
+        };
+        m.request_path_asked([20.0, 20.0, 0.0], [30.0, 20.0, 0.0], 0.0, -1, 500, ask);
+        assert_eq!(
+            m.paths[0].points,
+            vec![[20.0, 0.0, 20.0], [30.0, 0.0, 20.0]]
+        );
+        assert_eq!(m.paths[0].path_flags, 4);
+        assert!(m.attack_moving);
+        // none leaves the attack move as it was
+        m.request_path([20.0, 20.0, 0.0], [30.0, 20.0, 0.0], 0.0, -1, 500);
+        assert!(m.attack_moving);
+    }
+
+    /// `FUN_14114e410` with a saved patrol path's waypoint (`param_9`): the path is the own
+    /// waypoints alone and the level walks on from that waypoint; without any, the unit's place
+    /// and the goal on the ground (height 0).
+    #[test]
+    fn a_resumed_patrol_s_path_is_its_waypoints_from_the_saved_one() {
+        let mut m = builder_9177();
+        m.user_waypoints = vec![[20.0, 0.0, 20.0], [25.5, 0.0, 20.5], [30.0, 0.0, 20.0]];
+        let ask = PathAsk {
+            patrol: true,
+            back_and_forth: true,
+            resume: 2,
+            ..PathAsk::default()
+        };
+        m.request_path_asked([22.0, 21.0, 0.0], [30.0, 20.0, 1.0], 0.0, -1, 500, ask);
+        assert_eq!(m.paths[0].points.len(), 3);
+        assert_eq!((m.paths[0].waypoint, m.paths[0].path_flags), (2, 7));
+        m.request_path_asked([22.0, 21.0, 0.0], [30.0, 20.0, 1.0], 0.0, -1, 500, ask);
+        assert_eq!(
+            m.paths[0].points,
+            vec![[22.0, 0.0, 21.0], [30.0, 0.0, 20.0]]
+        );
     }
 }

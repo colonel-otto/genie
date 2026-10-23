@@ -5,7 +5,7 @@
 //! `0x140aa29e0`. A `MoveTo` in state 3 asks for a path (`FUN_14114e410`) and turns to state 4; in
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
-use crate::movement::{Me, Motion, Mover, Planning, footprint_gap, footprint_gap_squared};
+use crate::movement::{Me, Motion, Mover, PathAsk, Planning, footprint_gap, footprint_gap_squared};
 use crate::spatial::Spatial;
 use crate::unit_ai::Unsupported;
 
@@ -113,10 +113,10 @@ pub enum Goal {
 /// once ([`walk_on`]); returns the `MoveTo`'s state after it. In range is the footprints' squared
 /// gap (`FUN_14118f8c0`) to a target object, the gap from the unit's footprint to a point, at most
 /// `range` squared. A unit already in range ends the `MoveTo` (`set_state` 1, code 0) when it has a
-/// unit AI not on order 711 or 733, which the caller checks; a `MoveTo` that is not `quiet` (its
-/// `+0x60` clear) then shows the unit's idle sprite (slot 0x68 with slot 0x798's: the master's
-/// standing sprite, [`Mover::shows_standing`]; the sprite itself and `+0x7b8`, cleared, are the
-/// caller's).
+/// unit AI not on order 711 or 733 ([`start_walk_asked`]; here it does); a `MoveTo` that is not
+/// `quiet` (its `+0x60` clear) then shows the unit's idle sprite (slot 0x68 with slot 0x798's: the
+/// master's standing sprite, [`Mover::shows_standing`]; the sprite itself and `+0x7b8`, cleared,
+/// are the caller's).
 pub fn start_walk(
     walk: Walk<'_>,
     goal: Goal,
@@ -135,6 +135,19 @@ pub fn start_walk_or_give_up(
     goal: Goal,
     range: f32,
     quiet: bool,
+) -> Result<Option<MoveTo>, Unsupported> {
+    start_walk_asked(walk, goal, range, quiet, PathAsk::default())
+}
+
+/// [`start_walk_or_give_up`] with what the unit's AI says (`0x140aa2a70` in state 3,
+/// [`PathAsk`]): a unit in range ends the `MoveTo` only when [`PathAsk::ends_in_range`], and the
+/// path request takes the rest ([`Mover::request_path_asked`]).
+pub fn start_walk_asked(
+    walk: Walk<'_>,
+    goal: Goal,
+    range: f32,
+    quiet: bool,
+    ask: PathAsk,
 ) -> Result<Option<MoveTo>, Unsupported> {
     let (point, target, radius) = match goal {
         Goal::Target(id) => {
@@ -156,14 +169,14 @@ pub fn start_walk_or_give_up(
     } else {
         footprint_gap_squared(walk.me.position, ground, point, radius)
     };
-    if squared <= range * range {
+    if ask.ends_in_range && squared <= range * range {
         if !quiet {
             mover.shows_standing();
         }
         return Ok(Some(MoveTo::Arrived));
     }
     let now = walk.plan.as_ref().map_or(0, |p| p.now);
-    mover.request_path(walk.me.position, point, range, target, now);
+    mover.request_path_asked(walk.me.position, point, range, target, now, ask);
     // the MoveTo's point (`+0x38`): the target's place when it asks for the path
     mover.move_to_point = (target != -1).then_some(point);
     walk_or_give_up(Walk {
@@ -391,9 +404,10 @@ impl MoveToAction {
         }
     }
 
-    /// One update (`0x140aa2240`). A target that is gone (the update's first check: notify 0x1fb,
+    /// One update (`0x140aa2240`), its state 3 with what the unit's AI says (`ask`,
+    /// [`start_walk_asked`]). A target that is gone (the update's first check: notify 0x1fb,
     /// code 4) is not modelled.
-    pub fn update(&mut self, mut walk: Walk<'_>) -> Result<MoveStep, Unsupported> {
+    pub fn update(&mut self, mut walk: Walk<'_>, ask: PathAsk) -> Result<MoveStep, Unsupported> {
         let mut step = MoveStep::default();
         if self.target != -1 && walk.world.get_known(self.target)?.is_none() {
             return Err(Unsupported("a MoveTo of its own whose target is gone"));
@@ -443,7 +457,7 @@ impl MoveToAction {
                     };
                 }
                 self.state = MoveTo::Moving;
-                match start_walk_or_give_up(walk.reborrow(), goal, self.range, false)? {
+                match start_walk_asked(walk.reborrow(), goal, self.range, false, ask)? {
                     Some(state) => self.state = state,
                     None => step.gave_up = true,
                 }

@@ -16,6 +16,9 @@ use crate::movement::PathData;
 
 mod command;
 mod create;
+
+/// What `commandMoveTo` is told besides the target and the point ([`crate::turn::Turns::command_move_to`]).
+pub use command::MoveTo as CommandMoveTo;
 pub mod formation;
 mod layout;
 mod motion;

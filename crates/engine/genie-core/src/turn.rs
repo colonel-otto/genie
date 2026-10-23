@@ -569,6 +569,19 @@ pub enum Command {
         /// The units.
         ids: Vec<i32>,
     },
+    /// PATROL (0x15, `FUN_140e69cc0`): the units `ids` (the packet's count at `+0x4`, the ids
+    /// from `+0x5c`) patrol through `waypoints` (1 to 10, their count at `+0xb`, x from `+0xc`, y
+    /// from `+0x34`); `reset` (`+0x8`) drops their unit AIs' saved patrols ([`Turns::patrol`]).
+    Patrol {
+        /// The player whose units patrol.
+        player: usize,
+        /// The units.
+        ids: Vec<i32>,
+        /// The waypoints.
+        waypoints: Vec<[f32; 2]>,
+        /// `+0x8`.
+        reset: bool,
+    },
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): the villagers of `ids` (at most 60, the decoder's)
     /// seek shelter in the player's buildings ([`Turns::seek_shelter`]).
     SeekShelter {
@@ -1205,7 +1218,29 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     }
 }
 
+/// A unit's slot 0x468 (`FUN_141157c50`, `getPatrolInformation`): its top level's path
+/// (`FUN_140f960f0`) copied into a new path ([`crate::tile_path::Path::append`]: its points, its
+/// length or one measured) with its flags, and that level's waypoint; None without path data or
+/// a path at the top.
+fn patrol_information(mover: Option<&Mover>) -> Option<(crate::unit_ai::PatrolPath, i32)> {
+    let top = mover?.paths.last().filter(|l| l.has_path)?;
+    let mut path = crate::tile_path::Path::default();
+    path.append(&crate::tile_path::Path {
+        points: top.points.clone(),
+        length: top.length,
+    });
+    let saved = crate::unit_ai::PatrolPath {
+        path,
+        flags: top.path_flags,
+    };
+    Some((saved, top.waypoint))
+}
+
 impl crate::unit_ai::UnitSide for UnitView<'_> {
+    fn patrol_information(&self) -> Option<(crate::unit_ai::PatrolPath, i32)> {
+        patrol_information(self.unit.mover.as_ref())
+    }
+
     /// Slot 0x278 (`FUN_141158720`, [`Spatial::point_clear`]): the unit, of its radius and its
     /// restriction's terrain classes, could stand at `point`.
     fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, Unsupported> {
@@ -2667,11 +2702,14 @@ impl Unit {
                     self.last_human_order = self.last_human_order.min(cap);
                     c.spatial.set_gait(self.id, self.gait());
                 }
-                Effect::Move(m) => {
+                Effect::Move(_) | Effect::RestorePatrol => {
                     let class = class.ok_or(Unsupported(
                         "an AI move of a master the slice does not have",
                     ))?;
-                    self.ai_move(m, class)?;
+                    match e {
+                        Effect::Move(m) => self.ai_move(m, class)?,
+                        _ => self.restore_patrol(class)?,
+                    }
                 }
                 Effect::MoveAside(m) => c.move_aside.push(m),
                 Effect::OrderOnTarget(order) => {
@@ -4810,6 +4848,7 @@ impl Unit {
             moved_at: [0.0; 3],
             substitute_count: 0,
             ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
             last_turn: 0.0,
             angle,
             move_to_point: None,
@@ -6381,7 +6420,22 @@ impl Unit {
             self.fly(c, others)?;
         }
         let step = match self.move_to.as_mut() {
-            Some(move_to) => move_to.update(c.walk(self.mover.as_mut(), me))?,
+            Some(move_to) => {
+                // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
+                // point: the goal, or the target's place (a target gone fails the update first)
+                let point = match (move_to.target, move_to.goal) {
+                    (-1, goal) => goal.map(|p| [p[0], p[1]]),
+                    (id, _) => c.spatial.get(id).map(|t| [t.position[0], t.position[1]]),
+                };
+                let ask = match point {
+                    Some(p) if move_to.state == MoveTo::Start => {
+                        let at = [me.position[0], me.position[1]];
+                        UnitAi::path_ask(self.ai.as_mut(), at, p)
+                    }
+                    _ => crate::movement::PathAsk::default(),
+                };
+                move_to.update(c.walk(self.mover.as_mut(), me), ask)?
+            }
             None => crate::move_to::MoveStep::default(),
         };
         if step.gave_up {
@@ -7347,6 +7401,9 @@ impl Unit {
                         moving: g.motion.moving(),
                         member_moving: self.mover.as_ref().is_some_and(Mover::is_moving),
                     }),
+                top_target: self.top_target_seen(c, others),
+                min_range: master.map_or(0.0, |m| m.min_range),
+                attack_moving: self.mover.as_ref().is_some_and(|m| m.attack_moving),
             };
             // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
             let mut ai = self.ai.take().expect("filtered above");
@@ -7429,6 +7486,61 @@ impl Unit {
             return Ok(Step::Captured(k));
         }
         Ok(leaves)
+    }
+
+    /// Slot 400 (`FUN_14106d090`) as the unit AI reads it: its top action's target as the world
+    /// holds it (its owner's other objects as they stand, the other players' lists), with its
+    /// type, place and its master's radii; None without one.
+    fn top_target_seen(
+        &self,
+        c: &Context<'_>,
+        others: &[Self],
+    ) -> Option<crate::unit_ai::TopTarget> {
+        let id = self.top_target().filter(|&t| t != -1)?;
+        let (owner, u) = others
+            .iter()
+            .find(|u| u.id == id)
+            .map(|u| (c.player, u))
+            .or_else(|| c.foreign.find(id))?;
+        let m = c.every_masters.get(owner)?.get(u.life.master_id)?;
+        Some(crate::unit_ai::TopTarget {
+            id,
+            kind: m.kind,
+            position: u.position,
+            radius: m.radius,
+        })
+    }
+
+    /// `restorePatrolInformation`'s unit part ([`crate::unit_ai::Effect::RestorePatrol`]): its own
+    /// waypoints go (slot 0x450) and become the saved patrol's points (slot 0x448 each, as x, y
+    /// and height), and it moves to the saved waypoint (slot 0x340: range 0, forced, running; a
+    /// waypoint outside the path is the game's static zero point).
+    fn restore_patrol(&mut self, class: i16) -> Result<(), Unsupported> {
+        let Some(ai) = self.ai.as_ref() else {
+            return Ok(());
+        };
+        let Some(saved) = ai.patrol_path.as_ref() else {
+            return Ok(());
+        };
+        let points = saved.path.points.clone();
+        let w = usize::try_from(ai.patrol_waypoint)
+            .ok()
+            .and_then(|i| points.get(i))
+            .copied()
+            .unwrap_or([0.0; 3]);
+        if let Some(m) = self.mover.as_mut() {
+            m.clear_user_waypoints();
+            for p in &points {
+                m.add_user_waypoint(p[0], p[2], p[1]);
+            }
+        }
+        let run = AiMove {
+            point: [w[0], w[2], w[1]],
+            range: 0.0,
+            force: true,
+            walk: false,
+        };
+        self.ai_move(run, class)
     }
 
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
@@ -9026,6 +9138,8 @@ pub struct Turns {
     pub groups: crate::group::UnitGroups,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
     pub dt_seconds: f32,
+    /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).
+    pub dt: u32,
     /// The history period (`world+0x8b8`, `time_slice`): the `.dat`'s, which the world reads
     /// after its constructor's [`HISTORY_PERIOD`] ([`crate::history::History::update`]).
     pub history_period: i32,
@@ -9232,6 +9346,7 @@ impl Turns {
             techs: Vec::new(),
             groups: crate::group::UnitGroups::default(),
             dt_seconds: 0.0,
+            dt: 0,
             history_period: HISTORY_PERIOD,
             allow_gaia_capture: Vec::new(),
         }
@@ -9434,6 +9549,16 @@ impl Turns {
             }
             Command::Stop { player, ref ids } => {
                 if let Err(e) = self.stop_command(player, ids) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::Patrol {
+                player,
+                ref ids,
+                ref waypoints,
+                reset,
+            } => {
+                if let Err(e) = self.patrol(player, ids, waypoints, reset) {
                     self.stop_player(player, e);
                 }
             }
@@ -9732,6 +9857,7 @@ impl Turns {
             moved_at: position,
             substitute_count: 0,
             ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
             last_turn: 0.0,
             angle: 0.0,
             move_to_point: None,
@@ -11665,6 +11791,7 @@ impl Turns {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
         self.dt_seconds = seconds(dt);
+        self.dt = dt;
         self.streams.seed_all(self.frame_seed);
         self.sync_moving();
         for command in commands {
@@ -14244,7 +14371,7 @@ mod tests {
         let unit = |id: i32| Unit {
             id,
             ai: Some(UnitAi {
-                patrol_path: true,
+                patrol_path: Some(crate::unit_ai::PatrolPath::default()),
                 patrol_waypoint: 2,
                 adjusted_idle_timeout: 100,
                 secondary_timer: 900,
@@ -14261,7 +14388,7 @@ mod tests {
         t.reset_order_units(&[2, 9, 1]);
         for u in t.players[1].objects.iter().chain(&t.players[1].sleeping) {
             let ai = u.ai.as_ref().unwrap();
-            assert_eq!((ai.patrol_path, ai.secondary_timer), (false, 750));
+            assert_eq!((ai.patrol_path.is_none(), ai.secondary_timer), (true, 750));
         }
     }
 
@@ -15613,6 +15740,62 @@ mod tests {
         assert_eq!(
             t.players[0].freezes.first().map(|f| f.2),
             Some(Unsupported("a spawn without the players' sight"))
+        );
+    }
+
+    /// Slot 0x468 (`FUN_141157c50`): the top level's path, its points, length and flags, and
+    /// that level's waypoint; nothing without a path at the top or without movement state.
+    #[test]
+    fn a_unit_s_patrol_information_is_its_top_path_and_waypoint() {
+        let mut m = crate::hunt::tests::walker();
+        let mut walked = crate::movement::PathData::without_path();
+        walked.has_path = true;
+        walked.points = vec![[1.0, 0.0, 1.0], [2.0, 0.0, 1.0]];
+        let mut top = crate::movement::PathData::without_path();
+        top.has_path = true;
+        top.points = vec![[20.0, 0.0, 20.0], [30.0, 0.0, 20.0]];
+        top.length = 10.0;
+        top.path_flags = 7;
+        top.waypoint = 1;
+        m.paths = vec![walked, top];
+        let (saved, waypoint) = patrol_information(Some(&m)).unwrap();
+        assert_eq!(saved.path.points, [[20.0, 0.0, 20.0], [30.0, 0.0, 20.0]]);
+        assert_eq!((saved.path.length, saved.flags, waypoint), (10.0, 7, 1));
+        m.paths[1].has_path = false;
+        assert_eq!(patrol_information(Some(&m)), None);
+        assert_eq!(patrol_information(None), None);
+    }
+
+    /// `restorePatrolInformation`'s unit part: the own waypoints become the saved patrol's
+    /// points (slot 0x448, a whole coordinate moved to the tile's middle), and a forced, running
+    /// `MoveTo` goes to the saved waypoint.
+    #[test]
+    fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
+        let saved = crate::unit_ai::PatrolPath {
+            path: crate::tile_path::Path {
+                points: vec![[20.0, 0.5, 20.0], [30.0, 0.5, 20.25]],
+                length: 10.0,
+            },
+            flags: 7,
+        };
+        let mut u = Unit {
+            mover: Some(crate::hunt::tests::walker()),
+            ai: Some(UnitAi {
+                patrol_path: Some(saved),
+                patrol_waypoint: 1,
+                ..UnitAi::default()
+            }),
+            ..Unit::default()
+        };
+        u.restore_patrol(6).unwrap();
+        assert_eq!(
+            u.mover.as_ref().unwrap().user_waypoints,
+            [[20.5, 0.5, 20.5], [30.5, 0.5, 20.25]]
+        );
+        let move_to = u.move_to.unwrap();
+        assert_eq!(
+            (move_to.goal, move_to.range, move_to.run),
+            (Some([30.0, 20.25, 0.5]), 0.0, true)
         );
     }
 }
