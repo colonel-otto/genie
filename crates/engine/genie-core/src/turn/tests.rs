@@ -1220,6 +1220,52 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     );
 }
 
+/// Slot 0x230's build order (`0x2be`): slot 0xf0 builds the foundation (the builder's task by
+/// the swap group), then the tail makes the order the AI's with its priority, leaving a patrol
+/// order: its secondary timer capped at 750 and an adjusted idle timeout of 750 redrawn.
+#[test]
+fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
+    use crate::unit_ai::{BUILD_ACTION, PATROL, QueuedOrder};
+    let order = QueuedOrder {
+        issuer: 1,
+        order: BUILD_ORDER,
+        priority: 100,
+        target: 10028,
+        target_owner: 1,
+        point: [30.0, 88.0, 0.0],
+        range: 0.0,
+        shown: [30.0, 88.0],
+        ready: true,
+        target_type: 70,
+    };
+    let mut t = sent_off_world(vec![]);
+    {
+        let ai = t.players[1].objects[0].ai.as_mut().unwrap();
+        ai.current_order = PATROL;
+        ai.secondary_timer = 900;
+        ai.adjusted_idle_timeout = 750;
+        ai.idle_timeout = 3000;
+    }
+    let draws = t.streams.get(Stream::Ai).draws;
+    t.build_order(1, 0, order).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.master_id, 118);
+    assert!(v.build.is_some());
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (
+            ai.current_order,
+            ai.order_priority,
+            ai.current_action,
+            ai.current_target
+        ),
+        (BUILD_ORDER, 100, BUILD_ACTION, 10028)
+    );
+    assert_eq!(ai.secondary_timer, 750);
+    assert_ne!(ai.adjusted_idle_timeout, 750);
+    assert_eq!(t.streams.get(Stream::Ai).draws, draws + 1);
+}
+
 #[test]
 fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_units() {
     // MarvinBlue/426048731 tick 281: player 1's BUILD draws three AI values in the command
