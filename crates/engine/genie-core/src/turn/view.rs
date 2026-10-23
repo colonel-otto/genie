@@ -93,6 +93,9 @@ pub(in crate::turn) struct Context<'a> {
     /// ([`Unit::delete_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
     /// builder less ([`Turns::leave_builders`]), the caller's before the releases.
     pub(in crate::turn) builder_leaves: Vec<i32>,
+    /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
+    /// building: the caller runs the group's removeUnit ([`Turns::remove_unit`]).
+    pub(in crate::turn) left_group: Option<(i32, i32)>,
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
     pub(in crate::turn) made: Vec<Unit>,

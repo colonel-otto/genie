@@ -391,16 +391,21 @@ impl Turns {
                 player,
                 attribute_adds: &mut adds,
                 firepower: 0.0,
+                left_group: None,
             };
             if !unit.enter_building(building, inside, &mut w)? {
                 return Err(Unsupported("an Enter in reach that did not get in"));
             }
             unit.entered(&mut w)?;
-            Ok(w.firepower)
+            Ok((w.firepower, w.left_group))
         })();
         self.players[player].objects[idx] = unit;
-        let firepower = result?;
+        let (firepower, left_group) = result?;
         let id = self.players[player].objects[idx].id;
+        // its removeUnit from the unit group it left (FUN_14102c160), when the world holds it
+        if let Some(g) = left_group.filter(|&g| self.groups.get(g).is_some()) {
+            let _ = self.remove_unit(g, id, target, false)?;
+        }
         if let Some(b) = self.players[player]
             .objects
             .iter_mut()
@@ -2161,6 +2166,60 @@ pub(crate) mod tests {
             },
         );
         t
+    }
+
+    /// `FUN_1411921d0`, the enter itself: a member of a unit group (`+0x6d0`) leaves the group
+    /// the world holds (removeUnit with the building and 0, `FUN_14102c160`) and stands (slot
+    /// 0x560) between leaving the mesh and joining the building.
+    #[test]
+    fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
+        let mut t = let_out_world();
+        let mut v = unit(400, VILLAGER, 25.0);
+        v.position = [12.5, 10.0, 0.0];
+        let mut walker = crate::hunt::tests::walker();
+        walker.stats = standing();
+        v.mover = Some(walker);
+        v.group.id = 7;
+        v.town_bell.flag = true;
+        t.players[1].objects.push(v);
+        t.spatial.insert(
+            400,
+            crate::spatial::Placed {
+                position: [12.5, 10.0, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: 1,
+                master: VILLAGER,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        let member = |id| crate::group::Member {
+            id,
+            ..crate::group::Member::default()
+        };
+        t.groups.groups.push(crate::group::UnitGroup {
+            id: 7,
+            owner: 1,
+            members: vec![member(401), member(400)],
+            ..crate::group::UnitGroup::default()
+        });
+        let idx = t.players[1].objects.len() - 1;
+        let garrison = Task {
+            work_range: 1.0,
+            ..task(GARRISON, 3)
+        };
+        t.start_enter(1, idx, 100, &garrison, [10.0, 10.0, 0.0], false)
+            .unwrap();
+        let v = &t.players[1].objects[idx];
+        assert_eq!((v.life.inside, v.group.id), (Some(100), -1));
+        assert!(v.mover.as_ref().unwrap().speed_stopped);
+        let members: Vec<i32> = t.groups.groups[0].members.iter().map(|m| m.id).collect();
+        assert_eq!(members, [401]);
     }
 
     /// Puts unit `id` of player `p` and master `m` inside the town centre.

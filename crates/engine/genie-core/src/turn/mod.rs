@@ -1036,6 +1036,7 @@ impl Turns {
                     releases: Vec::new(),
                     takes: Vec::new(),
                     builder_leaves: Vec::new(),
+                    left_group: None,
                     made: Vec::new(),
                     ghost_deaths: Vec::new(),
                     started: Vec::new(),
@@ -1122,6 +1123,7 @@ impl Turns {
                 let ai_resume = c.ai_resume.take();
                 let releases = std::mem::take(&mut c.releases);
                 let builder_leaves = std::mem::take(&mut c.builder_leaves);
+                let left_group = c.left_group.take().map(|(g, b)| (g, unit.id, b));
                 let (takes, made) = (std::mem::take(&mut c.takes), std::mem::take(&mut c.made));
                 let (ghost_deaths, started, unwatched, evacuations) = (
                     std::mem::take(&mut c.ghost_deaths),
@@ -1380,6 +1382,14 @@ impl Turns {
                 }
                 if let Some(v) = victim
                     && let Err(e) = self.set_victim(&v)
+                {
+                    result = result.and(Err(e));
+                }
+                // an entered unit's removeUnit from its group (FUN_14102c160), when the world
+                // holds the group (FUN_14152ff40)
+                if let Some((g, id, building)) =
+                    left_group.filter(|&(g, ..)| self.groups.get(g).is_some())
+                    && let Err(e) = self.remove_unit(g, id, building, false)
                 {
                     result = result.and(Err(e));
                 }

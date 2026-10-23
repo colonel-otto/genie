@@ -551,6 +551,7 @@ impl Unit {
                 player: c.player,
                 attribute_adds: &mut c.attribute_adds,
                 firepower: 0.0,
+                left_group: None,
             };
             if !self.enter_building(building, inside, &mut w)? {
                 return Err(Unsupported("an Enter that did not get in (state 2)"));
@@ -558,6 +559,7 @@ impl Unit {
             // the update's own set_state(1) after the enter's
             self.entered(&mut w)?;
             let firepower = w.firepower;
+            c.left_group = w.left_group.map(|g| (g, enter.target));
             if let Some(b) = others.iter_mut().find(|u| u.id == enter.target) {
                 b.firepower += firepower;
                 b.garrison.push(self.id);
@@ -599,7 +601,9 @@ impl Unit {
     /// task (0x88) on the building's are not modelled. Then slot 0x1a0 (`FUN_141212e10` ->
     /// `FUN_141084b30` -> `FUN_1411921d0`): with room in the building, the unit's sight goes from
     /// its tile (slot 0x1d8), it leaves its tile's list (`FUN_140f5f560`), the obstruction
-    /// manager (`FUN_141055b40`) and the mesh (`+0x660`, `FUN_141053840`), and joins the
+    /// manager (`FUN_141055b40`) and the mesh (`+0x660`, `FUN_141053840`), a member of a unit
+    /// group leaves it (`FUN_14102c160`, the caller's: [`EnterWorld::left_group`]) and stands
+    /// (slot 0x560), and it joins the
     /// building's (slot 0x1c0, `FUN_1411cb850` -> `FUN_14118c890`: `+0x2f0`, at the building's
     /// x and y); its records leave the registry's lists (`FUN_14128a1d0` from its mask to 0);
     /// the building's sight takes a circle of 5 (slot 0x1d0 with 5) and the villager's town-bell
@@ -691,6 +695,14 @@ impl Unit {
         let at = building.position;
         w.spatial.go_inside(self.id, at);
         w.pathing.removed(self.id);
+        // a member of a unit group (+0x6d0) leaves the group the world holds (removeUnit with the
+        // building and 0, FUN_14102c160: the caller's, `left_group`), then stands (slot 0x560)
+        if self.group.id != -1 {
+            w.left_group = Some(self.group.id);
+            if let Some(m) = self.mover.as_mut() {
+                m.stand()?;
+            }
+        }
         let building_radius = w.spatial.get(target).map_or(bm.radius, |p| p.radius);
         self.life.inside = Some(target);
         // the building's slot 0x1c0 (FUN_1411cb850 -> FUN_14120b790): a unit (type 70) adds its
@@ -6224,6 +6236,10 @@ pub(crate) struct EnterWorld<'a> {
     /// What the building's volleys gain (`+0xa00`, [`crate::garrison::share`]), which the caller
     /// adds.
     pub firepower: f32,
+    /// The unit group the unit was a member of (`+0x6d0`): the caller runs the group's removeUnit
+    /// (`FUN_14102c160` with the building and 0, [`crate::turn::Turns::remove_unit`]) when the
+    /// world holds it (`FUN_14152ff40`).
+    pub left_group: Option<i32>,
 }
 
 /// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument
