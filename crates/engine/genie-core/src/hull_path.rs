@@ -1,6 +1,8 @@
 //! The obstruction manager's old short pather (`MShortPather`, the names of the `AoK HD` PDB; build
 //! 158041's `FindShortPath` is `FUN_140f85580`): a search around convex hulls of the obstructions
-//! near a straight walk, for the length of a unit's short path to an object (slot 0x3e8).
+//! near a straight walk: the short path of a unit wider than half a tile (`FUN_140f9e540`'s
+//! dispatch, [`crate::movement::short_path_for`]) and the length of a unit's short path to an
+//! object (slot 0x3e8).
 //!
 //! The pather first tries the quick path (`findQuickPath`): the straight walk, or one detour
 //! around a single square obstruction. Else it wraps the obstructions of the tiles about the walk
@@ -15,18 +17,21 @@
 //! by two tiles each way, once. The path found is smoothed (`buildPath`: a node that sees its
 //! grandparent skips its parent).
 //!
-//! Every line test is the obstruction manager's (flags 0x40: moving objects do not count), with the
-//! unit's radius halved as the buffer, and the pather's ignore list: the unit, its target and the
-//! tile under a one-tile target that the unit's terrain cannot cross.
+//! Every line test is the obstruction manager's (flags 0x40: moving objects do not count unless
+//! the caller's include list holds them), with the unit's radius halved as the buffer, and the
+//! pather's ignore list: the caller's objects (slot 0x3e8's the unit and its target) and the tile
+//! under a listed one-tile object that the unit's terrain cannot cross.
 
 use crate::checkpoint::cvttss2si;
 use crate::fmath::{at_most_or_unordered, below_or_unordered, maxss, minss, sqrt};
-use crate::spatial::{GATE_CLASS, Placed, Spatial, tile_record_id};
+use crate::spatial::{GATE_CLASS, Hit, Placed, Spatial, tile_record_id};
 use crate::unit_ai::Unsupported;
 
 /// A point on the map, x and y.
 type Point = [f32; 2];
 
+/// How many records the manager's query lists before it stops (`FUN_141051900`: `0x18 < count`).
+const LINE_HITS: usize = 25;
 /// `MShortPather::IterationCap` (`+0x18`, 0x40 from the constructor `FUN_140f84e40`): how many
 /// nodes the search expands.
 const ITERATION_CAP: i32 = 0x40;
@@ -538,10 +543,10 @@ impl Waypoints {
     }
 }
 
-/// What the pather knows of its target: its id, place and radii.
+/// What the pather knows of its target object: its place, radii and speed (its id is the
+/// search's, -1 for the goal query's target).
 #[derive(Clone, Copy, Debug)]
 struct Target {
-    id: i32,
     at: Point,
     radius: [f32; 2],
     speed: f32,
@@ -552,6 +557,24 @@ struct Target {
 struct Within {
     result: u8,
     left_boxes: bool,
+}
+
+/// What the obstruction manager's one old pather (`+0x380`) carries from a search to the next:
+/// its area and its hulls, which a kept search (`FindShortPath`'s argument 11) reuses. The
+/// default is the constructor's (`FUN_140f84e40`): the area -1, no hulls.
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeptHulls {
+    area: [i32; 4],
+    hulls: Vec<Hull>,
+}
+
+impl Default for KeptHulls {
+    fn default() -> Self {
+        Self {
+            area: [-1; 4],
+            hulls: Vec::new(),
+        }
+    }
 }
 
 /// Slot 0x678 of an object for a player (`FUN_1411d4a30`, a gate's): whether the player may pass
@@ -653,8 +676,8 @@ pub fn quick_reach_from(
 
 impl<'w> HullPather<'w> {
     /// The pather for unit `unit` (terrain `mask`, `radius`, its player) with the ignore list slot
-    /// 0x3e8 sets (`FUN_140f89e40` with the unit and `target`): both objects, and the tile under a
-    /// target of one tile on a tile's middle whose terrain the mask lacks.
+    /// 0x3e8 sets ([`HullPather::for_list`] with the unit and `target`): both objects, and the
+    /// tile under one of one tile on a tile's middle whose terrain the mask lacks.
     ///
     /// The rest is `MShortPather`'s constructor (`FUN_140f84e40`): no hulls (`+0x8`, `+0x10`), the
     /// open lists' heads without links (`+0x28`..`+0x38`, `+0x60`..`+0x70`), two empty closed
@@ -668,14 +691,30 @@ impl<'w> HullPather<'w> {
     /// across searches holds the same state.
     #[must_use]
     pub fn new(world: &'w Spatial, unit: i32, target: i32, mask: u8, radius: f32) -> Self {
-        let mut ignore = vec![unit, target];
-        for id in [unit, target] {
+        let player = world
+            .get(unit)
+            .map_or(-1, |p| i32::try_from(p.player).unwrap_or(-1));
+        Self::for_list(world, &[unit, target], mask, radius, player)
+    }
+
+    /// The pather for a unit of terrain `mask`, `radius` and player `player` (`FindShortPath`'s
+    /// argument 12) with the ignore list `FUN_140f89e40` sets from the caller's `ids`: each id in
+    /// turn (`FUN_140f8a960` appends, no test), then for each listed object the world holds whose
+    /// master's radii are 0.5 and 0.5 and whose place lies on a tile's centre (`fmodf` by 1 is
+    /// 0.5 on both axes), the tile's record ([`tile_record_id`], of `floorf` of each) when the
+    /// tile's word holds a terrain class the mask lacks. The list is on (`+0xc0`) only for ids
+    /// given; an empty one ignores nothing either way. The rest is the constructor's state
+    /// ([`HullPather::new`]).
+    #[must_use]
+    pub fn for_list(world: &'w Spatial, ids: &[i32], mask: u8, radius: f32, player: i32) -> Self {
+        let mut ignore = ids.to_vec();
+        for &id in ids {
             let Some(p) = world.get(id) else {
                 continue;
             };
             let [x, y, _] = p.position;
             if p.radius == [HALF, HALF] && x % ONE == HALF && y % ONE == HALF {
-                let (tx, ty) = (x.floor() as i32, y.floor() as i32);
+                let (tx, ty) = (cvttss2si(x.floor()), cvttss2si(y.floor()));
                 let word = world.tiles().word(tx, ty).unwrap_or(0);
                 if word & u64::from(mask ^ 0xff) != 0 {
                     ignore.push(tile_record_id(tx, ty));
@@ -686,9 +725,7 @@ impl<'w> HullPather<'w> {
             world,
             mask,
             radius,
-            player: world
-                .get(unit)
-                .map_or(-1, |p| i32::try_from(p.player).unwrap_or(-1)),
+            player,
             gates: None,
             include: Vec::new(),
             buffer: None,
@@ -719,6 +756,27 @@ impl<'w> HullPather<'w> {
     pub fn including(mut self, ids: &[i32]) -> Self {
         self.include = ids.to_vec();
         self
+    }
+
+    /// The pather with the area and the hulls a search of the manager's one pather left
+    /// ([`HullPather::kept`]), which a kept search (`FindShortPath`'s argument 11,
+    /// [`HullPather::find_keeping`]) reuses.
+    #[must_use]
+    pub fn with_kept(mut self, kept: KeptHulls) -> Self {
+        self.area = kept.area;
+        self.hulls = kept.hulls;
+        self
+    }
+
+    /// What this pather's searches leave for the next search of the manager's one pather
+    /// (`+0x380`): its area (`+0xe8`) and its hulls (`+0x8`, `+0x10`), the only state a search
+    /// reads that an earlier one wrote.
+    #[must_use]
+    pub fn kept(&self) -> KeptHulls {
+        KeptHulls {
+            area: self.area,
+            hulls: self.hulls.clone(),
+        }
     }
 
     // The node lists.
@@ -916,10 +974,76 @@ impl<'w> HullPather<'w> {
 
     // The world's tests.
 
-    /// The manager's line test with the pather's buffer and ignore list.
+    /// The manager's line test (`FUN_141052b90`, then `FUN_141052350` with flags 0x40) with the
+    /// pather's buffer, ignore list and include list: Spatial's pather query, which leaves every
+    /// moving record out, or an included one that moves ([`HullPather::included_movers`]).
     fn blocked(&self, a: Point, b: Point) -> Result<bool, Unsupported> {
-        self.world
-            .pather_blocked(a, b, self.buffer, self.mask, &self.ignore)
+        if self
+            .world
+            .pather_blocked(a, b, self.buffer, self.mask, &self.ignore)?
+        {
+            return Ok(true);
+        }
+        Ok(!self.included_movers(a, b)?.is_empty())
+    }
+
+    /// The records the walk `a` -> `b` meets, at most [`LINE_HITS`] (`FUN_141052b90`, then
+    /// `FUN_141051900` with flags 0x40), with the pather's buffer, ignore list and include list:
+    /// Spatial's pather query and the included objects that move
+    /// ([`HullPather::included_movers`]). The callers read how many and which, not their order.
+    fn hits(&self, a: Point, b: Point) -> Result<Vec<Hit>, Unsupported> {
+        let mut hits = self
+            .world
+            .pather_hits(a, b, self.buffer, self.mask, &self.ignore)?;
+        for id in self.included_movers(a, b)? {
+            if let Some(p) = self.world.get(id) {
+                hits.push(Hit {
+                    id,
+                    bounds: p.bounds(),
+                });
+            }
+        }
+        hits.truncate(LINE_HITS);
+        Ok(hits)
+    }
+
+    /// The included objects (`FindShortPath`'s arguments 13 and 14) that move, but the ignored
+    /// ones, whose records the walk `a` -> `b` meets: the line tests leave a moving record (its
+    /// `+3` bit 0x10) out only when the include list does not hold it (`FUN_141051e00`, before
+    /// the ignore list). Spatial's pather query leaves every moving record out; its line query
+    /// (flags 0x10) tests the same records alike, the buffer the grow, and leaves none out, at
+    /// most [`LINE_HITS`] a call: what it lists goes into its ignore list until a call lists
+    /// fewer.
+    fn included_movers(&self, a: Point, b: Point) -> Result<Vec<i32>, Unsupported> {
+        let movers: Vec<i32> = self
+            .include
+            .iter()
+            .copied()
+            .filter(|id| {
+                !self.ignore.contains(id) && self.world.gait(*id).is_some_and(|g| g.moving)
+            })
+            .collect();
+        let mut met = Vec::new();
+        if movers.is_empty() {
+            return Ok(met);
+        }
+        let grow = self.buffer.unwrap_or(0.0);
+        let mut skip = self.ignore.clone();
+        loop {
+            let hits = self.world.line_hits(a, b, grow, None, &skip)?;
+            let full = LINE_HITS <= hits.len();
+            for id in hits {
+                if movers.contains(&id) && !met.contains(&id) {
+                    met.push(id);
+                }
+                if !skip.contains(&id) {
+                    skip.push(id);
+                }
+            }
+            if !full || met.len() == movers.len() {
+                return Ok(met);
+            }
+        }
     }
 
     /// `MShortPather::buildPath` (`FUN_140f8bcd0`): from `end` back, a node that sees its
@@ -1274,9 +1398,7 @@ impl<'w> HullPather<'w> {
         target: Option<i32>,
         path: &mut Waypoints,
     ) -> Result<bool, Unsupported> {
-        let hits = self
-            .world
-            .pather_hits(from, to, self.buffer, self.mask, &self.ignore)?;
+        let hits = self.hits(from, to)?;
         let is_target = |id: i32| target.is_some_and(|t| t == id);
         let obstacle = match hits[..] {
             [] => {
@@ -1326,15 +1448,11 @@ impl<'w> HullPather<'w> {
             if !(bx0 <= p[0] && p[0] <= bx1 && by0 <= p[1] && p[1] <= by1) {
                 continue;
             }
-            let first = self
-                .world
-                .pather_hits(from, p, self.buffer, self.mask, &self.ignore)?;
+            let first = self.hits(from, p)?;
             if !first.is_empty() {
                 continue;
             }
-            let second = self
-                .world
-                .pather_hits(p, to, self.buffer, self.mask, &self.ignore)?;
+            let second = self.hits(p, to)?;
             let fine = match second[..] {
                 [] => true,
                 [h] => target.is_some_and(|t| t == h.id || self.world.annex_of(h.id) == Some(t)),
@@ -1789,10 +1907,12 @@ impl<'w> HullPather<'w> {
         Ok(Within { result, left_boxes })
     }
 
-    /// `MShortPather::FindShortPath` (`FUN_140f85580`) as slot 0x3e8 calls it (the area new, the
-    /// quick path first, no unit to include): a path from `from` to `to`, the place of object
-    /// `target_id`, within `range` of its footprint. Returns the result (0 already there, 1 a
-    /// path within range, 2 a path partway, 3 none, 4 a place off the map) and the path.
+    /// `MShortPather::FindShortPath` (`FUN_140f85580`) as slot 0x3e8 and `FUN_140f9e540` call it
+    /// (the area new, the quick path first): a path from `from` to `to` within `range` of object
+    /// `target_id`'s footprint when it stands on the goal, else of the goal (for -1 or an object
+    /// off the goal; an object the goal query `FUN_141051900` finds holding the goal is then a
+    /// target whose id stays -1). Returns the result (0 already there, 1 a path within range, 2 a path partway,
+    /// 3 none, 4 a place off the map) and the path.
     ///
     /// # Errors
     ///
@@ -1879,7 +1999,6 @@ impl<'w> HullPather<'w> {
         } else {
             match self.world.get_known(target_id)? {
                 Some(p) if p.position[0] == to[0] && p.position[1] == to[1] => Some(Target {
-                    id: target_id,
                     at: [p.position[0], p.position[1]],
                     radius: p.radius,
                     speed: p.speed,
@@ -1951,10 +2070,11 @@ impl<'w> HullPather<'w> {
             ];
             keep = false;
         }
-        let Some(target) = target else {
-            return Err(Unsupported(
-                "the old short pather without a target on its goal (the goal's point query)",
-            ));
+        // no target on the goal: the first record with an object that holds the goal is the
+        // target, its id still -1 (`FUN_141051900` at 0x140f85fd9)
+        let target = match target {
+            Some(t) => Some(t),
+            None => self.goal_record(to)?,
         };
         let [ax0, ay0, ax1, ay1] = self.area;
         self.world.check_known_records([
@@ -1996,7 +2116,7 @@ impl<'w> HullPather<'w> {
                         sh,
                         from,
                         Some(to),
-                        Some(target),
+                        target,
                         range,
                         false,
                         std::slice::from_mut(&mut path),
@@ -2004,7 +2124,9 @@ impl<'w> HullPather<'w> {
                         &mut count,
                     )?;
                     if walk.result == 0 {
-                        return Ok((if target.id < 1 { 2 } else { 1 }, path));
+                        // 2 for a target whose id is below 1, the goal query's among them
+                        let partial = target.is_some() && target_id < 1;
+                        return Ok((if partial { 2 } else { 1 }, path));
                     }
                     if walk.result == 3 || !walk.left_boxes {
                         return Ok((3, path));
@@ -2058,7 +2180,7 @@ impl<'w> HullPather<'w> {
                     gh,
                     to,
                     from,
-                    Some(target),
+                    target,
                     &mut entrances,
                     &mut sides,
                     PATHS,
@@ -2099,8 +2221,18 @@ impl<'w> HullPather<'w> {
                 }
                 self.close(0, best);
                 let at = self.nodes[best].at;
-                if self.target_gap(&target, at) <= range + NUDGE {
-                    found = target_id >= 0;
+                // within range of the target's box, or without one of the goal: the radius and the
+                // range, squared, NUDGE more (`COMISS`/`JNC` at 0x140f86cff: a NaN is not)
+                let reached = target.as_ref().map_or_else(
+                    || {
+                        let d =
+                            (at[1] - to[1]) * (at[1] - to[1]) + (at[0] - to[0]) * (at[0] - to[0]);
+                        d <= (range + r) * (range + r) + NUDGE
+                    },
+                    |t| self.target_gap(t, at) <= range + NUDGE,
+                );
+                if reached {
+                    found = target.is_none() || target_id >= 0;
                     best_node = Some(best);
                     break 'outer;
                 }
@@ -2266,19 +2398,68 @@ impl<'w> HullPather<'w> {
                 return Ok((1, path));
             }
             let k = path.points.len() - 1;
-            let hits = self.world.pather_hits(
-                path.points[k],
-                path.points[k - 1],
-                self.buffer,
-                self.mask,
-                &self.ignore,
-            )?;
+            let hits = self.hits(path.points[k], path.points[k - 1])?;
             if hits.len() < 2 && (hits.len() != 1 || hits[0].id == target_id) {
                 return Ok((1, path));
             }
             let _ = path.points.remove(k);
         }
         Ok((self.partway(&mut path, from, to, range), path))
+    }
+
+    /// `FindShortPath`'s goal query when no target stands on the goal (`FUN_141051900` with
+    /// flags 0x20 at `to`, the manager's buffer and ignore list the pather's, its player for the
+    /// gates): the records whose box, grown by the buffer, holds the goal, edges included (the
+    /// point test `FUN_141052160`, moving ones too), but the ignored ones and a gate the player
+    /// may pass (slot 0x678); the first with an object is the target. The goal lies on the map
+    /// less the radius, so the grown point meets no edge record, and the temporary tile records
+    /// have no object. The records come in the grid's order and each cell's list in the order
+    /// the records joined it, which the slice does not hold: the answer is exact for one object
+    /// holding the goal or none.
+    fn goal_record(&self, to: Point) -> Result<Option<Target>, Unsupported> {
+        let grow = self.buffer.unwrap_or(0.0);
+        if !self.world.point_hit(to, grow, &self.ignore, false)? {
+            return Ok(None);
+        }
+        let [x, y] = to;
+        let near: Vec<i32> = self
+            .world
+            .records()
+            .filter(|&(id, _, [x0, y0, x1, y1])| {
+                !self.ignore.contains(&id)
+                    && x <= x1 + grow
+                    && x0 - grow <= x
+                    && y <= grow + y1
+                    && y0 - grow <= y
+            })
+            .map(|(id, _, _)| id)
+            .collect();
+        // each one the query lists (the cells it visits): the point test with the others ignored
+        let mut held = Vec::new();
+        for &id in &near {
+            let mut others = self.ignore.clone();
+            others.extend(near.iter().filter(|&&o| o != id));
+            if !self.world.point_hit(to, grow, &others, false)? {
+                continue;
+            }
+            let Some(p) = self.world.get(id) else {
+                continue;
+            };
+            if !self.passes(id, p, self.player)? {
+                held.push(p);
+            }
+        }
+        match held[..] {
+            [] => Ok(None),
+            [p] => Ok(Some(Target {
+                at: [p.position[0], p.position[1]],
+                radius: p.radius,
+                speed: p.speed,
+            })),
+            _ => Err(Unsupported(
+                "the old short pather's goal held by two objects or more (the grid's order)",
+            )),
+        }
     }
 
     /// `FindShortPath` for a goal off the map less the radius: the target (none: 4) must stand
@@ -3163,7 +3344,6 @@ mod tests {
         assert!(p.in_area([2.2, 5.8]));
         assert!(!p.in_area([2.1, 3.0]));
         let t = Target {
-            id: 1,
             at: [10.0, 10.0],
             radius: [0.5, 0.5],
             speed: 0.0,
@@ -3454,6 +3634,148 @@ mod tests {
         assert_eq!(
             path.points,
             [[5.0, 5.5], [5.8, 2.8], [7.2, 2.8], [7.8, 4.8]]
+        );
+    }
+
+    /// `FUN_140f89e40` with any list: the ids in turn (unknown ones too), then the tile of each
+    /// listed object of radii 0.5 × 0.5 on a tile's centre whose word holds a terrain class the
+    /// mask lacks; one off the centre, of another size or on an open tile adds none.
+    #[test]
+    fn the_ignore_list_takes_the_ids_then_the_tiles_of_one_tile_objects_on_a_centre() {
+        let mut classes = vec![4; 400];
+        classes[3 * 20 + 3] = 1;
+        classes[7 * 20 + 7] = 1;
+        let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+        w.insert(1, placed(3.5, 3.5, 0.5, 2));
+        w.insert(2, placed(5.5, 5.5, 0.5, 2));
+        w.insert(3, placed(3.5, 3.6, 0.5, 2));
+        w.insert(4, placed(7.5, 7.5, 0.4, 2));
+        let p = HullPather::for_list(&w, &[1, 2, 3, 777, 4], 6, 0.6, 2);
+        assert_eq!(p.ignore, [1, 2, 3, 777, 4, tile_record_id(3, 3)]);
+        assert_eq!((p.player, p.mask, p.radius), (2, 6, 0.6));
+        // an empty list ignores nothing
+        assert_eq!(HullPather::for_list(&w, &[], 6, 0.6, 2).ignore, []);
+        // slot 0x3e8's pather: the unit and its target
+        let q = HullPather::new(&w, 2, 1, 6, 0.2);
+        assert_eq!(q.ignore, [2, 1, tile_record_id(3, 3)]);
+    }
+
+    /// `FindShortPath` without a target (argument 7 -1): past the quick path, the goal's point
+    /// query (`FUN_141051900` with flags 0x20) finds no record holding the goal, and the search
+    /// ends at a node within the range and the radius of the goal (squared, [`NUDGE`] more):
+    /// found, a path (1).
+    #[test]
+    fn a_walk_to_a_point_goes_around_a_wall_without_a_target() {
+        let w = walled(6, [2.0, 5.5]);
+        let mut p = HullPather::for_list(&w, &[9171], 6, 0.2, 1);
+        let (result, path) = p.find([2.0, 5.5], [10.5, 5.5], -1, 0.0).unwrap();
+        assert_eq!(result, 1);
+        assert_eq!(
+            path.points,
+            [[2.0, 5.5], [5.8, 7.2], [7.2, 7.2], [10.5, 5.5]]
+        );
+        // a target elsewhere than on the goal is none (its id -1) as well
+        let mut q = HullPather::for_list(&w, &[9171], 6, 0.2, 1);
+        assert_eq!(
+            q.find([2.0, 5.5], [10.5, 5.5], 9149, 0.0).unwrap(),
+            (1, path)
+        );
+    }
+
+    /// The goal's point query finds one object whose box, grown by half the radius, holds the
+    /// goal: it is the target (its id still -1), so the node within range of its box ends the
+    /// search without finding (2: partway). An ignored object does not count; two objects
+    /// holding the goal need the grid's order, which the slice does not hold.
+    #[test]
+    fn a_goal_on_an_object_takes_it_as_the_target_but_finds_no_path() {
+        let mut w = walled(6, [2.0, 5.5]);
+        w.insert(48, placed(10.5, 5.5, 0.5, 2));
+        let mut p = HullPather::for_list(&w, &[9171], 6, 0.2, 1);
+        let (result, path) = p.find([2.0, 5.5], [10.6, 5.5], -1, 0.0).unwrap();
+        assert_eq!(result, 2);
+        let end = *path.points.last().unwrap();
+        let t = Target {
+            at: [10.5, 5.5],
+            radius: [0.5, 0.5],
+            speed: 0.0,
+        };
+        assert!(p.target_gap(&t, end) <= NUDGE, "{path:?}");
+        // ignored, the object is no target: the search ends on the goal itself
+        let mut q = HullPather::for_list(&w, &[9171, 48], 6, 0.2, 1);
+        let (result, path) = q.find([2.0, 5.5], [10.6, 5.5], -1, 0.0).unwrap();
+        assert_eq!((result, path.points.last()), (1, Some(&[10.6, 5.5])));
+        // a second object holding the goal
+        w.insert(49, placed(11.5, 5.5, 0.5, 2));
+        let mut r = HullPather::for_list(&w, &[9171], 6, 0.2, 1);
+        assert!(r.find([2.0, 5.5], [11.0, 5.5], -1, 0.0).is_err());
+    }
+
+    /// The line tests (`FUN_141052350`, `FUN_141051900` with flags 0x40) leave a moving record
+    /// out unless `FindShortPath`'s include list (its arguments 13 and 14) holds it: an included
+    /// moving unit in the quick path's walk is the square it goes around; ignored, it is out all
+    /// the same.
+    #[test]
+    fn an_included_moving_unit_blocks_the_line_tests() {
+        let mut w = open_world();
+        w.insert(9171, placed(2.0, 5.5, 0.6, 5));
+        w.insert(50, placed(6.0, 5.5, 0.3, 5));
+        w.set_gait(
+            50,
+            Some(crate::spatial::Gait {
+                moving: true,
+                ..Default::default()
+            }),
+        );
+        let mut p = HullPather::for_list(&w, &[9171], 6, 0.6, 1);
+        p.buffer = Some(0.3);
+        assert!(!p.blocked([2.0, 5.5], [10.0, 5.5]).unwrap());
+        let (result, path) = p.find([2.0, 5.5], [10.0, 5.5], -1, 0.0).unwrap();
+        assert_eq!((result, path.points), (1, vec![[2.0, 5.5], [10.0, 5.5]]));
+        let mut p = HullPather::for_list(&w, &[9171], 6, 0.6, 1).including(&[50]);
+        p.buffer = Some(0.3);
+        assert!(p.blocked([2.0, 5.5], [10.0, 5.5]).unwrap());
+        assert_eq!(p.hits([2.0, 5.5], [10.0, 5.5]).unwrap().len(), 1);
+        let (result, path) = p.find([2.0, 5.5], [10.0, 5.5], -1, 0.0).unwrap();
+        let off = (0.3 + 0.6) * SQRT_2;
+        let [start, by, end] = path.points[..] else {
+            panic!("{path:?}")
+        };
+        assert_eq!((result, start, end), (1, [2.0, 5.5], [10.0, 5.5]));
+        assert!((by[0] - 6.0).abs() < 1e-5 && (by[1] - (5.5 - off)).abs() < 1e-5);
+        let mut q = HullPather::for_list(&w, &[9171, 50], 6, 0.6, 1).including(&[50]);
+        q.buffer = Some(0.3);
+        assert!(!q.blocked([2.0, 5.5], [10.0, 5.5]).unwrap());
+    }
+
+    /// The manager keeps one pather: a search's area and hulls ([`KeptHulls`]) carried into the
+    /// next pather make its kept search (argument 11) the one search the game's lasting pather
+    /// makes; the constructor's state has no area, so a kept search builds its own.
+    #[test]
+    fn the_last_search_s_area_and_hulls_carry_into_a_kept_search() {
+        let w = walled(6, [2.0, 5.5]);
+        let mut first = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        let found = first.find([2.0, 5.5], [12.5, 5.5], 9149, 0.1).unwrap();
+        let kept = first.kept();
+        assert_eq!((kept.area, kept.hulls.len()), ([0, 3, 14, 7], 2));
+        // a kept search from another start reuses them as they are
+        let mut next = HullPather::new(&w, 9171, 9149, 6, 0.2).with_kept(kept.clone());
+        let mut same = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        same.area = kept.area;
+        same.hulls = kept.hulls;
+        assert_eq!(
+            next.find_keeping([3.0, 5.5], [12.5, 5.5], 9149, 0.1),
+            same.find_keeping([3.0, 5.5], [12.5, 5.5], 9149, 0.1)
+        );
+        assert_eq!(next.kept().area, [0, 3, 14, 7]);
+        // the constructor's state: no area, no hulls
+        let none = HullPather::new(&w, 9171, 9149, 6, 0.2).kept();
+        assert_eq!((none.area, none.hulls.len()), ([-1; 4], 0));
+        let mut fresh = HullPather::new(&w, 9171, 9149, 6, 0.2).with_kept(none);
+        assert_eq!(
+            fresh
+                .find_keeping([2.0, 5.5], [12.5, 5.5], 9149, 0.1)
+                .unwrap(),
+            found
         );
     }
 
