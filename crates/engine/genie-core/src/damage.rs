@@ -437,11 +437,16 @@ pub fn shield(v: &mut Victim, missile: bool) -> bool {
 /// `FUN_141202a80`: the hit points the master's `invulnerability_level` keeps (a share of its hit
 /// points when above 0, the level itself when below), 0 for none.
 fn hp_floor(a: &Armored) -> f32 {
-    let level = a.invulnerability;
+    invulnerability_floor(a.invulnerability, a.master_hp)
+}
+
+/// [`hp_floor`] of a master's `invulnerability_level` and hit points.
+#[must_use]
+pub(crate) fn invulnerability_floor(level: f32, master_hp: i16) -> f32 {
     if level == 0.0 {
         0.0
     } else if 0.0 < level {
-        f32::from(a.master_hp) * level
+        f32::from(master_hp) * level
     } else {
         level.abs()
     }

@@ -4423,6 +4423,102 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
     assert_eq!(states, [(7228, 4), (7229, 4)]);
 }
 
+/// `TRIBE_Combat_Object::update`'s regeneration (`0x141208440`): the rate (slot 0x260,
+/// `FUN_1412033a0`) is the stinger plus (the powerup plus (a hero's 30 plus the master's)); a
+/// whole hit point comes per 60 / |rate| seconds of the world's dt plus the time held back
+/// (`+0xa10`), the fraction kept as time. A positive rate heals up to the most (slot 0xb8); a
+/// negative one takes off at most the hit points (slot 0xb0); below 1 hit point, out of state
+/// 2 or below 1.2e-7 in size nothing changes.
+#[test]
+fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
+    use crate::turn::unit::regeneration_rate;
+    let berserk = Master {
+        id: 692,
+        kind: 70,
+        hit_points: 54,
+        regeneration: 20.0,
+        ..Master::default()
+    };
+    let unit = |hp| Unit {
+        id: 1,
+        life: Lifecycle {
+            state: 2,
+            hp,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    // 20 a minute: a point per 3 s; 2 s of dt plus 1.5 held is one point, the rest held back
+    // (in f32: 3.5 / 3 less its whole point, times 3)
+    let mut u = unit(30.0);
+    u.regen_timer = 1.5;
+    u.regenerate(&berserk, 2.0);
+    assert_eq!(
+        (u.life.hp, u.regen_timer),
+        (31.0, ((3.5f32 / 3.0) % 1.0) * 3.0)
+    );
+    // at the most nothing is added, and the time still runs
+    let mut full = unit(54.0);
+    full.regenerate(&berserk, 3.0);
+    assert_eq!((full.life.hp, full.regen_timer), (54.0, 0.0));
+    // a hero's 30 and the powerups: stinger + (powerup + (30 + master))
+    let hero = Master {
+        hero_flag: 1,
+        ..berserk.clone()
+    };
+    let mut powered = unit(10.0);
+    powered.regen_powerups = [5.0, 5.0];
+    assert_eq!(regeneration_rate(&hero, &powered), 60.0);
+    let not_hero = Master {
+        hero_flag: 0x84,
+        ..berserk.clone()
+    };
+    assert_eq!(regeneration_rate(&not_hero, &powered), 30.0);
+    // a gate of Aftermath's: -1000 a minute takes 1 hit point per 0.06 s, at most what it has
+    let gate = Master {
+        hit_points: 1650,
+        regeneration: -1000.0,
+        kind: 80,
+        ..Master::default()
+    };
+    let mut g = unit(1650.0);
+    g.regenerate(&gate, 0.104);
+    assert_eq!(g.life.hp, 1649.0);
+    let mut low = unit(1.0);
+    low.regenerate(&gate, 1.0);
+    assert_eq!(low.life.hp, 0.0);
+    // below 1 hit point or out of state 2: nothing
+    let mut dead = unit(0.5);
+    dead.regenerate(&gate, 1.0);
+    assert_eq!((dead.life.hp, dead.regen_timer), (0.5, 0.0));
+}
+
+/// `TRIBE_Combat_Object::update`'s hit point powerup check: a powerup above its room comes off
+/// the hit points, at least 1 left (`MAXSS`), and takes the room; at most the room, nothing.
+#[test]
+fn a_hit_point_powerup_above_its_room_comes_off_the_hit_points() {
+    let with = |hp, up, room| Unit {
+        life: Lifecycle {
+            hp,
+            ..Lifecycle::default()
+        },
+        hp_powerups: [up, room],
+        ..Unit::default()
+    };
+    let mut u = with(100.0, 10.0, 4.0);
+    u.clamp_hp_powerup();
+    assert_eq!((u.life.hp, u.hp_powerups), (94.0, [4.0, 4.0]));
+    let mut low = with(3.0, 10.0, 4.0);
+    low.clamp_hp_powerup();
+    assert_eq!((low.life.hp, low.hp_powerups), (1.0, [4.0, 4.0]));
+    let mut nan = with(f32::NAN, 10.0, 4.0);
+    nan.clamp_hp_powerup();
+    assert_eq!(nan.life.hp, 1.0);
+    let mut kept = with(100.0, 4.0, 4.0);
+    kept.clamp_hp_powerup();
+    assert_eq!((kept.life.hp, kept.hp_powerups), (100.0, [4.0, 4.0]));
+}
+
 /// `RGE_Combat_Object::update`: the attack timer runs down by dt times the object's rate
 /// (`+0x87c`), which a terrain look sets ([`crate::abilities`]).
 #[test]

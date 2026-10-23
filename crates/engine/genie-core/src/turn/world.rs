@@ -448,6 +448,42 @@ impl Turns {
         left
     }
 
+    /// `TRIBE_Combat_Object::update`'s regeneration ([`Unit::regenerate`]) of the object `id`, a
+    /// combat object or building (types 70 and 80) by its own master, else its player's.
+    pub(in crate::turn) fn regenerate_object(&mut self, id: i32, dt_seconds: f32) {
+        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+            return;
+        };
+        let unit = &self.players[p].objects[i];
+        let Some(master) = unit
+            .own_master
+            .as_deref()
+            .or_else(|| self.masters.get(p).and_then(|m| m.get(unit.life.master_id)))
+            .filter(|m| matches!(m.kind, 70 | 80))
+            .cloned()
+        else {
+            return;
+        };
+        self.players[p].objects[i].regenerate(&master, dt_seconds);
+    }
+
+    /// `TRIBE_Combat_Object::update`'s hit point powerup check ([`Unit::clamp_hp_powerup`]) of the
+    /// object `id`, a combat object or building (types 70 and 80).
+    pub(in crate::turn) fn clamp_object_powerup(&mut self, id: i32) {
+        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+            return;
+        };
+        let unit = &self.players[p].objects[i];
+        let combat = unit
+            .own_master
+            .as_deref()
+            .or_else(|| self.masters.get(p).and_then(|m| m.get(unit.life.master_id)))
+            .is_some_and(|m| matches!(m.kind, 70 | 80));
+        if combat {
+            self.players[p].objects[i].clamp_hp_powerup();
+        }
+    }
+
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): an
     /// object the slice holds, live or asleep (the world's table holds both, and a blast walks
     /// the tiles' lists of both), with its relations to the attacker's player and whether its

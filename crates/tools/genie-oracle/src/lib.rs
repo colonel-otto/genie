@@ -297,6 +297,10 @@ fn unit(
         hp_powerups: object
             .combat()
             .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
+        regen_timer: object.combat().map_or(0.0, |c| c.berserker_timer),
+        regen_powerups: object.combat().map_or([0.0; 2], |c| {
+            [c.regeneration_rate_powerup, c.regeneration_stinger]
+        }),
         workers: s.worker_num,
         last_human_order: s.last_human_order_time,
         town_bell: object.combat().map(town_bell).unwrap_or_default(),

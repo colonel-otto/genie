@@ -958,6 +958,8 @@ impl Turns {
             annex_of: None,
             group: crate::group::GroupLink::default(),
             hp_powerups: [0.0; 2],
+            regen_timer: 0.0,
+            regen_powerups: [0.0; 2],
             hunt: None,
             gather: None,
             attack: None,

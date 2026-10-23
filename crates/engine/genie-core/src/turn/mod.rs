@@ -1354,6 +1354,11 @@ impl Turns {
                 {
                     result = result.and(Err(e));
                 }
+                // TRIBE_Combat_Object::update's regeneration after RGE_Combat_Object::update
+                // (once, with the update's unit AI part)
+                if ai_resume.is_none() && result.is_ok() {
+                    self.regenerate_object(id, seconds(dt));
+                }
                 // TRIBE_Combat_Object::update's passive abilities (FUN_1412072f0, once, with the
                 // update's unit AI part) as the object's owner after its update; a removal
                 // reward's command comes back as the recording's own
@@ -1372,6 +1377,8 @@ impl Turns {
                     if let Err(e) = self.abilities((id, p, i), owner, leaves, &mut pending) {
                         result = Err(e);
                     }
+                    // then its hit point powerup check
+                    self.clamp_object_powerup(id);
                 }
                 // TRIBE_Building_Object::update: the production after the combat update (once,
                 // with the update's unit AI part)

@@ -744,10 +744,22 @@ pub mod turn {
     pub const GATE_GROW: f32 = f32::from_bits(0x3ecc_cccd);
     /// 1.0
     pub const GATE_SHUT_HEIGHT: f32 = f32::from_bits(0x3f80_0000);
+    /// 30.0
+    pub const HERO_REGENERATION: f32 = f32::from_bits(0x41f0_0000);
+    /// 1.0
+    pub const HP_POWERUP_FLOOR: f32 = f32::from_bits(0x3f80_0000);
     /// 3.4028234663852886e+38
     pub const NO_DROP_DISTANCE: f32 = f32::from_bits(0x7f7f_ffff);
     /// 1.0
     pub const ONE_UNIT_AGE: f32 = f32::from_bits(0x3f80_0000);
+    /// 1.1920928955078125e-07
+    pub const REGENERATION_EPSILON: f32 = f32::from_bits(0x3400_0000);
+    /// 1.0
+    pub const REGENERATION_LEAST_HP: f32 = f32::from_bits(0x3f80_0000);
+    /// 60.0
+    pub const REGENERATION_MINUTE: f32 = f32::from_bits(0x4270_0000);
+    /// 1.0
+    pub const REGENERATION_POINT: f32 = f32::from_bits(0x3f80_0000);
     /// 10.0
     pub const SHORT_DROP_REACH: f32 = f32::from_bits(0x4120_0000);
     /// 1.0000000116860974e-07
