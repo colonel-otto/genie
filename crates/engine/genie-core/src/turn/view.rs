@@ -88,7 +88,14 @@ pub(in crate::turn) struct Context<'a> {
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
     pub(in crate::turn) releases: Vec<(i32, Releaser)>,
-    pub(in crate::turn) takes: Vec<i32>,
+    pub(in crate::turn) takes: Vec<(i32, Releaser)>,
+    /// The foundations a counted builder's Build leaves as the unit's action list goes
+    /// ([`Unit::clear_own_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
+    /// builder less ([`Turns::leave_builders`]), the caller's before the releases.
+    pub(in crate::turn) builder_leaves: Vec<i32>,
+    /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
+    /// building: the caller runs the group's removeUnit ([`Turns::remove_unit`]).
+    pub(in crate::turn) left_group: Option<(i32, i32)>,
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
     pub(in crate::turn) made: Vec<Unit>,
@@ -361,9 +368,12 @@ pub(in crate::turn) struct UnitView<'u> {
     /// The sprites.
     pub(in crate::turn) graphics: &'u std::collections::BTreeMap<i16, Graphic>,
     /// The objects an action took (slot 0x178), the caller's.
-    pub(in crate::turn) takes: &'u mut Vec<i32>,
+    pub(in crate::turn) takes: &'u mut Vec<(i32, Releaser)>,
     /// The objects an action let go (slot 0x180), the caller's.
     pub(in crate::turn) releases: &'u mut Vec<(i32, Releaser)>,
+    /// The foundations a counted builder's Build left ([`Context::builder_leaves`]), the
+    /// caller's.
+    pub(in crate::turn) builder_leaves: &'u mut Vec<i32>,
     /// The waits for foundations its slot 0x388 found ([`Wait`]), the caller's.
     pub(in crate::turn) waits: &'u mut Vec<Wait>,
     /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
@@ -910,26 +920,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             ));
         }
         // the action list's clearing (FUN_140a98620): an Attack on another target tears down (its
-        // MoveTo's stops the unit) and lets its targets go (slot 0x180)
-        if let Some(mut a) = unit.attack.take() {
-            a.tear_down(unit.mover.as_mut())?;
-            let by = Releaser {
-                id: unit.id,
-                class: master.class,
-                player: self.player,
-            };
-            for t in [a.target, a.target2] {
-                if t != -1 {
-                    self.releases.push((t, by));
-                }
-            }
-        }
+        // MoveTo's stops the unit) and lets its targets go (slot 0x180), as do the others
         let by = Releaser {
             id: unit.id,
             class: master.class,
             player: self.player,
         };
-        unit.clear_own_actions(self.releases, by)?;
+        unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
         unit.attack_count = 0;
         crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
         let mover = unit
@@ -966,7 +963,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             unit.shows_standing_sprite(self.masters, self.graphics, self.sprite)?;
         }
         unit.attack = Some(attack);
-        self.takes.push(target);
+        self.takes.push((target, by));
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted,
@@ -986,8 +983,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 .map_or(-1, |m| m.class),
             player: self.player,
         };
+        let lets = (&mut *self.releases, &mut *self.builder_leaves);
         self.unit
-            .stop_with(self.releases, by, masters, self.graphics, self.sprite)
+            .stop_with(lets, by, masters, self.graphics, self.sprite)
     }
 
     fn seek_unexplored(

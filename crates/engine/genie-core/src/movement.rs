@@ -998,11 +998,12 @@ impl Mover {
                 _ => {}
             }
             let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
+            let groups = plan.as_deref().map(|p| p.groups);
             let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
             let step = self.walk(
                 me,
                 dt,
-                world,
+                (world, groups),
                 pathing,
                 goal,
                 (now, computer),
@@ -1021,13 +1022,14 @@ impl Mover {
     /// reaches it marks it reached and the walk goes on. A walk to a target ends in range of it
     /// (the waypoint reached); a walk to a point with a range ends where its top path ends (the
     /// unit stops, the step returns 2). A walk that may meet an obstruction is not modelled.
-    /// `walked` takes the waypoint once it is not left behind (`local_1860`).
+    /// `walked` takes the waypoint once it is not left behind (`local_1860`). `groups` are the
+    /// world's unit groups (none for a walk without the world's planners).
     #[allow(clippy::too_many_arguments)]
     fn walk(
         &mut self,
         me: &Me,
         dt: f32,
-        world: &Spatial,
+        (world, groups): (&Spatial, Option<&crate::group::UnitGroups>),
         pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
         (now, computer): (u32, bool),
@@ -1084,7 +1086,8 @@ impl Mover {
                 &[me.id],
             )?;
             if !hits.is_empty() {
-                let avoided = self.avoid(me, world, &hits, projected, dt, now, computer)?;
+                let avoided =
+                    self.avoid(me, (world, groups), &hits, projected, dt, (now, computer))?;
                 if !avoided.kept.is_empty() {
                     include_kept(world, pathing, &avoided.kept, include)?;
                 }
@@ -2763,21 +2766,20 @@ impl Mover {
     /// Then, on the walked level's first two waypoints (or the third of a path more
     /// than 500 old), each hit the unit outranks pauses for `dt` when its own pause is shorter: a
     /// human walker outranks another player's unit, or one of its own ordered at another time,
-    /// whose last human order (`+0x650`) is older; else the lower id outranks (a group's order
-    /// would decide, the slice holds none); a Gaia unit is outranked by any non-Gaia walker; the
-    /// pause itself (slot 0x5f0) is not modelled. The paths'
-    /// hash sets (`+0x18`, `FUN_140f96120`) are empty in this game (the probe `path_sets.py`),
-    /// and the slice holds no unit groups (`+0x6d0`).
-    #[allow(clippy::too_many_arguments)]
+    /// whose last human order (`+0x650`) is older; else, between two members of one unit group
+    /// (`+0x6d0`, not −1), the earlier member (`FUN_1410175f0`'s index in the group's list, −1
+    /// for none) outranks, and a group the world does not hold (`FUN_14152ff40`, `groups`)
+    /// pauses neither; else the lower id (slot 0x5f8) outranks. A Gaia unit is outranked by any
+    /// non-Gaia walker; the pause itself (slot 0x5f0) is the caller's. The paths' hash sets
+    /// (`+0x18`, `FUN_140f96120`) are empty in this game (the probe `path_sets.py`).
     fn avoid(
         &self,
         me: &Me,
-        world: &Spatial,
+        (world, groups): (&Spatial, Option<&crate::group::UnitGroups>),
         hits: &[i32],
         projected: Vec3,
         dt: f32,
-        now: u32,
-        computer: bool,
+        (now, computer): (u32, bool),
     ) -> Result<Avoided, Unsupported> {
         let level = &self.paths[0];
         let top = self.paths.last().filter(|l| !l.points.is_empty());
@@ -2849,11 +2851,19 @@ impl Mover {
                 if player == 0 || other.player != 0 {
                     // a human walker ranks another player's unit, or one of its own ordered at
                     // another time, by their last human order times (+0x650): the older order
-                    // pauses; else by id (slot 0x5f8)
+                    // pauses; else two members of one group by their places in it, any other two
+                    // by id (slot 0x5f8)
                     let mine = world.gait(me.id).map_or(0, |g| g.human_order);
                     let theirs = world.gait(id).map_or(0, |g| g.human_order);
                     let outranks = if !computer && (other.player != player || theirs != mine) {
                         theirs < mine
+                    } else if me.group != -1
+                        && world.gait(id).and_then(|g| g.group) == Some(me.group)
+                    {
+                        let Some(g) = groups.and_then(|gs| gs.get(me.group)) else {
+                            continue;
+                        };
+                        g.index_of(me.id) < g.index_of(id)
                     } else {
                         me.id < id
                     };
@@ -3858,7 +3868,7 @@ mod tests {
         let position = vector(m.moved_at);
         let waypoint = m.paths[0].point(1);
         let projected = m.projected(m.direction_to(position, waypoint), DT);
-        let avoided = m.avoid(&me, &w, &[9175], projected, DT, 16361, false);
+        let avoided = m.avoid(&me, (&w, None), &[9175], projected, DT, (16361, false));
         let avoided = avoided.unwrap();
         assert!(avoided.at_target);
         assert_eq!((avoided.kept, avoided.pauses), (vec![9175], Vec::new()));
@@ -4853,6 +4863,65 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(walker_9177.pauses, [(9175, 0.0 + DT)]);
+    }
+
+    /// `0x141150f00`'s pause loop between two members of one unit group (`+0x6d0`) ordered at
+    /// the same time: the group's member order decides (`FUN_1410175f0`), not the ids. 9177,
+    /// the group's first member, pauses 9175, the second; listed the other way round it walks
+    /// on; a group the world does not hold (`FUN_14152ff40`) pauses neither, as two units of no
+    /// group rank by id (the higher id 9177 walks on).
+    #[test]
+    fn two_members_of_one_group_rank_by_their_places_in_it() {
+        let mut w = world();
+        let mut close = *w.get(9175).unwrap();
+        close.position = [28.3, 88.9, 0.0];
+        w.insert(9175, close);
+        let walker = |group| Gait {
+            human_order: 17000,
+            pause: Some(0.0),
+            group,
+            ..Gait::default()
+        };
+        w.set_gait(9177, Some(walker(Some(4))));
+        w.set_gait(9175, Some(walker(Some(4))));
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: 4,
+            action_state: 0,
+        };
+        let groups = |ids: &[i32]| crate::group::UnitGroups {
+            groups: vec![crate::group::UnitGroup {
+                id: 4,
+                members: ids
+                    .iter()
+                    .map(|&id| crate::group::Member {
+                        id,
+                        ..crate::group::Member::default()
+                    })
+                    .collect(),
+                ..crate::group::UnitGroup::default()
+            }],
+            ..crate::group::UnitGroups::default()
+        };
+        let pauses = |w: &Spatial, me: &Me, gs: Option<&crate::group::UnitGroups>| {
+            let m = builder_9177();
+            let position = vector(m.moved_at);
+            let waypoint = m.paths[0].point(1);
+            let projected = m.projected(m.direction_to(position, waypoint), DT);
+            m.avoid(me, (w, gs), &[9175], projected, DT, (16361, false))
+                .unwrap()
+                .pauses
+        };
+        let first = groups(&[9177, 9175]);
+        assert_eq!(pauses(&w, &me, Some(&first)), [(9175, DT)]);
+        let second = groups(&[9175, 9177]);
+        assert_eq!(pauses(&w, &me, Some(&second)), []);
+        let none = crate::group::UnitGroups::default();
+        assert_eq!(pauses(&w, &me, Some(&none)), []);
+        w.set_gait(9175, Some(walker(None)));
+        let loose = Me { group: -1, ..me };
+        assert_eq!(pauses(&w, &loose, Some(&first)), []);
     }
 
     /// `FUN_14114e920` (slot 0x448): a unit's own waypoint is held as (x, height, y); a

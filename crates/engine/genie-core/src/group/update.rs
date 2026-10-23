@@ -202,6 +202,9 @@ impl Turns {
                 continue;
             }
             u.group.id = -1;
+            // the walks that meet it read its group
+            let gait = u.gait();
+            self.spatial.set_gait(m.id, gait);
             if self.member_idle(m.id)? {
                 if let Some((_, u)) = self.object_mut(m.id)
                     && let Some(mover) = u.mover.as_mut()

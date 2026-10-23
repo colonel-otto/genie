@@ -60,6 +60,9 @@ const RAMS: [i16; 4] = [35, 422, 548, 1258];
 pub struct Victim {
     /// The object.
     pub id: i32,
+    /// Its place in its tile's object list (the map tile's `+0x28`, in the order
+    /// `FUN_140f5f0a0` and `FUN_140f5f560` keep), which a blast walks a tile by ([`blast`]).
+    pub tile_place: usize,
     /// Its hit points (`+0x278`), what it holds (`+0x310`), its state and place.
     pub hp: f32,
     /// What it holds (`+0x310`).
@@ -802,8 +805,8 @@ fn blast_tiles(center: [f32; 3], r: f32) -> ([i32; 2], [i32; 2]) {
 }
 
 /// Slot 0x848 (`FUN_14107f690`), the blast of `attacker` about `center` with factor `factor`,
-/// over the objects the tiles of [`blast_tiles`] hold, row by row (the objects of a tile by id:
-/// the slice does not hold the tile's list order): the attacker's hit is first marked as no
+/// over the objects the tiles of [`blast_tiles`] hold, row by row and a tile's objects in its
+/// list's order ([`Victim::tile_place`]): the attacker's hit is first marked as no
 /// charge's (`+0x8a8`). An object is passed when the blast spares its friends (a weapon range of
 /// at most 1 or the level's bit 2: `FUN_1410bfcb0`) and its player is the attacker's or allied,
 /// when it is `exclude`, the attacker or an artifact, when its `area_effect_object_level` is
@@ -841,7 +844,7 @@ pub fn blast(
     let (from, to) = blast_tiles(center, r);
     let spares_friends = !(1.0 < a.weapon_range && a.blast_level & 4 == 0);
     attacker.source.charge_hit = false;
-    targets.sort_by_key(|t| (t.position[1] as i32, t.position[0] as i32, t.id));
+    targets.sort_by_key(|t| (t.position[1] as i32, t.position[0] as i32, t.tile_place));
     let weapons = attacker.weapons.clone();
     for t in targets.iter_mut() {
         let tile = [t.position[0] as i32, t.position[1] as i32];
@@ -1427,5 +1430,37 @@ mod tests {
         let dx = (10.8f32 - 10.5f32).abs();
         let f = (1.0 - fmath::sqrt(0.0 * 0.0 + dx * dx)) / 1.0 * 0.5;
         assert_eq!(near.hp, 14.0 - 10.0 * f);
+    }
+
+    /// `FUN_14107f690` walks the rows (y outer, x inner) and a tile's objects in its list's
+    /// order (`+0x28`), not by id: the blast's targets end in that order.
+    #[test]
+    fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
+        let mut elephant = hunter();
+        elephant.source.area_effect = 1.0;
+        elephant.source.blast_level = 2;
+        elephant.source.area_damage = 0.5;
+        elephant.source.player = 1;
+        elephant.weapons = vec![(4, 10)];
+        let enemy = |id: i32, x: f32, y: f32, tile_place| Victim {
+            id,
+            tile_place,
+            player: 2,
+            position: [x, y, 0.0],
+            blast_defense: 2,
+            ..sheep()
+        };
+        let (mut a, mut b, mut c) = (
+            enemy(3, 10.6, 11.0, 1),
+            enemy(7, 10.8, 11.2, 0),
+            enemy(5, 11.2, 10.4, 0),
+        );
+        let center = elephant.position;
+        let mut all = [&mut a, &mut b, &mut c];
+        assert_eq!(
+            blast(&mut elephant, center, None, None, &mut all, 1.0),
+            Ok(true)
+        );
+        assert_eq!(all.map(|t| t.id), [5, 7, 3]);
     }
 }

@@ -12,7 +12,7 @@ use crate::spatial::{Placed, Spatial};
 use crate::tasks::{Actor, Diplomacy};
 use crate::turn::command::{Command, GatherPoint};
 use crate::turn::player::Player;
-use crate::turn::unit::{LIVESTOCK, Unit, give_load};
+use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::turn::view::{Foreign, Wait, patrol_information};
 use crate::turn::world::{
     SideWorld, World, change_hands, count_class, task_search, task_target_with, wait_progress,
@@ -1809,6 +1809,51 @@ fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
     );
 }
 
+/// The forced replay's removal of a frozen object the game no longer holds is the leave of an
+/// object whose update returned 1 ([`Turns::leave_world`]): its owner's watched list lets it go
+/// (`FUN_141091310`) and a recyclable master's missile goes to the pool of type 60.
+#[test]
+fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
+    let missile = Unit {
+        id: 9,
+        stopped: true,
+        missile: Some(crate::missile::Missile {
+            max_range: 0.0,
+            fired_from: -1,
+            charge: false,
+            flying: true,
+            step: [0.0; 3],
+            attack_count: 0,
+            action: None,
+        }),
+        life: Lifecycle {
+            master_id: 54,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let mut t = one_player(vec![live(7), missile], [0.0; 4]);
+    t.masters = vec![Masters::new([Master {
+        id: 54,
+        kind: 60,
+        recyclable: true,
+        ..Master::default()
+    }])];
+    t.players[0].watched.push(crate::ghost::Watched {
+        id: 9,
+        cell: crate::ghost::Cell::Tile(0),
+        bits: 0,
+    });
+    let game = GameState {
+        players: vec![vec![live(7)]],
+        ..GameState::default()
+    };
+    assert_eq!(t.force(&game), vec![]);
+    assert_eq!(ids(&t), vec![7]);
+    assert_eq!(t.players[0].watched, Vec::new());
+    assert_eq!(t.recycling.missiles, [(9, true)]);
+}
+
 /// A player with the villagers' masters (a population of one each) and room for more.
 fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> Turns {
     let mut attributes = vec![0.0; 250];
@@ -2534,6 +2579,667 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
 }
 
+/// A world for the deaths: Gaia holds the tree 50 (master 349, type 15, one worker) and the boar
+/// 60 (master 48, type 70, one worker, a unit AI that counts the hunter 41 among its attackers);
+/// player 1 holds the villagers 40 (gathering the tree), 41 (hunting the boar) and 42 (a counted
+/// builder of its foundation 10028, one builder, one worker), each with hit points 0.
+fn deaths_world() -> Turns {
+    let dead = |id| Unit {
+        id,
+        position: [10.5, 10.5, 0.0],
+        life: Lifecycle {
+            class: Class::Animated,
+            hp: 0.0,
+            master_id: 83,
+            master: Some(MasterData::default()),
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    let chop = crate::hunt::tests::hunting(50).task;
+    let tree = crate::gather::Resource {
+        id: 50,
+        position: [12.5, 10.5, 0.0],
+        class: 15,
+        master: 349,
+        player: 0,
+        workers: 0,
+        drop_site: false,
+        gap: 1.0,
+        radius: [0.5, 0.5],
+    };
+    let rate = crate::gather::StopRate {
+        work_rate: 1.0,
+        capacity: 10.0,
+        productivity: 1.0,
+    };
+    let gather = crate::gather::GatherAction::new(chop, &tree, false, rate).unwrap();
+    let mut villagers = vec![dead(40), dead(41), dead(42)];
+    villagers[0].gather = Some(crate::gather::GatherAction { state: 7, ..gather });
+    villagers[1].hunt = Some(crate::hunt::tests::hunting(60));
+    villagers[2].build = Some(BuildAction {
+        target: 10028,
+        state: 7,
+        move_to: None,
+        goal: None,
+        task: BuildTask {
+            range: 0.0,
+            work_value: 1.0,
+            work_rate: 1.0,
+        },
+        added: true,
+        timer: 0.0,
+    });
+    let gaia = vec![
+        Unit {
+            id: 50,
+            position: [12.5, 10.5, 0.0],
+            workers: 1,
+            life: Lifecycle {
+                master_id: 349,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        },
+        Unit {
+            id: 60,
+            position: [14.5, 10.5, 0.0],
+            workers: 1,
+            combat: true,
+            ai: Some(UnitAi {
+                attackers: vec![41],
+                ..building()
+            }),
+            life: Lifecycle {
+                class: Class::Animated,
+                master_id: 48,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        },
+    ];
+    let foundation = Unit {
+        id: 10028,
+        position: [30.0, 30.0, 0.0],
+        workers: 1,
+        life: Lifecycle {
+            state: 0,
+            master_id: 70,
+            ..Lifecycle::default()
+        },
+        construction: Some(Construction {
+            progress: 0.0,
+            desolid: false,
+            builders: 1,
+            hit_points: 550,
+            build_time: 25,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: true,
+        }),
+        ..Unit::default()
+    };
+    // player 1's turn: the boar's unit AI keeps its attackers
+    let mut t = Turns::new(
+        0,
+        1,
+        1,
+        vec![0, 0],
+        vec![
+            Player {
+                objects: gaia,
+                ..Player::default()
+            },
+            Player {
+                objects: villagers.into_iter().chain([foundation]).collect(),
+                relations: vec![0, 1],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    let master = |id, kind, class| Master {
+        id,
+        kind,
+        class,
+        ..Master::default()
+    };
+    let table = Masters::new([
+        master(349, 15, 15),
+        master(48, 70, 9),
+        master(83, 70, 4),
+        master(70, 80, 3),
+    ]);
+    t.masters = vec![table.clone(), table];
+    t
+}
+
+/// `RGE_Action_Object::update` (`0x14106ac90`) deletes a dead unit's action list in the update
+/// of its death (`FUN_140a98620`), before any action's update: the Gather lets its tree go (no
+/// worker left, it goes to sleep), the Hunt lets its boar go (notify 699 from the hunter, its
+/// class 4), the Build takes its builder out of the foundation's builders and lets it go.
+#[test]
+fn a_dead_unit_s_actions_go_and_let_their_targets_go_in_the_update_of_its_death() {
+    let mut t = deaths_world();
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    let villagers = &t.players[1].objects;
+    for v in &villagers[..3] {
+        assert!(5 <= v.life.state, "{} died", v.id);
+        assert_eq!(v.top_action(), None, "{} lost its actions", v.id);
+    }
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
+    let boar = &t.players[0].objects[1];
+    assert_eq!(boar.workers, 0);
+    let notify = boar.ai.as_ref().unwrap().notifies.last().copied();
+    assert_eq!(
+        notify.map(|n| (n.caller, n.kind, n.p[0])),
+        Some((41, crate::unit_ai::NO_LONGER_ON_ME, 4))
+    );
+    let foundation = &villagers[3];
+    assert_eq!(foundation.workers, 0);
+    assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
+}
+
+/// `FUN_140aaddb0`: a Build counts its builder in a building annex's main building (`+0xbb8`),
+/// in any other object itself, and in none once the world no longer holds its target; a dead
+/// builder of the annex leaves the main building's builders.
+#[test]
+fn a_build_on_an_annex_counts_its_builder_in_the_main_building() {
+    let mut t = deaths_world();
+    let mut main = t.players[1].objects[3].clone();
+    main.id = 10030;
+    t.players[1].objects[3].annex_of = Some(10030);
+    t.players[1].objects[3]
+        .construction
+        .as_mut()
+        .unwrap()
+        .builders = 0;
+    t.players[1].objects.push(main);
+    assert_eq!(t.counted_building(10028), Ok(Some(10030)));
+    assert_eq!(t.counted_building(50), Ok(Some(50)));
+    assert_eq!(t.counted_building(999), Ok(None));
+    t.tick(100);
+    let builders = |id| {
+        t.players[1]
+            .objects
+            .iter()
+            .find(|u| u.id == id)
+            .and_then(|u| u.construction)
+            .map(|k| k.builders)
+    };
+    assert_eq!((builders(10028), builders(10030)), (Some(0), Some(0)));
+}
+
+/// A `MoveTo` of its own to an object takes the object (`FUN_140aa0df0` with quiet 0, then
+/// `FUN_140a7a230`: slot 0x178 wakes the sleeping tree 50) and lets it go at every end: another
+/// move to an object takes the new one before the clearing's teardown (`0x140aa1f30`, then the
+/// base teardown `FUN_140a73fc0`) lets the old one go (no worker left on the tree: it is flagged
+/// to sleep), and a clearing of the list lets the town centre go.
+#[test]
+fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() {
+    let mut t = teardown_world();
+    let tree = Unit {
+        id: 50,
+        position: [12.5, 10.5, 0.0],
+        life: Lifecycle {
+            master_id: 349,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    t.players[0].sleeping.push(tree);
+    for m in &mut t.masters {
+        *m = Masters::new(m.iter().cloned().chain([Master {
+            id: 349,
+            kind: 15,
+            class: 15,
+            ..Master::default()
+        }]));
+    }
+    let placed = |x: f32, class, master| Placed {
+        position: [x, 10.5, 0.0],
+        radius: [0.5, 0.5],
+        class,
+        player: 0,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(50, placed(12.5, 15, 349));
+    t.spatial.insert(9149, placed(20.0, 52, 109));
+    t.move_to_object(1, 2, 50, [12.5, 10.5, 0.0]).unwrap();
+    assert_eq!(t.players[0].sleeping.len(), 0);
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.id, tree.workers), (50, 1));
+    assert_eq!(t.players[1].objects[2].move_to.map(|m| m.target), Some(50));
+    t.move_to_object(1, 2, 9149, [20.0, 10.5, 0.0]).unwrap();
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
+    assert_eq!(t.players[1].objects[3].workers, 2);
+    t.clear_actions(1, 2).unwrap();
+    assert_eq!(t.players[1].objects[3].workers, 1);
+}
+
+/// A `MoveTo` of its own that ends (its update in state 1 returns 1, the action list removes it,
+/// `FUN_140a98e20`) lets its target go (the base teardown, slot 0x180); one that dies with the
+/// unit does too (`FUN_140a98620`).
+#[test]
+fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
+    let mut t = deaths_world();
+    t.players[0].objects[0].workers = 2;
+    let mover = crate::hunt::tests::walker();
+    let walker = |id| Unit {
+        id,
+        position: [11.5, 10.5, 0.0],
+        mover: Some(mover.clone()),
+        move_to: Some(crate::move_to::MoveToAction {
+            state: MoveTo::Arrived,
+            goal: None,
+            target: 50,
+            range: 0.0,
+            run: false,
+            wait: crate::move_to::MoveWait::default(),
+        }),
+        pasture: -1,
+        my_pasture: -1,
+        life: Lifecycle {
+            class: Class::Animated,
+            master_id: 83,
+            master: Some(MasterData::default()),
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let dead = Unit {
+        life: Lifecycle {
+            hp: 0.0,
+            ..walker(43).life
+        },
+        ..walker(43)
+    };
+    t.players[1].objects = vec![walker(44), dead];
+    t.spatial.insert(
+        50,
+        Placed {
+            position: [12.5, 10.5, 0.0],
+            radius: [0.5, 0.5],
+            class: 15,
+            player: 0,
+            master: 349,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    assert_eq!(t.players[1].objects[0].move_to, None);
+    assert_eq!(t.players[1].objects[1].move_to, None);
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
+}
+
+/// The hunt's `set_state(8)` (`0x140ac60e0` case 8): without a second target its search
+/// (`FUN_1411671e0`; without planners by distance) finds the town centre, which becomes the
+/// second target (`FUN_140a7a190`): the caller takes it (slot 0x178). With the drop site held
+/// already it walks there and takes nothing new.
+#[test]
+fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![Player::default(), Player::default()],
+    );
+    placeable(&mut t);
+    let mut walker = crate::hunt::tests::walker();
+    walker.stats.restriction = 0;
+    let mut hunter = Unit {
+        id: 40,
+        position: [10.5, 10.5, 0.0],
+        mover: Some(walker),
+        hunt: Some(crate::hunt::tests::hunting(-1)),
+        life: Lifecycle {
+            master_id: 83,
+            attribute_type: 0,
+            amount: 10.0,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let tc = Unit {
+        id: 9149,
+        position: [20.0, 20.0, 0.0],
+        life: Lifecycle {
+            master_id: 109,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let masters = Masters::new([
+        Master {
+            id: 83,
+            kind: 70,
+            class: 4,
+            radius: [0.2, 0.2],
+            drop_sites: vec![109, -1],
+            ..Master::default()
+        },
+        Master {
+            id: 109,
+            kind: 80,
+            class: 52,
+            radius: [2.0, 2.0],
+            ..Master::default()
+        },
+    ]);
+    let placed = |x: f32, radius: f32, class, master| Placed {
+        position: [x, x, 0.0],
+        radius: [radius, radius],
+        class,
+        player: 1,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(40, placed(10.5, 0.2, 4, 83));
+    t.spatial.insert(9149, placed(20.0, 2.0, 52, 109));
+    let others = [tc];
+    let drop_off = |hunter: &mut Unit, t: &mut Turns| {
+        let world = DropWorld {
+            masters: Some(&masters),
+            spatial: &t.spatial,
+            zones: &mut t.zones,
+            pathing: &mut t.pathing,
+            object: t.streams.get(Stream::Object),
+            world_time: 0,
+            computer: false,
+            construction_rate: 1.0,
+            groups: &t.groups,
+        };
+        hunter.drop_off_in(world, &others)
+    };
+    assert_eq!(drop_off(&mut hunter, &mut t), Ok(Some(9149)));
+    let hunt = hunter.hunt.unwrap();
+    assert_eq!((hunt.state, hunt.carry_to), (crate::hunt::DROP, 9149));
+    assert_eq!(drop_off(&mut hunter, &mut t), Ok(None));
+}
+
+/// The Hunt's update (`0x140ac7a00`) first checks its second target: a drop site past state 6
+/// is let go (`FUN_140a7a190` with none: slot 0x180) and dropped, one the world's table no longer
+/// holds only dropped; the teardown (`FUN_140a73fc0`) of a dead hunter's Hunt and of a failed
+/// one (state 13, removed by `FUN_140a98e20`) lets its drop site go too.
+#[test]
+fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
+    let mut t = deaths_world();
+    let site = |state| Unit {
+        id: 9149,
+        position: [20.0, 20.0, 0.0],
+        workers: 1,
+        life: Lifecycle {
+            state,
+            master_id: 70,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    t.players[1].objects.push(site(2));
+    // the dead hunter 41's Hunt walks its load to the town centre
+    t.players[1].objects[1].hunt.as_mut().unwrap().carry_to = 9149;
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    let workers = |t: &Turns| {
+        t.players[1]
+            .objects
+            .iter()
+            .find(|u| u.id == 9149)
+            .unwrap()
+            .workers
+    };
+    assert_eq!(workers(&t), 0);
+    // a live hunter waiting to search (state 3) whose drop site is past state 6 (the world's
+    // table holds it still); one whose drop site the table no longer holds only drops it
+    let mut t = deaths_world();
+    t.players[1].objects.push(site(7));
+    t.spatial.insert(
+        9149,
+        Placed {
+            position: [20.0, 20.0, 0.0],
+            radius: [2.0, 2.0],
+            class: 3,
+            player: 1,
+            master: 70,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    let hunter = &mut t.players[1].objects[1];
+    hunter.life.hp = 1.0;
+    hunter.hunt = Some(crate::hunt::HuntAction {
+        state: crate::hunt::SEARCH,
+        target: -1,
+        carry_to: 9149,
+        ..crate::hunt::tests::hunting(-1)
+    });
+    let mut gone = t.clone();
+    gone.spatial = Spatial::default();
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    assert_eq!(workers(&t), 0);
+    assert_eq!(t.players[1].objects[1].hunt.map(|h| h.carry_to), Some(-1));
+    gone.tick(100);
+    assert_eq!(workers(&gone), 1);
+    assert_eq!(
+        gone.players[1].objects[1].hunt.map(|h| h.carry_to),
+        Some(-1)
+    );
+    // a failed hunt (state 13) is removed: its teardown lets the drop site go too
+    let mut failed = deaths_world();
+    failed.players[1].objects.push(site(2));
+    failed.spatial = t.spatial.clone();
+    let hunter = &mut failed.players[1].objects[1];
+    hunter.life.hp = 1.0;
+    hunter.hunt = Some(crate::hunt::HuntAction {
+        state: crate::hunt::FAILED,
+        target: -1,
+        carry_to: 9149,
+        ..crate::hunt::tests::hunting(-1)
+    });
+    failed.tick(100);
+    assert_eq!(failed.players[1].unsupported, None);
+    assert_eq!(workers(&failed), 0);
+    assert_eq!(failed.players[1].objects[1].hunt, None);
+}
+
+/// A Gather's and a Hunt's second target at the start of their updates (`0x140a8e1d0`,
+/// `0x140ac7a00`): a drop site past state 6 is let go and goes, one the world's table lacks only
+/// goes, one in state 2 (or 6) stays.
+#[test]
+fn a_second_target_past_state_6_is_let_go_and_one_gone_dropped() {
+    use crate::turn::unit::second_target_checked;
+    assert_eq!(second_target_checked(9149, true, Some(7)), (-1, Some(9149)));
+    assert_eq!(second_target_checked(9149, true, Some(6)), (9149, None));
+    assert_eq!(second_target_checked(9149, true, Some(2)), (9149, None));
+    assert_eq!(second_target_checked(9149, false, None), (-1, None));
+    assert_eq!(second_target_checked(-1, false, None), (-1, None));
+}
+
+/// A foundation's attacking units (`+0xce0`): slot 0x178 of a building (`FUN_1411dba70`) below
+/// state 2 whose master has a stack unit (`+0x986`) lists each taker of a player its owner is
+/// not allied with, once per take; slot 0x180 (`FUN_1411d6020`) drops the releaser's first entry,
+/// the others keeping their order. An ally's take, a built building's and one of a master
+/// without a stack unit list nothing. Both still count the workers.
+#[test]
+fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
+    let unit = |id, master| Unit {
+        id,
+        life: Lifecycle {
+            master_id: master,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let foundation = |id, master| Unit {
+        life: Lifecycle {
+            state: 0,
+            ..unit(id, master).life
+        },
+        combat: true,
+        ..unit(id, master)
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0, 0, 0],
+        vec![
+            Player::default(),
+            Player {
+                objects: vec![foundation(10028, 621), foundation(10029, 70)],
+                relations: vec![0, 0, 2, 4],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![unit(40, 83), unit(41, 83)],
+                relations: vec![0, 2, 0, 2],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![unit(50, 83)],
+                relations: vec![0, 4, 2, 0],
+                ..Player::default()
+            },
+        ],
+    );
+    let building = |id, stack_unit| Master {
+        id,
+        kind: 80,
+        class: 3,
+        building: Some(crate::masters::BuildingMaster {
+            stack_unit,
+            ..crate::masters::BuildingMaster::default()
+        }),
+        ..Master::default()
+    };
+    let table = Masters::new([
+        building(621, 109),
+        building(70, -1),
+        Master {
+            id: 83,
+            kind: 70,
+            class: 4,
+            ..Master::default()
+        },
+    ]);
+    t.masters = vec![table.clone(), table.clone(), table.clone(), table];
+    let by = |t: &Turns, p, i| t.releaser(p, i);
+    let (enemy, other, ally) = (by(&t, 2, 0), by(&t, 2, 1), by(&t, 3, 0));
+    for taker in [enemy, other, enemy, ally] {
+        t.take(10028, taker);
+        t.take(10029, taker);
+    }
+    let site = |t: &Turns| t.players[1].objects[0].clone();
+    assert_eq!(site(&t).attacking_units, [40, 41, 40]);
+    assert_eq!(site(&t).workers, 4);
+    assert_eq!(t.players[1].objects[1].attacking_units, Vec::<i32>::new());
+    t.release(10028, enemy).unwrap();
+    assert_eq!(
+        (site(&t).attacking_units, site(&t).workers),
+        (vec![41, 40], 3)
+    );
+    t.release(10028, ally).unwrap();
+    assert_eq!(site(&t).attacking_units, [41, 40]);
+    t.players[1].objects[0].life.state = 2;
+    t.take(10028, other);
+    t.release(10028, enemy).unwrap();
+    assert_eq!(site(&t).attacking_units, [41, 40]);
+}
+
+/// Slot 0x180 by class: the static object's (`FUN_141197d00`, types 10 and 15) flags an object
+/// alive without workers left to sleep (not one of NaN hit points: `COMISS`, `JNC`); the animated
+/// object's (`FUN_141071ea0`, types 20 to 40) only counts the worker less. A sleeping object
+/// (`FUN_1415417a0` finds it) counts one less and stays asleep without the flag.
+#[test]
+fn only_a_static_object_let_go_by_its_last_worker_goes_to_sleep() {
+    let by = Releaser {
+        id: 40,
+        class: 4,
+        player: 1,
+    };
+    let let_go = |kind, hp| {
+        let mut u = Unit {
+            workers: 1,
+            life: Lifecycle {
+                hp,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        released(&mut u, kind, false, by).unwrap();
+        (u.workers, u.life.goto_sleep)
+    };
+    assert_eq!(let_go(10, 1.0), (0, true));
+    assert_eq!(let_go(15, 1.0), (0, true));
+    assert_eq!(let_go(20, 1.0), (0, false));
+    assert_eq!(let_go(25, 1.0), (0, false));
+    assert_eq!(let_go(10, f32::NAN), (0, false));
+    let mut t = deaths_world();
+    let mut tree = t.players[0].objects.remove(0);
+    tree.workers = 2;
+    t.players[0].sleeping.push(tree);
+    t.release(50, by).unwrap();
+    let tree = &t.players[0].sleeping[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (1, false));
+}
+
+/// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
+/// any other object's 2).
+#[test]
+fn only_the_wonder_keeps_its_actions_past_state_2() {
+    let life = |master_id, state| Lifecycle {
+        state,
+        master_id,
+        ..Lifecycle::default()
+    };
+    assert!(!loses_actions(&life(83, 2)));
+    assert!(loses_actions(&life(83, 3)));
+    assert!(!loses_actions(&life(276, 5)));
+    assert!(loses_actions(&life(276, 6)));
+}
+
 /// The Artifact's move to an object (slot 8 with an object, `FUN_140aaca30`): the old target
 /// is let go, then the new one taken (slot 0x68 twice, `+0x60` 0).
 #[test]
@@ -3051,7 +3757,8 @@ fn a_unit_s_patrol_information_is_its_top_path_and_waypoint() {
 
 /// `restorePatrolInformation`'s unit part: the own waypoints become the saved patrol's
 /// points (slot 0x448, a whole coordinate moved to the tile's middle), and a forced, running
-/// `MoveTo` goes to the saved waypoint.
+/// `MoveTo` goes to the saved waypoint; the old `MoveTo` to an object lets it go (its teardown's
+/// slot 0x180, the caller's).
 #[test]
 fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
     let saved = crate::unit_ai::PatrolPath {
@@ -3068,9 +3775,17 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             patrol_waypoint: 1,
             ..UnitAi::default()
         }),
+        move_to: Some(crate::move_to::MoveToAction {
+            state: MoveTo::Moving,
+            goal: None,
+            target: 77,
+            range: 0.0,
+            run: false,
+            wait: crate::move_to::MoveWait::default(),
+        }),
         ..Unit::default()
     };
-    u.restore_patrol(6).unwrap();
+    assert_eq!(u.restore_patrol(6), Ok(Some(77)));
     assert_eq!(
         u.mover.as_ref().unwrap().user_waypoints,
         [[20.5, 0.5, 20.5], [30.5, 0.5, 20.25]]

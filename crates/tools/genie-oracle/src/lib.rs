@@ -315,6 +315,12 @@ fn unit(
             .tribe_building_object
             .as_deref()
             .map_or(0.0, |b| b.livestock_summation),
+        // `attackingUnits` (+0xce0): the unallied takers of a foundation with a stack unit
+        attacking_units: object
+            .tribe_building_object
+            .as_deref()
+            .map(|b| b.unit_id.clone())
+            .unwrap_or_default(),
         reload_worldtime: object
             .combat()
             .and_then(|c| c.rge_combat_object.reload_worldtime)

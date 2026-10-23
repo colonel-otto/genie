@@ -740,6 +740,17 @@ impl UnitGroup {
     pub fn has(&self, id: i32) -> bool {
         self.members.iter().any(|m| m.id == id)
     }
+
+    /// Unit `id`'s place among the members (`FUN_1410175f0`: its index in `+0xf0`), −1 when it is
+    /// not one.
+    #[must_use]
+    pub fn index_of(&self, id: i32) -> i32 {
+        self.members
+            .iter()
+            .position(|m| m.id == id)
+            .and_then(|i| i32::try_from(i).ok())
+            .unwrap_or(-1)
+    }
 }
 
 #[cfg(test)]

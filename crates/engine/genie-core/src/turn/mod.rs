@@ -390,14 +390,9 @@ impl Turns {
                         continue;
                     }
                     let gone = self.players[p].objects.swap_remove(i);
-                    self.track_remove(p, gone.id, gone.life.master_id);
-                    let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
-                    forget_resource(&mut self.spatial, master, gone.id, gone.position);
-                    if let Some(m) = master.filter(|m| 70 <= m.kind) {
-                        count_class(&mut self.players[p].attributes, m, -1.0);
+                    if let Err(e) = self.leave_world(p, &gone) {
+                        notes.push((p, id, e));
                     }
-                    let _ = self.spatial.leave(gone.id);
-                    self.pathing.removed(gone.id);
                     continue;
                 };
                 if g.life.master_id != unit.life.master_id {
@@ -1054,6 +1049,8 @@ impl Turns {
                     pauses: Vec::new(),
                     releases: Vec::new(),
                     takes: Vec::new(),
+                    builder_leaves: Vec::new(),
+                    left_group: None,
                     made: Vec::new(),
                     ghost_deaths: Vec::new(),
                     started: Vec::new(),
@@ -1141,6 +1138,8 @@ impl Turns {
                 let gate_toggle = std::mem::take(&mut c.gate_toggle);
                 let ai_resume = c.ai_resume.take();
                 let releases = std::mem::take(&mut c.releases);
+                let builder_leaves = std::mem::take(&mut c.builder_leaves);
+                let left_group = c.left_group.take().map(|(g, b)| (g, unit.id, b));
                 let (takes, made) = (std::mem::take(&mut c.takes), std::mem::take(&mut c.made));
                 let (ghost_deaths, started, unwatched, evacuations) = (
                     std::mem::take(&mut c.ghost_deaths),
@@ -1402,8 +1401,21 @@ impl Turns {
                 {
                     result = result.and(Err(e));
                 }
-                for id in takes {
-                    self.take(id);
+                // an entered unit's removeUnit from its group (FUN_14102c160), when the world
+                // holds the group (FUN_14152ff40)
+                if let Some((g, id, building)) =
+                    left_group.filter(|&(g, ..)| self.groups.get(g).is_some())
+                    && let Err(e) = self.remove_unit(g, id, building, false)
+                {
+                    result = result.and(Err(e));
+                }
+                for (id, by) in takes {
+                    self.take(id, by);
+                }
+                for id in builder_leaves {
+                    if let Err(e) = self.leave_builders(id) {
+                        result = result.and(Err(e));
+                    }
                 }
                 for (id, by) in releases {
                     if let Err(e) = self.release(id, by) {
@@ -1438,37 +1450,12 @@ impl Turns {
                 match result {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
-                        // its deletion (FUN_14116b5e0: its player's remove, slot 0x2d8, takes it
-                        // out of the tracker), and a combat object's destructor's class counters
-                        // (FUN_141200450)
-                        let k = crate::tracker::key(
-                            self.masters.get(p),
-                            &self.lines,
-                            gone.life.master_id,
-                        );
-                        player.tracker.remove(gone.id, k);
-                        let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
-                        forget_resource(&mut self.spatial, master, gone.id, gone.position);
-                        if let Some(m) = master.filter(|m| 70 <= m.kind) {
-                            count_class(&mut player.attributes, m, -1.0);
-                        }
-                        if let Err(e) = self.spatial.leave(gone.id) {
+                        if let Err(e) = self.leave_world(p, &gone) {
                             crate::trace::player_unsupported(self.ticks, p, e);
-                            let _ = player.unsupported.get_or_insert((self.ticks, i, e));
+                            let _ = self.players[p]
+                                .unsupported
+                                .get_or_insert((self.ticks, i, e));
                         }
-                        // its owner's watched list lets it go (FUN_141091310 as it leaves)
-                        self.unwatch(p, gone.id);
-                        // a recyclable master's missile goes to the pool of type 60
-                        let recyclable = self
-                            .masters
-                            .get(p)
-                            .and_then(|m| m.get(gone.life.master_id))
-                            .is_some_and(|m| m.recyclable);
-                        if let Some(m) = gone.missile.as_ref().filter(|_| recyclable) {
-                            self.recycling.missiles.push((gone.id, m.flying));
-                        }
-                        self.pathing.removed(gone.id);
-                        self.pathing.tiles_changed(self.spatial.take_changes());
                     }
                     Ok(Step::Sleep) => {
                         // the list's remove (FUN_1411664a0) puts its last object in the

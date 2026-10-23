@@ -302,9 +302,6 @@ pub(in crate::turn) fn nearest_drop_site(
     best
 }
 
-/// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
-/// update: its worker count falls, and a static object no one works on any more that is alive is
-/// flagged to sleep.
 /// `ClosestObject`'s "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
 /// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
 pub(in crate::turn) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
@@ -321,6 +318,8 @@ pub(in crate::turn) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) ->
         })
 }
 
+/// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
+/// update ([`released`]; the releaser's own player is allied).
 pub(in crate::turn) fn release_own(
     others: &mut [Unit],
     masters: Option<&Masters>,
@@ -336,8 +335,8 @@ pub(in crate::turn) fn release_own(
             "a released object of a master the slice does not have",
         ))?
         .kind;
-    // one of the releaser's own player: allied
-    released(u, kind, by, true)
+    // one of the releaser's own player: allied, never listed
+    released(u, kind, false, by)
 }
 
 /// The object whose action lets its target go (the target's slot 0x180 takes it): its id, its
@@ -349,34 +348,37 @@ pub(crate) struct Releaser {
     pub(crate) player: usize,
 }
 
-/// Slot 0x180 on object `u` of master type `kind`, let go by `by` (`allied` to its owner):
-/// the static object's (`FUN_141197d00`) counts a worker less and a static one without workers
-/// left, alive (state 2 with hit points, or 6), goes to sleep. A combat object's
-/// (`FUN_141086e60`) counts the worker less (`FUN_141071ea0`) and tells its unit AI that the
-/// releaser no longer acts on it (notify 699, the releaser's master class as its first
-/// parameter; none from an object of a negative id). A building's (`FUN_1411d6020`) first drops
-/// an unallied releaser from a list of its own while it stands in state 0 or 1, which is not
-/// modelled.
+/// The first master type whose slot 0x180 is not the static object's (`FUN_141197d00`, types 10
+/// and 15): the animated object's (`FUN_141071ea0`, types 20 to 40) only counts a worker less.
+const ANIMATED_TYPE: u8 = 20;
+
+/// Slot 0x180 on object `u` of master type `kind`, let go by `by`: the static object's
+/// (`FUN_141197d00`, types 10 and 15) counts a worker less and a static one without workers
+/// left, alive (state 2 with hit points, or 6), goes to sleep; the animated object's
+/// (`FUN_141071ea0`, types 20 to 40) only counts the worker less. A combat object's (`FUN_141086e60`) counts the worker
+/// less (`FUN_141071ea0`) and tells its unit AI that the releaser no longer acts on it (notify
+/// 699, the releaser's master class as its first parameter; none from an object of a negative
+/// id). A building's (`FUN_1411d6020`) first drops the releaser's first entry from its attacking
+/// units (`+0xce0`, the rest keeping their order) when it lists it (`listed`, [`Unit::lists_taker`]).
 pub(crate) fn released(
     u: &mut Unit,
     kind: u8,
+    listed: bool,
     by: Releaser,
-    allied: bool,
 ) -> Result<(), Unsupported> {
+    if listed && let Some(i) = u.attacking_units.iter().position(|&t| t == by.id) {
+        let _ = u.attacking_units.remove(i);
+    }
     if 0 < u.workers {
         u.workers -= 1;
     }
+    // COMISS hp with 0, JNC: a NaN does not count as alive
     let alive = (u.life.state == 2 && 0.0 <= u.life.hp) || u.life.state == 6;
-    if kind < 30 && u.workers == 0 && alive {
+    if kind < ANIMATED_TYPE && u.workers == 0 && alive {
         u.life.goto_sleep = true;
     }
     if !u.combat {
         return Ok(());
-    }
-    if kind == 80 && u.life.state < 2 && !allied {
-        return Err(Unsupported(
-            "an enemy's release of a building in state 0 or 1 (FUN_1411d6020)",
-        ));
     }
     if 0 <= by.id
         && let Some(ai) = u.ai.as_mut()
@@ -393,6 +395,35 @@ pub(crate) fn released(
 }
 
 impl Turns {
+    /// The leave of object `gone`, out of player `p`'s live list already (its list's update that
+    /// returned 1, `FUN_14116b5e0`): its player's remove (slot 0x2d8) takes it out of the tracker,
+    /// it leaves the visible-resource lists ([`forget_resource`]), a combat object's destructor
+    /// lowers its player's class counters (`FUN_141200450`), it leaves the world's places and its
+    /// owner's watched list (`FUN_141091310`), a recyclable master's missile goes to the pool of
+    /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
+    /// world's leave of the place that the slice does not model.
+    pub(in crate::turn) fn leave_world(
+        &mut self,
+        p: usize,
+        gone: &Unit,
+    ) -> Result<(), Unsupported> {
+        self.track_remove(p, gone.id, gone.life.master_id);
+        let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
+        forget_resource(&mut self.spatial, master, gone.id, gone.position);
+        if let Some(m) = master.filter(|m| 70 <= m.kind) {
+            count_class(&mut self.players[p].attributes, m, -1.0);
+        }
+        let recyclable = master.is_some_and(|m| m.recyclable);
+        let left = self.spatial.leave(gone.id);
+        self.unwatch(p, gone.id);
+        if let Some(m) = gone.missile.as_ref().filter(|_| recyclable) {
+            self.recycling.missiles.push((gone.id, m.flying));
+        }
+        self.pathing.removed(gone.id);
+        self.pathing.tiles_changed(self.spatial.take_changes());
+        left
+    }
+
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): a
     /// live object the slice holds, with its relations to the attacker's player and whether its
     /// place is a guess.
@@ -414,6 +445,7 @@ impl Turns {
             world.allied(p, attacker, true),
         ];
         v.uncertain = self.spatial.get(id).is_none_or(|o| o.unknown.is_some());
+        v.tile_place = self.spatial.tile_place(id);
         Some(v)
     }
 
@@ -469,8 +501,9 @@ impl Turns {
 
     /// The objects a blast of `unit` (player `p`) may reach while it hits `target`: for a master
     /// with an area effect, the objects but the two on the tiles of the blast's rectangle about
-    /// the unit, a tile wider each way (the unit may step in its update). An object the slice
-    /// cannot read stands in with its place alone, as a guess.
+    /// the unit, a tile wider each way (the unit may step in its update), each with its place in
+    /// its tile's list as the unit's update starts. An object the slice cannot read stands in
+    /// with its place alone, as a guess.
     pub(in crate::turn) fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
         let Some(r) = self
             .masters
@@ -491,6 +524,7 @@ impl Turns {
                     id,
                     position: o.position,
                     uncertain: true,
+                    tile_place: self.spatial.tile_place(id),
                     ..Victim::default()
                 })
             })
@@ -762,6 +796,17 @@ pub(in crate::turn) fn wait_progress(
         .find(|u| u.id == id)
         .or_else(|| foreign.find(id).map(|(_, u)| u))
         .and_then(|u| u.construction.map(|k| k.progress))
+}
+
+/// The state (`+0x640`) of object `id` among its owner's other objects and the other players'
+/// lists: None when they do not hold it (the unit itself, or one of its owner's sleeping objects:
+/// static objects only, never a drop site, which the callers ask for).
+pub(in crate::turn) fn state_of(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<u8> {
+    others
+        .iter()
+        .find(|u| u.id == id)
+        .or_else(|| foreign.find(id).map(|(_, u)| u))
+        .map(|u| u.life.state)
 }
 
 /// What the task finder reads of object `id`, as `find` holds the objects (with their owners)
@@ -1369,6 +1414,8 @@ pub(crate) fn victim_of(
     let tasks = |kind: i16| master.tasks.iter().any(|t| t.action_type == kind);
     Victim {
         id: u.id,
+        // the caller's, which holds the tile lists
+        tile_place: 0,
         hp: u.life.hp,
         amount: u.life.amount,
         state: u.life.state,

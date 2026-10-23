@@ -22,12 +22,12 @@ use crate::turn::view::{Context, DropWorld, OwnerView, UnitView};
 use crate::turn::world::{
     Releaser, ResourceWorld, Seeker, built_death, change_hands, clear_look_of, closest_resource_of,
     combat_dies, drop_site_search, farm_bonus, forget_resource, herded, nearest_drop_site,
-    refund_of, release_own, victim_of, wait_progress,
+    refund_of, release_own, state_of, victim_of, wait_progress,
 };
 use crate::turn::{
     ARMED_FIREPOWER, BUILDING_KIND, BUILDING_TERRAIN, DROP_SITE_MASTERS, EJECT_SHARE,
     GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, Gate, MONASTERY, SEARCH_AGAIN, SEARCH_NEEDED,
-    SPEED_EPSILON, TREE_NEAR, TREE_SEARCH_WITHIN, VILLAGER_CLASS, gate_units,
+    SPEED_EPSILON, TREE_NEAR, TREE_SEARCH_WITHIN, VILLAGER_CLASS, WONDER, gate_units,
 };
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, AiMove, BUILD_ACTION, BUILD_ORDER, Effect, Notify, Search,
@@ -207,6 +207,11 @@ pub struct Unit {
     /// took ([`change_hands`]), which its death spawn makes its dead object of
     /// (`FUN_1411a5090`); None for none.
     pub dead_master: Option<Box<Master>>,
+    /// `+0xce0`, `attackingUnits` (saved): the units of players its owner is not allied with
+    /// that took this foundation (a building below state 2 whose master has a stack unit,
+    /// `+0x986`) as their target, once per take, in order ([`Unit::lists_taker`]); its stack
+    /// unit's completion tells each of the new object.
+    pub attacking_units: Vec<i32>,
 }
 
 /// The sprite a hunt's walk shows ([`crate::hunt::walk_sprite`]) from its task's sprites.
@@ -242,7 +247,62 @@ pub(crate) fn annexes_of(id: i32, objects: &[Unit]) -> Vec<i32> {
     annexes
 }
 
+/// The second target's checks at the start of a Gather's or a Hunt's update (`0x140a8e1d0`,
+/// `0x140ac7a00`) on `site` (−1 for none), which the world's table holds (`held`,
+/// `FUN_1415417a0`) in `state`: one the table lacks goes (`FUN_140a7a190` with none, with nothing
+/// to let go); one past state 6 is let go (slot 0x180) and goes. The game checks the second
+/// target's absence before the first target's state; the two touch different objects. Returns
+/// the second target after them and the object let go.
+pub(in crate::turn) const fn second_target_checked(
+    site: i32,
+    held: bool,
+    state: Option<u8>,
+) -> (i32, Option<i32>) {
+    if site == -1 || !held {
+        return (-1, None);
+    }
+    match state {
+        Some(s) if 6 < s => (-1, Some(site)),
+        _ => (site, None),
+    }
+}
+
+/// `RGE_Action_Object::update` (`0x14106ac90`): the action list of an object past state 2 goes
+/// (`FUN_140a98620`), the Wonder's (master 276, `0x61b0` raw) only past state 5.
+pub(in crate::turn) const fn loses_actions(life: &Lifecycle) -> bool {
+    let last = if life.master_id == WONDER { 5 } else { 2 };
+    last < life.state
+}
+
 impl Unit {
+    /// Whether a building's slot 0x178 or 0x180 (`FUN_1411dba70`, `FUN_1411d6020`) lists its taker
+    /// among the attacking units (`+0xce0`, [`Unit::attacking_units`]): this object of `master` is a
+    /// building (type 80) below state 2 whose master has a stack unit (`+0x986`), and the taker's
+    /// player is not allied with its owner (`FUN_141663d90` with 1: `allied` false).
+    pub(crate) fn lists_taker(&self, master: &Master, allied: bool) -> bool {
+        master.kind == BUILDING_KIND
+            && self.life.state < 2
+            && master.building.is_some_and(|b| b.stack_unit != -1)
+            && !allied
+    }
+
+    /// Slot 0x178 on this object of its player's live list, taken by the object `by` (`listed`,
+    /// [`Unit::lists_taker`]). A building's (`FUN_1411dba70`) first lists the taker among its attacking
+    /// units (`+0xce0`, [`Unit::attacking_units`]; once per take). Then the base take
+    /// (`FUN_14119d3e0`): its worker count (`+0x644`) rises, to at most 550, and a live object flagged
+    /// to sleep drops the flags (a sleeping one's wake is [`crate::turn::Turns::take`]'s). The
+    /// building's wake from semi-asleep (`+0xc98`) after it never runs in a game: only a scenario
+    /// save's load (`FUN_1411df160`) sets that flag, which the slice does not hold.
+    pub(crate) fn taken(&mut self, listed: bool, by: i32) {
+        if listed {
+            self.attacking_units.push(by);
+        }
+        if self.workers < 550 {
+            self.workers += 1;
+        }
+        self.life.goto_sleep = false;
+    }
+
     /// The target of its hunt, which it attacks or gathers from.
     pub(in crate::turn) fn attack_target(&self) -> Option<i32> {
         self.hunt
@@ -276,6 +336,7 @@ impl Unit {
                 .first()
                 .filter(|l| !l.points.is_empty())
                 .map(|l| l.created),
+            group: Some(self.group.id).filter(|&g| g != -1),
         })
     }
 
@@ -493,6 +554,7 @@ impl Unit {
                 player: c.player,
                 attribute_adds: &mut c.attribute_adds,
                 firepower: 0.0,
+                left_group: None,
             };
             if !self.enter_building(building, inside, &mut w)? {
                 return Err(Unsupported("an Enter that did not get in (state 2)"));
@@ -500,6 +562,7 @@ impl Unit {
             // the update's own set_state(1) after the enter's
             self.entered(&mut w)?;
             let firepower = w.firepower;
+            c.left_group = w.left_group.map(|g| (g, enter.target));
             if let Some(b) = others.iter_mut().find(|u| u.id == enter.target) {
                 b.firepower += firepower;
                 b.garrison.push(self.id);
@@ -541,7 +604,9 @@ impl Unit {
     /// task (0x88) on the building's are not modelled. Then slot 0x1a0 (`FUN_141212e10` ->
     /// `FUN_141084b30` -> `FUN_1411921d0`): with room in the building, the unit's sight goes from
     /// its tile (slot 0x1d8), it leaves its tile's list (`FUN_140f5f560`), the obstruction
-    /// manager (`FUN_141055b40`) and the mesh (`+0x660`, `FUN_141053840`), and joins the
+    /// manager (`FUN_141055b40`) and the mesh (`+0x660`, `FUN_141053840`), a member of a unit
+    /// group leaves it (`FUN_14102c160`, the caller's: [`EnterWorld::left_group`]) and stands
+    /// (slot 0x560), and it joins the
     /// building's (slot 0x1c0, `FUN_1411cb850` -> `FUN_14118c890`: `+0x2f0`, at the building's
     /// x and y); its records leave the registry's lists (`FUN_14128a1d0` from its mask to 0);
     /// the building's sight takes a circle of 5 (slot 0x1d0 with 5) and the villager's town-bell
@@ -633,6 +698,14 @@ impl Unit {
         let at = building.position;
         w.spatial.go_inside(self.id, at);
         w.pathing.removed(self.id);
+        // a member of a unit group (+0x6d0) leaves the group the world holds (removeUnit with the
+        // building and 0, FUN_14102c160: the caller's, `left_group`), then stands (slot 0x560)
+        if self.group.id != -1 {
+            w.left_group = Some(self.group.id);
+            if let Some(m) = self.mover.as_mut() {
+                m.stand()?;
+            }
+        }
         let building_radius = w.spatial.get(target).map_or(bm.radius, |p| p.radius);
         self.life.inside = Some(target);
         // the building's slot 0x1c0 (FUN_1411cb850 -> FUN_14120b790): a unit (type 70) adds its
@@ -674,81 +747,49 @@ impl Unit {
         Ok(true)
     }
 
-    /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes (`FUN_140a98620`; a
-    /// `MoveTo`'s teardown stops the unit) and a unit in state 2 takes its standing sprite (slot
-    /// 0x68 with slot 0x798's, [`crate::attack::set_sprite`]) where the slice holds its sprite.
-    /// A Build waiting without its foundation (state 3) goes with nothing to release
-    /// (`FUN_140aadbf0`), its own Attack, an Enter and an Artifact let their target go, a Fly
-    /// gives the unit its top speed as its animation speed; other actions' teardowns are not
-    /// modelled.
+    /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
+    /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
+    /// [`crate::attack::set_sprite`]) where the slice holds its sprite.
     pub(in crate::turn) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
         let by = self.releaser(c);
         let sprite = c.streams.get(Stream::Sprite);
-        self.stop_with(&mut c.releases, by, c.masters, c.graphics, sprite)
+        let lets = (&mut c.releases, &mut c.builder_leaves);
+        self.stop_with(lets, by, c.masters, c.graphics, sprite)
     }
 
     /// [`Unit::stop_action`] on the parts of the world it changes: the targets its actions let
-    /// go (`by` the unit), its masters and sprites, and the Sprite stream.
+    /// go and the foundations its Build leaves (`by` the unit, [`Unit::clear_own_actions`]), its
+    /// masters and sprites, and the Sprite stream.
     pub(in crate::turn) fn stop_with(
         &mut self,
-        releases: &mut Vec<(i32, Releaser)>,
+        (releases, builder_leaves): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>),
         by: Releaser,
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
     ) -> Result<(), Unsupported> {
-        self.tear_down_actions(releases, by)?;
+        self.tear_down_actions(releases, builder_leaves, by)?;
         if self.life.state == 2 {
             self.show_standing(masters, graphics, sprite)?;
         }
         Ok(())
     }
 
-    /// The action list's clearing (`FUN_140a98620`) as the unit's stops run it: each action's
-    /// teardown, the targets they let go (`by` the unit) into `releases`.
+    /// The action list's clearing (`FUN_140a98620`) as the unit's own commands and stops run it
+    /// ([`Unit::clear_own_actions`]); an action the slice does not hold has a teardown it cannot
+    /// run.
     pub(in crate::turn) fn tear_down_actions(
         &mut self,
         releases: &mut Vec<(i32, Releaser)>,
+        builder_leaves: &mut Vec<i32>,
         by: Releaser,
     ) -> Result<(), Unsupported> {
-        // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
-        if let Some(mut a) = self.attack.take() {
-            a.tear_down(self.mover.as_mut())?;
-            for t in [a.target, a.target2] {
-                if t != -1 {
-                    releases.push((t, by));
-                }
-            }
+        if self.unmodelled_action.is_some() {
+            return Err(Unsupported(
+                "a unit AI's stop of an action list the slice does not model",
+            ));
         }
-        // the Hunt's teardown: its sub-actions go (an Attack's or MoveTo's stops the unit) and the
-        // base teardown lets its target go
-        if let Some(mut h) = self.hunt.take() {
-            h.tear_down(self.mover.as_mut())?;
-            if h.target != -1 {
-                releases.push((h.target, by));
-            }
-        }
-        // the Gather's teardown: its MoveTo's stops the unit and the base teardown lets its
-        // target, then its second target go
-        if let Some(mut g) = self.gather.take() {
-            g.tear_down(self.mover.as_mut())?;
-            for t in [g.target, g.carry_to] {
-                if t != -1 {
-                    releases.push((t, by));
-                }
-            }
-        }
-        // the Enter's teardown: its MoveTo's stops the unit, and the base teardown
-        // (FUN_140a73fc0) lets the building go (slot 0x180; its `+0x60` is 0)
-        if let Some(e) = self.enter.take() {
-            if e.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
-            releases.push((e.target, by));
-        }
-        self.clear_own_actions(releases, by)
+        self.clear_own_actions(releases, builder_leaves, by)
     }
 
     /// The unit's slot 0x68 with its master's standing sprite (slot 0x798's, the master's
@@ -777,30 +818,47 @@ impl Unit {
         Ok(())
     }
 
-    /// The action list's clearing (`FUN_140a98620`): each action's teardown (a `MoveTo`'s, also
-    /// an Explore's, stops the unit, slot 0x5d0). A Build waiting without work, a wait for a
-    /// foundation, an Artifact (its target let go, `by` the unit, into `releases`) and a Fly go;
-    /// the others the slice holds are not modelled.
-    pub(in crate::turn) fn clear_own_actions(
+    /// The action list's deletion (`FUN_140a98620`), the one every caller shares (the unit's
+    /// death, its stops and commands, [`crate::turn::Turns::clear_actions`]): each action's
+    /// destructor. A `MoveTo`'s (`FUN_140aa1f30`, an action's sub-action's too) stops the unit
+    /// (slot 0x5d0). The base teardown (`FUN_140a73fc0`) lets the target go (slot 0x180) unless
+    /// the action is quiet (`+0x60`; the Hunt's Attack is, so only the Hunt lets its target go),
+    /// then the second target, into `releases` with the unit as `by`. The Build's
+    /// (`FUN_140aadbf0`) first takes a counted builder (`+0x68`) out of its building's builders
+    /// (`FUN_140aaddb0`, `+0x9e8`), its foundation into `builder_leaves`
+    /// ([`crate::turn::Turns::leave_builders`]); the Artifact's (`FUN_140aab0d0`) lets its
+    /// target go and its `MoveTo`'s stops the unit; the Fly's (`FUN_140a84750`) gives the unit
+    /// its top speed as its animation speed (slot 0x208 into `+0x7b8`); the missile's lets its
+    /// target and the object it was fired from go. The Make, the wait for a foundation
+    /// (`0x140ae8780`) and the Explore (`0x140a87dd0`) hold no target. A building's production
+    /// is a list of its own, which stays. Of the list's deletion itself, the next action's slot
+    /// 0x28 for a unit below state 3 needs a second action, which the slice never holds.
+    ///
+    /// # Errors
+    ///
+    /// The unit's stop that the motion step does not model.
+    pub(crate) fn clear_own_actions(
         &mut self,
         releases: &mut Vec<(i32, Releaser)>,
+        builder_leaves: &mut Vec<i32>,
         by: Releaser,
     ) -> Result<(), Unsupported> {
-        // a wait for a foundation goes: its teardown is the base one's, which lets no target go
+        let mut release = |t: i32| {
+            if t != -1 {
+                releases.push((t, by));
+            }
+        };
         self.wait_solidify = None;
-        // the Artifact's teardown (FUN_140aab0d0): it lets its target go, and its MoveTo's stops
-        // the unit
+        self.make = None;
         if let Some(mut a) = self.artifact.take() {
             let (walked, released) = a.tear_down();
             if walked && let Some(m) = self.mover.as_mut() {
                 m.stop()?;
             }
             if let Some(t) = released {
-                releases.push((t, by));
+                release(t);
             }
         }
-        // the Fly's (FUN_140a84750): the unit's animation speed (`+0x7b8`) takes its top speed
-        // (slot 0x208), then its MoveTo's teardown stops it
         if let Some(f) = self.fly.take() {
             self.anim_speed = Some(self.mover.as_ref().map_or(0.0, |m| m.stats.speed));
             if f.move_to.is_some()
@@ -809,43 +867,54 @@ impl Unit {
                 m.stop()?;
             }
         }
-        if self
-            .build
-            .as_ref()
-            .is_some_and(|b| b.state == 3 && b.target == -1 && b.move_to.is_none())
+        if let Some(e) = self.enter.take() {
+            if e.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+            release(e.target);
+        }
+        if let Some(b) = self.build.take() {
+            if b.added {
+                builder_leaves.push(b.target);
+            }
+            release(b.target);
+            if b.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+        }
+        if self.explore.take().is_some_and(|e| e.move_to.is_some())
+            && let Some(m) = self.mover.as_mut()
         {
-            self.build = None;
+            m.stop()?;
         }
-        let held = [
-            (self.build.is_some(), "a Build"),
-            (self.hunt.is_some(), "a Hunt"),
-            (self.gather.is_some(), "a Gather"),
-            (self.attack.is_some(), "an Attack"),
-            (self.enter.is_some(), "an Enter"),
-            (self.unmodelled_action.is_some(), "an action not held"),
-        ];
-        if let Some(&(_, what)) = held.iter().find(|(h, _)| *h) {
-            return Err(Unsupported(match what {
-                "a Build" => "a unit AI's stop of an action list with a Build at work",
-                "a Hunt" => "a unit AI's stop of an action list with a Hunt",
-                "a Gather" => "a unit AI's stop of an action list with a Gather",
-                "an Attack" => "a unit AI's stop of an action list with an Attack",
-                "an Enter" => "a unit AI's stop of an action list with an Enter",
-                _ => "a unit AI's stop of an action list the slice does not model",
-            }));
+        if let Some(mut h) = self.hunt.take() {
+            h.tear_down(self.mover.as_mut())?;
+            release(h.target);
+            release(h.carry_to);
         }
-        // the Explore's teardown (0x140a87dd0): its MoveTo's stops the unit (slot 0x5d0)
-        if self.explore.take().is_some_and(|e| e.move_to.is_some()) {
-            self.mover
-                .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
-                .stop()?;
+        if let Some(mut g) = self.gather.take() {
+            g.tear_down(self.mover.as_mut())?;
+            release(g.target);
+            release(g.carry_to);
         }
-        if self.move_to.take().is_some() {
-            self.mover
-                .as_mut()
-                .ok_or(Unsupported("a walker without movement state"))?
-                .stop()?;
+        if let Some(mut a) = self.attack.take() {
+            a.tear_down(self.mover.as_mut())?;
+            release(a.target);
+            release(a.target2);
+        }
+        if let Some(old) = self.move_to.take() {
+            if let Some(m) = self.mover.as_mut() {
+                m.stop()?;
+            }
+            release(old.target);
+        }
+        if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
+            release(a.target);
+            release(a.fired_from);
         }
         Ok(())
     }
@@ -868,9 +937,12 @@ impl Unit {
                     let class = class.ok_or(Unsupported(
                         "an AI move of a master the slice does not have",
                     ))?;
-                    match e {
+                    let released = match e {
                         Effect::Move(m) => self.ai_move(m, class)?,
                         _ => self.restore_patrol(class)?,
+                    };
+                    if let Some(t) = released {
+                        c.releases.push((t, self.releaser(c)));
                     }
                 }
                 Effect::MoveAside(m) => c.move_aside.push(m),
@@ -894,7 +966,11 @@ impl Unit {
                 }
                 Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
-                Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
+                Effect::MoveToObject {
+                    target,
+                    state,
+                    range,
+                } => self.move_to_object((target, state), range, c)?,
             }
         }
         Ok(())
@@ -1021,11 +1097,11 @@ impl Unit {
     }
 
     /// The hunt's state 8 after its load went (`0x140ac7a00` case 7, after `FUN_14119d310`): a
-    /// hunt with a target walks back to it (`set_state` 4), not modelled. One without asks its unit
-    /// AI: the queued orders (gather, hunt, on a target) whose target is gone or dead go
-    /// (`FUN_140c5de60`); orders left end the hunt (the AI's order and action clear, `set_state`
-    /// 1, the action list removes it; its teardown's release of the drop site is not held, as its
-    /// take is not). The target class (the AI's target's, else the hunt's `+0x68`) the
+    /// hunt with a target lets the drop site go (`FUN_140a7a190` with none: slot 0x180) and walks
+    /// back to it (`set_state` 4). One without asks its unit AI: the queued orders (gather, hunt,
+    /// on a target) whose target is gone or dead go (`FUN_140c5de60`); orders left end the hunt
+    /// (the AI's order and action clear, `set_state` 1, the action list removes it: its teardown
+    /// lets the drop site go). The target class (the AI's target's, else the hunt's `+0x68`) the
     /// civilian's slot 0x1b0 knows (`FUN_140c1c4f0`) takes the search by kind (slot 0x80); a hunt
     /// of class 10 searches nothing; a unit in a pasture (`FUN_1411c7670`) and a farm found are
     /// not modelled. Else `ClosestObject` (`FUN_140c488b0`, every relation, below one worker for
@@ -1085,10 +1161,15 @@ impl Unit {
                 .task
                 .walk_sprite_id(self.life.attribute_type, self.life.amount);
             let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+            let hunt = self.hunt.as_mut().expect("the caller's hunt");
+            let site = std::mem::replace(&mut hunt.carry_to, -1);
+            let by = self.releaser(c);
+            if site != -1 {
+                c.releases.push((site, by));
+            }
             let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
                 return Err(Unsupported("a hunter without its hunt or movement state"));
             };
-            hunt.carry_to = -1;
             if hunt.chase(&quarry, c.player, &engagement, arms, mover)? {
                 return Err(Unsupported(
                     "a hunt's Attack whose MoveTo starts arrived after its drop-off",
@@ -1123,6 +1204,8 @@ impl Unit {
             ai.end_order_and_action()?;
             let mut hunt = self.hunt.take().expect("the caller's hunt");
             hunt.tear_down(self.mover.as_mut())?;
+            // the base teardown lets the drop site go (its target is none by now)
+            self.hunt_release(c, [hunt.target, hunt.carry_to]);
             return Ok(());
         }
         let class = if ai.target_type == -1 {
@@ -1296,6 +1379,7 @@ impl Unit {
         let arms = crate::attack::arms(master, c.graphics, sprites, moving);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let held = self.life.amount;
+        let by = self.releaser(c);
         let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
@@ -1317,16 +1401,14 @@ impl Unit {
                 )?;
             }
             if owner == c.player {
+                // one of its own player's: allied, never listed
                 let u = others
                     .iter_mut()
                     .find(|u| u.id == found)
                     .expect("found above");
-                if u.workers < 550 {
-                    u.workers += 1;
-                }
-                u.life.goto_sleep = false;
+                u.taken(false, by.id);
             } else {
-                c.takes.push(found);
+                c.takes.push((found, by));
             }
         }
         if hunt.state == crate::hunt::FAILED
@@ -1350,7 +1432,8 @@ impl Unit {
     /// (`+0x7a0`; none when the first is −1) are searched among its player's objects, from the
     /// unit by path ([`drop_site_search`] with the unit), else by distance from its place (without
     /// it); none found is not modelled (notify 0x203, `set_state` 2). The drop site found is the
-    /// second target (`FUN_140a7a190`) and a quiet `MoveTo` to it starts ([`HuntAction::set_drop`]).
+    /// second target (`FUN_140a7a190`, which takes it: slot 0x178 after the update) and a quiet
+    /// `MoveTo` to it starts ([`HuntAction::set_drop`]).
     pub(in crate::turn) fn hunt_drop_off(
         &mut self,
         c: &mut Context<'_>,
@@ -1367,12 +1450,16 @@ impl Unit {
             construction_rate: c.construction_rate,
             groups: c.groups,
         };
-        self.drop_off_in(w, others)
+        if let Some(site) = self.drop_off_in(w, others)? {
+            c.takes.push((site, self.releaser(c)));
+        }
+        Ok(())
     }
 
     /// The Gather's update (slot 6, `0x140a8e1d0`). It first checks its targets: a target gone
     /// from the world's table goes (slot 0x68 with none), one past state 6 is let go (slot 0x180)
-    /// and goes; a second target gone goes (`FUN_140a7a190` with none). Then state 8 walks the
+    /// and goes; a second target gone goes (`FUN_140a7a190` with none), one past state 6 is let
+    /// go and goes. Then state 8 walks the
     /// load to its drop site ([`crate::gather::GatherAction::update_drop`]): the load goes to the
     /// player, the drop site goes (`FUN_140a7a190` with none) and the gather walks back to its
     /// target (`set_state(4)`); without a target the unit AI's search is not modelled. The other
@@ -1406,8 +1493,12 @@ impl Unit {
                 gather.target = -1;
             }
         }
-        if gather.carry_to != -1 && c.spatial.get(gather.carry_to).is_none() {
-            gather.carry_to = -1;
+        let site = gather.carry_to;
+        let held = c.spatial.get(site).is_some();
+        let (kept, let_go) = second_target_checked(site, held, state_of(site, others, c.foreign));
+        gather.carry_to = kept;
+        if let Some(t) = let_go {
+            c.releases.push((t, by));
         }
         let master = c
             .masters
@@ -1870,16 +1961,14 @@ impl Unit {
                 }
                 if new != -1 {
                     if owner == c.player && new == found {
+                        // one of its own player's: allied, never listed
                         let u = others
                             .iter_mut()
                             .find(|u| u.id == found)
                             .expect("found above");
-                        if u.workers < 550 {
-                            u.workers += 1;
-                        }
-                        u.life.goto_sleep = false;
+                        u.taken(false, by.id);
                     } else {
-                        c.takes.push(new);
+                        c.takes.push((new, self.releaser(c)));
                     }
                 }
             }
@@ -1909,7 +1998,7 @@ impl Unit {
             groups: c.groups,
         };
         if let Some(site) = self.gather_drop_off_in(w, others)? {
-            c.takes.push(site);
+            c.takes.push((site, self.releaser(c)));
         }
         Ok(())
     }
@@ -1939,12 +2028,13 @@ impl Unit {
         Ok((site != carry_to && site != -1).then_some(site))
     }
 
-    /// [`Unit::hunt_drop_off`] in `w`, from the update or a command.
+    /// [`Unit::hunt_drop_off`] in `w`, from the update or a command: the drop site it took when
+    /// it is a new second target (`FUN_140a7a190`, the caller's to take, slot 0x178).
     pub(crate) fn drop_off_in(
         &mut self,
         mut c: DropWorld<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<Option<i32>, Unsupported> {
         if self.life.amount <= 0.0 {
             return Err(Unsupported(
                 "a hunt's drop-off carrying nothing (set_state 3)",
@@ -1962,7 +2052,8 @@ impl Unit {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
         hunt.carry_to = site;
-        hunt.set_drop(gap, mover)
+        hunt.set_drop(gap, mover)?;
+        Ok((site != carry_to).then_some(site))
     }
 
     /// The drop site a gatherer's `set_state(8)` walks to, its second target `carry_to` or, with
@@ -2555,7 +2646,7 @@ impl Unit {
             }
             // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
             self.hunt_release(c, [old]);
-            c.takes.push(found);
+            c.takes.push((found, self.releaser(c)));
         }
         Ok(true)
     }
@@ -3147,12 +3238,15 @@ impl Unit {
             },
             met: Vec::new(),
         };
-        c.takes.push(aimed.target);
+        let missile = Releaser {
+            id,
+            class: made.class,
+            player: c.player,
+        };
+        c.takes.push((aimed.target, missile));
         if shot.shooter {
-            if self.workers < 550 {
-                self.workers += 1;
-            }
-            self.life.goto_sleep = false;
+            // the shooter, of the missile's own player: never listed
+            self.taken(false, id);
         }
         let point = {
             let draws = c.streams.get(Stream::Action);
@@ -3833,6 +3927,7 @@ impl Unit {
                 rice: self.rice,
             },
             chain: crate::build::WorkChain::default(),
+            main_builders: None,
         };
         let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
@@ -4216,52 +4311,11 @@ impl Unit {
         if let Some(e) = self.unmodelled_action.filter(|_| self.life.state == 2) {
             return Err(e);
         }
-        if !self.life.is_alive() {
-            // RGE_Action_Object::update deletes a dead object's action list: the Artifact's
-            // teardown lets its target go, and its MoveTo's (0x140aa1f30) stops the unit (slot
-            // 0x5d0)
-            if let Some(mut artifact) = self.artifact.take() {
-                let (walked, released) = artifact.tear_down();
-                if walked && let Some(m) = self.mover.as_mut() {
-                    m.stop()?;
-                }
-                if let Some(t) = released {
-                    c.releases.push((t, self.releaser(c)));
-                }
-            }
-            if let Some(explore) = self.explore.take()
-                && explore.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
-            // a Make's teardown is the base one's: it holds no target; a wait for a foundation's
-            // too
-            self.make = None;
-            self.wait_solidify = None;
-            // a MoveTo of its own: its teardown stops the unit, and the base teardown
-            // (FUN_140a73fc0) lets its target go (slot 0x180; its `+0x60` is 0)
-            if let Some(move_to) = self.move_to.take() {
-                if let Some(m) = self.mover.as_mut() {
-                    m.stop()?;
-                }
-                if move_to.target != -1 {
-                    c.releases.push((move_to.target, self.releaser(c)));
-                }
-            }
-            // an Attack's teardown, then the base teardown's releases
-            self.delete_attack(c)?;
-            // the missile action's teardown (FUN_140a73fc0) lets its target and the object it was
-            // fired from go (slot 0x180)
-            if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
-                let by = self.releaser(c);
-                c.releases.extend(
-                    [a.target, a.fired_from]
-                        .into_iter()
-                        .filter(|&t| t != -1)
-                        .map(|t| (t, by)),
-                );
-            }
+        // RGE_Action_Object::update (0x14106ac90), after the moving update: an object past
+        // state 2 (the Wonder past state 5) loses its action list (FUN_140a98620)
+        if loses_actions(&self.life) {
+            let by = self.releaser(c);
+            self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         }
         // RGE_Action_Object::update with no action in state 2 starts the master's default task
         // (slot 0x7f0): a bird's Fly, whose first update comes in the next tick
@@ -4445,11 +4499,31 @@ impl Unit {
                 });
             }
             let annex_ids = c.spatial.annexes_of(target);
+            // FUN_140aaddb0: a building annex (`+0xbb8`) counts its builders in its main
+            // building
+            let counted_main = others
+                .iter()
+                .find(|u| u.id == target)
+                .filter(|u| {
+                    masters
+                        .and_then(|m| m.get(u.life.master_id))
+                        .is_some_and(|m| m.kind == BUILDING_KIND)
+                })
+                .and_then(|u| u.annex_of);
+            let mut main_builders = None;
             let mut site = None;
             let mut starts = Vec::new();
             for u in others.iter_mut() {
                 if u.id == target {
                     site = Some(u);
+                    continue;
+                }
+                if Some(u.id) == counted_main {
+                    let k = u
+                        .construction
+                        .as_mut()
+                        .ok_or(crate::build::NO_CONSTRUCTION)?;
+                    main_builders = Some(&mut k.builders);
                     continue;
                 }
                 if main_work.is_some() || !annex_ids.contains(&u.id) {
@@ -4472,6 +4546,9 @@ impl Unit {
                     firepower: &mut u.firepower,
                     volley: am.volley_fire,
                 });
+            }
+            if counted_main.is_some() && main_builders.is_none() {
+                return Err(crate::build::NOT_HELD);
             }
             // the slot order: the constructor made them, and their ids, in it
             starts.sort_by_key(|a| a.id);
@@ -4503,6 +4580,7 @@ impl Unit {
                         annexes: starts,
                         main: main_work,
                     },
+                    main_builders,
                 })
             });
             let class = masters
@@ -4704,7 +4782,10 @@ impl Unit {
                 ACTION_COMPLETED
             };
             self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
-            self.move_to = None;
+            // ... and the base teardown (FUN_140a73fc0) lets its target go (slot 0x180)
+            if let Some(t) = self.move_to.take().map(|m| m.target).filter(|&t| t != -1) {
+                c.releases.push((t, self.releaser(c)));
+            }
             if let Some(m) = self.mover.as_mut() {
                 m.stop()?;
             }
@@ -4847,9 +4928,9 @@ impl Unit {
         if self.gather.is_some() {
             self.gather_update(c, others, me)?;
         }
-        // the Hunt's update (0x140ac7a00) first checks its target: one gone from the world's table
-        // is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its `+0x60`
-        // being 0) and dropped; the drop site's checks (`+0x34`) are not modelled
+        // the Hunt's update (0x140ac7a00) first checks its targets: one gone from the world's
+        // table is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its
+        // `+0x60` being 0) and dropped; then the second target ([`second_target_checked`])
         if let Some(target) = self.hunt.map(|h| h.target).filter(|&t| t != -1) {
             let state = c
                 .victim
@@ -4870,6 +4951,17 @@ impl Unit {
                 if let Some(h) = self.hunt.as_mut() {
                     h.target = -1;
                 }
+            }
+        }
+        if let Some(site) = self.hunt.map(|h| h.carry_to) {
+            let held = c.spatial.get(site).is_some();
+            let (kept, let_go) =
+                second_target_checked(site, held, state_of(site, others, c.foreign));
+            if let Some(h) = self.hunt.as_mut() {
+                h.carry_to = kept;
+            }
+            if let Some(t) = let_go {
+                self.hunt_release(c, [t]);
             }
         }
         // the hunter as a combat object, which its hits read and change
@@ -4908,11 +5000,12 @@ impl Unit {
             .filter(|h| h.state == crate::hunt::DROP && h.timer < 0.0)
         {
             // case 7 waiting to try again: the timer runs by dt; at its end the drop site goes
-            // (FUN_140a7a190 with none) and set_state(8) searches again
+            // (FUN_140a7a190 with none: slot 0x180) and set_state(8) searches again
             hunt.timer += c.dt_seconds;
             if 0.0 <= hunt.timer {
                 hunt.timer = 0.0;
-                hunt.carry_to = -1;
+                let site = std::mem::replace(&mut hunt.carry_to, -1);
+                self.hunt_release(c, [site]);
                 self.hunt_drop_off(c, others)?;
             }
         } else if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
@@ -5004,8 +5097,8 @@ impl Unit {
         {
             // state 13 (0x140ac7a00 case 0xc): notify 0x1f9 with the hunt's action value, and the
             // update returns 3: the action list removes the hunt (FUN_140a98e20), whose teardown
-            // lets its target go
-            let target = hunt.target;
+            // lets its target, then its second target go
+            let (target, site) = (hunt.target, hunt.carry_to);
             if hunt.attack.is_some() || hunt.move_to.is_some() {
                 return Err(Unsupported("a failed hunt with a sub-action"));
             }
@@ -5024,6 +5117,7 @@ impl Unit {
                     self.hunt_release(c, [target]);
                 }
             }
+            self.hunt_release(c, [site]);
         } else if let Some(hunt) = self
             .hunt
             .as_mut()
@@ -5709,6 +5803,7 @@ impl Unit {
                             graphics: c.graphics,
                             takes: &mut c.takes,
                             releases: &mut c.releases,
+                            builder_leaves: &mut c.builder_leaves,
                             waits: &mut c.waits,
                             relations: view.relations,
                             attributes: view.attributes,
@@ -5776,13 +5871,17 @@ impl Unit {
     /// `restorePatrolInformation`'s unit part ([`crate::unit_ai::Effect::RestorePatrol`]): its own
     /// waypoints go (slot 0x450) and become the saved patrol's points (slot 0x448 each, as x, y
     /// and height), and it moves to the saved waypoint (slot 0x340: range 0, forced, running; a
-    /// waypoint outside the path is the game's static zero point).
-    pub(in crate::turn) fn restore_patrol(&mut self, class: i16) -> Result<(), Unsupported> {
+    /// waypoint outside the path is the game's static zero point). Returns the target the
+    /// replaced `MoveTo` let go ([`Unit::ai_move`]).
+    pub(in crate::turn) fn restore_patrol(
+        &mut self,
+        class: i16,
+    ) -> Result<Option<i32>, Unsupported> {
         let Some(ai) = self.ai.as_ref() else {
-            return Ok(());
+            return Ok(None);
         };
         let Some(saved) = ai.patrol_path.as_ref() else {
-            return Ok(());
+            return Ok(None);
         };
         let points = saved.path.points.clone();
         let w = usize::try_from(ai.patrol_waypoint)
@@ -5870,7 +5969,7 @@ impl Unit {
         } else {
             // any other top action's slot 0x38 is the base's false for what an animal or an
             // artifact holds (a `MoveTo` of its own), and the list goes
-            self.tear_down_actions(&mut c.releases, by)?;
+            self.tear_down_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         }
         let top = self.top_action_kind().map_or(-1, i32::from);
         let trading = top == TRADE_ACTION
@@ -5964,8 +6063,13 @@ impl Unit {
     /// Otherwise a `MoveTo` to the point within the range (`FUN_140aa0d30`; its sprite, the master's
     /// walking or running one, is not held) replaces the action list (`FUN_140a98620`: the old
     /// `MoveTo` stops the unit) and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100`
-    /// gives a unit far from the point state 3).
-    pub(in crate::turn) fn ai_move(&mut self, m: AiMove, class: i16) -> Result<(), Unsupported> {
+    /// gives a unit far from the point state 3). Returns the target the old `MoveTo` let go,
+    /// which the caller releases.
+    pub(in crate::turn) fn ai_move(
+        &mut self,
+        m: AiMove,
+        class: i16,
+    ) -> Result<Option<i32>, Unsupported> {
         if matches!(class, 51 | 54) {
             return Err(Unsupported("an AI move of a unit of class 51 or 54"));
         }
@@ -5974,7 +6078,7 @@ impl Unit {
             && top == Some(crate::move_to::MOVE_TO)
             && self.move_to.is_some_and(|mt| mt.goal == Some(m.point))
         {
-            return Ok(());
+            return Ok(None);
         }
         if self.unmodelled_action.is_some() {
             return Err(Unsupported(
@@ -5993,7 +6097,7 @@ impl Unit {
                         .ok_or(Unsupported("a walker without movement state"))?
                         .stop()?;
                 }
-                return Ok(());
+                return Ok(None);
             }
             Some(crate::move_to::MOVE_TO) | None => {}
             Some(_) => {
@@ -6002,11 +6106,15 @@ impl Unit {
                 ));
             }
         }
-        if self.move_to.take().is_some() {
+        // the old MoveTo's teardown (0x140aa1f30): it stops the unit, and the base teardown lets
+        // its target go (slot 0x180, the caller's)
+        let mut released = None;
+        if let Some(old) = self.move_to.take() {
             self.mover
                 .as_mut()
                 .ok_or(Unsupported("a walker without movement state"))?
                 .stop()?;
+            released = Some(old.target).filter(|&t| t != -1);
         }
         self.move_to = Some(MoveToAction {
             state: MoveTo::Start,
@@ -6016,34 +6124,54 @@ impl Unit {
             run: !m.walk,
             wait: crate::move_to::MoveWait::default(),
         });
-        Ok(())
+        Ok(released)
     }
 
-    /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object: a
-    /// `MoveTo` to the target within `range`, showing the master's running sprite (the walking one
-    /// without it), replaces its action list (`FUN_140a98620`: an old `MoveTo` stops the unit) and
-    /// starts ([`MoveToAction::to_target`]). A unit with another action is not modelled.
+    /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object (in
+    /// `state`): a `MoveTo` to the target within `range`, showing the master's running sprite (the
+    /// walking one without it), takes the target it holds (`FUN_140aa0df0`, quiet 0: slot 0x178,
+    /// [`crate::move_to::holds_object`]), then replaces its action list (`FUN_140a98620`,
+    /// [`Unit::clear_own_actions`]: the old actions' teardowns let their targets go) and starts
+    /// ([`MoveToAction::to_object`]).
     pub(in crate::turn) fn move_to_object(
         &mut self,
-        target: i32,
+        (target, state): (i32, u8),
         range: f32,
         c: &mut Context<'_>,
     ) -> Result<(), Unsupported> {
-        let top = self.top_action_kind();
-        if self.unmodelled_action.is_some() || !matches!(top, Some(crate::move_to::MOVE_TO) | None)
-        {
+        if self.unmodelled_action.is_some() {
             return Err(Unsupported(
                 "an AI move to an object of a unit with an action",
             ));
         }
-        let mover = self.mover.as_mut().ok_or(Unsupported(
-            "an AI move to an object of a unit that does not move",
-        ))?;
-        if self.move_to.take().is_some() {
-            mover.stop()?;
+        if self.mover.is_none() {
+            return Err(Unsupported(
+                "an AI move to an object of a unit that does not move",
+            ));
         }
-        let move_to =
-            MoveToAction::to_target(c.spatial, self.position, mover, target, range, true)?;
+        let livestock = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .is_some_and(|m| m.class == LIVESTOCK);
+        let master = c
+            .spatial
+            .get_known(target)?
+            .ok_or(crate::move_to::TARGET_LACKING)?
+            .master;
+        if crate::move_to::holds_object(livestock, master, state) {
+            c.takes.push((target, self.releaser(c)));
+        }
+        let by = self.releaser(c);
+        self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+        let mover = self.mover.as_mut().expect("tested above");
+        let move_to = MoveToAction::to_object(
+            c.spatial,
+            self.position,
+            mover,
+            (target, state),
+            range,
+            (true, livestock),
+        )?;
         if move_to.arrived() {
             self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }
@@ -6134,6 +6262,10 @@ pub(crate) struct EnterWorld<'a> {
     /// What the building's volleys gain (`+0xa00`, [`crate::garrison::share`]), which the caller
     /// adds.
     pub firepower: f32,
+    /// The unit group the unit was a member of (`+0x6d0`): the caller runs the group's removeUnit
+    /// (`FUN_14102c160` with the building and 0, [`crate::turn::Turns::remove_unit`]) when the
+    /// world holds it (`FUN_14152ff40`).
+    pub left_group: Option<i32>,
 }
 
 /// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument

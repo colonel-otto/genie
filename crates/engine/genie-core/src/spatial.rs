@@ -94,6 +94,9 @@ pub struct Gait {
     /// without a level or a path: a drop-off walker's ignore list passes a worker whose path is
     /// this update's.
     pub path_made: Option<u32>,
+    /// Its unit group (`mGroupID`, `+0x6d0`), none for −1: a walker of the same group ranks it by
+    /// the group's member order.
+    pub group: Option<i32>,
 }
 
 /// One object as movement sees it.
@@ -544,6 +547,16 @@ impl Spatial {
         self.objects
             .values()
             .any(|o| o.position[0] as i32 == x && o.position[1] as i32 == y && pred(o))
+    }
+
+    /// Object `id`'s place in its tile's object list ([`Spatial::objects_on`]'s order, ghosts
+    /// counted); 0 for an object the world does not hold.
+    #[must_use]
+    pub fn tile_place(&self, id: i32) -> usize {
+        self.objects.get(&id).map_or(0, |o| {
+            let list = self.tiles.list(o.position[0] as i32, o.position[1] as i32);
+            list.iter().position(|&t| t == id).unwrap_or(0)
+        })
     }
 
     /// The objects whose centre is on tile (`x`, `y`): the map tile's object list (`+0x1b` count,
@@ -3335,9 +3348,11 @@ mod tests {
             s.insert(id, villager(x, 1.0));
         }
         assert_eq!(s.tiles().list(1, 1), [9171, 10029, 9173]);
+        assert_eq!(s.tile_place(9173), 2);
         // the leaving object's slot goes to the last
         s.set_position(9171, [2.1, 1.0, 0.0]);
         assert_eq!(s.tiles().list(1, 1), [9173, 10029]);
+        assert_eq!((s.tile_place(9173), s.tile_place(9171)), (0, 0));
         // a move within the tile and a master change keep the slot
         s.set_position(9173, [1.2, 1.0, 0.0]);
         s.change_master(9173, villager(1.2, 1.0));
