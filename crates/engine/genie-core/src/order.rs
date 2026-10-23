@@ -2705,6 +2705,39 @@ impl Turns {
         )
     }
 
+    /// The work command's carried-resource test (`+0x12`, `FUN_14106ff70` with `param_8`) on the
+    /// task found: a gather or hunt task (action type 5 or 0x6e) of another resource (`+0x20`)
+    /// than the unit holds (`+0x308`; the food kinds 0 and 15 to 17 count as one) leaves the
+    /// unit holding none of the task's (`FUN_14119d310` with 0); an attack task (7 or 9) of a unit
+    /// that is no villager turns its unit AI's retargeting off (`+0x1d6`, `FUN_140c40ef0` with
+    /// the test's 1).
+    fn carried_resource_test(
+        &mut self,
+        player: usize,
+        idx: usize,
+        task: &crate::masters::Task,
+    ) -> Result<(), Unsupported> {
+        let food = |k: i16| k == 0 || (15..=17).contains(&k);
+        let class = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .class;
+        let unit = &mut self.players[player].objects[idx];
+        if matches!(task.action_type, crate::gather::GATHER | HUNT) {
+            let (kind, held) = (task.attribute_type, unit.life.attribute_type);
+            if held != kind && !(food(kind) && food(held)) {
+                unit.life.attribute_type = kind;
+                unit.life.amount = 0.0;
+            }
+        }
+        if matches!(task.action_type, ATTACK_TASK | crate::attack::ATTACK)
+            && class != VILLAGER
+            && let Some(ai) = unit.ai.as_mut()
+        {
+            ai.retarget_disabled = 1;
+        }
+        Ok(())
+    }
+
     /// The work command (slot 37, `FUN_14106ff70`) of a unit on a target object: the master and
     /// task of [`crate::masters::Masters::work_master`] (the master changes, slot 0x90), the task's
     /// requirement, then the task's action from the action list's factory (slot 0x10), the unit
@@ -2828,23 +2861,33 @@ impl Turns {
                 }
                 took
             }
-            _ if top == Some(task.action_type) && top != Some(HUNT) => {
-                return Err(Unsupported("a work command on the unit's current task"));
-            }
+            // the top action's slot 0x48 (FUN_140a977a0) on the same task: the base's
+            // (FUN_140a7bf40: the MoveTo's, the Enter's, the missile's, the Fly's, the Make's, the
+            // wait for a foundation's) answers 0, and the work goes on to the factory
+            _ if top == Some(task.action_type) && top != Some(HUNT) => match top {
+                Some(
+                    crate::move_to::MOVE_TO
+                    | crate::garrison::ENTER
+                    | crate::missile::MISSILE
+                    | crate::fly::FLY
+                    | crate::make::MAKE
+                    | crate::wait_solidify::WAIT_SOLIDIFY,
+                ) => false,
+                _ => return Err(Unsupported("a work command on the unit's current task")),
+            },
             _ => false,
         };
         if carry_test {
-            return Err(Unsupported(
-                "a work command with the carried-resource test (+0x12)",
-            ));
+            self.carried_resource_test(player, idx, &task)?;
         }
         if self.keep_attack(player, idx, target, filter, point, clears)? {
             return Ok(());
         }
-        if matches!(top, Some(9 | 0x7e)) || (top == Some(0x6b) && task.action_type == 3) {
-            return Err(Unsupported(
-                "a work command on a unit attacking, gathering or 0x7e",
-            ));
+        // the top action of type 0x7e would hear the target through its slot 0x48: the slice
+        // holds no action of that type. An Artifact on top ends a command of an Enter task here.
+        if top == Some(crate::artifact::ARTIFACT_TYPE) && task.action_type == crate::garrison::ENTER
+        {
+            return Ok(());
         }
         if kept {
             return Ok(());
@@ -5164,6 +5207,51 @@ mod tests {
         t.transform_object(1, 60, 1650).unwrap();
         assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
         assert_eq!(t.players[1].objects[0].firepower, 7.0);
+    }
+
+    /// `FUN_14106ff70`'s carried-resource test: a gather or hunt task of another resource than
+    /// the one held leaves the unit holding none of the task's (the food kinds 0 and 15 to 17
+    /// are one); an attack task (7 or 9) turns a unit's retargeting off unless it is a villager.
+    #[test]
+    fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retargeting() {
+        let task = |action_type, attribute_type| crate::masters::Task {
+            action_type,
+            attribute_type,
+            ..crate::masters::Task::default()
+        };
+        let run = |master: i16, held: (i16, f32), task: crate::masters::Task| {
+            let mut t = soldiers(&[(11, master, [20.0, 20.0])], &[]);
+            for (id, class) in [(83, 4), (4, 6)] {
+                if let Some(m) = t.masters[1].get_mut(id) {
+                    m.class = class;
+                }
+            }
+            let unit = &mut t.players[1].objects[0];
+            (unit.life.attribute_type, unit.life.amount) = held;
+            unit.ai = Some(crate::unit_ai::UnitAi::default());
+            t.carried_resource_test(1, 0, &task).unwrap();
+            let unit = &t.players[1].objects[0];
+            (
+                unit.life.attribute_type,
+                unit.life.amount,
+                unit.ai.as_ref().unwrap().retarget_disabled,
+            )
+        };
+        // wood held, a gather of gold: none held, of gold
+        assert_eq!(
+            run(83, (1, 10.0), task(crate::gather::GATHER, 3)),
+            (3, 0.0, 0)
+        );
+        // meat (17) held, a hunt of food (0): both food, kept
+        assert_eq!(run(83, (17, 10.0), task(HUNT, 0)), (17, 10.0, 0));
+        // the same resource: kept
+        assert_eq!(
+            run(83, (3, 4.0), task(crate::gather::GATHER, 3)),
+            (3, 4.0, 0)
+        );
+        // an attack task: a soldier's retargeting goes off, a villager's stays on
+        assert_eq!(run(4, (-1, 0.0), task(ATTACK_TASK, -1)), (-1, 0.0, 1));
+        assert_eq!(run(83, (-1, 0.0), task(ATTACK_TASK, -1)), (-1, 0.0, 0));
     }
 
     /// `FUN_141216f10` to a point: the unit AI's order queue empties only with the unit's
