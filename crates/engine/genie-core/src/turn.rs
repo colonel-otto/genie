@@ -7458,7 +7458,7 @@ impl Unit {
             .as_deref()
             .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
         if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
-            return Err(BUILDING_HANDS);
+            return Err(HANDS_LEFT);
         }
         if self.change_owner(c, new)? {
             c.taken_over = Some(new);
@@ -7477,12 +7477,10 @@ impl Unit {
             .as_deref()
             .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
         if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
-            return Err(BUILDING_HANDS);
+            return Err(HANDS_LEFT);
         }
         if master.is_some_and(|m| m.class == SIEGE_CLASS) && !self.garrison.is_empty() {
-            return Err(Unsupported(
-                "a siege weapon another player takes over with units inside (FUN_141192d10)",
-            ));
+            return Err(HANDS_LEFT);
         }
         let _ = self.change_owner(c, new)?;
         self.capture_flag = 0;
@@ -7695,11 +7693,14 @@ const LIVESTOCK: i16 = 58;
 /// (`FUN_14120f800`).
 const SIEGE_CLASS: i16 = 13;
 
-/// A building's ownership change (its slot 0x70, `FUN_1411cd860`: its annexes', its
-/// production queue's and researches', its garrison's, its object and technology on capture,
-/// then the combat object's), which the slice does not model; a takeover by sight and the
-/// artifact's ask for one.
-const BUILDING_HANDS: Unsupported = Unsupported("a building's ownership change (FUN_1411cd860)");
+/// The ownership changes the slice does not model: a building's (its slot 0x70,
+/// `FUN_1411cd860`: its annexes', its production queue's and researches', its garrison's, its
+/// object and technology on capture, then the combat object's), which a takeover by sight and
+/// the artifact's ask for one reach, and a siege weapon's with units inside (`FUN_14120f800`'s
+/// class 13 branch: `FUN_141192d10`, each unit's leave, slot 0x1a8, with the siege weapon's slot
+/// 0x1b0, and the rest destroyed, slot 0xd0).
+const HANDS_LEFT: Unsupported =
+    Unsupported("an ownership change of a building or of a siege weapon with units inside");
 
 /// The top action type (slot 0x438) whose load keeps a captured unit's unit AI going
 /// (`FUN_14108c050`).
