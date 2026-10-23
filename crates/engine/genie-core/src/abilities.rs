@@ -565,11 +565,13 @@ impl Turns {
             if let Some(e) = unit.unmodelled_action {
                 return Err(e);
             }
-            let id = unit.id;
             unit.top_action().map(|a| {
+                // FUN_140a78450: an id below 0 names no object; the target only matters to an
+                // action of the test's at work
+                let works = WORKING_ACTIONS.contains(&a.kind) && a.state == WORKING;
                 let target = unit
                     .top_target()
-                    .filter(|&t| t != -1 && t != id)
+                    .filter(|&t| works && 0 <= t)
                     .and_then(|t| self.work_target(t, pending));
                 TopWork {
                     kind: a.kind,
@@ -578,13 +580,14 @@ impl Turns {
                 }
             })
         };
-        let built = self
-            .spatial
-            .sight
-            .as_ref()
-            .and_then(|v| v.seer(unit.id))
-            .and_then(|s| s.building)
-            .is_some_and(|b| b.built);
+        let built = master.kind == BUILDING_KIND
+            && self
+                .spatial
+                .sight
+                .as_ref()
+                .and_then(|v| v.seer(unit.id))
+                .and_then(|s| s.building)
+                .is_some_and(|b| b.built);
         if !generates(task, master.kind, master.kind, top, built) {
             return Ok(());
         }
