@@ -235,6 +235,10 @@ pub enum Effect {
     /// slot 0x380 builds it, then the AI's action becomes the build action and its target the
     /// foundation (the caller's, `Turns::build_object`, after the update).
     BuildObject(i32),
+    /// `restorePatrolInformation`'s unit part (`FUN_140c5e5b0`): the unit's own waypoints go
+    /// (slot 0x450) and become the saved patrol's points (slot 0x448 each), and the unit moves to
+    /// its waypoint (slot 0x340: range 0, forced, running).
+    RestorePatrol,
 }
 
 /// What a full update that took an order on a target ([`Effect::OrderOnTarget`]) leaves for
@@ -1099,6 +1103,11 @@ pub trait UnitSide {
     /// A unit without its player's sight.
     fn make_scout_map(&mut self) -> Result<(), Unsupported>;
 
+    /// The unit's slot 0x468 (`FUN_141157c50`, `getPatrolInformation`): a copy of its top path
+    /// (`FUN_140f960f0`; `FUN_140f95c00` into a new path: its points, its length, its flags) and
+    /// the waypoint of its top level (`+0x24`); None without one.
+    fn patrol_information(&self) -> Option<(PatrolPath, i32)>;
+
     /// The builder's search for another foundation (`FUN_140c1c7c0`): −1 for none.
     ///
     /// # Errors
@@ -1261,6 +1270,12 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, Unsupported>> UnitSide for F {
     fn make_scout_map(&mut self) -> Result<(), Unsupported> {
         Err(Unsupported("a scout map without the world"))
     }
+
+    /// A side of searches alone stands for no unit with movement state, whose slot 0x468 (the
+    /// static object's) holds no path.
+    fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+        None
+    }
 }
 
 /// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
@@ -1422,6 +1437,36 @@ pub struct Surroundings {
     /// The unit's group (`+0x6d0`, the world's `FUN_14152ff40`), when the world holds it: what
     /// the full update reads of it ([`GroupState`]).
     pub group: Option<GroupState>,
+    /// Slot 400 (`FUN_14106d090`): its top action's target (`FUN_140a78450`) as the world holds
+    /// it; None without one.
+    pub top_target: Option<TopTarget>,
+    /// Slot 0x240 (`FUN_1410863c0`): its master's least range (`+0x850`).
+    pub min_range: f32,
+    /// The unit's `+0x7fb`, `mAttackMoving`.
+    pub attack_moving: bool,
+}
+
+/// The target of a unit's top action as its unit AI reads it ([`Surroundings::top_target`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TopTarget {
+    /// `+8`.
+    pub id: i32,
+    /// Its type (`+0xf`).
+    pub kind: u8,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's radii.
+    pub radius: [f32; 2],
+}
+
+/// Slot 400 within the unit's range (slot 0x1e8, `FUN_141086330`): its top action's target when
+/// the footprints' squared gap (`FUN_14118f8c0`) is at most the weapon range squared and at
+/// least the least range squared (`COMISS`/`JC` each: a NaN is not in range).
+fn top_target_in_range(at: &Surroundings) -> Option<i32> {
+    let t = at.top_target?;
+    let gap = crate::movement::footprint_gap_squared(at.position, at.size, t.position, t.radius);
+    let in_range = gap <= at.weapon_range * at.weapon_range && at.min_range * at.min_range <= gap;
+    in_range.then_some(t.id)
 }
 
 /// The idle part's group test (`0x140c67e8f`): no group, or one that is idle (`FUN_141017ad0`) of
@@ -1818,6 +1863,44 @@ impl UnitAi {
     pub fn zero_patrol(&mut self) {
         self.patrol_path = None;
         self.patrol_waypoint = 0;
+    }
+
+    /// `savePatrolInformation` (`FUN_140c63d20`): the saved patrol goes; the unit's slot 0x468
+    /// gives the new one and its waypoint (0 without one).
+    fn save_patrol(&mut self, side: &dyn UnitSide) {
+        let (path, waypoint) = side.patrol_information().unzip();
+        self.patrol_path = path;
+        self.patrol_waypoint = waypoint.unwrap_or(0);
+    }
+
+    /// `restorePatrolInformation` (`FUN_140c5e5b0`): without a saved patrol, false. Else the unit
+    /// walks it on ([`Effect::RestorePatrol`]); a unit in no group (the world's
+    /// `FUN_14152ff40`) takes the patrol order back, the attack move's (733) when it attack-moves
+    /// (`+0x7fb`), else 711 (leaving the other one redraws an adjusted idle timeout of exactly
+    /// 750, slot 0x1a8); the secondary timer is 750. True.
+    fn restore_patrol(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> bool {
+        if self.patrol_path.is_none() {
+            return false;
+        }
+        fx.push(Effect::RestorePatrol);
+        if at.group.is_none() {
+            let (order, other) = if at.attack_moving {
+                (PATROL_2, PATROL)
+            } else {
+                (PATROL, PATROL_2)
+            };
+            if self.current_order == other && self.adjusted_idle_timeout == 750 {
+                self.update_adjusted_idle_timeout(ai);
+            }
+            self.current_order = order;
+        }
+        self.secondary_timer = 750;
+        true
     }
 
     /// What a `MoveTo`'s update in state 3 (`0x140aa2a70`) reads of its unit's AI for the path
@@ -2330,7 +2413,7 @@ impl UnitAi {
                 self.cap_human_order(fx);
                 Ok(false)
             }
-            SOLDIER_AI => self.soldier_idle(at, computer, side, fx),
+            SOLDIER_AI => self.soldier_idle(at, computer, ai, side, fx),
             TOWER_AI => self.tower_idle(at, computer, side, fx),
             17 | 19 => Ok(false),
             _ => Err(Unsupported(
@@ -2359,6 +2442,7 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         computer: bool,
+        ai: &mut Well512,
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, Unsupported> {
@@ -2373,46 +2457,50 @@ impl UnitAi {
         if at.master == SOLDIER_IDLE_MASTER {
             return Ok(false);
         }
-        if self.retarget_disabled == 0 {
-            if at.busy {
-                return Err(Unsupported(
-                    "the top action's target of a soldier's idle check (slot 400)",
-                ));
-            }
-        } else if self.current_target != -1 && at.target.is_some() {
-            return Err(Unsupported("the current target of a soldier's idle check"));
-        }
+        // its target: with retargeting on, its top action's within its range (slot 400, slot
+        // 0x1e8); with it off, its current target while the world holds it, else the top
+        // action's
+        let held =
+            (self.retarget_disabled != 0 && at.target.is_some()).then_some(self.current_target);
+        let target = held.or_else(|| top_target_in_range(at));
         if computer {
             return Err(Unsupported("a computer player's soldier's idle check"));
         }
-        let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
-            radius: attack_search_radius(at),
-            classes: &SOLDIER_CARED,
-            size: at.size,
-            pick: Pick::Attack {
-                lowest: if at.scenario { 2 } else { 0 },
-                seeker: self.seeker(),
-            },
-        })?;
-        self.attack_search_alert(found, computer)?;
-        if found.id != -1 {
+        let target = if let Some(t) = target {
+            t
+        } else {
+            let found = side.closest(&Search {
+                at: [at.position[0], at.position[1]],
+                radius: attack_search_radius(at),
+                classes: &SOLDIER_CARED,
+                size: at.size,
+                pick: Pick::Attack {
+                    lowest: if at.scenario { 2 } else { 0 },
+                    seeker: self.seeker(),
+                },
+            })?;
+            self.attack_search_alert(found, computer)?;
+            found.id
+        };
+        if target != -1 {
+            // "I need to save the patrol information in case the attack works."
             if matches!(self.current_order, PATROL | PATROL_2) {
-                return Err(Unsupported(
-                    "a patrolling soldier's attack from its idle search (FUN_140c63d20)",
-                ));
+                self.save_patrol(side);
             }
             // slot 0xb8 forced (FUN_140c17550: the base's, then the unit's group, not held);
             // with retargeting on and off order 0x2bd the order goes (FUN_140c64b60 with -1, 0)
-            if self.attack_object(found.id, true, false, at, side, fx)? {
+            if self.attack_object(target, true, false, at, side, fx)? {
                 if self.retarget_disabled == 0 && self.current_order != 0x2bd {
-                    // FUN_140c64b60 with -1 and 0: the order is no patrol order here (those
-                    // returned above), so only the order changes
-                    self.current_order = -1;
+                    self.set_order_with(-1, false, ai);
                 }
                 return Ok(true);
             }
+            // "Attack failed, so I'm nuking the saved patrol information."
+            if matches!(self.current_order, PATROL | PATROL_2) {
+                self.zero_patrol();
+            }
         }
+        // "I have a patrol order, so I'm stopping here."
         if matches!(self.current_order, PATROL | PATROL_2) {
             return Ok(false);
         }
@@ -2421,8 +2509,9 @@ impl UnitAi {
         if matches!(self.stance, 1 | 2) {
             let _ = self.walk_back(at, fx);
         }
-        if self.patrol_path.is_some() {
-            return Err(Unsupported("a soldier's patrol path in its idle check"));
+        // the saved patrol, if any, goes on (`restorePatrolInformation`): processIdle produced
+        if self.restore_patrol(at, ai, fx) {
+            return Ok(true);
         }
         if at.task_0x69 {
             return Err(Unsupported("a healer's search for an ally to heal"));
@@ -2611,7 +2700,7 @@ impl UnitAi {
         if !busy {
             self.reset_ended_action(at);
             if self.current_order != -1 {
-                self.check_order(at)?;
+                self.check_order(at, ai);
             }
         }
         let interruptible = at.interruptible || stopped;
@@ -3006,6 +3095,9 @@ impl UnitAi {
         let moved = order == (MOVE_ORDER, -1) && self.current_target == -1;
         let scouting = order == (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION) && self.current_target == -1;
         let following = order.0 == FOLLOW_ORDER;
+        // a patrol walking its loop (the patrol orders with the move action, no target)
+        let patrolling =
+            matches!(order, (PATROL | PATROL_2, MOVE_ACTION)) && self.current_target == -1;
         // a boar's own attack on its attacker or a lion's on its prey ([`UnitAi::attack_object`]),
         // or a work command's
         // attack (the attack order and action, notify kind 9); a building's make action that
@@ -3039,7 +3131,11 @@ impl UnitAi {
             }
             // a move to an object: the retarget check passes over its target unless it is a
             // building, wall or trebuchet, whose search is not modelled
-            Retarget::Base if moving || moving_to || scouting || following || attacking => Ok(()),
+            Retarget::Base
+                if moving || moving_to || scouting || following || attacking || patrolling =>
+            {
+                Ok(())
+            }
             _ => Err(Unsupported(
                 "a busy unit AI on an order the slice does not model",
             )),
@@ -4562,20 +4658,33 @@ impl UnitAi {
     }
 
     /// The order check of a unit that is not busy: an order of these values the unit can give up
-    /// (`FUN_140c4eea0` with 0) ends, its target removed (`FUN_140c5e1e0`); its priority stays.
-    const fn check_order(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
+    /// (`FUN_140c4eea0` with 0) ends, its target removed (`FUN_140c5e1e0`), the patrol order 733
+    /// resetting its timers ([`UnitAi::leave_patrol_timers`]); its priority and the last order
+    /// stay. The patrol order 711 is not among them.
+    const fn check_order(&mut self, at: &Surroundings, ai: &mut Well512) {
         let ends = matches!(
             self.current_order,
             0x269 | 700 | 0x2c5 | 0x2c6 | 0x2c9 | 0x2cf | 0x2d0 | 0x2dd | 0x322
         );
         if ends && self.can_order(at, false) {
-            if self.current_order == PATROL_2 {
-                return Err(Unsupported("the end of a patrol order 733"));
-            }
             self.remove_target();
+            self.leave_patrol_timers(ai);
             self.current_order = -1;
         }
-        Ok(())
+    }
+
+    /// What leaving a patrol order (711, 733) does to the timers wherever the game sets the
+    /// order by hand: an adjusted idle timeout of exactly 750 is redrawn (slot 0x1a8) and the
+    /// secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
+    const fn leave_patrol_timers(&mut self, ai: &mut Well512) {
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            if self.adjusted_idle_timeout == 750 {
+                self.update_adjusted_idle_timeout(ai);
+            }
+            if 750 < self.secondary_timer as i32 {
+                self.secondary_timer = 750;
+            }
+        }
     }
 
     /// `FUN_140c4eea0`: a unit takes orders unless its master has a task of action type 0x99
@@ -4872,13 +4981,41 @@ impl UnitAi {
             let _ = self.process_idle(at, computer, ai, side, fx)?;
             return Ok(());
         }
-        if !self.patrols(at.group)
-            && matches!(at.class, CLASS_3 | CLASS_52)
-            && matches!(self.current_action, 0x26b | 0x26c)
-        {
+        if self.patrols(at.group) {
+            return self.patrol_idle_part(at, computer, ai, side, fx);
+        }
+        if matches!(at.class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
             return self.making_idle_part(at, computer, ai, side, fx);
         }
         self.idle_part_end(at.class, at.player, at.group)
+    }
+
+    /// The idle part's patrol branch (`0x140c67f0b`): "I have a patrol order, checking to see if
+    /// my secondary timer (%d) has expired." While it runs nothing more happens. Expired, it
+    /// restarts at 750 (`PATROL_ATTACK_DELAY`; an adjusted idle timeout of exactly 750 is redrawn,
+    /// slot 0x1a8) and processIdle runs (slot 0x240 with 1, [`UnitAi::process_idle`]) unless the
+    /// unit's top action holds a building as its target (slot 400). The branch on the byte
+    /// `DAT_143f01835` cannot run: nothing writes it.
+    fn patrol_idle_part(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), Unsupported> {
+        if self.secondary_timer != 0 {
+            return Ok(());
+        }
+        self.secondary_timer = 750;
+        if self.adjusted_idle_timeout == 750 {
+            self.update_adjusted_idle_timeout(ai);
+        }
+        if at.top_target.is_some_and(|t| t.kind == BUILDING_KIND) {
+            return Ok(());
+        }
+        let _ = self.process_idle(at, computer, ai, side, fx)?;
+        Ok(())
     }
 
     /// The idle part's patrol branch (`0x140c67f0b`): a patrol order (`0x2c7`, `0x2dd`), or a
@@ -5285,6 +5422,9 @@ mod tests {
     }
 
     impl UnitSide for Recorder {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
             Err(Unsupported("no search here"))
         }
@@ -5340,6 +5480,9 @@ mod tests {
     struct OffSide(OffFootprint, Vec<(i32, [f32; 2])>);
 
     impl UnitSide for OffSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
             Err(Unsupported("no search here"))
         }
@@ -5453,6 +5596,9 @@ mod tests {
     struct WaitSide(bool, Vec<i32>);
 
     impl UnitSide for WaitSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
             Err(Unsupported("no search here"))
         }
@@ -5600,6 +5746,9 @@ mod tests {
     struct ResourceSide(Option<Gatherable>, Vec<(u8, i32, i32, i32)>);
 
     impl UnitSide for ResourceSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
             Err(Unsupported("no search here"))
         }
@@ -5831,6 +5980,9 @@ mod tests {
     }
 
     impl UnitSide for LionSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
             let id = self.found[self.searches];
             self.searches += 1;
@@ -5935,9 +6087,13 @@ mod tests {
     struct SoldierSide {
         found: i32,
         attacks: Vec<(i32, bool)>,
+        patrol: Option<(PatrolPath, i32)>,
     }
 
     impl UnitSide for SoldierSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            self.patrol.clone()
+        }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
             Ok(Found {
                 id: self.found,
@@ -6011,6 +6167,7 @@ mod tests {
             let mut side = SoldierSide {
                 found,
                 attacks: Vec::new(),
+                patrol: None,
             };
             let mut fx = Vec::new();
             scout
@@ -8593,14 +8750,16 @@ mod tests {
         assert_eq!(u.orders.len(), 1);
         let _ = run(&mut u, &at(group(true, false, false))).unwrap();
         assert_eq!(u.orders.len(), 0);
-        // a patrolling group
+        // a patrolling group: the patrol branch, its secondary timer run out, restarts it at 750
+        // and runs processIdle (the ship's caps its last human order time)
         let mut u = idle(11);
         let mut g = group(false, true, false);
         g.as_mut().unwrap().patrol = true;
         assert_eq!(
             run(&mut u, &at(g)),
-            Err(Unsupported("a patrol order's idle part"))
+            Ok(vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)])
         );
+        assert_eq!(u.secondary_timer, 750);
         // a target of a unit in a patrolling group: FUN_140c41690 answers 0 for a human player
         let mut g = group(true, false, false);
         g.as_mut().unwrap().patrol = true;
@@ -8815,6 +8974,7 @@ mod tests {
         let mut side = SoldierSide {
             found: 9731,
             attacks: Vec::new(),
+            patrol: None,
         };
         let fx = u.update(28, 0, false, &at, &mut rng(), &mut side).unwrap();
         assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
@@ -9189,6 +9349,9 @@ mod tests {
     }
 
     impl UnitSide for StandSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
             Err(Unsupported("no search here"))
         }
@@ -9705,5 +9868,199 @@ mod tests {
             (2, true, Some(false))
         );
         assert_eq!((u.patrol_path, u.patrol_waypoint), (None, 0));
+    }
+
+    /// A human player's soldier walking its patrol (711 with the move action, its `MoveTo` the
+    /// top action) as the full update finds it, its secondary timer `secondary`.
+    fn patroller(secondary: u32) -> (UnitAi, Surroundings) {
+        let u = UnitAi {
+            current_order: PATROL,
+            current_action: MOVE_ACTION,
+            idle_timeout: 3000,
+            adjusted_idle_timeout: 750,
+            secondary_timer: secondary,
+            ..idle(SOLDIER_AI)
+        };
+        let at = Surroundings {
+            position: [20.0, 20.0, 0.0],
+            player: 1,
+            kind: 70,
+            state: 2,
+            size: [0.2, 0.2],
+            los: 4.0,
+            weapon_range: 1.0,
+            busy: true,
+            ..Surroundings::default()
+        };
+        (u, at)
+    }
+
+    /// The idle part's patrol branch (`0x140c67f0b`) while the secondary timer runs: nothing
+    /// but the timer's count down; the busy check lets the walking patrol through.
+    #[test]
+    fn a_patrol_waits_for_its_secondary_timer() {
+        let (mut u, at) = patroller(300);
+        let mut side = SoldierSide {
+            found: 77,
+            attacks: Vec::new(),
+            patrol: None,
+        };
+        let fx = u.update(28, 0, false, &at, &mut rng(), &mut side).unwrap();
+        assert_eq!(fx, vec![]);
+        assert_eq!((u.secondary_timer, u.current_order), (272, PATROL));
+        assert_eq!(side.attacks, Vec::<(i32, bool)>::new());
+    }
+
+    /// The patrol branch with its secondary timer run out: it restarts at 750 (the adjusted
+    /// idle timeout of 750 redrawn), processIdle's search finds 77: the patrol is saved (the
+    /// unit's slot 0x468), the attack command given, and the order goes without its history
+    /// (`FUN_140c64b60` with -1 and 0).
+    #[test]
+    fn a_patrol_saves_itself_and_attacks_what_it_finds() {
+        let (mut u, at) = patroller(0);
+        u.last_order = 9;
+        let saved = PatrolPath {
+            flags: 3,
+            ..PatrolPath::default()
+        };
+        let mut side = SoldierSide {
+            found: 77,
+            attacks: Vec::new(),
+            patrol: Some((saved.clone(), 2)),
+        };
+        let mut r = rng();
+        let _ = u.update(28, 0, false, &at, &mut r, &mut side).unwrap();
+        assert_eq!(side.attacks, vec![(77, true)]);
+        assert_eq!((u.current_order, u.last_order), (-1, 9));
+        assert_eq!((u.patrol_path, u.patrol_waypoint), (Some(saved), 2));
+        assert_eq!(u.secondary_timer, 750);
+        assert_ne!(u.adjusted_idle_timeout, 750);
+        assert!(0 < r.draws);
+    }
+
+    /// The patrol branch passes over processIdle while the top action's target is a building
+    /// (slot 400); a unit target it does not.
+    #[test]
+    fn a_patrol_attacking_a_building_keeps_at_it() {
+        let (mut u, mut at) = patroller(0);
+        at.top_target = Some(TopTarget {
+            id: 50,
+            kind: 80,
+            position: [30.0, 30.0, 0.0],
+            radius: [1.0, 1.0],
+        });
+        let mut side = SoldierSide {
+            found: 77,
+            attacks: Vec::new(),
+            patrol: None,
+        };
+        let _ = u.update(28, 0, false, &at, &mut rng(), &mut side).unwrap();
+        assert_eq!(side.attacks, Vec::<(i32, bool)>::new());
+        assert_eq!(u.secondary_timer, 750);
+    }
+
+    /// The soldier's idle check (`FUN_140c20db0`) takes its top action's target within its
+    /// range (slot 400, slot 0x1e8: the footprints' squared gap between the least range and the
+    /// weapon range squared) without a search; out of range it searches.
+    #[test]
+    fn a_soldier_s_idle_check_attacks_its_top_action_s_target_in_range() {
+        let (mut u, mut at) = patroller(0);
+        u.current_order = -1;
+        let near = TopTarget {
+            id: 50,
+            kind: 70,
+            position: [21.0, 20.0, 0.0],
+            radius: [0.2, 0.2],
+        };
+        at.top_target = Some(near);
+        assert_eq!(top_target_in_range(&at), Some(50));
+        at.min_range = 1.0;
+        assert_eq!(top_target_in_range(&at), None);
+        at.min_range = 0.0;
+        let mut side = SoldierSide {
+            found: 77,
+            attacks: Vec::new(),
+            patrol: None,
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.soldier_idle(&at, false, &mut rng(), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(side.attacks, vec![(50, true)]);
+        // too far: the search's 77
+        let (mut u, mut at) = patroller(0);
+        u.current_order = -1;
+        at.top_target = Some(TopTarget {
+            position: [25.0, 20.0, 0.0],
+            ..near
+        });
+        side.attacks.clear();
+        assert_eq!(
+            u.soldier_idle(&at, false, &mut rng(), &mut side, &mut Vec::new()),
+            Ok(true)
+        );
+        assert_eq!(side.attacks, vec![(77, true)]);
+    }
+
+    /// The soldier's idle check with nothing to attack and a saved patrol, in no group:
+    /// `restorePatrolInformation` gives the unit its walk back onto the patrol, the order 711
+    /// (733 for a unit that attack-moves) and a secondary timer of 750; processIdle produced.
+    #[test]
+    fn a_soldier_with_nothing_to_attack_goes_back_to_its_patrol() {
+        let (mut u, mut at) = patroller(0);
+        u.current_order = -1;
+        u.current_action = -1;
+        u.patrol_path = Some(PatrolPath::default());
+        at.busy = false;
+        let mut side = SoldierSide {
+            found: -1,
+            attacks: Vec::new(),
+            patrol: None,
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.soldier_idle(&at, false, &mut rng(), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::CapHumanOrder(HUMAN_ORDER_CAP),
+                Effect::RestorePatrol
+            ]
+        );
+        assert_eq!((u.current_order, u.secondary_timer), (PATROL, 750));
+        u.current_order = -1;
+        at.attack_moving = true;
+        assert_eq!(
+            u.soldier_idle(&at, false, &mut rng(), &mut side, &mut Vec::new()),
+            Ok(true)
+        );
+        assert_eq!(u.current_order, PATROL_2);
+    }
+
+    /// The order check of a unit no longer busy: the attack move (733) ends, its timers reset
+    /// (an adjusted idle timeout of 750 redrawn, the secondary timer capped at 750); the patrol
+    /// order (711) stays.
+    #[test]
+    fn an_attack_move_not_busy_ends_and_a_patrol_stays() {
+        let at = Surroundings::default();
+        let mut u = UnitAi {
+            current_order: PATROL_2,
+            idle_timeout: 3000,
+            adjusted_idle_timeout: 750,
+            secondary_timer: 900,
+            ..idle(SOLDIER_AI)
+        };
+        u.check_order(&at, &mut rng());
+        assert_eq!((u.current_order, u.secondary_timer), (-1, 750));
+        assert_ne!(u.adjusted_idle_timeout, 750);
+        let mut u = UnitAi {
+            current_order: PATROL,
+            ..idle(SOLDIER_AI)
+        };
+        u.check_order(&at, &mut rng());
+        assert_eq!(u.current_order, PATROL);
     }
 }
