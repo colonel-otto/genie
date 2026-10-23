@@ -33,6 +33,29 @@ library that knows nothing about graphics, sound or input. Rendering, audio and 
 plug into it through well-defined ports. A frontend can bring its own adapters, and genie can grow
 its own over time, for example as `genie-ui` and `genie-audio` crates next to the core.
 
+## Use cases
+
+genie's first goal is to replay recorded games exactly. The use cases below build on that core and
+are on the roadmap; none of them is available yet.
+
+- **Optimising AI scripts with a coding agent.** genie runs the game's own `.per` AI scripts
+  natively, for the latest game builds as well. A coding agent such as Codex or Claude Code edits a
+  script, genie plays many headless AI-vs-AI matches with it, and returns the results, statistics,
+  game-state data and recordings. The agent analyses them, improves the script and starts again.
+  The scripts stay compatible with the original game: what genie runs, the game runs unchanged.
+- **Learning agents.** Reinforcement-learning and neural-network agents, "AlphaStar for Age of
+  Empires", play through genie's agent API and train against the game's scripts in thousands of
+  parallel headless games. This is possible only in an engine like genie, not in the game itself.
+- **Lookahead AIs.** genie copies a running game cheaply, so an AI can simulate several plans a few
+  seconds ahead on other threads while the game goes on. For example, an AI switches every one to
+  three seconds between three scripts (the HD AI, the DE AI and Immortal): it simulates each choice
+  six seconds ahead with the opponents on Immortal, and keeps the one with the highest own score
+  minus the opponents' average. The decision enters the game as ordinary commands, so the game
+  stays deterministic and its recording replays without the lookahead.
+- **Headless map generation.** From a random map script and a seed, genie generates the same map
+  as the game, headless and in seconds: for minimaps of upcoming or past games and for analyses of
+  how balanced the spawns are.
+
 ## Staying faithful to the game
 
 The game's own engine is still being developed, and each release can change how the simulation
