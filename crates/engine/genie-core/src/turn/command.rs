@@ -947,6 +947,7 @@ impl Turns {
             garrison: Vec::new(),
             garrison_time: 0,
             relics: [0; 2],
+            livestock_summation: 0.0,
             raider_countdown: 0,
             // every building holds a gate's lock, open
             gate: Some(Gate {

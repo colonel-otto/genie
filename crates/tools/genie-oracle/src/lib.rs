@@ -311,6 +311,10 @@ fn unit(
             .tribe_building_object
             .as_deref()
             .map_or([0; 2], |b| [b.relic_count, b.specific_relic_count]),
+        livestock_summation: object
+            .tribe_building_object
+            .as_deref()
+            .map_or(0.0, |b| b.livestock_summation),
         reload_worldtime: object
             .combat()
             .and_then(|c| c.rge_combat_object.reload_worldtime)
@@ -2150,6 +2154,22 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 history: history(&p.world_player().history),
                 // the load files the objects (Turns::load_trackers, once the masters are in)
                 tracker: genie_core::tracker::Tracker::default(),
+                update_time: p.world_player().update_time,
+                gaia_update_time: p
+                    .player
+                    .gaia_player
+                    .as_deref()
+                    .map_or(0.0, |g| g.world_player_gaia.update_time),
+                escrow: p.world_player().base.escrow,
+                escrow_percentage: p.world_player().base.escrow_percentage,
+                sudden_death_eliminable: p.world_player().sudden_death_can_be_eliminated != 0,
+                victory_times: genie_core::world_player::VictoryTimes {
+                    // the world's load resets every player's (FUN_140c90040), then a wonder's
+                    // action in state 7 sets its time (its load, FUN_140ae8fa0)
+                    wonder: wonder_time(p),
+                    ruins: p.world_player().ruin_held_time,
+                    artifacts: p.world_player().artifact_held_time,
+                },
             }
         })
         .collect();
@@ -2163,6 +2183,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     );
     turns.next_object_id = world.next_object_id;
     turns.recycling.next_id = world.next_reusable_object_id;
+    turns.local_player = usize::try_from(world.local_player_index).unwrap_or(0);
     let none = TerrainTable::default();
     let terrain = masters.map_or(&none, |t| &t.terrain);
     turns.spatial = spatial(header, terrain);
@@ -2297,6 +2318,31 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         }
     }
     turns
+}
+
+/// The game's wonder countdown of a player (the game object's `+0x4ec[id]`) after a load: the
+/// world's load sets every player's to −1 (`FUN_140c90040`), then each wonder action
+/// (`TRIBE_Action_Wonder`, type 120) of the player's objects, live then sleeping, in its load
+/// (`FUN_140ae8fa0`) when in state 7 sets its timer (`mTimer`, `+0x44`) where it is less or the
+/// countdown below 0 (`FUN_140c91500`).
+fn wonder_time(p: &PlayerSection<'_>) -> f32 {
+    let mut countdown = -1.0;
+    for o in p.live_objects().chain(p.sleeping_objects()) {
+        let Some(actions) = o.actions() else {
+            continue;
+        };
+        for (_, a) in actions.entries() {
+            if let Some(w) = a.tribe_action_wonder.as_deref()
+                && w.rge_action.state == 7
+            {
+                let t = w.rge_action.timer;
+                if t < countdown || countdown < 0.0 {
+                    countdown = t;
+                }
+            }
+        }
+    }
+    countdown
 }
 
 /// A player's ghosts (its doppelganger list) as saved: each one's id, place, state, the original's
@@ -4136,6 +4182,15 @@ pub fn blocks_per_tick(
         );
     }
     Ok(out)
+}
+
+/// The slice set up from a save's header ([`slice`]): every player's live objects, attributes,
+/// update times and history, the masters and the sight, without the run-time state a per-tick
+/// save's dumps add. For a check of a player-level update against the tick oracle's next save
+/// (the world player's, [`genie_core::world_player`]). Dev only.
+#[must_use]
+pub fn slice_from_header(header: &Header, masters: Option<&MasterTable>) -> Turns {
+    slice(header, masters)
 }
 
 /// The slice as the recording's header load leaves it: [`slice`] with the objects-in-sight

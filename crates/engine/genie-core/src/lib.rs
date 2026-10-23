@@ -89,4 +89,5 @@ pub mod visibility;
 pub mod vision;
 pub mod wait_solidify;
 pub mod wall;
+pub mod world_player;
 pub mod zones;

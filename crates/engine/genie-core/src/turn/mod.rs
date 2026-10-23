@@ -535,6 +535,13 @@ pub struct Turns {
     /// lacks): a computer player takes Gaia's objects over by seeing them in the game modes
     /// outside the standard ones ([`crate::visibility::sight_taker`]).
     pub allow_gaia_capture: Vec<bool>,
+    /// `mLocalPlayerIndex` (`world+0x6b0`, saved): the player whose view the game shows, a
+    /// recording's point of view. Its masters stand for a building's in a train location's test
+    /// (`FUN_141263610` through `FUN_140c88440`, [`crate::world_player`]).
+    pub local_player: usize,
+    /// The game's tech tree table and its civilisations' unique units, which the defeat check's
+    /// count of the units a building will train reads ([`crate::world_player::TechTree`]).
+    pub tech_tree: crate::world_player::TechTree,
 }
 
 /// The objects of recyclable masters (`+0x680`, the `.dat`'s `recyclable`): a new one takes the
@@ -593,6 +600,8 @@ impl Turns {
             dt: 0,
             history_period: HISTORY_PERIOD,
             allow_gaia_capture: Vec::new(),
+            local_player: 0,
+            tech_tree: crate::world_player::TechTree::default(),
         }
     }
 
@@ -950,9 +959,13 @@ impl Turns {
             }
             self.pathing.tiles_changed(self.spatial.take_changes());
             // the player's groups (BaseWorld::update at 0x141551796), then its own update (slot
-            // 0x100 at 0x1415518f0, WorldPlayerBase::update): its plans start over (`+0x67c`),
-            // then its objects update (FUN_141166550 on its list)
+            // 0x100 at 0x1415518f0): the world player's or Gaia's
+            // ([`crate::world_player`]), then WorldPlayerBase::update: its plans start over
+            // (`+0x67c`), then its objects update (FUN_141166550 on its list)
             if let Err(e) = self.update_groups(p) {
+                self.stop_player(p, e);
+            }
+            if let Err(e) = self.update_world_player(p) {
                 self.stop_player(p, e);
             }
             self.pathing.reset_plans(p);
@@ -1507,6 +1520,8 @@ impl Turns {
             if let Err(e) = self.process_new_tiles(p) {
                 self.stop_player(p, e);
             }
+            // the world player's update after WorldPlayerBase::update: its scout map
+            self.world_player_tail(p);
             self.close_gates(p, &mut gates_open);
             // its tile list empties (FUN_141661030)
             if let Some(v) = self.spatial.sight.as_mut() {
