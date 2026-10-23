@@ -1024,7 +1024,7 @@ const MAKE_TECH: i16 = 0x67;
 
 /// The attribute that scales research times above 0 (`+0x2b0`: 86).
 const RESEARCH_TIME_MODIFIER: i16 = 86;
-/// The attribute whose value above 0 gives the world's effect after a research (`+0x868`: 269).
+/// The attribute naming the world's effect a player gets after each research (`+0x868`: 269).
 const WORLD_EFFECT: i16 = 269;
 
 impl Turns {
@@ -1421,8 +1421,9 @@ impl Turns {
     /// age), plus the location's adjustment, is done ([`Turns::complete_research`]); else, or
     /// without `repeat`, it is left. Then the action takes state 1 (the event 100 and the
     /// computer players' slot 0x3a8 are not held) and the building's unit AI is told 0x1fa with
-    /// the action value 0x26c. Attribute 269 above 0 (the world's effect `+0x128` slot 0x10) is
-    /// not modelled.
+    /// the action value 0x26c. Last, attribute 269 (the Spanish's 300) names an effect of the
+    /// world's table ([`Turns::effects`], slot 0x10) the player gets with the building as its
+    /// object ([`Turns::do_effect`]).
     ///
     /// [`TechState::repeatable`]: crate::tech::TechState::repeatable
     fn research_done(
@@ -1452,9 +1453,6 @@ impl Turns {
                 let _ = self.complete_research(p, t, Some(master))?;
             }
         }
-        if 0.0 < self.players[p].get(WORLD_EFFECT)? {
-            return Err(Unsupported("attribute 269's world effect after a research"));
-        }
         let building = &mut self.players[p].objects[i];
         let (id, state) = (building.id, building.life.state);
         if let Some(Some(Making::Research(r))) =
@@ -1467,6 +1465,18 @@ impl Turns {
                 Notify::own(id, ACTION_COMPLETED, [crate::turn::RESEARCH_ACTION, 0, 0]),
                 state,
             )?;
+        }
+        // attribute 269, cut by CVTTSS2SI and its low short above 0, names an effect of the
+        // world's table the player gets with the building as its object (its slot 0x10,
+        // `TRIBE_Effects::do_effect`, which skips an id the table does not hold)
+        let reward = crate::checkpoint::cvttss2si(self.players[p].get(WORLD_EFFECT)?) as i16;
+        if 0 < reward
+            && let Some(effect) = usize::try_from(reward)
+                .ok()
+                .and_then(|e| self.effects.get(e))
+                .cloned()
+        {
+            self.do_effect(p, &effect, Some(id))?;
         }
         Ok(())
     }

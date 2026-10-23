@@ -2317,6 +2317,7 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         turns.linked_techs.clone_from(&table.linked_techs);
         turns.graphics = table.graphics.clone();
         turns.techs.clone_from(&table.techs);
+        turns.effects.clone_from(&table.effects);
         turns.history_period = table.time_slice;
         // the unit lines' tables, which the game builds at its first load with Gaia's master
         // count (`FUN_141533cb0` -> `FUN_140fde680`)

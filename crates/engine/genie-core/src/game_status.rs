@@ -1338,6 +1338,37 @@ mod tests {
         assert_eq!((s.state, s.times_researched, s.pending), (1, 0, 0));
     }
 
+    /// `0x140ad2a20` after a research completes: attribute 269 (the Spanish's 300, cut by
+    /// `CVTTSS2SI`, its low short above 0) names the effect of the world's table (`+0x128`, slot
+    /// 0x10 `FUN_141462440`) the player gets with the building as its object: effect 300 adds 20
+    /// gold; an id the table does not hold does nothing.
+    #[test]
+    fn a_research_gives_the_effect_attribute_269_names() {
+        use crate::tech::EffectCommand;
+        let run = |reward: f32| {
+            let mut t = researching(25.0);
+            t.players[1].attributes.resize(300, 0.0);
+            t.players[1].attributes[269] = reward;
+            t.effects = vec![Vec::new(); 301];
+            t.effects[300] = vec![EffectCommand {
+                kind: 1,
+                a: 3,
+                b: 1,
+                c: -1,
+                d: 20.0,
+            }];
+            let gold = t.players[1].resources[3];
+            t.produce(1, 0, 1.0).unwrap();
+            t.players[1].resources[3] - gold
+        };
+        assert_eq!(run(300.0), 20.0);
+        assert_eq!(run(300.9), 20.0);
+        assert_eq!(run(0.0), 0.0);
+        assert_eq!(run(301.0), 0.0);
+        // the short of 65836 is 300
+        assert_eq!(run(65_836.0), 20.0);
+    }
+
     /// Game mode 16's tail: with attribute 6 at most 1 a cancel whose slot at the unit index
     /// holds a military master clears the player's flag (`+0x1378`); above 1 it stays.
     #[test]

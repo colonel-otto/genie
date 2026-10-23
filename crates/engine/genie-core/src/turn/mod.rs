@@ -517,6 +517,9 @@ pub struct Turns {
     pub(crate) streams: Streams,
     /// The `.dat`'s technologies, by id.
     pub techs: Vec<crate::tech::TechDef>,
+    /// The world's effect table (`+0x128`, `TRIBE_Effects`): every effect's commands by id, the
+    /// `.dat`'s.
+    pub effects: Vec<Vec<crate::tech::EffectCommand>>,
     /// The world's unit groups ([`crate::group`]).
     pub groups: crate::group::UnitGroups,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
@@ -590,6 +593,7 @@ impl Turns {
             recycling: Recycling::default(),
             streams: Streams::default(),
             techs: Vec::new(),
+            effects: Vec::new(),
             groups: crate::group::UnitGroups::default(),
             dt_seconds: 0.0,
             dt: 0,

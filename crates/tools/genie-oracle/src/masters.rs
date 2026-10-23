@@ -383,6 +383,8 @@ pub struct MasterTable {
     pub unit_lines: Vec<genie_core::lines::UnitLine>,
     /// The technologies, by id.
     pub techs: Vec<genie_core::tech::TechDef>,
+    /// The effects' commands, by id (the world's effect table).
+    pub effects: Vec<Vec<genie_core::tech::EffectCommand>>,
     /// The history period (the `.dat`'s `time_slice`, which the world keeps at `+0x8b8`); the
     /// world constructor's [`genie_core::turn::HISTORY_PERIOD`] without a `.dat`.
     pub time_slice: i32,
@@ -394,18 +396,7 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef
     let effect = usize::try_from(t.effect_id)
         .ok()
         .and_then(|e| dat.effects.get(e))
-        .map_or_else(Vec::new, |e| {
-            e.commands
-                .iter()
-                .map(|c| genie_core::tech::EffectCommand {
-                    kind: c.kind,
-                    a: c.a,
-                    b: c.b,
-                    c: c.c,
-                    d: c.d,
-                })
-                .collect()
-        });
+        .map_or_else(Vec::new, effect_commands);
     genie_core::tech::TechDef {
         costs: t.resource_costs.each_ref().map(|c| genie_core::tech::Cost {
             attribute: c.kind,
@@ -425,6 +416,20 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef
             .map(|l| (l.location_id, l.queue_time))
             .collect(),
     }
+}
+
+/// An effect's commands as the engine's effect table holds them.
+fn effect_commands(e: &genie_dat::de::Effect) -> Vec<genie_core::tech::EffectCommand> {
+    e.commands
+        .iter()
+        .map(|c| genie_core::tech::EffectCommand {
+            kind: c.kind,
+            a: c.a,
+            b: c.b,
+            c: c.c,
+            d: c.d,
+        })
+        .collect()
 }
 
 /// What stops [`MasterTable::read`].
@@ -554,6 +559,7 @@ impl MasterTable {
             })
             .collect();
         table.techs = dat.techs.iter().map(|t| tech_def(dat, t)).collect();
+        table.effects = dat.effects.iter().map(effect_commands).collect();
         table.time_slice = dat.time_slice;
         table
     }
@@ -586,6 +592,7 @@ impl MasterTable {
             linked_techs: std::collections::BTreeMap::new(),
             unit_lines: Vec::new(),
             techs: Vec::new(),
+            effects: Vec::new(),
             time_slice: genie_core::turn::HISTORY_PERIOD,
         }
     }
