@@ -35,13 +35,13 @@ use crate::turn::Turns;
 use crate::unit_ai::Unsupported;
 
 /// One second (`DAT_14330eb8c`): the loop's step.
-const SECOND: f32 = 1.0;
+const SECOND: f32 = crate::image::world_player::SECOND;
 /// One hundred (`DAT_14330ebcc`): attribute 22 is a percentage.
-const PERCENT: f32 = 100.0;
+const PERCENT: f32 = crate::image::world_player::PERCENT;
 /// A minute's seconds (`DAT_14330ebc8`): the trickles and the mills' food are rates a minute.
-const MINUTE: f32 = 60.0;
+const MINUTE: f32 = crate::image::world_player::MINUTE;
 /// The livestock food over which a mill's yield grows by one e-fold (`DAT_142eb0f54`).
-const LIVESTOCK_SCALE: f32 = 200.0;
+const LIVESTOCK_SCALE: f32 = crate::image::world_player::LIVESTOCK_SCALE;
 /// Until this world time (ms) the scout map takes only the explored tiles the player sees.
 const EARLY_SCOUTING_MS: u32 = 5000;
 

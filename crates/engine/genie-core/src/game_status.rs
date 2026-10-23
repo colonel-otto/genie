@@ -53,8 +53,8 @@ const VILLAGER_FEMALE: i16 = 0x125;
 const ONE_UNIT_MODE: i32 = 16;
 /// The player's attribute that mode reads (6, `+0x30`).
 const CURRENT_AGE: i16 = 6;
-/// That attribute's bound (`DAT_14330eb8c`, 1.0; an image role to come).
-const ONE_UNIT_AGE: f32 = 1.0;
+/// That attribute's bound (`DAT_14330eb8c`).
+const ONE_UNIT_AGE: f32 = crate::image::game_status::ONE_UNIT_AGE;
 
 /// What the world's checks count of the players (Gaia aside): those still playing and whether
 /// they form one side (0 none, 1 one, −1 more), and those who won and lost.

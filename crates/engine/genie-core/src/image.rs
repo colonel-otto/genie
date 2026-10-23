@@ -140,6 +140,12 @@ pub mod fly {
     pub const HEIGHT: f32 = f32::from_bits(0x4110_0000);
 }
 
+/// The values `crate::game_status`'s port reads.
+pub mod game_status {
+    /// 1.0
+    pub const ONE_UNIT_AGE: f32 = f32::from_bits(0x3f80_0000);
+}
+
 /// The values `crate::garrison`'s port reads.
 pub mod garrison {
     /// 0.20000000298023224
@@ -662,6 +668,8 @@ pub mod turn {
     pub const GATE_SHUT_HEIGHT: f32 = f32::from_bits(0x3f80_0000);
     /// 3.4028234663852886e+38
     pub const NO_DROP_DISTANCE: f32 = f32::from_bits(0x7f7f_ffff);
+    /// 1.0
+    pub const ONE_UNIT_AGE: f32 = f32::from_bits(0x3f80_0000);
     /// 10.0
     pub const SHORT_DROP_REACH: f32 = f32::from_bits(0x4120_0000);
     /// 1.0000000116860974e-07
@@ -744,4 +752,16 @@ pub mod wall {
     pub const MAP_MARGIN: f32 = f32::from_bits(0x3727_c5ac);
     /// 1.0
     pub const ONE: f32 = f32::from_bits(0x3f80_0000);
+}
+
+/// The values `crate::world_player`'s port reads.
+pub mod world_player {
+    /// 200.0
+    pub const LIVESTOCK_SCALE: f32 = f32::from_bits(0x4348_0000);
+    /// 60.0
+    pub const MINUTE: f32 = f32::from_bits(0x4270_0000);
+    /// 100.0
+    pub const PERCENT: f32 = f32::from_bits(0x42c8_0000);
+    /// 1.0
+    pub const SECOND: f32 = f32::from_bits(0x3f80_0000);
 }

@@ -348,9 +348,9 @@ pub(in crate::turn) struct QueueAt {
 }
 
 /// The player's attribute game mode 16's QUEUE reads (6, `+0x30`), and its bound
-/// (`DAT_14330eb8c`, 1.0; an image role to come).
+/// (`DAT_14330eb8c`).
 const CURRENT_AGE: i16 = 6;
-const ONE_UNIT_AGE: f32 = 1.0;
+const ONE_UNIT_AGE: f32 = crate::image::turn::ONE_UNIT_AGE;
 
 impl Turns {
     /// Run a command in the command phase. Where the slice does not model what the command does to
