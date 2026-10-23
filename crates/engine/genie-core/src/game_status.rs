@@ -152,7 +152,7 @@ impl Turns {
             // refresh (FUN_140c80bb0) is not held
             self.spatial.reveal_to(p);
         }
-        if self.game_mode == BATTLE_ROYALE {
+        if self.settings.game_mode == BATTLE_ROYALE {
             return Err(Unsupported(
                 "a status change in a battle royale (game mode 12)",
             ));
@@ -590,7 +590,7 @@ impl Turns {
                 "a cancel of up to five of a kind (FUN_1411d61e0)",
             ));
         }
-        if self.game_mode == 16 {
+        if self.settings.game_mode == 16 {
             return Err(Unsupported("a cancel's tail in game mode 16"));
         }
         self.refund_queued(p, &q)?;

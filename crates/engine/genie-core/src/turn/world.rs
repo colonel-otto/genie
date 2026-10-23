@@ -870,12 +870,12 @@ impl Turns {
 
     /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
     /// that is the player's own, or any while players may order each other's units
-    /// ([`Turns::allied_control`]); −1 for the others.
+    /// ([`crate::settings::Settings::cheats_enabled`]); −1 for the others.
     pub(crate) fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
         units
             .iter()
             .map(|&id| match self.object(id) {
-                Some((p, _)) if p == player || self.allied_control => id,
+                Some((p, _)) if p == player || self.settings.cheats_enabled => id,
                 _ => -1,
             })
             .collect()

@@ -51,7 +51,7 @@ impl Turns {
                 i += 1;
                 continue;
             }
-            if !self.farm_stops {
+            if !self.settings.walkable_farms {
                 return Err(Unsupported(
                     "the Empire Wars start without the farm setting (the nearest unworked farm)",
                 ));

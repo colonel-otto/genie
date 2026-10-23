@@ -1390,8 +1390,10 @@ impl Turns {
     /// ([`UnitAi::constructed`], three AI-stream draws) and the powerup offset (Object stream).
     /// The object takes its place (its height the ground's, by its master's fly mode), its record
     /// and mesh shape, its sight and its storage (flags 1, 2 and 32, `FUN_141193860`); its
-    /// player's attributes 98 and 164 (and 246 under [`Turns::unit_cost_246`]) grow by its paid
-    /// cost and a villager's (class 4) attribute 248 by one, and its class counts
+    /// player's attributes 98, 164 and 246 grow by its paid cost (246 while the telemetry's
+    /// match runs: `FUN_140982ff0()`'s `+0x921`, which every game's start sets, `FUN_140f1fb20`
+    /// with `FUN_140980ac0`, and only its teardown `FUN_140c85fb0` clears, `FUN_140980de0`) and
+    /// a villager's (class 4) attribute 248 by one, and its class counts
     /// ([`crate::turn::count_class`]). It joins its player's list last; its
     /// index there.
     pub(crate) fn combat_object(
@@ -1510,9 +1512,7 @@ impl Turns {
             .sum();
         owner.add_attribute(98, cost as f32)?;
         owner.add_attribute(164, cost as f32)?;
-        if self.unit_cost_246 {
-            owner.add_attribute(246, cost as f32)?;
-        }
+        owner.add_attribute(246, cost as f32)?;
         if made.class == VILLAGER {
             owner.add_attribute(248, 1.0)?;
         }

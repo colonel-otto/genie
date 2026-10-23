@@ -43,7 +43,7 @@ const LIVESTOCK: i16 = 58;
 
 impl Turns {
     /// `CANCEL_BUILD` for `player` on object `id`: the object must exist and be the player's,
-    /// unless the setting `+0x1074` lets players order each other's ([`Turns::allied_control`])
+    /// unless the setting `+0x1074` lets players order each other's ([`crate::settings::Settings::cheats_enabled`])
     /// or its owner lost and the two are allies both ways (`FUN_14162ef10`). `FUN_1416257c0`
     /// then wants its deletion enabled (`+0x687`), a master of type 70 or more, a class other
     /// than [`UNDELETABLE`]'s and a capture flag (`+0x924`) other than 2; the object's slot 0x8b8
@@ -60,7 +60,7 @@ impl Turns {
         let mutual =
             |a: usize, b: usize| self.spatial.allied_with(a, b) && self.spatial.allied_with(b, a);
         let lost_ally = self.players[owner].game_status == LOST && mutual(player, owner);
-        if owner != player && !self.allied_control && !lost_ally {
+        if owner != player && !self.settings.cheats_enabled && !lost_ally {
             return Ok(());
         }
         let master = self.master_of(owner, unit.life.master_id)?;
@@ -604,7 +604,7 @@ mod tests {
             (0.0, 25.0, 25.0)
         );
         // the setting +0x1074 lets a player delete another's
-        t.allied_control = true;
+        t.settings.cheats_enabled = true;
         t.delete(1, 20).unwrap();
         assert_eq!(hp(&t, 2, 0), 0.0);
         // a unit whose deletion is disabled stays

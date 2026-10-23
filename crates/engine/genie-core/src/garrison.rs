@@ -523,7 +523,7 @@ impl Turns {
 
     /// `GO_BACK_TO_WORK` (`do_command` 0x80 with one object, 0x86 with several:
     /// `FUN_141625590`) on the player's objects `ids` (another player's only while players may
-    /// order each other's, [`Turns::allied_control`]; the cheat `+0xb12` is not held): a building
+    /// order each other's, [`crate::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is not held): a building
     /// lets out, from the last in, each unit inside of type 70 or more that is a villager (class
     /// 4) or of master 1808, back to its work ([`Turns::back_to_work`]).
     pub(crate) fn go_back_to_work(
@@ -1051,7 +1051,7 @@ impl Turns {
 
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`), after the command's check (`FUN_140e558b0`): of
     /// the first 60 `ids` (500 for a computer player), an id the world does not hold, and another
-    /// player's unit unless players may order each other's ([`Turns::allied_control`],
+    /// player's unit unless players may order each other's ([`crate::settings::Settings::cheats_enabled`],
     /// `+0x1074`), are dropped ([`Turns::checked_units`]); with every id dropped the command does
     /// nothing. Of the others, the villagers (class 4 of type 70) and the units of master 1808
     /// seek shelter (a villager of master 1808 is listed twice) in the player's buildings that
@@ -2468,7 +2468,7 @@ pub(crate) mod tests {
         // with +0x1074 the ally's villager is the player's to send; its own player's town
         // centres are not asked, only the commanding player's
         let mut t = let_out_world();
-        t.allied_control = true;
+        t.settings.cheats_enabled = true;
         walker(&mut t, 2, 2000, VILLAGER, [5.5, 6.5]);
         t.seek_shelter(1, &[2000]).unwrap();
         assert_eq!(enter(&t, 2000), Some(100));

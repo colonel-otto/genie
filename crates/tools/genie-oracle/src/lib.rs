@@ -2233,14 +2233,10 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
             }
         })
         .collect();
-    // a statistics flag the tick oracle reads as 1 in MarvinBlue/426048731 (Turns::unit_cost_246)
-    turns.unit_cost_246 = true;
-    // the farm setting the tick oracle shows set in records/425906646 (Turns::farm_stops)
-    turns.farm_stops = true;
-    turns.game_mode = header.file_header.game_options_read.game_options.game_mode;
+    turns.settings = settings(&header.file_header.game_options_read.game_options);
     // the Empire Wars start's pass, once in the game's first update (the world's +0x6c6)
     turns.start_work_due =
-        turns.game_mode == genie_core::start_work::EMPIRE_WARS && turns.world_time == 0;
+        turns.settings.game_mode == genie_core::start_work::EMPIRE_WARS && turns.world_time == 0;
     turns.game_state = u32::from(world.temp_game_state);
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
     match groups::unit_groups(world) {
@@ -2308,6 +2304,22 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
 /// players who cannot see it (`CantSeeBits`). Its last bits (`+0x7e8`) and seen flag (`+0x7f7`)
 /// are not saved: a load starts them at 0; its original's link waits for the original's update
 /// (the slice links it by id).
+/// The game options the simulation reads ([`genie_core::settings::Settings`]) from the header's
+/// `GameOptions`, as `FUN_141305310` loads them.
+#[must_use]
+pub const fn settings(
+    o: &genie_save::generated::world::GameOptions,
+) -> genie_core::settings::Settings {
+    genie_core::settings::Settings {
+        game_mode: o.game_mode,
+        full_tech_tree: o.full_tech_tree_enabled != 0,
+        walkable_farms: o.walkable_farms != 0,
+        selected_content_mode: o.selected_content_mode,
+        villager_force_drop: o.villager_force_drop != 0,
+        cheats_enabled: o.cheats_enabled != 0,
+    }
+}
+
 /// A player's history as saved (`TRIBE_History_Info::load`, `FUN_141560f20`): the entries, the
 /// events in the list's order (the load links each after the last), and the running totals'
 /// low 16 bits into the zeroed ints.

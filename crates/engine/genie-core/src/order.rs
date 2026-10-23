@@ -1899,7 +1899,7 @@ impl Turns {
 
     /// GATE (`do_command` case 0x72): the command's check refuses an object `id` the world does
     /// not hold, or another player's while players may not order each other's units (the
-    /// setting `+0x1074`, [`Turns::allied_control`]; the world's `+0xb12` cheat is not held).
+    /// setting `+0x1074`, [`crate::settings::Settings::cheats_enabled`]; the world's `+0xb12` cheat is not held).
     /// The object, live or sleeping (`FUN_1415417a0`), of a master of type 80 toggles its gate
     /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
     /// and the UI's flag are not held.
@@ -1907,7 +1907,7 @@ impl Turns {
         let Some((p, unit)) = self.object(id) else {
             return Ok(());
         };
-        if p != player && !self.allied_control {
+        if p != player && !self.settings.cheats_enabled {
             return Ok(());
         }
         if self.master_of(p, unit.life.master_id)?.kind != BUILDING {
@@ -2074,7 +2074,7 @@ impl Turns {
     /// The check of a command on units (STOP's `FUN_140e55a30` and `UNIT_AI_STATE`'s `FUN_140e55d30`,
     /// twins of `FUN_140e558b0`) of the ids of `player`: of the first 60 (500 for a computer,
     /// `FUN_141659cf0`) an id the world does not hold, or another player's without the setting
-    /// `+0x1074` ([`Turns::allied_control`]), becomes -1; the ids past them stay unchecked. A
+    /// `+0x1074` ([`crate::settings::Settings::cheats_enabled`]), becomes -1; the ids past them stay unchecked. A
     /// human's command whose checked ids all went is refused (None).
     /// The packet's own tests (its size, a player the game lacks) are the decoder's, and the
     /// world's `+0xb12` (the cheat that would let either through) is not held.
@@ -2086,7 +2086,7 @@ impl Turns {
         for id in &mut ids[..checked] {
             let keep = self
                 .object(*id)
-                .is_some_and(|(p, _)| p == player || self.allied_control);
+                .is_some_and(|(p, _)| p == player || self.settings.cheats_enabled);
             if *id == -1 || !keep {
                 *id = -1;
                 dropped += 1;
@@ -3635,7 +3635,7 @@ impl Turns {
             radius: t_radius,
         };
         let computer = self.players[player].computer;
-        let farm_stops = self.farm_stops;
+        let farm_stops = self.settings.walkable_farms;
         let by = self.releaser(player, idx);
         // a stop farm's time per stop: the gatherer's work rate (its master's plus its powerup),
         // capacity and the task's productivity attribute (none: 1.0)
@@ -3894,7 +3894,8 @@ impl Turns {
                 &self.players[player].attributes,
             ),
         };
-        let mut gather = crate::gather::GatherAction::new(task, &resource, self.farm_stops, rate)?;
+        let mut gather =
+            crate::gather::GatherAction::new(task, &resource, self.settings.walkable_farms, rate)?;
         self.take(target);
         let unit = &mut self.players[player].objects[idx];
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
@@ -3909,7 +3910,7 @@ impl Turns {
         }
         self.clear_actions(player, idx)?;
         let computer = self.players[player].computer;
-        let carry_rule = self.carry_rule;
+        let carry_rule = self.settings.carry_rule();
         let unit = &mut self.players[player].objects[idx];
         let mover = unit
             .mover
@@ -4002,7 +4003,7 @@ impl Turns {
         let engagement = self.engagement(player, idx, target)?;
         let arms = self.arms(player, idx, &task)?;
         let computer = self.players[player].computer;
-        let carry_rule = self.carry_rule;
+        let carry_rule = self.settings.carry_rule();
         let unit = &mut self.players[player].objects[idx];
         let mover = unit
             .mover
@@ -4906,9 +4907,9 @@ mod tests {
             t.command_check(1, &[11, 30, 99, -1]),
             Some(vec![11, -1, -1, -1])
         );
-        t.allied_control = true;
+        t.settings.cheats_enabled = true;
         assert_eq!(t.command_check(1, &[11, 30, 99]), Some(vec![11, 30, -1]));
-        t.allied_control = false;
+        t.settings.cheats_enabled = false;
         assert_eq!(t.command_check(1, &[30, 99]), None);
         t.players[1].computer = true;
         assert_eq!(t.command_check(1, &[30, 99]), Some(vec![-1, -1]));
@@ -5116,7 +5117,7 @@ mod tests {
         t.world_time = 500;
         t.gate(2, 50).unwrap();
         assert_eq!(building(&t), (true, 401));
-        t.allied_control = true;
+        t.settings.cheats_enabled = true;
         t.gate(2, 50).unwrap();
         assert_eq!(building(&t), (false, 401));
         t.gate(1, 11).unwrap();
@@ -5317,7 +5318,7 @@ mod tests {
         let stance = |t: &Turns, p: usize| t.players[p].objects[0].ai.as_ref().unwrap().stance;
         t.unit_ai_state(1, &[11, 30], 2).unwrap();
         assert_eq!((stance(&t, 1), stance(&t, 2)), (2, 0));
-        t.allied_control = true;
+        t.settings.cheats_enabled = true;
         t.unit_ai_state(1, &[30], 1).unwrap();
         assert_eq!(stance(&t, 2), 0);
         t.unit_ai_state(1, &[30], 3).unwrap();

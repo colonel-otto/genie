@@ -175,8 +175,9 @@ impl Turns {
 
     /// `FUN_1413cce70` for player `p`'s technology `t`: each technology that requires it, by id
     /// (`+0x38`'s lists), not of the shared kind: one in state 0 or 1 and not held by
-    /// `+0x60` turns to −1 when it is another civ's (or its civ's under the game's option
-    /// `+0x63` while not of mode 1, not modelled) or not for this game mode; else with fewer of
+    /// `+0x60` turns to −1 when it is another civ's (or its civ's under the full tech tree,
+    /// [`crate::settings::Settings::full_tech_tree`], while not of mode 1) or not for this game
+    /// mode; else with fewer of
     /// its requirements researched than it needs it turns to 0 (from above 0), with them all to
     /// 1 (from below 1) unless its research is done already (its work done reaching a
     /// location's time), which completes it ([`Turns::complete_research`]). Each such technology, and each in
@@ -204,20 +205,16 @@ impl Turns {
             if state.enabled {
                 continue;
             }
-            // another civ's: −1; the civ's own depends on the game's option +0x63 unless of mode 1
-            let other_civ = if def.civ < 1 {
+            // another civ's: −1; the civ's own too under the full tech tree (the option +0x63)
+            // unless of mode 1
+            let disabled = if def.civ < 1 {
                 false
             } else if def.civ == civ {
-                if def.mode != 1 {
-                    return Err(Unsupported(
-                        "a civ's own technology in the dependents' update (the option +0x63)",
-                    ));
-                }
-                false
+                self.settings.full_tech_tree && def.mode != 1
             } else {
                 true
             };
-            if other_civ {
+            if disabled {
                 self.players[p].techs[d].state = -1;
                 continue;
             }
@@ -383,7 +380,7 @@ impl Turns {
         if enable == 1 && master == MODE_TESTED_MASTER {
             // game mode 11 never enables it; any other asks a settings flag (their `+0x18`'s
             // `+0x7c`, bit 1, FUN_141324b60), which is not held
-            if self.game_mode == MODE_WITHOUT_0X26D {
+            if self.settings.game_mode == MODE_WITHOUT_0X26D {
                 return Ok(());
             }
             return Err(Unsupported(
@@ -2782,11 +2779,11 @@ mod tests {
         .unwrap();
         let available: Vec<bool> = t.masters[0].iter().map(|m| m.available).collect();
         assert_eq!(available, [true, false, false]);
-        t.game_mode = 11;
+        t.settings.game_mode = 11;
         t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
             .unwrap();
         assert!(!t.masters[0].get(0x26d).unwrap().available);
-        t.game_mode = 0;
+        t.settings.game_mode = 0;
         assert!(
             t.do_effect(0, &[attribute(2, 0x26d, 1, -1, 0.0)], None)
                 .is_err()
@@ -2898,6 +2895,45 @@ mod tests {
         assert_eq!(t.complete_research(0, 0, None), Ok(true));
         let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
         assert_eq!(states, [3, 3, 3, 0]);
+    }
+
+    /// `FUN_1413cce70`'s civilisation test: a dependent of another civilisation turns −1; one of
+    /// its own of mode 0 does too under the full tech tree (`+0x63`), not one of mode 1; one for
+    /// every civilisation (civ 0) is available either way.
+    #[test]
+    fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
+        use crate::tech::{TechDef, TechState};
+        let def = |required: i16, civ: i16, mode: i16| TechDef {
+            required: [required, -1, -1, -1, -1, -1],
+            required_count: i16::from(required != -1),
+            civ,
+            mode,
+            ..TechDef::default()
+        };
+        let states = |full_tech_tree: bool| {
+            let player = Player {
+                civ: 5,
+                techs: vec![TechState::default(); 5],
+                ..Player::default()
+            };
+            let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+            t.settings.full_tech_tree = full_tech_tree;
+            t.techs = vec![
+                def(-1, 0, 0),
+                def(0, 5, 0),
+                def(0, 5, 1),
+                def(0, 7, 0),
+                def(0, 0, 0),
+            ];
+            assert_eq!(t.complete_research(0, 0, None), Ok(true));
+            t.players[0]
+                .techs
+                .iter()
+                .map(|s| s.state)
+                .collect::<Vec<i16>>()
+        };
+        assert_eq!(states(false), [3, 1, 1, -1, 1]);
+        assert_eq!(states(true), [3, -1, 1, -1, 1]);
     }
 
     /// The technology commands of an effect: the disable command (`'f'`, MarvinBlue/426048737's

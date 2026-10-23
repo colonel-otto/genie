@@ -498,42 +498,23 @@ pub struct Turns {
     /// The game's linked technologies (`linkedTechs.json`, the table at the game settings'
     /// `+0x18` that `FUN_140f39f40` looks up), by technology; empty when not loaded.
     pub linked_techs: std::collections::BTreeMap<i16, crate::tech::Linked>,
-    /// The game settings' test `FUN_141302150` (their `+0x1070` flag, then a table entry's
-    /// `+0x9c`): a hunter drops another resource it carries. The tick oracle read the flag as 0 in
-    /// MarvinBlue/426048731; where the save or the lobby holds it is not known yet.
-    pub carry_rule: bool,
-    /// The game's setting at `FUN_140c87b90()`'s `+0x69`: farmers walk their farm's stops (a
-    /// farm's Gather of four stops), and a Gather's `set_state(7)` leaves `mGatherX`, `mGatherY`
-    /// at −1. The tick oracle shows it set in records/425906646 (the forager 31139's `+0x8c`
-    /// stays −1); where the save or the lobby holds it is not known yet.
-    pub farm_stops: bool,
-    /// The game's setting that `FUN_140ec0cd0` reads at `FUN_140c87b90()`'s `+0x98` is 1: a hunt
-    /// whose Attack on a predator (class 10) ended ends too (`set_state` 1) when its unit AI has
-    /// orders queued. records/425906646 shows it unset (its 31118 walks to the wolf in update
-    /// 4461); where the save or the lobby holds it is not known yet.
-    pub predator_hunts_end: bool,
-    /// The game's setting that `FUN_140ec0cd0` reads at its `+0x680` (a value and a kind); a boar
-    /// does not wander when it is 1. The tick oracle reads 0 in MarvinBlue/426048731; where the
-    /// save or the lobby holds it is not known yet (the save's `mGameMode` sits elsewhere).
+    /// The game options the simulation reads ([`crate::settings::Settings`]), from the header.
+    pub settings: crate::settings::Settings,
+    /// The game object's tagged value at `+0x680` (`DAT_143f07a58`, read through
+    /// `FUN_140ec0cd0`; at 1 a boar does not wander and a hit may do no damage). `GamePC::start4`
+    /// (`FUN_140f29b60`) compares it with the loaded world's `+0x6b4` and reloads the data when
+    /// they differ. It is not the options' content mode: MarvinBlue/426048731 saves
+    /// `mSelectedContentMode` 2 and the tick oracle reads this as 0. Its writer is not located
+    /// and the save does not hold it; genie-oracle leaves it at 0.
     pub mode_680: i32,
-    /// The game mode (the save's `mGameMode`, options `+0x34`).
-    pub game_mode: i32,
     /// The Empire Wars start's pass is due ([`crate::start_work`]): the world's `+0x6c6` is
     /// clear in game mode 13, which a game's start has.
     pub start_work_due: bool,
-    /// The game setting `+0x1074` (`FUN_1412ffe00`): players may order each other's units. The
-    /// tick oracle reads 0 in MarvinBlue/426049433; where the save or the lobby holds it is not
-    /// known yet.
-    pub allied_control: bool,
     /// The world's game state (`+0x88`, the save's `tempGameState`): 1 once the game is over.
     pub game_state: u32,
     /// The scenario's `victory_conquest` (`world+0x7e0`'s `+0x2c0`, `FUN_140ca4d20`): the game
     /// ends when one side is left.
     pub victory_conquest: bool,
-    /// The flag a new combat object's setup reads at `FUN_140982ff0()`'s `+0x921`: the unit's
-    /// cost also counts in attribute 246. The tick oracle reads 1 in MarvinBlue/426048731 (the
-    /// attribute grows by a villager's cost at its spawn); where the save holds it is not known.
-    pub unit_cost_246: bool,
     /// The map's zone maps (`map+0x5e28`), made when first asked for.
     pub zones: crate::zones::Zones,
     /// The world's ids and pools for the objects of recyclable masters ([`Recycling`]).
@@ -598,16 +579,11 @@ impl Turns {
             drop_sites: Vec::new(),
             lines: crate::lines::UnitLines::default(),
             linked_techs: std::collections::BTreeMap::new(),
-            carry_rule: false,
-            farm_stops: false,
-            predator_hunts_end: false,
+            settings: crate::settings::Settings::default(),
             start_work_due: false,
-            allied_control: false,
             mode_680: 0,
-            game_mode: 0,
             game_state: 0,
             victory_conquest: false,
-            unit_cost_246: false,
             zones: crate::zones::Zones::default(),
             recycling: Recycling::default(),
             streams: Streams::default(),
@@ -1071,8 +1047,8 @@ impl Turns {
                     player: p,
                     civ: player.civ,
                     sharing: player.sharing,
-                    farm_stops: self.farm_stops,
-                    predator_hunts_end: self.predator_hunts_end,
+                    farm_stops: self.settings.walkable_farms,
+                    predator_hunts_end: self.settings.predator_hunts_end(),
                     attributes: &player.attributes,
                     graphics: &self.graphics,
                     drop_sites: &self.drop_sites,
@@ -1083,8 +1059,8 @@ impl Turns {
                     computers: &computers,
                     attribute_204,
                     mode_680: self.mode_680,
-                    scenario: scenario_mode(self.game_mode),
-                    standard: standard_mode(self.game_mode),
+                    scenario: scenario_mode(self.settings.game_mode),
+                    standard: standard_mode(self.settings.game_mode),
                     sight_takers: &sight_takers,
                     tracker: &mut player.tracker,
                     lines: &self.lines,

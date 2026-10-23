@@ -2188,7 +2188,7 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
                 },
             ],
         );
-        t.game_mode = mode;
+        t.settings.game_mode = mode;
         t.players[0].attributes[40] = 1.0;
         t.masters = masters;
         t.spatial = hands_world(21712, 0, 0, 4, 6.0);

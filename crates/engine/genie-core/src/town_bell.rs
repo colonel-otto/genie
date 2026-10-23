@@ -180,7 +180,7 @@ const NO_POINT: f32 = crate::image::garrison::NO_POINT;
 impl crate::turn::Turns {
     /// `TOWN_BELL` (0x7f, `do_command`): the object `id` (none for −1, `FUN_140e6bad0`) of the
     /// commanding `player`, or of any player while players may order each other's
-    /// ([`crate::turn::Turns::allied_control`], `FUN_1412ffe00`; the cheat `+0xb12` is not held),
+    /// ([`crate::settings::Settings::cheats_enabled`], `FUN_1412ffe00`; the cheat `+0xb12` is not held),
     /// rings its owner's bell (`activate`, [`crate::turn::Turns::ring_town_bell`]) or ends it
     /// ([`crate::turn::Turns::end_town_bell`]). A special object's (`+0x30c` bit 0) UI flag is
     /// not simulation.
@@ -193,7 +193,7 @@ impl crate::turn::Turns {
         let Some((owner, _)) = (id != -1).then(|| self.object(id)).flatten() else {
             return Ok(());
         };
-        if owner != player && !self.allied_control {
+        if owner != player && !self.settings.cheats_enabled {
             return Ok(());
         }
         if activate {
@@ -530,7 +530,7 @@ mod tests {
             // player 2 rings player 1's centre: refused
             t.town_bell(2, 100, true).unwrap();
             assert_eq!(enter(&t, 1000), None);
-            t.allied_control = true;
+            t.settings.cheats_enabled = true;
             t.town_bell(2, 100, true).unwrap();
             assert_eq!(enter(&t, 1000), Some(100));
             // an object that is no town centre rings nothing; nor does an id the world lacks

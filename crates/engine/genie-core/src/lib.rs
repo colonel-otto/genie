@@ -70,6 +70,7 @@ pub mod pathing;
 pub mod production;
 pub mod registry;
 pub mod rng;
+pub mod settings;
 pub mod short_path;
 pub mod spatial;
 pub mod spawn;

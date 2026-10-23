@@ -126,9 +126,9 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) civ: u8,
     /// The player shares its gathered resources with its allies (`+0x1426`).
     pub(in crate::turn) sharing: bool,
-    /// The game's farm setting ([`Turns::farm_stops`]).
+    /// The game's farm setting ([`crate::settings::Settings::walkable_farms`]).
     pub(in crate::turn) farm_stops: bool,
-    /// The game's setting [`Turns::predator_hunts_end`].
+    /// The game's setting [`crate::settings::Settings::predator_hunts_end`].
     pub(in crate::turn) predator_hunts_end: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
     pub(in crate::turn) every_masters: &'a [Masters],
