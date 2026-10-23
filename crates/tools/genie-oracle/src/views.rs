@@ -140,7 +140,8 @@ pub fn objects(data: &[u8], player: usize, actions_of: Option<i32>) -> Result<St
     let header = chapter.header()?;
     let players = header.players();
     let section = players.get(player).ok_or(Error::NoPlayer(player))?;
-    let mut out = String::from("id\tmaster\tstate\thp\tx\ty\tz\taction\taction_state\tretarget\n");
+    let mut out =
+        String::from("id\tmaster\tstate\thp\tx\ty\tz\taction\taction_state\tretarget\tsprite\n");
     for object in section.live_objects() {
         let Some(s) = object.static_part() else {
             continue;
@@ -165,11 +166,44 @@ pub fn objects(data: &[u8], player: usize, actions_of: Option<i32>) -> Result<St
             .map_or(String::new(), |ai| ai.randomized_retarget_timer.to_string());
         let _ = writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            s.id, s.master_obj, s.object_state, s.hp, s.t_x, s.t_y, s.t_z, action, state, retarget
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            s.id,
+            s.master_obj,
+            s.object_state,
+            s.hp,
+            s.t_x,
+            s.t_y,
+            s.t_z,
+            action,
+            state,
+            retarget,
+            sprite_column(s)
         );
     }
     Ok(out)
+}
+
+/// The current sprite (`+0x140`, the save's `sprite`) and its node in the sprite list: `a` with
+/// the animated node's `animate_flag`, `s` for a static node, `-` without a node.
+fn sprite_column(s: &genie_save::generated::world::RgeStaticObject) -> String {
+    let nodes = || {
+        s.active_sprite_list
+            .iter()
+            .flat_map(|l| l.sprite_type_list.iter())
+            .filter_map(|e| e.type_.as_deref())
+    };
+    let node = nodes()
+        .filter_map(|n| n.rge_active_animated_sprite.as_deref())
+        .find(|a| a.rge_active_sprite.sprite_id as i16 == s.sprite)
+        .map(|a| format!("a{}", a.animate_flag))
+        .or_else(|| {
+            nodes()
+                .filter_map(|n| n.rge_active_sprite.as_deref())
+                .any(|a| a.sprite_id as i16 == s.sprite)
+                .then(|| "s".to_string())
+        })
+        .unwrap_or_else(|| "-".to_string());
+    format!("{} {node}", s.sprite)
 }
 
 fn action_object(o: &Object) -> Option<&RgeActionObject> {

@@ -1117,6 +1117,7 @@ impl Turns {
                     started: Vec::new(),
                     unwatched: Vec::new(),
                     annex_states: Vec::new(),
+                    released_annexes: Vec::new(),
                     cleared: Vec::new(),
                     evacuations: Vec::new(),
                     recycling: &mut self.recycling,
@@ -1194,9 +1195,10 @@ impl Turns {
                 let (mut blasted, own_killed) =
                     (std::mem::take(&mut c.blasted), c.own_killed.take());
                 let (remains, refund) = (c.remains.take(), std::mem::take(&mut c.refund));
-                let (annex_states, cleared) = (
+                let (annex_states, cleared, released_annexes) = (
                     std::mem::take(&mut c.annex_states),
                     std::mem::take(&mut c.cleared),
+                    std::mem::take(&mut c.released_annexes),
                 );
                 let main_works = std::mem::take(&mut c.main_works);
                 let building_death = c.building_death.take();
@@ -1233,6 +1235,13 @@ impl Turns {
                 for (annex, amount) in main_works {
                     if let Err(e) = self.work_building(annex, amount) {
                         result = result.and(Err(e));
+                    }
+                }
+                // a dying building's annexes, let go with its hit points (0x14118ad50)
+                for (annex, hp) in released_annexes {
+                    if let Some((_, a)) = self.object_mut(annex) {
+                        a.annex_of = None;
+                        a.life.hp = hp;
                     }
                 }
                 // a building's set_state took its annexes along first (FUN_1411dbb70)

@@ -2465,9 +2465,13 @@ impl Unit {
             return Ok(());
         };
         if master.kind == 80 {
-            // FUN_1411dbb70: the annexes' slot 0xa0 with the same state, before anything else
+            // the static update's death (0x14118ad50) lets the annexes go before its set_state(3):
+            // each slot (`+0xbc0`..) clears and its annex's `+0xbb8` with it, and each annex takes
+            // the building's hit points (`+0x278`), so it dies in its own update; the set_state
+            // (FUN_1411dbb70) then finds no annex to take along
             for annex in c.spatial.annexes_of(self.id) {
-                c.annex_states.push((annex, 3));
+                c.spatial.set_annex(annex, None);
+                c.released_annexes.push((annex, self.life.hp));
             }
             if before == 2 {
                 let death = built_death(self, master, c.computer)?;

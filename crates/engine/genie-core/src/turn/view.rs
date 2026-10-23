@@ -125,6 +125,9 @@ pub(in crate::turn) struct Context<'a> {
     /// The annexes a building's `set_state` (`FUN_1411dbb70`) took to its own state (slot 0xa0
     /// on each, before its own parts), the caller's after the update ([`Turns::set_state`]).
     pub(in crate::turn) annex_states: Vec<(i32, u8)>,
+    /// The annexes a dying building let go (the static update's death, `0x14118ad50`), each with
+    /// the hit points it takes: its `+0xbb8` clears, the caller's after the update.
+    pub(in crate::turn) released_annexes: Vec<(i32, f32)>,
     /// The objects a builder's footprint clearing deletes (the Build's `set_state(7)`,
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
     /// update ([`Turns::clear_object`]).

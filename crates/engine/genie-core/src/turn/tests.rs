@@ -4325,10 +4325,11 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
     assert!(3 <= t.players[0].objects[0].life.state);
 }
 
-/// A building's `set_state` takes its annexes along (`FUN_1411dbb70`): a gate (426048706's 7228,
-/// master 88) at no hit points dies (3) and goes on to its dying sprite (the animated update's
-/// `set_state(4)`); its annex (7229, master 95, holding nothing) follows it into state 4 in the
-/// same update, not on to 7 by its own static update.
+/// A dying building lets its annexes go with its hit points (the static update's death,
+/// `0x14118ad50`): a gate (426048706's 7228, master 88) at no hit points dies (3) and goes on to
+/// its dying sprite (the animated update's `set_state(4)`); its annex (7229, master 95, holding
+/// nothing), after it in the list, dies in its own update of the same tick and reaches state 4
+/// too, no longer an annex.
 #[test]
 fn an_annex_follows_its_dying_main_building_into_state_4() {
     let g = Graphic {
@@ -4421,6 +4422,134 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
         .map(|u| (u.id, u.life.state))
         .collect();
     assert_eq!(states, [(7228, 4), (7229, 4)]);
+    assert_eq!(t.players[1].objects[1].annex_of, None);
+    assert_eq!(t.spatial.annexes_of(7228), []);
+}
+
+/// 428799090's palisade gate foundation (34600, master 800) dies at no hit points in update 2674
+/// while its two annexes (34601, 34602, master 1192) come before it in the list: they stay
+/// foundations with the gate's hit points (0) and no main building, then die in their own
+/// update of the next tick on their own sprites, not the gate's states.
+#[test]
+fn annexes_before_their_dying_foundation_die_in_the_next_update() {
+    let g = |id, flags| Graphic {
+        id,
+        frames: 10,
+        facets: 1,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags,
+    };
+    let master = |id, death_sprite, destruction_sprite| Master {
+        id,
+        kind: 80,
+        class: 39,
+        hit_points: 10,
+        build_time: 70,
+        standing_sprite: 1751,
+        death_sprite,
+        building: Some(crate::masters::BuildingMaster {
+            stack_unit: -1,
+            foundation_terrain: -1,
+            tech: -1,
+            head_unit: -1,
+            transform_unit: -1,
+            destruction_sprite,
+            ..crate::masters::BuildingMaster::default()
+        }),
+        ..Master::default()
+    };
+    let foundation = |id, m, hp, annex_of| Unit {
+        id,
+        position: [150.0, 46.0, 0.0],
+        pasture: -1,
+        my_pasture: -1,
+        annex_of,
+        sprite: Some(crate::sprite::ActiveSprite::at_rest(g(1751, 0), 0)),
+        anim_speed: Some(0.0),
+        life: Lifecycle {
+            class: Class::Animated,
+            master_id: m,
+            state: 0,
+            hp,
+            dying_sprite: Some(38),
+            master: Some(MasterData::default()),
+            ..Lifecycle::default()
+        },
+        construction: Some(Construction {
+            progress: 10.0,
+            desolid: false,
+            builders: 0,
+            hit_points: 10,
+            build_time: 70,
+            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: true,
+        }),
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![
+            Player {
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+            Player {
+                objects: vec![
+                    foundation(34602, 1192, 1.0, Some(34600)),
+                    foundation(34601, 1192, 1.0, Some(34600)),
+                    foundation(34600, 800, 0.0, None),
+                ],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    t.spatial.set_annex(34602, Some(34600));
+    t.spatial.set_annex(34601, Some(34600));
+    t.masters = vec![
+        Masters::new([]),
+        Masters::new([master(800, 38, -1), master(1192, 37, 112)]),
+    ];
+    t.graphics = std::collections::BTreeMap::from([
+        (1751, g(1751, 0)),
+        (38, g(38, 9)),
+        (37, g(37, 9)),
+        (112, g(112, 9)),
+    ]);
+    let looks = |t: &Turns| -> Vec<(i32, u8, f32, Option<i32>)> {
+        t.players[1]
+            .objects
+            .iter()
+            .map(|u| (u.id, u.life.state, u.life.hp, u.annex_of))
+            .collect()
+    };
+    t.tick(100);
+    assert_eq!(t.players[1].unsupported, None);
+    assert_eq!(
+        looks(&t),
+        [
+            (34602, 0, 0.0, None),
+            (34601, 0, 0.0, None),
+            (34600, 4, 0.0, None)
+        ]
+    );
+    t.tick(100);
+    assert_eq!(t.players[1].unsupported, None);
+    let states: Vec<(i32, u8)> = looks(&t).iter().map(|l| (l.0, l.1)).collect();
+    assert_eq!(states, [(34602, 4), (34601, 4), (34600, 4)]);
+    let sprites: Vec<Option<i16>> = t.players[1]
+        .objects
+        .iter()
+        .map(|u| u.sprite.map(|s| s.graphic.id))
+        .collect();
+    assert_eq!(sprites, [Some(112), Some(112), Some(38)]);
 }
 
 /// `TRIBE_Combat_Object::update`'s regeneration (`0x141208440`): the rate (slot 0x260,
