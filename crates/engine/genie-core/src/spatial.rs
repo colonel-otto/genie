@@ -1908,9 +1908,23 @@ impl Spatial {
         }
     }
 
-    /// An ownership change's world part (`FUN_14120f800`): the object's place and records take
-    /// the new owner, and its sight moves to the new owner's map ([`Visibility::owner_changed`]).
-    pub fn change_owner(&mut self, id: i32, new: usize, los: f32) -> Result<(), Unsupported> {
+    /// An ownership change's records ([`Visibility::records_owner`]), which come first.
+    pub fn records_owner(&mut self, id: i32, new: usize) -> Result<(), Unsupported> {
+        self.sight
+            .as_mut()
+            .map_or(Ok(()), |v| v.records_owner(id, new))
+    }
+
+    /// An ownership change's world part (`FUN_14120f800`, once the new owner has the master):
+    /// the object's place takes the new owner, and an object that `sees` moves its sight to the
+    /// new owner's map with `los` ([`Visibility::owner_changed`]).
+    pub fn change_owner(
+        &mut self,
+        id: i32,
+        new: usize,
+        los: f32,
+        sees: bool,
+    ) -> Result<(), Unsupported> {
         let Some(p) = self.objects.get_mut(&id) else {
             return Err(Unsupported(
                 "an ownership change of an object the world does not hold",
@@ -1919,7 +1933,7 @@ impl Spatial {
         p.player = new;
         let (position, radius) = (p.position, p.radius);
         if let Some(v) = self.sight.as_mut() {
-            v.owner_changed(id, position, radius, new, los)?;
+            v.owner_changed(id, position, radius, (new, los), sees);
         }
         Ok(())
     }
@@ -2055,10 +2069,11 @@ impl Spatial {
     }
 
     /// `RGE_Combat_Object::update`'s sight ([`Visibility::combat_sight`]); an annex reads its
-    /// main building's place and UMV entry.
-    pub fn combat_sight(&mut self, id: i32) -> Result<(), Unsupported> {
+    /// main building's place and UMV entry. The changed mask of an object others take over by
+    /// seeing it is the answer.
+    pub fn combat_sight(&mut self, id: i32) -> Result<Option<u64>, Unsupported> {
         let (Some(v), Some(p)) = (self.sight.as_mut(), self.objects.get(&id)) else {
-            return Ok(());
+            return Ok(None);
         };
         let main = self.annexes.get(&id).and_then(|main| {
             let place = self.objects.get(main)?.position;
