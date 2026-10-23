@@ -1848,8 +1848,8 @@ pub(crate) mod tests {
         assert_eq!((held, tree.amount), (0.05 + 100.0 * 0.001, 0.0));
     }
 
-    /// Case 6 without a target: a load is carried off (set_state 8), none or a NaN load searches
-    /// (set_state 3, `COMISS` with `JBE`).
+    /// Case 6 without a target: a load is carried off (`set_state(8)`), none or a NaN load searches
+    /// (`set_state(3)`, `COMISS` with `JBE`).
     #[test]
     fn a_hunt_without_a_target_carries_its_load_off_or_searches() {
         let mut h = HuntAction {

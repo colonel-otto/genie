@@ -430,6 +430,8 @@ const FINISHED: u8 = 224;
 const DONE: u8 = 1;
 /// 3: the action waits without a target.
 const IDLE: u8 = 3;
+/// `set_state(2)`: the unit's stop halted the Build (slot 0x38); its next update fails it.
+const HALTED: u8 = 2;
 /// The buildings' master type (80).
 const BUILDING_TYPE: u8 = 80;
 /// The masters and the class the end of the work treats apart: 621 and 1889 among the
@@ -849,6 +851,33 @@ impl BuildAction {
         }
         *self = Self::start(target, gap, self.task);
         Ok(())
+    }
+
+    /// Slot 0x38 (`FUN_140ab0350`) as the unit's stop calls it: `set_state(2)` (`0x140aae200`):
+    /// a counted builder leaves its foundation's builders first (the caller's,
+    /// [`crate::turn::Turns::leave_builders`]: true when it counted), the sub-actions go (a
+    /// `MoveTo`'s teardown stops the unit), the unit takes its standing sprite (slot 0x68 with the
+    /// master's `+0x470`, the caller's), the foundation and the second target go (slot 0x68 and
+    /// `FUN_140a7a190` with none: the caller releases the foundation) and the point is −1. The
+    /// answer is true, so the stop keeps the list; returns whether it counted and the foundation.
+    ///
+    /// # Errors
+    ///
+    /// The unit's stop that the motion step does not model.
+    pub(crate) fn halt(
+        &mut self,
+        mover: Option<&mut crate::movement::Mover>,
+    ) -> Result<(bool, i32), Unsupported> {
+        let counted = std::mem::replace(&mut self.added, false);
+        if self.move_to.take().is_some()
+            && let Some(m) = mover
+        {
+            m.stop()?;
+        }
+        self.goal = None;
+        self.state = HALTED;
+        let target = std::mem::replace(&mut self.target, -1);
+        Ok((counted, target))
     }
 
     /// The search for more work found nothing (`0x140ab0f00`): slot 0x68 with none lets the
@@ -2367,6 +2396,34 @@ mod tests {
     /// records/425906646's update 4804: builders of players 4 and 5 told to build another
     /// foundation: even one at work (state 6) starts over on the new one (state 4), no longer
     /// among builders, its `MoveTo` arrived when the footprints touch.
+    /// Slot 0x38 (`FUN_140ab0350`, `set_state(2)`): the builder no longer counts (the caller
+    /// takes it out of the foundation's builders when it did), its `MoveTo` goes and stops the
+    /// unit, the foundation goes (the caller releases it) and the point; state 2.
+    #[test]
+    fn a_stop_halts_the_build_and_lets_its_foundation_go() {
+        let mut mover = crate::hunt::tests::walker();
+        let mut b = BuildAction {
+            state: MOVE,
+            move_to: Some(MoveTo::Moving),
+            goal: Some([3.0, 4.0, 0.0]),
+            added: true,
+            ..BuildAction::start(31148, 0.0, TASK)
+        };
+        assert_eq!(b.halt(Some(&mut mover)), Ok((true, 31148)));
+        assert_eq!(
+            (b.state, b.added, b.move_to, b.goal, b.target),
+            (HALTED, false, None, None, -1)
+        );
+        assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+        // one not counted among the builders, standing: nothing to stop
+        let mut idle = BuildAction {
+            state: WORK,
+            move_to: None,
+            ..BuildAction::start(31150, 0.0, TASK)
+        };
+        assert_eq!(idle.halt(None), Ok((false, 31150)));
+    }
+
     #[test]
     fn a_builder_sent_to_another_foundation_starts_over() {
         let mut b = BuildAction {

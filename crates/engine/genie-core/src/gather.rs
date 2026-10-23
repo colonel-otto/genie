@@ -674,6 +674,35 @@ impl GatherAction {
         self.point = [-1.0; 3];
     }
 
+    /// Slot 0x38 (`FUN_140a8e1b0`, as `TRIBE_Action_Gather`'s `FUN_140abf3c0`) as the unit's
+    /// stop calls it: `set_state(2)` (`0x140a8cd40` case 2: the sub-actions go first, a
+    /// `MoveTo`'s teardown stopping the unit; then [`GatherAction::set_idle`] with `stand`, the
+    /// sprite `FUN_140a8b6b0` gives), true. Returns the target and the second target it let go
+    /// (slot 0x68 and `FUN_140a7a190` with none), which the caller releases.
+    ///
+    /// # Errors
+    ///
+    /// The unit's stop that the motion step does not model.
+    pub(crate) fn halt(
+        &mut self,
+        mover: Option<&mut Mover>,
+        stand: Option<crate::sprite::Graphic>,
+        sprite: &mut Option<ActiveSprite>,
+        rng: &mut Well512,
+    ) -> Result<[i32; 2], Unsupported> {
+        self.tear_down(mover)?;
+        self.state = IDLE;
+        self.timer = 0.0;
+        if let Some(s) = stand {
+            set_sprite(sprite, s, rng);
+        }
+        let released = [self.target, self.carry_to];
+        self.target = -1;
+        self.carry_to = -1;
+        self.point = [-1.0; 3];
+        Ok(released)
+    }
+
     /// `set_state(11)` (`0x140a8cd40` case 0xb) with its target's radius on x (`+0x5d8`; none
     /// for a stop farm, masters 50 and 1187): the sub-actions go, the timer clears and a quiet
     /// `MoveTo` to the point within that radius plus the task's range starts (`FUN_140aa0d30`).
@@ -1421,6 +1450,46 @@ mod tests {
         };
         let trap = GatherAction::new(task(), &trap, true, rate).unwrap();
         assert_eq!((one.stops, one.time_per_stop, trap.stops), (1, 0.0, 1));
+    }
+
+    /// Slot 0x38 (`FUN_140a8e1b0`, `set_state(2)`): the `MoveTo` goes and stops the unit, the
+    /// timer clears, the unit stands, the target and the drop site go (returned for the
+    /// caller's release) and the point is −1.
+    #[test]
+    fn a_stop_idles_the_gather_and_lets_its_targets_go() {
+        let mut mover = crate::hunt::tests::walker();
+        let mut g = GatherAction {
+            state: WALK,
+            target: 31,
+            carry_to: 9,
+            point: [5.0, 6.0, 0.0],
+            timer: 2.0,
+            move_to: Some(MoveTo::Moving),
+            walk_to: Some([5.0, 6.0, 0.0]),
+            ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
+        };
+        let stand = crate::sprite::Graphic {
+            id: 4,
+            frames: 1,
+            facets: 1,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 0,
+        };
+        let (mut sprite, mut rng) = (None, Well512::default());
+        let released = g
+            .halt(Some(&mut mover), Some(stand), &mut sprite, &mut rng)
+            .unwrap();
+        assert_eq!(released, [31, 9]);
+        assert_eq!(
+            (
+                g.state, g.timer, g.target, g.carry_to, g.point, g.move_to, g.walk_to
+            ),
+            (IDLE, 0.0, -1, -1, [-1.0; 3], None, None)
+        );
+        assert_eq!(sprite.map(|s| s.graphic.id), Some(4));
+        assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
     }
 
     #[test]
