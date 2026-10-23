@@ -49,7 +49,9 @@ pub struct Settings {
     pub selected_content_mode: i32,
     /// `mVillagerForceDrop` (`+0x1070`), which [`Settings::carry_rule`] reads.
     pub villager_force_drop: bool,
-    /// `mCheatsEnabled` (`+0x1074`, `FUN_1412ffe00`): players may order each other's units.
+    /// `mCheatsEnabled` (`+0x1074`, `FUN_1412ffe00`): players may order each other's units, and
+    /// GAME's cheat sub-commands run. The lobby sets it before the game starts; nothing in the
+    /// game changes it, so a playback takes it from the header as the other options.
     pub cheats_enabled: bool,
     /// `mTreatyLength`: the treaty's minutes, 0 for none. The world's treaty monitor (`+0x820`,
     /// `FUN_141461190`) fills its players' zones only while a treaty holds (`FUN_141461c00`);
