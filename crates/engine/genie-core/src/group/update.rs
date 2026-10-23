@@ -1499,14 +1499,17 @@ impl Turns {
         {
             return Err(e);
         }
+        // the slots of a combat object read its terrain look ([`crate::sprite::standing`]); a
+        // trade cart's goods are passed above
+        let look = u.abilities.look.as_ref();
         let sprite = match shown {
-            Shown::Standing => master.standing_sprite,
-            Shown::Walking => master.move_sprite,
-            Shown::Running => master.run_sprite,
+            Shown::Standing => crate::sprite::standing(master, look, false),
+            Shown::Walking => crate::sprite::walking(master, look, false),
+            Shown::Running => crate::sprite::running(master, look),
         };
-        if sprite == -1 {
+        let Some(sprite) = sprite else {
             return Ok(false);
-        }
+        };
         let graphic = self.graphics.get(&sprite).copied();
         let (_, u) = self.object_mut(id).expect("found above");
         if let Some(m) = u.mover.as_mut() {

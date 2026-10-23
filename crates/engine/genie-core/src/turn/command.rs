@@ -962,6 +962,7 @@ impl Turns {
             // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             anim_speed: Some(0.0),
             attack_timer: 0.0,
+            abilities: crate::abilities::Abilities::default(),
             reload_stinger: 0.0,
             reload_powerup: 0.0,
             attack_powerup: 0.0,

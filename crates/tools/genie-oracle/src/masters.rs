@@ -62,14 +62,36 @@ pub struct Turning {
     pub min_collision_size_multiplier: f32,
 }
 
-/// A `.dat` task as the task finder reads it (`genie_core::masters::Task`).
-fn dat_task(t: &genie_dat::de::Task) -> work::Task {
+/// The default event id a task's load gives a sound without one (`FUN_141062470`'s
+/// `FUN_1413af9a0` calls, an immediate of the code).
+const DEFAULT_SOUND_EVENT: u32 = 0x62d4_b3ec;
+
+/// The event id a task's load (`FUN_141062470`) leaves at `+0x60` or `+0x78`
+/// (`FUN_1413af9a0` with the world's sound table): an id of 0 whose sound number names a sound
+/// of the table with sample files takes the default event ([`DEFAULT_SOUND_EVENT`]); any other
+/// id stays. The id is read as an `int` (`MOVSXD`).
+fn sound_event(event: u32, sound: i16, sounds: &[genie_dat::de::Sound]) -> i32 {
+    let has_files = usize::try_from(sound)
+        .ok()
+        .and_then(|i| sounds.get(i))
+        .is_some_and(|s| !s.items.is_empty());
+    if event == 0 && has_files {
+        DEFAULT_SOUND_EVENT.cast_signed()
+    } else {
+        event.cast_signed()
+    }
+}
+
+/// A `.dat` task as the task finder reads it (`genie_core::masters::Task`), with the world's
+/// sound table its sound events read ([`sound_event`]).
+fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::Task {
     work::Task {
         id: t.id,
         action_type: t.action_type,
         object_group: t.class_id,
         object_id: t.unit_id,
         combat_level: t.enable_targeting,
+        combat_level_flag: t.combat_level_flag,
         terrain: t.terrain_id,
         owner_type: t.target_diplomacy,
         holding_attr: t.carry_check,
@@ -89,11 +111,23 @@ fn dat_task(t: &genie_dat::de::Task) -> work::Task {
             t.working_graphic_id,
             t.carrying_graphic_id,
         ],
+        sound_events: [
+            sound_event(
+                t.wwise_resource_gathering_sound_id,
+                t.resource_gathering_sound_id,
+                sounds,
+            ),
+            sound_event(
+                t.wwise_resource_deposit_sound_id,
+                t.resource_deposit_sound_id,
+                sounds,
+            ),
+        ],
     }
 }
 
-/// The work-command values of a `.dat` unit.
-fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
+/// The work-command values of a `.dat` unit, with the world's sound table its tasks read.
+fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]) -> work::Master {
     let cost = unit.creatable.as_ref().map_or_else(Vec::new, |c| {
         c.resource_costs
             .iter()
@@ -116,10 +150,9 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
         obstruction_class: unit.obstruction_class,
         object_flags: 0,
         combat_level: unit.combat_level,
-        tasks: unit
-            .bird
-            .as_ref()
-            .map_or_else(Vec::new, |b| b.tasks.iter().map(dat_task).collect()),
+        tasks: unit.bird.as_ref().map_or_else(Vec::new, |b| {
+            b.tasks.iter().map(|t| dat_task(t, sounds)).collect()
+        }),
         default_task: unit
             .bird
             .as_ref()
@@ -167,6 +200,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit) -> work::Master {
             annex_offsets: b.annexes.map(|a| a.misplacement),
             head_unit: b.head_unit,
             transform_unit: b.transform_unit,
+            destruction_sprite: b.destruction_graphic_id,
         }),
         garrison: unit.garrison_capacity,
         recyclable: unit.recyclable != 0,
@@ -473,7 +507,7 @@ impl MasterTable {
                     (c as u8, m as i16),
                     data,
                     action,
-                    dat_work(m as i16, unit),
+                    dat_work(m as i16, unit, &dat.sounds),
                     turning,
                     flight,
                 ))
@@ -605,6 +639,38 @@ impl MasterTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sound(files: usize) -> genie_dat::de::Sound {
+        let item = genie_dat::de::SoundItem {
+            file_name: genie_dat::de::DebugString::default(),
+            resource_id: 0,
+            probability: 100,
+            civilization: -1,
+            icon_set: -1,
+        };
+        genie_dat::de::Sound {
+            id: 0,
+            play_delay: 0,
+            file_count: files as i16,
+            cache_time: 0,
+            total_probability: 100,
+            items: vec![item; files],
+        }
+    }
+
+    #[test]
+    fn a_task_s_sound_event_of_0_with_a_sound_of_files_takes_the_default_event() {
+        // FUN_1413af9a0: a valid sound number whose sound has files gives an id of 0 the
+        // default event; an id set stays, and so does 0 with no sound or an empty one
+        let sounds = [sound(0), sound(2)];
+        assert_eq!(sound_event(0, 1, &sounds), 0x62d4_b3ec);
+        assert_eq!(sound_event(19598, 1, &sounds), 19598);
+        assert_eq!(sound_event(0, 0, &sounds), 0);
+        assert_eq!(sound_event(0, -1, &sounds), 0);
+        assert_eq!(sound_event(0, 2, &sounds), 0);
+        // the id is an int: the high bit makes it negative
+        assert_eq!(sound_event(0xffff_fffe, -1, &sounds), -2);
+    }
 
     #[test]
     fn the_default_action_is_the_action_type_of_the_default_task() {

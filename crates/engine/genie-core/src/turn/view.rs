@@ -909,8 +909,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
         let visible = self.spatial.sees_tile(self.player, tx, ty)
             || (t_master.fog_visibility != 0 && self.spatial.explored(self.player, tx, ty)?);
-        // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the master's
-        let arms = crate::attack::arms(master, self.graphics, [-1; 4], -1);
+        // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
+        let look = unit.abilities.look.as_ref();
+        let arms = crate::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);
         let standing = arms
             .idle_sprite
             .ok_or(Unsupported("an attacker without its standing sprite"))?;

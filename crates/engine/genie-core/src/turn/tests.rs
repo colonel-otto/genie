@@ -3796,3 +3796,114 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         (Some([30.0, 20.25, 0.5]), 0.0, true)
     );
 }
+
+/// `RGE_Combat_Object::update`: the attack timer runs down by dt times the object's rate
+/// (`+0x87c`), which a terrain look sets ([`crate::abilities`]).
+#[test]
+fn the_attack_timer_runs_down_at_the_object_s_rate() {
+    let unit = Unit {
+        id: 1,
+        attack_timer: 1.0,
+        abilities: crate::abilities::Abilities {
+            attack_rate: 0.5,
+            ..crate::abilities::Abilities::default()
+        },
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0],
+        vec![Player {
+            objects: vec![unit],
+            ..Player::default()
+        }],
+    );
+    t.tick(100);
+    assert_eq!(t.players[0].objects[0].attack_timer, 1.0 - 0.1 * 0.5);
+}
+
+/// records/425984813: a barracks (12) that dies short of its build time plays its destruction
+/// sprite (389), not its death sprite (2573) (`RGE_Static_Object::update`'s sprite after the
+/// death), a foundation (state 0) as a building in state 2.
+#[test]
+fn a_building_short_of_its_build_time_that_dies_plays_its_destruction_sprite() {
+    for state in [0, 2] {
+        building_short_of_its_build_time_dies(state);
+    }
+}
+
+fn building_short_of_its_build_time_dies(state: u8) {
+    use crate::sprite::{ActiveSprite, Graphic};
+    let g = |id| Graphic {
+        id,
+        frames: 10,
+        facets: 1,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let barracks = Master {
+        id: 12,
+        kind: 80,
+        class: 3,
+        standing_sprite: 207,
+        death_sprite: 2573,
+        build_time: 50,
+        hit_points: 1200,
+        building: Some(crate::masters::BuildingMaster {
+            destruction_sprite: 389,
+            ..crate::masters::BuildingMaster::default()
+        }),
+        ..Master::default()
+    };
+    let foundation = Unit {
+        id: 5,
+        life: Lifecycle {
+            class: Class::Animated,
+            state,
+            hp: 0.5,
+            master_id: 12,
+            master: Some(MasterData::default()),
+            dying_sprite: Some(2573),
+            ..Lifecycle::default()
+        },
+        construction: Some(Construction {
+            progress: 10.0,
+            desolid: false,
+            builders: 0,
+            hit_points: 1200,
+            build_time: 50,
+            record: crate::spatial::Obstruction { kind: 2, class: 0 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        }),
+        sprite: Some(ActiveSprite::at_rest(g(207), 0)),
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0],
+        vec![Player {
+            objects: vec![foundation],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        }],
+    );
+    t.masters = vec![Masters::new([barracks])];
+    t.graphics = [(207, g(207)), (389, g(389)), (2573, g(2573))]
+        .into_iter()
+        .collect();
+    t.tick(10);
+    assert_eq!(t.players[0].unsupported, None);
+    let u = &t.players[0].objects[0];
+    assert_eq!(u.life.state, 4);
+    assert_eq!(u.sprite.unwrap().graphic.id, 389);
+}

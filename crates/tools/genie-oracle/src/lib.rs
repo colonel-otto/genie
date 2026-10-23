@@ -340,6 +340,12 @@ fn unit(
         attack_timer: object
             .combat()
             .map_or(0.0, |c| c.rge_combat_object.attack_timer),
+        // the movement damage timer (+0x9a4) is saved; the attack timer's rate and the terrain
+        // look are not (the constructor's 1 and none, until the first update's abilities)
+        abilities: genie_core::abilities::Abilities {
+            movement_damage_timer: object.combat().map_or(0.0, |c| c.movement_damage_timer),
+            ..genie_core::abilities::Abilities::default()
+        },
         reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
         reload_powerup: object.combat().map_or(0.0, |c| c.reload_powerup),
         attack_powerup: object.combat().map_or(0.0, |c| c.attack_powerup),
@@ -2136,6 +2142,14 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 resources: [resource(0), resource(1), resource(2), resource(3)],
                 construction_rate: resource(CONSTRUCTION_RATE),
                 attributes: attributes.clone(),
+                // the second attribute array (+0x658), floats as their bits
+                generated: p
+                    .world_player()
+                    .base
+                    .attributes_2
+                    .iter()
+                    .map(|&b| f32::from_bits(b))
+                    .collect(),
                 civ,
                 relations: p.world_player().base.relation.clone(),
                 auto_farm_queue: p.world_player().auto_farm_queue != 0,
@@ -2623,6 +2637,7 @@ const fn core_task(t: &genie_save::generated::world::Task) -> genie_core::master
         object_group: t.object_group,
         object_id: t.object_id,
         combat_level: t.combat_level,
+        combat_level_flag: t.combat_level_flag,
         terrain: t.terrain_id,
         owner_type: t.owner_type,
         holding_attr: t.holding_attr,
@@ -2637,6 +2652,10 @@ const fn core_task(t: &genie_save::generated::world::Task) -> genie_core::master
         work_flag: t.work_flag,
         enablement: t.enablement_resource_id,
         sprites: [t.short_val, t.short_val_2, t.short_val_3, t.short_val_4],
+        sound_events: [
+            t.gather_sound_event_event_id.cast_signed(),
+            t.deposit_sound_event_event_id.cast_signed(),
+        ],
     }
 }
 
@@ -2761,6 +2780,8 @@ fn work_masters(
             m.tribe_master_building_object.as_deref(),
         ) {
             b.foundation_terrain = saved.on_build_make_tile;
+            // `+0x960`, the third of its sprites (`tempId`)
+            b.destruction_sprite = saved.temp_id_3.cast_signed();
         }
         // a missile master's flight: the save's three bytes and arc, the data file's projectile
         // type

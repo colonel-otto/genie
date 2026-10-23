@@ -32,6 +32,7 @@
     clippy::missing_errors_doc
 )]
 
+pub mod abilities;
 pub mod ai_kinds;
 pub mod artifact;
 pub mod attack;
