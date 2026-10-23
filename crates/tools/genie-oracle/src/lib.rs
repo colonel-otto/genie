@@ -2136,6 +2136,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 watched: Vec::new(),
                 ghosts: saved_ghosts(p),
                 history: history(&p.world_player().history),
+                // the load files the objects (Turns::load_trackers, once the masters are in)
+                tracker: genie_core::tracker::Tracker::default(),
             }
         })
         .collect();
@@ -2277,6 +2279,8 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         turns.register_planners();
         turns.build_mesh();
     }
+    // the players' object trackers, which the objects' loads fill
+    turns.load_trackers();
     // the players' vision masks, which the world's load rebuilds (its slot 0x78)
     if let Err(e) = turns.rebuild_vision() {
         for p in &mut turns.players {

@@ -3777,7 +3777,9 @@ impl Turns {
                     u.workers += 1;
                 }
                 let woken = owner.sleeping.swap_remove(i);
+                let (id, master) = (woken.id, woken.life.master_id);
                 owner.objects.push(woken);
+                self.track_relist(p, id, master);
             }
             None => {}
         }
@@ -4004,7 +4006,10 @@ impl Turns {
             Place::Live(p, i) => &mut self.players[p].objects[i],
             Place::Sleeping(p, i) => {
                 let woken = self.players[p].sleeping.swap_remove(i);
+                let (id, master) = (woken.id, woken.life.master_id);
                 self.players[p].objects.push(woken);
+                // the wake's remove and add (slots 0x2d8, 0x2d0) file it last in the tracker
+                self.track_relist(p, id, master);
                 self.players[p].objects.last_mut().expect("pushed")
             }
         };
@@ -4112,6 +4117,10 @@ impl Turns {
                     let _ = crate::sprite::ActiveSprite::start(g, rng);
                 }
             }
+            // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
+            // class's
+            let id = self.players[player].objects[idx].id;
+            self.track_promote(player, id, old.id, new);
             let owner = &mut self.players[player];
             for &(kind, amount, flag) in &next.storage {
                 if kind >= 0 && flag == 2 {
