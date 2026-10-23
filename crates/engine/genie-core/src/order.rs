@@ -3410,7 +3410,9 @@ impl Turns {
     /// then order 700, action 600, the target with its class and the work's point); the install
     /// clears the action list and starts the Attack (slot 5, `0x140a7f8c0`: `+0x900` cleared, the
     /// standing sprite, the range test of [`Attack::command`]; a unit that cannot move in reach
-    /// goes ready, `set_state(6)`, [`Attack::enter_ready`]); then the Attack takes the target as
+    /// goes ready, `set_state(6)`, [`Attack::enter_ready`]; one that may move ends in
+    /// `set_state(4)`, whose `MoveTo` starting arrived shows the standing sprite at its speed and
+    /// clears `+0x7b8`, `0x140aa29e0`); then the Attack takes the target as
     /// its second target too (`FUN_140a7a190`, slot 0x178). The unit AI's `+0x1d5`, cleared, is
     /// not held; a task range other than 0 is not modelled.
     fn start_attack(
@@ -3549,11 +3551,6 @@ impl Turns {
             // readyToAttack's set_state(13) before the start's set_state(4)
             unit.anim_speed = Some(1.0);
         }
-        if arrived {
-            return Err(GenieError::unsupported(
-                "an attack task whose MoveTo starts arrived",
-            ));
-        }
         let (id, state) = (unit.id, unit.life.state);
         for (kind, p) in posted {
             if let Some(ai) = unit.ai.as_mut() {
@@ -3625,6 +3622,19 @@ impl Turns {
                     "an attack task's swing at its start",
                 ));
             }
+        }
+        if arrived {
+            // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): slot 0x68 with the
+            // standing sprite (slot 0x798) at its speed, `+0x7b8` cleared; the next update's state
+            // 4 ends the MoveTo
+            if let Some(m) = unit.mover.as_mut() {
+                m.shows_standing();
+            }
+            unit.shows_standing_sprite(
+                self.masters.get(player),
+                &self.graphics,
+                self.streams.get(Stream::Sprite),
+            )?;
         }
         attack.target2 = target;
         unit.attack = Some(attack);
@@ -4870,6 +4880,127 @@ mod tests {
             },
         ];
         assert!(t.drop_off_unasked(0, 0).is_err());
+    }
+
+    /// The work command's Attack (`0x140a7f8c0`) of a soldier that may move, touching Gaia's
+    /// wolf: the start ends in `set_state(4)`, whose `MoveTo` to the target starts arrived (state
+    /// 1 within 0.01, `FUN_140aa2100`; 426954810's p6 at 1730). Its `set_state(1)`
+    /// (`0x140aa29e0`, not quiet) shows the standing sprite (slot 0x798) at the standing speed and
+    /// clears `+0x7b8`; the Attack waits in state 4 for the `MoveTo`'s end.
+    #[test]
+    fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
+        use crate::rng::Well512;
+        use crate::spatial::Placed;
+        use crate::sprite::Graphic;
+        let standing = Graphic {
+            id: 300,
+            frames: 10,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        };
+        let mut t = soldiers(&[(11, 4, [10.0, 10.0])], &[]);
+        t.graphics = std::collections::BTreeMap::from([
+            (300, standing),
+            (
+                301,
+                Graphic {
+                    id: 301,
+                    ..standing
+                },
+            ),
+            (
+                302,
+                Graphic {
+                    id: 302,
+                    ..standing
+                },
+            ),
+        ]);
+        let mut walker = crate::hunt::tests::walker();
+        walker.stats.speed = 1.2;
+        walker.stats.walk_speed = 1.2;
+        walker.stats.stand_speed = 0.0;
+        let soldier = t.masters[1].get_mut(4).unwrap();
+        soldier.standing_sprite = 300;
+        soldier.attack_sprite = 301;
+        soldier.move_sprite = 302;
+        soldier.weapon_range = 0.0;
+        soldier.reload = 2.0;
+        soldier.moving = Some(walker.stats);
+        t.masters[0] = crate::masters::Masters::new([Master {
+            id: 126,
+            kind: 70,
+            class: 10,
+            ..Master::default()
+        }]);
+        t.players[0].objects.push(Unit {
+            id: 50,
+            position: [10.4, 10.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: 126,
+                state: 2,
+                hp: 25.0,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        let placed = |x: f32, class, player, master| Placed {
+            position: [x, 10.0, 0.0],
+            radius: [0.2, 0.2],
+            class,
+            player,
+            master,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        };
+        t.spatial = crate::spatial::Spatial::new([120, 120]);
+        t.spatial.insert(11, placed(10.0, 0, 1, 4));
+        t.spatial.insert(50, placed(10.4, 10, 0, 126));
+        let mut rng = Well512::default();
+        let unit = &mut t.players[1].objects[0];
+        unit.mover = Some(walker);
+        unit.sprite = Some(crate::sprite::ActiveSprite::start(
+            Graphic {
+                id: 302,
+                ..standing
+            },
+            &mut rng,
+        ));
+        unit.anim_speed = Some(1.0);
+        unit.ai = Some(crate::unit_ai::UnitAi {
+            ai_type: 6,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        let task = crate::masters::Task {
+            action_type: ATTACK_TASK,
+            sprites: [-1; 4],
+            ..crate::masters::Task::default()
+        };
+        t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
+            .unwrap();
+        let unit = &t.players[1].objects[0];
+        let attack = unit.attack.as_ref().expect("the soldier's Attack");
+        assert_eq!(
+            (attack.state, attack.move_to, attack.target2),
+            (
+                crate::attack::MOVE,
+                Some(crate::move_to::MoveTo::Arrived),
+                50
+            )
+        );
+        assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
+        assert_eq!(unit.anim_speed, Some(0.0));
+        assert_eq!(unit.mover.as_ref().map(|m| m.stats.speed), Some(0.0));
     }
 
     /// A world of player 1's soldiers (master 4, formation category 3) and villagers (master 83,
