@@ -148,8 +148,8 @@ const TRADE_BOAT_CLASS: i16 = 2;
 /// The trade action value (`0x267`, which slot 0xf8 `FUN_140c651f0` sets).
 const TRADE_ACTION: i32 = 0x267;
 /// A computer player's ship evades the object its idle check found by its speed times this
-/// (`FUN_140c21930`, `FUN_140c1eab0`: `DAT_142ec9eb8`, 7.0; no image role yet).
-const SHIP_EVADE_REACH: f32 = 7.0;
+/// (`FUN_140c21930`, `FUN_140c1eab0`: `DAT_142ec9eb8`).
+const SHIP_EVADE_REACH: f32 = crate::image::unit_ai::SHIP_EVADE_REACH;
 /// The classes of the foundations a fishing ship's builder looks for (`FUN_140c25ca0`, in its
 /// order): buildings, walls, gates, towers and farms.
 const FISHING_BUILDS: [i32; 5] = [3, 27, 39, 52, 49];
@@ -1051,8 +1051,8 @@ const TREBUCHET_TARGETS: [i16; 7] = [3, 27, 39, 49, 51, 52, 54];
 /// The siege masters whose current building target decides by attack priority alone (1744,
 /// 1746, raw `0x676c`, `0x676e`).
 const SIEGE_BUILDING_MASTERS: [i16; 2] = [1744, 1746];
-/// A Gaia target lets the siege unit's range grow by this (`DAT_142eb4838`; no image role yet).
-const GAIA_TARGET_REACH: f32 = 1.5;
+/// A Gaia target lets the siege unit's range grow by this (`DAT_142eb4838`).
+const GAIA_TARGET_REACH: f32 = crate::image::unit_ai::GAIA_TARGET_REACH;
 /// The packed unit's class (51), which a human player's siege attack check passes over unless
 /// asked for any target.
 const PACKED_UNIT_CLASS: i16 = 51;

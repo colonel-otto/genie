@@ -4,6 +4,14 @@
 //! (`image::<module>::<NAME>`); the table holds where each is, so a new build regenerates this
 //! file and leaves the ports alone.
 
+/// The values `crate::abilities`'s port reads.
+pub mod abilities {
+    /// 1.0000000116860974e-07
+    pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+    /// 1.0
+    pub const ONE: f32 = f32::from_bits(0x3f80_0000);
+}
+
 /// The values `crate::artifact`'s port reads.
 pub mod artifact {
     /// 0.20000000298023224
@@ -706,6 +714,8 @@ pub mod unit_ai {
     pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf80_0000);
     /// 0.10000000149011612
     pub const FOUNDATION_REACH: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 1.5
+    pub const GAIA_TARGET_REACH: f32 = f32::from_bits(0x3fc0_0000);
     /// 3.0
     pub const LION_SIGHT_DIVISOR: f32 = f32::from_bits(0x4040_0000);
     /// 0.5
@@ -726,6 +736,8 @@ pub mod unit_ai {
     pub const RUN_ONE: f32 = f32::from_bits(0x3f80_0000);
     /// 2.0
     pub const RUN_REACH: f32 = f32::from_bits(0x4000_0000);
+    /// 7.0
+    pub const SHIP_EVADE_REACH: f32 = f32::from_bits(0x40e0_0000);
     /// 1.0
     pub const SINGLE_VOLLEY: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5

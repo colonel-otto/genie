@@ -64,11 +64,10 @@ const STRUCK_BUILDING_CLASSES: [i16; 2] = [0x33, 0x36];
 const ALWAYS_REACHED: u8 = 2;
 
 /// Hit points below which an object counts dead, and the store's give threshold
-/// (`DAT_14330eb8c`, 1.0; its image role is not added yet).
-const ONE: f32 = 1.0;
-/// The range below which a removal reward task pays (`DAT_142eb0c60`, 1e-7; its image role is
-/// not added yet).
-const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
+/// (`DAT_14330eb8c`).
+const ONE: f32 = crate::image::abilities::ONE;
+/// The range below which a removal reward task pays (`DAT_142eb0c60`).
+const EPSILON: f32 = crate::image::abilities::EPSILON;
 
 /// What the routine keeps on its object. The constructor's values are the default: no timer,
 /// rate 1 and the master's look.
