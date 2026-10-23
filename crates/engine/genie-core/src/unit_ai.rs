@@ -117,8 +117,8 @@ const GO_ON: u32 = 2;
 /// The defend stance's leash, squared (`DAT_142ed6f20`).
 const DEFEND_LEASH: f32 = crate::image::unit_ai::DEFEND_LEASH;
 /// What the stand ground stance's leash adds to the unit's range (`DAT_142eb880c`, 0.25, read by
-/// `ADDSS` at `0x140c57c6a`): a local value until the image table gives the unit AI its role.
-const STAND_GROUND_SLACK: f32 = 0.25;
+/// `ADDSS` at `0x140c57c6a`).
+const STAND_GROUND_SLACK: f32 = crate::image::unit_ai::STAND_GROUND_SLACK;
 /// "Notify processing returned stop or new action, breaking."
 const BREAK: u32 = 3;
 /// "I'm dead, purging notifyQueue and returning FALSE."

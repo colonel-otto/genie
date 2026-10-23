@@ -810,6 +810,8 @@ pub mod unit_ai {
     pub const SINGLE_VOLLEY: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5
     pub const STANCE_RANGE_GROWTH: f32 = f32::from_bits(0x3f00_0000);
+    /// 0.25
+    pub const STAND_GROUND_SLACK: f32 = f32::from_bits(0x3e80_0000);
 }
 
 /// The values `crate::visibility`'s port reads.
