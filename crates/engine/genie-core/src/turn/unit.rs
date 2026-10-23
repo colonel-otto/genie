@@ -2246,7 +2246,16 @@ impl Unit {
         if before == 2 {
             c.refund = refund_of(master, self.annex_of);
         }
-        if let Some(id) = self.life.dying_sprite {
+        // the static update's sprite after the death (0x14118ad50): a building's by its build
+        // points (its destruction sprite unbuilt), any other combat object's slot 0x7a0's
+        let look = self.abilities.look.as_ref();
+        let shown = if master.kind == 80 {
+            let built = self.construction.ok_or(crate::build::NO_CONSTRUCTION)?;
+            crate::sprite::building_death(master, look, built.progress)
+        } else {
+            crate::sprite::dying(master, look)
+        };
+        if let Some(id) = shown {
             let g = c
                 .graphics
                 .get(&id)
@@ -4075,9 +4084,9 @@ impl Unit {
         self.building_seconds(c, others)?;
         self.take_stopped_speed();
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
-        // `+0x87c` (1.0 for every unit the slice has met; its writer is not ported)
+        // `+0x87c` (a terrain look's rate, [`crate::abilities`])
         if 0.0 < self.attack_timer {
-            self.attack_timer -= c.dt_seconds;
+            self.attack_timer -= c.dt_seconds * self.abilities.attack_rate;
             if self.attack_timer < 0.0 {
                 self.attack_timer = 0.0;
             }

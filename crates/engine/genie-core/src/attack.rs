@@ -1738,12 +1738,8 @@ pub(crate) fn strike(
     Ok(struck)
 }
 
-/// The Attack constructor's sprites and frames (`FUN_140a7c210`): the `MoveTo`'s sprite `moving`
-/// (the hunt's walking sprite from Hunt's `set_state` 12, the task's moving one from the task
-/// factory, none from the attack command), else the master's running sprite (slot 0x7d0), else
-/// its walking one (slot 0x7c8; the unit's `+0x8a9` overrides are not held); the task's
-/// proceeding sprite (else the master's attack sprite), the master's second attack sprite and
-/// standing sprite, missile, firing and interrupting frames.
+/// The Attack constructor's sprites and frames (`FUN_140a7c210`) for a unit that shows its
+/// master's sprites ([`arms_looking`] without a terrain look).
 #[must_use]
 pub fn arms(
     master: &crate::masters::Master,
@@ -1751,11 +1747,30 @@ pub fn arms(
     sprites: [i16; 4],
     moving: i16,
 ) -> Arms {
+    arms_looking(master, None, graphics, sprites, moving)
+}
+
+/// The Attack constructor's sprites and frames (`FUN_140a7c210`): the `MoveTo`'s sprite `moving`
+/// (the hunt's walking sprite from Hunt's `set_state` 12, the task's moving one from the task
+/// factory, none from the attack command), else the unit's running sprite (slot 0x7d0), else its
+/// walking one (slot 0x7c8; both its terrain look's while it has one, `look`,
+/// [`crate::sprite::running`]); the task's proceeding sprite (else the master's attack sprite,
+/// `+0x7f8`), the master's second attack sprite and standing sprite, missile, firing and
+/// interrupting frames.
+#[must_use]
+pub fn arms_looking(
+    master: &crate::masters::Master,
+    look: Option<&crate::abilities::Look>,
+    graphics: &std::collections::BTreeMap<i16, Graphic>,
+    sprites: [i16; 4],
+    moving: i16,
+) -> Arms {
     let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
+    let slot = |id: Option<i16>| id.and_then(g);
     Arms {
         move_sprite: g(moving)
-            .or_else(|| g(master.run_sprite))
-            .or_else(|| g(master.move_sprite)),
+            .or_else(|| slot(crate::sprite::running(master, look)))
+            .or_else(|| slot(crate::sprite::walking(master, look, false))),
         sprite: g(sprites[1]).or_else(|| g(master.attack_sprite)),
         second_sprite: g(master.attack_sprite2),
         idle_sprite: g(master.standing_sprite),
@@ -2684,5 +2699,47 @@ mod tests {
         // the Hunt's Attack, a sub-action, posts nothing
         a.sub_action = true;
         assert_eq!(a.disarmed(&mut sprite, &mut anim, &mut rng).unwrap(), None);
+    }
+
+    /// `FUN_140a7c210`: without a `MoveTo` sprite of its own the Attack walks with the unit's
+    /// running sprite, else its walking one, slots 0x7d0 and 0x7c8: a terrain look's while the
+    /// unit has one; the attack sprite stays the master's.
+    #[test]
+    fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
+        let g = |id| Graphic {
+            id,
+            frames: 10,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        };
+        let graphics: std::collections::BTreeMap<i16, Graphic> = [10, 11, 12, 20, 21]
+            .into_iter()
+            .map(|id| (id, g(id)))
+            .collect();
+        let master = crate::masters::Master {
+            move_sprite: 10,
+            run_sprite: 11,
+            attack_sprite: 12,
+            ..crate::masters::Master::default()
+        };
+        let a = arms(&master, &graphics, [-1; 4], -1);
+        assert_eq!(a.move_sprite.map(|s| s.id), Some(11));
+        let look = crate::abilities::Look {
+            standing: None,
+            walking: Some(20),
+            attacking: Some(21),
+            running: None,
+            dying: None,
+            undead: None,
+        };
+        let a = arms_looking(&master, Some(&look), &graphics, [-1; 4], -1);
+        assert_eq!(a.move_sprite.map(|s| s.id), Some(20));
+        assert_eq!(a.sprite.map(|s| s.id), Some(12));
+        // its own MoveTo sprite first
+        let a = arms_looking(&master, Some(&look), &graphics, [-1; 4], 10);
+        assert_eq!(a.move_sprite.map(|s| s.id), Some(10));
     }
 }

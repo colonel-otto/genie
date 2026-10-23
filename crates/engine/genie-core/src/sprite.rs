@@ -13,7 +13,9 @@
 //! `FUN_1413b2d90` (always), frame reset `FUN_1413b5030`, looped (slot 12) `FUN_1413b38e0`
 //! (never).
 
+use crate::abilities::Look;
 use crate::fmath;
+use crate::masters::Master;
 use crate::rng::Well512;
 
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
@@ -283,6 +285,103 @@ impl ActiveSprite {
     }
 }
 
+/// A trade cart's class (`FUN_14106a940`, decoded 0x13).
+pub const TRADE_CART: i16 = 19;
+/// The trade task whose carrying sprite a trade cart with goods shows (`FUN_1412028a0`: action
+/// type 0x6f, `object_id` 0x54).
+const TRADE_ACTION: i16 = 0x6f;
+const TRADE_TARGET: i16 = 0x54;
+
+/// A master's sprite id as the master's sprite pointer has it: −1 (or below) is none.
+const fn sprite_id(id: i16) -> Option<i16> {
+    if 0 <= id { Some(id) } else { None }
+}
+
+/// `FUN_1412028a0`: the carrying sprite (`+0x58`) of the master's first trade task (action type
+/// 0x6f on master 0x54), None without one.
+#[must_use]
+pub fn trade_sprite(master: &Master) -> Option<i16> {
+    master
+        .tasks
+        .iter()
+        .find(|t| t.action_type == TRADE_ACTION && t.object_id == TRADE_TARGET)
+        .and_then(|t| sprite_id(t.sprites[3]))
+}
+
+/// `FUN_14106a940`: a trade cart (its master's class 19) that carries goods (`goods`,
+/// `FUN_141188160`: an amount above 0 in its resource store, `+0x7a0`).
+#[must_use]
+pub const fn loaded_cart(master: &Master, goods: bool) -> bool {
+    master.class == TRADE_CART && goods
+}
+
+/// Slot 0x798 of a combat object (`FUN_1412029f0`, types 70 and 80): a loaded trade cart's
+/// trade sprite ([`trade_sprite`]), else its terrain look's standing sprite (`+0x8a9`, `+0x960`,
+/// [`crate::abilities::Look`]), else its master's (`+0x470`).
+#[must_use]
+pub fn standing(master: &Master, look: Option<&Look>, goods: bool) -> Option<i16> {
+    if loaded_cart(master, goods) {
+        return trade_sprite(master);
+    }
+    look.map_or_else(|| sprite_id(master.standing_sprite), |l| l.standing)
+}
+
+/// Slot 0x7c8 of a combat object (`FUN_1412030b0`): a loaded trade cart's trade sprite, else
+/// its terrain look's walking sprite (`+0x968`), else its master's (`+0x748`).
+#[must_use]
+pub fn walking(master: &Master, look: Option<&Look>, goods: bool) -> Option<i16> {
+    if loaded_cart(master, goods) {
+        return trade_sprite(master);
+    }
+    look.map_or_else(|| sprite_id(master.move_sprite), |l| l.walking)
+}
+
+/// Slot 0x7d0 of a combat object (`FUN_1412034e0`): its terrain look's running sprite
+/// (`+0x978`), else its master's (`+0x750`).
+#[must_use]
+pub fn running(master: &Master, look: Option<&Look>) -> Option<i16> {
+    look.map_or_else(|| sprite_id(master.run_sprite), |l| l.running)
+}
+
+/// Slot 0x898 of a combat object (`FUN_141202830`): its terrain look's attack sprite (`+0x970`),
+/// else its master's (`+0x7f8`, `fight_sprite_id`).
+#[must_use]
+pub fn attacking(master: &Master, look: Option<&Look>) -> Option<i16> {
+    look.map_or_else(|| sprite_id(master.attack_sprite), |l| l.attacking)
+}
+
+/// Slot 0x7a0 of a combat object (`FUN_1412027d0`): its terrain look's dying sprite (`+0x980`),
+/// else its master's (`+0x480`).
+#[must_use]
+pub fn dying(master: &Master, look: Option<&Look>) -> Option<i16> {
+    look.map_or_else(|| sprite_id(master.death_sprite), |l| l.dying)
+}
+
+/// Slot 0x7a8 of a combat object (`FUN_141203700`): its terrain look's undead sprite (`+0x988`),
+/// else its master's (`+0x488`).
+#[must_use]
+pub fn undead(master: &Master, look: Option<&Look>) -> Option<i16> {
+    look.map_or_else(|| sprite_id(master.undead_sprite), |l| l.undead)
+}
+
+/// The sprite a building shows once dead (`RGE_Static_Object::update`, `0x14118b26d`): one
+/// whose build points, truncated (`CVTTSS2SI`, then as a short), fall short of its master's
+/// build time (`FUN_140ace5e0` with 0) shows its master's destruction sprite (`+0x960`), else
+/// its master's death sprite (`+0x480`, not the look's); a built one its slot 0x7a0's
+/// ([`dying`]).
+#[must_use]
+pub fn building_death(master: &Master, look: Option<&Look>, build_points: f32) -> Option<i16> {
+    let points = crate::checkpoint::cvttss2si(build_points).to_le_bytes();
+    if i16::from_le_bytes([points[0], points[1]]) < master.build_time {
+        let destruction = master
+            .building
+            .as_ref()
+            .and_then(|b| sprite_id(b.destruction_sprite));
+        return destruction.or_else(|| sprite_id(master.death_sprite));
+    }
+    dying(master, look)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,5 +477,113 @@ mod tests {
         let mut rng = Well512::default();
         let _ = ActiveSprite::start(Graphic { flags: 4, ..still }, &mut rng);
         assert_eq!(rng, once);
+    }
+
+    /// The barracks (12) of build 158041: standing 2575, dying 2573, its foundation's
+    /// destruction 389, a build time of 50; walking, running and attack sprites for the slots.
+    fn barracks() -> Master {
+        Master {
+            id: 12,
+            kind: 80,
+            class: 3,
+            standing_sprite: 2575,
+            death_sprite: 2573,
+            undead_sprite: -1,
+            move_sprite: 10,
+            run_sprite: 11,
+            attack_sprite: 12,
+            build_time: 50,
+            building: Some(crate::masters::BuildingMaster {
+                destruction_sprite: 389,
+                ..crate::masters::BuildingMaster::default()
+            }),
+            ..Master::default()
+        }
+    }
+
+    fn look() -> Look {
+        Look {
+            standing: Some(1),
+            walking: Some(2),
+            attacking: Some(3),
+            running: None,
+            dying: Some(5),
+            undead: Some(6),
+        }
+    }
+
+    #[test]
+    fn a_combat_object_s_slots_show_its_look_else_its_master_s() {
+        let m = barracks();
+        assert_eq!(standing(&m, None, false), Some(2575));
+        assert_eq!(walking(&m, None, false), Some(10));
+        assert_eq!(running(&m, None), Some(11));
+        assert_eq!(attacking(&m, None), Some(12));
+        assert_eq!(dying(&m, None), Some(2573));
+        assert_eq!(undead(&m, None), None);
+        let l = look();
+        assert_eq!(standing(&m, Some(&l), false), Some(1));
+        assert_eq!(walking(&m, Some(&l), false), Some(2));
+        // the look's null sprite is its own, not the master's
+        assert_eq!(running(&m, Some(&l)), None);
+        assert_eq!(attacking(&m, Some(&l)), Some(3));
+        assert_eq!(dying(&m, Some(&l)), Some(5));
+        assert_eq!(undead(&m, Some(&l)), Some(6));
+    }
+
+    #[test]
+    fn a_loaded_trade_cart_shows_its_trade_task_s_carrying_sprite() {
+        let trade = crate::masters::Task {
+            action_type: 0x6f,
+            object_id: 0x54,
+            sprites: [1, 2, 3, 4],
+            ..crate::masters::Task::default()
+        };
+        let other = crate::masters::Task {
+            object_id: 0x55,
+            sprites: [9; 4],
+            ..trade
+        };
+        let cart = Master {
+            class: TRADE_CART,
+            standing_sprite: 20,
+            move_sprite: 21,
+            tasks: vec![other, trade],
+            ..Master::default()
+        };
+        assert_eq!(standing(&cart, None, true), Some(4));
+        assert_eq!(walking(&cart, Some(&look()), true), Some(4));
+        assert_eq!(standing(&cart, None, false), Some(20));
+        assert_eq!(walking(&cart, None, false), Some(21));
+        // without a trade task, none
+        let bare = Master {
+            tasks: Vec::new(),
+            ..cart
+        };
+        assert_eq!(standing(&bare, None, true), None);
+        // another class's goods do not count
+        let villager = Master { class: 4, ..bare };
+        assert_eq!(standing(&villager, None, true), Some(20));
+    }
+
+    /// records/425984813: a barracks that dies a foundation plays its destruction sprite (389),
+    /// not its death sprite (2573).
+    #[test]
+    fn a_building_that_dies_before_it_is_built_shows_its_destruction_sprite() {
+        let m = barracks();
+        assert_eq!(building_death(&m, None, 12.5), Some(389));
+        assert_eq!(building_death(&m, None, 49.9), Some(389));
+        assert_eq!(building_death(&m, None, 50.0), Some(2573));
+        assert_eq!(building_death(&m, Some(&look()), 50.0), Some(5));
+        // a NaN is the integer indefinite, whose short is 0
+        assert_eq!(building_death(&m, None, f32::NAN), Some(389));
+        // the short wraps: 65586 build points are 50
+        assert_eq!(building_death(&m, None, 65586.0), Some(2573));
+        // without a destruction sprite its master's death sprite, never the look's
+        let plain = Master {
+            building: None,
+            ..barracks()
+        };
+        assert_eq!(building_death(&plain, Some(&look()), 0.0), Some(2573));
     }
 }
