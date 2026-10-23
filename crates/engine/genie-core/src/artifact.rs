@@ -33,6 +33,23 @@ pub struct Ended {
     pub released: Option<i32>,
 }
 
+/// What the Artifact's state step asks of its unit ([`Artifact::step`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Handover {
+    /// The check found player `new` to take the animal over (the caller's conversion,
+    /// `FUN_140aab570`), its sub-actions gone (`FUN_140a98620`: `walked`, a `MoveTo` whose
+    /// teardown stops the unit).
+    Taken {
+        /// The player that takes it.
+        new: usize,
+        /// A `MoveTo` went.
+        walked: bool,
+    },
+    /// State 100: the unit's stop (slot 0x148), then its ownership change to Gaia (slot 0x70),
+    /// the caller's; the action checks again (`set_state(6)`).
+    ToGaia,
+}
+
 /// One animal's Artifact action, as the checkpoint sees it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Artifact {
@@ -59,6 +76,8 @@ pub const ARTIFACT_TYPE: i16 = 107;
 
 const CHECK: u8 = 6;
 const WAIT: u8 = 10;
+/// The state that gives the animal to Gaia (`0x140aad250`'s case `'d'`).
+const TO_GAIA: u8 = 100;
 /// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
 /// (`FUN_140aa0df0`, `DAT_142eae8d0`).
 const TOWN_CENTRE_OFFSET: f32 = crate::image::artifact::TOWN_CENTRE_OFFSET;
@@ -200,7 +219,7 @@ impl Artifact {
         dt_ms: u32,
         searches: bool,
         owner: &mut dyn FnMut() -> Result<Option<usize>, Unsupported>,
-    ) -> Result<Option<(usize, bool)>, Unsupported> {
+    ) -> Result<Option<Handover>, Unsupported> {
         let _ = self.walk(walk)?;
         self.step(dt_ms, searches, owner)
     }
@@ -263,14 +282,15 @@ impl Artifact {
         (self.walk_to.take().is_some(), released)
     }
 
-    /// The update's second part: the state's step. A new owner comes with whether a `MoveTo`
-    /// went (its teardown stops the unit, the caller's).
+    /// The update's second part: the state's step ([`Handover`]): the check's new owner, with
+    /// whether a `MoveTo` went (its teardown stops the unit, the caller's), or state 100's
+    /// handover to Gaia (the action checks again; the stop and the change are the caller's).
     pub fn step(
         &mut self,
         dt_ms: u32,
         searches: bool,
         owner: &mut dyn FnMut() -> Result<Option<usize>, Unsupported>,
-    ) -> Result<Option<(usize, bool)>, Unsupported> {
+    ) -> Result<Option<Handover>, Unsupported> {
         match self.state {
             CHECK => {
                 if searches && let Some(new) = owner()? {
@@ -279,7 +299,7 @@ impl Artifact {
                     // finds no sub-action
                     let walked = self.move_to.take().is_some();
                     self.walk_to = None;
-                    return Ok(Some((new, walked)));
+                    return Ok(Some(Handover::Taken { new, walked }));
                 }
                 self.state = WAIT;
                 self.timer = if self.gaia { 0.5 } else { 1.0 };
@@ -291,6 +311,12 @@ impl Artifact {
                     self.state = CHECK;
                 }
             }
+            TO_GAIA => {
+                self.state = CHECK;
+                return Ok(Some(Handover::ToGaia));
+            }
+            // its states 4 and 5 (`set_state`'s walks) pass on to 6 at once; the update has no
+            // case for any other
             _ => {}
         }
         Ok(None)
@@ -369,7 +395,17 @@ mod tests {
                 Ok(Some(2))
             })
             .unwrap();
-        assert_eq!((found, a.state, asked), (Some((2, false)), 6, 1));
+        assert_eq!(
+            (found, a.state, asked),
+            (
+                Some(Handover::Taken {
+                    new: 2,
+                    walked: false
+                }),
+                6,
+                1
+            )
+        );
         // a combat-type animal whose +0x924 is 0 never asks
         let mut b = Artifact::new(true);
         let found = b.update(None, 50, false, &mut || Ok(Some(2))).unwrap();
@@ -407,13 +443,33 @@ mod tests {
         a.walk_to = Some((Goal::Target(9149), 1.0));
         a.move_to = Some(MoveTo::Moving);
         let found = a.step(50, true, &mut || Ok(Some(1))).unwrap();
-        assert_eq!(found, Some((1, true)));
+        assert_eq!(
+            found,
+            Some(Handover::Taken {
+                new: 1,
+                walked: true
+            })
+        );
         assert_eq!(
             (a.move_to, a.walk_to, a.goal, a.target),
             (None, None, Some([5.0, 6.0, 0.0]), 9149)
         );
         assert_eq!(a.stop(), (false, None));
         assert_eq!(a.target, 9149);
+    }
+
+    /// State 100 (`0x140aad250`'s case `'d'`): the animal goes to Gaia, the caller's, and the
+    /// action checks again; it asks for no owner.
+    #[test]
+    fn state_100_hands_the_animal_to_gaia() {
+        let mut a = Artifact {
+            state: TO_GAIA,
+            ..Artifact::new(false)
+        };
+        let found = a
+            .step(50, true, &mut || Err(Unsupported("no search")))
+            .unwrap();
+        assert_eq!((found, a.state), (Some(Handover::ToGaia), CHECK));
     }
 
     /// Slot 8 on an object (`FUN_140aaca30`): the old target is let go, then the new one taken

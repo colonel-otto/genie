@@ -12,7 +12,7 @@
 //! its walk), then its unit AI. An object whose update returns 1 leaves: the last object takes its
 //! slot and updates there in the same tick.
 
-use crate::artifact::Artifact;
+use crate::artifact::{Artifact, Handover};
 use crate::attack::Strike;
 use crate::build::{BUILD, BuildAction, BuildTask, Builder, Completion, Construction, Site, Walk};
 use crate::checkpoint::TopAction;
@@ -2500,6 +2500,20 @@ impl Unit {
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
     ) -> Result<(), Unsupported> {
+        self.tear_down_actions(releases, by)?;
+        if self.life.state == 2 {
+            self.show_standing(masters, graphics, sprite)?;
+        }
+        Ok(())
+    }
+
+    /// The action list's clearing (`FUN_140a98620`) as the unit's stops run it: each action's
+    /// teardown, the targets they let go (`by` the unit) into `releases`.
+    fn tear_down_actions(
+        &mut self,
+        releases: &mut Vec<(i32, Releaser)>,
+        by: Releaser,
+    ) -> Result<(), Unsupported> {
         // its own Attack's teardown: the MoveTo's stops the unit; it lets its target go
         if let Some(mut a) = self.attack.take() {
             a.tear_down(self.mover.as_mut())?;
@@ -2537,15 +2551,27 @@ impl Unit {
             }
             releases.push((e.target, by));
         }
-        self.clear_own_actions(releases, by)?;
-        if self.life.state == 2
-            && let Some(m) = self.mover.as_mut()
-        {
+        self.clear_own_actions(releases, by)
+    }
+
+    /// The unit's slot 0x68 with its master's standing sprite (slot 0x798's, the master's
+    /// `+0x470`): its top speed becomes the standing sprite's ([`Mover::shows_standing`]) and,
+    /// where the slice holds its sprite, the sprite starts ([`crate::attack::set_sprite`] on the
+    /// Sprite stream). Its master is its own or its owner's (`masters`).
+    fn show_standing(
+        &mut self,
+        masters: Option<&Masters>,
+        graphics: &std::collections::BTreeMap<i16, Graphic>,
+        sprite: &mut Well512,
+    ) -> Result<(), Unsupported> {
+        if let Some(m) = self.mover.as_mut() {
             m.shows_standing();
         }
-        if self.life.state == 2 && self.sprite.is_some() {
-            let standing = masters
-                .and_then(|m| m.get(self.life.master_id))
+        if self.sprite.is_some() {
+            let standing = self
+                .own_master
+                .as_deref()
+                .or_else(|| masters.and_then(|m| m.get(self.life.master_id)))
                 .map(|m| m.standing_sprite)
                 .and_then(|id| graphics.get(&id).copied())
                 .ok_or(Unsupported("a stopped unit without its standing sprite"))?;
@@ -6043,7 +6069,7 @@ impl Unit {
                 spatial.artifact_owner(id, attribute_97)
             })?;
             // the check's sub-actions went: a walking MoveTo's teardown stops the unit
-            if new.is_some_and(|(_, walked)| walked)
+            if let Some(Handover::Taken { walked: true, .. }) = new
                 && let Some(m) = self.mover.as_mut()
             {
                 m.stop()?;
@@ -6051,9 +6077,24 @@ impl Unit {
             if let Some(kind) = ended.and_then(|e| e.notify) {
                 self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
             }
-            if let Some((new, _)) = new {
-                let (main, also) = self.capture(c, others, new)?;
-                captured = Some(Captured { new, main, also });
+            match new {
+                Some(Handover::Taken { new, .. }) => {
+                    let (main, also) = self.capture(c, others, new)?;
+                    captured = Some(Captured { new, main, also });
+                }
+                // state 100: the unit's stop (slot 0x148), then slot 0x70 to Gaia
+                Some(Handover::ToGaia) => {
+                    let class = self.placed_class(c)?;
+                    self.capture_stop(c, class)?;
+                    if self.change_owner(c, 0)? {
+                        captured = Some(Captured {
+                            new: 0,
+                            main: true,
+                            also: Vec::new(),
+                        });
+                    }
+                }
+                None => {}
             }
         }
         // what the footprint clearing of the Build's set_state(7) reads (FUN_1415c3620) of
@@ -7405,31 +7446,60 @@ impl Unit {
         others: &mut [Self],
         new: usize,
     ) -> Result<(bool, Vec<i32>), Unsupported> {
-        let class = c
-            .spatial
+        let class = self.placed_class(c)?;
+        self.capture_stop(c, class)?;
+        let changed = self.change_owner(c, new)?;
+        // the scan reads the owner after the change: the old one when `new` lacks the master
+        let mut taken = Vec::new();
+        if class == LIVESTOCK && (if changed { new } else { c.player }) != 0 {
+            scan_livestock(c, others, self.position, new, &mut taken)?;
+        }
+        Ok((changed, taken))
+    }
+
+    /// The master class the world files the captured object under.
+    fn placed_class(&self, c: &Context<'_>) -> Result<i16, Unsupported> {
+        c.spatial
             .get(self.id)
             .map(|p| p.class)
-            .ok_or(Unsupported("a captured object the world does not hold"))?;
-        let (walked, released) = self.artifact.as_mut().map_or((false, None), Artifact::stop);
-        if walked {
-            self.mover
-                .as_mut()
-                .ok_or(Unsupported("a walking animal without movement state"))?
-                .stop()?;
+            .ok_or(Unsupported("a captured object the world does not hold"))
+    }
+
+    /// The stop (slot 0x148, `FUN_14108c050`) of an animal or artifact of master class `class`
+    /// from inside its update: the action object's stop (`FUN_14106fa60`: `+0x88a` 0, the top
+    /// action's slot 0x38: the Artifact's, [`Artifact::stop`], keeps the action list: a walk's
+    /// `MoveTo` goes and stops the unit, the target is let go, and the unit shows its standing
+    /// sprite; without an Artifact the list goes, an animal or an artifact holding no Hunt,
+    /// Gather, Build or Attack, whose slot 0x38 would keep it); then a unit AI of any class but
+    /// livestock, not on action 0x2c2, stops (slot 0xb0 with 0: the order ends, the unit's
+    /// stopAction) and forgets its targets (`FUN_140c4dcb0`), unless the unit's top action
+    /// (slot 0x438) is a trade (0x6f) with a load of a kind (COMISS 0, amount; JNC: an amount
+    /// that is not a number keeps it).
+    fn capture_stop(&mut self, c: &mut Context<'_>, class: i16) -> Result<(), Unsupported> {
+        let by = self.releaser(c);
+        if let Some(artifact) = self.artifact.as_mut() {
+            let (walked, released) = artifact.stop();
+            if walked {
+                self.mover
+                    .as_mut()
+                    .ok_or(Unsupported("a walking animal without movement state"))?
+                    .stop()?;
+            }
+            if let Some(t) = released {
+                c.releases.push((t, by));
+            }
+            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+        } else {
+            // any other top action's slot 0x38 is the base's false for what an animal or an
+            // artifact holds (a `MoveTo` of its own), and the list goes
+            self.tear_down_actions(&mut c.releases, by)?;
         }
-        if let Some(t) = released {
-            c.releases.push((t, self.releaser(c)));
-        }
-        // FUN_14108c050's unit AI part: a unit AI of any class but livestock, not on action
-        // 0x2c2, stops (slot 0xb0 with 0: the order ends, the unit's stopAction) and forgets its
-        // targets (FUN_140c4dcb0), unless the unit's top action (slot 0x438) is 0x6f with a load
-        // (COMISS 0, amount; JNC: an amount that is not a number keeps it) of a kind
         let top = self.top_action_kind().map_or(-1, i32::from);
-        let loaded = top == LOADED_ACTION
+        let trading = top == TRADE_ACTION
             && crate::fmath::below_or_unordered(0.0, self.life.amount)
             && self.life.attribute_type != -1;
         if class != LIVESTOCK
-            && !loaded
+            && !trading
             && let Some(ai) = self.ai.as_mut()
             && ai.current_action != CAPTURE_KEEPS_ACTION
         {
@@ -7439,13 +7509,7 @@ impl Unit {
             ai.forget_targets();
             self.apply(fx, Some(class), c)?;
         }
-        let changed = self.change_owner(c, new)?;
-        // the scan reads the owner after the change: the old one when `new` lacks the master
-        let mut taken = Vec::new();
-        if class == LIVESTOCK && (if changed { new } else { c.player }) != 0 {
-            scan_livestock(c, others, self.position, new, &mut taken)?;
-        }
-        Ok((changed, taken))
+        Ok(())
     }
 
     /// The unit's slot 0x70 as its unit AI asks it ([`Effect::ChangeOwner`], the artifact's
@@ -7702,9 +7766,9 @@ const SIEGE_CLASS: i16 = 13;
 const HANDS_LEFT: Unsupported =
     Unsupported("an ownership change of a building or of a siege weapon with units inside");
 
-/// The top action type (slot 0x438) whose load keeps a captured unit's unit AI going
+/// The trade action's type (slot 0x438), whose load keeps a captured unit's unit AI going
 /// (`FUN_14108c050`).
-const LOADED_ACTION: i32 = 0x6f;
+const TRADE_ACTION: i32 = 0x6f;
 
 /// The unit AI's action that a capture's stop leaves alone (`FUN_14108c050`).
 const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
@@ -7745,18 +7809,7 @@ fn scan_livestock(
                 [k] => {
                     let mut unit = std::mem::take(&mut others[k]);
                     let done = (|| {
-                        // its stop: a walk's MoveTo goes and the action lets its target go
-                        let (walked, released) =
-                            unit.artifact.as_mut().map_or((false, None), Artifact::stop);
-                        if walked {
-                            unit.mover
-                                .as_mut()
-                                .ok_or(Unsupported("a walking animal without movement state"))?
-                                .stop()?;
-                        }
-                        if let Some(t) = released {
-                            c.releases.push((t, unit.releaser(c)));
-                        }
+                        unit.capture_stop(c, LIVESTOCK)?;
                         unit.change_owner(c, new)
                     })();
                     let (id, position) = (unit.id, unit.position);
@@ -15211,6 +15264,110 @@ mod tests {
         let ai = torch.ai.as_ref().unwrap();
         assert_eq!(ai.notifies, [Notify::own(7, OWNER_CHANGED, [1, 0, 0])]);
         assert_eq!(ai.idle_timer, 0);
+    }
+
+    /// The livestock capture in a tick (`FUN_140aab570` from the Artifact's check in the second
+    /// update): player 1's villager stands beside Gaia's sheep 9520, which stops (its Artifact's
+    /// slot 0x38: the standing sprite's speed) and goes to player 1 (slot 0x70: a master of its
+    /// own with player 1's line of sight), the end of player 1's list, with its food (storage
+    /// flag 1 to the new owner).
+    #[test]
+    fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
+        let mut walker = crate::hunt::tests::walker();
+        walker.velocity = None;
+        walker.stats.speed = 0.8;
+        walker.stats.stand_speed = 0.5;
+        let sheep = Unit {
+            artifact: Some(Artifact::new(true)),
+            mover: Some(walker),
+            ai: None,
+            ..hands_unit(9520, 705)
+        };
+        let villager = Unit {
+            position: [11.5, 10.5, 0.0],
+            ai: None,
+            ..hands_unit(500, 83)
+        };
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0, 0],
+            vec![
+                Player {
+                    objects: vec![sheep],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![villager],
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+                Player {
+                    attributes: vec![0.0; 300],
+                    ..Player::default()
+                },
+            ],
+        );
+        let mut masters = hands_masters();
+        for m in &mut masters {
+            *m = Masters::new(m.iter().cloned().chain([Master {
+                id: 83,
+                kind: 70,
+                class: 4,
+                radius: [0.2, 0.2],
+                ..Master::default()
+            }]));
+        }
+        t.masters = masters;
+        t.spatial = hands_world(9520, 0, LIVESTOCK, 705, 2.0);
+        t.spatial.relations = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];
+        t.spatial.insert(
+            500,
+            Placed {
+                position: [11.5, 10.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 4,
+                player: 1,
+                master: 83,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        t.spatial.sight.as_mut().unwrap().add_seer(
+            500,
+            Seer {
+                player: 1,
+                master: 83,
+                los: 4.0,
+                state: 2,
+                explored: true,
+                building: None,
+                umv: 0,
+                capture: 0,
+                kind: 70,
+            },
+        );
+        t.tick(100);
+        assert_eq!(t.players[0].objects.len(), 1);
+        t.tick(100);
+        assert_eq!(t.players[0].objects.len(), 0);
+        let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+        assert_eq!(ids, [500, 9520]);
+        let sheep = &t.players[1].objects[1];
+        assert_eq!(
+            sheep.own_master.as_deref().map(|m| m.line_of_sight),
+            Some(3.0)
+        );
+        assert_eq!(sheep.mover.as_ref().map(|m| m.stats.speed), Some(0.5));
+        assert_eq!(sheep.artifact.map(|a| a.gaia), Some(false));
+        assert_eq!(t.players[1].attributes[16], 100.0);
+        assert_eq!(t.spatial.get(9520).map(|p| p.player), Some(1));
     }
 
     /// `FUN_141302450`: the scenario modes' descriptors have `+0x9c` 0; a mode above 16 reads the
