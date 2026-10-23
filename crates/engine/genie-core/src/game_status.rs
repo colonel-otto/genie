@@ -362,8 +362,9 @@ impl Turns {
     /// sub-actions go, the unit stands with the hunt's sprite (slot 0x68 with
     /// `FUN_140ac5210`'s), its target goes (slot 0x68 with none, [`Turns::release`]) and its
     /// second target (`FUN_140a7a190` with none), its point and timer clear; then the pasture it
-    /// tends lets it go (`FUN_141189ca0` with −1), and the answer is true. The other actions'
-    /// slot 0x38 is not modelled.
+    /// tends lets it go (`FUN_141189ca0` with −1), and the answer is true. The Fly (Bird), the
+    /// missile's, the Make and the wait for a foundation keep the base's too; the Gather, the
+    /// Build, the Attack and the Artifact halt ([`Turns::halt_other`]).
     fn halt_top_action(&mut self, p: usize, idx: usize) -> Result<bool, Unsupported> {
         let computer = self.players[p].computer;
         let by = self.releaser(p, idx);
@@ -374,15 +375,17 @@ impl Turns {
             return Ok(false);
         };
         match kind {
-            crate::move_to::MOVE_TO | crate::explore::EXPLORE | crate::garrison::ENTER => {
+            crate::move_to::MOVE_TO
+            | crate::explore::EXPLORE
+            | crate::garrison::ENTER
+            | crate::fly::FLY
+            | crate::missile::MISSILE
+            | crate::make::MAKE
+            | crate::wait_solidify::WAIT_SOLIDIFY => {
                 return Ok(false);
             }
             crate::hunt::HUNT => {}
-            _ => {
-                return Err(Unsupported(
-                    "a stop of an action whose slot 0x38 is not modelled",
-                ));
-            }
+            _ => return self.halt_other(p, idx, kind),
         }
         if computer {
             return Err(Unsupported(
@@ -414,6 +417,86 @@ impl Turns {
         for t in released {
             if t != -1 {
                 self.release(t, by)?;
+            }
+        }
+        Ok(true)
+    }
+
+    /// Slot 0x38 of the top actions with their own besides the Hunt's, each true: the Gather's
+    /// (`FUN_140a8e1b0`, [`crate::gather::GatherAction::halt`]: its target and second target go,
+    /// [`Turns::release`]), the Build's (`FUN_140ab0350`, [`crate::build::BuildAction::halt`]:
+    /// a counted builder leaves its foundation's builders, [`Turns::leave_builders`], before the
+    /// rest; the foundation goes), the Attack's (`FUN_140a82ac0`,
+    /// [`crate::attack::Attack::halt`]) and the Artifact's (`FUN_140aad1a0`,
+    /// [`crate::artifact::Artifact::stop`]). The Gather, the Build and the Artifact show the
+    /// master's standing sprite (the Gather the task's carrying one while it carries at least 1 of
+    /// the task's resource, `FUN_140a8b6b0`). [`crate::turn::Unit::top_action`] holds no other
+    /// kind.
+    fn halt_other(&mut self, p: usize, idx: usize, kind: i16) -> Result<bool, Unsupported> {
+        let by = self.releaser(p, idx);
+        let master_id = self.players[p].objects[idx].life.master_id;
+        let standing = self.master_of(p, master_id)?.standing_sprite;
+        match kind {
+            crate::gather::GATHER => {
+                let unit = &mut self.players[p].objects[idx];
+                let gather = unit.gather.as_mut().expect("its top action");
+                let stand = crate::hunt::stand_sprite(
+                    &gather.task,
+                    standing,
+                    unit.life.attribute_type,
+                    unit.life.amount,
+                    &self.graphics,
+                );
+                let released = gather.halt(
+                    unit.mover.as_mut(),
+                    stand,
+                    &mut unit.sprite,
+                    self.streams.get(Stream::Sprite),
+                )?;
+                for t in released {
+                    if t != -1 {
+                        self.release(t, by)?;
+                    }
+                }
+            }
+            crate::build::BUILD => {
+                let unit = &mut self.players[p].objects[idx];
+                let build = unit.build.as_mut().expect("its top action");
+                let foundation = build.target;
+                let (counted, target) = build.halt(unit.mover.as_mut())?;
+                if counted {
+                    self.leave_builders(foundation)?;
+                }
+                self.standing_sprite(p, idx)?;
+                if target != -1 {
+                    self.release(target, by)?;
+                }
+            }
+            crate::attack::ATTACK => {
+                let unit = &mut self.players[p].objects[idx];
+                let attack = unit.attack.as_mut().expect("its top action");
+                attack.halt(
+                    unit.mover.as_mut(),
+                    &mut unit.anim_speed,
+                    &mut unit.sprite,
+                    self.streams.get(Stream::Sprite),
+                )?;
+            }
+            crate::artifact::ARTIFACT_TYPE => {
+                let unit = &mut self.players[p].objects[idx];
+                let artifact = unit.artifact.as_mut().expect("its top action");
+                if artifact.stop() {
+                    unit.mover
+                        .as_mut()
+                        .ok_or(Unsupported("a walking animal without movement state"))?
+                        .stop()?;
+                }
+                self.standing_sprite(p, idx)?;
+            }
+            _ => {
+                return Err(Unsupported(
+                    "a stop of an action whose slot 0x38 is not modelled",
+                ));
             }
         }
         Ok(true)

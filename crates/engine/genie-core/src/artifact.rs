@@ -110,16 +110,19 @@ impl Artifact {
         walked
     }
 
-    /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it before a new
-    /// owner takes the animal: its sub-actions go, with the point and the target, and it checks
-    /// again (`set_state` 6). Returns whether a `MoveTo` went, whose teardown (`0x140aa1f30`)
-    /// stops the unit (slot 0x5d0, the caller's). The unit's standing sprite (slot 0x68) is not
-    /// held.
+    /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it (also before a
+    /// new owner takes the animal): with a sub-action (`FUN_140a98730`) its sub-actions go, with
+    /// the point (−1) and the target (slot 0x68 with none); without one both stay. Then it checks
+    /// again (`set_state` 6, which sets nothing else). Returns whether a `MoveTo` went, whose
+    /// teardown (`0x140aa1f30`) stops the unit (slot 0x5d0, the caller's); the unit's standing
+    /// sprite (slot 0x68 with the master's `+0x470`) is the caller's too.
     pub const fn stop(&mut self) -> bool {
         let walked = self.move_to.take().is_some();
-        self.walk_to = None;
-        self.goal = None;
-        self.target = -1;
+        if walked {
+            self.walk_to = None;
+            self.goal = None;
+            self.target = -1;
+        }
         self.state = CHECK;
         walked
     }
@@ -313,5 +316,13 @@ mod tests {
         let _ = walking.take_point([28.5, 94.5, 0.0]);
         assert!(walking.stop());
         assert_eq!((walking.move_to, walking.goal), (None, None));
+        // without a sub-action the point and the target stay (FUN_140a98730 false)
+        let mut kept = Artifact::new(false);
+        (kept.goal, kept.target, kept.state) = (Some([3.0, 4.0, 0.0]), 77, WAIT);
+        assert!(!kept.stop());
+        assert_eq!(
+            (kept.goal, kept.target, kept.state),
+            (Some([3.0, 4.0, 0.0]), 77, CHECK)
+        );
     }
 }

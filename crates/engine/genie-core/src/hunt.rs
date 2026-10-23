@@ -936,6 +936,18 @@ impl HuntAction {
         Ok(())
     }
 
+    /// Case 6 without a target (`0x140ac7a00` at `0x140ac9029`): a load is carried off
+    /// (`set_state(8)`, true, the caller's); with none, or one that is not a number (`COMISS`
+    /// with `JBE`), the hunt searches (`set_state(3)`: [`SEARCH`] here, the rest the caller's).
+    fn ends_without_target(&mut self, held: f32) -> bool {
+        if crate::fmath::at_most_or_unordered(held, 0.0) {
+            self.state = SEARCH;
+            false
+        } else {
+            true
+        }
+    }
+
     /// One update (slot 6, `0x140ac7a00`): state 12 updates the Attack (`FUN_140a992b0`); its end
     /// on the dead target (code 5) runs `FUN_140ac44b0` and `set_state(4)`. State 4 updates the
     /// `MoveTo`; its end (code 1) runs `FUN_140ac44b0` and `set_state(6)`. State 6 faces the target
@@ -1140,12 +1152,10 @@ impl HuntAction {
             // case 6 without a target (or a task): set_state(8) to carry the load off, set_state(3)
             // with none
             GATHER if self.target == -1 => {
-                if *gather.held <= 0.0 {
-                    return Err(Unsupported(
-                        "a hunt without a target or a load (set_state 3)",
-                    ));
+                full = self.ends_without_target(*gather.held);
+                if !full {
+                    gather.searches = true;
                 }
-                full = true;
                 Ok(())
             }
             GATHER => {
@@ -1836,6 +1846,34 @@ pub(crate) mod tests {
         let mut tree = victim(0.05);
         assert_eq!(gather(&mut held, &mut kind, &mut tree), Ok(true));
         assert_eq!((held, tree.amount), (0.05 + 100.0 * 0.001, 0.0));
+    }
+
+    /// Case 6 without a target: a load is carried off (`set_state(8)`), none or a NaN load searches
+    /// (`set_state(3)`, `COMISS` with `JBE`).
+    #[test]
+    fn a_hunt_without_a_target_carries_its_load_off_or_searches() {
+        let mut h = HuntAction {
+            target: -1,
+            state: GATHER,
+            point: [0.0; 3],
+            target_class: 15,
+            task: CHOP,
+            attack: None,
+            move_to: None,
+            walk_range: 0.0,
+            drop_site: -1,
+            carry_to: -1,
+            timer: 0.0,
+            move_wait: MoveWait::default(),
+            lead: Lead::default(),
+        };
+        assert!(h.ends_without_target(0.5));
+        assert_eq!(h.state, GATHER);
+        for held in [0.0, -1.0, f32::NAN] {
+            h.state = GATHER;
+            assert!(!h.ends_without_target(held));
+            assert_eq!(h.state, SEARCH);
+        }
     }
 
     /// A live allied target fails the hunt at once (`set_state` 13, its timer cleared), as house

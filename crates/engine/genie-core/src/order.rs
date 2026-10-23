@@ -1870,7 +1870,7 @@ impl Turns {
     /// Slot 0x68 with the master's standing sprite (`+0x470`): the unit's top speed is the
     /// sprite's ([`crate::movement::Mover::shows_standing`]), and the sprite itself where the
     /// slice holds it.
-    fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
+    pub(crate) fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), Unsupported> {
         let unit = &mut self.players[p].objects[idx];
         if let Some(m) = unit.mover.as_mut() {
             m.shows_standing();
@@ -2981,7 +2981,7 @@ impl Turns {
     /// among (an annex of type 80 its main building, `+0xbb8`), when the world still holds it
     /// (live or sleeping, `FUN_1415417a0`), counts one builder less (`+0x9e8`, held in its
     /// construction record).
-    fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
         let Some((p, f)) = self.object(id) else {
             return Ok(());
         };

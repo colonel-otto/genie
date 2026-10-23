@@ -755,6 +755,39 @@ impl Attack {
         self.finish_in(DONE, walk, s)
     }
 
+    /// Slot 0x38 (`FUN_140a82ac0`) as the unit's stop calls it: `set_state(1)` (the
+    /// sub-actions go, a `MoveTo`'s teardown stopping the unit and its animation; the animation
+    /// runs at speed 1 and the unit takes the sprite it stands with, [`Attack::finish`]); its
+    /// answer is true (the caller's), so the stop keeps the action list.
+    ///
+    /// # Errors
+    ///
+    /// An attacker walking without movement state, or without a standing sprite.
+    pub(crate) fn halt(
+        &mut self,
+        mover: Option<&mut Mover>,
+        anim_speed: &mut Option<f32>,
+        sprite: &mut Option<ActiveSprite>,
+        rng: &mut Well512,
+    ) -> Result<(), Unsupported> {
+        if self.move_to.take().is_some() {
+            mover
+                .ok_or(Unsupported("an attacker without movement state"))?
+                .stop()?;
+            if let Some(a) = anim_speed.as_mut() {
+                *a = 0.0;
+            }
+        }
+        self.state = DONE;
+        *anim_speed = Some(1.0);
+        let idle = self
+            .arms
+            .idle_sprite
+            .ok_or(Unsupported("an Attack's unit without a standing sprite"))?;
+        set_sprite(sprite, idle, rng);
+        Ok(())
+    }
+
     /// `set_state` cases 1, 13 and 14: as [`Attack::finish`], in `state`.
     fn finish_in(
         &mut self,
@@ -1892,6 +1925,37 @@ mod tests {
             repaths: false,
             runs: true,
         }
+    }
+
+    /// Slot 0x38 (`FUN_140a82ac0`): `set_state(1)`: its `MoveTo` goes, stopping the unit and its
+    /// animation, then the animation runs at speed 1 and the unit stands; the target stays.
+    #[test]
+    fn a_stop_ends_the_attack_and_the_unit_stands() {
+        let stand = Graphic {
+            id: 1,
+            frames: 10,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 0,
+        };
+        let mut a = own_attack(77, MOVE, 1.0);
+        a.move_to = Some(MoveTo::Moving);
+        a.arms.idle_sprite = Some(stand);
+        let mut mover = crate::hunt::tests::walker();
+        let (mut speed, mut sprite, mut rng) = (Some(0.5), None, Well512::default());
+        a.halt(Some(&mut mover), &mut speed, &mut sprite, &mut rng)
+            .unwrap();
+        assert_eq!(
+            (a.state, a.move_to, a.target, speed),
+            (DONE, None, 77, Some(1.0))
+        );
+        assert_eq!(sprite.map(|s| s.graphic.id), Some(1));
+        assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+        // a unit without a standing sprite is not modelled
+        let mut bare = own_attack(77, READY, 1.0);
+        assert!(bare.halt(None, &mut speed, &mut sprite, &mut rng).is_err());
     }
 
     /// An object of class 9 in state 2 at `x` on the line y = 10, radii 0.2.

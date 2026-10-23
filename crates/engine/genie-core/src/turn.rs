@@ -6633,11 +6633,14 @@ impl Unit {
             )?;
             self.hunt = None;
             if target != -1 {
-                if !others.iter().any(|u| u.id == target) {
-                    return Err(Unsupported("a failed hunt's target of another player"));
+                if others.iter().any(|u| u.id == target) {
+                    let by = self.releaser(c);
+                    release_own(others, c.masters, target, by)?;
+                } else {
+                    // another player's (Gaia's deer, a neighbour's sheep): its slot 0x180 after
+                    // this update ([`Turns::release`]), as the other teardowns' releases
+                    self.hunt_release(c, [target]);
                 }
-                let by = self.releaser(c);
-                release_own(others, c.masters, target, by)?;
             }
         } else if let Some(hunt) = self
             .hunt
