@@ -1143,7 +1143,6 @@ impl Turns {
                     taken_over: None,
                     order_on_target: None,
                     works: Vec::new(),
-                    build_object: None,
                     build_command: None,
                     reseed: None,
                     move_aside: Vec::new(),
@@ -1171,7 +1170,6 @@ impl Turns {
                 let history_events = std::mem::take(&mut c.history_events);
                 let works = std::mem::take(&mut c.works);
                 let leads = c.leads.take();
-                let build_object = c.build_object.take();
                 let build_command = c.build_command.take();
                 let reseed = c.reseed.take();
                 let move_aside = std::mem::take(&mut c.move_aside);
@@ -1393,8 +1391,8 @@ impl Turns {
                     result = Err(e);
                 }
                 // the unit AI's HuntObjects (the unit's stop, then its hunt command),
-                // GatherObjects (its gather command) and works (slot 0x7e8), in the order it
-                // gave them
+                // GatherObjects (its gather command), BuildObjects (its build command) and works
+                // (slot 0x7e8), in the order it gave them
                 for work in works {
                     if !matches!(result, Ok(Step::Stay)) {
                         result = result.and(Err(GenieError::unsupported(
@@ -1406,6 +1404,9 @@ impl Turns {
                         AiWork::Hunt(target) => self.hunt_command(p, i, target),
                         AiWork::Gather(target) => self.gather_command(p, i, target),
                         AiWork::Work(work) => self.order_work(p, i, &work),
+                        AiWork::Build(foundation) => {
+                            self.build_command(p, i, foundation).map(|_| ())
+                        }
                     };
                     if let Err(e) = done {
                         result = Err(e);
@@ -1461,16 +1462,6 @@ impl Turns {
                     if !matches!(result, Ok(Step::Stay)) {
                         result = result.and(Err(LEAVES_ITS_LIST));
                     } else if let Err(e) = self.reseed_after_walk(p, i, arrived) {
-                        result = Err(e);
-                    }
-                }
-                // the unit AI's BuildObject on a foundation its builder's search found
-                if let Some(foundation) = build_object {
-                    if !matches!(result, Ok(Step::Stay)) {
-                        result = result.and(Err(GenieError::unsupported(
-                            "a BuildObject of a unit that leaves its list",
-                        )));
-                    } else if let Err(e) = self.build_object(p, i, foundation) {
                         result = Err(e);
                     }
                 }

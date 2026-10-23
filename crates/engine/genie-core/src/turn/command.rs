@@ -1811,58 +1811,6 @@ impl Turns {
         Ok(())
     }
 
-    /// The build order (`0x2be`) a unit AI's queue runs (slot 0x230's case: slot 0xf0 with 1 on its
-    /// foundation, [`Turns::build_object`]), then the tail takes the order (702) with its
-    /// priority ([`crate::unit_ai::UnitAi::order_tail`]: leaving a patrol order).
-    pub(crate) fn build_order(
-        &mut self,
-        player: usize,
-        idx: usize,
-        order: crate::unit_ai::QueuedOrder,
-    ) -> Result<(), GenieError> {
-        self.build_object(player, idx, order.target)?;
-        let ai = self.players[player].objects[idx]
-            .ai
-            .as_mut()
-            .ok_or(GenieError::unsupported("a build order without a unit AI"))?;
-        // the tail (`LAB_140c5d432`); only the attack order reads the class
-        let _ = ai.order_tail(
-            BUILD_ORDER,
-            order.priority,
-            -1,
-            false,
-            self.streams.get(Stream::Ai),
-        );
-        Ok(())
-    }
-
-    /// `BuildObject` (the unit AI's slot 0xf0, `FUN_140c47d80`, with 1) on `foundation`: the
-    /// unit's build command ([`Turns::build_command`]), then the AI's action becomes the build
-    /// action (602; the last one kept) and its target the foundation (the last one kept) at its
-    /// place with its master's class. Unlike BUILD's own path neither the town-bell record nor
-    /// the work's notify.
-    pub(crate) fn build_object(
-        &mut self,
-        player: usize,
-        idx: usize,
-        foundation: i32,
-    ) -> Result<(), GenieError> {
-        let (class, f_at) = self.build_command(player, idx, foundation)?;
-        let ai = self.players[player].objects[idx]
-            .ai
-            .as_mut()
-            .ok_or(GenieError::unsupported("a BuildObject without a unit AI"))?;
-        // FUN_140c47d80
-        ai.last_action = ai.current_action;
-        ai.current_action = BUILD_ACTION;
-        ai.target_point = f_at;
-        ai.last_target = ai.current_target;
-        ai.last_target_type = ai.target_type;
-        ai.current_target = foundation;
-        ai.target_type = class;
-        Ok(())
-    }
-
     /// The unit's slot 0x388 (`FUN_141226fc0`) after its unit AI's update, with what it found
     /// there ([`Wait`]): slot 0x820's switch to the master its swap group gave (slot 0x90 with 0,
     /// [`Turns::change_master`]; a villager's candidates are of its own type, never a

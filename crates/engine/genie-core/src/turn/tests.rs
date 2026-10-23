@@ -1251,7 +1251,39 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
         ai.idle_timeout = 3000;
     }
     let draws = t.streams.get(Stream::Ai).draws;
-    t.build_order(1, 0, order).unwrap();
+    // the unit AI runs the order (slot 0x230) and gives the build command
+    let mut fx = Vec::new();
+    {
+        let unit = &mut t.players[1].objects[0];
+        let ai = unit.ai.as_mut().unwrap();
+        let at = crate::unit_ai::Surroundings {
+            id: 9175,
+            // the foundation as the AI sees it
+            units: vec![crate::unit_ai::UnitSeen {
+                id: 10028,
+                class: 3,
+                position: [30.0, 88.0, 0.0],
+                ..crate::unit_ai::UnitSeen::default()
+            }],
+            ..crate::unit_ai::Surroundings::default()
+        };
+        let mut side =
+            |_: &crate::unit_ai::Search<'_>| -> Result<crate::unit_ai::Found, GenieError> {
+                Err(GenieError::unsupported("no search here"))
+            };
+        let r = ai
+            .process_order(
+                &order,
+                Some((&at, &mut side, false)),
+                None,
+                t.streams.get(Stream::Ai),
+                &mut fx,
+            )
+            .unwrap();
+        assert_eq!(r, 1);
+    }
+    assert_eq!(fx, [crate::unit_ai::Effect::BuildObject(10028)]);
+    let _ = t.build_command(1, 0, 10028).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
     assert!(v.build.is_some());

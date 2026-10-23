@@ -1084,11 +1084,7 @@ impl Unit {
                         notified: false,
                     }));
                 }
-                Effect::BuildObject(target) => {
-                    if c.build_object.replace(target).is_some() {
-                        return Err(GenieError::unsupported("two BuildObjects in one update"));
-                    }
-                }
+                Effect::BuildObject(target) => c.works.push(AiWork::Build(target)),
                 Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject {

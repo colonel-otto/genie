@@ -268,9 +268,10 @@ pub enum Effect {
         /// The range within which the `MoveTo` arrives.
         range: f32,
     },
-    /// `BuildObject` (the AI's slot 0xf0, `FUN_140c47d80`, with 1) on the foundation: the unit's
-    /// slot 0x380 builds it, then the AI's action becomes the build action and its target the
-    /// foundation (the caller's, `Turns::build_object`, after the update).
+    /// `BuildObject`'s unit part (the AI's slot 0xf0, `FUN_140c47d80`): the unit's build command
+    /// (slot 0x380) on the foundation, which the caller runs after the update in the order the AI
+    /// gave it with its hunts, gathers and works (`Turns::build_command`); the AI's part, the
+    /// build action and the foundation as its target, is done at once ([`UnitAi::build_object`]).
     BuildObject(i32),
     /// The unit's ownership change (its slot 0x70, `FUN_14120f800` for a combat unit,
     /// `FUN_1411cd860` for a building) to the player, which the artifact's processIdle asks of
@@ -4775,7 +4776,7 @@ impl UnitAi {
             }
         }
         if best.0 != -1 && side.reaches(best.0, FOUNDATION_REACH)? {
-            fx.push(Effect::BuildObject(best.0));
+            let _ = self.build_object(best.0, true, at, side, fx)?;
             return Ok(BREAK);
         }
         if computer {
@@ -5261,7 +5262,7 @@ impl UnitAi {
                 0x202 if self.current_action == BUILD_ACTION => {
                     let found = side.foundation_search()?;
                     if found != -1 && side.reaches(found, FOUNDATION_REACH)? {
-                        fx.push(Effect::BuildObject(found));
+                        let _ = self.build_object(found, true, at, side, fx)?;
                         return Ok(BREAK);
                     }
                     if computer {
@@ -6340,7 +6341,7 @@ impl UnitAi {
     /// and the queue between turns pass; [`UnitAi::take_order_now`] passes none but the unit's
     /// `place` (its x and y and its master's class), as its own order (`AUTO_SCOUT`'s stop or
     /// auto scout order) is the one that runs.
-    fn process_order(
+    pub(crate) fn process_order(
         &mut self,
         o: &QueuedOrder,
         world: Option<(&Surroundings, &mut dyn UnitSide, bool)>,
@@ -6384,11 +6385,10 @@ impl UnitAi {
                 }
             }
             BUILD_ORDER => {
-                // slot 0xf0 (`FUN_140c47d80`) with 1 builds on the target, and the tail makes the
-                // order the AI's with its priority: the caller runs both
-                // ([`crate::turn::Turns::build_order`])
-                fx.push(Effect::OrderOnTarget(*o));
-                return Ok(1);
+                // slot 0xf0 (`FUN_140c47d80`) with 1 builds on the target; the tail makes the
+                // order the AI's with its priority
+                let (at, side, _) = world.ok_or(outside)?;
+                self.build_object(o.target, true, at, side, fx)?
             }
             crate::ai_kinds::ORDER_HEAL | crate::ai_kinds::ORDER_CONVERT | REPAIR_ORDER => {
                 let (at, side, _) = world.ok_or(outside)?;
@@ -6682,6 +6682,36 @@ impl UnitAi {
         self.desired_distance = range;
         self.defend_target = -1;
         true
+    }
+
+    /// `BuildObject` (slot 0xf0, `FUN_140c47d80`) on foundation `target`, `force`d or off the
+    /// build action value (`0x25a`): the unit's build command (slot 0x380), which the caller runs
+    /// after the update in its order ([`Effect::BuildObject`]; one that does not take is not
+    /// modelled, `Turns::build_command`), then the build action value (the last keeping the old)
+    /// and the foundation as the target at its place with its class as the world holds it, else
+    /// class −1 at (0, 0, 0) (the target and class before becoming the last). True when it builds.
+    ///
+    /// # Errors
+    ///
+    /// A foundation the slice cannot read.
+    pub(crate) fn build_object(
+        &mut self,
+        target: i32,
+        force: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, GenieError> {
+        if !force && self.current_action == BUILD_ACTION {
+            return Ok(false);
+        }
+        fx.push(Effect::BuildObject(target));
+        self.set_action(BUILD_ACTION);
+        match Self::world_object(target, at, side)? {
+            Some(t) => self.set_target(target, i32::from(t.class), t.position),
+            None => self.set_target(target, -1, [0.0; 3]),
+        }
+        Ok(true)
     }
 
     /// The work slots on object `target` (heal 0xe0, `FUN_140c4e010`; conversion 0xd8,
@@ -7762,6 +7792,67 @@ mod tests {
             ],
             ..UnitAi::default()
         }
+    }
+
+    /// Case 0x2be, the build (`FUN_140c5c170`): `BuildObject` forced (slot 0xf0, `FUN_140c47d80`)
+    /// gives the unit its build command, which the caller runs after the update in the order the
+    /// AI gave it ([`Effect::BuildObject`]), and at once makes the build the AI's action and the
+    /// foundation its target at its place with its class; the tail takes the order and its
+    /// priority (428326873's villager 8766 at update 1804, whose hunt after it must come later).
+    #[test]
+    fn the_build_order_builds_and_takes_the_order_at_once() {
+        let mut ai = UnitAi {
+            current_action: -1,
+            current_order: -1,
+            current_target: 7,
+            target_type: 10,
+            orders: vec![QueuedOrder {
+                issuer: 1,
+                order: BUILD_ORDER,
+                priority: -1,
+                target: 10028,
+                target_owner: 1,
+                point: [30.0, 88.0, 0.0],
+                range: 2.0,
+                shown: [30.0, 88.0],
+                ready: true,
+                target_type: 3,
+            }],
+            ..UnitAi::default()
+        };
+        let at = Surroundings {
+            units: vec![UnitSeen {
+                id: 10028,
+                class: 3,
+                position: [30.0, 88.0, 0.0],
+                ..UnitSeen::default()
+            }],
+            ..scout_at(true, false)
+        };
+        let mut side = WaitSide(false, Vec::new());
+        let order = ai.orders[0];
+        let mut fx = Vec::new();
+        let r = ai
+            .process_order(
+                &order,
+                Some((&at, &mut side, false)),
+                None,
+                &mut rng(),
+                &mut fx,
+            )
+            .unwrap();
+        assert_eq!((r, fx), (1, vec![Effect::BuildObject(10028)]));
+        assert_eq!(
+            (
+                ai.current_action,
+                ai.current_target,
+                ai.target_type,
+                ai.target_point
+            ),
+            (BUILD_ACTION, 10028, 3, [30.0, 88.0, 0.0])
+        );
+        assert_eq!((ai.last_target, ai.last_target_type), (7, 10));
+        assert_eq!((ai.current_order, ai.order_priority), (BUILD_ORDER, -1));
     }
 
     /// Case 0x2de (`FUN_140c5c170`): slot 0x108 forced (`FUN_140c68a60`) runs the unit's slot

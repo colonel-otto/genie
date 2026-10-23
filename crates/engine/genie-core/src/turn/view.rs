@@ -45,6 +45,8 @@ pub(in crate::turn) enum AiWork {
     Gather(i32),
     /// The unit's slot 0x7e8 on an object at a point ([`Turns::order_work`]).
     Work(crate::order::Work),
+    /// `BuildObject`'s unit part: the build command on the foundation ([`Turns::build_command`]).
+    Build(i32),
 }
 pub(in crate::turn) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
@@ -209,7 +211,7 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) works: Vec<AiWork>,
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
-    pub(in crate::turn) build_object: Option<i32>,
+
     /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
     /// a target not built yet), which the caller runs after the update ([`Turns::build_command`]).
     pub(in crate::turn) build_command: Option<i32>,
