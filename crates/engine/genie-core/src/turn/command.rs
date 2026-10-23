@@ -739,10 +739,11 @@ impl Turns {
             .get(player)
             .and_then(|m| m.get(master))
             .map_or((false, None), Master::default_start);
-        let ai = unit_ai.and_then(|t| {
-            t.map(|t| UnitAi::constructed(t, position, self.streams.get(Stream::Ai)))
-                .transpose()
-        });
+        let ai = unit_ai
+            .and_then(|t| Ok((t, self.new_object(player, master, &made, position)?)))
+            .map(|(t, new)| {
+                t.and_then(|t| UnitAi::constructed(t, &new, self.streams.get(Stream::Ai)))
+            });
         let ai = ai.unwrap_or_else(|e| {
             // the constructor's draws are unknown, so the turn player's are too
             crate::trace::player_unsupported(self.ticks, self.player_turn, e);
@@ -994,7 +995,12 @@ impl Turns {
             // the .dat's annexes are buildings (type 80): another type's master has no building
             // part, which the constructor below refuses
             let [ox, oy] = building.annex_offsets[slot];
-            let ai = crate::unit_ai::factory_type(am.class, annex, am.volley_missile.unwrap_or(-1));
+            let ai = Ok(crate::unit_ai::factory_type(
+                am.class,
+                annex,
+                am.volley_missile.unwrap_or(-1),
+                am.combat_level,
+            ));
             let at = [position[0] + ox, position[1] + oy, given_z];
             let (aid, at) = self.make_building(player, annex, ai, at)?;
             self.link_annex(player, id, aid, &made, &am)?;

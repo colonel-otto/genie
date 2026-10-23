@@ -3860,17 +3860,17 @@ fn build_wall_command(packet: &de::command::BuildWall, sections: &[PlayerSection
 }
 
 /// The unit AI a new object of `master` gets (`FUN_141215a90`, genie-core's
-/// [`genie_core::unit_ai::factory_type`]): by its class (the master's fifth saved short), its id
-/// and its volley missile (the tribe combat master's `volley_missile_id`, the game's `+0x8d4`):
-/// a building with one gets the tower's unit AI and its fourth draw.
+/// [`genie_core::unit_ai::factory_type`]): by its class (the master's fifth saved short), its id,
+/// its volley missile (the tribe combat master's `volley_missile_id`, the game's `+0x8d4`: a
+/// building with one gets the tower's unit AI and its fourth draw) and its combat level.
 fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsupported> {
     let m = objects
         .master(master)
         .ok_or(Unsupported("BUILD of a master the player does not have"))?;
-    let class = m
+    let static_part = m
         .static_part()
-        .ok_or(Unsupported("BUILD of a master without a static part"))?
-        .read_temp_5;
+        .ok_or(Unsupported("BUILD of a master without a static part"))?;
+    let class = static_part.read_temp_5;
     // the factory (`FUN_141215a90`) gives a building with a volley missile (the master's
     // `+0x8d4`, `volley_missile_id`) the tower's unit AI, as genie-core's `factory_type` does
     let volley = m
@@ -3883,7 +3883,13 @@ fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsu
         })
         .and_then(|c| i16::try_from(c.volley_missile_id).ok())
         .unwrap_or(-1);
-    genie_core::unit_ai::factory_type(class, master, volley)
+    // the class-10 choice reads the master's combat level (`+0x62c`, FUN_140fde4f0)
+    Ok(genie_core::unit_ai::factory_type(
+        class,
+        master,
+        volley,
+        static_part.combat_level,
+    ))
 }
 
 fn combat_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterCombatObject> {

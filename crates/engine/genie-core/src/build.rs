@@ -1691,8 +1691,12 @@ impl crate::turn::Turns {
                 "the player's slot 0x1c0 for an object other than a building",
             ));
         }
-        let ai =
-            crate::unit_ai::factory_type(made.class, master, made.volley_missile.unwrap_or(-1));
+        let ai = Ok(crate::unit_ai::factory_type(
+            made.class,
+            master,
+            made.volley_missile.unwrap_or(-1),
+            made.combat_level,
+        ));
         let (id, _) = self.make_building(p, master, ai, at)?;
         if flagged {
             self.clear_footprint(p, master, [at[0], at[1]], true)?;

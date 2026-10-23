@@ -17,7 +17,7 @@ use crate::rng::Stream;
 use crate::spatial::{Obstruction, Placed};
 use crate::sprite::ActiveSprite;
 use crate::turn::{GatherPoint, Turns, Unit};
-use crate::unit_ai::{ACTION_COMPLETED, Notify, UnitAi, Unsupported, factory_type};
+use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi, Unsupported, factory_type};
 use crate::visibility::{Seer, capture_kind};
 
 /// A unit smaller than this on both axes (`DAT_142f5d120`) steps by twice its radius plus
@@ -59,6 +59,9 @@ pub(crate) const MAKE_ACTION: i32 = 0x26b;
 
 /// A new moving object's right vector's z (`FUN_1411580a0` reads `DAT_14330ec20`).
 pub(crate) const START_RIGHT_Z: f32 = crate::image::spawn::START_RIGHT_Z;
+/// The player's attribute a new soldier's unit AI reads: the current age (`player+0x100` at
+/// `+0x30`, `FUN_140c12300`).
+const CURRENT_AGE: i16 = 6;
 
 /// The building a unit spawns from, as the search reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1690,6 +1693,29 @@ impl Turns {
         Ok(())
     }
 
+    /// What the unit AI of player `p`'s new object of master `made` (id `master`) at `position`
+    /// reads ([`NewObject`]): its master's fields and its owner's type, posture (`+0x71c`) and
+    /// current age (attribute 6).
+    ///
+    /// # Errors
+    ///
+    /// A player without attribute 6.
+    pub(crate) fn new_object(
+        &self,
+        p: usize,
+        master: i16,
+        made: &crate::masters::Master,
+        position: [f32; 3],
+    ) -> Result<NewObject, Unsupported> {
+        let owner = &self.players[p];
+        Ok(NewObject {
+            computer: owner.computer,
+            posture: owner.posture,
+            age: crate::tech::Attributes::get(owner, CURRENT_AGE)?,
+            ..NewObject::of(position, master, made)
+        })
+    }
+
     /// The master's slot 0x40 for a combat unit (type 70, `0x141266120`, the constructor
     /// `FUN_1411eae40` with its setups) of `master` for player `p` at `position`: the setups in
     /// order (static `FUN_1411a45a0`, animated `FUN_141072690`, moving `FUN_141161450`, combat
@@ -1739,8 +1765,14 @@ impl Turns {
                 ]
             })
         });
-        let ai_type = factory_type(made.class, master, made.volley_missile.unwrap_or(-1))?
-            .ok_or(Unsupported("a new combat unit without a unit AI"))?;
+        let ai_type = factory_type(
+            made.class,
+            master,
+            made.volley_missile.unwrap_or(-1),
+            made.combat_level,
+        )
+        .ok_or(Unsupported("a new combat unit without a unit AI"))?;
+        let new_object = self.new_object(p, master, made, position)?;
         let standing = (0 <= made.standing_sprite)
             .then(|| self.graphics.get(&made.standing_sprite).copied())
             .flatten()
@@ -1764,7 +1796,7 @@ impl Turns {
         } else {
             0.0
         };
-        let ai = UnitAi::constructed(ai_type, position, self.streams.get(Stream::Ai))?;
+        let ai = UnitAi::constructed(ai_type, &new_object, self.streams.get(Stream::Ai));
         let _ = self.streams.get(Stream::Object).rand15();
         // its place, record, mesh shape and sight (new_position, slot 0x58, and FUN_141054fe0)
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
@@ -1845,7 +1877,7 @@ impl Turns {
                 master_id: master,
                 master: made.life,
             },
-            ai: Some(ai),
+            ai,
             // FUN_1411580a0: facing x (an immediate 1.0), its right -z, not waiting
             mover: Some(Mover {
                 forward: [1.0, 0.0, 0.0],
@@ -2263,12 +2295,17 @@ impl Turns {
                 "a new building of a recyclable master or with a paid cost",
             ));
         }
-        let ai_type = factory_type(made.class, master, made.volley_missile.unwrap_or(-1))?;
+        let ai_type = factory_type(
+            made.class,
+            master,
+            made.volley_missile.unwrap_or(-1),
+            made.combat_level,
+        );
+        let new_object = self.new_object(p, master, made, at)?;
         let id = self.next_object_id;
         self.next_object_id += 1;
-        let ai = ai_type
-            .map(|t| UnitAi::constructed(t, at, self.streams.get(Stream::Ai)))
-            .transpose()?;
+        let ai =
+            ai_type.and_then(|t| UnitAi::constructed(t, &new_object, self.streams.get(Stream::Ai)));
         // the combat setup's powerup offset (`+0xa54`)
         let _ = self.streams.get(Stream::Object).rand15();
         let placed = Placed {

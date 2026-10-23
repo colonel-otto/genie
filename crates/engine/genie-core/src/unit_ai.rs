@@ -1763,81 +1763,274 @@ fn adjusted_idle_timeout(base: u32, ai: &mut Well512) -> u32 {
 }
 
 /// The unit-AI type the factory (`FUN_141215a90`) gives a new object of a master of `class`
-/// with the volley missile `missile` (`+0x8d4`, −1 for none). The types are those
-/// `FUN_141215560`'s switch names for its constructors: masters 1105 (`FUN_140c11fb0`, 0x12) and 1744, 1746
-/// (`FUN_140c12040`, 0x10) by their id; then none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34,
-/// 38, 42, 48 and 63; 0xe for class 1; 0xa for 2 and 19; the building's (0x11) for classes 3,
-/// 27, 39, 49 and 60 without a volley missile, the tower's (0xf) for those with one and for 52;
-/// the civilian's (8) for 4; the hunted animal's (2) for 9 and 59; 0x10 for 13, 51, 54 and 55;
-/// 9 for 18, 43 and 53; 0xb for 20; 0xc for 21; 0x13 for 29 and 58; the soldier's (0xd) for any
-/// other. Class 10 takes the boar's (4) or the lion's (5) by its master's class 10 and combat
-/// level 1 (`FUN_140fde4f0`), which the arguments do not carry.
-pub const fn factory_type(
-    class: i16,
-    master: i16,
-    missile: i16,
-) -> Result<Option<u32>, Unsupported> {
+/// with the volley missile `missile` (`+0x8d4`, −1 for none) and the combat level
+/// `combat_level` (`+0x62c`). The types are those `FUN_141215560`'s switch names for its
+/// constructors: masters 1105 (`FUN_140c11fb0`, 0x12) and 1744, 1746 (`FUN_140c12040`, 0x10) by
+/// their id; then none for classes 5, 7, 8, 11, 14, 15, 16, 30 to 34, 38, 42, 48 and 63; 0xe for
+/// class 1; 0xa for 2 and 19; the building's (0x11) for classes 3, 27, 39, 49 and 60 without a
+/// volley missile, the tower's (0xf) for those with one and for 52; the civilian's (8) for 4;
+/// the hunted animal's (2) for 9 and 59; 0x10 for 13, 51, 54 and 55; 9 for 18, 43 and 53; 0xb for
+/// 20; 0xc for 21; 0x13 for 29 and 58; the soldier's (0xd) for any other. Class 10 takes the
+/// boar's (4, `FUN_140c11720`) when its master is of class 10 and combat level 1
+/// (`FUN_140fde4f0`), else the lion's (5, `FUN_140c11bd0`).
+#[must_use]
+pub const fn factory_type(class: i16, master: i16, missile: i16, combat_level: u8) -> Option<u32> {
     match master {
-        1105 => return Ok(Some(0x12)),
-        1744 | 1746 => return Ok(Some(0x10)),
+        1105 => return Some(0x12),
+        1744 | 1746 => return Some(0x10),
         _ => {}
     }
-    Ok(Some(match class {
-        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => return Ok(None),
+    Some(match class {
+        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => return None,
         1 => 0xe,
         2 | 19 => 0xa,
         3 | 27 | 39 | 49 | 60 if missile < 0 => 17,
         3 | 27 | 39 | 49 | 52 | 60 => TOWER_AI,
         4 => CIVILIAN,
         9 | 59 => 2,
-        10 => {
-            return Err(Unsupported(
-                "a new object of class 10, whose type its master's combat level picks",
-            ));
-        }
+        // FUN_140fde4f0: the master's class (`+0x410`, 10 in this case) and its combat level 1
+        10 if combat_level == 1 => BOAR_AI,
+        10 => 5,
         13 | 51 | 54 | 55 => 0x10,
         18 | 43 | 53 => 9,
         20 => 0xb,
         21 => 0xc,
         29 | 58 => 0x13,
         _ => SOLDIER_AI,
-    }))
+    })
+}
+
+/// What a unit AI's constructor reads besides its type (`FUN_141215a90`'s and
+/// `FUN_141215560`'s constructors): the new object's place, its master's fields and its
+/// owner's.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct NewObject {
+    /// The object's place (`+0x3c8`, `+0x4c8`, `+0x5a8`): the state position, the hunted
+    /// animal's and the boar's origin.
+    pub position: [f32; 3],
+    /// Its master's id (`+0x58`).
+    pub master: i16,
+    /// Its master's `copy_id` (`+0x158`).
+    pub copy_id: i16,
+    /// Its master's class (`+0x410`).
+    pub class: i16,
+    /// Its master's `object_flags` (`+0x654`).
+    pub object_flags: u32,
+    /// Its master's `hero_flag` (`+0x8d9`).
+    pub hero_flag: u8,
+    /// The object's slot 0x7b0 (`+0xb74`, which the action object's constructor set before
+    /// through slot 0x8a8, `FUN_141206d50`: the work range of its master's last task of action
+    /// type 6, else 0): the hunted animal's leash.
+    pub hunt_range: f32,
+    /// The owner is a computer player (`FUN_141659cf0`: `+0x10` 3).
+    pub computer: bool,
+    /// The owner's posture (`+0x71c`, its slot 0x90 `FUN_1416224f0`).
+    pub posture: i32,
+    /// The owner's attribute 6, the current age (`player+0x100` at `+0x30`).
+    pub age: f32,
+}
+
+impl NewObject {
+    /// The object at `position` of master `made` (id `master`), its owner's fields left at a
+    /// human player's in the Dark Age with posture 0 ([`NewObject::computer`],
+    /// [`NewObject::posture`], [`NewObject::age`] are the caller's).
+    #[must_use]
+    pub fn of(position: [f32; 3], master: i16, made: &crate::masters::Master) -> Self {
+        Self {
+            position,
+            master,
+            copy_id: made.copy_id,
+            class: made.class,
+            object_flags: made.object_flags,
+            hero_flag: made.hero_flag,
+            // FUN_141206d50: each task of action type 6 in turn sets `+0xb74`
+            hunt_range: made
+                .tasks
+                .iter()
+                .rev()
+                .find(|t| t.action_type == HUNT_RANGE_TASK)
+                .map_or(0.0, |t| t.work_range),
+            computer: false,
+            posture: 0,
+            age: 0.0,
+        }
+    }
+}
+
+/// The action type of the task whose work range a new object keeps at `+0xb74`
+/// (`FUN_141206d50`).
+const HUNT_RANGE_TASK: i16 = 6;
+/// The hunted animal's idle timeout (`FUN_140c11920`'s `FUN_140c41bc0` with 4000).
+const HUNTED_IDLE_TIMEOUT: u32 = 4000;
+/// The priest's idle timeout (`FUN_140c11e30`'s `FUN_140c41bc0` with 500).
+const PRIEST_IDLE_TIMEOUT: u32 = 500;
+/// The soldier's idle timeout (`FUN_140c12300`'s `FUN_140c41bc0`): 500, a computer player's
+/// 1500.
+const SOLDIER_IDLE_TIMEOUT: u32 = 500;
+const COMPUTER_SOLDIER_IDLE_TIMEOUT: u32 = 1500;
+/// The siege unit's idle timeout (`FUN_140c12040`'s `FUN_140c41bc0` with 1000).
+const SIEGE_IDLE_TIMEOUT: u32 = 1000;
+/// The masters whose soldier is defensive (`FUN_140c12300`, raw `0x62ab`, `0x62ac`, `0x64ec`).
+const DEFENSIVE_MASTERS: [i16; 3] = [527, 528, 1104];
+/// The classes of a human player's soldier in `NoAttack` (`FUN_140c12300`: `-0xe89`, `-0xe6c`
+/// raw).
+const NO_ATTACK_CLASSES: [i16; 2] = [35, 64];
+/// The class whose soldier is in `NoAttack` unless a hero (`FUN_140c12300`: `-0xe6f` raw).
+const NO_ATTACK_CLASS: i16 = 61;
+/// The master object flag of the soldier that stands its ground in the Dark Age
+/// (`FUN_140c12300`: `+0x654` bit 4).
+const STAND_GROUND_FLAG: u32 = 0x10;
+
+/// The soldier's stance (`+0x1a9`) its constructor (`FUN_140c12300`) gives a new object: 2
+/// (stand ground) to a human player's object of a master with object flag 0x10 that is its own
+/// copy (`copy_id`, `+0x158`, its id) while the player's current age (attribute 6) is 0; 1
+/// (defensive) to a human player's of masters 527, 528 and 1104; 3 (no attack) to a human
+/// player's of classes 35 and 64; then 1 to a hero (`hero_flag` with bit 0 or 3, not both 3
+/// and 7); 3 to class 61; else the owner's posture (slot 0x90, `+0x71c`, its low byte).
+fn soldier_stance(new: &NewObject) -> u8 {
+    // UCOMISS with JP, JNZ: the age equals 0 (a NaN does not)
+    if !new.computer
+        && new.object_flags & STAND_GROUND_FLAG != 0
+        && new.copy_id == new.master
+        && new.age == 0.0
+    {
+        return 2;
+    }
+    if !new.computer && DEFENSIVE_MASTERS.contains(&new.master) {
+        return 1;
+    }
+    if !new.computer && NO_ATTACK_CLASSES.contains(&new.class) {
+        return 3;
+    }
+    // TEST 9, then a signed byte at least 0 or bit 3 clear
+    let hero = new.hero_flag & 9 != 0 && (new.hero_flag & 0x80 == 0 || new.hero_flag & 8 == 0);
+    if hero {
+        return 1;
+    }
+    if new.class == NO_ATTACK_CLASS {
+        return 3;
+    }
+    new.posture as u8
+}
+
+/// The siege unit's stance (`+0x1a9`) its constructor (`FUN_140c12040`) gives a new object: 0
+/// for a computer player's and for classes 51 and 54 (`-0xe79`, `-0xe76` raw); the owner's
+/// posture (slot 0x90, its low byte) for class 55 (`-0xe75`); 1 for any other.
+const fn siege_stance(new: &NewObject) -> u8 {
+    if new.computer || matches!(new.class, 51 | 54) {
+        return 0;
+    }
+    if new.class == 55 {
+        return new.posture as u8;
+    }
+    1
 }
 
 impl UnitAi {
-    /// The unit AI a new object gets. `UnitAIModule`'s constructor (`0x140c2e080`) draws three
-    /// AI-stream values, in this order: the last retarget time `r % 500`, the adjusted idle timeout
-    /// `r % 1500 + 2250` and the retarget timer `750 + r % 500`. The factory (`FUN_141215a90`)
-    /// picks the type's constructor; the building's (17, `TribeBuildingUnitAIModule`
-    /// `0x140c11470`, whose cared classes are [`BUILDING_CARED`]), the tower's (15,
-    /// `FUN_140c12960`: its idle timeout 1000, a fourth draw for the adjusted one), the
-    /// artifact's (14, `FUN_140c11340`, [`ARTIFACT_CARED`]: its idle timeout 5000, a fourth draw)
-    /// and the civilian's (8, `TribeCivilianUnitAIModule` `0x140c115d0`, [`CIVILIAN_CARED`]) are
-    /// modelled, each of which sets the stance (`+0x1a9`) to 0 after the base's 3; for any other
-    /// type nothing is drawn.
-    pub fn constructed(
-        ai_type: u32,
-        position: [f32; 3],
-        ai: &mut Well512,
-    ) -> Result<Self, Unsupported> {
-        if !matches!(ai_type, 8 | 17 | TOWER_AI | ARTIFACT_AI) {
-            return Err(Unsupported("constructor of a unit-AI type not modelled"));
+    /// The unit AI of `ai_type` a new object gets, as `FUN_141215560`'s constructors make it
+    /// (the factory `FUN_141215a90` picks among them; the types 3, 6 and 7 only a load makes);
+    /// None for any other type, which gets none. `UnitAIModule`'s constructor (`0x140c2e080`)
+    /// draws three AI-stream values, in this order: the last retarget time `r % 500`, the
+    /// adjusted idle timeout `r % 1500 + 2250` and the retarget timer `750 + r % 500`; it sets
+    /// the stance (`+0x1a9`) to 3 and the state position to the object's place. Then each
+    /// type's own constructor:
+    ///
+    /// - 2, the hunted animal (`FUN_140c11920`, [`HUNTED_CARED`]): its idle timeout 4000
+    ///   (`FUN_140c41bc0`, whose slot 0x1a8 `FUN_140c17170` makes the adjusted one 5/4 of it
+    ///   without a draw), its origin (the object's place) and leash ([`NewObject::hunt_range`]);
+    ///   the king's (class 59) stance 0, the others' stays 3.
+    /// - 3 (`TribePreditorUnitAIModule`, `FUN_140c11da0`), 0xa (the trade ship's,
+    ///   `FUN_140c12ab0`), 0xb (the transport ship's, `FUN_140c12c30`), 0xc (the fishing ship's,
+    ///   `FUN_140c11860`, the base's `+0x1e8` 7), 0x11 (the building's, `FUN_140c11470`,
+    ///   [`BUILDING_CARED`]), 0x12 (the siege tower's, `FUN_140c11fb0`) and 8 (the civilian's,
+    ///   `FUN_140c115d0`, [`CIVILIAN_CARED`], the base's `+0x1e8` 7): stance 0.
+    /// - 4, the boar (`FUN_140c11720`): stance 0, its origin the object's place, not furious.
+    /// - 5, the lion (`FUN_140c11bd0`, [`LION_CARED`]; the world's `+0x6b4` of 1 adds four
+    ///   classes): stance 0, its idle timeout 6000 and a fourth draw (slot 0x1a8,
+    ///   `0x140c41e00`).
+    /// - 6 and 7 (`TribeRangedUnitAIModule`, `FUN_140c11f80`, `FUN_140c11f50`): the base's.
+    /// - 9, the priest (`FUN_140c11e30`): stance 1, its idle timeout 500 and a fourth draw.
+    /// - 0xd, the soldier (`FUN_140c12300`, [`SOLDIER_CARED`]; a computer player's adds 10): its
+    ///   idle timeout 500 (a computer player's 1500) and a fourth draw, then its stance
+    ///   ([`soldier_stance`]).
+    /// - 0xe, the artifact (`FUN_140c11340`, [`ARTIFACT_CARED`]): stance 0, its idle timeout
+    ///   5000 and a fourth draw.
+    /// - 0xf, the tower (`FUN_140c12960`, [`TOWER_CARED`]): stance 0, its idle timeout 1000 and
+    ///   a fourth draw.
+    /// - 0x10, the siege unit (`FUN_140c12040`): its stance ([`siege_stance`]), its idle timeout
+    ///   1000 and a fourth draw.
+    /// - 0x13, livestock (`FUN_140c11d70`): stance 1.
+    #[must_use]
+    pub fn constructed(ai_type: u32, new: &NewObject, ai: &mut Well512) -> Option<Self> {
+        if !matches!(ai_type, 2..=0x13) {
+            return None;
         }
+        let mut made = Self::base_constructed(ai_type, new.position, ai);
+        match ai_type {
+            2 => {
+                made.set_idle_timeout(HUNTED_IDLE_TIMEOUT, ai);
+                made.hunted = Some(Hunted {
+                    origin: new.position,
+                    leash: new.hunt_range,
+                });
+                if new.class == CLASS_KING {
+                    made.stance = 0;
+                }
+            }
+            BOAR_AI => {
+                made.stance = 0;
+                made.home = Some(Home {
+                    origin: new.position,
+                    furious: false,
+                    go_home: false,
+                });
+            }
+            5 => {
+                made.stance = 0;
+                made.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
+            }
+            // the base's stance 3
+            6 | 7 => {}
+            9 => {
+                made.stance = 1;
+                made.set_idle_timeout(PRIEST_IDLE_TIMEOUT, ai);
+            }
+            SOLDIER_AI => {
+                let timeout = if new.computer {
+                    COMPUTER_SOLDIER_IDLE_TIMEOUT
+                } else {
+                    SOLDIER_IDLE_TIMEOUT
+                };
+                made.set_idle_timeout(timeout, ai);
+                made.stance = soldier_stance(new);
+            }
+            ARTIFACT_AI => {
+                made.stance = 0;
+                made.set_idle_timeout(ARTIFACT_IDLE_TIMEOUT, ai);
+            }
+            TOWER_AI => {
+                made.stance = 0;
+                made.set_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
+            }
+            0x10 => {
+                made.stance = siege_stance(new);
+                made.set_idle_timeout(SIEGE_IDLE_TIMEOUT, ai);
+            }
+            0x13 => made.stance = 1,
+            // 3, 8, 0xa, 0xb, 0xc, 0x11 and 0x12
+            _ => made.stance = 0,
+        }
+        Some(made)
+    }
+
+    /// `UnitAIModule`'s constructor (`0x140c2e080`): its three draws, the base's fields, the
+    /// stance (`+0x1a9`) 3 of the two bytes at `+0x1a8` (0x300) and the state position the
+    /// object's place.
+    fn base_constructed(ai_type: u32, position: [f32; 3], ai: &mut Well512) -> Self {
         let last_retarget_time = ai.rand15() % 500;
-        let mut adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
+        let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
         let retarget_timer = 750 + ai.rand15() % 500;
-        // the tower's (FUN_140c12960) and the artifact's (FUN_140c11340): FUN_140c41bc0 (1000,
-        // 5000) sets the idle timeout, whose slot 0x1a8 draws the adjusted one again
-        let mut idle_timeout = IDLE_TIMEOUT;
-        if ai_type == TOWER_AI {
-            idle_timeout = TOWER_IDLE_TIMEOUT;
-            adjusted_idle_timeout = self::adjusted_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
-        }
-        if ai_type == ARTIFACT_AI {
-            idle_timeout = ARTIFACT_IDLE_TIMEOUT;
-            adjusted_idle_timeout = self::adjusted_idle_timeout(ARTIFACT_IDLE_TIMEOUT, ai);
-        }
-        Ok(Self {
+        Self {
             ai_type,
             current_order: -1,
             order_priority: -1,
@@ -1852,15 +2045,13 @@ impl UnitAi {
             last_target_type: -1,
             idle_timer: 0,
             adjusted_idle_timeout,
-            idle_timeout,
+            idle_timeout: IDLE_TIMEOUT,
             secondary_timer: 750,
             look_around_timer: 0,
             look_around_timeout: 1000,
             last_retarget_time,
             retarget_timer,
-            // the base's two bytes at `+0x1a8` (0x300), whose stance byte the type's own
-            // constructor clears
-            stance: 0,
+            stance: 3,
             // the constructor's word at +0x1d4 (0x140c2e080)
             formation_type: 0,
             // the object's place
@@ -1882,7 +2073,14 @@ impl UnitAi {
             buffered: Vec::new(),
             commanded: false,
             attackers: Vec::new(),
-        })
+        }
+    }
+
+    /// `FUN_140c41bc0`: the idle timeout (`+0x168`) is `timeout`, then slot 0x1a8 redraws the
+    /// adjusted one ([`UnitAi::update_adjusted_idle_timeout`]).
+    fn set_idle_timeout(&mut self, timeout: u32, ai: &mut Well512) {
+        self.idle_timeout = timeout;
+        self.update_adjusted_idle_timeout(ai);
     }
 
     /// What an order (INTERACT, MOVE, RETREAT) does to each of its units' AI before it runs
@@ -2377,8 +2575,7 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<bool, Unsupported> {
         self.cap_human_order(fx);
-        self.idle_timeout = LION_IDLE_TIMEOUT;
-        self.update_adjusted_idle_timeout(ai);
+        self.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
         let sight = at.los + HUNTED_SIGHT_GROWTH;
         let radius = if sight <= at.search_radius {
             at.search_radius
@@ -3989,8 +4186,7 @@ impl UnitAi {
                 ACTION_COMPLETED => {
                     if n.p[0] == ATTACK_ACTION {
                         // FUN_140c41bc0 with 1000: the idle timeout, then slot 0x1a8
-                        self.idle_timeout = LION_ATTACKED_TIMEOUT;
-                        self.update_adjusted_idle_timeout(ai_rng);
+                        self.set_idle_timeout(LION_ATTACKED_TIMEOUT, ai_rng);
                         self.remove_target();
                         self.stop_current(true, at, fx)?;
                     }
@@ -6913,7 +7109,7 @@ mod tests {
         // UnitAIModule's constructor: last retarget r % 500, adjusted idle timeout r % 1500 + 2250,
         // retarget timer 750 + r % 500, in that order
         let mut r = rng();
-        let ai = UnitAi::constructed(17, [30.0, 88.0, 0.0], &mut r).unwrap();
+        let ai = UnitAi::constructed(17, &placed([30.0, 88.0, 0.0], 3), &mut r).unwrap();
         let mut expected = rng();
         let (a, b, c) = (expected.rand15(), expected.rand15(), expected.rand15());
         assert_eq!(r.draws, 3);
@@ -6971,7 +7167,7 @@ mod tests {
     #[test]
     fn a_new_artifact_unit_ai_draws_four_timers() {
         let mut r = rng();
-        let ai = UnitAi::constructed(ARTIFACT_AI, [136.0, 100.0, 0.0], &mut r).unwrap();
+        let ai = UnitAi::constructed(ARTIFACT_AI, &placed([136.0, 100.0, 0.0], 1), &mut r).unwrap();
         let mut expected = rng();
         let (a, _, c, d) = (
             expected.rand15(),
@@ -7251,7 +7447,7 @@ mod tests {
     #[test]
     fn a_new_tower_unit_ai_draws_four_timers() {
         let mut r = rng();
-        let ai = UnitAi::constructed(TOWER_AI, [54.0, 147.0, 0.0], &mut r).unwrap();
+        let ai = UnitAi::constructed(TOWER_AI, &placed([54.0, 147.0, 0.0], 52), &mut r).unwrap();
         let mut expected = rng();
         let (a, _, c, d) = (
             expected.rand15(),
@@ -7273,11 +7469,308 @@ mod tests {
         );
     }
 
+    /// A new object of class `class` at `position`, of master 83 (its own copy), a human
+    /// player's in the Dark Age with posture 0.
+    fn placed(position: [f32; 3], class: i16) -> NewObject {
+        NewObject {
+            position,
+            master: 83,
+            copy_id: 83,
+            class,
+            ..NewObject::default()
+        }
+    }
+
+    /// The base's three draws (`0x140c2e080`) and, for the types whose constructor sets its own
+    /// idle timeout (`FUN_140c41bc0`), slot 0x1a8's fourth (`0x140c41e00`: `r % (t / 2) + 3 t /
+    /// 4`); the hunted animal's slot 0x1a8 (`FUN_140c17170`) is 5/4 of its timeout without a
+    /// draw. Each type's stance (`+0x1a9`) and notify capacity (5 for 0xe and 0x13).
     #[test]
-    fn a_unit_ai_class_without_a_modelled_constructor_draws_nothing() {
+    fn each_unit_ai_constructor_draws_its_timers_and_sets_its_stance() {
+        // (type, class, idle timeout, fourth draw, stance, notify capacity)
+        let types: [(u32, i16, u32, bool, u8, usize); 17] = [
+            (2, 9, 4000, false, 3, 10),
+            (3, 10, 3000, false, 0, 10),
+            (BOAR_AI, 10, 3000, false, 0, 10),
+            (5, 10, 6000, true, 0, 10),
+            (6, 0, 3000, false, 3, 10),
+            (7, 0, 3000, false, 3, 10),
+            (CIVILIAN, 4, 3000, false, 0, 10),
+            (9, 18, 500, true, 1, 10),
+            (0xa, 2, 3000, false, 0, 10),
+            (0xb, 20, 3000, false, 0, 10),
+            (0xc, 21, 3000, false, 0, 10),
+            (SOLDIER_AI, 6, 500, true, 0, 10),
+            (ARTIFACT_AI, 1, 5000, true, 0, 5),
+            (TOWER_AI, 52, 1000, true, 0, 10),
+            (0x10, 13, 1000, true, 1, 10),
+            (17, 3, 3000, false, 0, 10),
+            (0x12, 6, 3000, false, 0, 10),
+        ];
+        for (ai_type, class, timeout, fourth, stance, capacity) in types {
+            let mut r = rng();
+            let ai =
+                UnitAi::constructed(ai_type, &placed([12.5, 40.0, 1.0], class), &mut r).unwrap();
+            let mut expected = rng();
+            let (a, b, c) = (expected.rand15(), expected.rand15(), expected.rand15());
+            let adjusted = if fourth {
+                expected.rand15() % (timeout / 2) + timeout * 3 / 4
+            } else if ai_type == 2 {
+                timeout * 5 / 4
+            } else {
+                b % 1500 + 2250
+            };
+            assert_eq!(r.draws, if fourth { 4 } else { 3 }, "type {ai_type}");
+            assert_eq!(
+                (
+                    ai.ai_type,
+                    ai.last_retarget_time,
+                    ai.retarget_timer,
+                    ai.idle_timeout,
+                    ai.adjusted_idle_timeout,
+                    ai.stance,
+                    ai.notify_capacity,
+                    ai.state_position,
+                ),
+                (
+                    ai_type,
+                    a % 500,
+                    750 + c % 500,
+                    timeout,
+                    adjusted,
+                    stance,
+                    capacity,
+                    [12.5, 40.0],
+                ),
+                "type {ai_type}"
+            );
+        }
         let mut r = rng();
-        assert!(UnitAi::constructed(13, [0.0; 3], &mut r).is_err());
-        assert_eq!(r.draws, 0);
+        let livestock = UnitAi::constructed(0x13, &placed([1.0; 3], 58), &mut r).unwrap();
+        assert_eq!(
+            (r.draws, livestock.stance, livestock.notify_capacity),
+            (3, 1, 5)
+        );
+    }
+
+    /// `FUN_141215560` has no constructor for the types outside 2..=0x13: such an object gets
+    /// no unit AI and nothing is drawn.
+    #[test]
+    fn a_unit_ai_type_without_a_constructor_makes_none_and_draws_nothing() {
+        for ai_type in [0, 1, 0x14, 99] {
+            let mut r = rng();
+            assert_eq!(
+                UnitAi::constructed(ai_type, &placed([0.0; 3], 6), &mut r),
+                None
+            );
+            assert_eq!(r.draws, 0);
+        }
+    }
+
+    /// The hunted animal's constructor (`FUN_140c11920`): its origin is the object's place, its
+    /// leash the object's slot 0x7b0 (`+0xb74`); the king (class 59) takes stance 0, a deer
+    /// keeps the base's 3. The boar's (`FUN_140c11720`) origin is its place too, neither
+    /// furious nor sent home.
+    #[test]
+    fn a_new_hunted_animal_and_boar_keep_their_place_as_their_origin() {
+        let mut deer = placed([20.0, 30.0, 2.0], 9);
+        deer.hunt_range = 7.5;
+        let mut r = rng();
+        let ai = UnitAi::constructed(2, &deer, &mut r).unwrap();
+        assert_eq!(
+            (ai.hunted, ai.stance, ai.home),
+            (
+                Some(Hunted {
+                    origin: [20.0, 30.0, 2.0],
+                    leash: 7.5,
+                }),
+                3,
+                None
+            )
+        );
+        let king = UnitAi::constructed(2, &placed([0.0; 3], CLASS_KING), &mut rng()).unwrap();
+        assert_eq!(king.stance, 0);
+        let boar = UnitAi::constructed(BOAR_AI, &placed([5.0, 6.0, 0.5], 10), &mut rng()).unwrap();
+        assert_eq!(
+            (boar.home, boar.hunted, boar.stance),
+            (
+                Some(Home {
+                    origin: [5.0, 6.0, 0.5],
+                    furious: false,
+                    go_home: false,
+                }),
+                None,
+                0
+            )
+        );
+    }
+
+    /// The soldier's constructor (`FUN_140c12300`): a computer player's idle timeout is 1500
+    /// (the fourth draw `r % 750 + 1125`); its stance by the rules of [`soldier_stance`].
+    #[test]
+    fn a_new_soldier_takes_its_stance_from_its_master_and_owner() {
+        let mut computer = placed([0.0; 3], 6);
+        computer.computer = true;
+        computer.posture = 1;
+        let mut r = rng();
+        let ai = UnitAi::constructed(SOLDIER_AI, &computer, &mut r).unwrap();
+        let mut expected = rng();
+        let _ = (expected.rand15(), expected.rand15(), expected.rand15());
+        assert_eq!(
+            (ai.idle_timeout, ai.adjusted_idle_timeout, ai.stance),
+            (1500, expected.rand15() % 750 + 1125, 1)
+        );
+        let stance = |f: &dyn Fn(&mut NewObject)| {
+            let mut new = placed([0.0; 3], 6);
+            f(&mut new);
+            soldier_stance(&new)
+        };
+        // the owner's posture, its low byte
+        assert_eq!(stance(&|_| {}), 0);
+        assert_eq!(stance(&|n| n.posture = 0x101), 1);
+        // the scout of the Dark Age stands its ground: flag 0x10, its own copy, age 0 (or -0)
+        assert_eq!(stance(&|n| n.object_flags = 0x10), 2);
+        assert_eq!(
+            stance(&|n| {
+                n.object_flags = 0x10;
+                n.age = -0.0;
+            }),
+            2
+        );
+        assert_eq!(
+            stance(&|n| {
+                n.object_flags = 0x10;
+                n.age = 1.0;
+            }),
+            0
+        );
+        assert_eq!(
+            stance(&|n| {
+                n.object_flags = 0x10;
+                n.age = f32::NAN;
+            }),
+            0
+        );
+        assert_eq!(
+            stance(&|n| {
+                n.object_flags = 0x10;
+                n.copy_id = 448;
+            }),
+            0
+        );
+        assert_eq!(
+            stance(&|n| {
+                n.object_flags = 0x10;
+                n.computer = true;
+            }),
+            0
+        );
+        // the demolition ships defend
+        for master in DEFENSIVE_MASTERS {
+            assert_eq!(
+                stance(&|n| {
+                    n.master = master;
+                    n.copy_id = master;
+                }),
+                1
+            );
+        }
+        assert_eq!(
+            stance(&|n| {
+                n.master = 527;
+                n.computer = true;
+            }),
+            0
+        );
+        // a human player's petards and class 64 do not attack; a computer's take its posture
+        assert_eq!(stance(&|n| n.class = 35), 3);
+        assert_eq!(stance(&|n| n.class = 64), 3);
+        assert_eq!(
+            stance(&|n| {
+                n.class = 35;
+                n.computer = true;
+            }),
+            0
+        );
+        // a hero defends: bit 0 or 3, not 3 with 7
+        assert_eq!(stance(&|n| n.hero_flag = 1), 1);
+        assert_eq!(stance(&|n| n.hero_flag = 8), 1);
+        assert_eq!(stance(&|n| n.hero_flag = 0x81), 1);
+        assert_eq!(stance(&|n| n.hero_flag = 0x88), 0);
+        assert_eq!(stance(&|n| n.hero_flag = 0x10), 0);
+        // class 61 does not attack, unless a hero
+        assert_eq!(stance(&|n| n.class = 61), 3);
+        assert_eq!(
+            stance(&|n| {
+                n.class = 61;
+                n.hero_flag = 1;
+            }),
+            1
+        );
+        assert_eq!(
+            stance(&|n| {
+                n.class = 61;
+                n.computer = true;
+            }),
+            3
+        );
+    }
+
+    /// The siege unit's stance (`FUN_140c12040`): a computer player's and the trebuchets' (51,
+    /// 54) 0, the scorpion's (55) the owner's posture, any other's 1.
+    #[test]
+    fn a_new_siege_unit_takes_its_stance_from_its_class_and_owner() {
+        let stance = |class: i16, computer: bool, posture: i32| {
+            siege_stance(&NewObject {
+                class,
+                computer,
+                posture,
+                ..NewObject::default()
+            })
+        };
+        assert_eq!(stance(13, false, 0), 1);
+        assert_eq!(stance(13, true, 0), 0);
+        assert_eq!(stance(51, false, 1), 0);
+        assert_eq!(stance(54, false, 1), 0);
+        assert_eq!(stance(55, false, 1), 1);
+        assert_eq!(stance(55, false, 0), 0);
+        assert_eq!(stance(55, true, 1), 0);
+        assert_eq!(stance(6, false, 0), 1);
+    }
+
+    /// [`NewObject::of`]: the master's copy, class, flags and hero flag, and the work range of
+    /// its last task of action type 6 (0 without one).
+    #[test]
+    fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
+        let task = |action_type, work_range| crate::masters::Task {
+            action_type,
+            work_range,
+            ..crate::masters::Task::default()
+        };
+        let made = crate::masters::Master {
+            copy_id: 1240,
+            class: 9,
+            object_flags: 0x30,
+            hero_flag: 4,
+            tasks: vec![task(6, 2.0), task(7, 9.0), task(6, 3.5), task(5, 1.0)],
+            ..crate::masters::Master::default()
+        };
+        let new = NewObject::of([1.0, 2.0, 3.0], 1239, &made);
+        assert_eq!(
+            new,
+            NewObject {
+                position: [1.0, 2.0, 3.0],
+                master: 1239,
+                copy_id: 1240,
+                class: 9,
+                object_flags: 0x30,
+                hero_flag: 4,
+                hunt_range: 3.5,
+                ..NewObject::default()
+            }
+        );
+        let none = NewObject::of([0.0; 3], 1, &crate::masters::Master::default());
+        assert_eq!(none.hunt_range, 0.0);
     }
 
     #[test]
@@ -10149,12 +10642,12 @@ mod tests {
     /// the classes without a unit AI, the civilian, the building (or the tower with a volley
     /// missile, `+0x8d4`, and for class 52), the hunted animal, the soldier as the default and
     /// the rest of the switch; class 10's type its master's combat level picks
-    /// (`FUN_140fde4f0`), which the arguments do not carry.
+    /// (`FUN_140fde4f0`: the boar's for 1, else the lion's).
     #[test]
     fn the_factory_picks_the_unit_ai_type_by_master_and_class() {
-        assert_eq!(factory_type(6, 1105, -1), Ok(Some(0x12)));
-        assert_eq!(factory_type(6, 1744, -1), Ok(Some(0x10)));
-        assert_eq!(factory_type(6, 1746, -1), Ok(Some(0x10)));
+        assert_eq!(factory_type(6, 1105, -1, 0), Some(0x12));
+        assert_eq!(factory_type(6, 1744, -1, 0), Some(0x10));
+        assert_eq!(factory_type(6, 1746, -1, 0), Some(0x10));
         let by_class = [
             (1, 0xe),
             (2, 0xa),
@@ -10180,19 +10673,22 @@ mod tests {
         ];
         for (class, ai_type) in by_class {
             assert_eq!(
-                factory_type(class, 83, -1),
-                Ok(Some(ai_type)),
+                factory_type(class, 83, -1, 0),
+                Some(ai_type),
                 "class {class}"
             );
         }
         for class in [3, 27, 39, 49, 60] {
-            assert_eq!(factory_type(class, 70, -1), Ok(Some(17)));
-            assert_eq!(factory_type(class, 70, 5), Ok(Some(0xf)));
+            assert_eq!(factory_type(class, 70, -1, 0), Some(17));
+            assert_eq!(factory_type(class, 70, 5, 0), Some(0xf));
         }
         for class in [5, 7, 8, 11, 14, 15, 16, 30, 31, 32, 33, 34, 38, 42, 48, 63] {
-            assert_eq!(factory_type(class, 83, -1), Ok(None));
+            assert_eq!(factory_type(class, 83, -1, 0), None);
         }
-        assert!(factory_type(10, 48, -1).is_err());
+        // class 10: the boar's for combat level 1, else the lion's
+        assert_eq!(factory_type(10, 48, -1, 1), Some(BOAR_AI));
+        assert_eq!(factory_type(10, 126, -1, 0), Some(5));
+        assert_eq!(factory_type(10, 126, -1, 4), Some(5));
     }
 
     /// The building's cared classes (`FUN_140c11470`) are the soldier's in another order.
