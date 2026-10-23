@@ -438,7 +438,7 @@ fn far_waypoint(way: f32, target: Option<(f32, i16)>) -> bool {
 /// A gap to the walked level's target `target` (its id and place): for a gate (class 39), the
 /// least (`MINSS`) of `own` and its first two annexes' (slot 0x680) gaps from the unit (`near`:
 /// its place and radii) through `annex`; for anything else `own`.
-fn gate_gap(
+pub(crate) fn gate_gap(
     world: &Spatial,
     (at, radius): ([f32; 3], [f32; 2]),
     (id, target): (i32, &Placed),

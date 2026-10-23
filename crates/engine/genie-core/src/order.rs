@@ -3421,7 +3421,13 @@ impl Turns {
             ready,
             failed,
             failed_first,
-        } = crate::attack::Attack::command(target, &e, arms, visible, tp, mover)?;
+        } = crate::attack::Attack::command(
+            (target, &self.spatial),
+            &e,
+            arms,
+            (visible, tp),
+            mover,
+        )?;
         if failed_first {
             // readyToAttack's set_state(13) before the start's set_state(4)
             unit.anim_speed = Some(1.0);

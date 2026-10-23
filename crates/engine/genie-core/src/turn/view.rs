@@ -1070,7 +1070,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             ready,
             failed,
             failed_first,
-        } = crate::attack::Attack::command(target, &e, arms, visible, t.player, mover)?;
+        } = crate::attack::Attack::command(
+            (target, self.spatial),
+            &e,
+            arms,
+            (visible, t.player),
+            mover,
+        )?;
         if failed_first {
             unit.anim_speed = Some(1.0);
         }

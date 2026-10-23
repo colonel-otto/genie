@@ -455,7 +455,8 @@ impl Attack {
     /// least range, missile and frame: a quiet sub-action, `+0x61` set, its `MoveTo` showing the
     /// hunt's sprite) and the start (slot 5 with 1, `0x140a7f8c0`, [`Attack::begin`]); the target
     /// is the object itself (the area-effect and gate cases are not reached by a villager) and in
-    /// sight (a hunt's targets are). The unit's `+0x900` (attack count) is cleared and its sprites
+    /// sight (a hunt's targets are, and none is a gate, whose parts' gaps the hunt's callers do
+    /// not hand on). The unit's `+0x900` (attack count) is cleared and its sprites
     /// set; the slice holds neither. True with it: the last `MoveTo` started arrived, and the
     /// caller shows its idle sprite ([`Attack::arrived_sprite`]).
     ///
@@ -476,8 +477,11 @@ impl Attack {
             runs: false,
             ..Self::own(target, e, arms)
         };
+        if e.target_class == GATE {
+            return Err(Unsupported("a hunt's Attack on a gate (its parts' gaps)"));
+        }
         let mut posted = Vec::new();
-        let begun = a.begin(e, (true, 0), mover, &mut posted)?;
+        let begun = a.begin((e, e.gap), (true, 0), mover, &mut posted)?;
         if begun.ready {
             return Err(Unsupported(
                 "an attack that starts in reach and cannot move (set_state 6)",
@@ -500,22 +504,28 @@ impl Attack {
     /// (`FUN_140a7c210` with sub-action 0: the master's weapon range and least range, its
     /// sprites, missile and frames, its `MoveTo`'s the running one, slot 0x7d0, or the walking
     /// one: the running speed either way; `+0x61` clear) and the start ([`Attack::begin`]) on a
-    /// target of `target_owner`, `visible` to the unit's player.
+    /// target of `target_owner`, `visible` to the unit's player, in `world` (a gate's reach is to
+    /// its nearest part too).
     ///
     /// # Errors
     ///
-    /// What the start does not model.
+    /// What the start does not model, and a target the world does not hold.
     pub fn command(
-        target: i32,
+        (target, world): (i32, &crate::spatial::Spatial),
         e: &Engagement,
         arms: Arms,
-        visible: bool,
-        target_owner: usize,
+        (visible, target_owner): (bool, usize),
         mover: &mut Mover,
     ) -> Result<Commanded, Unsupported> {
+        let t = *world
+            .get_known(target)?
+            .ok_or(Unsupported("an Attack whose target is gone"))?;
+        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let reach_gap =
+            crate::movement::gate_gap(world, (e.position, ground), (target, &t), e.gap, |g| g);
         let mut attack = Self::own(target, e, arms);
         let mut posted = Vec::new();
-        let begun = attack.begin(e, (visible, target_owner), mover, &mut posted)?;
+        let begun = attack.begin((e, reach_gap), (visible, target_owner), mover, &mut posted)?;
         Ok(Commanded {
             attack,
             arrived: begun.arrived,
@@ -546,12 +556,13 @@ impl Attack {
     /// range, half a tile more up to [`NO_RANGE`]; `COMISS`/`JBE`: a NaN gap is within) it posts
     /// 0x1fd, then stance 1's leash fails a target [`LEASH_SLACK`] past the range from the unit
     /// AI's `state_position` (`FUN_14099ef70`'s root, `COMISS`/`JNC`: a NaN distance holds), a unit
-    /// that may move turns to state 4, any other fails. Within it the target's place becomes the
-    /// point and the unit faces it (`FUN_141162db0`, but masters 1704 and 1706): its ready end. A
-    /// gate's parts' gaps (class 39, `FUN_1415417a0` on its slot 0x680) are not modelled.
+    /// that may move turns to state 4, any other fails. The reach is to `reach_gap`, a gate's
+    /// nearest of it and its first two parts ([`crate::movement::gate_gap`]). Within it the
+    /// target's place becomes the point and the unit faces it (`FUN_141162db0`, but masters 1704
+    /// and 1706): its ready end.
     fn begin(
         &mut self,
-        e: &Engagement,
+        (e, reach_gap): (&Engagement, f32),
         (visible, target_owner): (bool, usize),
         mover: &mut Mover,
         posted: &mut Vec<(i32, [i32; 3])>,
@@ -573,9 +584,7 @@ impl Attack {
                 posted.push((0x1fe, [-1; 3]));
             }
             failed_first = !movable;
-        } else if e.target_class == GATE {
-            return Err(Unsupported("an attack on a gate (its parts' gaps)"));
-        } else if !crate::fmath::at_most_or_unordered(e.gap, self.reach()) {
+        } else if !crate::fmath::at_most_or_unordered(reach_gap, self.reach()) {
             if !self.sub_action {
                 posted.push((0x1fd, [0; 3]));
             }
@@ -905,8 +914,9 @@ impl Attack {
     /// tile more without one) a unit's own Attack posts 0x1fd; stance 1's leash fails a target
     /// too far from the unit AI's `state_position` ([`Attack::off_leash`]); a unit that may move follows the target
     /// (`set_state` 4, [`Readiness::Away`]), any other fails. Within it the target's place becomes
-    /// the point and the unit faces it ([`Attack::face`]). A gate target (class 39, its parts'
-    /// gaps) is not modelled.
+    /// the point and the unit faces it ([`Attack::face`]). A gate's reach (class 39) is to the
+    /// nearest of it and its first two parts (its slot 0x680 through `FUN_1415417a0`, `MINSS`:
+    /// [`crate::movement::gate_gap`]).
     fn ready_to_attack(
         &mut self,
         walk: &mut Walk<'_>,
@@ -972,9 +982,9 @@ impl Attack {
             }
             return self.fail(walk, s);
         }
-        if t.class == GATE {
-            return Err(Unsupported("an attack on a gate (its parts' gaps)"));
-        }
+        // a gate's reach is to the nearest of it and its first two parts (slot 0x680, MINSS)
+        let gap =
+            crate::movement::gate_gap(walk.world, (at, ground), (self.target, &t), gap, |g| g);
         if self.reach() < gap {
             if !self.sub_action {
                 s.posted.push((0x1fd, [0; 3]));
@@ -2840,7 +2850,8 @@ mod tests {
     fn the_start_of_a_unit_that_cannot_move_goes_ready_in_reach_and_fails_out_of_it() {
         let start = |e: Engagement| {
             let mut mover = soldier_mover(e.speed);
-            Attack::command(7, &e, standing_arms(), true, 2, &mut mover).unwrap()
+            let world = world_with(7, 2, 6, e.target_position);
+            Attack::command((7, &world), &e, standing_arms(), (true, 2), &mut mover).unwrap()
         };
         for e in [
             engaged(0.5, 1.2, false, 2),
@@ -2884,7 +2895,9 @@ mod tests {
     fn the_start_of_a_unit_that_may_move_turns_to_state_4_whatever_ready_to_attack_found() {
         let start = |e: Engagement, visible: bool| {
             let mut mover = soldier_mover(e.speed);
-            let c = Attack::command(7, &e, standing_arms(), visible, 2, &mut mover).unwrap();
+            let world = world_with(7, 2, 6, e.target_position);
+            let c = Attack::command((7, &world), &e, standing_arms(), (visible, 2), &mut mover)
+                .unwrap();
             assert_eq!((c.attack.state, c.ready, c.failed), (MOVE, false, false));
             assert_eq!(c.attack.move_to, Some(MoveTo::Start));
             (c.failed_first, c.posted, mover.speed_stopped)
@@ -2923,34 +2936,82 @@ mod tests {
         // a target out of sight of a unit that cannot follow it fails
         let mut mover = soldier_mover(1.2);
         let e = engaged(3.0, 1.2, false, 2);
-        let c = Attack::command(7, &e, standing_arms(), false, 2, &mut mover).unwrap();
+        let world = world_with(7, 2, 6, e.target_position);
+        let c = Attack::command((7, &world), &e, standing_arms(), (false, 2), &mut mover).unwrap();
         assert_eq!((c.failed, c.ready, c.posted), (true, false, vec![]));
     }
 
     /// readyToAttack's ready end turns the unit to its target (`FUN_141162db0`) but for masters
-    /// 1704 and 1706; a gate's parts' gaps are not modelled.
+    /// 1704 and 1706.
     #[test]
-    fn the_start_faces_the_target_but_for_masters_1704_and_1706_and_stops_at_gates() {
+    fn the_start_faces_the_target_but_for_masters_1704_and_1706() {
         let north = Engagement {
             target_position: [10.0, 10.5, 0.0],
             ..engaged(0.5, 0.0, false, 2)
         };
+        let world = world_with(7, 2, 6, north.target_position);
         let angle = |master| {
             let mut mover = soldier_mover(0.0);
             mover.angle = 0.0;
             let e = Engagement { master, ..north };
-            let _ = Attack::command(7, &e, standing_arms(), true, 2, &mut mover).unwrap();
+            let _ =
+                Attack::command((7, &world), &e, standing_arms(), (true, 2), &mut mover).unwrap();
             mover.angle
         };
         assert_ne!(angle(4), 0.0);
         assert_eq!(angle(1704), 0.0);
         assert_eq!(angle(1706), 0.0);
-        let gate = Engagement {
+    }
+
+    /// A gate's reach (class 39): the nearest of it and its first two parts (slot 0x680 in id
+    /// order, `MINSS`), in the start's readyToAttack and an update's; the least range reads the
+    /// gate's own gap. A gate 3 tiles off with a part 0.5 off is in reach of a range of 1.
+    #[test]
+    fn a_gate_s_reach_is_to_its_nearest_part() {
+        let gate_at = [13.4, 10.0, 0.0];
+        let gated = || {
+            let mut world = world_with(7, 0, GATE, gate_at);
+            for (id, x) in [(8, 10.9), (9, 20.0), (10, 10.5)] {
+                world.insert(
+                    id,
+                    crate::spatial::Placed {
+                        position: [x, 10.0, 0.0],
+                        ..*world.get(7).unwrap()
+                    },
+                );
+                world.set_annex(id, Some(7));
+            }
+            world
+        };
+        let world = gated();
+        let e = Engagement {
             target_class: GATE,
-            ..engaged(0.5, 0.0, false, 2)
+            ..engaged(3.0, 0.0, false, 2)
         };
         let mut mover = soldier_mover(0.0);
-        assert!(Attack::command(7, &gate, standing_arms(), true, 2, &mut mover).is_err());
+        let c = Attack::command((7, &world), &e, standing_arms(), (true, 2), &mut mover).unwrap();
+        // the part 8 is 0.5 off (its footprint 0.1); the part 10, the third, is not read
+        assert_eq!((c.ready, c.failed, c.posted), (true, false, vec![]));
+        // without its parts the gate is out of reach
+        let bare = world_with(7, 0, GATE, gate_at);
+        let mut mover = soldier_mover(0.0);
+        let c = Attack::command((7, &bare), &e, standing_arms(), (true, 2), &mut mover).unwrap();
+        assert_eq!((c.ready, c.failed), (false, true));
+        // an update's readyToAttack the same way
+        let mut world = gated();
+        let mut mover = soldier_mover(0.0);
+        let mut walk = walk_in(&mut mover, &mut world);
+        let mut rig = Rig::new(Victim {
+            id: 7,
+            position: gate_at,
+            ..Victim::default()
+        });
+        let mut s = rig.strike();
+        s.can_move = false;
+        let mut a = soldier_attack(7, 1.0, 0.0, [NONE; 3]);
+        let r = a.ready_to_attack(&mut walk, &mut s, false).unwrap();
+        assert!(matches!(r, Readiness::Ready));
+        assert_eq!(a.point, gate_at);
     }
 
     /// `set_state(6)` at the start of a unit that cannot move: readyToAttack again finds the
