@@ -221,6 +221,20 @@ impl Streams {
         }
     }
 
+    /// `CommHandler::setLastWorldRandom` (`0x140d3ce20`, "setLastRandoms"), the end of every
+    /// world update after the next frame seed: a `rand15` of the AI, Action, Object and Player
+    /// streams in that order, which the multiplayer sync sends with the frame seed. The next
+    /// update's `SeedAll` reseeds them; their `last` values and draw counts stay.
+    #[track_caller]
+    pub fn set_last_randoms(&mut self) -> [u32; 4] {
+        // no closure: the draw trace names the caller's line
+        let ai = self.get(Stream::Ai).rand15();
+        let action = self.get(Stream::Action).rand15();
+        let object = self.get(Stream::Object).rand15();
+        let player = self.get(Stream::Player).rand15();
+        [ai, action, object, player]
+    }
+
     /// The stream `stream`.
     pub const fn get(&mut self, stream: Stream) -> &mut Well512 {
         &mut self.rngs[stream as usize]
@@ -283,6 +297,21 @@ mod tests {
     }
 
     // Expected values from an independent Python transcription of the same decompiled functions.
+
+    /// setLastRandoms draws once from the AI, Action, Object and Player streams, in that order,
+    /// and leaves the others alone.
+    #[test]
+    fn set_last_randoms_draws_four_streams_once() {
+        let mut streams = Streams::default();
+        streams.seed_all(1062);
+        let mut copy = streams.clone();
+        let values = streams.set_last_randoms();
+        let expected = [Stream::Ai, Stream::Action, Stream::Object, Stream::Player]
+            .map(|s| copy.get(s).rand15());
+        assert_eq!(values, expected);
+        assert_eq!(streams, copy);
+        assert_eq!(streams.get(Stream::Ai).last, values[0]);
+    }
 
     #[test]
     fn set_seed_fills_the_state_and_restarts_the_index() {

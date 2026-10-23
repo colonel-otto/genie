@@ -1533,6 +1533,8 @@ impl Turns {
         self.player_turn = (self.player_turn + 1) % self.players.len();
         self.victory_check();
         self.frame_seed = self.streams.get(Stream::World).rand15();
+        // setLastRandoms (0x140d3ce20): the multiplayer sync's draws
+        let _ = self.streams.set_last_randoms();
     }
 }
 

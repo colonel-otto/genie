@@ -3877,10 +3877,10 @@ fn build_wall_command(packet: &de::command::BuildWall, sections: &[PlayerSection
     })
 }
 
-/// The unit AI a new object of `master` gets, by its class (`FUN_141215a90`): the building AI
-/// (17) for a building class without a missile, none for the classes without one, and for the
-/// rest a class the slice has no constructor for. The class is the master's fifth saved short,
-/// the missile the combat master's `missile_id` (`+0x8d4` in the game).
+/// The unit AI a new object of `master` gets (`FUN_141215a90`, genie-core's
+/// [`genie_core::unit_ai::factory_type`]): by its class (the master's fifth saved short), its id
+/// and its volley missile (the tribe combat master's `volley_missile_id`, the game's `+0x8d4`):
+/// a building with one gets the tower's unit AI and its fourth draw.
 fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsupported> {
     let m = objects
         .master(master)
@@ -3889,14 +3889,19 @@ fn new_unit_ai(objects: &PlayerObjects, master: i16) -> Result<Option<u32>, Unsu
         .static_part()
         .ok_or(Unsupported("BUILD of a master without a static part"))?
         .read_temp_5;
-    let missile = combat_master(m).map_or(-1, |c| c.missile_id);
-    match class {
-        5 | 7 | 8 | 11 | 14 | 15 | 16 | 30..=34 | 38 | 42 | 48 | 63 => Ok(None),
-        3 | 27 | 39 | 49 | 60 if missile < 0 => Ok(Some(17)),
-        _ => Err(Unsupported(
-            "BUILD of a master whose unit-AI class is not modelled",
-        )),
-    }
+    // the factory (`FUN_141215a90`) gives a building with a volley missile (the master's
+    // `+0x8d4`, `volley_missile_id`) the tower's unit AI, as genie-core's `factory_type` does
+    let volley = m
+        .tribe_master_combat_object
+        .as_deref()
+        .or_else(|| {
+            m.tribe_master_building_object
+                .as_deref()
+                .map(|b| &b.tribe_master_combat_object)
+        })
+        .and_then(|c| i16::try_from(c.volley_missile_id).ok())
+        .unwrap_or(-1);
+    genie_core::unit_ai::factory_type(class, master, volley)
 }
 
 fn combat_master(m: &Master) -> Option<&genie_save::generated::world::RgeMasterCombatObject> {
