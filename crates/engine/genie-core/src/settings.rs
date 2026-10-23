@@ -51,6 +51,10 @@ pub struct Settings {
     pub villager_force_drop: bool,
     /// `mCheatsEnabled` (`+0x1074`, `FUN_1412ffe00`): players may order each other's units.
     pub cheats_enabled: bool,
+    /// `mTreatyLength`: the treaty's minutes, 0 for none. The world's treaty monitor (`+0x820`,
+    /// `FUN_141461190`) fills its players' zones only while a treaty holds (`FUN_141461c00`);
+    /// the slice holds no treaty.
+    pub treaty_length: u32,
 }
 
 impl Settings {

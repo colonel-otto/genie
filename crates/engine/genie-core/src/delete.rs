@@ -167,17 +167,15 @@ impl Turns {
     /// (`+0x880`: each entry with a resource and the paid flag, slot 0xf8) its build time has
     /// still to go (`(build time - build points) / build time`, at most 1), all of it while no
     /// builder started it (`+0xc60`); then its hit points go to 0, and such a foundation is
-    /// destroyed at once ([`Turns::destroy_foundation`]). Not modelled: master 621 (the world's
-    /// `+0x820`, `FUN_1414615d0`). Not held: the deleted marks (`+0xa0c`, `+0xc`, `+0xb9c`), the
+    /// destroyed at once ([`Turns::destroy_foundation`]); master 621 clears its owner's treaty
+    /// zones first ([`Turns::clear_treaty_zones`]). Not held: the deleted marks (`+0xa0c`, `+0xc`, `+0xb9c`), the
     /// semi-asleep list (`+0xc98`), the killer (`+0x690`) and a computer player's AI event (slot
     /// 0x380).
     fn delete_building(&mut self, owner: usize, id: i32) -> Result<(), Unsupported> {
         let (_, unit) = self.object(id).expect("the caller's");
         let master = self.master_of(owner, unit.life.master_id)?;
         if master.id == TOWN_CENTRE_621 {
-            return Err(Unsupported(
-                "a deleted town centre 621 (the world's +0x820)",
-            ));
+            self.clear_treaty_zones()?;
         }
         self.remove_building(owner, id)
     }
@@ -231,8 +229,8 @@ impl Turns {
     /// (`FUN_1411cfb30`): in state 2 what its storage gave its owner leaves
     /// ([`Turns::storage_leaves`]); a town-centre foundation (621) while its owner has no town
     /// centre (`FUN_1416597e0`, the player's object tracker for masters 109 and 444; the slice
-    /// asks its live lists) would clear the world's `+0x820` entry of the owner
-    /// (`FUN_1414615d0`, not modelled); then the action object's. The action object's (types 40 to
+    /// asks its live lists) clears its owner's treaty zones ([`Turns::clear_treaty_zones`]);
+    /// then the action object's. The action object's (types 40 to
     /// 79 and the buildings, `FUN_14106c420`): its action list goes (`FUN_140a98620`,
     /// [`Turns::clear_actions`]), then the base destroy ([`Turns::base_destroy`]). A building's
     /// owner's watched list lets it go last (`FUN_141091310`). Not held: the semi-asleep flag
@@ -250,9 +248,7 @@ impl Turns {
                 self.storage_leaves(owner, id, &master)?;
             }
             if master.id == TOWN_CENTRE_621 && !self.has_town_centre(owner) {
-                return Err(Unsupported(
-                    "a deleted town centre 621 (the world's +0x820)",
-                ));
+                self.clear_treaty_zones()?;
             }
         }
         if ACTION_OBJECT <= master.kind
@@ -263,6 +259,24 @@ impl Turns {
         self.base_destroy(owner, id)?;
         if master.kind == BUILDING {
             self.unwatch(owner, id);
+        }
+        Ok(())
+    }
+
+    /// `FUN_1414615d0` on the world's treaty monitor (`+0x820`) for a town centre's owner: its
+    /// zones (`+0x18 + (owner − 1) × 0x24`: two rectangles and a flag) go to 0, and the game
+    /// screen's list of them (`FUN_1414d2060`, `Game/ui/GameScreenPC.cpp`) loses its entries. Only
+    /// a treaty fills the zones (`FUN_141461c00`), so without one they are 0 already.
+    ///
+    /// # Errors
+    ///
+    /// A game with a treaty ([`crate::settings::Settings::treaty_length`]), whose zones the slice
+    /// does not hold.
+    const fn clear_treaty_zones(&self) -> Result<(), Unsupported> {
+        if self.settings.treaty_length != 0 {
+            return Err(Unsupported(
+                "a deleted town centre 621 during a treaty (its owner's treaty zones)",
+            ));
         }
         Ok(())
     }
@@ -630,6 +644,36 @@ mod tests {
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
             (25.0 * share, 0.0, 0)
+        );
+    }
+
+    /// A town-centre foundation (master 621) deleted, and destroyed at once: both clear its
+    /// owner's treaty zones in the world's treaty monitor (`+0x820`, `FUN_1414615d0`, from
+    /// `FUN_1411cd780` and `FUN_1411cfb30`), which only a treaty fills (`FUN_141461c00`): without
+    /// one the delete is any building's; with one the zones are not held.
+    #[test]
+    fn a_deleted_town_centre_foundation_clears_no_zones_without_a_treaty() {
+        let town_centre = |t: &mut Turns| {
+            for m in &mut t.masters {
+                let mut tc = m.get(70).unwrap().clone();
+                tc.id = TOWN_CENTRE_621;
+                *m = Masters::new(m.iter().cloned().chain([tc]));
+            }
+            t.players[1].objects[1].life.master_id = TOWN_CENTRE_621;
+        };
+        let mut t = game(0.0, true);
+        town_centre(&mut t);
+        t.delete(1, 11).unwrap();
+        let tc = &t.players[1].objects[1].life;
+        assert_eq!((t.players[1].resources[1], tc.hp, tc.state), (25.0, 0.0, 7));
+        let mut t = game(0.0, true);
+        town_centre(&mut t);
+        t.settings.treaty_length = 10;
+        assert_eq!(
+            t.delete(1, 11),
+            Err(Unsupported(
+                "a deleted town centre 621 during a treaty (its owner's treaty zones)"
+            ))
         );
     }
 }

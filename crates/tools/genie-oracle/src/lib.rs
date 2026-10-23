@@ -2414,6 +2414,7 @@ pub const fn settings(
         selected_content_mode: o.selected_content_mode,
         villager_force_drop: o.villager_force_drop != 0,
         cheats_enabled: o.cheats_enabled != 0,
+        treaty_length: o.treaty_length,
     }
 }
 
