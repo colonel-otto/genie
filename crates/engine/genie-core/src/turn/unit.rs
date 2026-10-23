@@ -744,7 +744,7 @@ impl Unit {
         Ok(true)
     }
 
-    /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::delete_actions`])
+    /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
     /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
     /// [`crate::attack::set_sprite`]) where the slice holds its sprite.
     pub(in crate::turn) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), Unsupported> {
@@ -755,7 +755,7 @@ impl Unit {
     }
 
     /// [`Unit::stop_action`] on the parts of the world it changes: the targets its actions let
-    /// go and the foundations its Build leaves (`by` the unit, [`Unit::delete_actions`]), its
+    /// go and the foundations its Build leaves (`by` the unit, [`Unit::clear_own_actions`]), its
     /// masters and sprites, and the Sprite stream.
     pub(in crate::turn) fn stop_with(
         &mut self,
@@ -773,7 +773,7 @@ impl Unit {
     }
 
     /// The action list's clearing (`FUN_140a98620`) as the unit's own commands and stops run it
-    /// ([`Unit::delete_actions`]); an action the slice does not hold has a teardown it cannot
+    /// ([`Unit::clear_own_actions`]); an action the slice does not hold has a teardown it cannot
     /// run.
     pub(in crate::turn) fn tear_down_actions(
         &mut self,
@@ -786,7 +786,7 @@ impl Unit {
                 "a unit AI's stop of an action list the slice does not model",
             ));
         }
-        self.delete_actions(releases, builder_leaves, by)
+        self.clear_own_actions(releases, builder_leaves, by)
     }
 
     /// The unit's slot 0x68 with its master's standing sprite (slot 0x798's, the master's
@@ -834,7 +834,7 @@ impl Unit {
     /// # Errors
     ///
     /// The unit's stop that the motion step does not model.
-    pub(crate) fn delete_actions(
+    pub(crate) fn clear_own_actions(
         &mut self,
         releases: &mut Vec<(i32, Releaser)>,
         builder_leaves: &mut Vec<i32>,
@@ -4312,7 +4312,7 @@ impl Unit {
         // state 2 (the Wonder past state 5) loses its action list (FUN_140a98620)
         if loses_actions(&self.life) {
             let by = self.releaser(c);
-            self.delete_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+            self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         }
         // RGE_Action_Object::update with no action in state 2 starts the master's default task
         // (slot 0x7f0): a bird's Fly, whose first update comes in the next tick
@@ -6105,7 +6105,7 @@ impl Unit {
     /// `state`): a `MoveTo` to the target within `range`, showing the master's running sprite (the
     /// walking one without it), takes the target it holds (`FUN_140aa0df0`, quiet 0: slot 0x178,
     /// [`crate::move_to::holds_object`]), then replaces its action list (`FUN_140a98620`,
-    /// [`Unit::delete_actions`]: the old actions' teardowns let their targets go) and starts
+    /// [`Unit::clear_own_actions`]: the old actions' teardowns let their targets go) and starts
     /// ([`MoveToAction::to_object`]).
     pub(in crate::turn) fn move_to_object(
         &mut self,
@@ -6136,7 +6136,7 @@ impl Unit {
             c.takes.push((target, self.releaser(c)));
         }
         let by = self.releaser(c);
-        self.delete_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+        self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         let mover = self.mover.as_mut().expect("tested above");
         let move_to = MoveToAction::to_object(
             c.spatial,

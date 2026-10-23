@@ -4150,14 +4150,18 @@ impl Turns {
     }
 
     /// The action list's clearing (`FUN_140a98620`) of object `idx` of player `player`: each
-    /// action's teardown ([`Unit::delete_actions`]), then what they leave to the world: a
+    /// action's teardown ([`Unit::clear_own_actions`]), then what they leave to the world: a
     /// counted builder leaves its building (`FUN_140aadbf0` before its base teardown,
     /// [`Turns::leave_builders`]), then the targets go (slot 0x180, [`Turns::release`]). A
     /// building's production is a list of its own, which stays.
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), Unsupported> {
         let by = self.releaser(player, idx);
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
-        self.players[player].objects[idx].delete_actions(&mut releases, &mut builder_leaves, by)?;
+        self.players[player].objects[idx].clear_own_actions(
+            &mut releases,
+            &mut builder_leaves,
+            by,
+        )?;
         for id in builder_leaves {
             self.leave_builders(id)?;
         }

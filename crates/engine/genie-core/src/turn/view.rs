@@ -90,7 +90,7 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) releases: Vec<(i32, Releaser)>,
     pub(in crate::turn) takes: Vec<(i32, Releaser)>,
     /// The foundations a counted builder's Build leaves as the unit's action list goes
-    /// ([`Unit::delete_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
+    /// ([`Unit::clear_own_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
     /// builder less ([`Turns::leave_builders`]), the caller's before the releases.
     pub(in crate::turn) builder_leaves: Vec<i32>,
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
