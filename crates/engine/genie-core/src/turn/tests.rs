@@ -1797,6 +1797,51 @@ fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
     );
 }
 
+/// The forced replay's removal of a frozen object the game no longer holds is the leave of an
+/// object whose update returned 1 ([`Turns::leave_world`]): its owner's watched list lets it go
+/// (`FUN_141091310`) and a recyclable master's missile goes to the pool of type 60.
+#[test]
+fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
+    let missile = Unit {
+        id: 9,
+        stopped: true,
+        missile: Some(crate::missile::Missile {
+            max_range: 0.0,
+            fired_from: -1,
+            charge: false,
+            flying: true,
+            step: [0.0; 3],
+            attack_count: 0,
+            action: None,
+        }),
+        life: Lifecycle {
+            master_id: 54,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let mut t = one_player(vec![live(7), missile], [0.0; 4]);
+    t.masters = vec![Masters::new([Master {
+        id: 54,
+        kind: 60,
+        recyclable: true,
+        ..Master::default()
+    }])];
+    t.players[0].watched.push(crate::ghost::Watched {
+        id: 9,
+        cell: crate::ghost::Cell::Tile(0),
+        bits: 0,
+    });
+    let game = GameState {
+        players: vec![vec![live(7)]],
+        ..GameState::default()
+    };
+    assert_eq!(t.force(&game), vec![]);
+    assert_eq!(ids(&t), vec![7]);
+    assert_eq!(t.players[0].watched, Vec::new());
+    assert_eq!(t.recycling.missiles, [(9, true)]);
+}
+
 /// A player with the villagers' masters (a population of one each) and room for more.
 fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> Turns {
     let mut attributes = vec![0.0; 250];

@@ -395,6 +395,35 @@ pub(crate) fn released(
 }
 
 impl Turns {
+    /// The leave of object `gone`, out of player `p`'s live list already (its list's update that
+    /// returned 1, `FUN_14116b5e0`): its player's remove (slot 0x2d8) takes it out of the tracker,
+    /// it leaves the visible-resource lists ([`forget_resource`]), a combat object's destructor
+    /// lowers its player's class counters (`FUN_141200450`), it leaves the world's places and its
+    /// owner's watched list (`FUN_141091310`), a recyclable master's missile goes to the pool of
+    /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
+    /// world's leave of the place that the slice does not model.
+    pub(in crate::turn) fn leave_world(
+        &mut self,
+        p: usize,
+        gone: &Unit,
+    ) -> Result<(), Unsupported> {
+        self.track_remove(p, gone.id, gone.life.master_id);
+        let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
+        forget_resource(&mut self.spatial, master, gone.id, gone.position);
+        if let Some(m) = master.filter(|m| 70 <= m.kind) {
+            count_class(&mut self.players[p].attributes, m, -1.0);
+        }
+        let recyclable = master.is_some_and(|m| m.recyclable);
+        let left = self.spatial.leave(gone.id);
+        self.unwatch(p, gone.id);
+        if let Some(m) = gone.missile.as_ref().filter(|_| recyclable) {
+            self.recycling.missiles.push((gone.id, m.flying));
+        }
+        self.pathing.removed(gone.id);
+        self.pathing.tiles_changed(self.spatial.take_changes());
+        left
+    }
+
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): a
     /// live object the slice holds, with its relations to the attacker's player and whether its
     /// place is a guess.
