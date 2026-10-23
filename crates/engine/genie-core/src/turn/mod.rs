@@ -35,7 +35,7 @@ pub use crate::turn::player::{Formations, Player};
 pub(crate) use crate::turn::unit::EnterWorld;
 pub use crate::turn::unit::Unit;
 use crate::turn::unit::{AiResume, Captured, Step, same_members};
-pub(crate) use crate::turn::unit::{annexes_of, give_load};
+pub(crate) use crate::turn::unit::{PointMove, annexes_of, give_load};
 pub(crate) use crate::turn::view::DropWorld;
 use crate::turn::view::{Context, Foreign};
 pub(crate) use crate::turn::world::{

@@ -3791,11 +3791,16 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         }),
         ..Unit::default()
     };
-    assert_eq!(u.restore_patrol(6), Ok(Some(77)));
+    let run = u.restore_patrol().expect("the saved patrol's move");
+    assert_eq!(
+        (run.point, run.range, run.force, run.walk),
+        ([30.0, 20.25, 0.5], 0.0, true, false)
+    );
     assert_eq!(
         u.mover.as_ref().unwrap().user_waypoints,
         [[20.5, 0.5, 20.5], [30.5, 0.5, 20.25]]
     );
+    assert_eq!(ai_move_of(&mut u, run, 6), Ok(vec![77]));
     let move_to = u.move_to.unwrap();
     assert_eq!(
         (move_to.goal, move_to.range, move_to.run),
@@ -3912,4 +3917,249 @@ fn building_short_of_its_build_time_dies(state: u8) {
     let u = &t.players[0].objects[0];
     assert_eq!(u.life.state, 4);
     assert_eq!(u.sprite.unwrap().graphic.id, 389);
+}
+
+/// A unit of the AI-move tests: the walker of the hunt tests at (10.5, 10.5), master 83, on no
+/// pasture.
+fn mover_unit(id: i32) -> Unit {
+    Unit {
+        id,
+        position: [10.5, 10.5, 0.0],
+        mover: Some(crate::hunt::tests::walker()),
+        my_pasture: -1,
+        life: Lifecycle {
+            master_id: 83,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    }
+}
+
+/// A unit's own Attack on `target` (second target `target2`) in `state`, without a `MoveTo`.
+fn own_attack(target: i32, target2: i32, state: u8) -> crate::attack::Attack {
+    crate::attack::Attack {
+        target,
+        target2,
+        state,
+        timer: 0.0,
+        range: 0.0,
+        min_range: 0.0,
+        point: [-1.0; 3],
+        seen: [0.0; 3],
+        move_to: None,
+        move_wait: crate::move_to::MoveWait::default(),
+        pending: false,
+        swing: 0.0,
+        rest: 0.0,
+        arms: crate::attack::Arms {
+            move_sprite: None,
+            sprite: None,
+            second_sprite: None,
+            idle_sprite: None,
+            idle_attack_sprite: None,
+            missile: -1,
+            fire_frame: -1,
+            interrupt_frame: -1,
+        },
+        sub_action: false,
+        repaths: false,
+        runs: true,
+    }
+}
+
+/// The unit's slot 0x340 ([`Unit::ai_move_with`]) for the unit of class `class` of player 1:
+/// what it let go, or why it stopped.
+fn ai_move_of(
+    u: &mut Unit,
+    m: crate::unit_ai::AiMove,
+    class: i16,
+) -> Result<Vec<i32>, Unsupported> {
+    let by = Releaser {
+        id: u.id,
+        class,
+        player: 1,
+    };
+    let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+    let mut rng = Well512::default();
+    u.ai_move_with(
+        m,
+        (class, 1),
+        (&mut releases, &mut leaves, by),
+        (None, &std::collections::BTreeMap::new(), &mut rng),
+    )?;
+    assert!(releases.iter().all(|&(_, b)| b == by));
+    Ok(releases.into_iter().map(|(t, _)| t).collect())
+}
+
+const AI_POINT: [f32; 3] = [14.5, 12.0, 0.0];
+
+fn forced(walk: bool) -> crate::unit_ai::AiMove {
+    crate::unit_ai::AiMove {
+        point: AI_POINT,
+        range: 0.5,
+        force: true,
+        walk,
+    }
+}
+
+/// `FUN_1410866e0` on a unit whose Attack is done (state 1, 426391614's scout 123 in update
+/// 1052): the Attack's slot 0x40 is the base one (`FUN_140a78490`, 0), so a `MoveTo` to the point
+/// within the move's range, running unless the move walks, replaces the list; the Attack's
+/// teardown lets both its targets go. The `MoveTo` starts (state 3: no target, so never within
+/// 0.01, and the unit has speed).
+#[test]
+fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
+    let mut u = mover_unit(123);
+    u.attack = Some(own_attack(9149, 9150, crate::attack::DONE));
+    assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149, 9150]));
+    assert_eq!(u.attack, None);
+    let mt = u.move_to.expect("the AI's MoveTo");
+    assert_eq!(
+        (mt.state, mt.goal, mt.target, mt.range, mt.run),
+        (MoveTo::Start, Some(AI_POINT), -1, 0.5, true)
+    );
+    // walking: the master's walking sprite
+    let mut u = mover_unit(123);
+    assert_eq!(ai_move_of(&mut u, forced(true), 47), Ok(vec![]));
+    assert!(!u.move_to.unwrap().run);
+}
+
+/// The Gather's slot 0x40 (`0x140a8b740`) takes a move to a point: the target goes (slot 0x68
+/// with none, the caller's release), the point is the move's and `set_state(15)` walks there; the
+/// unit's list keeps the Gather (425780724's villager in update 5526, its Gather idle).
+#[test]
+fn an_ai_move_hands_the_point_to_the_gather() {
+    let task = crate::hunt::HuntTask {
+        id: 2,
+        range: 0.25,
+        resource: 17,
+        sprites: [-1; 4],
+        work_value: 1.0,
+        productivity: -1,
+        kind4: -1,
+    };
+    let bush = crate::gather::Resource {
+        id: 28222,
+        position: [23.5, 93.5, 0.0],
+        class: 7,
+        master: 59,
+        player: 0,
+        workers: 0,
+        drop_site: false,
+        gap: 1.2,
+        radius: [0.5, 0.5],
+    };
+    let rate = crate::gather::StopRate {
+        work_rate: 1.0,
+        capacity: 10.0,
+        productivity: 1.0,
+    };
+    let mut gather = crate::gather::GatherAction::new(task, &bush, false, rate).unwrap();
+    gather.state = crate::gather::IDLE;
+    let mut u = mover_unit(31139);
+    u.gather = Some(gather);
+    assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![28222]));
+    let g = u.gather.expect("the Gather stays");
+    assert_eq!(
+        (g.state, g.target, g.point, g.walk_to),
+        (crate::gather::MOVED, -1, AI_POINT, Some(AI_POINT))
+    );
+    assert_eq!(g.move_to, Some(MoveTo::Start));
+    assert_eq!(u.move_to, None);
+}
+
+/// The Hunt's slot 0x40 (`FUN_140ac52c0`) takes a point unless its task has a work range: its
+/// target goes, `+0x68` is −1 and `set_state(15)` walks to the point (431193960's villager in
+/// update 1465, its Hunt idle). A task with a range answers 0: the `MoveTo` replaces the list and
+/// the Hunt's teardown lets its target and its drop site go.
+#[test]
+fn an_ai_move_hands_the_point_to_a_hunt_without_a_work_range() {
+    let mut u = mover_unit(47);
+    let mut hunt = crate::hunt::tests::hunting(9149);
+    hunt.state = crate::hunt::IDLE;
+    hunt.carry_to = 9150;
+    u.hunt = Some(hunt);
+    assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![9149]));
+    let h = u.hunt.expect("the Hunt stays");
+    assert_eq!(
+        (h.state, h.target, h.carry_to, h.point, h.target_class),
+        (crate::hunt::WALK_POINT, -1, 9150, AI_POINT, -1)
+    );
+    assert_eq!(u.move_to, None);
+    let mut u = mover_unit(47);
+    hunt.task.range = 1.0;
+    u.hunt = Some(hunt);
+    assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![9149, 9150]));
+    assert_eq!(u.hunt, None);
+    assert_eq!(u.move_to.map(|m| m.goal), Some(Some(AI_POINT)));
+}
+
+/// Without the force a head `MoveTo` whose point (`+0x38`) is the move's stands, a point one or
+/// an object one (the target's place, the mover's `move_to_point`); forced, or to another point,
+/// the new `MoveTo` replaces it (its teardown stops the unit and lets its target go).
+#[test]
+fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
+    let unforced = crate::unit_ai::AiMove {
+        force: false,
+        ..forced(false)
+    };
+    let old = crate::move_to::MoveToAction::to_point(AI_POINT, 0.0, false, None);
+    let mut u = mover_unit(5);
+    u.move_to = Some(old);
+    assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
+    assert_eq!(u.move_to, Some(old));
+    let to_object = crate::move_to::MoveToAction {
+        goal: None,
+        target: 9149,
+        ..old
+    };
+    u.move_to = Some(to_object);
+    u.mover.as_mut().unwrap().move_to_point = Some(AI_POINT);
+    assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
+    assert_eq!(u.move_to, Some(to_object));
+    assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149]));
+    assert_eq!(u.move_to.map(|m| (m.target, m.range)), Some((-1, 0.5)));
+    u.move_to = Some(old);
+    let elsewhere = crate::unit_ai::AiMove {
+        point: [1.0, 2.0, 0.0],
+        ..unforced
+    };
+    assert_eq!(ai_move_of(&mut u, elsewhere, 47), Ok(vec![]));
+    assert_eq!(u.move_to.unwrap().goal, Some([1.0, 2.0, 0.0]));
+}
+
+/// `FUN_141216c50`: an unpacked trebuchet (class 54) packs instead (not modelled); a packed one
+/// (class 51) moves as any unit. The base slot 0x40 of an Explore and of a wait for a foundation
+/// takes nothing; an action the slice does not hold stops it.
+#[test]
+fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
+    let mut u = mover_unit(7);
+    assert!(ai_move_of(&mut u, forced(false), 54).is_err());
+    assert_eq!(u.move_to, None);
+    assert_eq!(ai_move_of(&mut u, forced(false), 51), Ok(vec![]));
+    assert_eq!(u.move_to.map(|m| m.goal), Some(Some(AI_POINT)));
+    let mut u = mover_unit(7);
+    u.wait_solidify = Some(crate::wait_solidify::WaitSolidify::new(
+        crate::masters::Task::default(),
+        10028,
+    ));
+    assert_eq!(u.head_takes_point(AI_POINT, 1), Ok(PointMove::Declined));
+    let mut u = mover_unit(7);
+    u.unmodelled_action = Some(Unsupported("a test's action"));
+    assert!(ai_move_of(&mut u, forced(false), 47).is_err());
+}
+
+/// A unit without speed: the `MoveTo`'s start fails it (state 13), whose `set_state` (not
+/// quiet) shows the master's standing sprite: the mover's speed is the standing sprite's and
+/// the unit's `+0x7b8` clears.
+#[test]
+fn an_ai_move_of_a_unit_without_speed_fails_at_its_start_standing() {
+    let mut u = mover_unit(8);
+    let m = u.mover.as_mut().unwrap();
+    m.stats.speed = 0.0;
+    m.stats.stand_speed = 0.0;
+    u.anim_speed = Some(1.0);
+    assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![]));
+    assert_eq!(u.move_to.map(|m| m.state), Some(MoveTo::Failed));
+    assert_eq!(u.anim_speed, Some(0.0));
 }
