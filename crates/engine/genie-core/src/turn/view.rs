@@ -168,6 +168,9 @@ pub(in crate::turn) struct Context<'a> {
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
     pub(in crate::turn) attribute_adds: Vec<(i16, f32)>,
+    /// The events the owner's history records from the object's update (a castle or a wonder it
+    /// completed, [`crate::build::Built::history`]), which the caller adds after it.
+    pub(in crate::turn) history_events: Vec<u8>,
     /// The technologies the owner researches from the object's update (a completed building's),
     /// which the caller completes after the attributes ([`Turns::complete_research`]).
     pub(in crate::turn) techs_done: Vec<i16>,

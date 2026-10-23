@@ -1083,6 +1083,7 @@ impl Turns {
                     tracker: &mut player.tracker,
                     lines: &self.lines,
                     attribute_adds: Vec::new(),
+                    history_events: Vec::new(),
                     techs_done: Vec::new(),
                     carts: Vec::new(),
                     completions: Vec::new(),
@@ -1115,6 +1116,7 @@ impl Turns {
                     std::mem::take(&mut c.attribute_adds),
                     c.order_on_target.take(),
                 );
+                let history_events = std::mem::take(&mut c.history_events);
                 let hunt_objects = std::mem::take(&mut c.hunt_objects);
                 let gather_objects = std::mem::take(&mut c.gather_objects);
                 let leads = c.leads.take();
@@ -1183,6 +1185,13 @@ impl Turns {
                     if let Err(e) = self.clear_object(cl, true) {
                         result = result.and(Err(e));
                     }
+                }
+                // a completed castle's or wonder's history event, the owner's id as data1
+                for kind in history_events {
+                    let now = self.world_time;
+                    self.players[p]
+                        .history
+                        .add_event(kind, p as f32, 0.0, 0, now);
                 }
                 for (kind, amount) in adds {
                     if let Err(e) = self.players[p].add_attribute(kind, amount) {

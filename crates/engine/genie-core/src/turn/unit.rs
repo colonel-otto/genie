@@ -4654,6 +4654,7 @@ impl Unit {
                 for annex in c.spatial.annexes_of(target) {
                     c.annex_states.push((annex, 2));
                 }
+                c.history_events.extend(built.history);
                 c.attribute_adds.extend(built.attributes);
                 c.techs_done.extend(built.tech);
                 if let Some(state) = built.cart {
