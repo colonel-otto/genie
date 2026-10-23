@@ -5722,13 +5722,15 @@ impl UnitAi {
     /// arguments ([`Effect::MoveAside`], which the caller runs after the update); on its 1 the
     /// action value becomes [`MOVE_ASIDE_ACTION`], the old one the last, and the target stays.
     /// The caller's slot 0x340 is `FUN_1410866e0`, which always gives 1, but for classes 51 and
-    /// 54 (`FUN_141216c50`, their packing), which it does not run. True when it moves.
+    /// 54 (`FUN_141216c50`, their packing), which it does not run. The move gives the unit its
+    /// `MoveTo` at once: the update's later checks see it busy. True when it moves.
     fn move_aside(&mut self, m: AiMove, fx: &mut Vec<Effect>) -> bool {
         if !m.force && self.current_action != -1 {
             return false;
         }
         fx.push(Effect::MoveAside(m));
         self.set_action(MOVE_ASIDE_ACTION);
+        self.commanded = true;
         true
     }
 
@@ -7719,6 +7721,46 @@ mod tests {
                 (ORDER_ON_TARGET, 600, [33.5, 2.0, 0.0], 100, true),
             ]
         );
+    }
+
+    /// 426049848's deer 14054 (Gaia's, unit-AI type 2, no actions) in update 685: a town centre's
+    /// foundation sent it off its footprint (0x216). Its move off (slot 0x148 forced: the unit's
+    /// slot 0x340) gives it its `MoveTo` at once, so the full update's later check (slot 0x430)
+    /// sees it busy and the action value 0x2bf stays.
+    #[test]
+    fn a_unit_sent_off_a_footprint_keeps_its_move_aside_through_the_update() {
+        let mut u = idle(2);
+        u.post(Notify::own(14054, SENT_OFF, [200, 200, 14100]), 2)
+            .unwrap();
+        let off = OffFootprint {
+            spot: Some([164.5, 51.5]),
+            z: 0.0,
+            class: PREY_CLASS,
+            computer: false,
+            player: 0,
+            site: None,
+            action_target: None,
+        };
+        let mut side = OffSide(off, Vec::new());
+        let at = Surroundings {
+            position: [164.5, 50.5, 0.0],
+            state: 2,
+            class: PREY_CLASS,
+            ..Surroundings::default()
+        };
+        let fx = u
+            .update(50, 22643, false, &at, &mut rng(), &mut side)
+            .unwrap();
+        assert_eq!(
+            fx,
+            vec![Effect::MoveAside(AiMove {
+                point: [164.5, 51.5, 0.0],
+                range: 0.0,
+                force: true,
+                walk: false,
+            })]
+        );
+        assert_eq!((u.current_action, u.last_action), (MOVE_ASIDE_ACTION, -1));
     }
 
     /// What the unit's slot 0x388 answers ([`UnitSide::wait_solidify`]), and the foundations
