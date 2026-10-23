@@ -6,9 +6,9 @@ use super::generated::world::{
     Action, ActionList, Master, Object, ObjectList, OwnRgeMasterActionObject,
     OwnRgeMasterAnimatedObject, OwnRgeMasterMovingObject, OwnRgeMasterStaticObject,
     OwnTribeMasterCombatObject, Player, PlayerObjects, RgeAction, RgeActionObject,
-    RgeMasterActionObject, RgeMasterMovingObject, RgeMasterStaticObject, RgeMovingObject,
-    RgeObject, RgeStaticObject, TribeCombatObject, TribeMasterCombatObject, UnitAiModule,
-    WorldPlayer,
+    RgeAnimatedObject, RgeMasterActionObject, RgeMasterMovingObject, RgeMasterStaticObject,
+    RgeMovingObject, RgeObject, RgeStaticObject, TribeCombatObject, TribeMasterCombatObject,
+    UnitAiModule, WorldPlayer,
 };
 
 impl Player {
@@ -294,6 +294,21 @@ impl Object {
                     .as_deref()
                     .map(|m| &m.rge_combat_object.rge_action_object.rge_moving_object)
             })
+    }
+
+    /// The animated object of the types 20 and up: its sprite's clock speed (`current_speed`, the
+    /// game's `+0x7b8`), its sprite list's owner.
+    #[must_use]
+    pub fn animated_part(&self) -> Option<&RgeAnimatedObject> {
+        if let Some(m) = self.moving_part() {
+            return Some(&m.rge_animated_object);
+        }
+        let r = self.rge_object.as_deref()?;
+        r.rge_animated_object.as_deref().or_else(|| {
+            r.rge_doppleganger_object
+                .as_deref()
+                .map(|d| &d.rge_animated_object)
+        })
     }
 
     /// The tribe combat object of a combat object (type 70) or a building (type 80).

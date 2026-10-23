@@ -340,9 +340,7 @@ fn unit(
             .combat()
             .map_or([0; 2], |c| [c.melee_armor_removed, c.pierce_armor_removed]),
         charge: object.combat().map_or(0.0, |c| c.charge),
-        anim_speed: object
-            .moving_part()
-            .map(|m| m.rge_animated_object.current_speed),
+        anim_speed: object.animated_part().map(|a| a.current_speed),
         // every animated object's current sprite, which slot 0x68 and the sprite list read
         sprite: masters.and_then(|t| saved_sprite(s, &t.graphics)),
         charge_hit: object

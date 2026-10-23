@@ -788,6 +788,9 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
         ),
         (10028, 70, [30.0, 88.0, 0.0])
     );
+    // an animated object's constructor (FUN_141070cf0) sets its animation speed (+0x7b8) to 0:
+    // its sprite's clock runs from its first update (a dying sprite plays out)
+    assert_eq!(foundation.anim_speed, Some(0.0));
     let builder = |i: usize| {
         (
             p.objects[i].life.master_id,

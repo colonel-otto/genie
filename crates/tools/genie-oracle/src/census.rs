@@ -275,7 +275,7 @@ pub fn header_divergences(
 
 /// The recording run from its header as the census runs it, to update `last`; `before` is called
 /// before each update with its number (1 the first), so a caller can listen to one update's
-/// trace ([`genie_core::trace`]).
+/// trace ([`genie_core::trace`]). The engine as it stands after the run.
 ///
 /// # Errors
 ///
@@ -285,7 +285,7 @@ pub fn header_run(
     masters: Option<&MasterTable>,
     last: usize,
     before: &mut dyn FnMut(usize),
-) -> Result<(), Error> {
+) -> Result<genie_core::turn::Turns, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let sections = header.players();
@@ -300,7 +300,7 @@ pub fn header_run(
             &sections,
         );
     }
-    Ok(())
+    Ok(turns)
 }
 
 /// [`header_divergences`] of one player.

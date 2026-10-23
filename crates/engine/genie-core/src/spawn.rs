@@ -1877,6 +1877,8 @@ impl Turns {
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire
             firepower: made.volley_fire,
             sprite: Some(sprite),
+            // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            anim_speed: Some(0.0),
             ..Unit::default()
         });
         let idx = owner.objects.len() - 1;
@@ -2162,6 +2164,8 @@ impl Turns {
             attackable: true,
             pasture: -1,
             my_pasture: -1,
+            // an animated one's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            anim_speed: (20 <= made.kind).then_some(0.0),
             ..Unit::default()
         });
         // the static init's add to its player (slot 0x2d0) files it in the tracker
@@ -2345,6 +2349,8 @@ impl Turns {
             attackable: true,
             pasture: -1,
             my_pasture: -1,
+            // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            anim_speed: Some(0.0),
             ..Unit::default()
         });
         // the static init's add to its player (slot 0x2d0): it waits in the tracker's pending

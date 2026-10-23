@@ -957,7 +957,8 @@ impl Turns {
             wait_solidify: None,
             stopped: false,
             sprite: None,
-            anim_speed: None,
+            // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            anim_speed: Some(0.0),
             attack_timer: 0.0,
             reload_stinger: 0.0,
             reload_powerup: 0.0,
