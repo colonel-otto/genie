@@ -2714,6 +2714,193 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
     assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
 }
 
+/// The hunt's `set_state(8)` (`0x140ac60e0` case 8): without a second target its search
+/// (`FUN_1411671e0`; without planners by distance) finds the town centre, which becomes the
+/// second target (`FUN_140a7a190`): the caller takes it (slot 0x178). With the drop site held
+/// already it walks there and takes nothing new.
+#[test]
+fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![Player::default(), Player::default()],
+    );
+    placeable(&mut t);
+    let mut walker = crate::hunt::tests::walker();
+    walker.stats.restriction = 0;
+    let mut hunter = Unit {
+        id: 40,
+        position: [10.5, 10.5, 0.0],
+        mover: Some(walker),
+        hunt: Some(crate::hunt::tests::hunting(-1)),
+        life: Lifecycle {
+            master_id: 83,
+            attribute_type: 0,
+            amount: 10.0,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let tc = Unit {
+        id: 9149,
+        position: [20.0, 20.0, 0.0],
+        life: Lifecycle {
+            master_id: 109,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let masters = Masters::new([
+        Master {
+            id: 83,
+            kind: 70,
+            class: 4,
+            radius: [0.2, 0.2],
+            drop_sites: vec![109, -1],
+            ..Master::default()
+        },
+        Master {
+            id: 109,
+            kind: 80,
+            class: 52,
+            radius: [2.0, 2.0],
+            ..Master::default()
+        },
+    ]);
+    let placed = |x: f32, radius: f32, class, master| Placed {
+        position: [x, x, 0.0],
+        radius: [radius, radius],
+        class,
+        player: 1,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(40, placed(10.5, 0.2, 4, 83));
+    t.spatial.insert(9149, placed(20.0, 2.0, 52, 109));
+    let others = [tc];
+    let drop_off = |hunter: &mut Unit, t: &mut Turns| {
+        let world = DropWorld {
+            masters: Some(&masters),
+            spatial: &t.spatial,
+            zones: &mut t.zones,
+            pathing: &mut t.pathing,
+            object: t.streams.get(Stream::Object),
+            world_time: 0,
+            computer: false,
+            construction_rate: 1.0,
+            groups: &t.groups,
+        };
+        hunter.drop_off_in(world, &others)
+    };
+    assert_eq!(drop_off(&mut hunter, &mut t), Ok(Some(9149)));
+    let hunt = hunter.hunt.unwrap();
+    assert_eq!((hunt.state, hunt.carry_to), (crate::hunt::DROP, 9149));
+    assert_eq!(drop_off(&mut hunter, &mut t), Ok(None));
+}
+
+/// The Hunt's update (`0x140ac7a00`) first checks its second target: a drop site past state 6
+/// is let go (`FUN_140a7a190` with none: slot 0x180) and dropped, one the world's table no longer
+/// holds only dropped; the teardown (`FUN_140a73fc0`) of a dead hunter's Hunt and of a failed
+/// one (state 13, removed by `FUN_140a98e20`) lets its drop site go too.
+#[test]
+fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
+    let mut t = deaths_world();
+    let site = |state| Unit {
+        id: 9149,
+        position: [20.0, 20.0, 0.0],
+        workers: 1,
+        life: Lifecycle {
+            state,
+            master_id: 70,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    t.players[1].objects.push(site(2));
+    // the dead hunter 41's Hunt walks its load to the town centre
+    t.players[1].objects[1].hunt.as_mut().unwrap().carry_to = 9149;
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    let workers = |t: &Turns| {
+        t.players[1]
+            .objects
+            .iter()
+            .find(|u| u.id == 9149)
+            .unwrap()
+            .workers
+    };
+    assert_eq!(workers(&t), 0);
+    // a live hunter waiting to search (state 3) whose drop site is past state 6 (the world's
+    // table holds it still); one whose drop site the table no longer holds only drops it
+    let mut t = deaths_world();
+    t.players[1].objects.push(site(7));
+    t.spatial.insert(
+        9149,
+        Placed {
+            position: [20.0, 20.0, 0.0],
+            radius: [2.0, 2.0],
+            class: 3,
+            player: 1,
+            master: 70,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    let hunter = &mut t.players[1].objects[1];
+    hunter.life.hp = 1.0;
+    hunter.hunt = Some(crate::hunt::HuntAction {
+        state: crate::hunt::SEARCH,
+        target: -1,
+        carry_to: 9149,
+        ..crate::hunt::tests::hunting(-1)
+    });
+    let mut gone = t.clone();
+    gone.spatial = Spatial::default();
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    assert_eq!(workers(&t), 0);
+    assert_eq!(t.players[1].objects[1].hunt.map(|h| h.carry_to), Some(-1));
+    gone.tick(100);
+    assert_eq!(workers(&gone), 1);
+    assert_eq!(
+        gone.players[1].objects[1].hunt.map(|h| h.carry_to),
+        Some(-1)
+    );
+    // a failed hunt (state 13) is removed: its teardown lets the drop site go too
+    let mut failed = deaths_world();
+    failed.players[1].objects.push(site(2));
+    failed.spatial = t.spatial.clone();
+    let hunter = &mut failed.players[1].objects[1];
+    hunter.life.hp = 1.0;
+    hunter.hunt = Some(crate::hunt::HuntAction {
+        state: crate::hunt::FAILED,
+        target: -1,
+        carry_to: 9149,
+        ..crate::hunt::tests::hunting(-1)
+    });
+    failed.tick(100);
+    assert_eq!(failed.players[1].unsupported, None);
+    assert_eq!(workers(&failed), 0);
+    assert_eq!(failed.players[1].objects[1].hunt, None);
+}
+
 /// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
 /// any other object's 2).
 #[test]

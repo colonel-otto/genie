@@ -22,7 +22,7 @@ use crate::turn::view::{Context, DropWorld, OwnerView, UnitView};
 use crate::turn::world::{
     Releaser, ResourceWorld, Seeker, built_death, change_hands, clear_look_of, closest_resource_of,
     combat_dies, drop_site_search, farm_bonus, forget_resource, herded, nearest_drop_site,
-    refund_of, release_own, victim_of, wait_progress,
+    refund_of, release_own, state_of, victim_of, wait_progress,
 };
 use crate::turn::{
     ARMED_FIREPOWER, BUILDING_KIND, BUILDING_TERRAIN, DROP_SITE_MASTERS, EJECT_SHARE,
@@ -826,6 +826,7 @@ impl Unit {
         if let Some(mut h) = self.hunt.take() {
             h.tear_down(self.mover.as_mut())?;
             release(h.target);
+            release(h.carry_to);
         }
         if let Some(mut g) = self.gather.take() {
             g.tear_down(self.mover.as_mut())?;
@@ -1028,11 +1029,11 @@ impl Unit {
     }
 
     /// The hunt's state 8 after its load went (`0x140ac7a00` case 7, after `FUN_14119d310`): a
-    /// hunt with a target walks back to it (`set_state` 4), not modelled. One without asks its unit
-    /// AI: the queued orders (gather, hunt, on a target) whose target is gone or dead go
-    /// (`FUN_140c5de60`); orders left end the hunt (the AI's order and action clear, `set_state`
-    /// 1, the action list removes it; its teardown's release of the drop site is not held, as its
-    /// take is not). The target class (the AI's target's, else the hunt's `+0x68`) the
+    /// hunt with a target lets the drop site go (`FUN_140a7a190` with none: slot 0x180) and walks
+    /// back to it (`set_state` 4). One without asks its unit AI: the queued orders (gather, hunt,
+    /// on a target) whose target is gone or dead go (`FUN_140c5de60`); orders left end the hunt
+    /// (the AI's order and action clear, `set_state` 1, the action list removes it: its teardown
+    /// lets the drop site go). The target class (the AI's target's, else the hunt's `+0x68`) the
     /// civilian's slot 0x1b0 knows (`FUN_140c1c4f0`) takes the search by kind (slot 0x80); a hunt
     /// of class 10 searches nothing; a unit in a pasture (`FUN_1411c7670`) and a farm found are
     /// not modelled. Else `ClosestObject` (`FUN_140c488b0`, every relation, below one worker for
@@ -1092,10 +1093,15 @@ impl Unit {
                 .task
                 .walk_sprite_id(self.life.attribute_type, self.life.amount);
             let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+            let hunt = self.hunt.as_mut().expect("the caller's hunt");
+            let site = std::mem::replace(&mut hunt.carry_to, -1);
+            let by = self.releaser(c);
+            if site != -1 {
+                c.releases.push((site, by));
+            }
             let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
                 return Err(Unsupported("a hunter without its hunt or movement state"));
             };
-            hunt.carry_to = -1;
             if hunt.chase(&quarry, c.player, &engagement, arms, mover)? {
                 return Err(Unsupported(
                     "a hunt's Attack whose MoveTo starts arrived after its drop-off",
@@ -1130,6 +1136,8 @@ impl Unit {
             ai.end_order_and_action()?;
             let mut hunt = self.hunt.take().expect("the caller's hunt");
             hunt.tear_down(self.mover.as_mut())?;
+            // the base teardown lets the drop site go (its target is none by now)
+            self.hunt_release(c, [hunt.target, hunt.carry_to]);
             return Ok(());
         }
         let class = if ai.target_type == -1 {
@@ -1357,7 +1365,8 @@ impl Unit {
     /// (`+0x7a0`; none when the first is −1) are searched among its player's objects, from the
     /// unit by path ([`drop_site_search`] with the unit), else by distance from its place (without
     /// it); none found is not modelled (notify 0x203, `set_state` 2). The drop site found is the
-    /// second target (`FUN_140a7a190`) and a quiet `MoveTo` to it starts ([`HuntAction::set_drop`]).
+    /// second target (`FUN_140a7a190`, which takes it: slot 0x178 after the update) and a quiet
+    /// `MoveTo` to it starts ([`HuntAction::set_drop`]).
     pub(in crate::turn) fn hunt_drop_off(
         &mut self,
         c: &mut Context<'_>,
@@ -1374,7 +1383,10 @@ impl Unit {
             construction_rate: c.construction_rate,
             groups: c.groups,
         };
-        self.drop_off_in(w, others)
+        if let Some(site) = self.drop_off_in(w, others)? {
+            c.takes.push(site);
+        }
+        Ok(())
     }
 
     /// The Gather's update (slot 6, `0x140a8e1d0`). It first checks its targets: a target gone
@@ -1946,12 +1958,13 @@ impl Unit {
         Ok((site != carry_to && site != -1).then_some(site))
     }
 
-    /// [`Unit::hunt_drop_off`] in `w`, from the update or a command.
+    /// [`Unit::hunt_drop_off`] in `w`, from the update or a command: the drop site it took when
+    /// it is a new second target (`FUN_140a7a190`, the caller's to take, slot 0x178).
     pub(crate) fn drop_off_in(
         &mut self,
         mut c: DropWorld<'_>,
         others: &[Self],
-    ) -> Result<(), Unsupported> {
+    ) -> Result<Option<i32>, Unsupported> {
         if self.life.amount <= 0.0 {
             return Err(Unsupported(
                 "a hunt's drop-off carrying nothing (set_state 3)",
@@ -1969,7 +1982,8 @@ impl Unit {
             return Err(Unsupported("a hunter without its hunt or movement state"));
         };
         hunt.carry_to = site;
-        hunt.set_drop(gap, mover)
+        hunt.set_drop(gap, mover)?;
+        Ok((site != carry_to).then_some(site))
     }
 
     /// The drop site a gatherer's `set_state(8)` walks to, its second target `carry_to` or, with
@@ -4841,9 +4855,15 @@ impl Unit {
         if self.gather.is_some() {
             self.gather_update(c, others, me)?;
         }
-        // the Hunt's update (0x140ac7a00) first checks its target: one gone from the world's table
-        // is dropped (slot 0x68 with none), one past state 6 is let go (slot 0x180, its `+0x60`
-        // being 0) and dropped; the drop site's checks (`+0x34`) are not modelled
+        // the Hunt's update (0x140ac7a00) first checks its targets: one gone from the world's
+        // table is dropped (slot 0x68 with none; the second target FUN_140a7a190 with none), one
+        // past state 6 is let go (slot 0x180, its `+0x60` being 0) and dropped
+        if let Some(site) = self.hunt.map(|h| h.carry_to).filter(|&t| t != -1)
+            && c.spatial.get(site).is_none()
+            && let Some(h) = self.hunt.as_mut()
+        {
+            h.carry_to = -1;
+        }
         if let Some(target) = self.hunt.map(|h| h.target).filter(|&t| t != -1) {
             let state = c
                 .victim
@@ -4864,6 +4884,15 @@ impl Unit {
                 if let Some(h) = self.hunt.as_mut() {
                     h.target = -1;
                 }
+            }
+        }
+        // a second target past state 6 is let go (FUN_140a7a190 with none: slot 0x180)
+        if let Some(site) = self.hunt.map(|h| h.carry_to).filter(|&t| t != -1)
+            && state_of(site, others, c.foreign).is_some_and(|s| 6 < s)
+        {
+            self.hunt_release(c, [site]);
+            if let Some(h) = self.hunt.as_mut() {
+                h.carry_to = -1;
             }
         }
         // the hunter as a combat object, which its hits read and change
@@ -4902,11 +4931,12 @@ impl Unit {
             .filter(|h| h.state == crate::hunt::DROP && h.timer < 0.0)
         {
             // case 7 waiting to try again: the timer runs by dt; at its end the drop site goes
-            // (FUN_140a7a190 with none) and set_state(8) searches again
+            // (FUN_140a7a190 with none: slot 0x180) and set_state(8) searches again
             hunt.timer += c.dt_seconds;
             if 0.0 <= hunt.timer {
                 hunt.timer = 0.0;
-                hunt.carry_to = -1;
+                let site = std::mem::replace(&mut hunt.carry_to, -1);
+                self.hunt_release(c, [site]);
                 self.hunt_drop_off(c, others)?;
             }
         } else if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
@@ -4998,8 +5028,8 @@ impl Unit {
         {
             // state 13 (0x140ac7a00 case 0xc): notify 0x1f9 with the hunt's action value, and the
             // update returns 3: the action list removes the hunt (FUN_140a98e20), whose teardown
-            // lets its target go
-            let target = hunt.target;
+            // lets its target, then its second target go
+            let (target, site) = (hunt.target, hunt.carry_to);
             if hunt.attack.is_some() || hunt.move_to.is_some() {
                 return Err(Unsupported("a failed hunt with a sub-action"));
             }
@@ -5018,6 +5048,7 @@ impl Unit {
                     self.hunt_release(c, [target]);
                 }
             }
+            self.hunt_release(c, [site]);
         } else if let Some(hunt) = self
             .hunt
             .as_mut()

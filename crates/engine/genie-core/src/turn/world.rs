@@ -764,6 +764,17 @@ pub(in crate::turn) fn wait_progress(
         .and_then(|u| u.construction.map(|k| k.progress))
 }
 
+/// The state (`+0x640`) of object `id` among its owner's other objects and the other players'
+/// lists: None when they do not hold it (the unit itself, or one of its owner's sleeping objects:
+/// static objects only, never a drop site, which the callers ask for).
+pub(in crate::turn) fn state_of(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<u8> {
+    others
+        .iter()
+        .find(|u| u.id == id)
+        .or_else(|| foreign.find(id).map(|(_, u)| u))
+        .map(|u| u.life.state)
+}
+
 /// What the task finder reads of object `id`, as `find` holds the objects (with their owners)
 /// and `every` the players' masters; an annex stands for its main building (`+0xbb8`), `steps`
 /// times (`Turns::task_target`'s reading). None when `find` does not hold it.

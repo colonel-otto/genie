@@ -1814,7 +1814,9 @@ impl Turns {
             };
             let result = unit.drop_off_in(world, &player.objects);
             self.players[p].objects[idx] = unit;
-            result?;
+            if let Some(site) = result? {
+                self.take(site);
+            }
         }
         Ok(())
     }
