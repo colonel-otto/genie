@@ -2081,6 +2081,9 @@ impl Turns {
                 "a new object of a recyclable master (a negative id)",
             ));
         }
+        // its place (slot 0x58, the static new_position): the ground's height by its master's
+        // fly mode (slot 0x60, FUN_141193a10)
+        let at = self.on_ground(p, master, at);
         let id = self.next_object_id;
         self.next_object_id += 1;
         let standing = (0 <= made.standing_sprite)

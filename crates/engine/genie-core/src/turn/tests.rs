@@ -382,6 +382,35 @@ fn placeable(t: &mut Turns) {
     ));
 }
 
+/// FLARE (`0x140e7bfd0`) at a point without a target: each player's flare comes at the point
+/// with height 0, which the static `new_position` (slot 0x58, slot 0x60 `FUN_141193a10`) puts
+/// on the ground, as 426048706's flare of update 2486 stands at 4 on raised ground.
+#[test]
+fn a_flare_at_a_point_stands_on_the_ground() {
+    let player = || Player {
+        attributes: vec![0.0; 300],
+        ..Player::default()
+    };
+    let mut t = Turns::new(0, 1, 0, vec![0, 0, 0], vec![player(), player(), player()]);
+    placeable(&mut t);
+    if let Some(terrain) = t.spatial.terrain.as_mut() {
+        terrain.set_elevations(vec![4; 120 * 120]);
+    }
+    let flare = Master {
+        id: 274,
+        kind: crate::masters::master_type::ANIMATED,
+        standing_sprite: -1,
+        ..Master::default()
+    };
+    t.masters = (0..3).map(|_| Masters::new([flare.clone()])).collect();
+    t.next_object_id = 100;
+    t.flare(-1, [19.114_586, 29.197_92], 3).unwrap();
+    for p in 1..3 {
+        let at: Vec<[f32; 3]> = t.players[p].objects.iter().map(|u| u.position).collect();
+        assert_eq!(at, [[19.114_586, 29.197_92, 4.0]]);
+    }
+}
+
 /// `Process_New_Tiles`: player 1's newly explored tiles, in order, give the objects of its
 /// masters that gather by themselves to its lists by group, at their places.
 #[test]
