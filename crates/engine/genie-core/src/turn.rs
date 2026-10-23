@@ -480,6 +480,16 @@ pub enum Command {
         /// Its buildings.
         ids: Vec<i32>,
     },
+    /// `TOWN_BELL` (0x7f, `do_command` case 0x7f): the town centre `id` rings its owner's bell
+    /// (`activate`) or ends it ([`Turns::town_bell`]).
+    TownBell {
+        /// The player.
+        player: usize,
+        /// The town centre.
+        id: i32,
+        /// Ring (1) or end (0).
+        activate: bool,
+    },
     /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
     /// ([`Turns::delete`]).
     Delete {
@@ -9090,6 +9100,15 @@ impl Turns {
             }
             Command::GoBackToWork { player, ref ids } => {
                 if let Err(e) = self.go_back_to_work(player, ids) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::TownBell {
+                player,
+                id,
+                activate,
+            } => {
+                if let Err(e) = self.town_bell(player, id, activate) {
                     self.stop_player(player, e);
                 }
             }

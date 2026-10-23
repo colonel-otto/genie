@@ -3446,6 +3446,14 @@ impl Decoder {
                     ids: vec![c.u_id],
                 });
             }
+            // TOWN_BELL: the town centre (+4) and the ring or its end (+8, a byte)
+            Packet::TownBell(c) => {
+                return Some(Command::TownBell {
+                    player: c.commp_id as usize,
+                    id: c.u_id,
+                    activate: c.activate != 0,
+                });
+            }
             Packet::GoBackToWork2(c) => {
                 let count = c
                     .rest

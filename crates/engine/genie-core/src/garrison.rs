@@ -557,25 +557,39 @@ impl Turns {
                 };
                 let m = self.master_of(up, u.life.master_id)?;
                 if 70 <= m.kind && (m.class == VILLAGER_CLASS || m.id == MASTER_1808) {
-                    self.back_to_work(p, idx, inside)?;
+                    let _ = self.back_to_work(Some((p, idx)), inside)?;
                 }
             }
         }
         Ok(())
     }
 
-    /// `FUN_1412081e0` for the unit `id` inside the building at `building` of player `p`: the
-    /// work to go back to ([`TownBell::back_to_work`]: the town-bell records' object the world
-    /// holds); with none but a record of an action and a target class, the unit AI takes the
-    /// action (`FUN_140c64b50`) and the unit tells it to search (notify 0x202 with the action,
-    /// the class and the old target). Then the unit leaves the building toward the record's point
-    /// with the object to work on ([`Turns::let_out`], `FUN_1411e7220` with its sound); out, it
-    /// is no longer under the town bell (`+0x9dc`; `+0xa14` takes 1, not held).
+    /// `FUN_1412081e0` for the unit `id`, `from` the building it is inside (player `p`'s object
+    /// at an index) or outside (None): the work to go back to ([`TownBell::back_to_work`]: the
+    /// town-bell records' object the world holds); with none but a record of an action and a
+    /// target class, the unit AI takes the action (`FUN_140c64b50`) and the unit tells it to
+    /// search (notify 0x202 with the action, the class and the old target). From a building the
+    /// unit then leaves it toward the record's point with the object to work on
+    /// ([`Turns::let_out`], `FUN_1411e7220` with its sound); outside it goes back
+    /// ([`Turns::back_outside`]). Once out or back it is no longer under the town bell
+    /// (`+0x9dc`; `+0xa14` takes 1, not held). True when it went.
     ///
     /// [`TownBell::back_to_work`]: crate::town_bell::TownBell::back_to_work
-    fn back_to_work(&mut self, p: usize, building: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn back_to_work(
+        &mut self,
+        from: Option<(usize, usize)>,
+        id: i32,
+    ) -> Result<bool, Unsupported> {
         use crate::town_bell::RecordTarget;
-        let (up, ui) = self.live_inside(id)?;
+        let (up, ui) = match from {
+            Some(_) => self.live_inside(id)?,
+            None => match self.place(id) {
+                Some(crate::order::Place::Live(p, i)) => (p, i),
+                // the callers pass an object of type 70 or more the world holds, which never
+                // sleeps
+                _ => return Ok(false),
+            },
+        };
         let mut bell = self.players[up].objects[ui].town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;
@@ -601,11 +615,14 @@ impl Turns {
                 [record.action, record.target_type, record.target],
             )?;
         }
+        let Some((p, building)) = from else {
+            return self.back_outside(id, found.map(|f| f.id), record.point);
+        };
         let out = self.let_out(p, building, id, record.point, (found.map(|f| f.id), true))?;
         if out && let Some((_, u)) = self.object_mut(id) {
             u.town_bell.flag = false;
         }
-        Ok(())
+        Ok(out)
     }
 
     /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` (`param`) pick `unit` of player
@@ -933,7 +950,7 @@ impl Turns {
     /// running `raider_build_countdown` (`+0x9a0`, `FUN_1411cb850`/`FUN_1411d6ad0`). Not
     /// modelled: an object inside that holds others (the slice reads no `+0x9a8`) and, in a
     /// building, a unit with its countdown set (`+0xc2c`, which the slice does not keep).
-    fn garrisoned(&self, building: i32) -> Result<i32, Unsupported> {
+    pub(crate) fn garrisoned(&self, building: i32) -> Result<i32, Unsupported> {
         let holds = |id: i32| {
             self.players.iter().any(|q| {
                 q.objects
@@ -1127,7 +1144,7 @@ impl Turns {
     }
 
     /// The place and master radii of the object `id` (what `FUN_14118f8c0` reads of it).
-    fn ground(&self, id: i32) -> Result<([f32; 3], [f32; 2]), Unsupported> {
+    pub(crate) fn ground(&self, id: i32) -> Result<([f32; 3], [f32; 2]), Unsupported> {
         self.spatial
             .get_known(id)?
             .map(|p| (p.position, p.radius))
@@ -1528,14 +1545,14 @@ const fn unload_group_takes(group: i32, class: i16) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::masters::BuildingMaster;
     use crate::turn::{Player, Unit};
 
-    const TC: i16 = 109;
-    const VILLAGER: i16 = 83;
-    const ARCHER: i16 = 4;
+    pub(crate) const TC: i16 = 109;
+    pub(crate) const VILLAGER: i16 = 83;
+    pub(crate) const ARCHER: i16 = 4;
     const SHIP: i16 = 545;
     const GATE: i16 = 88;
 
@@ -1597,7 +1614,7 @@ mod tests {
         ])
     }
 
-    fn unit(id: i32, master: i16, hp: f32) -> Unit {
+    pub(crate) fn unit(id: i32, master: i16, hp: f32) -> Unit {
         let mut u = Unit {
             id,
             pasture: -1,
@@ -2068,12 +2085,12 @@ mod tests {
 
     /// [`garrison_world`] on a flat 20×20 map every player sees, the town centre at (10, 10)
     /// with its footprint on the map, the villager master able to stand beside it.
-    fn let_out_world() -> Turns {
+    pub(crate) fn let_out_world() -> Turns {
         sized_world(20, 20)
     }
 
     /// [`let_out_world`] on a map of `w` × `h` tiles.
-    fn sized_world(w: i32, h: i32) -> Turns {
+    pub(crate) fn sized_world(w: i32, h: i32) -> Turns {
         let mut t = garrison_world();
         let mut masters = garrison_masters();
         if let Some(tc) = masters.get_mut(TC) {
@@ -2149,7 +2166,7 @@ mod tests {
     }
 
     /// Puts unit `id` of player `p` and master `m` inside the town centre.
-    fn inside_tc(t: &mut Turns, p: usize, id: i32, m: i16) {
+    pub(crate) fn inside_tc(t: &mut Turns, p: usize, id: i32, m: i16) {
         let mut u = unit(id, m, 25.0);
         u.position = [10.0, 10.0, 0.0];
         u.life.inside = Some(100);
@@ -2202,12 +2219,12 @@ mod tests {
         inside_tc(&mut t, 2, 2000, VILLAGER);
         t.players[2].objects[0].town_bell.work.point = [4.5, 4.5];
         t.players[1].objects[0].firepower = f32::NAN;
-        t.back_to_work(1, 0, 2000).unwrap();
+        assert!(t.back_to_work(Some((1, 0)), 2000).unwrap());
         assert!(t.players[1].objects[0].firepower.is_nan());
         assert_eq!(t.players[1].objects[0].garrison, [1000]);
         t.players[1].objects[0].firepower = 0.5;
         t.object_mut(1000).unwrap().1.town_bell.work.point = [4.5, 15.5];
-        t.back_to_work(1, 0, 1000).unwrap();
+        assert!(t.back_to_work(Some((1, 0)), 1000).unwrap());
         assert_eq!(t.players[1].objects[0].firepower, 1.0);
         // a unit not a villager stays inside
         let mut t = let_out_world();
@@ -2244,7 +2261,7 @@ mod tests {
     }
 
     /// A villager of player `p` with a unit AI and speed at (`x`, `y`).
-    fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
+    pub(crate) fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
         let mut v = unit(id, m, 25.0);
         v.position = [at[0], at[1], 0.0];
         v.ai = Some(crate::unit_ai::UnitAi {
@@ -2299,7 +2316,7 @@ mod tests {
     }
 
     /// A building of player 1 of master `m` (radius 2) at `at`, `annex_of` its main building.
-    fn building_at(t: &mut Turns, id: i32, m: i16, at: [f32; 2], annex_of: Option<i32>) {
+    pub(crate) fn building_at(t: &mut Turns, id: i32, m: i16, at: [f32; 2], annex_of: Option<i32>) {
         let mut b = unit(id, m, 2400.0);
         b.position = [at[0], at[1], 0.0];
         b.annex_of = annex_of;
@@ -2323,7 +2340,7 @@ mod tests {
     }
 
     /// Player 1's tracker files `ids` under master `m`'s key, done, in that order.
-    fn tracked(t: &mut Turns, m: i16, ids: &[i32]) {
+    pub(crate) fn tracked(t: &mut Turns, m: i16, ids: &[i32]) {
         let k = t.tracker_key(1, m);
         for &id in ids {
             t.players[1].tracker.add(id, k);
