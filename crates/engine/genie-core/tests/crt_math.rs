@@ -120,19 +120,19 @@ fn sweep(ours: fn(f32) -> f32, oracle: fn(f32) -> f32) -> Vec<u32> {
 }
 
 #[test]
-#[ignore = "all 2^32 inputs: run in release with --ignored"]
+#[ignore = "expensive: all 2^32 inputs, in release; just test-expensive"]
 fn acos_agrees_with_libm_on_every_f32() {
     assert_eq!(sweep(fmath::acos, libm::acosf), Vec::<u32>::new());
 }
 
 #[test]
-#[ignore = "all 2^32 inputs: run in release with --ignored"]
+#[ignore = "expensive: all 2^32 inputs, in release; just test-expensive"]
 fn atan_agrees_with_libm_on_every_f32() {
     assert_eq!(sweep(fmath::atan, libm::atanf), Vec::<u32>::new());
 }
 
 #[test]
-#[ignore = "2^30 pairs: run in release with --ignored"]
+#[ignore = "expensive: 2^30 pairs, in release; just test-expensive"]
 fn atan2_agrees_with_libm_on_random_pairs() {
     // libm returns `x + y` for a NaN, the game `y + x`: two NaNs may differ in payload only
     let differ = |y: f32, x: f32| {
@@ -171,19 +171,19 @@ fn atan2_agrees_with_libm_on_random_pairs() {
 }
 
 #[test]
-#[ignore = "all 2^32 inputs: run in release with --ignored"]
+#[ignore = "expensive: all 2^32 inputs, in release; just test-expensive"]
 fn cos_agrees_with_libm_on_every_f32() {
     assert_eq!(sweep(fmath::cos, libm::cosf), Vec::<u32>::new());
 }
 
 #[test]
-#[ignore = "all 2^32 inputs: run in release with --ignored"]
+#[ignore = "expensive: all 2^32 inputs, in release; just test-expensive"]
 fn sin_agrees_with_libm_on_every_f32() {
     assert_eq!(sweep(fmath::sin, libm::sinf), Vec::<u32>::new());
 }
 
 #[test]
-#[ignore = "2^30 pairs: run in release with --ignored"]
+#[ignore = "expensive: 2^30 pairs, in release; just test-expensive"]
 fn fmod_is_the_exact_remainder_on_random_pairs() {
     // the exact remainder of two floats is a float: the double's `%` (fmod) gives it; libm's
     // fmodf is a second opinion; NaNs match any NaN

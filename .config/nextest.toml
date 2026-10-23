@@ -1,0 +1,7 @@
+# cargo nextest (`cargo install cargo-nextest --locked`, from crates.io): `just test` in the
+# workspace. A test that takes minutes is `#[ignore = "expensive: …"]` (genie-core's
+# exhaustive CRT math): `just test-expensive` runs those with `--run-ignored only`. CI keeps
+# `cargo test`, which skips them too.
+
+[profile.default]
+slow-timeout = { period = "60s" }
