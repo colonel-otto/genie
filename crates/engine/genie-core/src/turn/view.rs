@@ -961,10 +961,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// (not held); the unit's own Attack on the target answers true unless forced (its slot 0x48
     /// then, not modelled); a villager's master switch (slot 0x90) is not modelled. Then the new
     /// Attack ([`crate::attack::Attack::command`]): the constructor takes its target (slot 0x178,
-    /// the caller's), the action list clears (the old actions' teardowns), and the install's start
-    /// (`0x140a7f8c0`) of a unit inside another fails it at once (`set_state(13)`,
-    /// [`crate::attack::Attack::fail_at_start`]); else it clears `+0x900`, puts the unit on its
-    /// standing sprite (slot 0x68 with `+0x80`) and runs the range test: readyToAttack's failure
+    /// the caller's) and clears the unit's `+0x900` (its target is new), the action list clears
+    /// (the old actions' teardowns), and the install's start (`0x140a7f8c0`) of a unit inside
+    /// another fails it at once (`set_state(13)`, [`crate::attack::Attack::fail_at_start`]); else
+    /// it puts the unit on its standing sprite (slot 0x68 with `+0x80`) and runs the range test
+    /// ([`crate::attack::Attack::begin`]): readyToAttack's failure
     /// before a `set_state(4)` leaves the animation at speed 1; a `MoveTo` that starts arrived
     /// shows the standing sprite; a unit that cannot move in reach goes ready (`set_state(6)`,
     /// [`crate::attack::Attack::enter_ready`]: readyToAttack again, then the swing, `set_state(7)`,
