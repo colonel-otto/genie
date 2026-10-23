@@ -130,6 +130,25 @@ pub(crate) const SOLDIER_AI: u32 = 13;
 const TOWER_AI: u32 = 15;
 /// The siege tower's factory type (`TribeSiegeTowerUnitAIModule`, master 1105's).
 const SIEGE_TOWER_AI: u32 = 0x12;
+/// The trade ship's and the trade cart's factory type (`TribeTradeShipUnitAIModule`, classes 2
+/// and 19).
+const TRADE_AI: u32 = 0xa;
+/// The fishing ship's factory type (`TribeFishingShipUnitAIModule`, class 21).
+const FISHING_AI: u32 = 0xc;
+/// The trade boat's class (`-0xeaa` raw): its cared classes and its trade partner are not the
+/// trade cart's.
+const TRADE_BOAT_CLASS: i16 = 2;
+/// The trade action value (`0x267`, which slot 0xf8 `FUN_140c651f0` sets).
+const TRADE_ACTION: i32 = 0x267;
+/// A computer player's ship evades the object its idle check found by its speed times this
+/// (`FUN_140c21930`, `FUN_140c1eab0`: `DAT_142ec9eb8`, 7.0; no image role yet).
+const SHIP_EVADE_REACH: f32 = 7.0;
+/// The classes of the foundations a fishing ship's builder looks for (`FUN_140c25ca0`, in its
+/// order): buildings, walls, gates, towers and farms.
+const FISHING_BUILDS: [i32; 5] = [3, 27, 39, 52, 49];
+/// The fishing ship's builder takes the nearest foundation nearer than this (`FUN_140c25ca0`'s
+/// 9999).
+const FISHING_BUILD_FAR: i32 = 9999;
 /// The seconds without a sighting after which enemies found are the owner's news
 /// (`DAT_142eb0f4c`).
 const ENEMY_SIGHTING_GAP: f32 = crate::image::unit_ai::ENEMY_SIGHTING_GAP;
@@ -500,6 +519,18 @@ pub const TOWER_CARED: [i32; 40] = [
     0, 3, 4, 26, 24, 6, 35, 25, 17, 12, 23, 36, 28, 18, 13, 27, 22, 20, 2, 21, 44, 46, 43, 45, 47,
     50, 51, 52, 53, 54, 55, 39, 56, 57, 19, 59, 49, 10, 42, 61,
 ];
+
+/// The classes a trade boat (class 2) cares about (`+0x190`, `FUN_140c12ab0`: the four of
+/// `DAT_142ef9020`, then 21, 53 and 52).
+pub const TRADE_SHIP_CARED: [i32; 7] = [3, 22, 20, 2, 21, 53, 52];
+
+/// The classes a trade cart (any other class of the trade ship's type) cares about (`+0x190`,
+/// `FUN_140c12ab0`: the four of `DAT_142ef91f0`, then 19).
+pub const TRADE_CART_CARED: [i32; 5] = [3, 17, 18, 52, 19];
+
+/// The classes a fishing ship cares about (`+0x190`, `FUN_140c11860`: the four of each of
+/// `DAT_142ef9020`, `DAT_142ef9130` and `DAT_142ef9160`, then 49).
+pub const FISHING_CARED: [i32; 13] = [3, 22, 20, 2, 21, 5, 31, 33, 53, 52, 27, 39, 49];
 
 /// A unit AI's search (`FUN_140c63e20`) as the idle checks run it: it queries its player's
 /// objects in sight of `classes` within `radius` of `at` for a searcher of radii `size`
@@ -1320,6 +1351,9 @@ pub struct Found {
     /// (`DAT_143e6f92c`, `numberDifferentPlayerObjectsVisible`); 0 from the other picks, which
     /// do not count.
     pub players: u32,
+    /// What `ClosestObject` writes to its seventh argument: the object's search distance,
+    /// truncated (`CVTTSS2SI`); −1 (`DAT_14330ec20`) without one and from the other picks.
+    pub distance: i32,
 }
 
 impl Found {
@@ -1330,6 +1364,7 @@ impl Found {
         position: None,
         fresh: true,
         players: 0,
+        distance: -1,
     };
 }
 
@@ -1642,10 +1677,13 @@ const fn retarget_kind(ai_type: u32) -> Result<Retarget, Unsupported> {
         19 => Ok(Retarget::Never),
         ARTIFACT_AI => Ok(Retarget::Artifact),
         // hunted animal (2, slot 72 FUN_140c1eea0), boar (4, slot 72 FUN_140c1e630), lion (5,
-        // slot 72 FUN_140c1fb70), transport ship (11, slot 72 0x140c21d20), soldier (13, slot 72
+        // slot 72 FUN_140c1fb70), trade ship (0xa, slot 72 FUN_140c21930), transport ship (11,
+        // slot 72 0x140c21d20), fishing ship (0xc, slot 72 FUN_140c1eab0), soldier (13, slot 72
         // FUN_140c20db0), tower (15, the base's slot 72 FUN_140c564c0), building (17, slot 72
         // 0x140c1e600, which does nothing), siege tower (0x12, slot 72 FUN_140c20690)
-        2 | 4 | 5 | 11 | 13 | 15 | 17 | SIEGE_TOWER_AI => Ok(Retarget::Base),
+        2 | 4 | 5 | TRADE_AI | 11 | FISHING_AI | 13 | 15 | 17 | SIEGE_TOWER_AI => {
+            Ok(Retarget::Base)
+        }
         _ => Err(Unsupported("unit-AI type not modelled")),
     }
 }
@@ -1959,6 +1997,14 @@ const fn alert_owner(computer: bool) -> Result<(), Unsupported> {
 /// finds (slot 0x50) that may attack the attacker (their slot 0xa0) to help; not modelled.
 const fn call_for_help() -> Result<(), Unsupported> {
     Err(Unsupported("a call for help (AskForHelp, FUN_140c42ce0)"))
+}
+
+/// The unit AI's slot 0x90 (`closestUndiscoveredTile`, `FUN_140c4bd40`) for an explorer other
+/// than the auto scout, then its explore there (slot 0x100); not modelled.
+const fn closest_undiscovered_tile() -> Result<(), Unsupported> {
+    Err(Unsupported(
+        "an explorer's search for the closest undiscovered tile (slot 0x90)",
+    ))
 }
 
 /// The state of the unit's top action (slot 0x2b0) as [`Surroundings::action_state`] holds it,
@@ -2702,6 +2748,7 @@ impl UnitAi {
                 Ok(false)
             }
             SOLDIER_AI => self.soldier_idle(at, computer, ai, side, fx),
+            TRADE_AI | FISHING_AI => self.ship_idle(at, computer, ai, side, fx),
             TOWER_AI => self.tower_idle(at, computer, side, fx),
             ARTIFACT_AI => self.artifact_idle(at, side, fx),
             17 | 19 => Ok(false),
@@ -2709,6 +2756,68 @@ impl UnitAi {
                 "processIdle (slot 0x240) of a unit-AI type not modelled",
             )),
         }
+    }
+
+    /// The trade ship's and the fishing ship's idle check (slot 72, `FUN_140c21930`,
+    /// `FUN_140c1eab0`): the cap ([`UnitAi::cap_human_order`]); a computer player's ship not
+    /// inside another looks for the closest object of the classes it cares about
+    /// (`ClosestObject` with every relation, state and master, reachable: [`Pick::Closest`]; the
+    /// search adds the fishing ship's `+0x1e8`, 7, to its radius) and, finding one the world
+    /// holds, moves away from it by its speed times [`SHIP_EVADE_REACH`] along the line between
+    /// them (`evasiveMoveTo`, slot 0x150 with both flags, [`UnitAi::evasive_move`]): true (6).
+    /// Else false (5).
+    fn ship_idle(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        self.cap_human_order(fx);
+        if !computer || at.garrisoned {
+            return Ok(false);
+        }
+        let (classes, radius): (&[i32], f32) = if self.ai_type == FISHING_AI {
+            (
+                &FISHING_CARED,
+                civilian_search_radius(at.los, at.search_radius),
+            )
+        } else if at.class == TRADE_BOAT_CLASS {
+            (&TRADE_SHIP_CARED, search_radius(at.los, at.search_radius))
+        } else {
+            (&TRADE_CART_CARED, search_radius(at.los, at.search_radius))
+        };
+        let found = side.closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius,
+            classes,
+            size: at.size,
+            pick: Pick::Closest {
+                group: -1,
+                relation: -1,
+                state: -1,
+                master: -1,
+                workers: -1,
+                spared: -1,
+                reach: true,
+            },
+        })?;
+        self.alert(found, at.dt_seconds);
+        if found.id == -1 {
+            return Ok(false);
+        }
+        let Some(u) = side.seen_unit(found.id)? else {
+            return Ok(false);
+        };
+        let reach = at.speed * SHIP_EVADE_REACH;
+        let [x, y, z] = at.position;
+        let dx = u.position[0] - x;
+        let dy = u.position[1] - y;
+        let d = crate::fmath::sqrt(dy * dy + dx * dx);
+        let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
+        let _ = self.evasive_move(point, (true, true), at, ai, side, fx)?;
+        Ok(true)
     }
 
     /// The soldier's idle check (slot 72, `FUN_140c20db0`, factory type 13). Before its cap
@@ -3940,6 +4049,188 @@ impl UnitAi {
         Ok(BREAK)
     }
 
+    /// The trade ship's case 0x202 (`FUN_140c29bf0`, "Action %d has failed, been invalidated,
+    /// or requires a search."): off the trade action an explorer (0x25d) looks for the closest
+    /// undiscovered tile ([`closest_undiscovered_tile`]); otherwise the target goes
+    /// (`FUN_140c5e1e0`), the action stops (slot 0xb0 with 1; slot 0x48 hands the notify to the
+    /// owner, not held) and it returns 2. On the trade action the trader looks for another
+    /// partner, the dock (45) for a trade boat, else the market (84): `ClosestObject` for its
+    /// own, then a neutral's, each followed by slot 0xf8's trade command (the unit's slot 0x390
+    /// and its Trade action, which the slice does not hold), 6 once one takes.
+    fn trader_search(
+        &mut self,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        if self.current_action == TRADE_ACTION {
+            return Err(Unsupported(
+                "a trader's search for another dock or market (slot 0xf8, its Trade action)",
+            ));
+        }
+        if self.current_action == EXPLORE_ACTION {
+            closest_undiscovered_tile()?;
+        }
+        self.remove_target();
+        self.stop_current(true, at, fx)?;
+        Ok(GO_ON)
+    }
+
+    /// The trade ship's damage notify (`FUN_140c29bf0`, cases 500 and a missile's warning it
+    /// did not dodge): at no hit points left it gives up (the owner's alert 0x209, the notifies
+    /// end, 4). Else the owner's alert (0x201) only with no attackers yet or a computer owner; a
+    /// new attacker that is not its target makes a human player's ship call for help
+    /// ([`call_for_help`]); the attacker joins the set and the unit is under attack. With an
+    /// order it ignores the damage (2), but for a computer player's with `+0x621` set, which
+    /// cannot get here (its alert stops the handler first, [`alert_owner`]). Off the move
+    /// action (`0x262`) its order goes to the queue's end (slot 0x30, not immediate:
+    /// `FUN_140c55c90` takes none of −1) and its action stops (slot 0xb0 with 1); then it runs
+    /// from its attackers (slot 0x160 with 1) and returns 3.
+    #[allow(clippy::too_many_arguments)]
+    fn trade_damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        if n.p[1] < 1 {
+            alert_owner(computer)?;
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        if self.attackers.is_empty() || computer {
+            alert_owner(computer)?;
+        }
+        let new = self.attackers.binary_search(&n.caller).is_err();
+        if new && !computer && self.current_target != n.caller {
+            call_for_help()?;
+        }
+        let _ = self.add_attacker(n.caller);
+        side.set_under_attack(true);
+        if self.current_order != -1 {
+            return Ok(GO_ON);
+        }
+        if self.current_action != MOVE_ACTION {
+            self.queue_current(at)?;
+            self.stop_current(true, at, fx)?;
+        }
+        let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+        Ok(BREAK)
+    }
+
+    /// The fishing ship's damage notify (`FUN_140c25ca0`, cases 500 and a missile's warning it
+    /// did not dodge): as the transport ship's up to its attackers ([`UnitAi::transport_damaged`]);
+    /// a human player's ship with an order ignores the damage (2; a computer player's cannot get
+    /// here, its alert stops the handler first). Off the move action (`0x262`) its order goes to
+    /// the queue's end (slot 0x30, not immediate), its action stops (slot 0xb0 with 1) and it
+    /// runs from its attackers (slot 0x160 with 1). It returns 3.
+    #[allow(clippy::too_many_arguments)]
+    fn fishing_damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        alert_owner(computer)?;
+        if n.p[1] < 1 {
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        let new = self.attackers.binary_search(&n.caller).is_err();
+        if new && !computer && self.current_target != n.caller {
+            call_for_help()?;
+        }
+        let _ = self.add_attacker(n.caller);
+        side.set_under_attack(true);
+        if self.current_order != -1 {
+            return Ok(GO_ON);
+        }
+        if self.current_action != MOVE_ACTION {
+            self.queue_current(at)?;
+            self.stop_current(true, at, fx)?;
+            let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+        }
+        Ok(BREAK)
+    }
+
+    /// The fishing ship's case 0x202 on its build (`FUN_140c25ca0`, action `0x25a`: "I'm a
+    /// builder, looking around for other objects of type %d to build."): `ClosestObject` for its
+    /// own foundations (relation 3, state 0, reachable) of each class of [`FISHING_BUILDS`] over
+    /// its search ([`FISHING_CARED`], its radius grown by its `+0x1e8`, 7); the nearest by the
+    /// distance each answers, below [`FISHING_BUILD_FAR`], that the unit reaches within
+    /// `FOUNDATION_REACH` (slot 0x3d0) it builds (slot 0xf0 with 1, [`Effect::BuildObject`]) and
+    /// the processing breaks. Else a human player's ship goes on (2); a computer player's posts
+    /// itself its build's completion (slot 0x328: `0x1fa` with `0x25a`) first.
+    fn fishing_builder_search(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        let mut best = (-1, FISHING_BUILD_FAR);
+        for class in FISHING_BUILDS {
+            let found = side.closest(&Search {
+                at: [at.position[0], at.position[1]],
+                radius: civilian_search_radius(at.los, at.search_radius),
+                classes: &FISHING_CARED,
+                size: at.size,
+                pick: Pick::Closest {
+                    group: class,
+                    relation: 3,
+                    state: 0,
+                    master: -1,
+                    workers: -1,
+                    spared: -1,
+                    reach: true,
+                },
+            })?;
+            self.alert(found, at.dt_seconds);
+            if found.id != -1 && found.distance < best.1 {
+                best = (found.id, found.distance);
+            }
+        }
+        if best.0 != -1 && side.reaches(best.0, FOUNDATION_REACH)? {
+            fx.push(Effect::BuildObject(best.0));
+            return Ok(BREAK);
+        }
+        if computer {
+            self.post(
+                Notify::own(at.id, ACTION_COMPLETED, [BUILD_ACTION, 0, 0]),
+                at.state,
+            )?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// Slot 0x30 with the current order, not immediate and not in front (`FUN_140c55c90`, as the
+    /// ships' damage notifies call it: the issuer the unit, the order, its target and class,
+    /// owner −1, the target point, the range `+0x5c`, the priority `+0x40`, the point shown,
+    /// ready): a unit above state 2 or without an order takes none; else the order goes to the
+    /// queue's end ([`UnitAi::queue_order`]).
+    fn queue_current(&mut self, at: &Surroundings) -> Result<(), Unsupported> {
+        let record = QueuedOrder {
+            issuer: at.id,
+            order: self.current_order,
+            priority: self.order_priority,
+            target: self.current_target,
+            target_owner: -1,
+            point: self.target_point,
+            range: self.desired_distance,
+            shown: [self.target_point[0], self.target_point[1]],
+            ready: true,
+            target_type: self.target_type,
+        };
+        self.queue_order(at.state, record, false, false).map(|_| ())
+    }
+
     /// The building's damage notify (`FUN_140c22610`, case 500): at no hit points left it gives
     /// up ("I'm dead, I give up."): the owner's alert (slot 0x2e8 with 0x209), the notifies end
     /// (`FUN_140c5dc10`) and it returns 4. Else the owner hears 0x201, as does each other owner
@@ -4390,6 +4681,28 @@ impl UnitAi {
                 }
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
+            // the trade ship and cart (FUN_140c29bf0): its search when its action needs one, its
+            // damage notify, a missile's warning it takes as damage unless it dodges
+            TRADE_AI => match n.kind {
+                REQUIRES_SEARCH => self.trader_search(at, fx),
+                MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
+                DAMAGED | MISSILE_WARNING => {
+                    self.trade_damaged(n, time, at, computer, ai_rng, side, fx)
+                }
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            },
+            // the fishing ship (FUN_140c25ca0): a builder's search for more to build, its damage
+            // notify, a missile's warning it takes as damage unless it dodges
+            FISHING_AI => match n.kind {
+                REQUIRES_SEARCH if self.current_action == BUILD_ACTION => {
+                    self.fishing_builder_search(at, computer, side, fx)
+                }
+                MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
+                DAMAGED | MISSILE_WARNING => {
+                    self.fishing_damaged(n, time, at, computer, ai_rng, side, fx)
+                }
+                _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
+            },
             // the siege tower (FUN_140c28400): as the transport ship's, but a human player's
             // tower in a group that is not idle ignores the damage
             SIEGE_TOWER_AI => match n.kind {
@@ -4799,9 +5112,7 @@ impl UnitAi {
     ) -> Result<u32, Unsupported> {
         let action = self.current_action;
         if action != AUTO_SCOUT_ACTION {
-            return Err(Unsupported(
-                "an explorer's search for the closest undiscovered tile (slot 0x90)",
-            ));
+            closest_undiscovered_tile()?;
         }
         if let Some([x, y]) = side.seek_unexplored(self, ai_rng)? {
             let _ = self.explore_at(x, y, true, fx);
@@ -6476,6 +6787,7 @@ mod tests {
                 position: Some([0.0; 3]),
                 fresh: true,
                 players: 0,
+                distance: -1,
             })
         }
         fn attack(
@@ -6586,6 +6898,7 @@ mod tests {
                 position: Some([10.0, 11.0, 0.0]),
                 fresh: true,
                 players: 0,
+                distance: -1,
             })
         }
         fn attack(
@@ -7304,6 +7617,7 @@ mod tests {
                 found: Found {
                     id,
                     players,
+                    distance: -1,
                     position: Some([140.0, 100.0, 0.0]),
                     ..Found::NONE
                 },
@@ -8253,6 +8567,7 @@ mod tests {
                 position: Some([33.5, 106.5, 0.0]),
                 fresh: true,
                 players: 0,
+                distance: -1,
             })
         };
         let moved = u
@@ -9158,6 +9473,7 @@ mod tests {
                 position: Some([0.0; 3]),
                 fresh: true,
                 players: 0,
+                distance: -1,
             })
         };
         assert!(u.update(28, 0, false, &at, &mut rng(), &mut found).is_err());
@@ -10047,6 +10363,7 @@ mod tests {
                 position: None,
                 fresh: true,
                 players: 0,
+                distance: -1,
             })
         };
         let fx = u
@@ -10412,6 +10729,7 @@ mod tests {
                 position: Some([31.5, 106.5, 0.0]),
                 fresh: true,
                 players: 0,
+                distance: -1,
             })
         };
         let moved = u
@@ -10432,6 +10750,7 @@ mod tests {
                 position: Some([3.5, 4.5, 0.0]),
                 fresh: true,
                 players: 0,
+                distance: -1,
             })
         };
         let moved = u
@@ -11619,5 +11938,324 @@ mod tests {
                 (vec![(77, true)], ATTACK_ACTION, 77)
             );
         }
+    }
+
+    /// A ship's world: its searches answer from `found` (one answer per call, in order) and are
+    /// recorded; the objects it names stand at their places; every point can be stood on and
+    /// every target reached within `reach`.
+    #[derive(Default)]
+    struct ShipSide {
+        found: Vec<Found>,
+        searched: Vec<(f32, Vec<i32>, Pick)>,
+        units: Vec<UnitSeen>,
+        reach: bool,
+    }
+
+    impl UnitSide for ShipSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
+        fn closest(&mut self, search: &Search<'_>) -> Result<Found, Unsupported> {
+            self.searched
+                .push((search.radius, search.classes.to_vec(), search.pick));
+            Ok(if self.found.is_empty() {
+                Found::NONE
+            } else {
+                self.found.remove(0)
+            })
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, Unsupported> {
+            Err(Unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, Unsupported> {
+            Ok(true)
+        }
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+            Ok(self.units.iter().find(|u| u.id == id).copied())
+        }
+        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, Unsupported> {
+            Ok(self.reach)
+        }
+    }
+
+    /// The ships' idle check (`FUN_140c21930`, `FUN_140c1eab0`): a human player's only caps the
+    /// last human order time and searches nothing (5); a computer player's fishing ship looks for
+    /// the closest object of its classes, its radius grown by 7, and moves away from it by seven
+    /// times its speed (6); a trade cart searches its own classes; finding nothing, 5.
+    #[test]
+    fn a_computer_player_s_ship_evades_the_closest_object_it_sees() {
+        let at = Surroundings {
+            id: 500,
+            position: [20.0, 30.0, 0.0],
+            speed: 1.0,
+            map: [64, 64],
+            los: 4.0,
+            player: 1,
+            class: 21,
+            ..Surroundings::default()
+        };
+        let mut u = idle(FISHING_AI);
+        let mut fx = Vec::new();
+        let mut side = ShipSide::default();
+        assert_eq!(
+            u.process_idle(&at, false, &mut rng(), &mut side, &mut fx),
+            Ok(false)
+        );
+        assert_eq!(
+            (fx, side.searched.len()),
+            (vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)], 0)
+        );
+        let mut side = ShipSide {
+            found: vec![Found {
+                id: 77,
+                ..Found::NONE
+            }],
+            units: vec![UnitSeen {
+                id: 77,
+                position: [22.0, 30.0, 0.0],
+                ..UnitSeen::default()
+            }],
+            ..ShipSide::default()
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.process_idle(&at, true, &mut rng(), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::CapHumanOrder(HUMAN_ORDER_CAP),
+                Effect::Move(AiMove {
+                    point: [13.0, 30.0, 0.0],
+                    range: 0.0,
+                    force: true,
+                    walk: false,
+                }),
+            ]
+        );
+        let (radius, classes, pick) = side.searched[0].clone();
+        assert_eq!((radius, classes), (12.0, FISHING_CARED.to_vec()));
+        assert!(matches!(
+            pick,
+            Pick::Closest {
+                group: -1,
+                relation: -1,
+                reach: true,
+                ..
+            }
+        ));
+        // a trade cart (class 19) finding nothing
+        let mut cart = idle(TRADE_AI);
+        let mut side = ShipSide::default();
+        let at = Surroundings { class: 19, ..at };
+        assert_eq!(
+            cart.process_idle(&at, true, &mut rng(), &mut side, &mut Vec::new()),
+            Ok(false)
+        );
+        assert_eq!(side.searched[0].0, 5.0);
+        assert_eq!(side.searched[0].1, TRADE_CART_CARED.to_vec());
+    }
+
+    /// The trade ship's case 0x202 (`FUN_140c29bf0`) off its trade and explore actions: the
+    /// target goes, the action stops, and the processing goes on (2).
+    #[test]
+    fn a_trade_ship_whose_action_needs_a_search_stops() {
+        let (mut u, at) = attacked_transport();
+        u.ai_type = TRADE_AI;
+        u.current_action = MOVE_ACTION;
+        u.current_target = 12;
+        let n = Notify::own(500, REQUIRES_SEARCH, [MOVE_ACTION, 0, 0]);
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(
+                n,
+                0,
+                &at,
+                false,
+                &mut rng(),
+                &mut Recorder::default(),
+                &mut fx
+            ),
+            Ok(GO_ON)
+        );
+        assert_eq!((u.current_action, u.current_target), (-1, -1));
+        assert_eq!(fx, vec![Effect::Stop]);
+        for action in [TRADE_ACTION, EXPLORE_ACTION] {
+            let (mut u, at) = attacked_transport();
+            u.ai_type = TRADE_AI;
+            u.current_action = action;
+            assert!(
+                u.handle(
+                    n,
+                    0,
+                    &at,
+                    false,
+                    &mut rng(),
+                    &mut Recorder::default(),
+                    &mut fx
+                )
+                .is_err()
+            );
+        }
+    }
+
+    /// The trade ship's damage notify (`FUN_140c29bf0`): an attacker it knows raises no alert
+    /// and no call for help; without an order, off the move action, the action stops and it
+    /// runs from its attackers (3); on the move action it runs on (no stop).
+    #[test]
+    fn a_trade_ship_stops_and_runs_from_its_attackers() {
+        let n = Notify::own(77, DAMAGED, [77, 40, 0]);
+        let (mut u, at) = attacked_transport();
+        u.ai_type = TRADE_AI;
+        u.current_action = 0x261;
+        let mut fx = Vec::new();
+        let mut side = ShipSide::default();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(fx.first(), Some(&Effect::Stop));
+        assert_eq!(fx.len(), 2);
+        assert_eq!(u.orders, Vec::new());
+        let (mut u, at) = attacked_transport();
+        u.ai_type = TRADE_AI;
+        u.current_action = MOVE_ACTION;
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(u.current_action, MOVE_ACTION);
+        assert!(!fx.contains(&Effect::Stop));
+    }
+
+    /// The fishing ship's damage notify (`FUN_140c25ca0`): on the move action it neither stops
+    /// nor runs (3, nothing); off it, it stops and runs.
+    #[test]
+    fn a_fishing_ship_on_the_move_takes_its_damage_without_running() {
+        let n = Notify::own(77, DAMAGED, [77, 40, 0]);
+        let (mut u, at) = attacked_transport();
+        u.ai_type = FISHING_AI;
+        u.current_action = MOVE_ACTION;
+        let mut fx = Vec::new();
+        let mut side = ShipSide::default();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(fx, Vec::new());
+        let (mut u, at) = attacked_transport();
+        u.ai_type = FISHING_AI;
+        u.current_action = GATHER_ACTION;
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(fx.first(), Some(&Effect::Stop));
+        assert_eq!(fx.len(), 2);
+    }
+
+    /// The fishing ship's builder search (`FUN_140c25ca0`, case 0x202 on its build): its own
+    /// foundations (relation 3, state 0) of the classes 3, 27, 39, 52 and 49, in that order;
+    /// the nearest by `ClosestObject`'s distance (a tie keeps the first) that it reaches it
+    /// builds (3). Reaching none, a human player's ship goes on (2); a computer player's posts
+    /// itself its build's completion.
+    #[test]
+    fn a_fishing_ship_builds_the_nearest_foundation_it_reaches() {
+        let at = Surroundings {
+            id: 500,
+            position: [20.0, 30.0, 0.0],
+            los: 4.0,
+            player: 1,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let found = |id, distance| Found {
+            id,
+            distance,
+            ..Found::NONE
+        };
+        let mut u = UnitAi {
+            current_action: BUILD_ACTION,
+            ..idle(FISHING_AI)
+        };
+        let mut side = ShipSide {
+            found: vec![
+                found(-1, -1),
+                found(41, 6),
+                found(42, 3),
+                found(43, 3),
+                Found::NONE,
+            ],
+            reach: true,
+            ..ShipSide::default()
+        };
+        let n = Notify::own(500, REQUIRES_SEARCH, [BUILD_ACTION, 0, 0]);
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(fx, vec![Effect::BuildObject(42)]);
+        let groups: Vec<i32> = side
+            .searched
+            .iter()
+            .map(|(_, _, p)| match p {
+                Pick::Closest {
+                    group,
+                    relation: 3,
+                    state: 0,
+                    ..
+                } => *group,
+                _ => -9,
+            })
+            .collect();
+        assert_eq!(groups, FISHING_BUILDS.to_vec());
+        // out of reach: the human's goes on, the computer's posts its completion
+        let mut side = ShipSide {
+            found: vec![found(41, 6)],
+            ..ShipSide::default()
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!((fx.len(), u.buffered.len(), u.notifies.len()), (0, 0, 0));
+        let mut side = ShipSide::default();
+        assert_eq!(
+            u.handle(n, 0, &at, true, &mut rng(), &mut side, &mut Vec::new()),
+            Ok(GO_ON)
+        );
+        assert_eq!(
+            u.notifies,
+            vec![Notify::own(500, ACTION_COMPLETED, [BUILD_ACTION, 0, 0])]
+        );
     }
 }
