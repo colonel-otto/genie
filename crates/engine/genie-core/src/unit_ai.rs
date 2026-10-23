@@ -1799,6 +1799,10 @@ pub struct Surroundings {
     /// The unit's slot 0x2b0 (`RGE_Action_Object::actionState`): its top action's state, 0
     /// without one; None for an action the slice does not hold.
     pub action_state: Option<u8>,
+    /// The unit's slot 0x538 with 9 (`FUN_14106d0c0`): its action list holds an Attack (type
+    /// 9); read with [`Surroundings::action_state`], which tells whether the slice holds the
+    /// list.
+    pub attack_listed: bool,
     /// The objects the unit AI names besides its target, as the world's object table holds them:
     /// its attackers ([`UnitAi::attackers`]) and the callers of its queued damage notifies. One
     /// the table does not hold is absent.
@@ -5192,8 +5196,22 @@ impl UnitAi {
             // (FUN_140c1c7c0, when the player's +0x613 is 0: unsaved, 0 in this game): one the
             // unit reaches within 0.1 (slot 0x3d0) it builds (slot 0xf0 with 1) and the processing
             // breaks; finding none, or not reaching it, a human player's villager stops (slot
-            // 0x3c0) and the processing breaks
+            // 0x3c0) and the processing breaks. On the attack action (600) an invalidation, a
+            // moved target or a search (0x1fb, 0x1fc, 0x202) is the base handler's ("My attack
+            // target's moved, just doing normal target moved processing."), but a moved target
+            // with `+0x1a8` set: the unit's slot 0x328 posts the attack's failure to the AI
+            // (0x1f9 with 600, from and to the unit) and processing goes on
             8 => match n.kind {
+                ACTION_INVALIDATED | TARGET_MOVED | REQUIRES_SEARCH
+                    if self.current_action == ATTACK_ACTION =>
+                {
+                    if n.kind == TARGET_MOVED && self.stop_after_kill {
+                        let failed = Notify::own(at.id, ACTION_FAILED, [ATTACK_ACTION, 0, 0]);
+                        self.post(failed, at.state)?;
+                        return Ok(GO_ON);
+                    }
+                    self.base_notify(n, time, at, computer, ai_rng, side, fx)
+                }
                 0x202 if self.current_action == HUNT_ACTION => {
                     self.hunter_search(n, at, computer, side, fx)
                 }
@@ -7182,24 +7200,28 @@ impl UnitAi {
         self.last_retarget_time = world_time;
         self.retarget_timer = 750 + ai.rand15() % 500;
         let target = at.target.map(|t| (t.owner, t.class));
-        self.retarget_outcome(target, at.weapon_range, computer, at.action_state)?;
+        let listed = at.action_state.map(|_| at.attack_listed);
+        self.retarget_outcome(target, at.weapon_range, computer, at.action_state, listed)?;
         Ok(true)
     }
 
     /// The retarget check after its timer's redraw: a human player's unit of a range above 3 on
     /// the attack order stops there, as does a unit with a Gaia target or without one (or one
     /// gone; `target` its owner and class as the world holds it), and one with a player's target
-    /// off the attack order but for a building, wall or trebuchet target. Then a unit in stand
-    /// ground or no attack (stance above 1) with an order stops, and one whose top action is in
-    /// an attack's work state (6 or 7, slot 0x2b0: `action_state`, None when not held) without a
-    /// building target. The search for a better target that follows (slot 0x538 with 9, then
-    /// `bestUnitToAttack` from the target's slot 0x520 place) is not modelled.
+    /// off the attack order but for a building, wall or trebuchet target. Then a unit without an
+    /// Attack in its action list (slot 0x538 with 9: `attack_listed`, None when the slice does
+    /// not hold the list) stops, as does a unit in stand ground or no attack (stance above 1)
+    /// with an order, and one whose top action is in an attack's work state (6 or 7, slot 0x2b0:
+    /// `action_state`, None when not held) without a building target. The search for a better
+    /// target that follows (`bestUnitToAttack`, `FUN_140c44680`, from the target's slot 0x520
+    /// place) is not modelled.
     fn retarget_outcome(
         &self,
         target: Option<(usize, i16)>,
         weapon_range: f32,
         computer: bool,
         action_state: Option<u8>,
+        attack_listed: Option<bool>,
     ) -> Result<(), Unsupported> {
         let attack_order = self.current_order == ATTACK_ORDER;
         if attack_order && RETARGET_RANGE < weapon_range && !computer {
@@ -7222,8 +7244,12 @@ impl UnitAi {
         if !attack_order && !search {
             return Ok(());
         }
-        // slot 0x538 with 9 (an Attack in the action list) comes first; either way a unit in
-        // stand ground or no attack with an order goes no further
+        // slot 0x538 with 9: without an Attack in the action list, no search (an action list
+        // the slice does not hold goes on to the state's test below, which stops)
+        if attack_listed == Some(false) {
+            return Ok(());
+        }
+        // a unit in stand ground or no attack with an order goes no further
         if 1 < self.stance && self.current_order != -1 {
             return Ok(());
         }
@@ -8271,22 +8297,41 @@ mod tests {
         };
         let sheep = Some((1, 58));
         assert_eq!(
-            scout(2).retarget_outcome(sheep, 0.0, false, Some(4)),
+            scout(2).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
             Ok(())
         );
         assert_eq!(
-            scout(0).retarget_outcome(sheep, 0.0, false, Some(6)),
+            scout(0).retarget_outcome(sheep, 0.0, false, Some(6), Some(true)),
             Ok(())
         );
         assert!(
             scout(0)
-                .retarget_outcome(sheep, 0.0, false, Some(4))
+                .retarget_outcome(sheep, 0.0, false, Some(4), Some(true))
                 .is_err()
         );
         // a building target is searched past even while attacking
         assert!(
             scout(0)
-                .retarget_outcome(Some((1, 3)), 0.0, true, Some(6))
+                .retarget_outcome(Some((1, 3)), 0.0, true, Some(6), Some(true))
+                .is_err()
+        );
+        // without an Attack in the action list (slot 0x538 with 9) there is no search: a king
+        // entering a castle, its target a building (records 426406723's type-2 unit AIs)
+        let entering = UnitAi {
+            current_order: crate::garrison::ENTER_ORDER,
+            current_action: crate::garrison::ENTER_ACTION,
+            current_target: 3301,
+            stance: 0,
+            ..idle(2)
+        };
+        assert_eq!(
+            entering.retarget_outcome(Some((8, 3)), 0.0, false, Some(4), Some(false)),
+            Ok(())
+        );
+        // an action list the slice does not hold stops at the state's test
+        assert!(
+            entering
+                .retarget_outcome(Some((8, 3)), 0.0, false, None, None)
                 .is_err()
         );
     }
@@ -15329,5 +15374,45 @@ mod tests {
         assert_eq!((fx, side.stops, u.commanded), (Vec::new(), 1, true));
         let mut fx = vec![Effect::Stop, Effect::GatherObject(1)];
         assert!(u.attack_command(70, true, &at, &mut side, &mut fx).is_err());
+    }
+
+    /// The villager's handler (`FUN_140c22bf0`) on the attack action (600): a moved target
+    /// (0x1fc) with `+0x1a8` set posts the Attack's failure to itself (the unit's slot 0x328:
+    /// 0x1f9 with 600, 0, 0), else an invalidation, a moved target or a search goes to the base
+    /// handler (a moved target without a saved patrol: nothing).
+    #[test]
+    fn a_villager_s_attack_target_that_moved_is_the_base_handler_s_or_its_failure() {
+        let attacking = |stop_after_kill| UnitAi {
+            current_order: ATTACK_ORDER,
+            current_action: ATTACK_ACTION,
+            current_target: 18842,
+            target_type: 47,
+            stop_after_kill,
+            ..idle(CIVILIAN)
+        };
+        let at = Surroundings {
+            id: 6116,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let moved = Notify::own(6116, TARGET_MOVED, [0, 0, 0]);
+        let mut u = attacking(true);
+        let (r, fx, _) = handled(&mut u, moved, &at, false);
+        assert_eq!((r, fx), (Ok(GO_ON), Vec::new()));
+        assert_eq!(
+            u.notifies,
+            [Notify::own(6116, ACTION_FAILED, [ATTACK_ACTION, 0, 0])]
+        );
+        let mut u = attacking(false);
+        let (r, fx, _) = handled(&mut u, moved, &at, false);
+        assert_eq!((r, fx), (Ok(GO_ON), Vec::new()));
+        assert_eq!(u.notifies, Vec::new());
+        assert_eq!(u.current_action, ATTACK_ACTION);
+        // the base handler's invalidation of the current action stops it
+        let mut u = attacking(false);
+        let invalid = Notify::own(6116, ACTION_INVALIDATED, [ATTACK_ACTION, 0, 0]);
+        let (r, _, _) = handled(&mut u, invalid, &at, false);
+        assert!(r.is_ok());
+        assert_eq!(u.current_action, -1);
     }
 }
