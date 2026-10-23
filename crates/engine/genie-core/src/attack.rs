@@ -1816,7 +1816,9 @@ pub(crate) fn strike(
 ) -> Result<Struck, GenieError> {
     if victim.kind == 70 && damage::shield(victim, hit.missile) {
         let master_hp = own.armored.as_ref().map_or(0, |a| i32::from(a.master_hp));
-        victim.damaged = Some((own.id, [own.id, own.hp as i32, master_hp]));
+        victim
+            .damaged
+            .push((own.id, [own.id, own.hp as i32, master_hp]));
         return Ok(Struck {
             result: 2,
             executed: None,

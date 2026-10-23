@@ -137,9 +137,10 @@ pub struct Victim {
     pub weapons: Vec<(i16, i16)>,
     /// A combat object's armor and what its damage reads (types 50 and up); None for others.
     pub armored: Option<Armored>,
-    /// The damage notify (500, `FUN_141082e80`) a hit posts to its unit AI: the attacker, its hit
-    /// points after (truncated) and its master's hit points.
-    pub damaged: Option<(i32, [i32; 3])>,
+    /// The damage notifies (500, `FUN_141082e80`) its hits post to its unit AI, in order (a
+    /// blast's hit on an annex and on its main building post two to the main building): the
+    /// attacker, its hit points after (truncated) and its master's hit points.
+    pub damaged: Vec<(i32, [i32; 3])>,
     /// A hit killed it, for the caller's death handling.
     pub killed: Option<Kill>,
     /// A building's (type 80) part of a hit ([`Building`]); None for other objects.
@@ -1001,7 +1002,7 @@ fn damage(
         } else {
             src.id
         };
-        t.damaged = Some((sender, [src.id, t.hp as i32, master_hp]));
+        t.damaged.push((sender, [src.id, t.hp as i32, master_hp]));
     }
     if t.hp < 1.0 {
         t.hp = 0.0;
@@ -1394,7 +1395,7 @@ mod tests {
         );
         take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
         assert_eq!(sheep.hp, 2.0);
-        assert_eq!(sheep.damaged, Some((10029, [10029, 2, 14])));
+        assert_eq!(sheep.damaged, [(10029, [10029, 2, 14])]);
         // the next hit kills it, and Gaia takes a player's livestock
         take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
         assert_eq!(sheep.hp, 0.0);
@@ -1566,7 +1567,7 @@ mod tests {
         });
         take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
         assert_eq!((hunter.hp, sheep.hp), (20.0, 11.0));
-        assert_eq!(hunter.damaged, Some((9520, [9520, 20, 25])));
+        assert_eq!(hunter.damaged, [(9520, [9520, 20, 25])]);
         hunter.hp = 5.0;
         take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
         // the hunter dies; the sheep loses the least, one hit point
@@ -1583,7 +1584,7 @@ mod tests {
         assert_eq!((sheep.hp, hunter.hp), (8.0, 22.0));
         take(&mut sheep, &mut hunter, &mut [], &[(4, 1)], 1.0, 0.0).unwrap();
         assert_eq!((sheep.hp, hunter.hp), (7.0, 21.0));
-        assert!(hunter.damaged.is_none() && hunter.killed.is_none());
+        assert!(hunter.damaged.is_empty() && hunter.killed.is_none());
     }
 
     /// `FUN_14107f690`'s float compares as its assembly has them: a NaN gap past a radius counts
@@ -1748,7 +1749,7 @@ mod tests {
         let mut h = house();
         take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
         assert_eq!(h.hp, 547.0);
-        assert_eq!(h.damaged, Some((10029, [10029, 547, 550])));
+        assert_eq!(h.damaged, [(10029, [10029, 547, 550])]);
         let b = h.building.as_ref().unwrap();
         assert_eq!((b.damaged_lately, b.struck, b.razed.len()), (60, true, 0));
         // at 1 a hit may do nothing: the least takes 1 more
@@ -1784,14 +1785,14 @@ mod tests {
         let mut villager = hunter();
         let mut h = Victim { hp: 0.0, ..house() };
         take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
-        assert_eq!((h.hp, h.damaged), (0.0, None));
+        assert_eq!((h.hp, h.damaged.is_empty()), (0.0, true));
         assert!(!h.building.as_ref().unwrap().struck);
         let mut h = Victim {
             hp: f32::NAN,
             ..house()
         };
         take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
-        assert!(h.damaged.is_some() && h.building.as_ref().unwrap().struck);
+        assert!(!h.damaged.is_empty() && h.building.as_ref().unwrap().struck);
         // a NaN is not below 1: no razing
         assert_eq!(h.building.as_ref().unwrap().razed, Vec::new());
     }
@@ -1836,8 +1837,8 @@ mod tests {
         assert_eq!((main.hp, a.hp, other.hp), (2398.0, 2398.0, 2398.0));
         assert!(main.building.as_ref().unwrap().struck);
         assert!(!a.building.as_ref().unwrap().struck);
-        assert_eq!(main.damaged, Some((10029, [10029, 2398, 550])));
-        assert_eq!(a.damaged, None);
+        assert_eq!(main.damaged, [(10029, [10029, 2398, 550])]);
+        assert_eq!(a.damaged, []);
         let mut alone = annex(11);
         assert_eq!(
             take(&mut alone, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0),
@@ -2027,6 +2028,11 @@ mod tests {
         assert_eq!(all.map(|t| t.id), [21, 20]);
         assert_eq!((main.hp, annex.hp), (95.0, 95.0));
         assert_eq!(main.building.as_ref().unwrap().blast_taken, 5.0);
+        // each hit posts its damage notify to the main building's unit AI: the annex's
+        // forwarded one, then its own (426048706's gate 7228: 271, then -58)
+        let hp_after: Vec<i32> = main.damaged.iter().map(|&(_, p)| p[1]).collect();
+        assert_eq!(hp_after, [99, 95]);
+        assert_eq!(annex.damaged, []);
     }
 
     /// `FUN_14107f690` walks the rows (y outer, x inner) and a tile's objects in its list's

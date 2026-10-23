@@ -2979,14 +2979,16 @@ impl Unit {
         }
         self.charge = own.source.charge;
         self.charge_hit = own.source.charge_hit;
-        if let (Some((attacker, p)), Some(ai)) = (own.damaged, self.ai.as_mut()) {
-            let n = Notify {
-                caller: attacker,
-                recipient: self.id,
-                kind: crate::unit_ai::DAMAGED,
-                p,
-            };
-            ai.post(n, self.life.state)?;
+        if let Some(ai) = self.ai.as_mut() {
+            for &(attacker, p) in &own.damaged {
+                let n = Notify {
+                    caller: attacker,
+                    recipient: self.id,
+                    kind: crate::unit_ai::DAMAGED,
+                    p,
+                };
+                ai.post(n, self.life.state)?;
+            }
         }
         if own.killed.is_some_and(|k| k.to_gaia) {
             return Err(GenieError::unsupported(

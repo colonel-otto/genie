@@ -632,14 +632,16 @@ impl Turns {
             u.damaged_lately = b.damaged_lately;
         }
         // the damage notify (500) to its unit AI
-        if let (Some((attacker, p)), Some(ai)) = (v.damaged, u.ai.as_mut()) {
-            let n = Notify {
-                caller: attacker,
-                recipient: v.id,
-                kind: crate::unit_ai::DAMAGED,
-                p,
-            };
-            ai.post(n, u.life.state)?;
+        if let Some(ai) = u.ai.as_mut() {
+            for &(attacker, p) in &v.damaged {
+                let n = Notify {
+                    caller: attacker,
+                    recipient: v.id,
+                    kind: crate::unit_ai::DAMAGED,
+                    p,
+                };
+                ai.post(n, u.life.state)?;
+            }
         }
         for &a in struck.map_or(&[][..], |b| &b.annexes) {
             if let Some(x) = self
@@ -1624,7 +1626,7 @@ pub(crate) fn victim_of(
             alert_idle: None,
             facing: None,
         }),
-        damaged: None,
+        damaged: Vec::new(),
         killed: None,
         // a building's slot 0xe8 is FUN_1411cea90
         building: (kind == BUILDING_KIND).then(|| crate::damage::Building {

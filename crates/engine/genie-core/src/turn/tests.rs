@@ -3824,7 +3824,7 @@ fn a_killed_sheep_goes_to_gaia() {
     );
     let mut v = t.victim(9520, 1).unwrap();
     v.hp = 0.0;
-    v.damaged = Some((10029, [10029, -10, 14]));
+    v.damaged = vec![(10029, [10029, -10, 14])];
     v.killed = Some(crate::damage::Kill {
         attacker: 10029,
         attacker_player: 1,
