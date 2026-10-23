@@ -172,3 +172,68 @@ pub fn census_run(
         end,
     })
 }
+
+/// Where a run from the header first leaves the game ([`header_divergence`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Divergence {
+    /// The updates run when the player's objects first differ from the game's save.
+    pub update: usize,
+    /// What differs ([`crate::object_differences`]).
+    pub differences: Vec<String>,
+}
+
+/// The recording run from its header as the census runs it, player `player`'s objects compared
+/// after each update `u` from `first` to `last` with the game's save that holds the state after
+/// update `u` (`save(u)`; the tick oracle's per-update saves name it `u - 1`, a missing save is
+/// skipped): the first update whose objects differ, None when none of the saves does. The run
+/// stops early at the player's stop, which ends what it can say.
+///
+/// # Errors
+///
+/// When the recording, its header or a save cannot be read.
+pub fn header_divergence(
+    recording: &[u8],
+    masters: Option<&MasterTable>,
+    player: u32,
+    (first, last): (usize, usize),
+    save: &mut dyn FnMut(usize) -> Option<Vec<u8>>,
+) -> Result<Option<Divergence>, Error> {
+    let chapter = de::chapters(recording)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let mut turns = header_slice(&header, masters);
+    let mut decoder = Decoder::default();
+    let p = player as usize;
+    if turns.players.len() <= p {
+        return Err(Error::NoSuchPlayer(player));
+    }
+    for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
+        run(
+            &mut turns,
+            &mut decoder,
+            std::slice::from_ref(frame),
+            &sections,
+        );
+        let update = i + 1;
+        if turns.players[p].unsupported.is_some() {
+            return Ok(None);
+        }
+        if update < first {
+            continue;
+        }
+        let Some(game) = save(update) else {
+            continue;
+        };
+        let differences = crate::object_differences(
+            &crate::object_rows(&turns, p),
+            &crate::saved_objects(&game, player)?,
+        );
+        if !differences.is_empty() {
+            return Ok(Some(Divergence {
+                update,
+                differences,
+            }));
+        }
+    }
+    Ok(None)
+}
