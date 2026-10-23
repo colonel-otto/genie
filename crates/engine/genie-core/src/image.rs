@@ -800,6 +800,8 @@ pub mod unit_ai {
     pub const FOUNDATION_REACH: f32 = f32::from_bits(0x3dcc_cccd);
     /// 1.5
     pub const GAIA_TARGET_REACH: f32 = f32::from_bits(0x3fc0_0000);
+    /// 9.0
+    pub const HELP_REACH: f32 = f32::from_bits(0x4110_0000);
     /// 3.0
     pub const LION_SIGHT_DIVISOR: f32 = f32::from_bits(0x4040_0000);
     /// 0.5

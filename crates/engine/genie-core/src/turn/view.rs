@@ -768,6 +768,70 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         Ok(crate::unit_ai::flood_search((ux, uy), r, foundation_on).unwrap_or(-1))
     }
 
+    fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
+        /// The classes that never help: 1 to 3, 18 to 21, 27 and 39.
+        const NO_HELP_CLASSES: u64 = 0x0080_083c_000e;
+        /// The siege tower master (`FUN_141194f10`'s 0x451).
+        const SIEGE_TOWER: i16 = 0x451;
+        /// `AskForHelp`'s reach (`DAT_142ecccc4`): the squared footprint gap of 3 tiles.
+        const HELP_REACH: f32 = crate::image::unit_ai::HELP_REACH;
+        let lists = self.spatial.searched().ok_or(GenieError::unsupported(
+            "a search that reads the registry's last answer (before any query)",
+        ))?;
+        let (others, foreign, player) = (self.others, self.foreign, self.player);
+        let find = |id: i32| {
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        let gaia_attacker = find(attacker).is_some_and(|(owner, _)| owner == 0);
+        let me = self.unit.id;
+        let my_radius = self
+            .masters
+            .and_then(|ms| ms.get(self.unit.life.master_id))
+            .map(|m| m.radius)
+            .ok_or(GenieError::unsupported(
+                "a unit AI's unit of a master the slice does not have",
+            ))?;
+        for r in lists[1].iter().chain(&lists[2]) {
+            if r.id == me {
+                continue;
+            }
+            let Some((owner, u)) = find(r.id) else {
+                continue;
+            };
+            if u.ai.is_none() || 3 <= u.life.state {
+                continue;
+            }
+            let m = self
+                .every
+                .get(owner)
+                .and_then(|ms| ms.get(u.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a helper of a master the slice does not have",
+                ))?;
+            let class = i64::from(m.class);
+            let no_help = (0..=0x27).contains(&class) && (NO_HELP_CLASSES >> class) & 1 != 0;
+            if no_help || m.id == SIEGE_TOWER {
+                continue;
+            }
+            if !gaia_attacker && m.class == 4 {
+                continue;
+            }
+            if owner != self.player && !self.spatial.allied_with(owner, self.player) {
+                continue;
+            }
+            let gap = footprint_gap_squared(self.unit.position, my_radius, u.position, m.radius);
+            if HELP_REACH < gap {
+                continue;
+            }
+            return crate::unit_ai::helper_answers();
+        }
+        Ok(())
+    }
+
     fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
         let Some(p) = self.spatial.get(id) else {
             return Ok(None);

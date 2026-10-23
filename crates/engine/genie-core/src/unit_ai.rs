@@ -1397,6 +1397,23 @@ pub trait UnitSide {
         Err(GenieError::unsupported("a stand test without the world"))
     }
 
+    /// `AskForHelp`'s walk (`FUN_140c42ce0`) of the lists its search left of the unit's player's
+    /// own objects and its friends' (`DAT_143f69180`, the relation kinds 1 and 2, each in its
+    /// order) for helpers against `attacker`: the unit itself, an object without a unit AI or
+    /// owner, a dead one (state 3 and up), one of the classes 1 to 3, 18 to 21, 27 and 39
+    /// (`0x80083c000e`), the siege tower master 1105 (`FUN_141194f10`), a villager (class 4)
+    /// against an attacker that is not Gaia's, one of a player that does not count the unit's
+    /// as an ally (`FUN_141663d90` with 1) and one farther than 3 tiles (the squared footprint
+    /// gap, `FUN_14118f8c0`, above 9) do not help. These tests read nothing the helper's attack
+    /// check (slot 0xa0) between them changes.
+    ///
+    /// # Errors
+    ///
+    /// A helper that passes them ([`helper_answers`]).
+    fn call_for_help(&mut self, _attacker: i32) -> Result<(), GenieError> {
+        Err(GenieError::unsupported("a call for help without the world"))
+    }
+
     /// The object `id` as the unit AI reads it ([`UnitSeen`]): None when the world does not
     /// hold it (`FUN_1415417a0`).
     ///
@@ -2408,13 +2425,29 @@ const fn alert_owner(computer: bool) -> Result<(), GenieError> {
     Ok(())
 }
 
-/// `AskForHelp` (`FUN_140c42ce0`): a unit attacked by a new attacker asks the units its search
-/// finds (slot 0x50) that may attack the attacker (their slot 0xa0) to help; not modelled.
-const fn call_for_help() -> Result<(), GenieError> {
+/// `AskForHelp`'s helper that passes every test the slice models (the owner's own or an ally's
+/// living unit within 3 tiles): its attack check (slot 0xa0), its group's or its own idleness,
+/// its target, its reach (`FUN_14104c220`), `bestUnitToAttack` (`FUN_140c44680`) and its
+/// `AttackObject` (slot 0xb8, forced) are not modelled.
+pub(crate) const fn helper_answers() -> Result<(), GenieError> {
     Err(GenieError::unsupported(
-        "a call for help (AskForHelp, FUN_140c42ce0)",
+        "a unit that may answer a call for help (AskForHelp's attack check, reach and AttackObject)",
     ))
 }
+
+/// The classes a transport ship cares about (`+0x190`, `TribeTransportShipUnitAIModule`'s
+/// constructor `FUN_140c12c30`).
+pub const TRANSPORT_CARED: [i32; 10] = [3, 22, 20, 2, 21, 53, 52, 27, 39, 49];
+
+/// The classes a siege tower cares about (`+0x190`, `TribeSiegeTowerUnitAIModule`'s constructor
+/// `FUN_140c11fb0`).
+pub const SIEGE_TOWER_CARED: [i32; 2] = [27, 39];
+
+/// The building unit AI's factory type (`TribeBuildingUnitAIModule`).
+const BUILDING_AI: u32 = 17;
+
+/// The transport ship's factory type (`TribeTransportShipUnitAIModule`).
+const TRANSPORT_AI: u32 = 11;
 
 /// The unit AI's slot 0x90 (`closestUndiscoveredTile`, `FUN_140c4bd40`) for an explorer other
 /// than the auto scout, then its explore there (slot 0x100); not modelled.
@@ -4493,6 +4526,66 @@ impl UnitAi {
     /// `HuntObject` ([`UnitAi::hunt_object`]) on classes 9, 10 and 15, else `AttackObject`; then
     /// `+0x1a8` is set and it breaks off. Its evade from another player's attacker is not
     /// modelled.
+    /// `AskForHelp` (`FUN_140c42ce0`) of a unit attacked by a new `attacker`: without an attacker
+    /// the world holds (`FUN_1415417a0`) nothing; else its search from its place (slot 0x50,
+    /// `FUN_140c63e20` with mode 1: the classes it cares about, [`UnitAi::help_search`]; a search
+    /// that ran sets the alert mode, [`UnitAi::attack_search_alert`]), whose lists of its own and
+    /// its friends' objects ([`UnitSide::call_for_help`]) it walks for helpers.
+    ///
+    /// # Errors
+    ///
+    /// A helper the slice does not model ([`helper_answers`]), and what the search does not.
+    fn ask_for_help(
+        &mut self,
+        attacker: i32,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+    ) -> Result<(), GenieError> {
+        if side.seen_unit(attacker)?.is_none() {
+            return Ok(());
+        }
+        let (classes, radius) = self.help_search(at)?;
+        let found = side.closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius,
+            classes,
+            size: at.size,
+            pick: Pick::Look,
+        })?;
+        self.attack_search_alert(found, computer)?;
+        side.call_for_help(attacker)
+    }
+
+    /// What the search of a unit AI that calls for help covers (`FUN_140c63e20`): the classes its
+    /// constructor gave it (`+0x190`: the villager's, the building's, the transport ship's, the
+    /// siege tower's, the trade boat's (class 2) or cart's, the fishing ship's), within its search
+    /// radius, the line of sight plus 1 if that is farther, plus its growth (`+0x1e8`,
+    /// `FUN_140c2e080`'s fourth argument: 7 for the villager and the fishing ship, 0 for the
+    /// others).
+    ///
+    /// # Errors
+    ///
+    /// A unit AI type that never calls for help.
+    fn help_search(&self, at: &Surroundings) -> Result<(&'static [i32], f32), GenieError> {
+        let grown = civilian_search_radius(at.los, at.search_radius);
+        let plain = search_radius(at.los, at.search_radius);
+        Ok(match self.ai_type {
+            CIVILIAN => (&CIVILIAN_CARED, grown),
+            BUILDING_AI => (&BUILDING_CARED, plain),
+            TRANSPORT_AI => (&TRANSPORT_CARED, plain),
+            SIEGE_TOWER_AI => (&SIEGE_TOWER_CARED, plain),
+            TRADE_AI if at.class == TRADE_BOAT_CLASS => (&TRADE_SHIP_CARED, plain),
+            TRADE_AI => (&TRADE_CART_CARED, plain),
+            FISHING_AI => (&FISHING_CARED, grown),
+            _ => {
+                return Err(GenieError::unreachable(
+                    "a call for help of a unit AI type that never calls",
+                ));
+            }
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn villager_damaged(
         &mut self,
@@ -4519,7 +4612,7 @@ impl UnitAi {
         let added = self.add_attacker(n.caller);
         let fierce = attacker.class == CLASS_10 && attacker.combat_level == 1;
         if added && self.current_target != n.caller && !fierce {
-            call_for_help()?;
+            self.ask_for_help(n.caller, at, computer, side)?;
         }
         side.set_under_attack(true);
         let order = self.current_order;
@@ -4596,7 +4689,7 @@ impl UnitAi {
         }
         let new = self.attackers.binary_search(&n.caller).is_err();
         if new && !computer && self.current_target != n.caller {
-            call_for_help()?;
+            self.ask_for_help(n.caller, at, computer, side)?;
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
@@ -4684,7 +4777,7 @@ impl UnitAi {
         }
         let new = self.attackers.binary_search(&n.caller).is_err();
         if new && !computer && self.current_target != n.caller {
-            call_for_help()?;
+            self.ask_for_help(n.caller, at, computer, side)?;
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
@@ -4723,7 +4816,7 @@ impl UnitAi {
         }
         let new = self.attackers.binary_search(&n.caller).is_err();
         if new && !computer && self.current_target != n.caller {
-            call_for_help()?;
+            self.ask_for_help(n.caller, at, computer, side)?;
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
@@ -4830,7 +4923,7 @@ impl UnitAi {
         let new = self.attackers.binary_search(&n.caller).is_err();
         alert_owner(computer)?;
         if n.p[1] >= 1 && new && self.current_target != n.caller {
-            call_for_help()?;
+            self.ask_for_help(n.caller, at, computer, side)?;
         }
         if n.p[1] < 1 {
             self.end_notifies(time, at, fx)?;
@@ -7606,6 +7699,144 @@ mod tests {
         fn make_scout_map(&mut self) -> Result<(), GenieError> {
             Err(GenieError::unsupported("no world here"))
         }
+    }
+
+    /// A unit that calls for help: whether the world holds the attacker, the searches it ran
+    /// (classes and radius) and the attackers its walk got.
+    struct HelpSide {
+        holds: bool,
+        searches: Vec<(Vec<i32>, f32)>,
+        walks: Vec<i32>,
+    }
+
+    impl UnitSide for HelpSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
+        fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
+            self.searches.push((search.classes.to_vec(), search.radius));
+            Ok(Found {
+                id: -1,
+                enemies: true,
+                position: None,
+                fresh: true,
+                players: 0,
+                distance: 0,
+            })
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), GenieError> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
+        }
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
+            Ok(self.holds.then_some(UnitSeen {
+                id,
+                class: 35,
+                owner: 0,
+                combat_level: 0,
+                state: 4,
+                target: None,
+                gap_squared: 0.0,
+                position: [101.5, 158.5, 0.0],
+            }))
+        }
+        fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
+            self.walks.push(attacker);
+            Ok(())
+        }
+    }
+
+    /// `AskForHelp` (`FUN_140c42ce0`): an attacker the world does not hold asks nothing; else the
+    /// unit searches from its place (slot 0x50, mode 1) over the classes its constructor gave
+    /// it within its search radius (the line of sight plus 1 when farther; plus 7 for the
+    /// villager and the fishing ship), the search sets the alert mode, and the walk of its lists
+    /// looks for helpers. 426048706's gate 7558 (a building, p3) in update 4.
+    #[test]
+    fn a_call_for_help_searches_what_the_unit_cares_about_then_walks_the_lists() {
+        let at = Surroundings {
+            position: [124.5, 174.5, 0.0],
+            los: 6.0,
+            search_radius: 4.0,
+            class: 39,
+            ..Surroundings::default()
+        };
+        let mut gone = HelpSide {
+            holds: false,
+            searches: Vec::new(),
+            walks: Vec::new(),
+        };
+        let mut gate = idle(BUILDING_AI);
+        gate.ask_for_help(7955, &at, false, &mut gone).unwrap();
+        assert_eq!((gone.searches.len(), gone.walks.len()), (0, 0));
+        let mut side = HelpSide {
+            holds: true,
+            searches: Vec::new(),
+            walks: Vec::new(),
+        };
+        gate.ask_for_help(7955, &at, false, &mut side).unwrap();
+        assert_eq!(side.searches, [(BUILDING_CARED.to_vec(), 7.0)]);
+        assert_eq!(side.walks, [7955]);
+        assert!(gate.alert_mode);
+        let mut villager = idle(CIVILIAN);
+        let mut side = HelpSide {
+            holds: true,
+            searches: Vec::new(),
+            walks: Vec::new(),
+        };
+        villager.ask_for_help(7955, &at, false, &mut side).unwrap();
+        assert_eq!(side.searches, [(CIVILIAN_CARED.to_vec(), 14.0)]);
+        for (ai_type, class, cared) in [
+            (TRANSPORT_AI, 20, &TRANSPORT_CARED[..]),
+            (SIEGE_TOWER_AI, 13, &SIEGE_TOWER_CARED[..]),
+            (TRADE_AI, 2, &TRADE_SHIP_CARED[..]),
+            (TRADE_AI, 19, &TRADE_CART_CARED[..]),
+        ] {
+            let at = Surroundings {
+                class,
+                ..at.clone()
+            };
+            let mut side = HelpSide {
+                holds: true,
+                searches: Vec::new(),
+                walks: Vec::new(),
+            };
+            idle(ai_type)
+                .ask_for_help(7955, &at, false, &mut side)
+                .unwrap();
+            assert_eq!(side.searches, [(cared.to_vec(), 7.0)]);
+        }
+        let mut side = HelpSide {
+            holds: true,
+            searches: Vec::new(),
+            walks: Vec::new(),
+        };
+        idle(FISHING_AI)
+            .ask_for_help(7955, &at, false, &mut side)
+            .unwrap();
+        assert_eq!(side.searches, [(FISHING_CARED.to_vec(), 14.0)]);
     }
 
     /// A unit sent off a footprint: what [`UnitSide::off_footprint`] answers.
@@ -13317,13 +13548,14 @@ mod tests {
             u.handle(n, 0, &at, true, &mut rng(), &mut side, &mut Vec::new())
                 .is_err()
         );
-        // a new attacker that is not its target: the call for help is not modelled
+        // a new attacker that is not its target: the call for help (AskForHelp) looks the
+        // attacker up in the world first, which this side does not hold
         let (mut u, at) = attacked_transport();
         u.attackers.clear();
         assert_eq!(
             u.handle(n, 0, &at, false, &mut rng(), &mut side, &mut Vec::new()),
             Err(GenieError::unsupported(
-                "a call for help (AskForHelp, FUN_140c42ce0)"
+                "an object's look without the world"
             ))
         );
     }
