@@ -392,7 +392,8 @@ pub fn find_task<'m>(
     {
         return Err(GenieError::unsupported(
             "the task finder on prey for a hunter master (+0x610)",
-        ));
+        )
+        .with("target master", t.master.id));
     }
     // LAB_141278e9f: the monk tasks for carried relics and conversions of villagers
     let (held_kind, held_amount) = actor.held;

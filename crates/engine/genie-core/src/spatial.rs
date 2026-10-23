@@ -692,7 +692,9 @@ impl Spatial {
         match self.get(id) {
             Some(p) if p.unknown.is_some_and(|u| 0.0 < u) => Err(GenieError::unsupported(
                 "an object of a stopped player (its place is unknown)",
-            )),
+            )
+            .with("object", id)
+            .with("player", p.player)),
             found => Ok(found),
         }
     }
@@ -755,7 +757,7 @@ impl Spatial {
         classes: Option<&[i32]>,
     ) -> Result<(), GenieError> {
         // only a frozen object has an unknown place, and each is in `frozen_for`
-        let near = self.frozen().any(|(id, p)| {
+        let near = self.frozen().find(|&(id, p)| {
             if records && p.obstruction.is_none() {
                 return false;
             }
@@ -771,10 +773,16 @@ impl Spatial {
                 inside && (0.0 < u || self.touchable(id, [x0, y0, x1, y1]))
             })
         });
-        if near {
-            return Err(GenieError::unsupported(
-                "an object of a stopped player may be near",
-            ));
+        if let Some((id, p)) = near {
+            return Err(
+                GenieError::unsupported("an object of a stopped player may be near")
+                    .with("object", id)
+                    .with("player", p.player)
+                    .with(
+                        "query",
+                        format_args!("({}, {})..({}, {})", rect[0], rect[1], rect[2], rect[3]),
+                    ),
+            );
         }
         Ok(())
     }
@@ -3647,8 +3655,12 @@ mod tests {
         s.grow_unknown(2.5);
         assert!(s.footprint_occupants(10028, &house, true).is_ok());
         s.grow_unknown(0.5);
-        assert!(s.footprint_occupants(10028, &house, true).is_err());
-        assert!(s.get_known(9656).is_err());
+        let e = s.footprint_occupants(10028, &house, true).unwrap_err();
+        assert_eq!(e.context().next(), Some(("object", "9656")));
+        let e = s.get_known(9656).unwrap_err();
+        // the error names the object and its player
+        let context: Vec<_> = e.context().take(2).collect();
+        assert_eq!(context, [("object", "9656"), ("player", "2")]);
     }
 
     #[test]

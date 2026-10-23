@@ -5633,9 +5633,11 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
-            _ => Err(GenieError::unsupported(
-                "a notify kind the base handler does not model",
-            )),
+            _ => Err(
+                GenieError::unsupported("a notify kind the base handler does not model")
+                    .with("notify", format_args!("{:#x}", n.kind))
+                    .with("caller", n.caller),
+            ),
         }
     }
 

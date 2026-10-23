@@ -1989,7 +1989,9 @@ impl Turns {
             if master.garrison == 0 {
                 return Err(GenieError::unsupported(
                     "SET GATHER POINT on a building that does not garrison (its train list)",
-                ));
+                )
+                .with("building", unit.id)
+                .with("master", master.id));
             }
             let z = unit.gather_point.map_or(0.0, |g| g.point[2]);
             let gather = if own {

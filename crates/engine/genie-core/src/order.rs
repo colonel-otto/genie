@@ -2939,7 +2939,10 @@ impl Turns {
                 _ => {
                     return Err(GenieError::unsupported(
                         "a work command on the unit's current task",
-                    ));
+                    )
+                    .with("action", format_args!("{top:?}"))
+                    .with("task", task.id)
+                    .with("target", target));
                 }
             },
             _ => false,

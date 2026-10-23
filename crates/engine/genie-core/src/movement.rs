@@ -1257,13 +1257,13 @@ impl Mover {
             if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
                 let [x, _, y] = level.points[level.waypoint as usize];
                 world.check_known_records([x, y, x, y])?;
-                if !world
-                    .obstruction_candidates([x, y, x, y], 0.0, &[])
-                    .is_empty()
-                {
-                    return Err(GenieError::unsupported(
-                        "a next waypoint some object stands on",
-                    ));
+                let standing = world.obstruction_candidates([x, y, x, y], 0.0, &[]);
+                if !standing.is_empty() {
+                    return Err(
+                        GenieError::unsupported("a next waypoint some object stands on")
+                            .with("waypoint", format_args!("({x}, {y})"))
+                            .with("objects", format_args!("{standing:?}")),
+                    );
                 }
             }
         }
