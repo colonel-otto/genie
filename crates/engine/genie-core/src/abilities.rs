@@ -27,7 +27,10 @@
 //!   player an `ADD_ATTRIBUTE` command for each such task within 1e-7 of range ([`Reward`]).
 //!
 //! The `.dat` of build 158041 has only 151 tasks (its current build adds 159 for the longboats,
-//! Nessie and the snake); the routine runs whatever the masters hold.
+//! Nessie and the snake), and the civilisations' bonuses add more to their gatherers' masters,
+//! which the save then holds (`mObjectTaskFlags` bit 0): the Portuguese foragers' wood, the
+//! Poles' stone miners' gold, the Shu lumberjacks' food. The routine runs whatever the masters
+//! hold.
 
 use crate::damage::Victim;
 use crate::fmath;
@@ -1692,5 +1695,19 @@ mod tests {
         give_master(&mut t, 7, 30, 6, vec![bounty()]);
         put(&mut t, 1, 90, 7, 0.0, [5.5, 5.5]);
         assert_eq!(rewards(&mut t, 1, 90, true), Vec::new());
+    }
+
+    /// `FUN_1416625b0`: an attribute below the player's count, the resources' from the slice's
+    /// own (food, wood, stone and gold); none past it.
+    #[test]
+    fn a_player_s_attribute_reads_the_resources_first() {
+        let p = Player {
+            resources: [1.0, 2.0, 3.0, 4.0],
+            attributes: vec![9.0; 6],
+            ..Player::default()
+        };
+        assert_eq!(p.attribute(2), Some(3.0));
+        assert_eq!(p.attribute(5), Some(9.0));
+        assert_eq!(p.attribute(6), None);
     }
 }
