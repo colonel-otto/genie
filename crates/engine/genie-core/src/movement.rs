@@ -823,6 +823,44 @@ impl Mover {
         [x, y, z]
     }
 
+    /// The moving setup (`FUN_1411580a0`) of a new object of `stats` at `at`: it faces x (its
+    /// right −z), does not wait, has no path and moveForward's factor 1; the position setter
+    /// (`FUN_141161950`) makes its place a move at `now`. Its angle and its sprite's facets are
+    /// the caller's. Every moving object (types 30 and up) gets it, a building too, though it
+    /// never moves: the walk reads the last move time of a building it meets (slot 0x5e8,
+    /// `FUN_14106d2d0`).
+    pub(crate) const fn new_object(
+        stats: MoveStats,
+        at: [f32; 3],
+        now: u32,
+        angle: f32,
+        sprite_facets: Option<crate::facing::SpriteFacets>,
+    ) -> Self {
+        Self {
+            forward: [1.0, 0.0, 0.0],
+            right: [0.0, 0.0, crate::spawn::START_RIGHT_Z],
+            velocity: None,
+            paths: Vec::new(),
+            factor: 1.0,
+            stats,
+            waiting: 0,
+            wait_delays: 0,
+            attack_moving: false,
+            last_move: now,
+            moved_at: at,
+            substitute_count: 0,
+            ignore_units: Vec::new(),
+            user_waypoints: Vec::new(),
+            last_turn: 0.0,
+            angle,
+            move_to_point: None,
+            speed_stopped: false,
+            pauses: Vec::new(),
+            in_the_way: Vec::new(),
+            sprite_facets,
+        }
+    }
+
     /// The position setter's end (`FUN_141161950`): a place `at` more than 1e-7 off where it
     /// last moved to on any axis is a move at `now` (`+0x870`), and where it last moved to.
     pub(crate) fn mark_move(&mut self, at: [f32; 3], now: u32) {

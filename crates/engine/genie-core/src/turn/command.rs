@@ -872,39 +872,14 @@ impl Turns {
                 owner.add_attribute(kind, amount)?;
             }
         }
-        // a building that moves (a mule cart: its master's speed above 0) gets the moving
-        // object's init (FUN_1411580a0: facing x, its right -z, not waiting); the other
-        // buildings' movement state is never read
-        let moving = self
+        // the moving setup (FUN_1411580a0) of every building, a moving object though it never
+        // moves (a mule cart does): the walk reads its last move time
+        let mover = self
             .masters
             .get(player)
             .and_then(|m| m.get(master))
             .and_then(|m| m.moving)
-            .filter(|m| 0.0 < m.speed);
-        let world_time = self.world_time;
-        let mover = moving.map(|stats| Mover {
-            forward: [1.0, 0.0, 0.0],
-            right: [0.0, 0.0, crate::spawn::START_RIGHT_Z],
-            velocity: None,
-            paths: Vec::new(),
-            factor: 1.0,
-            stats,
-            waiting: 0,
-            wait_delays: 0,
-            attack_moving: false,
-            last_move: world_time,
-            moved_at: position,
-            substitute_count: 0,
-            ignore_units: Vec::new(),
-            user_waypoints: Vec::new(),
-            last_turn: 0.0,
-            angle: 0.0,
-            move_to_point: None,
-            speed_stopped: false,
-            pauses: Vec::new(),
-            in_the_way: Vec::new(),
-            sprite_facets: None,
-        });
+            .map(|stats| Mover::new_object(stats, position, self.world_time, 0.0, None));
         // the constructor (FUN_1411de5f0)
         let [x, y, _] = position;
         let (tx, ty) = (

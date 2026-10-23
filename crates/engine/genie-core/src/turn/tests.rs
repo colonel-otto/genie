@@ -4427,3 +4427,98 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     assert_eq!(unit.attack.map(|a| a.state), Some(crate::attack::FAILED));
     assert_eq!(unit.anim_speed, Some(1.0));
 }
+
+/// BUILD's foundation is a moving object (type 80): the moving setup (`FUN_1411580a0`) gives it
+/// its movement state, though it never moves (speed 0), and the position setter makes its place
+/// a move at the world time (`+0x870`), which the walk reads of a building it meets (slot 0x5e8,
+/// `FUN_14106d2d0`): a foundation made after a unit's path was can be kept as a hit.
+#[test]
+fn a_build_command_s_foundation_holds_its_movement_state() {
+    let mut masters = builder_masters();
+    let house = masters.get_mut(70).unwrap();
+    house.moving = Some(crate::movement::MoveStats {
+        fly_mode: 0,
+        speed: 0.0,
+        turn_rate: f32::MAX,
+        turn_radius: 0.0,
+        turn_radius_speed: f32::MAX,
+        radius: [1.0, 1.0, 1.0],
+        restriction: 7,
+        restriction_mask: 6,
+        turn_time: 0.0,
+        move_algorithm: 0,
+        min_collision: 1.0,
+        fast_turn: false,
+        walk_speed: 0.0,
+        stand_speed: 0.0,
+        run_speed: 0.0,
+        facets: None,
+        weapon_range: 0.0,
+    });
+    let mut t = Turns::new(
+        0,
+        29910,
+        1,
+        vec![0, 0],
+        vec![
+            Player::default(),
+            Player {
+                objects: vec![Unit {
+                    id: 9175,
+                    position: [30.0, 89.0, 0.0],
+                    life: Lifecycle {
+                        class: Class::Animated,
+                        state: 2,
+                        hp: 25.0,
+                        master_id: 83,
+                        ..Lifecycle::default()
+                    },
+                    ai: Some(UnitAi {
+                        ai_type: 8,
+                        current_order: -1,
+                        current_action: -1,
+                        current_target: -1,
+                        ..UnitAi::default()
+                    }),
+                    ..Unit::default()
+                }],
+                resources: [200.0, 100.0, 200.0, 100.0],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    t.next_object_id = 10028;
+    t.world_time = 72890;
+    t.masters = vec![Masters::default(), masters];
+    placeable(&mut t);
+    t.run(&Command::Build {
+        player: 1,
+        master: 70,
+        unit_ai: Ok(None),
+        position: [30.0, 88.0, 0.0],
+        builders: vec![9175],
+        queued: false,
+        commits: false,
+    });
+    assert_eq!(t.players[1].unsupported, None);
+    let foundation = t.players[1].objects.last().unwrap();
+    assert_eq!(foundation.id, 10028);
+    let m = foundation
+        .mover
+        .as_ref()
+        .expect("a building's movement state");
+    assert_eq!(
+        (m.forward, m.waiting, m.last_move, m.moved_at, m.paths.len()),
+        ([1.0, 0.0, 0.0], 0, 72890, [30.0, 88.0, 0.0], 0)
+    );
+    t.sync_world();
+    let gait = t
+        .spatial
+        .gait(10028)
+        .expect("the walk's view of the building");
+    assert_eq!(
+        (gait.moving, gait.last_move, gait.pause),
+        (false, 72890, None)
+    );
+}
