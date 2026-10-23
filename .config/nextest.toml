@@ -5,3 +5,5 @@
 
 [profile.default]
 slow-timeout = { period = "60s" }
+# at most 16 tests at once, so two or three runs (agents in their worktrees) share the 48 cores
+test-threads = 16
