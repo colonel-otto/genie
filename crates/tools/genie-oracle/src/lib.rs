@@ -311,6 +311,7 @@ fn unit(
             .tribe_building_object
             .as_deref()
             .map_or([0; 2], |b| [b.relic_count, b.specific_relic_count]),
+        damaged_lately: s.damaged_lately_timer as u8,
         livestock_summation: object
             .tribe_building_object
             .as_deref()
@@ -1514,6 +1515,7 @@ fn saved_attack(
         repaths: b.target_moved_state != 0,
         // `+0x68`, its MoveTo's sprite
         runs: 0 <= run_sprite && a.short_val as i16 == run_sprite,
+        same_owner: a.was_same_owner != 0,
     })
 }
 

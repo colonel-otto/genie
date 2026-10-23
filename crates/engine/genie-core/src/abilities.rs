@@ -1458,6 +1458,7 @@ mod tests {
             sub_action: false,
             repaths: false,
             runs: true,
+            same_owner: false,
         };
         t.players[1].objects[0].attack = Some(attack);
         t.players[1].attributes[213] = 0.5;

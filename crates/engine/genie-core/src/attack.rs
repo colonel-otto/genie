@@ -135,6 +135,10 @@ pub struct Attack {
     /// Attack's, slot 0x7d0): the `MoveTo`'s start sets the unit's running speed. The Hunt's
     /// (its task's sprite) leaves the speed.
     pub runs: bool,
+    /// `+0x9f`, `was_same_owner` (saved): its target was its unit's player's when the
+    /// constructor (`FUN_140a7c210`) took it; the update's ally test spares such a livestock or
+    /// farm target ([`Attack::update`]).
+    pub same_owner: bool,
 }
 
 /// A unit's own Attack as the attack command made it ([`Attack::command`]).
@@ -202,6 +206,8 @@ pub struct Engagement {
     pub master: i16,
     /// The target's master's class, whose 39 (a gate) readyToAttack measures by its parts.
     pub target_class: i16,
+    /// The target is the unit's player's (the constructor's `+0x9f`, [`Attack::same_owner`]).
+    pub same_owner: bool,
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.
@@ -347,6 +353,10 @@ pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mu
     *sprite = Some(ActiveSprite::start(g, rng));
 }
 
+/// The livestock (58, `0x3a`) and farm (49, `0x31`) classes: the ally test spares an Attack on
+/// one that was its unit's player's when the Attack took it ([`Attack::same_owner`]).
+const LIVESTOCK: i16 = 58;
+const FARM: i16 = 49;
 /// A building's master type (`'P'`), whose main building (`+0xbb8`) an area effect attacks.
 const BUILDING: u8 = 80;
 /// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
@@ -427,8 +437,9 @@ pub(crate) fn in_the_way(walk: &mut Walk<'_>, s: &mut Strike<'_>) {
 impl Attack {
     /// The constructor (`FUN_140a7c210`) on `target`: the range and least range of `e`, its
     /// target's place as where it was seen (`+0xa4`..`+0xac`), the point −1 on each axis, the
-    /// sprites and frames of `arms`; a unit's own Attack (`+0x60` 0), its `MoveTo` not repathing
-    /// at once (`+0x61` 0) and running (slot 0x7d0's sprite).
+    /// sprites and frames of `arms`, whether the target is its unit's player's (`+0x9f`); a
+    /// unit's own Attack (`+0x60` 0), its `MoveTo` not repathing at once (`+0x61` 0) and running
+    /// (slot 0x7d0's sprite).
     pub(crate) fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
         Self {
             target,
@@ -448,6 +459,7 @@ impl Attack {
             sub_action: false,
             repaths: false,
             runs: true,
+            same_owner: e.same_owner,
         }
     }
 
@@ -1265,6 +1277,19 @@ impl Attack {
                 ));
             }
         }
+        // LAB_140a834ab: a live target (state 0 to 2) of a player's unit (+0x718 not 0) that
+        // its player counts as itself or an ally (FUN_141663dc0 with 1) ends the attack
+        // (set_state 1; its own Attack, not quiet, posts 0x1fb with 600 and the target) and
+        // returns 1, unless the target is livestock (58) or a farm (49) that was its player's when
+        // the Attack took it (+0x9f)
+        let spared = matches!(s.victim.class, LIVESTOCK | FARM) && self.same_owner;
+        if alive && s.own.player != 0 && !spared && s.victim.allied[0] {
+            self.finish(&mut walk, s)?;
+            if !self.sub_action {
+                s.posted.push((0x1fb, [600, self.target, 0]));
+            }
+            return Ok(1);
+        }
         // a target inside another (+0x2f0): the attack ends (set_state 1) and returns 4, which
         // keeps it in the list; a unit's own Attack (not quiet, +0x60) of a unit whose unit AI's
         // order queue is empty posts 0x1fb with 600 and the target
@@ -1655,15 +1680,20 @@ impl Attack {
         Ok(())
     }
 
-    /// `FUN_1412115e0`'s trample: the blast about the unit, past its target ([`damage::blast`]);
-    /// the unit tells its unit AI the action executed (0x200, whatever its master); the 64-bit
-    /// Object-stream draw against the hit chance; a hit the target's shield does not block
-    /// (`FUN_14108d8a0`, on a target of any type) is its slot 0xe8 at the elevation factor times
-    /// the hit's 1. A charge of type 1 or 3 the blast or the hit was for (`+0x8a8`) is emptied.
+    /// `FUN_1412115e0`'s trample: the blast about the unit, past its target ([`damage::blast`];
+    /// the target stays among the objects on its tiles, the main building its annexes' hits
+    /// go to); a building target's blast so far (`+0xb90`, its main building's for an annex,
+    /// `0x141211933`) is what its hit leaves out; the unit tells its unit AI the action executed
+    /// (0x200, whatever its master); the 64-bit Object-stream draw against the hit chance; a hit
+    /// the target's shield does not block (`FUN_14108d8a0`, on a target of any type) is its slot
+    /// 0xe8 at the elevation factor times the hit's 1. A charge of type 1 or 3 the blast or the
+    /// hit was for (`+0x8a8`) is emptied.
     fn trample(&self, s: &mut Strike<'_>, object_rng: &mut Well512) -> Result<(), Unsupported> {
         let (center, target) = (s.own.position, s.victim.id);
         let mut targets: Vec<&mut Victim> = s.blasted.iter_mut().collect();
+        targets.push(&mut *s.victim);
         let _ = damage::blast(&mut s.own, center, Some(target), None, &mut targets, 1.0)?;
+        let taken = blast_so_far(s.victim, s.blasted)?;
         s.executed = Some(target);
         let draw = object_rng.raw64();
         let r = (i64::from(draw as u32 & 0x7fff_ffff) * 100) / DRAW_SCALE;
@@ -1672,7 +1702,8 @@ impl Attack {
                 damage::elevation_factor(s.own.position[2], s.own.attack_elevation, s.victim);
             if !damage::shield(s.victim, false) {
                 let weapons = s.own.weapons.clone();
-                damage::take(s.victim, &mut s.own, &weapons, factor, 0.0)?;
+                let mut others: Vec<&mut Victim> = s.blasted.iter_mut().collect();
+                damage::take(s.victim, &mut s.own, &mut others, &weapons, factor, taken)?;
             }
         }
         let a = &mut s.own.source;
@@ -1801,8 +1832,26 @@ pub(crate) fn strike(
         damage::elevation_factor(z, own.attack_elevation, victim)
     });
     let weapons = own.weapons.clone();
-    damage::take(victim, own, &weapons, factor, 0.0)?;
+    let mut others: Vec<&mut Victim> = blasted.iter_mut().collect();
+    damage::take(victim, own, &mut others, &weapons, factor, 0.0)?;
     Ok(struck)
+}
+
+/// The blast's damage so far that a trample's hit on `victim` leaves out (`0x141211933`): a
+/// building's `+0xb90`, its main building's (`+0xbb8`, among `blasted`) for an annex; 0 for
+/// another object.
+fn blast_so_far(victim: &Victim, blasted: &[Victim]) -> Result<f32, Unsupported> {
+    let Some(b) = victim.building.as_ref().filter(|_| victim.kind == BUILDING) else {
+        return Ok(0.0);
+    };
+    let Some(main) = b.main else {
+        return Ok(b.blast_taken);
+    };
+    blasted
+        .iter()
+        .find(|v| v.id == main)
+        .map(|m| m.building.as_ref().map_or(0.0, |mb| mb.blast_taken))
+        .ok_or(crate::build::NOT_HELD)
 }
 
 /// The Attack constructor's sprites and frames (`FUN_140a7c210`) for a unit that shows its
@@ -1878,6 +1927,7 @@ pub fn engagement(
         world_time,
         master: master.id,
         target_class: them.class,
+        same_owner: me.player == them.player,
     })
 }
 
@@ -2009,6 +2059,7 @@ mod tests {
             sub_action: false,
             repaths: false,
             runs: true,
+            same_owner: false,
         }
     }
 
@@ -2398,6 +2449,162 @@ mod tests {
         }
     }
 
+    /// A building of player 2 at `at` (radius 0.5, 100 hit points, no armor, reached by blasts
+    /// of level 2) with its `building` part.
+    fn struck_building(id: i32, at: [f32; 3], building: damage::Building) -> Victim {
+        Victim {
+            id,
+            hp: 100.0,
+            kind: BUILDING,
+            class: 3,
+            player: 2,
+            position: at,
+            radius: [0.5, 0.5],
+            blast_defense: 2,
+            armored: Some(damage::Armored {
+                armors: vec![(4, 0)],
+                terrain_bonus: -1,
+                master_hp: 100,
+                friendly_fire: 1.0,
+                ..damage::Armored::default()
+            }),
+            building: Some(building),
+            ..Victim::default()
+        }
+    }
+
+    /// `FUN_141084230`'s hit on an annex is its main building's (`FUN_1411cea90`'s forward):
+    /// the main building among the objects the hit may reach loses it, and the annex takes its
+    /// hit points.
+    #[test]
+    fn a_strike_on_an_annex_hits_its_main_building() {
+        let mut annex = struck_building(
+            21,
+            [10.5, 10.0, 0.0],
+            damage::Building {
+                main: Some(20),
+                ..damage::Building::default()
+            },
+        );
+        let mut blasted = vec![struck_building(
+            20,
+            [11.5, 10.0, 0.0],
+            damage::Building {
+                annexes: vec![21],
+                ..damage::Building::default()
+            },
+        )];
+        let mut own = Victim {
+            id: 1,
+            kind: 70,
+            class: 6,
+            player: 1,
+            source: damage::Attacker {
+                id: 1,
+                kind: 70,
+                class: 6,
+                missile: -1,
+                player: 1,
+                ..damage::Attacker::default()
+            },
+            weapons: vec![(4, 4)],
+            ..Victim::default()
+        };
+        let hit = Hit {
+            at: own.position,
+            from_z: Some(0.0),
+            missile: false,
+            chance: 100,
+        };
+        let struck = strike(
+            &mut own,
+            &mut annex,
+            &mut blasted,
+            hit,
+            &mut Well512::default(),
+        )
+        .unwrap();
+        assert_eq!(struck.result, 1);
+        assert_eq!((blasted[0].hp, annex.hp), (96.0, 96.0));
+        assert!(blasted[0].building.as_ref().is_some_and(|b| b.struck));
+    }
+
+    /// `FUN_1412115e0`'s trample: its blast about the unit passes its target but reaches the
+    /// target's main building (5 of 10 at half the damage), whose blast so far (`+0xb90`,
+    /// `0x141211933`) the hit on the annex then leaves out: 10 less 5.
+    #[test]
+    fn a_trample_s_hit_leaves_out_its_building_target_s_blast_so_far() {
+        let mut rig = Rig::new(struck_building(
+            21,
+            [10.2, 10.0, 0.0],
+            damage::Building {
+                main: Some(20),
+                ..damage::Building::default()
+            },
+        ));
+        rig.blasted = vec![struck_building(
+            20,
+            [10.5, 10.0, 0.0],
+            damage::Building {
+                annexes: vec![21],
+                ..damage::Building::default()
+            },
+        )];
+        let mut s = rig.strike();
+        s.own.position = [10.0, 10.0, 0.0];
+        s.own.weapons = vec![(4, 10)];
+        s.own.source = damage::Attacker {
+            id: 1,
+            kind: 70,
+            class: 6,
+            missile: -1,
+            player: 1,
+            area_effect: 1.0,
+            blast_level: 2,
+            area_damage: 0.5,
+            ..damage::Attacker::default()
+        };
+        let a = own_attack(21, READY, 0.0);
+        a.hit(&mut s, &mut Well512::default()).unwrap();
+        assert_eq!(s.executed, Some(21));
+        drop(s);
+        assert_eq!((rig.blasted[0].hp, rig.victim.hp), (90.0, 90.0));
+        assert_eq!(
+            rig.blasted[0].building.as_ref().map(|b| b.blast_taken),
+            Some(5.0)
+        );
+    }
+
+    /// The blast so far a trample's hit leaves out: a building's own, an annex's main building's
+    /// (one the hit does not hold is not modelled), none for another object.
+    #[test]
+    fn a_trample_reads_a_building_s_blast_so_far_or_its_main_building_s() {
+        let building = |main, blast_taken| {
+            struck_building(
+                21,
+                [0.0; 3],
+                damage::Building {
+                    main,
+                    blast_taken,
+                    ..damage::Building::default()
+                },
+            )
+        };
+        assert_eq!(blast_so_far(&building(None, 3.0), &[]), Ok(3.0));
+        let main = building(None, 5.0);
+        let main = Victim { id: 20, ..main };
+        assert_eq!(blast_so_far(&building(Some(20), 3.0), &[main]), Ok(5.0));
+        assert_eq!(
+            blast_so_far(&building(Some(20), 3.0), &[]),
+            Err(crate::build::NOT_HELD)
+        );
+        let unit = Victim {
+            kind: 70,
+            ..Victim::default()
+        };
+        assert_eq!(blast_so_far(&unit, &[]), Ok(0.0));
+    }
+
     /// A world holding the target `id` of `player` and class `class` at `at`, radius 0.2.
     fn world_with(id: i32, player: usize, class: i16, at: [f32; 3]) -> crate::spatial::Spatial {
         let mut world = crate::spatial::Spatial::default();
@@ -2617,6 +2824,52 @@ mod tests {
         }
     }
 
+    /// `0x140a82ae0` at `LAB_140a834ab`, after the target's sight check: a live target (state 0
+    /// to 2) of a player's unit (`+0x718` not 0) that its player counts as itself or an ally
+    /// (`FUN_141663dc0` with 1) ends the Attack (`set_state(1)`; its own Attack posts 0x1fb with
+    /// 600 and the target) and returns 1, unless the target is livestock (58) or a farm (49) and
+    /// was its player's when the Attack took it (`+0x9f`). 427003795's update 357: the hunters'
+    /// goat (class 58), Gaia's when their Attacks began, is now their player's.
+    #[test]
+    fn an_attack_on_a_target_its_player_counts_as_its_own_ends() {
+        let at = [11.0, 10.0, 0.0];
+        let run = |class: i16, allied: bool, same_owner: bool, player: usize, sub_action: bool| {
+            let mut world = world_with(7, 1, class, at);
+            let mut mover = soldier_mover(0.8);
+            let walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                state: 2,
+                class,
+                player: 1,
+                position: at,
+                allied: [allied, allied],
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.own.player = player;
+            let mut a = soldier_attack(7, 1.0, 0.0, at);
+            // state 8 has no case: an Attack the test spares returns 0
+            (a.state, a.seen, a.same_owner, a.sub_action) = (8, at, same_owner, sub_action);
+            let code = a.update(walk, &mut s).unwrap();
+            (code, a.state, s.posted.clone())
+        };
+        // the hunt's goat, Gaia's when its Attack began: the quiet sub-action ends
+        assert_eq!(run(58, true, false, 1, true), (1, DONE, vec![]));
+        // a unit's own Attack posts 0x1fb with 600 and its target
+        assert_eq!(
+            run(58, true, false, 1, false),
+            (1, DONE, vec![(0x1fb, [600, 7, 0])])
+        );
+        // its own livestock or farm when it began: spared
+        assert_eq!(run(58, true, true, 1, true).0, 0);
+        assert_eq!(run(49, true, true, 1, true).0, 0);
+        // another class whatever it began on; an enemy's or Gaia's unit's go on
+        assert_eq!(run(6, true, true, 1, true).0, 1);
+        assert_eq!(run(6, false, false, 1, true).0, 0);
+        assert_eq!(run(6, true, false, 0, true).0, 0);
+    }
+
     /// Case 1 (state 2) once the swing's sprite is done: the Hunt's Attack, a sub-action, lets
     /// its target go (slot 0x68 with none), ends (`set_state` 1) and then posts 0x1fb with 600 and
     /// 0x202 before it returns 5.
@@ -2755,6 +3008,7 @@ mod tests {
             sub_action: false,
             repaths: false,
             runs: false,
+            same_owner: false,
         };
         let mut anim = Some(0.5);
         assert_eq!(
@@ -2832,6 +3086,7 @@ mod tests {
             world_time: 0,
             master: 4,
             target_class: 6,
+            same_owner: false,
         }
     }
 

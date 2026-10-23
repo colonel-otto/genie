@@ -1467,6 +1467,53 @@ fn a_built_farm_s_master_starts_a_make_and_another_default_task_is_reported() {
     assert_eq!(other.default_start(), (false, None));
 }
 
+/// `TRIBE_Building_Object::update`'s whole seconds (`0x1411c95a2`): a built building's
+/// `damaged_lately_timer` (`+0x30d`) loses one in an update that passes whole seconds, however
+/// many, and stays at 0.
+#[test]
+fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
+    let house = Unit {
+        id: 40,
+        life: Lifecycle {
+            master_id: 70,
+            hp: 550.0,
+            state: 2,
+            ..Lifecycle::default()
+        },
+        damaged_lately: 2,
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0],
+        vec![Player {
+            objects: vec![house],
+            attributes: vec![0.0; 300],
+            ..Player::default()
+        }],
+    );
+    t.masters = vec![Masters::new([Master {
+        id: 70,
+        kind: 80,
+        class: 3,
+        hit_points: 550,
+        building: Some(crate::masters::BuildingMaster::default()),
+        ..Master::default()
+    }])];
+    let timer = |t: &Turns| t.players[0].objects[0].damaged_lately;
+    t.tick(500);
+    assert_eq!(timer(&t), 2);
+    t.tick(2600);
+    assert_eq!(timer(&t), 1);
+    t.tick(1000);
+    assert_eq!(timer(&t), 0);
+    t.tick(1000);
+    assert_eq!(timer(&t), 0);
+    assert!(t.players[0].unsupported.is_none());
+}
+
 fn town_centre(id: i32) -> Unit {
     Unit {
         id,
@@ -3682,6 +3729,131 @@ fn a_killed_sheep_goes_to_gaia() {
     assert_eq!(t.players[0].attributes[16], 100.0);
 }
 
+/// A hit on player 2's castle 30 (master 82, 650 stone paid) with its annexes 31 and 32:
+/// `Turns::victim` reads its annexes from the world's links, its main building for an annex,
+/// its paid cost and that it is no trebuchet. The write-back of a razing hit (`FUN_1411cea90`):
+/// the castle's `damaged_lately_timer`, its annexes' hit points, its kill (`FUN_1412005b0`: a
+/// building's class counts no kill, both players count it against the other and its cost),
+/// then the razing's history event (7, `data1` the owner) on the attacker's player and its adds.
+#[test]
+fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
+    let building = |id: i32, master_id: i16, annex_of: Option<i32>| Unit {
+        id,
+        life: Lifecycle {
+            master_id,
+            hp: 100.0,
+            state: 2,
+            ..Lifecycle::default()
+        },
+        annex_of,
+        ..Unit::default()
+    };
+    let player = |objects| Player {
+        objects,
+        attributes: vec![0.0; 500],
+        ..Player::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0, 0],
+        vec![
+            player(vec![]),
+            player(vec![]),
+            player(vec![
+                building(30, 82, None),
+                building(31, 1, Some(30)),
+                building(32, 1, Some(30)),
+            ]),
+        ],
+    );
+    let castle = Master {
+        id: 82,
+        kind: 80,
+        class: 3,
+        cost: vec![(2, 650, true), (0, 10, false)],
+        weapons: vec![(3, 11)],
+        ..Master::default()
+    };
+    let annex = Master {
+        id: 1,
+        kind: 80,
+        class: 3,
+        ..Master::default()
+    };
+    let masters = Masters::new([castle, annex]);
+    t.masters = vec![masters.clone(), masters.clone(), masters];
+    t.spatial.set_annex(31, Some(30));
+    t.spatial.set_annex(32, Some(30));
+    // a history adds events once it has an entry
+    t.players[1].history.entries = vec![[0, 0]];
+    let mut v = t.victim(30, 1).unwrap();
+    let b = v.building.clone().unwrap();
+    assert_eq!(
+        (b.main, b.annexes, b.cost, b.trebuchet),
+        (None, vec![31, 32], 650.0, false)
+    );
+    let a = t.victim(31, 1).unwrap();
+    assert_eq!(a.building.and_then(|b| b.main), Some(30));
+    v.hp = 0.0;
+    v.killed = Some(crate::damage::Kill {
+        attacker: 9,
+        attacker_player: 1,
+        to_gaia: false,
+    });
+    let b = v.building.as_mut().unwrap();
+    (b.struck, b.damaged_lately) = (true, 60);
+    b.razed.push(crate::damage::Razed {
+        attacker_player: 1,
+        owner: 2,
+        event: Some(crate::history::CASTLE_DESTROYED),
+        adds: vec![(1, 43, 1.0), (2, 155, 1.0), (1, 170, 650.0)],
+    });
+    t.set_victim(&v).unwrap();
+    let hp: Vec<f32> = t.players[2].objects.iter().map(|u| u.life.hp).collect();
+    assert_eq!(hp, [0.0, 0.0, 0.0]);
+    assert_eq!(t.players[2].objects[0].damaged_lately, 60);
+    let (attacker, owner) = (&t.players[1].attributes, &t.players[2].attributes);
+    assert_eq!([attacker[20], owner[154]], [0.0, 0.0]);
+    assert_eq!(
+        [attacker[302], owner[326], attacker[402]],
+        [1.0, 1.0, 650.0]
+    );
+    assert_eq!([attacker[43], owner[155]], [1.0, 1.0]);
+    assert_eq!([attacker[170], owner[152]], [1300.0, 650.0]);
+    let event = t.players[1]
+        .history
+        .event_of_kind(crate::history::CASTLE_DESTROYED)
+        .unwrap();
+    assert_eq!(event.data1, 2.0);
+}
+
+/// `FUN_140fde380`: a master of type 70 and up, of class 51 or 54, with a weapon (`+0x810`
+/// above 0) is a trebuchet; the paid cost (`+0x880`) sums the entries with a resource and the
+/// paid flag, as floats in their order.
+#[test]
+fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
+    use crate::turn::world::{is_trebuchet, paid_cost};
+    let m = |kind, class, weapons: Vec<(i16, i16)>| Master {
+        kind,
+        class,
+        weapons,
+        ..Master::default()
+    };
+    assert!(is_trebuchet(&m(80, 54, vec![(4, 200)])));
+    assert!(is_trebuchet(&m(80, 51, vec![(4, 1)])));
+    assert!(is_trebuchet(&m(70, 54, vec![(4, 1)])));
+    assert!(!is_trebuchet(&m(80, 51, vec![])));
+    assert!(!is_trebuchet(&m(60, 54, vec![(4, 1)])));
+    assert!(!is_trebuchet(&m(80, 3, vec![(3, 11)])));
+    let paid = Master {
+        cost: vec![(1, 200, true), (3, 200, true), (-1, 5, true), (2, 7, false)],
+        ..Master::default()
+    };
+    assert_eq!(paid_cost(&paid), 400.0);
+}
+
 /// MarvinBlue/426048731's 1086: SET GATHER POINT on TC 9149 at (107.2451, 46.075863) on the
 /// sheep 9520 (master 705).
 #[test]
@@ -4038,6 +4210,7 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::attack::Attack {
         sub_action: false,
         repaths: false,
         runs: true,
+        same_owner: false,
     }
 }
 

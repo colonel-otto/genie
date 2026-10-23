@@ -1656,6 +1656,7 @@ pub(crate) mod tests {
             world_time: 0,
             master: 83,
             target_class: 15,
+            same_owner: false,
         }
     }
 

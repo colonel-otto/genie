@@ -123,6 +123,9 @@ pub struct Unit {
     pub garrison_time: u32,
     /// A building's `relic_count` and `specific_relic_count` (`+0xc20`, `+0xc24`).
     pub relics: [i32; 2],
+    /// `damaged_lately_timer` (`+0x30d`, saved): 60 after a hit on a building (`FUN_1411cea90`),
+    /// one off in each of its updates that passes whole seconds; the computer AI reads it.
+    pub damaged_lately: u8,
     /// A building's `mLivestockSummation` (`+0xc28`, saved): the livestock inside it (their
     /// master's `+0x610`, `FUN_1411cb850`), whose food a mill makes ([`crate::world_player`]).
     pub livestock_summation: f32,
@@ -294,8 +297,10 @@ impl Unit {
     /// units (`+0xce0`, [`Unit::attacking_units`]; once per take). Then the base take
     /// (`FUN_14119d3e0`): its worker count (`+0x644`) rises, to at most 550, and a live object flagged
     /// to sleep drops the flags (a sleeping one's wake is [`crate::turn::Turns::take`]'s). The
-    /// building's wake from semi-asleep (`+0xc98`) after it never runs in a game: only a scenario
-    /// save's load (`FUN_1411df160`) sets that flag, which the slice does not hold.
+    /// building's wake from semi-asleep (`+0xc98`) after it never runs here: only the building's
+    /// load (`FUN_1411df160` -> `FUN_1411ddd20`) sets that flag, from the save's
+    /// `temp_semi_asleep`, which no saved building of the 158041 recordings has (1473 headers
+    /// read); the slice does not hold it.
     pub(crate) fn taken(&mut self, listed: bool, by: i32) {
         if listed {
             self.attacking_units.push(by);
@@ -3676,7 +3681,7 @@ impl Unit {
             chance: master.hit_chance,
         };
         let object = c.streams.get(Stream::Object);
-        let struck = crate::attack::strike(&mut own, victim, &mut [], hit, object)?;
+        let struck = crate::attack::strike(&mut own, victim, &mut c.blasted, hit, object)?;
         if let Some(target) = struck.executed {
             shooter.post_own(ACTION_EXECUTED, [600, target, 0])?;
         }
@@ -3730,7 +3735,7 @@ impl Unit {
             chance: master.hit_chance,
         };
         let object = c.streams.get(Stream::Object);
-        let struck = crate::attack::strike(&mut own, victim, &mut [], hit, object)?;
+        let struck = crate::attack::strike(&mut own, victim, &mut c.blasted, hit, object)?;
         if self.hit_back(own)?.is_some() {
             return Err(Unsupported("a retaliation killing a missile"));
         }
@@ -4035,7 +4040,7 @@ impl Unit {
     /// units inside (from the first) heal by the master's `garrison_heal_rate` below their
     /// master's hit points (slot 0x110, [`Unit::heal`]); with villagers inside, a damaged
     /// building with a `garrison_repair_rate` repairs itself at a cost (`FUN_1411d33e0`, not
-    /// modelled). The `damaged_lately_timer` (`+0x30d`) a second takes off is not held.
+    /// modelled). Its `damaged_lately_timer` (`+0x30d`) loses one when whole seconds passed.
     pub(in crate::turn) fn building_seconds(
         &mut self,
         c: &Context<'_>,
@@ -4068,6 +4073,9 @@ impl Unit {
             return Ok(());
         }
         self.garrison_time = self.garrison_time.wrapping_add(seconds * 1000);
+        if self.damaged_lately != 0 {
+            self.damaged_lately -= 1;
+        }
         if master.id == MONASTERY && self.relics != [0; 2] {
             return Err(Unsupported("a monastery's relics' goods (its seconds)"));
         }
