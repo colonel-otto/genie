@@ -595,7 +595,8 @@ impl Turns {
         Ok(centroid(&points))
     }
 
-    /// One unit of INTERACT: a unit that does not move is not modelled. Its ignore list empties
+    /// One unit of INTERACT: an object that does not move takes the order at once (slot 0x128,
+    /// [`Turns::order_at_once`]) and, the order queued, goes on as a mover does. Its ignore list empties
     /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the order's other units
     /// (`FUN_14118c790`). With a centroid its point is its offset from it added to the order's,
     /// kept `EDGE` inside the map. A unit without a unit AI, or of an order that is not queued and
@@ -629,30 +630,32 @@ impl Turns {
         let player = p;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        if master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0) {
+        let still = master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0);
+        if still {
             // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
             // test, any task) at the order's point, z 0; a queued order then goes on as a mover's
             self.order_at_once(player, idx, order.target, order.point)?;
             if !order.queued {
                 return Ok(());
             }
-            return Err(Unsupported(
-                "a queued order to an object that does not move",
-            ));
         }
         let target = self
             .object(order.target)
             .map(|(tp, t)| (t.life.master_id, tp));
         let map = self.spatial.map;
         let unit = &mut self.players[player].objects[idx];
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(Unsupported("an ordered unit without movement state"))?;
-        mover.ignore_units.clear();
-        mover.waiting = 1;
-        for &other in others {
-            ignore_unit(&mut mover.ignore_units, other);
+        // its ignore list empties, it waits to move and lists the others; an object that does
+        // not move holds no movement state, which only a walk reads
+        match unit.mover.as_mut() {
+            Some(mover) => {
+                mover.ignore_units.clear();
+                mover.waiting = 1;
+                for &other in others {
+                    ignore_unit(&mut mover.ignore_units, other);
+                }
+            }
+            None if still => {}
+            None => return Err(Unsupported("an ordered unit without movement state")),
         }
         let point = match centroid {
             None => order.point,
@@ -5218,6 +5221,36 @@ mod tests {
         t.transform_object(1, 60, 1650).unwrap();
         assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
         assert_eq!(t.players[1].objects[0].firepower, 7.0);
+    }
+
+    /// INTERACT to an object that does not move (`FUN_140e68b90`): it takes the order at once
+    /// (slot 0x128); a queued order then goes on as a mover's and its unit AI queues it (order
+    /// 0x2db at the point), with no movement state to touch.
+    #[test]
+    fn a_queued_interact_to_an_object_that_does_not_move_also_queues_it() {
+        let interact = |queued| Interact {
+            target: -1,
+            point: [25.0, 30.0],
+            carry_test: false,
+            queued,
+            direct: false,
+            human: false,
+            filter: -1,
+        };
+        let run = |queued| {
+            let mut t = soldiers(&[(11, 83, [20.0, 20.0])], &[]);
+            if let Some(m) = t.masters[1].get_mut(83) {
+                m.kind = BUILDING;
+            }
+            let unit = &mut t.players[1].objects[0];
+            (unit.pasture, unit.my_pasture) = (-1, -1);
+            unit.ai = Some(crate::unit_ai::UnitAi::default());
+            t.interact(1, &[11], &interact(queued)).unwrap();
+            let ai = t.players[1].objects[0].ai.clone().unwrap();
+            ai.orders.iter().map(|o| o.order).collect::<Vec<_>>()
+        };
+        assert_eq!(run(false), Vec::<i32>::new());
+        assert_eq!(run(true), [crate::unit_ai::ORDER_ON_TARGET]);
     }
 
     /// `FUN_140c42b60` with 1: from the last order to the first, an order not ready becomes
