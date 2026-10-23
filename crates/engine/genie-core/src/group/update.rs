@@ -1976,6 +1976,7 @@ mod tests {
             sub_action: false,
             repaths: false,
             runs: false,
+            same_owner: false,
         };
         for (state, free) in [(2, false), (3, true), (13, true), (14, true), (4, false)] {
             t.players[1].objects[0].attack = Some(attack(state));

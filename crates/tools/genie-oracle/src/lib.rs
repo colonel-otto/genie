@@ -1515,6 +1515,7 @@ fn saved_attack(
         repaths: b.target_moved_state != 0,
         // `+0x68`, its MoveTo's sprite
         runs: 0 <= run_sprite && a.short_val as i16 == run_sprite,
+        same_owner: a.was_same_owner != 0,
     })
 }
 

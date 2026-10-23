@@ -135,6 +135,10 @@ pub struct Attack {
     /// Attack's, slot 0x7d0): the `MoveTo`'s start sets the unit's running speed. The Hunt's
     /// (its task's sprite) leaves the speed.
     pub runs: bool,
+    /// `+0x9f`, `was_same_owner` (saved): its target was its unit's player's when the
+    /// constructor (`FUN_140a7c210`) took it; the update's ally test spares such a livestock or
+    /// farm target ([`Attack::update`]).
+    pub same_owner: bool,
 }
 
 /// A unit's own Attack as the attack command made it ([`Attack::command`]).
@@ -202,6 +206,8 @@ pub struct Engagement {
     pub master: i16,
     /// The target's master's class, whose 39 (a gate) readyToAttack measures by its parts.
     pub target_class: i16,
+    /// The target is the unit's player's (the constructor's `+0x9f`, [`Attack::same_owner`]).
+    pub same_owner: bool,
 }
 
 /// What the Attack's update reads of its unit besides its movement, and changes.
@@ -347,6 +353,10 @@ pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mu
     *sprite = Some(ActiveSprite::start(g, rng));
 }
 
+/// The livestock (58, `0x3a`) and farm (49, `0x31`) classes: the ally test spares an Attack on
+/// one that was its unit's player's when the Attack took it ([`Attack::same_owner`]).
+const LIVESTOCK: i16 = 58;
+const FARM: i16 = 49;
 /// A building's master type (`'P'`), whose main building (`+0xbb8`) an area effect attacks.
 const BUILDING: u8 = 80;
 /// The class an Attack does not take as its target (`-0xe70` raw, [`Attack::set_target`]).
@@ -427,8 +437,9 @@ pub(crate) fn in_the_way(walk: &mut Walk<'_>, s: &mut Strike<'_>) {
 impl Attack {
     /// The constructor (`FUN_140a7c210`) on `target`: the range and least range of `e`, its
     /// target's place as where it was seen (`+0xa4`..`+0xac`), the point −1 on each axis, the
-    /// sprites and frames of `arms`; a unit's own Attack (`+0x60` 0), its `MoveTo` not repathing
-    /// at once (`+0x61` 0) and running (slot 0x7d0's sprite).
+    /// sprites and frames of `arms`, whether the target is its unit's player's (`+0x9f`); a
+    /// unit's own Attack (`+0x60` 0), its `MoveTo` not repathing at once (`+0x61` 0) and running
+    /// (slot 0x7d0's sprite).
     pub(crate) fn own(target: i32, e: &Engagement, arms: Arms) -> Self {
         Self {
             target,
@@ -448,6 +459,7 @@ impl Attack {
             sub_action: false,
             repaths: false,
             runs: true,
+            same_owner: e.same_owner,
         }
     }
 
@@ -1265,6 +1277,19 @@ impl Attack {
                 ));
             }
         }
+        // LAB_140a834ab: a live target (state 0 to 2) of a player's unit (+0x718 not 0) that
+        // its player counts as itself or an ally (FUN_141663dc0 with 1) ends the attack
+        // (set_state 1; its own Attack, not quiet, posts 0x1fb with 600 and the target) and
+        // returns 1, unless the target is livestock (58) or a farm (49) that was its player's when
+        // the Attack took it (+0x9f)
+        let spared = matches!(s.victim.class, LIVESTOCK | FARM) && self.same_owner;
+        if alive && s.own.player != 0 && !spared && s.victim.allied[0] {
+            self.finish(&mut walk, s)?;
+            if !self.sub_action {
+                s.posted.push((0x1fb, [600, self.target, 0]));
+            }
+            return Ok(1);
+        }
         // a target inside another (+0x2f0): the attack ends (set_state 1) and returns 4, which
         // keeps it in the list; a unit's own Attack (not quiet, +0x60) of a unit whose unit AI's
         // order queue is empty posts 0x1fb with 600 and the target
@@ -1902,6 +1927,7 @@ pub fn engagement(
         world_time,
         master: master.id,
         target_class: them.class,
+        same_owner: me.player == them.player,
     })
 }
 
@@ -2033,6 +2059,7 @@ mod tests {
             sub_action: false,
             repaths: false,
             runs: true,
+            same_owner: false,
         }
     }
 
@@ -2797,6 +2824,52 @@ mod tests {
         }
     }
 
+    /// `0x140a82ae0` at `LAB_140a834ab`, after the target's sight check: a live target (state 0
+    /// to 2) of a player's unit (`+0x718` not 0) that its player counts as itself or an ally
+    /// (`FUN_141663dc0` with 1) ends the Attack (`set_state(1)`; its own Attack posts 0x1fb with
+    /// 600 and the target) and returns 1, unless the target is livestock (58) or a farm (49) and
+    /// was its player's when the Attack took it (`+0x9f`). 427003795's update 357: the hunters'
+    /// goat (class 58), Gaia's when their Attacks began, is now their player's.
+    #[test]
+    fn an_attack_on_a_target_its_player_counts_as_its_own_ends() {
+        let at = [11.0, 10.0, 0.0];
+        let run = |class: i16, allied: bool, same_owner: bool, player: usize, sub_action: bool| {
+            let mut world = world_with(7, 1, class, at);
+            let mut mover = soldier_mover(0.8);
+            let walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                state: 2,
+                class,
+                player: 1,
+                position: at,
+                allied: [allied, allied],
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.own.player = player;
+            let mut a = soldier_attack(7, 1.0, 0.0, at);
+            // state 8 has no case: an Attack the test spares returns 0
+            (a.state, a.seen, a.same_owner, a.sub_action) = (8, at, same_owner, sub_action);
+            let code = a.update(walk, &mut s).unwrap();
+            (code, a.state, s.posted.clone())
+        };
+        // the hunt's goat, Gaia's when its Attack began: the quiet sub-action ends
+        assert_eq!(run(58, true, false, 1, true), (1, DONE, vec![]));
+        // a unit's own Attack posts 0x1fb with 600 and its target
+        assert_eq!(
+            run(58, true, false, 1, false),
+            (1, DONE, vec![(0x1fb, [600, 7, 0])])
+        );
+        // its own livestock or farm when it began: spared
+        assert_eq!(run(58, true, true, 1, true).0, 0);
+        assert_eq!(run(49, true, true, 1, true).0, 0);
+        // another class whatever it began on; an enemy's or Gaia's unit's go on
+        assert_eq!(run(6, true, true, 1, true).0, 1);
+        assert_eq!(run(6, false, false, 1, true).0, 0);
+        assert_eq!(run(6, true, false, 0, true).0, 0);
+    }
+
     /// Case 1 (state 2) once the swing's sprite is done: the Hunt's Attack, a sub-action, lets
     /// its target go (slot 0x68 with none), ends (`set_state` 1) and then posts 0x1fb with 600 and
     /// 0x202 before it returns 5.
@@ -2935,6 +3008,7 @@ mod tests {
             sub_action: false,
             repaths: false,
             runs: false,
+            same_owner: false,
         };
         let mut anim = Some(0.5);
         assert_eq!(
@@ -3012,6 +3086,7 @@ mod tests {
             world_time: 0,
             master: 4,
             target_class: 6,
+            same_owner: false,
         }
     }
 
