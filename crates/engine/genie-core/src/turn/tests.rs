@@ -15,7 +15,8 @@ use crate::turn::player::Player;
 use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::turn::view::{Foreign, Wait, patrol_information};
 use crate::turn::world::{
-    SideWorld, World, change_hands, count_class, task_search, task_target_with, wait_progress,
+    SideWorld, World, change_hands, count_class, search_origin, task_search, task_target_with,
+    wait_progress,
 };
 use crate::unit_ai::{BUILD_ORDER, Notify, OWNER_CHANGED, UnitAi, Unsupported};
 use crate::visibility::{Seer, capture_kind};
@@ -3912,4 +3913,17 @@ fn building_short_of_its_build_time_dies(state: u8) {
     let u = &t.players[0].objects[0];
     assert_eq!(u.life.state, 4);
     assert_eq!(u.sprite.unwrap().graphic.id, 389);
+}
+
+/// `ClosestResourceObject`'s point (`FUN_140c49760`): without a site the search starts from the
+/// point at the unit's height; (−1, −1) exactly, or a site, keeps the unit's place; one part −1
+/// or not a number is a point.
+#[test]
+fn a_resource_search_starts_from_its_point_unless_it_is_none_or_has_a_site() {
+    let unit = [5.0, 6.0, 0.5];
+    assert_eq!(search_origin([12.5, 30.5], false, unit), [12.5, 30.5, 0.5]);
+    assert_eq!(search_origin(crate::unit_ai::NO_POINT, false, unit), unit);
+    assert_eq!(search_origin([12.5, 30.5], true, unit), unit);
+    assert_eq!(search_origin([-1.0, 3.0], false, unit), [-1.0, 3.0, 0.5]);
+    assert!(search_origin([f32::NAN, -1.0], false, unit)[0].is_nan());
 }

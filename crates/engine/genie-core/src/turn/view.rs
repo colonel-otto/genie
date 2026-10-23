@@ -35,13 +35,15 @@ pub(crate) struct DropWorld<'a> {
 }
 
 /// A unit command a unit AI's update gave that the caller runs after it ([`Context::works`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::turn) enum AiWork {
     /// `HuntObject`'s unit part on the target: the stop, then the hunt command
     /// ([`Turns::hunt_command`]).
     Hunt(i32),
     /// `GatherObject`'s gather command on the target ([`Turns::gather_command`]).
     Gather(i32),
+    /// The unit's slot 0x7e8 on an object at a point ([`Turns::order_work`]).
+    Work(crate::order::Work),
 }
 pub(in crate::turn) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
@@ -197,9 +199,9 @@ pub(in crate::turn) struct Context<'a> {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// The unit AI's `HuntObject`s and `GatherObject`s in the order it gave them, whose unit
-    /// parts the caller runs after the update in that order ([`AiWork`]): a later one's stop
-    /// tears down the action an earlier one made.
+    /// The unit AI's `HuntObject`s, `GatherObject`s and works (slot 0x7e8) in the order it gave
+    /// them, whose unit parts the caller runs after the update in that order ([`AiWork`]): a
+    /// later one's stop tears down the action an earlier one made.
     pub(in crate::turn) works: Vec<AiWork>,
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
@@ -673,10 +675,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     fn closest_resource(
         &mut self,
-        kind: u8,
-        cap: i32,
-        site: i32,
-        current: i32,
+        search: crate::unit_ai::ResourceSearch,
     ) -> Result<Option<crate::unit_ai::Gatherable>, Unsupported> {
         let mut w = ResourceWorld {
             player: self.player,
@@ -698,8 +697,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             self.unit,
             &mut w,
             self.others,
-            (kind, cap, site),
-            (current, 2),
+            (search.kind, search.cap, search.site),
+            (search.current, search.min_state, search.point),
         )?;
         if id == -1 {
             return Ok(None);
@@ -722,6 +721,18 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             position: u.position,
             class,
         }))
+    }
+
+    /// The player's master table (`FUN_14152fe40`, `+0x28`): the masters the slice holds of each
+    /// player.
+    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, Unsupported> {
+        let class = usize::try_from(player)
+            .ok()
+            .and_then(|p| self.every.get(p))
+            .zip(i16::try_from(master).ok())
+            .and_then(|(ms, id)| ms.get(id))
+            .map(|m| m.class);
+        Ok(class)
     }
 
     fn reaches(&mut self, target: i32, range: f32) -> Result<bool, Unsupported> {

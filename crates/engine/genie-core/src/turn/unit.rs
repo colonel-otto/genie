@@ -962,6 +962,16 @@ impl Unit {
                 }
                 Effect::HuntObject(target) => c.works.push(AiWork::Hunt(target)),
                 Effect::GatherObject(target) => c.works.push(AiWork::Gather(target)),
+                Effect::WorkOn { target, point } => {
+                    // slot 0x7e8 with the carried-resource test, any task, +0xa14 0
+                    c.works.push(AiWork::Work(crate::order::Work {
+                        target,
+                        point,
+                        carry_test: true,
+                        filter: -1,
+                        notified: false,
+                    }));
+                }
                 Effect::BuildObject(target) => {
                     if c.build_object.replace(target).is_some() {
                         return Err(Unsupported("two BuildObjects in one update"));
@@ -2711,7 +2721,8 @@ impl Unit {
                 groups: c.groups,
             },
         };
-        closest_resource_of(self, &mut w, others, (kind, cap, site), (current, 2)).map(|(id, _)| id)
+        let search = (current, 2, crate::unit_ai::NO_POINT);
+        closest_resource_of(self, &mut w, others, (kind, cap, site), search).map(|(id, _)| id)
     }
 
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).

@@ -1327,8 +1327,9 @@ impl Turns {
                 {
                     result = Err(e);
                 }
-                // the unit AI's HuntObjects (the unit's stop, then its hunt command) and
-                // GatherObjects (its gather command), in the order it gave them
+                // the unit AI's HuntObjects (the unit's stop, then its hunt command),
+                // GatherObjects (its gather command) and works (slot 0x7e8), in the order it
+                // gave them
                 for work in works {
                     if !matches!(result, Ok(Step::Stay)) {
                         result = result.and(Err(Unsupported(
@@ -1339,6 +1340,7 @@ impl Turns {
                     let done = match work {
                         AiWork::Hunt(target) => self.hunt_command(p, i, target),
                         AiWork::Gather(target) => self.gather_command(p, i, target),
+                        AiWork::Work(work) => self.order_work(p, i, &work),
                     };
                     if let Err(e) = done {
                         result = Err(e);

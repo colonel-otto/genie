@@ -276,6 +276,15 @@ pub enum Effect {
     /// `FUN_1411cd860` for a building) to the player, which the artifact's processIdle asks of
     /// it (`FUN_140c1e410`); the unit runs it as it applies the effects.
     ChangeOwner(usize),
+    /// The unit's slot 0x7e8 (`FUN_141227190`) on object `target` at `point`, with the
+    /// carried-resource test, any task and `+0xa14` 0 (the caller's, `Turns::order_work`, after
+    /// the update with the AI's hunts and gathers in their order).
+    WorkOn {
+        /// The object.
+        target: i32,
+        /// Its place.
+        point: [f32; 3],
+    },
     /// `restorePatrolInformation`'s unit part (`FUN_140c5e5b0`): the unit's own waypoints go
     /// (slot 0x450) and become the saved patrol's points (slot 0x448 each), and the unit moves to
     /// its waypoint (slot 0x340: range 0, forced, running).
@@ -1389,21 +1398,27 @@ pub trait UnitSide {
         Err(Unsupported("an object's look without the world"))
     }
 
-    /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) of gather group `kind`
-    /// with fewer than `cap` workers (−1 any) from the drop site `site` (−1 none), `param_6` 2 and
-    /// no point, passing over the AI's current target `current`: what it found, None for nothing.
+    /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) as `search` asks it:
+    /// what it found, None for nothing.
     ///
     /// # Errors
     ///
     /// What the search does not model.
     fn closest_resource(
         &mut self,
-        _kind: u8,
-        _cap: i32,
-        _site: i32,
-        _current: i32,
+        _search: ResourceSearch,
     ) -> Result<Option<Gatherable>, Unsupported> {
         Err(Unsupported("a resource search without the world"))
+    }
+
+    /// The class of master `master` of player `player` (`FUN_14152fe40`, the player's master
+    /// table `+0x28`): None for a player or master the game does not hold.
+    ///
+    /// # Errors
+    ///
+    /// A side without the players' masters.
+    fn master_class(&mut self, _player: i32, _master: i32) -> Result<Option<i16>, Unsupported> {
+        Err(Unsupported("a master's class without the world"))
     }
 
     /// The unit's slot 0x388 (`FUN_141226fc0`) on object `target`: when the world holds it
@@ -1512,6 +1527,28 @@ pub struct TargetFlags {
     /// `+0x68a`, `unit_attackable_flag` (`FUN_141188b10`).
     pub attackable: bool,
 }
+
+/// What the unit AI asks `ClosestResourceObject` (slot 0x80, `FUN_140c49760`;
+/// [`UnitSide::closest_resource`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ResourceSearch {
+    /// The gather group (`param_2`).
+    pub kind: u8,
+    /// Fewer workers than this (`param_4`; −1 any).
+    pub cap: i32,
+    /// The drop site the search starts from (`param_3`; −1 none).
+    pub site: i32,
+    /// The unit AI's current target (`+0x48`), which the search passes over.
+    pub current: i32,
+    /// The point the search starts from without a site (`param_7`, `param_8`; (−1, −1) for the
+    /// unit's place).
+    pub point: [f32; 2],
+    /// Below this state the unit finds nothing (`param_6`; its −1 is 0 here).
+    pub min_state: u8,
+}
+
+/// [`ResourceSearch::point`]'s (−1, −1): the unit's own place (`DAT_14330ec20`).
+pub const NO_POINT: [f32; 2] = [-1.0, -1.0];
 
 /// What the unit AI's `ClosestResourceObject` found ([`UnitSide::closest_resource`]): the object,
 /// its place and its master's class.
@@ -1930,7 +1967,8 @@ fn top_target_after(fx: &[Effect], side: &mut dyn UnitSide) -> Result<Option<i32
             Effect::MoveToObject { target, .. }
             | Effect::HuntObject(target)
             | Effect::GatherObject(target)
-            | Effect::BuildObject(target) => return Ok(Some(target)),
+            | Effect::BuildObject(target)
+            | Effect::WorkOn { target, .. } => return Ok(Some(target)),
             Effect::CapHumanOrder(_)
             | Effect::OrderOnTarget(_)
             | Effect::AfterOrder(_)
@@ -3680,7 +3718,10 @@ impl UnitAi {
             .is_some_and(|e| {
                 matches!(
                     e,
-                    Effect::HuntObject(_) | Effect::GatherObject(_) | Effect::BuildObject(_)
+                    Effect::HuntObject(_)
+                        | Effect::GatherObject(_)
+                        | Effect::BuildObject(_)
+                        | Effect::WorkOn { .. }
                 )
             });
         let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
@@ -3964,7 +4005,14 @@ impl UnitAi {
             }
         } else {
             let cap = if matches!(kind, 3 | 4) { 4 } else { -1 };
-            side.closest_resource(kind as u8, cap, n.p[2], self.current_target)?
+            side.closest_resource(ResourceSearch {
+                kind: kind as u8,
+                cap,
+                site: n.p[2],
+                current: self.current_target,
+                point: NO_POINT,
+                min_state: 2,
+            })?
         };
         let Some(found) = found else {
             if computer {
@@ -6823,10 +6871,12 @@ impl UnitAi {
     /// after it ("the order the work gave"), both the caller's ([`Effect::OrderOnTarget`],
     /// `Turns::order_on_target`). On a gone target: without its type (`+0x30` −1), the move to
     /// the order's point within its range (slot 0x130, forced and walking) and, taken, the tail
-    /// with the order on a target. With its type (a master of the target's owner `+0x10`, else
-    /// the class itself), the unit AI's slot 0x1b0 gives a kind of resource and slot 0x88 the
-    /// closest object of it to the order's shown point, which the unit works (slot 0x7e8; 0):
-    /// not modelled.
+    /// with the order on a target. With its type (the class of that master of the target's
+    /// owner `+0x10`, `FUN_14152fe40`, [`UnitSide::master_class`]; without an owner the type is
+    /// the class), the unit AI's slot 0x1b0 gives a kind of resource
+    /// ([`UnitAi::resource_kind`]) and slot 0x88 the closest object of it to the order's shown
+    /// point (`+0x24`, `+0x28`), which the unit works (slot 0x7e8, [`Effect::WorkOn`]); either
+    /// way the order is not taken (0).
     fn order_on_target(
         &mut self,
         o: &QueuedOrder,
@@ -6841,9 +6891,38 @@ impl UnitAi {
             return Ok(1);
         }
         if o.target_type != -1 {
-            return Err(Unsupported(
-                "a queued order on a target that is gone (slots 0x1b0, 0x88, 0x7e8)",
-            ));
+            // the class of the target's type: its owner's master's, else the type itself
+            let class = if o.target_owner == -1 {
+                o.target_type
+            } else {
+                match side.master_class(o.target_owner, o.target_type)? {
+                    Some(class) => i32::from(class),
+                    None => return Ok(0),
+                }
+            };
+            let kind = self.resource_kind(class);
+            if kind == -1 {
+                return Ok(0);
+            }
+            // slot 0x88 (`FUN_140c4b0f0`): slot 0x80 from the order's shown point, without a
+            // drop site, wood (0) for fewer than 2 workers, at any state
+            let found = side.closest_resource(ResourceSearch {
+                kind: kind as u8,
+                cap: if kind == 0 { 2 } else { -1 },
+                site: -1,
+                current: self.current_target,
+                point: o.shown,
+                min_state: 0,
+            })?;
+            // the world holds what the search found: the move after a found object it does not
+            // hold cannot run
+            if let Some(g) = found {
+                fx.push(Effect::WorkOn {
+                    target: g.id,
+                    point: g.position,
+                });
+            }
+            return Ok(0);
         }
         let Some(m) = self.move_to(AiMove {
             point: o.point,
@@ -6855,6 +6934,22 @@ impl UnitAi {
         };
         fx.push(Effect::Move(m));
         Ok(self.order_tail(o.order, o.priority, class, false, ai))
+    }
+
+    /// Slot 0x1b0 by the unit AI's type: the kind of resource of a target class. The civilian's
+    /// (`FUN_140c1c4f0`) and the building's (`FUN_140c1c460`, the same switch,
+    /// [`civilian_kind`]); the fishing ship's (`FUN_140c1c580`): 2 for classes 5, 31 and 33, 4 for
+    /// 63; the base's (`FUN_140c4cc00`) none. −1 for none (the byte 0xff).
+    const fn resource_kind(&self, class: i32) -> i8 {
+        match self.ai_type {
+            CIVILIAN | 17 => civilian_kind(class),
+            FISHING_AI => match class {
+                5 | 0x1f | 0x21 => 2,
+                0x3f => 4,
+                _ => -1,
+            },
+            _ => -1,
+        }
     }
 
     /// Slot 0x108 (`FUN_140c68a60`), with `force` (its argument 3) or without an action value:
@@ -7749,12 +7844,11 @@ mod tests {
         }
         fn closest_resource(
             &mut self,
-            kind: u8,
-            cap: i32,
-            site: i32,
-            current: i32,
+            search: ResourceSearch,
         ) -> Result<Option<Gatherable>, Unsupported> {
-            self.1.push((kind, cap, site, current));
+            assert_eq!((search.point, search.min_state), (NO_POINT, 2));
+            self.1
+                .push((search.kind, search.cap, search.site, search.current));
             Ok(self.0)
         }
     }
@@ -14354,6 +14448,11 @@ mod tests {
         stops: usize,
         group_stops: usize,
         waits: Vec<i32>,
+        /// What the resource searches find, and the searches asked.
+        resource: Option<Gatherable>,
+        searches: Vec<ResourceSearch>,
+        /// The classes of the players' masters: ((player, master), class).
+        classes: Vec<((i32, i32), i16)>,
     }
 
     impl OrderSide {
@@ -14440,6 +14539,20 @@ mod tests {
         fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
             self.group_stops += 1;
             Ok(())
+        }
+        fn closest_resource(
+            &mut self,
+            search: ResourceSearch,
+        ) -> Result<Option<Gatherable>, Unsupported> {
+            self.searches.push(search);
+            Ok(self.resource)
+        }
+        fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, Unsupported> {
+            Ok(self
+                .classes
+                .iter()
+                .find(|c| c.0 == (player, master))
+                .map(|c| c.1))
         }
     }
 
@@ -15089,13 +15202,101 @@ mod tests {
             );
             assert_eq!((u.current_order, u.order_priority), (order, 40));
         }
-        // gone with its type: its search for another of the kind is not modelled
-        let mut u = idle(CIVILIAN);
+    }
+
+    #[test]
+    fn a_gone_target_of_a_type_sends_the_unit_to_the_closest_resource_of_its_kind() {
+        // the order's type a class (no owner): a tree's (15, wood: kind 0, fewer than 2
+        // workers), searched from the order's shown point at any state; the unit works what it
+        // finds (slot 0x7e8) and the order is not taken
+        let tree = Gatherable {
+            id: 80,
+            position: [13.5, 31.5, 0.0],
+            class: 15,
+        };
+        let mut side = OrderSide {
+            resource: Some(tree),
+            ..OrderSide::default()
+        };
         let typed = QueuedOrder {
             target_type: 15,
             ..queued(ORDER_ON_TARGET, 99)
         };
-        assert!(run_order(&mut u, typed, 4, &mut side).0.is_err());
+        let mut u = UnitAi {
+            current_target: 7,
+            ..idle(CIVILIAN)
+        };
+        let before = u.clone();
+        let (r, fx, _) = run_order(&mut u, typed, 4, &mut side);
+        assert_eq!(
+            (r, fx),
+            (
+                Ok(0),
+                vec![Effect::WorkOn {
+                    target: 80,
+                    point: [13.5, 31.5, 0.0],
+                }]
+            )
+        );
+        assert_eq!(u, before);
+        assert_eq!(
+            side.searches,
+            [ResourceSearch {
+                kind: 0,
+                cap: 2,
+                site: -1,
+                current: 7,
+                point: [12.5, 30.5],
+                min_state: 0,
+            }]
+        );
+        // with an owner the type is a master of that player's: a gold mine's class (32: kind
+        // 4, any workers); a master the player does not hold, or nothing found, gives nothing
+        let mut side = OrderSide {
+            resource: Some(tree),
+            classes: vec![((2, 66), 32)],
+            ..OrderSide::default()
+        };
+        let owned = |master| QueuedOrder {
+            target_type: master,
+            target_owner: 2,
+            ..queued(ORDER_ON_TARGET, 99)
+        };
+        let mut u = idle(CIVILIAN);
+        assert_eq!(run_order(&mut u, owned(66), 4, &mut side).0, Ok(0));
+        assert_eq!((side.searches[0].kind, side.searches[0].cap), (4, -1));
+        let (r, fx, _) = run_order(&mut u, owned(67), 4, &mut side);
+        assert_eq!((r, fx, side.searches.len()), (Ok(0), Vec::new(), 1));
+        side.resource = None;
+        let (r, fx, _) = run_order(&mut u, owned(66), 4, &mut side);
+        assert_eq!((r, fx, side.searches.len()), (Ok(0), Vec::new(), 2));
+        // a class of no kind (a soldier's 6), or a unit AI type whose slot 0x1b0 gives none
+        let mut side = OrderSide::default();
+        let soldier_type = QueuedOrder {
+            target_type: 6,
+            ..queued(ORDER_ON_TARGET, 99)
+        };
+        let mut u = idle(CIVILIAN);
+        assert_eq!(run_order(&mut u, soldier_type, 4, &mut side).0, Ok(0));
+        let mut u = idle(SOLDIER_AI);
+        assert_eq!(run_order(&mut u, typed, 6, &mut side).0, Ok(0));
+        assert_eq!(side.searches, Vec::new());
+    }
+
+    #[test]
+    fn slot_0x1b0_gives_the_kind_of_resource_by_the_unit_ai_s_type() {
+        let kind = |ai_type, class| idle(ai_type).resource_kind(class);
+        for ai_type in [CIVILIAN, 17] {
+            assert_eq!(
+                [15, 7, 5, 31, 33, 8, 32, 63, 6].map(|c| kind(ai_type, c)),
+                [0, 1, 2, 2, 2, 3, 4, 4, -1]
+            );
+        }
+        assert_eq!(
+            [5, 31, 33, 63, 15, 32, 34].map(|c| kind(FISHING_AI, c)),
+            [2, 2, 2, 4, -1, -1, -1]
+        );
+        assert_eq!([15, 5, 63].map(|c| kind(SOLDIER_AI, c)), [-1, -1, -1]);
     }
 
     #[test]
