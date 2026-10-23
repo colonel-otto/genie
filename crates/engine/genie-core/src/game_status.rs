@@ -897,7 +897,7 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::masters::{Master, Masters};
-    use crate::production::{Entry, MakeObj, Making, Production, Queue};
+    use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
     use crate::turn::{Player, Unit};
     use crate::unit_ai::UnitAi;
 
@@ -1220,6 +1220,148 @@ mod tests {
             (q.count, q.slots[0].tech, t.players[1].resources[0]),
             (1, 22, 92.0)
         );
+    }
+
+    /// Player 1's town centre researching technology 22 three times over (one entry), the
+    /// research running with `progress` done: each paid 50 gold, and the `.dat` lists 20 wood
+    /// the building pays (flag 2).
+    fn researching(progress: f32) -> Turns {
+        use crate::tech::{Cost, Location, TechDef, TechState};
+        let mut t = game();
+        let entry = Entry {
+            master: -1,
+            tech: 22,
+            costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
+            ..villager(-1, 3, 0.0)
+        };
+        let tc = t.players[1].objects[0].production.as_mut().unwrap();
+        tc.queue = queue(&[entry]);
+        tc.action = Some(Making::Research(MakeTech {
+            state: MakeObj::MAKING,
+            paid: true,
+            tech: 22,
+            master: -1,
+            progress,
+        }));
+        tc.disabled_techs = vec![22, 5];
+        let mut techs = vec![TechState::default(); 23];
+        techs[22] = TechState {
+            state: 2,
+            allow_multiple: true,
+            pending: 3,
+            research_done: progress,
+            research_cap: -1,
+            overrides: [(-1, -1, -2); 3],
+            locations: vec![Location {
+                building: 109,
+                time: 25,
+                button: 1,
+                adjustment: 0.0,
+            }],
+            ..TechState::default()
+        };
+        t.players[1].techs = techs;
+        let mut defs = vec![TechDef::default(); 23];
+        let cost = |attribute, amount, paid| Cost {
+            attribute,
+            amount,
+            paid,
+        };
+        defs[22] = TechDef {
+            costs: [cost(3, 50, 1), cost(1, 20, 2), cost(-1, 0, 0)],
+            locations: vec![(109, 25)],
+            ..TechDef::default()
+        };
+        t.techs = defs;
+        t
+    }
+
+    /// `FUN_1411d66b0` on the first research with `all`: the running research loses its
+    /// progress and the technology its work done; `FUN_1411d61e0` with five takes the entry's
+    /// three: 150 gold back (`FUN_1413d15e0`), the technology in state 1 with none queued, the
+    /// 20 wood the building paid to its store (`FUN_1411c7a00`), 22 off its disabled list
+    /// (`FUN_1411c5250`); the emptied first entry drops the research, whose destructor tells
+    /// the centre's unit AI it failed.
+    #[test]
+    fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
+        let mut t = researching(10.0);
+        t.cancel_order(&[9], 0, true).unwrap();
+        let p = &t.players[1];
+        assert_eq!(p.resources[3], 150.0);
+        let s = &p.techs[22];
+        assert_eq!((s.state, s.pending, s.research_done), (1, 0, 0.0));
+        let tc = &p.objects[0];
+        assert_eq!(tc.store, [(1, 20.0)]);
+        let production = tc.production.as_ref().unwrap();
+        assert_eq!(production.disabled_techs, [5]);
+        assert_eq!((production.queue.count, production.queue.total), (0, 0));
+        assert!(production.action.is_none());
+        assert_eq!(tc.ai.as_ref().unwrap().notifies.len(), 1);
+        // one research of the second unit: 50 gold, the technology in state 1 though two stay
+        // queued, the research going on
+        let mut t = researching(10.0);
+        t.cancel_order(&[9], 1, false).unwrap();
+        let p = &t.players[1];
+        assert_eq!(
+            (p.resources[3], p.techs[22].state, p.techs[22].pending),
+            (50.0, 1, 2)
+        );
+        let production = p.objects[0].production.as_ref().unwrap();
+        assert_eq!(production.queue.slots[0].count, 2);
+        assert!(production.action.is_some());
+    }
+
+    /// `FUN_1411cff00` gives a research entry back as a whole; the research's destructor
+    /// (`FUN_140ad0be0`) then counts a stacking technology whose progress reached its time as
+    /// researched once more and queued once less, in state 1 below its cap.
+    #[test]
+    fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_one() {
+        let mut t = researching(30.0);
+        let s = &mut t.players[1].techs[22];
+        (s.stack, s.research_cap) = (true, 5);
+        t.cancel_queue(1, 0).unwrap();
+        let p = &t.players[1];
+        assert_eq!(p.resources[3], 150.0);
+        let s = &p.techs[22];
+        assert_eq!(
+            (s.state, s.times_researched, s.pending, s.research_done),
+            (1, 1, -1, 30.0)
+        );
+        let production = p.objects[0].production.as_ref().unwrap();
+        assert_eq!((production.queue.count, production.queue.changes), (0, 1));
+        // not done: state 1, nothing counted
+        let mut t = researching(10.0);
+        let s = &mut t.players[1].techs[22];
+        (s.stack, s.research_cap) = (true, 5);
+        t.cancel_queue(1, 0).unwrap();
+        let s = &t.players[1].techs[22];
+        assert_eq!((s.state, s.times_researched, s.pending), (1, 0, 0));
+    }
+
+    /// Game mode 16's tail: with attribute 6 at most 1 a cancel whose slot at the unit index
+    /// holds a military master clears the player's flag (`+0x1378`); above 1 it stays.
+    #[test]
+    fn a_cancel_in_game_mode_16_clears_the_military_flag() {
+        let run = |age: f32| {
+            let mut t = game();
+            t.settings.game_mode = 16;
+            t.players[1].attributes[6] = age;
+            t.players[1].one_military_queued = true;
+            let ms = &mut t.masters[1];
+            *ms = Masters::new(ms.iter().cloned().chain([Master {
+                id: 4,
+                class: 6,
+                kind: 70,
+                ..Master::default()
+            }]));
+            let tc = t.players[1].objects[0].production.as_mut().unwrap();
+            tc.queue = queue(&[villager(83, 1, 46.0), villager(4, 1, 0.0)]);
+            t.cancel_order(&[9], 1, false).unwrap();
+            t.players[1].one_military_queued
+        };
+        assert!(!run(1.0));
+        assert!(run(2.0));
+        assert!(run(f32::NAN));
     }
 
     /// MarvinBlue/426048731's player 1 resigns in its last update: its town centre gives back

@@ -1978,6 +1978,81 @@ fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
     assert_eq!(queued(&computer), 2);
 }
 
+/// `FUN_1411cbc40` joins units of the last entry's master and button whose costs are the same;
+/// another button opens an entry with that button's train time; a full buffer of ten grows by
+/// ten, the serials numbering the entries.
+#[test]
+fn queued_units_join_the_last_entry_and_a_full_buffer_grows() {
+    let with = |amount, button| Command::Queue {
+        player: 0,
+        building: 9,
+        unit: 99,
+        amount,
+        button,
+    };
+    let mut t = one_player(vec![centre(9)], [1000.0; 4]);
+    t.tick_with(104, &[with(2, -1), with(3, -1), with(1, 1)]);
+    let q = &t.players[0].objects[0].production.as_ref().unwrap().queue;
+    assert_eq!((q.count, q.total, q.changes, q.next_serial), (2, 6, 3, 2));
+    assert_eq!(
+        (q.slots[0].count, q.slots[1].count, q.slots[1].button),
+        (5, 1, 1)
+    );
+    assert_eq!((q.slots[1].train_time, q.slots[1].serial), (25, 1));
+    assert_eq!(t.players[0].tracker.queued, 6);
+    let mut t = one_player(vec![centre(9)], [1000.0; 4]);
+    let alternating: Vec<_> = (0..11).map(|k| with(1, k % 2)).collect();
+    t.tick_with(104, &alternating);
+    let q = &t.players[0].objects[0].production.as_ref().unwrap().queue;
+    assert_eq!((q.slots.len(), q.count, q.total), (20, 11, 11));
+    let serials: Vec<_> = q.entries().iter().map(|e| e.serial).collect();
+    assert_eq!(serials, (0..11).collect::<Vec<i64>>());
+}
+
+/// `FUN_1411e7dc0`: a computer player's housed building cancels its queue
+/// (`FUN_1411cff00`): the villager's 46 food come back and attribute 80 empties; a disabled
+/// queue (`+0xbf6` clear) makes nothing.
+#[test]
+fn a_computer_player_s_housed_building_cancels_its_queue() {
+    let mut t = one_player(vec![centre(9)], [1000.0; 4]);
+    t.players[0].computer = true;
+    t.players[0].attributes[4] = 0.5;
+    t.tick_with(104, &[queue(9, 83, 1)]);
+    let p = &t.players[0];
+    assert_eq!(
+        (p.resources[0], p.attributes[80], p.attributes[81]),
+        (1000.0, 0.0, 0.0)
+    );
+    let production = p.objects[0].production.as_ref().unwrap();
+    assert_eq!((production.queue.count, production.queue.total), (0, 0));
+    assert!(production.action.is_none());
+    let mut t = one_player(vec![centre(9)], [1000.0; 4]);
+    t.players[0].objects[0].production = Some(crate::production::Production {
+        queue: crate::production::Queue {
+            enabled: false,
+            ..crate::production::Queue::default()
+        },
+        ..crate::production::Production::default()
+    });
+    t.tick_with(104, &[queue(9, 83, 1)]);
+    let p = &t.players[0];
+    assert_eq!((p.attributes[80], p.attributes[81]), (1.0, 0.0));
+    assert!(p.objects[0].production.as_ref().unwrap().action.is_none());
+}
+
+/// Game mode 16 with attribute 6 at most 1: a military unit (master 99, class 0) is queued
+/// one at a time, the player's flag (`+0x1378`) set; a second QUEUE queues nothing.
+#[test]
+fn game_mode_16_queues_one_military_unit_at_a_time() {
+    let mut t = one_player(vec![centre(9)], [1000.0; 4]);
+    t.settings.game_mode = 16;
+    t.tick_with(104, &[queue(9, 99, 3)]);
+    t.tick_with(104, &[queue(9, 99, 2)]);
+    let q = &t.players[0].objects[0].production.as_ref().unwrap().queue;
+    assert_eq!(q.total, 1);
+    assert!(t.players[0].one_military_queued);
+}
+
 #[test]
 fn an_unmodelled_command_stops_its_player() {
     let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
