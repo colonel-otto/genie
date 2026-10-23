@@ -173,7 +173,20 @@ pub fn census_run(
     })
 }
 
-/// Where a run from the header first leaves the game ([`header_divergence`]).
+/// What a run from the header says of one player against the game's saves
+/// ([`header_divergences`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Followed {
+    /// Its objects matched every save of the window.
+    Follows,
+    /// It stopped first (the update the slice could not model); what follows says nothing of
+    /// the port.
+    Stops(CensusStop),
+    /// Its objects left the game.
+    Leaves(Divergence),
+}
+
+/// Where a run from the header first leaves the game ([`header_divergences`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Divergence {
     /// The updates run when the player's objects first differ from the game's save.
@@ -185,9 +198,9 @@ pub struct Divergence {
 /// The recording run from its header as the census runs it, the objects of each of `players`
 /// compared after each update `u` from `first` to `last` with the game's save that holds the state
 /// after update `u` (`save(u)`, read once for all players; the tick oracle's per-update saves name
-/// it `u - 1`, a missing save is skipped): per player, the first update whose objects differ,
-/// None when none does. A player's comparisons end at its stop (what follows says nothing of the
-/// port) or its first divergence; the run ends when every player's have.
+/// it `u - 1`, a missing save is skipped): per player, whether its objects followed, it stopped
+/// first, or the first update whose objects differ. A player's comparisons end at its stop or
+/// its first divergence; the run ends when every player's have.
 ///
 /// # Errors
 ///
@@ -198,7 +211,7 @@ pub fn header_divergences(
     players: &[u32],
     (first, last): (usize, usize),
     save: &mut dyn FnMut(usize) -> Option<Vec<u8>>,
-) -> Result<Vec<Option<Divergence>>, Error> {
+) -> Result<Vec<Followed>, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let sections = header.players();
@@ -207,7 +220,7 @@ pub fn header_divergences(
     if let Some(&p) = players.iter().find(|&&p| turns.players.len() <= p as usize) {
         return Err(Error::NoSuchPlayer(p));
     }
-    let mut out: Vec<Option<Divergence>> = vec![None; players.len()];
+    let mut out: Vec<Followed> = vec![Followed::Follows; players.len()];
     let mut done = vec![false; players.len()];
     for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
         run(
@@ -218,7 +231,16 @@ pub fn header_divergences(
         );
         let update = i + 1;
         for (k, &p) in players.iter().enumerate() {
-            done[k] |= turns.players[p as usize].unsupported.is_some();
+            if let (false, Some((tick, object, why))) =
+                (done[k], turns.players[p as usize].unsupported)
+            {
+                out[k] = Followed::Stops(CensusStop {
+                    update: tick,
+                    object,
+                    reason: why.0,
+                });
+                done[k] = true;
+            }
         }
         if done.iter().all(|&d| d) {
             break;
@@ -240,7 +262,7 @@ pub fn header_divergences(
                 &crate::header_objects(&saved, p)?,
             );
             if !differences.is_empty() {
-                out[k] = Some(Divergence {
+                out[k] = Followed::Leaves(Divergence {
                     update,
                     differences,
                 });
@@ -262,10 +284,10 @@ pub fn header_divergence(
     player: u32,
     window: (usize, usize),
     save: &mut dyn FnMut(usize) -> Option<Vec<u8>>,
-) -> Result<Option<Divergence>, Error> {
+) -> Result<Followed, Error> {
     Ok(
         header_divergences(recording, masters, &[player], window, save)?
             .pop()
-            .flatten(),
+            .unwrap_or(Followed::Follows),
     )
 }
