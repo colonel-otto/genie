@@ -3356,7 +3356,7 @@ pub(crate) fn tile_plan_for(
         return Ok(None);
     };
     let smoothed = std::cell::Cell::new(false);
-    let mut blocked = |a: [f32; 2], b: [f32; 2]| {
+    let mut blocked = |a: [f32; 2], b: [f32; 2]| -> Result<bool, GenieError> {
         smoothed.set(true);
         Ok(world.segment_blocked(a, b, radius, mask, &ignore))
     };

@@ -532,7 +532,7 @@ impl Turns {
             .clone();
         let mut unit = std::mem::take(&mut self.players[player].objects[idx]);
         let mut adds = Vec::new();
-        let result = (|| {
+        let result: Result<_, GenieError> = (|| {
             let building = &self.players[tp].objects[ti];
             let owner = &self.players[player];
             let masters = self.masters.get(player).ok_or(NO_MASTERS)?;

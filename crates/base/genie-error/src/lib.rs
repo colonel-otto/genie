@@ -191,6 +191,14 @@ pub const fn invalid_input(reason: &'static str) -> GenieError {
     GenieError::new(ErrorKind::InvalidInput, reason)
 }
 
+impl From<std::io::Error> for GenieError {
+    /// A failed read or write ([`ErrorKind::Io`]) caused by `e`, raised where `?` converts it.
+    #[track_caller]
+    fn from(e: std::io::Error) -> Self {
+        Self::io("a read or write that failed").with_source(e)
+    }
+}
+
 impl PartialEq for GenieError {
     /// Equal kinds and reasons: the place and the context do not make another error.
     fn eq(&self, other: &Self) -> bool {
@@ -323,6 +331,18 @@ mod tests {
             Some("short read".to_owned())
         );
         assert!(e.to_string().ends_with(": short read"));
+    }
+
+    #[test]
+    fn an_io_error_converts_where_question_mark_meets_it() {
+        fn open() -> GenieResult<()> {
+            Err(std::io::Error::other("no such file"))?;
+            Ok(())
+        }
+        let line = line!() - 3;
+        let e = open().unwrap_err();
+        assert_eq!((e.kind(), e.location().line()), (ErrorKind::Io, line));
+        assert!(e.to_string().ends_with(": no such file"));
     }
 
     #[test]
