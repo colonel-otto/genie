@@ -54,15 +54,8 @@ const VILLAGER_CLASS: i16 = 4;
 const VILLAGER_KIND: u8 = 70;
 
 /// The class-flags table `FUN_1411205e0` reads (`DAT_1439e37b0`, a u32 per class; its count,
-/// `DAT_1439e2cf8`, is 64), as the image holds it (nothing writes it). An image role to come:
-/// `garrison::CLASS_FLAGS`.
-const CLASS_FLAGS: [u32; 64] = [
-    0x10103, 0x2, 0x0, 0x2, 0x10163, 0x0, 0x10103, 0x0, 0x0, 0x0, 0x0, 0x0, 0x403, 0x3, 0x0, 0x0,
-    0x0, 0x10, 0x102, 0x2, 0x0, 0x140, 0x1, 0x403, 0x403, 0x103, 0x403, 0x0, 0x103, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x103, 0x403, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x102, 0x10103, 0x10103, 0x10103,
-    0x403, 0x0, 0x0, 0x10103, 0x3, 0x1, 0x3, 0x1, 0x3, 0x10103, 0x403, 0x102, 0x102, 0x0, 0x2, 0x0,
-    0x0,
-];
+/// `DAT_1439e2cf8`, is 64), as the image holds it (nothing writes it).
+const CLASS_FLAGS: [u32; 64] = crate::image::garrison::CLASS_FLAGS;
 /// The class flags a unit garrisons a transport with (`FUN_14120eb10`, `FUN_141621220`).
 const TRANSPORTED: u32 = 0x10002;
 
@@ -1797,12 +1790,12 @@ impl EnterAction {
 
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
 /// to which an Enter's reach of a target with speed tests the tiles about the two
-/// (`FUN_140a85c30`): `DAT_14330eb8c`, 1.0. An image role to come: `garrison::ENTER_NEAR`.
-const ENTER_NEAR: f32 = 1.0;
+/// (`FUN_140a85c30`): `DAT_14330eb8c`, 1.0.
+const ENTER_NEAR: f32 = crate::image::garrison::ENTER_NEAR;
 /// Half a tile (`DAT_142e7f384`, 0.5): what an Enter's meeting point adds to a tile or to a
 /// place before `floorf` (`FUN_140a85f30`), and how far a target leaves its point before the
-/// Enter walks again (`FUN_140a7bd10`). An image role to come: `garrison::HALF_TILE`.
-const HALF_TILE: f32 = 0.5;
+/// Enter walks again (`FUN_140a7bd10`).
+const HALF_TILE: f32 = crate::image::garrison::HALF_TILE;
 
 /// An Enter whose transport cannot reach where it meets the unit (`set_state(13)` in
 /// `set_state(4)`), which is not modelled.
