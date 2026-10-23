@@ -125,9 +125,22 @@ pub(in crate::turn) struct ResourceWorld<'a, 'b> {
     pub(in crate::turn) plan: Planning<'b>,
 }
 
+/// Where `ClosestResourceObject` (`FUN_140c49760`) searches from, the unit at `unit`: without a
+/// site from `point` (at the unit's height), unless both its parts are exactly −1
+/// (`DAT_14330ec20`, `UCOMISS`/`JP`/`JNZ`: a part that is not a number differs); with a site
+/// (`has_site`, which replaces the point) and for (−1, −1) from the unit's place.
+pub(in crate::turn) fn search_origin(point: [f32; 2], has_site: bool, unit: [f32; 3]) -> [f32; 3] {
+    match point {
+        [x, y] if !has_site && (x != -1.0 || y != -1.0) => [x, y, unit[2]],
+        _ => unit,
+    }
+}
+
 /// [`crate::gather_search::closest_resource_at`] for `unit` of gather group `kind` with fewer
 /// than `cap` workers (−1 any) from the drop site `site` (−1 for none; one the world does not hold
-/// counts as none, `FUN_1415417a0`), its unit AI's current target `current` passed over: the
+/// counts as none, `FUN_1415417a0`), its unit AI's current target `current` passed over, below
+/// state `min_state` nothing found, and without a site from `point` unless that is (−1, −1)
+/// (`param_7`, `param_8`; [`crate::unit_ai::NO_POINT`]: the unit's place, as with a site): the
 /// site's place, its master's radii and line of sight, and whether the search starts from its
 /// footprint (the site's tile in the unit's zone of its restriction, or a dock: masters 45 and
 /// 2172, `0x140c49d17`); the answer and the out argument's steps.
@@ -136,7 +149,7 @@ pub(in crate::turn) fn closest_resource_of(
     c: &mut ResourceWorld<'_, '_>,
     others: &[Unit],
     (kind, cap, site): (u8, i32, i32),
-    (current, min_state): (i32, u8),
+    (current, min_state, point): (i32, u8, [f32; 2]),
 ) -> Result<(i32, Option<i32>), Unsupported> {
     use crate::gather_search::{self, Candidate};
     /// The site masters whose search starts from their footprint in any zone.
@@ -240,9 +253,10 @@ pub(in crate::turn) fn closest_resource_of(
             })
             .collect()
     };
+    let position = search_origin(point, site.is_some(), unit.position);
     let seeker = gather_search::Seeker {
         player,
-        position: unit.position,
+        position,
         line_of_sight: master.line_of_sight,
         state: unit.life.state,
         current_target: current,
@@ -1072,7 +1086,7 @@ impl Turns {
                         &mut w,
                         &player.objects,
                         (kind, -1, id),
-                        (current, 0),
+                        (current, 0, crate::unit_ai::NO_POINT),
                     )?;
                     if f != -1 {
                         found.push(f);

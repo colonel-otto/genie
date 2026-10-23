@@ -745,9 +745,10 @@ impl Turns {
     /// slot 0x128 on the target at its place with 0 — its `+0xa14` clear while the work command
     /// runs, so the new action's notify leaves the AI's notifies, and its order queue stays —
     /// with no carried-resource test and no filter; `FUN_14106c590` passes it on unless the target
-    /// is the unit itself (its `+0x888` count is not held). Then the order's priority becomes the
-    /// AI's (the tail at `LAB_140c5d432`, which keeps the order the work gave it). A target that is
-    /// gone, whose type the AI would look for again (slots 0x1b0, 0x88), is not modelled.
+    /// is the unit itself (its `+0x888` count is not held). Then the tail at `LAB_140c5d432` with
+    /// the order the work gave the AI ([`crate::unit_ai::UnitAi::order_tail`]: the order's
+    /// priority; a stop order ends, a class-18 unit's attack order forgets its target and ends).
+    /// The unit AI runs the case on a target that is gone itself.
     pub(crate) fn order_on_target(
         &mut self,
         player: usize,
@@ -771,11 +772,21 @@ impl Turns {
             };
             self.order_work(player, idx, &work)?;
         }
+        let class = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .class;
         let ai = self.players[player].objects[idx]
             .ai
             .as_mut()
             .ok_or(Unsupported("an order on a target without a unit AI"))?;
-        ai.order_priority = order.priority;
+        // the tail (`LAB_140c5d432`) with the order the work left the AI
+        let _ = ai.order_tail(
+            ai.current_order,
+            order.priority,
+            class,
+            false,
+            self.streams.get(Stream::Ai),
+        );
         Ok(())
     }
 
@@ -1977,7 +1988,13 @@ impl Turns {
                 target_type: -1,
             };
             let mut fx = Vec::new();
-            ai.take_order_now(state, order, ([position[0], position[1]], class), &mut fx)?;
+            ai.take_order_now(
+                state,
+                order,
+                ([position[0], position[1]], class),
+                self.streams.get(Stream::Ai),
+                &mut fx,
+            )?;
             for e in fx {
                 match e {
                     Effect::Stop => self.command_stop(p, idx)?,

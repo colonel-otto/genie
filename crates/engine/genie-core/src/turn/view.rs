@@ -35,6 +35,17 @@ pub(crate) struct DropWorld<'a> {
     pub groups: &'a crate::group::UnitGroups,
 }
 
+/// A unit command a unit AI's update gave that the caller runs after it ([`Context::works`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::turn) enum AiWork {
+    /// `HuntObject`'s unit part on the target: the stop, then the hunt command
+    /// ([`Turns::hunt_command`]).
+    Hunt(i32),
+    /// `GatherObject`'s gather command on the target ([`Turns::gather_command`]).
+    Gather(i32),
+    /// The unit's slot 0x7e8 on an object at a point ([`Turns::order_work`]).
+    Work(crate::order::Work),
+}
 pub(in crate::turn) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
     pub(in crate::turn) dt: u32,
@@ -192,12 +203,10 @@ pub(in crate::turn) struct Context<'a> {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// The targets of the unit AI's `HuntObject`s, in order, whose unit part (the stop, then the
-    /// hunt command) the caller runs after the update ([`Turns::hunt_command`]).
-    pub(in crate::turn) hunt_objects: Vec<i32>,
-    /// The targets of the unit AI's `GatherObject`s, in order, whose gather command the caller
-    /// runs after the update ([`Turns::gather_command`]).
-    pub(in crate::turn) gather_objects: Vec<i32>,
+    /// The unit AI's `HuntObject`s, `GatherObject`s and works (slot 0x7e8) in the order it gave
+    /// them, whose unit parts the caller runs after the update in that order ([`AiWork`]): a
+    /// later one's stop tears down the action an earlier one made.
+    pub(in crate::turn) works: Vec<AiWork>,
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
     pub(in crate::turn) build_object: Option<i32>,
@@ -786,10 +795,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     fn closest_resource(
         &mut self,
-        kind: u8,
-        cap: i32,
-        site: i32,
-        current: i32,
+        search: crate::unit_ai::ResourceSearch,
     ) -> Result<Option<crate::unit_ai::Gatherable>, Unsupported> {
         let mut w = ResourceWorld {
             player: self.player,
@@ -811,8 +817,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             self.unit,
             &mut w,
             self.others,
-            (kind, cap, site),
-            (current, 2),
+            (search.kind, search.cap, search.site),
+            (search.current, search.min_state, search.point),
         )?;
         if id == -1 {
             return Ok(None);
@@ -835,6 +841,18 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             position: u.position,
             class,
         }))
+    }
+
+    /// The player's master table (`FUN_14152fe40`, `+0x28`): the masters the slice holds of each
+    /// player.
+    fn master_class(&mut self, player: i32, master: i32) -> Result<Option<i16>, Unsupported> {
+        let class = usize::try_from(player)
+            .ok()
+            .and_then(|p| self.every.get(p))
+            .zip(i16::try_from(master).ok())
+            .and_then(|(ms, id)| ms.get(id))
+            .map(|m| m.class);
+        Ok(class)
     }
 
     fn reaches(&mut self, target: i32, range: f32) -> Result<bool, Unsupported> {
@@ -1241,6 +1259,63 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             switch: switch.map(|m| m.id),
         });
         Ok(true)
+    }
+
+    /// The soldier's `AttackObject` in a group (`FUN_140c17550`): the unit's future path data
+    /// (slot 0x550), which the slice holds none of, goes; then a unit that moves (slot 0x5c8) or
+    /// speeds up (slot 0x5a0: its forward acceleration above 0, `COMISS`/`JBE`) stops (slot
+    /// 0x5d0).
+    fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
+        let Some(m) = self.unit.mover.as_mut() else {
+            return Ok(());
+        };
+        let speeding = m.velocity.as_ref().is_some_and(|v| 0.0 < v.acceleration[2]);
+        if m.is_moving() || speeding {
+            m.stop()?;
+        }
+        Ok(())
+    }
+
+    /// Slot 400 at the full update's tail: a wait for a foundation the AI gave (made after the
+    /// update, [`Wait`]) holds no object; else its top action's target ([`Unit::top_target`])
+    /// while the world holds it.
+    fn top_target_now(&mut self) -> Result<Option<i32>, Unsupported> {
+        if !self.waits.is_empty() {
+            return Ok(None);
+        }
+        let target = self.unit.top_target().filter(|&t| t != -1);
+        Ok(target.filter(|&t| self.spatial.get(t).is_some()))
+    }
+
+    /// The object as the full update's tail reads it, found as [`UnitSide::seen_unit`] finds
+    /// it.
+    fn target_flags(
+        &mut self,
+        id: i32,
+    ) -> Result<Option<crate::unit_ai::TargetFlags>, Unsupported> {
+        let Some(seen) = self.seen_unit(id)? else {
+            return Ok(None);
+        };
+        let u = self
+            .others
+            .iter()
+            .find(|u| u.id == id)
+            .or_else(|| self.foreign.find(id).map(|(_, u)| u))
+            .expect("seen_unit found it");
+        let kind = self
+            .every
+            .get(seen.owner)
+            .and_then(|ms| ms.get(u.life.master_id))
+            .expect("seen_unit found its master")
+            .kind;
+        Ok(Some(crate::unit_ai::TargetFlags {
+            owner: seen.owner,
+            kind,
+            capture: u.capture_flag,
+            pasture: u.pasture,
+            untargetable: u.untargetable,
+            attackable: u.attackable,
+        }))
     }
 }
 

@@ -18,7 +18,7 @@ use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, DropSite};
 use crate::turn::command::GatherPoint;
-use crate::turn::view::{Context, DropWorld, OwnerView, UnitView};
+use crate::turn::view::{AiWork, Context, DropWorld, OwnerView, UnitView};
 use crate::turn::world::{
     Releaser, ResourceWorld, Seeker, built_death, change_hands, clear_look_of, closest_resource_of,
     combat_dies, drop_site_search, farm_bonus, forget_resource, herded, nearest_drop_site,
@@ -1025,8 +1025,18 @@ impl Unit {
                     ))?;
                     *tail = Some(after);
                 }
-                Effect::HuntObject(target) => c.hunt_objects.push(target),
-                Effect::GatherObject(target) => c.gather_objects.push(target),
+                Effect::HuntObject(target) => c.works.push(AiWork::Hunt(target)),
+                Effect::GatherObject(target) => c.works.push(AiWork::Gather(target)),
+                Effect::WorkOn { target, point } => {
+                    // slot 0x7e8 with the carried-resource test, any task, +0xa14 0
+                    c.works.push(AiWork::Work(crate::order::Work {
+                        target,
+                        point,
+                        carry_test: true,
+                        filter: -1,
+                        notified: false,
+                    }));
+                }
                 Effect::BuildObject(target) => {
                     if c.build_object.replace(target).is_some() {
                         return Err(Unsupported("two BuildObjects in one update"));
@@ -2778,7 +2788,8 @@ impl Unit {
                 groups: c.groups,
             },
         };
-        closest_resource_of(self, &mut w, others, (kind, cap, site), (current, 2)).map(|(id, _)| id)
+        let search = (current, 2, crate::unit_ai::NO_POINT);
+        closest_resource_of(self, &mut w, others, (kind, cap, site), search).map(|(id, _)| id)
     }
 
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
@@ -5827,6 +5838,7 @@ impl Unit {
                 } else {
                     Some(self.top_action().map_or(0, |a| a.state))
                 },
+                attack_listed: self.attack.is_some(),
                 units: self.named_units(c, &view, master)?,
                 group: c
                     .groups
@@ -5917,7 +5929,7 @@ impl Unit {
                             (Some(dt), None) => {
                                 ai.update(dt, c.world_time, computer, &at, ai_stream, &mut side)
                             }
-                            (None, _) => ai.off_turn(&at, &mut side),
+                            (None, _) => ai.off_turn(&at, &mut side, computer, ai_stream),
                         }
                     };
                     self.ai = Some(ai);
