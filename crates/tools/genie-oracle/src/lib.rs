@@ -3726,6 +3726,13 @@ impl Decoder {
                     fishtrap: g.field_0x04 == 0x13,
                 });
             }
+            // GAME's cheat code; the player is at +8, the code at +0xa
+            Packet::Game(g) if g.field_0x04 == 6 => {
+                return Some(Command::Cheat {
+                    player: usize::try_from(g.field_0x08).ok()?,
+                    code: g.field_0x0a,
+                });
+            }
             // GAME's toggle of the offensive posture; the player is at +8
             Packet::Game(g) if g.field_0x04 == 0x14 => {
                 return Some(Command::Posture {
@@ -6623,6 +6630,28 @@ mod tests {
         assert_eq!(d.command(&patrol(4, vec![9397, 9398], 1, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 0, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 11, 0), &[]), None);
+    }
+
+    /// GAME (0x67) sub-command 6: a cheat code, the player at `+0x8` and the code at `+0xa`.
+    #[test]
+    fn a_game_packet_of_sub_command_6_decodes_a_cheat() {
+        let packet = de::command::Game {
+            commp_id: 2,
+            field_0x04: 6,
+            gap_0x06: [0; 2],
+            field_0x08: 2,
+            field_0x0a: 104,
+            field_0x0c: 0.0,
+            field_0x10: 0,
+        }
+        .encode();
+        assert_eq!(
+            Decoder::default().command(&packet, &[]),
+            Some(Command::Cheat {
+                player: 2,
+                code: 104
+            })
+        );
     }
 
     /// GIVE ATTRIBUTES (0xc4): the four entries' attributes (`+0x24`..), amounts (`+0x04`..)

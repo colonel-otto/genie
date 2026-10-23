@@ -3913,3 +3913,16 @@ fn building_short_of_its_build_time_dies(state: u8) {
     assert_eq!(u.life.state, 4);
     assert_eq!(u.sprite.unwrap().graphic.id, 389);
 }
+
+/// GAME's cheat code (sub-command 6, `FUN_1415c92c0`): without the game's cheats it does
+/// nothing; with them the cheat would run, which the slice does not model.
+#[test]
+fn a_cheat_code_does_nothing_without_the_game_s_cheats() {
+    let mut t = sent_off_world(vec![]);
+    let before = t.players.clone();
+    t.run(&Command::Cheat { player: 1, code: 4 });
+    assert_eq!(t.players, before);
+    t.settings.cheats_enabled = true;
+    t.run(&Command::Cheat { player: 1, code: 4 });
+    assert!(t.players[1].stopped);
+}

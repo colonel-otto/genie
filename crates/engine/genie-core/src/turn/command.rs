@@ -138,6 +138,17 @@ pub enum Command {
         /// The player.
         player: usize,
     },
+    /// GAME (0x67, `0x140e7c330`) sub-command 6 (`FUN_1415c92c0`): a cheat code of the player at
+    /// `+8`. Without the game's cheats (`mCheatsEnabled`,
+    /// [`crate::settings::Settings::cheats_enabled`]) it does nothing; with them the world's
+    /// `+0x818` sets and the cheat runs (`FUN_1415c62c0`), which is not modelled. (`do_command`
+    /// lets a player's cheat for another player through only with cheats or `+0xb12`.)
+    Cheat {
+        /// The player at `+8`.
+        player: usize,
+        /// The cheat's code (`+0xa`).
+        code: i16,
+    },
     /// `BUILDING_COMMAND_QUEUE` (0x2d, `0x140e64310`): the objects `ids` (at most a human
     /// player's 60) queue a step to `target` (−1 for none) or `point` ([`Turns::command_queue`]).
     CommandQueue {
@@ -465,6 +476,11 @@ impl Turns {
             Command::Posture { player } => {
                 let owner = &mut self.players[player];
                 owner.posture = i32::from(owner.posture == 0);
+            }
+            Command::Cheat { player, code: _ } => {
+                if self.settings.cheats_enabled {
+                    self.stop_player(player, Unsupported("a cheat code (FUN_1415c62c0)"));
+                }
             }
             Command::Gate { player, id } => {
                 if let Err(e) = self.gate(player, id) {
