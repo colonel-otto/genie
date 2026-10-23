@@ -724,6 +724,9 @@ enum Next {
     Dispatch,
     /// The step returns.
     Done(Motion),
+    /// The step's end on a loop back at its first waypoint (`LAB_141155637`,
+    /// [`Mover::loop_end`]).
+    LoopEnd,
 }
 
 /// Where the motion step goes on after a level's path request.
@@ -918,6 +921,8 @@ impl Mover {
         }
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let mut plans = 0;
+        // the waypoint the step's walk last went for (`local_1860`), zero before one
+        let mut walked = [0.0; 3];
         loop {
             // a level without a path ends the step (`LAB_14115582c`), as no level does
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
@@ -959,6 +964,7 @@ impl Mover {
                     Next::Again => continue,
                     Next::Dispatch => {}
                     Next::Done(m) => return Ok(m),
+                    Next::LoopEnd => return self.loop_end(dt, walked),
                 }
             }
             match self.paths[0].state {
@@ -967,6 +973,7 @@ impl Mover {
                     Next::Again => continue,
                     // a link of another type: on past the request (state 4 or 5) to the walk
                     Next::Dispatch => {}
+                    Next::LoopEnd => unreachable!("only a reached waypoint ends a loop's step"),
                 },
                 2 => {
                     let plan = plan
@@ -983,7 +990,8 @@ impl Mover {
             }
             let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
             let pathing = plan.as_deref_mut().map(|p| &mut *p.pathing);
-            if let Next::Done(m) = self.walk(me, dt, world, pathing, goal, now, computer)? {
+            let step = self.walk(me, dt, world, pathing, goal, now, computer, &mut walked)?;
+            if let Next::Done(m) = step {
                 return Ok(m);
             }
         }
@@ -995,6 +1003,7 @@ impl Mover {
     /// reaches it marks it reached and the walk goes on. A walk to a target ends in range of it
     /// (the waypoint reached); a walk to a point with a range ends where its top path ends (the
     /// unit stops, the step returns 2). A walk that may meet an obstruction is not modelled.
+    /// `walked` takes the waypoint once it is not left behind (`local_1860`).
     #[allow(clippy::too_many_arguments)]
     fn walk(
         &mut self,
@@ -1005,6 +1014,7 @@ impl Mover {
         goal: Goal<'_>,
         now: u32,
         computer: bool,
+        walked: &mut Vec3,
     ) -> Result<Next, Unsupported> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
@@ -1027,6 +1037,7 @@ impl Mover {
             Reach::Short if 2 < self.substitute_count => self.paths[0].flags |= 3,
             Reach::Short => {}
         }
+        *walked = waypoint;
         if self.stats.radius.iter().all(|&r| 0.0 < r) {
             // FUN_14114e8a0 ignores the unit itself (and a building's annexes), then
             // FUN_14114cc60 asks for the step's hits, grown by the unit's radius times 1
@@ -1105,14 +1116,35 @@ impl Mover {
         Ok(Next::Done(Motion::Moving))
     }
 
+    /// The motion step's end on a loop back at its first waypoint (`LAB_141155637`): the unit
+    /// turns toward its own forward vector on the ground (`FUN_141194060` with 3 holds, which
+    /// zeroes the height; `FUN_141027d00` divides by the length; [`Mover::steer`]), controls its
+    /// speed toward `walked` (slot 0x630, [`Mover::control_speed`]) and, its level waiting for a
+    /// path (state 2), stops (slot 0x5d0).
+    fn loop_end(&mut self, dt: f32, walked: Vec3) -> Result<Motion, Unsupported> {
+        let mut d = self.forward;
+        d[1] = 0.0;
+        let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        let direction = [d[0] / length, d[1] / length, d[2] / length];
+        let clipped = self.steer(direction, dt)?;
+        self.control_speed(walked, clipped);
+        if self.paths.first().is_some_and(|l| l.state == 2) {
+            self.stop()?;
+        }
+        Ok(Motion::Moving)
+    }
+
     /// The waypoint the level walks to was reached (`LAB_14115136c`, the level's bit 0): with
     /// bit 1 the unit takes the waypoint's place (slot 0x58, the position setter); the level moves
     /// on to its next waypoint, dropping those too near the map's edge for the unit
     /// (`FUN_140f98d50`). Then (`LAB_14115192d`) a level with waypoints left waits for a path to
     /// the next (state 2, not level 0); at its last, a unit not yet in range of where it was going
     /// steps back to the waypoint it left and asks again, else the level arrived (state 4). Level
-    /// 0 on a level 1 parent looks ahead first ([`Mover::look_ahead`]). A looping path and a
-    /// waypoint some object stands on are not modelled.
+    /// 0 on a level 1 parent looks ahead first ([`Mover::look_ahead`]). A loop (the path's flags
+    /// bit 0) moves on from the waypoint reached instead (`FUN_140f98bc0` with 1,
+    /// [`looping_next`]) and waits for a path to it (state 2): back at its first waypoint the step
+    /// ends ([`Mover::loop_end`]), else on to the level's state. A waypoint some object stands on
+    /// is not modelled.
     fn reached(
         &mut self,
         me: &mut Me,
@@ -1148,9 +1180,14 @@ impl Mover {
             debug_assert!(removed, "a waypoint below -1");
         }
         if level.path_flags & 1 != 0 {
-            return Err(Unsupported(
-                "a looping path's next waypoint (FUN_140f98bc0)",
-            ));
+            let reached = level.waypoint - 1;
+            level.waypoint = looping_next(level, reached);
+            level.state = 2;
+            return Ok(if level.waypoint == 0 {
+                Next::LoopEnd
+            } else {
+                Next::Dispatch
+            });
         }
         let next = level.waypoint + 1;
         if level.level != 0 && next < level.points.len() as i32 {
@@ -3795,6 +3832,50 @@ mod tests {
         m.paths[0].linked_type = 0;
         assert!(matches!(m.arrived(goal), Ok(Next::Dispatch)));
         assert_eq!(m.paths.len(), 2);
+    }
+
+    /// `LAB_14115136c` on a loop (the path's flags bit 0): the level moves on from the waypoint
+    /// reached (`FUN_140f98bc0` with 1) and waits for a path (state 2), on to its state; back at
+    /// its first waypoint the step ends (`LAB_141155637`): the unit turns toward its own forward
+    /// vector and, its level in state 2, stops.
+    #[test]
+    fn a_loop_s_reached_waypoint_moves_on_and_its_first_ends_the_step() {
+        let looping = |waypoint| {
+            let mut m = builder_9177();
+            m.paths = vec![level(2, &[[28.0, 89.0], [30.0, 88.0], [32.0, 89.0]], 3)];
+            let l = &mut m.paths[0];
+            l.target = -1;
+            l.path_flags = 1;
+            l.waypoint = waypoint;
+            l.flags = 1;
+            m
+        };
+        let mut world = Spatial::new([120, 120]);
+        let mut me = Me {
+            id: 9177,
+            position: [30.0, 88.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let goal = Goal {
+            target: None,
+            gap: FAR,
+            to_end: FAR,
+        };
+        let mut m = looping(1);
+        let next = m.reached(&mut me, &mut world, None, goal, 0);
+        assert!(matches!(next, Ok(Next::Dispatch)));
+        assert_eq!((m.paths[0].waypoint, m.paths[0].state), (2, 2));
+        let mut m = looping(2);
+        let next = m.reached(&mut me, &mut world, None, goal, 0);
+        assert!(matches!(next, Ok(Next::LoopEnd)));
+        assert_eq!((m.paths[0].waypoint, m.paths[0].state), (0, 2));
+        let mut m = looping(2);
+        me.position = [32.0, 89.0, 0.0];
+        m.moved_at = me.position;
+        assert_eq!(m.motion(&mut me, DT, &mut world, None), Ok(Motion::Moving));
+        assert_eq!((m.paths[0].waypoint, m.paths[0].state), (0, 2));
+        assert_eq!(m.velocity.unwrap().velocity, [0.0; 3]);
     }
 
     /// `0x141150f00`: a level whose target is gone walks as to a point (`FUN_1415417a0` finds
