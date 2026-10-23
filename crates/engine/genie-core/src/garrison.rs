@@ -707,9 +707,11 @@ impl Turns {
     /// when no spot is free. Not modelled: the work given (slot 0x128 with a target), neither a
     /// point nor a gather point (the unit AI's slots 0xb0 and 0x1c0), a gather point of kind 0xff,
     /// class 42's and livestock's counts in a building of a player with `+0x88`, a siege
-    /// building's (class 13) slot 0x1b0; not held: the building's villager count (`+0xba8`), its
-    /// sound (slot 0x4c0), its garrison sprite, the unit's `+0x9a0`. Its work command (slot
-    /// 0x128) has `+0xa14` 0: the unit AI keeps its notifies and its queued orders.
+    /// building's (class 13) slot 0x1b0; not held: the building's villager count (`+0xba8`) and
+    /// raider count (`+0xc2c`, which the building's slot 0x1c8 `FUN_1411d6ad0` lowers for a unit
+    /// of type 70 whose `+0x9a0` runs: such a unit inside is refused, [`Turns::garrisoned`]), its
+    /// sound (slot 0x4c0), its garrison sprite. Its work command (slot 0x128) has `+0xa14` 0: the
+    /// unit AI keeps its notifies and its queued orders.
     pub(crate) fn let_out(
         &mut self,
         player: usize,
