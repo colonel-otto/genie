@@ -233,3 +233,31 @@ fn fmod_is_the_exact_remainder_on_random_pairs() {
     });
     assert_eq!(bad, Vec::new());
 }
+
+/// logf against the game's CRT import (`api-ms-win-crt-math-l1-1-0.dll!logf` through the thunk
+/// `0x142a8e85a`) as the tick oracle's emulator runs it, bit for bit on the positive inputs of
+/// `fixtures/logf_158041.txt`: the `fuzz` probe's edge cases and two seeded draws (158041 and
+/// 26969) of 8192 calls each, the calls the stand-in answered (it raises at 0 and below, as
+/// Python's `math.log` does).
+#[test]
+fn log_is_the_games_logf() {
+    let text = include_str!("fixtures/logf_158041.txt");
+    let mut calls = 0;
+    let bad: Vec<String> = text
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let (x, game) = line.split_once(' ').expect("an input and an output");
+            let (x, game) = (
+                u32::from_str_radix(x, 16).expect("a hex f32"),
+                u32::from_str_radix(game, 16).expect("a hex f32"),
+            );
+            calls += 1;
+            let got = fmath::log(f32::from_bits(x)).to_bits();
+            let both_nan = f32::from_bits(got).is_nan() && f32::from_bits(game).is_nan();
+            (got != game && !both_nan).then(|| format!("{x:08x} -> {got:08x}, game {game:08x}"))
+        })
+        .collect();
+    assert!(calls > 8000, "{calls} calls");
+    assert_eq!(bad, Vec::<String>::new());
+}
