@@ -1979,12 +1979,14 @@ impl UnitAi {
     }
 
     /// The end of a Build whose AI holds queued orders (`0x140ab0370` case 0xdf): no order and no
-    /// action (`FUN_140c64b60` with −1 and 1, `FUN_140c64b50` with −1); leaving a patrol order,
-    /// whose timers reset, is not modelled.
+    /// action (`FUN_140c64b60` with −1 and 1, `FUN_140c64b50` with −1); leaving a patrol order
+    /// caps the secondary timer ([`UnitAi::cap_patrol_secondary`]); the redraw of an adjusted
+    /// idle timeout of exactly 750 (slot 0x1a8, the AI stream's) is not modelled here.
     pub const fn end_order_and_action(&mut self) -> Result<(), Unsupported> {
-        if matches!(self.current_order, PATROL | PATROL_2) {
+        if self.patrol_redraws() {
             return Err(Unsupported("the end of a Build on a patrol order"));
         }
+        self.cap_patrol_secondary();
         self.last_order = self.current_order;
         self.current_order = -1;
         self.set_action(-1);
@@ -3034,7 +3036,8 @@ impl UnitAi {
     /// 0, [`UnitAi::process_idle`]) may find the next thing to do (6); with nothing (5) the AI
     /// moves to its old target's point within the unit's weapon range (slot 0x130, forced,
     /// running: it always takes it). Then the order ends: it becomes the last order, the order and
-    /// its priority −1. A patrol order's part (orders 711, 733) is not modelled.
+    /// its priority −1, a patrol order (711, 733) resetting its timers
+    /// ([`UnitAi::leave_patrol_timers`]).
     fn next_after_kill(
         &mut self,
         at: &Surroundings,
@@ -3053,9 +3056,7 @@ impl UnitAi {
             });
             fx.extend(m.map(Effect::Move));
         }
-        if matches!(self.current_order, PATROL | PATROL_2) {
-            return Err(Unsupported("a patrol's attack whose target died"));
-        }
+        self.leave_patrol_timers(ai);
         self.last_order = self.current_order;
         self.current_order = -1;
         self.order_priority = -1;
@@ -4140,9 +4141,11 @@ impl UnitAi {
                 self.orders.clear();
                 Ok(GO_ON)
             }
-            // a MoveTo's moved target: a patrol path's processIdle (slot 0x240 with 1)
+            // a MoveTo's moved target: with a saved patrol processIdle runs (slot 0x240 with 1),
+            // its result unread
             TARGET_MOVED if self.patrol_path.is_some() => {
-                Err(Unsupported("a moved target's processIdle on a patrol path"))
+                let _ = self.process_idle(at, computer, ai_rng, side, fx)?;
+                Ok(GO_ON)
             }
             // a moved target, then the kinds "I'm ignoring that." and the action values
             TARGET_MOVED
@@ -4564,7 +4567,8 @@ impl UnitAi {
     /// `keep_order` false or an action of the order (action + 100 = order) the order ends too
     /// (its priority with it), the state position taking the unit's place but for class 18. Then
     /// the unit's stopAction (slot 0x3c0), no action, and `+0x1a8` cleared. A patrol order (711,
-    /// 733) would end too, with its timers' reset, which is not modelled.
+    /// 733) ends however `keep_order` stands, its secondary timer capped; the redraw of an
+    /// adjusted idle timeout of exactly 750 (the AI stream's) is not modelled here.
     fn stop_current(
         &mut self,
         keep_order: bool,
@@ -4588,11 +4592,12 @@ impl UnitAi {
     ) -> Result<(), Unsupported> {
         let action = self.current_action;
         let order = self.current_order;
-        if matches!(order, PATROL | PATROL_2) {
+        if self.patrol_redraws() {
             return Err(Unsupported("a stop on a patrol order"));
         }
         self.last_action = action;
-        if !keep_order || action + 100 == order {
+        if !keep_order || action + 100 == order || matches!(order, PATROL | PATROL_2) {
+            self.cap_patrol_secondary();
             self.last_order = order;
             self.current_order = -1;
             self.order_priority = -1;
@@ -4670,6 +4675,20 @@ impl UnitAi {
             self.remove_target();
             self.leave_patrol_timers(ai);
             self.current_order = -1;
+        }
+    }
+
+    /// On a patrol order (711, 733) with an adjusted idle timeout of exactly 750: leaving the
+    /// order redraws it (slot 0x1a8), which draws from the AI stream.
+    const fn patrol_redraws(&self) -> bool {
+        matches!(self.current_order, PATROL | PATROL_2) && self.adjusted_idle_timeout == 750
+    }
+
+    /// The rest of leaving a patrol order (711, 733) once the redraw is not due
+    /// ([`UnitAi::patrol_redraws`]): the secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
+    const fn cap_patrol_secondary(&mut self) {
+        if matches!(self.current_order, PATROL | PATROL_2) && 750 < self.secondary_timer as i32 {
+            self.secondary_timer = 750;
         }
     }
 
@@ -4852,9 +4871,12 @@ impl UnitAi {
             // its priority end
             self.remove_target();
             self.stop_with(true, None, fx)?;
-            if matches!(self.current_order, PATROL | PATROL_2) {
+            // the tail's case 0x2c2 (`LAB_140c5d432`): leaving a patrol order resets its
+            // timers (the stop above ended any patrol order already)
+            if self.patrol_redraws() {
                 return Err(Unsupported("a stop order after a patrol order"));
             }
+            self.cap_patrol_secondary();
             self.current_order = -1;
             self.order_priority = -1;
             return Ok(1);
@@ -4886,18 +4908,20 @@ impl UnitAi {
         }) else {
             return Ok(0);
         };
-        if matches!(self.current_order, PATROL | PATROL_2) {
-            return Err(Unsupported("a queued order after a patrol order"));
-        }
         fx.push(Effect::Move(m));
         self.take_order(o)
     }
 
     /// The order's tail (`LAB_140c5d611`): the order and its priority become the AI's; leaving a
-    /// patrol order (which caps the secondary timer) is not modelled.
+    /// patrol order for another order caps the secondary timer ([`UnitAi::cap_patrol_secondary`];
+    /// the redraw of an adjusted idle timeout of exactly 750, the AI stream's, is not modelled
+    /// here).
     const fn take_order(&mut self, o: &QueuedOrder) -> Result<u32, Unsupported> {
-        if matches!(self.current_order, PATROL | PATROL_2) {
-            return Err(Unsupported("a queued order after a patrol order"));
+        if self.current_order != o.order {
+            if self.patrol_redraws() {
+                return Err(Unsupported("a queued order after a patrol order"));
+            }
+            self.cap_patrol_secondary();
         }
         self.current_order = o.order;
         self.order_priority = o.priority;
@@ -6193,6 +6217,41 @@ mod tests {
                 .any(|e| matches!(e, Effect::Move(m) if m.point == [5.0, 6.0, 0.0]))
         );
         assert_eq!((scout.current_order, scout.last_order), (-1, ATTACK_ORDER));
+    }
+
+    /// The target block's attack whose target died on a patrol order: the order ends with its
+    /// timers reset (an adjusted idle timeout of 750 redrawn, the secondary timer capped).
+    #[test]
+    fn a_patrol_s_kill_ends_the_patrol_order_with_its_timers() {
+        let mut scout = UnitAi {
+            current_order: PATROL,
+            current_action: ATTACK_ACTION,
+            current_target: 25954,
+            target_point: [5.0, 6.0, 0.0],
+            idle_timeout: 3000,
+            adjusted_idle_timeout: 750,
+            secondary_timer: 900,
+            ..idle(13)
+        };
+        let at = Surroundings {
+            player: 1,
+            kind: 70,
+            action_state: Some(0),
+            ..Surroundings::default()
+        };
+        let mut side = SoldierSide {
+            found: -1,
+            attacks: Vec::new(),
+            patrol: None,
+        };
+        scout
+            .next_after_kill(&at, false, &mut rng(), &mut side, &mut Vec::new())
+            .unwrap();
+        assert_eq!(
+            (scout.current_order, scout.last_order, scout.secondary_timer),
+            (-1, PATROL, 750)
+        );
+        assert_ne!(scout.adjusted_idle_timeout, 750);
     }
 
     /// processMisc's retarget check past its timer (`0x140c567c0`): a scout on the attack order
@@ -7990,20 +8049,27 @@ mod tests {
         assert_eq!((u.last_target, u.last_action), (9655, FOLLOW_ACTION));
     }
 
+    /// The base handler's case 0x1fc (a `MoveTo`'s moved target): nothing without a saved
+    /// patrol; with one processIdle runs (slot 0x240 with 1; this Gaia soldier only caps).
     #[test]
-    fn a_moved_target_notify_is_ignored_without_a_patrol_path() {
+    fn a_moved_target_notify_runs_process_idle_with_a_saved_patrol() {
         let (mut u, at) = follower([115.0, 40.2, 0.0], true);
         let n = Notify::own(9183, TARGET_MOVED, [0, 0, 0]);
         let (mut r, mut side) = (rng(), Recorder::default());
+        let mut fx = Vec::new();
         assert_eq!(
-            u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut Vec::new()),
+            u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut fx),
             Ok(GO_ON)
         );
+        assert_eq!(fx, vec![]);
+        // off its follow order (whose last human order time stays) the idle check caps it
         u.patrol_path = Some(PatrolPath::default());
-        assert!(
-            u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut Vec::new())
-                .is_err()
+        u.current_order = -1;
+        assert_eq!(
+            u.base_notify(n, 0, &at, false, &mut r, &mut side, &mut fx),
+            Ok(GO_ON)
         );
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
     }
 
     /// The scout 9185 in update 1518: idle (its MOVE done), stance 2 at its state position.
@@ -10062,5 +10128,61 @@ mod tests {
         };
         u.check_order(&at, &mut rng());
         assert_eq!(u.current_order, PATROL);
+    }
+
+    /// Slot 0xb0 (`FUN_140c64ed0`) on a patrol order: the order ends even when the stop keeps
+    /// orders, its secondary timer capped at 750; with an adjusted idle timeout of exactly 750
+    /// the redraw (the AI stream's) is not modelled here.
+    #[test]
+    fn a_stop_ends_a_patrol_order_with_its_secondary_timer_capped() {
+        let mut u = UnitAi {
+            current_order: PATROL,
+            current_action: MOVE_ACTION,
+            adjusted_idle_timeout: 2600,
+            secondary_timer: 900,
+            ..idle(SOLDIER_AI)
+        };
+        let mut fx = Vec::new();
+        u.stop_with(true, Some(([3.0, 4.0], 6)), &mut fx).unwrap();
+        assert_eq!(
+            (u.current_order, u.last_order, u.secondary_timer),
+            (-1, PATROL, 750)
+        );
+        assert_eq!((fx, u.state_position), (vec![Effect::Stop], [3.0, 4.0]));
+        let mut u = UnitAi {
+            current_order: PATROL_2,
+            adjusted_idle_timeout: 750,
+            ..idle(SOLDIER_AI)
+        };
+        assert!(u.stop_with(true, None, &mut Vec::new()).is_err());
+    }
+
+    /// The order's tail (`LAB_140c5d611`) and the Build's end (`FUN_140c64b60` with −1): leaving
+    /// a patrol order caps the secondary timer; staying on it does not.
+    #[test]
+    fn leaving_a_patrol_order_caps_its_secondary_timer() {
+        let order = |order| QueuedOrder {
+            order,
+            priority: 100,
+            ..QueuedOrder::default()
+        };
+        let patrolling = || UnitAi {
+            current_order: PATROL,
+            adjusted_idle_timeout: 2600,
+            secondary_timer: 900,
+            ..idle(SOLDIER_AI)
+        };
+        let mut u = patrolling();
+        assert_eq!(u.take_order(&order(MOVE_ORDER)), Ok(1));
+        assert_eq!((u.current_order, u.secondary_timer), (MOVE_ORDER, 750));
+        let mut u = patrolling();
+        assert_eq!(u.take_order(&order(PATROL)), Ok(1));
+        assert_eq!(u.secondary_timer, 900);
+        let mut u = patrolling();
+        u.end_order_and_action().unwrap();
+        assert_eq!(
+            (u.current_order, u.last_order, u.secondary_timer),
+            (-1, PATROL, 750)
+        );
     }
 }
