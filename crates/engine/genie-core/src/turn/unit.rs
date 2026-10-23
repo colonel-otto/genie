@@ -3831,6 +3831,7 @@ impl Unit {
                 rice: self.rice,
             },
             chain: crate::build::WorkChain::default(),
+            main_builders: None,
         };
         let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
@@ -4402,11 +4403,31 @@ impl Unit {
                 });
             }
             let annex_ids = c.spatial.annexes_of(target);
+            // FUN_140aaddb0: a building annex (`+0xbb8`) counts its builders in its main
+            // building
+            let counted_main = others
+                .iter()
+                .find(|u| u.id == target)
+                .filter(|u| {
+                    masters
+                        .and_then(|m| m.get(u.life.master_id))
+                        .is_some_and(|m| m.kind == BUILDING_KIND)
+                })
+                .and_then(|u| u.annex_of);
+            let mut main_builders = None;
             let mut site = None;
             let mut starts = Vec::new();
             for u in others.iter_mut() {
                 if u.id == target {
                     site = Some(u);
+                    continue;
+                }
+                if Some(u.id) == counted_main {
+                    let k = u
+                        .construction
+                        .as_mut()
+                        .ok_or(crate::build::NO_CONSTRUCTION)?;
+                    main_builders = Some(&mut k.builders);
                     continue;
                 }
                 if main_work.is_some() || !annex_ids.contains(&u.id) {
@@ -4429,6 +4450,9 @@ impl Unit {
                     firepower: &mut u.firepower,
                     volley: am.volley_fire,
                 });
+            }
+            if counted_main.is_some() && main_builders.is_none() {
+                return Err(crate::build::NOT_HELD);
             }
             // the slot order: the constructor made them, and their ids, in it
             starts.sort_by_key(|a| a.id);
@@ -4460,6 +4484,7 @@ impl Unit {
                         annexes: starts,
                         main: main_work,
                     },
+                    main_builders,
                 })
             });
             let class = masters

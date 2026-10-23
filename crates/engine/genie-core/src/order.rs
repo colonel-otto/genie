@@ -3229,11 +3229,19 @@ impl Turns {
             let unit = &mut self.players[player].objects[idx];
             (unit.build.take(), unit.mover.take())
         };
-        let site = self.players[fp].objects[fi].construction.as_mut();
-        let r = build
-            .as_mut()
-            .expect("found above")
-            .retake(gap, mover.as_mut(), site, computer);
+        // FUN_140aaddb0's building: an annex's main building
+        let counted = match self.counted_building(target)? {
+            Some(id) if id != target => self.object_mut(id).map(|(_, b)| b),
+            _ => Some(&mut self.players[fp].objects[fi]),
+        };
+        let builders = counted
+            .and_then(|b| b.construction.as_mut())
+            .map(|k| &mut k.builders);
+        let r =
+            build
+                .as_mut()
+                .expect("found above")
+                .retake(gap, mover.as_mut(), builders, computer);
         let unit = &mut self.players[player].objects[idx];
         (unit.build, unit.mover) = (build, mover);
         r?;
@@ -3264,19 +3272,27 @@ impl Turns {
         Ok(target)
     }
 
-    /// `FUN_140aaddb0` and the builder count: the foundation `id` a Build counted its builder
-    /// among (an annex of type 80 its main building, `+0xbb8`), when the world still holds it
-    /// (live or sleeping, `FUN_1415417a0`), counts one builder less (`+0x9e8`, held in its
-    /// construction record).
-    pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
+    /// `FUN_140aaddb0`: the building a Build on `id` counts its builder in, when the world holds
+    /// `id` (live or sleeping, `FUN_1415417a0`): the object itself, or for a building (type 80)
+    /// that is an annex (`+0xbb8`) its main building.
+    pub(crate) fn counted_building(&self, id: i32) -> Result<Option<i32>, Unsupported> {
         let Some((p, f)) = self.object(id) else {
-            return Ok(());
+            return Ok(None);
         };
         let kind = self.master_of(p, f.life.master_id)?.kind;
-        let site = if kind == BUILDING {
+        Ok(Some(if kind == BUILDING {
             f.annex_of.unwrap_or(id)
         } else {
             id
+        }))
+    }
+
+    /// The builder count: the building `FUN_140aaddb0` gives for the foundation `id` a Build
+    /// counted its builder among ([`Turns::counted_building`]) counts one builder less
+    /// (`+0x9e8`, held in its construction record); none once the world no longer holds `id`.
+    pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), Unsupported> {
+        let Some(site) = self.counted_building(id)? else {
+            return Ok(());
         };
         let c = self
             .object_mut(site)

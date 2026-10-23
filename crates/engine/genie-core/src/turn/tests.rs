@@ -2565,6 +2565,36 @@ fn a_dead_unit_s_actions_go_and_let_their_targets_go_in_the_update_of_its_death(
     assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
 }
 
+/// `FUN_140aaddb0`: a Build counts its builder in a building annex's main building (`+0xbb8`),
+/// in any other object itself, and in none once the world no longer holds its target; a dead
+/// builder of the annex leaves the main building's builders.
+#[test]
+fn a_build_on_an_annex_counts_its_builder_in_the_main_building() {
+    let mut t = deaths_world();
+    let mut main = t.players[1].objects[3].clone();
+    main.id = 10030;
+    t.players[1].objects[3].annex_of = Some(10030);
+    t.players[1].objects[3]
+        .construction
+        .as_mut()
+        .unwrap()
+        .builders = 0;
+    t.players[1].objects.push(main);
+    assert_eq!(t.counted_building(10028), Ok(Some(10030)));
+    assert_eq!(t.counted_building(50), Ok(Some(50)));
+    assert_eq!(t.counted_building(999), Ok(None));
+    t.tick(100);
+    let builders = |id| {
+        t.players[1]
+            .objects
+            .iter()
+            .find(|u| u.id == id)
+            .and_then(|u| u.construction)
+            .map(|k| k.builders)
+    };
+    assert_eq!((builders(10028), builders(10030)), (Some(0), Some(0)));
+}
+
 /// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
 /// any other object's 2).
 #[test]

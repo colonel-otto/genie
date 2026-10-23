@@ -110,6 +110,30 @@ pub struct Site<'a> {
     /// which it starts first, and the main building that takes the work when it is an annex
     /// ([`WorkChain`]).
     pub chain: WorkChain<'a>,
+    /// The builder count (`+0x9e8`) of its main building when it is a building annex
+    /// (`+0xbb8`): the building `FUN_140aaddb0` gives counts the builders instead
+    /// ([`Site::builders`]).
+    pub main_builders: Option<&'a mut u8>,
+}
+
+impl<'a> Site<'a> {
+    /// The builder count of the building `FUN_140aaddb0` gives a Build on this foundation: its
+    /// main building's for a building annex, else its own (`+0x9e8`).
+    pub fn builders(&mut self) -> &mut u8 {
+        match self.main_builders.as_deref_mut() {
+            Some(b) => b,
+            None => &mut self.construction.builders,
+        }
+    }
+
+    /// [`Site::builders`] for the rest of the site's borrow.
+    #[must_use]
+    pub fn into_builders(self) -> &'a mut u8 {
+        match self.main_builders {
+            Some(b) => b,
+            None => &mut self.construction.builders,
+        }
+    }
 }
 
 /// What a foundation's work (`FUN_1411cc430`) reaches besides it ([`Construction::work`]).
@@ -523,11 +547,11 @@ impl BuildAction {
                 let c = &*site.construction;
                 let unbuilt = c.progress < f32::from(c.build_time);
                 if (special || state < 3) && !(special && 2 < state && unbuilt) {
-                    step.dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
+                    step.dropped = self.finish(&mut walk, Some(site.builders()), load)?;
                 } else {
                     // set_state(4) toward it, then slot 0x68 with none: the caller releases it
                     walked_from = Some(self.target);
-                    self.restart(&mut walk, Some(&mut *site.construction))?;
+                    self.restart(&mut walk, Some(site.builders()))?;
                     self.target = -1;
                     step.released = true;
                 }
@@ -628,17 +652,14 @@ impl BuildAction {
         r.map(|()| step)
     }
 
-    /// The prelude of every `set_state` (`0x140aae200`): a builder counted among the foundation's
-    /// builders leaves them, and the sub-actions go (`FUN_140a98620`: a `MoveTo`'s teardown stops
-    /// the unit, slot 0x5d0).
-    fn leave(
-        &mut self,
-        walk: &mut Walk<'_>,
-        site: Option<&mut Construction>,
-    ) -> Result<(), Unsupported> {
+    /// The prelude of every `set_state` (`0x140aae200`): a builder counted among the builders
+    /// of `FUN_140aaddb0`'s building (`builders`, [`Site::builders`]: none once its foundation
+    /// is gone) leaves them, and the sub-actions go (`FUN_140a98620`: a `MoveTo`'s teardown
+    /// stops the unit, slot 0x5d0).
+    fn leave(&mut self, walk: &mut Walk<'_>, builders: Option<&mut u8>) -> Result<(), Unsupported> {
         if self.added {
-            if let Some(c) = site {
-                c.builders = c.builders.wrapping_sub(1);
+            if let Some(b) = builders {
+                *b = b.wrapping_sub(1);
             }
             self.added = false;
         }
@@ -657,15 +678,15 @@ impl BuildAction {
     fn finish(
         &mut self,
         walk: &mut Walk<'_>,
-        site: Option<&mut Construction>,
+        builders: Option<&mut u8>,
         load: Load,
     ) -> Result<Dropped, Unsupported> {
-        if self.added && site.is_none() {
+        if self.added && builders.is_none() {
             return Err(Unsupported(
                 "the end of a Build counted among another player's builders",
             ));
         }
-        self.leave(walk, site)?;
+        self.leave(walk, builders)?;
         self.state = FINISHED;
         if !(load.drop_site && 0.0 < load.amount && 0 <= load.kind) {
             return Ok(None);
@@ -742,9 +763,9 @@ impl BuildAction {
     fn restart(
         &mut self,
         walk: &mut Walk<'_>,
-        site: Option<&mut Construction>,
+        builders: Option<&mut u8>,
     ) -> Result<(), Unsupported> {
-        self.leave(walk, site)?;
+        self.leave(walk, builders)?;
         let mover = walk
             .mover
             .as_deref()
@@ -777,7 +798,7 @@ impl BuildAction {
         step: &mut BuildStep,
     ) -> Result<(), Unsupported> {
         let built = site.as_ref().map(|s| (s.id, s.life.state));
-        self.leave(walk, site.map(|s| s.construction))?;
+        self.leave(walk, site.map(Site::into_builders))?;
         self.state = IDLE;
         let mut left = 0;
         if let Some(ai) = builder.ai {
@@ -797,9 +818,9 @@ impl BuildAction {
     /// Slot 0x48 (`FUN_140ab1b30`), the work command's target for the Build's own task, here its
     /// own foundation again (slot 0x68 with the same target does nothing): working (state 6) it
     /// stays, as does a computer player's builder walking to it (state 4); else `set_state(4)`:
-    /// it leaves the foundation's builders (`site`, its construction) and its `MoveTo` (the unit
-    /// stops, slot 0x5d0), and a new `MoveTo` to the foundation starts, arrived when the
-    /// footprints touch (`gap`).
+    /// it leaves the builders of `FUN_140aaddb0`'s building (`builders`, an annex's main
+    /// building's) and its `MoveTo` (the unit stops, slot 0x5d0), and a new `MoveTo` to the
+    /// foundation starts, arrived when the footprints touch (`gap`).
     ///
     /// # Errors
     ///
@@ -808,17 +829,17 @@ impl BuildAction {
         &mut self,
         gap: f32,
         mover: Option<&mut crate::movement::Mover>,
-        site: Option<&mut Construction>,
+        builders: Option<&mut u8>,
         computer: bool,
     ) -> Result<(), Unsupported> {
         if self.state == WORK || (self.state == MOVE && computer) {
             return Ok(());
         }
         if self.added {
-            let c = site.ok_or(Unsupported(
+            let b = builders.ok_or(Unsupported(
                 "a builder retaking a foundation the slice does not hold",
             ))?;
-            c.builders = c.builders.wrapping_sub(1);
+            *b = b.wrapping_sub(1);
         }
         if self.move_to.is_some()
             && let Some(m) = mover
@@ -920,9 +941,10 @@ impl BuildAction {
         step: &mut BuildStep,
     ) -> Result<(), Unsupported> {
         let mut site = site.ok_or(Unsupported("a foundation of another player"))?;
-        // every set_state first takes the builder out of the foundation's builders
+        // every set_state first takes the builder out of FUN_140aaddb0's building's builders
         if self.added {
-            site.construction.builders = site.construction.builders.wrapping_sub(1);
+            let b = site.builders();
+            *b = b.wrapping_sub(1);
             self.added = false;
         }
         self.move_to = None;
@@ -1024,8 +1046,10 @@ impl BuildAction {
                 return Err(Unsupported("walls beside a diagonal builder (set_state 2)"));
             }
         }
+        // FUN_140aaddb0's building counts it: an annex's main building
         if !self.added {
-            site.construction.builders = site.construction.builders.wrapping_add(1);
+            let b = site.builders();
+            *b = b.wrapping_add(1);
             self.added = true;
         }
         Ok(())
@@ -1055,7 +1079,7 @@ impl BuildAction {
         if 0.0 < factor {
             rate *= factor;
         }
-        let n = f32::from(site.construction.builders);
+        let n = f32::from(*site.builders());
         if 1.0 < n {
             rate *= ((n - 1.0) * EXTRA_BUILDER + 1.0) / n;
         }
@@ -1074,7 +1098,7 @@ impl BuildAction {
         // a finished foundation with hit points ends the work (its `+0x278`, decoded); one
         // without (deleted, it dies in its own update) leaves the Build as it is
         if 0.0 < site.life.hp {
-            let dropped = self.finish(&mut walk, Some(&mut *site.construction), load)?;
+            let dropped = self.finish(&mut walk, Some(site.builders()), load)?;
             Ok((completed, dropped, passed))
         } else {
             Ok((completed, None, passed))
@@ -1527,6 +1551,7 @@ impl crate::turn::Turns {
                 rice,
             },
             chain: WorkChain::default(),
+            main_builders: None,
         };
         let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
@@ -2360,6 +2385,125 @@ mod tests {
         }
     }
 
+    /// `FUN_140aaddb0`: a Build on a building annex (`+0xbb8`) counts its builder in the main
+    /// building. The join (`0x140aae200` case 7) raises the main building's count and leaves the
+    /// annex's; the work's extra-builder factor (`0x140ab0370` case 6) reads the main building's
+    /// two builders; the prelude of the `set_state(4)` of slot 0x48 on the annex again
+    /// (`FUN_140ab1b30`, [`BuildAction::retake`]) lowers the main building's count.
+    #[test]
+    fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
+        fn update(
+            build: &mut BuildAction,
+            (life, annex, main): (&mut Lifecycle, &mut Construction, &mut u8),
+            world: &mut Spatial,
+        ) {
+            let (mut pathing, mut object) = (Pathing::default(), crate::rng::Well512::default());
+            let groups = crate::group::UnitGroups::default();
+            let site = Site {
+                id: 10029,
+                life,
+                construction: annex,
+                mover: None,
+                firepower: None,
+                roo_called: None,
+                store: None,
+                completion: Completion {
+                    master: None,
+                    annexed: false,
+                    attribute_204: false,
+                    mode_680: 0,
+                    farm_bonus: [0.0, -1.0, -1.0],
+                    masters: None,
+                    computer: false,
+                    ai: false,
+                    main: true,
+                    now: 0,
+                    rice: false,
+                },
+                chain: WorkChain::default(),
+                main_builders: Some(main),
+            };
+            let walk = Walk {
+                mover: None,
+                me: Me {
+                    id: 5,
+                    position: [32.0, 88.0, 0.0],
+                    group: -1,
+                    action_state: build.state,
+                },
+                dt: 0.03,
+                world,
+                plan: Some(crate::movement::Planning {
+                    pathing: &mut pathing,
+                    now: 0,
+                    computer: false,
+                    object: &mut object,
+                    construction_rate: 0.0,
+                    groups: &groups,
+                }),
+            };
+            let builder = Builder {
+                class: VILLAGER,
+                master: 83,
+                held: 0.0,
+                held_kind: -1,
+                drop_site: false,
+                ai: None,
+                waits: &mut 0,
+                build_targets: &[],
+                look: Looks(&|_| None),
+            };
+            let _ = build.update(walk, Some(site), builder).unwrap();
+        }
+        let mut world = Spatial::default();
+        world.insert(
+            10029,
+            crate::spatial::Placed {
+                player: 1,
+                ..house()
+            },
+        );
+        let mut life = Lifecycle {
+            state: 0,
+            hp: 1.0,
+            master_id: 1192,
+            ..Lifecycle::default()
+        };
+        let mut annex = Construction {
+            progress: 1.0,
+            desolid: false,
+            builders: 0,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        // another builder works on the main building
+        let mut main = 1u8;
+        let mut build = BuildAction {
+            state: WAIT,
+            move_to: None,
+            timer: 0.01,
+            ..BuildAction::start(10029, 0.0, TASK)
+        };
+        update(&mut build, (&mut life, &mut annex, &mut main), &mut world);
+        assert_eq!(
+            (build.state, build.added, main, annex.builders),
+            (PLACE, true, 2, 0)
+        );
+        update(&mut build, (&mut life, &mut annex, &mut main), &mut world);
+        let rate = 1.0f32 * 1.0 * 0.03;
+        let n = f32::from(main);
+        assert_eq!(
+            annex.progress,
+            1.0 + rate * (((n - 1.0) * EXTRA_BUILDER + 1.0) / n)
+        );
+        build.retake(0.0, None, Some(&mut main), false).unwrap();
+        assert_eq!((build.state, build.added, main), (MOVE, false, 1));
+    }
+
     /// records/425906646's update 3145: a builder carrying wood when its lumber camp completes
     /// drops it there (`FUN_140aadc50`); food kinds become food; at a house it keeps its load.
     #[test]
@@ -2468,7 +2612,7 @@ mod tests {
             added: true,
             ..BuildAction::start(31011, 0.0, TASK)
         };
-        b.retake(0.0, None, Some(&mut c), false).unwrap();
+        b.retake(0.0, None, Some(&mut c.builders), false).unwrap();
         assert_eq!(c.builders, 1);
         assert_eq!(b, BuildAction::start(31011, 0.0, TASK));
         assert_eq!(b.move_to, Some(MoveTo::Arrived));
@@ -2478,7 +2622,9 @@ mod tests {
             ..BuildAction::start(31011, 0.0, TASK)
         };
         let before = working;
-        working.retake(0.0, None, Some(&mut c), false).unwrap();
+        working
+            .retake(0.0, None, Some(&mut c.builders), false)
+            .unwrap();
         assert_eq!(working, before);
         assert_eq!(c.builders, 1);
     }
@@ -2579,6 +2725,7 @@ mod tests {
                 rice: false,
             },
             chain: WorkChain::default(),
+            main_builders: None,
         };
         let worked = Construction::work(&mut site, 0.02, &mut world, &mut Pathing::default(), 0);
         assert_eq!(
@@ -2644,6 +2791,7 @@ mod tests {
                 rice: false,
             },
             chain: WorkChain::default(),
+            main_builders: None,
         };
         let rate = 1.0f32 * 1.0 * 0.021;
         assert_eq!(
@@ -2734,6 +2882,7 @@ mod tests {
                 ],
                 main: None,
             },
+            main_builders: None,
         };
         assert_eq!(
             Construction::work(&mut site, 0.021, &mut world, &mut pathing, 0),
@@ -2802,6 +2951,7 @@ mod tests {
                         hp: 1.0,
                     }),
                 },
+                main_builders: None,
             };
             let worked =
                 Construction::work(&mut site, amount, &mut world, &mut Pathing::default(), 0);
@@ -2949,6 +3099,7 @@ mod tests {
                 rice: false,
             },
             chain: WorkChain::default(),
+            main_builders: None,
         };
         let _ = build
             .update(
@@ -3066,6 +3217,7 @@ mod tests {
                 rice: false,
             },
             chain: WorkChain::default(),
+            main_builders: None,
         };
         let mut build = BuildAction {
             state: WAIT,
@@ -3232,6 +3384,7 @@ mod tests {
                             rice: false,
                         },
                         chain: WorkChain::default(),
+                        main_builders: None,
                     }),
                     Builder {
                         class: VILLAGER,
