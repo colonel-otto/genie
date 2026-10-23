@@ -240,6 +240,8 @@ pub enum Effect {
 pub struct AfterOrder {
     /// The retarget check's timer ran out (it was redrawn): its outcome is to come.
     pub retargeted: bool,
+    /// The unit's group as the update read it ([`Surroundings::group`]).
+    pub group: Option<GroupState>,
 }
 
 /// The first move among a full update's effects.
@@ -1387,6 +1389,31 @@ pub struct Surroundings {
     /// its attackers ([`UnitAi::attackers`]) and the callers of its queued damage notifies. One
     /// the table does not hold is absent.
     pub units: Vec<UnitSeen>,
+    /// The unit's group (`+0x6d0`, the world's `FUN_14152ff40`), when the world holds it: what
+    /// the full update reads of it ([`GroupState`]).
+    pub group: Option<GroupState>,
+}
+
+/// The idle part's group test (`0x140c67e8f`): no group, or one that is idle (`FUN_141017ad0`) of
+/// a unit that does not move (slot 0x5c8).
+fn group_lets_idle(group: Option<GroupState>) -> bool {
+    group.is_none_or(|g| g.idle && !g.member_moving)
+}
+
+/// What the full update (`0x140c66b10`) reads of a unit's group.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GroupState {
+    /// Its current command (`+0x3a8`) is not -1.
+    pub commanded: bool,
+    /// `IsIdle` (`FUN_141017ad0`, [`crate::group::UnitGroup::is_idle`]).
+    pub idle: bool,
+    /// It patrols: its top path's flags bit 0 (`FUN_141017c40`) or its flags bit 11
+    /// (`FUN_141017c30`).
+    pub patrol: bool,
+    /// Its motion moves (`FUN_141046600`).
+    pub moving: bool,
+    /// The unit itself moves (its slot 0x5c8), which the idle part reads with the group.
+    pub member_moving: bool,
 }
 
 impl Surroundings {
@@ -2455,8 +2482,11 @@ impl UnitAi {
     /// order check of a unit no longer busy, the order queue ([`UnitAi::run_orders`]), slot 73's
     /// retarget check, the idle part (slot 72 once the idle timer passes its timeout), the
     /// look-around check. What it does to the unit comes back as [`Effect`]s, which the caller
-    /// applies in order. A unit in a group is not modelled (the slice holds none), nor are the
-    /// retarget entries and the attackers list (the save's, empty in every unit probed).
+    /// applies in order. A unit in a group ([`Surroundings::group`]) keeps its state position
+    /// while the group has a command, runs its order queue only while the group is idle, its idle
+    /// check only while the group is idle and the unit still, and takes the patrol branches while
+    /// the group patrols. The retarget entries and the attackers list (the save's, empty in every
+    /// unit probed) are not modelled.
     pub fn update(
         &mut self,
         dt: u32,
@@ -2474,7 +2504,9 @@ impl UnitAi {
         self.target_block(at, computer, ai, side, &mut fx)?;
         self.keep_attackers(at, side);
         self.check_busy_order(retarget, at.busy && fx.is_empty())?;
-        if self.current_order != -1 {
+        // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
+        // state position (0x140c674c9)
+        if self.current_order != -1 || at.group.is_some_and(|g| g.commanded) {
             self.state_position = [at.position[0], at.position[1]];
         }
         self.secondary_timer = self.secondary_timer.saturating_sub(dt);
@@ -2500,6 +2532,7 @@ impl UnitAi {
             && (!busy || interruptible)
             && result != 0xd
             && self.can_order(at, false)
+            && at.group.is_none_or(|g| g.idle)
             && !at.garrisoned
         {
             self.run_orders(at, &mut fx)?;
@@ -2523,7 +2556,10 @@ impl UnitAi {
         self.look_around(computer, ai)?;
         self.boar_tail(at, computer, ai, side, &mut fx)?;
         if ordered {
-            fx.push(Effect::AfterOrder(AfterOrder { retargeted }));
+            fx.push(Effect::AfterOrder(AfterOrder {
+                retargeted,
+                group: at.group,
+            }));
         }
         Ok(fx)
     }
@@ -2560,7 +2596,7 @@ impl UnitAi {
         if after.retargeted {
             self.retarget_outcome(target, weapon_range, computer, None)?;
         }
-        self.idle_part_end(class, player)
+        self.idle_part_end(class, player, after.group)
     }
 
     /// The boar's slot 4 (`0x140c2c010`) after the base, however that ended: its second idle
@@ -2592,9 +2628,10 @@ impl UnitAi {
     /// ([`LIVE_TARGET_ACTIONS`]), an attack whose top action is no longer in its state 2 (slot
     /// 0x2b0: the swing on the kill) or any action with `+0x1a8` set: `+0x1a8` clears; an attack
     /// looks for its next target ([`UnitAi::next_after_kill`]); but for a hunt or `0x2be`, any
-    /// other action loses its target and stops (slot 0xb0 with 1). The patrol range
-    /// (`FUN_140c41690`), a computer's priority by the target's distance and action `0x2be`'s check
-    /// (`FUN_140c40f10`) are not modelled; the slice holds no unit groups (`+0x6d0`).
+    /// other action loses its target and stops (slot 0xb0 with 1). The range test of a target on
+    /// a patrol order or in a patrolling group (`FUN_140c41690`) answers 0 for a player that is
+    /// not a computer; a computer's (the ship and priority rules), a computer's priority by the
+    /// target's distance and action `0x2be`'s check (`FUN_140c40f10`) are not modelled.
     fn target_block(
         &mut self,
         at: &Surroundings,
@@ -2634,7 +2671,13 @@ impl UnitAi {
                         }
                     }
                 }
-                if matches!(self.current_order, PATROL | PATROL_2) {
+                // on a patrol order, or in a group that patrols (`FUN_141017c40`,
+                // `FUN_141017c30`), FUN_140c41690 tests the target's range; for a player that
+                // is not a computer (FUN_141659cf0) it answers 0 at once
+                if computer
+                    && (matches!(self.current_order, PATROL | PATROL_2)
+                        || at.group.is_some_and(|g| g.patrol))
+                {
                     return Err(Unsupported("the patrol range of a unit AI's target"));
                 }
                 // order 0x262, which is MOVE's action value
@@ -4685,19 +4728,27 @@ impl UnitAi {
             && self.adjusted_idle_timeout < self.idle_timer
             && self.current_action == -1
             && (self.current_target == -1 || !busy)
+            && group_lets_idle(at.group)
         {
             // slot 0x240 with 1; the idle part reads no result
             self.idle_timer = 0;
             let _ = self.process_idle(at, computer, ai, side, fx)?;
             return Ok(());
         }
-        if !matches!(self.current_order, PATROL | PATROL_2)
+        if !self.patrols(at.group)
             && matches!(at.class, CLASS_3 | CLASS_52)
             && matches!(self.current_action, 0x26b | 0x26c)
         {
             return self.making_idle_part(at, computer, ai, side, fx);
         }
-        self.idle_part_end(at.class, at.player)
+        self.idle_part_end(at.class, at.player, at.group)
+    }
+
+    /// The idle part's patrol branch (`0x140c67f0b`): a patrol order (`0x2c7`, `0x2dd`), or a
+    /// group that patrols ([`GroupState::patrol`]) off order `0x326`.
+    fn patrols(&self, group: Option<GroupState>) -> bool {
+        matches!(self.current_order, PATROL | PATROL_2)
+            || group.is_some_and(|g| g.patrol && self.current_order != 0x326)
     }
 
     /// The idle part past slot 72's test of a unit of class 3 or 52 on the make action (`0x26b`,
@@ -4731,15 +4782,12 @@ impl UnitAi {
     /// [`UnitAi::idle_part`] when the update took an order on a target, which in the game ran
     /// before it: its end waits for the order ([`UnitAi::after_order`]); a timer past its timeout
     /// would run slot 72 if the order gave the AI no action, which is not modelled.
-    const fn idle_part_before_order(
-        &self,
-        busy: bool,
-        at: &Surroundings,
-    ) -> Result<(), Unsupported> {
+    fn idle_part_before_order(&self, busy: bool, at: &Surroundings) -> Result<(), Unsupported> {
         let class_20 = busy && at.class == CLASS_20;
         if !class_20
             && self.adjusted_idle_timeout < self.idle_timer
             && (self.current_target == -1 || !busy)
+            && group_lets_idle(at.group)
         {
             return Err(Unsupported(
                 "an idle part past its timeout after an order on a target",
@@ -4748,18 +4796,29 @@ impl UnitAi {
         Ok(())
     }
 
-    /// The idle part past slot 72: patrol orders, class 3's and 52's actions `0x26b`/`0x26c` (but
-    /// in [`UnitAi::idle_part`], [`UnitAi::making_idle_part`]) and action `0x2c0` are not
-    /// modelled; an action or a target keeps the idle timer of a player above Gaia at 0.
-    const fn idle_part_end(&mut self, class: i16, player: usize) -> Result<(), Unsupported> {
-        if matches!(self.current_order, PATROL | PATROL_2) {
+    /// The idle part past slot 72: the patrol branch ([`UnitAi::patrols`]) and class 3's and
+    /// 52's actions `0x26b`/`0x26c` (but in [`UnitAi::idle_part`], [`UnitAi::making_idle_part`])
+    /// are not modelled. Action `0x2c0` (a member moved aside) ends, the last action taking it,
+    /// unless the unit's group moves (`FUN_141046600`); an action or a target keeps the idle timer
+    /// of a player above Gaia at 0.
+    fn idle_part_end(
+        &mut self,
+        class: i16,
+        player: usize,
+        group: Option<GroupState>,
+    ) -> Result<(), Unsupported> {
+        if self.patrols(group) {
             return Err(Unsupported("a patrol order's idle part"));
         }
         if matches!(class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
             return Err(Unsupported("a unit of class 3 or 52 on action 0x26b/0x26c"));
         }
-        if self.current_action == 0x2c0 {
-            return Err(Unsupported("the idle part of action 0x2c0"));
+        if self.current_action == GROUP_ASIDE_ACTION {
+            if group.is_none_or(|g| !g.moving) {
+                self.last_action = GROUP_ASIDE_ACTION;
+                self.current_action = -1;
+            }
+            return Ok(());
         }
         if (self.current_action != -1 || self.current_target != -1) && 0 < player {
             self.idle_timer = 0;
@@ -8143,6 +8202,133 @@ mod tests {
         u.no_attack_idle(&at, false, &mut |_: &Search<'_>| Ok(Found::NONE), &mut fx)
             .unwrap();
         assert_eq!(fx, Vec::new());
+    }
+
+    /// The full update (`0x140c66b10`) of a unit in a group the world holds: its state position
+    /// follows it while its group has a command (`+0x3a8`); its idle check (slot 0x240) waits
+    /// while its group is not idle (`FUN_141017ad0`) or the unit moves (slot 0x5c8); its order
+    /// queue waits while the group is not idle; a group that patrols takes the patrol's idle
+    /// part, and its target's range test (`FUN_140c41690`) answers 0 for a human player; action
+    /// `0x2c0` (moved aside) ends, the last action keeping it, unless the group moves.
+    #[test]
+    fn a_grouped_unit_s_full_update_reads_its_group() {
+        let group = |idle, moving, member_moving| {
+            Some(GroupState {
+                commanded: true,
+                idle,
+                patrol: false,
+                moving,
+                member_moving,
+            })
+        };
+        let ship = || UnitAi {
+            idle_timer: 3001,
+            adjusted_idle_timeout: 3000,
+            ..idle(11)
+        };
+        let at = |group| Surroundings {
+            position: [3.0, 4.0, 0.0],
+            player: 1,
+            class: 20,
+            group,
+            ..Surroundings::default()
+        };
+        let run = |u: &mut UnitAi, at: &Surroundings| {
+            u.update(28, 0, false, at, &mut rng(), &mut no_search)
+        };
+        // an idle group of a still unit: the idle check runs, the state position follows
+        let mut u = ship();
+        let fx = run(&mut u, &at(group(true, false, false))).unwrap();
+        assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
+        assert_eq!(u.state_position, [3.0, 4.0]);
+        // a group not idle, or a moving unit: no idle check
+        for g in [group(false, true, false), group(true, false, true)] {
+            let mut u = ship();
+            assert_eq!(run(&mut u, &at(g)), Ok(vec![]));
+            assert_eq!(u.idle_timer, 3029);
+        }
+        // a group without a command: the state position stays
+        let mut u = ship();
+        let mut g = group(true, false, false);
+        g.as_mut().unwrap().commanded = false;
+        let _ = run(&mut u, &at(g)).unwrap();
+        assert_eq!(u.state_position, [0.0; 2]);
+        // the order queue waits for a group that is not idle
+        let order = QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target_owner: -1,
+            point: [9.0, 9.0, 0.0],
+            range: 0.0,
+            shown: [9.0, 9.0],
+            ready: true,
+            target_type: -1,
+        };
+        let mut u = UnitAi {
+            orders: vec![order],
+            ..idle(11)
+        };
+        let _ = run(&mut u, &at(group(false, true, false))).unwrap();
+        assert_eq!(u.orders.len(), 1);
+        let _ = run(&mut u, &at(group(true, false, false))).unwrap();
+        assert_eq!(u.orders.len(), 0);
+        // a patrolling group
+        let mut u = idle(11);
+        let mut g = group(false, true, false);
+        g.as_mut().unwrap().patrol = true;
+        assert_eq!(
+            run(&mut u, &at(g)),
+            Err(Unsupported("a patrol order's idle part"))
+        );
+        // a target of a unit in a patrolling group: FUN_140c41690 answers 0 for a human player
+        let mut g = group(true, false, false);
+        g.as_mut().unwrap().patrol = true;
+        let seen = Seen {
+            state: 2,
+            kind: 70,
+            owner: 2,
+            class: 6,
+            position: [5.0, 5.0, 0.0],
+            radius: [0.2, 0.2],
+            visible: true,
+            flags: 0,
+        };
+        let target_at = Surroundings {
+            target: Some(seen),
+            state: 2,
+            ..at(g)
+        };
+        let mut u = UnitAi {
+            current_target: 5,
+            ..idle(11)
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.target_block(&target_at, false, &mut rng(), &mut no_search, &mut fx),
+            Ok(())
+        );
+        assert_eq!(
+            u.target_block(&target_at, true, &mut rng(), &mut no_search, &mut fx),
+            Err(Unsupported("the patrol range of a unit AI's target"))
+        );
+        // action 0x2c0 ends unless the group moves
+        for (g, after) in [
+            (None, -1),
+            (group(true, false, false), -1),
+            (group(false, true, false), GROUP_ASIDE_ACTION),
+        ] {
+            let mut u = UnitAi {
+                current_action: GROUP_ASIDE_ACTION,
+                last_action: 7,
+                ..idle(11)
+            };
+            let _ = run(&mut u, &at(g)).unwrap();
+            assert_eq!(u.current_action, after);
+            let last = if after == -1 { GROUP_ASIDE_ACTION } else { 7 };
+            assert_eq!(u.last_action, last);
+        }
     }
 
     /// The transport ship's processIdle (`0x140c21d20`): `FUN_140c41e50`, then 5. An idle ship

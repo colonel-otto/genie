@@ -84,6 +84,28 @@ const OTHER_COMMANDS: Unsupported = Unsupported(
 );
 
 impl UnitGroup {
+    /// `IsIdle` (`FUN_141017ad0`): idle with flags bit 5 (`cConsiderIdle`), or on a move
+    /// (command 1) while it patrols ([`UnitGroup::patrols`]); else not while its motion moves or
+    /// waits to move; else idle.
+    #[must_use]
+    pub fn is_idle(&self) -> bool {
+        if self.flags >> 5 & 1 != 0 {
+            return true;
+        }
+        if self.current_command == 1 && self.patrols() {
+            return true;
+        }
+        !(self.motion.moving() || self.motion.waits_to_move())
+    }
+
+    /// The group patrols: its top path's flags have bit 0 (`FUN_141017c40`, the path of
+    /// `FUN_141046500`) or its flags bit 11 (`FUN_141017c30`).
+    #[must_use]
+    pub fn patrols(&self) -> bool {
+        crate::group::formation::top_path(&self.motion.paths).is_some_and(|p| p.path_flags & 1 != 0)
+            || self.flags >> 11 & 1 != 0
+    }
+
     /// The group's vtable slot 8 after its update (`BUnitGroup::updateEnd`, `FUN_141040b50`): a
     /// group whose motion moved (motion flags bit 0) adds its new position to the front of its
     /// stored positions ([`crate::group::PointLine::add_at_front`]); the motion's flags lose bit
@@ -1567,18 +1589,7 @@ impl Turns {
     /// group the world does not hold.
     #[must_use]
     pub fn is_idle(&self, group: i32) -> bool {
-        let Some(g) = self.groups.get(group) else {
-            return false;
-        };
-        if g.flags >> 5 & 1 != 0 {
-            return true;
-        }
-        let patrol = crate::group::formation::top_path(&g.motion.paths)
-            .is_some_and(|p| p.path_flags & 1 != 0);
-        if g.current_command == 1 && (patrol || g.flags >> 11 & 1 != 0) {
-            return true;
-        }
-        !(g.motion.moving() || g.motion.waits_to_move())
+        self.groups.get(group).is_some_and(UnitGroup::is_idle)
     }
 }
 

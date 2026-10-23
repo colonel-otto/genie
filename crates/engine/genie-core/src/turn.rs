@@ -6902,6 +6902,16 @@ impl Unit {
                     Some(self.top_action().map_or(0, |a| a.state))
                 },
                 units: self.named_units(c, others, master)?,
+                group: c
+                    .groups
+                    .get(self.group.id)
+                    .map(|g| crate::unit_ai::GroupState {
+                        commanded: g.current_command != -1,
+                        idle: g.is_idle(),
+                        patrol: g.patrols(),
+                        moving: g.motion.moving(),
+                        member_moving: self.mover.as_ref().is_some_and(Mover::is_moving),
+                    }),
             };
             // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
             let mut ai = self.ai.take().expect("filtered above");
