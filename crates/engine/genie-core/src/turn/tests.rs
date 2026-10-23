@@ -2595,6 +2595,125 @@ fn a_build_on_an_annex_counts_its_builder_in_the_main_building() {
     assert_eq!((builders(10028), builders(10030)), (Some(0), Some(0)));
 }
 
+/// A `MoveTo` of its own to an object takes the object (`FUN_140aa0df0` with quiet 0, then
+/// `FUN_140a7a230`: slot 0x178 wakes the sleeping tree 50) and lets it go at every end: another
+/// move to an object takes the new one before the clearing's teardown (`0x140aa1f30`, then the
+/// base teardown `FUN_140a73fc0`) lets the old one go (no worker left on the tree: it is flagged
+/// to sleep), and a clearing of the list lets the town centre go.
+#[test]
+fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() {
+    let mut t = teardown_world();
+    let tree = Unit {
+        id: 50,
+        position: [12.5, 10.5, 0.0],
+        life: Lifecycle {
+            master_id: 349,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    t.players[0].sleeping.push(tree);
+    for m in &mut t.masters {
+        *m = Masters::new(m.iter().cloned().chain([Master {
+            id: 349,
+            kind: 15,
+            class: 15,
+            ..Master::default()
+        }]));
+    }
+    let placed = |x: f32, class, master| Placed {
+        position: [x, 10.5, 0.0],
+        radius: [0.5, 0.5],
+        class,
+        player: 0,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(50, placed(12.5, 15, 349));
+    t.spatial.insert(9149, placed(20.0, 52, 109));
+    t.move_to_object(1, 2, 50, [12.5, 10.5, 0.0]).unwrap();
+    assert_eq!(t.players[0].sleeping.len(), 0);
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.id, tree.workers), (50, 1));
+    assert_eq!(t.players[1].objects[2].move_to.map(|m| m.target), Some(50));
+    t.move_to_object(1, 2, 9149, [20.0, 10.5, 0.0]).unwrap();
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
+    assert_eq!(t.players[1].objects[3].workers, 2);
+    t.clear_actions(1, 2).unwrap();
+    assert_eq!(t.players[1].objects[3].workers, 1);
+}
+
+/// A `MoveTo` of its own that ends (its update in state 1 returns 1, the action list removes it,
+/// `FUN_140a98e20`) lets its target go (the base teardown, slot 0x180); one that dies with the
+/// unit does too (`FUN_140a98620`).
+#[test]
+fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
+    let mut t = deaths_world();
+    t.players[0].objects[0].workers = 2;
+    let mover = crate::hunt::tests::walker();
+    let walker = |id| Unit {
+        id,
+        position: [11.5, 10.5, 0.0],
+        mover: Some(mover.clone()),
+        move_to: Some(crate::move_to::MoveToAction {
+            state: MoveTo::Arrived,
+            goal: None,
+            target: 50,
+            range: 0.0,
+            run: false,
+            wait: crate::move_to::MoveWait::default(),
+        }),
+        pasture: -1,
+        my_pasture: -1,
+        life: Lifecycle {
+            class: Class::Animated,
+            master_id: 83,
+            master: Some(MasterData::default()),
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let dead = Unit {
+        life: Lifecycle {
+            hp: 0.0,
+            ..walker(43).life
+        },
+        ..walker(43)
+    };
+    t.players[1].objects = vec![walker(44), dead];
+    t.spatial.insert(
+        50,
+        Placed {
+            position: [12.5, 10.5, 0.0],
+            radius: [0.5, 0.5],
+            class: 15,
+            player: 0,
+            master: 349,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t.tick(100);
+    assert_eq!(
+        (t.players[0].unsupported, t.players[1].unsupported),
+        (None, None)
+    );
+    assert_eq!(t.players[1].objects[0].move_to, None);
+    assert_eq!(t.players[1].objects[1].move_to, None);
+    let tree = &t.players[0].objects[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
+}
+
 /// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
 /// any other object's 2).
 #[test]
@@ -3135,7 +3254,8 @@ fn a_unit_s_patrol_information_is_its_top_path_and_waypoint() {
 
 /// `restorePatrolInformation`'s unit part: the own waypoints become the saved patrol's
 /// points (slot 0x448, a whole coordinate moved to the tile's middle), and a forced, running
-/// `MoveTo` goes to the saved waypoint.
+/// `MoveTo` goes to the saved waypoint; the old `MoveTo` to an object lets it go (its teardown's
+/// slot 0x180, the caller's).
 #[test]
 fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
     let saved = crate::unit_ai::PatrolPath {
@@ -3152,9 +3272,17 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             patrol_waypoint: 1,
             ..UnitAi::default()
         }),
+        move_to: Some(crate::move_to::MoveToAction {
+            state: MoveTo::Moving,
+            goal: None,
+            target: 77,
+            range: 0.0,
+            run: false,
+            wait: crate::move_to::MoveWait::default(),
+        }),
         ..Unit::default()
     };
-    u.restore_patrol(6).unwrap();
+    assert_eq!(u.restore_patrol(6), Ok(Some(77)));
     assert_eq!(
         u.mover.as_ref().unwrap().user_waypoints,
         [[20.5, 0.5, 20.5], [30.5, 0.5, 20.25]]

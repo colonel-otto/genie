@@ -1416,10 +1416,12 @@ impl Turns {
     /// kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target and
     /// `point` (a Hunt's, [`Turns::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
     /// modelled; a `MoveTo`'s or an Explore's never); else a `MoveTo` to the target
-    /// (`FUN_140aa0df0`: range 0 from slot 0x268, the walking sprite) replaces its actions (slot
-    /// 0x808, [`MoveToAction::to_target`]). Its `command_flag` (`+0x888`) is not held.
+    /// (`FUN_140aa0df0`: range 0 from slot 0x268, the walking sprite) takes the target it holds
+    /// (slot 0x178, [`crate::move_to::holds_object`]) and replaces its actions (slot 0x808, the
+    /// old ones' teardowns let their targets go, [`Turns::clear_actions`]; then its start,
+    /// [`MoveToAction::to_object`]). Its `command_flag` (`+0x888`) is not held.
     ///
-    /// [`MoveToAction::to_target`]: crate::move_to::MoveToAction::to_target
+    /// [`MoveToAction::to_object`]: crate::move_to::MoveToAction::to_object
     pub(crate) fn move_to_object_with(
         &mut self,
         player: usize,
@@ -1457,19 +1459,28 @@ impl Turns {
         if unit.unmodelled_action.is_some() {
             return Err(Unsupported("a move to an object of a unit with an action"));
         }
+        // FUN_140aa0df0 makes the MoveTo first, which takes its target (slot 0x178, quiet 0);
+        // slot 0x808 then clears the list (the old actions' teardowns) and starts it
+        let livestock = self.master_of(player, unit.life.master_id)?.class == LIVESTOCK;
+        let (tp, t) = self.object(target).ok_or(crate::move_to::TARGET_LACKING)?;
+        let t_state = t.life.state;
+        let t_master = self.master_of(tp, t.life.master_id)?.id;
+        if crate::move_to::holds_object(livestock, t_master, t_state) {
+            self.take(target);
+        }
         self.clear_actions(player, idx)?;
         let unit = &mut self.players[player].objects[idx];
         let mover = unit
             .mover
             .as_mut()
             .ok_or(Unsupported("a moved unit without movement state"))?;
-        let move_to = crate::move_to::MoveToAction::to_target(
+        let move_to = crate::move_to::MoveToAction::to_object(
             &self.spatial,
             unit.position,
             mover,
-            target,
+            (target, t_state),
             0.0,
-            false,
+            (false, livestock),
         )?;
         if move_to.arrived() {
             unit.shows_standing_sprite(

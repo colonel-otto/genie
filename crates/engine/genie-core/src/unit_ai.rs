@@ -228,6 +228,9 @@ pub enum Effect {
     MoveToObject {
         /// The target.
         target: i32,
+        /// The target's state as the AI saw it, which decides whether the `MoveTo` holds it
+        /// ([`crate::move_to::holds_object`]).
+        state: u8,
         /// The range within which the `MoveTo` arrives.
         range: f32,
     },
@@ -5494,7 +5497,11 @@ impl UnitAi {
     /// branch for a target the world does not hold after slot 0x348 cannot run: slot 0x348
     /// (`FUN_141086440`) answers 0 for such a target, and the routine then changes nothing.
     fn move_to_object(&mut self, id: i32, target: Seen, range: f32, fx: &mut Vec<Effect>) {
-        fx.push(Effect::MoveToObject { target: id, range });
+        fx.push(Effect::MoveToObject {
+            target: id,
+            state: target.state,
+            range,
+        });
         self.set_action(MOVE_ACTION);
         self.target_at(id, Some(i32::from(target.class)), target.position);
     }
@@ -8467,6 +8474,7 @@ mod tests {
             fx,
             vec![Effect::MoveToObject {
                 target: 9655,
+                state: 2,
                 range: 2.0
             }]
         );

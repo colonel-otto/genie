@@ -333,6 +333,22 @@ pub struct MoveToAction {
 /// A `MoveTo`'s start counts the unit at its target within this gap (`0x140aa2100`,
 /// `DAT_142eb99cc`).
 const ARRIVED: f32 = crate::image::move_to::ARRIVED;
+/// A `MoveTo` to an object the world does not hold.
+pub(crate) const TARGET_LACKING: Unsupported = Unsupported("a MoveTo to an object the world lacks");
+/// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
+/// (`FUN_140aa0df0`, `DAT_142eae8d0`).
+const TOWN_CENTRE_OFFSET: f32 = crate::image::artifact::TOWN_CENTRE_OFFSET;
+/// The town centre's master (`FUN_140aa0df0`'s `0x6109` raw), to which livestock walks beside.
+const TOWN_CENTRE: i16 = 109;
+
+/// `FUN_140aa0df0`'s test of a `MoveTo`'s target object of master `master` in `state`:
+/// livestock (`livestock`, the unit's class 58) moving to a town centre (master 109) holds none,
+/// and no `MoveTo` holds a target in state 7 or later (`FUN_140a7a230`); any other target is
+/// held, and a `MoveTo` of its own (not quiet) takes it (slot 0x178).
+#[must_use]
+pub const fn holds_object(livestock: bool, master: i16, state: u8) -> bool {
+    !(livestock && master == TOWN_CENTRE) && state < 7
+}
 
 /// What one update of a [`MoveToAction`] did.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -366,9 +382,7 @@ impl MoveToAction {
         range: f32,
         run: bool,
     ) -> Result<Self, Unsupported> {
-        let t = world
-            .get_known(target)?
-            .ok_or(Unsupported("a MoveTo to an object the world lacks"))?;
+        let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let state = if footprint_gap(me, ground, t.position, t.radius) <= ARRIVED {
             mover.shows_standing();
@@ -382,6 +396,54 @@ impl MoveToAction {
             state,
             goal: None,
             target,
+            range,
+            run,
+            wait: MoveWait::default(),
+        })
+    }
+
+    /// A new `MoveTo` of its own (quiet, `+0x60`, 0) to the object `target` within `range`
+    /// (`FUN_140aa0df0`), then its start (slot 0x808 -> `0x140aa2100`). Livestock (`livestock`,
+    /// the unit's class 58) moving to a town centre (master 109) holds no target and walks to
+    /// the centre's place less [`TOWN_CENTRE_OFFSET`] on both axes; a target in a `state` of 7
+    /// or later is not held either (`FUN_140a7a230`: its id stays −1) and the `MoveTo` walks to
+    /// its place. Without a target the start's gap (`FUN_14118f680` with none) is `f32::MAX`:
+    /// state 3, or 13 for a unit without speed (slot 0x208, `UCOMISS`: a NaN speed has some).
+    /// Any other target is held ([`MoveToAction::to_target`]), and the caller takes it (slot
+    /// 0x178, [`MoveToAction::target`] not −1).
+    ///
+    /// # Errors
+    ///
+    /// A target the world lacks.
+    pub fn to_object(
+        world: &Spatial,
+        me: [f32; 3],
+        mover: &mut Mover,
+        (target, state): (i32, u8),
+        range: f32,
+        (run, livestock): (bool, bool),
+    ) -> Result<Self, Unsupported> {
+        let t = world.get_known(target)?.ok_or(TARGET_LACKING)?;
+        let at = t.position;
+        let goal = if livestock && t.master == TOWN_CENTRE {
+            [
+                at[0] - TOWN_CENTRE_OFFSET,
+                at[1] - TOWN_CENTRE_OFFSET,
+                at[2],
+            ]
+        } else if holds_object(livestock, t.master, state) {
+            return Self::to_target(world, me, mover, target, range, run);
+        } else {
+            at
+        };
+        Ok(Self {
+            state: if mover.stats.speed == 0.0 {
+                MoveTo::Failed
+            } else {
+                MoveTo::Start
+            },
+            goal: Some(goal),
+            target: -1,
             range,
             run,
             wait: MoveWait::default(),
@@ -532,5 +594,48 @@ mod tests {
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, false).unwrap();
         assert!(!far.arrived());
         assert_eq!(walker.stats.speed, 0.8);
+    }
+
+    /// `FUN_140aa0df0` on an object: a live target is held (the caller takes it); a target in
+    /// state 7 is not (`FUN_140a7a230`) and the `MoveTo` walks to its place; livestock moving to
+    /// a town centre walks to its place less 0.2 on both axes without a target. Without a target
+    /// the start is state 3, or 13 for a unit without speed.
+    #[test]
+    fn a_move_to_an_object_holds_it_unless_it_is_gone_or_a_town_centre_for_livestock() {
+        let mut world = Spatial::new([120, 120]);
+        world.insert(9186, sheep(35.0, 40.0));
+        world.insert(
+            9149,
+            Placed {
+                master: 109,
+                radius: [2.0, 2.0],
+                ..sheep(50.0, 40.0)
+            },
+        );
+        let me = [30.0, 40.0, 0.0];
+        let to = |target, livestock, speed: f32| {
+            let mut walker = crate::hunt::tests::walker();
+            walker.stats.speed = speed;
+            MoveToAction::to_object(&world, me, &mut walker, target, 0.0, (false, livestock))
+                .unwrap()
+        };
+        let held = to((9186, 2), false, 0.8);
+        assert_eq!(
+            (held.target, held.goal, held.state),
+            (9186, None, MoveTo::Start)
+        );
+        let gone = to((9186, 7), false, 0.8);
+        assert_eq!(
+            (gone.target, gone.goal, gone.state),
+            (-1, Some([35.0, 40.0, 0.0]), MoveTo::Start)
+        );
+        assert_eq!(to((9186, 7), false, 0.0).state, MoveTo::Failed);
+        // a villager to the town centre holds it; livestock walks beside it
+        assert_eq!(to((9149, 2), false, 0.8).target, 9149);
+        let beside = to((9149, 2), true, 0.8);
+        assert_eq!(
+            (beside.target, beside.goal),
+            (-1, Some([50.0 - 0.2, 40.0 - 0.2, 0.0]))
+        );
     }
 }

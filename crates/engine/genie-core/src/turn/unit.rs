@@ -836,10 +836,11 @@ impl Unit {
             release(a.target);
             release(a.target2);
         }
-        if self.move_to.take().is_some()
-            && let Some(m) = self.mover.as_mut()
-        {
-            m.stop()?;
+        if let Some(old) = self.move_to.take() {
+            if let Some(m) = self.mover.as_mut() {
+                m.stop()?;
+            }
+            release(old.target);
         }
         if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
             release(a.target);
@@ -866,9 +867,12 @@ impl Unit {
                     let class = class.ok_or(Unsupported(
                         "an AI move of a master the slice does not have",
                     ))?;
-                    match e {
+                    let released = match e {
                         Effect::Move(m) => self.ai_move(m, class)?,
                         _ => self.restore_patrol(class)?,
+                    };
+                    if let Some(t) = released {
+                        c.releases.push((t, self.releaser(c)));
                     }
                 }
                 Effect::MoveAside(m) => c.move_aside.push(m),
@@ -892,7 +896,11 @@ impl Unit {
                 }
                 Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
-                Effect::MoveToObject { target, range } => self.move_to_object(target, range, c)?,
+                Effect::MoveToObject {
+                    target,
+                    state,
+                    range,
+                } => self.move_to_object((target, state), range, c)?,
             }
         }
         Ok(())
@@ -4686,7 +4694,10 @@ impl Unit {
                 ACTION_COMPLETED
             };
             self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
-            self.move_to = None;
+            // ... and the base teardown (FUN_140a73fc0) lets its target go (slot 0x180)
+            if let Some(t) = self.move_to.take().map(|m| m.target).filter(|&t| t != -1) {
+                c.releases.push((t, self.releaser(c)));
+            }
             if let Some(m) = self.mover.as_mut() {
                 m.stop()?;
             }
@@ -5736,13 +5747,17 @@ impl Unit {
     /// `restorePatrolInformation`'s unit part ([`crate::unit_ai::Effect::RestorePatrol`]): its own
     /// waypoints go (slot 0x450) and become the saved patrol's points (slot 0x448 each, as x, y
     /// and height), and it moves to the saved waypoint (slot 0x340: range 0, forced, running; a
-    /// waypoint outside the path is the game's static zero point).
-    pub(in crate::turn) fn restore_patrol(&mut self, class: i16) -> Result<(), Unsupported> {
+    /// waypoint outside the path is the game's static zero point). Returns the target the
+    /// replaced `MoveTo` let go ([`Unit::ai_move`]).
+    pub(in crate::turn) fn restore_patrol(
+        &mut self,
+        class: i16,
+    ) -> Result<Option<i32>, Unsupported> {
         let Some(ai) = self.ai.as_ref() else {
-            return Ok(());
+            return Ok(None);
         };
         let Some(saved) = ai.patrol_path.as_ref() else {
-            return Ok(());
+            return Ok(None);
         };
         let points = saved.path.points.clone();
         let w = usize::try_from(ai.patrol_waypoint)
@@ -5924,8 +5939,13 @@ impl Unit {
     /// Otherwise a `MoveTo` to the point within the range (`FUN_140aa0d30`; its sprite, the master's
     /// walking or running one, is not held) replaces the action list (`FUN_140a98620`: the old
     /// `MoveTo` stops the unit) and starts (slot 0x808, `FUN_14106e990`; its start `0x140aa2100`
-    /// gives a unit far from the point state 3).
-    pub(in crate::turn) fn ai_move(&mut self, m: AiMove, class: i16) -> Result<(), Unsupported> {
+    /// gives a unit far from the point state 3). Returns the target the old `MoveTo` let go,
+    /// which the caller releases.
+    pub(in crate::turn) fn ai_move(
+        &mut self,
+        m: AiMove,
+        class: i16,
+    ) -> Result<Option<i32>, Unsupported> {
         if matches!(class, 51 | 54) {
             return Err(Unsupported("an AI move of a unit of class 51 or 54"));
         }
@@ -5934,7 +5954,7 @@ impl Unit {
             && top == Some(crate::move_to::MOVE_TO)
             && self.move_to.is_some_and(|mt| mt.goal == Some(m.point))
         {
-            return Ok(());
+            return Ok(None);
         }
         if self.unmodelled_action.is_some() {
             return Err(Unsupported(
@@ -5953,7 +5973,7 @@ impl Unit {
                         .ok_or(Unsupported("a walker without movement state"))?
                         .stop()?;
                 }
-                return Ok(());
+                return Ok(None);
             }
             Some(crate::move_to::MOVE_TO) | None => {}
             Some(_) => {
@@ -5962,11 +5982,15 @@ impl Unit {
                 ));
             }
         }
-        if self.move_to.take().is_some() {
+        // the old MoveTo's teardown (0x140aa1f30): it stops the unit, and the base teardown lets
+        // its target go (slot 0x180, the caller's)
+        let mut released = None;
+        if let Some(old) = self.move_to.take() {
             self.mover
                 .as_mut()
                 .ok_or(Unsupported("a walker without movement state"))?
                 .stop()?;
+            released = Some(old.target).filter(|&t| t != -1);
         }
         self.move_to = Some(MoveToAction {
             state: MoveTo::Start,
@@ -5976,34 +6000,54 @@ impl Unit {
             run: !m.walk,
             wait: crate::move_to::MoveWait::default(),
         });
-        Ok(())
+        Ok(released)
     }
 
-    /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object: a
-    /// `MoveTo` to the target within `range`, showing the master's running sprite (the walking one
-    /// without it), replaces its action list (`FUN_140a98620`: an old `MoveTo` stops the unit) and
-    /// starts ([`MoveToAction::to_target`]). A unit with another action is not modelled.
+    /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object (in
+    /// `state`): a `MoveTo` to the target within `range`, showing the master's running sprite (the
+    /// walking one without it), takes the target it holds (`FUN_140aa0df0`, quiet 0: slot 0x178,
+    /// [`crate::move_to::holds_object`]), then replaces its action list (`FUN_140a98620`,
+    /// [`Unit::delete_actions`]: the old actions' teardowns let their targets go) and starts
+    /// ([`MoveToAction::to_object`]).
     pub(in crate::turn) fn move_to_object(
         &mut self,
-        target: i32,
+        (target, state): (i32, u8),
         range: f32,
         c: &mut Context<'_>,
     ) -> Result<(), Unsupported> {
-        let top = self.top_action_kind();
-        if self.unmodelled_action.is_some() || !matches!(top, Some(crate::move_to::MOVE_TO) | None)
-        {
+        if self.unmodelled_action.is_some() {
             return Err(Unsupported(
                 "an AI move to an object of a unit with an action",
             ));
         }
-        let mover = self.mover.as_mut().ok_or(Unsupported(
-            "an AI move to an object of a unit that does not move",
-        ))?;
-        if self.move_to.take().is_some() {
-            mover.stop()?;
+        if self.mover.is_none() {
+            return Err(Unsupported(
+                "an AI move to an object of a unit that does not move",
+            ));
         }
-        let move_to =
-            MoveToAction::to_target(c.spatial, self.position, mover, target, range, true)?;
+        let livestock = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .is_some_and(|m| m.class == LIVESTOCK);
+        let master = c
+            .spatial
+            .get_known(target)?
+            .ok_or(crate::move_to::TARGET_LACKING)?
+            .master;
+        if crate::move_to::holds_object(livestock, master, state) {
+            c.takes.push(target);
+        }
+        let by = self.releaser(c);
+        self.delete_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+        let mover = self.mover.as_mut().expect("tested above");
+        let move_to = MoveToAction::to_object(
+            c.spatial,
+            self.position,
+            mover,
+            (target, state),
+            range,
+            (true, livestock),
+        )?;
         if move_to.arrived() {
             self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }
