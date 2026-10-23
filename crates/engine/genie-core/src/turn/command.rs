@@ -1728,7 +1728,7 @@ impl Turns {
             work_value: task.work_val1,
             work_rate: builder.work_rate + unit.work_rate_powerup,
         };
-        Ok((with, BuildAction::start(foundation, gap, task)))
+        Ok((with, BuildAction::start(foundation, position, gap, task)))
     }
 
     /// The queue path of a builder at `idx` of player `q` (slot 0x30 into slot 0x28): its
@@ -1896,6 +1896,7 @@ impl Turns {
         let gap = footprint_gap(unit.position, builder.radius, f_at, site.radius);
         let build = BuildAction::start(
             foundation,
+            f_at,
             gap,
             BuildTask {
                 range: task.work_range,

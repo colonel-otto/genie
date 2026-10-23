@@ -1114,6 +1114,13 @@ fn saved_actions(
                 .and_then(|(_, sub)| sub.base())
                 .filter(|b| b.target_id == -1)
                 .map(|b| [b.target_x, b.target_y, b.target_z]);
+            // the MoveTo's target, −1 for one to a point or none
+            let walk_target = base
+                .sub_actions
+                .entries()
+                .next()
+                .and_then(|(_, sub)| sub.base())
+                .map_or(-1, |b| b.target_id);
             let mut task = work(s.master_obj)?;
             task.work_rate += unit.work_rate_powerup;
             unit.build = Some(BuildAction {
@@ -1121,6 +1128,8 @@ fn saved_actions(
                 state: base.state,
                 move_to,
                 goal,
+                walk_target,
+                point: [base.target_x, base.target_y, base.target_z],
                 task,
                 added: action
                     .tribe_action_build

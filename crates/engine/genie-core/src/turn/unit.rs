@@ -4689,6 +4689,13 @@ impl Unit {
                 .iter()
                 .find(|u| u.id == target)
                 .map(|u| u.life.master_id);
+            // the state of its MoveTo's target, which the MoveTo's update checks first
+            let walk_target = build.walk_target;
+            let walk_target_state = others
+                .iter()
+                .find(|u| u.id == walk_target)
+                .or_else(|| c.foreign.find(walk_target).map(|(_, u)| u))
+                .map(|u| u.life.state);
             // the foundations its unit AI's queued build orders name, as they stand
             let build_targets: Vec<(i32, Option<u8>)> =
                 self.ai.as_ref().map_or_else(Vec::new, |ai| {
@@ -4833,6 +4840,7 @@ impl Unit {
                 waits: &mut self.footprint_waits,
                 build_targets: &build_targets,
                 look: crate::build::Looks(&|id| looks.get(&id).copied()),
+                walk_target_state,
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
             c.cleared.extend(step.cleared.iter().copied());

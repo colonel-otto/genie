@@ -3246,8 +3246,9 @@ impl Turns {
             )?;
         }
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx].build =
-            Some(crate::build::BuildAction::start(target, gap, build_task));
+        self.players[player].objects[idx].build = Some(crate::build::BuildAction::start(
+            target, t_at, gap, build_task,
+        ));
         Ok(())
     }
 
@@ -3316,7 +3317,7 @@ impl Turns {
                     "a Build's retarget without its Build",
                 ));
             };
-            build.retarget(target, gap, mover)?;
+            build.retarget((target, t_at), gap, mover)?;
             return Ok(class);
         }
         let computer = self.players[player].computer;
@@ -3335,11 +3336,12 @@ impl Turns {
         let builders = counted
             .and_then(|b| b.construction.as_mut())
             .map(|k| &mut k.builders);
-        let r =
-            build
-                .as_mut()
-                .expect("found above")
-                .retake(gap, mover.as_mut(), builders, computer);
+        let r = build.as_mut().expect("found above").retake(
+            (t_at, gap),
+            mover.as_mut(),
+            builders,
+            computer,
+        );
         let unit = &mut self.players[player].objects[idx];
         (unit.build, unit.mover) = (build, mover);
         r?;
@@ -6090,6 +6092,8 @@ mod tests {
             state: 6,
             move_to: None,
             goal: None,
+            walk_target: -1,
+            point: [-1.0; 3],
             task: crate::build::BuildTask {
                 range: 0.1,
                 work_value: 1.0,

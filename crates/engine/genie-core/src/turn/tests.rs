@@ -2765,6 +2765,8 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         state: 3,
         move_to: None,
         goal: None,
+        walk_target: -1,
+        point: [-1.0; 3],
         task: BuildTask {
             range: 0.0,
             work_value: 0.0,
@@ -2824,6 +2826,8 @@ fn deaths_world() -> Turns {
         state: 7,
         move_to: None,
         goal: None,
+        walk_target: -1,
+        point: [-1.0; 3],
         task: BuildTask {
             range: 0.0,
             work_value: 1.0,
