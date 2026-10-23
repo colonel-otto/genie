@@ -1578,8 +1578,8 @@ const CLASS_10: i16 = 10;
 /// The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
 const CLASS_18: i16 = 18;
 /// A patrol's path goes back and forth when its point is at least this far from the unit
-/// (`0x140aa2a70`, `DAT_142eb1c98`; the image role `unit_ai::PATROL_TURN_REACH` is still to add).
-const PATROL_TURN_REACH: f32 = 3.0;
+/// (`0x140aa2a70`, `DAT_142eb1c98`).
+const PATROL_TURN_REACH: f32 = crate::image::unit_ai::PATROL_TURN_REACH;
 /// The patrol orders (`0x2c7`, `0x2dd`), whose ends reset the idle and secondary timers.
 pub(crate) const PATROL: i32 = 0x2c7;
 const PATROL_2: i32 = 0x2dd;

@@ -225,10 +225,9 @@ const AUTO_SCOUT_CLASS: i16 = 58;
 const TROPHY: i16 = 1649;
 const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
 /// A patrol's waypoint counts when it is this far from the last one on x or y
-/// (`FUN_14161b970`, `DAT_14330eb8c`), or this far the other way (`DAT_14330ec20`); the image
-/// roles `order::WAYPOINT_APART` and `order::WAYPOINT_APART_LOW` are still to add.
-const WAYPOINT_APART: f32 = 1.0;
-const WAYPOINT_APART_LOW: f32 = -1.0;
+/// (`FUN_14161b970`, `DAT_14330eb8c`), or this far the other way (`DAT_14330ec20`).
+const WAYPOINT_APART: f32 = crate::image::order::WAYPOINT_APART;
+const WAYPOINT_APART_LOW: f32 = crate::image::order::WAYPOINT_APART_LOW;
 
 impl Turns {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {

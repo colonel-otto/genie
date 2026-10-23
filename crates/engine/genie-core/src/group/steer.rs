@@ -13,32 +13,25 @@ use crate::unit_ai::Unsupported;
 const EPSILON: f32 = crate::image::group::EPSILON;
 /// The members' obstruction tests grow the records by the member's radius times this
 /// (`DAT_142e7f384`).
-// role pending: group::CLEARANCE, 0x142e7f384, f32, read into XMM7 at 0x14103e5fd (the member's
-// test at 0x14103f143) and at 0x1410267f2 (FUN_141025fb0's test)
-const CLEARANCE: f32 = f32::from_bits(0x3f00_0000);
+const CLEARANCE: f32 = crate::image::group::CLEARANCE;
 /// A member whose moves to its slot failed more than this many times in a row is moved aside
 /// (`FUN_141025fb0`'s `0xa`).
 const MOST_FAILURES: i32 = 10;
 /// The timer of the move aside after too many failures (`DAT_142eb5690`).
-// role pending: group::ASIDE_TIMER, 0x142eb5690, f32, the MOVSS at 0x14102632d
-const ASIDE_TIMER: f32 = f32::from_bits(0x3dcc_cccd);
+const ASIDE_TIMER: f32 = crate::image::group::ASIDE_TIMER;
 /// A member's own move for being moved aside (`mReason`).
 const ASIDE: i32 = 2;
 /// A member within this many radii of its slot, or this far, walks at its top speed
 /// (`DAT_14330ebb8`, loaded once at `0x1410279d1` for both).
-// role pending: group::SLOT_REACH, 0x14330ebb8, f32, the MOVSS at 0x1410279d1
-const SLOT_REACH: f32 = f32::from_bits(0x40a0_0000);
+const SLOT_REACH: f32 = crate::image::group::SLOT_REACH;
 /// Nearer its slot than [`SLOT_REACH`], a member catches up at its top speed times
 /// [`CATCH_UP`], less the nearer it is within this (`DAT_142eb1c98`).
-// role pending: group::CATCH_UP_SPAN, 0x142eb1c98, f32, the MOVSS at 0x141027b29
-const CATCH_UP_SPAN: f32 = f32::from_bits(0x4040_0000);
+const CATCH_UP_SPAN: f32 = crate::image::group::CATCH_UP_SPAN;
 /// The catching up's share of the top speed (`DAT_142ed66b4`).
-// role pending: group::CATCH_UP, 0x142ed66b4, f32, the MULSS at 0x141027b3d and at 0x141027b83
-const CATCH_UP: f32 = f32::from_bits(0x3f99_999a);
+const CATCH_UP: f32 = crate::image::group::CATCH_UP;
 /// A moving object whose top speed is 0 and whose radius on either axis is above this links its
 /// tiles at a new place (`FUN_14108c320`, `DAT_142e7f384`).
-// role pending: group::LINKED_RADIUS, 0x142e7f384, f32, the MOVSS at 0x14108c5af
-const LINKED_RADIUS: f32 = f32::from_bits(0x3f00_0000);
+const LINKED_RADIUS: f32 = crate::image::group::LINKED_RADIUS;
 /// The action types and states the stop of a member without a slot passes over: a `MoveTo`
 /// in the action list (slot 0x538 with 1), and a top action in state 4, 5 or 11 (slot 0x2b0).
 const MOVE_TO: i16 = crate::move_to::MOVE_TO;

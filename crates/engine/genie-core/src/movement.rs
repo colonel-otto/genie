@@ -317,8 +317,8 @@ fn overlap(a: Vec3, [ar, ad]: [f32; 2], b: Vec3, [br, bd]: [f32; 2]) -> f32 {
 }
 
 /// A unit's own waypoint on a tile's edge moves this far into the tile (`FUN_14114e920`,
-/// `DAT_142e7f384`; the image role `movement::USER_WAYPOINT_MIDDLE` is still to add).
-const USER_WAYPOINT_MIDDLE: f32 = 0.5;
+/// `DAT_142e7f384`).
+const USER_WAYPOINT_MIDDLE: f32 = crate::image::movement::USER_WAYPOINT_MIDDLE;
 /// How far level 0's look ahead reaches on its parent's path, squared (`DAT_14330ebcc`).
 const LOOK_AHEAD: f32 = crate::image::movement::LOOK_AHEAD;
 /// `FUN_141142750` grows the walk's query by the unit's radius times `DAT_142e7f384`.

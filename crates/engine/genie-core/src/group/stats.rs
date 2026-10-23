@@ -11,16 +11,12 @@ use crate::unit_ai::Unsupported;
 const SLOW_GROUP_FACTOR: f32 = crate::image::group::SLOW_GROUP_FACTOR;
 /// A member farther than this from its slot leaves the group (`FUN_14100bcb0`'s far test,
 /// `DAT_142e7f38c`).
-// role pending: group::FAR, 0x142e7f38c, f32, the MOVSS at 0x14100bd93
-const FAR: f32 = f32::from_bits(0x41a0_0000);
+const FAR: f32 = crate::image::group::FAR;
 /// The far test's distance in a formation of type 7, or once a member of radius
 /// [`WIDE_RADIUS`] or more came before (`DAT_142ecbff0`).
-// role pending: group::FAR_WIDE, 0x142ecbff0, f32, the MOVSS at 0x14100bd6d
-const FAR_WIDE: f32 = f32::from_bits(0x4220_0000);
+const FAR_WIDE: f32 = crate::image::group::FAR_WIDE;
 /// The radius from which the far test takes [`FAR_WIDE`] (`DAT_142e7f384`).
-// role pending: group::WIDE_RADIUS, 0x142e7f384, f32, the MOVSS at 0x14100bd82 (read by the
-// COMISS at 0x14100c194)
-const WIDE_RADIUS: f32 = f32::from_bits(0x3f00_0000);
+const WIDE_RADIUS: f32 = crate::image::group::WIDE_RADIUS;
 /// The types of action objects (`RGE_Action_Object`), whose action list slot 0x538 reads.
 const ACTION_KIND: u8 = 40;
 /// The objects of the members' searches a group keeps at most (`FUN_140c65c60`'s `0x46`).

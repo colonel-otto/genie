@@ -18,9 +18,8 @@ const NEW_PATH_FLAGS: u32 = 6;
 /// The plans a path level may still try (`FUN_140f9b800`, `FUN_140f98e80`).
 const CONTINUE: i32 = 10;
 /// A patrol's leg goes back and forth when its point is at least this far from the group on
-/// the ground (`commandMoveTo` at 0x141010ddb, `DAT_14330ebb8`; the image role
-/// `group::PATROL_LEG_REACH` is still to add).
-const PATROL_LEG_REACH: f32 = 5.0;
+/// the ground (`commandMoveTo` at 0x141010ddb, `DAT_14330ebb8`).
+const PATROL_LEG_REACH: f32 = crate::image::group::PATROL_LEG_REACH;
 
 /// The queued commands on a target `checkQueuedOrders` hands to `FUN_14100fc50` when the world
 /// holds the target (its switch's cases 3 and `0x2713`).
