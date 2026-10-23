@@ -1092,7 +1092,7 @@ impl Turns {
                 }
                 Making::Unit(MakeObj::for_entry(&first))
             } else {
-                self.make_research(p, &first)?
+                Self::make_research(&first)
             };
             self.start_production_action(p, i, making)?;
         }
@@ -1168,17 +1168,8 @@ impl Turns {
                 }
             }
             Making::Research(r) => {
+                let (t, def) = self.research_tech(p, r.tech)?;
                 let owner = &self.players[p];
-                let t = usize::try_from(r.tech)
-                    .ok()
-                    .filter(|&t| t < owner.techs.len())
-                    .ok_or(Unsupported(
-                        "a research of a technology the tree has not got",
-                    ))?;
-                let def = self
-                    .techs
-                    .get(t)
-                    .ok_or(Unsupported("a technology the data file has not got"))?;
                 let get = |k: i16| owner.get(k);
                 let factors = crate::tech::factors(r.tech, &get)?;
                 let paid = owner.objects[i]
@@ -1228,8 +1219,9 @@ impl Turns {
     /// 1 it is done; in state 6 the building's work rate (its powerup, slot 0x6e8, plus its
     /// master's `work_rate`) times dt adds to its progress, and once its train time
     /// ([`MakeObj::time`]) is reached (`COMISS`, `JC`: a NaN waits) its unit spawns
-    /// ([`Turns::spawn`]) and it is done; any other state waits. Not modelled: a computer
-    /// player's handicaps (`FUN_141659cf0`), the game's instant work (`+0xc14`,
+    /// ([`Turns::spawn`], which a computer player's unit does not reach) and it is done; any
+    /// other state waits. Not modelled: a computer player's handicaps (`FUN_141659cf0`, the
+    /// difficulty's factors on the rate), the game's instant work (`+0xc14`,
     /// `FUN_140c884c0`, 0 as the tick oracle holds it), the spot search's failure (state 10's
     /// timer, `FUN_140ace630`).
     fn make_step(&mut self, p: usize, i: usize, dt_seconds: f32) -> Result<u8, Unsupported> {
@@ -1241,11 +1233,6 @@ impl Turns {
             MakeObj::DONE => return Ok(1),
             MakeObj::MAKING => {}
             _ => return Ok(0),
-        }
-        if self.players[p].computer {
-            return Err(Unsupported(
-                "a computer player's make action (its handicaps)",
-            ));
         }
         let site = self.master_of(p, building.life.master_id)?;
         let rate = building.work_rate_powerup + site.work_rate;
@@ -1326,22 +1313,35 @@ impl Turns {
     /// masters an upgrade turns into (`+0x330`: the save does not hold the mark, and its
     /// readers, the object search `FUN_1411650e0` and the masters' slot 0xc0, are not
     /// modelled); the human player's sound is the interface's. Not held: the start time
-    /// (`+0x74`). A computer player's research (its handicaps) is not modelled.
-    fn make_research(
-        &self,
-        p: usize,
-        first: &crate::production::Entry,
-    ) -> Result<Making, Unsupported> {
-        if self.players[p].computer {
-            return Err(Unsupported("a computer player's research (its handicaps)"));
-        }
-        Ok(Making::Research(MakeTech {
+    /// (`+0x74`).
+    const fn make_research(first: &crate::production::Entry) -> Making {
+        Making::Research(MakeTech {
             state: 0,
             paid: true,
             tech: first.tech,
-            master: i32::from(first.master),
+            master: first.master as i32,
             progress: 0.0,
-        }))
+        })
+    }
+
+    /// The technology `tech` of a research at player `p`'s building: its index in the player's
+    /// tree and the `.dat`'s record (RESEARCH queued only technologies of both).
+    fn research_tech(
+        &self,
+        p: usize,
+        tech: i16,
+    ) -> Result<(usize, &crate::tech::TechDef), Unsupported> {
+        let t = usize::try_from(tech)
+            .ok()
+            .filter(|&t| t < self.players[p].techs.len())
+            .ok_or(Unsupported(
+                "a research of a technology the tree has not got",
+            ))?;
+        let def = self
+            .techs
+            .get(t)
+            .ok_or(Unsupported("a technology the data file has not got"))?;
+        Ok((t, def))
     }
 
     /// The research's update (slot 0x30, `0x140ad2a20`) at the building at `i` of player `p`:
@@ -1368,16 +1368,7 @@ impl Turns {
             MakeObj::MAKING => {}
             _ => return Ok(0),
         }
-        let t = usize::try_from(r.tech)
-            .ok()
-            .filter(|&t| t < owner.techs.len())
-            .ok_or(Unsupported(
-                "a research of a technology the tree has not got",
-            ))?;
-        let def = self
-            .techs
-            .get(t)
-            .ok_or(Unsupported("a technology the data file has not got"))?;
+        let (t, def) = self.research_tech(p, r.tech)?;
         let master = building.life.master_id;
         let rate = building.work_rate_powerup + self.master_of(p, master)?.work_rate;
         let state = &owner.techs[t];
@@ -1491,16 +1482,8 @@ impl Turns {
     /// `+0xe` set and its effect no upgrade), else in state 3; not done, state 1.
     fn research_destroyed(&mut self, p: usize, i: usize, r: &MakeTech) -> Result<(), Unsupported> {
         use crate::tech::Attributes;
-        let Some(t) = usize::try_from(r.tech)
-            .ok()
-            .filter(|&t| t < self.players[p].techs.len())
-        else {
-            return Ok(());
-        };
-        let def = self
-            .techs
-            .get(t)
-            .ok_or(Unsupported("a technology the data file has not got"))?;
+        let (t, _) = self.research_tech(p, r.tech)?;
+        let def = &self.techs[t];
         if r.state != MakeObj::DONE && self.game_state == 0 {
             if !r.paid {
                 let owner = &mut self.players[p];
