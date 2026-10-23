@@ -3,6 +3,9 @@
 //! to, and the flag a garrison order sets (`FUN_1412067f0`). Saved as `mTownBellFlag`,
 //! `mBackToWork1` and `mBackToWork2`.
 
+use crate::movement::footprint_gap_squared;
+use crate::unit_ai::Unsupported;
+
 /// One back-to-work record.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BackToWork {
@@ -160,6 +163,214 @@ impl TownBell {
     }
 }
 
+/// The town centre, whose bell the command rings (`0x6109` raw).
+const TOWN_CENTRE: i16 = 109;
+/// The master that answers the bell besides the villagers (`0x710`).
+const MASTER_1808: i16 = 0x710;
+/// The villagers' class.
+const VILLAGER_CLASS: i16 = 4;
+/// The units' least type (`0x46`) and the buildings' (`'P'`).
+const UNIT: u8 = 70;
+const BUILDING: u8 = 80;
+/// The town bell's reach ([`crate::garrison::TOWN_BELL_REACH`]).
+const REACH: f32 = crate::garrison::TOWN_BELL_REACH;
+/// A record's point on neither axis (`DAT_14330ec20`).
+const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+
+impl crate::turn::Turns {
+    /// `TOWN_BELL` (0x7f, `do_command`): the object `id` (none for −1, `FUN_140e6bad0`) of the
+    /// commanding `player`, or of any player while players may order each other's
+    /// ([`crate::turn::Turns::allied_control`], `FUN_1412ffe00`; the cheat `+0xb12` is not held),
+    /// rings its owner's bell (`activate`, [`crate::turn::Turns::ring_town_bell`]) or ends it
+    /// ([`crate::turn::Turns::end_town_bell`]). A special object's (`+0x30c` bit 0) UI flag is
+    /// not simulation.
+    pub(crate) fn town_bell(
+        &mut self,
+        player: usize,
+        id: i32,
+        activate: bool,
+    ) -> Result<(), Unsupported> {
+        let Some((owner, _)) = (id != -1).then(|| self.object(id)).flatten() else {
+            return Ok(());
+        };
+        if owner != player && !self.allied_control {
+            return Ok(());
+        }
+        if activate {
+            self.ring_town_bell(owner, id)
+        } else {
+            self.end_town_bell(owner, id)
+        }
+    }
+
+    /// `FUN_14163a650`: player `owner`'s town centre `tc` (master 109; any other object does
+    /// nothing) rings: of its owner's live objects, in the list's order, those in state 2 not
+    /// inside another (`FUN_141188da0`) within [`REACH`] of it (`FUN_14118f8c0`; `COMISS`/`JC`:
+    /// a NaN gap is out) are the units, a villager (class 4 of type 70) or master 1808, else
+    /// the buildings (type 80) that take villagers (`garrison_type` bit 0, `FUN_1411ccb60`), each
+    /// with its count ([`crate::turn::Turns::garrisoned`]) and its bell flag (`+0x9dc`) set (its
+    /// sound, slot 0x4c0, is not simulation); then [`crate::turn::Turns::shelter`] with the
+    /// reach (`param_6` 1), no transports, not through the unit AIs.
+    pub(crate) fn ring_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), Unsupported> {
+        let Some((_, t)) = self.object(tc) else {
+            return Ok(());
+        };
+        if t.life.master_id != TOWN_CENTRE {
+            return Ok(());
+        }
+        let (at, radius) = self.ground(tc)?;
+        let mut units = Vec::new();
+        let mut shelters = crate::garrison::Shelters::default();
+        let mut k = 0;
+        while k < self.players[owner].objects.len() {
+            let o = &self.players[owner].objects[k];
+            k += 1;
+            if o.life.state != 2 || o.life.inside.is_some() {
+                continue;
+            }
+            let id = o.id;
+            let m = self.master_of(owner, o.life.master_id)?;
+            let (kind, class, master) = (m.kind, m.class, m.id);
+            let takes_villagers = m.building.is_some_and(|b| b.garrison_type & 1 != 0);
+            let near = |t: &Self| -> Result<bool, Unsupported> {
+                let (o_at, o_radius) = t.ground(id)?;
+                let gap = footprint_gap_squared(o_at, o_radius, at, radius);
+                // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
+                Ok(!crate::fmath::below_or_unordered(REACH, gap))
+            };
+            if (class == VILLAGER_CLASS && kind == UNIT && near(self)?)
+                || (master == MASTER_1808 && near(self)?)
+            {
+                units.push(id);
+            } else if kind == BUILDING && takes_villagers && near(self)? {
+                shelters.buildings.push(id);
+                shelters.counts.push(self.garrisoned(id)?);
+                self.players[owner].objects[k - 1].town_bell.flag = true;
+            }
+        }
+        self.shelter(owner, &units, &shelters, true, false)
+    }
+
+    /// `FUN_14163ab80`: player `owner`'s town centre `tc` (master 109; any other object does
+    /// nothing) ends its bell. Each of its owner's live objects, in the list's order, of type 80
+    /// in a state below 3 that takes villagers (`FUN_1411ccb60` with 1) and holds its bell flag
+    /// (`+0x9dc`) drops the flag; within [`REACH`] of the centre (`COMISS`/`JC`: a NaN gap is
+    /// out) it lets each unit inside of type 70 or more that is a villager (class 4) or of master
+    /// 1808 back to work, from the last in ([`crate::turn::Turns::back_to_work`]; its sound, slot
+    /// 0x4c0, is not simulation). Then every unit its owner's tracker files under class 4
+    /// (`FUN_14104f8f0`) and master 1808 (`FUN_14104f960`), in that order, not inside another
+    /// (`+0x2f0`) goes back to work from where it is.
+    pub(crate) fn end_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), Unsupported> {
+        let Some((_, t)) = self.object(tc) else {
+            return Ok(());
+        };
+        if t.life.master_id != TOWN_CENTRE {
+            return Ok(());
+        }
+        let (at, radius) = self.ground(tc)?;
+        let mut k = 0;
+        while k < self.players[owner].objects.len() {
+            let idx = k;
+            k += 1;
+            let b = &self.players[owner].objects[idx];
+            let m = self.master_of(owner, b.life.master_id)?;
+            let takes_villagers = m.building.is_some_and(|x| x.garrison_type & 1 != 0);
+            if m.kind != BUILDING || 3 <= b.life.state || !takes_villagers || !b.town_bell.flag {
+                continue;
+            }
+            let id = b.id;
+            self.players[owner].objects[idx].town_bell.flag = false;
+            let (b_at, b_radius) = self.ground(id)?;
+            // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
+            let gap = footprint_gap_squared(b_at, b_radius, at, radius);
+            if crate::fmath::below_or_unordered(REACH, gap) {
+                continue;
+            }
+            let mut i = self.players[owner].objects[idx].garrison.len();
+            while 0 < i {
+                i -= 1;
+                let Some(&inside) = self.players[owner].objects[idx].garrison.get(i) else {
+                    continue;
+                };
+                // any player's unit; an id the world no longer holds is a null entry
+                let Some((up, u)) = self.object(inside) else {
+                    continue;
+                };
+                let um = self.master_of(up, u.life.master_id)?;
+                if UNIT <= um.kind && (um.class == VILLAGER_CLASS || um.id == MASTER_1808) {
+                    let _ = self.back_to_work(Some((owner, idx)), inside)?;
+                }
+            }
+        }
+        let tracker = &self.players[owner].tracker;
+        let mut ids = tracker.class_list(i32::from(VILLAGER_CLASS)).to_vec();
+        ids.extend_from_slice(tracker.list(i32::from(MASTER_1808)));
+        for id in ids {
+            // the tracker's keepers follow every object its player gains and loses: the world
+            // holds each (the game reads it without a test)
+            let Some((_, u)) = self.object(id) else {
+                continue;
+            };
+            if u.life.inside.is_none() {
+                let _ = self.back_to_work(None, id)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_1412081e0`'s part for a unit outside a building (its `param_2` null), after the
+    /// records' lookup: with its bell flag (`+0x9dc`) and the record's point not −1 on either
+    /// axis (`UCOMISS`/`JP`/`JZ`: only an exact −1 stops it, a NaN goes on), it goes there: with
+    /// no object to work on, slot 0x340 (`FUN_141216c50`, [`crate::turn::Turns::move_aside`]) to
+    /// the point on the ground, range 0, forced, not walking; else slot 0x7e8 on the object at
+    /// the point with the carried-resource test, any task, `+0xa14` 0. Then it is no longer under
+    /// the town bell (`+0xa14` takes 1, not held). True when it went.
+    pub(crate) fn back_outside(
+        &mut self,
+        id: i32,
+        work_on: Option<i32>,
+        point: [f32; 2],
+    ) -> Result<bool, Unsupported> {
+        let Some(crate::order::Place::Live(up, ui)) = self.place(id) else {
+            return Ok(false);
+        };
+        if !self.players[up].objects[ui].town_bell.flag {
+            return Ok(false);
+        }
+        let [x, y] = point;
+        if x == NO_POINT || y == NO_POINT {
+            return Ok(false);
+        }
+        match work_on {
+            None => self.move_aside(
+                up,
+                ui,
+                crate::unit_ai::AiMove {
+                    point: [x, y, 0.0],
+                    range: 0.0,
+                    force: true,
+                    walk: false,
+                },
+            )?,
+            Some(target) => self.order_work(
+                up,
+                ui,
+                &crate::order::Work {
+                    target,
+                    point: [x, y, 0.0],
+                    carry_test: true,
+                    filter: -1,
+                    notified: false,
+                },
+            )?,
+        }
+        if let Some((_, u)) = self.object_mut(id) {
+            u.town_bell.flag = false;
+        }
+        Ok(true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +494,95 @@ mod tests {
         for action in [0x25b, 0x260, 0x262, 0x264, 0x266, 0x259, -1] {
             let r = work(7, action, [5.0, 6.0]);
             assert_eq!(record_object(r, &object), (object(7), r));
+        }
+    }
+
+    mod rings {
+        use crate::garrison::tests::{
+            ARCHER, VILLAGER, inside_tc, let_out_world, sized_world, tracked, walker,
+        };
+        use crate::turn::Turns;
+
+        fn enter(t: &Turns, id: i32) -> Option<i32> {
+            t.object(id).unwrap().1.enter.map(|e| e.target)
+        }
+
+        #[test]
+        fn the_bell_sends_the_villagers_in_reach_to_the_buildings_in_reach_and_flags_them() {
+            // FUN_14163a650: villager 1000 is within 25 tiles of town centre 100, 1001 is not,
+            // archer 1002 is no villager; the centre takes villagers and is in reach of itself
+            let mut t = sized_world(60, 60);
+            walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+            walker(&mut t, 1, 1001, VILLAGER, [45.5, 45.5]);
+            walker(&mut t, 1, 1002, ARCHER, [6.5, 5.5]);
+            t.town_bell(1, 100, true).unwrap();
+            assert_eq!(
+                [1000, 1001, 1002].map(|id| enter(&t, id)),
+                [Some(100), None, None]
+            );
+            assert!(t.object(100).unwrap().1.town_bell.flag);
+        }
+
+        #[test]
+        fn the_bell_is_its_owners_or_any_players_with_allied_control() {
+            let mut t = let_out_world();
+            walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+            // player 2 rings player 1's centre: refused
+            t.town_bell(2, 100, true).unwrap();
+            assert_eq!(enter(&t, 1000), None);
+            t.allied_control = true;
+            t.town_bell(2, 100, true).unwrap();
+            assert_eq!(enter(&t, 1000), Some(100));
+            // an object that is no town centre rings nothing; nor does an id the world lacks
+            let mut t = let_out_world();
+            walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+            t.town_bell(1, 1000, true).unwrap();
+            t.town_bell(1, -1, true).unwrap();
+            assert_eq!(enter(&t, 1000), None);
+        }
+
+        #[test]
+        fn the_bells_end_lets_the_villagers_out_and_sends_the_others_back_by_the_tracker() {
+            // FUN_14163ab80: the centre drops its flag and lets villager 1000 out toward its
+            // record; villager 1001 outside, filed under class 4, walks back to its record's
+            // point (slot 0x340); 1002 has no flag and stays; 1003 is not filed and stays
+            let mut t = let_out_world();
+            t.object_mut(100).unwrap().1.town_bell.flag = true;
+            inside_tc(&mut t, 1, 1000, VILLAGER);
+            walker(&mut t, 1, 1001, VILLAGER, [5.5, 5.5]);
+            walker(&mut t, 1, 1002, VILLAGER, [6.5, 5.5]);
+            walker(&mut t, 1, 1003, VILLAGER, [7.5, 5.5]);
+            for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5]), (1002, [2.5, 2.5])] {
+                let v = &mut t.object_mut(id).unwrap().1.town_bell;
+                v.flag = id != 1002;
+                v.work = crate::town_bell::BackToWork {
+                    point,
+                    ..crate::town_bell::BackToWork::NONE
+                };
+            }
+            t.object_mut(1003).unwrap().1.town_bell.flag = true;
+            t.object_mut(1003).unwrap().1.town_bell.work.point = [1.5, 1.5];
+            tracked(&mut t, VILLAGER, &[1000, 1001, 1002]);
+            t.town_bell(1, 100, false).unwrap();
+            assert!(!t.object(100).unwrap().1.town_bell.flag);
+            let v = t.object(1000).unwrap().1;
+            assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
+            let goal = |t: &Turns, id: i32| {
+                let u = t.object(id).unwrap().1;
+                (u.move_to.and_then(|m| m.goal), u.town_bell.flag)
+            };
+            assert_eq!(goal(&t, 1001), (Some([3.5, 3.5, 0.0]), false));
+            assert_eq!(goal(&t, 1002), (None, false));
+            assert_eq!(goal(&t, 1003), (None, true));
+            // a record without a point on an axis (an exact -1) keeps the unit and its flag
+            let mut t = let_out_world();
+            walker(&mut t, 1, 1001, VILLAGER, [5.5, 5.5]);
+            let v = &mut t.object_mut(1001).unwrap().1.town_bell;
+            v.flag = true;
+            v.work.point = [3.5, -1.0];
+            tracked(&mut t, VILLAGER, &[1001]);
+            t.town_bell(1, 100, false).unwrap();
+            assert_eq!(goal(&t, 1001), (None, true));
         }
     }
 

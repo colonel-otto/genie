@@ -2014,8 +2014,8 @@ impl Turns {
     /// mode 2's object; those changes are the objects' (slot 0x98 from `FUN_141201a60` down to
     /// `FUN_141186580`, the own masters), which the slice does not hold: an upgrade with such
     /// objects stops. Without them only the masters change. Upgrades to 0x67f and 0x6a1 also
-    /// move the tracker's objects (`FUN_14104fd10`, the tracker not held: its keys follow the
-    /// objects' masters).
+    /// move the tracker's list of `from` to `to`'s (`FUN_14104fd10`,
+    /// [`crate::tracker::Tracker::move_all`]).
     fn upgrade_master(
         &mut self,
         p: usize,
@@ -2069,6 +2069,13 @@ impl Turns {
                 "an upgrade of objects (slot 0x98, FUN_141201a60 down to FUN_141186580)",
             ));
         }
+        // the upgrades to 0x67f and 0x6a1 move the tracker's list of `from` (FUN_14104fd10)
+        if matches!(to, 0x67f | 0x6a1) {
+            self.track_move_all(p, from, to);
+        }
+        let Some(new) = self.masters.get(p).and_then(|m| m.get(to)) else {
+            return Ok(());
+        };
         if both && same_type {
             let new = new.clone();
             if let Some(m) = self.masters[p].get_mut(from) {

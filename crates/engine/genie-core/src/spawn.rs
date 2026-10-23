@@ -1570,7 +1570,10 @@ impl Turns {
             sprite: Some(sprite),
             ..Unit::default()
         });
-        Ok(owner.objects.len() - 1)
+        let idx = owner.objects.len() - 1;
+        // the static init's add to its player (slot 0x2d0) files it in the tracker
+        self.track_add(p, id, master);
+        Ok(idx)
     }
 
     /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`
@@ -1852,6 +1855,8 @@ impl Turns {
             my_pasture: -1,
             ..Unit::default()
         });
+        // the static init's add to its player (slot 0x2d0) files it in the tracker
+        self.track_add(p, id, master);
         Ok(())
     }
 
@@ -2033,6 +2038,9 @@ impl Turns {
             my_pasture: -1,
             ..Unit::default()
         });
+        // the static init's add to its player (slot 0x2d0): it waits in the tracker's pending
+        // lists until its first update completes it
+        self.track_add(p, id, made.id);
         // the constructor's watch (`FUN_1411cc980`, `FUN_141090430`)
         self.watch_started(p, id)
     }

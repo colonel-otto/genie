@@ -1358,6 +1358,8 @@ impl crate::turn::Turns {
             rice: u.rice,
         };
         let part = completion.first_part(&construction)?;
+        // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
+        self.track_complete(owner, id, master.id);
         for (kind, amount) in part.attributes {
             self.players[owner].add_attribute(kind, amount)?;
         }
@@ -1527,6 +1529,9 @@ impl crate::turn::Turns {
             chain: WorkChain::default(),
         };
         let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
+        // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
+        let master_id = held(&mut self.players, place).life.master_id;
+        self.track_complete(p, id, master_id);
         self.built(p, id, built)
     }
 

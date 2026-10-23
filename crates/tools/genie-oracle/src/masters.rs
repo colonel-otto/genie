@@ -344,6 +344,9 @@ pub struct MasterTable {
     /// The linked technologies (`linkedTechs.json` beside the `.dat`, [`crate::linked_techs`]);
     /// empty when not loaded.
     pub linked_techs: std::collections::BTreeMap<i16, genie_core::tech::Linked>,
+    /// The unit lines (`unitlines.json` beside the `.dat`, [`crate::unit_lines`]) as the file
+    /// holds them; empty when not loaded (the game then builds tables of no line).
+    pub unit_lines: Vec<genie_core::lines::UnitLine>,
     /// The technologies, by id.
     pub techs: Vec<genie_core::tech::TechDef>,
     /// The history period (the `.dat`'s `time_slice`, which the world keeps at `+0x8b8`); the
@@ -399,6 +402,8 @@ pub enum ReadError {
     DropSites(serde_json::Error),
     /// The linked technologies beside it are out of shape.
     LinkedTechs(serde_json::Error),
+    /// The unit lines beside it are out of shape.
+    UnitLines(crate::UnitLinesError),
 }
 
 impl std::fmt::Display for ReadError {
@@ -407,6 +412,7 @@ impl std::fmt::Display for ReadError {
             Self::Dat(e) => write!(f, "the data file: {e}"),
             Self::DropSites(e) => write!(f, "dropsites.json: {e}"),
             Self::LinkedTechs(e) => write!(f, "linkedTechs.json: {e}"),
+            Self::UnitLines(e) => write!(f, "unitlines.json: {e}"),
         }
     }
 }
@@ -415,8 +421,8 @@ impl std::error::Error for ReadError {}
 
 impl MasterTable {
     /// The table of the data file at `path` (an `empires2_x2_p1.dat`), with the drop-site table
-    /// (`dropsites.json`) and the linked technologies (`linkedTechs.json`) beside it when there
-    /// are.
+    /// (`dropsites.json`), the linked technologies (`linkedTechs.json`) and the unit lines
+    /// (`unitlines.json`) beside it when there are.
     ///
     /// # Errors
     ///
@@ -431,6 +437,9 @@ impl MasterTable {
         }
         if let Ok(json) = std::fs::read_to_string(path.with_file_name("linkedTechs.json")) {
             table.linked_techs = crate::linked_techs(&json).map_err(ReadError::LinkedTechs)?;
+        }
+        if let Ok(json) = std::fs::read_to_string(path.with_file_name("unitlines.json")) {
+            table.unit_lines = crate::unit_lines(&json).map_err(ReadError::UnitLines)?;
         }
         Ok(table)
     }
@@ -541,6 +550,7 @@ impl MasterTable {
             terrain: TerrainTable::default(),
             drop_sites: Vec::new(),
             linked_techs: std::collections::BTreeMap::new(),
+            unit_lines: Vec::new(),
             techs: Vec::new(),
             time_slice: genie_core::turn::HISTORY_PERIOD,
         }
@@ -637,6 +647,46 @@ mod tests {
         assert_eq!(t.get(1, 332).map(|d| d.decay), Some(1.0));
         assert_eq!(t.default_action(2, 705), Some(DefaultAction::Type(107)));
         assert_eq!((t.get(2, 332), t.default_action(1, 705)), (None, None));
+    }
+
+    #[test]
+    fn unit_lines_read_each_entrys_keys_as_the_builder_does() {
+        use genie_core::lines::UnitLine;
+        // two entries of the 158041 file, one without its chain, one with an array of names
+        let json = r#"{"Hint": "LineIDs have to be between (-400, -199).", "UnitLines": [
+            {"Name": "Wall Line", "Identifier": "stone-wall-line", "Building": true,
+             "LineID": -399, "IDChain": [117, 155]},
+            {"Name": "Eagle Warrior Line", "Identifier": ["eagle-warrior-line",
+             "eagle-scout-line"], "LineID": -266, "IDChain": [751, 753, 752]},
+            {"Name": "Broken", "LineID": -1}
+        ]}"#;
+        let lines = crate::unit_lines(json).unwrap();
+        assert_eq!(
+            lines,
+            [
+                UnitLine {
+                    line: Some(-399),
+                    chain: Some(vec![117, 155]),
+                    building: true,
+                    identifiers: vec!["stone-wall-line".to_owned()],
+                },
+                UnitLine {
+                    line: Some(-266),
+                    chain: Some(vec![751, 753, 752]),
+                    building: false,
+                    identifiers: vec![
+                        "eagle-warrior-line".to_owned(),
+                        "eagle-scout-line".to_owned()
+                    ],
+                },
+                UnitLine {
+                    line: Some(-1),
+                    ..UnitLine::default()
+                },
+            ]
+        );
+        assert!(crate::unit_lines(r#"{"UnitLines": [{"LineID": "x"}]}"#).is_err());
+        assert_eq!(crate::unit_lines("{}").unwrap(), []);
     }
 
     #[test]

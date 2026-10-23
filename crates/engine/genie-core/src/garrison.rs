@@ -17,6 +17,29 @@ use crate::unit_ai::Unsupported;
 /// The squared footprint gap past which a garrison order sends no unit (`FUN_141621220` with 0:
 /// no limit).
 const FAR: f32 = crate::image::garrison::FAR;
+/// The squared footprint gap within which a garrison order's target's neighbours shelter units
+/// too (`FUN_14161e370` with `+0x1e`, `DAT_14330ebcc`, 100.0: ten tiles). An image role to add:
+/// `garrison::NEARBY`.
+pub(crate) const NEARBY: f32 = f32::from_bits(0x42c8_0000);
+/// The squared footprint gap within which the town bell reaches (its ring `FUN_14163a650`, its
+/// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
+/// An image role to add: `garrison::TOWN_BELL_REACH`.
+pub(crate) const TOWN_BELL_REACH: f32 = f32::from_bits(0x441c_4000);
+
+/// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
+/// (`param_4`), and the count list (`param_5`) its pairs index by their shelter's index, a
+/// transport's after the buildings. Its callers push the counts in their own order (the
+/// buildings' scan near a target pushes one for each object in reach, gates and annexes too),
+/// so a pair's count need not be its shelter's.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Shelters {
+    /// The buildings.
+    pub buildings: Vec<i32>,
+    /// The transports.
+    pub transports: Vec<i32>,
+    /// The counts ([`Turns::garrisoned`], slot 0x498).
+    pub counts: Vec<i32>,
+}
 /// A building takes units in only above this share of its master's hit points (`FUN_14120eb10`,
 /// in doubles).
 const LEAST_HP_SHARE: f64 = crate::image::garrison::LEAST_HP_SHARE;
@@ -534,25 +557,39 @@ impl Turns {
                 };
                 let m = self.master_of(up, u.life.master_id)?;
                 if 70 <= m.kind && (m.class == VILLAGER_CLASS || m.id == MASTER_1808) {
-                    self.back_to_work(p, idx, inside)?;
+                    let _ = self.back_to_work(Some((p, idx)), inside)?;
                 }
             }
         }
         Ok(())
     }
 
-    /// `FUN_1412081e0` for the unit `id` inside the building at `building` of player `p`: the
-    /// work to go back to ([`TownBell::back_to_work`]: the town-bell records' object the world
-    /// holds); with none but a record of an action and a target class, the unit AI takes the
-    /// action (`FUN_140c64b50`) and the unit tells it to search (notify 0x202 with the action,
-    /// the class and the old target). Then the unit leaves the building toward the record's point
-    /// with the object to work on ([`Turns::let_out`], `FUN_1411e7220` with its sound); out, it
-    /// is no longer under the town bell (`+0x9dc`; `+0xa14` takes 1, not held).
+    /// `FUN_1412081e0` for the unit `id`, `from` the building it is inside (player `p`'s object
+    /// at an index) or outside (None): the work to go back to ([`TownBell::back_to_work`]: the
+    /// town-bell records' object the world holds); with none but a record of an action and a
+    /// target class, the unit AI takes the action (`FUN_140c64b50`) and the unit tells it to
+    /// search (notify 0x202 with the action, the class and the old target). From a building the
+    /// unit then leaves it toward the record's point with the object to work on
+    /// ([`Turns::let_out`], `FUN_1411e7220` with its sound); outside it goes back
+    /// ([`Turns::back_outside`]). Once out or back it is no longer under the town bell
+    /// (`+0x9dc`; `+0xa14` takes 1, not held). True when it went.
     ///
     /// [`TownBell::back_to_work`]: crate::town_bell::TownBell::back_to_work
-    fn back_to_work(&mut self, p: usize, building: usize, id: i32) -> Result<(), Unsupported> {
+    pub(crate) fn back_to_work(
+        &mut self,
+        from: Option<(usize, usize)>,
+        id: i32,
+    ) -> Result<bool, Unsupported> {
         use crate::town_bell::RecordTarget;
-        let (up, ui) = self.live_inside(id)?;
+        let (up, ui) = match from {
+            Some(_) => self.live_inside(id)?,
+            None => match self.place(id) {
+                Some(crate::order::Place::Live(p, i)) => (p, i),
+                // the callers pass an object of type 70 or more the world holds, which never
+                // sleeps
+                _ => return Ok(false),
+            },
+        };
         let mut bell = self.players[up].objects[ui].town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;
@@ -578,11 +615,14 @@ impl Turns {
                 [record.action, record.target_type, record.target],
             )?;
         }
+        let Some((p, building)) = from else {
+            return self.back_outside(id, found.map(|f| f.id), record.point);
+        };
         let out = self.let_out(p, building, id, record.point, (found.map(|f| f.id), true))?;
         if out && let Some((_, u)) = self.object_mut(id) {
             u.town_bell.flag = false;
         }
-        Ok(())
+        Ok(out)
     }
 
     /// `FUN_14118a610`: whether UNLOAD's `flag` and `unit_type` (`param`) pick `unit` of player
@@ -910,7 +950,7 @@ impl Turns {
     /// running `raider_build_countdown` (`+0x9a0`, `FUN_1411cb850`/`FUN_1411d6ad0`). Not
     /// modelled: an object inside that holds others (the slice reads no `+0x9a8`) and, in a
     /// building, a unit with its countdown set (`+0xc2c`, which the slice does not keep).
-    fn garrisoned(&self, building: i32) -> Result<i32, Unsupported> {
+    pub(crate) fn garrisoned(&self, building: i32) -> Result<i32, Unsupported> {
         let holds = |id: i32| {
             self.players.iter().any(|q| {
                 q.objects
@@ -952,10 +992,19 @@ impl Turns {
 
     /// `UNIT_ORDER`'s garrison (action 5) on `target`, which the world holds (`FUN_140e7f200`; the
     /// UI's sound for it, `FUN_1409648c0`, is not held): `FUN_14161e370` lists the order's units
-    /// (the ids the world holds of a type 70 or more) and, for a target of type 80, the target
-    /// (an annex its main building, but a gate's) with its count ([`Turns::garrisoned`]); then
-    /// [`Turns::shelter`]. A target of a lower type (a transport) and the buildings near the
-    /// target (`+0x1e`) are not modelled.
+    /// (the ids the world holds of a type 70 or more), then the shelters ([`Shelters`]). Without
+    /// `nearby` (the packet's `+0x1e`) the target alone: one of a type below 80 a transport,
+    /// else a building (an annex its main building, but a gate's), with its count
+    /// ([`Turns::garrisoned`]). With it, each object of the target's owner's tracker under the
+    /// master the target's line stands for (`FUN_140fdd6c0`, `FUN_140fdd6f0`, [`UnitLines::base`];
+    /// `FUN_14104f960`, [`crate::tracker::Tracker::list`]), in the tracker's order, within
+    /// [`NEARBY`] of the target (`FUN_14118f8c0`, the squared footprint gap; `COMISS`/`JC`: a NaN
+    /// is out): one of a type below 80 is a transport, one not a gate (class 39) and no annex
+    /// (`+0xbb8`) a building, and each one in reach pushes its count, the gates and annexes
+    /// left out too. Then [`Turns::shelter`] (`param_6` 0) with the unit AI's queue when
+    /// `through_ai` (the packet's `+0x1d`).
+    ///
+    /// [`UnitLines::base`]: crate::lines::UnitLines::base
     pub(crate) fn garrison_order(
         &mut self,
         player: usize,
@@ -967,20 +1016,7 @@ impl Turns {
         let Some((tp, t)) = self.object(target) else {
             return Ok(());
         };
-        if nearby {
-            return Err(Unsupported(
-                "a garrison into the buildings near its target (+0x1e)",
-            ));
-        }
-        let tm = self.master_of(tp, t.life.master_id)?;
-        if tm.kind < BUILDING {
-            return Err(Unsupported("a garrison into a unit (a transport)"));
-        }
-        let building = match t.annex_of {
-            Some(main) if tm.class != GATE_CLASS => main,
-            _ => target,
-        };
-        let count = self.garrisoned(building)?;
+        let (target_master, target_annex) = (t.life.master_id, t.annex_of);
         let mut units = Vec::with_capacity(ids.len());
         for &id in ids {
             let Some((p, u)) = self.object(id) else {
@@ -990,7 +1026,29 @@ impl Turns {
                 units.push(id);
             }
         }
-        self.shelter(player, &units, &[(building, count)], through_ai)
+        let shelters = if nearby {
+            self.shelters_near(tp, target, target_master)?
+        } else {
+            let tm = self.master_of(tp, target_master)?;
+            if tm.kind < BUILDING {
+                Shelters {
+                    buildings: Vec::new(),
+                    transports: vec![target],
+                    counts: vec![self.garrisoned(target)?],
+                }
+            } else {
+                let building = match target_annex {
+                    Some(main) if tm.class != GATE_CLASS => main,
+                    _ => target,
+                };
+                Shelters {
+                    buildings: vec![building],
+                    transports: Vec::new(),
+                    counts: vec![self.garrisoned(building)?],
+                }
+            }
+        };
+        self.shelter(player, &units, &shelters, false, through_ai)
     }
 
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`), after the command's check (`FUN_140e558b0`): of
@@ -1037,42 +1095,100 @@ impl Turns {
                 buildings.push(b.id);
             }
         }
-        let buildings = buildings
-            .into_iter()
-            .map(|b| Ok((b, self.garrisoned(b)?)))
+        let counts = buildings
+            .iter()
+            .map(|&b| self.garrisoned(b))
             .collect::<Result<Vec<_>, Unsupported>>()?;
-        self.shelter(player, &units, &buildings, false)
+        let shelters = Shelters {
+            buildings,
+            transports: Vec::new(),
+            counts,
+        };
+        // FUN_141622450: no transports, no gap limit, not through the unit AIs
+        self.shelter(player, &units, &shelters, false, false)
     }
 
-    /// `FUN_141621220` with no transports and no gap limit (its `param_4` empty, `param_6` 0):
-    /// each of `units` pairs with each of `buildings` (with its count inside) whose master has a
-    /// capacity (`obj_max`) and takes the unit's master's copy in ([`Turns::takes_in`]), within
-    /// [`FAR`]; the pairs sorted by their squared footprint gap (`FUN_1415f0830`, MSVC's
-    /// `std::sort`) give each unit, in that order, the first building with room, then any unit
-    /// left its nearest building. The buildings go in a hash map by id (`FUN_1415f0c40`), whose
-    /// order ([`crate::msvc::unordered_map_order`]) the next part follows: each building's units
-    /// go through the order splitter, which drops those whose unit AI's test fails
-    /// (`FUN_140c40e00`: the building takes the unit's master in), and each loose unit (not in a
-    /// group, `+0x6d0`; in state 2 or 6 or less, of a type 70 or more) takes slot 0x7e8 on the
-    /// building at its place with task filter 3. The unit AI's queue (`through_ai`, `param_7`)
-    /// and the groups the splitter forms are not modelled.
+    /// `FUN_14161e370`'s shelters near `target` (of player `tp` and master `master`, its
+    /// `param_9`): the objects of `tp`'s tracker under the master `master`'s line stands for, in
+    /// the tracker's order ([`Turns::garrison_order`]).
+    pub(crate) fn shelters_near(
+        &self,
+        tp: usize,
+        target: i32,
+        master: i16,
+    ) -> Result<Shelters, Unsupported> {
+        let mut shelters = Shelters::default();
+        let key = self.lines.base(i32::from(master));
+        let (at, radius) = self.ground(target)?;
+        for &id in self.players[tp].tracker.list(key) {
+            // the tracker's keepers follow every object its player gains and loses, so the
+            // world holds each (the game reads a null one's place)
+            let Some((op, o)) = self.object(id) else {
+                continue;
+            };
+            let (o_at, o_radius) = self.ground(id)?;
+            // COMISS NEARBY, gap; JC: a gap above it, or a NaN, is out
+            let gap = footprint_gap_squared(o_at, o_radius, at, radius);
+            if crate::fmath::below_or_unordered(NEARBY, gap) {
+                continue;
+            }
+            let om = self.master_of(op, o.life.master_id)?;
+            if om.kind < BUILDING {
+                shelters.transports.push(id);
+            } else if om.class != GATE_CLASS && o.annex_of.is_none() {
+                shelters.buildings.push(id);
+            }
+            shelters.counts.push(self.garrisoned(id)?);
+        }
+        Ok(shelters)
+    }
+
+    /// The place and master radii of the object `id` (what `FUN_14118f8c0` reads of it).
+    pub(crate) fn ground(&self, id: i32) -> Result<([f32; 3], [f32; 2]), Unsupported> {
+        self.spatial
+            .get_known(id)?
+            .map(|p| (p.position, p.radius))
+            .ok_or(Unsupported("a garrison's object without a place"))
+    }
+
+    /// `FUN_141621220`: each of `units` pairs with each building of `shelters` (type 80) whose
+    /// master has a capacity (`obj_max`) and takes the unit's master's copy in
+    /// ([`Turns::takes_in`]), and with each transport of a unit whose master's class has flag
+    /// 0x10002 (`FUN_1411205e0`) and a task of action 3 on the transport's class, within the reach
+    /// (`near`, `param_6`: [`TOWN_BELL_REACH`], else [`FAR`]; `COMISS`/`JBE`: a NaN is out); a
+    /// pair names its shelter by its index, a transport's after the buildings. The pairs sorted
+    /// by their squared footprint gap (`FUN_1415f0830`, MSVC's `std::sort`) give each unit, in
+    /// that order, the first shelter whose count is below its master's capacity, then any unit
+    /// left its nearest shelter. The count is the one of the count list at the pair's index
+    /// (the list holds what its caller pushed, in its own order: an index into it need not be
+    /// its shelter's), which each taker raises. The shelters go in a hash map by id
+    /// (`FUN_1415f0c40`), whose order ([`crate::msvc::unordered_map_order`]) the next part
+    /// follows ([`Turns::shelter_in`]). Not modelled: a transport with units to pair (the class
+    /// flags' table, `DAT_1439e37b0`, has no image role yet) and the groups the splitter forms.
     pub(crate) fn shelter(
         &mut self,
         player: usize,
         units: &[i32],
-        buildings: &[(i32, i32)],
+        shelters: &Shelters,
+        near: bool,
         through_ai: bool,
     ) -> Result<(), Unsupported> {
-        let ground = |id: i32| {
-            self.spatial
-                .get_known(id)?
-                .map(|p| (p.position, p.radius))
-                .ok_or(Unsupported("a garrison's object without a place"))
-        };
-        // the pairs of a unit and a building: (unit index, building index, squared gap)
+        let reach = if near { TOWN_BELL_REACH } else { FAR };
+        if !units.is_empty() && !shelters.transports.is_empty() {
+            return Err(Unsupported(
+                "a garrison's transports (the class flags 0x10002, FUN_1411205e0)",
+            ));
+        }
+        let all: Vec<i32> = shelters
+            .buildings
+            .iter()
+            .chain(&shelters.transports)
+            .copied()
+            .collect();
+        // the pairs of a unit and a shelter: (unit index, shelter index, squared gap)
         let mut pairs = Vec::new();
-        let mut capacities = Vec::with_capacity(buildings.len());
-        for &(building, _) in buildings {
+        let mut capacities = Vec::with_capacity(all.len());
+        for &building in &all {
             let (bp, b) = self
                 .object(building)
                 .ok_or(Unsupported("a garrison's building is gone"))?;
@@ -1084,13 +1200,13 @@ impl Turns {
                 .object(id)
                 .ok_or(Unsupported("a garrison's unit is gone"))?;
             let copy = self.master_of(p, u.life.master_id)?.copy_id;
-            for (j, &(building, _)) in buildings.iter().enumerate() {
+            for (j, &building) in shelters.buildings.iter().enumerate() {
                 let (is_building, capacity) = capacities[j];
                 if is_building && capacity != 0 && self.takes_in(building, player, copy)? {
-                    let (at, r) = ground(id)?;
-                    let (bat, br) = ground(building)?;
+                    let (at, r) = self.ground(id)?;
+                    let (bat, br) = self.ground(building)?;
                     let gap = footprint_gap_squared(at, r, bat, br);
-                    if gap < FAR {
+                    if gap < reach {
                         pairs.push((i, j, gap));
                     }
                 }
@@ -1100,30 +1216,33 @@ impl Turns {
             &mut pairs,
             &|a: (usize, usize, f32), b: (usize, usize, f32)| a.2 < b.2,
         );
-        let mut counts: Vec<i32> = buildings.iter().map(|&(_, count)| count).collect();
+        let mut counts = shelters.counts.clone();
         let mut taken = vec![false; units.len()];
-        // each building's units, by building index, and the order of the buildings' first take
-        let mut going: Vec<Vec<i32>> = vec![Vec::new(); buildings.len()];
+        // each shelter's units, by shelter index, and the order of the shelters' first take
+        let mut going: Vec<Vec<i32>> = vec![Vec::new(); all.len()];
         let mut first_taken = Vec::new();
         for &(i, j, _) in &pairs {
-            if !taken[i] && counts[j] < capacities[j].1 {
+            // the count list is at least as long as the shelters: its callers push a count for
+            // each shelter, and FUN_14161e370 one for each gate and annex beside
+            let count = counts.get_mut(j).expect("a count for each shelter index");
+            if !taken[i] && *count < capacities[j].1 {
                 going[j].push(units[i]);
-                first_taken.push(buildings[j].0);
-                counts[j] += 1;
+                first_taken.push(all[j]);
+                *count += 1;
                 taken[i] = true;
             }
         }
         for &(i, j, _) in &pairs {
             if !taken[i] {
                 going[j].push(units[i]);
-                first_taken.push(buildings[j].0);
+                first_taken.push(all[j]);
                 taken[i] = true;
             }
         }
         for building in crate::msvc::unordered_map_order(first_taken) {
-            let j = buildings
+            let j = all
                 .iter()
-                .position(|&(b, _)| b == building)
+                .position(|&b| b == building)
                 .expect("a building of the list");
             self.shelter_in(building, &going[j], through_ai)?;
         }
@@ -1146,9 +1265,14 @@ impl Turns {
         self.takes_in(b.id, player, master)
     }
 
-    /// One building's part of [`Turns::shelter`]: the order splitter (`FUN_140fd9dc0` with
+    /// One shelter's part of [`Turns::shelter`]: the order splitter (`FUN_140fd9dc0` with
     /// command `0x2713`) on its units, which keeps those whose unit AI's test passes
-    /// ([`Turns::ai_takes`]), then slot 0x7e8 for each loose unit.
+    /// ([`Turns::ai_takes`]); then each loose unit (not in a group, `+0x6d0`; in state 2 or 6 or
+    /// less, of a type 70 or more) takes slot 0x7e8 on the shelter at its place with task
+    /// filter 3, or, `through_ai` (`param_7`) and with a unit AI, the unit AI's slot 0x30 (into
+    /// slot 0x28, `FUN_140c55c90`: not immediate, behind) queues the enter order (`0x2cd`) on
+    /// the shelter at its place: issued by the unit's own id, of the shelter's owner and master,
+    /// range 0, priority 100, the point shown, ready.
     fn shelter_in(
         &mut self,
         building: i32,
@@ -1166,7 +1290,7 @@ impl Turns {
             }
             self.ai_takes(bp, b, p, u.life.master_id)
         };
-        let point = b.position;
+        let (point, owner, master) = (b.position, bp, b.life.master_id);
         let mut kept = Vec::with_capacity(going.len());
         for &id in going {
             if self.object(id).is_some() && keeps(id)? {
@@ -1186,9 +1310,25 @@ impl Turns {
                 continue;
             }
             if through_ai && unit.ai.is_some() {
-                return Err(Unsupported(
-                    "a garrison through the unit AI's queue (+0x1d, slot 0x30 with 0x2cd)",
-                ));
+                let state = unit.life.state;
+                let order = crate::unit_ai::QueuedOrder {
+                    issuer: id,
+                    order: ENTER_ORDER,
+                    priority: 100,
+                    target: building,
+                    target_owner: owner as i32,
+                    point,
+                    range: 0.0,
+                    shown: [point[0], point[1]],
+                    ready: true,
+                    target_type: i32::from(master),
+                };
+                let ai = self.players[p].objects[idx]
+                    .ai
+                    .as_mut()
+                    .expect("tested above");
+                let _ = ai.queue_order(state, order, false, false)?;
+                continue;
             }
             let work = Work {
                 target: building,
@@ -1405,14 +1545,14 @@ const fn unload_group_takes(group: i32, class: i16) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::masters::BuildingMaster;
     use crate::turn::{Player, Unit};
 
-    const TC: i16 = 109;
-    const VILLAGER: i16 = 83;
-    const ARCHER: i16 = 4;
+    pub(crate) const TC: i16 = 109;
+    pub(crate) const VILLAGER: i16 = 83;
+    pub(crate) const ARCHER: i16 = 4;
     const SHIP: i16 = 545;
     const GATE: i16 = 88;
 
@@ -1474,7 +1614,7 @@ mod tests {
         ])
     }
 
-    fn unit(id: i32, master: i16, hp: f32) -> Unit {
+    pub(crate) fn unit(id: i32, master: i16, hp: f32) -> Unit {
         let mut u = Unit {
             id,
             pasture: -1,
@@ -1945,13 +2085,24 @@ mod tests {
 
     /// [`garrison_world`] on a flat 20×20 map every player sees, the town centre at (10, 10)
     /// with its footprint on the map, the villager master able to stand beside it.
-    fn let_out_world() -> Turns {
+    pub(crate) fn let_out_world() -> Turns {
+        sized_world(20, 20)
+    }
+
+    /// [`let_out_world`] on a map of `w` × `h` tiles.
+    pub(crate) fn sized_world(w: i32, h: i32) -> Turns {
         let mut t = garrison_world();
         let mut masters = garrison_masters();
         if let Some(tc) = masters.get_mut(TC) {
             tc.radius = [2.0, 2.0];
             tc.tall = true;
             tc.volley_fire = 1.0;
+            // no stack unit, head or annexes: the tracker files it under its own id
+            if let Some(b) = tc.building.as_mut() {
+                b.stack_unit = -1;
+                b.head_unit = -1;
+                b.annexes = [-1; 4];
+            }
         }
         if let Some(v) = masters.get_mut(VILLAGER) {
             v.radius = [0.2, 0.2];
@@ -1959,7 +2110,6 @@ mod tests {
             v.moving = Some(standing());
         }
         t.masters = (0..4).map(|_| masters.clone()).collect();
-        let (w, h) = (20, 20);
         let n = (w * h) as usize;
         t.spatial = crate::spatial::Spatial::new([w, h]);
         let mut terrain = crate::terrain::Terrain::new(
@@ -2016,7 +2166,7 @@ mod tests {
     }
 
     /// Puts unit `id` of player `p` and master `m` inside the town centre.
-    fn inside_tc(t: &mut Turns, p: usize, id: i32, m: i16) {
+    pub(crate) fn inside_tc(t: &mut Turns, p: usize, id: i32, m: i16) {
         let mut u = unit(id, m, 25.0);
         u.position = [10.0, 10.0, 0.0];
         u.life.inside = Some(100);
@@ -2069,12 +2219,12 @@ mod tests {
         inside_tc(&mut t, 2, 2000, VILLAGER);
         t.players[2].objects[0].town_bell.work.point = [4.5, 4.5];
         t.players[1].objects[0].firepower = f32::NAN;
-        t.back_to_work(1, 0, 2000).unwrap();
+        assert!(t.back_to_work(Some((1, 0)), 2000).unwrap());
         assert!(t.players[1].objects[0].firepower.is_nan());
         assert_eq!(t.players[1].objects[0].garrison, [1000]);
         t.players[1].objects[0].firepower = 0.5;
         t.object_mut(1000).unwrap().1.town_bell.work.point = [4.5, 15.5];
-        t.back_to_work(1, 0, 1000).unwrap();
+        assert!(t.back_to_work(Some((1, 0)), 1000).unwrap());
         assert_eq!(t.players[1].objects[0].firepower, 1.0);
         // a unit not a villager stays inside
         let mut t = let_out_world();
@@ -2111,7 +2261,7 @@ mod tests {
     }
 
     /// A villager of player `p` with a unit AI and speed at (`x`, `y`).
-    fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
+    pub(crate) fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
         let mut v = unit(id, m, 25.0);
         v.position = [at[0], at[1], 0.0];
         v.ai = Some(crate::unit_ai::UnitAi {
@@ -2164,6 +2314,143 @@ mod tests {
                 obstruction: None,
             },
         );
+    }
+
+    /// A building of player 1 of master `m` (radius 2) at `at`, `annex_of` its main building.
+    pub(crate) fn building_at(t: &mut Turns, id: i32, m: i16, at: [f32; 2], annex_of: Option<i32>) {
+        let mut b = unit(id, m, 2400.0);
+        b.position = [at[0], at[1], 0.0];
+        b.annex_of = annex_of;
+        t.players[1].objects.push(b);
+        t.spatial.insert(
+            id,
+            crate::spatial::Placed {
+                position: [at[0], at[1], 0.0],
+                radius: [2.0, 2.0],
+                class: 52,
+                player: 1,
+                master: m,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(crate::spatial::Obstruction { kind: 2, class: 2 }),
+            },
+        );
+    }
+
+    /// Player 1's tracker files `ids` under master `m`'s key, done, in that order.
+    pub(crate) fn tracked(t: &mut Turns, m: i16, ids: &[i32]) {
+        let k = t.tracker_key(1, m);
+        for &id in ids {
+            t.players[1].tracker.add(id, k);
+            t.players[1].tracker.complete(id, k);
+        }
+    }
+
+    #[test]
+    fn the_shelters_near_a_target_follow_its_owners_tracker_and_count_annexes_and_gates() {
+        // FUN_14161e370 with +0x1e: the town centres' list (109) in the tracker's order; 102 is
+        // beyond ten tiles, annex 104 is no building but pushes its count (one unit inside)
+        let mut t = sized_world(40, 40);
+        building_at(&mut t, 101, TC, [15.0, 10.0], None);
+        building_at(&mut t, 102, TC, [30.0, 30.0], None);
+        building_at(&mut t, 104, TC, [10.0, 15.0], Some(101));
+        let mut inside = unit(500, VILLAGER, 25.0);
+        inside.life.inside = Some(104);
+        t.players[1].objects.push(inside);
+        tracked(&mut t, TC, &[104, 102, 101, 100]);
+        assert_eq!(
+            t.shelters_near(1, 100, TC).unwrap(),
+            Shelters {
+                buildings: vec![101, 100],
+                transports: Vec::new(),
+                counts: vec![1, 0, 0],
+            }
+        );
+        // the gates' list: no gate is a building, each pushes its count
+        building_at(&mut t, 301, GATE, [10.0, 6.0], None);
+        t.spatial.insert(300, *t.spatial.get(301).unwrap());
+        tracked(&mut t, GATE, &[300, 301]);
+        assert_eq!(
+            t.shelters_near(1, 301, GATE).unwrap(),
+            Shelters {
+                buildings: Vec::new(),
+                transports: Vec::new(),
+                counts: vec![0, 0],
+            }
+        );
+    }
+
+    #[test]
+    fn a_garrison_near_its_target_reads_the_count_list_at_its_pairs_index() {
+        // the town centres take one unit; the list [104, 101, 100] gives the buildings
+        // [101, 100] and the counts [1, 0, 0]: the villager's nearest pair (101, index 0) reads
+        // the annex's count 1, which is full, so it goes to 100 (index 1, count 0)
+        let world = |with_annex: bool| {
+            let mut t = sized_world(40, 40);
+            for m in &mut t.masters {
+                if let Some(tc) = m.get_mut(TC) {
+                    tc.garrison = 1;
+                }
+            }
+            building_at(&mut t, 101, TC, [16.0, 10.0], None);
+            building_at(&mut t, 104, TC, [10.0, 15.0], Some(101));
+            let mut inside = unit(500, VILLAGER, 25.0);
+            inside.life.inside = Some(104);
+            t.players[1].objects.push(inside);
+            let listed: &[i32] = if with_annex {
+                &[104, 101, 100]
+            } else {
+                &[101, 100]
+            };
+            tracked(&mut t, TC, listed);
+            walker(&mut t, 1, 1000, VILLAGER, [19.5, 10.5]);
+            t.garrison_order(1, &[1000], 100, false, true).unwrap();
+            t.object(1000).unwrap().1.enter.map(|e| e.target)
+        };
+        assert_eq!(world(true), Some(100));
+        assert_eq!(world(false), Some(101));
+    }
+
+    #[test]
+    fn a_garrison_through_the_unit_ais_queues_their_enter_orders() {
+        // FUN_141621220 with param_7: slot 0x30 into slot 0x28 with 0x2cd, issued by the unit
+        let mut t = let_out_world();
+        walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+        t.garrison_order(1, &[1000], 100, true, false).unwrap();
+        let v = t.object(1000).unwrap().1;
+        assert_eq!(v.enter, None);
+        assert_eq!(
+            v.ai.as_ref().unwrap().orders,
+            [crate::unit_ai::QueuedOrder {
+                issuer: 1000,
+                order: ENTER_ORDER,
+                priority: 100,
+                target: 100,
+                target_owner: 1,
+                point: [10.0, 10.0, 0.0],
+                range: 0.0,
+                shown: [10.0, 10.0],
+                ready: true,
+                target_type: i32::from(TC),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_garrison_into_a_transport_needs_the_class_flags() {
+        let mut t = let_out_world();
+        walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
+        assert_eq!(
+            t.garrison_order(1, &[1000], 200, false, false),
+            Err(Unsupported(
+                "a garrison's transports (the class flags 0x10002, FUN_1411205e0)"
+            ))
+        );
+        // with no unit the transport is never asked
+        assert_eq!(t.garrison_order(1, &[], 200, false, false), Ok(()));
     }
 
     #[test]

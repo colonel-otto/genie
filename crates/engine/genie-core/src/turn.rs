@@ -488,6 +488,16 @@ pub enum Command {
         /// Its buildings.
         ids: Vec<i32>,
     },
+    /// `TOWN_BELL` (0x7f, `do_command` case 0x7f): the town centre `id` rings its owner's bell
+    /// (`activate`) or ends it ([`Turns::town_bell`]).
+    TownBell {
+        /// The player.
+        player: usize,
+        /// The town centre.
+        id: i32,
+        /// Ring (1) or end (0).
+        activate: bool,
+    },
     /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
     /// ([`Turns::delete`]).
     Delete {
@@ -896,6 +906,10 @@ struct Context<'a> {
     /// ([`crate::visibility::sight_taker`]).
     standard: bool,
     sight_takers: &'a [(bool, bool)],
+    /// The owner's object tracker, which a completion's first part (`FUN_1411c6bd0`) moves a
+    /// building in, and the unit lines its keys read ([`crate::tracker`]).
+    tracker: &'a mut crate::tracker::Tracker,
+    lines: &'a crate::lines::UnitLines,
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
     attribute_adds: Vec<(i16, f32)>,
@@ -4094,6 +4108,9 @@ impl Unit {
             rice: self.rice,
         };
         let part = completion.first_part(construction)?;
+        // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
+        let k = crate::tracker::key(c.masters, c.lines, self.life.master_id);
+        c.tracker.complete(self.id, k);
         c.attribute_adds.extend(part.attributes);
         if part.cart {
             c.carts.push((self.id, 0));
@@ -5613,6 +5630,9 @@ impl Unit {
             chain: crate::build::WorkChain::default(),
         };
         let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
+        // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
+        let k = crate::tracker::key(c.masters, c.lines, self.life.master_id);
+        c.tracker.complete(self.id, k);
         // its set_state(2) took its annexes along first (FUN_1411dbb70)
         for annex in c.spatial.annexes_of(self.id) {
             c.annex_states.push((annex, 2));
@@ -6321,6 +6341,12 @@ impl Unit {
                 c.main_works.push((target, amount));
             }
             if let Some(built) = step.completed {
+                // the completion's first part's tracker part (FUN_1411c6bd0 ->
+                // FUN_14104eac0); the foundation is the builder's player's
+                if let Some(m) = others.iter().find(|u| u.id == target) {
+                    let k = crate::tracker::key(c.masters, c.lines, m.life.master_id);
+                    c.tracker.complete(target, k);
+                }
                 // its set_state(2) took its annexes along first (FUN_1411dbb70)
                 for annex in c.spatial.annexes_of(target) {
                     c.annex_states.push((annex, 2));
@@ -8486,6 +8512,9 @@ pub struct Player {
     pub ghosts: Vec<crate::ghost::Ghost>,
     /// Its history (`+0xdb8`, saved, [`crate::history`]).
     pub history: crate::history::History,
+    /// Its object tracker (`+0x18`, [`crate::tracker`]): not saved; the load files the objects
+    /// ([`Turns::load_trackers`]).
+    pub tracker: crate::tracker::Tracker,
 }
 
 impl Turns {
@@ -8736,7 +8765,24 @@ impl Turns {
         }
         let unit = self.players[q].objects.swap_remove(j);
         let handed = self.hand_over_attributes(q, 0, &unit);
+        // the old owner's remove and Gaia's add (slots 0x2d8, 0x2d0) move it between the
+        // trackers; a building whose build points reach its build time completes in Gaia's
+        // (`FUN_1411cd860`, `COMISS`/`JC`: a NaN does not)
+        let (id, master_id) = (unit.id, unit.life.master_id);
+        let built = self
+            .masters
+            .first()
+            .and_then(|m| m.get(master_id))
+            .is_some_and(|m| m.kind == BUILDING_KIND)
+            && unit
+                .construction
+                .is_some_and(|c| f32::from(c.build_time) <= c.progress);
         self.players[0].objects.push(unit);
+        self.track_remove(q, id, master_id);
+        self.track_add(0, id, master_id);
+        if built {
+            self.track_complete(0, id, master_id);
+        }
         handed
     }
 
@@ -8916,6 +8962,7 @@ impl Turns {
                         continue;
                     }
                     let gone = self.players[p].objects.swap_remove(i);
+                    self.track_remove(p, gone.id, gone.life.master_id);
                     let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
                     forget_resource(&mut self.spatial, master, gone.id, gone.position);
                     if let Some(m) = master.filter(|m| 70 <= m.kind) {
@@ -9088,6 +9135,8 @@ pub struct Turns {
     pub graphics: std::collections::BTreeMap<i16, Graphic>,
     /// The game's drop-site table (`dropsites.json`).
     pub drop_sites: Vec<DropSite>,
+    /// The game's unit lines (`unitlines.json`, [`crate::lines`]); empty when not loaded.
+    pub lines: crate::lines::UnitLines,
     /// The game's linked technologies (`linkedTechs.json`, the table at the game settings'
     /// `+0x18` that `FUN_140f39f40` looks up), by technology; empty when not loaded.
     pub linked_techs: std::collections::BTreeMap<i16, crate::tech::Linked>,
@@ -9329,6 +9378,7 @@ impl Turns {
             pathing: Pathing::default(),
             graphics: std::collections::BTreeMap::default(),
             drop_sites: Vec::new(),
+            lines: crate::lines::UnitLines::default(),
             linked_techs: std::collections::BTreeMap::new(),
             carry_rule: false,
             farm_stops: false,
@@ -9485,6 +9535,15 @@ impl Turns {
             }
             Command::GoBackToWork { player, ref ids } => {
                 if let Err(e) = self.go_back_to_work(player, ids) {
+                    self.stop_player(player, e);
+                }
+            }
+            Command::TownBell {
+                player,
+                id,
+                activate,
+            } => {
+                if let Err(e) = self.town_bell(player, id, activate) {
                     self.stop_player(player, e);
                 }
             }
@@ -10001,6 +10060,9 @@ impl Turns {
             own_master: None,
             dead_master: None,
         });
+        // the static init's add to its player (slot 0x2d0): it waits in the tracker's pending
+        // lists
+        self.track_add(player, id, master);
         self.building_place(player, id, &made, position, desolid);
         if foundation && 0 < made.build_time {
             self.construction_terrain(player, master, position)?;
@@ -11975,6 +12037,8 @@ impl Turns {
                     scenario: scenario_mode(self.game_mode),
                     standard: standard_mode(self.game_mode),
                     sight_takers: &sight_takers,
+                    tracker: &mut player.tracker,
+                    lines: &self.lines,
                     attribute_adds: Vec::new(),
                     techs_done: Vec::new(),
                     carts: Vec::new(),
@@ -12043,6 +12107,11 @@ impl Turns {
                 }
                 self.spatial.set_gait(unit.id, unit.gait());
                 player.objects[i] = unit;
+                // each made object's add to its player (slot 0x2d0) filed it in the tracker
+                for m in &made {
+                    let k = crate::tracker::key(self.masters.get(p), &self.lines, m.life.master_id);
+                    player.tracker.add(m.id, k);
+                }
                 player.objects.extend(made);
                 // the gate's player opens or shuts it, in the gate's update before the rest
                 if gate_toggle && let Err(e) = self.toggle_gate(p, i) {
@@ -12311,8 +12380,15 @@ impl Turns {
                 match result {
                     Ok(Step::Leave) => {
                         let gone = player.objects.swap_remove(i);
-                        // its deletion (FUN_14116b5e0), and a combat object's destructor's class
-                        // counters (FUN_141200450)
+                        // its deletion (FUN_14116b5e0: its player's remove, slot 0x2d8, takes it
+                        // out of the tracker), and a combat object's destructor's class counters
+                        // (FUN_141200450)
+                        let k = crate::tracker::key(
+                            self.masters.get(p),
+                            &self.lines,
+                            gone.life.master_id,
+                        );
+                        player.tracker.remove(gone.id, k);
                         let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
                         forget_resource(&mut self.spatial, master, gone.id, gone.position);
                         if let Some(m) = master.filter(|m| 70 <= m.kind) {
@@ -12339,8 +12415,16 @@ impl Turns {
                     Ok(Step::Sleep) => {
                         // the list's remove (FUN_1411664a0) puts its last object in the
                         // sleeper's place, and the list's loop (0x141166550) goes on past it:
-                        // that object's update waits for the next tick
+                        // that object's update waits for the next tick; the player's remove and
+                        // add (slots 0x2d8, 0x2d0) file it last in the tracker
                         let asleep = player.objects.swap_remove(i);
+                        let k = crate::tracker::key(
+                            self.masters.get(p),
+                            &self.lines,
+                            asleep.life.master_id,
+                        );
+                        player.tracker.remove(asleep.id, k);
+                        player.tracker.add(asleep.id, k);
                         player.sleeping.push(asleep);
                         i += 1;
                     }
@@ -12369,6 +12453,15 @@ impl Turns {
                             let _ = self.players[p]
                                 .unsupported
                                 .get_or_insert((self.ticks, i, e));
+                        }
+                        // each one's slot 0x70: the old owner's remove (slot 0x2d8), the new
+                        // owner's add (slot 0x2d0), each tracker by its own masters
+                        for u in &moved {
+                            let m = u.life.master_id;
+                            let old = crate::tracker::key(self.masters.get(p), &self.lines, m);
+                            self.players[p].tracker.remove(u.id, old);
+                            let k = crate::tracker::key(self.masters.get(new), &self.lines, m);
+                            self.players[new].tracker.add(u.id, k);
                         }
                         self.players[new].objects.extend(moved);
                         i += 1;
