@@ -126,6 +126,16 @@ fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::T
     }
 }
 
+/// The master load's remap of a base id (`FUN_1411319f0` at `0x141132363`..`0x14113249c`):
+/// 768 becomes 420, 770 becomes 691.
+const fn base_id(id: i16) -> i16 {
+    match id {
+        0x300 => 0x1a4,
+        0x302 => 0x2b3,
+        _ => id,
+    }
+}
+
 /// The work-command values of a `.dat` unit, with the world's sound table its tasks read.
 fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]) -> work::Master {
     let cost = unit.creatable.as_ref().map_or_else(Vec::new, |c| {
@@ -139,6 +149,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
         id,
         kind: unit.unit_type,
         copy_id: unit.copy_id,
+        base_id: base_id(unit.base_id),
         class: unit.class,
         terrain_restriction: unit.terrain_restriction,
         task_by_group: unit.bird.as_ref().map_or(0, |b| b.task_swap_group),

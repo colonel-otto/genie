@@ -47,10 +47,20 @@ pub const MOVED: u8 = 15;
 pub const SEARCH: u8 = 3;
 /// State 11: walking to its point, to search from there (a farm another farmer works).
 pub const WALK_BACK: u8 = 11;
+/// State 0xf2: a farmer walking back to where it gathered (`mGatherX`, `mGatherY`) to reseed
+/// its farm there ([`Next::Reseed`]).
+pub const RESEED_WALK: u8 = 0xf2;
+/// State 0xf3: a farmer without its farm (or at one another farmer works) waits a second, its
+/// unit AI asked for another ([`Next::Search`]).
+pub const FARM_WAIT: u8 = 0xf3;
 
 /// `set_state(3)`'s timer: the search asks again once it counted up to 0 (`0xc1200000`, an
 /// immediate in `0x140a8cd40`).
 const SEARCH_WAIT: f32 = -10.0;
+/// `set_state(0xf3)`'s timer: a second (`0xbf800000`, an immediate in `0x140a8cd40`).
+const FARM_WAIT_TIME: f32 = -1.0;
+/// `mGatherX` of none (`DAT_14330ec20`, −1.0).
+const NO_GATHER_POINT: f32 = -1.0;
 /// The gatherers whose gather without a target waits for another farm (`set_state(0xf3)`,
 /// `0x140a8e1d0`'s cases 3, 5 and 6: masters 259, 214, 1891 and 1892).
 const FARM_WAITERS: [i16; 4] = [259, 214, 1891, 1892];
@@ -259,10 +269,21 @@ pub enum Next {
     /// (slot 0x380 forced, `FUN_14120d410`; the caller's, after the update), which replaces the
     /// Gather.
     Build,
-    /// `set_state(3)` or its 10 seconds past: the caller posts the unit AI's notify 0x202 (the
-    /// gather action `0x261`, the target type, the drop site: the second target, else the one
-    /// `FUN_1411671e0` finds, 0 for none, −1 for a master without drop sites).
+    /// `set_state(3)` or its 10 seconds past, or `set_state(0xf3)`: the caller posts the unit
+    /// AI's notify 0x202 (the gather action `0x261`, the target type, the drop site: the second
+    /// target, else the one `FUN_1411671e0` finds, 0 for none, −1 for a master without drop
+    /// sites).
     Search,
+    /// State 0xf2's walk ended (`0x140a8e1d0` case 0xf1): the caller reseeds the farm
+    /// ([`crate::turn::Turns::reseed`], `FUN_140a8aa60`, which sends the gatherer to build it);
+    /// without a reseed (the interface's event 0x7f, 0x9c for a gatherer not a villager, when it
+    /// has a farm spot) a walk that arrived leaves a computer player's gatherer done
+    /// (`set_state(1)`), a human's idle (`set_state(2)`), and a failed walk idles both
+    /// ([`GatherAction::after_reseed`]).
+    Reseed {
+        /// The walk arrived (codes 1, 2 and 5), else it failed (code 3).
+        arrived: bool,
+    },
 }
 
 /// What slot 0x40 reads of a move's target object.
@@ -721,8 +742,35 @@ impl GatherAction {
     ///
     /// A unit that cannot move (`set_state(13)`).
     pub fn walk_back(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+        self.walk_to_point(WALK_BACK, radius, mover)
+    }
+
+    /// `set_state(0xf2)` (`0x140a8cd40` case 0xf2): the point takes `mGatherX`, `mGatherY`
+    /// unless `mGatherX` is −1 (`UCOMISS`: a NaN takes them), then case 0xb's walk to it within
+    /// `radius` plus the task's range ([`GatherAction::walk_back`]'s, in state 0xf2).
+    ///
+    /// # Errors
+    ///
+    /// A unit that cannot move (`set_state(13)`).
+    fn begin_reseed_walk(&mut self, radius: f32, mover: &mut Mover) -> Result<(), Unsupported> {
+        if self.gather_at[0] != NO_GATHER_POINT {
+            self.point[0] = self.gather_at[0];
+            self.point[1] = self.gather_at[1];
+        }
+        self.walk_to_point(RESEED_WALK, radius, mover)
+    }
+
+    /// `set_state` in `state` 11 or 0xf2 (case 0xb's walk): the sub-actions go, the timer
+    /// clears and a quiet `MoveTo` to the point within `radius` plus the task's range starts
+    /// (`FUN_140aa0d30`).
+    fn walk_to_point(
+        &mut self,
+        state: u8,
+        radius: f32,
+        mover: &mut Mover,
+    ) -> Result<(), Unsupported> {
         self.tear_down(Some(mover))?;
-        self.state = WALK_BACK;
+        self.state = state;
         self.timer = 0.0;
         if mover.stats.speed == 0.0 {
             return Err(Unsupported("a MoveTo of a unit without speed (state 13)"));
@@ -752,6 +800,142 @@ impl GatherAction {
             }
             None => Err(Unsupported("a Gather in state 11 without its MoveTo")),
         }
+    }
+
+    /// `set_state(0xf3)` (case 0xf3; `FUN_140a98620` first): as the search's
+    /// ([`GatherAction::begin_search`], the same notify) with a timer of a second.
+    fn begin_farm_wait(
+        &mut self,
+        mover: Option<&mut Mover>,
+        g: &mut Gatherer<'_>,
+    ) -> Result<Next, Unsupported> {
+        self.tear_down(mover)?;
+        self.state = FARM_WAIT;
+        self.timer = FARM_WAIT_TIME;
+        if let Some(s) = self.stand_sprite(g) {
+            set_sprite(g.sprite, s, g.sprite_rng);
+        }
+        Ok(Next::Search)
+    }
+
+    /// State 0xf3's update (`0x140a8e1d0` case 0xf2): the timer counts up by the world's dt
+    /// while below 0; once at 0 a gatherer that never gathered (`+0x80`) at a farm (its target
+    /// type 49) another farmer works too (`+0x644` above 1) walks back to its point to search
+    /// (`set_state(11)` with the farm's radius, none for a stop farm, then its target goes:
+    /// slot 0x68 with none); one that never gathered otherwise idles (`set_state(2)`); one that
+    /// gathered walks back to where it gathered to reseed (`set_state(0xf2)`). A timer at 0 or
+    /// more does nothing.
+    fn update_farm_wait(
+        &mut self,
+        mut walk: Walk<'_>,
+        target: Option<&Victim>,
+        g: &mut Gatherer<'_>,
+        dt: f32,
+    ) -> Result<Next, Unsupported> {
+        if 0.0 <= self.timer {
+            return Ok(Next::Stay);
+        }
+        self.timer += dt;
+        if self.timer < 0.0 {
+            return Ok(Next::Stay);
+        }
+        let radius = target.map_or(0.0, |t| {
+            if STOP_FARMS.contains(&t.master_id) {
+                0.0
+            } else {
+                t.radius[0]
+            }
+        });
+        if !self.worked {
+            if self.target_type == i32::from(FARM_CLASS) && target.is_some_and(|t| 1 < t.workers) {
+                let mover = walk
+                    .mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a gatherer without movement state"))?;
+                self.set_walk_back(radius, mover)?;
+                self.target = -1;
+                return Ok(Next::Stay);
+            }
+            self.tear_down(walk.mover.as_deref_mut())?;
+            self.set_idle(g);
+            return Ok(Next::Stay);
+        }
+        let mover = walk
+            .mover
+            .as_deref_mut()
+            .ok_or(Unsupported("a gatherer without movement state"))?;
+        self.begin_reseed_walk(radius, mover)?;
+        Ok(Next::Stay)
+    }
+
+    /// State 0xf2's update (`0x140a8e1d0` case 0xf1): its `MoveTo` walks; once it arrived (codes
+    /// 1 and 2: the list drops it, its destructor stops the unit) a target in a state of 2 or
+    /// less, or 6, is faced again (`FUN_1411944f0` false: `set_state(6)`); else, and after a
+    /// failed walk (code 3), the caller reseeds ([`Next::Reseed`]). An empty list's update
+    /// answers none of the codes: nothing happens.
+    fn update_reseed_walk(
+        &mut self,
+        mut walk: Walk<'_>,
+        target: Option<&Victim>,
+        g: &mut Gatherer<'_>,
+    ) -> Result<Next, Unsupported> {
+        match self.move_to {
+            Some(MoveTo::Arrived) => {
+                self.move_to = None;
+                self.walk_to = None;
+                walk.mover
+                    .as_deref_mut()
+                    .ok_or(Unsupported("a gatherer without movement state"))?
+                    .stop()?;
+                if let Some(t) = target
+                    && !(2 < t.state && t.state != 6)
+                {
+                    return self.set_face(t, g);
+                }
+                Ok(Next::Reseed { arrived: true })
+            }
+            Some(MoveTo::Failed) => Ok(Next::Reseed { arrived: false }),
+            Some(_) => {
+                self.step_move(walk, g)?;
+                Ok(Next::Stay)
+            }
+            None => Ok(Next::Stay),
+        }
+    }
+
+    /// State 0xf2's end without a reseed ([`Next::Reseed`]): the sub-actions go
+    /// (`FUN_140a98620`); after a walk that arrived a computer player's gatherer is done
+    /// (`set_state(1)`: the timer clears, the unit stands), any other idles (`set_state(2)`,
+    /// [`GatherAction::set_idle`]: the targets it lets go are returned for the caller's
+    /// release). The unit stands with `stand` (`FUN_140a8b6b0`).
+    ///
+    /// # Errors
+    ///
+    /// The unit's stop that the motion step does not model.
+    pub(crate) fn after_reseed(
+        &mut self,
+        arrived: bool,
+        computer: bool,
+        mover: Option<&mut Mover>,
+        stand: Option<crate::sprite::Graphic>,
+        sprite: &mut Option<ActiveSprite>,
+        rng: &mut Well512,
+    ) -> Result<[i32; 2], Unsupported> {
+        self.tear_down(mover)?;
+        self.timer = 0.0;
+        if let Some(s) = stand {
+            set_sprite(sprite, s, rng);
+        }
+        if arrived && computer {
+            self.state = DONE;
+            return Ok([-1; 2]);
+        }
+        self.state = IDLE;
+        let released = [self.target, self.carry_to];
+        self.target = -1;
+        self.carry_to = -1;
+        self.point = [-1.0; 3];
+        Ok(released)
     }
 
     /// `set_state(3)` (case 3; `FUN_140a98620` first: the `MoveTo` goes and stops the unit): the
@@ -887,6 +1071,8 @@ impl GatherAction {
             IDLE => return Ok(Next::Stay),
             MOVED => return self.update_moved(walk, g),
             WALK_BACK => return self.update_walk_back(walk, g),
+            FARM_WAIT => return self.update_farm_wait(walk, target.as_deref(), g, dt),
+            RESEED_WALK => return self.update_reseed_walk(walk, target.as_deref(), g),
             // case 2: the timer counts up by the world's dt; at 0 it waits again and asks again
             SEARCH => {
                 if self.timer < 0.0 {
@@ -908,9 +1094,7 @@ impl GatherAction {
                     return Ok(Next::Drop);
                 }
                 if waits_for_a_farm(g.master, self.target_type) {
-                    return Err(Unsupported(
-                        "a farmer's gather without a target (set_state 0xf3)",
-                    ));
+                    return self.begin_farm_wait(walk.mover.as_deref_mut(), g);
                 }
                 return self.begin_search(walk.mover.as_deref_mut(), g);
             }
@@ -958,9 +1142,7 @@ impl GatherAction {
                         ));
                     }
                     if 1 < target.workers {
-                        return Err(Unsupported(
-                            "a gather facing a farm another farmer works (set_state 0xf3)",
-                        ));
+                        return self.begin_farm_wait(walk.mover.as_deref_mut(), g);
                     }
                 }
                 // FUN_141162db0 turns the unit to face its target
@@ -1717,13 +1899,208 @@ mod tests {
         assert_eq!(run(120, &mut g, 0.02), Ok(Next::Stay));
         assert_eq!(run(120, &mut g, 0.02), Ok(Next::Search));
         assert_eq!(g.timer, -10.0);
-        // a farmer waits for another farm instead (set_state 0xf3)
+        // a farmer waits a second for another farm instead (set_state 0xf3), its unit AI asked
         let mut g = GatherAction {
             state: WORK,
             target: -1,
             ..GatherAction::new(task(), &bush(), false, rate()).unwrap()
         };
-        assert!(run(259, &mut g, 0.02).is_err());
+        assert_eq!(run(259, &mut g, 0.02), Ok(Next::Search));
+        assert_eq!((g.state, g.timer), (FARM_WAIT, -1.0));
+    }
+
+    /// A gatherer's update in `state` with `target`, the world's dt `dt`, a human's unless
+    /// `computer`: what it answers, with the gather after it.
+    fn farm_update(
+        g: &mut GatherAction,
+        target: Option<&mut Victim>,
+        dt: f32,
+        computer: bool,
+    ) -> Result<Next, Unsupported> {
+        let mut mover = crate::hunt::tests::walker();
+        let mut world = crate::spatial::Spatial::default();
+        let walk = Walk {
+            mover: Some(&mut mover),
+            me: crate::movement::Me {
+                id: 1,
+                position: [30.0, 40.0, 0.0],
+                group: -1,
+                action_state: g.state,
+            },
+            dt: 0.1,
+            world: &mut world,
+            plan: None,
+        };
+        let (mut kind, mut held) = (-1i16, 0.0f32);
+        let mut sprite = None;
+        let (mut rng, mut action) = (Well512::default(), Well512::default());
+        let mut gatherer = Gatherer {
+            held_kind: &mut kind,
+            held: &mut held,
+            work_rate: 0.31,
+            capacity: 10.0,
+            productivity: 1.0,
+            sprites: HuntSprites::default(),
+            sprite: &mut sprite,
+            sprite_rng: &mut rng,
+            class: 4,
+            master: 259,
+            stance: 0,
+            world_time: 0,
+            farm_stops: false,
+            posted: Vec::new(),
+            action_rng: &mut action,
+            player: 7,
+            computer,
+            stop_productivity: 1.0,
+            food_sold: 0.0,
+            sold: 0.0,
+            anim_stopped: false,
+        };
+        g.update(walk, target, &mut gatherer, dt)
+    }
+
+    /// A farmer waiting for another farm (state 0xf3), its farm gone.
+    fn waiting(worked: bool) -> GatherAction {
+        GatherAction {
+            state: FARM_WAIT,
+            timer: -1.0,
+            target: -1,
+            target_type: i32::from(FARM_CLASS),
+            worked,
+            gather_at: [112.0, 173.0],
+            ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
+        }
+    }
+
+    /// State 0xf3 counts the world's dt up to 0; then a farmer that never gathered idles, one
+    /// that gathered walks back to where it gathered (state 0xf2).
+    #[test]
+    fn a_farmer_without_its_farm_waits_a_second_then_walks_back_to_reseed() {
+        let mut g = waiting(true);
+        assert_eq!(farm_update(&mut g, None, 0.6, false), Ok(Next::Stay));
+        assert_eq!((g.state, g.timer), (FARM_WAIT, -1.0 + 0.6));
+        assert_eq!(farm_update(&mut g, None, 0.6, false), Ok(Next::Stay));
+        assert_eq!(g.state, RESEED_WALK);
+        assert_eq!([g.point[0], g.point[1]], [112.0, 173.0]);
+        assert_eq!(
+            (g.move_to, g.walk_range),
+            (Some(MoveTo::Start), task().range)
+        );
+        // without a gather point the walk goes to the point it holds
+        let mut g = waiting(true);
+        g.gather_at = [-1.0, -1.0];
+        g.point = [5.0, 6.0, 0.0];
+        assert_eq!(farm_update(&mut g, None, 1.0, false), Ok(Next::Stay));
+        assert_eq!((g.state, g.point), (RESEED_WALK, [5.0, 6.0, 0.0]));
+        // a farmer that never gathered idles
+        let mut g = waiting(false);
+        assert_eq!(farm_update(&mut g, None, 1.0, false), Ok(Next::Stay));
+        assert_eq!((g.state, g.target, g.point), (IDLE, -1, [-1.0; 3]));
+        // a timer at 0 or more waits on
+        let mut g = waiting(true);
+        g.timer = 0.0;
+        assert_eq!(farm_update(&mut g, None, 1.0, false), Ok(Next::Stay));
+        assert_eq!(g.state, FARM_WAIT);
+    }
+
+    /// A farmer that never gathered, at a farm another farmer works too, walks back to its
+    /// point to search (state 11, the farm's radius none) and lets the farm go.
+    #[test]
+    fn a_farmer_at_a_farm_another_works_walks_back_to_search() {
+        let mut g = waiting(false);
+        g.target = 12557;
+        let mut farm = Victim {
+            id: 12557,
+            amount: 175.0,
+            state: 2,
+            class: FARM_CLASS,
+            master_id: 50,
+            radius: [1.5, 1.5],
+            workers: 2,
+            ..Victim::default()
+        };
+        assert_eq!(
+            farm_update(&mut g, Some(&mut farm), 1.0, false),
+            Ok(Next::Stay)
+        );
+        assert_eq!((g.state, g.target), (WALK_BACK, -1));
+        assert_eq!(g.walk_range, task().range);
+    }
+
+    /// State 0xf2's walk: once it arrived without a target, or failed, the caller reseeds; a
+    /// target standing (state 2) is faced again.
+    #[test]
+    fn at_the_end_of_its_walk_back_a_farmer_reseeds() {
+        let walking = |move_to| GatherAction {
+            state: RESEED_WALK,
+            target: -1,
+            move_to: Some(move_to),
+            walk_to: Some([112.0, 173.0, 0.0]),
+            ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
+        };
+        let mut g = walking(MoveTo::Arrived);
+        assert_eq!(
+            farm_update(&mut g, None, 0.1, false),
+            Ok(Next::Reseed { arrived: true })
+        );
+        assert_eq!((g.move_to, g.walk_to), (None, None));
+        let mut g = walking(MoveTo::Failed);
+        assert_eq!(
+            farm_update(&mut g, None, 0.1, false),
+            Ok(Next::Reseed { arrived: false })
+        );
+        // the farm still standing: the farmer faces it (set_state 6)
+        let mut g = walking(MoveTo::Arrived);
+        g.target = 28222;
+        let mut bush = target(10.0);
+        assert_eq!(
+            farm_update(&mut g, Some(&mut bush), 0.1, false),
+            Ok(Next::Stay)
+        );
+        assert_eq!(g.state, FACE);
+        // a dying one (state 3) does not hold it: the reseed
+        let mut g = walking(MoveTo::Arrived);
+        g.target = 28222;
+        let mut dying = Victim {
+            state: 3,
+            ..target(10.0)
+        };
+        assert_eq!(
+            farm_update(&mut g, Some(&mut dying), 0.1, false),
+            Ok(Next::Reseed { arrived: true })
+        );
+    }
+
+    /// Without a reseed a computer's farmer whose walk arrived is done; any other idles and
+    /// lets its targets go.
+    #[test]
+    fn without_a_reseed_the_farmer_idles_or_a_computer_s_is_done() {
+        let after = |arrived: bool, computer: bool| {
+            let mut g = GatherAction {
+                state: RESEED_WALK,
+                target: 5,
+                carry_to: 6,
+                move_to: Some(MoveTo::Failed),
+                ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
+            };
+            let mut mover = crate::hunt::tests::walker();
+            let (mut sprite, mut rng) = (None, Well512::default());
+            let released = g
+                .after_reseed(
+                    arrived,
+                    computer,
+                    Some(&mut mover),
+                    None,
+                    &mut sprite,
+                    &mut rng,
+                )
+                .unwrap();
+            (g.state, released, g.target, g.move_to)
+        };
+        assert_eq!(after(true, true), (DONE, [-1, -1], 5, None));
+        assert_eq!(after(true, false), (IDLE, [5, 6], -1, None));
+        assert_eq!(after(false, true), (IDLE, [5, 6], -1, None));
     }
 
     #[test]

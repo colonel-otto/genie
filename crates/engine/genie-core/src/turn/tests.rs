@@ -4434,3 +4434,168 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     assert_eq!(unit.attack.map(|a| a.state), Some(crate::attack::FAILED));
     assert_eq!(unit.anim_speed, Some(1.0));
 }
+
+/// [`builder_masters`] with the farmer (259, of the villagers' group 1, which builds as 118)
+/// and the farm (50: class 49, its own base, available, 60 wood, a building part of its own).
+fn farm_masters() -> Masters {
+    let builders = builder_masters();
+    let farmer = Master {
+        id: 259,
+        ..builders.get(83).unwrap().clone()
+    };
+    let farm = Master {
+        id: 50,
+        base_id: 50,
+        class: 49,
+        available: true,
+        radius: [1.5, 1.5],
+        clearance: [1.5, 1.5],
+        tall: false,
+        cost: vec![(1, 60, true)],
+        hit_points: 480,
+        build_time: 15,
+        ..builders.get(70).unwrap().clone()
+    };
+    Masters::new(builders.iter().cloned().chain([farmer, farm]))
+}
+
+/// Player 1's farmer 9175 back at its farm spot (30.5, 88.5), its walk back (state 0xf2)
+/// ended; the player holds 100 wood.
+fn reseed_world() -> Turns {
+    let task = crate::hunt::HuntTask {
+        id: 2,
+        range: 0.25,
+        resource: 15,
+        sprites: [-1; 4],
+        work_value: 1.0,
+        productivity: -1,
+        kind4: -1,
+    };
+    let farm = crate::gather::Resource {
+        id: 12557,
+        position: [30.5, 88.5, 0.0],
+        class: 49,
+        master: 50,
+        player: 1,
+        workers: 0,
+        drop_site: false,
+        gap: 0.0,
+        radius: [1.5, 1.5],
+    };
+    let rate = crate::gather::StopRate {
+        work_rate: 1.0,
+        capacity: 10.0,
+        productivity: 1.0,
+    };
+    let gather = crate::gather::GatherAction {
+        state: crate::gather::RESEED_WALK,
+        target: -1,
+        worked: true,
+        ..crate::gather::GatherAction::new(task, &farm, false, rate).unwrap()
+    };
+    let farmer = Unit {
+        id: 9175,
+        position: [30.5, 88.5, 0.0],
+        life: Lifecycle {
+            class: Class::Animated,
+            state: 2,
+            hp: 25.0,
+            master_id: 259,
+            ..Lifecycle::default()
+        },
+        gather: Some(gather),
+        ai: Some(UnitAi {
+            ai_type: 8,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            ..UnitAi::default()
+        }),
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        29910,
+        1,
+        vec![0, 0],
+        vec![
+            Player::default(),
+            Player {
+                objects: vec![farmer],
+                resources: [0.0, 100.0, 0.0, 0.0],
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            },
+        ],
+    );
+    t.next_object_id = 10028;
+    t.masters = vec![Masters::default(), farm_masters()];
+    placeable(&mut t);
+    t
+}
+
+/// `FUN_140a8aa60` with the automatic farm queue: the farmer pays a farm (60 wood), its
+/// foundation goes on the farm spot and the farmer builds it (as 118, its Gather gone).
+#[test]
+fn a_farmer_whose_farm_ran_out_reseeds_it_with_the_automatic_queue() {
+    let mut t = reseed_world();
+    t.players[1].auto_farm_queue = true;
+    t.reseed_after_walk(1, 0, true).unwrap();
+    let p = &t.players[1];
+    assert_eq!(p.resources[1], 40.0);
+    assert_eq!(p.farm_queue, 0);
+    let foundation = p.objects.last().unwrap();
+    assert_eq!(
+        (
+            foundation.id,
+            foundation.life.master_id,
+            foundation.position
+        ),
+        (10028, 50, [30.5, 88.5, 0.0])
+    );
+    let farmer = &p.objects[0];
+    assert_eq!(farmer.life.master_id, 118);
+    assert_eq!(farmer.build.map(|b| b.target), Some(10028));
+    assert!(farmer.gather.is_none());
+}
+
+/// Without the automatic queue the farm comes from the mill's queue (one less) unpaid; with
+/// it but too little wood, from the queue too.
+#[test]
+fn a_reseed_takes_a_queued_farm() {
+    for (auto, wood) in [(false, 100.0), (true, 59.0)] {
+        let mut t = reseed_world();
+        t.players[1].auto_farm_queue = auto;
+        t.players[1].resources[1] = wood;
+        t.players[1].farm_queue = 2;
+        t.reseed_after_walk(1, 0, true).unwrap();
+        let p = &t.players[1];
+        assert_eq!((p.resources[1], p.farm_queue), (wood, 1));
+        assert_eq!(p.objects.last().unwrap().life.master_id, 50);
+    }
+}
+
+/// Without a farm to make (nothing queued, no automatic queue, or no wood) the reseed makes
+/// nothing: a human's farmer idles, a computer's is done.
+#[test]
+fn without_a_farm_to_make_the_farmer_idles() {
+    let mut t = reseed_world();
+    t.reseed_after_walk(1, 0, true).unwrap();
+    let p = &t.players[1];
+    assert_eq!(p.objects.len(), 1);
+    assert_eq!(
+        p.objects[0].gather.map(|g| g.state),
+        Some(crate::gather::IDLE)
+    );
+    let mut t = reseed_world();
+    t.players[1].auto_farm_queue = true;
+    t.players[1].resources[1] = 59.0;
+    t.players[1].computer = true;
+    t.reseed_after_walk(1, 0, true).unwrap();
+    let p = &t.players[1];
+    assert_eq!((p.objects.len(), p.resources[1]), (1, 59.0));
+    assert_eq!(
+        p.objects[0].gather.map(|g| g.state),
+        Some(crate::gather::DONE)
+    );
+}

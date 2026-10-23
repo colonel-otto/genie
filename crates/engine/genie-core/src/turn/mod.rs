@@ -81,6 +81,10 @@ const GATE_CLOSE_DELAY: f32 = 0.5;
 /// counts (25).
 const GATE_QUERY_RECORDS: usize = 10;
 const GATE_COUNT_CAP: usize = 25;
+/// A unit's build command (a Gather's on its target not built yet, or its reseed) after an
+/// update in which the unit left its list: in the game it ran inside the update, before.
+const LEAVES_ITS_LIST: Unsupported = Unsupported("a build command of a unit that leaves its list");
+
 /// The world constructor's history period (`FUN_141599e50`'s immediate 0x19 at `world+0x8b8`),
 /// until the `.dat`'s `time_slice` replaces it.
 pub const HISTORY_PERIOD: i32 = 25;
@@ -1118,6 +1122,7 @@ impl Turns {
                     gather_objects: Vec::new(),
                     build_object: None,
                     build_command: None,
+                    reseed: None,
                     move_aside: Vec::new(),
                     transport_moves: Vec::new(),
                     entered: None,
@@ -1146,6 +1151,7 @@ impl Turns {
                 let leads = c.leads.take();
                 let build_object = c.build_object.take();
                 let build_command = c.build_command.take();
+                let reseed = c.reseed.take();
                 let move_aside = std::mem::take(&mut c.move_aside);
                 let transport_moves = std::mem::take(&mut c.transport_moves);
                 let entered = c.entered.take();
@@ -1427,10 +1433,16 @@ impl Turns {
                 // a Gather's build command on its target not built yet (slot 0x380)
                 if let Some(foundation) = build_command {
                     if !matches!(result, Ok(Step::Stay)) {
-                        result = result.and(Err(Unsupported(
-                            "a build command of a unit that leaves its list",
-                        )));
+                        result = result.and(Err(LEAVES_ITS_LIST));
                     } else if let Err(e) = self.build_command(p, i, foundation) {
+                        result = Err(e);
+                    }
+                }
+                // a Gather's reseed after its walk back (state 0xf2): a build command too
+                if let Some(arrived) = reseed {
+                    if !matches!(result, Ok(Step::Stay)) {
+                        result = result.and(Err(LEAVES_ITS_LIST));
+                    } else if let Err(e) = self.reseed_after_walk(p, i, arrived) {
                         result = Err(e);
                     }
                 }

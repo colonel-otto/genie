@@ -1172,6 +1172,19 @@ impl Turns {
         at: [f32; 2],
         human: bool,
     ) -> Result<u8, Unsupported> {
+        self.placement_code_beside(player, master, at, human, &[])
+    }
+
+    /// [`Turns::placement_code`] whose scan passes over the objects `own` (the test's `p12` and
+    /// its annexes).
+    pub(crate) fn placement_code_beside(
+        &self,
+        player: usize,
+        master: i16,
+        at: [f32; 2],
+        human: bool,
+        own: &[i32],
+    ) -> Result<u8, Unsupported> {
         let site = self.master_of(player, master)?;
         if self.spatial.sight.is_none() {
             return Err(Unsupported(
@@ -1200,6 +1213,7 @@ impl Turns {
             hill_mode: site.hill_mode,
             placement: site.placement,
             zones: false,
+            own,
         };
         let map = crate::spawn::WorldMap { turns: self };
         crate::spawn::build_placement(&build, &map, at)

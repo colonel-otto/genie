@@ -21,6 +21,19 @@ pub const FARM: i16 = 0x32;
 /// The pasture a mill's queue buys (`0x761`, GAME 0x15 and 0x16).
 pub const PASTURE: i16 = 0x761;
 
+/// The farm class (49), whose masters the reseed takes (`FUN_141658b40`'s `-0xe7b`).
+const FARM_CLASS: i16 = 49;
+/// The villager's class (4, `-0xea8`), which reseeds farms, and the fishing ship's (21, `0x15`),
+/// which reseeds fish traps.
+const VILLAGER_CLASS: i16 = 4;
+const FISHING_SHIP_CLASS: i16 = 21;
+/// The town centre (621, `0x26d`), whose availability also counts the town centres standing
+/// against attribute 218 (`FUN_141663f80`).
+const TOWN_CENTRE_621: i16 = 0x26d;
+const TOWN_CENTRE_LIMIT: usize = 218;
+/// A reseeding gatherer's farm spot of none (`DAT_14330ec20`, −1.0).
+const NO_FARM: f32 = -1.0;
+
 /// Which of a player's queues.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Queue {
@@ -132,6 +145,214 @@ impl Turns {
         Ok(true)
     }
 
+    /// `FUN_141663f80`: player `p` can make master `master` (one it has): the master its base
+    /// id names (`+0x260`; for a building heading a stack, `+0x9b8`, the head's base id, none
+    /// when the player lacks the head) is available (`+0x5f0`); the town centre 621 also while the
+    /// town centres standing ([`Turns::town_centre_count`]) are fewer than attribute 218
+    /// (`CVTSI2SS`, `COMISS`). A base id the player lacks makes none (the game reads its table's
+    /// slot unchecked; the `.dat`'s masters name their own).
+    #[must_use]
+    pub fn can_make(&self, p: usize, master: i16) -> bool {
+        let Some(ms) = self.masters.get(p) else {
+            return false;
+        };
+        let Some(m) = ms.get(master) else {
+            return false;
+        };
+        let Some(based) = ms.get(m.base_id) else {
+            return false;
+        };
+        let mut base = m.base_id;
+        if based.kind == crate::masters::master_type::BUILDING
+            && let Some(head) = based.building.as_ref().map(|b| b.head_unit)
+            && head != -1
+        {
+            let Some(h) = ms.get(head) else {
+                return false;
+            };
+            base = h.base_id;
+        }
+        let Some(b) = ms.get(base) else {
+            return false;
+        };
+        if base == TOWN_CENTRE_621 {
+            let limit = self.players[p].attribute(TOWN_CENTRE_LIMIT).unwrap_or(0.0);
+            if (self.town_centre_count(p) as f32) < limit {
+                return true;
+            }
+        }
+        b.available
+    }
+
+    /// `FUN_141658b40`: the farm a reseeding villager of player `p` makes: the farm (0x32) when
+    /// the player can make it ([`Turns::can_make`]) and it is of the farm class, else the pasture
+    /// (0x761) so; else none.
+    #[must_use]
+    pub fn reseed_master(&self, p: usize) -> Option<i16> {
+        [FARM, PASTURE].into_iter().find(|&m| {
+            self.can_make(p, m)
+                && self
+                    .masters
+                    .get(p)
+                    .and_then(|ms| ms.get(m))
+                    .is_some_and(|m| m.class == FARM_CLASS)
+        })
+    }
+
+    /// `FUN_140a8aa60`: player `p`'s gatherer at `idx` reseeds its farm at its farm spot
+    /// (`mFarmX`, `mFarmY`; none at −1). A villager (class 4) with the automatic farm queue
+    /// (`+0x1424`) or farms queued (`+0x141c`) makes the farm [`Turns::reseed_master`] names; any
+    /// other gatherer, with the automatic fish trap queue (`+0x1425`) or fish traps queued
+    /// (`+0x1420`), makes a fish trap when it is a fishing ship (class 21); else none. (For the
+    /// farm the game looks the spot's terrain up, `FUN_140f690e0`, `FUN_1413fbec0`,
+    /// `FUN_1413fc220`, `FUN_1413fc100`, and drops the answers: the master stays.) The master's
+    /// placement test (slot 0x50 with the explored test on, `p6` 1, whatever the player; for a
+    /// farm its scan passes over the gather's target and that building's annexes, `p12`,
+    /// [`Turns::placement_code_beside`]) must pass. With the automatic queue the player pays one
+    /// when it can without the population (`FUN_141618db0`, `FUN_14162fb60` with 1: [`cost_test`],
+    /// [`pay`]), else it takes one from the queue, which must hold one (else the interface's
+    /// event 0x7e); without the automatic queue it takes one from the queue. The master's slot
+    /// 0x108 makes the foundation there ([`Turns::make_building`], its unit AI by
+    /// [`crate::unit_ai::factory_type`]), the queue loses the one it gave (`FUN_14163c5b0`,
+    /// `FUN_14163c590`: only while above 0); the target's workers (slot 0x790, a building's
+    /// `+0xcb8`, which only a pasture fills: a farm's is empty, and a pasture's gather is not
+    /// modelled) would build it too; then the gatherer's ignore list empties (`FUN_141197da0`)
+    /// and its slot 0x128 sends it to build the foundation at the spot ([`Turns::build_task`],
+    /// [`Turns::build_directly`]). True when the foundation was made.
+    pub(crate) fn reseed(&mut self, p: usize, idx: usize) -> Result<bool, Unsupported> {
+        let unit = &self.players[p].objects[idx];
+        let Some(gather) = unit.gather else {
+            return Ok(false);
+        };
+        let farm = gather.farm;
+        if farm[0] == NO_FARM {
+            return Ok(false);
+        }
+        let class = self.master_of(p, unit.life.master_id)?.class;
+        let owner = &self.players[p];
+        let (master, auto, queue) =
+            if (!owner.auto_farm_queue && owner.farm_queue < 1) || class != VILLAGER_CLASS {
+                if !owner.auto_fishtrap_queue && owner.fish_trap_queue < 1 {
+                    return Ok(false);
+                }
+                if class != FISHING_SHIP_CLASS {
+                    return Ok(false);
+                }
+                (FISH_TRAP, owner.auto_fishtrap_queue, Queue::FishTraps)
+            } else {
+                let Some(master) = self.reseed_master(p) else {
+                    return Ok(false);
+                };
+                (master, owner.auto_farm_queue, Queue::Farms)
+            };
+        // the farm's scan passes over the old target and, for a building, its annexes; the fish
+        // trap's over nothing
+        let mut own = Vec::new();
+        if queue == Queue::Farms && gather.target != -1 {
+            own.push(gather.target);
+            if self
+                .object(gather.target)
+                .and_then(|(q, t)| self.master_of(q, t.life.master_id).ok())
+                .is_some_and(|m| m.kind == crate::masters::master_type::BUILDING)
+            {
+                let mut k = 0;
+                while k < own.len() {
+                    own.extend(self.spatial.annexes_of(own[k]));
+                    k += 1;
+                }
+            }
+        }
+        if self.placement_code_beside(p, master, farm, true, &own)? != 0 {
+            return Ok(false);
+        }
+        let mut from_queue = !auto;
+        if auto {
+            let masters = self
+                .masters
+                .get(p)
+                .ok_or(Unsupported("a reseed without the player's masters"))?;
+            if cost_test(masters, master, 1.0, false, &self.players[p])? {
+                if !pay(masters, master, 1.0, &mut self.players[p])? {
+                    return Ok(false);
+                }
+            } else {
+                if self.queued(p, queue) < 1 {
+                    return Ok(false);
+                }
+                from_queue = true;
+            }
+        }
+        let made = self.master_of(p, master)?;
+        let ai = Ok(crate::unit_ai::factory_type(
+            made.class,
+            master,
+            made.volley_missile.unwrap_or(-1),
+            made.combat_level,
+        ));
+        let at = [farm[0], farm[1], 0.0];
+        let (foundation, _) = self.make_building(p, master, ai, at)?;
+        if from_queue {
+            let player = &mut self.players[p];
+            let count = match queue {
+                Queue::Farms => &mut player.farm_queue,
+                Queue::FishTraps => &mut player.fish_trap_queue,
+            };
+            if 0 < *count {
+                *count -= 1;
+            }
+        }
+        let id = self.players[p].objects[idx].id;
+        let site = (p, foundation, master);
+        let task = self.build_task(p, id, site, at)?;
+        self.build_directly(p, idx, task, site, at)?;
+        Ok(true)
+    }
+
+    /// State 0xf2's end (`0x140a8e1d0` case 0xf1, [`crate::gather::Next::Reseed`]) of player
+    /// `p`'s gatherer at `idx`, its walk `arrived` or failed: the reseed ([`Turns::reseed`]);
+    /// without one (the interface's event 0x7f, 0x9c for a gatherer not a villager, aside) the
+    /// Gather is done or idles ([`crate::gather::GatherAction::after_reseed`]: standing with
+    /// `FUN_140a8b6b0`'s sprite, the targets it lets go released).
+    pub(crate) fn reseed_after_walk(
+        &mut self,
+        p: usize,
+        idx: usize,
+        arrived: bool,
+    ) -> Result<(), Unsupported> {
+        if self.reseed(p, idx)? {
+            return Ok(());
+        }
+        let by = self.releaser(p, idx);
+        let master_id = self.players[p].objects[idx].life.master_id;
+        let standing = self.master_of(p, master_id)?.standing_sprite;
+        let computer = self.players[p].computer;
+        let unit = &mut self.players[p].objects[idx];
+        let Some(gather) = unit.gather.as_mut() else {
+            return Ok(());
+        };
+        let stand = crate::hunt::stand_sprite(
+            &gather.task,
+            standing,
+            unit.life.attribute_type,
+            unit.life.amount,
+            &self.graphics,
+        );
+        let released = gather.after_reseed(
+            arrived,
+            computer,
+            unit.mover.as_mut(),
+            stand,
+            &mut unit.sprite,
+            self.streams.get(crate::rng::Stream::Sprite),
+        )?;
+        for t in released {
+            if t != -1 {
+                self.release(t, by)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Player `p`'s queue `queue`.
     fn queued(&self, p: usize, queue: Queue) -> i32 {
         match queue {
@@ -223,6 +444,79 @@ mod tests {
         let mut t = world(1000.0);
         assert!(!t.queue_farms(1, 2, 1187).unwrap());
         assert_eq!(t.players[1].resources[1], 1000.0);
+    }
+
+    /// A building master `id` of class `class` and base id `base`, available or not, heading
+    /// `head` (−1 for none).
+    fn building(id: i16, class: i16, base: i16, available: bool, head: i16) -> Master {
+        Master {
+            id,
+            kind: master_type::BUILDING,
+            class,
+            base_id: base,
+            available,
+            building: Some(crate::masters::BuildingMaster {
+                head_unit: head,
+                stack_unit: -1,
+                annexes: [-1; 4],
+                ..crate::masters::BuildingMaster::default()
+            }),
+            ..Master::default()
+        }
+    }
+
+    /// `FUN_141663f80`: the master its base id names is available; a stack's head names the
+    /// head's base; a master the player lacks, or a base it lacks, makes none.
+    #[test]
+    fn a_master_can_be_made_by_its_base_s_availability() {
+        let mut t = world(0.0);
+        t.masters[1] = Masters::new([
+            building(FARM, FARM_CLASS, FARM, true, -1),
+            building(PASTURE, FARM_CLASS, 300, false, -1),
+            building(300, 3, 300, true, 301),
+            building(301, 3, 302, false, -1),
+            building(302, 3, 302, true, -1),
+            building(303, 3, 999, true, -1),
+        ]);
+        assert!(t.can_make(1, FARM));
+        // the pasture's base 300 heads 301, whose base 302 is available
+        assert!(t.can_make(1, PASTURE));
+        assert!(!t.can_make(1, 1187));
+        assert!(!t.can_make(1, 303));
+        t.masters[1] = Masters::new([building(FARM, FARM_CLASS, FARM, false, -1)]);
+        assert!(!t.can_make(1, FARM));
+    }
+
+    /// The town centre 621 is also made while the town centres standing are fewer than
+    /// attribute 218.
+    #[test]
+    fn a_town_centre_can_be_made_below_the_town_centre_limit() {
+        let mut t = world(0.0);
+        t.masters[1] = Masters::new([building(TOWN_CENTRE_621, 3, TOWN_CENTRE_621, false, -1)]);
+        assert!(!t.can_make(1, TOWN_CENTRE_621));
+        t.players[1].attributes[TOWN_CENTRE_LIMIT] = 1.0;
+        assert!(t.can_make(1, TOWN_CENTRE_621));
+    }
+
+    /// `FUN_141658b40`: the farm when the player can make it, else the pasture, each of the
+    /// farm class; else none.
+    #[test]
+    fn a_reseed_makes_the_farm_else_the_pasture() {
+        let mut t = world(0.0);
+        let masters = |farm: bool, pasture: bool, class: i16| {
+            Masters::new([
+                building(FARM, class, FARM, farm, -1),
+                building(PASTURE, FARM_CLASS, PASTURE, pasture, -1),
+            ])
+        };
+        t.masters[1] = masters(true, true, FARM_CLASS);
+        assert_eq!(t.reseed_master(1), Some(FARM));
+        t.masters[1] = masters(false, true, FARM_CLASS);
+        assert_eq!(t.reseed_master(1), Some(PASTURE));
+        t.masters[1] = masters(true, true, 3);
+        assert_eq!(t.reseed_master(1), Some(PASTURE));
+        t.masters[1] = masters(false, false, FARM_CLASS);
+        assert_eq!(t.reseed_master(1), None);
     }
 
     /// A return gives back at most the queue's count, each its paid costs.
