@@ -5005,17 +5005,16 @@ impl Unit {
             None => crate::move_to::MoveStep::default(),
         };
         if step.gave_up {
-            // LAB_140aa320c: a human's villager waits once (set_state 2, 1 s or 2 s by its
-            // stance); any other unit's MoveTo fails (set_state 13), which its unit AI's check
-            // between turns may interrupt with its next order the same update
             let villager = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
                 .is_some_and(|m| m.class == 4);
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
-            if let Some(m) = self.move_to.as_mut() {
-                m.state = m.wait.give_up(villager && !c.computer, stance);
-            }
+            self.own_move_gave_up(
+                villager && !c.computer,
+                stance,
+                (c.masters, c.graphics, c.streams.get(Stream::Sprite)),
+            )?;
         }
         if step.target_moved {
             self.post_own(TARGET_MOVED, [0, 0, 0])?;
@@ -6509,6 +6508,39 @@ impl Unit {
             self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }
         self.move_to = Some(move_to);
+        Ok(())
+    }
+
+    /// `LAB_140aa320c`, the motion step gave up on the unit's own `MoveTo`: a human's villager
+    /// (`waits`) waits once (`set_state(2)`, 1 s or 2 s by its `stance`, which shows nothing);
+    /// any other unit's `MoveTo` fails (`set_state(13)`), which its unit AI's check between turns may
+    /// interrupt with its next order the same update. The failure's `set_state` (`0x140aa29e0`,
+    /// an own `MoveTo` is never quiet) shows the standing sprite at its speed and clears
+    /// `+0x7b8`.
+    ///
+    /// # Errors
+    ///
+    /// A unit with a sprite whose master's standing sprite the slice does not hold.
+    pub(crate) fn own_move_gave_up(
+        &mut self,
+        waits: bool,
+        stance: u8,
+        (masters, graphics, sprite_rng): (
+            Option<&Masters>,
+            &std::collections::BTreeMap<i16, Graphic>,
+            &mut Well512,
+        ),
+    ) -> Result<(), GenieError> {
+        let Some(m) = self.move_to.as_mut() else {
+            return Ok(());
+        };
+        m.state = m.wait.give_up(waits, stance);
+        if m.state == MoveTo::Failed {
+            if let Some(mover) = self.mover.as_mut() {
+                mover.shows_standing();
+            }
+            self.shows_standing_sprite(masters, graphics, sprite_rng)?;
+        }
         Ok(())
     }
 

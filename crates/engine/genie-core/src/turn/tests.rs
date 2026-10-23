@@ -4577,6 +4577,65 @@ fn an_ai_move_of_a_unit_without_speed_fails_at_its_start_standing() {
     assert_eq!(u.anim_speed, Some(0.0));
 }
 
+/// The motion step gave up on a unit's own `MoveTo` (`LAB_140aa320c`): any unit but a human's
+/// villager fails it (`set_state(13)`), whose `set_state` (`0x140aa29e0`, not quiet) shows the
+/// standing sprite (slot 0x68 with slot 0x798's): the mover's speed becomes the standing one
+/// (426049848's deer 14064 in update 2077, which then evaded at 0.737, not 1.4) and `+0x7b8`
+/// clears. A human's villager waits once (`set_state(2)`), which shows nothing.
+#[test]
+fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
+    let standing = Graphic {
+        id: 764,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let walking = Graphic {
+        id: 765,
+        ..standing
+    };
+    let graphics = std::collections::BTreeMap::from([(764, standing), (765, walking)]);
+    let masters = Masters::new([Master {
+        id: 65,
+        standing_sprite: 764,
+        ..Master::default()
+    }]);
+    let mut rng = Well512::default();
+    let deer = |rng: &mut Well512| {
+        let mut u = mover_unit(14064);
+        u.life.master_id = 65;
+        let m = u.mover.as_mut().unwrap();
+        m.stats.speed = 1.4003;
+        m.stats.walk_speed = 1.4003;
+        m.stats.stand_speed = 0.737;
+        u.sprite = Some(crate::sprite::ActiveSprite::start(walking, rng));
+        u.anim_speed = Some(1.0);
+        u.move_to = Some(crate::move_to::MoveToAction::to_point(
+            [119.5, 172.5, 0.0],
+            0.0,
+            false,
+            None,
+        ));
+        u
+    };
+    let mut u = deer(&mut rng);
+    u.own_move_gave_up(false, 0, (Some(&masters), &graphics, &mut rng))
+        .unwrap();
+    assert_eq!(u.move_to.map(|m| m.state), Some(MoveTo::Failed));
+    assert_eq!(u.mover.as_ref().map(|m| m.stats.speed), Some(0.737));
+    assert_eq!(u.sprite.map(|s| s.graphic.id), Some(764));
+    assert_eq!(u.anim_speed, Some(0.0));
+    let mut v = deer(&mut rng);
+    v.own_move_gave_up(true, 0, (Some(&masters), &graphics, &mut rng))
+        .unwrap();
+    assert_eq!(v.move_to.map(|m| m.state), Some(MoveTo::Waiting));
+    assert_eq!(v.mover.as_ref().map(|m| m.stats.speed), Some(1.4003));
+    assert_eq!(v.sprite.map(|s| s.graphic.id), Some(765));
+}
+
 /// The unit AI's attack command ([`crate::unit_ai::UnitSide::attack`]) of the scout 123 (master
 /// 448, class 47, 426049998's) on Gaia's wolf 50 half a tile east, its attack timer `timer`, inside
 /// `inside` if any: the scout and what the command answered and took.
