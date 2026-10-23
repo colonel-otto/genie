@@ -334,6 +334,8 @@ pub struct UnitAi {
     /// `+0x5c`, `desiredTargetDistance`: how near the follow order keeps the unit to its target
     /// (the constructor's 2).
     pub desired_distance: f32,
+    /// `+0x60`, `DefendTarget`: the object the defend order keeps the unit near (−1 for none).
+    pub defend_target: i32,
     /// `+0x64`, `+0x68`, `+0x6c`, `+0x70`: the order, action, target and target class before the
     /// current ones.
     pub last_order: i32,
@@ -1440,6 +1442,57 @@ pub trait UnitSide {
     fn target_flags(&mut self, _id: i32) -> Result<Option<TargetFlags>, Unsupported> {
         Ok(None)
     }
+
+    /// A command of the unit's that the unit AI's order slots give ([`UnitCommand`]): true when
+    /// the unit takes it (the slot's 1).
+    ///
+    /// # Errors
+    ///
+    /// The commands the slice holds no action for.
+    fn command(&mut self, _command: UnitCommand) -> Result<bool, Unsupported> {
+        Err(Unsupported(
+            "a unit command the slice does not model (heal, conversion, repair, enter, transport, \
+             unload)",
+        ))
+    }
+
+    /// The soldier's `AttackObject` (`FUN_140c17550`) after the attack, for a unit whose group
+    /// the world holds: its future path data goes (slot 0x550, `FUN_14114d6a0`), and a unit
+    /// that moves (slot 0x5c8) or speeds up (slot 0x5a0, its velocity data's forward
+    /// acceleration above 0) stops (slot 0x5d0).
+    ///
+    /// # Errors
+    ///
+    /// What the stop does not model.
+    fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
+        Err(Unsupported(
+            "a soldier's attack in a group without its unit",
+        ))
+    }
+}
+
+/// The unit's commands the unit AI's order slots give ([`UnitSide::command`]), each the unit's
+/// slot of `TRIBE_Combat_Object`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum UnitCommand {
+    /// The heal of an object (slot 0x108, `FUN_141214040`), forced.
+    Heal(i32),
+    /// The conversion of an object (slot 0x370, `FUN_141210510`), forced.
+    Convert(i32),
+    /// The repair of an object (slot 0x378, `FUN_141217c00`), forced.
+    Repair(i32),
+    /// The enter into an object (slot 0x3a0), forced.
+    Enter(i32),
+    /// The transport to a point (slot 0x3b8, `FUN_14108ce60`), forced.
+    Transport([f32; 3]),
+    /// The unload at a point at the unit's height (slot 0x3a8, `FUN_14108d050`), or over a wall
+    /// (slot 0x3b0, `FUN_14108d560`), forced.
+    Unload {
+        /// The point.
+        to: [f32; 3],
+        /// Over a wall.
+        over_wall: bool,
+    },
 }
 
 /// What the full update's tail (`0x140c66b10` after the look-around check) tests of the target of
@@ -1852,29 +1905,41 @@ const BUILDING_KIND: u8 = 80;
 /// The combat type (`0x46`), from which on the full update's tail reads a target's `+0x924`.
 const COMBAT_KIND: u8 = 70;
 
-/// The target of the unit's top action after the [`Effect`]s pending in `fx`, the last that
-/// replaces its actions deciding, and whether the caller gives that command only once the update
-/// ends: a stop leaves none (slot 0x3c0), a move to a point (slots 0x340, 0x148,
-/// `restorePatrolInformation`) or an explore (slot 0x398) an action without an object; a move to
-/// an object (slot 0x348) holds it, as do a hunt, gather and build (slots 0x360, 0x368, 0x380),
-/// which the caller gives after the update. None when no effect replaced the actions.
-fn pending_top_target(fx: &[Effect]) -> Option<(Option<i32>, bool)> {
-    fx.iter().rev().find_map(|e| match *e {
-        Effect::Stop
-        | Effect::Move(_)
-        | Effect::MoveAside(_)
-        | Effect::Explore(_)
-        | Effect::RestorePatrol => Some((None, false)),
-        Effect::MoveToObject { target, .. } => Some((Some(target), false)),
-        Effect::HuntObject(t) | Effect::GatherObject(t) | Effect::BuildObject(t) => {
-            Some((Some(t), true))
-        }
-        Effect::CapHumanOrder(_)
-        | Effect::OrderOnTarget(_)
-        | Effect::AfterOrder(_)
-        | Effect::ChangeOwner(_) => None,
-    })
+/// Whether the effect replaces or ends the unit's actions.
+const fn changes_actions(e: &Effect) -> bool {
+    !matches!(
+        e,
+        Effect::CapHumanOrder(_) | Effect::AfterOrder(_) | Effect::ChangeOwner(_)
+    )
 }
+
+/// Slot 400 as the full update's tail reads it: the target of the unit's top action after the
+/// [`Effect`]s pending in `fx`, the last that replaces its actions deciding (a stop leaves none,
+/// slot 0x3c0; a move to a point, slots 0x340, 0x148, `restorePatrolInformation`, or an explore,
+/// slot 0x398, an action without an object; a move to an object, slot 0x348, holds it, as do a
+/// hunt, gather and build, slots 0x360, 0x368, 0x380); without one the unit's now
+/// ([`UnitSide::top_target_now`]).
+fn top_target_after(fx: &[Effect], side: &mut dyn UnitSide) -> Result<Option<i32>, Unsupported> {
+    for e in fx.iter().rev() {
+        match *e {
+            Effect::Stop
+            | Effect::Move(_)
+            | Effect::MoveAside(_)
+            | Effect::Explore(_)
+            | Effect::RestorePatrol => return Ok(None),
+            Effect::MoveToObject { target, .. }
+            | Effect::HuntObject(target)
+            | Effect::GatherObject(target)
+            | Effect::BuildObject(target) => return Ok(Some(target)),
+            Effect::CapHumanOrder(_)
+            | Effect::OrderOnTarget(_)
+            | Effect::AfterOrder(_)
+            | Effect::ChangeOwner(_) => {}
+        }
+    }
+    side.top_target_now()
+}
+
 /// A building on its make action without a missile and with at most this firepower forgets its
 /// target (`DAT_14330eb8c`).
 const SINGLE_VOLLEY: f32 = crate::image::unit_ai::SINGLE_VOLLEY;
@@ -1982,6 +2047,42 @@ pub const FOLLOW_ORDER: i32 = 0x2c8;
 pub const FOLLOW_ACTION: i32 = 0x264;
 /// The defend order (`0x2bd`, "I have a defend order for Unit #%d" in slot 73).
 const DEFEND_ORDER: i32 = 0x2bd;
+/// The defend's action value (`0x259`, slots 0x170 and 0x178).
+const DEFEND_ACTION: i32 = 0x259;
+/// The master whose unit takes no defend order (slot 0x230's case 0x2bd: raw `0x611c`).
+const DEFENDLESS_MASTER: i16 = 128;
+/// The run away order (`0x2c3`, "I have a runAway order").
+const RUN_AWAY_ORDER: i32 = 0x2c3;
+/// The repair order (`0x2ce`).
+const REPAIR_ORDER: i32 = crate::ai_kinds::ORDER_REPAIR;
+/// The second value of the order on a target (`0x325`), which shares `0x2db`'s case.
+const ORDER_ON_TARGET_2: i32 = 0x325;
+/// The heal's action value (`0x25b`, slot 0xe0).
+const HEAL_ACTION: i32 = 0x25b;
+/// The conversion's action value (`0x25c`, slot 0xd8).
+const CONVERT_ACTION: i32 = 0x25c;
+/// The repair's action value (`0x26a`, slot 0xe8).
+const REPAIR_ACTION: i32 = 0x26a;
+/// The transport's action value (`0x266`, slot 0x128).
+const TRANSPORT_ACTION: i32 = 0x266;
+/// The unload's action value (`0x26d`, slot 0x118).
+const UNLOAD_ACTION: i32 = 0x26d;
+/// The unload over a wall's action value (700, slot 0x120).
+const UNLOAD_OVER_WALL_ACTION: i32 = 700;
+/// Seek and destroy's action value (`0x26e`, slot 0x180).
+const SEEK_ACTION: i32 = 0x26e;
+/// Explore and destroy's action value (`0x26f`, slot 0x188).
+const EXPLORE_DESTROY_ACTION: i32 = 0x26f;
+/// The wait order's action value (`0x274`, slot 0x230's case 0x2d8).
+const WAIT_ACTION: i32 = 0x274;
+/// The scout order's action value (`0x276`, after slot 0x100).
+const SCOUT_ACTION: i32 = 0x276;
+/// The auto boar luring's action value (`0x2be`, after slot 0xc8).
+const BOAR_LURING_ACTION: i32 = 0x2be;
+/// The trebuchet's classes (`-0xe79`, `-0xe76` raw: packed and unpacked), whose attack move on
+/// a target attacks it.
+const TREBUCHET_CLASS: i16 = 51;
+const TREBUCHET_PACKED_CLASS: i16 = 54;
 /// The follow order's target counts as moved when it is more than a tile off the AI's target
 /// point on either axis (`0x140c567c0`: `DAT_14330ec20`, `DAT_14330eb8c`).
 const FOLLOW_SLACK_LOW: f32 = crate::image::unit_ai::FOLLOW_SLACK_LOW;
@@ -2379,6 +2480,7 @@ impl UnitAi {
             target_type: -1,
             target_point: [-1.0; 3],
             desired_distance: DESIRED_DISTANCE,
+            defend_target: -1,
             last_order: -1,
             last_action: -1,
             last_target: -1,
@@ -3233,9 +3335,9 @@ impl UnitAi {
             if matches!(self.current_order, PATROL | PATROL_2) {
                 self.save_patrol(side);
             }
-            // slot 0xb8 forced (FUN_140c17550: the base's, then the unit's group, not held);
+            // slot 0xb8 forced (FUN_140c17550: the base's, then the unit's group);
             // with retargeting on and off order 0x2bd the order goes (FUN_140c64b60 with -1, 0)
-            if self.attack_object(target, true, false, at, side, fx)? {
+            if self.attack_slot(target, false, at, side, fx)? {
                 if self.retarget_disabled == 0 && self.current_order != 0x2bd {
                     self.set_order_with(-1, false, ai);
                 }
@@ -3458,7 +3560,7 @@ impl UnitAi {
             && at.group.is_none_or(|g| g.idle)
             && !at.garrisoned
         {
-            self.run_orders(at, side, &mut fx)?;
+            self.run_orders(at, side, computer, ai, &mut fx)?;
         }
         // an order on a target ran its work here (slot 0x230's case 0x2db, the unit's slot
         // 0x128): the caller gives it, then the rest of the update reads what it gave the AI
@@ -3551,8 +3653,8 @@ impl UnitAi {
 
     /// The full update's tail on the target of its unit's top action (slot 400 at `0x140c684fc`,
     /// after the look-around check), as the action list stands after the update's commands: the
-    /// last of the [`Effect`]s pending that replaces the actions decides
-    /// ([`pending_top_target`]), else the unit's now ([`UnitSide::top_target_now`]). A Gaia unit
+    /// last of the [`Effect`]s pending that replaces the actions decides, else the unit's now
+    /// ([`top_target_after`]). A Gaia unit
     /// whose target is a Gaia object of type 70 or above that another player can take more than
     /// once (`+0x924` 2) lets it go ("Tasking GAIA unit to stop attacking an object which can be
     /// captured multiple times"): the target goes (`FUN_140c5e1e0`) and the action stops (slot
@@ -3569,11 +3671,18 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
-        let pending = pending_top_target(fx);
-        let id = match pending {
-            Some((id, _)) => id,
-            None => side.top_target_now()?,
-        };
+        let id = top_target_after(fx, side)?;
+        // a hunt, gather or build the caller gives once the update ends (after the stops)
+        let deferred = fx
+            .iter()
+            .rev()
+            .find(|e| changes_actions(e))
+            .is_some_and(|e| {
+                matches!(
+                    e,
+                    Effect::HuntObject(_) | Effect::GatherObject(_) | Effect::BuildObject(_)
+                )
+            });
         let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
             return Ok(());
         };
@@ -3587,10 +3696,7 @@ impl UnitAi {
         let untargeted = t.pasture == -1
             && (t.untargetable || (!t.attackable && action == ATTACK_ACTION))
             && action != TRADE_ACTION;
-        if !captured_again && !untargeted {
-            return Ok(());
-        }
-        if pending.is_some_and(|(_, deferred)| deferred) {
+        if deferred && (captured_again || untargeted) {
             return Err(Unsupported(
                 "a stop of the full update's tail after a command the caller gives later",
             ));
@@ -4395,7 +4501,7 @@ impl UnitAi {
         // into the queue at once (slot 0x30) and the order becomes the attack (700,
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
         if self.current_order != -1 && n.caller != self.current_target {
-            self.requeue_current(at, side, fx)?;
+            self.requeue_current(at, side, computer, ai_rng, fx)?;
             self.set_order_with(crate::ai_kinds::ORDER_ATTACK, false, ai_rng);
             self.order_priority = 100;
         }
@@ -4742,6 +4848,8 @@ impl UnitAi {
         &mut self,
         at: &Surroundings,
         side: &mut dyn UnitSide,
+        computer: bool,
+        ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if 2 < at.state || self.current_order == -1 {
@@ -4760,7 +4868,14 @@ impl UnitAi {
             target_type: self.target_type,
         };
         let place = ([at.position[0], at.position[1]], at.class);
-        self.order_now(record, Some(at.id), Some(place), Some((at, side)), fx)
+        self.order_now(
+            record,
+            Some(at.id),
+            Some(place),
+            Some((at, side, computer)),
+            ai,
+            fx,
+        )
     }
 
     /// `FUN_140c55c90`'s immediate branch ("Adding as an immediate order."), for a unit in state
@@ -4780,7 +4895,8 @@ impl UnitAi {
         order: QueuedOrder,
         keep_from: Option<i32>,
         place: Option<([f32; 2], i16)>,
-        world: Option<(&Surroundings, &mut dyn UnitSide)>,
+        world: Option<(&Surroundings, &mut dyn UnitSide, bool)>,
+        ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if let Some(unit) = keep_from
@@ -4806,11 +4922,11 @@ impl UnitAi {
             self.stop_with(true, place, fx)?;
         }
         match &world {
-            Some((at, _)) => self.end_notifies(0, at, fx)?,
+            Some((at, _, _)) => self.end_notifies(0, at, fx)?,
             None => self.clear_notifies(0)?,
         }
         let front = self.orders[0];
-        if self.process_order(&front, world, fx)? != 0xe {
+        if self.process_order(&front, world, place, ai, fx)? != 0xe {
             let _ = self.orders.remove(0);
         }
         Ok(())
@@ -4829,18 +4945,11 @@ impl UnitAi {
     }
 
     /// `AttackObject` (slot 0xb8, `FUN_140c43720`): `+0x1d5` clears; not `force`d, an AI with an
-    /// action fails (false). The target must be in the world; its slot 0xa0 with `any` must let it
-    /// attack the target: the base's (`FUN_140c48400`: the boar's, the ranged units', the
-    /// ships', the artifact's, the siege tower's and the livestock's) anything, the building's (`FUN_140c18b60`) nothing, the lion's
-    /// ([`lion_may_attack`]), the civilian's ([`civilian_may_attack`]), the soldier's and the
-    /// tower's ([`UnitSide::may_attack`]; the hunted animal's, `FUN_140c18d00`, reads its action
-    /// list, slot 0x538, and is not modelled); then the unit's attack command
-    /// ([`UnitSide::attack`]), on
-    /// success the action is
-    /// the attack (600, the last action keeping the old) and the target its point and class
-    /// (`FUN_140c64c10`). The slice holds no unit groups (`+0x6d0`), whose members would attack
-    /// too. A stop the processing made before (slot 0x3c0, a pending [`Effect::Stop`]) emptied
-    /// the action list before the command fills it: it runs first ([`UnitSide::stop`]).
+    /// action fails (false). The target must pass [`UnitAi::attack_check`] with `any`; then the
+    /// unit's attack command ([`UnitAi::attack_command`]), on success the action is the attack
+    /// (600, the last action keeping the old) and the target its point and class
+    /// (`FUN_140c64c10`). The group flag's attack by the unit's group (behind the byte
+    /// `DAT_143f01835`, which nothing writes) cannot run.
     fn attack_object(
         &mut self,
         target: i32,
@@ -4853,39 +4962,71 @@ impl UnitAi {
         if !force && self.current_action != -1 {
             return Ok(false);
         }
-        let (class, position) = if matches!(self.ai_type, 13 | 15 | SIEGE_AI) {
-            match side.may_attack(target, &self.seeker(at))? {
-                Some(t) => t,
-                None => return Ok(false),
-            }
-        } else {
-            let t = match at.unit(target) {
-                Some(t) => *t,
-                None => match side.seen_unit(target)? {
-                    Some(t) => t,
-                    None => return Ok(false),
-                },
-            };
-            let may = match self.ai_type {
-                // FUN_140c48400, the base's: the boar's, the ranged units' (6, 7), the trade
-                // ship's, the transport ship's, the fishing ship's, the artifact's, the siege
-                // tower's and the livestock's
-                4 | 6 | 7 | 10 | 11 | 12 | ARTIFACT_AI | SIEGE_TOWER_AI | 19 => true,
-                5 => any || lion_may_attack(at.attack_priority, t.class),
-                CIVILIAN => civilian_may_attack(at.attack_priority, t.class),
-                // FUN_140c18b60
-                17 => false,
-                _ => {
-                    return Err(Unsupported(
-                        "AttackObject's slot 0xa0 of a unit AI type not modelled",
-                    ));
-                }
-            };
-            if !may {
-                return Ok(false);
-            }
-            (t.class, t.position)
+        let Some((class, position)) = self.attack_check(target, any, at, side)? else {
+            return Ok(false);
         };
+        if !self.attack_command(target, force, at, side, fx)? {
+            return Ok(false);
+        }
+        self.set_action(ATTACK_ACTION);
+        self.target_at(target, Some(i32::from(class)), position);
+        Ok(true)
+    }
+
+    /// `AttackObject`'s test of `target` (`FUN_140c43720`, and `attackRoundupObject`'s): the world
+    /// must hold it and its slot 0xa0 with `any` must let it attack the target: the base's
+    /// (`FUN_140c48400`: the boar's, the ranged units', the ships', the artifact's, the siege
+    /// tower's and the livestock's) anything, the building's (`FUN_140c18b60`) nothing, the
+    /// lion's ([`lion_may_attack`]), the civilian's ([`civilian_may_attack`]), the soldier's, the
+    /// tower's and the siege unit's ([`UnitSide::may_attack`]); the hunted animal's
+    /// (`FUN_140c18d00`) reads its action list (slot 0x538) and the priest's (`FUN_140c19020`) its
+    /// conversions: not modelled. Its master's class and its place then.
+    fn attack_check(
+        &self,
+        target: i32,
+        any: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+        if matches!(self.ai_type, 13 | 15 | SIEGE_AI) {
+            return side.may_attack(target, &self.seeker(at));
+        }
+        let Some(t) = Self::world_object(target, at, side)? else {
+            return Ok(None);
+        };
+        let may = match self.ai_type {
+            // FUN_140c48400, the base's: the boar's, the ranged units' (6, 7), the trade
+            // ship's, the transport ship's, the fishing ship's, the artifact's, the siege
+            // tower's and the livestock's
+            4 | 6 | 7 | 10 | 11 | 12 | ARTIFACT_AI | SIEGE_TOWER_AI | 19 => true,
+            5 => any || lion_may_attack(at.attack_priority, t.class),
+            CIVILIAN => civilian_may_attack(at.attack_priority, t.class),
+            // FUN_140c18b60
+            17 => false,
+            _ => {
+                return Err(Unsupported(
+                    "AttackObject's slot 0xa0 of a unit AI type not modelled",
+                ));
+            }
+        };
+        Ok(may.then_some((t.class, t.position)))
+    }
+
+    /// The unit's attack command (slot 0x338, [`UnitSide::attack`]) on `target`, `force`d or not,
+    /// as `AttackObject`, `attackRoundupObject` and seek and destroy give it: a stop the
+    /// processing made before (slot 0x3c0, a pending [`Effect::Stop`]) emptied the action list
+    /// before the command fills it, so it runs first ([`UnitSide::stop`]). The notifies the
+    /// command posts (the unit's slot 0x328 -> the AI's slot 0x38) go into the queue, or the
+    /// buffer while it is full. True when the unit attacks: it then holds an action of its own
+    /// ([`UnitAi::commanded`]).
+    fn attack_command(
+        &mut self,
+        target: i32,
+        force: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
         if fx.contains(&Effect::Stop) {
             if fx.iter().any(|e| *e != Effect::Stop) {
                 return Err(Unsupported(
@@ -4896,18 +5037,13 @@ impl UnitAi {
             side.stop()?;
         }
         let attacked = side.attack(target, force, self)?;
-        // the unit's posts (slot 0x328 -> the AI's slot 0x38) while the AI processes its
-        // notifies: into its queue, or the buffer when it is full
         for (kind, p) in attacked.posted {
             self.post(Notify::own(at.id, kind, p), at.state)?;
         }
-        if !attacked.attacks {
-            return Ok(false);
+        if attacked.attacks {
+            self.commanded = true;
         }
-        self.commanded = true;
-        self.set_action(ATTACK_ACTION);
-        self.target_at(target, Some(i32::from(class)), position);
-        Ok(true)
+        Ok(attacked.attacks)
     }
 
     /// The civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`) with its force flag 1, as every
@@ -5432,8 +5568,7 @@ impl UnitAi {
 
     /// The base handler's case 0x215 ([`IN_THE_WAY`]): a unit not of a boar's master (class 10
     /// of combat level 1, `FUN_140fde4f0`) attacks the unit in its way (`AttackObject`, slot
-    /// 0xb8, forced, its slot 0xa0 unforced: the civilian's [`UnitAi::civilian_attack`], any
-    /// other type's [`UnitAi::attack_object`]) when the world's table
+    /// 0xb8, forced, its slot 0xa0 unforced: [`UnitAi::attack_slot`]) when the world's table
     /// holds it, retargeting is on (`+0x1d6` 0), its stance (`+0x1a9`) is 0 and it has no order;
     /// the other unit's group (`+0x6d0`), which would let it attack with one, the slice does not
     /// hold. Processing goes on.
@@ -5451,12 +5586,8 @@ impl UnitAi {
             && self.current_order == -1
             && self.stance == 0
         {
-            // slot 0xb8 forced: the civilian's own, every other type's the base's
-            let _ = if self.ai_type == CIVILIAN {
-                self.civilian_attack(n.p[0], at, side, fx)?
-            } else {
-                self.attack_object(n.p[0], true, false, at, side, fx)?
-            };
+            // slot 0xb8 forced, by the type
+            let _ = self.attack_slot(n.p[0], false, at, side, fx)?;
         }
         Ok(GO_ON)
     }
@@ -5965,11 +6096,18 @@ impl UnitAi {
     /// The unit AI between its owner's turns (`FUN_140c68980`, from `RGE_Combat_Object::update`
     /// for a unit of a type below 70 or not inside another): with no notifies queued, a unit
     /// without an action value or with an action it may interrupt (slot 0x2d0) runs its order
-    /// queue. Its effects, as the full update's; `side` answers what the orders ask of the unit.
+    /// queue. Its effects, as the full update's; `side` answers what the orders ask of the unit,
+    /// `computer` is its owner's type and `ai` the AI stream.
+    ///
+    /// # Errors
+    ///
+    /// What an order's slot does not model.
     pub fn off_turn(
         &mut self,
         at: &Surroundings,
         side: &mut dyn UnitSide,
+        computer: bool,
+        ai: &mut Well512,
     ) -> Result<Vec<Effect>, Unsupported> {
         let mut fx = Vec::new();
         if !self.notifies.is_empty() || self.orders.is_empty() {
@@ -5979,7 +6117,7 @@ impl UnitAi {
             return Ok(fx);
         }
         if self.can_order(at, false) {
-            self.run_orders(at, side, &mut fx)?;
+            self.run_orders(at, side, computer, ai, &mut fx)?;
         }
         Ok(fx)
     }
@@ -6018,13 +6156,20 @@ impl UnitAi {
     }
 
     /// The order queue (`FUN_140c5d790`): while the AI has an action, an order below priority
-    /// 100 waits; each order runs through slot 0x230 ([`UnitAi::process_order`]): one that is not
-    /// ready (0xe) stays and the next is tried, any other result removes it, and 1 (taken) ends
-    /// the queue's turn.
+    /// 100 waits; each order runs through slot 0x230 ([`UnitAi::process_order`] with the unit's
+    /// `at`, `side` and owner's type `computer`, the AI stream `ai`): one that is not ready (0xe)
+    /// stays and the next is tried, any other result removes it, and 1 (taken) ends the queue's
+    /// turn.
+    ///
+    /// # Errors
+    ///
+    /// What an order's slot does not model.
     pub fn run_orders(
         &mut self,
         at: &Surroundings,
         side: &mut dyn UnitSide,
+        computer: bool,
+        ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         let mut k = 0;
@@ -6033,7 +6178,7 @@ impl UnitAi {
                 return Ok(());
             }
             let order = self.orders[k];
-            let r = self.process_order(&order, Some((at, &mut *side)), fx)?;
+            let r = self.process_order(&order, Some((at, &mut *side, computer)), None, ai, fx)?;
             if r == 0xe {
                 k += 1;
                 continue;
@@ -6050,98 +6195,654 @@ impl UnitAi {
         Ok(())
     }
 
-    /// Slot 0x230 (`FUN_140c5c170`, every type's): an order not ready returns 0xe. A move
-    /// (`0x2c6`) is the AI's move to its point within its range, forced and walking (slot 0x130),
-    /// and the unit's slot 0x2d8 shows its points (`+0x7c0`..`+0x7cc`, not held); once taken
-    /// (1) the order and its priority become the AI's (leaving a patrol order caps the secondary
-    /// timer). An order on a target (`0x2db`) goes to the unit ([`Effect::OrderOnTarget`]) and is
-    /// taken; a hunt order (`0x2c9`) runs `HuntObject` ([`UnitAi::hunt_object`]) and is taken; a
-    /// foundation's order (`0x2de`) waits for it ([`UnitAi::wait_for_foundation`]). Other orders
-    /// are not modelled. `world` is what the unit AI's updates pass (its surroundings and its
-    /// unit); [`UnitAi::take_order_now`] passes none, as its own order (`AUTO_SCOUT`'s stop or
+    /// Slot 0x230 (`FUN_140c5c170`, every type's) on the order `o`: one not ready returns 0xe.
+    /// Each case runs its slot, forced (its force argument 1); a slot that does not take the
+    /// order returns 0 (the queue drops it), one that does goes to the tail
+    /// ([`UnitAi::order_tail`]), which makes it the AI's order with its priority, and 1:
+    /// - 700, the attack: `AttackObject` by the type ([`UnitAi::attack_slot`], any target, the
+    ///   group flag set).
+    /// - `0x2bd`, the defend: a unit of master 128 takes none; without a target slot 0x178 at the
+    ///   order's point ([`UnitAi::defend_point`]), else slot 0x170 on the target
+    ///   ([`UnitAi::defend_object`]), within the order's range.
+    /// - `0x2be`, the build: slot 0xf0 on the foundation and the tail, which the caller runs
+    ///   ([`Effect::OrderOnTarget`], `Turns::build_order`).
+    /// - `0x2bf`, `0x2c0`, `0x2ce`, the heal, conversion and repair: slots 0xe0, 0xd8 and 0xe8
+    ///   ([`UnitAi::work_object`]) through the unit's commands ([`UnitCommand`]).
+    /// - `0x2c1`, the explore, `0x2da`, the scout, and `0x321`, the auto scout: slot 0x100 to the
+    ///   order's point cut to tiles (`CVTTSS2SI`, [`UnitAi::explore_at`]); whatever it gave, the
+    ///   scout then holds the action value `0x276` and the auto scout `0x2bd`, the one before the
+    ///   last.
+    /// - `0x2c2`, the stop: the target goes (`FUN_140c5e1e0`), the action stops (slot 0xb0 with
+    ///   1), and the tail ends the order.
+    /// - `0x2c3`, run away: slot 0x160 with 1 and no unit ([`UnitAi::run_away`]).
+    /// - `0x2c5`, the gather: slot 0xd0 ([`UnitAi::gather_order`]).
+    /// - `0x2c6`, the move, and `0x2d4`, the group gather: slot 0x130 to the order's point within
+    ///   its range, forced and walking (a move's unit then shows its points, slot 0x2d8, not
+    ///   held).
+    /// - `0x2c7`, the patrol ("I don't know what to do with patrol orders"), and an order no case
+    ///   names: 0.
+    /// - `0x2c8`, the follow: slot 0x168 on the target within the order's range
+    ///   ([`UnitAi::follow_object`]).
+    /// - `0x2c9`, the hunt, and `0x322`, the auto boar luring: slot 0xc8 ([`UnitAi::hunt_order`]);
+    ///   whatever it gave, the luring then holds the action value `0x2be`, the one before the
+    ///   last.
+    /// - `0x2ca`, the transport: slot 0x128 to the order's point ([`UnitAi::transport_to`]).
+    /// - `0x2cd`, the enter: slot 0x110 on the target ([`UnitAi::enter_object`]).
+    /// - `0x2d1` and 800, the unloads: slots 0x118 and 0x120 at the order's point
+    ///   ([`UnitAi::unload_at`]).
+    /// - `0x2d2`, seek and destroy: slot 0x180 on the target at the order's point cut to tiles
+    ///   ([`UnitAi::seek_and_destroy`]).
+    /// - `0x2d3`, explore and destroy: slot 0x188 to the order's point cut to tiles
+    ///   ([`UnitAi::explore_and_destroy`]).
+    /// - `0x2d8`, the wait: the action value `0x274` and the order `0x2d8` (leaving a patrol
+    ///   order as the tail does).
+    /// - `0x2d9`, the attack roundup: slot 0xc0 on the target ([`UnitAi::attack_roundup`]); the
+    ///   tail makes the order 700.
+    /// - `0x2db` and `0x325`, the order on a target ([`UnitAi::order_on_target`]).
+    /// - `0x2dd`, the attack move: a unit of class 51 or 54 with a target runs slot 0xb8 on it (the
+    ///   tail makes the order 700), any other slot 0x130 to the order's point.
+    /// - `0x2de`, the foundation's: slot 0x108 on the target
+    ///   ([`UnitAi::wait_for_foundation`]); whatever it gave, the action value `0x27a`, the one
+    ///   before the last.
+    ///
+    /// `world` is the unit's surroundings, its side and its owner's type, which the full update
+    /// and the queue between turns pass; [`UnitAi::take_order_now`] passes none but the unit's
+    /// `place` (its x and y and its master's class), as its own order (`AUTO_SCOUT`'s stop or
     /// auto scout order) is the one that runs.
     fn process_order(
         &mut self,
         o: &QueuedOrder,
-        world: Option<(&Surroundings, &mut dyn UnitSide)>,
+        world: Option<(&Surroundings, &mut dyn UnitSide, bool)>,
+        place: Option<([f32; 2], i16)>,
+        ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, Unsupported> {
         if !o.ready {
             return Ok(0xe);
         }
+        let place = world
+            .as_ref()
+            .map(|(at, _, _)| ([at.position[0], at.position[1]], at.class))
+            .or(place);
+        let class = place.map_or(-1, |(_, class)| class);
         let outside = Unsupported("an order on an object run outside the unit AI's update");
-        if o.order == AUTO_SCOUT_ORDER {
-            // case 0x321: slot 0x100 with 1 to the order's point, then the auto scout's action
-            // value, the explore's the last; the tail takes the order
-            let taken = self.explore_at(o.point[0] as i32, o.point[1] as i32, true, fx);
-            self.last_action = std::mem::replace(&mut self.current_action, AUTO_SCOUT_ACTION);
-            if !taken {
-                return Ok(0);
+        let tile = |v: f32| crate::checkpoint::cvttss2si(v);
+        let mv = |o: &QueuedOrder| AiMove {
+            point: o.point,
+            range: o.range,
+            force: true,
+            walk: true,
+        };
+        // `bVar2`: the attack move's attack, whose tail makes the order 700
+        let mut attack_move = false;
+        let taken = match o.order {
+            ATTACK_ORDER => {
+                let (at, side, _) = world.ok_or(outside)?;
+                self.attack_slot(o.target, true, at, side, fx)?
             }
-            return self.take_order(o);
-        }
-        if o.order == HUNT_ORDER {
-            // case 0x2c9: HuntObject (slot 0xc8) forced on the target; the tail takes the order
-            let (at, _) = world.ok_or(outside)?;
-            let (class, point) = if o.target == self.current_target {
-                (self.target_type, self.target_point)
-            } else if let Some(t) = at.target.filter(|_| o.target == self.last_target) {
-                // the target the AI held when its update began (an immediate requeue forgot it)
-                (i32::from(t.class), t.position)
-            } else if let Some(u) = at.unit(o.target) {
-                (i32::from(u.class), u.position)
-            } else {
-                return Err(Unsupported(
-                    "a hunt order on an object the unit AI does not name",
-                ));
-            };
-            self.hunt_object(o.target, class, point, at, fx)?;
-            return self.take_order(o);
-        }
-        if o.order == FOUNDATION_ORDER {
-            // case 0x2de: slot 0x108 forced on the target, then the action value 0x27a, the
-            // last the one slot 0x108 left (0x27a itself when it waited); the tail takes the
-            // order on 1
-            let (_, side) = world.ok_or(outside)?;
-            let waits = self.wait_for_foundation(o.target, true, side)?;
-            self.last_action = std::mem::replace(&mut self.current_action, WAIT_SOLIDIFY_ACTION);
-            if !waits {
-                return Ok(0);
+            DEFEND_ORDER => {
+                let (at, side, _) = world.ok_or(outside)?;
+                if at.master == DEFENDLESS_MASTER {
+                    return Ok(0);
+                }
+                if o.target == -1 {
+                    self.defend_point([o.point[0], o.point[1]], o.range, true, at)
+                } else {
+                    self.defend_object(o.target, o.range, true, at, side)?
+                }
             }
-            return self.take_order(o);
-        }
-        if o.order == STOP_ORDER {
-            // case 0x2c2: the target goes and the action stops (slot 0xb0 with 1); the order and
-            // its priority end
-            self.remove_target();
-            self.stop_with(true, None, fx)?;
-            // the tail's case 0x2c2 (`LAB_140c5d432`): leaving a patrol order resets its
-            // timers (the stop above ended any patrol order already)
-            if self.patrol_redraws() {
-                return Err(Unsupported("a stop order after a patrol order"));
+            BUILD_ORDER => {
+                // slot 0xf0 (`FUN_140c47d80`) with 1 builds on the target, and the tail makes the
+                // order the AI's with its priority: the caller runs both
+                // ([`crate::turn::Turns::build_order`])
+                fx.push(Effect::OrderOnTarget(*o));
+                return Ok(1);
             }
-            self.cap_patrol_secondary();
+            crate::ai_kinds::ORDER_HEAL | crate::ai_kinds::ORDER_CONVERT | REPAIR_ORDER => {
+                let (at, side, _) = world.ok_or(outside)?;
+                let (action, command) = match o.order {
+                    crate::ai_kinds::ORDER_HEAL => (HEAL_ACTION, UnitCommand::Heal(o.target)),
+                    crate::ai_kinds::ORDER_CONVERT => {
+                        (CONVERT_ACTION, UnitCommand::Convert(o.target))
+                    }
+                    _ => (REPAIR_ACTION, UnitCommand::Repair(o.target)),
+                };
+                self.work_object(o.target, true, action, command, at, side)?
+            }
+            crate::ai_kinds::ORDER_EXPLORE => {
+                self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx)
+            }
+            STOP_ORDER => {
+                self.remove_target();
+                self.stop_with(true, place, fx)?;
+                true
+            }
+            RUN_AWAY_ORDER => {
+                let (at, side, computer) = world.ok_or(outside)?;
+                self.run_away(true, at, computer, ai, side, fx)?
+            }
+            crate::ai_kinds::ORDER_GATHER => {
+                let (at, side, _) = world.ok_or(outside)?;
+                self.gather_order(o.target, at, side, fx)?
+            }
+            MOVE_ORDER | crate::ai_kinds::ORDER_GROUP_GATHER => {
+                let m = self.move_to(mv(o));
+                fx.extend(m.map(Effect::Move));
+                m.is_some()
+            }
+            FOLLOW_ORDER => {
+                let (at, side, _) = world.ok_or(outside)?;
+                self.follow_object(o.target, o.range, true, at, side, fx)?
+            }
+            HUNT_ORDER | crate::ai_kinds::ORDER_AUTO_BOAR_LURING => {
+                let (at, side, _) = world.ok_or(outside)?;
+                let hunts = self.hunt_order(o.target, at, side, fx)?;
+                if o.order == crate::ai_kinds::ORDER_AUTO_BOAR_LURING {
+                    self.set_action(BOAR_LURING_ACTION);
+                }
+                hunts
+            }
+            crate::ai_kinds::ORDER_TRANSPORT => {
+                let (_, side, _) = world.ok_or(outside)?;
+                self.transport_to(o.point, true, side)?
+            }
+            crate::garrison::ENTER_ORDER => {
+                let (at, side, _) = world.ok_or(outside)?;
+                self.enter_object(o.target, true, at, side)?
+            }
+            crate::ai_kinds::ORDER_UNLOAD | crate::ai_kinds::ORDER_UNLOAD_OVER_WALL => {
+                let (at, side, _) = world.ok_or(outside)?;
+                let over_wall = o.order == crate::ai_kinds::ORDER_UNLOAD_OVER_WALL;
+                self.unload_at([o.point[0], o.point[1]], true, over_wall, at, side)?
+            }
+            crate::ai_kinds::ORDER_SEEK_AND_DESTROY => {
+                let (at, side, _) = world.ok_or(outside)?;
+                let tiles = [tile(o.point[0]), tile(o.point[1])];
+                self.seek_and_destroy(o.target, tiles, true, at, side, fx)?
+            }
+            crate::ai_kinds::ORDER_EXPLORE_AND_DESTROY => {
+                self.explore_and_destroy([tile(o.point[0]), tile(o.point[1])], true, fx)
+            }
+            crate::ai_kinds::ORDER_WAIT => {
+                // case 0x2d8: the wait's action value, leaving a patrol order, then the order
+                // itself; the tail finds it the AI's already
+                self.current_action = WAIT_ACTION;
+                self.leave_patrol_timers(ai);
+                self.current_order = crate::ai_kinds::ORDER_WAIT;
+                true
+            }
+            crate::ai_kinds::ORDER_ATTACK_ROUNDUP => {
+                let (at, side, _) = world.ok_or(outside)?;
+                self.attack_roundup(o.target, at, side, fx)?
+            }
+            crate::ai_kinds::ORDER_SCOUT => {
+                let explored = self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx);
+                self.set_action(SCOUT_ACTION);
+                explored
+            }
+            ORDER_ON_TARGET | ORDER_ON_TARGET_2 => {
+                let (at, side, _) = world.ok_or(outside)?;
+                return self.order_on_target(o, class, at, side, ai, fx);
+            }
+            PATROL_2 => {
+                let (at, side, _) = world.ok_or(outside)?;
+                if o.target != -1 && matches!(at.class, TREBUCHET_CLASS | TREBUCHET_PACKED_CLASS) {
+                    attack_move = true;
+                    self.attack_slot(o.target, true, at, side, fx)?
+                } else {
+                    let m = self.move_to(mv(o));
+                    fx.extend(m.map(Effect::Move));
+                    m.is_some()
+                }
+            }
+            FOUNDATION_ORDER => {
+                let (_, side, _) = world.ok_or(outside)?;
+                let waits = self.wait_for_foundation(o.target, true, side)?;
+                self.set_action(WAIT_SOLIDIFY_ACTION);
+                waits
+            }
+            AUTO_SCOUT_ORDER => {
+                let explored = self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx);
+                self.set_action(AUTO_SCOUT_ACTION);
+                explored
+            }
+            // the patrol order (0x2c7) and the orders the switch has no case for
+            _ => false,
+        };
+        if !taken {
+            return Ok(0);
+        }
+        Ok(self.order_tail(o.order, o.priority, class, attack_move, ai))
+    }
+
+    /// The order's tail (`LAB_140c5d432`) once its case took order value `order` of priority
+    /// `priority`: the stop (`0x2c2`) leaves a patrol order ([`UnitAi::leave_patrol_timers`]) and
+    /// ends the order and its priority (−1). The attack roundup (`0x2d9`) and the attack move's
+    /// attack (`attack_move`) leave a patrol order and become the attack order (700); the attack
+    /// order of a unit of class 18 (`class`, its master's) leaves a patrol order, its target goes
+    /// (`+0x48` −1, its class and point kept) and the order is −1. Any other becomes the order,
+    /// leaving a patrol order for another (`LAB_140c5d611`). The priority is the order's but
+    /// for the stop. Returns 1.
+    pub(crate) fn order_tail(
+        &mut self,
+        order: i32,
+        priority: i32,
+        class: i16,
+        attack_move: bool,
+        ai: &mut Well512,
+    ) -> u32 {
+        if order == STOP_ORDER {
+            self.leave_patrol_timers(ai);
             self.current_order = -1;
             self.order_priority = -1;
-            return Ok(1);
+            return 1;
         }
-        if o.order == BUILD_ORDER {
-            // case 0x2be: slot 0xf0 (`FUN_140c47d80`) with 1 builds on the target, and the tail
-            // makes the order the AI's with its priority (the caller runs both,
-            // [`crate::turn::Turns::build_order`])
+        let new = if order == crate::ai_kinds::ORDER_ATTACK_ROUNDUP || attack_move {
+            self.leave_patrol_timers(ai);
+            ATTACK_ORDER
+        } else if order == ATTACK_ORDER && class == CLASS_18 {
+            self.leave_patrol_timers(ai);
+            self.current_target = -1;
+            -1
+        } else {
+            if self.current_order != order {
+                self.leave_patrol_timers(ai);
+            }
+            order
+        };
+        self.current_order = new;
+        self.order_priority = priority;
+        1
+    }
+
+    /// The object `id` as the world holds it (`FUN_1415417a0`): the unit itself (`at`, its own
+    /// target of no one), among the objects the update names ([`Surroundings::unit`]), else as
+    /// the unit's side finds it ([`UnitSide::seen_unit`]); None when the world does not hold it.
+    fn world_object(
+        id: i32,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<Option<UnitSeen>, Unsupported> {
+        if id == at.id {
+            return Ok(Some(UnitSeen {
+                id,
+                class: at.class,
+                owner: at.player,
+                combat_level: at.combat_level,
+                state: at.state,
+                target: None,
+                gap_squared: crate::movement::footprint_gap_squared(
+                    at.position,
+                    at.size,
+                    at.position,
+                    at.size,
+                ),
+                position: at.position,
+            }));
+        }
+        at.unit(id)
+            .map_or_else(|| side.seen_unit(id), |u| Ok(Some(*u)))
+    }
+
+    /// `AttackObject` (slot 0xb8) forced, by the unit AI's type, on `target`, `any` target or
+    /// not: the civilian's (`FUN_140c17370`, [`UnitAi::civilian_attack`]: an animal or a tree it
+    /// hunts, any other it attacks, not `any`); the soldier's (`FUN_140c17550`) the base's, then
+    /// a member of a group the world holds stops moving ([`UnitSide::group_attack_stop`]); the
+    /// others' the base's ([`UnitAi::attack_object`]). The priest's (`FUN_140c17490`) asks its
+    /// slot 0x1b8 (`FUN_140c1af00`) whether to convert the target first: not modelled, the base's
+    /// stops at the priest's slot 0xa0, which is not either.
+    fn attack_slot(
+        &mut self,
+        target: i32,
+        any: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        match self.ai_type {
+            CIVILIAN => self.civilian_attack(target, at, side, fx),
+            SOLDIER_AI => {
+                if !self.attack_object(target, true, any, at, side, fx)? {
+                    return Ok(false);
+                }
+                if at.group.is_some() {
+                    side.group_attack_stop()?;
+                }
+                Ok(true)
+            }
+            _ => self.attack_object(target, true, any, at, side, fx),
+        }
+    }
+
+    /// `attackRoundupObject` (slot 0xc0, `FUN_140c43aa0`) on `target`: the AI's own target
+    /// ("I'm already attacking that target") or one the world does not hold takes nothing; then
+    /// slot 0xa0 not `any` ([`UnitAi::attack_check`]) must let it attack the target; with an
+    /// action value the unit must reach the target within its range (slot 0x3d0,
+    /// [`UnitSide::reaches`]: "can't path to new target"). Then the unit's attack command, forced
+    /// ([`UnitAi::attack_command`]), and on success the action is the attack (600, the last action
+    /// keeping the old) and the target its class and place (`FUN_140c64c10`). Unlike
+    /// `AttackObject`, `+0x1d5` stays.
+    fn attack_roundup(
+        &mut self,
+        target: i32,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        if self.current_target == target {
+            return Ok(false);
+        }
+        let Some((class, position)) = self.attack_check(target, false, at, side)? else {
+            return Ok(false);
+        };
+        if self.current_action != -1 && !side.reaches(target, at.weapon_range)? {
+            return Ok(false);
+        }
+        if !self.attack_command(target, true, at, side, fx)? {
+            return Ok(false);
+        }
+        self.set_action(ATTACK_ACTION);
+        self.target_at(target, Some(i32::from(class)), position);
+        Ok(true)
+    }
+
+    /// Slot 0x170 (`FUN_140c4ccc0`), the defend of object `target` within `range`, `force`d or
+    /// without an action value: on an object the world holds, the action value is the defend's
+    /// (`0x259`, the last keeping the old), the target the object at its place
+    /// (`FUN_140c64c10`), the desired distance `range` and the defend target the object.
+    fn defend_object(
+        &mut self,
+        target: i32,
+        range: f32,
+        force: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, Unsupported> {
+        if !force && self.current_action != -1 {
+            return Ok(false);
+        }
+        let Some(t) = Self::world_object(target, at, side)? else {
+            return Ok(false);
+        };
+        self.set_action(DEFEND_ACTION);
+        self.target_at(target, Some(i32::from(t.class)), t.position);
+        self.desired_distance = range;
+        self.defend_target = target;
+        Ok(true)
+    }
+
+    /// Slot 0x178 (`FUN_140c4ce30`), the defend of `point` within `range`, `force`d or without an
+    /// action value: the defend's action value (`0x259`, the last keeping the old), no target at
+    /// the point at the unit's height (`FUN_140c64c10` with −1), the desired distance `range`
+    /// and no defend target.
+    const fn defend_point(
+        &mut self,
+        point: [f32; 2],
+        range: f32,
+        force: bool,
+        at: &Surroundings,
+    ) -> bool {
+        if !force && self.current_action != -1 {
+            return false;
+        }
+        self.set_action(DEFEND_ACTION);
+        self.target_at(-1, None, [point[0], point[1], at.position[2]]);
+        self.desired_distance = range;
+        self.defend_target = -1;
+        true
+    }
+
+    /// The work slots on object `target` (heal 0xe0, `FUN_140c4e010`; conversion 0xd8,
+    /// `FUN_140c4c9f0`; repair 0xe8, `FUN_140c5e3a0`), `force`d or off their own action value
+    /// `action` (`0x25b`, `0x25c`, `0x26a`): the unit's `command` ([`UnitSide::command`]: slots
+    /// 0x108, 0x370, 0x378), on its 1 the action value `action` (the last keeping the old) and the
+    /// target with its class and place as the world then holds it, else class −1 at (0, 0, 0)
+    /// (the target and class before becoming the last).
+    fn work_object(
+        &mut self,
+        target: i32,
+        force: bool,
+        action: i32,
+        command: UnitCommand,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, Unsupported> {
+        if !force && self.current_action == action {
+            return Ok(false);
+        }
+        if !side.command(command)? {
+            return Ok(false);
+        }
+        self.set_action(action);
+        match Self::world_object(target, at, side)? {
+            Some(t) => self.set_target(target, i32::from(t.class), t.position),
+            None => self.set_target(target, -1, [0.0; 3]),
+        }
+        Ok(true)
+    }
+
+    /// `GatherObject` (slot 0xd0, `FUN_140c4dd50`) forced on the order's `target`: the unit's
+    /// gather command (slot 0x368, `FUN_141085030`) takes no object the world does not hold (0);
+    /// on one it holds it runs after the update ([`Effect::GatherObject`], which fails without a
+    /// task: the caller stops then) and the AI holds the gather ([`UnitAi::gather_object`]).
+    fn gather_order(
+        &mut self,
+        target: i32,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        let Some(t) = Self::world_object(target, at, side)? else {
+            return Ok(false);
+        };
+        self.gather_object(
+            Gatherable {
+                id: target,
+                position: t.position,
+                class: t.class,
+            },
+            fx,
+        );
+        Ok(true)
+    }
+
+    /// `HuntObject` (slot 0xc8, `FUN_140c4e220`) forced on the order's `target`: the action stops
+    /// first (slot 0xb0 with 1); the unit's hunt command (slot 0x360, `FUN_1412151f0`) takes no
+    /// object the world does not hold (0, the stop made); on one it holds,
+    /// [`UnitAi::hunt_object`].
+    fn hunt_order(
+        &mut self,
+        target: i32,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        let Some(t) = Self::world_object(target, at, side)? else {
+            self.stop_current(true, at, fx)?;
+            return Ok(false);
+        };
+        self.hunt_object(target, i32::from(t.class), t.position, at, fx)?;
+        Ok(true)
+    }
+
+    /// Slot 0x168 (`FUN_140c4dab0`, "GOT A FOLLOW ORDER"), the follow of object `target` within
+    /// `range`, `force`d or without an action value: on an object the world holds, the follow's
+    /// action value (`0x264`, the last keeping the old), the target at its place
+    /// (`FUN_140c64c10`) and the desired distance `range`; when the footprints' squared gap
+    /// (`FUN_14118f8c0`) exceeds `range` squared (`COMISS`/`JBE`: not a number stays), the AI
+    /// moves to it (slot 0x138, [`UnitAi::move_to_object`]).
+    fn follow_object(
+        &mut self,
+        target: i32,
+        range: f32,
+        force: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        if !force && self.current_action != -1 {
+            return Ok(false);
+        }
+        let Some(t) = Self::world_object(target, at, side)? else {
+            return Ok(false);
+        };
+        self.set_action(FOLLOW_ACTION);
+        self.target_at(target, Some(i32::from(t.class)), t.position);
+        self.desired_distance = range;
+        if range * range < t.gap_squared {
+            let seen = Seen {
+                state: t.state,
+                class: t.class,
+                position: t.position,
+                ..Seen::default()
+            };
+            self.move_to_object(target, seen, range, fx);
+        }
+        Ok(true)
+    }
+
+    /// Slot 0x110, the enter into object `target`, `force`d or without an action value (the
+    /// base's `FUN_140c4d050`; the civilian's, `FUN_140c1c680`, first takes nothing the world
+    /// does not hold): the unit's enter command (slot 0x3a0, [`UnitCommand::Enter`]), on its 1 the
+    /// enter's action value (`0x269`, the last keeping the old) and the target at (−1, −1, −1)
+    /// (`FUN_140c64c10`: its class when the world holds it).
+    fn enter_object(
+        &mut self,
+        target: i32,
+        force: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, Unsupported> {
+        let held = Self::world_object(target, at, side)?;
+        if self.ai_type == CIVILIAN && held.is_none() {
+            return Ok(false);
+        }
+        if !force && self.current_action != -1 {
+            return Ok(false);
+        }
+        if !side.command(UnitCommand::Enter(target))? {
+            return Ok(false);
+        }
+        self.set_action(crate::garrison::ENTER_ACTION);
+        self.target_at(target, held.map(|t| i32::from(t.class)), [-1.0; 3]);
+        Ok(true)
+    }
+
+    /// Slot 0x128 (`FUN_140c65400`), the transport to `point`, `force`d or without an action
+    /// value: the unit's transport command (slot 0x3b8, [`UnitCommand::Transport`]), on its 1
+    /// the transport's action value (`0x266`, the last keeping the old) and no target at the
+    /// point (`FUN_140c64c10` with −1).
+    fn transport_to(
+        &mut self,
+        point: [f32; 3],
+        force: bool,
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, Unsupported> {
+        if !force && self.current_action != -1 {
+            return Ok(false);
+        }
+        if !side.command(UnitCommand::Transport(point))? {
+            return Ok(false);
+        }
+        self.set_action(TRANSPORT_ACTION);
+        self.target_at(-1, None, point);
+        Ok(true)
+    }
+
+    /// Slots 0x118 (`FUN_140c660d0`) and, `over_wall`, 0x120 (`FUN_140c66330`): the unload at
+    /// `point`, `force`d or without an action value: the unit's unload command at the point at
+    /// its own height (slots 0x3a8 and 0x3b0, [`UnitCommand::Unload`]), on its 1 the unload's
+    /// action value (`0x26d`; over a wall 700) with the last keeping the old, and the unit
+    /// itself as the target, with its class and place.
+    fn unload_at(
+        &mut self,
+        point: [f32; 2],
+        force: bool,
+        over_wall: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+    ) -> Result<bool, Unsupported> {
+        if !force && self.current_action != -1 {
+            return Ok(false);
+        }
+        let to = [point[0], point[1], at.position[2]];
+        if !side.command(UnitCommand::Unload { to, over_wall })? {
+            return Ok(false);
+        }
+        self.set_action(if over_wall {
+            UNLOAD_OVER_WALL_ACTION
+        } else {
+            UNLOAD_ACTION
+        });
+        self.set_target(at.id, i32::from(at.class), at.position);
+        Ok(true)
+    }
+
+    /// Slot 0x180 (`FUN_140c64ab0`), seek and destroy object `target` from the tile `tile`,
+    /// `force`d or without an action value: the unit's attack command on the target (slot 0x338,
+    /// [`UnitAi::attack_command`]), on its 1 the seek's action value (`0x26e`, the last keeping
+    /// the old) and the target at the tile (as floats) at height 1 (`FUN_140c64c10`).
+    fn seek_and_destroy(
+        &mut self,
+        target: i32,
+        tile: [i32; 2],
+        force: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, Unsupported> {
+        if !force && self.current_action != -1 {
+            return Ok(false);
+        }
+        if !self.attack_command(target, force, at, side, fx)? {
+            return Ok(false);
+        }
+        self.set_action(SEEK_ACTION);
+        let class = Self::world_object(target, at, side)?.map(|t| i32::from(t.class));
+        self.target_at(target, class, [tile[0] as f32, tile[1] as f32, EXPLORE_Z]);
+        Ok(true)
+    }
+
+    /// Slot 0x188 (`FUN_140c4d9b0`), explore and destroy to the tile `tile`, `force`d or without
+    /// an action value: the unit's explore there (slot 0x398, [`Effect::Explore`], which takes
+    /// it), then the action value `0x26f` (the last keeping the old) and no target at the tile
+    /// (as floats) at height 1.
+    fn explore_and_destroy(&mut self, tile: [i32; 2], force: bool, fx: &mut Vec<Effect>) -> bool {
+        if !force && self.current_action != -1 {
+            return false;
+        }
+        let point = [tile[0] as f32, tile[1] as f32];
+        fx.push(Effect::Explore(point));
+        self.set_action(EXPLORE_DESTROY_ACTION);
+        self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
+        true
+    }
+
+    /// Slot 0x230's case for the order on a target (`0x2db`, `0x325`): on a target the world holds,
+    /// the unit's slot 0x128 on it at its place, then the tail with the order value the AI holds
+    /// after it ("the order the work gave"), both the caller's ([`Effect::OrderOnTarget`],
+    /// `Turns::order_on_target`). On a gone target: without its type (`+0x30` −1), the move to
+    /// the order's point within its range (slot 0x130, forced and walking) and, taken, the tail
+    /// with the order on a target. With its type (a master of the target's owner `+0x10`, else
+    /// the class itself), the unit AI's slot 0x1b0 gives a kind of resource and slot 0x88 the
+    /// closest object of it to the order's shown point, which the unit works (slot 0x7e8; 0):
+    /// not modelled.
+    fn order_on_target(
+        &mut self,
+        o: &QueuedOrder,
+        class: i16,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, Unsupported> {
+        if Self::world_object(o.target, at, side)?.is_some() {
             fx.push(Effect::OrderOnTarget(*o));
             return Ok(1);
         }
-        if o.order == ORDER_ON_TARGET {
-            // case 0x2db: the unit's slot 0x128 on the target, then the tail keeps the order the
-            // work gave the AI and takes the order's priority (the caller runs both); a patrol
-            // order before cannot be left there (the work's order is the record's)
-            fx.push(Effect::OrderOnTarget(*o));
-            return Ok(1);
-        }
-        if o.order != MOVE_ORDER {
+        if o.target_type != -1 {
             return Err(Unsupported(
-                "a queued order other than a move or on a target",
+                "a queued order on a target that is gone (slots 0x1b0, 0x88, 0x7e8)",
             ));
         }
         let Some(m) = self.move_to(AiMove {
@@ -6153,23 +6854,7 @@ impl UnitAi {
             return Ok(0);
         };
         fx.push(Effect::Move(m));
-        self.take_order(o)
-    }
-
-    /// The order's tail (`LAB_140c5d611`): the order and its priority become the AI's; leaving a
-    /// patrol order for another order caps the secondary timer ([`UnitAi::cap_patrol_secondary`];
-    /// the redraw of an adjusted idle timeout of exactly 750, the AI stream's, is not modelled
-    /// here).
-    const fn take_order(&mut self, o: &QueuedOrder) -> Result<u32, Unsupported> {
-        if self.current_order != o.order {
-            if self.patrol_redraws() {
-                return Err(Unsupported("a queued order after a patrol order"));
-            }
-            self.cap_patrol_secondary();
-        }
-        self.current_order = o.order;
-        self.order_priority = o.priority;
-        Ok(1)
+        Ok(self.order_tail(o.order, o.priority, class, false, ai))
     }
 
     /// Slot 0x108 (`FUN_140c68a60`), with `force` (its argument 3) or without an action value:
@@ -6209,18 +6894,24 @@ impl UnitAi {
 
     /// Slot 0x28 (`FUN_140c55c90`) with Immediate set and inFront clear: for a unit in state 2 or
     /// below and an order (not −1), [`UnitAi::order_now`] without keeping the current order.
-    /// `place` is the unit's position (x, y) and master's class, for the stop.
+    /// `place` is the unit's position (x, y) and master's class, for the stop; `ai` the AI
+    /// stream, for the order's tail.
+    ///
+    /// # Errors
+    ///
+    /// An order whose slot reads the unit's surroundings, which this entry does not have.
     pub fn take_order_now(
         &mut self,
         unit_state: u8,
         order: QueuedOrder,
         place: ([f32; 2], i16),
+        ai: &mut Well512,
         fx: &mut Vec<Effect>,
     ) -> Result<(), Unsupported> {
         if 2 < unit_state || order.order == -1 {
             return Ok(());
         }
-        self.order_now(order, None, Some(place), None, fx)
+        self.order_now(order, None, Some(place), None, ai, fx)
     }
 
     /// The idle part of the full update (`0x140c66b10` after slot 73): a unit without an action
@@ -6508,7 +7199,7 @@ impl UnitAi {
     /// processMisc's follow order (`0x140c567c0`, "I have a follow order for Unit #%d"): a
     /// target gone or dying (above state 2) or on a tile the unit's player does not see now ends
     /// it ("Target is gone or dying, stopping.", "He's NOT on a visible tile, stopping."): the
-    /// defend target `+0x60` (not held) and the target go (`FUN_140c5e1e0`), the current action
+    /// defend target `+0x60` and the target go (`FUN_140c5e1e0`), the current action
     /// stops (slot 0xb0 with 1) and the order is −1. On action `0x2bf` or `0x2c0` the target
     /// point becomes (−1, −1). Otherwise a target more than a tile off the AI's target point on
     /// either axis gives the point its place (x, y, z); when the footprints' squared gap
@@ -6518,6 +7209,7 @@ impl UnitAi {
         let target = match at.target {
             Some(t) if t.state <= 2 && t.visible => t,
             _ => {
+                self.defend_target = -1;
                 self.remove_target();
                 self.stop_current(true, at, fx)?;
                 self.current_order = -1;
@@ -6938,7 +7630,9 @@ mod tests {
     fn a_foundation_order_waits_for_the_foundation_and_ends_the_queue_s_turn() {
         let mut ai = sent_off_queue();
         let mut side = WaitSide(true, Vec::new());
-        let fx = ai.off_turn(&scout_at(true, false), &mut side).unwrap();
+        let fx = ai
+            .off_turn(&scout_at(true, false), &mut side, false, &mut rng())
+            .unwrap();
         assert_eq!(fx, vec![]);
         assert_eq!(side.1, vec![10028]);
         assert_eq!(
@@ -6960,7 +7654,15 @@ mod tests {
     fn a_foundation_order_without_a_wait_goes_and_the_work_runs() {
         let mut ai = sent_off_queue();
         let mut side = WaitSide(false, Vec::new());
-        let fx = ai.off_turn(&scout_at(true, false), &mut side).unwrap();
+        // the world holds the work's target
+        let at = Surroundings {
+            units: vec![UnitSeen {
+                id: 600,
+                ..UnitSeen::default()
+            }],
+            ..scout_at(true, false)
+        };
+        let fx = ai.off_turn(&at, &mut side, false, &mut rng()).unwrap();
         assert_eq!(side.1, vec![10028]);
         assert_eq!(
             (ai.current_action, ai.last_action),
@@ -8003,6 +8705,7 @@ mod tests {
                 target_type: -1,
                 target_point: [-1.0; 3],
                 desired_distance: 2.0,
+                defend_target: -1,
                 last_order: -1,
                 last_action: -1,
                 last_target: -1,
@@ -9141,7 +9844,9 @@ mod tests {
         // runs the queue: the first move becomes the AI's (order 710 at priority 100, action 610,
         // its point) and the unit's, forced and walking; the order leaves the queue
         let mut u = scout();
-        let fx = u.off_turn(&scout_at(true, true), &mut no_search).unwrap();
+        let fx = u
+            .off_turn(&scout_at(true, true), &mut no_search, false, &mut rng())
+            .unwrap();
         assert_eq!(
             fx,
             vec![Effect::Move(AiMove {
@@ -9164,7 +9869,7 @@ mod tests {
     fn between_turns_a_walking_unit_or_one_with_notifies_keeps_its_queue() {
         let mut walking = scout();
         assert_eq!(
-            walking.off_turn(&scout_at(false, true), &mut no_search),
+            walking.off_turn(&scout_at(false, true), &mut no_search, false, &mut rng()),
             Ok(vec![])
         );
         assert_eq!(walking.orders.len(), 2);
@@ -9173,14 +9878,16 @@ mod tests {
             ..scout()
         };
         assert_eq!(
-            told.off_turn(&scout_at(true, true), &mut no_search),
+            told.off_turn(&scout_at(true, true), &mut no_search, false, &mut rng()),
             Ok(vec![])
         );
         assert_eq!(told.orders.len(), 2);
         // an order not ready stays and the next one runs
         let mut u = scout();
         u.orders[0].ready = false;
-        let _ = u.off_turn(&scout_at(true, true), &mut no_search).unwrap();
+        let _ = u
+            .off_turn(&scout_at(true, true), &mut no_search, false, &mut rng())
+            .unwrap();
         assert_eq!(u.orders.len(), 1);
         assert_eq!(u.orders[0].point, [89.09375, 60.677_082, 0.0]);
     }
@@ -10420,8 +11127,15 @@ mod tests {
             target_type: -1,
         };
         let mut fx = Vec::new();
-        u.order_now(order, Some(9), Some(([5.0, 6.0], 4)), None, &mut fx)
-            .unwrap();
+        u.order_now(
+            order,
+            Some(9),
+            Some(([5.0, 6.0], 4)),
+            None,
+            &mut rng(),
+            &mut fx,
+        )
+        .unwrap();
         let kept = QueuedOrder {
             issuer: 9,
             order: BUILD_ORDER,
@@ -10456,10 +11170,12 @@ mod tests {
 
     /// `FUN_140c55c90` immediate for an attack roundup (0x2d9): "We have an `AttackRoundup`, so
     /// I'm not stopping the object.": the target stays and nothing stops; the notifies still go
-    /// and slot 0x230 runs the order in front, whose roundup case (slot 0xc0) is not modelled.
+    /// and slot 0x230 runs the order in front: its roundup (slot 0xc0) attacks the new target,
+    /// and the tail makes the order 700. Outside the update (no surroundings) the case does not
+    /// run.
     #[test]
-    fn an_immediate_attack_roundup_keeps_the_target_and_the_action() {
-        let mut u = UnitAi {
+    fn an_immediate_attack_roundup_keeps_the_target_until_it_attacks_the_next() {
+        let attacking = || UnitAi {
             current_order: ATTACK_ORDER,
             current_action: ATTACK_ACTION,
             current_target: 50,
@@ -10468,22 +11184,48 @@ mod tests {
         };
         let roundup = QueuedOrder {
             order: crate::ai_kinds::ORDER_ATTACK_ROUNDUP,
+            priority: 100,
             target: 51,
             ready: true,
             ..QueuedOrder::default()
         };
+        let mut u = attacking();
         let mut fx = Vec::new();
-        let r = u.take_order_now(2, roundup, ([0.0; 2], 6), &mut fx);
-        assert_eq!(
-            r,
-            Err(Unsupported(
-                "a queued order other than a move or on a target"
-            ))
-        );
+        let r = u.take_order_now(2, roundup, ([0.0; 2], 6), &mut rng(), &mut fx);
+        assert!(r.is_err());
         assert_eq!(fx, Vec::new());
         assert_eq!((u.current_target, u.current_action), (50, ATTACK_ACTION));
         assert_eq!(u.notifies, Vec::new());
-        assert_eq!(u.orders, vec![roundup]);
+        let mut u = attacking();
+        let mut side = OrderSide::holding(&[(51, 6)]);
+        side.reach = true;
+        let at = Surroundings {
+            class: 6,
+            ..Surroundings::default()
+        };
+        let mut fx = Vec::new();
+        u.order_now(
+            roundup,
+            None,
+            None,
+            Some((&at, &mut side, false)),
+            &mut rng(),
+            &mut fx,
+        )
+        .unwrap();
+        assert_eq!(fx, Vec::new());
+        assert_eq!(side.attacks, [(51, true)]);
+        assert_eq!(
+            (
+                u.current_target,
+                u.last_target,
+                u.current_action,
+                u.last_action
+            ),
+            (51, 50, ATTACK_ACTION, ATTACK_ACTION)
+        );
+        assert_eq!((u.current_order, u.order_priority), (ATTACK_ORDER, 100));
+        assert_eq!((u.notifies.len(), u.orders.len()), (0, 0));
     }
 
     /// `FUN_140c5e7d0`: a unit more than a tile (the squared footprint gap, `FUN_140a847c0`)
@@ -12014,11 +12756,14 @@ mod tests {
             secondary_timer: 900,
             ..idle(SOLDIER_AI)
         };
+        let tail = |u: &mut UnitAi, o: QueuedOrder| {
+            u.order_tail(o.order, o.priority, 6, false, &mut rng())
+        };
         let mut u = patrolling();
-        assert_eq!(u.take_order(&order(MOVE_ORDER)), Ok(1));
+        assert_eq!(tail(&mut u, order(MOVE_ORDER)), 1);
         assert_eq!((u.current_order, u.secondary_timer), (MOVE_ORDER, 750));
         let mut u = patrolling();
-        assert_eq!(u.take_order(&order(PATROL)), Ok(1));
+        assert_eq!(tail(&mut u, order(PATROL)), 1);
         assert_eq!(u.secondary_timer, 900);
         let mut u = patrolling();
         u.end_order_and_action().unwrap();
@@ -12056,15 +12801,16 @@ mod tests {
         let mut u = ordered(SOLDIER_AI);
         let order = u.orders[0];
         let mut r = rng();
+        // the world holds the order's target
+        let at = Surroundings {
+            units: vec![UnitSeen {
+                id: 77,
+                ..UnitSeen::default()
+            }],
+            ..Surroundings::default()
+        };
         let fx = u
-            .update(
-                100,
-                10_000,
-                false,
-                &Surroundings::default(),
-                &mut r,
-                &mut no_search,
-            )
+            .update(100, 10_000, false, &at, &mut r, &mut no_search)
             .unwrap();
         assert_eq!(
             fx,
@@ -13410,7 +14156,8 @@ mod tests {
         let mut fx = vec![to];
         u.top_target_tail(&at, &mut side, &mut fx).unwrap();
         assert_eq!(fx, [to, Effect::Stop]);
-        // after a hunt the caller gives once the update ends, the stop would come first
+        // after a hunt the caller gives once the update ends, the stop would reach the unit
+        // first
         let mut u = on_target(HUNT_ACTION);
         let mut fx = vec![Effect::HuntObject(600)];
         assert!(u.top_target_tail(&at, &mut side, &mut fx).is_err());
@@ -13592,5 +14339,853 @@ mod tests {
             (u.current_order, u.current_action, u.current_target),
             (ATTACK_ORDER, ATTACK_ACTION, 18842)
         );
+    }
+
+    /// A side for the order slots: the objects the world holds (their class, place, state and
+    /// gap), the unit's attack commands and other commands, which it takes unless `refuses`, the
+    /// reach test's answer, the soldier's group stops and the waits for foundations.
+    #[derive(Default)]
+    struct OrderSide {
+        world: Vec<UnitSeen>,
+        attacks: Vec<(i32, bool)>,
+        commands: Vec<UnitCommand>,
+        refuses: bool,
+        reach: bool,
+        stops: usize,
+        group_stops: usize,
+        waits: Vec<i32>,
+    }
+
+    impl OrderSide {
+        /// A world of objects `(id, class)` in state 2 at (10, 20, 0), a gap of 1 from the unit.
+        fn holding(objects: &[(i32, i16)]) -> Self {
+            Self {
+                world: objects
+                    .iter()
+                    .map(|&(id, class)| UnitSeen {
+                        id,
+                        class,
+                        state: 2,
+                        gap_squared: 1.0,
+                        position: [10.0, 20.0, 0.0],
+                        ..UnitSeen::default()
+                    })
+                    .collect(),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl UnitSide for OrderSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn attack(
+            &mut self,
+            target: i32,
+            force: bool,
+            _: &UnitAi,
+        ) -> Result<Attacked, Unsupported> {
+            self.attacks.push((target, force));
+            Ok(Attacked {
+                attacks: !self.refuses,
+                posted: Vec::new(),
+            })
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), Unsupported> {
+            self.stops += 1;
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            target: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, Unsupported> {
+            Ok(self.seen_unit(target)?.map(|t| (t.class, t.position)))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, Unsupported> {
+            Err(Unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), Unsupported> {
+            Err(Unsupported("no world here"))
+        }
+        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, Unsupported> {
+            Ok(self.reach)
+        }
+        fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, Unsupported> {
+            Ok(true)
+        }
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, Unsupported> {
+            Ok(self.world.iter().find(|u| u.id == id).copied())
+        }
+        fn wait_solidify(&mut self, target: i32) -> Result<bool, Unsupported> {
+            self.waits.push(target);
+            Ok(!self.refuses)
+        }
+        fn command(&mut self, command: UnitCommand) -> Result<bool, Unsupported> {
+            self.commands.push(command);
+            Ok(!self.refuses)
+        }
+        fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
+            self.group_stops += 1;
+            Ok(())
+        }
+    }
+
+    /// An order of value `order` on `target` at (12.7, 30.2, 0.5) within 3, priority 40, ready.
+    fn queued(order: i32, target: i32) -> QueuedOrder {
+        QueuedOrder {
+            issuer: 1,
+            order,
+            priority: 40,
+            target,
+            target_owner: -1,
+            point: [12.7, 30.2, 0.5],
+            range: 3.0,
+            shown: [12.5, 30.5],
+            ready: true,
+            target_type: -1,
+        }
+    }
+
+    /// Slot 0x230 on order `o` inside the update: the unit of class `class` at (5, 6, 0.25), its
+    /// master 4, player 1; the result, the effects and the draws.
+    fn run_order(
+        u: &mut UnitAi,
+        o: QueuedOrder,
+        class: i16,
+        side: &mut OrderSide,
+    ) -> (Result<u32, Unsupported>, Vec<Effect>, u32) {
+        let at = Surroundings {
+            id: 9,
+            position: [5.0, 6.0, 0.25],
+            map: [100, 100],
+            class,
+            master: 4,
+            player: 1,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let mut fx = Vec::new();
+        let mut r = rng();
+        let res = u.process_order(&o, Some((&at, side, false)), None, &mut r, &mut fx);
+        (res, fx, r.draws)
+    }
+
+    #[test]
+    fn an_order_not_ready_stays_and_patrol_or_unnamed_orders_take_nothing() {
+        let mut u = idle(13);
+        let mut side = OrderSide::default();
+        let waiting = QueuedOrder {
+            ready: false,
+            ..queued(MOVE_ORDER, -1)
+        };
+        assert_eq!(run_order(&mut u, waiting, 6, &mut side).0, Ok(0xe));
+        // "I don't know what to do with patrol orders"; an order no case names
+        for order in [PATROL, 0x2c4, 0x2cb, 0x2d5, 0x323] {
+            let (r, fx, _) = run_order(&mut u, queued(order, -1), 6, &mut side);
+            assert_eq!((r, fx), (Ok(0), Vec::new()), "{order:#x}");
+        }
+        assert_eq!(u, idle(13));
+    }
+
+    #[test]
+    fn the_attack_order_attacks_by_the_unit_ai_s_type_and_becomes_the_ai_s() {
+        // a soldier: the base's AttackObject through its slot 0xa0 (the side's test), then a
+        // member of a group stops moving (FUN_140c17550)
+        let mut u = idle(SOLDIER_AI);
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let (r, fx, _) = run_order(&mut u, queued(ATTACK_ORDER, 70), 6, &mut side);
+        assert_eq!((r, fx), (Ok(1), Vec::new()));
+        assert_eq!(side.attacks, [(70, true)]);
+        assert_eq!(side.group_stops, 0);
+        assert_eq!(
+            (u.current_order, u.order_priority, u.current_action),
+            (ATTACK_ORDER, 40, ATTACK_ACTION)
+        );
+        assert_eq!(
+            (u.current_target, u.target_type, u.target_point),
+            (70, 6, [10.0, 20.0, 0.0])
+        );
+        let mut u = idle(SOLDIER_AI);
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let o = queued(ATTACK_ORDER, 70);
+        let at = Surroundings {
+            class: 6,
+            group: Some(GroupState::default()),
+            ..Surroundings::default()
+        };
+        let r = u.process_order(
+            &o,
+            Some((&at, &mut side, false)),
+            None,
+            &mut rng(),
+            &mut Vec::new(),
+        );
+        assert_eq!((r, side.group_stops), (Ok(1), 1));
+        // a villager hunts an animal (class 9) and attacks anything else it may (class 6)
+        let mut u = idle(CIVILIAN);
+        let mut side = OrderSide::holding(&[(71, 9), (72, 6)]);
+        let (r, fx, _) = run_order(&mut u, queued(ATTACK_ORDER, 71), 4, &mut side);
+        assert_eq!((r, fx), (Ok(1), vec![Effect::HuntObject(71)]));
+        assert_eq!(
+            (u.current_order, u.current_action),
+            (ATTACK_ORDER, HUNT_ACTION)
+        );
+        let mut u = idle(CIVILIAN);
+        let (r, _, _) = run_order(&mut u, queued(ATTACK_ORDER, 72), 4, &mut side);
+        assert_eq!((r, u.current_action), (Ok(1), ATTACK_ACTION));
+        // a unit of class 18: the tail forgets the target (its class and point stay) and ends
+        // the order, the order's priority kept
+        let mut u = idle(BOAR_AI);
+        let (r, _, _) = run_order(&mut u, queued(ATTACK_ORDER, 72), CLASS_18, &mut side);
+        assert_eq!(r, Ok(1));
+        assert_eq!(
+            (
+                u.current_order,
+                u.order_priority,
+                u.current_target,
+                u.target_type
+            ),
+            (-1, 40, -1, 6)
+        );
+        // a command the unit refuses, or a target the world does not hold: not taken
+        let mut u = idle(BOAR_AI);
+        side.refuses = true;
+        assert_eq!(
+            run_order(&mut u, queued(ATTACK_ORDER, 72), 10, &mut side).0,
+            Ok(0)
+        );
+        assert_eq!(
+            run_order(&mut u, queued(ATTACK_ORDER, 99), 10, &mut side).0,
+            Ok(0)
+        );
+        assert_eq!((u.current_order, u.current_action), (-1, -1));
+    }
+
+    #[test]
+    fn the_defend_order_keeps_near_its_target_or_its_point() {
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let mut u = UnitAi {
+            current_action: MOVE_ACTION,
+            ..idle(SOLDIER_AI)
+        };
+        let (r, fx, _) = run_order(&mut u, queued(DEFEND_ORDER, 70), 6, &mut side);
+        assert_eq!((r, fx), (Ok(1), Vec::new()));
+        assert_eq!(
+            (u.current_order, u.current_action, u.last_action),
+            (DEFEND_ORDER, DEFEND_ACTION, MOVE_ACTION)
+        );
+        assert_eq!(
+            (u.current_target, u.target_type, u.target_point),
+            (70, 6, [10.0, 20.0, 0.0])
+        );
+        assert_eq!((u.desired_distance, u.defend_target), (3.0, 70));
+        // without a target: the point at the unit's height, no defend target
+        let mut u = idle(SOLDIER_AI);
+        assert_eq!(
+            run_order(&mut u, queued(DEFEND_ORDER, -1), 6, &mut side).0,
+            Ok(1)
+        );
+        assert_eq!(
+            (u.current_target, u.target_point, u.defend_target),
+            (-1, [12.7, 30.2, 0.25], -1)
+        );
+        // a target the world does not hold: not taken
+        let mut u = idle(SOLDIER_AI);
+        assert_eq!(
+            run_order(&mut u, queued(DEFEND_ORDER, 99), 6, &mut side).0,
+            Ok(0)
+        );
+        // master 128 takes no defend order
+        let at = Surroundings {
+            master: DEFENDLESS_MASTER,
+            ..Surroundings::default()
+        };
+        let o = queued(DEFEND_ORDER, -1);
+        let r = u.process_order(
+            &o,
+            Some((&at, &mut side, false)),
+            None,
+            &mut rng(),
+            &mut Vec::new(),
+        );
+        assert_eq!(r, Ok(0));
+        assert_eq!(u.current_action, -1);
+    }
+
+    #[test]
+    fn the_heal_conversion_and_repair_orders_give_the_unit_s_commands() {
+        for (order, action, command) in [
+            (
+                crate::ai_kinds::ORDER_HEAL,
+                HEAL_ACTION,
+                UnitCommand::Heal(70),
+            ),
+            (
+                crate::ai_kinds::ORDER_CONVERT,
+                CONVERT_ACTION,
+                UnitCommand::Convert(70),
+            ),
+            (REPAIR_ORDER, REPAIR_ACTION, UnitCommand::Repair(70)),
+        ] {
+            let mut side = OrderSide::holding(&[(70, 3)]);
+            let mut u = UnitAi {
+                current_target: 5,
+                target_type: 9,
+                ..idle(PRIEST_AI)
+            };
+            let (r, fx, _) = run_order(&mut u, queued(order, 70), 18, &mut side);
+            assert_eq!((r, fx), (Ok(1), Vec::new()));
+            assert_eq!(side.commands, [command]);
+            assert_eq!((u.current_order, u.current_action), (order, action));
+            assert_eq!(
+                (u.current_target, u.target_type, u.target_point),
+                (70, 3, [10.0, 20.0, 0.0])
+            );
+            assert_eq!((u.last_target, u.last_target_type), (5, 9));
+            // refused: nothing changes
+            let mut u = idle(PRIEST_AI);
+            side.refuses = true;
+            assert_eq!(run_order(&mut u, queued(order, 70), 18, &mut side).0, Ok(0));
+            assert_eq!(u, idle(PRIEST_AI));
+        }
+        // the unit's commands the slice models on no unit
+        let mut u = idle(PRIEST_AI);
+        let o = queued(crate::ai_kinds::ORDER_HEAL, 70);
+        let at = Surroundings::default();
+        let mut tail = TailSide::default();
+        assert!(
+            u.process_order(
+                &o,
+                Some((&at, &mut tail, false)),
+                None,
+                &mut rng(),
+                &mut Vec::new()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn the_explore_orders_explore_their_point_cut_to_tiles() {
+        let mut side = OrderSide::default();
+        for (order, action, last) in [
+            (crate::ai_kinds::ORDER_EXPLORE, EXPLORE_ACTION, -1),
+            (crate::ai_kinds::ORDER_SCOUT, SCOUT_ACTION, EXPLORE_ACTION),
+            (AUTO_SCOUT_ORDER, AUTO_SCOUT_ACTION, EXPLORE_ACTION),
+        ] {
+            let mut u = idle(SOLDIER_AI);
+            let (r, fx, _) = run_order(&mut u, queued(order, -1), 12, &mut side);
+            assert_eq!((r, fx), (Ok(1), vec![Effect::Explore([12.0, 30.0])]));
+            assert_eq!(
+                (u.current_order, u.current_action, u.last_action),
+                (order, action, last)
+            );
+            assert_eq!(u.target_point, [12.0, 30.0, EXPLORE_Z]);
+        }
+        // a point that is not a number cuts to i32::MIN (CVTTSS2SI)
+        let mut u = idle(SOLDIER_AI);
+        let o = QueuedOrder {
+            point: [f32::NAN, 1.5, 0.0],
+            ..queued(crate::ai_kinds::ORDER_EXPLORE, -1)
+        };
+        let (_, fx, _) = run_order(&mut u, o, 12, &mut side);
+        assert_eq!(fx, vec![Effect::Explore([i32::MIN as f32, 1.0])]);
+    }
+
+    #[test]
+    fn the_stop_order_stops_and_ends_the_order() {
+        let mut side = OrderSide::default();
+        let mut u = UnitAi {
+            current_order: MOVE_ORDER,
+            order_priority: 100,
+            current_action: MOVE_ACTION,
+            current_target: 70,
+            ..idle(SOLDIER_AI)
+        };
+        let (r, fx, _) = run_order(&mut u, queued(STOP_ORDER, -1), 6, &mut side);
+        assert_eq!((r, fx), (Ok(1), vec![Effect::Stop]));
+        assert_eq!(
+            (
+                u.current_order,
+                u.order_priority,
+                u.current_action,
+                u.current_target
+            ),
+            (-1, -1, -1, -1)
+        );
+        assert_eq!((u.last_order, u.last_target), (MOVE_ORDER, 70));
+        assert_eq!(u.state_position, [5.0, 6.0]);
+    }
+
+    #[test]
+    fn the_run_away_order_runs_from_the_unit_s_attackers() {
+        // no attackers: a random direction (two draws), by twice the speed (0 here: the unit's
+        // own place), through evasiveMoveTo
+        let mut side = OrderSide::default();
+        let mut u = idle(SOLDIER_AI);
+        let (r, fx, draws) = run_order(&mut u, queued(RUN_AWAY_ORDER, -1), 6, &mut side);
+        assert_eq!(r, Ok(1));
+        assert_eq!(draws, 2);
+        assert_eq!(
+            fx,
+            vec![Effect::Move(AiMove {
+                point: [5.0, 6.0, 0.25],
+                range: 0.0,
+                force: true,
+                walk: false,
+            })]
+        );
+        assert_eq!(
+            (u.current_order, u.current_action),
+            (RUN_AWAY_ORDER, MOVE_ACTION)
+        );
+        // standing its ground, a player's unit stays: not taken
+        let mut u = UnitAi {
+            stance: 2,
+            ..idle(SOLDIER_AI)
+        };
+        assert_eq!(
+            run_order(&mut u, queued(RUN_AWAY_ORDER, -1), 6, &mut side).0,
+            Ok(0)
+        );
+    }
+
+    #[test]
+    fn the_gather_and_hunt_orders_work_an_object_the_world_holds() {
+        let mut side = OrderSide::holding(&[(70, 15)]);
+        let mut u = idle(CIVILIAN);
+        let gather = crate::ai_kinds::ORDER_GATHER;
+        let (r, fx, _) = run_order(&mut u, queued(gather, 70), 4, &mut side);
+        assert_eq!((r, fx), (Ok(1), vec![Effect::GatherObject(70)]));
+        assert_eq!(
+            (
+                u.current_order,
+                u.current_action,
+                u.current_target,
+                u.target_type
+            ),
+            (gather, GATHER_ACTION, 70, 15)
+        );
+        // gone: the gather command takes nothing
+        let mut u = idle(CIVILIAN);
+        let (r, fx, _) = run_order(&mut u, queued(gather, 99), 4, &mut side);
+        assert_eq!((r, fx), (Ok(0), Vec::new()));
+        // the hunt stops first, then hunts; on a gone target the stop stays
+        let mut u = UnitAi {
+            current_action: GATHER_ACTION,
+            ..idle(CIVILIAN)
+        };
+        let (r, fx, _) = run_order(&mut u, queued(HUNT_ORDER, 70), 4, &mut side);
+        assert_eq!((r, fx), (Ok(1), vec![Effect::HuntObject(70)]));
+        assert_eq!(
+            (u.current_order, u.current_action),
+            (HUNT_ORDER, HUNT_ACTION)
+        );
+        let mut u = UnitAi {
+            current_action: GATHER_ACTION,
+            ..idle(CIVILIAN)
+        };
+        let (r, fx, _) = run_order(&mut u, queued(HUNT_ORDER, 99), 4, &mut side);
+        assert_eq!((r, fx), (Ok(0), vec![Effect::Stop]));
+        assert_eq!((u.current_order, u.current_action), (-1, -1));
+        // the auto boar luring hunts, then holds 0x2be either way
+        let luring = crate::ai_kinds::ORDER_AUTO_BOAR_LURING;
+        let mut u = idle(CIVILIAN);
+        let (r, _, _) = run_order(&mut u, queued(luring, 70), 4, &mut side);
+        assert_eq!(r, Ok(1));
+        assert_eq!(
+            (u.current_order, u.current_action, u.last_action),
+            (luring, BOAR_LURING_ACTION, HUNT_ACTION)
+        );
+        let mut u = idle(CIVILIAN);
+        let (r, _, _) = run_order(&mut u, queued(luring, 99), 4, &mut side);
+        assert_eq!(
+            (r, u.current_order, u.current_action),
+            (Ok(0), -1, BOAR_LURING_ACTION)
+        );
+    }
+
+    #[test]
+    fn the_move_orders_move_to_their_point_within_their_range() {
+        let mut side = OrderSide::default();
+        for order in [MOVE_ORDER, crate::ai_kinds::ORDER_GROUP_GATHER] {
+            let mut u = idle(SOLDIER_AI);
+            let (r, fx, _) = run_order(&mut u, queued(order, -1), 6, &mut side);
+            assert_eq!(
+                (r, fx),
+                (
+                    Ok(1),
+                    vec![Effect::Move(AiMove {
+                        point: [12.7, 30.2, 0.5],
+                        range: 3.0,
+                        force: true,
+                        walk: true,
+                    })]
+                )
+            );
+            assert_eq!((u.current_order, u.current_action), (order, MOVE_ACTION));
+        }
+    }
+
+    #[test]
+    fn the_follow_order_follows_and_moves_to_a_target_beyond_its_range() {
+        // the gap (1) within the range squared (9): no move
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let mut u = idle(SOLDIER_AI);
+        let (r, fx, _) = run_order(&mut u, queued(FOLLOW_ORDER, 70), 6, &mut side);
+        assert_eq!((r, fx), (Ok(1), Vec::new()));
+        assert_eq!(
+            (
+                u.current_order,
+                u.current_action,
+                u.current_target,
+                u.desired_distance
+            ),
+            (FOLLOW_ORDER, FOLLOW_ACTION, 70, 3.0)
+        );
+        // beyond it: the move to the object (slot 0x138)
+        side.world[0].gap_squared = 9.5;
+        let mut u = idle(SOLDIER_AI);
+        let (r, fx, _) = run_order(&mut u, queued(FOLLOW_ORDER, 70), 6, &mut side);
+        assert_eq!(r, Ok(1));
+        assert_eq!(
+            fx,
+            vec![Effect::MoveToObject {
+                target: 70,
+                state: 2,
+                range: 3.0,
+            }]
+        );
+        assert_eq!(
+            (u.current_action, u.last_action),
+            (MOVE_ACTION, FOLLOW_ACTION)
+        );
+        // a gap that is not a number stays (COMISS, JBE); a gone target is not taken
+        side.world[0].gap_squared = f32::NAN;
+        let mut u = idle(SOLDIER_AI);
+        assert_eq!(
+            run_order(&mut u, queued(FOLLOW_ORDER, 70), 6, &mut side).1,
+            Vec::new()
+        );
+        let mut u = idle(SOLDIER_AI);
+        assert_eq!(
+            run_order(&mut u, queued(FOLLOW_ORDER, 99), 6, &mut side).0,
+            Ok(0)
+        );
+    }
+
+    #[test]
+    fn the_transport_enter_and_unload_orders_give_the_unit_s_commands() {
+        let mut side = OrderSide::holding(&[(70, 3)]);
+        let transport = crate::ai_kinds::ORDER_TRANSPORT;
+        let mut u = idle(11);
+        let (r, _, _) = run_order(&mut u, queued(transport, -1), 20, &mut side);
+        assert_eq!(r, Ok(1));
+        assert_eq!(side.commands, [UnitCommand::Transport([12.7, 30.2, 0.5])]);
+        assert_eq!(
+            (
+                u.current_order,
+                u.current_action,
+                u.current_target,
+                u.target_point
+            ),
+            (transport, TRANSPORT_ACTION, -1, [12.7, 30.2, 0.5])
+        );
+        // the enter: the target at (-1, -1, -1) with its class
+        let mut side = OrderSide::holding(&[(70, 3)]);
+        let enter = crate::garrison::ENTER_ORDER;
+        let mut u = idle(SOLDIER_AI);
+        let (r, _, _) = run_order(&mut u, queued(enter, 70), 6, &mut side);
+        assert_eq!(r, Ok(1));
+        assert_eq!(side.commands, [UnitCommand::Enter(70)]);
+        assert_eq!(
+            (
+                u.current_action,
+                u.current_target,
+                u.target_type,
+                u.target_point
+            ),
+            (crate::garrison::ENTER_ACTION, 70, 3, [-1.0; 3])
+        );
+        // a villager takes no enter into an object the world does not hold; others ask
+        let mut u = idle(CIVILIAN);
+        assert_eq!(run_order(&mut u, queued(enter, 99), 4, &mut side).0, Ok(0));
+        assert_eq!(side.commands.len(), 1);
+        // (FUN_140c64c10 keeps the class it held for an object the world does not hold)
+        let mut u = UnitAi {
+            target_type: 12,
+            ..idle(SOLDIER_AI)
+        };
+        assert_eq!(run_order(&mut u, queued(enter, 99), 6, &mut side).0, Ok(1));
+        assert_eq!((u.current_target, u.target_type), (99, 12));
+        // the unloads: the point at the unit's height; the unit itself the target
+        for (order, over_wall, action) in [
+            (crate::ai_kinds::ORDER_UNLOAD, false, UNLOAD_ACTION),
+            (
+                crate::ai_kinds::ORDER_UNLOAD_OVER_WALL,
+                true,
+                UNLOAD_OVER_WALL_ACTION,
+            ),
+        ] {
+            let mut side = OrderSide::default();
+            let mut u = idle(11);
+            let (r, _, _) = run_order(&mut u, queued(order, -1), 20, &mut side);
+            assert_eq!(r, Ok(1));
+            assert_eq!(
+                side.commands,
+                [UnitCommand::Unload {
+                    to: [12.7, 30.2, 0.25],
+                    over_wall,
+                }]
+            );
+            assert_eq!(
+                (
+                    u.current_order,
+                    u.current_action,
+                    u.current_target,
+                    u.target_type
+                ),
+                (order, action, 9, 20)
+            );
+            assert_eq!(u.target_point, [5.0, 6.0, 0.25]);
+        }
+    }
+
+    #[test]
+    fn seek_and_destroy_attacks_and_explore_and_destroy_explores_at_tiles() {
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let seek = crate::ai_kinds::ORDER_SEEK_AND_DESTROY;
+        let mut u = idle(SOLDIER_AI);
+        let (r, fx, _) = run_order(&mut u, queued(seek, 70), 6, &mut side);
+        assert_eq!((r, fx), (Ok(1), Vec::new()));
+        assert_eq!(side.attacks, [(70, true)]);
+        assert_eq!(
+            (
+                u.current_order,
+                u.current_action,
+                u.current_target,
+                u.target_type
+            ),
+            (seek, SEEK_ACTION, 70, 6)
+        );
+        assert_eq!(u.target_point, [12.0, 30.0, EXPLORE_Z]);
+        let destroy = crate::ai_kinds::ORDER_EXPLORE_AND_DESTROY;
+        let mut u = idle(SOLDIER_AI);
+        let (r, fx, _) = run_order(&mut u, queued(destroy, -1), 6, &mut side);
+        assert_eq!((r, fx), (Ok(1), vec![Effect::Explore([12.0, 30.0])]));
+        assert_eq!(
+            (
+                u.current_order,
+                u.current_action,
+                u.current_target,
+                u.target_point
+            ),
+            (destroy, EXPLORE_DESTROY_ACTION, -1, [12.0, 30.0, EXPLORE_Z])
+        );
+    }
+
+    #[test]
+    fn the_wait_order_waits_and_leaves_a_patrol_order() {
+        // case 0x2d8: the action value 0x274 (the last stays), the patrol order's timers, then
+        // the order; an adjusted idle timeout of 750 is redrawn (one draw)
+        let mut side = OrderSide::default();
+        let mut u = UnitAi {
+            current_order: PATROL,
+            current_action: MOVE_ACTION,
+            last_action: 5,
+            adjusted_idle_timeout: 750,
+            idle_timeout: 3000,
+            secondary_timer: 900,
+            ..idle(SOLDIER_AI)
+        };
+        let wait = crate::ai_kinds::ORDER_WAIT;
+        let (r, fx, draws) = run_order(&mut u, queued(wait, -1), 6, &mut side);
+        assert_eq!((r, fx, draws), (Ok(1), Vec::new(), 1));
+        assert_eq!(
+            (
+                u.current_order,
+                u.order_priority,
+                u.current_action,
+                u.last_action
+            ),
+            (wait, 40, WAIT_ACTION, 5)
+        );
+        assert_eq!(u.secondary_timer, 750);
+        assert_ne!(u.adjusted_idle_timeout, 750);
+    }
+
+    #[test]
+    fn the_attack_roundup_passes_its_own_target_and_one_it_cannot_reach() {
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let roundup = crate::ai_kinds::ORDER_ATTACK_ROUNDUP;
+        let mut u = UnitAi {
+            current_target: 70,
+            ..idle(SOLDIER_AI)
+        };
+        assert_eq!(
+            run_order(&mut u, queued(roundup, 70), 6, &mut side).0,
+            Ok(0)
+        );
+        // with an action value it must reach the target
+        let mut u = UnitAi {
+            current_action: MOVE_ACTION,
+            ..idle(SOLDIER_AI)
+        };
+        assert_eq!(
+            run_order(&mut u, queued(roundup, 70), 6, &mut side).0,
+            Ok(0)
+        );
+        assert_eq!(side.attacks, Vec::new());
+        // without one it attacks, and the order becomes 700, leaving a patrol order
+        let mut u = UnitAi {
+            current_order: PATROL,
+            secondary_timer: 900,
+            ..idle(SOLDIER_AI)
+        };
+        assert_eq!(
+            run_order(&mut u, queued(roundup, 70), 6, &mut side).0,
+            Ok(1)
+        );
+        assert_eq!(
+            (u.current_order, u.current_action, u.secondary_timer),
+            (ATTACK_ORDER, ATTACK_ACTION, 750)
+        );
+    }
+
+    #[test]
+    fn the_order_on_a_target_goes_to_the_caller_or_moves_to_a_gone_one_s_point() {
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let o = queued(ORDER_ON_TARGET, 70);
+        let mut u = idle(CIVILIAN);
+        let (r, fx, _) = run_order(&mut u, o, 4, &mut side);
+        assert_eq!((r, fx), (Ok(1), vec![Effect::OrderOnTarget(o)]));
+        assert_eq!(u.current_order, -1);
+        // gone, without its type: the move to the point, and the order on a target the AI's
+        for order in [ORDER_ON_TARGET, ORDER_ON_TARGET_2] {
+            let mut u = idle(CIVILIAN);
+            let (r, fx, _) = run_order(&mut u, queued(order, 99), 4, &mut side);
+            assert_eq!(r, Ok(1));
+            assert_eq!(
+                fx,
+                vec![Effect::Move(AiMove {
+                    point: [12.7, 30.2, 0.5],
+                    range: 3.0,
+                    force: true,
+                    walk: true,
+                })]
+            );
+            assert_eq!((u.current_order, u.order_priority), (order, 40));
+        }
+        // gone with its type: its search for another of the kind is not modelled
+        let mut u = idle(CIVILIAN);
+        let typed = QueuedOrder {
+            target_type: 15,
+            ..queued(ORDER_ON_TARGET, 99)
+        };
+        assert!(run_order(&mut u, typed, 4, &mut side).0.is_err());
+    }
+
+    #[test]
+    fn the_attack_move_attacks_with_a_trebuchet_and_moves_otherwise() {
+        let mut side = OrderSide::holding(&[(70, 3)]);
+        for class in [TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS] {
+            let mut u = idle(SIEGE_AI);
+            let (r, fx, _) = run_order(&mut u, queued(PATROL_2, 70), class, &mut side);
+            assert_eq!((r, fx), (Ok(1), Vec::new()));
+            assert_eq!(
+                (u.current_order, u.current_action),
+                (ATTACK_ORDER, ATTACK_ACTION)
+            );
+        }
+        for (class, target) in [(6, 70), (TREBUCHET_CLASS, -1)] {
+            let mut u = idle(SOLDIER_AI);
+            let (r, fx, _) = run_order(&mut u, queued(PATROL_2, target), class, &mut side);
+            assert_eq!(r, Ok(1));
+            assert!(matches!(fx[..], [Effect::Move(_)]));
+            assert_eq!((u.current_order, u.current_action), (PATROL_2, MOVE_ACTION));
+        }
+    }
+
+    #[test]
+    fn the_order_tail_takes_the_order_and_leaves_a_patrol_order() {
+        let patrolling = |order| UnitAi {
+            current_order: order,
+            order_priority: 7,
+            adjusted_idle_timeout: 750,
+            idle_timeout: 3000,
+            secondary_timer: 2000,
+            current_target: 70,
+            ..idle(SOLDIER_AI)
+        };
+        // leaving a patrol order for another redraws a timeout of exactly 750 and caps the
+        // secondary timer
+        let mut u = patrolling(PATROL);
+        let mut r = rng();
+        assert_eq!(u.order_tail(MOVE_ORDER, 40, 6, false, &mut r), 1);
+        assert_eq!(
+            (
+                u.current_order,
+                u.order_priority,
+                u.secondary_timer,
+                r.draws
+            ),
+            (MOVE_ORDER, 40, 750, 1)
+        );
+        // staying on it does nothing to the timers
+        let mut u = patrolling(PATROL_2);
+        let mut r = rng();
+        let _ = u.order_tail(PATROL_2, 40, 6, false, &mut r);
+        assert_eq!(
+            (u.secondary_timer, u.adjusted_idle_timeout, r.draws),
+            (2000, 750, 0)
+        );
+        // the stop ends the order and its priority
+        let mut u = patrolling(PATROL);
+        let _ = u.order_tail(STOP_ORDER, 40, 6, false, &mut rng());
+        assert_eq!(
+            (u.current_order, u.order_priority, u.secondary_timer),
+            (-1, -1, 750)
+        );
+        // the attack move's attack and the roundup become the attack order
+        let mut u = patrolling(PATROL_2);
+        let _ = u.order_tail(PATROL_2, 40, 51, true, &mut rng());
+        assert_eq!((u.current_order, u.secondary_timer), (ATTACK_ORDER, 750));
+        // a class-18 unit's attack order: the target goes, the order is -1
+        let mut u = patrolling(-1);
+        let _ = u.order_tail(ATTACK_ORDER, 40, CLASS_18, false, &mut rng());
+        assert_eq!(
+            (u.current_order, u.order_priority, u.current_target),
+            (-1, 40, -1)
+        );
+    }
+
+    #[test]
+    fn the_attack_command_runs_a_pending_stop_first() {
+        // the attack command runs at once: a stop pending runs first; a stop with another
+        // command pending is not modelled
+        let mut u = idle(BOAR_AI);
+        let mut side = OrderSide::holding(&[(70, 6)]);
+        let at = Surroundings::default();
+        let mut fx = vec![Effect::Stop, Effect::Stop];
+        assert_eq!(
+            u.attack_command(70, true, &at, &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!((fx, side.stops, u.commanded), (Vec::new(), 1, true));
+        let mut fx = vec![Effect::Stop, Effect::GatherObject(1)];
+        assert!(u.attack_command(70, true, &at, &mut side, &mut fx).is_err());
     }
 }

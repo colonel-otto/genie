@@ -34,6 +34,15 @@ pub(crate) struct DropWorld<'a> {
     pub groups: &'a crate::group::UnitGroups,
 }
 
+/// A unit command a unit AI's update gave that the caller runs after it ([`Context::works`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::turn) enum AiWork {
+    /// `HuntObject`'s unit part on the target: the stop, then the hunt command
+    /// ([`Turns::hunt_command`]).
+    Hunt(i32),
+    /// `GatherObject`'s gather command on the target ([`Turns::gather_command`]).
+    Gather(i32),
+}
 pub(in crate::turn) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
     pub(in crate::turn) dt: u32,
@@ -188,12 +197,10 @@ pub(in crate::turn) struct Context<'a> {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// The targets of the unit AI's `HuntObject`s, in order, whose unit part (the stop, then the
-    /// hunt command) the caller runs after the update ([`Turns::hunt_command`]).
-    pub(in crate::turn) hunt_objects: Vec<i32>,
-    /// The targets of the unit AI's `GatherObject`s, in order, whose gather command the caller
-    /// runs after the update ([`Turns::gather_command`]).
-    pub(in crate::turn) gather_objects: Vec<i32>,
+    /// The unit AI's `HuntObject`s and `GatherObject`s in the order it gave them, whose unit
+    /// parts the caller runs after the update in that order ([`AiWork`]): a later one's stop
+    /// tears down the action an earlier one made.
+    pub(in crate::turn) works: Vec<AiWork>,
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
     pub(in crate::turn) build_object: Option<i32>,
@@ -1098,6 +1105,21 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             switch: switch.map(|m| m.id),
         });
         Ok(true)
+    }
+
+    /// The soldier's `AttackObject` in a group (`FUN_140c17550`): the unit's future path data
+    /// (slot 0x550), which the slice holds none of, goes; then a unit that moves (slot 0x5c8) or
+    /// speeds up (slot 0x5a0: its forward acceleration above 0, `COMISS`/`JBE`) stops (slot
+    /// 0x5d0).
+    fn group_attack_stop(&mut self) -> Result<(), Unsupported> {
+        let Some(m) = self.unit.mover.as_mut() else {
+            return Ok(());
+        };
+        let speeding = m.velocity.as_ref().is_some_and(|v| 0.0 < v.acceleration[2]);
+        if m.is_moving() || speeding {
+            m.stop()?;
+        }
+        Ok(())
     }
 
     /// Slot 400 at the full update's tail: a wait for a foundation the AI gave (made after the

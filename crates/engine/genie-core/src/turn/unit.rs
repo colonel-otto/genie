@@ -18,7 +18,7 @@ use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, DropSite};
 use crate::turn::command::GatherPoint;
-use crate::turn::view::{Context, DropWorld, OwnerView, UnitView};
+use crate::turn::view::{AiWork, Context, DropWorld, OwnerView, UnitView};
 use crate::turn::world::{
     Releaser, ResourceWorld, Seeker, built_death, change_hands, clear_look_of, closest_resource_of,
     combat_dies, drop_site_search, farm_bonus, forget_resource, herded, nearest_drop_site,
@@ -960,8 +960,8 @@ impl Unit {
                     ))?;
                     *tail = Some(after);
                 }
-                Effect::HuntObject(target) => c.hunt_objects.push(target),
-                Effect::GatherObject(target) => c.gather_objects.push(target),
+                Effect::HuntObject(target) => c.works.push(AiWork::Hunt(target)),
+                Effect::GatherObject(target) => c.works.push(AiWork::Gather(target)),
                 Effect::BuildObject(target) => {
                     if c.build_object.replace(target).is_some() {
                         return Err(Unsupported("two BuildObjects in one update"));
@@ -5835,7 +5835,7 @@ impl Unit {
                             (Some(dt), None) => {
                                 ai.update(dt, c.world_time, computer, &at, ai_stream, &mut side)
                             }
-                            (None, _) => ai.off_turn(&at, &mut side),
+                            (None, _) => ai.off_turn(&at, &mut side, computer, ai_stream),
                         }
                     };
                     self.ai = Some(ai);

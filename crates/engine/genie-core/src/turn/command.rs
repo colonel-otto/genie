@@ -1750,7 +1750,7 @@ impl Turns {
 
     /// The build order (`0x2be`) a unit AI's queue runs (slot 0x230's case: slot 0xf0 with 1 on its
     /// foundation, [`Turns::build_object`]), then the tail takes the order (702) with its
-    /// priority.
+    /// priority ([`crate::unit_ai::UnitAi::order_tail`]: leaving a patrol order).
     pub(crate) fn build_order(
         &mut self,
         player: usize,
@@ -1762,9 +1762,14 @@ impl Turns {
             .ai
             .as_mut()
             .ok_or(Unsupported("a build order without a unit AI"))?;
-        // the tail (`LAB_140c5d432`)
-        ai.current_order = BUILD_ORDER;
-        ai.order_priority = order.priority;
+        // the tail (`LAB_140c5d432`); only the attack order reads the class
+        let _ = ai.order_tail(
+            BUILD_ORDER,
+            order.priority,
+            -1,
+            false,
+            self.streams.get(Stream::Ai),
+        );
         Ok(())
     }
 

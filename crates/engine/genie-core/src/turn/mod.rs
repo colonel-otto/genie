@@ -37,7 +37,7 @@ pub use crate::turn::unit::Unit;
 use crate::turn::unit::{AiResume, Captured, Step, same_members};
 pub(crate) use crate::turn::unit::{annexes_of, give_load};
 pub(crate) use crate::turn::view::DropWorld;
-use crate::turn::view::{Context, Foreign};
+use crate::turn::view::{AiWork, Context, Foreign};
 pub(crate) use crate::turn::world::{
     Releaser, World, built_death, combat_dies, count_class, farm_bonus, forget_resource, refund_of,
     released, storage_leaves, victim_of,
@@ -1091,8 +1091,7 @@ impl Turns {
                     ai_resume: resume.take(),
                     taken_over: None,
                     order_on_target: None,
-                    hunt_objects: Vec::new(),
-                    gather_objects: Vec::new(),
+                    works: Vec::new(),
                     build_object: None,
                     build_command: None,
                     move_aside: Vec::new(),
@@ -1115,8 +1114,7 @@ impl Turns {
                     std::mem::take(&mut c.attribute_adds),
                     c.order_on_target.take(),
                 );
-                let hunt_objects = std::mem::take(&mut c.hunt_objects);
-                let gather_objects = std::mem::take(&mut c.gather_objects);
+                let works = std::mem::take(&mut c.works);
                 let leads = c.leads.take();
                 let build_object = c.build_object.take();
                 let build_command = c.build_command.take();
@@ -1329,26 +1327,20 @@ impl Turns {
                 {
                     result = Err(e);
                 }
-                for target in hunt_objects {
+                // the unit AI's HuntObjects (the unit's stop, then its hunt command) and
+                // GatherObjects (its gather command), in the order it gave them
+                for work in works {
                     if !matches!(result, Ok(Step::Stay)) {
                         result = result.and(Err(Unsupported(
-                            "a HuntObject of a unit that leaves its list",
+                            "a HuntObject or GatherObject of a unit that leaves its list",
                         )));
                         break;
                     }
-                    if let Err(e) = self.hunt_command(p, i, target) {
-                        result = Err(e);
-                    }
-                }
-                // the unit AI's GatherObjects: each the unit's gather command
-                for target in gather_objects {
-                    if !matches!(result, Ok(Step::Stay)) {
-                        result = result.and(Err(Unsupported(
-                            "a GatherObject of a unit that leaves its list",
-                        )));
-                        break;
-                    }
-                    if let Err(e) = self.gather_command(p, i, target) {
+                    let done = match work {
+                        AiWork::Hunt(target) => self.hunt_command(p, i, target),
+                        AiWork::Gather(target) => self.gather_command(p, i, target),
+                    };
+                    if let Err(e) = done {
                         result = Err(e);
                     }
                 }
