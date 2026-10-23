@@ -3005,6 +3005,43 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
     assert_eq!(site(&t).attacking_units, [41, 40]);
 }
 
+/// Slot 0x180 by class: the static object's (`FUN_141197d00`, types 10 and 15) flags an object
+/// alive without workers left to sleep (not one of NaN hit points: `COMISS`, `JNC`); the animated
+/// object's (`FUN_141071ea0`, types 20 to 40) only counts the worker less. A sleeping object
+/// (`FUN_1415417a0` finds it) counts one less and stays asleep without the flag.
+#[test]
+fn only_a_static_object_let_go_by_its_last_worker_goes_to_sleep() {
+    let by = Releaser {
+        id: 40,
+        class: 4,
+        player: 1,
+    };
+    let let_go = |kind, hp| {
+        let mut u = Unit {
+            workers: 1,
+            life: Lifecycle {
+                hp,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        released(&mut u, kind, false, by).unwrap();
+        (u.workers, u.life.goto_sleep)
+    };
+    assert_eq!(let_go(10, 1.0), (0, true));
+    assert_eq!(let_go(15, 1.0), (0, true));
+    assert_eq!(let_go(20, 1.0), (0, false));
+    assert_eq!(let_go(25, 1.0), (0, false));
+    assert_eq!(let_go(10, f32::NAN), (0, false));
+    let mut t = deaths_world();
+    let mut tree = t.players[0].objects.remove(0);
+    tree.workers = 2;
+    t.players[0].sleeping.push(tree);
+    t.release(50, by).unwrap();
+    let tree = &t.players[0].sleeping[0];
+    assert_eq!((tree.workers, tree.life.goto_sleep), (1, false));
+}
+
 /// The Wonder (master 276) keeps its action list up to state 5 (`0x14106ac90`'s threshold 5,
 /// any other object's 2).
 #[test]

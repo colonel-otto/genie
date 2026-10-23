@@ -348,9 +348,14 @@ pub(crate) struct Releaser {
     pub(crate) player: usize,
 }
 
+/// The first master type whose slot 0x180 is not the static object's (`FUN_141197d00`, types 10
+/// and 15): the animated object's (`FUN_141071ea0`, types 20 to 40) only counts a worker less.
+const ANIMATED_TYPE: u8 = 20;
+
 /// Slot 0x180 on object `u` of master type `kind`, let go by `by`: the static object's
-/// (`FUN_141197d00`) counts a worker less and a static one without workers left, alive (state 2
-/// with hit points, or 6), goes to sleep. A combat object's (`FUN_141086e60`) counts the worker
+/// (`FUN_141197d00`, types 10 and 15) counts a worker less and a static one without workers
+/// left, alive (state 2 with hit points, or 6), goes to sleep; the animated object's
+/// (`FUN_141071ea0`, types 20 to 40) only counts the worker less. A combat object's (`FUN_141086e60`) counts the worker
 /// less (`FUN_141071ea0`) and tells its unit AI that the releaser no longer acts on it (notify
 /// 699, the releaser's master class as its first parameter; none from an object of a negative
 /// id). A building's (`FUN_1411d6020`) first drops the releaser's first entry from its attacking
@@ -367,8 +372,9 @@ pub(crate) fn released(
     if 0 < u.workers {
         u.workers -= 1;
     }
+    // COMISS hp with 0, JNC: a NaN does not count as alive
     let alive = (u.life.state == 2 && 0.0 <= u.life.hp) || u.life.state == 6;
-    if kind < 30 && u.workers == 0 && alive {
+    if kind < ANIMATED_TYPE && u.workers == 0 && alive {
         u.life.goto_sleep = true;
     }
     if !u.combat {

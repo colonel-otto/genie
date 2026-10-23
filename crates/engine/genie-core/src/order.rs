@@ -4116,8 +4116,18 @@ impl Turns {
     /// 2 with hit points at least 0) or in state 6 is flagged to sleep (`+0x641`, `+0x643`); a
     /// combat object (`FUN_141086e60`) tells its unit AI (notify 699).
     pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), Unsupported> {
-        let Some(Place::Live(p, i)) = self.place(id) else {
-            return Ok(());
+        let (p, i) = match self.place(id) {
+            Some(Place::Live(p, i)) => (p, i),
+            // a sleeping object (static: only those sleep) found by FUN_1415417a0 counts a worker
+            // less (FUN_141197d00); asleep already (`+0x641`), it is not flagged again
+            Some(Place::Sleeping(p, i)) => {
+                let u = &mut self.players[p].sleeping[i];
+                if 0 < u.workers {
+                    u.workers -= 1;
+                }
+                return Ok(());
+            }
+            None => return Ok(()),
         };
         let world = World {
             players: &self.players,
