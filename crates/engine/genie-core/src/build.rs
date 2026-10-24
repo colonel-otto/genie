@@ -1130,11 +1130,17 @@ impl BuildAction {
         if inside {
             return self.clear(walk);
         }
-        // LAB_140aaf5d4: the builder waits a second (set_state 222) up to 21 times
+        // LAB_140aaf5d4: the builder waits a second (set_state 222) up to 21 times; then the
+        // interface hears of it (FUN_140c898a0 0x88, not held), set_state(2) halts the Build
+        // (the standing sprite, the foundation let go, no point) and the waits start again
         if MAX_WAITS <= *waits {
-            return Err(GenieError::unsupported(
-                "a builder gives up on its occupied footprint (event 0x88, set_state 2)",
-            ));
+            step.stands = true;
+            step.released = true;
+            self.target = -1;
+            self.point = [-1.0; 3];
+            self.state = HALTED;
+            *waits = 0;
+            return Ok(());
         }
         *waits += 1;
         self.state = WAIT;
@@ -3940,6 +3946,151 @@ mod tests {
         assert_eq!(
             (build.state, build.target, build.point),
             (HALTED, -1, [-1.0; 3])
+        );
+    }
+
+    /// `set_state(7)`'s `LAB_140aaf5d4` on a footprint someone stands on, the builder outside it:
+    /// after 21 waits it gives up (the interface's event 0x88, not held): `set_state(2)` halts
+    /// the Build and its waits (`+0x889`) start again.
+    #[test]
+    fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
+        use crate::spatial::{Placed, Tiles};
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        world.insert(
+            10028,
+            Placed {
+                position: [10.5, 10.5, 0.0],
+                player: 1,
+                ..house()
+            },
+        );
+        world.insert(
+            77,
+            Placed {
+                position: [10.2, 10.2, 0.0],
+                radius: [0.5, 0.5],
+                class: TREE,
+                player: 0,
+                master: 349,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 2, class: 0 }),
+            },
+        );
+        assert_ne!(world.tiles().word(10, 10).unwrap() >> 23, 0);
+        let looks = |id: i32| {
+            (id == 77).then_some(ClearLook {
+                hp: 0.5,
+                height: 1.0,
+                roo_called: false,
+                kind: 10,
+                state: 2,
+                desolid: false,
+            })
+        };
+        let mut life = Lifecycle {
+            state: 0,
+            master_id: 70,
+            ..Lifecycle::default()
+        };
+        let mut construction = Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 0,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let site = Site {
+            id: 10028,
+            life: &mut life,
+            construction: &mut construction,
+            mover: None,
+            firepower: None,
+            roo_called: None,
+            store: None,
+            completion: Completion {
+                master: None,
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
+                main: false,
+                now: 0,
+                rice: false,
+            },
+            chain: WorkChain::default(),
+            main_builders: None,
+        };
+        // a villager stands on the footprint
+        world.insert(
+            6,
+            Placed {
+                position: [10.6, 10.6, 0.0],
+                radius: [0.2, 0.2],
+                class: VILLAGER,
+                player: 1,
+                master: 83,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.8,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        let mut waits = MAX_WAITS;
+        let mut build = BuildAction {
+            state: WAIT,
+            move_to: None,
+            timer: 0.01,
+            ..BuildAction::start(10028, [0.0; 3], 0.0, TASK)
+        };
+        let step = build
+            .update(
+                Walk {
+                    mover: None,
+                    me: Me {
+                        id: 5,
+                        position: [12.5, 10.5, 0.0],
+                        group: -1,
+                        action_state: 0,
+                    },
+                    dt: 0.02,
+                    world: &mut world,
+                    plan: None,
+                },
+                Some(site),
+                Builder {
+                    class: VILLAGER,
+                    master: 83,
+                    held: 0.0,
+                    held_kind: -1,
+                    drop_site: false,
+                    ai: None,
+                    waits: &mut waits,
+                    build_targets: &[],
+                    look: Looks(&looks),
+                    walk_target_state: Some(0),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            (step.removes, step.stands, step.released, step.occupants),
+            (None, true, true, vec![6])
+        );
+        assert_eq!(
+            (build.state, build.target, build.point, waits),
+            (HALTED, -1, [-1.0; 3], 0)
         );
     }
 
