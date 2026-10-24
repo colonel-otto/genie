@@ -970,6 +970,9 @@ impl Mover {
         let mut include = Vec::new();
         // the waypoint the step's walk last went for (`local_1860`), zero before one
         let mut walked = [0.0; 3];
+        // the direction the step's walk last took (slot 0x610 into `[RBP+0x148]`), zero before
+        // one: a loop's end turns toward it
+        let mut heading = [0.0; 3];
         loop {
             // a level without a path ends the step (`LAB_14115582c`), as no level does
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
@@ -1011,7 +1014,7 @@ impl Mover {
                     Next::Again => continue,
                     Next::Dispatch => {}
                     Next::Done(m) => return Ok(m),
-                    Next::LoopEnd => return self.loop_end(dt, walked),
+                    Next::LoopEnd => return self.loop_end(dt, walked, heading),
                 }
             }
             match self.paths[0].state {
@@ -1046,7 +1049,7 @@ impl Mover {
                 goal,
                 (now, computer),
                 &mut include,
-                &mut walked,
+                (&mut walked, &mut heading),
             )?;
             if let Next::Done(m) = step {
                 return Ok(m);
@@ -1072,7 +1075,7 @@ impl Mover {
         goal: Goal<'_>,
         (now, computer): (u32, bool),
         include: &mut Vec<i32>,
-        walked: &mut Vec3,
+        (walked, heading): (&mut Vec3, &mut Vec3),
     ) -> Result<Next, GenieError> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         // LAB_141153bd1: the waypoint's distance, the direction (slot 0x610), the step's end
@@ -1085,6 +1088,7 @@ impl Mover {
             return Ok(Next::Again);
         }
         let direction = self.direction_to(position, waypoint);
+        *heading = direction;
         let projected = self.projected(direction, dt);
         match reach(waypoint, position, projected) {
             Reach::Away => {
@@ -1179,16 +1183,14 @@ impl Mover {
     }
 
     /// The motion step's end on a loop back at its first waypoint (`LAB_141155637`): the unit
-    /// turns toward its own forward vector on the ground (`FUN_141194060` with 3 holds, which
-    /// zeroes the height; `FUN_141027d00` divides by the length; [`Mover::steer`]), controls its
-    /// speed toward `walked` (slot 0x630, [`Mover::control_speed`]) and, its level waiting for a
-    /// path (state 2), stops (slot 0x5d0).
-    fn loop_end(&mut self, dt: f32, walked: Vec3) -> Result<Motion, GenieError> {
-        let mut d = self.forward;
-        d[1] = 0.0;
-        let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-        let direction = [d[0] / length, d[1] / length, d[2] / length];
-        let clipped = self.steer(direction, dt)?;
+    /// turns from its forward vector on the ground (`FUN_141194060` with 3 holds, which zeroes
+    /// the height; `FUN_141027d00` divides by the length) toward `heading`, the direction the
+    /// step's walk last took (`[RBP+0x148]`, zero when no walk ran in this step: the angle to it
+    /// is then π/2, [`fmath::angle_between`]) ([`Mover::steer`]), controls its speed toward
+    /// `walked` (slot 0x630, [`Mover::control_speed`]) and, its level waiting for a path (state
+    /// 2), stops (slot 0x5d0).
+    fn loop_end(&mut self, dt: f32, walked: Vec3, heading: Vec3) -> Result<Motion, GenieError> {
+        let clipped = self.steer(heading, dt)?;
         self.control_speed(walked, clipped);
         if self.paths.first().is_some_and(|l| l.state == 2) {
             self.stop()?;
@@ -4288,8 +4290,8 @@ mod tests {
 
     /// `LAB_14115136c` on a loop (the path's flags bit 0): the level moves on from the waypoint
     /// reached (`FUN_140f98bc0` with 1) and waits for a path (state 2), on to its state; back at
-    /// its first waypoint the step ends (`LAB_141155637`): the unit turns toward its own forward
-    /// vector and, its level in state 2, stops.
+    /// its first waypoint the step ends (`LAB_141155637`): the unit turns toward the direction
+    /// the step's walk last took (zero without one) and, its level in state 2, stops.
     #[test]
     fn a_loop_s_reached_waypoint_moves_on_and_its_first_ends_the_step() {
         let looping = |waypoint| {
@@ -4325,9 +4327,19 @@ mod tests {
         let mut m = looping(2);
         me.position = [32.0, 89.0, 0.0];
         m.moved_at = me.position;
+        // no walk ran in the step: the direction it turns toward is zero, at π/2 (426048706's
+        // scout 7227 in update 5429 turns by π/2 there)
+        let mut expect = m.clone();
+        let mut flat = expect.forward;
+        flat[1] = 0.0;
+        let flat = fmath::normalize(flat);
+        let (turn, _) = expect.turn_toward(flat, [0.0; 3], expect.turn_dt(DT));
+        expect.yaw(turn, expect.facets()).unwrap();
+        assert_ne!(turn, 0.0);
         assert_eq!(m.motion(&mut me, DT, &mut world, None), Ok(Motion::Moving));
         assert_eq!((m.paths[0].waypoint, m.paths[0].state), (0, 2));
         assert_eq!(m.velocity.unwrap().velocity, [0.0; 3]);
+        assert_eq!(m.forward, expect.forward);
     }
 
     /// `0x141150f00`: a level whose target is gone walks as to a point (`FUN_1415417a0` finds
