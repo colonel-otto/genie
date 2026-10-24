@@ -4305,20 +4305,27 @@ fn lane_block(section: &PlayerSection<'_>, id: u32, simulated: &Player) -> [u32;
             amount_held: unit.life.amount,
             position: unit.position,
             retarget_timer: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
-            // a producing building's action state is its make action's while it has one; its
-            // type stays -1
-            top_action: top_action(unit).or_else(|| {
-                unit.production
-                    .as_ref()
-                    .and_then(|p| p.action)
-                    .map(|a| TopAction {
-                        kind: -1,
-                        state: a.state(),
-                    })
-            }),
+            top_action: checkpoint_action(unit),
         })
         .collect();
     player_block(&state)
+}
+
+/// What word 9 reads of a unit's actions: its top action's type (slot 166), and its top
+/// action's state (slot 86), but a building's (`TRIBE_Building_Object::actionState`,
+/// `0x1411cb7e0`) prefers the state of its production list's action (`+0xbf8`): a town centre
+/// that attacks while it trains counts its Attack's type with its make action's state.
+fn checkpoint_action(unit: &Unit) -> Option<TopAction> {
+    let making = unit
+        .production
+        .as_ref()
+        .and_then(|p| p.action)
+        .map(|a| a.state());
+    match (top_action(unit), making) {
+        (Some(top), Some(state)) => Some(TopAction { state, ..top }),
+        (top, None) => top,
+        (None, Some(state)) => Some(TopAction { kind: -1, state }),
+    }
 }
 
 /// A unit's top action as the slice models it, type and state.
@@ -6811,6 +6818,57 @@ pub fn object_field_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Word 9 reads a building's production action's state over its top action's (records
+    /// MarvinBlue/426048706's town centre 7150 after update 7499: its Attack in state 7 and its
+    /// make action in state 6 count 9 + 6); its type stays the top action's, −1 without one.
+    #[test]
+    fn a_building_s_production_state_comes_before_its_top_action_s() {
+        let artifact = genie_core::artifact::Artifact {
+            state: 10,
+            timer: 0.0,
+            gaia: false,
+            move_to: None,
+            goal: None,
+            target: -1,
+            walk_to: None,
+        };
+        let making = genie_core::production::Production {
+            action: Some(genie_core::production::Making::Unit(
+                genie_core::production::MakeObj {
+                    state: 6,
+                    paid: true,
+                    master: 83,
+                    progress: 0.5,
+                    unique_id: -1,
+                    button: 0,
+                    train_time: 25,
+                },
+            )),
+            ..genie_core::production::Production::default()
+        };
+        let kind = ARTIFACT_TYPE;
+        let both = Unit {
+            artifact: Some(artifact),
+            production: Some(making.clone()),
+            ..Unit::default()
+        };
+        assert_eq!(checkpoint_action(&both), Some(TopAction { kind, state: 6 }));
+        let top = Unit {
+            artifact: Some(artifact),
+            ..Unit::default()
+        };
+        assert_eq!(checkpoint_action(&top), Some(TopAction { kind, state: 10 }));
+        let training = Unit {
+            production: Some(making),
+            ..Unit::default()
+        };
+        assert_eq!(
+            checkpoint_action(&training),
+            Some(TopAction { kind: -1, state: 6 })
+        );
+        assert_eq!(checkpoint_action(&Unit::default()), None);
+    }
 
     /// Each differing field of a matched object is one difference with the game's master; an
     /// object in one list alone is one too; the lines are the differences' texts.
