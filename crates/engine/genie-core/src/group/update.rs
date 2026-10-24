@@ -985,13 +985,15 @@ impl Turns {
     /// one moved aside (reason 2) stops (slot 0x5d0), shows standing (slot 0x660), counts its
     /// timer down by the update's seconds (`FUN_1415300e0`) and, once at most 0 (`COMISS` then
     /// `JC`: a NaN keeps it), drops its move (active 0, path and reason -1, the rest 0) and stands
-    /// (slot 0x560). Any other steps (slot 0x608, the unit's own motion step `FUN_141150f00`),
-    /// not modelled.
+    /// (slot 0x560). Any other steps (slot 0x608, [`Turns::member_step`]): once the step is done
+    /// (not 0) its move is dropped; else it shows its walking sprite (slot 0x658) and its move's
+    /// distance loses the ground distance from its last position to where it last moved to
+    /// (slot 0x520), which becomes its last position.
     ///
     /// # Errors
     ///
-    /// The motion step of a member's move, and what the stop, the stand and the standing sprite
-    /// do not model.
+    /// What the motion step, the stop, the stand and the walking and standing sprites do not
+    /// model.
     fn specific_moves_step(&mut self, group: i32) -> Result<(), GenieError> {
         let mut i = 0;
         loop {
@@ -1007,9 +1009,29 @@ impl Turns {
                 continue;
             };
             if m.specific_move.reason != 2 {
-                return Err(GenieError::unsupported(
-                    "a member's own move's step (slot 0x608, FUN_141150f00)",
-                ));
+                // slot 0x608 (FUN_1411581e0): the unit's own motion step (FUN_141150f00), then
+                // its facet from its angle (FUN_14114d8b0, not held)
+                if self.member_step(m.id)? {
+                    self.groups.get_mut(group).expect("held").members[i - 1].specific_move =
+                        SpecificMove {
+                            path_id: -1,
+                            reason: -1,
+                            ..SpecificMove::default()
+                        };
+                    continue;
+                }
+                let _ = self.show_walking(m.id)?;
+                let at = self
+                    .object(m.id)
+                    .map(|(_, u)| crate::group::motion::moved_vector(u))
+                    .expect("the member is held");
+                let own =
+                    &mut self.groups.get_mut(group).expect("held").members[i - 1].specific_move;
+                let mut d = crate::fmath::sub(at, own.last_position);
+                d[1] = 0.0;
+                own.distance -= crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+                own.last_position = at;
+                continue;
             }
             if let Some(mover) = u.mover.as_mut() {
                 mover.stop()?;
@@ -1033,6 +1055,55 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// Slot 0x608 (`FUN_1411581e0`) of member `id`: the unit's own motion step (`FUN_141150f00`,
+    /// [`crate::movement::Mover::motion`] with its top action's state, the update's seconds and
+    /// the world's planners); true when it is done (the step answers other than 0: arrived or
+    /// given up). Its place follows the world's; the units its walk paused take their pauses
+    /// (slot 0x5f0). Not held: its facet from its angle (`FUN_14114d8b0`).
+    ///
+    /// # Errors
+    ///
+    /// What the motion step does not model, and a walk's unit in the way (notify 0x215).
+    pub(crate) fn member_step(&mut self, id: i32) -> Result<bool, GenieError> {
+        use crate::movement::{Me, Motion, Planning};
+        let Some(place) = self.place(id) else {
+            return Ok(true);
+        };
+        let crate::order::Place::Live(p, idx) = place else {
+            return Err(GenieError::unsupported("a sleeping member's own move"));
+        };
+        let computer = self.players[p].computer;
+        let construction_rate = self.players[p].construction_rate;
+        let unit = &mut self.players[p].objects[idx];
+        let mut me = Me {
+            id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let mover = unit.mover.as_mut().ok_or(crate::turn::WALKER_UNMOVING)?;
+        let mut plan = Planning {
+            pathing: &mut self.pathing,
+            now: self.world_time,
+            computer,
+            object: self.streams.get(crate::rng::Stream::Object),
+            construction_rate,
+            groups: &self.groups,
+        };
+        let motion = mover.motion(&mut me, self.dt_seconds, &mut self.spatial, Some(&mut plan))?;
+        let pauses = std::mem::take(&mut mover.pauses);
+        if !mover.in_the_way.is_empty() {
+            return Err(crate::turn::IN_THE_WAY);
+        }
+        if let Some(at) = self.spatial.get(id).map(|o| o.position) {
+            self.players[p].objects[idx].position = at;
+        }
+        for (other, pause) in pauses {
+            self.pause(other, pause);
+        }
+        Ok(motion != Motion::Moving)
     }
 
     /// `FUN_14100d940` (its log lines aside): the order queue's orders whose time (`+0x18`) is not
@@ -2547,8 +2618,57 @@ mod tests {
         };
         t.specific_moves_step(1).unwrap();
         assert_eq!(t.groups.get(1).unwrap().members[0].specific_move.active, 1);
+        // any other reason takes the unit's own motion step: without a path it is done at
+        // once, and the move goes
         t.groups.get_mut(1).unwrap().members[0].specific_move.reason = 1;
-        assert!(t.specific_moves_step(1).is_err());
+        t.specific_moves_step(1).unwrap();
+        assert_eq!(t.groups.get(1).unwrap().members[0].specific_move.active, 0);
+    }
+
+    /// A member's own move of the way round (reason 0) steps the unit along its path (slot
+    /// 0x608): moving on (the step turns it toward its waypoint; the velocity update moves it
+    /// later), the move's distance loses the ground distance from its last position to where the
+    /// unit last moved to (here 1 tile short of it on y), which becomes its last position.
+    #[test]
+    fn a_member_s_own_move_walks_its_path() {
+        let mut t = world();
+        t.dt_seconds = 0.5;
+        let mut walker = crate::hunt::tests::walker();
+        walker.moved_at = [1.0, 1.0, 0.0];
+        walker.take_record_path(vec![[1.0, 0.0, 1.0], [5.0, 0.0, 1.0]], 4.0, 0, false);
+        t.players[1].objects[0].mover = Some(walker);
+        t.spatial.insert(
+            10,
+            crate::spatial::Placed {
+                position: [1.0, 1.0, 0.0],
+                radius: [0.2, 0.2],
+                class: 6,
+                player: 1,
+                master: 4,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: false,
+                speed: 0.8,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        t.groups.get_mut(1).unwrap().members[0].specific_move = crate::group::SpecificMove {
+            active: 1,
+            path_id: -1,
+            reason: 0,
+            timer: 3.0,
+            distance: 3.0,
+            last_position: [1.0, 0.0, 0.0],
+            ..crate::group::SpecificMove::default()
+        };
+        t.specific_moves_step(1).unwrap();
+        let (_, u) = t.object(10).unwrap();
+        let at = crate::group::motion::moved_vector(u);
+        let own = t.groups.get(1).unwrap().members[0].specific_move;
+        assert_eq!(own.active, 1);
+        assert_eq!((at, own.last_position), ([1.0, 0.0, 1.0], [1.0, 0.0, 1.0]));
+        assert_eq!(own.distance, 2.0);
     }
 
     /// `FUN_14100d940`: the orders whose time has come go; later ones stay.

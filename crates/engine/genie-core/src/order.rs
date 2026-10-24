@@ -1964,7 +1964,10 @@ impl Turns {
                     && gather.point[0] == NO_POINT
                     && gather.point[1] == NO_POINT;
                 let attributes = self.players[p].attributes.len();
-                let asked = gather.drop_off_asked(unit.life.attribute_type, attributes)?;
+                let asked = gather.drop_off_asked(unit.life.attribute_type, attributes);
+                if !asked {
+                    self.other_load(p, idx);
+                }
                 if unaimed {
                     self.record_town_bell(p, idx)?;
                 }
@@ -2012,7 +2015,10 @@ impl Turns {
                     build.task.resource,
                     unit.life.attribute_type,
                     attributes,
-                )?;
+                );
+                if !asked {
+                    self.other_load(p, idx);
+                }
                 if unaimed {
                     self.record_town_bell(p, idx)?;
                 }
@@ -2037,7 +2043,10 @@ impl Turns {
                 && hunt.point[0] == NO_POINT
                 && hunt.point[1] == NO_POINT;
             let attributes = self.players[p].attributes.len();
-            let asked = hunt.drop_off_asked(unit.life.attribute_type, attributes)?;
+            let asked = hunt.drop_off_asked(unit.life.attribute_type, attributes);
+            if !asked {
+                self.other_load(p, idx);
+            }
             if unaimed {
                 self.record_town_bell(p, idx)?;
             }
@@ -2248,6 +2257,75 @@ impl Turns {
         }
         if out.took != -1 {
             self.take(out.took, by);
+        }
+        Ok(())
+    }
+
+    /// Slot 0x78's answer to a load of another resource than its task's (`FUN_140a78060`): the
+    /// unit AI's slot 0x38 takes notify 0x21c ([`crate::unit_ai::OTHER_LOAD`]) from and to the
+    /// unit at (`p`, `idx`); a unit without a unit AI, none.
+    fn other_load(&mut self, p: usize, idx: usize) {
+        let unit = &mut self.players[p].objects[idx];
+        let (id, state) = (unit.id, unit.life.state);
+        if let Some(ai) = unit.ai.as_mut() {
+            let n = crate::unit_ai::Notify::own(id, crate::unit_ai::OTHER_LOAD, [0; 3]);
+            let _ = ai.accept(n, state);
+        }
+    }
+
+    /// The villager's case 0x21c ([`crate::unit_ai::Effect::DropElsewhere`]) for the unit at
+    /// (`p`, `idx`) with the drop-site table's building `site` (`FUN_141658e20`) and the target
+    /// its top action had (`back`, slot 0x190: the action's target id, `+0x30`, that the world
+    /// holds): it works on the site at its place (slot 0x128: the carried-resource test, any task,
+    /// `+0xa14` 0, [`Turns::order_work`]); with a target its unit AI then queues the order on it
+    /// (slot 0x30: `0x2db` issued by the unit, the target's master as its type and its owner's
+    /// number, its place, range 0, priority 100, ready, neither at once nor in front).
+    ///
+    /// # Errors
+    ///
+    /// What the work and the queue do not model.
+    pub(crate) fn drop_elsewhere(
+        &mut self,
+        p: usize,
+        idx: usize,
+        site: i32,
+        back: Option<i32>,
+    ) -> Result<(), GenieError> {
+        let back = back.filter(|&t| 0 <= t).and_then(|t| {
+            let (q, o) = self.object(t)?;
+            Some((t, o.life.master_id, q, o.position))
+        });
+        let point = self
+            .object(site)
+            .map(|(_, o)| o.position)
+            .ok_or(GenieError::unreachable("the drop site found"))?;
+        let work = Work {
+            target: site,
+            point,
+            carry_test: true,
+            filter: -1,
+            notified: false,
+        };
+        self.order_work(p, idx, &work)?;
+        let Some((target, master, owner, place)) = back else {
+            return Ok(());
+        };
+        let unit = &mut self.players[p].objects[idx];
+        let (id, state) = (unit.id, unit.life.state);
+        if let Some(ai) = unit.ai.as_mut() {
+            let order = crate::unit_ai::QueuedOrder {
+                issuer: id,
+                order: crate::unit_ai::ORDER_ON_TARGET,
+                priority: 100,
+                target,
+                target_owner: owner as i32,
+                point: place,
+                range: 0.0,
+                shown: [0.0; 2],
+                ready: true,
+                target_type: i32::from(master),
+            };
+            let _ = ai.queue_order(state, order, false, false)?;
         }
         Ok(())
     }
@@ -4209,7 +4287,9 @@ impl Turns {
         if unit.sprite.is_none() {
             return Err(GenieError::unsupported(
                 "an attack task of a unit whose sprite the slice does not hold",
-            ));
+            )
+            .with("object", unit.id)
+            .with("master", unit.life.master_id));
         }
         unit.attack_count = 0;
         crate::attack::set_sprite(&mut unit.sprite, standing, self.streams.get(Stream::Sprite));

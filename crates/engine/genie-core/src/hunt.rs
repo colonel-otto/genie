@@ -219,20 +219,11 @@ pub(crate) fn stand_sprite(
 /// Slot 0x78 (`FUN_140a78060`, the base action's; `UNIT_ORDER`'s drop-off) of an action whose
 /// task takes `resource` (`+0x20`, any with −1) for a unit carrying some of `held_kind` (`+0x310`
 /// above 0, the caller's test): a load of the task's resource (compared by [`resource_kind`])
-/// asks the caller for `set_state(8)` (true). A load of another resource would post notify 0x21c
-/// to the unit AI, which is not modelled.
-pub(crate) fn asked_drop_off(
-    resource: i16,
-    held_kind: i16,
-    attributes: usize,
-) -> Result<bool, GenieError> {
-    if resource != -1 && resource_kind(held_kind, attributes) != resource_kind(resource, attributes)
-    {
-        return Err(GenieError::unsupported(
-            "a drop-off of another resource (notify 0x21c)",
-        ));
-    }
-    Ok(true)
+/// asks the caller for `set_state(8)` (true); a load of another resource has the caller's unit
+/// AI take notify 0x21c from and to the unit (its slot 0x38, [`crate::unit_ai::OTHER_LOAD`]) and
+/// returns false.
+pub(crate) fn asked_drop_off(resource: i16, held_kind: i16, attributes: usize) -> bool {
+    resource == -1 || resource_kind(held_kind, attributes) == resource_kind(resource, attributes)
 }
 
 /// The player's resource of what a unit carries (`FUN_140fdd4f0`): the kinds 0 to 3, 9 and 56
@@ -940,10 +931,10 @@ impl HuntAction {
     }
 
     /// Slot 0x78 (`FUN_140a78060`, the base action's; `UNIT_ORDER`'s drop-off) of a unit carrying
-    /// some of `held_kind` (`+0x310` above 0, which the caller checked): a load of the task's resource (`+0x20`, of any with −1; compared by
-    /// [`resource_kind`]) asks the caller for `set_state(8)` (true). A load of another resource
-    /// would post notify 0x21c to the unit AI, which is not modelled.
-    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, GenieError> {
+    /// some of `held_kind` (`+0x310` above 0, which the caller checked): [`asked_drop_off`] on the
+    /// task's resource.
+    #[must_use]
+    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> bool {
         asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
@@ -1577,6 +1568,18 @@ pub(crate) mod tests {
         }
     }
     use crate::movement::{MoveStats, Velocity};
+
+    /// Slot 0x78 (`FUN_140a78060`): a load of the task's resource, or any for a task of none,
+    /// asks for the drop-off; another resource (wood for a food task: kinds by
+    /// [`resource_kind`], meat 15 counting as food) does not, the caller's unit AI taking notify
+    /// 0x21c.
+    #[test]
+    fn a_load_of_another_resource_asks_no_drop_off() {
+        assert!(asked_drop_off(0, 15, 300));
+        assert!(asked_drop_off(-1, 1, 300));
+        assert!(!asked_drop_off(0, 1, 300));
+        assert!(!asked_drop_off(2, 3, 300));
+    }
 
     /// A Hunt gathering `target` with the chopping task.
     pub(crate) fn hunting(target: i32) -> HuntAction {

@@ -348,6 +348,16 @@ pub mod group {
     pub const PULL_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
     /// 1.5707963705062866
     pub const RIGHT_ANGLE: f32 = f32::from_bits(0x3fc9_0fdb);
+    /// 1.0099999904632568
+    pub const ROUND_LENGTH: f32 = f32::from_bits(0x3f81_47ae);
+    /// 0.5
+    pub const ROUND_RADIUS: f32 = f32::from_bits(0x3f00_0000);
+    /// 100.0
+    pub const ROUND_REACH: f32 = f32::from_bits(0x42c8_0000);
+    /// 1.1920928955078125e-07
+    pub const ROUND_STILL: f32 = f32::from_bits(0x3400_0000);
+    /// 3.0
+    pub const ROUND_TIMER: f32 = f32::from_bits(0x4040_0000);
     /// 0.009999999776482582
     pub const SHORT_LENGTH: f32 = f32::from_bits(0x3c23_d70a);
     /// 10.0

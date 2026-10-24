@@ -52,6 +52,9 @@ pub(in crate::turn) enum AiWork {
     Work(crate::order::Work),
     /// `BuildObject`'s unit part: the build command on the foundation ([`Turns::build_command`]).
     Build(i32),
+    /// The villager's case 0x21c: its load to the drop-site table's building
+    /// ([`Turns::drop_elsewhere`]).
+    DropElsewhere(i32, Option<i32>),
 }
 pub(in crate::turn) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
@@ -656,6 +659,8 @@ pub(in crate::turn) struct UnitView<'u> {
     /// The owner's AI settings.
     pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
     pub(in crate::turn) drop_sites: &'u [DropSite],
+    /// The owner's object tracker, whose done lists the drop-site table's search reads.
+    pub(in crate::turn) tracker: &'u crate::tracker::Tracker,
     /// The game's setting at `+0x680` ([`Turns::mode_680`]), which a hit's source carries.
     pub(in crate::turn) mode_680: i32,
     /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
@@ -1417,6 +1422,26 @@ pub(in crate::turn) fn patrol_information(
 }
 
 impl crate::unit_ai::UnitSide for UnitView<'_> {
+    fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
+        let class = self
+            .masters
+            .and_then(|m| m.get(self.unit.life.master_id))
+            .map(|m| m.class)
+            .ok_or(crate::turn::OBJECT_MASTER)?;
+        let at = [self.unit.position[0], self.unit.position[1]];
+        let look = |id: i32| {
+            self.others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (u.life.state, u.position))
+        };
+        Ok(crate::order::nearest_table_site(
+            (self.drop_sites, self.civ, self.tracker),
+            (at, self.unit.life.attribute_type, class),
+            look,
+        ))
+    }
+
     fn patrol_information(&self) -> Option<(crate::unit_ai::PatrolPath, i32)> {
         patrol_information(self.unit.mover.as_ref())
     }

@@ -81,6 +81,9 @@ pub const NO_DROP_SITE: i32 = 0x203;
 /// `0x21d`: a human player's builder left a pasture already built (p2 the pasture its stack unit
 /// made).
 pub const PASTURE_BUILT: i32 = 0x21d;
+/// `0x21c`: an action asked to drop its load off carries another resource than its task's (the
+/// base action's slot 0x78, `FUN_140a78060`).
+pub const OTHER_LOAD: i32 = 0x21c;
 /// `0x20b`: the unit changed hands (p1 the new owner).
 pub const OWNER_CHANGED: i32 = 0x20b;
 /// `500`: the unit took damage.
@@ -299,6 +302,16 @@ pub enum Effect {
         target: i32,
         /// Its place.
         point: [f32; 3],
+    },
+    /// The villager's case 0x21c ([`OTHER_LOAD`]) with the drop-site table's building for its load
+    /// ([`UnitSide::table_drop_site`]): the unit's slot 0x128 on it at its place, then its unit
+    /// AI's order back to the target its top action had before (slot 0x190), if any (the
+    /// caller's, `Turns::drop_elsewhere`).
+    DropElsewhere {
+        /// The drop site.
+        site: i32,
+        /// The top action's target before the work.
+        back: Option<i32>,
     },
     /// `restorePatrolInformation`'s unit part (`FUN_140c5e5b0`): the unit's own waypoints go
     /// (slot 0x450) and become the saved patrol's points (slot 0x448 each), and the unit moves to
@@ -1626,6 +1639,16 @@ pub trait UnitSide {
         Err(WITHOUT_UNIT)
     }
 
+    /// `FUN_141658e20` from the unit's place: the drop-site table's nearest building of the
+    /// owner for what the unit carries (`+0x308`) from its class; None without one.
+    ///
+    /// # Errors
+    ///
+    /// A side without its unit.
+    fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
     /// The unit's build command (slot 0x380, forced) on `foundation` run at once
     /// ([`Effect::BuildObject`]), ahead of a command that follows it in the same AI run (an
     /// attack command replacing the Build it makes).
@@ -2452,6 +2475,7 @@ fn top_target_after(fx: &[Effect], side: &mut dyn UnitSide) -> Result<Option<i32
             | Effect::HuntObject(target)
             | Effect::GatherObject(target)
             | Effect::BuildObject(target)
+            | Effect::DropElsewhere { site: target, .. }
             | Effect::WorkOn { target, .. } => return Ok(Some(target)),
             Effect::CapHumanOrder(_)
             | Effect::OrderOnTarget(_)
@@ -6087,8 +6111,18 @@ impl UnitAi {
                     }
                     Ok(GO_ON)
                 }
+                // a load of another resource asked off (FUN_141658e20 from its place, its slot
+                // 0x128 on the site, its slot 0x30 back to its action's target: the caller's)
+                OTHER_LOAD => {
+                    // slot 0x190 first: its top action's target
+                    let back = top_target_after(fx, side)?;
+                    if let Some(site) = side.table_drop_site()? {
+                        fx.push(Effect::DropElsewhere { site, back });
+                    }
+                    Ok(GO_ON)
+                }
                 // its own cases the slice does not model; any other is the base handler's
-                0x217..=0x21a | 0x21c => {
+                0x217..=0x21a => {
                     Err(VILLAGER_NOTIFY.with("notify", format!("{:#x} {:?}", n.kind, n.p)))
                 }
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
@@ -8810,6 +8844,9 @@ mod tests {
         under_attack: Option<bool>,
         stops: Vec<usize>,
         caps: Vec<(u32, usize)>,
+        /// The drop-site table's building it answers, and the top action's target.
+        drop_site: Option<i32>,
+        top: Option<i32>,
     }
 
     /// The builder's flood: of two foundations two tiles off, the one left of the unit comes before
@@ -8844,6 +8881,12 @@ mod tests {
     impl UnitSide for Recorder {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
+        }
+        fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
+            Ok(self.drop_site)
+        }
+        fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
+            Ok(self.top)
         }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
             Err(GenieError::unsupported("no search here"))
@@ -18172,6 +18215,39 @@ mod tests {
         let (r, _, _) = handled(&mut u, invalid, &at, false);
         assert!(r.is_ok());
         assert_eq!(u.current_action, -1);
+    }
+
+    /// The villager's case 0x21c (`FUN_140c22bf0`), a load of another resource asked off: the
+    /// target of its top action (slot 0x190), then the drop-site table's building
+    /// (`FUN_141658e20`), which the unit works and whose way back the caller queues; without a
+    /// building nothing. The processing goes on.
+    #[test]
+    fn a_villager_drops_another_resource_at_the_table_s_building() {
+        let at = Surroundings {
+            id: 20,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let other = Notify::own(20, OTHER_LOAD, [0; 3]);
+        let mut side = Recorder {
+            drop_site: Some(45),
+            top: Some(77),
+            ..Recorder::default()
+        };
+        let mut fx = Vec::new();
+        let r = idle(CIVILIAN).handle(other, 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r, Ok(GO_ON));
+        assert_eq!(
+            fx,
+            [Effect::DropElsewhere {
+                site: 45,
+                back: Some(77)
+            }]
+        );
+        let mut none = Recorder::default();
+        let mut fx = Vec::new();
+        let r = idle(CIVILIAN).handle(other, 0, &at, false, &mut rng(), &mut none, &mut fx);
+        assert_eq!((r, fx), (Ok(GO_ON), Vec::new()));
     }
 
     /// The villager's case 0x21d (`FUN_140c22bf0`): off the build or the hunt action the object

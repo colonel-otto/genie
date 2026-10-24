@@ -6563,6 +6563,7 @@ fn scout_attack_on(
             civ: 0,
             ai_settings: AiSettings::default(),
             drop_sites: &[],
+            tracker: &crate::tracker::Tracker::default(),
             mode_680: 0,
             carry_rule: false,
         };
@@ -6741,6 +6742,7 @@ fn attack_by(
             civ: 0,
             ai_settings: AiSettings::default(),
             drop_sites: &[],
+            tracker: &crate::tracker::Tracker::default(),
             mode_680: 0,
             carry_rule: false,
         };
@@ -6916,6 +6918,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
         civ: 0,
         ai_settings: AiSettings::default(),
         drop_sites: &[],
+        tracker: &crate::tracker::Tracker::default(),
         mode_680: 0,
         carry_rule: false,
     };

@@ -69,6 +69,10 @@ pub struct Gate {
     pub other_masters: bool,
 }
 
+/// A walk's unit in the way (notify 0x215) that the walk's owner does not pass on.
+pub(crate) const IN_THE_WAY: GenieError =
+    GenieError::unsupported("a walk's unit in the way (notify 0x215) the action does not pass on");
+
 /// An attack's target without a place.
 pub(crate) const TARGET_UNPLACED: GenieError =
     GenieError::unsupported("an attack's target without a place");
@@ -1550,6 +1554,7 @@ impl Turns {
                 AiWork::Gather(target) => self.gather_command(p, i, target),
                 AiWork::Work(work) => self.order_work(p, i, &work),
                 AiWork::Build(foundation) => self.build_command(p, i, foundation).map(|_| ()),
+                AiWork::DropElsewhere(site, back) => self.drop_elsewhere(p, i, site, back),
             };
             if let Err(e) = done {
                 result = Err(e);

@@ -638,7 +638,7 @@ impl Turns {
 
     /// Slot 0x5f0 (`FUN_141158b90`): the unit's walked level, if it has one, pauses for `pause`
     /// seconds; the world's view of it follows.
-    pub(in crate::turn) fn pause(&mut self, id: i32, pause: f32) {
+    pub(crate) fn pause(&mut self, id: i32, pause: f32) {
         let Some(u) = self
             .players
             .iter_mut()

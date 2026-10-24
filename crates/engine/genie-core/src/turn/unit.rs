@@ -1274,6 +1274,9 @@ impl Unit {
                     }));
                 }
                 Effect::BuildObject(target) => c.works.push(AiWork::Build(target)),
+                Effect::DropElsewhere { site, back } => {
+                    c.works.push(AiWork::DropElsewhere(site, back));
+                }
                 Effect::ChangeOwner(new) => self.ai_change_owner(new, c)?,
                 Effect::Explore(point) => self.explore_to(point, c)?,
                 Effect::MoveToObject {
@@ -6405,9 +6408,7 @@ impl Unit {
         if let Some(m) = self.mover.as_mut() {
             c.pauses.append(&mut m.pauses);
             if !m.in_the_way.is_empty() {
-                return Err(GenieError::unsupported(
-                    "a walk's unit in the way (notify 0x215) the action does not pass on",
-                ));
+                return Err(crate::turn::IN_THE_WAY);
             }
         }
         let resume = AiResume {
@@ -6732,6 +6733,7 @@ impl Unit {
                 civ: view.civ,
                 ai_settings: view.ai_settings,
                 drop_sites: c.drop_sites,
+                tracker: &*c.tracker,
                 mode_680: c.mode_680,
                 carry_rule: c.carry_rule,
             };

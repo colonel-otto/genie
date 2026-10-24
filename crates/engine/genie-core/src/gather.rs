@@ -1021,12 +1021,10 @@ impl GatherAction {
     }
 
     /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::hunt::asked_drop_off`] on the
-    /// task's resource): true when the unit's load asks for `set_state(8)`.
-    ///
-    /// # Errors
-    ///
-    /// A load of another resource (notify 0x21c).
-    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> Result<bool, GenieError> {
+    /// task's resource): true when the unit's load asks for `set_state(8)`; false for a load of
+    /// another resource (the unit AI takes notify 0x21c, the caller's).
+    #[must_use]
+    pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> bool {
         crate::hunt::asked_drop_off(self.task.resource, held_kind, attributes)
     }
 

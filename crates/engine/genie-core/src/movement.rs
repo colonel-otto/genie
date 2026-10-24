@@ -327,7 +327,7 @@ const STRAIGHT_GROW: f32 = crate::image::movement::STRAIGHT_GROW;
 const SHORTEST: f32 = crate::image::movement::SHORTEST;
 /// The point `FUN_140f9bcd0` returns outside a path: `DAT_143f0dc88`, in `.bss` (zero at the
 /// load; probed zero in records/425906646 with no write in the update after).
-const OUTSIDE_PATH: Vec3 = [0.0; 3];
+pub(crate) const OUTSIDE_PATH: Vec3 = [0.0; 3];
 
 /// A planned path shorter than this replaces no short path (`DAT_143cc2f28`), and a path is long
 /// when it is longer than this and than 1.25 times the way (`DAT_14330ebb8`, `DAT_142eb56a8`).
@@ -2688,6 +2688,34 @@ impl Mover {
         now: u32,
     ) {
         self.request_path_asked(from, goal, range, target, now, PathAsk::default());
+    }
+
+    /// Slot 0x540 (`FUN_14114e0f0`) with a path record, no target and range 0: the future path
+    /// data (`+0x860`, none held) and the path data (`+0x858`) reset (`FUN_140f98e80`: its parents
+    /// go, its repath time stays), then the record's path, its first waypoint 1: `planned` as
+    /// level 2 to plan (state 2, `FUN_140f9b800`), else as level 0 walking it (state 3,
+    /// `FUN_140f9b7c0`). The path keeps a new record's flags (6), its `length` and its creation
+    /// time `now`.
+    pub(crate) fn take_record_path(
+        &mut self,
+        points: Vec<Vec3>,
+        length: f32,
+        now: u32,
+        planned: bool,
+    ) {
+        let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
+        self.paths = vec![PathData {
+            level: if planned { 2 } else { 0 },
+            points,
+            has_path: true,
+            path_flags: 6,
+            length,
+            created: now,
+            waypoint: 1,
+            state: if planned { 2 } else { 3 },
+            repath_time,
+            ..PathData::without_path()
+        }];
     }
 
     /// The path request of a `MoveTo` (`FUN_14114e410`): one level of path data, the top (level
