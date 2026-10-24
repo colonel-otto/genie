@@ -486,6 +486,17 @@ impl Turns {
                     self.release(target, by)?;
                 }
             }
+            // FUN_140adaa00: set_state(2), a counted repairer out of its target's repairers, the
+            // standing sprite; the target stays
+            crate::repair::REPAIR => {
+                let unit = &mut self.players[p].objects[idx];
+                let repair = unit.repair.as_mut().expect("its top action");
+                let target = repair.target;
+                if repair.halt(unit.mover.as_mut())? {
+                    self.leave_builders(target)?;
+                }
+                self.standing_sprite(p, idx)?;
+            }
             crate::attack::ATTACK => {
                 let unit = &mut self.players[p].objects[idx];
                 let attack = unit.attack.as_mut().expect("its top action");

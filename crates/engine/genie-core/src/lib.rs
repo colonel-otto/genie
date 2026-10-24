@@ -76,6 +76,7 @@ pub mod order;
 pub mod pathing;
 pub mod production;
 pub mod registry;
+pub mod repair;
 pub mod rng;
 pub mod settings;
 pub mod short_path;

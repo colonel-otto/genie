@@ -729,6 +729,51 @@ pub fn lose(t: &mut Victim, d: f32) {
     };
 }
 
+/// Slot 0xb8 of a combat object (`FUN_141203be0`) on hit points `hp` with the powerups
+/// `hp_powerups` (`+0xa38`, its room `+0xa3c`) of a master of `master_hp`: `amount` added up to
+/// its most (the master's plus the room), an overflow taken off the powerup (never below 0); a
+/// powerup above its room first takes the room. The hit point transforms of `FUN_141204450`,
+/// empty in the recordings, are not held.
+pub fn gain_hp(hp: &mut f32, hp_powerups: &mut [f32; 2], master_hp: i16, amount: f32) {
+    let [mut up, room] = *hp_powerups;
+    let most = f32::from(master_hp) + room;
+    if room < up {
+        up = room;
+    }
+    if most <= *hp {
+        if 0.0 < up {
+            up = (up - amount).max(0.0);
+        }
+    } else {
+        let healed = *hp + amount;
+        *hp = healed;
+        if most < healed {
+            *hp = most;
+            if 0.0 < up {
+                up = (up - (healed - most)).max(0.0);
+            }
+        }
+    }
+    hp_powerups[0] = up;
+}
+
+/// `FUN_141193b30`: slot 0xb8 adds `amount` ([`gain_hp`]); a loss (`amount` below 0) leaves at
+/// least 1 hit point; healed to its full hit points (slot 0xc0 at least slot 200, `COMISS` with
+/// `JC`: a NaN is not), it holds exactly its master's. True then.
+pub fn heal_hp(hp: &mut f32, hp_powerups: &mut [f32; 2], master_hp: i16, amount: f32) -> bool {
+    gain_hp(hp, hp_powerups, master_hp, amount);
+    if amount < 0.0 && *hp < 1.0 {
+        *hp = 1.0;
+    }
+    let [up, room] = *hp_powerups;
+    let most = f32::from(master_hp) + room;
+    if fmath::below_or_unordered((room - up) + *hp, most) {
+        return false;
+    }
+    *hp = f32::from(master_hp);
+    true
+}
+
 /// `FUN_141085450`, a combat object's melee armor as its master holds it: its best armor of
 /// class 4 above −32768, else its best of any, else its base armor.
 fn master_melee_armor(a: &Armored) -> i16 {
@@ -2542,5 +2587,49 @@ mod tests {
             Ok(true)
         );
         assert_eq!(all.map(|t| t.id), [5, 7, 3]);
+    }
+
+    /// `FUN_141203be0`: hit points gain up to the master's plus the powerup room; the overflow
+    /// comes off the powerup, never below 0; a powerup above its room first takes the room; at
+    /// its most a gain only takes off the powerup.
+    #[test]
+    fn a_gain_fills_hit_points_and_its_overflow_takes_off_the_powerup() {
+        let mut hp = 50.0;
+        let mut ups = [0.0, 0.0];
+        gain_hp(&mut hp, &mut ups, 60, 5.0);
+        assert_eq!((hp, ups), (55.0, [0.0, 0.0]));
+        gain_hp(&mut hp, &mut ups, 60, 10.0);
+        assert_eq!((hp, ups), (60.0, [0.0, 0.0]));
+        let mut hp = 65.0;
+        let mut ups = [8.0, 10.0];
+        gain_hp(&mut hp, &mut ups, 60, 10.0);
+        assert_eq!((hp, ups), (70.0, [3.0, 10.0]));
+        gain_hp(&mut hp, &mut ups, 60, 5.0);
+        assert_eq!((hp, ups), (70.0, [0.0, 10.0]));
+        let mut ups = [12.0, 10.0];
+        gain_hp(&mut hp, &mut ups, 60, 0.0);
+        assert_eq!(ups, [10.0, 10.0]);
+    }
+
+    /// `FUN_141193b30`: a loss leaves at least 1 hit point; full hit points (room less powerup
+    /// plus hit points at least the most) become exactly the master's and answer true; a NaN is
+    /// not full.
+    #[test]
+    fn a_heal_to_full_holds_the_master_s_hit_points() {
+        let mut hp = 30.0;
+        let mut ups = [0.0; 2];
+        assert!(!heal_hp(&mut hp, &mut ups, 60, 10.0));
+        assert_eq!(hp, 40.0);
+        assert!(heal_hp(&mut hp, &mut ups, 60, 25.0));
+        assert_eq!(hp, 60.0);
+        let mut hp = 0.5;
+        assert!(!heal_hp(&mut hp, &mut ups, 60, -3.0));
+        assert_eq!(hp, 1.0);
+        let mut hp = 55.0;
+        let mut ups = [5.0, 5.0];
+        assert!(!heal_hp(&mut hp, &mut ups, 60, 4.0));
+        assert_eq!(hp, 59.0);
+        let mut hp = f32::NAN;
+        assert!(!heal_hp(&mut hp, &mut [0.0; 2], 60, 1.0));
     }
 }

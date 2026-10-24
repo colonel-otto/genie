@@ -939,6 +939,8 @@ impl Turns {
             production: None,
             gather_point: None,
             build: None,
+            repair: None,
+            builders: 0,
             mover,
             move_to: None,
             fly: None,

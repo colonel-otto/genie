@@ -405,11 +405,7 @@ pub const IN_PRODUCTION: i16 = 81;
 /// production and this one stays within the cap (`COMISS`, `JBE`: a NaN passes), and the
 /// headroom covers them. A building that fails it waits (housed).
 pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
-    let a = |i: usize| {
-        attributes.get(i).copied().ok_or(GenieError::unsupported(
-            "an attribute the player does not have",
-        ))
-    };
+    let a = |i: usize| attributes.get(i).copied().ok_or(crate::turn::NO_ATTRIBUTE);
     let in_production = a(IN_PRODUCTION as usize)?;
     Ok(a(POPULATION_CAP)? < a(POPULATION)? + in_production + pop
         || (a(HEADROOM as usize)? - in_production) - pop < 0.0)
@@ -633,8 +629,7 @@ pub fn pay(
         if attribute < 0 || !paid {
             continue;
         }
-        let held = attributes.get(attribute)?;
-        attributes.set(attribute, held - f32::from(amount) * count)?;
+        attributes.subtract(attribute, f32::from(amount) * count)?;
     }
     Ok(true)
 }

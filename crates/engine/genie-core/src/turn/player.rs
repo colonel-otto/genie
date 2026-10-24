@@ -189,18 +189,16 @@ pub struct Player {
     pub victory_times: crate::world_player::VictoryTimes,
 }
 
+/// An attribute the player does not have.
+pub(crate) const NO_ATTRIBUTE: GenieError =
+    GenieError::unsupported("an attribute the player does not have");
+
 impl crate::tech::Attributes for Player {
     /// An attribute's value (the resources' from [`Player::resources`]).
     fn get(&self, i: i16) -> Result<f32, GenieError> {
         match usize::try_from(i) {
             Ok(r @ 0..=3) => Ok(self.resources[r]),
-            Ok(k) => self
-                .attributes
-                .get(k)
-                .copied()
-                .ok_or(GenieError::unsupported(
-                    "an attribute the player does not have",
-                )),
+            Ok(k) => self.attributes.get(k).copied().ok_or(NO_ATTRIBUTE),
             Err(_) => Err(GenieError::unsupported("a negative attribute")),
         }
     }
@@ -210,9 +208,7 @@ impl crate::tech::Attributes for Player {
         match usize::try_from(i) {
             Ok(r @ 0..=3) => self.resources[r] = v,
             Ok(k) => {
-                *self.attributes.get_mut(k).ok_or(GenieError::unsupported(
-                    "an attribute the player does not have",
-                ))? = v;
+                *self.attributes.get_mut(k).ok_or(NO_ATTRIBUTE)? = v;
             }
             Err(_) => return Err(GenieError::unsupported("a negative attribute")),
         }
@@ -260,9 +256,7 @@ impl Player {
                 Ok(())
             }
             _ => {
-                let v = self.attributes.get_mut(i).ok_or(GenieError::unsupported(
-                    "an attribute the player does not have",
-                ))?;
+                let v = self.attributes.get_mut(i).ok_or(NO_ATTRIBUTE)?;
                 *v += amount;
                 Ok(())
             }

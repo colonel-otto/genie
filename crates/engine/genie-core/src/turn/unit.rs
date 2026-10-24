@@ -18,7 +18,7 @@ use crate::spatial::{Placed, Spatial};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::tasks::{Actor, DropSite};
 use crate::turn::command::GatherPoint;
-use crate::turn::view::{AiWork, Context, DropWorld, OwnerView, UnitView};
+use crate::turn::view::{AiWork, Context, DropWorld, OwnerView, RepairWrite, UnitView};
 use crate::turn::world::{
     Releaser, ResourceWorld, Seeker, built_death, change_hands, clear_look_of, closest_resource_of,
     combat_dies, drop_site_search, farm_bonus, forget_resource, herded, nearest_drop_site,
@@ -60,6 +60,12 @@ pub struct Unit {
     pub gather_point: Option<GatherPoint>,
     /// A builder's Build action, its top action.
     pub build: Option<BuildAction>,
+    /// A repairer's Repair action, its top action ([`crate::repair`]).
+    pub repair: Option<crate::repair::RepairAction>,
+    /// `+0x9e8` (`num_builders`) of a combat object that is no building: the Repair actions
+    /// counted among its repairers. A building's is its construction's
+    /// ([`Construction::builders`]).
+    pub builders: u8,
     /// A moving object's movement state (types 30 and up).
     pub mover: Option<Mover>,
     /// A `MoveTo` as the object's own top action (a wandering animal).
@@ -419,6 +425,7 @@ impl Unit {
                 .map(|a| action(crate::artifact::ARTIFACT_TYPE, a.state))
         })
         .or_else(|| self.build.map(|b| action(BUILD, b.state)))
+        .or_else(|| self.repair.map(|r| action(crate::repair::REPAIR, r.state)))
         .or_else(|| {
             self.move_to
                 .map(|m| action(crate::move_to::MOVE_TO, m.state.number()))
@@ -454,6 +461,7 @@ impl Unit {
             return Some(a.target);
         }
         None.or_else(|| self.build.map(|b| b.target))
+            .or_else(|| self.repair.map(|r| r.target))
             .or_else(|| self.move_to.map(|m| m.target))
             .or_else(|| self.fly.map(|_| -1))
             .or_else(|| self.hunt.map(|h| h.target))
@@ -948,7 +956,8 @@ impl Unit {
     /// then the second target, into `releases` with the unit as `by`. The Build's
     /// (`FUN_140aadbf0`) first takes a counted builder (`+0x68`) out of its building's builders
     /// (`FUN_140aaddb0`, `+0x9e8`), its foundation into `builder_leaves`
-    /// ([`crate::turn::Turns::leave_builders`]); the Artifact's (`FUN_140aab0d0`) lets its
+    /// ([`crate::turn::Turns::leave_builders`]), as the Repair's (`FUN_140ad8fd0`) a counted
+    /// repairer (`+0x6c`) its target's; the Artifact's (`FUN_140aab0d0`) lets its
     /// target go and its `MoveTo`'s stops the unit; the Fly's (`FUN_140a84750`) gives the unit
     /// its top speed as its animation speed (slot 0x208 into `+0x7b8`); the missile's lets its
     /// target and the object it was fired from go. The Make, the wait for a foundation
@@ -1003,6 +1012,19 @@ impl Unit {
             }
             release(b.target);
             if b.move_to.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+        }
+        // the Repair's destructor (FUN_140ad8fd0): a counted repairer leaves its target's
+        // repairers, then the base teardown's sub-actions and target
+        if let Some(r) = self.repair.take() {
+            if r.counted {
+                builder_leaves.push(r.target);
+            }
+            release(r.target);
+            if r.move_to.is_some()
                 && let Some(m) = self.mover.as_mut()
             {
                 m.stop()?;
@@ -4285,51 +4307,39 @@ impl Unit {
     }
 
     /// Slot 0x110 of a combat object (`FUN_141213b10`): the classes 2, 20, 21, 22 and 53 repair
-    /// at a cost (not modelled); any other heals (`FUN_141193b30`): slot 0xb8 (`FUN_141203be0`)
-    /// adds `amount` up to its hit points with its powerups' room, an overflow taken off the
-    /// powerup (`+0xa38`, never below 0; the hit point transforms of `FUN_141204450`, empty in
-    /// the recordings, are not held); healed to its full hit points (slot 0xc0 at least slot
-    /// 200), it holds exactly its master's. The heal timer `+0x9e4` a full heal clears is not held.
+    /// at a cost (not modelled); any other heals ([`Unit::heal_hp`]).
     pub(in crate::turn) fn heal(&mut self, master: &Master, amount: f32) -> Result<(), GenieError> {
         if matches!(master.class, 2 | 20 | 21 | 22 | 53) {
             return Err(GenieError::unsupported(
                 "a heal at a cost (FUN_141213b10's classes)",
             ));
         }
-        self.gain_hp(master, amount);
+        let _ = self.heal_hp(master, amount);
         Ok(())
+    }
+
+    /// `FUN_141193b30`: slot 0xb8 adds `amount` ([`Unit::gain_hp`]); a loss (`amount` below 0)
+    /// leaves at least 1 hit point; healed to its full hit points (slot 0xc0 at least slot 200,
+    /// `COMISS` with `JC`: a NaN is not), it holds exactly its master's. True then.
+    pub(in crate::turn) fn heal_hp(&mut self, master: &Master, amount: f32) -> bool {
+        crate::damage::heal_hp(
+            &mut self.life.hp,
+            &mut self.hp_powerups,
+            master.hit_points,
+            amount,
+        )
     }
 
     /// Slot 0xb8 of a combat object (`FUN_141203be0`): `amount` added up to its hit points with
     /// its powerups' room, an overflow taken off the powerup (`+0xa38`, never below 0; the hit
-    /// point transforms of `FUN_141204450`, empty in the recordings, are not held); healed to its
-    /// full hit points (slot 0xc0 at least slot 200), it holds exactly its master's.
+    /// point transforms of `FUN_141204450`, empty in the recordings, are not held).
     pub(in crate::turn) fn gain_hp(&mut self, master: &Master, amount: f32) {
-        let full = f32::from(master.hit_points);
-        let [mut up, room] = self.hp_powerups;
-        let most = full + room;
-        if room < up {
-            up = room;
-        }
-        if most <= self.life.hp {
-            if 0.0 < up {
-                up = (up - amount).max(0.0);
-            }
-        } else {
-            let healed = self.life.hp + amount;
-            self.life.hp = healed;
-            if most < healed {
-                self.life.hp = most;
-                if 0.0 < up {
-                    up = (up - (healed - most)).max(0.0);
-                }
-            }
-        }
-        self.hp_powerups[0] = up;
-        // slot 0xc0 (the hit points with the powerups' room) at least slot 200 (the most)
-        if most <= (room - up) + self.life.hp {
-            self.life.hp = full;
-        }
+        crate::damage::gain_hp(
+            &mut self.life.hp,
+            &mut self.hp_powerups,
+            master.hit_points,
+            amount,
+        );
     }
 
     /// Slot 0xb0 of a combat object (`FUN_141205c80`), the loss of `d` hit points: the hit point
@@ -4369,7 +4379,8 @@ impl Unit {
     /// [`Unit::gain_hp`]) at most the room below its most (slot 200: its master's hit points plus
     /// its powerups' room; the hit point stinger `+0xb44`, written only by auras, is not held), or
     /// come off (slot 0xb0, [`Unit::lose_hp`]) at most its hit points with its powerups' room
-    /// (slot 0xc0). The heal timer a full heal clears (`+0x9e4`) is not held.
+    /// (slot 0xc0). Then an object at its most (slot 0xc0 at least slot 200) has the armor its
+    /// charge's hits took back (`+0x9e4` and `+0x9e6`, one dword, zeroed).
     pub(in crate::turn) fn regenerate(&mut self, master: &Master, dt_seconds: f32) {
         use crate::fmath::{at_most_or_unordered, below_or_unordered};
         let rate = regeneration_rate(master, self);
@@ -4414,6 +4425,12 @@ impl Unit {
             if !at_most_or_unordered(amount, 0.0) {
                 self.gain_hp(master, amount);
             }
+        }
+        // at its most hit points (slot 0xc0 at least slot 200, `COMISS`: a NaN is not) the
+        // armor its charge's hits took (`+0x9e4`, `+0x9e6`) comes back
+        let [up, room] = self.hp_powerups;
+        if most <= (room - up) + self.life.hp {
+            self.armor_removed = [0; 2];
         }
     }
 
@@ -5135,6 +5152,9 @@ impl Unit {
                     self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
                 }
             }
+        }
+        if self.repair.is_some() {
+            self.repair_part(c, others, me)?;
         }
         // RGE_Action_Object::update: the actions of an object inside another do not update; its
         // inside update (FUN_140a98790) deletes its top action (FUN_140a78480 -> FUN_140a784a0:
@@ -6368,6 +6388,264 @@ impl Unit {
         self.apply(effects, class, c)
     }
 
+    /// The Repair's update ([`crate::repair::RepairAction::update`]) with what it reads of its
+    /// target (in the unit's player's list or another player's), the repairers of the object
+    /// `FUN_140ad9050` gives (the target, an annex's main building), the unit's work rate and
+    /// quick path, and the target's repair over the objects it reaches (the target, an annex's
+    /// main building, a main building's annexes: [`crate::repair::repair_building`],
+    /// [`crate::repair::repair_unit`]) paid from the player's resources. Its changes go to the
+    /// unit's player's objects at once and to another player's after the update
+    /// ([`Context::repair_writes`]); the payments join the attribute adds.
+    #[allow(clippy::too_many_lines)]
+    fn repair_part(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+        me: Me,
+    ) -> Result<(), GenieError> {
+        use crate::repair::{Repaired, Repairee};
+        let Some(target) = self.repair.map(|r| r.target) else {
+            return Ok(());
+        };
+        let (player, foreign, every) = (c.player, c.foreign, c.every_masters);
+        let held = |id: i32| -> Option<(usize, &Self)> {
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        let master_of = |q: usize, u: &Self| -> Option<Master> {
+            u.own_master
+                .as_deref()
+                .or_else(|| every.get(q)?.get(u.life.master_id))
+                .cloned()
+        };
+        let own = master_of(player, self).ok_or(GenieError::missing_data("a repairer's master"))?;
+        // the target as the update reads it, and the object FUN_140ad9050 counts repairers in
+        let mut repairee = None;
+        let mut counted_in = None;
+        let mut set: Vec<Repaired> = Vec::new();
+        if target != -1
+            && let Some((q, t)) = held(target)
+        {
+            let tm =
+                master_of(q, t).ok_or(GenieError::missing_data("a repaired object's master"))?;
+            repairee = Some(Repairee {
+                state: t.life.state,
+                hp: t.life.hp,
+                owner: q,
+                allied: crate::tasks::allied(c.relations, player, q, true),
+                position: t.position,
+                radius: tm.radius,
+                class: tm.class,
+                moves: 29 < tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
+            });
+            let building = tm.kind == 80;
+            let counting = if building {
+                t.annex_of.unwrap_or(target)
+            } else {
+                target
+            };
+            if let Some((_, k)) = held(counting) {
+                counted_in = Some((counting, k.repairers()));
+            }
+            // the objects the repair reaches
+            let main = if building { t.annex_of } else { None };
+            let head = main.unwrap_or(target);
+            let mut ids = vec![target];
+            if building {
+                if head != target {
+                    ids.push(head);
+                }
+                let mut annexes = c.spatial.annexes_of(head);
+                annexes.sort_unstable();
+                ids.extend(annexes.iter().copied().filter(|&a| a != target));
+            }
+            for id in ids {
+                let Some((oq, o)) = held(id) else {
+                    continue;
+                };
+                let om = master_of(oq, o)
+                    .ok_or(GenieError::missing_data("a repaired object's master"))?;
+                let attributes: &[f32] = if oq == player {
+                    c.attributes
+                } else {
+                    foreign.player(oq).map_or(&[][..], |p| &p.attributes[..])
+                };
+                let rate = |k: usize| attributes.get(k).copied().unwrap_or(0.0);
+                let annexes = if om.kind == 80 && o.annex_of.is_none() {
+                    let mut a = c.spatial.annexes_of(id);
+                    a.sort_unstable();
+                    a
+                } else {
+                    Vec::new()
+                };
+                set.push(Repaired {
+                    id,
+                    kind: om.kind,
+                    class: om.class,
+                    master: om.id,
+                    master_hp: om.hit_points,
+                    hp: o.life.hp,
+                    hp_powerups: o.hp_powerups,
+                    main: if om.kind == 80 { o.annex_of } else { None },
+                    annexes,
+                    cost_rates: [
+                        rate(crate::repair::UNIT_REPAIR_COST),
+                        rate(crate::repair::BUILDING_REPAIR_COST),
+                    ],
+                });
+            }
+        }
+        let original = set.clone();
+        let masters = c
+            .masters
+            .ok_or(GenieError::missing_data("a repairer's player's masters"))?;
+        let mut paid = PaidAttributes::new(c.resources, c.attributes);
+        let target_kind = set.first().map_or(0, |o| o.kind);
+        let mut repair = |amount: f32| -> Result<u8, GenieError> {
+            if set.is_empty() {
+                return Err(GenieError::unreachable(
+                    "a Repair working on an object the world does not hold",
+                ));
+            }
+            let mut payer = crate::repair::Payer {
+                masters,
+                attributes: &mut paid,
+            };
+            match target_kind {
+                80 => crate::repair::repair_building(&mut set, 0, amount, true, &mut payer),
+                70 => crate::repair::repair_unit(&mut set, 0, amount, &mut payer),
+                // the task finder repairs buildings and combat units of its classes alone
+                _ => Err(GenieError::unreachable(
+                    "a repaired object of a type below 70 (slot 0x110)",
+                )),
+            }
+        };
+        let restriction = usize::try_from(own.terrain_restriction).ok();
+        let (my_radius, my_id) = (own.radius, self.id);
+        let mut can_path = |spatial: &Spatial| -> Result<bool, GenieError> {
+            let terrain = spatial
+                .terrain
+                .as_ref()
+                .ok_or(crate::hull_path::NO_TERRAIN)?;
+            let r = restriction.ok_or(crate::hull_path::NO_RESTRICTION)?;
+            crate::hull_path::quick_reach(
+                spatial,
+                my_id,
+                target,
+                terrain.restriction_mask(r),
+                my_radius[0],
+                crate::repair::REACH,
+            )
+        };
+        let view = crate::repair::RepairView {
+            target: repairee,
+            radius: own.radius,
+            scenario: c.scenario,
+            rate: self.work_rate_powerup + own.work_rate,
+            repairers: counted_in.map(|(_, n)| n),
+            now: c.world_time,
+            waits: own.class == 4 && !c.computer,
+            stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
+            can_path: &mut can_path,
+            repair: &mut repair,
+        };
+        let repair_action = self.repair.as_mut().expect("checked above");
+        let step = repair_action.update(c.walk(self.mover.as_mut(), me), view)?;
+        // the repair's changes: the unit's player's objects at once, another player's after
+        for (now, was) in set.iter().zip(&original) {
+            if now == was {
+                continue;
+            }
+            if let Some(u) = others.iter_mut().find(|u| u.id == now.id) {
+                u.life.hp = now.hp;
+                u.hp_powerups = now.hp_powerups;
+            } else {
+                c.repair_writes.push(RepairWrite {
+                    id: now.id,
+                    hp: Some((now.hp, now.hp_powerups)),
+                    repairers: 0,
+                    restored: false,
+                });
+            }
+        }
+        c.attribute_adds.extend(paid.adds);
+        // FUN_1412066a0: a target of a type above 69 has its armor back
+        if step.restored && 0x45 < target_kind {
+            if let Some(u) = others.iter_mut().find(|u| u.id == target) {
+                u.armor_removed = [0; 2];
+            } else {
+                c.repair_writes.push(RepairWrite {
+                    id: target,
+                    hp: None,
+                    repairers: 0,
+                    restored: true,
+                });
+            }
+        }
+        if step.repairers != 0
+            && let Some((id, _)) = counted_in
+        {
+            if let Some(u) = others.iter_mut().find(|u| u.id == id) {
+                let n = u.repairers_mut();
+                *n = n.wrapping_add_signed(step.repairers);
+            } else {
+                c.repair_writes.push(RepairWrite {
+                    id,
+                    hp: None,
+                    repairers: step.repairers,
+                    restored: false,
+                });
+            }
+        }
+        let by = self.releaser(c);
+        if step.released {
+            if others.iter().any(|u| u.id == target) {
+                release_own(others, c.masters, target, by)?;
+            } else {
+                c.releases.push((target, by));
+            }
+        }
+        for kind in &step.notifies {
+            self.post_own(*kind, [crate::repair::REPAIR_ACTION, 0, 0])?;
+        }
+        if step.stands {
+            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+        }
+        if step.done {
+            // the action list removes it; its destructor (FUN_140ad8fd0) finds it out of the
+            // repairers (set_state left them) and lets the target it still holds go
+            let holds = self.repair.map_or(-1, |r| r.target);
+            self.repair = None;
+            if holds != -1 {
+                if others.iter().any(|u| u.id == holds) {
+                    release_own(others, c.masters, holds, by)?;
+                } else {
+                    c.releases.push((holds, by));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// `+0x9e8` (`num_builders`): a building's in its construction, any other's its own.
+    pub(crate) const fn repairers(&self) -> u8 {
+        match &self.construction {
+            Some(k) => k.builders,
+            None => self.builders,
+        }
+    }
+
+    /// [`Unit::repairers`] to change.
+    pub(crate) const fn repairers_mut(&mut self) -> &mut u8 {
+        match &mut self.construction {
+            Some(k) => &mut k.builders,
+            None => &mut self.builders,
+        }
+    }
+
     /// What the attack tests read of the unit as an attacker ([`crate::unit_ai::Attacker`]) with
     /// a unit AI of type `ai_type`, its master `master`, its owner and the owner's type, the game
     /// mode (a scenario's) and its `+0x924`.
@@ -6683,6 +6961,13 @@ impl Unit {
                 }
                 return Ok(());
             }
+            PointMove::Repairs(released, left) => {
+                builder_leaves.extend(left);
+                if let Some(t) = released {
+                    releases.push((t, by));
+                }
+                return Ok(());
+            }
             PointMove::Declined => {}
         }
         self.clear_own_actions(releases, builder_leaves, by)?;
@@ -6766,6 +7051,15 @@ impl Unit {
                 let old = gather.target;
                 gather.take_move(None, point, player, held, mover)?;
                 Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
+            }
+            // the Repair's (FUN_140ad9700): its point, slot 0x68 with none, set_state(11)
+            Some(crate::repair::REPAIR) => {
+                let repair = self.repair.as_mut().expect("the unit's top action");
+                let (old, counted) = repair.take_point(point, self.mover.as_mut())?;
+                Ok(PointMove::Repairs(
+                    Some(old).filter(|&t| t != -1),
+                    counted.then_some(old),
+                ))
             }
             Some(other) => {
                 unreachable!("a top action of type {other}, which top_action never holds")
@@ -6893,6 +7187,9 @@ pub(crate) enum PointMove {
     /// It answered 1: the action walks there itself. The target it let go (slot 0x68 with none),
     /// if any, which the caller releases.
     Taken(Option<i32>),
+    /// A Repair answered 1 (`FUN_140ad9700`): it walks to the point; the target it let go, and
+    /// the target whose repairers a counted repairer left ([`crate::turn::Turns::leave_builders`]).
+    Repairs(Option<i32>, Option<i32>),
 }
 
 /// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.
@@ -7076,6 +7373,56 @@ pub(in crate::turn) struct Captured {
     /// ([`crate::turn::Turns::building_changes_hands`]); `main` says whether the new owner has
     /// its master.
     pub(in crate::turn) building: bool,
+}
+
+/// A repairer's player's attributes as its repair pays from them ([`crate::repair::Payer`]):
+/// the resources (`Player::resources`) and the other attributes as the update reads them, each
+/// payment kept as an add for the caller ([`Context::attribute_adds`]: a subtraction, so the
+/// player's value comes out as the repair saw it).
+struct PaidAttributes {
+    values: Vec<f32>,
+    adds: Vec<(i16, f32)>,
+}
+
+impl PaidAttributes {
+    fn new(resources: [f32; 4], attributes: &[f32]) -> Self {
+        let mut values = attributes.to_vec();
+        for (i, r) in resources.into_iter().enumerate() {
+            if let Some(v) = values.get_mut(i) {
+                *v = r;
+            }
+        }
+        Self {
+            values,
+            adds: Vec::new(),
+        }
+    }
+}
+
+impl crate::tech::Attributes for PaidAttributes {
+    fn get(&self, i: i16) -> Result<f32, GenieError> {
+        usize::try_from(i)
+            .ok()
+            .and_then(|k| self.values.get(k))
+            .copied()
+            .ok_or(crate::turn::NO_ATTRIBUTE)
+    }
+
+    fn set(&mut self, _: i16, _: f32) -> Result<(), GenieError> {
+        Err(GenieError::unreachable(
+            "a repair's payment that sets an attribute",
+        ))
+    }
+
+    fn subtract(&mut self, i: i16, amount: f32) -> Result<(), GenieError> {
+        let v = usize::try_from(i)
+            .ok()
+            .and_then(|k| self.values.get_mut(k))
+            .ok_or(crate::turn::NO_ATTRIBUTE)?;
+        *v -= amount;
+        self.adds.push((i, -amount));
+        Ok(())
+    }
 }
 
 /// What a unit's update hands its unit AI part when that runs after the caller gave the work its

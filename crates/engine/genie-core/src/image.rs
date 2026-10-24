@@ -656,6 +656,20 @@ pub mod registry {
     pub const MOST_RADIUS: f32 = f32::from_bits(0x4230_0000);
 }
 
+/// The values `crate::repair`'s port reads.
+pub mod repair {
+    /// 0.5
+    pub const EXTRA_REPAIRER: f32 = f32::from_bits(0x3f00_0000);
+    /// 0.5
+    pub const LEAST_HP: f32 = f32::from_bits(0x3f00_0000);
+    /// 2.0
+    pub const MOVING_REACH: f32 = f32::from_bits(0x4000_0000);
+    /// 1.0
+    pub const ONE: f32 = f32::from_bits(0x3f80_0000);
+    /// 0.10000000149011612
+    pub const REACH: f32 = f32::from_bits(0x3dcc_cccd);
+}
+
 /// The values `crate::rng`'s port reads.
 pub mod rng {
     /// 1.0

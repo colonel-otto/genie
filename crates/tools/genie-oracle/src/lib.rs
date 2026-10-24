@@ -298,6 +298,11 @@ fn unit(
             .combat()
             .map_or([0.0; 2], |c| [c.hitpoints_powerup, c.hitpoints_max_powerup]),
         regen_timer: object.combat().map_or(0.0, |c| c.berserker_timer),
+        // a building's +0x9e8 is its construction's
+        builders: object
+            .combat()
+            .filter(|_| object.tribe_building_object.is_none())
+            .map_or(0, |c| c.num_builders),
         regen_powerups: object.combat().map_or([0.0; 2], |c| {
             [c.regeneration_rate_powerup, c.regeneration_stinger]
         }),
@@ -504,6 +509,10 @@ fn saved_gate(object: &genie_save::Object) -> Option<genie_core::turn::Gate> {
         other_masters: b.has_open_closed_master_object != 0 || b.original_owner != -1,
     })
 }
+
+/// A saved Build's or Repair's sub-action other than a `MoveTo`.
+const OTHER_SUB_ACTION: GenieError =
+    GenieError::unsupported("a saved Build or Repair action with another sub-action");
 
 /// A saved building's construction: its `build_pts`, `desolid_flag` and `num_builders`, its
 /// master's hit points (the sixth `readTemp`), build time (the first train location's) and
@@ -1108,11 +1117,7 @@ fn saved_actions(
             let move_to = match base.sub_actions.entries().next() {
                 None => None,
                 Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
-                Some(_) => {
-                    return Err(GenieError::unsupported(
-                        "a saved Build action with another sub-action",
-                    ));
-                }
+                Some(_) => return Err(OTHER_SUB_ACTION),
             };
             // a MoveTo to a point has no target; its point is the action's target point
             let goal = base
@@ -1144,6 +1149,44 @@ fn saved_actions(
                     .as_deref()
                     .is_some_and(|b| b.added_to_num_builders != 0),
                 timer: base.timer,
+            });
+            Ok(())
+        }
+        genie_core::repair::REPAIR => {
+            let part = action
+                .tribe_action_repair
+                .as_deref()
+                .ok_or(GenieError::missing_data("a saved Repair's own part"))?;
+            let sub = base.sub_actions.entries().next();
+            let move_to = match sub {
+                None => None,
+                Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
+                Some(_) => return Err(OTHER_SUB_ACTION),
+            };
+            // a MoveTo to a point has no target; its point is the action's target point
+            let goal = sub
+                .and_then(|(_, sub)| sub.base())
+                .filter(|b| b.target_id == -1)
+                .map(|b| [b.target_x, b.target_y, b.target_z]);
+            let t = task_at(s.master_obj, base.short_val)?;
+            unit.repair = Some(genie_core::repair::RepairAction {
+                target: base.target_id,
+                state: base.state,
+                move_to,
+                move_wait: genie_core::move_to::MoveWait::default(),
+                goal,
+                point: [base.target_x, base.target_y, base.target_z],
+                timer: base.timer,
+                task: genie_core::repair::RepairTask {
+                    id: t.id,
+                    work_value: t.work_val1,
+                },
+                range: objects
+                    .master(s.master_obj)
+                    .and_then(combat_master)
+                    .map_or(0.0, |c| c.weapon_range),
+                counted: part.added_to_num_builders != 0,
+                quiet: base.sub_action_value != 0,
             });
             Ok(())
         }
@@ -2878,11 +2921,6 @@ fn work_masters(
         if let Some(c) = combat {
             work.cost = build_cost(&c.build_inventory);
             work.build_time = c.train_location.first().map_or(0, |t| t.train_time);
-            work.trained_at = c
-                .train_location
-                .iter()
-                .map(|t| t.train_location_id)
-                .collect();
             work.charge_type = c.charge_type;
             work.formation_category = c.temp_formation_category;
             work.hero_flag = c.hero_flag;
@@ -2992,22 +3030,19 @@ fn work_masters(
                 apply_mode: d.sprite_info_flag,
             })
             .collect();
-        work.train_locations = m
-            .tribe_master_building_object
-            .as_deref()
-            .map(|b| &b.tribe_master_combat_object)
-            .or(m.tribe_master_combat_object.as_deref())
-            .map_or_else(Vec::new, |c| {
-                c.train_location
-                    .iter()
-                    .map(|t| genie_core::masters::TrainLocation {
-                        location: t.train_location_id,
-                        time: t.train_time,
-                        button: t.button_location_id,
-                        hotkey: t.hotkey_id,
-                    })
-                    .collect()
-            });
+        // a master without a combat part has no train locations, whatever its copy's are
+        work.train_locations = combat.map_or_else(Vec::new, |c| {
+            c.train_location
+                .iter()
+                .map(|t| genie_core::masters::TrainLocation {
+                    location: t.train_location_id,
+                    time: t.train_time,
+                    button: t.button_location_id,
+                    hotkey: t.hotkey_id,
+                })
+                .collect()
+        });
+        work.trained_at = work.train_locations.iter().map(|t| t.location).collect();
         work.fly_mode = table.fly_mode(civ, s.copy_id()).unwrap_or(0);
         work.standing_sprite = s.idle_sprite_id;
         work.standing_sprite_2 = (0 <= s.idle2_sprite_id).then_some(s.idle2_sprite_id);

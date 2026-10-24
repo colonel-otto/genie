@@ -185,6 +185,19 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
         trained_at: unit.creatable.as_ref().map_or_else(Vec::new, |c| {
             c.train_locations.iter().map(|t| t.location_id).collect()
         }),
+        // the whole entries, which the attribute setters change (a .dat before VER 8.7 holds no
+        // hotkey: 0)
+        train_locations: unit.creatable.as_ref().map_or_else(Vec::new, |c| {
+            c.train_locations
+                .iter()
+                .map(|t| work::TrainLocation {
+                    location: t.location_id,
+                    time: t.queue_time,
+                    button: t.button_id,
+                    hotkey: t.hot_key_id.unwrap_or_default(),
+                })
+                .collect()
+        }),
         attack_sprite2: unit
             .type50
             .as_ref()

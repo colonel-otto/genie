@@ -623,6 +623,13 @@ pub struct HullPather<'w> {
     bounds: [f32; 4],
 }
 
+/// A quick path without the map's terrain.
+pub(crate) const NO_TERRAIN: GenieError =
+    GenieError::unsupported("a quick path without the map's terrain");
+/// A quick path of a master without a terrain restriction.
+pub(crate) const NO_RESTRICTION: GenieError =
+    GenieError::unsupported("a quick path of a master without a terrain restriction");
+
 /// `canQuickPath` (object slot 0x3e0, `FUN_1411506e0`) of object `me` (its master's terrain
 /// `mask` and `radius` on x) to object `target` within `range`, from `me`'s place in the world
 /// ([`quick_reach_from`]); false for a target the world does not hold.

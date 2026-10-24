@@ -445,6 +445,16 @@ pub trait Attributes {
     fn get(&self, i: i16) -> Result<f32, GenieError>;
     /// Attribute `i` set to `v`.
     fn set(&mut self, i: i16, v: f32) -> Result<(), GenieError>;
+    /// Attribute `i` less `amount` (a payment's `SUBSS`), by default through [`Attributes::get`]
+    /// and [`Attributes::set`].
+    ///
+    /// # Errors
+    ///
+    /// An attribute the player does not have.
+    fn subtract(&mut self, i: i16, amount: f32) -> Result<(), GenieError> {
+        let v = self.get(i)?;
+        self.set(i, v - amount)
+    }
 }
 
 #[cfg(test)]

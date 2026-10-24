@@ -498,7 +498,33 @@ pub fn find_task<'m>(
             ]
             .contains(&t.master.class);
         if repairable && repair_class && t.hp < t.max_hp && t.state < 3 {
-            return Err(GenieError::unsupported("the task finder's repair (106)"));
+            // the repair tasks the filter takes: the last for any target, the last for the
+            // target's class, else the first for its master, which ends the scan; the class's
+            // needs a work value above 0, the any one only without a class's
+            let mut any = None;
+            let mut by_class = None;
+            for task in &list.tasks {
+                if task.action_type != crate::repair::REPAIR || !wanted(filter, task) {
+                    continue;
+                }
+                if task.object_group == -1 && task.object_id == -1 {
+                    any = Some(task);
+                }
+                if task.object_group == t.master.class {
+                    by_class = Some(task);
+                }
+                if task.object_id == t.master.id {
+                    return Ok(Some(task));
+                }
+            }
+            match by_class {
+                None if any.is_some() => return Ok(any),
+                Some(task) if 0.0 < task.work_val1 => return Ok(Some(task)),
+                _ => {}
+            }
+            if filter == crate::repair::REPAIR {
+                return Ok(None);
+            }
         }
         if t.state < 3 && (t.master.id == id::ID_45 || t.master.id == id::ID_84) {
             return Err(GenieError::unsupported("the task finder's task 0x6f"));
@@ -698,6 +724,46 @@ mod tests {
             find(&lumberjack, (0, 10.0), &building(&camp, 2, 0)),
             Ok(Some(&task(101, -1, -1, 1.0)))
         );
+    }
+
+    /// The repair branch (`LAB_1412796b4`): a damaged building of the player's own (or Gaia's)
+    /// takes the repair task for its master first, else the last for its class with a work value,
+    /// else the last for any target; under the repair filter with none the finder ends; a whole
+    /// building or another player's has none.
+    #[test]
+    fn a_damaged_building_takes_the_repair_task_for_its_master_or_class() {
+        let house = master(70, BUILDING, class::BUILDING, vec![]);
+        let damaged = TaskTarget {
+            hp: 300.0,
+            ..building(&house, 2, 2)
+        };
+        let by = |tasks: Vec<Task>, t: &TaskTarget<'_>, filter: i16| {
+            let builder = master(118, 70, class::VILLAGER, tasks);
+            find_with(&builder, t, filter).map(Option::<&Task>::copied)
+        };
+        let any = task(106, -1, -1, 0.0);
+        let class3 = task(106, 3, -1, 2.0);
+        let own = task(106, -1, 70, 0.0);
+        assert_eq!(by(vec![any], &damaged, -1), Ok(Some(any)));
+        assert_eq!(by(vec![class3, any], &damaged, -1), Ok(Some(class3)));
+        assert_eq!(by(vec![class3, any, own], &damaged, -1), Ok(Some(own)));
+        // a class task without a work value leaves no task, not the any one
+        assert_eq!(
+            by(vec![task(106, 3, -1, 0.0), any], &damaged, 106),
+            Ok(None)
+        );
+        // Gaia's damaged building too; whole or another player's, none
+        let gaia = TaskTarget {
+            player: 0,
+            ..damaged
+        };
+        assert_eq!(by(vec![any], &gaia, 106), Ok(Some(any)));
+        assert_eq!(by(vec![any], &building(&house, 2, 2), 106), Ok(None));
+        let foreign = TaskTarget {
+            player: 3,
+            ..damaged
+        };
+        assert_eq!(by(vec![any], &foreign, 106), Ok(None));
     }
 
     /// A transport of player `player` (object flag 0) in state 2 of class `class`.

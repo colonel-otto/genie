@@ -144,6 +144,8 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) mode_1: bool,
     /// The owner's attributes, which a gatherer's productivity reads.
     pub(in crate::turn) attributes: &'a [f32],
+    /// The owner's food, wood, stone and gold ([`Player::resources`]), which a repair pays from.
+    pub(in crate::turn) resources: [f32; 4],
     /// The graphics, for the sprites a hunter takes.
     pub(in crate::turn) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The drop-site table, whose livestock entries a hunt leads its livestock to.
@@ -242,6 +244,9 @@ pub(in crate::turn) struct Context<'a> {
     /// seconds; [`crate::build::Worked::Main`]), which the caller runs after the update
     /// ([`Turns::work_building`]).
     pub(in crate::turn) main_works: Vec<(i32, f32)>,
+    /// What a repair changed of another player's objects ([`RepairWrite`]), which the caller
+    /// writes after the update.
+    pub(in crate::turn) repair_writes: Vec<RepairWrite>,
     /// The owner's diplomacy (`player+0x260`), which the unit's task search reads.
     pub(in crate::turn) relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
@@ -332,6 +337,8 @@ pub(in crate::turn) struct ObjectOutputs {
     pub(in crate::turn) unwatched: Vec<i32>,
     /// [`Context`]'s `evacuations`.
     pub(in crate::turn) evacuations: Vec<(i32, Vec<i32>)>,
+    /// [`Context`]'s `repair_writes`.
+    pub(in crate::turn) repair_writes: Vec<RepairWrite>,
 }
 
 impl Context<'_> {
@@ -375,8 +382,24 @@ impl Context<'_> {
             started: std::mem::take(&mut self.started),
             unwatched: std::mem::take(&mut self.unwatched),
             evacuations: std::mem::take(&mut self.evacuations),
+            repair_writes: std::mem::take(&mut self.repair_writes),
         }
     }
+}
+
+/// What a repair changed of an object of another player than the repairer's
+/// ([`Context::repair_writes`]): its hit points and powerups, its repairers (`+0x9e8`) and the
+/// armor its charge's hits took, which a full repair gives back (`FUN_1412066a0`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::turn) struct RepairWrite {
+    /// The object.
+    pub(in crate::turn) id: i32,
+    /// Its new hit points and hit point powerups (`+0xa38`, `+0xa3c`).
+    pub(in crate::turn) hp: Option<(f32, [f32; 2])>,
+    /// What its repairers change by.
+    pub(in crate::turn) repairers: i8,
+    /// Its armor removed (`+0x9e4`, `+0x9e6`) goes back to 0.
+    pub(in crate::turn) restored: bool,
 }
 
 /// What the unit's slot 0x388 (`FUN_141226fc0`) found while its unit AI ran
@@ -1267,12 +1290,9 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             .spatial
             .terrain
             .as_ref()
-            .ok_or(GenieError::unsupported(
-                "a quick path without the map's terrain",
-            ))?;
-        let restriction = usize::try_from(self.restriction).map_err(|_| {
-            GenieError::unsupported("a quick path of a master without a terrain restriction")
-        })?;
+            .ok_or(crate::hull_path::NO_TERRAIN)?;
+        let restriction =
+            usize::try_from(self.restriction).map_err(|_| crate::hull_path::NO_RESTRICTION)?;
         let mask = terrain.restriction_mask(restriction);
         crate::hull_path::quick_reach(
             self.spatial,

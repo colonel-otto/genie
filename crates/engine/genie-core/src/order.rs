@@ -1579,15 +1579,7 @@ impl Turns {
     ) -> Result<bool, GenieError> {
         let unit = &mut self.players[player].objects[idx];
         let Some(target) = target else {
-            return match unit.head_takes_point(point, player)? {
-                crate::turn::PointMove::Declined => Ok(false),
-                crate::turn::PointMove::Taken(released) => {
-                    if let Some(t) = released {
-                        self.release(t, self.releaser(player, idx))?;
-                    }
-                    Ok(true)
-                }
-            };
+            return self.point_taken(player, idx, point);
         };
         if unit.unmodelled_action.is_some() {
             return Err(GenieError::unsupported(
@@ -1613,10 +1605,36 @@ impl Turns {
             }
             Some(HUNT) => self.hunt_take_move(player, idx, target, point),
             Some(crate::gather::GATHER) => self.gather_take_move(player, idx, target, point),
+            // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target
+            Some(crate::repair::REPAIR) => self.point_taken(player, idx, point),
             Some(other) => {
                 unreachable!("a top action of type {other}, which top_action never holds")
             }
         }
+    }
+
+    /// The head action's slot 0x40 on a move to `point` ([`crate::turn::Unit::head_takes_point`]):
+    /// the targets it let go are released and a counted repairer leaves its target's repairers.
+    fn point_taken(
+        &mut self,
+        player: usize,
+        idx: usize,
+        point: [f32; 3],
+    ) -> Result<bool, GenieError> {
+        let by = self.releaser(player, idx);
+        let (released, left) =
+            match self.players[player].objects[idx].head_takes_point(point, player)? {
+                crate::turn::PointMove::Declined => return Ok(false),
+                crate::turn::PointMove::Taken(released) => (released, None),
+                crate::turn::PointMove::Repairs(released, left) => (released, left),
+            };
+        if let Some(t) = left {
+            self.leave_builders(t)?;
+        }
+        if let Some(t) = released {
+            self.release(t, by)?;
+        }
+        Ok(true)
     }
 
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
@@ -2969,6 +2987,10 @@ impl Turns {
                 self.retake_build(player, idx, target, point, clears)?;
                 true
             }
+            _ if top == Some(task.action_type) && task.action_type == crate::repair::REPAIR => {
+                self.retake_repair(player, idx, target, point, clears)?;
+                true
+            }
             _ if top == Some(crate::gather::GATHER)
                 && task.action_type == crate::gather::GATHER
                 && unit.gather.is_some_and(|g| g.task.id == task.id) =>
@@ -3060,6 +3082,7 @@ impl Turns {
                 true,
             ),
             crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
+            crate::repair::REPAIR => self.start_repair(player, idx, target, &task, point, clears),
             // the factory makes no action of a mule cart's task: the move without one
             crate::build::CART_TASK => {
                 self.work_move(player, idx, target, point, (clears, notified))
@@ -3338,6 +3361,137 @@ impl Turns {
         Ok(())
     }
 
+    /// The work command's Repair (its task of action type 106, the factory `FUN_140aca4b0` case
+    /// 0x6a, `FUN_140ad7fa0`): the action takes its target (slot 0x178) at its place (a ship's
+    /// meeting point, `FUN_140ad9120`, is not modelled: [`crate::repair::SHIP_REPAIR`]); the unit
+    /// AI's notify (`FUN_14106e4e0` kind 0x6a: the repair order 0x2ce and action 0x26a, the
+    /// target with its class, the work's point); the install (slot 0x808) clears the action list
+    /// and holds the Repair, whose start (slot 5, `FUN_140ad9030` with its force flag) walks to
+    /// the target (state 4) within the unit's master's weapon range
+    /// ([`crate::repair::RepairAction::start`]).
+    fn start_repair(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        task: &crate::masters::Task,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), GenieError> {
+        // the task finder found the task on the target, which the world holds
+        let (tp, t) = self.object(target).ok_or(GenieError::unreachable(
+            "a Repair's target the world does not hold",
+        ))?;
+        let tm = self.master_of(tp, t.life.master_id)?;
+        if crate::repair::SHIPS.contains(&tm.class) {
+            return Err(crate::repair::SHIP_REPAIR);
+        }
+        let (t_at, class) = (t.position, i32::from(tm.class));
+        let unit = &self.players[player].objects[idx];
+        let range = self.master_of(player, unit.life.master_id)?.weapon_range;
+        self.take(target, self.releaser(player, idx));
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                crate::ai_kinds::ORDER_REPAIR,
+                crate::repair::REPAIR_ACTION,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+            self.remember_order(
+                player,
+                idx,
+                (crate::ai_kinds::ORDER_REPAIR, crate::repair::REPAIR_ACTION),
+            )?;
+        }
+        self.clear_actions(player, idx)?;
+        let repair_task = crate::repair::RepairTask {
+            id: task.id,
+            work_value: task.work_val1,
+        };
+        self.players[player].objects[idx].repair = Some(crate::repair::RepairAction::start(
+            target,
+            t_at,
+            repair_task,
+            range,
+        ));
+        Ok(())
+    }
+
+    /// The work command's target for the Repair the unit runs (its slot 0x48, `FUN_140adb480`):
+    /// its own target again changes nothing while it faces it (state 6), nor for a computer
+    /// player's repairer walking to it (4); else slot 0x68 takes the target (`FUN_140ada470`: a
+    /// repairer counted among another target's repairers leaves them; the base lets the old one
+    /// go and takes the new, [`Turns::retarget_action`]) at its place (a ship's meeting point is
+    /// not modelled, [`crate::repair::SHIP_REPAIR`]) and `set_state(4)` walks to it again (a
+    /// still counted repairer leaves the repairers, the `MoveTo` goes: the unit stops). The slot
+    /// answers 1; the work command then tells the unit AI (slot 0x828: order 0x2ce, action
+    /// 0x26a, the target with its class, the work's point).
+    fn retake_repair(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), GenieError> {
+        let (tp, t) = self.object(target).ok_or(GenieError::unreachable(
+            "a Repair's target the world does not hold",
+        ))?;
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let (t_at, class, ship) = (
+            t.position,
+            i32::from(tm.class),
+            crate::repair::SHIPS.contains(&tm.class),
+        );
+        let computer = self.players[player].computer;
+        let repair = self.players[player].objects[idx]
+            .repair
+            .expect("the unit's top action");
+        let same = repair.target == target;
+        let stays = same && (repair.state == 6 || (repair.state == 4 && computer));
+        if !stays {
+            if !same && repair.counted {
+                self.leave_builders(repair.target)?;
+            }
+            let taken = self.retarget_action(player, idx, repair.target, target, false)?;
+            if ship {
+                return Err(crate::repair::SHIP_REPAIR);
+            }
+            let unit = &mut self.players[player].objects[idx];
+            let r = unit.repair.as_mut().expect("the unit's top action");
+            // slot 0x68 dropped the count on another target; set_state(4)'s prelude makes a
+            // repairer still counted leave its repairers
+            let counted = same && r.counted;
+            r.counted = false;
+            r.target = taken;
+            r.point = t_at;
+            r.walk_again(unit.mover.as_mut())?;
+            if counted {
+                self.leave_builders(target)?;
+            }
+        }
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                crate::ai_kinds::ORDER_REPAIR,
+                crate::repair::REPAIR_ACTION,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+            self.remember_order(
+                player,
+                idx,
+                (crate::ai_kinds::ORDER_REPAIR, crate::repair::REPAIR_ACTION),
+            )?;
+        }
+        Ok(())
+    }
+
     /// The work command's target for the Build the unit runs (`LAB_1410706a8`: its task is the
     /// one found, slot 0x48 takes the target, `FUN_140ab1b30`), then the notify of the Build
     /// (slot 0x828: order 702, action 602, the target with its class). Its own foundation again
@@ -3479,19 +3633,17 @@ impl Turns {
     }
 
     /// The builder count: the building `FUN_140aaddb0` gives for the foundation `id` a Build
-    /// counted its builder among ([`Turns::counted_building`]) counts one builder less
-    /// (`+0x9e8`, held in its construction record); none once the world no longer holds `id`.
+    /// counted its builder among ([`Turns::counted_building`]; a Repair's target the same,
+    /// `FUN_140ad9050`) counts one less (`+0x9e8`: a building's in its construction record, a
+    /// unit's its own); none once the world no longer holds `id`.
     pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {
         let Some(site) = self.counted_building(id)? else {
             return Ok(());
         };
-        let c = self
-            .object_mut(site)
-            .and_then(|(_, b)| b.construction.as_mut())
-            .ok_or(GenieError::unsupported(
-                "a Build's foundation without its construction",
-            ))?;
-        c.builders = c.builders.wrapping_sub(1);
+        if let Some((_, b)) = self.object_mut(site) {
+            let n = b.repairers_mut();
+            *n = n.wrapping_sub(1);
+        }
         Ok(())
     }
 

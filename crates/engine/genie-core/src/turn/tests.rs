@@ -1272,6 +1272,105 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
     assert!(1.0 < t.object(10028).unwrap().1.life.hp);
 }
 
+/// The world of [`sent_off_world`] with the house built and damaged (300 of its 550 hit
+/// points), the villager a builder (118) with a Repair task on any object (work value 0.5) and
+/// a weapon range of 0.5.
+fn repair_world() -> Turns {
+    let mut t = sent_off_world(vec![]);
+    let v = &mut t.players[1].objects[0];
+    v.life.master_id = 118;
+    let house = &mut t.players[1].objects[1];
+    house.life.state = 2;
+    house.life.hp = 300.0;
+    let c = house.construction.as_mut().unwrap();
+    (c.progress, c.desolid) = (1.0, false);
+    for masters in &mut t.masters {
+        let builder = masters.get_mut(118).unwrap();
+        builder.weapon_range = 0.5;
+        builder.tasks.push(crate::masters::Task {
+            id: 4,
+            work_val1: 0.5,
+            ..task(crate::repair::REPAIR)
+        });
+    }
+    t
+}
+
+/// The work command on the player's damaged house (`FUN_14106fd00`, then the Repair's start):
+/// the task finder's Repair task (106), the target taken, the unit AI told order 0x2ce with
+/// action 0x26a and the house's class, the Repair walking (state 4) with its master's weapon
+/// range. The same command again while it faces the house (state 6) keeps the action; a
+/// computer player's repairer walking to it keeps it too.
+#[test]
+fn a_work_command_on_a_damaged_building_starts_a_repair() {
+    let mut t = repair_world();
+    let work = crate::order::Work {
+        target: 10028,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.top_action_kind(), Some(crate::repair::REPAIR));
+    let r = v.repair.unwrap();
+    assert_eq!(
+        (r.target, r.state, r.range, r.task.id, r.task.work_value),
+        (10028, 4, 0.5, 4, 0.5)
+    );
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (
+            crate::ai_kinds::ORDER_REPAIR,
+            crate::repair::REPAIR_ACTION,
+            10028
+        )
+    );
+    t.players[1].objects[0].repair.as_mut().unwrap().state = 6;
+    t.order_work(1, 0, &work).unwrap();
+    assert_eq!(t.players[1].objects[0].repair.unwrap().state, 6);
+}
+
+/// A work command on another damaged house while repairing (`FUN_140adb480`'s slot 0x68): a
+/// repairer counted among the first house's repairers leaves them, takes the new one and walks
+/// to it again (state 4, not counted).
+#[test]
+fn a_work_command_on_another_building_moves_the_repair_there() {
+    let mut t = repair_world();
+    let other = Unit {
+        id: 10031,
+        position: [34.0, 88.0, 0.0],
+        ..t.players[1].objects[1].clone()
+    };
+    t.players[1].objects.push(other);
+    let work = |target| crate::order::Work {
+        target,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work(10028)).unwrap();
+    {
+        let r = t.players[1].objects[0].repair.as_mut().unwrap();
+        (r.state, r.counted) = (7, true);
+    }
+    t.players[1].objects[1]
+        .construction
+        .as_mut()
+        .unwrap()
+        .builders = 1;
+    t.order_work(1, 0, &work(10031)).unwrap();
+    let r = t.players[1].objects[0].repair.unwrap();
+    assert_eq!(
+        (r.target, r.state, r.counted, r.point),
+        (10031, 4, false, [34.0, 88.0, 0.0])
+    );
+    assert_eq!(t.players[1].objects[1].construction.unwrap().builders, 0);
+}
+
 /// The whole of it: a villager the foundation sent off (its queue the foundation's order)
 /// runs the order on its turn (slot 0x108 forced: its slot 0x388 finds the builder's task by
 /// the swap group), becomes the builder with the wait as its only action, and keeps waiting
@@ -4807,6 +4906,36 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         .map(|u| u.sprite.map(|s| s.graphic.id))
         .collect();
     assert_eq!(sprites, [Some(112), Some(112), Some(38)]);
+}
+
+/// The regeneration's end: an object at its most hit points after it (slot 0xc0 at least slot
+/// 200) has the armor its charge's hits took back (`+0x9e4`/`+0x9e6` zeroed); below its most it
+/// keeps the loss.
+#[test]
+fn a_unit_regenerated_to_its_most_has_its_armor_back() {
+    let berserk = Master {
+        id: 692,
+        kind: 70,
+        hit_points: 54,
+        regeneration: 20.0,
+        ..Master::default()
+    };
+    let unit = |hp| Unit {
+        id: 1,
+        life: Lifecycle {
+            state: 2,
+            hp,
+            ..Lifecycle::default()
+        },
+        armor_removed: [2, 1],
+        ..Unit::default()
+    };
+    let mut healed = unit(53.0);
+    healed.regenerate(&berserk, 3.0);
+    assert_eq!((healed.life.hp, healed.armor_removed), (54.0, [0, 0]));
+    let mut hurt = unit(40.0);
+    hurt.regenerate(&berserk, 3.0);
+    assert_eq!((hurt.life.hp, hurt.armor_removed), (41.0, [2, 1]));
 }
 
 /// `TRIBE_Combat_Object::update`'s regeneration (`0x141208440`): the rate (slot 0x260,

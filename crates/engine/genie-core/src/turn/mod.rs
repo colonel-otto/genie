@@ -35,6 +35,7 @@ use crate::sprite::Graphic;
 use crate::tasks::DropSite;
 pub use crate::turn::command::{Command, GatherPoint, Order};
 pub use crate::turn::game::GameCommand;
+pub(crate) use crate::turn::player::NO_ATTRIBUTE;
 pub use crate::turn::player::{AiSettings, Formations, Player};
 pub(crate) use crate::turn::unit::EnterWorld;
 pub use crate::turn::unit::Unit;
@@ -1116,6 +1117,7 @@ impl Turns {
             farm_stops: self.settings.walkable_farms,
             predator_hunts_end: self.settings.predator_hunts_end(),
             attributes: &player.attributes,
+            resources: player.resources,
             graphics: &self.graphics,
             drop_sites: &self.drop_sites,
             every_masters: &self.masters,
@@ -1151,6 +1153,7 @@ impl Turns {
             entered: None,
             waits: Vec::new(),
             main_works: Vec::new(),
+            repair_writes: Vec::new(),
             relations: &player.relations,
             leads: None,
             zones: &mut self.zones,
@@ -1240,7 +1243,23 @@ impl Turns {
             started,
             unwatched,
             evacuations,
+            repair_writes,
         } = out;
+        // a repair's changes of another player's objects (the hit points, the repairers, the
+        // armor back), in the order it made them
+        for w in repair_writes {
+            if let Some((_, u)) = self.object_mut(w.id) {
+                if let Some((hp, powerups)) = w.hp {
+                    u.life.hp = hp;
+                    u.hp_powerups = powerups;
+                }
+                let n = u.repairers_mut();
+                *n = n.wrapping_add_signed(w.repairers);
+                if w.restored {
+                    u.armor_removed = [0; 2];
+                }
+            }
+        }
         // the gate's player opens or shuts it, in the gate's update before the rest
         if gate_toggle && let Err(e) = self.toggle_gate(p, i) {
             result = result.and(Err(e));
