@@ -3127,6 +3127,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         timer: 0.0,
         retry: true,
         task_class: 0,
+        move_wait: crate::move_to::MoveWait::default(),
     });
     villager.wait_solidify = Some(crate::wait_solidify::WaitSolidify::new(
         crate::masters::Task::default(),
@@ -3151,6 +3152,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         },
         added: true,
         timer: 0.0,
+        move_wait: crate::move_to::MoveWait::default(),
     });
     t.clear_actions(1, 2).unwrap();
     let foundation = &t.players[2].objects[0];
@@ -3212,6 +3214,7 @@ fn deaths_world() -> Turns {
         },
         added: true,
         timer: 0.0,
+        move_wait: crate::move_to::MoveWait::default(),
     });
     let gaia = vec![
         Unit {

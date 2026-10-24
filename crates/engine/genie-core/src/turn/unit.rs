@@ -578,6 +578,15 @@ impl Unit {
             None => (None, (0.0, 0.0), Ok(([0.0; 2], 0))),
         };
         let ship = found.map(|(_, t)| t);
+        // the MoveTo's give-up waits for a human player's villager (by its unit AI's stance)
+        let villager = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .is_some_and(|m| m.class == 4);
+        let gives_up = (
+            villager && !c.computer,
+            self.ai.as_ref().map_or(0, |ai| ai.stance),
+        );
         let walk = c.walk(self.mover.as_mut(), me);
         let step = self.enter.as_mut().expect("checked above").update(
             walk,
@@ -590,6 +599,7 @@ impl Unit {
                 };
                 crate::garrison::ship_reaches(ship, w.world, plan, to)
             },
+            gives_up,
         )?;
         if let Some(to) = step.order {
             c.transport_moves.push((enter.target, to));

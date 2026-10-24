@@ -8,7 +8,7 @@ use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::fmath::{at_most_or_unordered, maxss};
 use crate::masters::{Master, Masters, Task};
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_on};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
 use crate::movement::footprint_gap_squared;
 use crate::order::{BUILDING, GARRISON, Work};
 use crate::tasks::Diplomacy;
@@ -1681,6 +1681,8 @@ pub struct EnterAction {
     pub retry: bool,
     /// `+0x6c`: the task's class (its `+0x10`).
     pub task_class: i16,
+    /// Its `MoveTo`'s wait after the motion step gave up (`+0x6c`..`+0x74`).
+    pub move_wait: crate::move_to::MoveWait,
 }
 
 /// What an Enter's update reads of its target.
@@ -1746,6 +1748,11 @@ impl EnterAction {
             timer: 0.0,
             retry: true,
             task_class,
+            move_wait: crate::move_to::MoveWait {
+                state: 0,
+                timer: 0.0,
+                delay: 0.0,
+            },
         }
     }
 
@@ -1855,6 +1862,7 @@ impl EnterAction {
         (gap, speed): (f32, f32),
         mut meeting: impl FnMut() -> Result<([f32; 2], u8), GenieError>,
         mut reaches: impl FnMut(&mut Walk<'_>, [f32; 3]) -> Result<bool, GenieError>,
+        (waits, stance): (bool, u8),
     ) -> Result<EnterStep, GenieError> {
         let mut step = EnterStep::default();
         let Some(t) = target else {
@@ -1907,23 +1915,42 @@ impl EnterAction {
                 let range = self.walk_range(t.building);
                 let code = match self.move_to {
                     None | Some(MoveTo::Arrived) => 1,
+                    // the motion step giving up makes it wait or fail ([`MoveWait::give_up`])
                     Some(MoveTo::Start) => {
+                        if self.move_wait.state == 1 {
+                            self.move_wait.state = 2;
+                        }
                         self.move_to = Some(MoveTo::Moving);
-                        self.move_to = Some(start_walk(
-                            walk.reborrow(),
-                            Goal::Target(self.target),
-                            range,
-                            true,
-                        )?);
+                        self.move_to = Some(
+                            match start_walk_or_give_up(
+                                walk.reborrow(),
+                                Goal::Target(self.target),
+                                range,
+                                true,
+                            )? {
+                                Some(state) => state,
+                                None => self.move_wait.give_up(waits, stance),
+                            },
+                        );
                         0
                     }
                     Some(MoveTo::Moving) => {
-                        self.move_to = Some(walk_on(walk.reborrow())?);
+                        self.move_to = Some(match walk_or_give_up(walk.reborrow())? {
+                            Some(state) => state,
+                            None => self.move_wait.give_up(waits, stance),
+                        });
                         0
                     }
                     Some(MoveTo::Failed) => 3,
+                    // its wait: the world's dt onto its timer; at its delay it asks again
+                    // (set_state(3); COMISS, JC: a NaN timer waits on); its update returns 0
                     Some(MoveTo::Waiting) => {
-                        return Err(GenieError::unsupported("an Enter's waiting MoveTo"));
+                        self.move_wait.timer += walk.dt;
+                        if self.move_wait.delay <= self.move_wait.timer {
+                            self.move_wait.timer = 0.0;
+                            self.move_to = Some(MoveTo::Start);
+                        }
+                        0
                     }
                 };
                 match code {
@@ -2594,6 +2621,7 @@ pub(crate) mod tests {
                     reached.set(Some(to));
                     Ok(true)
                 },
+                (false, 0),
             )
             .unwrap();
         assert_eq!(reached.get(), Some([82.5, 89.5, 0.0]));
@@ -2613,6 +2641,7 @@ pub(crate) mod tests {
                     (0.0, 0.8),
                     || panic!("no walk again"),
                     |_, _| panic!("no order"),
+                    (false, 0),
                 )
                 .unwrap();
             assert_eq!(step.order, None);
@@ -2628,8 +2657,57 @@ pub(crate) mod tests {
             (0.0, 0.8),
             || Ok(([82.5, 89.5], 1)),
             |_, _| Ok(false),
+            (false, 0),
         );
         assert_eq!(failed, Err(UNREACHED));
+    }
+
+    /// The Enter's waiting `MoveTo` (state 2, after the motion step gave up): the world's dt
+    /// onto its timer (code 0: nothing else happens); at its delay it asks again.
+    #[test]
+    fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
+        let mut world = crate::spatial::Spatial::new([100, 100]);
+        let ship = moved_ship(89.5);
+        let mut enter = EnterAction {
+            move_to: Some(MoveTo::Waiting),
+            move_wait: crate::move_to::MoveWait {
+                state: 1,
+                timer: 0.0,
+                delay: 1.0,
+            },
+            ..EnterAction::new(7420, ship.position, 1.0, 20)
+        };
+        let dt = idle_walk(&mut world).dt;
+        let step = enter
+            .update(
+                idle_walk(&mut world),
+                Some(ship),
+                (0.0, 0.8),
+                || panic!("no walk again"),
+                |_, _| panic!("no order"),
+                (true, 0),
+            )
+            .unwrap();
+        assert_eq!(step, EnterStep::default());
+        assert_eq!(
+            (enter.move_to, enter.move_wait.timer),
+            (Some(MoveTo::Waiting), dt)
+        );
+        enter.move_wait.timer = 1.0;
+        let _ = enter
+            .update(
+                idle_walk(&mut world),
+                Some(ship),
+                (0.0, 0.8),
+                || panic!("no walk again"),
+                |_, _| panic!("no order"),
+                (true, 0),
+            )
+            .unwrap();
+        assert_eq!(
+            (enter.move_to, enter.move_wait.timer),
+            (Some(MoveTo::Start), 0.0)
+        );
     }
 
     #[test]
@@ -2652,6 +2730,7 @@ pub(crate) mod tests {
                 (0.0, 0.8),
                 || panic!("in reach: no point"),
                 |_, _| panic!("no order"),
+                (false, 0),
             )
             .unwrap();
         assert_eq!((step.enter, step.again, enter.move_to), (true, true, None));
@@ -2667,6 +2746,7 @@ pub(crate) mod tests {
                 (0.0, 0.8),
                 || panic!("no walk again"),
                 |_, _| panic!("no order"),
+                (false, 0),
             )
             .unwrap();
         assert_eq!((step.enter, step.again), (true, false));
@@ -2689,6 +2769,7 @@ pub(crate) mod tests {
                 (2.0, 0.8),
                 || Ok(([82.5, 89.5], 0)),
                 |_, _| panic!("code 0: no order"),
+                (false, 0),
             )
         };
         let step = run(&mut enter, &mut world).unwrap();

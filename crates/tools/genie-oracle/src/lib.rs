@@ -1149,6 +1149,13 @@ fn saved_actions(
                     .as_deref()
                     .is_some_and(|b| b.added_to_num_builders != 0),
                 timer: base.timer,
+                move_wait: base
+                    .sub_actions
+                    .entries()
+                    .next()
+                    .map_or_else(genie_core::move_to::MoveWait::default, |(_, sub)| {
+                        saved_move_wait(sub)
+                    }),
             });
             Ok(())
         }
@@ -1173,7 +1180,9 @@ fn saved_actions(
                 target: base.target_id,
                 state: base.state,
                 move_to,
-                move_wait: genie_core::move_to::MoveWait::default(),
+                move_wait: sub.map_or_else(genie_core::move_to::MoveWait::default, |(_, sub)| {
+                    saved_move_wait(sub)
+                }),
                 goal,
                 point: [base.target_x, base.target_y, base.target_z],
                 timer: base.timer,
@@ -1412,6 +1421,13 @@ fn saved_actions(
                 timer: base.timer,
                 retry: first_time != 0,
                 task_class: task.object_group,
+                move_wait: base
+                    .sub_actions
+                    .entries()
+                    .next()
+                    .map_or_else(genie_core::move_to::MoveWait::default, |(_, sub)| {
+                        saved_move_wait(sub)
+                    }),
             });
             Ok(())
         }
@@ -4002,6 +4018,20 @@ impl Decoder {
 /// at `+0xb` (x from `+0xc`, y from `+0x34`, each an f32's bits), `+0x8`. None where the
 /// command does nothing: a count past the ids the packet holds (the check `FUN_140e55590`),
 /// no waypoints or more than 10 (`FUN_140e69cc0`).
+/// A saved `MoveTo`'s wait (`+0x6c`, `+0x70`, `+0x74`); none for another sub-action.
+fn saved_move_wait(sub: &genie_save::generated::world::Action) -> genie_core::move_to::MoveWait {
+    sub.rge_action_by_type
+        .as_deref()
+        .and_then(|t| t.rge_action_move_to.as_deref())
+        .map_or_else(genie_core::move_to::MoveWait::default, |m| {
+            genie_core::move_to::MoveWait {
+                state: m.movement_wait_state,
+                timer: m.timer,
+                delay: f32::from_bits(m.k_default_wait_time),
+            }
+        })
+}
+
 fn attack_move_command(c: &de::command::AttackMove) -> Option<Command> {
     let count = usize::from(c.num);
     let waypoints = usize::from(c.waypoints_count);

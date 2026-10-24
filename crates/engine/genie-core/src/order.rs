@@ -6564,6 +6564,7 @@ mod tests {
             },
             added: true,
             timer: 0.0,
+            move_wait: crate::move_to::MoveWait::default(),
         });
         assert_eq!(t.build_set_target(1, 0, (60, true), 60), Ok(60));
         assert!(t.players[1].objects[0].build.unwrap().added);

@@ -2092,6 +2092,36 @@ impl Spatial {
         Some(if explored || all_explored { 0x80 } else { 0 })
     }
 
+    /// A building's slot 0x1e0 (`FUN_1411d3280`) for `player`, as far as the world holds it:
+    /// the player's tile test of its place (`FUN_141193840` -> `FUN_1416635e0`, its coordinates
+    /// truncated, [`Spatial::tile_sight`]); short of 0xf, 0xf when the building (type 50 and up)
+    /// follows its footprint's UMV entry (`+0x904`) and its visibility mask (`+0x8f8`, the
+    /// registry's) meets the player's visible or explored mask (`player+0x2a8`, `+0x2a0`). None
+    /// when neither: a ghost of it on its tile that the player is not among the blind of decides
+    /// then (0xf), which the world does not hold. Without the players' sight: 0.
+    #[must_use]
+    pub fn building_sight(&self, id: i32, position: [f32; 3], player: usize) -> Option<u8> {
+        use crate::checkpoint::cvttss2si;
+        let Some(v) = self.sight.as_ref() else {
+            return Some(0);
+        };
+        let (x, y) = (cvttss2si(position[0]), cvttss2si(position[1]));
+        if self.tile_sight(player, x, y) == Some(0xf) {
+            return Some(0xf);
+        }
+        let umv = v.seer(id).is_some_and(|s| s.umv != 0);
+        let mask = v
+            .registry
+            .as_ref()
+            .and_then(|r| r.entries.get(&id))
+            .map_or(0, |e| e.mask);
+        let [visible, explored] = self.vision(player);
+        if umv && (visible & mask != 0 || explored & mask != 0) {
+            return Some(0xf);
+        }
+        None
+    }
+
     /// `FUN_141285350`, the visible map's tile test (`InfluenceMap` and the scout map read it):
     /// 0xf when player `player`'s visible mask (`+0x2a8`) meets the unified map's word at tile
     /// (`x`, `y`) under [`crate::registry::MASK`], else 0x80 when its explored mask (`+0x2a0`)

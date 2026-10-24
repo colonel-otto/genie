@@ -13,7 +13,7 @@
 
 use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
-use crate::move_to::{Goal, start_walk, walk_on};
+use crate::move_to::{Goal, MoveWait, start_walk_or_give_up, walk_or_give_up};
 pub use crate::move_to::{MoveTo, Walk};
 use crate::movement::footprint_gap;
 use crate::order::Place;
@@ -29,6 +29,16 @@ pub const BUILD: i16 = 101;
 const ARRIVED: f32 = crate::image::build::ARRIVED;
 /// The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
 const VILLAGER: i16 = 4;
+/// A builder within this of its foundation's footprint has reached it (`DAT_142eb5690`).
+const REACH: f32 = crate::image::build::REACH;
+/// A player's sight of an object it sees (slot 0x1e0).
+const SEEN: u8 = 0xf;
+/// A foundation of another player than the builder's, which the slice does not hand the Build.
+const FOREIGN_SITE: GenieError = GenieError::unsupported("a foundation of another player");
+/// A foundation its owner sees only through a ghost of it on its tile (`FUN_1411d3280`'s last
+/// test), which the Build's world does not hold.
+const UNSEEN_SITE: GenieError =
+    GenieError::unsupported("a foundation its owner sees only through its ghosts (slot 0x1e0)");
 
 /// The Build action of a builder (`TRIBE_Action_Build`, type 101).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -54,6 +64,8 @@ pub struct BuildAction {
     pub added: bool,
     /// `+0x44`, the action's timer: state 222's wait (a second from its `set_state`).
     pub timer: f32,
+    /// Its `MoveTo`'s wait after the motion step gave up (`+0x6c`..`+0x74`).
+    pub move_wait: MoveWait,
 }
 
 /// What a builder's Build task gives its work: the task's work range (`+0x30`; its `MoveTo` to the
@@ -533,6 +545,11 @@ impl BuildAction {
             task,
             added: false,
             timer: 0.0,
+            move_wait: MoveWait {
+                state: 0,
+                timer: 0.0,
+                delay: 0.0,
+            },
         }
     }
 
@@ -612,6 +629,9 @@ impl BuildAction {
             return Ok(step);
         }
         let mut walk = walk;
+        // the MoveTo's give-up waits for a human player's villager (by its unit AI's stance)
+        let waits = builder.class == VILLAGER && !computer;
+        let stance = builder.ai.as_ref().map_or(0, |ai| ai.stance);
         // the MoveTo's update first (`0x140aa2a70` through `FUN_140a992b0`, states 4 and 223):
         // its target in a state above 6 lets it go (slot 0x68 with none) and the quiet MoveTo
         // returns 5. A target the world removed is no longer the MoveTo's: its removal let the
@@ -629,33 +649,48 @@ impl BuildAction {
             return Ok(step);
         }
         let r = match (self.state, self.move_to) {
-            // set_state(6) without a target: set_state(3)
-            (4, Some(MoveTo::Arrived)) if self.target == -1 => {
+            // the MoveTo at its end (1), or no sub-action (the list's update returns 1)
+            (4, Some(MoveTo::Arrived) | None) => {
                 return self
-                    .idle(&mut walk, site, builder, &mut step)
+                    .walk_ended(&mut walk, site, builder, &mut step)
                     .map(|()| step);
             }
-            // set_state(6): the prelude's MoveTo teardown stops the unit (slot 0x5d0)
-            (4, Some(MoveTo::Arrived)) => {
-                self.leave(&mut walk, None)?;
-                self.state = WORK;
-                Ok(())
-            }
-            // the MoveTo set_state(4) made walks to the foundation it let go
+            // the MoveTo set_state(4) made walks to the foundation it let go; the motion step
+            // giving up makes it wait or fail ([`MoveWait::give_up`])
             (4, Some(MoveTo::Start)) => {
+                self.asked_again();
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.task.range;
                 let to = walked_from.unwrap_or(self.target);
-                self.move_to = Some(start_walk(walk, Goal::Target(to), range, false)?);
+                self.move_to = Some(
+                    match start_walk_or_give_up(walk, Goal::Target(to), range, false)? {
+                        Some(state) => state,
+                        None => self.move_wait.give_up(waits, stance),
+                    },
+                );
                 Ok(())
             }
             (4 | CLEAR | WALK_POINT, Some(MoveTo::Moving)) => {
-                self.move_to = Some(walk_on(walk)?);
+                self.move_to = Some(match walk_or_give_up(walk)? {
+                    Some(state) => state,
+                    None => self.move_wait.give_up(waits, stance),
+                });
                 Ok(())
             }
-            (4, None) => Err(GenieError::unsupported(
-                "a Build action in state 4 without its MoveTo",
-            )),
+            // the waiting MoveTo (its state 2): the world's dt onto its timer; at its end it asks
+            // again (set_state(3); COMISS, JC: a NaN timer waits on); its update returns 0
+            (4 | CLEAR | WALK_POINT, Some(MoveTo::Waiting)) => {
+                self.move_wait.timer += walk.dt;
+                if self.move_wait.delay <= self.move_wait.timer {
+                    self.move_wait.timer = 0.0;
+                    self.move_to = Some(MoveTo::Start);
+                }
+                Ok(())
+            }
+            // its update returned 3
+            (4 | CLEAR, Some(MoveTo::Failed)) => {
+                self.walk_failed(&mut walk, site, builder, &mut step)
+            }
             // case 0: the update returns 1, the action list removes it
             (DONE, _) => {
                 step.done = true;
@@ -721,19 +756,23 @@ impl BuildAction {
             }),
             // the quiet MoveTo to a point of set_state(223) and set_state(11)
             (CLEAR | WALK_POINT, Some(MoveTo::Start)) => {
+                self.asked_again();
                 self.move_to = Some(MoveTo::Moving);
                 let goal = self
                     .goal
                     .expect("set_state(223) and set_state(11) set the goal");
-                self.move_to = Some(start_walk(walk, Goal::Point(goal), 0.0, true)?);
+                self.move_to = Some(
+                    match start_walk_or_give_up(walk, Goal::Point(goal), 0.0, true)? {
+                        Some(state) => state,
+                        None => self.move_wait.give_up(waits, stance),
+                    },
+                );
                 Ok(())
             }
             // case 0xde: the MoveTo ended (its update in state 1 returns 1): a villager goes
             // back to the foundation (set_state 4)
-            (CLEAR, Some(MoveTo::Arrived)) => self.back(&walk),
-            (CLEAR, _) => Err(GenieError::unsupported(
-                "a builder off its footprint without its MoveTo",
-            )),
+            // (its update returned 1, or the list's without a sub-action: in reach or not)
+            (CLEAR, Some(MoveTo::Arrived) | None) => self.back(&walk),
             // case 10, the walk to the point: the MoveTo at it (1), failed (3) or gone (the list
             // empty, 1) makes the Build wait (set_state(3)); its target gone (4) cannot be, as
             // it has none
@@ -742,9 +781,6 @@ impl BuildAction {
                     .idle(&mut walk, site, builder, &mut step)
                     .map(|()| step);
             }
-            (WALK_POINT, Some(MoveTo::Waiting)) => Err(GenieError::unsupported(
-                "a Build's walk to its point that waits (MoveTo state 2)",
-            )),
             // the default case (states 0, 3, 5, 8 to 10, 12 and 14 to 221): the update returns 0
             _ => Ok(()),
         };
@@ -1058,7 +1094,7 @@ impl BuildAction {
         (waits, look): (&mut u8, Looks<'_>),
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
-        let mut site = site.ok_or(GenieError::unsupported("a foundation of another player"))?;
+        let mut site = site.ok_or(FOREIGN_SITE)?;
         // every set_state first takes the builder out of FUN_140aaddb0's building's builders
         if self.added {
             let b = site.builders();
@@ -1202,7 +1238,7 @@ impl BuildAction {
         site: Option<Site<'_>>,
         load: Load,
     ) -> Result<(Option<Built>, Dropped, Option<f32>), GenieError> {
-        let mut site = site.ok_or(GenieError::unsupported("a foundation of another player"))?;
+        let mut site = site.ok_or(FOREIGN_SITE)?;
         let plan = walk
             .plan
             .as_mut()
@@ -1294,6 +1330,145 @@ impl BuildAction {
         self.walk_target = -1;
         self.goal = Some([spot[0], spot[1], walk.me.position[2]]);
         Ok(())
+    }
+
+    /// The waiting `MoveTo`'s `set_state(3)` asks again: a wait (`+0x6c` 1) becomes asked (2).
+    const fn asked_again(&mut self) {
+        if self.move_wait.state == 1 {
+            self.move_wait.state = 2;
+        }
+    }
+
+    /// The update's case 3 with its `MoveTo` at its end (1), or without one (the list's update
+    /// returns 1): without a foundation, a villager, or within the task's range (the footprints'
+    /// squared gap, `FUN_14118f8c0`, at most the range squared) or [`REACH`] of it, it works
+    /// (`set_state(6)`; one without a foundation waits instead, `set_state(3)`); else it walks to
+    /// the foundation again (`set_state(4)`, [`BuildAction::restart`]).
+    ///
+    /// # Errors
+    ///
+    /// What the restart and the wait do not model.
+    fn walk_ended(
+        &mut self,
+        walk: &mut Walk<'_>,
+        site: Option<Site<'_>>,
+        builder: Builder<'_>,
+        step: &mut BuildStep,
+    ) -> Result<(), GenieError> {
+        if self.target == -1 {
+            return self.idle(walk, site, builder, step);
+        }
+        if builder.class != VILLAGER {
+            let at = walk
+                .world
+                .get(walk.me.id)
+                .map_or(walk.me.position, |p| p.position);
+            let ground = walk
+                .mover
+                .as_deref()
+                .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+                .ok_or(GenieError::unsupported("a builder without movement state"))?;
+            let t = *walk
+                .world
+                .get_known(self.target)?
+                .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+            let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
+            let range = self.task.range;
+            if !(gap <= range * range || gap <= REACH) {
+                return self.restart(walk, site.map(Site::into_builders));
+            }
+        }
+        self.leave(walk, None)?;
+        self.state = WORK;
+        Ok(())
+    }
+
+    /// The update's case 3 or 0xde with its `MoveTo` failed (3): a foundation no builder started
+    /// (`+0xc60`) with another player's marks on its footprint ([`Spatial::foreign_marks`]) while
+    /// its owner sees it (`FUN_1411d4b80` with 1: its slot 0x1e0, [`Spatial::building_sight`])
+    /// goes when its owner is human ([`BuildStep::removes`]), the interface hears of it
+    /// (`FUN_140c898a0` 0x88, not held) and `set_state(2)` halts the Build. Else the tile planner
+    /// of the builder's terrain restriction (`FUN_140f7cb30`) asks for a path from where the
+    /// builder last moved to (slot 0x520) to the foundation's place within their radii
+    /// (`FUN_140f7c530`): a result below 2 walks again (`set_state(4)`), any other, no planner or
+    /// no foundation waits (`set_state(3)`).
+    ///
+    /// # Errors
+    ///
+    /// Another player's foundation, one its owner sees only through its ghosts, and what the
+    /// restart and the wait do not model.
+    fn walk_failed(
+        &mut self,
+        walk: &mut Walk<'_>,
+        site: Option<Site<'_>>,
+        builder: Builder<'_>,
+        step: &mut BuildStep,
+    ) -> Result<(), GenieError> {
+        if self.target != -1 {
+            let s = site.as_ref().ok_or(FOREIGN_SITE)?;
+            let placed = *walk
+                .world
+                .get_known(self.target)?
+                .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+            if s.construction.desolid && walk.world.foreign_marks(&placed) {
+                let seen = walk
+                    .world
+                    .building_sight(self.target, placed.position, placed.player)
+                    .ok_or(UNSEEN_SITE)?
+                    == SEEN;
+                if seen {
+                    step.removes = Some(self.target);
+                    let counted = self.added;
+                    let (_, target) = self.halt(walk.mover.as_deref_mut())?;
+                    if counted && let Some(b) = site.map(Site::into_builders) {
+                        *b = b.wrapping_sub(1);
+                    }
+                    step.stands = true;
+                    step.released = target != -1;
+                    return Ok(());
+                }
+            }
+        }
+        let mover = walk
+            .mover
+            .as_deref()
+            .ok_or(GenieError::unsupported("a builder without movement state"))?;
+        let (restriction, ground, [mx, my, _]) = (
+            mover.stats.restriction,
+            mover.stats.radius[0],
+            mover.moved_at,
+        );
+        let mut code = 3;
+        if self.target != -1
+            && let Some(plan) = walk.plan.as_mut()
+            && let Some(planner) = plan.pathing.planner(restriction, walk.world.tiles())
+        {
+            let t = *walk
+                .world
+                .get_known(self.target)?
+                .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+            let radius = site
+                .as_ref()
+                .and_then(|s| s.completion.master)
+                .map_or(t.radius[0], |m| m.radius[0]);
+            let req = crate::tile_path::Request {
+                from: [mx, my],
+                to: [t.position[0], t.position[1]],
+                radii: radius + ground,
+                range: 0.0,
+                closed: Vec::new(),
+                full: false,
+            };
+            let mut path = crate::tile_path::Path::default();
+            code = planner
+                .plan::<GenieError>(&req, false, &mut path, None)?
+                .code();
+        }
+        if code < 2 {
+            self.restart(walk, site.map(Site::into_builders))
+        } else {
+            self.idle(walk, site, builder, step)
+        }
     }
 
     /// Its `MoveTo` returned 4 or 5 in state 4 or 223 (`0x140ab0370` cases 3 and 0xde): slot
@@ -3606,6 +3781,7 @@ mod tests {
             task: TASK,
             added: false,
             timer: 0.0,
+            move_wait: MoveWait::default(),
         };
         let mut life = Lifecycle {
             state: 0,
@@ -3679,6 +3855,171 @@ mod tests {
             (build.state, build.move_to, build.goal),
             (223, Some(MoveTo::Start), Some([29.5, 89.5, 0.0]))
         );
+    }
+
+    /// One update of `build` by builder 5 of `class` at `at` (a walker of the hunt's tests, its
+    /// AI's stance `stance`) on player 1's desolid house 10028 at (10.5, 10.5), in a world of
+    /// 20 x 20 tiles where `prepare` adds what the test needs; without a planner.
+    fn walk_update(
+        build: &mut BuildAction,
+        (class, at, computer): (i16, [f32; 3], bool),
+        prepare: impl FnOnce(&mut Spatial),
+    ) -> (BuildStep, Spatial) {
+        use crate::spatial::{Placed, Tiles};
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        world.insert(
+            10028,
+            Placed {
+                position: [10.5, 10.5, 0.0],
+                player: 1,
+                ..house()
+            },
+        );
+        prepare(&mut world);
+        let mut life = Lifecycle {
+            state: 0,
+            master_id: 70,
+            ..Lifecycle::default()
+        };
+        let mut construction = Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 0,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let site = Site {
+            id: 10028,
+            life: &mut life,
+            construction: &mut construction,
+            mover: None,
+            firepower: None,
+            roo_called: None,
+            store: None,
+            completion: Completion {
+                master: None,
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer,
+                ai: false,
+                main: false,
+                now: 0,
+                rice: false,
+            },
+            chain: WorkChain::default(),
+            main_builders: None,
+        };
+        let mut mover = crate::hunt::tests::walker();
+        mover.moved_at = at;
+        let step = build
+            .update(
+                Walk {
+                    mover: Some(&mut mover),
+                    me: Me {
+                        id: 5,
+                        position: at,
+                        group: -1,
+                        action_state: 0,
+                    },
+                    dt: 0.25,
+                    world: &mut world,
+                    plan: None,
+                },
+                Some(site),
+                Builder {
+                    class,
+                    master: 83,
+                    held: 0.0,
+                    held_kind: -1,
+                    drop_site: false,
+                    ai: None,
+                    waits: &mut 0,
+                    build_targets: &[],
+                    look: Looks(&|_| None),
+                    walk_target_state: Some(0),
+                },
+            )
+            .unwrap();
+        (step, world)
+    }
+
+    /// The waiting `MoveTo` (state 2): the world's dt goes onto its timer; at its delay it asks
+    /// again (`set_state(3)`), and that start marks the wait asked (`+0x6c` 2).
+    #[test]
+    fn a_build_s_waiting_move_to_asks_again_at_its_delay() {
+        let mut b = BuildAction {
+            move_to: Some(MoveTo::Waiting),
+            move_wait: MoveWait {
+                state: 1,
+                timer: 0.5,
+                delay: 1.0,
+            },
+            ..BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK)
+        };
+        let _ = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |_| {});
+        assert_eq!(
+            (b.move_to, b.move_wait.timer),
+            (Some(MoveTo::Waiting), 0.75)
+        );
+        let _ = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |_| {});
+        assert_eq!((b.move_to, b.move_wait.timer), (Some(MoveTo::Start), 0.0));
+        // in reach now: its start arrives at once, no path asked
+        let _ = walk_update(&mut b, (VILLAGER, [11.6, 10.5, 0.0], false), |_| {});
+        assert_eq!((b.move_wait.state, b.move_to), (2, Some(MoveTo::Arrived)));
+    }
+
+    /// The update's case 3 at the `MoveTo`'s end: a villager works wherever it stands
+    /// (`set_state(6)`); another builder out of the task's range and [`REACH`] of the footprint
+    /// walks to it again (`set_state(4)`), one within it works.
+    #[test]
+    fn a_builder_at_its_move_to_s_end_works_or_walks_again() {
+        let arrived = || BuildAction {
+            move_to: Some(MoveTo::Arrived),
+            ..BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK)
+        };
+        let mut b = arrived();
+        let _ = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |_| {});
+        assert_eq!(b.state, WORK);
+        let mut b = arrived();
+        let _ = walk_update(&mut b, (21, [2.5, 2.5, 0.0], false), |_| {});
+        assert_eq!((b.state, b.move_to), (MOVE, Some(MoveTo::Start)));
+        let mut b = arrived();
+        let _ = walk_update(&mut b, (21, [11.6, 10.5, 0.0], false), |_| {});
+        assert_eq!(b.state, WORK);
+        // without a sub-action the list's update returns 1 as well
+        let mut b = BuildAction {
+            move_to: None,
+            ..arrived()
+        };
+        let _ = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |_| {});
+        assert_eq!(b.state, WORK);
+    }
+
+    /// The update's case 3 on a failed `MoveTo` (3): a desolid foundation with another player's
+    /// marks its owner sees goes (a human owner's, the caller's) and the Build halts; without
+    /// the marks (and without a planner here) it waits (`set_state(3)`).
+    #[test]
+    fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
+        let failed = || BuildAction {
+            move_to: Some(MoveTo::Failed),
+            ..BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK)
+        };
+        let mut b = failed();
+        let (step, _) = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |_| {});
+        assert_eq!((b.state, step.removes), (IDLE, None));
+        let mut b = failed();
+        let (step, _) = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |w| {
+            w.tiles_mut_for_test().mark_for_test(10, 10, 0x80_0000 << 3);
+        });
+        // no players' sight in this world: its owner sees nothing, so it waits
+        assert_eq!((b.state, step.removes), (IDLE, None));
     }
 
     /// census v5's 240 stops "a foundation clears objects off its footprint": the Build's
