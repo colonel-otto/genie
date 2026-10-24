@@ -1035,6 +1035,12 @@ impl Turns {
         };
         let z = self.players[player].objects[building].position[2];
         let at = [spot[0], spot[1], z];
+        // slot 0x1a8 (`FUN_141213120`) does its part only for a unit inside an object (`+0x2f0`):
+        // a new unit an effect could not take in (`FUN_1416136f0`) comes out from where it stands
+        let inside = self.players[up].objects[ui].life.inside.is_some();
+        if !inside {
+            return self.let_out_from_the_map(up, ui, (&made, at), (point, gather, bid, work_on));
+        }
         // the building's slot 0x1c8 (`FUN_141217910`): a unit (type 70) takes its share off the
         // volleys (the building's rate by its player's masters, the unit's share by its own)
         let share = if made.kind == COMBAT_KIND {
@@ -1065,9 +1071,11 @@ impl Turns {
             v.sight_off_los(bid, b_at, b_radius, false, 5, false);
         }
         // slot 0x58: on the map at the spot (new_position: its tile's list, its sight)
-        let mut placed = self.spatial.come_out(id).ok_or(GenieError::unsupported(
-            "a unit inside a building without its record",
-        ))?;
+        let mut placed = self.spatial.come_out(id).ok_or_else(|| {
+            GenieError::unsupported("a unit inside a building without its record")
+                .with("unit", id)
+                .with("building", bid)
+        })?;
         placed.position = at;
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         placed.obstruction =
@@ -1095,6 +1103,27 @@ impl Turns {
         if let Some(e) = self.spatial.take_sight_unsupported() {
             return Err(e);
         }
+        self.came_out(up, ui, made.class, (point, gather, bid, work_on))
+    }
+
+    /// [`Turns::let_out`]'s end once the unit stands at its spot: the work given, the gather
+    /// point, the stop and stance, or the move to the point.
+    ///
+    /// # Errors
+    ///
+    /// What the work, the gather and the move do not model.
+    fn came_out(
+        &mut self,
+        up: usize,
+        ui: usize,
+        class: i16,
+        (point, gather, bid, work_on): (
+            [f32; 2],
+            Option<crate::turn::GatherPoint>,
+            i32,
+            Option<i32>,
+        ),
+    ) -> Result<bool, GenieError> {
         // an object to work on (GO_BACK_TO_WORK's): slot 0x128 on it at the point, the unit's
         // `+0xa14` 0 (its unit AI keeps its notifies)
         if let Some(target) = work_on {
@@ -1129,7 +1158,6 @@ impl Turns {
             // 1, whose stopAction runs on the unit), forgets its target (`FUN_140c5e1e0`) and
             // takes its own stance again at the unit's place (slot 0x1c0 with `+0x1a9`); a unit
             // without a unit AI stays where it came out
-            let class = made.class;
             let unit = &mut self.players[up].objects[ui];
             let place = ([unit.position[0], unit.position[1]], class);
             if let Some(ai) = unit.ai.as_mut() {
@@ -1151,6 +1179,52 @@ impl Turns {
         }
         self.gather_move(up, ui, [to[0], to[1], 0.0], false)?;
         Ok(true)
+    }
+
+    /// [`Turns::let_out`] for a unit that is not inside an object (a new unit an effect could not
+    /// take in, `FUN_1416136f0`): slot 0x1a8 does nothing, then slot 0x58 moves it from where it
+    /// stands to the spot `at` (`new_position`: its tile's list, its obstruction record, the mesh,
+    /// its sight moved), then [`Turns::came_out`].
+    ///
+    /// # Errors
+    ///
+    /// A unit without a place, and what [`Turns::came_out`] does not model.
+    fn let_out_from_the_map(
+        &mut self,
+        up: usize,
+        ui: usize,
+        (made, at): (&Master, [f32; 3]),
+        rest: ([f32; 2], Option<crate::turn::GatherPoint>, i32, Option<i32>),
+    ) -> Result<bool, GenieError> {
+        let id = self.players[up].objects[ui].id;
+        let mut placed = *self
+            .spatial
+            .get(id)
+            .ok_or(GenieError::unsupported("a unit let out without a place"))?;
+        let from = placed.position;
+        self.pathing.removed(id);
+        self.spatial.remove(id);
+        placed.position = at;
+        let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
+        placed.obstruction =
+            (made.obstruction_type != 0 && solid).then_some(crate::spatial::Obstruction {
+                kind: made.obstruction_type,
+                class: made.obstruction_class,
+            });
+        self.spatial.insert(id, placed);
+        self.pathing.moved(id, &placed, false);
+        self.pathing.tiles_changed(self.spatial.take_changes());
+        if let Some(v) = self.spatial.sight.as_mut() {
+            v.moved(id, from, at, placed.radius);
+            v.registry_moved(id, placed.class, from, at);
+        }
+        let world_time = self.world_time;
+        let unit = &mut self.players[up].objects[ui];
+        unit.position = at;
+        if let Some(m) = unit.mover.as_mut() {
+            m.mark_move(at, world_time);
+        }
+        self.came_out(up, ui, made.class, rest)
     }
 
     /// `FUN_14120eb10(building, player, master, 1, 1)` ([`Turns::takes_in_as`]).
@@ -4173,6 +4247,26 @@ pub(crate) mod tests {
             (-1, -1, 1, 0x261)
         );
         assert_eq!(ai.state_position, [v.position[0], v.position[1]]);
+    }
+
+    /// `FUN_1411e7220` on a unit that is not inside (an effect's new unit the building could not
+    /// take in, `FUN_1416136f0`): slot 0x1a8 does nothing (the building's list and volleys
+    /// unchanged), slot 0x58 moves it from where it stands to a spot beside the building.
+    #[test]
+    fn a_unit_on_the_map_let_out_moves_beside_the_building() {
+        let mut t = let_out_world();
+        let tc_at = t.players[1].objects[0].position;
+        walker(&mut t, 1, 1000, VILLAGER, [tc_at[0], tc_at[1]]);
+        let firepower = t.players[1].objects[0].firepower;
+        assert_eq!(
+            t.let_out(1, 0, 1000, [NO_POINT, NO_POINT], (None, false)),
+            Ok(true)
+        );
+        let v = t.object(1000).unwrap().1;
+        assert_ne!([v.position[0], v.position[1]], [tc_at[0], tc_at[1]]);
+        assert_eq!(t.spatial.get(1000).unwrap().position, v.position);
+        let tc = &t.players[1].objects[0];
+        assert_eq!((tc.garrison.len(), tc.firepower), (0, firepower));
     }
 
     #[test]
