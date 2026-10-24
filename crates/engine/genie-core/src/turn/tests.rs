@@ -1806,6 +1806,20 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
     assert_eq!(taken(&now), taken(&later));
 }
 
+/// `UNIT_ORDER`'s drop-off (action 8, `FUN_14161e370`) runs on any player's units its command
+/// names: a carrying villager without a gather action, of a master without drop sites and a
+/// class the drop-site table does not list, does nothing, whoever commands it.
+#[test]
+fn a_unit_order_drop_off_takes_any_player_s_unit() {
+    let mut t = sent_off_world(vec![]);
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (1, 5.0);
+    let before = t.players[1].objects[0].clone();
+    t.unit_order(1, &[9175], 8).unwrap();
+    t.unit_order(0, &[9175], 8).unwrap();
+    assert_eq!(t.players[1].objects[0], before);
+}
+
 /// The unit AI's move at once (`UnitSide::ai_move_now`, ahead of a stop and an attack command
 /// in the same run) does what the move after the update does (slot 0x340: the actions go, a
 /// `MoveTo` to the point).

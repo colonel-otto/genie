@@ -1897,17 +1897,18 @@ impl Turns {
         Ok(())
     }
 
-    /// `UNIT_ORDER`'s order `action` to the units `ids` (`FUN_14161e370`). Action 8, the drop-off
+    /// `UNIT_ORDER`'s order `action` to the units `ids` (`FUN_14161e370`) of `player`'s command,
+    /// any player's. Action 8, the drop-off
     /// (as 6 and 7): each unit the world holds in state 2 of a type above 39 that carries
     /// something (`+0x310` above 0) and whose top action is a Hunt (110) or a Gather (5) with a
     /// target or a point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then
     /// `set_state(8)`: [`Unit::drop_off_in`], [`Unit::gather_drop_off_in`]). A Build's (101) and
     /// a top action without a target (`FUN_141206a20`, `FUN_141205ac0` around it) are not
-    /// modelled, nor are the other actions and another player's unit; a unit without one of
+    /// modelled, nor are the other actions; a unit without one of
     /// these actions: [`Turns::drop_off_unasked`].
     pub(crate) fn unit_order(
         &mut self,
-        player: usize,
+        _player: usize,
         ids: &[i32],
         action: u8,
     ) -> Result<(), GenieError> {
@@ -1923,11 +1924,8 @@ impl Turns {
             let Place::Live(p, idx) = place else {
                 return Err(GenieError::unsupported("a UNIT_ORDER to a sleeping object"));
             };
-            if p != player {
-                return Err(GenieError::unsupported(
-                    "a UNIT_ORDER to another player's unit",
-                ));
-            }
+            // any player's unit the world holds: the command's list (`FUN_140e6b750`) and the
+            // order filter none by owner
             let unit = &self.players[p].objects[idx];
             let kind = self.master_of(p, unit.life.master_id)?.kind;
             if unit.life.state != 2 || kind < 40 || unit.life.amount <= 0.0 {
