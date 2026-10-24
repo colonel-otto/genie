@@ -812,6 +812,8 @@ pub mod turn {
     pub const EJECT_SHARE: f32 = f32::from_bits(0x3e4c_cccd);
     /// 3.0
     pub const FARM_STAGES: f32 = f32::from_bits(0x4040_0000);
+    /// 100.0
+    pub const FISHING_REACH: f32 = f32::from_bits(0x42c8_0000);
     /// 1.0000000116860974e-07
     pub const GATE_EPSILON: f32 = f32::from_bits(0x33d6_bf95);
     /// 0.4000000059604645

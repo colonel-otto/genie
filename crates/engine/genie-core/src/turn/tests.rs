@@ -1593,6 +1593,28 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
     );
 }
 
+/// The inside update (`FUN_140a98790`) of a villager inside the house deletes its top action
+/// whatever its kind: a `MoveTo` left from before the enter goes (its destructor stops the
+/// unit), and the update after has nothing left to delete (426027790-style villagers in a town
+/// bell: 427445417's p3, 429184426's p4).
+#[test]
+fn an_inside_unit_s_update_deletes_its_top_action() {
+    let mut t = enter_world(vec![], 5);
+    t.players[1].objects[0].life.inside = Some(10028);
+    t.spatial.go_inside(9175, [30.0, 88.0, 0.0]);
+    t.players[1].objects[0].move_to = Some(crate::move_to::MoveToAction::to_point(
+        [40.0, 80.0, 0.0],
+        0.0,
+        false,
+        None,
+    ));
+    t.tick(50);
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.move_to, None);
+    assert_eq!(v.top_action_kind(), None);
+    assert_eq!(t.players[1].freezes, vec![]);
+}
+
 /// An Enter that got the unit in, the unit let out again before its next update: that update's
 /// 1 has the action list remove it (its teardown lets the building go).
 #[test]
@@ -7108,4 +7130,21 @@ fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
         frozen.context().collect::<Vec<_>>(),
         [("object", "5"), ("master", "83")]
     );
+}
+
+/// `FUN_1411671e0`'s planner results: a path to a drop site or into its range counts (0 and 1),
+/// a partial one never (2); one the planner does not reach (3 and up) counts only for a fishing
+/// ship seeking by path whose footprint gap to it is within 100 squared (429521544's p3 in
+/// update 5601).
+#[test]
+fn a_fishing_ship_counts_a_near_drop_site_its_path_does_not_reach() {
+    use crate::turn::world::counted;
+    assert!(counted(0, true, false, || false));
+    assert!(counted(1, false, false, || false));
+    assert!(!counted(2, true, true, || true));
+    assert!(!counted(3, true, false, || true));
+    assert!(counted(3, true, true, || true));
+    assert!(!counted(3, true, true, || false));
+    assert!(!counted(3, false, true, || true));
+    assert!(counted(4, true, true, || true));
 }

@@ -31,6 +31,12 @@ pub(crate) struct Seeker<'a, 'b> {
     pub(in crate::turn) by_path: bool,
 }
 
+/// The fishing ship's class (21), whose drop-site search passes over the zones.
+const FISHING_SHIP: i16 = 21;
+/// The squared footprint gap within which a fishing ship counts a drop site its path does not
+/// reach (`DAT_14330ebcc`).
+const FISHING_REACH: f32 = crate::image::turn::FISHING_REACH;
+
 /// A search for drop sites (`FUN_1411671e0`: in state 2, not at work on the action type `at_work`
 /// (its argument 8: an object of type 40 up whose top action is of that type, or `0x7c` too for
 /// `0x7d`, as the Gather's `set_state` 8 and 3 call it; −1 none), not inside another when
@@ -42,8 +48,22 @@ pub(crate) struct Seeker<'a, 'b> {
 /// it and the seeker's short path (slot 0x3e8 within 0.1, [`Mover::short_reach`]); else by the
 /// squared distance of the centres. Without a planner the game keeps the distance it last
 /// measured (of an earlier object, else the largest float) by path. Without a seeker, by the
-/// squared distance of the centres. The seeker's class 21 (its gap test) and a villager tending
-/// a pasture (its pasture's place) are not modelled. The first of equals wins.
+/// squared distance of the centres. A fishing ship (class 21) seeks in every zone, and by path a
+/// drop site the planner does not reach (its result 3 or more) counts by its path's length too
+/// while the footprints' squared gap (`FUN_14118f8c0`) is at most [`FISHING_REACH`]. A villager
+/// tending a pasture (its pasture's place) is not modelled. The first of equals wins.
+/// Whether the planner's result `code` lets a drop site count in [`drop_site_search`]: a path
+/// to it or into its range (below 2), or for a fishing ship seeking by path one the planner
+/// does not reach (3 and up) whose footprint lies `near` ([`FISHING_REACH`]).
+pub(in crate::turn) fn counted(
+    code: u8,
+    by_path: bool,
+    fishing: bool,
+    near: impl FnOnce() -> bool,
+) -> bool {
+    code < 2 || (by_path && fishing && 3 <= code && near())
+}
+
 pub(crate) fn drop_site_search(
     units: &[Unit],
     masters: &Masters,
@@ -53,12 +73,11 @@ pub(crate) fn drop_site_search(
     (outside, at_work): (bool, i16),
 ) -> Result<Option<i32>, GenieError> {
     let [x, y, _] = at;
-    if seeker.as_ref().is_some_and(|s| s.class == 21) {
-        return Err(GenieError::unsupported(
-            "a drop-site search of class 21 (its gap test)",
-        ));
-    }
-    let own_zone = seeker.as_ref().map(|s| s.zones.zone(x as i32, y as i32));
+    let fishing = seeker.as_ref().is_some_and(|s| s.class == FISHING_SHIP);
+    let own_zone = seeker
+        .as_ref()
+        .filter(|_| !fishing)
+        .map(|s| s.zones.zone(x as i32, y as i32));
     let mut best: Option<i32> = None;
     let mut best_d = NO_DROP_DISTANCE;
     let mut last = NO_DROP_DISTANCE;
@@ -88,8 +107,13 @@ pub(crate) fn drop_site_search(
         let d = if let Some(s) = seeker.as_mut() {
             let radii = s.mover.stats.radius[0] + master.radius[0];
             let to = [o.position[0], o.position[1]];
+            let near = || {
+                let ground = [s.mover.stats.radius[0], s.mover.stats.radius[1]];
+                let gap = footprint_gap_squared(s.me.position, ground, o.position, master.radius);
+                gap <= FISHING_REACH
+            };
             match s.mover.plan_length(&s.me, s.spatial, s.plan, to, radii)? {
-                Some((code, length)) if code < 2 => {
+                Some((code, length)) if counted(code, s.by_path, fishing, near) => {
                     if s.by_path {
                         last = length;
                         if length <= SHORT_DROP_REACH

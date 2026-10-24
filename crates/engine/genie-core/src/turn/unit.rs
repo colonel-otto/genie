@@ -5501,13 +5501,15 @@ impl Unit {
         // RGE_Action_Object::update: the actions of an object inside another do not update; its
         // inside update (FUN_140a98790) deletes its top action (FUN_140a78480 -> FUN_140a784a0:
         // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
-        // building go, slot 0x180)
+        // targets go, slot 0x180, and a MoveTo's stops the unit, slot 0x5d0); the actions below
+        // it (FUN_140a78470) and the next one's slot 0x28 need a second action, which the slice
+        // never holds
         if self.life.inside.is_some() {
             if let Some(e) = self.enter.take() {
-                if e.move_to.is_some() {
-                    return Err(GenieError::unsupported(
-                        "an inside unit's Enter with its MoveTo",
-                    ));
+                if e.move_to.is_some()
+                    && let Some(m) = self.mover.as_mut()
+                {
+                    m.stop()?;
                 }
                 c.releases.push((e.target, self.releaser(c)));
             } else if self.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE) {
@@ -5521,10 +5523,14 @@ impl Unit {
                 if art.target != -1 {
                     c.releases.push((art.target, by));
                 }
-            } else if self.top_action_kind().is_some() || self.unmodelled_action.is_some() {
+            } else if self.unmodelled_action.is_some() {
                 return Err(GenieError::unsupported(
-                    "the inside update of an action not an Enter",
+                    "the inside update of an action the slice does not hold",
                 ));
+            } else if self.top_action_kind().is_some() {
+                // any other action's destructor, as the list's deletion runs it
+                let by = self.releaser(c);
+                self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
             }
         } else if self.enter.is_some() {
             self.enter_update(c, others, me)?;
