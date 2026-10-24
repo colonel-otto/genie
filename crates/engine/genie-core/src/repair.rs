@@ -254,10 +254,9 @@ impl RepairAction {
                     .world
                     .get(walk.me.id)
                     .map_or(walk.me.position, |p| p.position);
-                let mover = walk
-                    .mover
-                    .as_deref_mut()
-                    .ok_or(GenieError::unsupported("a repairer without movement state"))?;
+                let mover = walk.mover.as_deref_mut().ok_or(GenieError::unreachable(
+                    "a repairer without movement state (an action object always has one)",
+                ))?;
                 if crate::attack::face_target(mover, at, t.position, view.now)? {
                     self.set_state(&mut walk, WORK, &view, &mut step)?;
                 }
