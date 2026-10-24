@@ -1600,6 +1600,20 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
     );
 }
 
+/// An Enter that got the unit in, the unit let out again before its next update: that update's
+/// 1 has the action list remove it (its teardown lets the building go).
+#[test]
+fn an_entered_enter_of_a_unit_let_out_goes_at_its_update() {
+    let mut t = enter_world(vec![], 5);
+    let mut e = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 0.5, 3);
+    e.state = crate::garrison::ENTERED;
+    t.players[1].objects[0].enter = Some(e);
+    t.tick(50);
+    t.tick(50);
+    assert_eq!(t.players[1].objects[0].enter, None);
+    assert_eq!(t.players[1].freezes, vec![]);
+}
+
 /// The unit AI's enter order on the player's house (`0x2cb`, slot 0x3a0 forced,
 /// `FUN_1410847e0`): its slot 0x820 with the garrison filter finds the villager's Enter task on
 /// buildings (action 3, class 3); after the update the Enter is the unit's (or the unit inside

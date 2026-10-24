@@ -663,17 +663,12 @@ impl Unit {
             }
         }
         if step.done {
-            // a failed Enter's 3: the action list removes it, its teardown letting its building
-            // go (slot 0x180)
-            if self
-                .enter
-                .is_some_and(|e| e.state == crate::garrison::FAILED)
-            {
-                let e = self.enter.take().expect("checked above");
+            // its 1 (an Enter that got the unit in, the unit out again before this update) or a
+            // failed one's 3: the action list removes it, its teardown letting its building go
+            // (slot 0x180)
+            if let Some(e) = self.enter.take() {
                 c.releases.push((e.target, self.releaser(c)));
-                return Ok(());
             }
-            return Err(GenieError::unsupported("a done Enter outside its building"));
         }
         Ok(())
     }
