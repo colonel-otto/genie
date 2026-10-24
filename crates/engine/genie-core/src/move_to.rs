@@ -110,27 +110,14 @@ pub enum Goal {
 
 /// A starting `MoveTo`'s update (state 3): unless the unit is within `range` of its goal already, it
 /// asks for a path (`FUN_14114e410`) and turns to state 4, whose `set_state` runs the update again at
-/// once ([`walk_on`]); returns the `MoveTo`'s state after it. In range is the footprints' squared
-/// gap (`FUN_14118f8c0`) to a target object, the gap from the unit's footprint to a point, at most
-/// `range` squared. A unit already in range ends the `MoveTo` (`set_state` 1, code 0) when it has a
-/// unit AI not on order 711 or 733 ([`start_walk_asked`]; here it does); a `MoveTo` that is not
-/// `quiet` (its `+0x60` clear) then shows the unit's idle sprite (slot 0x68 with slot 0x798's: the
-/// master's standing sprite, [`Mover::shows_standing`]; the sprite itself and `+0x7b8`, cleared,
-/// are the caller's).
-pub fn start_walk(
-    walk: Walk<'_>,
-    goal: Goal,
-    range: f32,
-    quiet: bool,
-) -> Result<MoveTo, GenieError> {
-    start_walk_or_give_up(walk, goal, range, quiet)?.ok_or(GenieError::unsupported(
-        "a MoveTo whose unit cannot move on",
-    ))
-}
-
-/// [`start_walk`] for a `MoveTo` that handles the motion step giving up in the update its
-/// `set_state(4)` runs: None then (the `MoveTo` is in state 4, its sprite shown; the owner's
-/// answer, [`walk_or_give_up`]'s, decides what follows).
+/// once ([`walk_or_give_up`]); returns the `MoveTo`'s state after it, None when the motion step
+/// gave up in that update (the `MoveTo` is in state 4, its sprite shown; the owner's answer
+/// decides what follows). In range is the footprints' squared gap (`FUN_14118f8c0`) to a target
+/// object, the gap from the unit's footprint to a point, at most `range` squared. A unit already in
+/// range ends the `MoveTo` (`set_state` 1, code 0) when it has a unit AI not on order 711 or 733
+/// ([`start_walk_asked`]; here it does); a `MoveTo` that is not `quiet` (its `+0x60` clear) then
+/// shows the unit's idle sprite (slot 0x68 with slot 0x798's: the master's standing sprite,
+/// [`Mover::shows_standing`]; the sprite itself and `+0x7b8`, cleared, are the caller's).
 pub fn start_walk_or_give_up(
     walk: Walk<'_>,
     goal: Goal,
@@ -185,17 +172,11 @@ pub fn start_walk_asked(
 }
 
 /// A moving `MoveTo`'s update (state 4, `0x140aa2a70` from `LAB_140aa320c`): the motion step
-/// (slot 193); returns the `MoveTo`'s state after it. A unit that arrived ends the `MoveTo`
+/// (slot 193); returns the `MoveTo`'s state after it, None when the motion step gave up (it
+/// returns 1; the owner decides: `set_state` 2 or 13). A unit that arrived ends the `MoveTo`
 /// (`set_state` 1, `0x140aa29e0`, which also sets the unit's idle sprite and clears its `+0x7b8`,
-/// and `FUN_14114d810` its facet; the slice holds neither). A unit that cannot go on (`set_state` 2
-/// or 13) and a `MoveTo` without its path are not modelled.
-pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, GenieError> {
-    walk_or_give_up(walk)?.ok_or(GenieError::unsupported(
-        "a MoveTo whose unit cannot move on",
-    ))
-}
-
-/// [`walk_on`] for a `MoveTo` that handles the motion step giving up (it returns 1): None then.
+/// and `FUN_14114d810` its facet; the slice holds neither). A `MoveTo` without its path is not
+/// modelled.
 pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
     let mover = walk.mover.ok_or(crate::turn::WALKER_UNMOVING)?;
     if mover.paths.is_empty() {
@@ -523,10 +504,15 @@ impl MoveToAction {
                     // set_state 3, then the motion step (`LAB_140aa320c`): moving on, the MoveTo
                     // stays in state 3
                     step.target_moved = true;
-                    self.state = match walk_on(walk.reborrow())? {
-                        MoveTo::Moving => MoveTo::Start,
-                        other => other,
-                    };
+                    match walk_or_give_up(walk.reborrow())? {
+                        Some(MoveTo::Moving) => self.state = MoveTo::Start,
+                        Some(other) => self.state = other,
+                        // the motion step gave up: the wait or the failure, as below
+                        None => {
+                            self.state = MoveTo::Start;
+                            step.gave_up = true;
+                        }
+                    }
                 } else {
                     match walk_or_give_up(walk.reborrow())? {
                         Some(state) => self.state = state,

@@ -299,7 +299,7 @@ impl RepairAction {
     }
 
     /// State 4 (`0x140adaa20` case 3): the `MoveTo` toward the target walks (its start in its
-    /// first update, [`start_walk`], then [`walk_on`]); once it is at it, waits or failed (or
+    /// first update, [`start_walk_or_give_up`], then [`walk_or_give_up`]); once it is at it, waits or failed (or
     /// gone), the unit within reach of the target ([`RepairAction::reaches`]) faces it (6), one
     /// with a quick path to it waits (10), any other fails (13).
     fn walking(

@@ -8,7 +8,7 @@
 //! `107 + state` for it.
 
 use crate::GenieError;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_or_give_up};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the
@@ -267,7 +267,10 @@ impl Artifact {
                     ),
                 };
                 self.move_to = Some(MoveTo::Moving);
-                self.move_to = Some(start_walk(walk.ok_or_else(need)?, goal, range, quiet)?);
+                // a motion step that gives up in the start's update fails the MoveTo, as in
+                // its moving state
+                let started = start_walk_or_give_up(walk.ok_or_else(need)?, goal, range, quiet)?;
+                self.move_to = Some(started.unwrap_or(MoveTo::Failed));
             }
             Some(MoveTo::Moving) => {
                 let state = walk_or_give_up(walk.ok_or_else(need)?)?;
@@ -532,6 +535,37 @@ mod tests {
         assert_eq!(a.tear_down(), (true, Some(9149)));
         assert_eq!((a.target, a.move_to, a.walk_to), (-1, None, None));
         assert_eq!(a.tear_down(), (false, None));
+    }
+
+    /// The motion step gives up in the update the start's `set_state(4)` runs (426321525's
+    /// livestock in update 2656; a unit without speed here): the `MoveTo` fails, as in its moving
+    /// state, and the next update ends it with its failure.
+    #[test]
+    fn a_walk_the_motion_step_gives_up_at_its_start_fails() {
+        let mut a = Artifact::new(false);
+        let _ = a.take_point([28.5, 93.5, 0.0]);
+        let mut mover = crate::hunt::tests::walker();
+        mover.stats.speed = 0.0;
+        let mut world = crate::spatial::Spatial::new([120, 120]);
+        let walk = Walk {
+            mover: Some(&mut mover),
+            me: crate::movement::Me {
+                id: 9517,
+                position: [20.5, 90.5, 0.0],
+                group: -1,
+                action_state: 0,
+            },
+            dt: 0.05,
+            world: &mut world,
+            plan: None,
+        };
+        assert_eq!(a.walk(Some(walk)), Ok(None));
+        assert_eq!(a.move_to, Some(MoveTo::Failed));
+        let failed = Ended {
+            notify: Some(crate::unit_ai::ACTION_FAILED),
+            released: None,
+        };
+        assert_eq!(a.walk(None), Ok(Some(failed)));
     }
 
     /// A `MoveTo` that ended goes with the point and lets the target go (slot 0x68 with none).

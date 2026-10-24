@@ -6,7 +6,7 @@
 use crate::GenieError;
 use crate::fmath::{cos, sin};
 use crate::masters::Task;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk, walk_or_give_up};
+use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
 use crate::rng::Well512;
 
 /// The Fly action's type, which word 9 adds.
@@ -147,8 +147,10 @@ impl Fly {
                             .goal
                             .ok_or(GenieError::unsupported("a flight without its point"))?;
                         self.move_to = Some(MoveTo::Moving);
-                        self.move_to =
-                            Some(start_walk(walk.reborrow(), Goal::Point(goal), 0.0, false)?);
+                        // a bird: a motion step that gives up in the start fails it too
+                        let started =
+                            start_walk_or_give_up(walk.reborrow(), Goal::Point(goal), 0.0, false)?;
+                        self.move_to = Some(started.unwrap_or(MoveTo::Failed));
                         false
                     }
                     // a bird is no villager: a motion step that gives up fails the MoveTo
@@ -389,6 +391,29 @@ mod tests {
         let step = fly.update(walk(&mut world), sky(&mut r)).unwrap();
         assert!(step.failed && step.stopped);
         assert_eq!(fly.move_to, None);
+    }
+
+    /// The motion step gives up in the update the flight's start runs (a bird without speed
+    /// here): the bird's `MoveTo` fails there, as in its moving state; the next update posts it.
+    #[test]
+    fn a_flight_the_motion_step_gives_up_at_its_start_fails() {
+        let mut world = Spatial::default();
+        let mut fly = Fly {
+            move_to: Some(MoveTo::Start),
+            goal: Some([60.5, 104.5, 9.0]),
+            ..hawk(FLYING, 5.0)
+        };
+        let mut mover = crate::hunt::tests::walker();
+        mover.stats.speed = 0.0;
+        let mut r = Well512::default();
+        let walking = Walk {
+            mover: Some(&mut mover),
+            ..walk(&mut world)
+        };
+        assert_eq!(fly.update(walking, sky(&mut r)), Ok(FlyStep::default()));
+        assert_eq!(fly.move_to, Some(MoveTo::Failed));
+        let step = fly.update(walk(&mut world), sky(&mut r)).unwrap();
+        assert!(step.failed && step.stopped);
     }
 
     #[test]
