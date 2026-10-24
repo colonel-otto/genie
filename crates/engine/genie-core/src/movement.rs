@@ -1317,9 +1317,30 @@ impl Mover {
                 return Ok(Next::Dispatch);
             }
             if level.level == 2 {
-                return Err(GenieError::unsupported(
-                    "a top level short of its goal at its end stops the unit",
-                ));
+                // 0x141154f8a: a walker without a weapon range (slot 0x230; UCOMISS, a NaN has
+                // one) beside a target that moved since the level's path was made (slot 0x5e8,
+                // 0 for an object that never moves, against the path's +8; on a tie the target
+                // of a higher player number or a higher id) lets its path go and stops: it
+                // arrived (FUN_140f98e80, slot 0x5d0; the step returns 2). Else the level takes
+                // state 6 and the unit stops (1). The step's temporary shapes go either way.
+                let created = level.created;
+                let target = level.target;
+                let own = world.get(me.id).map(|p| p.player);
+                let yields = self.stats.weapon_range == 0.0
+                    && goal.target.is_some_and(|t| {
+                        let moved = world.gait(target).map_or(0, |g| g.last_move);
+                        moved > created
+                            || (moved == created
+                                && (own.is_some_and(|o| o < t.player) || me.id < target))
+                    });
+                if yields {
+                    self.reset_level();
+                    self.stop()?;
+                    return Ok(Next::Done(Motion::Arrived));
+                }
+                self.paths[0].state = 6;
+                self.stop()?;
+                return Ok(Next::Done(Motion::Done));
             }
         }
         level.state = 4;
@@ -4803,6 +4824,91 @@ mod tests {
                 .map(|v| (v.velocity[2], v.acceleration[2])),
             Some((0.0, 0.0))
         );
+    }
+
+    /// `0x141154f8a`: a top level (2) at its last waypoint, short of its target and off the
+    /// waypoint it left: a walker without a weapon range whose target moved after the path was
+    /// made lets the path go and arrives (2); one whose target did not, or a walker with a weapon
+    /// range, takes state 6 and is done (1); on a tie of times the higher player, then the higher
+    /// id yields (427222982, 428355643, 428376971).
+    #[test]
+    fn a_top_level_short_of_its_moved_target_arrives() {
+        let walk = |weapon_range: f32| {
+            let mut m = builder_9177();
+            m.paths = vec![level(2, &[[28.0, 89.0], [30.0, 88.0]], 3)];
+            let l = &mut m.paths[0];
+            l.flags = 1;
+            l.target = 500;
+            l.created = 100;
+            m.stats.weapon_range = weapon_range;
+            m
+        };
+        let run = |m: &mut Mover, last_move: u32, target_player: usize, target_id: i32| {
+            let mut world = Spatial::new([120, 120]);
+            let placed = Placed {
+                position: [40.0, 88.0, 0.0],
+                radius: [0.5, 0.5],
+                class: 6,
+                player: target_player,
+                master: 74,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: false,
+                speed: 1.0,
+                unknown: None,
+                obstruction: None,
+            };
+            world.insert(target_id, placed);
+            world.set_gait(
+                target_id,
+                Some(Gait {
+                    last_move,
+                    ..Gait::default()
+                }),
+            );
+            let mut me = Me {
+                id: 9177,
+                position: [30.0, 88.0, 0.0],
+                group: -1,
+                action_state: 0,
+            };
+            m.paths[0].target = target_id;
+            let goal = Goal {
+                target: Some(&placed),
+                gap: 9.0,
+                to_end: 9.0,
+            };
+            m.reached(&mut me, &mut world, None, goal, 0)
+        };
+        let mut m = walk(0.0);
+        assert!(matches!(
+            run(&mut m, 150, 0, 500),
+            Ok(Next::Done(Motion::Arrived))
+        ));
+        assert_eq!(m.paths.len(), 1);
+        assert_eq!(m.paths[0].created, 0);
+        let mut m = walk(0.0);
+        assert!(matches!(
+            run(&mut m, 50, 0, 500),
+            Ok(Next::Done(Motion::Done))
+        ));
+        assert_eq!(m.paths[0].state, 6);
+        let mut m = walk(2.0);
+        assert!(matches!(
+            run(&mut m, 150, 0, 500),
+            Ok(Next::Done(Motion::Done))
+        ));
+        // a tie: a target of a higher id yields, a lower one does not
+        let mut m = walk(0.0);
+        assert!(matches!(
+            run(&mut m, 100, 0, 9500),
+            Ok(Next::Done(Motion::Arrived))
+        ));
+        let mut m = walk(0.0);
+        assert!(matches!(
+            run(&mut m, 100, 0, 500),
+            Ok(Next::Done(Motion::Done))
+        ));
     }
 
     /// `LAB_14115136c` on a level 1 or 2 whose next waypoint lies within reach (its squared
