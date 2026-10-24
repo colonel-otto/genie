@@ -1982,7 +1982,7 @@ pub(crate) fn strike(
     object_rng: &mut Well512,
 ) -> Result<Struck, GenieError> {
     if victim.kind == 70 && damage::shield(victim, hit.missile) {
-        let master_hp = own.armored.as_ref().map_or(0, |a| i32::from(a.master_hp));
+        let master_hp = i32::from(own.master_hp);
         victim
             .damaged
             .push((own.id, [own.id, own.hp as i32, master_hp]));
@@ -2650,10 +2650,10 @@ mod tests {
             position: at,
             radius: [0.5, 0.5],
             blast_defense: 2,
+            master_hp: 100,
             armored: Some(damage::Armored {
                 armors: vec![(4, 0)],
                 terrain_bonus: -1,
-                master_hp: 100,
                 friendly_fire: 1.0,
                 ..damage::Armored::default()
             }),

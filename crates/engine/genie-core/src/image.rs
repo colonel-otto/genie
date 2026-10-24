@@ -834,6 +834,10 @@ pub mod unit_ai {
     pub const FULL_FAITH: f32 = f32::from_bits(0x42c8_0000);
     /// 1.5
     pub const GAIA_TARGET_REACH: f32 = f32::from_bits(0x3fc0_0000);
+    /// 60.0
+    pub const HARMLESS_HP: f32 = f32::from_bits(0x4270_0000);
+    /// 0.5
+    pub const HARMLESS_RANGE: f32 = f32::from_bits(0x3f00_0000);
     /// 9.0
     pub const HELP_REACH: f32 = f32::from_bits(0x4110_0000);
     /// 3.0

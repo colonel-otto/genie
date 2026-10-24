@@ -1821,12 +1821,18 @@ pub(crate) fn victim_of(
             charge_hit: u.charge_hit,
             attack_powerup: u.attack_powerup,
             mode_680,
-            bonus_tasks: tasks(0xa0),
             player: p,
             kill_bonus_tasks: tasks(0x9a),
             fired_from: u.missile.as_ref().map_or(-1, |m| m.fired_from),
         },
         weapons: master.weapons.clone(),
+        master_hp: master.hit_points,
+        bonus_tasks: master
+            .tasks
+            .iter()
+            .filter(|t| t.action_type == crate::damage::BONUS_DAMAGE)
+            .copied()
+            .collect(),
         // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)
         armored: (50 <= kind).then(|| crate::damage::Armored {
             armors: master.armors.clone(),
@@ -1837,7 +1843,6 @@ pub(crate) fn victim_of(
             reflection: master.reflection,
             invulnerability: master.invulnerability,
             special_attack: master.special_attack,
-            master_hp: master.hit_points,
             friendly_fire: master.friendly_fire,
             special_graphic: master.special_graphic,
             terrain: defense,

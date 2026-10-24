@@ -1002,6 +1002,7 @@ impl Turns {
             reload_stinger: 0.0,
             reload_powerup: 0.0,
             attack_powerup: 0.0,
+            range_powerup: 0.0,
             armor_powerups: [0; 2],
             armor_removed: [0; 2],
             charge: 0.0,

@@ -354,6 +354,7 @@ fn unit(
         reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
         reload_powerup: object.combat().map_or(0.0, |c| c.reload_powerup),
         attack_powerup: object.combat().map_or(0.0, |c| c.attack_powerup),
+        range_powerup: object.combat().map_or(0.0, |c| c.max_range_powerup),
         armor_powerups: object.combat().map_or([0; 2], |c| {
             [c.melee_armor_powerup as i16, c.pierce_armor_powerup as i16]
         }),

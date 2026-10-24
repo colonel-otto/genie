@@ -1692,6 +1692,19 @@ pub trait UnitSide {
         Err(GenieError::missing_data("a duel without the world"))
     }
 
+    /// The villager's test of its attacker on a damage notify: the attacker shows too little
+    /// attack, armor and range to run from, and is fought back as Gaia's are
+    /// ([`UnitAi::villager_damaged`]).
+    ///
+    /// # Errors
+    ///
+    /// An object the side does not hold, and a side without the world.
+    fn harmless(&mut self, _attacker: i32) -> Result<bool, GenieError> {
+        Err(GenieError::missing_data(
+            "an attacker's shown values without the world",
+        ))
+    }
+
     /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) as `search` asks it:
     /// what it found, None for nothing.
     ///
@@ -2431,6 +2444,11 @@ const EXPLORE_Z: f32 = crate::image::unit_ai::EXPLORE_Z;
 const FOUNDATION_REACH: f32 = crate::image::unit_ai::FOUNDATION_REACH;
 /// The move action value (`0x262`).
 pub const MOVE_ACTION: i32 = 0x262;
+
+/// A villager's damage notify that reads its animation speed (slot 0x1f8) while the slice does
+/// not know it ([`Surroundings::anim_speed`]).
+const NO_ANIM_SPEED: GenieError =
+    GenieError::unsupported("a moving villager's damage notify without its animation speed");
 /// The follow order (`0x2c8`, "I have a follow order for Unit #%d" in slot 73) and its action
 /// value (`0x264`), which FOLLOW gives.
 pub const FOLLOW_ORDER: i32 = 0x2c8;
@@ -4964,27 +4982,6 @@ impl UnitAi {
         Ok(BREAK)
     }
 
-    /// The villager's damage notify (`FUN_140c22bf0`, case 500, "I took some damage from Unit
-    /// #%d"): the unit's group (`+0x6d0`, `FUN_140c55c00`) would hear of it, and the slice holds
-    /// none. At no hit points left (`p[1]` below 1) it gives up: the owner's alert (slot 0x2e8
-    /// with `0x209`, the human player's), the notifies end (`FUN_140c5dc10`) and it returns 4.
-    /// An attacker the world does not hold ends it, as does a player who is out (`+0x89` 2; not
-    /// held, 0 in every player probed). A computer's unit AI (slot 0x50) is not modelled. Then the
-    /// owner's alert (slot 0x2e8 with `0x201`); the attacker joins its attackers
-    /// (`FUN_140b43f30`), and a new one that is not its target nor a class-10 attacker of
-    /// combat level 1 (`FUN_140fde4f0`) makes it call for help (`AskForHelp`, `FUN_140c42ce0`),
-    /// which is not modelled; the unit is under attack (`FUN_14119d2d0` with 1). It ignores the
-    /// damage ("I have an attack/hunt/repair order") on a move or enter order while it animates
-    /// (slot 0x1f8 above 0), the attack or the repair order; on the hunt, gather and boar luring
-    /// orders with its top action in state 12 (slot 0x2b0), a target of class 10 the world holds
-    /// and a Gaia attacker; or on those orders from a class-10 attacker of combat level 1 with its
-    /// top action in state 4, 8, 12 or 15 (`0x9110`). A Gaia attacker it attacks back: with an
-    /// order not on the attacker, its current order goes back into the queue at once
-    /// ([`UnitAi::requeue_current`]) and the order becomes the attack (700, the last order kept)
-    /// at priority 100; then the civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`, forced):
-    /// `HuntObject` ([`UnitAi::hunt_object`]) on classes 9, 10 and 15, else `AttackObject`; then
-    /// `+0x1a8` is set and it breaks off. Its evade from another player's attacker is not
-    /// modelled.
     /// `AskForHelp` (`FUN_140c42ce0`) of a unit attacked by a new `attacker`: without an attacker
     /// the world holds (`FUN_1415417a0`) nothing; else its search from its place (slot 0x50,
     /// `FUN_140c63e20` with mode 1: the classes it cares about, [`UnitAi::help_search`]; a search
@@ -5039,6 +5036,30 @@ impl UnitAi {
         Ok((classes, radius))
     }
 
+    /// The villager's damage notify (`FUN_140c22bf0`, case 500, "I took some damage from Unit
+    /// #%d"): the unit's group (`+0x6d0`, `FUN_140c55c00`) would hear of it, and the slice holds
+    /// none. At no hit points left (`p[1]` below 1) it gives up: the owner's alert (slot 0x2e8
+    /// with `0x209`, the human player's), the notifies end (`FUN_140c5dc10`) and it returns 4.
+    /// An attacker the world does not hold ends it, as does a player who is out (`+0x89` 2; not
+    /// held, 0 in every player probed). A computer's unit AI (slot 0x50) is not modelled. Then the
+    /// owner's alert (slot 0x2e8 with `0x201`); the attacker joins its attackers
+    /// (`FUN_140b43f30`), and a new one that is not its target nor a class-10 attacker of
+    /// combat level 1 (`FUN_140fde4f0`) makes it call for help ([`UnitAi::ask_for_help`]); the
+    /// unit is under attack (`FUN_14119d2d0` with 1). It ignores the damage ("I have an
+    /// attack/hunt/repair order") on a move or enter order while it animates (slot 0x1f8 above
+    /// 0), the attack or the repair order; on the hunt, gather and boar luring orders with its
+    /// top action in state 12 (slot 0x2b0), a target of class 10 the world holds and a Gaia
+    /// attacker; or on those orders from a class-10 attacker of combat level 1 with its top
+    /// action in state 4, 8, 12 or 15 (`0x9110`). A Gaia attacker, or another player's the
+    /// villager does not fear ([`UnitSide::harmless`]), it attacks back: with an order not on
+    /// the attacker, its current order goes back into the queue at once
+    /// ([`UnitAi::requeue_current`]) and the order becomes the attack (700, the last order kept)
+    /// at priority 100; then the civilian's `AttackObject` (slot 0xb8, `FUN_140c17370`, forced):
+    /// `HuntObject` ([`UnitAi::hunt_object`]) on classes 9, 10 and 15, else `AttackObject`; then
+    /// `+0x1a8` is set and it breaks off. From any other it evades ("I have %d attackers,
+    /// evading them."), but on the move action (`0x262`) at a speed other than 0: its current
+    /// order goes to the queue's end ([`UnitAi::queue_current`]), its action stops (slot 0xb0
+    /// with 1) and it runs from its attackers ([`UnitAi::run_away`] with 1). Both return 3.
     #[allow(clippy::too_many_arguments)]
     fn villager_damaged(
         &mut self,
@@ -5079,10 +5100,7 @@ impl UnitAi {
         let moves = matches!(
             order,
             crate::ai_kinds::ORDER_MOVEMENT | crate::ai_kinds::ORDER_ENTER
-        ) && 0.0
-            < at.anim_speed.ok_or(GenieError::unsupported(
-                "a moving villager's damage notify without its animation speed",
-            ))?;
+        ) && 0.0 < at.anim_speed.ok_or(NO_ANIM_SPEED)?;
         let ignores = moves
             || order == crate::ai_kinds::ORDER_ATTACK
             || (gathers
@@ -5094,10 +5112,20 @@ impl UnitAi {
         if ignores {
             return Ok(GO_ON);
         }
-        if attacker.owner != 0 {
-            return Err(GenieError::unsupported("a villager evading its attackers"));
+        if attacker.owner != 0 && !side.harmless(n.caller)? {
+            // "I have %d attackers, evading them.", but on the move action at a speed (not 0,
+            // UCOMISS: a NaN keeps moving): the current order goes to the queue's end (slot 0x30
+            // neither immediate nor in front), the action stops (slot 0xb0 with 1) and it runs
+            // from its attackers (slot 0x160 with 1 and no unit)
+            if self.current_action == MOVE_ACTION && at.anim_speed.ok_or(NO_ANIM_SPEED)? != 0.0 {
+                return Ok(BREAK);
+            }
+            self.queue_current(at)?;
+            self.stop_current(true, at, fx)?;
+            let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            return Ok(BREAK);
         }
-        // "I have a GAIA attacker": with an order not on the attacker, the current order goes back
+        // "I have a GAIA attacker" (or a harmless one): with an order not on the attacker, the current order goes back
         // into the queue at once (slot 0x30) and the order becomes the attack (700,
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
         if self.current_order != -1 && n.caller != self.current_target {
@@ -9593,6 +9621,7 @@ mod tests {
         helps: Vec<i32>,
         under_attack: Vec<bool>,
         patrol: Option<(PatrolPath, i32)>,
+        harmless: Vec<i32>,
     }
 
     impl UnitSide for DamageSide {
@@ -9673,6 +9702,146 @@ mod tests {
         fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
             Ok(self.top)
         }
+        fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
+            Ok(self.harmless.contains(&attacker))
+        }
+        fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, GenieError> {
+            Ok(true)
+        }
+    }
+
+    /// A human player's villager at (10, 10) on its way to gather (order `0x2c5`, its Gather in
+    /// state 5, animating) and its unit AI, hit by `foe(30, 6)`'s 4 damage.
+    fn hit_villager() -> (UnitAi, Surroundings, Notify) {
+        let ai = UnitAi {
+            current_order: crate::ai_kinds::ORDER_GATHER,
+            current_action: GATHER_ACTION,
+            current_target: 40,
+            order_priority: 3,
+            ..idle(CIVILIAN)
+        };
+        let at = Surroundings {
+            id: 20,
+            position: [10.0, 10.0, 0.0],
+            speed: 1.0,
+            class: CLASS_VILLAGER,
+            player: 1,
+            state: 2,
+            map: [100, 100],
+            anim_speed: Some(1.0),
+            action_state: Some(5),
+            units: vec![foe(30, 6)],
+            ..Surroundings::default()
+        };
+        let hit = Notify {
+            caller: 30,
+            recipient: 20,
+            kind: DAMAGED,
+            p: [30, 21, 25],
+        };
+        (ai, at, hit)
+    }
+
+    /// A villager hit by another player's unit it fears ("I have %d attackers, evading them.")
+    /// calls for help, sends its order to the queue's end, stops its action and runs from the
+    /// attacker (to its west, the attacker being east of it); the call keeps the attacker.
+    #[test]
+    fn a_villager_evades_another_player_s_attacker() {
+        let (mut u, at, hit) = hit_villager();
+        let mut side = DamageSide {
+            units: vec![foe(30, 6)],
+            ..DamageSide::default()
+        };
+        let mut fx = Vec::new();
+        let r = u.villager_damaged(hit, 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r, Ok(BREAK));
+        assert_eq!((side.helps, side.under_attack), (vec![30], vec![true]));
+        assert_eq!(u.attackers, vec![30]);
+        let queued: Vec<_> = u
+            .orders
+            .iter()
+            .map(|o| (o.order, o.target, o.issuer))
+            .collect();
+        assert_eq!(queued, vec![(crate::ai_kinds::ORDER_GATHER, 40, 20)]);
+        assert_eq!(fx.first(), Some(&Effect::Stop));
+        let Some(Effect::Move(m)) = fx.last() else {
+            panic!("no move: {fx:?}");
+        };
+        assert!(m.point[0] < 10.0 && m.point[1] == 10.0, "{m:?}");
+        assert_eq!(side.attacks, Vec::<i32>::new());
+        assert_eq!(u.current_action, MOVE_ACTION);
+    }
+
+    /// A villager's harmless attacker ([`UnitSide::harmless`]) is attacked back, as a Gaia
+    /// attacker is: without an order straight away (`AttackObject` forced), and it stops after
+    /// the kill.
+    #[test]
+    fn a_villager_attacks_a_harmless_attacker_back() {
+        let (mut u, at, hit) = hit_villager();
+        u.current_order = -1;
+        u.current_action = -1;
+        u.current_target = -1;
+        let mut side = DamageSide {
+            units: vec![foe(30, 6)],
+            harmless: vec![30],
+            ..DamageSide::default()
+        };
+        let mut fx = Vec::new();
+        let r = u.villager_damaged(hit, 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r, Ok(BREAK));
+        assert_eq!(side.attacks, vec![30]);
+        assert!(u.stop_after_kill && u.orders.is_empty());
+    }
+
+    /// On the move action (`0x262`) a villager at a speed keeps moving (and returns 3); at a
+    /// standstill it evades; without its animation speed the slice stops.
+    #[test]
+    fn a_moving_villager_keeps_its_way() {
+        let (mut u, at, hit) = hit_villager();
+        u.current_action = MOVE_ACTION;
+        let mut side = DamageSide {
+            units: vec![foe(30, 6)],
+            ..DamageSide::default()
+        };
+        let mut fx = Vec::new();
+        let walking = u.clone();
+        let r = u.villager_damaged(hit, 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r, Ok(BREAK));
+        assert!(fx.is_empty() && u.orders.is_empty());
+        let nan = Surroundings {
+            anim_speed: Some(f32::NAN),
+            ..at.clone()
+        };
+        let mut u = walking.clone();
+        let r = u.villager_damaged(hit, 0, &nan, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r, Ok(BREAK));
+        assert!(fx.is_empty() && u.orders.is_empty());
+        let still = Surroundings {
+            anim_speed: Some(0.0),
+            ..at.clone()
+        };
+        let mut u = walking.clone();
+        let r = u.villager_damaged(hit, 0, &still, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r, Ok(BREAK));
+        assert_eq!(u.orders.len(), 1);
+        assert!(matches!(fx.last(), Some(Effect::Move(_))));
+        let unknown = Surroundings {
+            anim_speed: None,
+            ..at
+        };
+        let mut u = walking;
+        assert!(
+            u.villager_damaged(
+                hit,
+                0,
+                &unknown,
+                false,
+                &mut rng(),
+                &mut side,
+                &mut Vec::new()
+            )
+            .is_err()
+        );
     }
 
     /// An enemy (player 2) of `class` the damage case's side holds.

@@ -424,6 +424,28 @@ pub(in crate::turn) struct UnitView<'u> {
 }
 
 impl UnitView<'_> {
+    /// The world as `bestUnitToAttack` and the attack tests read it for the unit
+    /// ([`WorldPicker`]), with `seeker` and without a terrain restriction.
+    const fn picker(&self, seeker: Option<crate::unit_ai::Seeker>) -> WorldPicker<'_> {
+        WorldPicker {
+            attacker: &self.attacker,
+            seeker,
+            me: self.unit.id,
+            player: self.player,
+            others: self.others,
+            foreign: self.foreign,
+            spatial: self.spatial,
+            every: self.every,
+            restriction: -1,
+            unit: &*self.unit,
+            attributes: self.attributes,
+            relations: self.relations,
+            ai_settings: self.ai_settings,
+            now: self.world_time,
+            mode_680: self.mode_680,
+        }
+    }
+
     /// `AskForHelp`'s tests of a helper `u` (of player `owner`, master `m`) that passed its
     /// class, owner and reach tests, against `attacker`, all reads (the game asks its attack
     /// check before its owner's test; neither changes what the other reads): a helper in no group
@@ -505,23 +527,7 @@ impl UnitView<'_> {
                     .map(|tm| tm.kind)
             })
             .flatten();
-        let picker = WorldPicker {
-            attacker: &self.attacker,
-            seeker: None,
-            me: self.unit.id,
-            player: self.player,
-            others: self.others,
-            foreign: self.foreign,
-            spatial: self.spatial,
-            every: self.every,
-            restriction: -1,
-            unit: &*self.unit,
-            attributes: self.attributes,
-            relations: self.relations,
-            ai_settings: self.ai_settings,
-            now: self.world_time,
-            mode_680: self.mode_680,
-        };
+        let picker = self.picker(None);
         let (target, _) = picker.target(attacker)?;
         crate::unit_ai::can_attack(&me, &ai.seeker_with(target_kind), &target)
     }
@@ -724,6 +730,11 @@ fn attacks(m: &crate::masters::Master) -> f32 {
         .fold(0.0, |sum, w| sum + f32::from(w.1))
 }
 
+/// The hit points (`DAT_14330ebc8`) and the range (`DAT_142e7f384`) below which a villager
+/// fights its attacker back ([`WorldPicker::harmless`]).
+const HARMLESS_HP: f32 = crate::image::unit_ai::HARMLESS_HP;
+const HARMLESS_RANGE: f32 = crate::image::unit_ai::HARMLESS_RANGE;
+
 /// An object the unit AI found or names that the slice does not hold (another player's it does
 /// not keep).
 const NOT_HELD: GenieError = GenieError::unsupported("a found object the slice does not hold");
@@ -833,7 +844,8 @@ impl WorldPicker<'_> {
         if fm.kind == crate::order::BUILDING {
             factor = crate::damage::building_elevation_factor(factor, f.relics, tm.kind, t.relics);
         }
-        crate::damage::armor_damage(&target, &unit.weapons, factor, &unit.source)
+        let bonus = crate::damage::bonus_damage(&unit, &target);
+        crate::damage::armor_damage(&target, &unit.weapons, factor, &unit.source, bonus)
     }
 
     /// What a computer player's unit weighs of object `other` on a damage notify
@@ -847,6 +859,44 @@ impl WorldPicker<'_> {
             harmed: self.damage(self.me, other)?,
             hp: o.life.hp,
         })
+    }
+
+    /// The villager's test of its attacker `other` (`FUN_140c22bf0` case 500): one of a master
+    /// with object flag 0x10 (`+0x654`) that is its own copy (`+0x158` equal to `+0x58`), which
+    /// shows an attack below 5 (slot 0x878, [`crate::damage::shown_attack`]; below 4, or with
+    /// its master's hit points below [`HARMLESS_HP`]), a melee armor below 1 (slot 0x868) and a
+    /// range of at most [`HARMLESS_RANGE`] (slot 0x880, `COMISS` with `JNC`: not a NaN), is
+    /// fought back as Gaia's attackers are. Its attack's target (an Attack's, `FUN_14107cc30`)
+    /// counts when the world holds it.
+    pub(in crate::turn) fn harmless(&self, other: i32) -> Result<bool, GenieError> {
+        let (q, o, attributes, om) = self.held(other).ok_or(NOT_HELD)?;
+        if om.object_flags & 0x10 == 0 || om.copy_id != om.id {
+            return Ok(false);
+        }
+        let terrain = self.spatial.terrain.as_ref();
+        let v = victim_of(o, om, attributes, q, terrain, self.mode_680);
+        let target = (o.top_action_kind() == Some(crate::attack::ATTACK))
+            .then(|| o.top_target())
+            .flatten()
+            .and_then(|t| self.held(t))
+            .map(|(tq, t, ta, tm)| victim_of(t, tm, ta, tq, terrain, self.mode_680));
+        let shown = crate::damage::Shown {
+            target: target.as_ref(),
+            projectile: om
+                .charge_projectile
+                .and_then(|id| self.every.get(q)?.get(id))
+                .map(|m| &m.weapons[..]),
+            charge_event: om.charge_event,
+            range_powerup: o.range_powerup,
+        };
+        let attack = crate::damage::shown_attack(&v, &shown);
+        if 4 < attack || (3 < attack && HARMLESS_HP <= f32::from(om.hit_points)) {
+            return Ok(false);
+        }
+        if 0 < crate::damage::shown_melee_armor(&v)? {
+            return Ok(false);
+        }
+        Ok(crate::damage::shown_range(&v, &shown) <= HARMLESS_RANGE)
     }
 
     /// The object `id` as the attack tests read it, and whether it moves (slot 0x208 above 0).
@@ -1290,24 +1340,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     }
 
     fn duel(&mut self, other: i32) -> Result<crate::unit_ai::Duel, GenieError> {
-        let picker = WorldPicker {
-            attacker: &self.attacker,
-            seeker: None,
-            me: self.unit.id,
-            player: self.player,
-            others: self.others,
-            foreign: self.foreign,
-            spatial: self.spatial,
-            every: self.every,
-            restriction: -1,
-            unit: &*self.unit,
-            attributes: self.attributes,
-            relations: self.relations,
-            ai_settings: self.ai_settings,
-            now: self.world_time,
-            mode_680: self.mode_680,
-        };
-        picker.duel(other)
+        self.picker(None).duel(other)
+    }
+
+    fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
+        self.picker(None).harmless(attacker)
     }
 
     fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
@@ -1529,23 +1566,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         target: i32,
         seeker: &crate::unit_ai::Seeker,
     ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
-        let picker = WorldPicker {
-            attacker: &self.attacker,
-            seeker: Some(*seeker),
-            me: self.unit.id,
-            player: self.player,
-            others: self.others,
-            foreign: self.foreign,
-            spatial: self.spatial,
-            every: self.every,
-            restriction: -1,
-            unit: &*self.unit,
-            attributes: self.attributes,
-            relations: self.relations,
-            ai_settings: self.ai_settings,
-            now: self.world_time,
-            mode_680: self.mode_680,
-        };
+        let picker = self.picker(Some(*seeker));
         let held =
             self.foreign.find(target).is_some() || self.others.iter().any(|u| u.id == target);
         if !held {
@@ -2169,5 +2190,118 @@ mod tests {
             attacks(&m(vec![(4, 0), (3, -5)])).to_bits(),
             0.0f32.to_bits()
         );
+    }
+    /// The villager 123 (player 1) tests player 2's unit 50 of `master`: harmless when its
+    /// master has object flag 0x10, is its own copy and shows an attack below 5 (4 only below 60
+    /// hit points), no melee armor and a range of at most 0.5.
+    fn harmless(master: crate::masters::Master) -> bool {
+        let me = Unit {
+            id: 123,
+            life: crate::lifecycle::Lifecycle {
+                master_id: 83,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let enemy = Player {
+            objects: vec![Unit {
+                id: 50,
+                life: crate::lifecycle::Lifecycle {
+                    master_id: master.id,
+                    state: 2,
+                    ..crate::lifecycle::Lifecycle::default()
+                },
+                ..Unit::default()
+            }],
+            ..Player::default()
+        };
+        let (gaia, after) = (Player::default(), [enemy]);
+        let before = [gaia];
+        let every = [
+            Masters::default(),
+            Masters::default(),
+            Masters::new([master]),
+        ];
+        let spatial = Spatial::new([120, 120]);
+        let attacker = crate::unit_ai::Attacker {
+            ai_type: 8,
+            player: 1,
+            computer: false,
+            state: 2,
+            held: -1,
+            top_action: None,
+            master: 83,
+            kind: 70,
+            class: 4,
+            attack_priority: 0,
+            missile: -1,
+            range: 0.0,
+            min_range: 0.0,
+            charge_type: 0,
+            area_effect: 0.0,
+            blast_level: 0,
+            los: 4.0,
+            position: [10.0, 10.0, 0.0],
+            radius: [0.2, 0.2],
+            speed: 0.8,
+            scenario: false,
+            firepower: 0.0,
+            capture: 0,
+        };
+        let picker = WorldPicker {
+            attacker: &attacker,
+            seeker: None,
+            me: 123,
+            player: 1,
+            others: &[],
+            foreign: Foreign {
+                before: &before,
+                after: &after,
+                left: None,
+            },
+            spatial: &spatial,
+            every: &every,
+            restriction: -1,
+            unit: &me,
+            attributes: &[],
+            relations: &[0, 0, 0],
+            ai_settings: crate::turn::player::AiSettings::default(),
+            now: 0,
+            mode_680: 0,
+        };
+        picker.harmless(50).unwrap()
+    }
+
+    #[test]
+    fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
+        let villager = crate::masters::Master {
+            id: 83,
+            copy_id: 83,
+            kind: 70,
+            class: 4,
+            object_flags: 0x10,
+            hit_points: 25,
+            weapons: vec![(4, 3), (21, 6)],
+            armors: vec![(4, 0), (3, 0)],
+            weapon_range: 0.0,
+            ..crate::masters::Master::default()
+        };
+        assert!(harmless(villager.clone()));
+        let with = |f: &dyn Fn(&mut crate::masters::Master)| {
+            let mut m = villager.clone();
+            f(&mut m);
+            harmless(m)
+        };
+        assert!(!with(&|m| m.object_flags = 0));
+        assert!(!with(&|m| m.copy_id = 293));
+        assert!(!with(&|m| m.weapons = vec![(4, 5)]));
+        // an attack of 4 below 60 hit points
+        assert!(with(&|m| m.weapons = vec![(4, 4)]));
+        assert!(!with(&|m| (m.weapons, m.hit_points) = (vec![(4, 4)], 60)));
+        assert!(with(&|m| (m.weapons, m.hit_points) = (vec![(4, 3)], 60)));
+        assert!(!with(&|m| m.armors = vec![(4, 1)]));
+        assert!(with(&|m| m.weapon_range = 0.5));
+        assert!(!with(&|m| m.weapon_range = 0.6));
+        assert!(!with(&|m| m.weapon_range = f32::NAN));
     }
 }

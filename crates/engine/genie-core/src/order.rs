@@ -4736,12 +4736,6 @@ fn grid_point(i: usize, n: usize, point: [f32; 2], map: [i32; 2]) -> [f32; 2] {
     [inside_map(x, map[0]), inside_map(y, map[1])]
 }
 
-/// `FUN_1412066b0`, a master change's powerups: the attack (`+0xa24`), reload (`+0xa28`), work
-/// rate (`+0xa30`), most hit points (`+0xa3c`) and melee and pierce armor (`+0xa48`, `+0xa4c`)
-/// powerups go; the hit points powerup (`+0xa38`) stays. The routine also zeroes `+0xa34`,
-/// `+0xa40`, `+0xa50` and `+0x9f8`, empties the powerup map (`+0xa98`, count `+0xaa0`), sets
-/// `+0xa2c` to slot 0x1b8 × 0.05 and takes a sight powerup (`+0xad4`) off (slots 0x1d8, 0x1d0):
-/// none of them is held.
 /// `FUN_140c42b60`, the readiness pass of a unit AI's queue: from the last queued order to the
 /// first, one not ready becomes ready, and with `drop_ready` one already ready leaves the queue
 /// (the orders after it move up). With `drop_ready` (1: after MOVE's and INTERACT's order that
@@ -4760,8 +4754,15 @@ pub(crate) fn readiness(orders: &mut Vec<crate::unit_ai::QueuedOrder>, drop_read
     }
 }
 
+/// `FUN_1412066b0`, a master change's powerups: the attack (`+0xa24`), reload (`+0xa28`), work
+/// rate (`+0xa30`), most hit points (`+0xa3c`), max range (`+0xa40`) and melee and pierce armor
+/// (`+0xa48`, `+0xa4c`) powerups go; the hit points powerup (`+0xa38`) stays. The routine also
+/// zeroes `+0xa34`, `+0xa50` and `+0x9f8`, empties the powerup map (`+0xa98`, count `+0xaa0`),
+/// sets `+0xa2c` to slot 0x1b8 × 0.05 and takes a sight powerup (`+0xad4`) off (slots 0x1d8,
+/// 0x1d0): none of them is held.
 const fn clear_powerups(unit: &mut Unit) {
     unit.attack_powerup = 0.0;
+    unit.range_powerup = 0.0;
     unit.reload_powerup = 0.0;
     unit.work_rate_powerup = 0.0;
     unit.hp_powerups[1] = 0.0;

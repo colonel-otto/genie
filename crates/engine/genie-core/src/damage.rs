@@ -134,6 +134,11 @@ pub struct Victim {
     pub uncertain: bool,
     /// It is inside another object (`+0x2f0`): an Attack on it ends.
     pub inside: bool,
+    /// Its master's hit points (`+0x530`).
+    pub master_hp: i16,
+    /// Its master's tasks of action type 0xa0 ([`BONUS_DAMAGE`]), in their order: the damage its
+    /// hits add by hit points ([`bonus_damage`]).
+    pub bonus_tasks: Vec<crate::masters::Task>,
     /// Its own attack (a retaliation's): its values as a hit's source and its master's weapons
     /// (class, amount).
     pub source: Attacker,
@@ -234,8 +239,6 @@ pub struct Armored {
     pub invulnerability: f32,
     /// Its master's `special_attack_flag`.
     pub special_attack: u8,
-    /// Its master's hit points.
-    pub master_hp: i16,
     /// Its master's `friendly_fire_damage`.
     pub friendly_fire: f32,
     /// Its master has a special graphic (`+0x8e8`), which its special attack shows.
@@ -306,14 +309,11 @@ pub struct Attacker {
     pub charge: f32,
     /// `mHitSomethingValidForChargeAttack` (`+0x8a8`), which its hits set.
     pub charge_hit: bool,
-    /// Its attack powerup (`+0xa24`), the game's setting `+0x680`
-    /// ([`crate::turn::Turns::mode_680`]: at 1 a hit may do no damage), and whether its master
-    /// has a task of action type 0xa0 (bonus damage, `FUN_14107ce60`).
+    /// Its attack powerup (`+0xa24`) and the game's setting `+0x680`
+    /// ([`crate::turn::Turns::mode_680`]: at 1 a hit may do no damage).
     pub attack_powerup: f32,
     /// The game's setting `+0x680` ([`crate::turn::Turns::mode_680`]).
     pub mode_680: i32,
-    /// Its master has a task of action type 0xa0 (bonus damage).
-    pub bonus_tasks: bool,
     /// Its player and whether its master has a task of action type 0x9a (a kill bonus,
     /// `FUN_1415c6510`).
     pub player: usize,
@@ -453,6 +453,212 @@ fn charge_damage(a: &Attacker) -> Result<f32, GenieError> {
     Ok(a.charge)
 }
 
+/// Slot 0x2f8 of a combat unit or building (`FUN_14120f510`): a charge of type 6 or 7 (slot
+/// 0x308, `FUN_141203b50`) that works on `t` ([`charge_works`]) and is ready ([`charged`]).
+#[must_use]
+pub fn range_charge_hit(a: &Attacker, t: &Victim) -> bool {
+    matches!(a.charge_type, 6 | 7)
+        && charge_works(a.charge_target, a.charge_type, t.class, t.kind)
+        && charged(a)
+}
+
+/// The action type of a bonus damage task (`FUN_14107ce60`).
+pub const BONUS_DAMAGE: i16 = 0xa0;
+
+impl Victim {
+    /// A combat unit or building (types 70 and 80, `TRIBE_Combat_Object` and
+    /// `TRIBE_Building_Object`): its powerups and charges count; a combat object of type 50 or
+    /// 60 (`RGE_Combat_Object`) answers 0 for them.
+    const fn tribe(&self) -> bool {
+        matches!(self.kind, 70 | 80)
+    }
+
+    /// Slot 0xc0, its hit points as a share reads them: a combat unit's or building's
+    /// (`FUN_141202990`) most hit points powerup less its hit points powerup (`+0xa3c` less
+    /// `+0xa38`), plus its hit points; any other object's its hit points (`FUN_141188830`).
+    #[must_use]
+    pub fn shown_hp(&self) -> f32 {
+        self.armored
+            .as_ref()
+            .filter(|_| self.tribe())
+            .map_or(self.hp, |a| (a.hp_powerups[1] - a.hp_powerups[0]) + self.hp)
+    }
+
+    /// Slot 0xc8, its most hit points: a combat unit's or building's (`FUN_141202bb0`) hit point
+    /// stinger (`+0xb44`, slot 0x760) plus its master's hit points plus its most hit points
+    /// powerup (`+0xa3c`); any other object's its master's hit points (`FUN_1411889a0`). The
+    /// stingers (`+0xb38`..`+0xb50`) are 0: `TRIBE_Combat_Object::update` zeroes them and rebuilds
+    /// them from the object's stinger list (`FUN_1412092e0`), which the slice holds empty.
+    #[must_use]
+    pub fn most_hp(&self) -> f32 {
+        let hp = f32::from(self.master_hp);
+        self.armored
+            .as_ref()
+            .filter(|_| self.tribe())
+            .map_or(hp, |a| hp + a.hp_powerups[1])
+    }
+
+    /// `FUN_141188880`: the share of its most hit points it has (slot 0xc0, at most slot 0xc8 by
+    /// `MINSS`, over slot 0xc8), with `lacking` the share it lacks (1 less that); 0 when its most
+    /// hit points are not above 0 (`COMISS 0, most` with `JNC`: a NaN divides).
+    #[must_use]
+    pub fn hp_share(&self, lacking: bool) -> f32 {
+        let most = self.most_hp();
+        let least = fmath::minss(most, self.shown_hp());
+        if !fmath::below_or_unordered(0.0, most) {
+            return 0.0;
+        }
+        let share = least / most;
+        if lacking { ONE - share } else { share }
+    }
+}
+
+/// `FUN_14107ce60`: the damage `attacker`'s bonus damage tasks ([`Victim::bonus_tasks`]) add
+/// against `target`. A task for the target's master (`object_id`) or class (`object_group`), or
+/// for neither (both −1) on a target of class 51 or 54 or of a type below 80, adds its
+/// `work_val1` for each whole `work_val2` of a hit point share ([`Victim::hp_share`], rounded
+/// down after [`EPSILON`] is added): the target's with a `work_range` above 0, else the
+/// attacker's (`COMISS` with `CMOVBE`: a NaN reads the attacker's), the share lacking with
+/// `attribute_type4` not 0. A `work_val2` not above 0, or a target without hit points above 0
+/// (slot 0xc0), adds nothing (`COMISS` with `JBE`). The sum is at least 0 (`MAXSS`).
+#[must_use]
+pub fn bonus_damage(attacker: &Victim, target: &Victim) -> f32 {
+    let mut sum = 0.0f32;
+    for t in attacker
+        .bonus_tasks
+        .iter()
+        .filter(|t| t.action_type == BONUS_DAMAGE)
+    {
+        let any = t.object_id == -1
+            && t.object_group == -1
+            && (matches!(target.class, 51 | 54) || target.kind < BUILDING);
+        if !(any || t.object_id == target.master_id || t.object_group == target.class) {
+            continue;
+        }
+        let whose = if fmath::at_most_or_unordered(t.work_range, 0.0) {
+            attacker
+        } else {
+            target
+        };
+        let share = whose.hp_share(t.attribute_type4 != 0);
+        if fmath::at_most_or_unordered(t.work_val2, 0.0)
+            || fmath::at_most_or_unordered(target.shown_hp(), 0.0)
+        {
+            continue;
+        }
+        sum += libm::floorf(share / t.work_val2 + EPSILON) * t.work_val1;
+    }
+    fmath::maxss(sum, 0.0)
+}
+
+/// What the attack and the range a combat object shows (slots 0x878 and 0x880) read besides the
+/// object as a hit reads it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Shown<'a> {
+    /// The target of its top action when that attacks (action type 9 or 7, `FUN_14107cc30`).
+    pub target: Option<&'a Victim>,
+    /// The weapons (class, amount) of its master's charge projectile (`+0x928`) when its player
+    /// holds that master (`FUN_141659d20`).
+    pub projectile: Option<&'a [(i16, i16)]>,
+    /// Its master's `charge_event` (`+0x920`), which a ready charge of type 6 or 7 adds to its
+    /// range.
+    pub charge_event: i16,
+    /// Its max range powerup (`+0xa40`, slot 0x700).
+    pub range_powerup: f32,
+}
+
+/// Slot 0x320 of a combat unit or building (`FUN_141211440`): its charge is ready (slot 0x300,
+/// [`charged`]) and, unless its master's `charge_target` is −1, works on `target` (slot 0x2f0,
+/// [`charge_hit`], or slot 0x2f8, [`range_charge_hit`]); with a `charge_target` but no target,
+/// not. A combat object of type 50 or 60 has no charge (`FUN_14106c580`).
+fn charge_shown(v: &Victim, target: Option<&Victim>) -> bool {
+    let a = &v.source;
+    v.tribe()
+        && charged(a)
+        && (a.charge_target == -1
+            || target.is_some_and(|t| charge_hit(a, t) || range_charge_hit(a, t)))
+}
+
+/// The best amount of `weapons` above 0 (the first of a tie), of a melee, pierce or class-31
+/// weapon with `fighting`.
+fn best_attack(weapons: &[(i16, i16)], fighting: bool) -> i16 {
+    weapons
+        .iter()
+        .filter(|w| !fighting || matches!(w.0, 3 | 4 | 31))
+        .fold(0, |m, w| if m < w.1 { w.1 } else { m })
+}
+
+/// A float as `(short)(int)` takes it: `CVTTSS2SI`, then its low 16 bits.
+fn whole(f: f32) -> i16 {
+    cvttss2si(f) as i16
+}
+
+/// Slot 0x878 of a combat object, the attack it shows (`FUN_141085c70`; a combat unit's or
+/// building's `FUN_141213990`). With a ready charge of type 6 or 7 ([`charge_shown`]) and its
+/// charge projectile's master among its player's, that master's best melee, pierce or class-31
+/// attack (`FUN_1410d5740`). Else its best melee, pierce or class-31 attack, without one its best
+/// attack (from 0), plus its attack powerup (`+0xa24`, slot 0x6d8) and stinger (`+0xb48`, slot
+/// 0x768, 0 as [`Victim::most_hp`] says), each as a whole number ([`whole`]), plus the bonus
+/// damage of its tasks against its attack's target ([`bonus_damage`]); a ready charge of type 1
+/// or 3 adds the charge (`+0x9e0`). A combat object of type 50 or 60 has no powerups (its slots
+/// answer 0). The sums wrap at 16 bits.
+#[must_use]
+pub fn shown_attack(v: &Victim, s: &Shown<'_>) -> i16 {
+    let a = &v.source;
+    let charge = charge_shown(v, s.target);
+    if charge
+        && matches!(a.charge_type, 6 | 7)
+        && let Some(weapons) = s.projectile
+    {
+        return best_attack(weapons, true);
+    }
+    let mut attack = best_attack(&v.weapons, true);
+    if attack == 0 {
+        attack = best_attack(&v.weapons, false);
+    }
+    let powerup = if v.tribe() { a.attack_powerup } else { 0.0 };
+    attack = attack.wrapping_add(whole(powerup)).wrapping_add(whole(0.0));
+    if let Some(t) = s.target {
+        attack = attack.wrapping_add(whole(bonus_damage(v, t)));
+    }
+    if charge && matches!(a.charge_type, 1 | 3) {
+        attack = attack.wrapping_add(whole(a.charge));
+    }
+    attack
+}
+
+/// Slot 0x868 of a combat object, the melee armor it shows: a combat unit's or building's
+/// [`melee_armor`], a type 50's or 60's [`master_melee_armor`] (`FUN_141085450`, its slots 0x708
+/// and 0x770 answer 0).
+///
+/// # Errors
+///
+/// An object without combat values (a type below 50).
+pub fn shown_melee_armor(v: &Victim) -> Result<i16, GenieError> {
+    let a = v.armored.as_ref().ok_or(GenieError::unreachable(
+        "the melee armor of an object without combat values",
+    ))?;
+    Ok(if v.tribe() {
+        melee_armor(a, v.class, v.state)
+    } else {
+        master_melee_armor(a)
+    })
+}
+
+/// Slot 0x880 of a combat object (`FUN_1410861a0`), the range it shows: its master's weapon
+/// range (`+0x828`), to which a ready charge of type 6 or 7 ([`charge_shown`]) adds its master's
+/// `charge_event`, plus its max range powerup (`+0xa40`, slot 0x700; 0 for a type 50 or 60).
+#[must_use]
+pub fn shown_range(v: &Victim, s: &Shown<'_>) -> f32 {
+    let a = &v.source;
+    let mut range = a.weapon_range;
+    if matches!(a.charge_type, 6 | 7) && charge_shown(v, s.target) {
+        range += f32::from(s.charge_event);
+    }
+    let powerup = if v.tribe() { s.range_powerup } else { 0.0 };
+    powerup + range
+}
+
 /// `FUN_14108d8a0`: a shield blocks the hit: a target whose master's charge type is 5 against a
 /// melee hit (4 against a missile) spends a charge of 1 when it has one (`COMISS 1.0, charge`,
 /// `JA` past: a NaN charge blocks too). The type-5 shield's local-player statistics
@@ -469,8 +675,8 @@ pub fn shield(v: &mut Victim, missile: bool) -> bool {
 
 /// `FUN_141202a80`: the hit points the master's `invulnerability_level` keeps (a share of its hit
 /// points when above 0, the level itself when below), 0 for none.
-fn hp_floor(a: &Armored) -> f32 {
-    invulnerability_floor(a.invulnerability, a.master_hp)
+fn hp_floor(a: &Armored, master_hp: i16) -> f32 {
+    invulnerability_floor(a.invulnerability, master_hp)
 }
 
 /// [`hp_floor`] of a master's `invulnerability_level` and hit points.
@@ -514,7 +720,7 @@ pub fn lose(t: &mut Victim, d: f32) {
         a.hp_powerups[0] = up + room;
         d -= room;
     }
-    let floor = hp_floor(a);
+    let floor = hp_floor(a, t.master_hp);
     let left = t.hp - d;
     t.hp = if floor == 0.0 || floor <= left {
         left
@@ -523,12 +729,40 @@ pub fn lose(t: &mut Victim, d: f32) {
     };
 }
 
+/// `FUN_141085450`, a combat object's melee armor as its master holds it: its best armor of
+/// class 4 above −32768, else its best of any, else its base armor.
+fn master_melee_armor(a: &Armored) -> i16 {
+    let best = |of: Option<i16>| {
+        a.armors
+            .iter()
+            .filter(|&&(k, _)| of.is_none_or(|c| c == k))
+            .fold(i16::MIN, |m, &(_, n)| if m < n { n } else { m })
+    };
+    let mut armor = best(Some(4));
+    if armor == i16::MIN {
+        armor = best(None);
+        if armor == i16::MIN {
+            armor = a.base_armor;
+        }
+    }
+    armor
+}
+
+/// Slot 0x868 of a combat unit or building (`FUN_141213810`): [`master_melee_armor`] plus its
+/// melee armor powerup (`+0xa48`, slot 0x708) and stinger (`+0xb4c`, slot 0x770, 0 as
+/// [`Victim::most_hp`] says), each as 16 bits; a wall foundation (class 27 in state 0) has none.
+fn melee_armor(a: &Armored, own_class: i16, state: u8) -> i16 {
+    let armor = master_melee_armor(a).wrapping_add(a.armor_powerups[0]);
+    if own_class == 27 && state == 0 {
+        return 0;
+    }
+    armor
+}
+
 /// The armor a combat object (type 70 and up) has against melee (class 4; slot 0x868,
-/// `FUN_141085450` and `FUN_141213810`) or pierce (class 3; slot 0x870, `FUN_1410857f0`): its
-/// best armor of the class, else its best of any (melee) or its base armor and best of any
-/// (pierce), plus its powerup (the stingers `+0xb4c`, `+0xb50`, unsaved and written nowhere in
-/// this recording, are 0), less the armor removed. A wall foundation (class 27 in state 0) has
-/// no melee armor (`FUN_141213810`); its pierce armor is computed as any other's.
+/// [`melee_armor`]) or pierce (class 3; slot 0x870, `FUN_1410857f0`: its best armor of the
+/// class, else its base armor and best of any, plus its powerup; the stinger `+0xb50` is 0, as
+/// [`Victim::most_hp`] says), less the armor removed.
 fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> i16 {
     let best = |c: i16, from: i16| {
         a.armors
@@ -542,20 +776,7 @@ fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> i16 {
             .fold(from, |m, &(_, n)| if m < n { n } else { m })
     };
     match class {
-        4 => {
-            let mut armor = best(4, i16::MIN);
-            if armor == i16::MIN {
-                armor = any(i16::MIN);
-                if armor == i16::MIN {
-                    armor = a.base_armor;
-                }
-            }
-            armor = armor.wrapping_add(a.armor_powerups[0]);
-            if own_class == 27 && state == 0 {
-                armor = 0;
-            }
-            armor.wrapping_sub(a.armor_removed[0])
-        }
+        4 => melee_armor(a, own_class, state).wrapping_sub(a.armor_removed[0]),
         3 => {
             let mut armor = best(3, -1);
             if armor == -1 {
@@ -581,13 +802,15 @@ fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> i16 {
 /// scaled by 1 less the `bonus_damage_resistance` when it does damage. Each weapon's attack less
 /// armor, times the elevation factor and the terrain defense, adds when above 0 (or below 0
 /// against an armor below the base that rises above the attack: then at most 0). The damage is
-/// the sum, at least 1 (0 under the game's setting `+0x680` at 1). Not modelled: the bonus damage
-/// tasks (action type 0xa0, `FUN_14107ce60`).
+/// the sum, at least 1 (0 under the game's setting `+0x680` at 1). `bonus` is the attacker's
+/// bonus damage against `v` ([`bonus_damage`]), which the first such weapon adds with the
+/// powerup.
 pub fn armor_damage(
     v: &Victim,
     weapons: &[(i16, i16)],
     factor: f32,
     attacker: &Attacker,
+    bonus: f32,
 ) -> Result<f32, GenieError> {
     let a = v.armored.as_ref().ok_or(GenieError::unsupported(
         "the armor of an object without combat values",
@@ -650,13 +873,8 @@ pub fn armor_damage(
                 attack += 0.0;
             }
             if pierce_or_melee && !bonused {
-                if attacker.bonus_tasks {
-                    return Err(GenieError::unsupported(
-                        "an attacker with bonus damage tasks (FUN_14107ce60)",
-                    ));
-                }
-                let bonus = 0.0f32 + attacker.attack_powerup;
-                attack += 0.0 + bonus;
+                // the bonus, then the stinger plus the powerup
+                attack += bonus + (0.0 + attacker.attack_powerup);
                 bonused = true;
             }
         }
@@ -979,7 +1197,7 @@ fn take_unit(
     damage(t, src, weapons, factor, blast_taken)?;
     // a hit takes at least one hit point
     let mut lost = before - effective(t);
-    let floor = hp_floor(&a);
+    let floor = hp_floor(&a, t.master_hp);
     if lost < 1.0 && (floor == 0.0 || floor + 1.0 <= before) {
         t.hp = before - 1.0;
         lost = 1.0;
@@ -1016,7 +1234,7 @@ fn damage(
     factor: f32,
     blast_taken: f32,
 ) -> Result<(), GenieError> {
-    let d = armor_damage(t, weapons, factor, &src.source)?;
+    let d = armor_damage(t, weapons, factor, &src.source, bonus_damage(src, t))?;
     if blast_taken < d {
         if 70 <= src.kind {
             let hit = charge_hit(&src.source, t);
@@ -1033,7 +1251,7 @@ fn damage(
             "an attacker whose combat ability marks its target (FUN_141206250)",
         ));
     }
-    let master_hp = t.armored.as_ref().map_or(0, |a| i32::from(a.master_hp));
+    let master_hp = i32::from(t.master_hp);
     if src.source.class != ELEPHANT_ARCHER {
         let sender = if src.kind == 60 {
             src.source.fired_from
@@ -1330,10 +1548,10 @@ mod tests {
             master_id: 705,
             player: 1,
             position: [10.5, 10.5, 0.0],
+            master_hp: 14,
             armored: Some(Armored {
                 armors: vec![(4, 0), (3, 0), (31, 0)],
                 terrain_bonus: -1,
-                master_hp: 14,
                 friendly_fire: 1.0,
                 ..Armored::default()
             }),
@@ -1360,10 +1578,10 @@ mod tests {
                 ..Attacker::default()
             },
             weapons: vec![(11, 3), (4, 3), (13, 6), (17, 0)],
+            master_hp: 25,
             armored: Some(Armored {
                 armors: vec![(4, 0), (3, 0)],
                 terrain_bonus: -1,
-                master_hp: 25,
                 friendly_fire: 1.0,
                 ..Armored::default()
             }),
@@ -1460,7 +1678,7 @@ mod tests {
         let (mut sheep, mut hunter) = (sheep(), hunter());
         let weapons = hunter.weapons.clone();
         assert_eq!(
-            armor_damage(&sheep, &weapons, 1.0, &hunter.source),
+            armor_damage(&sheep, &weapons, 1.0, &hunter.source, 0.0),
             Ok(12.0)
         );
         take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
@@ -1482,14 +1700,203 @@ mod tests {
         let x = armored.armored.as_mut().unwrap();
         (x.armors, x.base_armor) = (vec![(4, 10)], 10000);
         assert_eq!(
-            armor_damage(&armored, &[(4, 3)], 1.0, &hunter.source),
+            armor_damage(&armored, &[(4, 3)], 1.0, &hunter.source, 0.0),
             Ok(1.0)
         );
         let zero = Attacker {
             mode_680: 1,
             ..hunter.source
         };
-        assert_eq!(armor_damage(&armored, &[(4, 3)], 1.0, &zero), Ok(0.0));
+        assert_eq!(armor_damage(&armored, &[(4, 3)], 1.0, &zero, 0.0), Ok(0.0));
+    }
+
+    /// Slots 0xc0 and 0xc8 of a combat unit read its hit point powerups; a type-50 object's do
+    /// not. The share is at most 1 (`MINSS`), 0 without most hit points (lacking too), and a
+    /// NaN most divides.
+    #[test]
+    fn a_hit_point_share_reads_the_powerups_and_the_master() {
+        let mut v = hunter();
+        assert_eq!(
+            (v.shown_hp(), v.most_hp(), v.hp_share(false)),
+            (25.0, 25.0, 1.0)
+        );
+        assert_eq!(v.hp_share(true), 0.0);
+        v.hp = 10.0;
+        v.armored.as_mut().unwrap().hp_powerups = [2.0, 5.0];
+        assert_eq!((v.shown_hp(), v.most_hp()), (13.0, 30.0));
+        assert_eq!(v.hp_share(false), 13.0 / 30.0);
+        assert_eq!(v.hp_share(true), 1.0 - 13.0 / 30.0);
+        v.hp = 40.0;
+        assert_eq!(v.hp_share(false), 1.0);
+        let mut rge = hunter();
+        rge.kind = 50;
+        rge.hp = 10.0;
+        rge.armored.as_mut().unwrap().hp_powerups = [2.0, 5.0];
+        assert_eq!((rge.shown_hp(), rge.most_hp()), (10.0, 25.0));
+        let mut none = hunter();
+        none.master_hp = 0;
+        assert_eq!((none.hp_share(false), none.hp_share(true)), (0.0, 0.0));
+        let mut nan = hunter();
+        nan.armored.as_mut().unwrap().hp_powerups = [0.0, f32::NAN];
+        assert!(nan.hp_share(false).is_nan());
+    }
+
+    /// `FUN_14107ce60`: each task of action type 0xa0 that fits the target adds its amount per
+    /// whole step of a share (the target's with a work range above 0, else the attacker's; the
+    /// share lacking with `attribute_type4`), and the sum is at least 0.
+    #[test]
+    fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
+        let task =
+            |object_group: i16, object_id: i16, range: f32, lacking: i16| crate::masters::Task {
+                action_type: BONUS_DAMAGE,
+                object_group,
+                object_id,
+                work_range: range,
+                attribute_type4: lacking,
+                work_val1: 2.0,
+                work_val2: 0.25,
+                ..crate::masters::Task::default()
+            };
+        let (mut sheep, mut hunter) = (sheep(), hunter());
+        sheep.hp = 7.0;
+        // any target below type 80: the sheep lacks half its hit points, two steps of 0.25
+        hunter.bonus_tasks = vec![task(-1, -1, 1.0, 1)];
+        let steps = libm::floorf(0.5 / 0.25 + EPSILON);
+        assert_eq!(bonus_damage(&hunter, &sheep), steps * 2.0);
+        // the attacker's share (a work range of 0), whole: four steps
+        hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+        assert_eq!(bonus_damage(&hunter, &sheep), 4.0 * 2.0);
+        // by class or master; another class, master or action type adds nothing
+        hunter.bonus_tasks = vec![
+            task(LIVESTOCK, 0, 0.0, 0),
+            task(-1, 705, 0.0, 0),
+            task(3, 0, 0.0, 0),
+            task(-1, 9, 0.0, 0),
+            crate::masters::Task {
+                action_type: 0xa1,
+                ..task(-1, -1, 0.0, 0)
+            },
+        ];
+        assert_eq!(bonus_damage(&hunter, &sheep), 16.0);
+        // a building of another class than 51 and 54 needs its class or master
+        let mut tc = sheep.clone();
+        (tc.kind, tc.class) = (BUILDING, 3);
+        hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+        assert_eq!(bonus_damage(&hunter, &tc), 0.0);
+        tc.class = 51;
+        assert_eq!(bonus_damage(&hunter, &tc), 8.0);
+        // no step, no target hit points, or a negative sum: 0
+        hunter.bonus_tasks = vec![crate::masters::Task {
+            work_val2: 0.0,
+            ..task(-1, -1, 0.0, 0)
+        }];
+        assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
+        hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+        sheep.hp = 0.0;
+        assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
+        sheep.hp = 7.0;
+        hunter.bonus_tasks = vec![crate::masters::Task {
+            work_val1: -3.0,
+            ..task(-1, -1, 0.0, 0)
+        }];
+        assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
+    }
+
+    /// The first melee weapon adds the bonus with the powerup.
+    #[test]
+    fn the_bonus_damage_adds_to_the_first_melee_weapon() {
+        let (sheep, mut hunter) = (sheep(), hunter());
+        hunter.source.attack_powerup = 1.0;
+        assert_eq!(
+            armor_damage(&sheep, &[(4, 3), (3, 2)], 1.0, &hunter.source, 2.0),
+            Ok(3.0 + 2.0 + 1.0 + 2.0)
+        );
+    }
+
+    /// Slots 0x878, 0x868 and 0x880: the best fighting attack (else any) with the whole
+    /// powerup, the bonus against the attack's target and a ready charge of type 1; a ready
+    /// charge of type 6 or 7 shows the projectile's attack and adds the charge event to the
+    /// range; type 50 shows neither powerups nor charges.
+    #[test]
+    fn a_combat_object_shows_its_attack_armor_and_range() {
+        let (sheep, mut v) = (sheep(), hunter());
+        let none = Shown::default();
+        assert_eq!(shown_attack(&v, &none), 3);
+        v.source.attack_powerup = 1.7;
+        assert_eq!(shown_attack(&v, &none), 4);
+        let mut far = v.clone();
+        far.weapons = vec![(13, 6), (11, -2)];
+        assert_eq!(shown_attack(&far, &none), 7);
+        far.kind = 50;
+        assert_eq!(shown_attack(&far, &none), 6);
+        // the bonus against its attack's target
+        v.bonus_tasks = vec![crate::masters::Task {
+            action_type: BONUS_DAMAGE,
+            attribute_type4: 0,
+            work_val1: 1.5,
+            work_val2: 0.5,
+            ..crate::masters::Task::default()
+        }];
+        let at_sheep = Shown {
+            target: Some(&sheep),
+            ..Shown::default()
+        };
+        assert_eq!(shown_attack(&v, &at_sheep), 4 + 3);
+        v.bonus_tasks.clear();
+        // a ready charge of type 1 for every target, or for its target's class group
+        (v.source.charge_type, v.source.max_charge, v.source.charge) = (1, 5.0, 5.5);
+        v.source.charge_target = -1;
+        assert_eq!(shown_attack(&v, &none), 4 + 5);
+        v.source.charge_target = 0;
+        assert_eq!(shown_attack(&v, &none), 4);
+        assert_eq!(shown_attack(&v, &at_sheep), 4 + 5);
+        // a ready charge of type 6 shows the projectile's best fighting attack, and its range
+        // the charge event
+        (v.source.charge_type, v.source.charge_target) = (6, -1);
+        let projectile = [(13, 20), (3, 9), (4, 2)];
+        let shot = Shown {
+            projectile: Some(&projectile),
+            charge_event: 2,
+            range_powerup: 1.0,
+            ..Shown::default()
+        };
+        assert_eq!(shown_attack(&v, &shot), 9);
+        v.source.weapon_range = 4.0;
+        assert_eq!(shown_range(&v, &shot), 1.0 + (2.0 + 4.0));
+        v.source.charge = 0.5;
+        assert_eq!(shown_attack(&v, &shot), 4);
+        assert_eq!(shown_range(&v, &shot), 5.0);
+        v.kind = 50;
+        v.source.charge = 1.0;
+        assert_eq!(shown_range(&v, &shot), 4.0);
+        // the melee armor: its best of class 4 plus the powerup; a wall foundation none; type 50
+        // without the powerup; else its best of any, else its base armor
+        let mut a = hunter();
+        a.armored.as_mut().unwrap().armor_powerups = [2, 0];
+        assert_eq!(shown_melee_armor(&a), Ok(2));
+        (a.class, a.state) = (27, 0);
+        assert_eq!(shown_melee_armor(&a), Ok(0));
+        a.kind = 50;
+        a.armored.as_mut().unwrap().armors = vec![(3, 5), (11, 7)];
+        assert_eq!(shown_melee_armor(&a), Ok(7));
+        a.armored.as_mut().unwrap().armors.clear();
+        a.armored.as_mut().unwrap().base_armor = -1;
+        assert_eq!(shown_melee_armor(&a), Ok(-1));
+        a.armored = None;
+        assert!(shown_melee_armor(&a).is_err());
+    }
+
+    /// Slot 0x2f8: a ready charge of type 6 or 7 that works on the target.
+    #[test]
+    fn a_range_charge_hits_a_target_its_class_group_names() {
+        let (sheep, mut v) = (sheep(), hunter());
+        (v.source.charge_type, v.source.max_charge, v.source.charge) = (7, 5.0, 1.0);
+        v.source.charge_target = 0;
+        assert!(range_charge_hit(&v.source, &sheep));
+        v.source.charge = 0.5;
+        assert!(!range_charge_hit(&v.source, &sheep));
+        (v.source.charge_type, v.source.charge) = (1, 9.0);
+        assert!(!range_charge_hit(&v.source, &sheep));
     }
 
     /// The terrain defense scales each weapon's damage; a restriction value of 0 counts as 1 for
@@ -1501,11 +1908,11 @@ mod tests {
         let x = sheep.armored.as_mut().unwrap();
         (x.terrain_bonus, x.terrain) = (4, Some(1.5));
         assert_eq!(
-            armor_damage(&sheep, &[(4, 4)], 1.0, &hunter.source),
+            armor_damage(&sheep, &[(4, 4)], 1.0, &hunter.source, 0.0),
             Ok(6.0)
         );
         sheep.armored.as_mut().unwrap().terrain = None;
-        assert!(armor_damage(&sheep, &[(4, 4)], 1.0, &hunter.source).is_err());
+        assert!(armor_damage(&sheep, &[(4, 4)], 1.0, &hunter.source, 0.0).is_err());
     }
 
     /// A ready charge of type 1 adds itself to the first melee weapon; the hit is the charge's,
@@ -1518,7 +1925,7 @@ mod tests {
         hunter.source.max_charge = 5.0;
         hunter.source.charge = 5.0;
         assert_eq!(
-            armor_damage(&sheep, &[(4, 3), (3, 2)], 1.0, &hunter.source),
+            armor_damage(&sheep, &[(4, 3), (3, 2)], 1.0, &hunter.source, 0.0),
             Ok(5.0 + 3.0 + 2.0)
         );
         take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
@@ -1528,7 +1935,7 @@ mod tests {
         // not ready: no charge
         hunter.source.charge = 4.0;
         assert_eq!(
-            armor_damage(&sheep, &[(4, 3)], 1.0, &hunter.source),
+            armor_damage(&sheep, &[(4, 3)], 1.0, &hunter.source, 0.0),
             Ok(3.0)
         );
     }
@@ -1793,10 +2200,10 @@ mod tests {
             master_id: 70,
             player: 2,
             position: [20.5, 20.5, 0.0],
+            master_hp: 550,
             armored: Some(Armored {
                 armors: vec![(4, 0), (3, 7)],
                 terrain_bonus: -1,
-                master_hp: 550,
                 friendly_fire: 1.0,
                 ..Armored::default()
             }),

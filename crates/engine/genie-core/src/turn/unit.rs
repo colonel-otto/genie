@@ -161,6 +161,9 @@ pub struct Unit {
     /// (`+0x9e4`, `+0x9e6`), the charge (`+0x9e0`) and `mHitSomethingValidForChargeAttack`
     /// (`+0x8a8`: its last hit was its charge's).
     pub attack_powerup: f32,
+    /// `mMaxRangePowerup` (`+0xa40`, slot 0x700): what its shown range adds
+    /// ([`crate::damage::shown_range`]).
+    pub range_powerup: f32,
     /// Its melee and pierce armor powerups (`+0x9e4`, `+0x9e6`).
     pub armor_powerups: [i16; 2],
     /// The melee and pierce armor taken off it (its charge's hits).
