@@ -4769,6 +4769,28 @@ impl UnitAi {
         Ok(())
     }
 
+    /// `FUN_140c5dc10` from outside the full update for a unit at `place` (its place and its
+    /// master's class, which a stop ending an order reads): true when a completion stopped the
+    /// action (slot 0xb0 with 1), whose stopAction (slot 0x3c0) the caller runs on the unit then.
+    ///
+    /// # Errors
+    ///
+    /// What the stop does not model.
+    pub fn clear_notifies_at(
+        &mut self,
+        time: u32,
+        place: ([f32; 2], i16),
+    ) -> Result<bool, GenieError> {
+        let at = Surroundings {
+            position: [place.0[0], place.0[1], 0.0],
+            class: place.1,
+            ..Surroundings::default()
+        };
+        let mut fx = Vec::new();
+        self.end_notifies(time, &at, &mut fx)?;
+        Ok(fx.contains(&Effect::Stop))
+    }
+
     /// `FUN_140c5dc10` from outside the full update (a MOVE, an ownership change: `time` is the
     /// world time), where a completion it would stop on is not modelled.
     pub fn clear_notifies(&mut self, time: u32) -> Result<(), GenieError> {

@@ -1577,10 +1577,10 @@ impl Turns {
         a14: bool,
     ) -> Result<bool, GenieError> {
         let world_time = self.world_time;
-        let villager = self
+        let class = self
             .master_of(player, self.players[player].objects[idx].life.master_id)?
-            .class
-            == VILLAGER;
+            .class;
+        let villager = class == VILLAGER;
         let unit = &mut self.players[player].objects[idx];
         if villager {
             unit.town_bell.flag = false;
@@ -1591,9 +1591,14 @@ impl Turns {
         if target == unit.id {
             return Ok(false);
         }
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.clear_notifies(world_time)?;
+        let place = ([unit.position[0], unit.position[1]], class);
+        if let Some(ai) = unit.ai.as_mut()
+            && ai.clear_notifies_at(world_time, place)?
+        {
+            // the completion's stop (slot 0xb0 with 1): the unit's stopAction at once
+            self.command_stop(player, idx)?;
         }
+        let unit = &mut self.players[player].objects[idx];
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
         if unit.ai.is_some()
             && !stop_after_kill
@@ -2518,10 +2523,18 @@ impl Turns {
         // a unit with a unit AI (FUN_140c5dc10 clears its notifies with the world time) lets its
         // head action's slot 0x40 take the point unless it stops after a kill (FUN_140c41c10)
         let world_time = self.world_time;
+        let class = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .class;
         let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.clear_notifies(world_time)?;
+        let place = ([unit.position[0], unit.position[1]], class);
+        if let Some(ai) = unit.ai.as_mut()
+            && ai.clear_notifies_at(world_time, place)?
+        {
+            // the completion's stop (slot 0xb0 with 1): the unit's stopAction at once
+            self.command_stop(player, idx)?;
         }
+        let unit = &mut self.players[player].objects[idx];
         let stop_after_kill = unit.ai.as_ref().is_some_and(|ai| ai.stop_after_kill);
         let taken = unit.ai.is_some()
             && !stop_after_kill
@@ -7152,6 +7165,29 @@ mod tests {
         let ai = u.ai.as_ref().unwrap();
         assert_eq!(ai.target_point, [30.5, 20.5, 0.0]);
         assert!(ai.patrol_path.is_some());
+    }
+
+    /// `FUN_14106d340`'s `FUN_140c5dc10` with a completion of the unit AI's current action
+    /// (no order) pending: the action stops (slot 0xb0 with 1: its value the last, none now) and
+    /// the unit's stopAction runs at once, before the move.
+    #[test]
+    fn a_move_runs_the_stop_of_a_pending_completion_first() {
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0])], &[]);
+        let ai = t.players[1].objects[0].ai.as_mut().unwrap();
+        ai.current_action = crate::unit_ai::MOVE_ACTION;
+        ai.notifies = vec![crate::unit_ai::Notify::own(
+            11,
+            crate::unit_ai::ACTION_COMPLETED,
+            [crate::unit_ai::MOVE_ACTION, 0, 0],
+        )];
+        assert_eq!(t.move_to_point(1, 0, [30.0, 20.0, 0.0]), Ok(false));
+        let u = &t.players[1].objects[0];
+        let ai = u.ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_action, ai.last_action, ai.notifies.len()),
+            (-1, crate::unit_ai::MOVE_ACTION, 0)
+        );
+        assert_eq!(u.move_to.unwrap().goal, Some([30.0, 20.0, 0.0]));
     }
 
     /// The attack move of 428506340's update 940 (`+0x8` and `+0xa` set): player 1's lone unit
