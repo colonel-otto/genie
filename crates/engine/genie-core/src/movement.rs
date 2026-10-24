@@ -2995,7 +2995,7 @@ impl Mover {
     /// the target's master that neither player counts an ally notifies the walker's unit AI
     /// (0x215, [`Mover::in_the_way`]). Then the walked level goes and its parent asks for a path again
     /// (state 2), which plans around the temporary shapes; without a parent the unit stops (slot
-    /// 0x5d0).
+    /// 0x5d0) and the step gives up (1).
     fn go_round(
         &mut self,
         me: &Me,
@@ -3043,10 +3043,10 @@ impl Mover {
                 }
             }
         }
+        // without a parent (`+8`) the unit stops (slot 0x5d0) and the step returns 1
         if self.paths.len() < 2 {
-            return Err(GenieError::unsupported(
-                "a kept hit on a walk without a parent level (its stop)",
-            ));
+            self.stop()?;
+            return Ok(Next::Done(Motion::Done));
         }
         let _ = self.paths.remove(0);
         self.paths[0].state = 2;
@@ -3974,6 +3974,35 @@ mod tests {
         let avoided = avoided.unwrap();
         assert!(avoided.at_target);
         assert_eq!((avoided.kept, avoided.pauses), (vec![9175], Vec::new()));
+    }
+
+    /// The walk's kept hits ([`Mover::go_round`]): with a parent the walked level goes and its
+    /// parent asks for a path again (state 2); a walk without one (a group member's own path,
+    /// level 0 from slot 0x540) stops the unit (slot 0x5d0) and the step gives up (1).
+    #[test]
+    fn kept_hits_replan_the_parent_or_stop_a_walk_without_one() {
+        let w = world();
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut m = builder_9177();
+        assert_eq!(m.paths.len(), 2);
+        assert!(matches!(
+            m.go_round(&me, &w, &[9175], false),
+            Ok(Next::Again)
+        ));
+        assert_eq!((m.paths.len(), m.paths[0].state), (1, 2));
+        let mut lone = builder_9177();
+        lone.paths.truncate(1);
+        assert!(matches!(
+            lone.go_round(&me, &w, &[9175], false),
+            Ok(Next::Done(Motion::Done))
+        ));
+        assert!(lone.speed_stopped);
+        assert_eq!(lone.velocity.map(|v| v.velocity[2]), Some(0.0));
     }
 
     /// A map edge's record (id `x << 12 | y | 0xff000000`, [`Spatial::edge_records`]) is a hit
