@@ -222,9 +222,7 @@ pub(in crate::turn) fn closest_resource_of(
         let m = every
             .get(owner)
             .and_then(|m| m.get(u.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "an object of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::OBJECT_MASTER)?;
         Ok(Candidate {
             id,
             player: owner,
@@ -1167,9 +1165,7 @@ pub(in crate::turn) fn task_target_with<'a>(
     let master = every
         .get(player)
         .and_then(|m| m.get(u.life.master_id))
-        .ok_or(GenieError::unsupported(
-            "an object of a master the slice does not have",
-        ))?;
+        .ok_or(crate::turn::OBJECT_MASTER)?;
     let [powerup, max_powerup] = u.hp_powerups;
     Ok(Some(TaskTarget {
         id,

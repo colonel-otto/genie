@@ -261,9 +261,7 @@ impl Turns {
         self.masters
             .get(player)
             .and_then(|m| m.get(master))
-            .ok_or(GenieError::unsupported(
-                "an object of a master the slice does not have",
-            ))
+            .ok_or(crate::turn::OBJECT_MASTER)
     }
 
     /// What the task finder reads of object `id`; an annex stands for its main building (`+0xbb8`),

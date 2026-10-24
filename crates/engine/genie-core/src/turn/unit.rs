@@ -1326,12 +1326,10 @@ impl Unit {
         c: &mut Context<'_>,
         task: &crate::hunt::HuntTask,
     ) -> Result<(), GenieError> {
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a hunter of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::HUNTER_MASTER)?;
         let stand = crate::hunt::stand_sprite(
             task,
             master.standing_sprite,
@@ -1364,12 +1362,10 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let hunt = self.hunt.as_ref().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a hunter of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::HUNTER_MASTER)?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_none_or(|&d| d == -1) {
@@ -1419,12 +1415,10 @@ impl Unit {
         others: &mut [Self],
     ) -> Result<(), GenieError> {
         let hunt = self.hunt.as_ref().expect("the caller's hunt");
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a hunter of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::HUNTER_MASTER)?;
         if hunt.target != -1 {
             // back to the target: the drop site goes (FUN_140a7a190 with none), set_state(4)
             let v = c.victim.as_deref().ok_or(GenieError::unsupported(
@@ -1810,12 +1804,10 @@ impl Unit {
         if let Some(t) = let_go {
             c.releases.push((t, by));
         }
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a gatherer of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::GATHERER_MASTER)?;
         let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
         let task = gather.task;
         let sprites = HuntSprites {
@@ -2054,12 +2046,10 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let gather = self.gather.as_ref().expect("the caller's gather");
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a gatherer of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::GATHERER_MASTER)?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_some_and(|&d| d != -1) {
@@ -2171,9 +2161,10 @@ impl Unit {
                 let mut gather = self.gather.take().expect("the caller's gather");
                 gather.tear_down(self.mover.as_mut())?;
             } else {
-                let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
-                    GenieError::unsupported("a gatherer of a master the slice does not have"),
-                )?;
+                let master = c
+                    .masters
+                    .and_then(|m| m.get(self.life.master_id))
+                    .ok_or(crate::turn::GATHERER_MASTER)?;
                 let standing = (0 <= master.standing_sprite)
                     .then(|| c.graphics.get(&master.standing_sprite).copied())
                     .flatten();
@@ -2213,12 +2204,10 @@ impl Unit {
                 "a gather's new target the slice does not hold",
             ))?,
         };
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a gatherer of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::GATHERER_MASTER)?;
         let t_master = c
             .every_masters
             .get(owner)
@@ -2378,12 +2367,10 @@ impl Unit {
         carry_to: i32,
         state: u8,
     ) -> Result<(i32, f32), GenieError> {
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a gatherer of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::GATHERER_MASTER)?;
         let mover = self
             .mover
             .as_ref()
@@ -2430,9 +2417,7 @@ impl Unit {
         ))?;
         let master = masters
             .get(self.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "a gatherer of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::GATHERER_MASTER)?;
         let mover = self
             .mover
             .as_ref()
@@ -2786,9 +2771,7 @@ impl Unit {
             let m = every
                 .get(owner)
                 .and_then(|m| m.get(u.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "an object of a master the slice does not have",
-                ))?;
+                .ok_or(crate::turn::OBJECT_MASTER)?;
             Ok(Candidate {
                 id,
                 player: owner,
@@ -2947,12 +2930,10 @@ impl Unit {
             top_action: t.top_action_kind(),
             drop_site: false,
         };
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a hunter of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::HUNTER_MASTER)?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let at = |id| {
             c.spatial
@@ -3113,9 +3094,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "a named object of a master the slice does not have",
                 ))?;
-            let me = master.ok_or(GenieError::unsupported(
-                "a unit AI's unit of a master the slice does not have",
-            ))?;
+            let me = master.ok_or(crate::turn::UNIT_AI_MASTER)?;
             seen.push(crate::unit_ai::UnitSeen {
                 id,
                 class: m.class,
@@ -3212,12 +3191,10 @@ impl Unit {
         c: &mut Context<'_>,
         aimed: Aimed,
     ) -> Result<(), GenieError> {
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "an attacker of a master the slice does not have",
-                ))?;
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::turn::ATTACKER_MASTER)?;
         if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
             && self.life.state == 2
         {
@@ -5660,9 +5637,10 @@ impl Unit {
             }
         } else if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
             // state 8 has no target: its drop site (the second target) is what it walks to
-            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
-                GenieError::unsupported("a hunter of a master the slice does not have"),
-            )?;
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::turn::HUNTER_MASTER)?;
             let me_at = c
                 .spatial
                 .get_known(self.id)?
@@ -5777,9 +5755,10 @@ impl Unit {
             // states 15 and 11: the walk to a point; state 15's end is set_state(2): the unit
             // takes the hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target
             // and the second target go; state 11's is set_state(3), the search
-            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
-                GenieError::unsupported("a hunter of a master the slice does not have"),
-            )?;
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::turn::HUNTER_MASTER)?;
             let who = crate::hunt::PointWalker {
                 computer: c.computer,
                 villager: master.class == 4,
@@ -5851,15 +5830,14 @@ impl Unit {
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
         } else if let Some(hunt) = self.hunt.as_mut() {
             let computer = c.computer;
-            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
-                GenieError::unsupported("a hunter of a master the slice does not have"),
-            )?;
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::turn::HUNTER_MASTER)?;
             let victim = c.victim.take().ok_or(GenieError::unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
-            let own = own.ok_or(GenieError::unsupported(
-                "a hunter of a master the slice does not have",
-            ))?;
+            let own = own.ok_or(crate::turn::HUNTER_MASTER)?;
             // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
             let productivity = usize::try_from(hunt.task.productivity)
                 .ok()
@@ -6082,9 +6060,10 @@ impl Unit {
             c.leads = leads;
         } else if let Some(attack) = self.attack.as_mut().filter(|a| a.target == -1) {
             // the unit's own Attack after its target went ([`Attack::lost`])
-            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
-                GenieError::unsupported("an attacker of a master the slice does not have"),
-            )?;
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::turn::ATTACKER_MASTER)?;
             let armed = armed(master, self.firepower);
             let (code, disarmed) =
                 attack.update_targetless(c.dt_seconds, armed, &mut self.anim_speed)?;
@@ -6104,17 +6083,16 @@ impl Unit {
         } else if let Some(attack) = self.attack.as_mut() {
             // the unit's own Attack (slot 6, 0x140a82ae0), its notifies posted to its unit AI
             // (slot 0x328); codes 1 and 3 delete it (RGE_Action_Object::update)
-            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
-                GenieError::unsupported("an attacker of a master the slice does not have"),
-            )?;
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::turn::ATTACKER_MASTER)?;
             let armed = armed(master, self.firepower);
             let computer = c.computers.get(c.player).copied().unwrap_or(false);
             let victim = c.victim.take().ok_or(GenieError::unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
-            let own = own.ok_or(GenieError::unsupported(
-                "an attacker of a master the slice does not have",
-            ))?;
+            let own = own.ok_or(crate::turn::ATTACKER_MASTER)?;
             let mut blasted = std::mem::take(&mut c.blasted);
             let can_move = self
                 .ai

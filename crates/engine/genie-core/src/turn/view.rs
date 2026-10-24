@@ -1541,9 +1541,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .masters
             .and_then(|ms| ms.get(self.unit.life.master_id))
             .map(|m| m.radius)
-            .ok_or(GenieError::unsupported(
-                "a unit AI's unit of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::UNIT_AI_MASTER)?;
         for r in lists[1].iter().chain(&lists[2]) {
             if r.id == me {
                 continue;
@@ -1611,15 +1609,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .every
             .get(owner)
             .and_then(|ms| ms.get(u.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "an object of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::OBJECT_MASTER)?;
         let me = self
             .masters
             .and_then(|ms| ms.get(self.unit.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "a unit AI's unit of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::UNIT_AI_MASTER)?;
         Ok(Some(crate::unit_ai::UnitSeen {
             id,
             class: m.class,
@@ -1854,9 +1848,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let master = self
             .masters
             .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(GenieError::unsupported(
-                "an attacker of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::ATTACKER_MASTER)?;
         if matches!(master.class, 51 | 54) {
             return Err(GenieError::unsupported(
                 "the attack command of a unit of class 51 or 54",
@@ -2127,9 +2119,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let (masters, own) = self
             .masters
             .and_then(|m| Some((m, m.get(unit.life.master_id)?)))
-            .ok_or(GenieError::unsupported(
-                "a unit AI's unit of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::UNIT_AI_MASTER)?;
         let actor = Actor {
             id: unit.id,
             master: own,
@@ -2255,14 +2245,10 @@ impl UnitView<'_> {
                 .push(AiStart::Repair(RepairOrder::Retake(target)));
             return Ok(true);
         }
-        let masters = self.masters.ok_or(GenieError::unsupported(
-            "a unit AI's unit of a master the slice does not have",
-        ))?;
+        let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
         let own = masters
             .get(unit.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "a unit AI's unit of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::UNIT_AI_MASTER)?;
         let switch = crate::repair::REPAIRERS
             .iter()
             .find(|&&(group, _)| group == own.task_by_group)
@@ -2327,14 +2313,10 @@ impl UnitView<'_> {
             return Ok(false);
         };
         let under_artifact = unit.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE);
-        let masters = self.masters.ok_or(GenieError::unsupported(
-            "a unit AI's unit of a master the slice does not have",
-        ))?;
+        let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
         let own = masters
             .get(unit.life.master_id)
-            .ok_or(GenieError::unsupported(
-                "a unit AI's unit of a master the slice does not have",
-            ))?;
+            .ok_or(crate::turn::UNIT_AI_MASTER)?;
         let (Some(t), Some(general)) = (
             task_target_with(target, 1, &find, self.every)?,
             task_target_with(target, 2, &find, self.every)?,

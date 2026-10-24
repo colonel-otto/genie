@@ -2459,9 +2459,10 @@ pub fn walled_off(
 }
 
 /// [`MeetingTarget`] of the target `t` (of master `tm`) with `room` for the unit: its top speed
-/// ([`crate::movement::MoveStats::speed`]), its top action's state and, for a `MoveTo`, its
-/// point (its goal, or for one on an object the mover's [`crate::movement::Mover::move_to_point`]).
-/// An action the slice does not hold has neither; one but a `MoveTo` no point the slice keeps.
+/// ([`crate::movement::MoveStats::speed`]), its top action's state and its point (`+0x38`,
+/// `+0x3c`): a `MoveTo`'s goal, or for one on an object the mover's
+/// [`crate::movement::Mover::move_to_point`]; a Transport's point. An action the slice does not
+/// hold has neither; another no point the slice keeps.
 pub(crate) fn meeting_target(
     t: &crate::turn::Unit,
     tm: &Master,
@@ -2475,6 +2476,11 @@ pub(crate) fn meeting_target(
             .goal
             .or_else(|| t.mover.as_ref().and_then(|v| v.move_to_point))
             .map(|p| [p[0], p[1]])
+            .ok_or(UNPLACED),
+        // the Transport's point (+0x38, +0x3c), where it sails
+        (Some(crate::transport::TRANSPORT), _) => t
+            .transport
+            .map(|tr| [tr.point[0], tr.point[1]])
             .ok_or(UNPLACED),
         _ => Err(UNPLACED),
     };
@@ -4307,6 +4313,26 @@ pub(crate) mod tests {
         t.garrison_order(1, &[1000], 200, false, false).unwrap();
         let enter = t.object(1000).unwrap().1.enter.unwrap();
         assert_eq!((enter.target, enter.retry), (200, true));
+    }
+
+    #[test]
+    fn a_villager_meets_a_sailing_transport_where_it_sails() {
+        // FUN_140a85f30 on a ship whose Transport sails (state 11): the Transport's point (its
+        // +0x38, +0x3c, FUN_140a7be40 and FUN_140a7be50), code 0
+        let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
+        let ship = t.object_mut(200).unwrap().1;
+        ship.transport = Some(crate::transport::TransportAction {
+            state: crate::transport::SAIL,
+            point: [9.5, 19.5, 0.0],
+            move_to: Some(MoveTo::Start),
+            ..crate::transport::TransportAction::new([5.5, 30.5, 0.0])
+        });
+        t.garrison_order(1, &[1000], 200, false, false).unwrap();
+        let enter = t.object(1000).unwrap().1.enter.unwrap();
+        assert_eq!(
+            (enter.point, enter.move_to),
+            ([9.5, 19.5, 0.0], Some(MoveTo::Start))
+        );
     }
 
     /// A 30 × 20 map, water (terrain 1, flags 1) west of x = 15 and land (terrain 0, flags 8)

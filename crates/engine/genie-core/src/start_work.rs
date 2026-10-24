@@ -169,9 +169,7 @@ impl Turns {
             let m = masters
                 .get(owner)
                 .and_then(|m| m.get(u.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "an object of a master the slice does not have",
-                ))?;
+                .ok_or(crate::turn::OBJECT_MASTER)?;
             let position = spatial.get(id).map_or(u.position, |o| o.position);
             Ok(Candidate {
                 id,

@@ -69,6 +69,22 @@ pub struct Gate {
     pub other_masters: bool,
 }
 
+/// A unit AI's unit of a master the slice does not have.
+pub(crate) const UNIT_AI_MASTER: GenieError =
+    GenieError::unsupported("a unit AI's unit of a master the slice does not have");
+/// A hunter of a master the slice does not have.
+pub(crate) const HUNTER_MASTER: GenieError =
+    GenieError::unsupported("a hunter of a master the slice does not have");
+/// An object of a master the slice does not have.
+pub(crate) const OBJECT_MASTER: GenieError =
+    GenieError::unsupported("an object of a master the slice does not have");
+/// A gatherer of a master the slice does not have.
+pub(crate) const GATHERER_MASTER: GenieError =
+    GenieError::unsupported("a gatherer of a master the slice does not have");
+/// An attacker of a master the slice does not have.
+pub(crate) const ATTACKER_MASTER: GenieError =
+    GenieError::unsupported("an attacker of a master the slice does not have");
+
 /// A gate's height (its master's `radius_z`) above this shuts it (`DAT_142eb0c60`); a unit
 /// slower than it counts in a gate only when it is a player's.
 const GATE_EPSILON: f32 = crate::image::turn::GATE_EPSILON;
