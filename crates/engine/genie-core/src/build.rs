@@ -251,6 +251,9 @@ pub struct FirstPart {
     /// The building's master has a task of action type 0x99 and the building a unit AI: its
     /// search for resources follows ([`crate::turn::Turns::cart_search`]).
     pub cart: bool,
+    /// A pasture (1893, 1897) whose build points reached its build time: its livestock follow
+    /// after the attributes (`FUN_1411c8410`, [`crate::turn::Turns::setup_pasture`]).
+    pub pasture: bool,
 }
 
 impl Completion<'_> {
@@ -261,7 +264,7 @@ impl Completion<'_> {
     /// master 239 the owner has (`FUN_141659d20`) gives it only near the farm
     /// (`FUN_1411d3cd0`, not modelled); a resource up to the owner's attribute count gets
     /// attribute 237's amount (slot 0xf8 with 1 and 1); a pasture (1893, 1897) then fills
-    /// (`FUN_1411c8410`, not modelled); a master with a task of action type 0x99 and a unit AI
+    /// ([`FirstPart::pasture`], the caller's); a master with a task of action type 0x99 and a unit AI
     /// runs its cart's search (the tail's game mode 4 test, `FUN_140c87f20`, holds in a game).
     /// Not modelled: a computer player's (`FUN_1411e7ca0`) and an overridden sprite's master
     /// copy (`+0x788`). Not held: the owner's `+0x137c` (cleared for master 109), the object
@@ -301,11 +304,8 @@ impl Completion<'_> {
                 }
                 part.attributes.push((resource as i16, amount));
             }
-            if matches!(master.id, 1893 | 1897) {
-                return Err(GenieError::unsupported(
-                    "a pasture's completion (FUN_1411c8410)",
-                ));
-            }
+            // the game mode is not the editor's (4) in a game
+            part.pasture = matches!(master.id, 1893 | 1897);
         }
         part.cart = self.ai && master.tasks.iter().any(|t| t.action_type == CART_TASK);
         Ok(part)
@@ -360,6 +360,9 @@ pub struct Built {
     /// Its construction started in the completion (`FUN_1411e5670` on a desolid one): its owner
     /// watches it (the caller's).
     pub started: bool,
+    /// The completion's first part fills the pasture ([`FirstPart::pasture`], the caller's after
+    /// the attributes).
+    pub pasture: bool,
 }
 
 /// A completed building's stack unit (`FUN_1411dbb70`'s block for `+0x986`): the master its
@@ -955,8 +958,10 @@ impl BuildAction {
         Ok(Some((kind, load.amount)))
     }
 
-    /// Case 0xdf of the update, the work ended (224): a farm, the fish trap and masters 1893 and
-    /// 1897 are not modelled; the builder's unit AI drops its build orders on foundations gone or
+    /// Case 0xdf of the update, the work ended (224): a villager works the farm it built (class
+    /// 49 but the fish trap, `FUN_141194b20`: a pasture too), a fishing ship its fish trap
+    /// ([`AfterWork::WorksIt`]); another builder of a pasture (1893, 1897, slot 0x780 against
+    /// its owner's attribute 290) is not modelled; the builder's unit AI drops its build orders on foundations gone or
     /// built (`FUN_140c5dcd0`); with orders left in its queue (`FUN_140c564a0`) it has no order
     /// and no action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build ends (`set_state(1)`,
     /// then the update returns 1: Some(true)). A builder without queued orders looks for more
@@ -986,7 +991,10 @@ impl BuildAction {
         let farm = master.class == FARM && master.id != FISH_TRAP;
         let works_it = (farm && builder.class == VILLAGER)
             || (master.id == FISH_TRAP && FISHING_SHIPS.contains(&builder.master));
-        if matches!(master.id, 1893 | 1897) {
+        // a pasture is a farm to the test, so a villager works it as any farm; another builder
+        // works it when its livestock's workers (slot 0x780, FUN_1411c5dd0) are its owner's
+        // attribute 290
+        if !works_it && matches!(master.id, 1893 | 1897) {
             return Err(GenieError::unsupported(
                 "the end of a Build on a pasture (its animals, slot 0x780)",
             ));
@@ -2029,8 +2037,9 @@ impl crate::turn::Turns {
     }
 
     /// The completion's first part (`FUN_1411c6bd0`, [`Completion::first_part`]) of the
-    /// foundation `id` of `owner` outside its update: its owner gains its attributes, then a mule
-    /// cart's search runs from state 0 ([`crate::turn::Turns::cart_search`]).
+    /// foundation `id` of `owner` outside its update: its owner gains its attributes, a pasture
+    /// fills ([`crate::turn::Turns::setup_pasture`]), then a mule cart's search runs from state 0
+    /// ([`crate::turn::Turns::cart_search`]).
     ///
     /// # Errors
     ///
@@ -2061,6 +2070,9 @@ impl crate::turn::Turns {
         self.track_complete(owner, id, master.id);
         for (kind, amount) in part.attributes {
             self.players[owner].add_attribute(kind, amount)?;
+        }
+        if part.pasture {
+            self.setup_pasture(owner, id)?;
         }
         if part.cart {
             self.cart_search(owner, id, 0)?;
@@ -2240,7 +2252,8 @@ impl crate::turn::Turns {
     /// What a completion leaves the owner `p` of the building `id` ([`Built`]), in the game's
     /// order: its history event (the owner's id, `+0x718`, as `data1`; the game records it
     /// between the storage's attributes and the counts, which it does not read), the attributes
-    /// it gains, a mule cart's search (`FUN_1411c6bd0`'s tail), the watch of
+    /// it gains, a pasture's livestock ([`crate::turn::Turns::setup_pasture`]), a mule cart's
+    /// search (`FUN_1411c6bd0`'s tail), the watch of
     /// a construction that started (`FUN_1411e5670`), the stack unit
     /// ([`crate::turn::Turns::stack_unit`]), the technology (`FUN_1413cdcd0`,
     /// [`crate::turn::Turns::research_built`]) and the destroy of a building that disappears
@@ -2258,6 +2271,9 @@ impl crate::turn::Turns {
         }
         for (kind, amount) in built.attributes {
             self.players[p].add_attribute(kind, amount)?;
+        }
+        if built.pasture {
+            self.setup_pasture(p, id)?;
         }
         if let Some(state) = built.cart {
             self.cart_search(p, id, state)?;
@@ -2391,8 +2407,8 @@ impl crate::turn::Turns {
     ///
     /// # Errors
     ///
-    /// A master of another type than a building (only stack units come here), and what the parts
-    /// do not model.
+    /// What the parts do not model ([`crate::turn::Turns::combat_object`],
+    /// [`crate::turn::Turns::plain_object`], [`crate::turn::Turns::make_building`]).
     pub(crate) fn make_new_object(
         &mut self,
         p: usize,
@@ -2416,10 +2432,18 @@ impl crate::turn::Turns {
             }
             return Ok(Some(id));
         }
+        // a plain object (types 10 and 20 to 39: a pasture's livestock): the master's slot 0x40
+        // there, facing its drawn angle
         if made.kind != BUILDING_TYPE {
-            return Err(GenieError::unsupported(
-                "the player's slot 0x1c0 for an object other than a building",
-            ));
+            let idx = self.plain_object(p, master, &made, at, crate::spawn::Facing::Drawn)?;
+            let id = self.players[p].objects[idx].id;
+            if flagged {
+                self.clear_footprint(p, master, [at[0], at[1]], true)?;
+            }
+            if made.auto_gather {
+                self.made_new_object(p)?;
+            }
+            return Ok(Some(id));
         }
         let ai = Ok(crate::unit_ai::factory_type(
             made.class,
@@ -2755,6 +2779,7 @@ impl Construction {
             stack,
             vanishes,
             started,
+            pasture: first.pasture,
         })
     }
 
@@ -3670,6 +3695,7 @@ mod tests {
                 stack: None,
                 vanishes: false,
                 started: false,
+                pasture: false,
             }))
         );
         assert_eq!((life.state, c.progress, c.snow), (2, 25.0, true));

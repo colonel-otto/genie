@@ -656,6 +656,16 @@ pub mod order {
     pub const WAYPOINT_APART_LOW: f32 = f32::from_bits(0xbf80_0000);
 }
 
+/// The values `crate::pasture`'s port reads.
+pub mod pasture {
+    /// 1.0
+    pub const END: f32 = f32::from_bits(0x3f80_0000);
+    /// 0.5
+    pub const INSET: f32 = f32::from_bits(0x3f00_0000);
+    /// 0.30000001192092896
+    pub const STEP: f32 = f32::from_bits(0x3e99_999a);
+}
+
 /// The values `crate::registry`'s port reads.
 pub mod registry {
     /// 7.0

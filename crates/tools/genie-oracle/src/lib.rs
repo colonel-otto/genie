@@ -325,6 +325,16 @@ fn unit(
             .tribe_building_object
             .as_deref()
             .map_or(0.0, |b| b.livestock_summation),
+        livestock: object
+            .tribe_building_object
+            .as_deref()
+            .map(|b| b.livestock_id.clone())
+            .unwrap_or_default(),
+        pasture_workers: object
+            .tribe_building_object
+            .as_deref()
+            .map(|b| b.pasture_worker_id.iter().map(|&w| w as i32).collect())
+            .unwrap_or_default(),
         // `attackingUnits` (+0xce0): the unallied takers of a foundation with a stack unit
         attacking_units: object
             .tribe_building_object

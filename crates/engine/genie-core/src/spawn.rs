@@ -63,6 +63,16 @@ pub(crate) const START_RIGHT_Z: f32 = crate::image::spawn::START_RIGHT_Z;
 /// `+0x30`, `FUN_140c12300`).
 const CURRENT_AGE: i16 = 6;
 
+/// How a new plain object ([`Turns::plain_object`]) that moves faces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Facing {
+    /// Its drawn angle (the moving setup's, `FUN_141141640`).
+    Drawn,
+    /// The dead object's facet it remains of (`FUN_14119d490`, `FUN_14114d780`), None where the
+    /// slice does not hold it.
+    Dead(Option<u8>),
+}
+
 /// The building a unit spawns from, as the search reads it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Site {
@@ -2016,19 +2026,12 @@ impl Turns {
     }
 
     /// `FUN_1411a4e90`: the remains a dying sprite's end leaves for player `p`: the master's slot
-    /// 0x40 makes an object of `master` at the dead object's place `at`, with the setups' draws
-    /// (static `FUN_1411a45a0`: its standing sprite, [`ActiveSprite::start`] on the Sprite stream,
-    /// then its facet on the Object stream for a sprite with a random first frame and several
-    /// facets; moving `FUN_141161450`: its angle on the Object stream, sequence flag 2), its id
-    /// (`FUN_14152fd70`), its place, record and mesh shape (slot 0x58), its sight and its storage
-    /// (flags 1, 2 and 32 to its owner, `FUN_141193860`; the last entry of flag 0 held,
-    /// `FUN_141193710`); it takes the dead object's facet (`FUN_14119d490`, `FUN_14114d780`). It
-    /// joins the owner's list and updates later in the same tick. Remains of type 10 (a static
-    /// object, `FUN_141126300` -> `FUN_141169580`: no moving setup, its death on the sprite after
-    /// it with a random facet), of types 20 to 39 without hit points (with hit points it would
-    /// sleep) and of type 70 (a combat unit, [`Turns::combat_object`]: a placeholder villager's
-    /// death spawn, masters 1875 and 1876, is a villager) are modelled; not held: its facet,
-    /// angle and sprite.
+    /// 0x40 makes an object of `master` at the dead object's place `at` ([`Turns::plain_object`]
+    /// facing the dead object's facet, `FUN_14119d490` and `FUN_14114d780`). It joins the owner's
+    /// list and updates later in the same tick. Remains of type 80 ([`Turns::new_building`]),
+    /// of type 70 (a combat unit, [`Turns::combat_object`]: a placeholder villager's death spawn,
+    /// masters 1875 and 1876, is a villager) and the plain objects' types are modelled; not held:
+    /// the remains' sprite.
     pub(crate) fn remains(
         &mut self,
         p: usize,
@@ -2062,12 +2065,44 @@ impl Turns {
             }
             return Ok(());
         }
+        let _ = self.plain_object(p, master, &made, at, Facing::Dead(facet))?;
+        Ok(())
+    }
+
+    /// The master's slot 0x40 for a static object (type 10) or an animated or moving one (types
+    /// 20 to 39) of `made` (id `master`) for player `p` at `at`, with the setups' draws (static
+    /// `FUN_1411a45a0`: its standing sprite, [`ActiveSprite::start`] on the Sprite stream, then
+    /// its facet on the Object stream for a sprite with a random first frame and several facets;
+    /// moving `FUN_141141640` after the animated setup: its angle on the Object stream, sequence
+    /// flag 2, which `facing` may replace), its id (`FUN_14152fd70`), its place, record and mesh
+    /// shape (slot 0x58), its sight and its storage (flags 1, 2 and 32 to its owner,
+    /// `FUN_141193860`; the last entry of flag 0 held, `FUN_141193710`). A static object takes
+    /// its death on the sprite after it with a random facet (`FUN_141126300` ->
+    /// `FUN_141169580`); a moving one faces as `facing` says. An object with hit points is filed
+    /// asleep by the static setup (`+0x641`, the player's slot 0x2d0), and the animated setup
+    /// wakes it at once (`FUN_14119d490` with 0: off the end of the sleeping list, slot 0x2d8,
+    /// onto the live list's, slot 0x2d0, the tracker filing it last): only a static one would
+    /// sleep (not modelled). It joins the owner's list last; its index there. A new object
+    /// facing its drawn angle holds its sprite; remains do not. Not held: its facet (`+0xe`).
+    ///
+    /// # Errors
+    ///
+    /// Another type, a static object with hit points, a recyclable master, the moving remains
+    /// of an object without a facet the slice holds, and what the sight does not model.
+    pub(crate) fn plain_object(
+        &mut self,
+        p: usize,
+        master: i16,
+        made: &crate::masters::Master,
+        at: [f32; 3],
+        facing: Facing,
+    ) -> Result<usize, GenieError> {
         if made.kind != 10 && !(20..40).contains(&made.kind) {
             return Err(GenieError::unsupported(
                 "remains of a type other than 10 and 20 to 39",
             ));
         }
-        if 0 < made.hit_points {
+        if made.kind == 10 && 0 < made.hit_points {
             return Err(GenieError::unsupported(
                 "remains with hit points (the sleeping list)",
             ));
@@ -2085,34 +2120,42 @@ impl Turns {
         let standing = (0 <= made.standing_sprite)
             .then(|| self.graphics.get(&made.standing_sprite).copied())
             .flatten();
+        let mut sprite = None;
         if let Some(g) = standing {
-            let _ = ActiveSprite::start(g, self.streams.get(Stream::Sprite));
+            sprite = Some(ActiveSprite::start(g, self.streams.get(Stream::Sprite)));
             if g.flags & 4 != 0 && 1 < g.facets {
                 let _ = self.streams.get(Stream::Object).rand15();
             }
         }
+        let facets = standing.map(|g| crate::facing::SpriteFacets {
+            count: g.facets,
+            flag_1: g.flags & 2 != 0,
+        });
         let mut angle = 0.0;
         let moving = if 30 <= made.kind {
-            // the moving setup's angle draw (FUN_141161450), whose angle the dead object's facet
-            // replaces: that facet's angle (FUN_14119d490, FUN_14114d780, with the remains' own
-            // sprite's facets)
-            if standing.is_some_and(|g| g.flags & 2 != 0 && 1 < g.facets) {
-                let _ = self.streams.get(Stream::Object).rand15();
-            }
-            let facet = facet.ok_or(GenieError::unsupported(
-                "moving remains of an object without a facet the slice holds",
-            ))?;
-            let own = standing.map_or(
-                crate::facing::SpriteFacets {
-                    count: 0,
-                    flag_1: false,
-                },
-                |g| crate::facing::SpriteFacets {
-                    count: g.facets,
-                    flag_1: g.flags & 2 != 0,
-                },
-            );
-            angle = crate::facing::angle_of_facet(facet, own);
+            // the moving setup's angle draw (FUN_141141640, "setup" line 0x2c3)
+            let drawn = if crate::facing::draws_angle(facets) {
+                let r = self.streams.get(Stream::Object).rand15();
+                facets.map(|f| crate::facing::drawn_angle(r, f))
+            } else {
+                None
+            };
+            angle = match facing {
+                // no draw leaves the constructor's 0
+                Facing::Drawn => drawn.unwrap_or(0.0),
+                // the dead object's facet replaces it: that facet's angle (FUN_14119d490,
+                // FUN_14114d780, with the remains' own sprite's facets)
+                Facing::Dead(facet) => {
+                    let facet = facet.ok_or(GenieError::unsupported(
+                        "moving remains of an object without a facet the slice holds",
+                    ))?;
+                    let own = facets.unwrap_or(crate::facing::SpriteFacets {
+                        count: 0,
+                        flag_1: false,
+                    });
+                    crate::facing::angle_of_facet(facet, own)
+                }
+            };
             Some(made.moving.ok_or(GenieError::unsupported(
                 "moving remains without a moving master",
             ))?)
@@ -2206,28 +2249,19 @@ impl Turns {
                 master_id: master,
                 master: made.life,
             },
-            mover: moving.map(|stats| {
-                Mover::new_object(
-                    stats,
-                    at,
-                    self.world_time,
-                    angle,
-                    standing.map(|g| crate::facing::SpriteFacets {
-                        count: g.facets,
-                        flag_1: g.flags & 2 != 0,
-                    }),
-                )
-            }),
+            mover: moving.map(|stats| Mover::new_object(stats, at, self.world_time, angle, facets)),
             attackable: true,
             pasture: -1,
             my_pasture: -1,
             // an animated one's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             anim_speed: (20 <= made.kind).then_some(0.0),
+            sprite: sprite.filter(|_| facing == Facing::Drawn),
             ..Unit::default()
         });
+        let idx = owner.objects.len() - 1;
         // the static init's add to its player (slot 0x2d0) files it in the tracker
         self.track_add(p, id, master);
-        Ok(())
+        Ok(idx)
     }
 
     /// FLARE's objects (`0x140e7bfd0`): with `players` at most the world's players, each player

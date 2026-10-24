@@ -1038,6 +1038,8 @@ impl Turns {
             relics: [0; 2],
             damaged_lately: 0,
             livestock_summation: 0.0,
+            livestock: Vec::new(),
+            pasture_workers: Vec::new(),
             raider_countdown: 0,
             // every building holds a gate's lock, open
             gate: Some(Gate {

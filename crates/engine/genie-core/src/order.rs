@@ -81,6 +81,9 @@ const HERD_MOST: usize = 16;
 const MASTER_84: i16 = 84;
 const MASTER_1808: i16 = 1808;
 const MASTER_1893: i16 = 1893;
+/// The class of the farms and a pasture's livestock (`0x31`), which a full pasture's search
+/// names.
+const PASTURE_CLASS: i16 = 49;
 const MASTER_1897: i16 = 1897;
 /// The range of GUARD's defend order (`DAT_142eb3634`, [`Turns::guard`]).
 const GUARD_RANGE: f32 = crate::image::order::GUARD_RANGE;
@@ -2879,8 +2882,13 @@ impl Turns {
     /// range is the unit's notify [`TOO_CLOSE`] to its own unit AI (slot 0x328) and nothing more.
     /// Without a target the world holds (none, or one gone) the work command goes to the point,
     /// and a computer's class 54 packs instead. Neither action is held. A villager drops its
-    /// town-bell flag (`FUN_1412067f0`); then the work command; then it leaves the pasture it is
-    /// in (`FUN_141189ca0`).
+    /// town-bell flag (`FUN_1412067f0`); then the work command. A villager on a pasture (1893,
+    /// 1897) whose livestock's workers (slot 0x780, [`Turns::livestock_workers`]) are below its
+    /// owner's [`crate::pasture::PASTURE_WORKERS`] (COMISS, JBE) works the livestock
+    /// [`Turns::pasture_pick`] gives at its place with the order's flags (slot 0x7e8 again) and
+    /// then tends the pasture; none given ends the order there; a full pasture has its unit AI
+    /// take a search (slot 0x38: 0x202 with the hunt action, class 49 and −1). Any other unit
+    /// leaves the pasture it tends ([`Turns::tend_pasture`], `FUN_141189ca0`).
     pub(crate) fn order_work(
         &mut self,
         player: usize,
@@ -2939,10 +2947,8 @@ impl Turns {
             };
             self.town_bell_order(player, idx, -1, order.filter)?;
             self.work_command(player, idx, &order)?;
-            if self.players[player].objects[idx].my_pasture != -1 {
-                return Err(GenieError::unsupported("a unit that leaves its pasture"));
-            }
-            return Ok(());
+            // FUN_141189ca0 with −1: the unit leaves the pasture it tends
+            return self.tend_pasture(player, idx, -1);
         }
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
@@ -2961,22 +2967,51 @@ impl Turns {
         self.work_command(player, idx, order)?;
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
+        let mut tends = -1;
         if order.target != -1 {
             let target = self.task_target(order.target, 0)?;
             if master.class == VILLAGER
                 && target.master.kind == BUILDING
                 && matches!(target.master.id, MASTER_1893 | MASTER_1897)
             {
-                return Err(GenieError::unsupported(
-                    "a villager's order on master 1893 or 1897",
-                ));
+                use crate::pasture::PASTURE_WORKERS;
+                use crate::tech::Attributes;
+                let room = Attributes::get(&self.players[player], PASTURE_WORKERS)?;
+                let workers = self.livestock_workers(order.target) as f32;
+                // COMISS room with the workers, JBE: a NaN is full
+                if room > workers {
+                    let pick = self.pasture_pick(order.target, player, idx)?;
+                    if pick == -1 {
+                        return Ok(());
+                    }
+                    let point = self
+                        .object(pick)
+                        .map(|(_, l)| l.position)
+                        .ok_or(GenieError::unreachable("the livestock picked"))?;
+                    let on_it = Work {
+                        target: pick,
+                        point,
+                        ..*order
+                    };
+                    self.order_work(player, idx, &on_it)?;
+                    tends = order.target;
+                } else {
+                    // its unit AI's slot 0x38 takes a search (0x202 with the hunt action, class
+                    // 49 and −1, from and to the unit)
+                    let unit = &mut self.players[player].objects[idx];
+                    let (id, state) = (unit.id, unit.life.state);
+                    if let Some(ai) = unit.ai.as_mut() {
+                        let search = crate::unit_ai::Notify::own(
+                            id,
+                            crate::unit_ai::REQUIRES_SEARCH,
+                            [HUNT_ACTION, i32::from(PASTURE_CLASS), -1],
+                        );
+                        let _ = ai.accept(search, state);
+                    }
+                }
             }
         }
-        let unit = &mut self.players[player].objects[idx];
-        if unit.my_pasture != -1 {
-            return Err(GenieError::unsupported("a unit that leaves its pasture"));
-        }
-        Ok(())
+        self.tend_pasture(player, idx, tends)
     }
 
     /// Slot 0x138 (`FUN_141216f10`) without a target, outside slot 0x128's work command (the

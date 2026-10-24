@@ -218,6 +218,9 @@ pub(in crate::turn) struct Context<'a> {
     /// The technologies the owner researches from the object's update (a completed building's),
     /// which the caller completes after the attributes ([`Turns::complete_research`]).
     pub(in crate::turn) techs_done: Vec<i16>,
+    /// The pastures the object's update completed, whose livestock the caller makes after the
+    /// attributes ([`Turns::setup_pasture`]).
+    pub(in crate::turn) pastures: Vec<i32>,
     /// The mule carts the object's update completed, whose search for resources the caller runs
     /// after it ([`Turns::cart_search`]).
     pub(in crate::turn) carts: Vec<(i32, u8)>,
@@ -312,6 +315,8 @@ pub(in crate::turn) struct ObjectOutputs {
     pub(in crate::turn) starts: Vec<AiStart>,
     /// [`Context`]'s `techs_done`.
     pub(in crate::turn) techs_done: Vec<i16>,
+    /// [`Context`]'s `pastures`.
+    pub(in crate::turn) pastures: Vec<i32>,
     /// [`Context`]'s `carts`.
     pub(in crate::turn) carts: Vec<(i32, u8)>,
     /// [`Context`]'s `completions`.
@@ -389,6 +394,7 @@ impl Context<'_> {
             entered: self.entered.take(),
             starts: std::mem::take(&mut self.starts),
             techs_done: std::mem::take(&mut self.techs_done),
+            pastures: std::mem::take(&mut self.pastures),
             carts: std::mem::take(&mut self.carts),
             completions: std::mem::take(&mut self.completions),
             work_order: self.work_order.take(),

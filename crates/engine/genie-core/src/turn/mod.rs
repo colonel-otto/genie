@@ -1178,6 +1178,7 @@ impl Turns {
             attribute_adds: Vec::new(),
             history_events: Vec::new(),
             techs_done: Vec::new(),
+            pastures: Vec::new(),
             carts: Vec::new(),
             completions: Vec::new(),
             work_order: None,
@@ -1261,6 +1262,7 @@ impl Turns {
             entered,
             starts,
             techs_done,
+            pastures,
             carts,
             completions,
             work_order,
@@ -1366,6 +1368,13 @@ impl Turns {
         }
         for (kind, amount) in adds {
             if let Err(e) = self.players[p].add_attribute(kind, amount) {
+                result = result.and(Err(e));
+            }
+        }
+        // a completed pasture's livestock (FUN_1411c8410 in FUN_1411c6bd0, after the farm's
+        // bonus)
+        for pasture in pastures {
+            if let Err(e) = self.setup_pasture(p, pasture) {
                 result = result.and(Err(e));
             }
         }

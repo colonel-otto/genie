@@ -6073,8 +6073,22 @@ impl UnitAi {
                 DAMAGED | MISSILE_WARNING => {
                     self.villager_damaged(n, time, at, computer, ai_rng, side, fx)
                 }
+                // off the build or the hunt action, the object its action made (a pasture,
+                // `p[1]`) which the world holds: the unit works it at its place (slot 0x7e8,
+                // the caller's)
+                PASTURE_BUILT => {
+                    if matches!(n.p[0], BUILD_ACTION | HUNT_ACTION)
+                        && let Some(made) = Self::world_object(n.p[1], at, side)?
+                    {
+                        fx.push(Effect::WorkOn {
+                            target: made.id,
+                            point: made.position,
+                        });
+                    }
+                    Ok(GO_ON)
+                }
                 // its own cases the slice does not model; any other is the base handler's
-                0x217..=0x21a | 0x21c | 0x21d => {
+                0x217..=0x21a | 0x21c => {
                     Err(VILLAGER_NOTIFY.with("notify", format!("{:#x} {:?}", n.kind, n.p)))
                 }
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
@@ -18158,6 +18172,42 @@ mod tests {
         let (r, _, _) = handled(&mut u, invalid, &at, false);
         assert!(r.is_ok());
         assert_eq!(u.current_action, -1);
+    }
+
+    /// The villager's case 0x21d (`FUN_140c22bf0`): off the build or the hunt action the object
+    /// its action made (429381190's villager 15295 and its pasture 15342 in update 1386), which
+    /// the world holds, the unit works at its place (slot 0x7e8); off another action nothing.
+    /// The processing goes on.
+    #[test]
+    fn a_villager_works_the_pasture_it_built() {
+        let pasture = UnitSeen {
+            id: 15342,
+            position: [136.0, 72.0, 0.0],
+            ..UnitSeen::default()
+        };
+        let at = Surroundings {
+            id: 15295,
+            state: 2,
+            units: vec![pasture],
+            ..Surroundings::default()
+        };
+        for action in [BUILD_ACTION, HUNT_ACTION] {
+            let built = Notify::own(15295, PASTURE_BUILT, [action, 15342, 0]);
+            let (r, fx, _) = handled(&mut idle(CIVILIAN), built, &at, false);
+            assert_eq!(r, Ok(GO_ON));
+            assert_eq!(
+                fx,
+                [Effect::WorkOn {
+                    target: 15342,
+                    point: [136.0, 72.0, 0.0]
+                }]
+            );
+        }
+        let other = Notify::own(15295, PASTURE_BUILT, [GATHER_ACTION, 15342, 0]);
+        assert_eq!(
+            handled(&mut idle(CIVILIAN), other, &at, false).1,
+            Vec::new()
+        );
     }
 
     /// The base handler's completion (`FUN_140c589c0` case 0x1fa; the villager's own case takes

@@ -35,6 +35,10 @@ use crate::unit_ai::{
 };
 use crate::visibility::{Seer, capture_kind};
 
+/// A dying sprite the `.dat` does not have.
+const NO_DYING_SPRITE: GenieError =
+    GenieError::unsupported("a dying sprite the data file does not have");
+
 /// What the slice tracks of one object.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Unit {
@@ -143,6 +147,12 @@ pub struct Unit {
     /// A building's `mLivestockSummation` (`+0xc28`, saved): the livestock inside it (their
     /// master's `+0x610`, `FUN_1411cb850`), whose food a mill makes ([`crate::world_player`]).
     pub livestock_summation: f32,
+    /// A pasture's livestock (`+0xb78`, saved as `livestockId`): the objects its completion put
+    /// on its edges ([`crate::turn::Turns::setup_pasture`]), in the order it made them.
+    pub livestock: Vec<i32>,
+    /// A pasture's workers (`+0xcb8`, saved as `pastureWorkerId`): the units that tend it
+    /// ([`crate::turn::Turns::tend_pasture`]), in the order they came.
+    pub pasture_workers: Vec<i32>,
     /// A combat object's `raider_build_countdown` (`+0x9a0`): the seconds it may stay inside a
     /// building.
     pub raider_countdown: i32,
@@ -2714,8 +2724,8 @@ impl Unit {
     /// construction's start ([`Unit::foundation_died`]); then the combat object's
     /// (`FUN_14121cc40`, [`combat_dies`]), whose refund from state 2 ([`refund_of`]) the caller
     /// takes from its owner's attributes; then the base one's (`FUN_14119d710`, whose storage and
-    /// sight are the caller's). Not modelled: a dying sprite of another type than 70; not held:
-    /// the particles and the sounds.
+    /// sight are the caller's). An animated or moving object (types 20 to 69) shows its
+    /// master's dying sprite. Not held: the particles and the sounds.
     pub(in crate::turn) fn died(
         &mut self,
         c: &mut Context<'_>,
@@ -2750,11 +2760,16 @@ impl Unit {
                 self.foundation_died(c, master)?;
             }
         } else if master.kind != 70 {
-            // a static object's dying sprite is the lifecycle's ([`Lifecycle::die`])
-            if self.life.class == Class::Animated && self.life.dying_sprite.is_some() {
-                return Err(GenieError::unsupported(
-                    "a dying sprite of an object of another type than 70",
-                ));
+            // a static object's dying sprite is the lifecycle's ([`Lifecycle::die`]); an
+            // animated or moving one shows its master's (slot 0x7a0, `FUN_1411887e0`: no
+            // terrain look) through slot 0x68 (a moving one's `FUN_141158620` derives its facet
+            // from its angle again)
+            if self.life.class == Class::Animated
+                && self.life.dying_sprite.is_some()
+                && let Some(id) = crate::sprite::dying(master, None)
+            {
+                let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
+                crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
             }
             return Ok(());
         }
@@ -2772,9 +2787,7 @@ impl Unit {
             crate::sprite::dying(master, look)
         };
         if let Some(id) = shown {
-            let g = c.graphics.get(&id).copied().ok_or(GenieError::unsupported(
-                "a dying sprite the data file does not have",
-            ))?;
+            let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
             crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
         }
         Ok(())
@@ -2814,6 +2827,9 @@ impl Unit {
         let k = crate::tracker::key(c.masters, c.lines, self.life.master_id);
         c.tracker.complete(self.id, k);
         c.attribute_adds.extend(part.attributes);
+        if part.pasture {
+            c.pastures.push(self.id);
+        }
         if part.cart {
             c.carts.push((self.id, 0));
         }
@@ -4430,6 +4446,9 @@ impl Unit {
         }
         c.attribute_adds.extend(built.attributes);
         c.techs_done.extend(built.tech);
+        if built.pasture {
+            c.pastures.push(self.id);
+        }
         if let Some(state) = built.cart {
             c.carts.push((self.id, state));
         }
@@ -5417,6 +5436,9 @@ impl Unit {
                 c.history_events.extend(built.history);
                 c.attribute_adds.extend(built.attributes);
                 c.techs_done.extend(built.tech);
+                if built.pasture {
+                    c.pastures.push(target);
+                }
                 if let Some(state) = built.cart {
                     c.carts.push((target, state));
                 }

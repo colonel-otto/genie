@@ -511,6 +511,376 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
     assert_eq!(flares, [(112, 1.0), (112, 2.0)]);
 }
 
+/// Player 1 with 300 attributes, `livestock` of them at a pasture 50 (master 1897, radius 2) at
+/// `at` and 300 food, on a 120-tile map, its masters `livestock_masters` of the two livestock
+/// (moving, one hit point, a turning idle sprite of 16 facets with a random first one, 100 food
+/// held).
+fn pasture_game(at: [f32; 3], livestock: f32, livestock_masters: &[i16]) -> Turns {
+    use crate::masters::master_type::{BUILDING, MOVING};
+    use crate::sprite::Graphic;
+    let player = || Player {
+        attributes: vec![0.0; 300],
+        ..Player::default()
+    };
+    let mut t = Turns::new(0, 1, 0, vec![0, 0], vec![player(), player()]);
+    t.spatial = Spatial::new([120, 120]);
+    placeable(&mut t);
+    t.players[1].attributes[289] = livestock;
+    t.players[1].attributes[288] = 300.0;
+    let idle = |id| Graphic {
+        id,
+        frames: 60,
+        facets: 16,
+        speed_multiplier: 0.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 7,
+    };
+    t.graphics = std::collections::BTreeMap::from([(13124, idle(13124)), (13170, idle(13170))]);
+    let pasture = Master {
+        id: 1897,
+        kind: BUILDING,
+        class: 49,
+        radius: [2.0, 2.0],
+        ..Master::default()
+    };
+    let animal = |id, standing_sprite| Master {
+        id,
+        kind: MOVING,
+        class: 49,
+        hit_points: 1,
+        radius: [0.2, 0.2],
+        standing_sprite,
+        storage: vec![(0, 100.0, 0)],
+        moving: Some(crate::hunt::tests::walker().stats),
+        ..Master::default()
+    };
+    let mut masters = vec![pasture];
+    for &m in livestock_masters {
+        masters.push(animal(m, if m == 1899 { 13124 } else { 13170 }));
+    }
+    t.masters = (0..2).map(|_| Masters::new(masters.clone())).collect();
+    t.players[1].objects.push(Unit {
+        id: 50,
+        position: at,
+        life: Lifecycle {
+            master_id: 1897,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    });
+    t.next_object_id = 100;
+    t
+}
+
+/// `FUN_1411c8410` (429381190's pasture 15342 of update 1385 made three): per animal two draws of
+/// the Object stream pick its master and its point along the edges, a point on a tile that holds
+/// one of the pasture's livestock goes and another is drawn; the new object's setups draw its
+/// facet and its angle, then the routine its first facet. Each is the pasture's, holds its share
+/// of the food, no unit targets it, and the pasture lists it.
+#[test]
+fn a_completed_pasture_puts_its_livestock_on_its_edges() {
+    use crate::pasture::{LIVESTOCK, edge_points};
+    let mut t = pasture_game([20.0, 20.0, 0.0], 3.0, &[1899, 1900]);
+    t.streams.get(Stream::Object).set_seed(1385);
+    let mut e = t.streams.get(Stream::Object).clone();
+    let mut points = edge_points([20.0, 20.0, 0.0], 2.0);
+    let mut tiles = Vec::new();
+    let mut expected = Vec::new();
+    for _ in 0..3 {
+        let kind = LIVESTOCK[e.rand15() as usize % 2];
+        let mut i = e.rand15() as usize % points.len();
+        let tile = |p: [f32; 2]| (p[0] as i32, p[1] as i32);
+        while tiles.contains(&tile(points[i])) {
+            let _ = points.remove(i);
+            i = e.rand15() as usize % points.len();
+        }
+        tiles.push(tile(points[i]));
+        expected.push((kind, points.remove(i)));
+        // the static setup's facet, the moving setup's angle, the routine's facet
+        for _ in 0..3 {
+            let _ = e.rand15();
+        }
+    }
+    t.setup_pasture(1, 50).unwrap();
+    let made: Vec<(i16, [f32; 2])> = t.players[1].objects[1..]
+        .iter()
+        .map(|u| (u.life.master_id, [u.position[0], u.position[1]]))
+        .collect();
+    assert_eq!(made, expected);
+    assert_eq!(t.players[1].objects[0].livestock, [100, 101, 102]);
+    for u in &t.players[1].objects[1..] {
+        assert_eq!(
+            (
+                u.pasture,
+                u.life.amount,
+                u.life.attribute_type,
+                u.untargetable
+            ),
+            (50, 100.0, 0, true)
+        );
+        assert_eq!(u.life.state, 2);
+        assert!(u.sprite.is_some() && u.mover.is_some());
+    }
+    assert_eq!(*t.streams.get(Stream::Object), e);
+}
+
+/// One livestock a tile: a pasture at (20, 20) has twelve tiles under its sixteen points, so
+/// sixteen asked give twelve and the points run out; at the map's left edge the points off it
+/// (x below 0 after CVTTSS2SI: −1.5, not −0.6) go too, leaving six tiles.
+#[test]
+fn a_pasture_puts_one_animal_a_tile_on_the_map() {
+    let mut t = pasture_game([20.0, 20.0, 0.0], 16.0, &[1899, 1900]);
+    t.setup_pasture(1, 50).unwrap();
+    let tiles = |t: &Turns| {
+        let mut v: Vec<(i32, i32)> = t.players[1].objects[1..]
+            .iter()
+            .map(|u| (u.position[0] as i32, u.position[1] as i32))
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    let mut twelve = tiles(&t);
+    assert_eq!(twelve.len(), 12);
+    twelve.dedup();
+    assert_eq!(twelve.len(), 12);
+    let mut t = pasture_game([0.0, 10.0, 0.0], 16.0, &[1899, 1900]);
+    t.setup_pasture(1, 50).unwrap();
+    assert_eq!(
+        tiles(&t),
+        [(0, 8), (0, 11), (1, 8), (1, 9), (1, 10), (1, 11)]
+    );
+}
+
+/// A master the owner has not got makes nothing but counts as an attempt, its point staying; no
+/// livestock asked draws nothing; the food is the pasture's over the count (DIVSS).
+#[test]
+fn a_pasture_counts_each_attempt_and_shares_its_food() {
+    use crate::pasture::{LIVESTOCK, edge_points};
+    let mut t = pasture_game([20.0, 20.0, 0.0], 3.0, &[1899]);
+    t.streams.get(Stream::Object).set_seed(7);
+    let mut e = t.streams.get(Stream::Object).clone();
+    let mut points = edge_points([20.0, 20.0, 0.0], 2.0);
+    let mut expected = Vec::new();
+    for _ in 0..3 {
+        let kind = LIVESTOCK[e.rand15() as usize % 2];
+        let i = e.rand15() as usize % points.len();
+        let tile = |p: [f32; 2]| (p[0] as i32, p[1] as i32);
+        assert!(
+            !expected.iter().any(|&q| tile(q) == tile(points[i])),
+            "the seed's points"
+        );
+        if kind == 1899 {
+            expected.push(points.remove(i));
+            for _ in 0..3 {
+                let _ = e.rand15();
+            }
+        }
+    }
+    assert!(expected.len() < 3, "the seed draws an Ibex");
+    t.setup_pasture(1, 50).unwrap();
+    let made: Vec<[f32; 2]> = t.players[1].objects[1..]
+        .iter()
+        .map(|u| [u.position[0], u.position[1]])
+        .collect();
+    assert_eq!(made, expected);
+    assert_eq!(*t.streams.get(Stream::Object), e);
+    let mut t = pasture_game([20.0, 20.0, 0.0], 0.0, &[1899, 1900]);
+    t.setup_pasture(1, 50).unwrap();
+    assert_eq!(
+        (
+            t.players[1].objects.len(),
+            t.streams.get(Stream::Object).draws
+        ),
+        (1, 0)
+    );
+    let mut t = pasture_game([20.0, 20.0, 0.0], 7.0, &[1899, 1900]);
+    t.setup_pasture(1, 50).unwrap();
+    let food = 300.0f32 / 7.0;
+    assert!(
+        t.players[1].objects[1..]
+            .iter()
+            .all(|u| u.life.amount == food)
+    );
+}
+
+/// A moving object of type 30 that dies (429381190's Ibex 15371 in update 1426) shows its
+/// master's dying sprite (slot 0x7a0, `FUN_1411887e0`, through slot 0x68) and goes on to state 4.
+#[test]
+fn a_dying_livestock_shows_its_dying_sprite() {
+    let mut t = pasture_game([20.0, 20.0, 0.0], 1.0, &[1899, 1900]);
+    let dying = Graphic {
+        id: 13171,
+        frames: 10,
+        facets: 16,
+        speed_multiplier: 0.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 7,
+    };
+    let _ = t.graphics.insert(13171, dying);
+    for m in &mut t.masters {
+        let mut all: Vec<Master> = m.iter().cloned().collect();
+        for a in all
+            .iter_mut()
+            .filter(|a| a.kind == crate::masters::master_type::MOVING)
+        {
+            a.death_sprite = 13171;
+        }
+        *m = Masters::new(all);
+    }
+    t.setup_pasture(1, 50).unwrap();
+    let animal = t.players[1].objects[1].id;
+    t.players[1].objects[1].life.hp = 0.0;
+    for _ in 0..2 {
+        t.tick(50);
+    }
+    let (_, u) = t.object(animal).unwrap();
+    assert_eq!(u.sprite.map(|s| s.graphic.id), Some(13171));
+    assert_eq!(u.life.state, 4);
+}
+
+/// [`pasture_game`] with its three livestock made and player 1's villager 60 (class 4, radius
+/// 0.2) at `at`, the owner's [`crate::pasture::PASTURE_WORKERS`] `room`.
+fn tended_pasture(at: [f32; 3], room: f32) -> Turns {
+    let mut t = pasture_game([20.0, 20.0, 0.0], 3.0, &[1899, 1900]);
+    t.setup_pasture(1, 50).unwrap();
+    t.players[1].attributes[290] = room;
+    let villager = Master {
+        id: 83,
+        kind: 70,
+        class: 4,
+        radius: [0.2, 0.2],
+        ..Master::default()
+    };
+    for m in &mut t.masters {
+        let mut all: Vec<Master> = m.iter().cloned().collect();
+        all.push(villager.clone());
+        *m = Masters::new(all);
+    }
+    t.players[1].objects.push(Unit {
+        id: 60,
+        position: at,
+        life: Lifecycle {
+            master_id: 83,
+            ..Lifecycle::default()
+        },
+        ai: Some(UnitAi::default()),
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    });
+    t
+}
+
+/// `FUN_1411c7670`: the pasture's livestock sorted by their footprints' gap to the villager;
+/// the first without workers, else the first whose workers are below the owner's attribute
+/// 290, else none; a unit of another player gets none. Slot 0x780 sums the livestock's workers.
+#[test]
+fn a_villager_tends_the_nearest_livestock_with_room() {
+    let livestock = |t: &Turns| t.players[1].objects[0].livestock.clone();
+    let place = |t: &Turns, id: i32| t.object(id).unwrap().1.position;
+    let t = tended_pasture([20.0, 20.0, 0.0], 2.0);
+    let ids = livestock(&t);
+    let near = place(&t, ids[0]);
+    let mut t = tended_pasture([near[0], near[1], 0.0], 2.0);
+    let villager = t.players[1].objects.len() - 1;
+    assert_eq!(t.pasture_pick(50, 1, villager), Ok(ids[0]));
+    let mut gaps: Vec<(f32, i32)> = ids
+        .iter()
+        .map(|&id| {
+            let p = place(&t, id);
+            let g = crate::movement::footprint_gap_squared(p, [0.2, 0.2], near, [0.2, 0.2]);
+            (g, id)
+        })
+        .collect();
+    gaps.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let by_gap: Vec<i32> = gaps.iter().map(|g| g.1).collect();
+    let worked = |t: &mut Turns, id: i32, n: i32| t.object_mut(id).unwrap().1.workers = n;
+    worked(&mut t, by_gap[0], 1);
+    assert_eq!(t.pasture_pick(50, 1, villager), Ok(by_gap[1]));
+    worked(&mut t, by_gap[1], 1);
+    worked(&mut t, by_gap[2], 1);
+    assert_eq!(t.livestock_workers(50), 3);
+    // all worked: the nearest below the room
+    assert_eq!(t.pasture_pick(50, 1, villager), Ok(by_gap[0]));
+    worked(&mut t, by_gap[0], 2);
+    assert_eq!(t.pasture_pick(50, 1, villager), Ok(by_gap[1]));
+    for &id in &by_gap {
+        worked(&mut t, id, 2);
+    }
+    assert_eq!(t.pasture_pick(50, 1, villager), Ok(-1));
+    let mut other = tended_pasture(near, 2.0);
+    let v = other.players[1].objects.pop().unwrap();
+    other.players.push(Player {
+        attributes: vec![0.0; 300],
+        objects: vec![v],
+        ..Player::default()
+    });
+    other.masters.push(other.masters[1].clone());
+    assert_eq!(other.pasture_pick(50, 2, 0), Ok(-1));
+}
+
+/// Slot 0x7e8 of a villager on a pasture: with room (the livestock's workers below attribute
+/// 290) it works the livestock `FUN_1411c7670` picks, at its place, and tends the pasture; a
+/// full one has its unit AI take a search (0x202 with the hunt action, class 49, −1) and it
+/// tends none.
+#[test]
+fn a_villager_ordered_on_a_pasture_works_its_livestock() {
+    let order = |target| crate::order::Work {
+        target,
+        point: [20.0, 20.0, 0.0],
+        carry_test: true,
+        filter: -1,
+        notified: false,
+    };
+    let mut t = tended_pasture([18.0, 18.0, 0.0], 2.0);
+    let v = t.players[1].objects.len() - 1;
+    t.order_work(1, v, &order(50)).unwrap();
+    assert_eq!(t.players[1].objects[v].my_pasture, 50);
+    assert_eq!(t.players[1].objects[0].pasture_workers, [60]);
+    let mut full = tended_pasture([18.0, 18.0, 0.0], 0.0);
+    let v = full.players[1].objects.len() - 1;
+    full.players[1].objects[v].my_pasture = 50;
+    full.players[1].objects[0].pasture_workers = vec![60];
+    full.order_work(1, v, &order(50)).unwrap();
+    let u = &full.players[1].objects[v];
+    assert_eq!(
+        u.ai.as_ref().unwrap().notifies,
+        [Notify::own(
+            60,
+            crate::unit_ai::REQUIRES_SEARCH,
+            [0x265, 49, -1]
+        )]
+    );
+    assert_eq!(u.my_pasture, -1);
+    assert_eq!(
+        full.players[1].objects[0].pasture_workers,
+        Vec::<i32>::new()
+    );
+}
+
+/// `FUN_141189ca0`: a unit tending a pasture joins its workers once; tending none drops it
+/// from the pasture it tended (`FUN_1411cafa0`); an object that is no building keeps no list.
+#[test]
+fn a_unit_joins_and_leaves_a_pasture_s_workers() {
+    let mut t = tended_pasture([18.0, 18.0, 0.0], 2.0);
+    let v = t.players[1].objects.len() - 1;
+    t.tend_pasture(1, v, 50).unwrap();
+    t.tend_pasture(1, v, 50).unwrap();
+    assert_eq!(t.players[1].objects[0].pasture_workers, [60]);
+    assert_eq!(t.players[1].objects[v].my_pasture, 50);
+    t.tend_pasture(1, v, -1).unwrap();
+    assert_eq!(t.players[1].objects[0].pasture_workers, Vec::<i32>::new());
+    assert_eq!(t.players[1].objects[v].my_pasture, -1);
+    let animal = t.players[1].objects[1].id;
+    t.tend_pasture(1, v, animal).unwrap();
+    assert_eq!(t.players[1].objects[1].pasture_workers, Vec::<i32>::new());
+    assert_eq!(t.players[1].objects[v].my_pasture, animal);
+}
+
 /// `Process_New_Tiles`: player 1's newly explored tiles, in order, give the objects of its
 /// masters that gather by themselves to its lists by group, at their places.
 #[test]

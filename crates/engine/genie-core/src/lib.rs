@@ -73,6 +73,7 @@ pub mod move_to;
 pub mod movement;
 pub mod msvc;
 pub mod order;
+pub mod pasture;
 pub mod pathing;
 pub mod production;
 pub mod registry;
