@@ -35,6 +35,10 @@ const REACH: f32 = crate::image::build::REACH;
 const SEEN: u8 = 0xf;
 /// A foundation of another player than the builder's, which the slice does not hand the Build.
 const FOREIGN_SITE: GenieError = GenieError::unsupported("a foundation of another player");
+/// The Build's foundation the world no longer holds where its place is read.
+const SITE_GONE: GenieError = GenieError::unsupported("a foundation that is gone");
+/// A builder without movement state.
+const BUILDER_UNMOVING: GenieError = GenieError::unsupported("a builder without movement state");
 /// A foundation its owner sees only through a ghost of it on its tile (`FUN_1411d3280`'s last
 /// test), which the Build's world does not hold.
 const UNSEEN_SITE: GenieError =
@@ -66,6 +70,12 @@ pub struct BuildAction {
     pub timer: f32,
     /// Its `MoveTo`'s wait after the motion step gave up (`+0x6c`..`+0x74`).
     pub move_wait: MoveWait,
+    /// `+0x28` (its id at `+0x34`), the second target: the drop site of its drop-off (state 8,
+    /// `set_state(8)`'s search), −1 for none.
+    pub site: i32,
+    /// The range of its drop-off's `MoveTo` (that `MoveTo`'s `+0x68`): the drop site's task's
+    /// for the builder (`+0x30`), else the Build task's.
+    pub drop_range: f32,
 }
 
 /// What a builder's Build task gives its work: the task's work range (`+0x30`; its `MoveTo` to the
@@ -80,6 +90,9 @@ pub struct BuildTask {
     /// The builder's work rate: its master's `work_rate` (`+0x798`) plus its `mWorkRatePowerup`
     /// (`+0xa30`).
     pub work_rate: f32,
+    /// The task's resource (`attribute_type`, `+0x20`, −1 for any): `UNIT_ORDER`'s drop-off
+    /// (slot 0x78) asks a builder carrying another one to its unit AI instead.
+    pub resource: i16,
 }
 
 /// A building under construction (`TRIBE_Building_Object`), with what its master says of it.
@@ -386,6 +399,16 @@ pub struct Builder<'a> {
     /// The state of its `MoveTo`'s target ([`BuildAction::walk_target`]) as the update starts,
     /// None when the world does not hold it.
     pub walk_target_state: Option<u8>,
+    /// In state 8, what the drop-off reads of its second target ([`BuildAction::site`]) as the
+    /// update starts: its state and [`crate::hunt::DropOff`]; None when the world does not
+    /// hold it.
+    pub deposit: Option<(u8, crate::hunt::DropOff)>,
+    /// The number of its player's attributes, beyond which the resource of a load is food
+    /// (`FUN_140efe5b0`).
+    pub attributes: usize,
+    /// In state 8, the targets of its unit AI's queued orders 0x2c5, 0x2c9 and 0x2db the world
+    /// no longer holds or whose seen state is above 5, as the update starts (`FUN_140c5de60`).
+    pub gone_orders: &'a [i32],
 }
 
 /// What the footprint clearing reads of the objects on the tiles, by id ([`ClearLook`]).
@@ -456,10 +479,48 @@ pub struct BuildStep {
     /// goes when its owner is human (`FUN_1411ccbb0`, [`crate::turn::Turns::remove_building`]):
     /// the caller's after the update.
     pub removes: Option<i32>,
+    /// The drop-off searches again (`set_state(8)`, [`BuildAction::set_drop`] with the caller's
+    /// search): the caller's after the update.
+    pub drop_off: bool,
+    /// The second target the action let go (`FUN_140a7a190` with none: its slot 0x180), the
+    /// caller's to release.
+    pub site_let_go: Option<i32>,
+    /// The unit's animation stopped (`FUN_141161850`: its `+0x7b8` 0), the caller's.
+    pub anim_stopped: bool,
 }
 
 /// A load a builder drops at the end of its work: kind and amount ([`BuildStep::dropped`]).
 type Dropped = Option<(i16, f32)>;
+
+/// What the caller's search gives `set_state(8)` ([`BuildAction::set_drop`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DropSearch {
+    /// The builder carries nothing (`+0x310` at most 0): no search.
+    Empty,
+    /// The drop-site table has no drop site for its load (`FUN_141658e20`).
+    Nothing,
+    /// The drop site the table gives, and the range of the `MoveTo` to it: the task the
+    /// builder's slot 0x820 finds on it (any action type, no switch: its `+0x30`), else the
+    /// Build task's.
+    Site {
+        /// The drop site.
+        id: i32,
+        /// The `MoveTo`'s range.
+        range: f32,
+    },
+}
+
+/// What `set_state(8)` leaves to its caller ([`BuildAction::set_drop`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DropStart {
+    /// The second target it let go (`FUN_140a7a190`: its slot 0x180), −1 for none.
+    pub let_go: i32,
+    /// The second target it took (`FUN_140a7a190`: its slot 0x178), −1 for none.
+    pub took: i32,
+    /// It found no drop site: the unit's slot 0x328 posts notify 0x203 (the Build's action
+    /// value, 0, 0) to its unit AI.
+    pub notified: bool,
+}
 
 /// What a builder carries when its work ends, and whether its foundation takes it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -508,6 +569,17 @@ const IDLE: u8 = 3;
 const HALTED: u8 = 2;
 /// 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it.
 const FAILED: u8 = 13;
+/// 8: the builder carries its load to a drop site (`set_state(8)`, [`BuildAction::set_drop`]).
+pub const DROP: u8 = 8;
+/// The drop-off's wait after a drop site out of reach (`0xc0400000`).
+const DROP_WAIT: f32 = -3.0;
+/// The drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
+const DROP_REACH: f32 = crate::image::build::DROP_REACH;
+/// The orders whose targets gone the unit AI drops after a drop-off (`FUN_140c5de60`: the bits
+/// of `0x400011` over `order - 0x2c5`).
+pub(crate) const DROPPED_ORDERS: [i32; 3] = [0x2c5, 0x2c9, 0x2db];
+/// The point a `MoveTo` without a target walks to (`FUN_140aa0df0` leaves its zeroed `+0x38`).
+const NO_TARGET_POINT: [f32; 3] = [0.0; 3];
 /// The buildings' master type (80).
 const BUILDING_TYPE: u8 = 80;
 /// The masters and the class the end of the work treats apart: 621 and 1889 among the
@@ -550,7 +622,19 @@ impl BuildAction {
                 timer: 0.0,
                 delay: 0.0,
             },
+            site: -1,
+            drop_range: 0.0,
         }
+    }
+
+    /// `set_state(4)` (and slot 0x48 or 0x68 before it) on `target` at `at`: a new `MoveTo` as
+    /// [`BuildAction::start`]'s; the second target and the drop-off range stay.
+    #[must_use]
+    fn restarted(&self, target: i32, at: [f32; 3], gap: f32) -> Self {
+        let mut new = Self::start(target, at, gap, self.task);
+        new.site = self.site;
+        new.drop_range = self.drop_range;
+        new
     }
 
     /// One update (slot 6, `0x140ab0370`), which first updates the `MoveTo` (`0x140aa2a70`); a
@@ -592,6 +676,11 @@ impl BuildAction {
                 self.idle(&mut walk, None, builder, &mut step)?;
                 return Ok(step);
             }
+        }
+        // the second target's id names no object of the world: FUN_140a7a190 with none, whose
+        // release finds nothing to call
+        if self.site != -1 && walk.world.get(self.site).is_none() {
+            self.site = -1;
         }
         let mut walked_from = None;
         if let Some(site) = site.as_mut() {
@@ -639,6 +728,11 @@ impl BuildAction {
         if self.walk_target != -1 && builder.walk_target_state.is_none() {
             self.walk_target = -1;
         }
+        if self.state == DROP {
+            return self
+                .update_drop(walk, site, builder, &mut step)
+                .map(|()| step);
+        }
         if matches!(self.state, MOVE | CLEAR)
             && self.move_to.is_some()
             && self.walk_target != -1
@@ -661,13 +755,15 @@ impl BuildAction {
                 self.asked_again();
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.task.range;
-                let to = walked_from.unwrap_or(self.target);
-                self.move_to = Some(
-                    match start_walk_or_give_up(walk, Goal::Target(to), range, false)? {
-                        Some(state) => state,
-                        None => self.move_wait.give_up(waits, stance),
-                    },
-                );
+                // a MoveTo without a target (set_state(4) without a foundation) to its point
+                let to = match (walked_from, self.goal) {
+                    (None, Some(p)) if self.target == -1 => Goal::Point(p),
+                    _ => Goal::Target(walked_from.unwrap_or(self.target)),
+                };
+                self.move_to = Some(match start_walk_or_give_up(walk, to, range, false)? {
+                    Some(state) => state,
+                    None => self.move_wait.give_up(waits, stance),
+                });
                 Ok(())
             }
             (4 | CLEAR | WALK_POINT, Some(MoveTo::Moving)) => {
@@ -704,13 +800,7 @@ impl BuildAction {
             // returns 3: the action list removes the Build (FUN_140a98e20), as for 1
             (FAILED, _) => {
                 step.failed = true;
-                let counted = self.added;
-                let (_, target) = self.halt(walk.mover.as_deref_mut())?;
-                if counted && let Some(b) = site.map(Site::into_builders) {
-                    *b = b.wrapping_sub(1);
-                }
-                step.stands = true;
-                step.released = target != -1;
+                self.halt_in(&mut walk, site, &mut step)?;
                 step.done = true;
                 Ok(())
             }
@@ -728,10 +818,7 @@ impl BuildAction {
                         "a builder's foundation without a place",
                     ))?
                     .position;
-                let mover = walk
-                    .mover
-                    .as_deref_mut()
-                    .ok_or(GenieError::unsupported("a builder without movement state"))?;
+                let mover = walk.mover.as_deref_mut().ok_or(BUILDER_UNMOVING)?;
                 let now = walk.plan.as_ref().map_or(0, |p| p.now);
                 if !crate::attack::face_target(mover, at, to, now)? {
                     return Err(GenieError::unsupported(
@@ -896,7 +983,10 @@ impl BuildAction {
     /// `set_state(4)` (`0x140aae200` case 4) toward its foundation `self.target`: the prelude
     /// (it leaves the foundation's builders, its `MoveTo` goes: the unit stops), then a new
     /// `MoveTo` to the foundation (`FUN_140aa0df0`), arrived when the footprints touch; its point
-    /// (`+0x38`..`+0x40`, the foundation's place) is not held.
+    /// (`+0x38`..`+0x40`, the foundation's place) is not held. Without a foundation the point
+    /// stays and the `MoveTo` has no target: it walks to its zeroed point ([`NO_TARGET_POINT`]),
+    /// far from it (`FUN_14118f680` without a target: `FLT_MAX`), in state 13 for a unit without
+    /// speed (`FUN_140aa2100`).
     ///
     /// # Errors
     ///
@@ -907,18 +997,226 @@ impl BuildAction {
         builders: Option<&mut u8>,
     ) -> Result<(), GenieError> {
         self.leave(walk, builders)?;
-        let mover = walk
-            .mover
-            .as_deref()
-            .ok_or(GenieError::unsupported("a builder without movement state"))?;
-        let at = walk
-            .world
-            .get_known(self.target)?
-            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
+        if self.target == -1 {
+            let moves = mover.stats.speed != 0.0;
+            let mut new = self.restarted(-1, self.point, f32::MAX);
+            new.goal = Some(NO_TARGET_POINT);
+            new.walk_target = -1;
+            new.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
+            *self = new;
+            return Ok(());
+        }
+        let at = walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, at.position, at.radius);
-        *self = Self::start(self.target, at.position, gap, self.task);
+        *self = self.restarted(self.target, at.position, gap);
         Ok(())
+    }
+
+    /// `set_state(8)` (`0x140aae200` case 8) with what the caller's search found (`search`): the
+    /// prelude ([`BuildAction::leave`]: out of the builders of `builders`, the `MoveTo`'s
+    /// teardown stops the unit), then a builder that carries nothing walks to its foundation
+    /// (`set_state(4)`, [`BuildAction::restart`]). Else the drop-site table's nearest drop site
+    /// for its load (`FUN_141658e20`) becomes the second target (`FUN_140a7a190`: the old one let
+    /// go, the new one taken, the caller's); with none the unit tells its unit AI (notify 0x203)
+    /// and walks to its foundation (`set_state(4)`); with one a quiet `MoveTo` (`+0x61` 1) to it
+    /// within the search's range starts (`FUN_140aa0df0` with its point the site's place; its
+    /// sprite, the task's carrying one or the Build task's moving one, is not held): arrived
+    /// within 0.01 of its footprint (`FUN_140aa2100`), in state 13 for a unit without speed.
+    ///
+    /// # Errors
+    ///
+    /// A builder without movement state, a drop site or foundation without a place.
+    pub fn set_drop(
+        &mut self,
+        walk: &mut Walk<'_>,
+        builders: Option<&mut u8>,
+        search: DropSearch,
+    ) -> Result<DropStart, GenieError> {
+        self.leave(walk, builders)?;
+        self.state = DROP;
+        let mut out = DropStart {
+            let_go: -1,
+            took: -1,
+            notified: false,
+        };
+        let found = match search {
+            DropSearch::Empty => {
+                self.restart(walk, None)?;
+                return Ok(out);
+            }
+            DropSearch::Nothing => None,
+            DropSearch::Site { id, range } => Some((id, range)),
+        };
+        let new = found.map_or(-1, |(id, _)| id);
+        if self.site != new {
+            out.let_go = self.site;
+            out.took = new;
+            self.site = new;
+        }
+        let Some((id, range)) = found else {
+            out.notified = true;
+            self.restart(walk, None)?;
+            return Ok(out);
+        };
+        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
+        let at = walk
+            .world
+            .get(walk.me.id)
+            .map_or(walk.me.position, |p| p.position);
+        let to = walk
+            .world
+            .get_known(id)?
+            .ok_or(GenieError::unsupported("a drop site without a place"))?;
+        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let gap = footprint_gap(at, ground, to.position, to.radius);
+        let moves = mover.stats.speed != 0.0;
+        self.drop_range = range;
+        self.walk_target = id;
+        self.goal = Some(to.position);
+        self.move_wait = MoveWait::default();
+        self.move_to = Some(if gap <= ARRIVED {
+            MoveTo::Arrived
+        } else if moves {
+            MoveTo::Start
+        } else {
+            MoveTo::Failed
+        });
+        Ok(out)
+    }
+
+    /// State 8's update (`0x140ab0370` case 7). While its timer is below 0 (COMISS: a NaN runs
+    /// it out) it runs by dt; at its end the drop-off searches again (`set_state(8)`,
+    /// [`BuildStep::drop_off`]). Else its quiet `MoveTo` walks to the drop site: its target in a
+    /// state above 6 (code 5), a failed walk (codes 3 and 4) and a drop site gone or not in state
+    /// 2 search again. At its end (codes 1 and 2: the list deletes the `MoveTo`, whose destructor
+    /// stops the unit) a drop site that does not take the load (`FUN_140fdd190`) halts the Build
+    /// (`set_state(2)`); one beyond [`DROP_REACH`] (`FUN_14118f8c0`) makes it wait 3 seconds
+    /// with the unit's animation stopped (`FUN_141161850`). Else the load goes to the player
+    /// (slot 0xf8 with 1 and 1, the resource of what it carries, `FUN_140fdd4f0`: the caller's,
+    /// [`BuildStep::dropped`]; its sound, slot 0x4c0, and the statistics are not held) and the
+    /// unit carries nothing (`FUN_14119d310`). A Build with a foundation lets the drop site go
+    /// and walks back to it (`set_state(4)`). Without one its unit AI drops its orders 0x2c5,
+    /// 0x2c9 and 0x2db on targets gone (`FUN_140c5de60`); with orders left it has no order and no
+    /// action (`FUN_140c64b60`, `FUN_140c64b50` with −1) and the Build is done (`set_state(1)`,
+    /// the update returns 1); with none it waits (`set_state(3)`). A unit without a unit AI and
+    /// a point of −1 is done (a computer player's, `set_state(1)`) or halts (`set_state(2)`); with
+    /// a point it walks there (`set_state(11)`).
+    fn update_drop(
+        &mut self,
+        mut walk: Walk<'_>,
+        site: Option<Site<'_>>,
+        mut builder: Builder<'_>,
+        step: &mut BuildStep,
+    ) -> Result<(), GenieError> {
+        if crate::fmath::below_or_unordered(self.timer, 0.0) {
+            self.timer += walk.dt;
+            if self.timer < 0.0 {
+                return Ok(());
+            }
+            self.timer = 0.0;
+            step.drop_off = true;
+            return Ok(());
+        }
+        let computer = walk.plan.as_ref().is_some_and(|p| p.computer);
+        let waits = builder.class == VILLAGER && !computer;
+        let stance = builder.ai.as_ref().map_or(0, |ai| ai.stance);
+        // the quiet MoveTo lets a target in a state above 6 go (slot 0x68 with none): code 5
+        if self.move_to.is_some()
+            && self.walk_target != -1
+            && builder.walk_target_state.is_some_and(|s| 6 < s)
+        {
+            self.walk_target = -1;
+            step.drop_off = true;
+            return Ok(());
+        }
+        let to = if self.walk_target == -1 {
+            Goal::Point(self.goal.unwrap_or(NO_TARGET_POINT))
+        } else {
+            Goal::Target(self.walk_target)
+        };
+        match self.move_to {
+            Some(MoveTo::Start) => {
+                self.asked_again();
+                self.move_to = Some(MoveTo::Moving);
+                let range = self.drop_range;
+                self.move_to = Some(match start_walk_or_give_up(walk, to, range, true)? {
+                    Some(state) => state,
+                    None => self.move_wait.give_up(waits, stance),
+                });
+                return Ok(());
+            }
+            Some(MoveTo::Moving) => {
+                if self.walk_target != -1
+                    && crate::move_to::target_moved(&walk, self.walk_target, true)?.again()
+                {
+                    self.move_to = Some(MoveTo::Start);
+                    return Ok(());
+                }
+                self.move_to = Some(match walk_or_give_up(walk)? {
+                    Some(state) => state,
+                    None => self.move_wait.give_up(waits, stance),
+                });
+                return Ok(());
+            }
+            Some(MoveTo::Waiting) => {
+                self.move_wait.timer += walk.dt;
+                if self.move_wait.delay <= self.move_wait.timer {
+                    self.move_wait.timer = 0.0;
+                    self.move_to = Some(MoveTo::Start);
+                }
+                return Ok(());
+            }
+            Some(MoveTo::Failed) => {
+                step.drop_off = true;
+                return Ok(());
+            }
+            Some(MoveTo::Arrived) | None => {}
+        }
+        if self.move_to.take().is_some()
+            && let Some(m) = walk.mover.as_deref_mut()
+        {
+            m.stop()?;
+        }
+        let Some((2, drop)) = builder.deposit.filter(|_| self.site != -1) else {
+            step.drop_off = true;
+            return Ok(());
+        };
+        if !drop.takes {
+            return self.halt_in(&mut walk, site, step);
+        }
+        if DROP_REACH < drop.gap_squared {
+            self.timer = DROP_WAIT;
+            step.anim_stopped = true;
+            return Ok(());
+        }
+        let kind = crate::hunt::resource_kind(builder.held_kind, builder.attributes);
+        step.dropped = Some((kind, builder.held));
+        if self.target != -1 {
+            step.site_let_go = Some(std::mem::replace(&mut self.site, -1));
+            return self.restart(&mut walk, site.map(Site::into_builders));
+        }
+        if let Some(ai) = builder.ai.as_deref_mut() {
+            let gone = builder.gone_orders;
+            ai.orders
+                .retain(|o| !(DROPPED_ORDERS.contains(&o.order) && gone.contains(&o.target)));
+            if !ai.orders.is_empty() {
+                ai.end_order_and_action()?;
+                self.end(&mut walk, None, DONE, step)?;
+                step.done = true;
+                return Ok(());
+            }
+            return self.idle(&mut walk, site, builder, step);
+        }
+        // UCOMISS against −1 (DAT_14330ec20): a NaN is not
+        if self.point[0] == -1.0 || self.point[1] == -1.0 {
+            if computer {
+                return self.end(&mut walk, None, DONE, step);
+            }
+            return self.halt_in(&mut walk, site, step);
+        }
+        self.walk_to_point(&mut walk, None)
     }
 
     /// `set_state(3)` (`0x140aae200` case 3): the prelude (out of the foundation's builders, the
@@ -989,7 +1287,7 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        *self = Self::start(self.target, at, gap, self.task);
+        *self = self.restarted(self.target, at, gap);
         Ok(())
     }
 
@@ -1013,7 +1311,7 @@ impl BuildAction {
         {
             m.stop()?;
         }
-        *self = Self::start(target, at, gap, self.task);
+        *self = self.restarted(target, at, gap);
         Ok(())
     }
 
@@ -1022,8 +1320,9 @@ impl BuildAction {
     /// [`crate::turn::Turns::leave_builders`]: true when it counted), the sub-actions go (a
     /// `MoveTo`'s teardown stops the unit), the unit takes its standing sprite (slot 0x68 with the
     /// master's `+0x470`, the caller's), the foundation and the second target go (slot 0x68 and
-    /// `FUN_140a7a190` with none: the caller releases the foundation) and the point is −1. The
-    /// answer is true, so the stop keeps the list; returns whether it counted and the foundation.
+    /// `FUN_140a7a190` with none: the caller releases both) and the point is −1. The answer is
+    /// true, so the stop keeps the list; returns whether it counted, the foundation and the
+    /// second target (−1 for none).
     ///
     /// # Errors
     ///
@@ -1031,7 +1330,7 @@ impl BuildAction {
     pub(crate) fn halt(
         &mut self,
         mover: Option<&mut crate::movement::Mover>,
-    ) -> Result<(bool, i32), GenieError> {
+    ) -> Result<(bool, [i32; 2]), GenieError> {
         let counted = std::mem::replace(&mut self.added, false);
         if self.move_to.take().is_some()
             && let Some(m) = mover
@@ -1043,7 +1342,30 @@ impl BuildAction {
         self.point = [-1.0; 3];
         self.state = HALTED;
         let target = std::mem::replace(&mut self.target, -1);
-        Ok((counted, target))
+        let site = std::mem::replace(&mut self.site, -1);
+        Ok((counted, [target, site]))
+    }
+
+    /// `set_state(2)` from the update ([`BuildAction::halt`]): a counted builder leaves the
+    /// builders of `site` (its foundation's, [`Site::builders`]), the unit takes its standing
+    /// sprite ([`BuildStep::stands`]), and the foundation and the second target go
+    /// ([`BuildStep::released`], [`BuildStep::site_let_go`]: the caller's).
+    fn halt_in(
+        &mut self,
+        walk: &mut Walk<'_>,
+        site: Option<Site<'_>>,
+        step: &mut BuildStep,
+    ) -> Result<(), GenieError> {
+        let (counted, [target, second]) = self.halt(walk.mover.as_deref_mut())?;
+        if counted && let Some(b) = site.map(Site::into_builders) {
+            *b = b.wrapping_sub(1);
+        }
+        step.stands = true;
+        step.released = target != -1;
+        if second != -1 {
+            step.site_let_go = Some(second);
+        }
+        Ok(())
     }
 
     /// The search for more work found nothing (`0x140ab0f00`): slot 0x68 with none lets the
@@ -1108,10 +1430,7 @@ impl BuildAction {
         if !site.construction.desolid {
             return self.join(walk, &mut site);
         }
-        let placed = *walk
-            .world
-            .get_known(self.target)?
-            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+        let placed = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
         let clearing = ClearingSite {
             player: placed.player,
             master: placed.master,
@@ -1188,10 +1507,7 @@ impl BuildAction {
     /// tiles beside it on the footprint's diagonal (`set_state` 2, not modelled), it counts among
     /// the foundation's builders. Its work sprite and sound are not held by the slice.
     fn join(&mut self, walk: &Walk<'_>, site: &mut Site<'_>) -> Result<(), GenieError> {
-        let placed = walk
-            .world
-            .get(self.target)
-            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+        let placed = walk.world.get(self.target).ok_or(SITE_GONE)?;
         let [bx, by] = [walk.me.position[0] as i32, walk.me.position[1] as i32];
         let [tx, mut ty] = [placed.position[0] as i32, placed.position[1] as i32];
         let [rx, ry] = placed.radius;
@@ -1282,32 +1598,23 @@ impl BuildAction {
     /// touch, as [`BuildAction::start`]'s. Only a villager returns at once (`0x140ab0370` case
     /// 0xde; any other builder in range would work, state 6).
     fn back(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
-        let mover = walk
-            .mover
-            .as_deref()
-            .ok_or(GenieError::unsupported("a builder without movement state"))?;
+        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
         if walk.world.get(walk.me.id).map(|p| p.class) != Some(VILLAGER) {
             return Err(GenieError::unsupported(
                 "a builder other than a villager returns",
             ));
         }
-        let site = walk
-            .world
-            .get_known(self.target)?
-            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+        let site = walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, site.position, site.radius);
-        *self = Self::start(self.target, site.position, gap, self.task);
+        *self = self.restarted(self.target, site.position, gap);
         Ok(())
     }
 
     /// `set_state(223)`: a `MoveTo` to the free tile beside the footprint (`FUN_1411566b0`); it starts
     /// in state 3, as a `MoveTo` to a point is far from it (`FUN_140aa2100`).
     fn clear(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
-        let mover = walk
-            .mover
-            .as_deref()
-            .ok_or(GenieError::unsupported("a builder without movement state"))?;
+        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
         let site = walk.world.get(self.target).expect("place found it");
         let spot = walk
             .world
@@ -1367,11 +1674,8 @@ impl BuildAction {
                 .mover
                 .as_deref()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-                .ok_or(GenieError::unsupported("a builder without movement state"))?;
-            let t = *walk
-                .world
-                .get_known(self.target)?
-                .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+                .ok_or(BUILDER_UNMOVING)?;
+            let t = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
             let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
             let range = self.task.range;
             if !(gap <= range * range || gap <= REACH) {
@@ -1406,10 +1710,7 @@ impl BuildAction {
     ) -> Result<(), GenieError> {
         if self.target != -1 {
             let s = site.as_ref().ok_or(FOREIGN_SITE)?;
-            let placed = *walk
-                .world
-                .get_known(self.target)?
-                .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+            let placed = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
             if s.construction.desolid && walk.world.foreign_marks(&placed) {
                 let seen = walk
                     .world
@@ -1418,21 +1719,11 @@ impl BuildAction {
                     == SEEN;
                 if seen {
                     step.removes = Some(self.target);
-                    let counted = self.added;
-                    let (_, target) = self.halt(walk.mover.as_deref_mut())?;
-                    if counted && let Some(b) = site.map(Site::into_builders) {
-                        *b = b.wrapping_sub(1);
-                    }
-                    step.stands = true;
-                    step.released = target != -1;
-                    return Ok(());
+                    return self.halt_in(walk, site, step);
                 }
             }
         }
-        let mover = walk
-            .mover
-            .as_deref()
-            .ok_or(GenieError::unsupported("a builder without movement state"))?;
+        let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
         let (restriction, ground, [mx, my, _]) = (
             mover.stats.restriction,
             mover.stats.radius[0],
@@ -1443,10 +1734,7 @@ impl BuildAction {
             && let Some(plan) = walk.plan.as_mut()
             && let Some(planner) = plan.pathing.planner(restriction, walk.world.tiles())
         {
-            let t = *walk
-                .world
-                .get_known(self.target)?
-                .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+            let t = *walk.world.get_known(self.target)?.ok_or(SITE_GONE)?;
             let radius = site
                 .as_ref()
                 .and_then(|s| s.completion.master)
@@ -1490,6 +1778,19 @@ impl BuildAction {
             self.target = -1;
             step.released = true;
         }
+        self.walk_to_point(walk, None)
+    }
+
+    /// `set_state(11)` (`0x140aae200` case 0xb): the prelude ([`BuildAction::leave`]), then a
+    /// quiet `MoveTo` to the action's point (`FUN_140aa0d30`: range 0, the task's moving sprite;
+    /// `FUN_140a7a170` with 1), which starts in state 3 (`FUN_140aa2100`: a `MoveTo` without a
+    /// target is far from it), in 13 for a unit without speed.
+    fn walk_to_point(
+        &mut self,
+        walk: &mut Walk<'_>,
+        builders: Option<&mut u8>,
+    ) -> Result<(), GenieError> {
+        self.leave(walk, builders)?;
         self.state = WALK_POINT;
         self.goal = Some(self.point);
         let moves = walk.mover.as_deref().is_some_and(|m| m.stats.speed != 0.0);
@@ -2446,9 +2747,7 @@ impl Construction {
         if !c.desolid {
             return Ok(false);
         }
-        let placed = *world
-            .get(id)
-            .ok_or(GenieError::unsupported("a foundation that is gone"))?;
+        let placed = *world.get(id).ok_or(SITE_GONE)?;
         c.desolid = false;
         c.started = true;
         c.progress = f32::from_bits(STARTED);
@@ -2753,6 +3052,7 @@ mod tests {
         range: 0.1,
         work_value: 1.0,
         work_rate: 1.0,
+        resource: -1,
     };
 
     /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
@@ -2840,6 +3140,9 @@ mod tests {
                 build_targets: &[],
                 look: Looks(&|_| None),
                 walk_target_state: Some(0),
+                deposit: None,
+                attributes: 4,
+                gone_orders: &[],
             };
             let _ = build.update(walk, Some(site), builder).unwrap();
         }
@@ -2948,7 +3251,7 @@ mod tests {
             added: true,
             ..BuildAction::start(31148, [0.0; 3], 0.0, TASK)
         };
-        assert_eq!(b.halt(Some(&mut mover)), Ok((true, 31148)));
+        assert_eq!(b.halt(Some(&mut mover)), Ok((true, [31148, -1])));
         assert_eq!(
             (b.state, b.added, b.move_to, b.goal, b.target),
             (HALTED, false, None, None, -1)
@@ -2961,7 +3264,7 @@ mod tests {
             move_to: None,
             ..BuildAction::start(31150, [0.0; 3], 0.0, TASK)
         };
-        assert_eq!(idle.halt(None), Ok((false, 31150)));
+        assert_eq!(idle.halt(None), Ok((false, [31150, -1])));
     }
 
     /// The Build's constructor (`FUN_140aad4e0`) and `set_state(4)` take the foundation's place
@@ -2996,6 +3299,9 @@ mod tests {
                 build_targets: &[],
                 look: Looks(&|_| None),
                 walk_target_state: state,
+                deposit: None,
+                attributes: 4,
+                gone_orders: &[],
             }
         }
         fn walk<'a>(
@@ -3782,6 +4088,8 @@ mod tests {
             added: false,
             timer: 0.0,
             move_wait: MoveWait::default(),
+            site: -1,
+            drop_range: 0.0,
         };
         let mut life = Lifecycle {
             state: 0,
@@ -3848,6 +4156,9 @@ mod tests {
                     build_targets: &[],
                     look: Looks(&|_| None),
                     walk_target_state: Some(0),
+                    deposit: None,
+                    attributes: 4,
+                    gone_orders: &[],
                 },
             )
             .unwrap();
@@ -3944,6 +4255,9 @@ mod tests {
                     build_targets: &[],
                     look: Looks(&|_| None),
                     walk_target_state: Some(0),
+                    deposit: None,
+                    attributes: 4,
+                    gone_orders: &[],
                 },
             )
             .unwrap();
@@ -4138,6 +4452,9 @@ mod tests {
                     build_targets: &[],
                     look: Looks(&looks),
                     walk_target_state: Some(0),
+                    deposit: None,
+                    attributes: 4,
+                    gone_orders: &[],
                 },
             )
             .unwrap();
@@ -4277,6 +4594,9 @@ mod tests {
                     build_targets: &[],
                     look: Looks(&looks),
                     walk_target_state: Some(0),
+                    deposit: None,
+                    attributes: 4,
+                    gone_orders: &[],
                 },
             )
             .unwrap();
@@ -4422,6 +4742,9 @@ mod tests {
                     build_targets: &[],
                     look: Looks(&looks),
                     walk_target_state: Some(0),
+                    deposit: None,
+                    attributes: 4,
+                    gone_orders: &[],
                 },
             )
             .unwrap();
@@ -4469,6 +4792,9 @@ mod tests {
                 build_targets: &[],
                 look: Looks(&|_| None),
                 walk_target_state: Some(0),
+                deposit: None,
+                attributes: 4,
+                gone_orders: &[],
             };
             b.update(walk, None, builder).unwrap()
         }
@@ -4647,6 +4973,9 @@ mod tests {
                         build_targets: &[],
                         look: Looks(&|_| None),
                         walk_target_state: Some(0),
+                        deposit: None,
+                        attributes: 4,
+                        gone_orders: &[],
                     },
                 )
                 .unwrap();
@@ -4716,6 +5045,9 @@ mod tests {
             build_targets: &[],
             look: Looks(&|_| None),
             walk_target_state: Some(0),
+            deposit: None,
+            attributes: 4,
+            gone_orders: &[],
         };
         world.insert(10028, house());
         let _ = near.update(walk(1, &mut world), None, builder()).unwrap();
@@ -4729,6 +5061,362 @@ mod tests {
             (far.state, far.target, far.move_to, step.notified, step.done),
             (IDLE, -1, None, true, false)
         );
+    }
+    /// The house 10028 at (10.5, 10.5) and the mill 300 at (15.5, 10.5) of player 1, on 20 x 20
+    /// tiles.
+    fn drop_world() -> Spatial {
+        use crate::spatial::{Placed, Tiles};
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        world.insert(
+            10028,
+            Placed {
+                position: [10.5, 10.5, 0.0],
+                player: 1,
+                ..house()
+            },
+        );
+        world.insert(
+            300,
+            Placed {
+                position: [15.5, 10.5, 0.0],
+                player: 1,
+                master: 68,
+                ..house()
+            },
+        );
+        world
+    }
+
+    /// `set_state(8)` (`0x140aae200` case 8): the prelude takes a counted builder out of the
+    /// builders; the drop site found becomes the second target (`FUN_140a7a190`) and a quiet
+    /// `MoveTo` to it within the search's range starts. None found lets the old one go, tells the
+    /// unit AI (notify 0x203) and walks back to the foundation (`set_state(4)`), as a builder
+    /// carrying nothing does without a search. Without a foundation that `MoveTo` has no target
+    /// and walks to its zeroed point.
+    #[test]
+    fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
+        let mut world = drop_world();
+        let mut mover = crate::hunt::tests::walker();
+        let me = Me {
+            id: 5,
+            position: [2.5, 2.5, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let mut b = BuildAction {
+            state: WORK,
+            added: true,
+            ..BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK)
+        };
+        let mut builders = 3;
+        let mut walk = Walk {
+            mover: Some(&mut mover),
+            me,
+            dt: 0.0,
+            world: &mut world,
+            plan: None,
+        };
+        let out = b
+            .set_drop(
+                &mut walk,
+                Some(&mut builders),
+                DropSearch::Site {
+                    id: 300,
+                    range: 0.5,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            out,
+            DropStart {
+                let_go: -1,
+                took: 300,
+                notified: false
+            }
+        );
+        assert_eq!(
+            (b.state, b.site, b.walk_target, b.drop_range, b.move_to),
+            (DROP, 300, 300, 0.5, Some(MoveTo::Start))
+        );
+        assert_eq!((b.added, builders, b.target), (false, 2, 10028));
+        let out = b.set_drop(&mut walk, None, DropSearch::Nothing).unwrap();
+        assert_eq!(
+            out,
+            DropStart {
+                let_go: 300,
+                took: -1,
+                notified: true
+            }
+        );
+        assert_eq!(
+            (b.state, b.site, b.walk_target, b.move_to, b.goal),
+            (MOVE, -1, 10028, Some(MoveTo::Start), None)
+        );
+        let out = b.set_drop(&mut walk, None, DropSearch::Empty).unwrap();
+        assert_eq!((out.let_go, out.took, out.notified), (-1, -1, false));
+        assert_eq!((b.state, b.move_to), (MOVE, Some(MoveTo::Start)));
+        // beside the site already: arrived at once
+        walk.me.position = [14.5, 10.5, 0.0];
+        let _ = b
+            .set_drop(
+                &mut walk,
+                None,
+                DropSearch::Site {
+                    id: 300,
+                    range: 0.5,
+                },
+            )
+            .unwrap();
+        assert_eq!((b.state, b.move_to), (DROP, Some(MoveTo::Arrived)));
+        let mut lost = BuildAction { target: -1, ..b };
+        let _ = lost.set_drop(&mut walk, None, DropSearch::Empty).unwrap();
+        assert_eq!(
+            (
+                lost.state,
+                lost.walk_target,
+                lost.goal,
+                lost.move_to,
+                lost.site
+            ),
+            (MOVE, -1, Some([0.0; 3]), Some(MoveTo::Start), 300)
+        );
+    }
+
+    /// One update of `build` in state 8 by villager 5 at (14, 10.5) carrying `held` wood, its
+    /// drop site read as `deposit`, its unit AI `ai` and the targets gone `gone`, in
+    /// [`drop_world`].
+    fn drop_update(
+        build: &mut BuildAction,
+        (held, deposit): (f32, Option<(u8, crate::hunt::DropOff)>),
+        ai: Option<&mut UnitAi>,
+        gone: &[i32],
+    ) -> BuildStep {
+        let mut world = drop_world();
+        let mut mover = crate::hunt::tests::walker();
+        build
+            .update(
+                Walk {
+                    mover: Some(&mut mover),
+                    me: Me {
+                        id: 5,
+                        position: [14.0, 10.5, 0.0],
+                        group: -1,
+                        action_state: 0,
+                    },
+                    dt: 0.25,
+                    world: &mut world,
+                    plan: None,
+                },
+                None,
+                Builder {
+                    class: VILLAGER,
+                    master: 83,
+                    held,
+                    held_kind: 1,
+                    drop_site: false,
+                    ai,
+                    waits: &mut 0,
+                    build_targets: &[],
+                    look: Looks(&|_| None),
+                    walk_target_state: Some(2),
+                    deposit,
+                    attributes: 4,
+                    gone_orders: gone,
+                },
+            )
+            .unwrap()
+    }
+
+    /// A Build of foundation 10028 in state 8 at its drop site 300.
+    fn at_the_mill() -> BuildAction {
+        BuildAction {
+            state: DROP,
+            move_to: Some(MoveTo::Arrived),
+            site: 300,
+            walk_target: 300,
+            drop_range: 0.5,
+            ..BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK)
+        }
+    }
+
+    /// The drop site as the drop-off reads it: in state `state`, taking the load or not, `gap`
+    /// squared away.
+    const fn mill(state: u8, takes: bool, gap: f32) -> (u8, crate::hunt::DropOff) {
+        (
+            state,
+            crate::hunt::DropOff {
+                takes,
+                gap_squared: gap,
+            },
+        )
+    }
+
+    /// State 8's update (`0x140ab0370` case 7) at the `MoveTo`'s end: at a drop site in state 2
+    /// that takes it within 1 the load goes to the player (wood, [`BuildStep::dropped`]), the
+    /// drop site goes and the builder walks back to its foundation (`set_state(4)`). Farther it
+    /// waits 3 seconds with its animation stopped, then searches again; a drop site that does not
+    /// take the load halts the Build; one not in state 2, or none, a failed walk and a walk whose
+    /// target went past state 6 search again.
+    #[test]
+    fn a_builder_at_its_drop_site_gives_its_load_and_walks_back() {
+        let mut b = at_the_mill();
+        let step = drop_update(&mut b, (10.0, Some(mill(2, true, 0.5))), None, &[]);
+        assert_eq!(step.dropped, Some((1, 10.0)));
+        assert_eq!(step.site_let_go, Some(300));
+        assert_eq!((b.state, b.site, b.target), (MOVE, -1, 10028));
+        assert_eq!(b.move_to, Some(MoveTo::Start));
+        let mut far = at_the_mill();
+        let step = drop_update(&mut far, (10.0, Some(mill(2, true, 1.5))), None, &[]);
+        assert!(step.anim_stopped && step.dropped.is_none());
+        assert_eq!((far.state, far.timer, far.move_to), (DROP, -3.0, None));
+        let step = drop_update(&mut far, (10.0, Some(mill(2, true, 1.5))), None, &[]);
+        assert!(!step.drop_off);
+        assert_eq!(far.timer, -2.75);
+        far.timer = -0.1;
+        let step = drop_update(&mut far, (10.0, Some(mill(2, true, 1.5))), None, &[]);
+        assert!(step.drop_off);
+        assert_eq!(far.timer, 0.0);
+        let mut refused = at_the_mill();
+        let step = drop_update(&mut refused, (10.0, Some(mill(2, false, 0.5))), None, &[]);
+        assert_eq!(
+            (step.stands, step.released, step.site_let_go),
+            (true, true, Some(300))
+        );
+        assert_eq!(
+            (refused.state, refused.target, refused.site),
+            (HALTED, -1, -1)
+        );
+        for (deposit, move_to) in [
+            (Some(mill(3, true, 0.5)), MoveTo::Arrived),
+            (None, MoveTo::Arrived),
+            (Some(mill(2, true, 0.5)), MoveTo::Failed),
+        ] {
+            let mut b = BuildAction {
+                move_to: Some(move_to),
+                ..at_the_mill()
+            };
+            let step = drop_update(&mut b, (10.0, deposit), None, &[]);
+            assert!(step.drop_off && step.dropped.is_none(), "{deposit:?}");
+            assert_eq!(b.state, DROP);
+        }
+    }
+
+    /// State 8 without a foundation: after the load its unit AI drops its orders 0x2c5, 0x2c9
+    /// and 0x2db on targets gone (`FUN_140c5de60`); with orders left it has no order and the
+    /// Build is done (`set_state(1)`, the update returns 1), with none it waits (`set_state(3)`:
+    /// notify 0x202, the standing sprite). A builder without a unit AI and a point of −1 halts
+    /// (a human's, `set_state(2)`: the drop site goes); with a point it walks there
+    /// (`set_state(11)`).
+    #[test]
+    fn a_builder_without_a_foundation_after_its_drop_off() {
+        let lone = || BuildAction {
+            target: -1,
+            ..at_the_mill()
+        };
+        let order = |order, target| crate::unit_ai::QueuedOrder {
+            order,
+            target,
+            ..crate::unit_ai::QueuedOrder::default()
+        };
+        let mut ai = UnitAi {
+            current_order: 0x2c9,
+            orders: vec![order(0x2c9, 77), order(0x2be, 78)],
+            ..UnitAi::default()
+        };
+        let mut b = lone();
+        let step = drop_update(
+            &mut b,
+            (10.0, Some(mill(2, true, 0.5))),
+            Some(&mut ai),
+            &[77],
+        );
+        assert_eq!(ai.orders, vec![order(0x2be, 78)]);
+        assert_eq!(ai.current_order, -1);
+        assert!(step.done && step.stands);
+        assert_eq!((b.state, step.dropped), (DONE, Some((1, 10.0))));
+        let mut empty = UnitAi {
+            orders: vec![order(0x2db, 77)],
+            ..UnitAi::default()
+        };
+        let mut b = lone();
+        let step = drop_update(
+            &mut b,
+            (10.0, Some(mill(2, true, 0.5))),
+            Some(&mut empty),
+            &[77],
+        );
+        assert_eq!(empty.orders, Vec::new());
+        assert!(step.notified && step.stands && !step.done);
+        assert_eq!((b.state, b.site), (IDLE, 300));
+        let mut b = BuildAction {
+            point: [-1.0; 3],
+            ..lone()
+        };
+        let step = drop_update(&mut b, (10.0, Some(mill(2, true, 0.5))), None, &[]);
+        assert_eq!(
+            (b.state, step.site_let_go, step.stands),
+            (HALTED, Some(300), true)
+        );
+        let mut b = BuildAction {
+            point: [5.0, 6.0, 0.0],
+            ..lone()
+        };
+        let step = drop_update(&mut b, (10.0, Some(mill(2, true, 0.5))), None, &[]);
+        assert_eq!(
+            (b.state, b.goal, b.move_to, step.dropped),
+            (
+                WALK_POINT,
+                Some([5.0, 6.0, 0.0]),
+                Some(MoveTo::Start),
+                Some((1, 10.0))
+            )
+        );
+    }
+
+    /// State 8's quiet `MoveTo` lets a target past state 6 go and returns 5: the drop-off
+    /// searches again; while its timer is below 0 the `MoveTo` waits.
+    #[test]
+    fn a_drop_off_whose_site_went_past_state_6_searches_again() {
+        let mut b = BuildAction {
+            move_to: Some(MoveTo::Moving),
+            ..at_the_mill()
+        };
+        let mut world = drop_world();
+        let mut mover = crate::hunt::tests::walker();
+        let step = b
+            .update(
+                Walk {
+                    mover: Some(&mut mover),
+                    me: Me {
+                        id: 5,
+                        position: [2.5, 2.5, 0.0],
+                        group: -1,
+                        action_state: 0,
+                    },
+                    dt: 0.25,
+                    world: &mut world,
+                    plan: None,
+                },
+                None,
+                Builder {
+                    class: VILLAGER,
+                    master: 83,
+                    held: 10.0,
+                    held_kind: 1,
+                    drop_site: false,
+                    ai: None,
+                    waits: &mut 0,
+                    build_targets: &[],
+                    look: Looks(&|_| None),
+                    walk_target_state: Some(7),
+                    deposit: Some(mill(7, true, 30.0)),
+                    attributes: 4,
+                    gone_orders: &[],
+                },
+            )
+            .unwrap();
+        assert!(step.drop_off);
+        assert_eq!((b.walk_target, b.state), (-1, DROP));
     }
 }
 

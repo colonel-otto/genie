@@ -928,8 +928,8 @@ fn saved_actions(
     let base = action
         .base()
         .ok_or(GenieError::unsupported("a saved action without its base"))?;
-    // the second target (+0x34): only the Hunt and the Gather (their drop site), the missile (its
-    // shooter) and the Attack hold one in the slice
+    // the second target (+0x34): only the Hunt, the Gather and the Build (their drop site), the
+    // missile (its shooter) and the Attack hold one in the slice
     if base.target2_id != -1
         && !matches!(
             kind,
@@ -937,6 +937,7 @@ fn saved_actions(
                 | genie_core::gather::GATHER
                 | genie_core::missile::MISSILE
                 | genie_core::attack::ATTACK
+                | BUILD
         )
     {
         return Err(GenieError::unsupported(
@@ -1138,6 +1139,13 @@ fn saved_actions(
                 .map_or(-1, |b| b.target_id);
             let mut task = work(s.master_obj)?;
             task.work_rate += unit.work_rate_powerup;
+            // the drop-off's MoveTo keeps its range (+0x68)
+            let drop_range = match base.sub_actions.entries().next() {
+                Some((MOVE_TO, sub)) if base.state == genie_core::build::DROP => sub
+                    .move_to_range()
+                    .ok_or(GenieError::unsupported("a saved MoveTo without its range"))?,
+                _ => task.range,
+            };
             unit.build = Some(BuildAction {
                 target: base.target_id,
                 state: base.state,
@@ -1158,6 +1166,8 @@ fn saved_actions(
                     .map_or_else(genie_core::move_to::MoveWait::default, |(_, sub)| {
                         saved_move_wait(sub)
                     }),
+                site: base.target2_id,
+                drop_range,
             });
             Ok(())
         }
@@ -1701,11 +1711,12 @@ fn build_task(
         .ok_or(GenieError::unsupported(
             "a builder master without an action part",
         ))?;
-    let (range, work_value) = build_range(objects, civ, masters, m, master)?;
+    let (range, work_value, resource) = build_range(objects, civ, masters, m, master)?;
     Ok(genie_core::build::BuildTask {
         range,
         work_value,
         work_rate,
+        resource,
     })
 }
 
@@ -1748,7 +1759,7 @@ fn build_range(
     masters: Option<&MasterTable>,
     m: &Master,
     master: i16,
-) -> Result<(f32, f32), GenieError> {
+) -> Result<(f32, f32, i16), GenieError> {
     let saved = m.tribe_master_combat_object.as_deref().and_then(|c| {
         c.rge_master_combat_object
             .rge_master_action_object
@@ -1761,7 +1772,7 @@ fn build_range(
             .list
             .iter()
             .find(|e| e.task.action_type == build)
-            .map(|e| (e.task.work_range, e.task.work_val1))
+            .map(|e| (e.task.work_range, e.task.work_val1, e.task.attribute_type))
             .ok_or(GenieError::unsupported(
                 "a builder whose master has no Build task",
             ));
@@ -1769,7 +1780,7 @@ fn build_range(
     masters
         .and_then(|t| t.work(civ, objects.dat_master(master)))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
-        .map(|t| (t.work_range, t.work_val1))
+        .map(|t| (t.work_range, t.work_val1, t.attribute_type))
         .ok_or(GenieError::unsupported(
             "a builder whose Build task is not in the data file",
         ))

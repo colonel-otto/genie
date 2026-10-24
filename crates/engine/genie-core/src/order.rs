@@ -1989,10 +1989,30 @@ impl Turns {
                 }
                 continue;
             }
-            if unit.top_action_kind() == Some(crate::build::BUILD) {
-                return Err(GenieError::unsupported(
-                    "a UNIT_ORDER drop-off of a Build (slot 0x78)",
-                ));
+            if let Some(build) = unit
+                .build
+                .as_ref()
+                .filter(|_| unit.top_action_kind() == Some(crate::build::BUILD))
+            {
+                // a Build without a target or a point as the Gather's above
+                let unaimed =
+                    build.target == -1 && build.point[0] == NO_POINT && build.point[1] == NO_POINT;
+                let attributes = self.players[p].attributes.len();
+                let asked = crate::hunt::asked_drop_off(
+                    build.task.resource,
+                    unit.life.attribute_type,
+                    attributes,
+                )?;
+                if unaimed {
+                    self.record_town_bell(p, idx)?;
+                }
+                if asked {
+                    self.build_drop_off_now(p, idx)?;
+                }
+                if unaimed {
+                    self.queue_way_back(p, idx)?;
+                }
+                continue;
             }
             let Some(hunt) = unit
                 .hunt
@@ -2139,25 +2159,81 @@ impl Turns {
         held: i16,
         class: i16,
     ) -> Option<i32> {
-        let civ = self.players[p].civ;
-        let buildings = crate::tasks::table_drop_buildings(&self.drop_sites, held, class, civ);
-        let mut best = (None, TABLE_DROP_FAR);
-        for m in buildings {
-            for &id in self.players[p].tracker.list(i32::from(m)) {
-                let Some((_, o)) = self.object(id) else {
-                    continue;
-                };
-                if o.life.state != 2 {
-                    continue;
-                }
-                let (dx, dy) = (at[0] - o.position[0], at[1] - o.position[1]);
-                let d = dy * dy + dx * dx;
-                if d < best.1 {
-                    best = (Some(id), d);
+        let player = &self.players[p];
+        let look = |id: i32| self.object(id).map(|(_, o)| (o.life.state, o.position));
+        nearest_table_site(
+            (&self.drop_sites, player.civ, &player.tracker),
+            (at, held, class),
+            look,
+        )
+    }
+
+    /// The Build's `set_state(8)` as `UNIT_ORDER`'s drop-off (slot 0x78) gives it to the builder
+    /// at (`p`, `idx`): a counted builder leaves its foundation's builders first
+    /// ([`Turns::leave_builders`]); a builder that carries something (`+0x310` above 0, COMISS:
+    /// not a NaN) searches the drop-site table ([`Turns::table_drop_site`] for what it carries
+    /// and its class) and its slot 0x820 the task on the site found (any action type, no switch,
+    /// [`Turns::find_work_task`]: its range, else the Build task's); then
+    /// [`crate::build::BuildAction::set_drop`], whose second targets the world releases and
+    /// takes and whose notify 0x203 goes to the unit AI.
+    pub(crate) fn build_drop_off_now(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+        use crate::build::DropSearch;
+        let by = self.releaser(p, idx);
+        let unit = &self.players[p].objects[idx];
+        let build = unit.build.as_ref().expect("the caller's Build");
+        let (target, counted, task_range) = (build.target, build.added, build.task.range);
+        let (amount, held, at) = (
+            unit.life.amount,
+            unit.life.attribute_type,
+            [unit.position[0], unit.position[1]],
+        );
+        let class = self.master_of(p, unit.life.master_id)?.class;
+        let search = if 0.0 < amount {
+            match self.table_drop_site(p, at, held, class) {
+                None => DropSearch::Nothing,
+                Some(id) => {
+                    let range = self
+                        .find_work_task(p, idx, id, -1, false)?
+                        .map_or(task_range, |t| t.work_range);
+                    DropSearch::Site { id, range }
                 }
             }
+        } else {
+            DropSearch::Empty
+        };
+        if counted {
+            self.leave_builders(target)?;
         }
-        best.0
+        let unit = &mut self.players[p].objects[idx];
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: crate::build::DROP,
+        };
+        let build = unit.build.as_mut().expect("the caller's Build");
+        build.added = false;
+        let mut walk = crate::move_to::Walk {
+            mover: unit.mover.as_mut(),
+            me,
+            dt: 0.0,
+            world: &mut self.spatial,
+            plan: None,
+        };
+        let out = build.set_drop(&mut walk, None, search)?;
+        if out.notified {
+            unit.post_own(
+                crate::unit_ai::NO_DROP_SITE,
+                [crate::unit_ai::BUILD_ACTION, 0, 0],
+            )?;
+        }
+        if out.let_go != -1 {
+            self.release(out.let_go, by)?;
+        }
+        if out.took != -1 {
+            self.take(out.took, by);
+        }
+        Ok(())
     }
 
     /// `FUN_141205ac0`: the unit at (`p`, `idx`) queues its way back to work: the work its
@@ -3587,6 +3663,7 @@ impl Turns {
             range: task.work_range,
             work_value: task.work_val1,
             work_rate: builder.work_rate + unit.work_rate_powerup,
+            resource: task.attribute_type,
         };
         self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
@@ -5493,6 +5570,37 @@ fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, GenieError> 
     Ok((DAMAGE_WHOLE - hp * DAMAGE_WHOLE / most) as i32 as u8)
 }
 
+/// `FUN_141658e20` over a player's drop-site table (`table`), civ and object tracker at `at` for
+/// a load of `held` from a worker of `class`: of the buildings the table gives
+/// ([`crate::tasks::table_drop_buildings`]), the objects of each master's done list in the
+/// tracker in turn (`FUN_14104f600`, the master itself the key) that `look` holds (their state
+/// and place) in state 2, the nearest by the squared distance of the centres (the first of
+/// equals; none from [`TABLE_DROP_FAR`] on).
+pub(crate) fn nearest_table_site(
+    (table, civ, tracker): (&[crate::tasks::DropSite], u8, &crate::tracker::Tracker),
+    (at, held, class): ([f32; 2], i16, i16),
+    look: impl Fn(i32) -> Option<(u8, [f32; 3])>,
+) -> Option<i32> {
+    let buildings = crate::tasks::table_drop_buildings(table, held, class, civ);
+    let mut best = (None, TABLE_DROP_FAR);
+    for m in buildings {
+        for &id in tracker.list(i32::from(m)) {
+            let Some((state, position)) = look(id) else {
+                continue;
+            };
+            if state != 2 {
+                continue;
+            }
+            let (dx, dy) = (at[0] - position[0], at[1] - position[1]);
+            let d = dy * dy + dx * dx;
+            if d < best.1 {
+                best = (Some(id), d);
+            }
+        }
+    }
+    best.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5594,6 +5702,164 @@ mod tests {
         let before = t.players[0].objects[0].clone();
         assert!(t.drop_off_unasked(0, 0).is_ok());
         assert_eq!(t.players[0].objects[0], before);
+    }
+
+    /// `UNIT_ORDER`'s drop-off on a builder carrying wood (`FUN_14161e370` on a Build: slot 0x78,
+    /// `FUN_140a78060`, then `set_state(8)`): it leaves its foundation's builders, takes the
+    /// drop-site table's nearest mill (`FUN_141658e20`) as its second target and walks to it
+    /// within the Build task's range (its master has no task on the mill). Without a mill in the
+    /// table it walks back to its foundation; carrying nothing it is not ordered at all.
+    #[test]
+    fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
+        use crate::spatial::Placed;
+        let placed = |position, master, radius| Placed {
+            position,
+            radius,
+            class: 3,
+            player: 0,
+            master,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        };
+        let villager = Unit {
+            id: 10,
+            position: [10.0, 10.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: 83,
+                state: 2,
+                attribute_type: 1,
+                amount: 5.0,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            mover: Some(crate::hunt::tests::walker()),
+            build: Some(crate::build::BuildAction {
+                state: 6,
+                added: true,
+                ..crate::build::BuildAction::start(
+                    600,
+                    [5.0, 10.0, 0.0],
+                    0.0,
+                    crate::build::BuildTask {
+                        range: 0.1,
+                        work_value: 1.0,
+                        work_rate: 1.0,
+                        resource: -1,
+                    },
+                )
+            }),
+            ..Unit::default()
+        };
+        let foundation = Unit {
+            id: 600,
+            position: [5.0, 10.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: 70,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            construction: Some(crate::build::Construction {
+                progress: 1.0,
+                desolid: false,
+                builders: 1,
+                hit_points: 550,
+                build_time: 25,
+                record: crate::spatial::Obstruction { kind: 2, class: 2 },
+                snow: false,
+                sprite_override: false,
+                started: false,
+            }),
+            ..Unit::default()
+        };
+        let mill = Unit {
+            id: 503,
+            position: [15.0, 10.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: 68,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let world = || {
+            let mut t = Turns::new(
+                0,
+                1,
+                0,
+                vec![0],
+                vec![crate::turn::Player {
+                    objects: vec![villager.clone(), foundation.clone(), mill.clone()],
+                    ..crate::turn::Player::default()
+                }],
+            );
+            t.masters = vec![crate::masters::Masters::new([
+                Master {
+                    id: 83,
+                    kind: 70,
+                    class: 4,
+                    radius: [0.2, 0.2],
+                    ..Master::default()
+                },
+                Master {
+                    id: 70,
+                    kind: 80,
+                    class: 3,
+                    radius: [1.0, 1.0],
+                    ..Master::default()
+                },
+                Master {
+                    id: 68,
+                    kind: 80,
+                    class: 3,
+                    radius: [1.0, 1.0],
+                    ..Master::default()
+                },
+            ])];
+            t.spatial
+                .insert(10, placed([10.0, 10.0, 0.0], 83, [0.2, 0.2]));
+            t.spatial
+                .insert(600, placed([5.0, 10.0, 0.0], 70, [1.0, 1.0]));
+            t.spatial
+                .insert(503, placed([15.0, 10.0, 0.0], 68, [1.0, 1.0]));
+            t.track_add(0, 503, 68);
+            let key = t.tracker_key(0, 68);
+            t.players[0].tracker.complete(503, key);
+            t
+        };
+        let mut t = world();
+        t.drop_sites = vec![crate::tasks::DropSite {
+            building: 68,
+            worker_class: 4,
+            resource_types: vec![1],
+            ..crate::tasks::DropSite::default()
+        }];
+        t.unit_order(0, &[10], 8).unwrap();
+        let build = t.players[0].objects[0].build.unwrap();
+        assert_eq!(
+            (build.state, build.site, build.walk_target, build.drop_range),
+            (crate::build::DROP, 503, 503, 0.1)
+        );
+        assert_eq!(
+            (build.move_to, build.added),
+            (Some(crate::build::MoveTo::Start), false)
+        );
+        assert_eq!(
+            t.players[0].objects[1].construction.map(|k| k.builders),
+            Some(0)
+        );
+        assert_eq!(t.players[0].objects[2].workers, 1);
+        // no table entry for wood: back to the foundation
+        let mut t = world();
+        t.unit_order(0, &[10], 8).unwrap();
+        let build = t.players[0].objects[0].build.unwrap();
+        assert_eq!((build.state, build.site, build.walk_target), (4, -1, 600));
+        // carrying nothing: not ordered
+        let mut t = world();
+        t.players[0].objects[0].life.amount = 0.0;
+        t.unit_order(0, &[10], 8).unwrap();
+        assert_eq!(t.players[0].objects[0].build.map(|b| b.state), Some(6));
     }
 
     /// The work command's Attack (`0x140a7f8c0`) of a soldier that may move, touching Gaia's
@@ -6851,10 +7117,13 @@ mod tests {
                 range: 0.1,
                 work_value: 1.0,
                 work_rate: 1.0,
+                resource: -1,
             },
             added: true,
             timer: 0.0,
             move_wait: crate::move_to::MoveWait::default(),
+            site: -1,
+            drop_range: 0.0,
         });
         assert_eq!(t.build_set_target(1, 0, (60, true), 60), Ok(60));
         assert!(t.players[1].objects[0].build.unwrap().added);

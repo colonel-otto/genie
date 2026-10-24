@@ -477,13 +477,15 @@ impl Turns {
                 let unit = &mut self.players[p].objects[idx];
                 let build = unit.build.as_mut().expect("its top action");
                 let foundation = build.target;
-                let (counted, target) = build.halt(unit.mover.as_mut())?;
+                let (counted, targets) = build.halt(unit.mover.as_mut())?;
                 if counted {
                     self.leave_builders(foundation)?;
                 }
                 self.standing_sprite(p, idx)?;
-                if target != -1 {
-                    self.release(target, by)?;
+                for t in targets {
+                    if t != -1 {
+                        self.release(t, by)?;
+                    }
                 }
             }
             // FUN_140adaa00: set_state(2), a counted repairer out of its target's repairers, the

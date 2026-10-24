@@ -76,6 +76,8 @@ pub const ACTION_EXECUTED: i32 = 0x200;
 /// `0x202` ("Action %d has been invalidated or requires a search.", the villager's log line): an
 /// action asks for another target (p1 its action value, p2 the target class, p3 a drop site).
 pub const REQUIRES_SEARCH: i32 = 0x202;
+/// `0x203`: an action's drop-off found no drop site (the Build's `set_state(8)`, a gather's).
+pub const NO_DROP_SITE: i32 = 0x203;
 /// `0x20b`: the unit changed hands (p1 the new owner).
 pub const OWNER_CHANGED: i32 = 0x20b;
 /// `500`: the unit took damage.

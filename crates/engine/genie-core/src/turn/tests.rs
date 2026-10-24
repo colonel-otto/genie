@@ -3494,10 +3494,13 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             range: 0.0,
             work_value: 0.0,
             work_rate: 1.0,
+            resource: -1,
         },
         added: true,
         timer: 0.0,
         move_wait: crate::move_to::MoveWait::default(),
+        site: -1,
+        drop_range: 0.0,
     });
     t.clear_actions(1, 2).unwrap();
     let foundation = &t.players[2].objects[0];
@@ -3556,10 +3559,13 @@ fn deaths_world() -> Turns {
             range: 0.0,
             work_value: 1.0,
             work_rate: 1.0,
+            resource: -1,
         },
         added: true,
         timer: 0.0,
         move_wait: crate::move_to::MoveWait::default(),
+        site: -1,
+        drop_range: 0.0,
     });
     let gaia = vec![
         Unit {

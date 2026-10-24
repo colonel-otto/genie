@@ -1752,6 +1752,103 @@ impl Unit {
         Ok(())
     }
 
+    /// The Build's `set_state(8)` from its update (case 7 searching again): the drop-site table's
+    /// nearest drop site for what the unit carries ([`crate::order::nearest_table_site`] over
+    /// its player's objects; the sleeping ones, static only, are never drop sites) and the task
+    /// its slot 0x820 finds on it ([`task_search`] with any action type, no switch: its range,
+    /// else the Build task's), unless it carries nothing (COMISS: a NaN load neither); then
+    /// [`crate::build::BuildAction::set_drop`], whose second targets the caller releases and
+    /// takes and whose notify 0x203 goes to the unit AI. A builder of state 8 counts among no
+    /// builders (its `set_state(8)` left them).
+    pub(in crate::turn) fn build_drop_off(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        me: Me,
+    ) -> Result<(), GenieError> {
+        use crate::build::DropSearch;
+        let by = self.releaser(c);
+        let build = self.build.as_ref().expect("the caller's Build");
+        let task_range = build.task.range;
+        let search = if 0.0 < self.life.amount {
+            let (masters, own) = c
+                .masters
+                .and_then(|m| Some((m, m.get(self.life.master_id)?)))
+                .ok_or(crate::turn::OBJECT_MASTER)?;
+            let at = [self.position[0], self.position[1]];
+            let look = |id: i32| {
+                others
+                    .iter()
+                    .find(|u| u.id == id)
+                    .map(|u| (u.life.state, u.position))
+            };
+            let found = crate::order::nearest_table_site(
+                (c.drop_sites, c.civ, c.tracker),
+                (at, self.life.attribute_type, own.class),
+                look,
+            );
+            match found {
+                None => DropSearch::Nothing,
+                Some(id) => {
+                    let (player, foreign) = (c.player, c.foreign);
+                    let unit = &*self;
+                    let find = |t: i32| {
+                        if t == unit.id {
+                            return Some((player, unit));
+                        }
+                        others
+                            .iter()
+                            .find(|u| u.id == t)
+                            .map(|u| (player, u))
+                            .or_else(|| foreign.find(t))
+                    };
+                    let every = c.every_masters;
+                    let task = match (
+                        crate::turn::world::task_target_with(id, 1, &find, every)?,
+                        crate::turn::world::task_target_with(id, 2, &find, every)?,
+                    ) {
+                        (Some(t), Some(general)) => {
+                            use crate::turn::world::{SideWorld, task_search};
+                            let actor = Actor {
+                                id: self.id,
+                                master: own,
+                                player,
+                                held: (self.life.attribute_type, self.life.amount),
+                                attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
+                                civ: c.civ,
+                            };
+                            let dip = SideWorld {
+                                player,
+                                relations: c.relations,
+                                foreign,
+                                drop_sites: c.drop_sites,
+                            };
+                            task_search(masters, &actor, &t, &general, -1, &dip)?
+                        }
+                        _ => None,
+                    };
+                    let range = task.map_or(task_range, |(t, _)| t.work_range);
+                    DropSearch::Site { id, range }
+                }
+            }
+        } else {
+            DropSearch::Empty
+        };
+        let mut walk = c.walk(self.mover.as_mut(), me);
+        let build = self.build.as_mut().expect("the caller's Build");
+        let out = build.set_drop(&mut walk, None, search)?;
+        if out.let_go != -1 {
+            c.releases.push((out.let_go, by));
+        }
+        if out.took != -1 {
+            c.takes.push((out.took, by));
+        }
+        if out.notified {
+            self.post_own(crate::unit_ai::NO_DROP_SITE, [BUILD_ACTION, 0, 0])?;
+        }
+        Ok(())
+    }
+
     /// The Gather's update (slot 6, `0x140a8e1d0`). It first checks its targets: a target gone
     /// from the world's table goes (slot 0x68 with none), one past state 6 is let go (slot 0x180)
     /// and goes; a second target gone goes (`FUN_140a7a190` with none), one past state 6 is let
@@ -5083,6 +5180,61 @@ impl Unit {
                         })
                         .collect()
                 });
+            // state 8: what the drop-off reads of its drop site and of its unit AI's orders
+            let (deposit, gone_orders) = if build.state == crate::build::DROP {
+                let deposit = match c.spatial.get(build.site).filter(|_| build.site != -1) {
+                    Some(s) => {
+                        let me_at = c
+                            .spatial
+                            .get_known(self.id)?
+                            .ok_or(GenieError::unsupported("a builder without a place"))?;
+                        let master = masters
+                            .and_then(|m| m.get(self.life.master_id))
+                            .ok_or(crate::turn::OBJECT_MASTER)?;
+                        let actor = Actor {
+                            id: self.id,
+                            master,
+                            player: c.player,
+                            held: (self.life.attribute_type, self.life.amount),
+                            attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
+                            civ: c.civ,
+                        };
+                        state_of(build.site, others, c.foreign).map(|state| {
+                            let drop = crate::hunt::DropOff {
+                                takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
+                                gap_squared: footprint_gap_squared(
+                                    me_at.position,
+                                    me_at.radius,
+                                    s.position,
+                                    s.radius,
+                                ),
+                            };
+                            (state, drop)
+                        })
+                    }
+                    None => None,
+                };
+                let spatial: &Spatial = c.spatial;
+                let gone = |t: i32| match spatial.get(t) {
+                    None => true,
+                    Some(_) => spatial
+                        .sight
+                        .as_ref()
+                        .and_then(|v| v.seer(t))
+                        .is_some_and(|s| 5 < s.state),
+                };
+                let orders: Vec<i32> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
+                    ai.orders
+                        .iter()
+                        .filter(|o| crate::build::DROPPED_ORDERS.contains(&o.order))
+                        .map(|o| o.target)
+                        .filter(|&t| gone(t))
+                        .collect()
+                });
+                (deposit, orders)
+            } else {
+                (None, Vec::new())
+            };
             // FUN_1411cc430's way to the building that takes the work: while the foundation is an
             // annex of a main building in state 0 with at least 1 hit point (COMISS: a NaN too),
             // that main building; then the foundation's annexes of a building type, which its
@@ -5213,6 +5365,9 @@ impl Unit {
                 build_targets: &build_targets,
                 look: crate::build::Looks(&|id| looks.get(&id).copied()),
                 walk_target_state,
+                deposit,
+                attributes: c.attributes.len(),
+                gone_orders: &gone_orders,
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
             c.cleared.extend(step.cleared.iter().copied());
@@ -5271,14 +5426,24 @@ impl Unit {
                 self.life.attribute_type = -1;
                 self.life.amount = 0.0;
             }
+            // the unit's animation stopped (FUN_141161850), the second target let go
+            if step.anim_stopped {
+                self.anim_speed = Some(0.0);
+            }
+            if let Some(s) = step.site_let_go {
+                c.releases.push((s, by));
+            }
             if step.done {
                 // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
-                // builders (set_state left them) and releases the foundation it still holds
-                // (slot 0x180)
-                let holds = self.build.is_some_and(|b| b.target != -1);
+                // builders (set_state left them) and releases the foundation and the second
+                // target it still holds (slot 0x180, FUN_140a73fc0)
+                let (holds, second) = self.build.map_or((false, -1), |b| (b.target != -1, b.site));
                 self.build = None;
                 if holds {
                     release_own(others, masters, target, by)?;
+                }
+                if second != -1 {
+                    c.releases.push((second, by));
                 }
             }
             if step.released {
@@ -5325,6 +5490,9 @@ impl Unit {
                     self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
                     self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
                 }
+            }
+            if step.drop_off {
+                self.build_drop_off(c, others, me)?;
             }
         }
         if self.repair.is_some() {
