@@ -30,6 +30,8 @@ pub mod attack {
     pub const NONE: f32 = f32::from_bits(0xbf80_0000);
     /// 1000.0
     pub const RELOAD_MS: f32 = f32::from_bits(0x447a_0000);
+    /// 1.0
+    pub const SEEN_RANGE: f32 = f32::from_bits(0x3f80_0000);
     /// -0.5
     pub const SHORT_RANGE_GAP: f32 = f32::from_bits(0xbf00_0000);
     /// 0.010000000707805157

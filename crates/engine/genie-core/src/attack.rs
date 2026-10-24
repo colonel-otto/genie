@@ -58,6 +58,12 @@ pub const SWING: u8 = 7;
 pub const FAILED: u8 = 13;
 /// The waiting state 5 ("Goto2"), a `MoveTo` to where the target was seen.
 const GOTO_SEEN: u8 = 5;
+/// State 11: a human player's unit that reached where its target was seen without seeing it
+/// walks onto that point (a `MoveTo` without a range).
+const GOTO_POINT: u8 = 11;
+/// The least range of a unit that walks onto the point where it saw its target
+/// (`DAT_14330eb8c`, [`GOTO_POINT`]).
+const SEEN_RANGE: f32 = crate::image::attack::SEEN_RANGE;
 /// The predators' class (10), whose unit AI's slot 0x1f0 a failed Attack calls.
 const PREDATOR: i16 = 10;
 /// The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
@@ -112,6 +118,9 @@ pub struct Attack {
     pub point: [f32; 3],
     /// `+0xa4`..`+0xac`: where it last saw its target.
     pub seen: [f32; 3],
+    /// The point its `MoveTo` of states 5 and 11 walks to (that `MoveTo`'s `+0x38`..`+0x40`):
+    /// where it saw its target when it took the state; −1 for none.
+    pub goto: [f32; 3],
     /// The `MoveTo` sub-action to the target, its range the attack's.
     pub move_to: Option<MoveTo>,
     /// Its `MoveTo`'s wait after the motion step gave up.
@@ -450,6 +459,7 @@ impl Attack {
             min_range: e.min_range,
             point: [NONE; 3],
             seen: e.target_position,
+            goto: [NONE; 3],
             move_to: None,
             move_wait: MoveWait::default(),
             pending: false,
@@ -915,8 +925,8 @@ impl Attack {
     /// `set_state(7)`'s range clamp: no ready-at-once test). A target of a player (not Gaia) out
     /// of the unit's player's sight (its slot 0x1e0 neither 0xf nor 0x80 with its master's fog
     /// flag) fails the attack (`set_state` 13) unless the unit AI's stance (`+0x1a9`) is 0, the
-    /// top speed above 0 (`COMISS`/`JBE`) and canMoveToAttack 1, whose wait (`set_state` 5, a
-    /// `MoveTo` to where it was seen) is not modelled. A unit that moves (a master of type 30 and
+    /// top speed above 0 (`COMISS`/`JBE`) and canMoveToAttack 1, which waits
+    /// ([`Attack::wait_at_seen`]: `set_state` 5, a `MoveTo` to where it was seen). A unit that moves (a master of type 30 and
     /// up with a speed, `FUN_140fdd080`; the slice reads the unit's top speed, above 0 just when
     /// the master's is) whose target stands on the attack's point (`FUN_140a7bbf0`) or within
     /// half a tile of it on each axis (`FUN_140a7bd10`: a NaN difference is not within) is ready
@@ -955,9 +965,8 @@ impl Attack {
             && !(s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?)
         {
             if s.stance == 0 && 0.0 < speed && s.can_move {
-                return Err(GenieError::unsupported(
-                    "readyToAttack's wait for a target out of sight (set_state 5)",
-                ));
+                self.wait_at_seen(walk, s)?;
+                return Ok(Readiness::Waiting);
             }
             return self.fail(walk, s);
         }
@@ -1261,28 +1270,39 @@ impl Attack {
             // the target moved: where it was seen follows (`+0xa4`..`+0xac`); one the unit's
             // player sees (the target's slot 0x1e0, `FUN_1416635e0` at its tile: 0xf), or only
             // explored (0x80) with its master's fog flag (`+0x605`), keeps the attack going, but
-            // an attack in state 5 or 11 walks again (set_state 4). One out of sight keeps an
-            // attack in a state but 4 and 5 going; a player's unit without a unit AI, or whose
-            // unit AI has an order and an empty queue, waits (set_state 5, not modelled; one in
-            // state 5 keeps going); any other fails ([`Attack::out_of_sight`])
+            // an attack in state 5 or 11 follows it again (set_state 4, [`Attack::follow`]). One
+            // out of sight keeps an attack in a state but 4 and 5 going; a player's unit without a
+            // unit AI, or whose unit AI has an order and an empty queue, waits
+            // ([`Attack::wait_at_seen`]; one in state 5 keeps going); any other fails
+            // ([`Attack::out_of_sight`])
             self.seen = t.position;
             let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
             let seen = walk.world.sees_tile(s.own.player, tx, ty)
                 || (s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?);
+            if seen && matches!(self.state, GOTO_SEEN | GOTO_POINT) {
+                let at = walk
+                    .world
+                    .get(walk.me.id)
+                    .map_or(walk.me.position, |p| p.position);
+                let ground = walk
+                    .mover
+                    .as_ref()
+                    .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+                    .ok_or(GenieError::unsupported(
+                        "an attacker without movement state",
+                    ))?;
+                let gap = footprint_gap(at, ground, t.position, t.radius);
+                self.follow(&mut walk, s, gap)?;
+                return Ok(0);
+            }
             if !seen && matches!(self.state, MOVE | GOTO_SEEN) {
                 if s.own.player == 0 || s.ai_order.is_some_and(|o| o == -1 || !s.queue_empty) {
                     return self.out_of_sight(&mut walk, s);
                 }
                 if self.state != GOTO_SEEN {
-                    return Err(GenieError::unsupported(
-                        "an Attack whose target moved out of its player's sight waiting (set_state 5)",
-                    ));
+                    self.wait_at_seen(&mut walk, s)?;
+                    return Ok(0);
                 }
-            }
-            if seen && matches!(self.state, GOTO_SEEN | 11) {
-                return Err(GenieError::unsupported(
-                    "an Attack in state 5 or 11 whose target moved (set_state 4)",
-                ));
             }
         }
         // LAB_140a834ab: a live target (state 0 to 2) of a player's unit (+0x718 not 0) that
@@ -1323,7 +1343,9 @@ impl Attack {
                 *s.anim_speed = Some(0.0);
                 Ok(1)
             }
-            MOVE => self.walk(walk, s, t.position, t.radius),
+            // case 3 (state 4) walks the MoveTo to the target, cases 4 and 10 (states 5 and
+            // 11) to where it was seen
+            MOVE | GOTO_SEEN | GOTO_POINT => self.walk(walk, s, t.position, t.radius),
             READY => {
                 match self.ready_to_attack(&mut walk.reborrow(), s, false)? {
                     // a target no longer alive (a dead tree): set_state(1), code 5
@@ -1372,13 +1394,86 @@ impl Attack {
                 *s.anim_speed = Some(0.0);
                 Ok(3)
             }
-            // cases 4 and 10 walk a MoveTo to where the target was seen
-            GOTO_SEEN | 11 => Err(GenieError::unsupported(
-                "an Attack in state 5 or 11 (its MoveTo to where its target was seen)",
-            )),
             // the states without a case (0, 3, 8 to 10, 12, 14 and above) return 0
             _ => Ok(0),
         }
+    }
+
+    /// Where the `MoveTo` of the state goes and within what: state 4's to the target within the
+    /// range, state 5's to [`Attack::goto`] within the range, state 11's onto it.
+    const fn goal(&self) -> (Goal, f32) {
+        match self.state {
+            MOVE => (Goal::Target(self.target), self.range),
+            GOTO_POINT => (Goal::Point(self.goto), 0.0),
+            _ => (Goal::Point(self.goto), self.range),
+        }
+    }
+
+    /// `set_state(5)` (`0x140a820c0` case 5): the sub-actions go, the range is slot 0x238's
+    /// again, and a `MoveTo` to where the target was seen within it starts
+    /// ([`Attack::goto_point`]).
+    fn wait_at_seen(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), GenieError> {
+        self.enter(GOTO_SEEN, walk, s)?;
+        self.range = s.own.source.weapon_range;
+        self.goto_point(walk)
+    }
+
+    /// The `MoveTo` to a point of states 5 and 11 (`FUN_140aa0d30` to `+0xa4`..`+0xac`, quiet:
+    /// `FUN_140a7a170` with 1): the timer is 0, and its start (`FUN_140aa2100` with 1) finds no
+    /// target object to be near (`FUN_14118f680` answers `FLT_MAX`), so a unit with a top speed
+    /// (`UCOMISS`: not 0) asks for a path (state 3), any other fails (state 13).
+    fn goto_point(&mut self, walk: &Walk<'_>) -> Result<(), GenieError> {
+        self.goto = self.seen;
+        self.timer = 0.0;
+        let speed = walk
+            .mover
+            .as_ref()
+            .ok_or(GenieError::unsupported(
+                "an attacker without movement state",
+            ))?
+            .stats
+            .speed;
+        self.move_to = Some(if speed == 0.0 {
+            MoveTo::Failed
+        } else {
+            MoveTo::Start
+        });
+        Ok(())
+    }
+
+    /// States 5 and 11 once their `MoveTo` arrived (cases 4 and 10, its update 1 or 2): a target
+    /// the unit's player sees (the target's slot 0x1e0: 0xf, or 0x80 with its master's fog flag)
+    /// makes it ready (`set_state` 6). Out of sight, a human player's unit in state 5 with a range
+    /// of at least [`SEEN_RANGE`] (`COMISS`: a NaN is not) walks onto the point (`set_state` 11:
+    /// the sub-actions go, the range is slot 0x238's, a `MoveTo` without a range to where the
+    /// target was seen); any other lets the target go (slot 0x68 with none) and fails
+    /// (`set_state` 13), a unit's own Attack posting 0x1f9 with 600, and returns 3.
+    fn arrived_at_seen(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+        target: [f32; 3],
+    ) -> Result<u8, GenieError> {
+        let (tx, ty) = (target[0] as i32, target[1] as i32);
+        let seen = walk.world.sees_tile(s.own.player, tx, ty)
+            || (s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?);
+        if seen {
+            self.ready(walk, s)?;
+            return Ok(0);
+        }
+        if self.state == GOTO_SEEN && s.own.player != 0 && SEEN_RANGE <= self.range && !s.computer {
+            self.enter(GOTO_POINT, walk, s)?;
+            self.range = s.own.source.weapon_range;
+            self.goto_point(walk)?;
+            return Ok(0);
+        }
+        s.let_go = Some(self.target);
+        self.target = -1;
+        self.finish_in(FAILED, walk, s)?;
+        if !self.sub_action {
+            s.posted.push((crate::unit_ai::ACTION_FAILED, [600, 0, 0]));
+        }
+        Ok(3)
     }
 
     /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]).
@@ -1411,8 +1506,8 @@ impl Attack {
                     m.stats.speed = m.stats.run_speed;
                 }
                 self.move_to = Some(MoveTo::Moving);
-                let goal = Goal::Target(self.target);
-                let walked = start_walk_or_give_up(walk.reborrow(), goal, self.range, false)?;
+                let (goal, range) = self.goal();
+                let walked = start_walk_or_give_up(walk.reborrow(), goal, range, false)?;
                 in_the_way(&mut walk, s);
                 // the MoveTo's set_state(4) shows its sprite (`+0x58`, the Attack's `+0x68`)
                 if walked.is_none_or(|w| w == MoveTo::Moving)
@@ -1452,8 +1547,13 @@ impl Attack {
             }
             Some(MoveTo::Moving) => {
                 // the MoveTo takes the Attack's `+0x61` (`0x140a824ac`), which the Hunt's
-                // set_state(12) sets: a target that left its point asks for a path again
-                let follow = target_moved(&walk, self.target, self.repaths)?;
+                // set_state(12) sets: a target that left its point asks for a path again; a
+                // MoveTo to a point follows nothing
+                let follow = if self.state == MOVE {
+                    target_moved(&walk, self.target, self.repaths)?
+                } else {
+                    Follow::Stays
+                };
                 if let Follow::PathEnd(p) = follow {
                     follow_path_end(&mut walk, p)?;
                 }
@@ -1501,6 +1601,9 @@ impl Attack {
                         "an attacker without movement state",
                     ))?
                     .stop()?;
+                if self.state != MOVE {
+                    return self.arrived_at_seen(&mut walk, s, target);
+                }
                 self.ready(&mut walk, s)?;
                 return Ok(0);
             }
@@ -2061,6 +2164,7 @@ mod tests {
             min_range: 0.0,
             point: [NONE; 3],
             seen: [NONE; 3],
+            goto: [NONE; 3],
             move_to: None,
             move_wait: MoveWait::default(),
             pending: false,
@@ -2737,9 +2841,10 @@ mod tests {
     }
 
     /// readyToAttack on a player's target out of sight: a unit of stance 0 with speed that may
-    /// move would wait (`set_state` 5, not modelled); any other fails (`set_state` 13).
+    /// move waits (`set_state` 5: a `MoveTo` to where it saw the target); any other fails
+    /// (`set_state` 13).
     #[test]
-    fn ready_to_attack_on_a_target_out_of_sight_fails_or_would_wait() {
+    fn ready_to_attack_on_a_target_out_of_sight_fails_or_waits() {
         let at = [11.0, 10.0, 0.0];
         for (stance, fails) in [(0, false), (2, true)] {
             let mut world = world_with(7, 2, 6, at);
@@ -2763,13 +2868,128 @@ mod tests {
             let mut s = rig.strike();
             s.stance = stance;
             let mut a = soldier_attack(7, 4.0, 0.0, at);
+            a.seen = at;
             let r = a.ready_to_attack(&mut walk, &mut s, false);
+            assert!(matches!(r, Ok(Readiness::Waiting)));
             if fails {
-                assert!(matches!(r, Ok(Readiness::Waiting)));
                 assert_eq!(a.state, FAILED);
             } else {
-                assert!(r.is_err());
+                assert_eq!(
+                    (a.state, a.goto, a.move_to),
+                    (GOTO_SEEN, at, Some(MoveTo::Start))
+                );
             }
+        }
+    }
+
+    /// The players' sight over a 16×16 map: every tile revealed and explored (seen), or none.
+    fn sight(seen: bool) -> crate::visibility::Visibility {
+        let word = if seen {
+            crate::vision::NO_TILE | crate::vision::NO_TILE_EXPLORED
+        } else {
+            0
+        };
+        crate::visibility::Visibility::new(
+            16,
+            16,
+            Vec::new(),
+            vec![word; 256],
+            Vec::new(),
+            0,
+            Vec::new(),
+        )
+    }
+
+    /// `0x140a82ae0`'s moved target: out of its player's sight, a player's unit whose unit AI
+    /// has an order and an empty queue waits from state 4 (`set_state` 5: a `MoveTo` to where it
+    /// saw the target, the range slot 0x238's) and returns 0; seen again, an Attack in state 5 or
+    /// 11 follows the target (`set_state` 4).
+    #[test]
+    fn an_attack_waits_where_it_last_saw_its_target_and_follows_it_seen_again() {
+        let (seen_at, now_at) = ([12.0, 10.0, 0.0], [13.0, 10.0, 0.0]);
+        let run = |state: u8, seen: bool| {
+            let mut world = world_with(7, 2, 6, now_at);
+            world.sight = Some(sight(seen));
+            let mut mover = soldier_mover(0.8);
+            let walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                state: 2,
+                player: 2,
+                position: now_at,
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.ai_order = Some(700);
+            s.own.source.weapon_range = 3.0;
+            let mut a = soldier_attack(7, 1.0, 0.0, seen_at);
+            (a.state, a.seen, a.move_to) = (state, seen_at, Some(MoveTo::Moving));
+            let code = a.update(walk, &mut s).unwrap();
+            (code, a)
+        };
+        let (code, a) = run(MOVE, false);
+        assert_eq!(
+            (code, a.state, a.goto, a.seen, a.move_to, a.range),
+            (0, GOTO_SEEN, now_at, now_at, Some(MoveTo::Start), 3.0)
+        );
+        for state in [GOTO_SEEN, GOTO_POINT] {
+            let (code, a) = run(state, true);
+            assert_eq!(
+                (code, a.state, a.move_to, a.range),
+                (0, MOVE, Some(MoveTo::Start), 3.0),
+                "{state}"
+            );
+        }
+    }
+
+    /// States 5 and 11 once their `MoveTo` arrived: a target in sight makes the unit ready; out
+    /// of sight, a human player's unit in state 5 with a range of at least 1 walks onto the
+    /// point (`set_state` 11), any other lets the target go and fails (`set_state` 13, its own
+    /// Attack posting 0x1f9) with 3.
+    #[test]
+    fn an_attack_arrived_where_it_saw_its_target_looks_again() {
+        let at = [13.0, 10.0, 0.0];
+        let run = |state: u8, seen: bool, range: f32, computer: bool| {
+            let mut world = world_with(7, 2, 6, at);
+            world.sight = Some(sight(seen));
+            let mut mover = soldier_mover(0.8);
+            let walk = walk_in(&mut mover, &mut world);
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                state: 2,
+                player: 2,
+                position: at,
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.computer = computer;
+            s.own.source.weapon_range = 4.0;
+            let mut a = soldier_attack(7, range, 0.0, at);
+            (a.state, a.seen, a.goto, a.move_to) = (state, at, at, Some(MoveTo::Arrived));
+            let code = a.update(walk, &mut s).unwrap();
+            let (posted, let_go) = (s.posted.clone(), s.let_go);
+            (code, a, posted, let_go)
+        };
+        let (code, a, _, _) = run(GOTO_SEEN, true, 2.0, false);
+        assert_eq!(code, 0);
+        assert!(!matches!(a.state, GOTO_SEEN | FAILED), "{}", a.state);
+        let (code, a, posted, _) = run(GOTO_SEEN, false, 1.0, false);
+        assert_eq!(
+            (code, a.state, a.goto, a.move_to, a.range, posted),
+            (0, GOTO_POINT, at, Some(MoveTo::Start), 4.0, vec![])
+        );
+        for (state, range, computer) in [
+            (GOTO_SEEN, 0.9, false),
+            (GOTO_SEEN, f32::NAN, false),
+            (GOTO_SEEN, 2.0, true),
+            (GOTO_POINT, 2.0, false),
+        ] {
+            let (code, a, posted, let_go) = run(state, false, range, computer);
+            assert_eq!(
+                (code, a.state, a.target, let_go, posted),
+                (3, FAILED, -1, Some(7), vec![(0x1f9, [600, 0, 0])]),
+                "{state} {range} {computer}"
+            );
         }
     }
 
@@ -3010,6 +3230,7 @@ mod tests {
             min_range: 0.0,
             point: [NONE; 3],
             seen: [NONE; 3],
+            goto: [NONE; 3],
             move_to: None,
             move_wait: MoveWait::default(),
             pending: false,

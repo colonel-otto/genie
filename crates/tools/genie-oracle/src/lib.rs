@@ -1506,7 +1506,8 @@ fn saved_sprite(
 }
 
 /// A saved Attack sub-action (type 9, `FUN_140a7c880`): its target, state, timer, ranges, point,
-/// the target's last place (`+0xa4`..), a hit still to land (`+0x9e`), its `MoveTo`, and its sprites
+/// the target's last place (`+0xa4`..), a hit still to land (`+0x9e`), its `MoveTo` (in states 5
+/// and 11 with that `MoveTo`'s point), and its sprites
 /// and frames. The load restores the sprites at `+0x70`, `+0x80` and `+0x88` from the second to
 /// fourth saved ids (the first goes to `+0x68`); the second attack sprite (`+0x78`) and the
 /// swing's times (`+0xb0`, `+0xb4`) are not saved, and a loaded Attack starts without them.
@@ -1533,6 +1534,13 @@ fn saved_attack(
     let g = |id: u16| {
         let id = id as i16;
         (0 <= id).then(|| graphics.get(&id).copied()).flatten()
+    };
+    // states 5 and 11 walk their MoveTo to a point: its own (`+0x38`..`+0x40`)
+    let goto = match b.sub_actions.entries().next() {
+        Some((MOVE_TO, s2)) if matches!(b.state, 5 | 11) => s2
+            .base()
+            .map_or([-1.0; 3], |m| [m.target_x, m.target_y, m.target_z]),
+        _ => [-1.0; 3],
     };
     let (move_to, move_wait) = match b.sub_actions.entries().next() {
         None => (None, genie_core::move_to::MoveWait::default()),
@@ -1571,6 +1579,7 @@ fn saved_attack(
         ],
         move_to,
         move_wait,
+        goto,
         pending: a.need_to_attack != 0,
         swing: 0.0,
         rest: 0.0,

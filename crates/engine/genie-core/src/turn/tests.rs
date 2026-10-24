@@ -5063,6 +5063,7 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::attack::Attack {
         min_range: 0.0,
         point: [-1.0; 3],
         seen: [0.0; 3],
+        goto: [-1.0; 3],
         move_to: None,
         move_wait: crate::move_to::MoveWait::default(),
         pending: false,
