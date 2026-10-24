@@ -1451,14 +1451,8 @@ impl Unit {
                 &shuns,
                 &farm,
             )?;
-            if result.fresh {
-                if result.enemies {
-                    return Err(GenieError::unsupported(
-                        "a hunt's search after its drop-off finding enemies",
-                    ));
-                }
-                ai.alert_mode = false;
-            }
+            // FUN_140c63e20's alert: enemies found set the alert mode and its time again
+            ai.alert(result, c.dt_seconds);
             result.id
         } else {
             // the unit AI's ClosestResourceObject (slot 0x80) of the kind, at most 2 workers for

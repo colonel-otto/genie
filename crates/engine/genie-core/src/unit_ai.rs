@@ -3479,7 +3479,7 @@ impl UnitAi {
     /// again (past 10 seconds it would tell the owner first, slot 0x2e8 with notify 0x210, which
     /// the slice does not hold); none clear the alert mode. A search that read the last answer
     /// leaves it.
-    const fn alert(&mut self, found: Found, _dt: f32) {
+    pub(crate) const fn alert(&mut self, found: Found, _dt: f32) {
         if !found.fresh {
             return;
         }
@@ -9680,6 +9680,29 @@ mod tests {
         assert_eq!((side.stops, side.attacks), (vec![0], vec![(27240, true)]));
         assert_eq!(fx, vec![]);
         assert_eq!((u.current_action, u.current_target), (ATTACK_ACTION, 27240));
+    }
+
+    /// `FUN_140c63e20`'s alert: a fresh search's enemies set the alert mode and start the time
+    /// since the last sighting again; a fresh one without clears the alert mode; a search that
+    /// read the last answer changes nothing.
+    #[test]
+    fn a_fresh_search_s_enemies_set_the_alert_mode() {
+        let found = |fresh, enemies| Found {
+            enemies,
+            fresh,
+            ..Found::NONE
+        };
+        let mut u = UnitAi {
+            time_since_enemy: 12.0,
+            ..idle(CIVILIAN)
+        };
+        u.alert(found(true, true), 0.05);
+        assert_eq!((u.alert_mode, u.time_since_enemy), (true, 0.0));
+        u.time_since_enemy = 3.0;
+        u.alert(found(false, false), 0.05);
+        assert_eq!((u.alert_mode, u.time_since_enemy), (true, 3.0));
+        u.alert(found(true, false), 0.05);
+        assert_eq!((u.alert_mode, u.time_since_enemy), (false, 3.0));
     }
 
     /// 428506340's Gaia 31602 (update 4609): a cap on the last human order time and a stop wait
