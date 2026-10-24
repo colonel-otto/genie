@@ -1937,6 +1937,10 @@ impl Turns {
             sprite: Some(sprite),
             // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             anim_speed: Some(0.0),
+            // livestock's default task, the Artifact, starts once its action list is empty
+            default_artifact: made
+                .default_task()
+                .is_some_and(|t| t.action_type == crate::artifact::ARTIFACT_TYPE),
             ..Unit::default()
         });
         let idx = owner.objects.len() - 1;

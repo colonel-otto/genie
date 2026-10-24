@@ -201,6 +201,10 @@ pub struct Unit {
     /// state 2 (a farm or fish trap before its first update as a built building), with the task
     /// its master holds then.
     pub default_make: bool,
+    /// Its master's default task is the Artifact action (livestock), which starts again once its
+    /// action list is empty in state 2 (an animal out of a building whose Artifact went), its
+    /// first update in the next tick, as a Fly's.
+    pub default_artifact: bool,
     /// A farm's or fish trap's Make action, its top action ([`crate::make`]).
     pub make: Option<crate::make::MakeAction>,
     /// A villager's wait for a foundation (`TRIBE_Action_Wait_Solidify`), its only action
@@ -4791,6 +4795,15 @@ impl Unit {
             ));
             makes_from_now = true;
         }
+        let mut artifact_from_now = false;
+        if self.life.state == 2
+            && self.top_action_kind().is_none()
+            && self.production.is_none()
+            && self.default_artifact
+        {
+            self.artifact = Some(Artifact::new(c.player == 0));
+            artifact_from_now = true;
+        }
         if self.life.state == 2
             && self.top_action_kind().is_none()
             && self.production.is_none()
@@ -4831,7 +4844,11 @@ impl Unit {
                 }
             }
         }
-        if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
+        if let Some(artifact) = self
+            .artifact
+            .as_mut()
+            .filter(|_| c.tick > 1 && !artifact_from_now)
+        {
             let dt = c.dt;
             let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
             // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit,

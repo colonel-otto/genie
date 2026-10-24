@@ -428,12 +428,13 @@ fn unit(
         })
     };
     // what the default task starts once the action list empties: nothing, a Fly, the Artifact
-    // (whose restart the slice does not model) or something not modelled
+    // again or something not modelled
     unit.default_task = match default_task(object, s, objects, civ, masters) {
         Ok(None | Some(DefaultStart::Fly(_) | DefaultStart::Make)) => None,
-        Ok(Some(DefaultStart::Artifact(_))) => Some(GenieError::unsupported(
-            "the default task's restart (the Artifact action)",
-        )),
+        Ok(Some(DefaultStart::Artifact(_))) => {
+            unit.default_artifact = true;
+            None
+        }
         Err(e) => Some(e),
     };
     if saved {

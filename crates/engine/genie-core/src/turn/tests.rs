@@ -1962,6 +1962,56 @@ fn farm_master() -> Master {
     }
 }
 
+/// Livestock whose action list is empty in state 2 (out of a building, its Artifact gone)
+/// starts its default task's Artifact again (slot 0x7f0), Gaia's waiting half as long; its first
+/// update comes in the next tick, as a Fly's.
+#[test]
+fn livestock_without_actions_starts_its_artifact_again() {
+    let sheep = Unit {
+        id: 40,
+        life: Lifecycle {
+            master_id: 594,
+            state: 2,
+            hp: 7.0,
+            ..Lifecycle::default()
+        },
+        default_artifact: true,
+        ..Unit::default()
+    };
+    let mut t = Turns::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![
+            Player::default(),
+            Player {
+                objects: vec![sheep],
+                attributes: vec![0.0; 100],
+                ..Player::default()
+            },
+        ],
+    );
+    t.masters = vec![
+        Masters::default(),
+        Masters::new([Master {
+            id: 594,
+            kind: 70,
+            class: 58,
+            ..Master::default()
+        }]),
+    ];
+    t.tick(50);
+    let a = t.players[1].objects[0]
+        .artifact
+        .expect("the Artifact again");
+    assert_eq!(a, Artifact::new(false));
+    // its first update checks for a new owner, finds none and waits a second
+    t.tick(50);
+    let a = t.players[1].objects[0].artifact.unwrap();
+    assert_eq!((a.state, a.timer), (10, 1.0));
+}
+
 #[test]
 fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     let farm = Unit {

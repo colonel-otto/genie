@@ -1041,6 +1041,7 @@ impl Turns {
             default_task,
             default_fly: None,
             default_make,
+            default_artifact: false,
             make: None,
             wait_solidify: None,
             stopped: false,
