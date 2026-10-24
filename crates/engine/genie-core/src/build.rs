@@ -412,6 +412,9 @@ pub struct Builder<'a> {
     /// In state 8, the targets of its unit AI's queued orders 0x2c5, 0x2c9 and 0x2db the world
     /// no longer holds or whose seen state is above 5, as the update starts (`FUN_140c5de60`).
     pub gone_orders: &'a [i32],
+    /// The foundation's `+0xcb0`: the object its completion's stack unit made
+    /// ([`crate::turn::Unit::stack_made`]).
+    pub stack_made: Option<i32>,
 }
 
 /// What the footprint clearing reads of the objects on the tiles, by id ([`ClearLook`]).
@@ -490,6 +493,10 @@ pub struct BuildStep {
     pub site_let_go: Option<i32>,
     /// The unit's animation stopped (`FUN_141161850`: its `+0x7b8` 0), the caller's.
     pub anim_stopped: bool,
+    /// A human player's builder left a pasture already built: notify 0x21d with the build
+    /// action's value and this, the pasture its stack unit made (0 when the slice does not hold
+    /// it), the caller's.
+    pub pasture_made: Option<i32>,
 }
 
 /// A load a builder drops at the end of its work: kind and amount ([`BuildStep::dropped`]).
@@ -655,7 +662,7 @@ impl BuildAction {
         &mut self,
         mut walk: Walk<'_>,
         site: Option<Site<'_>>,
-        builder: Builder<'_>,
+        mut builder: Builder<'_>,
     ) -> Result<BuildStep, GenieError> {
         let mut step = BuildStep::default();
         // state 3 without a target: the update does nothing (0x140ab0370's default case)
@@ -691,10 +698,32 @@ impl BuildAction {
             let state = site.life.state;
             if !computer
                 && master.is_some_and(|m| m.id == MASTER_1889)
-                && builder.ai.is_some()
                 && state != 0
+                && let Some(ai) = builder.ai.as_deref_mut()
             {
-                return Err(GenieError::unsupported("a Build on master 1889"));
+                // a human player's builder of a pasture already built: its unit AI has no order
+                // and no action (FUN_140c64b60, FUN_140c64b50 with −1), the unit tells it
+                // (notify 0x21d, the build action's value and the pasture the stack unit made,
+                // FUN_1411c5f70), the foundation goes (slot 0x68 with none), the load goes to the
+                // player (FUN_140aadc50: a kind the player has, the foods as food) and the Build
+                // ends (set_state(1)); the update returns 1
+                ai.end_order_and_action()?;
+                step.pasture_made = Some(builder.stack_made.unwrap_or(0));
+                if self.target != -1 {
+                    self.target = -1;
+                    step.released = true;
+                }
+                if (0..builder.attributes as i16).contains(&builder.held_kind) {
+                    let kind = if matches!(builder.held_kind, 15..=17) {
+                        0
+                    } else {
+                        builder.held_kind
+                    };
+                    step.dropped = Some((kind, builder.held));
+                }
+                self.end(&mut walk, Some(site.builders()), DONE, &mut step)?;
+                step.done = true;
+                return Ok(step);
             }
             if state != 0 && !matches!(self.state, FINISHED | MOVE | 8) {
                 // 621 and the gates (class 39) end the work once built, else walk back
@@ -2263,8 +2292,9 @@ impl crate::turn::Turns {
     /// the old one lacked. Not modelled: the attacking units of the foundation the world still
     /// holds (`+0xce0`, [`crate::turn::Unit::attacking_units`]: slot 0x140 on each with the new
     /// object, a repeat of the last skipped). A gate's stack gate takes the old one's lock (slot
-    /// 0x670 with `+0xc7c`, [`crate::order::lock_gate`]). Not held: `+0xcb0` (the new id) and the local
-    /// player's tracker (`FUN_14165c2a0`, `FUN_14165c470`).
+    /// 0x670 with `+0xc7c`, [`crate::order::lock_gate`]). The old building keeps the new
+    /// object's id (`+0xcb0`, [`crate::turn::Unit::stack_made`]). Not held: the local player's
+    /// tracker (`FUN_14165c2a0`, `FUN_14165c470`).
     ///
     /// # Errors
     ///
@@ -2299,6 +2329,10 @@ impl crate::turn::Turns {
         let Some(new) = self.make_new_object(p, stack.master, stack.at, true)? else {
             return Ok(());
         };
+        // the old building keeps the new object's id (`+0xcb0`, FUN_1411c5f70)
+        if let Some((_, b)) = self.object_mut(building) {
+            b.stack_made = Some(new);
+        }
         let (q, nu) = self.object(new).ok_or(NOT_HELD)?;
         let new_master = self.master_of(q, nu.life.master_id)?;
         let mut point = None;
@@ -3147,6 +3181,7 @@ mod tests {
                 deposit: None,
                 attributes: 4,
                 gone_orders: &[],
+                stack_made: None,
             };
             let _ = build.update(walk, Some(site), builder).unwrap();
         }
@@ -3306,6 +3341,7 @@ mod tests {
                 deposit: None,
                 attributes: 4,
                 gone_orders: &[],
+                stack_made: None,
             }
         }
         fn walk<'a>(
@@ -4165,6 +4201,7 @@ mod tests {
                     deposit: None,
                     attributes: 4,
                     gone_orders: &[],
+                    stack_made: None,
                 },
             )
             .unwrap();
@@ -4264,6 +4301,7 @@ mod tests {
                     deposit: None,
                     attributes: 4,
                     gone_orders: &[],
+                    stack_made: None,
                 },
             )
             .unwrap();
@@ -4461,6 +4499,7 @@ mod tests {
                     deposit: None,
                     attributes: 4,
                     gone_orders: &[],
+                    stack_made: None,
                 },
             )
             .unwrap();
@@ -4603,6 +4642,7 @@ mod tests {
                     deposit: None,
                     attributes: 4,
                     gone_orders: &[],
+                    stack_made: None,
                 },
             )
             .unwrap();
@@ -4751,6 +4791,7 @@ mod tests {
                     deposit: None,
                     attributes: 4,
                     gone_orders: &[],
+                    stack_made: None,
                 },
             )
             .unwrap();
@@ -4762,6 +4803,110 @@ mod tests {
             (build.state, build.target, build.point, waits),
             (HALTED, -1, [-1.0; 3], 0)
         );
+    }
+
+    /// `0x140ab0370`'s pasture branch: a human player's builder whose foundation of master 1889
+    /// is built (its state above 0) ends its unit AI's order and action, tells it of the pasture
+    /// the stack unit made (notify 0x21d, [`BuildStep::pasture_made`]), lets the foundation go,
+    /// gives its load of berries to its player as food and ends (`set_state(1)`, returns 1).
+    #[test]
+    fn a_human_builder_of_a_built_pasture_hands_it_over() {
+        let pasture = Master {
+            id: MASTER_1889,
+            ..Master::default()
+        };
+        let mut life = Lifecycle {
+            state: 2,
+            master_id: MASTER_1889,
+            ..Lifecycle::default()
+        };
+        let mut construction = Construction {
+            progress: 20.0,
+            desolid: false,
+            builders: 1,
+            hit_points: 550,
+            build_time: 20,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let site = Site {
+            id: 10028,
+            life: &mut life,
+            construction: &mut construction,
+            mover: None,
+            firepower: None,
+            roo_called: None,
+            store: None,
+            completion: Completion {
+                master: Some(&pasture),
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
+                main: false,
+                now: 0,
+                rice: false,
+            },
+            chain: WorkChain::default(),
+            main_builders: None,
+        };
+        let mut world = Spatial::default();
+        world.insert(10028, house());
+        let mut ai = UnitAi {
+            current_order: BUILD_ORDER,
+            current_action: 602,
+            ..UnitAi::default()
+        };
+        let mut b = BuildAction {
+            state: WORK,
+            move_to: None,
+            added: true,
+            ..BuildAction::start(10028, [0.0; 3], 0.0, TASK)
+        };
+        let step = b
+            .update(
+                Walk {
+                    mover: None,
+                    me: Me {
+                        id: 9,
+                        position: [0.0; 3],
+                        group: -1,
+                        action_state: 0,
+                    },
+                    dt: 0.02,
+                    world: &mut world,
+                    plan: None,
+                },
+                Some(site),
+                Builder {
+                    class: VILLAGER,
+                    master: 83,
+                    held: 7.0,
+                    held_kind: 17,
+                    drop_site: false,
+                    ai: Some(&mut ai),
+                    waits: &mut 0,
+                    build_targets: &[],
+                    look: Looks(&|_| None),
+                    walk_target_state: Some(2),
+                    deposit: None,
+                    attributes: 300,
+                    gone_orders: &[],
+                    stack_made: Some(10031),
+                },
+            )
+            .unwrap();
+        assert_eq!(step.pasture_made, Some(10031));
+        assert_eq!(step.dropped, Some((0, 7.0)));
+        assert!(step.done && step.released && step.stands);
+        assert_eq!((b.state, b.target, b.added), (DONE, -1, false));
+        assert_eq!((ai.current_order, ai.current_action), (-1, -1));
+        assert_eq!(construction.builders, 0);
     }
 
     /// The update's case 1 and case 0xc (`0x140ab0370`): a Build its unit's stop halted (state
@@ -4801,6 +4946,7 @@ mod tests {
                 deposit: None,
                 attributes: 4,
                 gone_orders: &[],
+                stack_made: None,
             };
             b.update(walk, None, builder).unwrap()
         }
@@ -4982,6 +5128,7 @@ mod tests {
                         deposit: None,
                         attributes: 4,
                         gone_orders: &[],
+                        stack_made: None,
                     },
                 )
                 .unwrap();
@@ -5054,6 +5201,7 @@ mod tests {
             deposit: None,
             attributes: 4,
             gone_orders: &[],
+            stack_made: None,
         };
         world.insert(10028, house());
         let _ = near.update(walk(1, &mut world), None, builder()).unwrap();
@@ -5228,6 +5376,7 @@ mod tests {
                     deposit,
                     attributes: 4,
                     gone_orders: gone,
+                    stack_made: None,
                 },
             )
             .unwrap()
@@ -5418,6 +5567,7 @@ mod tests {
                     deposit: Some(mill(7, true, 30.0)),
                     attributes: 4,
                     gone_orders: &[],
+                    stack_made: None,
                 },
             )
             .unwrap();

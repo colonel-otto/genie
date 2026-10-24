@@ -7148,3 +7148,20 @@ fn a_fishing_ship_counts_a_near_drop_site_its_path_does_not_reach() {
     assert!(!counted(3, false, true, || true));
     assert!(counted(4, true, true, || true));
 }
+
+/// `TRIBE_Building_Object::update`'s farm stage (`0x1411ca2ef`): a farm lays 29 to 31 by its
+/// build points over its build time (times 3, at most 2); a rice farm or a pasture on mangrove
+/// or rice 65 to 67, elsewhere its foundation terrain plus 2 (63 and 117: 65.., 119..); another
+/// master none (427445417's p4 in update 16981, 427557935's p4 in 22813).
+#[test]
+fn a_farm_foundation_lays_its_stage_terrain() {
+    use crate::turn::unit::farm_stage_terrain;
+    assert_eq!(farm_stage_terrain(50, (false, 7), 0.0, 15), Some(29));
+    assert_eq!(farm_stage_terrain(50, (false, 7), 7.5, 15), Some(30));
+    assert_eq!(farm_stage_terrain(50, (false, 7), 15.0, 15), Some(31));
+    assert_eq!(farm_stage_terrain(1187, (true, 63), 5.0, 15), Some(66));
+    assert_eq!(farm_stage_terrain(1187, (false, 63), 0.0, 15), Some(65));
+    assert_eq!(farm_stage_terrain(1889, (false, 117), 15.0, 15), Some(121));
+    assert_eq!(farm_stage_terrain(1889, (false, -1), 0.0, 15), Some(1));
+    assert_eq!(farm_stage_terrain(70, (false, -1), 0.0, 15), None);
+}

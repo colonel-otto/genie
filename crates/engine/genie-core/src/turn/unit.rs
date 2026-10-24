@@ -222,6 +222,9 @@ pub struct Unit {
     /// A building's `+0xcd0`: its constructor found mangrove or rice terrain at its place
     /// (`FUN_141188db0`), which master 1889's completion reads.
     pub rice: bool,
+    /// A building's `+0xcb0` (`FUN_1411c5f70`): the id of the object its completion's stack unit
+    /// made ([`crate::turn::Turns::stack_unit`]); None before (the save does not hold it).
+    pub stack_made: Option<i32>,
     /// A building's own store (`+0xae0`, `FUN_1411abad0`'s map by attribute): what its storage
     /// entries of mode 16 put in at its completion and take out at its death
     /// (`FUN_1411e6580`).
@@ -4313,15 +4316,14 @@ impl Unit {
 
     /// `TRIBE_Building_Object::update`'s farm part for a foundation (state 0) with a build time
     /// (`0x1411ca2ef`): its stage, its build points times 3 over its build time (truncated, at
-    /// most 2), lays terrain 29 plus the stage under a farm (master 50) each update
-    /// (`FUN_1411ce250` -> `FUN_1411ddd90`, [`crate::terrain::Terrain::cover`]); the rice farms'
-    /// (1187, 1889: their foundation terrain plus 2, or 65, plus the stage by `+0xcd0`) are not
-    /// modelled.
+    /// most 2), lays terrain under it each update (`FUN_1411ce250` -> `FUN_1411ddd90`,
+    /// [`crate::terrain::Terrain::cover`]): 29 plus the stage under a farm (master 50); under a
+    /// rice farm or a pasture (1187, 1889) 65 plus the stage on mangrove or rice terrain (`+0xcd0`,
+    /// [`Unit::rice`]), else its foundation terrain (`+0x988`) plus 2 plus the stage (bytes).
+    /// `FUN_1411ce250` maps the terrains 8, 27 and 64 by the local player's view and the tile's
+    /// own (`+0x2e8`'s `+10`), which the slice does not hold; the masters' foundations (7, 63,
+    /// 117) never give them.
     pub(in crate::turn) fn farm_stage(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        /// The stages over the build time (`DAT_142eb1c98`).
-        const STAGES: f32 = crate::image::turn::FARM_STAGES;
-        /// A farm's first stage terrain (`0x1d`).
-        const FIRST_STAGE: u8 = 29;
         let Some(cons) = self
             .construction
             .filter(|k| self.life.state == 0 && 0 < k.build_time)
@@ -4331,20 +4333,24 @@ impl Unit {
         let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             return Ok(());
         };
-        match m.id {
-            50 => {}
-            1187 | 1889 => {
-                return Err(GenieError::unsupported(
-                    "a rice farm's stage terrain (+0xcd0)",
-                ));
-            }
-            _ => return Ok(()),
+        let foundation = m.building.as_ref().map_or(-1, |b| b.foundation_terrain);
+        let Some(terrain) = farm_stage_terrain(
+            m.id,
+            (self.rice, foundation),
+            cons.progress,
+            cons.build_time,
+        ) else {
+            return Ok(());
+        };
+        if matches!(terrain, 8 | 27 | 64) {
+            return Err(GenieError::unsupported(
+                "a farm's stage terrain the local player's view maps (8, 27, 64)",
+            ));
         }
-        let stage = ((cons.progress * STAGES) / f32::from(cons.build_time)) as i32 as u8;
         let f = crate::terrain::Foundation {
             position: self.position,
             clearance: m.clearance,
-            terrain: FIRST_STAGE + stage.min(2),
+            terrain,
             snow: false,
             master: m.id,
             class: m.class,
@@ -5158,6 +5164,10 @@ impl Unit {
                 .iter()
                 .find(|u| u.id == target)
                 .map(|u| u.life.master_id);
+            let stack_made = others
+                .iter()
+                .find(|u| u.id == target)
+                .and_then(|u| u.stack_made);
             // the state of its MoveTo's target, which the MoveTo's update checks first
             let walk_target = build.walk_target;
             let walk_target_state = others
@@ -5368,6 +5378,7 @@ impl Unit {
                 deposit,
                 attributes: c.attributes.len(),
                 gone_orders: &gone_orders,
+                stack_made,
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
             c.cleared.extend(step.cleared.iter().copied());
@@ -5451,6 +5462,10 @@ impl Unit {
             }
             if step.notified {
                 self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
+            }
+            // a pasture already built (FUN_1411c5f70's new id)
+            if let Some(made) = step.pasture_made {
+                self.post_own(crate::unit_ai::PASTURE_BUILT, [BUILD_ACTION, made, 0])?;
             }
             if step.failed {
                 self.post_own(crate::unit_ai::ACTION_FAILED, [BUILD_ACTION, 0, 0])?;
@@ -7572,6 +7587,32 @@ pub(crate) enum PointMove {
     /// The Transport answers 1 (`0x140aa3e40`): it sails to the point, which the caller runs
     /// with the map ([`Unit::transport_sail`]).
     Sails,
+}
+
+/// The terrain a farm foundation of master `master` lays at its stage ([`Unit::farm_stage`]):
+/// its build points `progress` times 3 over its `build_time` (truncated, at most 2) onto 29
+/// (`0x1d`) for a farm (50), onto 65 (`0x41`) for a rice farm or a pasture (1187, 1889) on
+/// mangrove or rice (`rice`), else onto its `foundation` terrain plus 2 (bytes); None for
+/// another master.
+pub(in crate::turn) fn farm_stage_terrain(
+    master: i16,
+    (rice, foundation): (bool, i16),
+    progress: f32,
+    build_time: i16,
+) -> Option<u8> {
+    /// The stages over the build time (`DAT_142eb1c98`).
+    const STAGES: f32 = crate::image::turn::FARM_STAGES;
+    /// A farm's first stage terrain (`0x1d`).
+    const FIRST_STAGE: u8 = 29;
+    /// A rice farm's first stage terrain on mangrove or rice (`0x41`).
+    const RICE_STAGE: u8 = 65;
+    let stage = (((progress * STAGES) / f32::from(build_time)) as i32 as u8).min(2);
+    match master {
+        50 => Some(FIRST_STAGE + stage),
+        1187 | 1889 if rice => Some(RICE_STAGE + stage),
+        1187 | 1889 => Some((foundation as u8).wrapping_add(2).wrapping_add(stage)),
+        _ => None,
+    }
 }
 
 /// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.

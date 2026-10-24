@@ -78,6 +78,9 @@ pub const ACTION_EXECUTED: i32 = 0x200;
 pub const REQUIRES_SEARCH: i32 = 0x202;
 /// `0x203`: an action's drop-off found no drop site (the Build's `set_state(8)`, a gather's).
 pub const NO_DROP_SITE: i32 = 0x203;
+/// `0x21d`: a human player's builder left a pasture already built (p2 the pasture its stack unit
+/// made).
+pub const PASTURE_BUILT: i32 = 0x21d;
 /// `0x20b`: the unit changed hands (p1 the new owner).
 pub const OWNER_CHANGED: i32 = 0x20b;
 /// `500`: the unit took damage.

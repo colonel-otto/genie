@@ -1072,6 +1072,7 @@ impl Turns {
             store: Vec::new(),
             own_master: None,
             dead_master: None,
+            stack_made: None,
             attacking_units: Vec::new(),
         });
         // the static init's add to its player (slot 0x2d0): it waits in the tracker's pending
