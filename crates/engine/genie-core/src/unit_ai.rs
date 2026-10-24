@@ -95,6 +95,10 @@ pub const SENT_OFF_GROUP: i32 = 0x21b;
 /// The action value of a unit moving off a footprint (slot 0x148, `FUN_140c4d0d0`), and of one
 /// moving off with a group (the base handler's case 0x21b).
 pub const MOVE_ASIDE_ACTION: i32 = 0x2bf;
+/// An attack command after effects the unit AI's run left pending that the slice cannot run
+/// before it (a hunt command, a move, …): their unit parts would precede the command.
+pub(crate) const PENDING_BEFORE_ATTACK: GenieError =
+    GenieError::unsupported("an attack command after a stop with other effects pending");
 /// `0x20f`: a missile's warning, which a shot whose blast does not spare friends sends its
 /// target when a computer player owns it (`FUN_141081020`).
 const MISSILE_WARNING: i32 = 0x20f;
@@ -1614,6 +1618,17 @@ pub trait UnitSide {
     ///
     /// A side without its unit.
     fn cap_human_order(&mut self, _cap: u32) -> Result<(), GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
+    /// The unit's build command (slot 0x380, forced) on `foundation` run at once
+    /// ([`Effect::BuildObject`]), ahead of a command that follows it in the same AI run (an
+    /// attack command replacing the Build it makes).
+    ///
+    /// # Errors
+    ///
+    /// A side without its unit, and what the build command does not model.
+    fn build_now(&mut self, _foundation: i32) -> Result<(), GenieError> {
         Err(WITHOUT_UNIT)
     }
 
@@ -5824,19 +5839,20 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if fx.contains(&Effect::Stop) {
-            if fx
-                .iter()
-                .any(|e| !matches!(e, Effect::Stop | Effect::CapHumanOrder(_)))
-            {
-                return Err(GenieError::unsupported(
-                    "an attack command after a stop with other effects pending",
+            if fx.iter().any(|e| {
+                !matches!(
+                    e,
+                    Effect::Stop | Effect::CapHumanOrder(_) | Effect::BuildObject(_)
                 )
-                .with("effects", format!("{fx:?}")));
+            }) {
+                return Err(PENDING_BEFORE_ATTACK.with("effects", format!("{fx:?}")));
             }
-            // the effects before it ran before it: in order
+            // the effects before it ran before it: in order (a requeued build order's build
+            // command too, whose Build the attack command replaces)
             for e in std::mem::take(fx) {
                 match e {
                     Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
+                    Effect::BuildObject(foundation) => side.build_now(foundation)?,
                     _ => side.stop()?,
                 }
             }

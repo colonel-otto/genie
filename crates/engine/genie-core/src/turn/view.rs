@@ -2097,6 +2097,109 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         }
     }
 
+    /// The build command at once ([`Turns::build_command`]'s path without a Build on top, which
+    /// a stop before it leaves none): slot 0x820 with any action type and the switch
+    /// ([`task_search`] on the foundation and its main building) finds a task; the switch (slot
+    /// 0x90 with 0: the actions go, then the master's unit part, [`crate::order::switch_master`];
+    /// its owner's part after the update); a Build on the task (`FUN_140aad4e0`, the footprints'
+    /// gap, the task's range and work value, the builder's work rate with the unit's powerup)
+    /// takes the foundation (slot 0x178) and replaces the actions (slot 0x808). A Build on top
+    /// (its slot 0x48) is not modelled here.
+    fn build_now(&mut self, foundation: i32) -> Result<(), GenieError> {
+        use crate::build::{BUILD, BuildAction, BuildTask};
+        if self.unit.top_action_kind() == Some(BUILD) {
+            return Err(crate::unit_ai::PENDING_BEFORE_ATTACK);
+        }
+        let unit = &*self.unit;
+        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let find = |id: i32| {
+            if id == unit.id {
+                return Some((player, unit));
+            }
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        let (fp, f) = find(foundation).ok_or(crate::turn::command::FOUNDATION_GONE)?;
+        let site = self
+            .every
+            .get(fp)
+            .and_then(|m| m.get(f.life.master_id))
+            .ok_or(crate::turn::OBJECT_MASTER)?;
+        let f_at = f.position;
+        let (Some(t), Some(general)) = (
+            task_target_with(foundation, 1, &find, self.every)?,
+            task_target_with(foundation, 2, &find, self.every)?,
+        ) else {
+            return Err(crate::turn::command::FOUNDATION_GONE);
+        };
+        let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
+        let own = masters
+            .get(unit.life.master_id)
+            .ok_or(crate::turn::UNIT_AI_MASTER)?;
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            civ: self.civ,
+        };
+        let dip = SideWorld {
+            player,
+            relations: self.relations,
+            foreign,
+            drop_sites: self.drop_sites,
+        };
+        let (task, switch) = task_search(masters, &actor, &t, &general, -1, &dip)?
+            .ok_or(crate::turn::command::NO_BUILD_TASK)?;
+        let builder = switch.unwrap_or(own);
+        let gap = crate::movement::footprint_gap(unit.position, builder.radius, f_at, site.radius);
+        let build = BuildAction::start(
+            foundation,
+            f_at,
+            gap,
+            BuildTask {
+                range: task.work_range,
+                work_value: task.work_val1,
+                work_rate: builder.work_rate + unit.work_rate_powerup,
+            },
+        );
+        let id = unit.id;
+        let unit = &mut *self.unit;
+        if let Some(next) = switch {
+            let by = Releaser {
+                id,
+                class: own.class,
+                player,
+            };
+            unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+            let world = crate::order::SwitchWorld {
+                spatial: self.spatial,
+                pathing: self.pathing,
+                graphics: self.graphics,
+                sprite: self.sprite,
+            };
+            let switched = crate::order::switch_master(unit, own, next, world)?;
+            self.attribute_adds.extend(switched.leaving);
+            if switched.promoted {
+                self.promotions.push((id, own.id, next.id));
+            }
+            self.attribute_adds.extend(switched.coming);
+        }
+        let by = Releaser {
+            id,
+            class: builder.class,
+            player,
+        };
+        self.takes.push((foundation, by));
+        unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+        unit.build = Some(build);
+        Ok(())
+    }
+
     fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (self.player, self.others, self.foreign);

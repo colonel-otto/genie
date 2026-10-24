@@ -397,6 +397,13 @@ pub(in crate::turn) struct QueueAt {
 const CURRENT_AGE: i16 = 6;
 const ONE_UNIT_AGE: f32 = crate::image::turn::ONE_UNIT_AGE;
 
+/// A build order on a foundation the world no longer holds.
+pub(crate) const FOUNDATION_GONE: GenieError =
+    GenieError::unsupported("a build order on a foundation that is gone");
+/// A build order whose unit has no task for its foundation (slot 0x380's 0).
+pub(crate) const NO_BUILD_TASK: GenieError =
+    GenieError::unsupported("a build order with no task for its foundation");
+
 impl Turns {
     /// Run a command in the command phase. Where the slice does not model what the command does to
     /// the issuing player's units, that player's lane stops.
@@ -1913,7 +1920,7 @@ impl Turns {
                     ))?;
             return Ok((class, f_at));
         }
-        let gone = GenieError::unsupported("a build order on a foundation that is gone");
+        let gone = FOUNDATION_GONE;
         let (fp, f) = self.object(foundation).ok_or_else(|| gone.clone())?;
         let (site, f_at) = (self.master_of(fp, f.life.master_id)?, f.position);
         let find = |id: i32| self.object(id);
@@ -1945,9 +1952,8 @@ impl Turns {
         };
         // slot 0x820 with any action type (0xffff): whatever task it finds, the Build takes
         // (FUN_140aad4e0 on it), its type and its enablement unread
-        let (task, switch) = task_search(masters, &actor, &t, &general, -1, &world)?.ok_or(
-            GenieError::unsupported("a build order with no task for its foundation"),
-        )?;
+        let (task, switch) =
+            task_search(masters, &actor, &t, &general, -1, &world)?.ok_or(NO_BUILD_TASK)?;
         let builder = switch.unwrap_or(actor.master);
         let gap = footprint_gap(unit.position, builder.radius, f_at, site.radius);
         let build = BuildAction::start(

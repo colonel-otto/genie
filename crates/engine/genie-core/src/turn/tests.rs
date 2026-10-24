@@ -1787,6 +1787,32 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
     assert_eq!(t.streams.get(Stream::Ai).draws, draws + 1);
 }
 
+/// The build command at once from the unit AI's run (`UnitSide::build_now`: a requeued build
+/// order's, which a following attack command replaces) does what the build command after the
+/// update does: the switch to the builder (118), the Build on the foundation, which it takes.
+#[test]
+fn the_build_command_at_once_matches_the_one_after_the_update() {
+    let mut later = sent_off_world(vec![]);
+    let mut now = later.clone();
+    let _ = later.build_command(1, 0, 10028).unwrap();
+    now.run_unit_ai((1, 0), |_, _, side, _, _| {
+        side.build_now(10028)?;
+        Ok(Vec::new())
+    })
+    .unwrap();
+    let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
+    assert_eq!(b.life.master_id, 118);
+    assert!(b.build.is_some_and(|build| build.target == 10028));
+    assert_eq!(
+        (b.life.master_id, b.build, &b.sprite),
+        (a.life.master_id, a.build, &a.sprite)
+    );
+    assert_eq!(now.players[1].attributes, later.players[1].attributes);
+    assert_eq!(now.streams, later.streams);
+    let taken = |t: &Turns| t.object(10028).map(|(_, f)| f.clone());
+    assert_eq!(taken(&now), taken(&later));
+}
+
 #[test]
 fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_units() {
     // MarvinBlue/426048731 tick 281: player 1's BUILD draws three AI values in the command
