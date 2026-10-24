@@ -1423,8 +1423,9 @@ impl HuntAction {
     /// of the master's ranges: [`Herd`]). Dead livestock out of the task's range plus `GAP` is
     /// walked to again (`set_state` 4, [`HuntAction::set_walk`]). Otherwise the unit takes the hunt's sprite
     /// (`FUN_140ac51d0`: the carrying one for a load of the task's resource of 1 or more, else the
-    /// moving one; slot 0x68 takes the standing sprite for none). A target of class 49 (its
-    /// owner's change, `FUN_141185360`) is not modelled.
+    /// moving one; slot 0x68 takes the standing sprite for none) and its timer is 0. Another
+    /// player's target of class 49 (`FUN_141185360`: a farm changes hands, `FUN_1411858f0`, a
+    /// pasture's livestock ends the hunt) is not modelled.
     fn set_face(
         &mut self,
         walk: Walk<'_>,
@@ -1432,7 +1433,10 @@ impl HuntAction {
         gather: &mut Gatherer<'_>,
         herd: Option<Herd>,
     ) -> Result<(), GenieError> {
-        if gather.target_class == CLASS_49 {
+        // another player's target of class 49 (a farm's or a pasture's livestock): only a building
+        // changes hands (FUN_141185360, FUN_1411858f0), any other ends the hunt (set_state 1);
+        // the hunter's own goes on to its sprite
+        if gather.target_class == CLASS_49 && strike.victim.player != strike.own.player {
             return Err(GenieError::unsupported(
                 "a hunt facing a target of class 49 (set_state 6)",
             ));
@@ -1476,6 +1480,7 @@ impl HuntAction {
         }
         self.move_to = None;
         self.state = FACE;
+        self.timer = 0.0;
         let carrying = self.task.resource != -1
             && *gather.held_kind == self.task.resource
             && 1 <= *gather.held as i32;
@@ -2047,6 +2052,84 @@ pub(crate) mod tests {
             (WALK_SEARCH, Some(MoveTo::Start), 0.0, 177.272_75)
         );
         assert_eq!(mover.velocity.unwrap().velocity[2], 0.0);
+    }
+
+    /// `set_state(6)` on a target of class 49 (429381190's villager 15295 hunting its pasture's
+    /// dead Ibex 15371 in update 1453): the hunter's own goes on to the hunt's moving sprite, its
+    /// timer 0; another player's (a farm changes hands, a pasture's livestock ends the hunt) is
+    /// not modelled.
+    #[test]
+    fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
+        use crate::attack::tests::Rig;
+        const MOVING: Graphic = Graphic {
+            id: 1880,
+            frames: 10,
+            facets: 16,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 3,
+        };
+        let ibex = Victim {
+            id: 15371,
+            class: CLASS_49,
+            kind: 30,
+            player: 1,
+            state: 5,
+            ..Victim::default()
+        };
+        let face = |victim: Victim| {
+            let mut hunt = HuntAction {
+                state: WALK,
+                target_class: CLASS_49,
+                timer: -3.0,
+                ..hunting(15371)
+            };
+            let mut rig = Rig::new(victim);
+            let mut mover = walker();
+            let mut world = crate::spatial::Spatial::default();
+            let walk = Walk {
+                mover: Some(&mut mover),
+                me: crate::movement::Me {
+                    id: 15295,
+                    position: [134.5, 70.5, 0.0],
+                    group: -1,
+                    action_state: WALK,
+                },
+                dt: 0.05,
+                world: &mut world,
+                plan: None,
+            };
+            let (mut kind, mut held) = (-1, 0.0);
+            let mut gather = Gatherer {
+                held_kind: &mut kind,
+                held: &mut held,
+                work_rate: 1.0,
+                capacity: 10.0,
+                productivity: 1.0,
+                target_class: CLASS_49,
+                target_storage: 0.0,
+                stops_decay: false,
+                ai_class: Some(-1),
+                sprites: HuntSprites {
+                    moving: Some(MOVING),
+                    ..HuntSprites::default()
+                },
+                tree_searched: false,
+                predator_hunts_end: false,
+                searches: false,
+                leads: None,
+                attack_failed: false,
+                let_go: None,
+            };
+            let r = hunt.set_face(walk, &mut rig.strike(), &mut gather, None);
+            (r, hunt, rig.sprite.map(|s| s.graphic.id))
+        };
+        let (r, hunt, shown) = face(ibex.clone());
+        assert_eq!(r, Ok(()));
+        assert_eq!((hunt.state, hunt.timer, hunt.move_to), (FACE, 0.0, None));
+        assert_eq!(shown, Some(1880));
+        assert!(face(Victim { player: 2, ..ibex }).0.is_err());
     }
 
     /// A hunt's walk to its point (states 11 and 15, `0x140ac7a00` cases 0xa and 0xe): an ended

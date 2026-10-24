@@ -2162,7 +2162,7 @@ fn squared_reach(range: f32) -> f32 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// `FUN_140a82ae0` case 6 after the hit: a ranged unit whose attack timer ran out is done
@@ -2560,8 +2560,8 @@ mod tests {
     };
 
     /// What an Attack's update reads besides its walk: the unit's sprite, timers and target.
-    struct Rig {
-        sprite: Option<ActiveSprite>,
+    pub(crate) struct Rig {
+        pub(crate) sprite: Option<ActiveSprite>,
         anim: Option<f32>,
         timer: f32,
         reload_worldtime: u32,
@@ -2571,7 +2571,7 @@ mod tests {
     }
 
     impl Rig {
-        fn new(victim: Victim) -> Self {
+        pub(crate) fn new(victim: Victim) -> Self {
             Self {
                 sprite: None,
                 anim: Some(0.0),
@@ -2583,7 +2583,7 @@ mod tests {
             }
         }
 
-        fn strike(&mut self) -> Strike<'_> {
+        pub(crate) fn strike(&mut self) -> Strike<'_> {
             Strike {
                 sprite: &mut self.sprite,
                 anim_speed: &mut self.anim,
