@@ -91,6 +91,7 @@ pub mod tile_path;
 pub mod town_bell;
 pub mod trace;
 pub mod tracker;
+pub mod transport;
 pub mod treason;
 pub mod tribute;
 pub mod turn;

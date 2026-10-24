@@ -1051,15 +1051,17 @@ impl Turns {
         resume: Option<AiResume>,
         f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Vec<Unit>) -> Result<R, GenieError>,
     ) -> (Result<R, GenieError>, ObjectOutputs, Option<Victim>) {
-        let mut unit = std::mem::take(&mut self.players[p].objects[i]);
-        let watch = crate::trace::Watch::of(&unit);
-        let mut victim = unit.attack_target().and_then(|t| self.victim(t, p));
-        let ai_target = unit
+        // the unit AI's target as its update starts, read before the unit leaves its list: a unit
+        // may be its own target (an unload's)
+        let ai_target = self.players[p].objects[i]
             .ai
             .as_ref()
             .map(|ai| ai.current_target)
             .filter(|&t| t != -1)
             .map_or(Ok(None), |t| self.seen(t, p));
+        let mut unit = std::mem::take(&mut self.players[p].objects[i]);
+        let watch = crate::trace::Watch::of(&unit);
+        let mut victim = unit.attack_target().and_then(|t| self.victim(t, p));
         // the objects a hit's blast may reach about its target, or about the unit for
         // its blast at death (TRIBE_Combat_Object::update)
         let blasted = match victim.as_ref() {
@@ -1144,6 +1146,7 @@ impl Turns {
             carts: Vec::new(),
             completions: Vec::new(),
             work_order: None,
+            transport_unload: false,
             gate_toggle: false,
             ai_resume: resume,
             taken_over: None,
@@ -1226,6 +1229,7 @@ impl Turns {
             carts,
             completions,
             work_order,
+            transport_unload,
             mut blasted,
             own_killed,
             remains,
@@ -1462,6 +1466,14 @@ impl Turns {
         {
             result = Err(e);
         }
+        // the Transport's unload in its update, before the unit AI part
+        if transport_unload {
+            if !matches!(result, Ok(Step::Stay)) {
+                result = result.and(Err(LEAVES_ITS_LIST));
+            } else if let Err(e) = self.transport_unload(p, i) {
+                result = Err(e);
+            }
+        }
         if let Some(work) = work_order {
             if !matches!(result, Ok(Step::Stay)) {
                 result = result.and(Err(GenieError::unsupported(
@@ -1537,6 +1549,7 @@ impl Turns {
                 AiStart::Wait(w) => self.wait_for_foundation(p, i, w),
                 AiStart::Repair(r) => self.repair_order(p, i, r),
                 AiStart::Enter(e) => self.enter_order(p, i, e),
+                AiStart::Transport(to) => self.transport_order(p, i, to),
             };
             if let Err(e) = made {
                 result = Err(e);

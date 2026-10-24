@@ -1015,6 +1015,7 @@ impl Turns {
             attack: None,
             explore: None,
             enter: None,
+            transport: None,
             missile: None,
             attack_count: 0,
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire

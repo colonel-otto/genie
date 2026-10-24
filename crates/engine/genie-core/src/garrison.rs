@@ -150,6 +150,8 @@ const CLASS_38: i16 = 38;
 const WHOLE_SHARE_CLASS: i16 = 42;
 /// UNLOAD's point without one (`DAT_14330ec20`).
 const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+/// UNLOAD's order range (`DAT_14330eb8c`).
+const UNLOAD_RANGE: f32 = crate::image::garrison::UNLOAD_RANGE;
 
 /// The amounts of `weapons` (class, amount) whose class `counts`.
 fn weapons_sum(weapons: &[(i16, i16)], counts: impl Fn(i16) -> bool) -> f32 {
@@ -726,16 +728,22 @@ impl Turns {
     }
 
     /// UNLOAD (`FUN_14161f410`) of player `player`'s objects `ids` (each alive, at least 1 hit
-    /// point): a building lets the units inside it out, from the last to come in, those `flag`
-    /// and `unit_type` pick ([`unload_picks`]): each through [`Turns::let_out`], toward the point
-    /// (or its unit AI's command queue location, which is not modelled); each one out has its
-    /// order queue emptied (`FUN_140c5e010`). A unit inside a building leaves it toward the point
-    /// (with its sound, no work), its orders gone and, of type 70 and up, no longer under the
-    /// town bell. A unit inside a transport, a unit with units inside it (a transport's unload)
-    /// and the other units' steps (a siege unit's, the group leave, the ignore list and the
-    /// unit AI's order 0x2d1) are not modelled; the local player's interface flag
-    /// (`FUN_141663f50`) is not held. A unit (type 70) out is no longer under the town bell
-    /// (`+0x9dc`).
+    /// point; `COMISS`/`JC`: a NaN is):
+    /// - A unit inside a building leaves it toward the point (with its sound, no work), its
+    ///   orders gone and, of type 70 and up, no longer under the town bell.
+    /// - A unit (below type 80) inside a transport (type 70 or more) or, with `flag` 3, the unit
+    ///   `unit_type` names inside this one, goes ashore ([`Turns::drop_out`]).
+    /// - A siege unit (class 13) unloads its own way (`FUN_141225c40`, a siege tower's order 800),
+    ///   which is not modelled ([`SIEGE_UNLOAD`]).
+    /// - Any other unit takes the unload order at the point ([`Turns::unload_order`]): a transport
+    ///   sails there and unloads (its Transport, [`crate::transport`]), any other walks there.
+    /// - A building lets the units inside it out, from the last to come in, those `flag` and
+    ///   `unit_type` pick ([`unload_picks`]): each through [`Turns::let_out`], toward the point
+    ///   (or its unit AI's command queue location, which is not modelled); each one out has its
+    ///   order queue emptied (`FUN_140c5e010`); a unit (type 70) out is no longer under the town
+    ///   bell (`+0x9dc`).
+    ///
+    /// The local player's interface flag (`FUN_141663f50`) is not held.
     pub(crate) fn unload(
         &mut self,
         player: usize,
@@ -745,6 +753,8 @@ impl Turns {
         unit_type: i32,
         sound: bool,
     ) -> Result<(), GenieError> {
+        // the drop locations' last place across the command's units (FUN_14161f410's locals)
+        let mut last = None;
         for &id in ids {
             let Some(idx) = self.players[player].objects.iter().position(|u| u.id == id) else {
                 continue;
@@ -753,20 +763,25 @@ impl Turns {
             if unit.life.hp < 1.0 {
                 continue;
             }
-            // a unit inside a building leaves it toward the point (`FUN_1411e7220` with no
-            // work and its sound); a combat unit is no longer under the town bell (`+0x9dc`),
-            // and its unit AI's orders go (`FUN_140c5e010`)
-            if let Some(container) = unit.life.inside {
-                let building = match self.place(container) {
-                    Some(crate::order::Place::Live(cp, ci)) => {
-                        let c = &self.players[cp].objects[ci];
-                        (BUILDING <= self.master_of(cp, c.life.master_id)?.kind).then_some((cp, ci))
-                    }
-                    _ => None,
-                };
-                let Some((cp, ci)) = building else {
-                    return Err(GenieError::unsupported(
-                        "an unload of a unit inside a transport (or a sleeping building)",
+            // the object it is inside, and that object's type
+            let container = match unit.life.inside {
+                Some(c) => {
+                    let (cp, cu) = self.object(c).ok_or(GenieError::unreachable(
+                        "a unit inside an object the world does not hold",
+                    ))?;
+                    Some((c, self.master_of(cp, cu.life.master_id)?.kind))
+                }
+                None => None,
+            };
+            // a unit inside a building leaves it toward the point (`FUN_1411e7220` with no work
+            // and its sound); a combat unit is no longer under the town bell (`+0x9dc`), and its
+            // unit AI's orders go (`FUN_140c5e010`)
+            if let Some((c, kind)) = container
+                && BUILDING <= kind
+            {
+                let Some(crate::order::Place::Live(cp, ci)) = self.place(c) else {
+                    return Err(GenieError::unreachable(
+                        "a building that holds units outside the live lists",
                     ));
                 };
                 let _ = self.let_out(cp, ci, id, point, (None, true))?;
@@ -783,14 +798,22 @@ impl Turns {
                 }
                 continue;
             }
-            if self.master_of(player, unit.life.master_id)?.kind < BUILDING {
-                if unit.garrison.is_empty() {
-                    continue;
+            let unit = &self.players[player].objects[idx];
+            let master = self.master_of(player, unit.life.master_id)?;
+            if master.kind < BUILDING {
+                let transport = container
+                    .filter(|&(_, kind)| COMBAT_KIND <= kind)
+                    .map(|(c, _)| c);
+                if flag == 3 || transport.is_some() {
+                    self.drop_out(player, idx, transport, unit_type, &mut last)?;
+                } else if master.class == SIEGE_CLASS {
+                    return Err(SIEGE_UNLOAD);
+                } else {
+                    self.unload_order(player, idx, point)?;
                 }
-                return Err(GenieError::unsupported(
-                    "an unload of a unit with units inside (a transport)",
-                ));
+                continue;
             }
+            let unit = &self.players[player].objects[idx];
             if unit
                 .ai
                 .as_ref()
@@ -829,6 +852,126 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// UNLOAD's unit at `idx` of player `player` inside the transport `transport` (`FUN_14161f410`
+    /// with a container of type 70 or more) or, without one (flag 3), the unit `named` when it
+    /// is inside this one (`FUN_1415417a0`; one the world does not hold, or elsewhere, stays):
+    /// the unit inside, in state 2, goes ashore where a drop location about the holder is free
+    /// ([`Turns::drop_location`] about the holder's place within twice its master's radii, in any
+    /// zone; `last` the command's): it takes the holder's place (`FUN_14119d610`), leaves it
+    /// (slot 0x1a8) for the place at the holder's height (slot 0x58,
+    /// [`Turns::leave_container`]), takes its own stance again at its place (its unit AI's slot
+    /// 0x1c0 with `+0x1a9`, [`crate::order::set_stance`]) and, of a type above 69, is no longer
+    /// under the town bell (`+0x9dc`). Without a free place the interface's message 0x85 is all.
+    fn drop_out(
+        &mut self,
+        player: usize,
+        idx: usize,
+        transport: Option<i32>,
+        named: i32,
+        last: &mut Option<[f32; 2]>,
+    ) -> Result<(), GenieError> {
+        let own = self.players[player].objects[idx].id;
+        let (inner, holder) = match transport {
+            Some(t) => (own, t),
+            None => match self.object(named) {
+                Some((_, o)) if o.life.inside == Some(own) => (named, own),
+                _ => return Ok(()),
+            },
+        };
+        let (ip, unit) = self.object(inner).expect("found above");
+        if unit.life.state != 2 {
+            return Ok(());
+        }
+        let made = self.master_of(ip, unit.life.master_id)?.clone();
+        let Some(crate::order::Place::Live(hp, hi)) = self.place(holder) else {
+            return Err(GenieError::unreachable(
+                "a transport that holds units outside the live lists",
+            ));
+        };
+        let h = &self.players[hp].objects[hi];
+        let at = h.position;
+        let [rx, ry] = self.master_of(hp, h.life.master_id)?.radius;
+        let around = crate::transport::Around {
+            center: [at[0], at[1]],
+            radius: [rx + rx, ry + ry],
+        };
+        let Some(spot) = self.drop_location((hp, hi), inner, &made, around, u32::MAX, last)? else {
+            return Ok(());
+        };
+        let (up, ui) = self.live_inside(inner)?;
+        self.players[up].objects[ui].position = at;
+        self.leave_container((hp, hi), (up, ui), &made, [spot[0], spot[1], at[2]])?;
+        let unit = &mut self.players[up].objects[ui];
+        let place = ([unit.position[0], unit.position[1]], made.class);
+        if let Some(ai) = unit.ai.as_mut() {
+            let mut fx = Vec::new();
+            let stance = ai.stance;
+            crate::order::set_stance(ai, stance, place, &mut fx)?;
+            for _ in fx.iter().filter(|e| **e == crate::unit_ai::Effect::Stop) {
+                self.command_stop(up, ui)?;
+            }
+        }
+        if COMBAT_KIND <= made.kind {
+            self.players[up].objects[ui].town_bell.flag = false;
+        }
+        Ok(())
+    }
+
+    /// UNLOAD's other unit at `idx` of player `player` (`FUN_14161f410`'s last branch): it leaves
+    /// the unit group the world holds of its link (`FUN_14102c160` with −1 and 0), its ignore
+    /// list empties (`FUN_141197da0`; an object without movement state holds none the slice
+    /// keeps), and its owner gives its unit AI the unload order at once (slot 0x50,
+    /// `FUN_141667db0` -> the unit AI's slot 0x30 -> slot 0x28 with Immediate set and inFront
+    /// clear, [`crate::unit_ai::UnitAi::take_order_now_with`], run outside the unit's update):
+    /// issued by the owner, on the unit itself with its master as the target type and the owner
+    /// as the target's, at the point (the unit's own place for (−1, −1) unless its master's class
+    /// is 3), height 0, within [`UNLOAD_RANGE`], priority 100. Of the record's last three fields
+    /// the call writes only the first's low byte (1, the shown x: its upper bytes are the
+    /// stack's, not held); the stack slots it leaves as the other two hold the caller's saved
+    /// `RDI` (the shown y, not held) and the return address, whose low byte (`0x85`) makes the
+    /// order ready.
+    fn unload_order(
+        &mut self,
+        player: usize,
+        idx: usize,
+        point: [f32; 2],
+    ) -> Result<(), GenieError> {
+        let id = self.players[player].objects[idx].id;
+        self.leave_group_of(id, -1)?;
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(m) = unit.mover.as_mut() {
+            m.ignore_units.clear();
+        }
+        let unit = &self.players[player].objects[idx];
+        let master = self.master_of(player, unit.life.master_id)?;
+        // UCOMISS with −1, JP and JNZ: a NaN coordinate is not −1
+        let to = if master.class != BUILDING_CLASS && point == [NO_POINT, NO_POINT] {
+            [unit.position[0], unit.position[1]]
+        } else {
+            point
+        };
+        let order = crate::unit_ai::QueuedOrder {
+            issuer: player as i32,
+            order: crate::ai_kinds::ORDER_UNLOAD,
+            priority: 100,
+            target: id,
+            target_owner: player as i32,
+            point: [to[0], to[1], 0.0],
+            range: UNLOAD_RANGE,
+            shown: [f32::from_bits(1), 0.0],
+            ready: true,
+            target_type: i32::from(master.id),
+        };
+        if unit.ai.is_none() {
+            return Ok(());
+        }
+        self.run_unit_ai((player, idx), |ai, at, side, computer, rng| {
+            let mut fx = Vec::new();
+            ai.take_order_now_with(order, (at, side, computer), rng, &mut fx)?;
+            Ok(fx)
+        })
     }
 
     /// `GO_BACK_TO_WORK` (`do_command` 0x80 with one object, 0x86 with several:
@@ -984,8 +1127,9 @@ impl Turns {
         })
     }
 
-    /// The player and live index of the unit `id` inside a building, whoever's it is.
-    fn live_inside(&self, id: i32) -> Result<(usize, usize), GenieError> {
+    /// The player and live index of the unit `id` inside a building or a transport, whoever's
+    /// it is.
+    pub(crate) fn live_inside(&self, id: i32) -> Result<(usize, usize), GenieError> {
         match self.place(id) {
             Some(crate::order::Place::Live(p, i)) => Ok((p, i)),
             _ => Err(GenieError::unsupported(
@@ -1049,7 +1193,7 @@ impl Turns {
         let (up, ui) = self.live_inside(id)?;
         let unit = &self.players[up].objects[ui];
         let made = self.master_of(up, unit.life.master_id)?.clone();
-        if bm.class == 13 {
+        if bm.class == SIEGE_CLASS {
             return Err(SIEGE_UNLOAD);
         }
         if made.class == WHOLE_SHARE_CLASS || made.class == 58 {
@@ -1075,20 +1219,50 @@ impl Turns {
         if !inside {
             return self.let_out_from_the_map(up, ui, (&made, at), (point, gather, bid, work_on));
         }
-        // the building's slot 0x1c8 (`FUN_141217910`): a unit (type 70) takes its share off the
-        // volleys (the building's rate by its player's masters, the unit's share by its own)
+        self.leave_container((player, building), (up, ui), &made, at)?;
+        self.came_out(up, ui, made.class, (point, gather, bid, work_on))
+    }
+
+    /// Slot 0x1a8 (`FUN_141213120`) of the unit at (`up`, `ui`), of master `made`, inside the
+    /// object at (`player`, `container`), then its slot 0x58 at `at`. The container's slot 0x1c8
+    /// (`FUN_141217910`; a building's `FUN_1411d6ad0` adds its counts, not held) takes the unit's
+    /// share off its volleys, back to its master's volley fire when none is left inside or it fell
+    /// below it, and lets it out of its list (`FUN_141197e10`); a building's sight lets the circle
+    /// of 5 go (slot 0x1d8 with 5); the unit's countdown to its raid (`+0x9a0`) ends; a container
+    /// of type 70 or more takes off its `+0x9a8` what the unit holds inside (slot 0x498), none in
+    /// the slice. Slot 0x58 puts the unit on the map at `at` (`new_position`: its tile's list,
+    /// its obstruction record, the mesh, its sight); its sprites (`FUN_14118a8f0`) are the
+    /// interface's.
+    ///
+    /// # Errors
+    ///
+    /// A unit without its record, an unload without the masters, and the sight's unsupported
+    /// cases.
+    pub(crate) fn leave_container(
+        &mut self,
+        (player, container): (usize, usize),
+        (up, ui): (usize, usize),
+        made: &Master,
+        at: [f32; 3],
+    ) -> Result<(), GenieError> {
+        let b = &self.players[player].objects[container];
+        let (bid, id) = (b.id, self.players[up].objects[ui].id);
+        let bm = self.master_of(player, b.life.master_id)?.clone();
+        // the container's slot 0x1c8 (`FUN_141217910`, a building's through `FUN_1411d6ad0`): a
+        // unit (type 70) takes its share off the volleys (the container's rate by its player's
+        // masters, the unit's share by its own)
         let share = if made.kind == COMBAT_KIND {
             let (Some(own), Some(theirs)) = (self.masters.get(player), self.masters.get(up)) else {
                 return Err(GenieError::unsupported("an unload without the masters"));
             };
-            let b = &self.players[player].objects[building];
+            let b = &self.players[player].objects[container];
             let unit = &self.players[up].objects[ui];
             let rate = attack_rate(&bm, own, b.reload_powerup);
-            Some(share(&made, theirs, unit.reload_powerup, rate)?)
+            Some(share(made, theirs, unit.reload_powerup, rate)?)
         } else {
             None
         };
-        let b = &mut self.players[player].objects[building];
+        let b = &mut self.players[player].objects[container];
         if let Some(share) = share {
             b.firepower -= share;
         }
@@ -1100,8 +1274,11 @@ impl Turns {
         if b.garrison.is_empty() || b.firepower < bm.volley_fire {
             b.firepower = bm.volley_fire;
         }
+        // a building's sight lets the circle of 5 go (slot 0x1d8 with 5)
         let (b_at, b_radius) = (b.position, bm.radius);
-        if let Some(v) = self.spatial.sight.as_mut() {
+        if bm.kind == BUILDING
+            && let Some(v) = self.spatial.sight.as_mut()
+        {
             v.sight_off_los(bid, b_at, b_radius, false, 5, false);
         }
         // slot 0x58: on the map at the spot (new_position: its tile's list, its sight)
@@ -1124,6 +1301,8 @@ impl Turns {
         let unit = &mut self.players[up].objects[ui];
         unit.position = at;
         unit.life.inside = None;
+        // a unit out of its container no longer counts down to its raid (`+0x9a0` 0)
+        unit.raider_countdown = 0;
         // the position setter's end: a place off where it last moved to is a move
         if let Some(m) = unit.mover.as_mut() {
             m.mark_move(at, world_time);
@@ -1137,7 +1316,7 @@ impl Turns {
         if let Some(e) = self.spatial.take_sight_unsupported() {
             return Err(e);
         }
-        self.came_out(up, ui, made.class, (point, gather, bid, work_on))
+        Ok(())
     }
 
     /// [`Turns::let_out`]'s end once the unit stands at its spot: the work given, the gather
@@ -1780,7 +1959,7 @@ const WALK: u8 = 4;
 const WAIT_SECONDS: f32 = 1.0;
 /// The class of siege weapons, whose own place an Enter's point keeps (`FUN_140a85f30`, the
 /// short `0xd`).
-const SIEGE_CLASS: i16 = 13;
+pub(crate) const SIEGE_CLASS: i16 = 13;
 
 /// An unload of a siege building or tower (class 13: its spot search `FUN_141192d10` and the
 /// unit's leave), not modelled.
@@ -2328,15 +2507,11 @@ pub(crate) fn meeting_point(
     let (id, [ux, uy, _], stats) = unit;
     let terrain = spatial.terrain.as_ref();
     let landing = || {
-        let terrain = terrain.ok_or(GenieError::unsupported(
-            "the map's zones without its terrain",
-        ))?;
+        let terrain = terrain.ok_or(crate::zones::NO_TERRAIN)?;
         let values = terrain
             .restrictions
             .get(stats.restriction)
-            .ok_or(GenieError::unsupported(
-                "a restriction the slice's data has not got",
-            ))?;
+            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
         let [w, h] = spatial.map;
         let map = zones.of(w, h, &terrain.kinds, values);
         let own = map.zone(cvttss2si(ux), cvttss2si(uy));
@@ -4134,6 +4309,264 @@ pub(crate) mod tests {
         assert_eq!((enter.target, enter.retry), (200, true));
     }
 
+    /// A 30 × 20 map, water (terrain 1, flags 1) west of x = 15 and land (terrain 0, flags 8)
+    /// east of it, with the planners and zone maps of land units (restriction 0) and ships
+    /// (restriction 1). The ship 200 (a transport's unit AI, type 11; speed 1.1) floats at
+    /// `ship` with villager 1000 inside; the streams are seeded.
+    fn coast_world(ship: [f32; 2]) -> Turns {
+        let mut t = sized_world(30, 20);
+        let sails = crate::movement::MoveStats {
+            speed: 1.1,
+            stand_speed: 1.1,
+            radius: [0.5, 0.5, 2.0],
+            restriction: 1,
+            ..standing()
+        };
+        for m in &mut t.masters {
+            if let Some(s) = m.get_mut(SHIP) {
+                s.terrain_restriction = 1;
+                s.radius = [0.5, 0.5];
+                s.tall = true;
+                s.garrison = 5;
+                s.moving = Some(sails);
+            }
+            if let Some(v) = m.get_mut(VILLAGER) {
+                v.terrain_restriction = 0;
+            }
+        }
+        let tiles: Vec<(u8, u8, i16)> = (0..30 * 20)
+            .map(|i| {
+                if i % 30 < 15 {
+                    (1, 255, -1)
+                } else {
+                    (0, 255, -1)
+                }
+            })
+            .collect();
+        let kinds: Vec<u8> = tiles.iter().map(|t| t.0).collect();
+        let kind = |flags| crate::terrain::TerrainKind {
+            shown: true,
+            flags,
+            forest: false,
+        };
+        let restrictions = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let mut terrain = crate::terrain::Terrain::new(
+            30,
+            20,
+            tiles,
+            vec![kind(8), kind(1)],
+            restrictions.clone(),
+        );
+        terrain.set_elevations(vec![0; 30 * 20]);
+        t.spatial.terrain = Some(terrain);
+        t.pathing = crate::pathing::Pathing::new([30, 20], kinds, restrictions, 0);
+        t.streams.seed_all(7);
+        ship_at(&mut t, ship);
+        let mut mover = crate::hunt::tests::walker();
+        mover.stats = sails;
+        mover.moved_at = [ship[0], ship[1], 0.0];
+        let s = t.object_mut(200).unwrap().1;
+        s.mover = Some(mover);
+        s.ai = Some(crate::unit_ai::UnitAi {
+            ai_type: 11,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        s.garrison = vec![1000];
+        walker(&mut t, 1, 1000, VILLAGER, ship);
+        t.object_mut(1000).unwrap().1.life.inside = Some(200);
+        t.spatial.go_inside(1000, [ship[0], ship[1], 0.0]);
+        t
+    }
+
+    /// The first place about `center` within `radius` (`find_drop_location`'s draws on a copy of
+    /// the Object stream) where a unit of radius 0.2 stands on the land (x 15 and up) and clear
+    /// of the ship.
+    fn ashore(t: &mut Turns, center: [f32; 2], radius: f32) -> [f32; 2] {
+        let mut r = t.streams.get(crate::rng::Stream::Object).clone();
+        let gap = radius + (0.2 + 0.01);
+        let along = |r: u32, c: f32| ((r as f32 * (radius + radius)) / 32767.0 - radius) + c;
+        let mut place = [0.0; 2];
+        loop {
+            place = match (r.rand15() as i32 * 4) / 0x7fff {
+                0 => [center[0] + gap, along(r.rand15(), center[1])],
+                1 => [center[0] - gap, along(r.rand15(), center[1])],
+                2 => [along(r.rand15(), center[0]), center[1] + gap],
+                3 => [along(r.rand15(), center[0]), center[1] - gap],
+                _ => place,
+            };
+            if 15.0 <= place[0] - 0.2 {
+                return place;
+            }
+        }
+    }
+
+    /// UNLOAD of a ship off the shore (`FUN_14161f410`'s last branch): its unit AI takes the
+    /// unload order on itself at once (0x2d1 -> slot 0x118 -> slot 0x3a8 `FUN_14108d050`): a new
+    /// Transport (`FUN_140aa3ab0`) at the ship's place starts (`set_state(11)`), then its work at
+    /// the point: no tile of the point's zone (the land, on the ship's zone map) lies within 2 of
+    /// the ship's tile, so it sails there to unload (`set_state(4)`), toward the last water tile of
+    /// the planner's path to the point (`FUN_140f7c390`), its `MoveTo` starting; the unit AI holds
+    /// the unload's action value with the ship itself as its target.
+    #[test]
+    fn an_unload_command_sends_a_transport_toward_the_shore() {
+        let mut t = coast_world([10.5, 10.5]);
+        t.unload(1, &[200], [17.5, 10.5], 0, -1, false).unwrap();
+        let ship = t.object(200).unwrap().1;
+        let tr = ship.transport.expect("the Transport");
+        assert_eq!(
+            (tr.state, tr.mode, tr.point, tr.move_to, tr.retarget),
+            (
+                crate::transport::SAIL_TO_UNLOAD,
+                1,
+                [14.5, 10.5, 0.0],
+                Some(MoveTo::Start),
+                false
+            )
+        );
+        let ai = ship.ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.current_action, ai.current_target),
+            (crate::ai_kinds::ORDER_UNLOAD, 0x26d, 200)
+        );
+        // the villager inside stays there
+        assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+        // a second unload: the immediate order stops the unit AI's action first (slot 0xb0, the
+        // unit's stop tears the Transport down), so the command makes a new one alike
+        t.unload(1, &[200], [17.5, 10.5], 0, -1, false).unwrap();
+        let again = t.object(200).unwrap().1.transport.unwrap();
+        assert_eq!((again.state, again.point), (tr.state, tr.point));
+        // slot 0x3a8 with the Transport on top: "Telling existing action to work" at the ship's
+        // own place, whose zone lies under the ship: it unloads there (set_state(6)), its MoveTo
+        // gone
+        let idx = t.players[1]
+            .objects
+            .iter()
+            .position(|u| u.id == 200)
+            .unwrap();
+        t.transport_order(1, idx, [17.5, 10.5, 0.0]).unwrap();
+        let tr = t.object(200).unwrap().1.transport.unwrap();
+        assert_eq!(
+            (tr.state, tr.point, tr.move_to),
+            (crate::transport::UNLOAD, [10.5, 10.5, 0.0], None)
+        );
+    }
+
+    /// A ship beside the shore takes the unload order and unloads at once (`set_state(6)`: the
+    /// land within 2 of its tile, the point within 2 of its footprint); its unload
+    /// (`FUN_140aa3ba0` -> `FUN_141191b40`) puts the villager ashore east of it (the Object
+    /// stream's `find_drop_location`), out of the ship's list, its unit AI's state position the
+    /// spot; with none left inside the owner hears nothing, and the Transport idles.
+    #[test]
+    fn a_transport_beside_the_shore_puts_its_units_ashore() {
+        let mut t = coast_world([14.5, 10.5]);
+        t.unload(1, &[200], [15.5, 10.5], 0, -1, false).unwrap();
+        let tr = t.object(200).unwrap().1.transport.unwrap();
+        assert_eq!(
+            (tr.state, tr.point, tr.move_to),
+            (crate::transport::UNLOAD, [15.5, 10.5, 0.0], None)
+        );
+        let spot = ashore(&mut t, [14.5, 10.5], 0.5);
+        let idx = t.players[1]
+            .objects
+            .iter()
+            .position(|u| u.id == 200)
+            .unwrap();
+        t.transport_unload(1, idx).unwrap();
+        let v = t.object(1000).unwrap().1;
+        assert_eq!(v.life.inside, None);
+        assert_eq!(v.position, [spot[0], spot[1], 0.0]);
+        assert_eq!(v.ai.as_ref().unwrap().state_position, spot);
+        assert_eq!(
+            t.spatial.get(1000).map(|p| p.position),
+            Some([spot[0], spot[1], 0.0])
+        );
+        let ship = t.object(200).unwrap().1;
+        assert_eq!(ship.garrison, [0; 0]);
+        assert_eq!(
+            ship.transport.map(|t| t.state),
+            Some(crate::transport::IDLE)
+        );
+        // a move to a point: the idle Transport takes it (its slot 8, 0x140aa3e40) and sails
+        // there, its MoveTo starting; no MoveTo of the unit's own
+        let taken = t.move_to_point(1, idx, [5.5, 5.5, 0.0]).unwrap();
+        let ship = t.object(200).unwrap().1;
+        let tr = ship.transport.unwrap();
+        assert!(taken);
+        assert_eq!(
+            (tr.state, tr.mode, tr.point, tr.move_to, ship.move_to),
+            (
+                crate::transport::SAIL,
+                0,
+                [5.5, 5.5, 0.0],
+                Some(MoveTo::Start),
+                None
+            )
+        );
+    }
+
+    /// No drop location on the land: the point moves (the Action stream's "Unload" draws) until
+    /// a draw leaves the water, and the Transport sails there to unload (`set_state(4)`, `+0x68`):
+    /// its update's end leaves it so.
+    #[test]
+    fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
+        let mut t = coast_world([14.5, 10.5]);
+        // the villager's master stands nowhere (restriction 0 refuses both terrains)
+        if let Some(terrain) = t.spatial.terrain.as_mut() {
+            terrain.restrictions[0] = vec![0.0, 0.0];
+        }
+        t.unload(1, &[200], [15.5, 10.5], 0, -1, false).unwrap();
+        let idx = t.players[1]
+            .objects
+            .iter()
+            .position(|u| u.id == 200)
+            .unwrap();
+        let mut action = t.streams.get(crate::rng::Stream::Action).clone();
+        t.transport_unload(1, idx).unwrap();
+        assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+        // the first draws: from the old point (15.5, 10.5), r / 0xccc tiles less 5
+        let x = (action.rand15() / 0xccc) as f32 + 15.5 - 5.0;
+        let y = (action.rand15() / 0xccc) as f32 + 10.5 - 5.0;
+        let tr = t.object(200).unwrap().1.transport.unwrap();
+        assert!(tr.retarget);
+        assert_eq!(tr.state, crate::transport::SAIL_TO_UNLOAD);
+        if 15.0 <= x {
+            // the first draw is on land: the MoveTo's point is the shore on the way to it
+            assert_eq!(tr.move_to, Some(MoveTo::Start));
+            assert!(tr.point[0] < 15.0, "{:?} from ({x}, {y})", tr.point);
+        }
+    }
+
+    /// UNLOAD of the villager inside the ship (`FUN_14161f410` with a container of type 70): it
+    /// goes ashore about the ship within twice its radii (the Object stream's
+    /// `find_drop_location`, any zone), leaves it for the place and takes its stance again
+    /// there; the ship's own Transport stays untouched.
+    #[test]
+    fn a_unit_inside_a_transport_unloaded_goes_ashore_about_it() {
+        let mut t = coast_world([14.5, 10.5]);
+        let spot = ashore(&mut t, [14.5, 10.5], 1.0);
+        t.unload(1, &[1000], [-1.0, -1.0], 0, -1, false).unwrap();
+        let v = t.object(1000).unwrap().1;
+        assert_eq!(v.life.inside, None);
+        assert_eq!(v.position, [spot[0], spot[1], 0.0]);
+        assert_eq!(v.ai.as_ref().unwrap().state_position, spot);
+        assert!(!v.town_bell.flag);
+        let ship = t.object(200).unwrap().1;
+        assert_eq!(ship.garrison, [0; 0]);
+        assert_eq!(ship.transport, None);
+        // flag 3 names the unit inside: the ship lets it out the same way
+        let mut t = coast_world([14.5, 10.5]);
+        let spot = ashore(&mut t, [14.5, 10.5], 1.0);
+        t.unload(1, &[200], [-1.0, -1.0], 3, 1000, false).unwrap();
+        assert_eq!(t.object(1000).unwrap().1.position, [spot[0], spot[1], 0.0]);
+        // a named unit elsewhere stays
+        let mut t = coast_world([14.5, 10.5]);
+        t.unload(1, &[200], [-1.0, -1.0], 3, 100, false).unwrap();
+        assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+    }
+
     #[test]
     fn a_villager_beside_a_ship_enters_it_at_once() {
         // in reach (gap 0.8, range 1) of a ship with speed: the tiles (5, 19) and (5, 20) are
@@ -4242,12 +4675,6 @@ pub(crate) mod tests {
         assert_eq!(v.life.inside, None);
         assert!(!v.town_bell.flag);
         assert_eq!(t.players[1].objects[0].garrison, [1001]);
-        // a unit inside a transport is not modelled
-        let mut t = let_out_world();
-        let mut u = unit(1000, VILLAGER, 25.0);
-        u.life.inside = Some(200);
-        t.players[1].objects.push(u);
-        assert!(t.unload(1, &[1000], [4.5, 4.5], 0, -1, false).is_err());
     }
 
     /// `FUN_1411e7220` toward no point from a building without a gather point (nor a command

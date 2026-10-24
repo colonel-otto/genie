@@ -993,6 +993,7 @@ fn has_actions(u: &Unit) -> bool {
         || u.attack.is_some()
         || u.explore.is_some()
         || u.enter.is_some()
+        || u.transport.is_some()
         || u.missile.is_some()
         || u.make.is_some()
         || u.production.as_ref().is_some_and(|q| q.action.is_some())

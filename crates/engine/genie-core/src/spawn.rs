@@ -371,6 +371,11 @@ impl Near {
     }
 }
 
+/// A unit to put down, beside a building or ashore, of a master that does not move (no
+/// terrain restriction to test its place by).
+pub(crate) const NOT_MOVING: GenieError =
+    GenieError::unsupported("a unit to put down of a master that does not move");
+
 /// The master a placement test places (its slot 0x50 with the spawn's arguments: by its radii,
 /// the terrain checked, the player's explored tiles needed, the elevation checked by its hill
 /// mode, the objects checked).
@@ -1983,9 +1988,7 @@ impl Turns {
             gather: toward,
             walls,
         };
-        let moving = made.moving.ok_or(GenieError::unsupported(
-            "a unit beside a building of a master that does not move",
-        ))?;
+        let moving = made.moving.ok_or(NOT_MOVING)?;
         let restriction = self
             .spatial
             .terrain

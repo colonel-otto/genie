@@ -19,6 +19,14 @@ const PATCHES: u16 = 0x200;
 /// The zones a map caches a tile count for (`+0x000`, 0x800 bytes of ints).
 const COUNTED: usize = 0x200;
 
+/// A terrain restriction the slice's data lacks, whose zone map the slice cannot make.
+pub const UNKNOWN_RESTRICTION: crate::GenieError =
+    crate::GenieError::unsupported("a restriction the slice's data has not got");
+
+/// The map's zones of a world without its terrain.
+pub const NO_TERRAIN: crate::GenieError =
+    crate::GenieError::unsupported("the map's zones without its terrain");
+
 /// A tile's zone off the map (`FUN_141413890`).
 const OFF_MAP: u16 = 0;
 
@@ -241,6 +249,34 @@ impl ZoneMap {
         self.zones[(y * self.width + x) as usize]
     }
 
+    /// `FUN_141414c00`: the first tile of zone `zone` within `reach` of tile `at`, column by
+    /// column (x), each from its least y: the box `reach` cut to whole tiles (`CVTTSS2SI`) spans
+    /// about `at`, kept on the map, and a tile counts when the root of its squared steps from
+    /// `at` (an integer sum as a float, `FUN_14099ef70`) is not above `reach` (`COMISS`/`JA`: a
+    /// NaN reach takes every tile of the box).
+    #[must_use]
+    pub fn near(&self, zone: u16, at: [i32; 2], reach: f32) -> Option<[i32; 2]> {
+        use crate::checkpoint::cvttss2si;
+        let [x, y] = at;
+        let r = cvttss2si(reach);
+        // CMOVNS and CMOVLE on the wrapped sums
+        let (x0, y0) = (x.wrapping_sub(r).max(0), y.wrapping_sub(r).max(0));
+        let x1 = x.wrapping_add(r).min(self.width - 1);
+        let y1 = y.wrapping_add(r).min(self.height - 1);
+        for tx in x0..=x1 {
+            let dx = x.wrapping_sub(tx);
+            for ty in y0..=y1 {
+                let dy = y.wrapping_sub(ty);
+                let steps = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
+                let d = crate::fmath::sqrt(steps as f32);
+                if crate::fmath::at_most_or_unordered(d, reach) && self.zone(tx, ty) == zone {
+                    return Some([tx, ty]);
+                }
+            }
+        }
+        None
+    }
+
     /// The zones' number (`+0x838`).
     #[must_use]
     pub const fn count(&self) -> i32 {
@@ -357,6 +393,33 @@ mod tests {
         assert_eq!(z.zone(2, 1), 2);
         assert_eq!(z.zone(-1, 0), OFF_MAP);
         assert_eq!(z.count(), 3);
+    }
+
+    #[test]
+    fn a_zone_near_a_tile_is_searched_column_by_column_within_the_reach() {
+        // a 5 x 5 map: terrain 1 (impassable, zone 1) in column 4 and at (3, 0); the rest zone 0
+        #[rustfmt::skip]
+        let kinds = [
+            0, 0, 0, 1, 1,
+            0, 0, 0, 0, 1,
+            0, 0, 0, 0, 1,
+            0, 0, 0, 0, 1,
+            0, 0, 0, 0, 1,
+        ];
+        let z = ZoneMap::new(5, 5, &kinds, &[1.0, 0.0]);
+        assert_eq!([z.zone(3, 0), z.zone(4, 2), z.zone(2, 2)], [1, 1, 0]);
+        // from (2, 2) within 2: column 3 comes before column 4, and (3, 0) is sqrt 5 away;
+        // column 4's (4, 2) is 2 away
+        assert_eq!(z.near(1, [2, 2], 2.0), Some([4, 2]));
+        // within 2.5 (cut to 2 tiles) (3, 0) counts and its column comes first
+        assert_eq!(z.near(1, [2, 2], 2.5), Some([3, 0]));
+        // the box stays on the map: from (0, 0) within 1 no zone-1 tile
+        assert_eq!(z.near(1, [0, 0], 1.0), None);
+        // the unit's own tile counts, and x before y: (0, 0) itself
+        assert_eq!(z.near(0, [0, 0], 1.0), Some([0, 0]));
+        // a NaN reach is 0 tiles (CVTTSS2SI's i32::MIN wraps the box away) and takes no distance
+        // test
+        assert_eq!(z.near(0, [2, 2], f32::NAN), None);
     }
 
     #[test]

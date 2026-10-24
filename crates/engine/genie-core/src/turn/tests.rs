@@ -5564,7 +5564,7 @@ fn ai_move_of(u: &mut Unit, m: crate::unit_ai::AiMove, class: i16) -> Result<Vec
     };
     let (mut releases, mut leaves) = (Vec::new(), Vec::new());
     let mut rng = Well512::default();
-    u.ai_move_with(
+    let _ = u.ai_move_with(
         m,
         (class, 1),
         (&mut releases, &mut leaves, by),

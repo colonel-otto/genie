@@ -115,6 +115,8 @@ pub struct Unit {
     pub explore: Option<crate::explore::ExploreAction>,
     /// A unit's Enter action (a garrison), its top action.
     pub enter: Option<crate::garrison::EnterAction>,
+    /// A unit's Transport action (an unload command's), its top action.
+    pub transport: Option<crate::transport::TransportAction>,
     /// A missile's own part with its action ([`crate::missile`]).
     pub missile: Option<crate::missile::Missile>,
     /// `+0x900`, `attack_count`: the swings that fired a missile (`FUN_141081020`).
@@ -444,6 +446,10 @@ impl Unit {
         })
         .or_else(|| self.enter.map(|e| action(crate::garrison::ENTER, e.state)))
         .or_else(|| {
+            self.transport
+                .map(|t| action(crate::transport::TRANSPORT, t.state))
+        })
+        .or_else(|| {
             self.missile
                 .as_ref()
                 .and_then(|m| m.action.as_ref())
@@ -473,6 +479,7 @@ impl Unit {
             .or_else(|| self.attack.map(|a| a.target))
             .or_else(|| self.explore.map(|_| -1))
             .or_else(|| self.enter.map(|e| e.target))
+            .or_else(|| self.transport.map(|_| -1))
             .or_else(|| {
                 self.missile
                     .as_ref()
@@ -669,6 +676,111 @@ impl Unit {
             if let Some(e) = self.enter.take() {
                 c.releases.push((e.target, self.releaser(c)));
             }
+        }
+        Ok(())
+    }
+
+    /// The Transport's update ([`crate::transport::TransportAction::update`]): its `MoveTo` first
+    /// ([`crate::transport::TransportAction::walk`], by what the unit's AI asks of the path in
+    /// its state 3, `0x140aa2a70`), then its state with the map about the unit where the walk
+    /// left it ([`crate::transport::MapShore`]). Then its step: the unit stops and takes its
+    /// standing sprite ([`Unit::show_standing`]), a failure notifies its unit AI (0x1f9 with
+    /// the transport's action value), the owner hears that it cannot unload
+    /// ([`crate::unit_ai::alert_owner`]), the unload is the caller's before the unit AI part
+    /// ([`Context::transport_unload`]), and a 1 or 3 removes it from the list (its teardown: no
+    /// `MoveTo` is left, no target).
+    pub(in crate::turn) fn transport_update(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+    ) -> Result<(), GenieError> {
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::transport::NO_MASTER)?;
+        let (radius, restriction) = (master.radius, master.terrain_restriction);
+        let t = self.transport.as_mut().expect("checked by the caller");
+        let ask = match t.move_to {
+            Some(MoveTo::Start) => {
+                let (at, to) = ([me.position[0], me.position[1]], [t.point[0], t.point[1]]);
+                UnitAi::path_ask(self.ai.as_mut(), at, to)
+            }
+            _ => crate::movement::PathAsk::default(),
+        };
+        let walked = t.walk(Some(c.walk(self.mover.as_mut(), me)), ask)?;
+        let position = c.spatial.get(self.id).map_or(self.position, |p| p.position);
+        let ship = crate::transport::Ship {
+            position,
+            radius,
+            loaded: !self.garrison.is_empty(),
+            map: c.spatial.map,
+            moves: self.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
+        };
+        let mut shore =
+            crate::transport::MapShore::new(c.spatial, c.zones, c.pathing, restriction, position)?;
+        let step = t.update(walked, &ship, &mut shore)?;
+        if step.changed.stopped
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.stop()?;
+        }
+        if step.changed.stands {
+            self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
+        }
+        if step.failed {
+            self.post_own(
+                crate::unit_ai::ACTION_FAILED,
+                [crate::transport::TRANSPORT_ACTION, 0, 0],
+            )?;
+        }
+        if step.cannot_unload {
+            crate::unit_ai::alert_owner(c.computer)?;
+        }
+        if matches!(step.code, 1 | 3) {
+            self.transport = None;
+        }
+        c.transport_unload = step.unload;
+        Ok(())
+    }
+
+    /// The Transport's slot 8 on a move to `point` ([`crate::transport::TransportAction::move_to`])
+    /// with the map about the unit, then what its state change leaves: the unit stops (its
+    /// `MoveTo`'s teardown) and takes its standing sprite.
+    pub(crate) fn transport_sail(
+        &mut self,
+        point: [f32; 3],
+        (spatial, zones, pathing): (&Spatial, &mut crate::zones::Zones, &mut Pathing),
+        (masters, graphics, sprite_rng): (
+            Option<&Masters>,
+            &std::collections::BTreeMap<i16, Graphic>,
+            &mut Well512,
+        ),
+    ) -> Result<(), GenieError> {
+        let master = masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::transport::NO_MASTER)?;
+        let ship = crate::transport::Ship {
+            position: self.position,
+            radius: master.radius,
+            loaded: !self.garrison.is_empty(),
+            map: spatial.map,
+            moves: self.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
+        };
+        let restriction = master.terrain_restriction;
+        let mut shore =
+            crate::transport::MapShore::new(spatial, zones, pathing, restriction, self.position)?;
+        let t = self
+            .transport
+            .as_mut()
+            .ok_or(GenieError::unreachable("a sail without its Transport"))?;
+        let changed = t.move_to(point, &ship, &mut shore);
+        if changed.stopped
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.stop()?;
+        }
+        if changed.stands {
+            self.show_standing(masters, graphics, sprite_rng)?;
         }
         Ok(())
     }
@@ -951,7 +1063,7 @@ impl Unit {
     /// `+0x470`): its top speed becomes the standing sprite's ([`Mover::shows_standing`]) and,
     /// where the slice holds its sprite, the sprite starts ([`crate::attack::set_sprite`] on the
     /// Sprite stream). Its master is its own or its owner's (`masters`).
-    pub(in crate::turn) fn show_standing(
+    pub(crate) fn show_standing(
         &mut self,
         masters: Option<&Masters>,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
@@ -1032,6 +1144,12 @@ impl Unit {
                 m.stop()?;
             }
             release(e.target);
+        }
+        // the Transport's teardown: its MoveTo's stops the unit; it holds no target
+        if self.transport.take().is_some_and(|t| t.move_to.is_some())
+            && let Some(m) = self.mover.as_mut()
+        {
+            m.stop()?;
         }
         if let Some(b) = self.build.take() {
             if b.added {
@@ -2323,13 +2441,10 @@ impl Unit {
         let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
             "the map's zones without its terrain",
         ))?;
-        let values =
-            terrain
-                .restrictions
-                .get(mover.stats.restriction)
-                .ok_or(GenieError::unsupported(
-                    "a restriction the slice's data has not got",
-                ))?;
+        let values = terrain
+            .restrictions
+            .get(mover.stats.restriction)
+            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
         let zones = c.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: self.id,
@@ -5253,6 +5368,8 @@ impl Unit {
             }
         } else if self.enter.is_some() {
             self.enter_update(c, others, me)?;
+        } else if self.transport.is_some() {
+            self.transport_update(c, me)?;
         }
         // the wait for a foundation (FUN_140ae8b70) on its build points, none when the world
         // does not hold it; its 1 removes it (FUN_140a98e20: the base teardown lets no target go,
@@ -6100,7 +6217,7 @@ impl Unit {
         // a builder's work found in its Build's update (slot 0x7e8 from case 0xdf) runs inside the
         // action update; the caller gives it (`Turns::order_work`) and then runs the rest of this
         // update ([`Unit::ai_part`])
-        if c.work_order.is_some() || !c.completions.is_empty() {
+        if c.work_order.is_some() || !c.completions.is_empty() || c.transport_unload {
             c.ai_resume = Some(resume);
             return Ok(Step::Stay);
         }
@@ -6988,12 +7105,21 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite_rng = c.streams.get(Stream::Sprite);
-        self.ai_move_with(
+        let sails = self.ai_move_with(
             m,
             (class, c.player),
             (&mut c.releases, &mut c.builder_leaves, by),
             (c.masters, c.graphics, sprite_rng),
-        )
+        )?;
+        if sails {
+            let sprite_rng = c.streams.get(Stream::Sprite);
+            self.transport_sail(
+                m.point,
+                (c.spatial, c.zones, c.pathing),
+                (c.masters, c.graphics, sprite_rng),
+            )?;
+        }
+        Ok(())
     }
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on a move to `m.point` its unit AI gives it (also
@@ -7012,7 +7138,8 @@ impl Unit {
     /// started (slot 0x808, `FUN_14106e990`: its slot 0x70 sees an empty list; `FUN_140a977e0`
     /// starts an action of a unit below state 3, which the unit AI's moves are, and
     /// [`MoveToAction::to_point`]); one that ends at its start shows the standing sprite of the
-    /// unit's master in `look` ([`Unit::shows_standing_sprite`]).
+    /// unit's master in `look` ([`Unit::shows_standing_sprite`]). True when a Transport on top
+    /// takes the point, which the caller sails there ([`Unit::transport_sail`]).
     pub(crate) fn ai_move_with(
         &mut self,
         m: AiMove,
@@ -7023,7 +7150,7 @@ impl Unit {
             &std::collections::BTreeMap<i16, Graphic>,
             &mut Well512,
         ),
-    ) -> Result<(), GenieError> {
+    ) -> Result<bool, GenieError> {
         if class == UNPACKED_TREBUCHET {
             return Err(GenieError::unsupported(
                 "an AI move of an unpacked trebuchet (class 54: its Pack action, FUN_140ad4ff0)",
@@ -7036,22 +7163,23 @@ impl Unit {
                 .and_then(|mt| mt.point(self.mover.as_ref()))
                 .is_some_and(|p| p == m.point)
         {
-            return Ok(());
+            return Ok(false);
         }
         match self.head_takes_point(m.point, player)? {
             PointMove::Taken(released) => {
                 if let Some(t) = released {
                     releases.push((t, by));
                 }
-                return Ok(());
+                return Ok(false);
             }
             PointMove::Repairs(released, left) => {
                 builder_leaves.extend(left);
                 if let Some(t) = released {
                     releases.push((t, by));
                 }
-                return Ok(());
+                return Ok(false);
             }
+            PointMove::Sails => return Ok(true),
             PointMove::Declined => {}
         }
         self.clear_own_actions(releases, builder_leaves, by)?;
@@ -7060,7 +7188,7 @@ impl Unit {
             self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         }
         self.move_to = Some(move_to);
-        Ok(())
+        Ok(false)
     }
 
     /// The head action's slot 0x40 on a move to `point` without a target object (its second
@@ -7136,6 +7264,8 @@ impl Unit {
                 gather.take_move(None, point, player, held, mover)?;
                 Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
             }
+            // the Transport's (0x140aa3e40): the caller sails it there
+            Some(crate::transport::TRANSPORT) => Ok(PointMove::Sails),
             // the Repair's (FUN_140ad9700): its point, slot 0x68 with none, set_state(11)
             Some(crate::repair::REPAIR) => {
                 let repair = self.repair.as_mut().expect("the unit's top action");
@@ -7274,6 +7404,9 @@ pub(crate) enum PointMove {
     /// A Repair answered 1 (`FUN_140ad9700`): it walks to the point; the target it let go, and
     /// the target whose repairers a counted repairer left ([`crate::turn::Turns::leave_builders`]).
     Repairs(Option<i32>, Option<i32>),
+    /// The Transport answers 1 (`0x140aa3e40`): it sails to the point, which the caller runs
+    /// with the map ([`Unit::transport_sail`]).
+    Sails,
 }
 
 /// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.

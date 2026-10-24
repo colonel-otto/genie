@@ -225,6 +225,9 @@ pub(in crate::turn) struct Context<'a> {
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`Turns::order_work`]).
     pub(in crate::turn) work_order: Option<crate::order::Work>,
+    /// The Transport's unload in its state 6 (`FUN_140aa3ba0`), which the caller runs after the
+    /// actions and before the unit AI part ([`Turns::transport_unload`]).
+    pub(in crate::turn) transport_unload: bool,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
     /// runs after the update ([`Turns::order_on_target`]), and the full update's tail that reads
     /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
@@ -312,6 +315,8 @@ pub(in crate::turn) struct ObjectOutputs {
     pub(in crate::turn) completions: Vec<(i32, Option<crate::build::StackUnit>, bool)>,
     /// [`Context`]'s `work_order`.
     pub(in crate::turn) work_order: Option<crate::order::Work>,
+    /// [`Context`]'s `transport_unload`.
+    pub(in crate::turn) transport_unload: bool,
     /// [`Context`]'s `blasted`.
     pub(in crate::turn) blasted: Vec<Victim>,
     /// [`Context`]'s `own_killed`.
@@ -384,6 +389,7 @@ impl Context<'_> {
             carts: std::mem::take(&mut self.carts),
             completions: std::mem::take(&mut self.completions),
             work_order: self.work_order.take(),
+            transport_unload: std::mem::take(&mut self.transport_unload),
             blasted: std::mem::take(&mut self.blasted),
             own_killed: self.own_killed.take(),
             remains: self.remains.take(),
@@ -479,6 +485,8 @@ pub(crate) enum AiStart {
     Repair(RepairOrder),
     /// An enter ([`EnterOrder`], [`Turns::enter_order`]).
     Enter(EnterOrder),
+    /// An unload command at a point (slot 0x3a8, [`Turns::transport_order`]).
+    Transport([f32; 3]),
 }
 
 /// The players but the owner of the unit that updates, read-only: the players before it and
@@ -2085,6 +2093,14 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         match command {
             crate::unit_ai::UnitCommand::Repair(target) => self.repair_command(target),
             crate::unit_ai::UnitCommand::Enter(target) => self.enter_command(target),
+            // slot 0x3a8 (FUN_14108d050): its Transport, made after the update, answers 1
+            crate::unit_ai::UnitCommand::Unload {
+                to,
+                over_wall: false,
+            } => {
+                self.starts.push(AiStart::Transport(to));
+                Ok(true)
+            }
             _ => Err(crate::unit_ai::UNMODELLED_COMMAND),
         }
     }
@@ -2170,7 +2186,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                     ..
                 },
             )) => Some(*t),
-            Some(AiStart::Repair(RepairOrder::Start { task: None, .. })) => None,
+            // the Transport holds no target
+            Some(
+                AiStart::Repair(RepairOrder::Start { task: None, .. }) | AiStart::Transport(_),
+            ) => None,
             Some(AiStart::Enter(e)) => Some(e.entered),
             None => self.unit.top_target().filter(|&t| t != -1),
         };
@@ -2386,13 +2405,10 @@ impl UnitView<'_> {
             .ok_or(GenieError::unsupported(
                 "the map's zones without its terrain",
             ))?;
-        let values =
-            terrain
-                .restrictions
-                .get(mover.stats.restriction)
-                .ok_or(GenieError::unsupported(
-                    "a restriction the slice's data has not got",
-                ))?;
+        let values = terrain
+            .restrictions
+            .get(mover.stats.restriction)
+            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
         let zones = self.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: unit.id,

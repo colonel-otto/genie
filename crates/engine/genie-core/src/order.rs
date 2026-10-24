@@ -1420,7 +1420,7 @@ impl Turns {
 
     /// Unit `id` leaves the unit group the world holds of its link (`FUN_14102c160` with `target`
     /// and 0, [`Turns::remove_unit`]); a unit the world does not hold or in no group, nothing.
-    fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), GenieError> {
+    pub(crate) fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), GenieError> {
         let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
         if link != -1 {
             let _ = self.remove_unit(link, id, target, false)?;
@@ -1689,8 +1689,11 @@ impl Turns {
             }
             Some(HUNT) => self.hunt_take_move(player, idx, target, point),
             Some(crate::gather::GATHER) => self.gather_take_move(player, idx, target, point),
-            // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target
-            Some(crate::repair::REPAIR) => self.point_taken(player, idx, point),
+            // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target, and
+            // the Transport's (0x140aa3e40) sails there
+            Some(crate::repair::REPAIR | crate::transport::TRANSPORT) => {
+                self.point_taken(player, idx, point)
+            }
             Some(other) => {
                 unreachable!("a top action of type {other}, which top_action never holds")
             }
@@ -1711,6 +1714,10 @@ impl Turns {
                 crate::turn::PointMove::Declined => return Ok(false),
                 crate::turn::PointMove::Taken(released) => (released, None),
                 crate::turn::PointMove::Repairs(released, left) => (released, left),
+                crate::turn::PointMove::Sails => {
+                    self.transport_move(player, idx, point)?;
+                    return Ok(true);
+                }
             };
         if let Some(t) = left {
             self.leave_builders(t)?;
@@ -2572,7 +2579,7 @@ impl Turns {
         let class = self.master_of(player, unit.life.master_id)?.class;
         let by = self.releaser(player, idx);
         let (mut releases, mut builder_leaves) = (Vec::new(), Vec::new());
-        self.players[player].objects[idx].ai_move_with(
+        let sails = self.players[player].objects[idx].ai_move_with(
             m,
             (class, player),
             (&mut releases, &mut builder_leaves, by),
@@ -2582,6 +2589,9 @@ impl Turns {
                 self.streams.get(Stream::Sprite),
             ),
         )?;
+        if sails {
+            self.transport_move(player, idx, m.point)?;
+        }
         for id in builder_leaves {
             self.leave_builders(id)?;
         }

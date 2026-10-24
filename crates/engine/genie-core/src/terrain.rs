@@ -348,6 +348,24 @@ impl Terrain {
             .is_some_and(|k| k.flags & 0x10 != 0)
     }
 
+    /// `FUN_1413fbee0`: the terrain table's flags (the `.dat`'s `is_water` byte) of the terrain a
+    /// map read sees on tile (`x`, `y`) (`FUN_140f690e0` on shorts: terrain 0 off the map, or
+    /// for a terrain beyond the records or hidden); none for a terrain the records lack. Bits 0 to 2 are water (`FUN_1413fc2b0`), bits 3 and 4
+    /// land (`FUN_1413fc270`).
+    #[must_use]
+    pub fn flags_at(&self, x: i16, y: i16) -> u8 {
+        let t = self.read(x, y);
+        self.terrains.get(usize::from(t)).map_or(0, |k| k.flags)
+    }
+
+    /// `FUN_140f690e0`: the terrain a map read sees on tile (`x`, `y`): terrain 0 off the map, or
+    /// for a terrain beyond the records or hidden.
+    #[must_use]
+    pub fn read(&self, x: i16, y: i16) -> u8 {
+        self.index(i32::from(x), i32::from(y))
+            .map_or(0, |i| self.seen(self.kinds[i]))
+    }
+
     /// The snow check of a completed building on tile (`x`, `y`) (`FUN_1411dbb70`'s "pick snow"):
     /// the tile's terrain (`FUN_1413fbee0`) or its layer read as a terrain (`FUN_1413fbf90`, the
     /// layer's low byte) is snow. Its decal (`FUN_1413b7bf0`, which may draw from the Object
@@ -499,6 +517,28 @@ mod tests {
         let mut unknown = map(vec![0; 8], vec![-1; 8]);
         unknown.elevations.clear();
         assert!(unknown.ground(0.5, 0.5).is_err());
+    }
+
+    #[test]
+    fn a_tile_s_flags_are_its_seen_terrain_s() {
+        // water 1 (flags 1) at (0, 0), a beach 2 (0x10) at (1, 0), a hidden 3 and 45, beyond the
+        // records, at (0, 1) and (1, 1): both read as terrain 0
+        let mut t = map(vec![1, 2, 3, 45], vec![-1; 4]);
+        t.terrains[0].flags = 8;
+        t.terrains[1].flags = 1;
+        t.terrains[2].flags = 0x10;
+        t.terrains[3].shown = false;
+        assert_eq!([t.flags_at(0, 0), t.flags_at(1, 0)], [1, 0x10]);
+        assert_eq!([t.flags_at(0, 1), t.flags_at(1, 1)], [8, 8]);
+        assert_eq!(
+            [t.read(0, 0), t.read(0, 1), t.read(1, 1), t.read(5, 5)],
+            [1, 0, 0, 0]
+        );
+        // off the map: terrain 0
+        assert_eq!([t.flags_at(-1, 0), t.flags_at(2, 0)], [8, 8]);
+        // without terrain 0's record, none
+        t.terrains.clear();
+        assert_eq!(t.flags_at(0, 1), 0);
     }
 
     #[test]

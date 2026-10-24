@@ -2877,10 +2877,11 @@ fn dodges(at: &Surroundings, ai: &mut Well512) -> bool {
     r * 100 / 0x7fff < i32::from(at.dodge_chance)
 }
 
-/// The owner's slot 0x2e8 with an alert of its unit's (0x201 under attack, 0x209 dead,
-/// `FUN_14162dab0`): a human player's alert list and the old pather's hulled-area reset, not
-/// held; a computer player's AI hears it (slot 0x3c8), which is not modelled.
-const fn alert_owner(computer: bool) -> Result<(), GenieError> {
+/// The owner's slot 0x2e8 with an alert of its unit's (0x201 under attack, 0x209 dead; 0x206
+/// and 0x207 from a transport, units left inside or no unload there; `FUN_14162dab0`): a human
+/// player's alert list or interface message and the old pather's hulled-area reset, not held;
+/// a computer player's AI hears it (slot 0x3c8), which is not modelled.
+pub(crate) const fn alert_owner(computer: bool) -> Result<(), GenieError> {
     if computer {
         return Err(GenieError::unsupported(
             "a computer player's AI hearing its unit's alert (slot 0x2e8, then slot 0x3c8)",

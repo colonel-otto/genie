@@ -1547,6 +1547,34 @@ impl Planner {
         Ok(result)
     }
 
+    /// `FUN_140f7c390`: the planner's path from `from` to `to` ([`Planner::plan`] with no radii,
+    /// no range, no closed tiles, no tile search, no target and no smoothing, in a path the
+    /// planner's pool lends, `+0x238` and `+0x278`); when it found one (a result other than 0),
+    /// the last of its points whose tile has an edge (byte 0 of its level-0 cell, the tile of the
+    /// point's `(short)(int)` coordinates), searched from the end; None without one.
+    pub fn last_open_point(&mut self, from: [f32; 2], to: [f32; 2]) -> Option<[f32; 2]> {
+        let req = Request {
+            from,
+            to,
+            radii: 0.0,
+            range: 0.0,
+            closed: Vec::new(),
+            full: false,
+        };
+        let mut path = Path::default();
+        let found = self
+            .plan::<std::convert::Infallible>(&req, false, &mut path, None)
+            .unwrap_or_else(|never| match never {});
+        if found == Found::OffMap {
+            return None;
+        }
+        path.points
+            .iter()
+            .rev()
+            .find(|p| self.cell(0, tile(p[0]), tile(p[2]))[0] != 0)
+            .map(|p| [p[0], p[2]])
+    }
+
     /// `FUN_140f7c530`'s shortcut: the last point of the path within 10 tiles of its start (past
     /// the second, short of the end) is searched for on the tiles; when that reaches it, the path
     /// becomes that search's path and the rest after the point.
@@ -1674,6 +1702,19 @@ mod tests {
         let mut out = Path::default();
         let found = p.plan::<()>(&req, false, &mut out, None).unwrap();
         assert_eq!(found, Found::OffMap);
+    }
+
+    #[test]
+    fn the_last_open_point_walks_the_path_back_to_a_tile_with_an_edge() {
+        // water (terrain 0) left of x = 10, land (1, impassable) right of it
+        let terrain: Vec<u8> = (0..128).map(|i| u8::from(10 <= i % 16)).collect();
+        let mut p = Planner::new([16, 8], terrain, vec![1.0, 0.0], &open_map);
+        // a goal on the water: the path's end
+        assert_eq!(p.last_open_point([2.5, 4.5], [7.5, 4.5]), Some([7.5, 4.5]));
+        // ashore: the path ends at the node nearest the goal, the last water tile
+        assert_eq!(p.last_open_point([2.5, 4.5], [13.5, 4.5]), Some([9.5, 4.5]));
+        // a goal off the map (result 0): none
+        assert_eq!(p.last_open_point([2.5, 4.5], [16.5, 4.5]), None);
     }
 
     #[test]

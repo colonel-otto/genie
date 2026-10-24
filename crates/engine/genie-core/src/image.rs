@@ -238,6 +238,8 @@ pub mod garrison {
     pub const RATE_RANGE: f32 = f32::from_bits(0x3f80_0000);
     /// 625.0
     pub const TOWN_BELL_REACH: f32 = f32::from_bits(0x441c_4000);
+    /// 1.0
+    pub const UNLOAD_RANGE: f32 = f32::from_bits(0x3f80_0000);
 }
 
 /// The values `crate::gather`'s port reads.
@@ -760,6 +762,26 @@ pub mod tile_path {
     pub const SMOOTH_STEP: f32 = f32::from_bits(0x40f0_0000);
     /// 35.0
     pub const TILE_SEARCH_LENGTH: f32 = f32::from_bits(0x420c_0000);
+}
+
+/// The values `crate::transport`'s port reads.
+pub mod transport {
+    /// 32767.0
+    pub const DRAW_SCALE: f32 = f32::from_bits(0x46ff_fe00);
+    /// 0.009999999776482582
+    pub const DROP_GAP: f32 = f32::from_bits(0x3c23_d70a);
+    /// 0.30000001192092896
+    pub const MOVE_RANGE: f32 = f32::from_bits(0x3e99_999a);
+    /// 2.0
+    pub const NEAR: f32 = f32::from_bits(0x4000_0000);
+    /// -1.0
+    pub const NONE: f32 = f32::from_bits(0xbf80_0000);
+    /// 5.0
+    pub const RETRY_SPREAD: f32 = f32::from_bits(0x40a0_0000);
+    /// 2.0
+    pub const SHORE_MARGIN: f32 = f32::from_bits(0x4000_0000);
+    /// 4.0
+    pub const UNLOAD_REACH_SQUARED: f32 = f32::from_bits(0x4080_0000);
 }
 
 /// The values `crate::treason`'s port reads.

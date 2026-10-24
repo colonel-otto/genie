@@ -193,9 +193,7 @@ pub(in crate::turn) fn closest_resource_of(
             let values = terrain
                 .restrictions
                 .get(restriction)
-                .ok_or(GenieError::unsupported(
-                    "a restriction the slice's data has not got",
-                ))?;
+                .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
             let zones = c.zones.of(w, h, &terrain.kinds, values);
             let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
             zone(s.position) == zone(unit.position)
