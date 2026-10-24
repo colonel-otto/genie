@@ -1910,7 +1910,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let me_at = *self
             .spatial
             .get(unit.id)
-            .ok_or(GenieError::unsupported("an attacker without a place"))?;
+            .ok_or(crate::turn::ATTACKER_UNPLACED)?;
         let t_master = self
             .every
             .get(t.player)
@@ -1924,9 +1924,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
         let look = unit.abilities.look.as_ref();
         let arms = crate::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);
-        let standing = arms.idle_sprite.ok_or(GenieError::unsupported(
-            "an attacker without its standing sprite",
-        ))?;
+        let standing = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
         if unit.sprite.is_none() {
             return Err(GenieError::unsupported(
                 "an attack command of a unit whose sprite the slice does not hold",
@@ -1943,9 +1941,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let speed = unit
             .mover
             .as_ref()
-            .ok_or(GenieError::unsupported(
-                "an attacker without movement state",
-            ))?
+            .ok_or(crate::turn::ATTACKER_UNMOVING)?
             .stats
             .speed;
         let e = crate::attack::engagement(Some(ai), speed, master, &me_at, &t, self.world_time)?;
@@ -2309,9 +2305,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let them = *self
             .spatial
             .get_known(target)?
-            .ok_or(GenieError::unsupported(
-                "an attack's target without a place",
-            ))?;
+            .ok_or(crate::turn::TARGET_UNPLACED)?;
         let id = unit.id;
         let unit = &mut *self.unit;
         if let Some(next) = switch {
@@ -2345,19 +2339,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         };
         self.takes.push((target, by));
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
-        let me = *self
-            .spatial
-            .get(id)
-            .ok_or(GenieError::unsupported("an attacker without a place"))?;
+        let me = *self.spatial.get(id).ok_or(crate::turn::ATTACKER_UNPLACED)?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
         let engagement =
             crate::attack::engagement(Some(ai), speed, hunter, &me, &them, self.world_time)?;
         let moving = hunt_task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
         let arms = crate::attack::arms(hunter, self.graphics, hunt_task.sprites, moving);
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+        let mover = unit.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             hunt_task,
@@ -2372,9 +2360,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
         if arrived {
-            let g = arms.idle_sprite.ok_or(GenieError::unsupported(
-                "an attacker without its standing sprite",
-            ))?;
+            let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
             crate::attack::set_sprite(&mut unit.sprite, g, self.sprite);
             if let Some(a) = unit.anim_speed.as_mut() {
                 *a = 0.0;

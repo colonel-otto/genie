@@ -1525,10 +1525,7 @@ impl Unit {
                     "a hunter tending a pasture (FUN_1411c7670)",
                 ));
             }
-            let mover = self
-                .mover
-                .as_ref()
-                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+            let mover = self.mover.as_ref().ok_or(crate::turn::HUNTER_UNMOVING)?;
             let radius =
                 crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
             let search = Search {
@@ -1615,10 +1612,7 @@ impl Unit {
                     "a hunt without a point that found nothing after its drop-off (set_state 2)",
                 ));
             }
-            let mover = self
-                .mover
-                .as_mut()
-                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+            let mover = self.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
             return hunt.search_walk(mover);
         }
         let foreign = c.foreign;
@@ -2541,7 +2535,7 @@ impl Unit {
     pub(in crate::turn) fn stop_mover(&mut self) -> Result<(), GenieError> {
         self.mover
             .as_mut()
-            .ok_or(GenieError::unsupported("a walker without movement state"))?
+            .ok_or(crate::turn::WALKER_UNMOVING)?
             .stop()
     }
 
@@ -2950,10 +2944,7 @@ impl Unit {
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
         let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
-        let mover = self
-            .mover
-            .as_mut()
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+        let mover = self.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
         if let Some(arrived) = hunt.retarget(
             &quarry,
             c.player,
@@ -5813,10 +5804,7 @@ impl Unit {
         {
             // case 3 waiting after a given-up MoveTo, its target gone: the timer runs by dt,
             // then the walk to the point (set_state 11)
-            let mover = self
-                .mover
-                .as_mut()
-                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+            let mover = self.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
             hunt.wait_then_walk(c.dt_seconds, mover)?;
         } else if self
             .hunt
@@ -7213,7 +7201,7 @@ impl Unit {
                 if walked {
                     self.mover
                         .as_mut()
-                        .ok_or(GenieError::unsupported("a walker without movement state"))?
+                        .ok_or(crate::turn::WALKER_UNMOVING)?
                         .stop()?;
                 }
                 Ok(PointMove::Taken(None))

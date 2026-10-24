@@ -764,7 +764,7 @@ impl HuntAction {
         self.move_to = None;
         walk.mover
             .as_deref_mut()
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?
+            .ok_or(crate::turn::HUNTER_UNMOVING)?
             .stop()?;
         if self.state == WALK_SEARCH {
             self.state = SEARCH;
@@ -896,7 +896,7 @@ impl HuntAction {
                 self.move_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(GenieError::unsupported("a hunter without movement state"))?
+                    .ok_or(crate::turn::HUNTER_UNMOVING)?
                     .stop()?;
             }
             None => {
@@ -1041,7 +1041,7 @@ impl HuntAction {
                         let mover = walk
                             .mover
                             .as_deref_mut()
-                            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+                            .ok_or(crate::turn::HUNTER_UNMOVING)?;
                         self.set_point_walk(WALK_SEARCH, mover)
                     }
                 }
@@ -1051,7 +1051,7 @@ impl HuntAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+                    .ok_or(crate::turn::HUNTER_UNMOVING)?;
                 self.wait_then_walk(walk.dt, mover)
             }
             WALK => match self.move_to {
@@ -1136,7 +1136,7 @@ impl HuntAction {
                     self.move_to = None;
                     walk.mover
                         .as_deref_mut()
-                        .ok_or(GenieError::unsupported("a hunter without movement state"))?
+                        .ok_or(crate::turn::HUNTER_UNMOVING)?
                         .stop()?;
                     self.decay_check(gather.stops_decay, strike.victim);
                     self.set_face(walk, strike, gather, herd)
@@ -1156,7 +1156,7 @@ impl HuntAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+                    .ok_or(crate::turn::HUNTER_UNMOVING)?;
                 if !crate::attack::face_target(
                     mover,
                     at,
@@ -1220,7 +1220,7 @@ impl HuntAction {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+            .ok_or(crate::turn::HUNTER_UNMOVING)?;
         self.set_point_walk(WALK_SEARCH, mover)
     }
 
@@ -1233,9 +1233,7 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         herd: &Herd,
     ) -> Result<(), GenieError> {
-        let mover = walk
-            .mover
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+        let mover = walk.mover.ok_or(crate::turn::HUNTER_UNMOVING)?;
         self.move_to = None;
         self.state = ATTACK;
         let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;
@@ -1279,7 +1277,7 @@ impl HuntAction {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+            .ok_or(crate::turn::HUNTER_UNMOVING)?;
         if !crate::attack::face_target(mover, at, strike.victim.position, strike.world_time)? {
             return Err(GenieError::unsupported(
                 "a hunter that turns over time to face its target",
@@ -1328,7 +1326,7 @@ impl HuntAction {
             .mover
             .as_deref()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+            .ok_or(crate::turn::HUNTER_UNMOVING)?;
         if footprint_gap_squared(at, ground, v, strike.victim.radius) <= LEAD_REACH {
             self.lead.start = [v[0], v[1]];
             self.face_animal(&mut walk, strike)?;
@@ -1389,10 +1387,7 @@ impl HuntAction {
             self.task.range
         };
         self.move_wait = MoveWait::default();
-        let mover = walk
-            .mover
-            .as_deref()
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+        let mover = walk.mover.as_deref().ok_or(crate::turn::HUNTER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, t.position, t.radius);
         self.move_to = Some(if ARRIVED < gap {
@@ -1458,7 +1453,7 @@ impl HuntAction {
                 .mover
                 .as_deref()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-                .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+                .ok_or(crate::turn::HUNTER_UNMOVING)?;
             if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {
                 let mut walk = walk;
                 let player = strike.own.player;

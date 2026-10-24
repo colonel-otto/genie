@@ -69,6 +69,24 @@ pub struct Gate {
     pub other_masters: bool,
 }
 
+/// An attack's target without a place.
+pub(crate) const TARGET_UNPLACED: GenieError =
+    GenieError::unsupported("an attack's target without a place");
+/// An attacker without a place.
+pub(crate) const ATTACKER_UNPLACED: GenieError =
+    GenieError::unsupported("an attacker without a place");
+/// A hunter without movement state.
+pub(crate) const HUNTER_UNMOVING: GenieError =
+    GenieError::unsupported("a hunter without movement state");
+/// An attacker without its standing sprite.
+pub(crate) const NO_STANDING_SPRITE: GenieError =
+    GenieError::unsupported("an attacker without its standing sprite");
+/// A walker without movement state.
+pub(crate) const WALKER_UNMOVING: GenieError =
+    GenieError::unsupported("a walker without movement state");
+/// An attacker without movement state.
+pub(crate) const ATTACKER_UNMOVING: GenieError =
+    GenieError::unsupported("an attacker without movement state");
 /// A unit AI's unit of a master the slice does not have.
 pub(crate) const UNIT_AI_MASTER: GenieError =
     GenieError::unsupported("a unit AI's unit of a master the slice does not have");

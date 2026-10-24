@@ -160,9 +160,7 @@ pub fn start_walk_asked(
         }
         Goal::Point(p) => (p, -1, [0.0, 0.0]),
     };
-    let mover = walk
-        .mover
-        .ok_or(GenieError::unsupported("a walker without movement state"))?;
+    let mover = walk.mover.ok_or(crate::turn::WALKER_UNMOVING)?;
     let ground = [mover.stats.radius[0], mover.stats.radius[1]];
     let squared = if target == -1 {
         let gap = footprint_gap(walk.me.position, ground, point, radius);
@@ -199,9 +197,7 @@ pub fn walk_on(walk: Walk<'_>) -> Result<MoveTo, GenieError> {
 
 /// [`walk_on`] for a `MoveTo` that handles the motion step giving up (it returns 1): None then.
 pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
-    let mover = walk
-        .mover
-        .ok_or(GenieError::unsupported("a walker without movement state"))?;
+    let mover = walk.mover.ok_or(crate::turn::WALKER_UNMOVING)?;
     if mover.paths.is_empty() {
         return Err(GenieError::unsupported("the path request (FUN_14114e410)"));
     }
@@ -250,7 +246,7 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Genie
     let mover = walk
         .mover
         .as_deref_mut()
-        .ok_or(GenieError::unsupported("a walker without movement state"))?;
+        .ok_or(crate::turn::WALKER_UNMOVING)?;
     mover.follow_path_end(point);
     mover.move_to_point = Some(point);
     Ok(())
@@ -275,7 +271,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
     let point = walk
         .mover
         .as_deref()
-        .ok_or(GenieError::unsupported("a walker without movement state"))?
+        .ok_or(crate::turn::WALKER_UNMOVING)?
         .move_to_point
         .ok_or(GenieError::unsupported(
             "a MoveTo to a target whose point the slice does not hold",
@@ -287,10 +283,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
     if quiet {
         return Ok(Follow::Again);
     }
-    let mover = walk
-        .mover
-        .as_deref()
-        .ok_or(GenieError::unsupported("a walker without movement state"))?;
+    let mover = walk.mover.as_deref().ok_or(crate::turn::WALKER_UNMOVING)?;
     if mover.walks_to_path_end()? {
         let me = walk
             .world

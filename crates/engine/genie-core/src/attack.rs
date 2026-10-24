@@ -368,9 +368,7 @@ pub(crate) fn show_arrived(
     anim_speed: &mut Option<f32>,
     rng: &mut Well512,
 ) -> Result<(), GenieError> {
-    let g = arms.idle_sprite.ok_or(GenieError::unsupported(
-        "an attacker without its standing sprite",
-    ))?;
+    let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
     set_sprite(sprite, g, rng);
     if let Some(a) = anim_speed.as_mut() {
         *a = 0.0;
@@ -725,9 +723,10 @@ impl Attack {
     /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows
     /// its idle sprite (slot 0x68) and its `+0x7b8` clears.
     pub(crate) fn arrived_sprite(&self, s: &mut Strike<'_>) -> Result<(), GenieError> {
-        let g = self.arms.idle_sprite.ok_or(GenieError::unsupported(
-            "an attacker without its standing sprite",
-        ))?;
+        let g = self
+            .arms
+            .idle_sprite
+            .ok_or(crate::turn::NO_STANDING_SPRITE)?;
         set_sprite(s.sprite, g, s.sprite_rng);
         if let Some(a) = s.anim_speed.as_mut() {
             *a = 0.0;
@@ -792,9 +791,7 @@ impl Attack {
         if self.move_to.take().is_some() {
             walk.mover
                 .as_deref_mut()
-                .ok_or(GenieError::unsupported(
-                    "an attacker without movement state",
-                ))?
+                .ok_or(crate::turn::ATTACKER_UNMOVING)?
                 .stop()?;
             if let Some(a) = s.anim_speed.as_mut() {
                 *a = 0.0;
@@ -884,11 +881,7 @@ impl Attack {
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
         if self.move_to.take().is_some() {
-            mover
-                .ok_or(GenieError::unsupported(
-                    "an attacker without movement state",
-                ))?
-                .stop()?;
+            mover.ok_or(crate::turn::ATTACKER_UNMOVING)?.stop()?;
             if let Some(a) = anim_speed.as_mut() {
                 *a = 0.0;
             }
@@ -990,9 +983,7 @@ impl Attack {
         let speed = walk
             .mover
             .as_deref()
-            .ok_or(GenieError::unsupported(
-                "an attacker without movement state",
-            ))?
+            .ok_or(crate::turn::ATTACKER_UNMOVING)?
             .stats
             .speed;
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
@@ -1010,9 +1001,10 @@ impl Attack {
             .world
             .get(walk.me.id)
             .map_or(walk.me.position, |p| p.position);
-        let mover = walk.mover.as_deref_mut().ok_or(GenieError::unsupported(
-            "an attacker without movement state",
-        ))?;
+        let mover = walk
+            .mover
+            .as_deref_mut()
+            .ok_or(crate::turn::ATTACKER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(at, ground, t.position, t.radius);
         let near = if self.range <= NO_RANGE {
@@ -1352,9 +1344,7 @@ impl Attack {
                     .mover
                     .as_ref()
                     .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-                    .ok_or(GenieError::unsupported(
-                        "an attacker without movement state",
-                    ))?;
+                    .ok_or(crate::turn::ATTACKER_UNMOVING)?;
                 let gap = footprint_gap(at, ground, t.position, t.radius);
                 self.follow(&mut walk, s, gap)?;
                 return Ok(0);
@@ -1492,9 +1482,7 @@ impl Attack {
         let speed = walk
             .mover
             .as_ref()
-            .ok_or(GenieError::unsupported(
-                "an attacker without movement state",
-            ))?
+            .ok_or(crate::turn::ATTACKER_UNMOVING)?
             .stats
             .speed;
         self.move_to = Some(if speed == 0.0 {
@@ -1585,9 +1573,10 @@ impl Attack {
                     // clears `+0x7b8` as an arrived one does
                     self.give_up(s);
                     if self.move_to == Some(MoveTo::Failed) {
-                        let g = self.arms.idle_sprite.ok_or(GenieError::unsupported(
-                            "an attacker without its standing sprite",
-                        ))?;
+                        let g = self
+                            .arms
+                            .idle_sprite
+                            .ok_or(crate::turn::NO_STANDING_SPRITE)?;
                         set_sprite(s.sprite, g, s.sprite_rng);
                         if let Some(a) = s.anim_speed.as_mut() {
                             *a = 0.0;
@@ -1598,9 +1587,10 @@ impl Attack {
                 if state == MoveTo::Arrived {
                     // in range at its start: the MoveTo, not quiet, shows the idle sprite and
                     // clears `+0x7b8`
-                    let g = self.arms.idle_sprite.ok_or(GenieError::unsupported(
-                        "an attacker without its standing sprite",
-                    ))?;
+                    let g = self
+                        .arms
+                        .idle_sprite
+                        .ok_or(crate::turn::NO_STANDING_SPRITE)?;
                     set_sprite(s.sprite, g, s.sprite_rng);
                     if let Some(a) = s.anim_speed.as_mut() {
                         *a = 0.0;
@@ -1661,9 +1651,7 @@ impl Attack {
                 self.move_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(GenieError::unsupported(
-                        "an attacker without movement state",
-                    ))?
+                    .ok_or(crate::turn::ATTACKER_UNMOVING)?
                     .stop()?;
                 if self.state != MOVE {
                     return self.arrived_at_seen(&mut walk, s, target);
@@ -1692,9 +1680,7 @@ impl Attack {
             .mover
             .as_ref()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-            .ok_or(GenieError::unsupported(
-                "an attacker without movement state",
-            ))?;
+            .ok_or(crate::turn::ATTACKER_UNMOVING)?;
         let at = walk
             .world
             .get(walk.me.id)

@@ -938,14 +938,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
             ..crate::town_bell::BackToWork::NONE
         }
     );
-    assert_eq!(
-        p.unsupported,
-        Some((
-            1,
-            1,
-            GenieError::unsupported("a walker without movement state")
-        ))
-    );
+    assert_eq!(p.unsupported, Some((1, 1, WALKER_UNMOVING)));
 }
 
 /// census v5's 257 stops "a builder of another player or a sleeping one": BUILD's last

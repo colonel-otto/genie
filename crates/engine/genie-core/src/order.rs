@@ -1777,7 +1777,7 @@ impl Turns {
             self.players[player].objects[idx]
                 .mover
                 .as_mut()
-                .ok_or(GenieError::unsupported("a walker without movement state"))?
+                .ok_or(crate::turn::WALKER_UNMOVING)?
                 .stop()?;
         }
         Ok(())
@@ -3849,19 +3849,15 @@ impl Turns {
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
         let arms = crate::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
-        let standing = arms.idle_sprite.ok_or(GenieError::unsupported(
-            "an attacker without its standing sprite",
-        ))?;
+        let standing = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
         let me_at = *self
             .spatial
             .get(self.players[player].objects[idx].id)
-            .ok_or(GenieError::unsupported("an attacker without a place"))?;
+            .ok_or(crate::turn::ATTACKER_UNPLACED)?;
         let t_at = *self
             .spatial
             .get_known(target)?
-            .ok_or(GenieError::unsupported(
-                "an attack's target without a place",
-            ))?;
+            .ok_or(crate::turn::TARGET_UNPLACED)?;
         let (tx, ty) = (t_at.position[0] as i32, t_at.position[1] as i32);
         let visible = self.spatial.sees_tile(player, tx, ty)
             || (fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
@@ -3915,9 +3911,7 @@ impl Turns {
         }
         unit.attack_count = 0;
         crate::attack::set_sprite(&mut unit.sprite, standing, self.streams.get(Stream::Sprite));
-        let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
-            "an attacker without movement state",
-        ))?;
+        let mover = unit.mover.as_mut().ok_or(crate::turn::ATTACKER_UNMOVING)?;
         let crate::attack::Commanded {
             mut attack,
             arrived,
@@ -4487,13 +4481,11 @@ impl Turns {
         let me = self
             .spatial
             .get(unit.id)
-            .ok_or(GenieError::unsupported("an attacker without a place"))?;
+            .ok_or(crate::turn::ATTACKER_UNPLACED)?;
         let them = self
             .spatial
             .get_known(target)?
-            .ok_or(GenieError::unsupported(
-                "an attack's target without a place",
-            ))?;
+            .ok_or(crate::turn::TARGET_UNPLACED)?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
         crate::attack::engagement(unit.ai.as_ref(), speed, master, me, them, self.world_time)
     }
@@ -4533,10 +4525,7 @@ impl Turns {
         let computer = self.players[player].computer;
         let carry_rule = self.settings.carry_rule();
         let unit = &mut self.players[player].objects[idx];
-        let mover = unit
-            .mover
-            .as_mut()
-            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+        let mover = unit.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             task,
@@ -4553,9 +4542,7 @@ impl Turns {
         // an Attack whose MoveTo started arrived: the unit shows the idle sprite (slot 0x68) and
         // its `+0x7b8` clears (`Attack::arrived_sprite`)
         if arrived {
-            let g = arms.idle_sprite.ok_or(GenieError::unsupported(
-                "an attacker without its standing sprite",
-            ))?;
+            let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
             crate::attack::set_sprite(&mut unit.sprite, g, self.streams.get(Stream::Sprite));
             if let Some(a) = unit.anim_speed.as_mut() {
                 *a = 0.0;
