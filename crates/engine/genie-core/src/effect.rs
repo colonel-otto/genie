@@ -1994,13 +1994,22 @@ impl Turns {
     }
 
     /// Slot 0x1a8 (`FUN_1416136f0`) of player `p`: `count` objects of master `master` (Gaia's when
-    /// the player lacks it) at each of its built objects of building master `at` (state 2), up
-    /// to attribute 234's count of buildings when above 0, in a playback (the screen's mode is not
-    /// 4). The objects' creation (slot 0x1c0 at the building's place; a male villager, 0x53,
-    /// draws its sex from the `SpawnObject` stream, half of them 0x125; its walk to the gather
-    /// point) is the spawning's, which this file does not hold: a spawn that makes an object
-    /// stops. The local player's statistics of effect 0x318's spawns are not simulation.
-    fn spawn_at(&self, p: usize, master: i16, at: i16, count: i16) -> Result<(), GenieError> {
+    /// the player lacks it) at each of its built objects of building master `at` (state 2, in its
+    /// list's order), up to attribute 234's count of buildings when above 0, in a playback (the
+    /// screen's mode is not 4). Each object: a male villager (0x53) draws its sex from the Player
+    /// stream ("SpawnObject": `r % 100` above 49 a female, 0x125); the owner's slot 0x1c0 makes
+    /// it at the building's place with its flag ([`Turns::make_new_object`]); its slot 0x1a0 takes
+    /// it into the building where the building has room for one more (slot 0x198,
+    /// [`Turns::has_room`]); unless the player's attribute 283 is above 0 it comes out at once
+    /// toward no point (`FUN_1411e7220`, [`Turns::let_out`]); a relic (0x11d) counts in the
+    /// world's `+0x844` ([`Turns::spawned_relics`]). The local player's statistics of effect
+    /// 0x318's spawns are not simulation.
+    fn spawn_at(&mut self, p: usize, master: i16, at: i16, count: i16) -> Result<(), GenieError> {
+        /// The male and female villagers' masters.
+        const MALE_VILLAGER: i16 = 0x53;
+        const FEMALE_VILLAGER: i16 = 0x125;
+        /// The relic's master, which the world counts.
+        const RELIC: i16 = 0x11d;
         let has = |q: usize, id: i16| self.masters.get(q).is_some_and(|m| m.get(id).is_some());
         let building = self
             .masters
@@ -2010,14 +2019,57 @@ impl Turns {
         if !building || !(has(p, master) || has(0, master)) || count <= 0 {
             return Ok(());
         }
-        if self.players[p]
+        let owner = if has(p, master) { p } else { 0 };
+        let attribute =
+            |q: &crate::turn::Player, i: usize| q.attributes.get(i).copied().unwrap_or(0.0);
+        let limit = attribute(&self.players[p], 234) as i32;
+        let buildings: Vec<i32> = self.players[p]
             .objects
             .iter()
-            .any(|u| u.life.master_id == at && u.life.state == 2)
-        {
-            return Err(GenieError::unsupported(
-                "an effect's spawn of objects (slot 0x1a8, FUN_1416136f0: slot 0x1c0)",
-            ));
+            .filter(|u| u.life.master_id == at && u.life.state == 2)
+            .map(|u| u.id)
+            .collect();
+        for (k, &b) in buildings.iter().enumerate() {
+            if 0 < limit && limit <= k as i32 {
+                return Ok(());
+            }
+            for _ in 0..count {
+                let made = if master == MALE_VILLAGER {
+                    let r = self.streams.get(Stream::Player).rand15() as i32;
+                    if 49 < r % 100 {
+                        FEMALE_VILLAGER
+                    } else {
+                        MALE_VILLAGER
+                    }
+                } else {
+                    master
+                };
+                let Some((_, building)) = self.object(b) else {
+                    break;
+                };
+                let position = building.position;
+                let Some(new) = self.make_new_object(owner, made, position, true)? else {
+                    continue;
+                };
+                let Some((bp, bu)) = self.object(b) else {
+                    break;
+                };
+                if self.has_room(bp, bu, None)? {
+                    let Some(crate::order::Place::Live(np, ni)) = self.place(new) else {
+                        continue;
+                    };
+                    self.enter_forced(np, ni, b)?;
+                }
+                if attribute(&self.players[p], 283) <= 0.0 {
+                    let Some(crate::order::Place::Live(bp, bi)) = self.place(b) else {
+                        break;
+                    };
+                    let _ = self.let_out(bp, bi, new, [-1.0, -1.0], (None, false))?;
+                }
+                if master == RELIC {
+                    self.spawned_relics += 1;
+                }
+            }
         }
         Ok(())
     }
@@ -2082,6 +2134,53 @@ mod tests {
     use super::*;
     use crate::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
+
+    /// `FUN_1416136f0` (slot 0x1a8) of villagers (0x53) at player 1's town centre: each draws
+    /// its sex from the Player stream (above 49 a female, 0x125), the owner's slot 0x1c0 makes it
+    /// at the centre's place, it goes inside (the centre has room) and, attribute 283 at 0, comes
+    /// out at once toward no point (no gather point: it stays beside the centre). A master the
+    /// player lacks, Gaia lacking it too, spawns nothing.
+    #[test]
+    fn an_effect_spawns_its_villagers_at_each_built_town_centre() {
+        use crate::garrison::tests::{TC, VILLAGER, let_out_world};
+        let mut t = let_out_world();
+        let standing = crate::sprite::Graphic {
+            id: 300,
+            frames: 10,
+            facets: 1,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 1,
+        };
+        let _ = t.graphics.insert(300, standing);
+        for ms in &mut t.masters {
+            ms.get_mut(VILLAGER).unwrap().standing_sprite = 300;
+            let female = Master {
+                id: 0x125,
+                ..ms.get(VILLAGER).unwrap().clone()
+            };
+            *ms = Masters::new(ms.iter().cloned().chain([female]));
+            ms.get_mut(TC).unwrap().garrison = 15;
+        }
+        t.players[1].attributes = vec![0.0; 600];
+        let before = t.players[1].objects.len();
+        let mut stream = t.streams.get(Stream::Player).clone();
+        t.spawn_at(1, VILLAGER, TC, 2).unwrap();
+        let made: Vec<(i16, Option<i32>)> = t.players[1].objects[before..]
+            .iter()
+            .map(|u| (u.life.master_id, u.life.inside))
+            .collect();
+        let sex = |r: u32| if 49 < r as i32 % 100 { 0x125 } else { VILLAGER };
+        let expected = [sex(stream.rand15()), sex(stream.rand15())];
+        assert_eq!(made, vec![(expected[0], None), (expected[1], None)]);
+        assert_eq!(t.object(100).unwrap().1.garrison, Vec::<i32>::new());
+        // a master neither the player nor Gaia has
+        let mut t = let_out_world();
+        let before = t.players[1].objects.len();
+        t.spawn_at(1, 999, TC, 2).unwrap();
+        assert_eq!(t.players[1].objects.len(), before);
+    }
 
     /// Loom's effect (22) on player 2 of MarvinBlue/426048731 in update 4588: villagers (class 4)
     /// of 25 hit points take 15 more, one melee and two pierce armor.

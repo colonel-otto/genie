@@ -1872,6 +1872,19 @@ impl crate::turn::Turns {
         let Some(made) = self.masters.get(p).and_then(|m| m.get(master)).cloned() else {
             return Ok(None);
         };
+        // a combat unit (type 70, an effect's spawn): the master's slot 0x40 there, its footprint
+        // cleared with the flag, its visible resources for one that gathers by itself
+        if made.kind == crate::garrison::COMBAT_KIND {
+            let idx = self.combat_object(p, master, &made, at)?;
+            let id = self.players[p].objects[idx].id;
+            if flagged {
+                self.clear_footprint(p, master, [at[0], at[1]], true)?;
+            }
+            if made.auto_gather {
+                self.made_new_object(p)?;
+            }
+            return Ok(Some(id));
+        }
         if made.kind != BUILDING_TYPE {
             return Err(GenieError::unsupported(
                 "the player's slot 0x1c0 for an object other than a building",

@@ -242,7 +242,7 @@ pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32
 
 /// The type of a combat unit: the master a transforming master names (`+0x656`), and a unit a
 /// transport takes in (`FUN_14120eb10`).
-const COMBAT_KIND: u8 = 70;
+pub(crate) const COMBAT_KIND: u8 = 70;
 
 /// `FUN_141213520`: the share of a building's volleys a unit of `master` inside it adds, against
 /// the building's attack rate `rate` ([`attack_rate`]): none against a rate of ±0 (`_fdclass`);

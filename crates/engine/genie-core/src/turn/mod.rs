@@ -522,6 +522,10 @@ pub struct Turns {
     /// The Empire Wars start's pass is due ([`crate::start_work`]): the world's `+0x6c6` is
     /// clear in game mode 13, which a game's start has.
     pub start_work_due: bool,
+    /// The world's `+0x844`: the relics (master 0x11d) an effect's spawn made (`FUN_1416136f0`),
+    /// which the relic victory's countdown reads (not modelled, [`crate::game_status`]); not
+    /// saved here, 0 at a load.
+    pub spawned_relics: i32,
     /// The world's game state (`+0x88`, the save's `tempGameState`): 1 once the game is over.
     pub game_state: u32,
     /// The scenario's `victory_conquest` (`world+0x7e0`'s `+0x2c0`, `FUN_140ca4d20`): the game
@@ -616,6 +620,7 @@ impl Turns {
             settings: crate::settings::Settings::default(),
             start_work_due: false,
             mode_680: 0,
+            spawned_relics: 0,
             game_state: 0,
             victory_conquest: false,
             zones: crate::zones::Zones::default(),
