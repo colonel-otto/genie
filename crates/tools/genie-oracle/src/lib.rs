@@ -991,6 +991,7 @@ fn saved_actions(
                 },
                 target: base.target_id,
                 walk_to,
+                enter: None,
             });
             Ok(())
         }
@@ -6931,6 +6932,7 @@ mod tests {
             goal: None,
             target: -1,
             walk_to: None,
+            enter: None,
         };
         let making = genie_core::production::Production {
             action: Some(genie_core::production::Making::Unit(

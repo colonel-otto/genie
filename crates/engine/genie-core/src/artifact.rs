@@ -69,6 +69,9 @@ pub struct Artifact {
     /// Its `MoveTo` to an object (`set_state(5)`): the goal, the range and that it is quiet
     /// (`+0x60` set: its end posts no notify); None for a `MoveTo` to the point.
     pub walk_to: Option<(Goal, f32)>,
+    /// The Enter an enter command made its sub-action (`FUN_1410847e0` under an Artifact on
+    /// top), which its update runs first ([`Artifact::hold_enter`]).
+    pub enter: Option<crate::garrison::EnterAction>,
 }
 
 /// The action type the checkpoint adds for an Artifact action.
@@ -94,7 +97,23 @@ impl Artifact {
             goal: None,
             target: -1,
             walk_to: None,
+            enter: None,
         }
+    }
+
+    /// Slot 0x68 with none: the target goes; the one let go, if any.
+    pub fn drop_target(&mut self) -> Option<i32> {
+        self.set_target(-1, false).released
+    }
+
+    /// The enter command's Enter as the sub-action (`FUN_1410847e0` with an Artifact on top: its
+    /// sub-action list empties, `FUN_140a98e20`, then takes the Enter, `FUN_140a977e0`): a
+    /// `MoveTo` sub-action goes with its goal (true: its teardown stops the unit, the caller's).
+    pub const fn hold_enter(&mut self, enter: crate::garrison::EnterAction) -> bool {
+        let walked = self.move_to.take().is_some();
+        self.walk_to = None;
+        self.enter = Some(enter);
+        walked
     }
 
     /// Slot 0x190 and slot 0x288 on the animal with this as its top action (`FUN_14106d090`,

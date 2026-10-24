@@ -1555,6 +1555,51 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
     );
 }
 
+/// The enter command of livestock under its Artifact (`FUN_1410847e0`): the Enter becomes the
+/// Artifact's sub-action (its list emptied, `FUN_140a98e20`, then `FUN_140a977e0`), the Artifact
+/// staying the top action; the next update runs it through the Artifact's.
+#[test]
+fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
+    let mut t = enter_world(vec![], 5);
+    let sheep = Master {
+        id: 594,
+        kind: 70,
+        class: 58,
+        radius: [0.2, 0.2],
+        tasks: vec![crate::masters::Task {
+            id: 1,
+            action_type: crate::garrison::ENTER,
+            object_group: 3,
+            ..crate::masters::Task::default()
+        }],
+        moving: Some(crate::hunt::tests::walker().stats),
+        ..Master::default()
+    };
+    for masters in &mut t.masters {
+        *masters = Masters::new(masters.iter().cloned().chain([sheep.clone()]));
+        // the house takes herdables in (bit 4)
+        masters
+            .get_mut(70)
+            .unwrap()
+            .building
+            .as_mut()
+            .unwrap()
+            .garrison_type = 1 << 4;
+    }
+    let v = &mut t.players[1].objects[0];
+    v.life.master_id = 594;
+    v.artifact = Some(Artifact::new(false));
+    assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.enter, None);
+    assert_eq!(v.top_action_kind(), Some(crate::artifact::ARTIFACT_TYPE));
+    let sub = v.artifact.unwrap().enter;
+    assert!(
+        sub.is_some_and(|e| e.target == 10028) || v.life.inside == Some(10028),
+        "{v:?}"
+    );
+}
+
 /// The unit AI's enter order on the player's house (`0x2cb`, slot 0x3a0 forced,
 /// `FUN_1410847e0`): its slot 0x820 with the garrison filter finds the villager's Enter task on
 /// buildings (action 3, class 3); after the update the Enter is the unit's (or the unit inside

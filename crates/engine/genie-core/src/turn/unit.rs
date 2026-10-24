@@ -659,9 +659,27 @@ impl Unit {
             }
         }
         if step.done {
+            // a failed Enter's 3: the action list removes it, its teardown letting its building
+            // go (slot 0x180)
+            if self
+                .enter
+                .is_some_and(|e| e.state == crate::garrison::FAILED)
+            {
+                let e = self.enter.take().expect("checked above");
+                c.releases.push((e.target, self.releaser(c)));
+                return Ok(());
+            }
             return Err(GenieError::unsupported("a done Enter outside its building"));
         }
         Ok(())
+    }
+
+    /// The unit's new Enter: its own action, or with `sub` the sub-action of its Artifact on top.
+    pub(crate) fn place_enter(&mut self, action: crate::garrison::EnterAction, sub: bool) {
+        match self.artifact.as_mut().filter(|_| sub) {
+            Some(art) => art.enter = Some(action),
+            None => self.enter = Some(action),
+        }
     }
 
     /// The Enter's `set_state(1)` (`FUN_140a87320` case 1): its sub-actions go (`FUN_140a98620`: a
@@ -4790,6 +4808,29 @@ impl Unit {
         };
         let mut captured = None;
         let by = self.releaser(c);
+        // the Artifact's Enter sub-action (an enter command's, FUN_1410847e0) updates first
+        // (FUN_140a992b0) as the unit's own Enter does (taken as the unit's meanwhile); once it
+        // ended (1 to 5: the failed one's 3, the list removing it) the sub-actions go, the point
+        // is -1 and the target goes (slot 0x68 with none); an Enter that got the unit in stays,
+        // and the inside update deletes the Artifact next
+        if c.tick > 1
+            && let Some(e) = self.artifact.as_mut().and_then(|a| a.enter.take())
+        {
+            let own = self.enter.replace(e);
+            let updated = self.enter_update(c, others, me);
+            let after = std::mem::replace(&mut self.enter, own);
+            updated?;
+            if let Some(art) = self.artifact.as_mut() {
+                if let Some(e) = after {
+                    art.enter = Some(e);
+                } else {
+                    art.goal = None;
+                    if let Some(t) = art.drop_target() {
+                        c.releases.push((t, by));
+                    }
+                }
+            }
+        }
         if let Some(artifact) = self.artifact.as_mut().filter(|_| c.tick > 1) {
             let dt = c.dt;
             let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
@@ -4817,7 +4858,13 @@ impl Unit {
             let new = artifact.step(dt, searches, &mut || {
                 spatial.artifact_owner(id, attribute_97)
             })?;
-            // the check's sub-actions went: a walking MoveTo's teardown stops the unit
+            // the check's sub-actions went: a walking MoveTo's teardown stops the unit, an
+            // Enter's lets its building go
+            if let Some(Handover::Taken { .. }) = new
+                && let Some(e) = artifact.enter.take()
+            {
+                c.releases.push((e.target, by));
+            }
             if let Some(Handover::Taken { walked: true, .. }) = new
                 && let Some(m) = self.mover.as_mut()
             {
@@ -5176,6 +5223,17 @@ impl Unit {
                     ));
                 }
                 c.releases.push((e.target, self.releaser(c)));
+            } else if self.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE) {
+                // the Artifact goes: its sub-actions end (an Enter's teardown lets its building
+                // go), then its own teardown lets its target go
+                let art = self.artifact.take().expect("its top action");
+                let by = self.releaser(c);
+                if let Some(e) = art.enter {
+                    c.releases.push((e.target, by));
+                }
+                if art.target != -1 {
+                    c.releases.push((art.target, by));
+                }
             } else if self.top_action_kind().is_some() || self.unmodelled_action.is_some() {
                 return Err(GenieError::unsupported(
                     "the inside update of an action not an Enter",

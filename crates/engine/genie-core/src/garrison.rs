@@ -24,10 +24,6 @@ pub(crate) const NEARBY: f32 = crate::image::garrison::NEARBY;
 /// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
 /// An enter into an object the world holds asleep.
 const ENTER_SLEEPING: GenieError = GenieError::unsupported("an enter into a sleeping object");
-/// An enter command under an Artifact on top (`FUN_1410847e0`: the Enter becomes the
-/// Artifact's sub-action), which is not modelled.
-const ENTER_UNDER_ARTIFACT: GenieError =
-    GenieError::unsupported("an enter command under an Artifact (its sub-action)");
 /// An enter without its owner's masters.
 pub(crate) const NO_MASTERS: GenieError = GenieError::unsupported("an enter without the masters");
 pub(crate) const TOWN_BELL_REACH: f32 = crate::image::garrison::TOWN_BELL_REACH;
@@ -395,11 +391,8 @@ impl Turns {
         task: &Task,
         under_artifact: bool,
     ) -> Result<(), GenieError> {
-        if under_artifact {
-            return Err(ENTER_UNDER_ARTIFACT);
-        }
         let (action, target, _) = self.new_enter(player, idx, target, task)?;
-        self.install_enter(player, idx, target, action, task)
+        self.install_enter_as(player, idx, target, action, task, under_artifact)
     }
 
     /// The Enter's constructor (`FUN_140a855d0`) on `target` with `task`: its target, an annex
@@ -448,11 +441,39 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-        mut action: EnterAction,
+        action: EnterAction,
         task: &Task,
     ) -> Result<(), GenieError> {
+        self.install_enter_as(player, idx, target, action, task, false)
+    }
+
+    /// [`Turns::install_enter`], or with `sub` the Enter as the sub-action of the Artifact on top
+    /// (`FUN_1410847e0`): the Artifact's sub-actions go (`FUN_140a98e20`: a `MoveTo`'s teardown
+    /// stops the unit, [`crate::artifact::Artifact::hold_enter`]) and the Enter starts in its
+    /// list (`FUN_140a977e0`), the Artifact's update running it from then on.
+    fn install_enter_as(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        mut action: EnterAction,
+        task: &Task,
+        sub: bool,
+    ) -> Result<(), GenieError> {
         let id = self.players[player].objects[idx].id;
-        self.clear_actions(player, idx)?;
+        if sub {
+            let unit = &mut self.players[player].objects[idx];
+            let art = unit.artifact.as_mut().ok_or(GenieError::unreachable(
+                "an Artifact on top without its action",
+            ))?;
+            if art.hold_enter(action)
+                && let Some(m) = unit.mover.as_mut()
+            {
+                m.stop()?;
+            }
+        } else {
+            self.clear_actions(player, idx)?;
+        }
         let unit = &self.players[player].objects[idx];
         if unit.life.inside.is_some() {
             // set_state(13): the unit takes its master's standing sprite (slot 0x68 with
@@ -461,7 +482,7 @@ impl Turns {
             action.state = FAILED;
             let masters = self.masters.get(player);
             let unit = &mut self.players[player].objects[idx];
-            unit.enter = Some(action);
+            unit.place_enter(action, sub);
             unit.shows_standing_sprite(
                 masters,
                 &self.graphics,
@@ -486,11 +507,24 @@ impl Turns {
         }
         let (t, (gap, speed), meeting) = self.entering(player, idx, target, task.work_range)?;
         let walking = action.walk_again(&t, gap, speed, &mut || meeting.clone())?;
-        self.players[player].objects[idx].enter = Some(action);
         match walking {
-            Walking::Enter => self.enter_now(player, idx, target),
-            Walking::Walk(Some(to)) => self.move_transport(target, to),
-            Walking::Walk(None) => Ok(()),
+            // the enter's set_state(1) reads the Enter as the unit's; a sub-action goes back
+            Walking::Enter => {
+                self.players[player].objects[idx].enter = Some(action);
+                let entered = self.enter_now(player, idx, target);
+                if sub {
+                    let unit = &mut self.players[player].objects[idx];
+                    let e = unit.enter.take();
+                    if let (Some(e), Some(art)) = (e, unit.artifact.as_mut()) {
+                        art.enter = Some(e);
+                    }
+                }
+                entered
+            }
+            Walking::Walk(to) => {
+                self.players[player].objects[idx].place_enter(action, sub);
+                to.map_or(Ok(()), |to| self.move_transport(target, to))
+            }
         }
     }
 
