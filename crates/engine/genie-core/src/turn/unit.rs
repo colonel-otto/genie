@@ -6273,9 +6273,6 @@ impl Unit {
         Ok(leaves)
     }
 
-    /// Slot 400 (`FUN_14106d090`) as the unit AI reads it: its top action's target as the world
-    /// holds it (its owner's other objects as they stand, the other players' lists), with its
-    /// type, place and its master's radii; None without one.
     /// What the attack tests read of the unit as an attacker ([`crate::unit_ai::Attacker`]) with
     /// a unit AI of type `ai_type`, its master `master`, its owner and the owner's type, the game
     /// mode (a scenario's) and its `+0x924`.
@@ -6314,6 +6311,9 @@ impl Unit {
         }
     }
 
+    /// Slot 400 (`FUN_14106d090`) as the unit AI reads it: its top action's target as the world
+    /// holds it (its owner's other objects as they stand, the other players' lists), with its
+    /// type, place and its master's radii; None without one.
     pub(in crate::turn) fn top_target_seen(
         &self,
         c: &Context<'_>,
