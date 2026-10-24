@@ -830,6 +830,8 @@ pub mod unit_ai {
     pub const DEFEND_GROWTH: f32 = f32::from_bits(0x40a0_0000);
     /// 25.0
     pub const DEFEND_LEASH: f32 = f32::from_bits(0x41c8_0000);
+    /// 5.0
+    pub const DEFEND_PATROL_LEASH: f32 = f32::from_bits(0x40a0_0000);
     /// 1.0
     pub const DEFEND_SLACK: f32 = f32::from_bits(0x3f80_0000);
     /// 10.0
@@ -866,6 +868,8 @@ pub mod unit_ai {
     pub const LION_SIGHT_SHARE: f32 = f32::from_bits(0x3f00_0000);
     /// 25000.0
     pub const NEVER_KILLED: f32 = f32::from_bits(0x46c3_5000);
+    /// 3.4028234663852886e+38
+    pub const PATROL_FARTHEST: f32 = f32::from_bits(0x7f7f_ffff);
     /// 3.0
     pub const PATROL_TURN_REACH: f32 = f32::from_bits(0x4040_0000);
     /// 100.0
@@ -890,6 +894,8 @@ pub mod unit_ai {
     pub const SINGLE_VOLLEY: f32 = f32::from_bits(0x3f80_0000);
     /// 0.5
     pub const STANCE_RANGE_GROWTH: f32 = f32::from_bits(0x3f00_0000);
+    /// 0.5
+    pub const STAND_GROUND_PATROL_LEASH: f32 = f32::from_bits(0x3f00_0000);
     /// 0.25
     pub const STAND_GROUND_SLACK: f32 = f32::from_bits(0x3e80_0000);
     /// 1.0000000116860974e-07

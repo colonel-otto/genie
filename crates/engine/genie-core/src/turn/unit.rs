@@ -6272,6 +6272,10 @@ impl Unit {
             top_target: self.top_target_seen(c, others),
             min_range: master.map_or(0.0, |m| m.min_range),
             attack_moving: self.mover.as_ref().is_some_and(|m| m.attack_moving),
+            moved_at: {
+                let [x, y, height] = self.mover.as_ref().map_or(self.position, |m| m.moved_at);
+                [x, height, y]
+            },
             dodge_chance: c.dodge_chances.get(player).copied().unwrap_or(0),
             keep_distance_chance: c.keep_distance_chances.get(player).copied().unwrap_or(0),
             disable_tower_priority: view.ai_settings.disable_tower_priority,

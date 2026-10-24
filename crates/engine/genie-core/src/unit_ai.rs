@@ -15,6 +15,7 @@
 //! ([`QueuedOrder`]), on its owner's turn and between turns ([`UnitAi::off_turn`]). What the AI
 //! does to its unit comes back as [`Effect`]s, in order.
 
+use crate::fmath::Vec3;
 use crate::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::movement::PathAsk;
 use crate::rng::Well512;
@@ -1409,6 +1410,47 @@ const GAIA_TARGET_REACH: f32 = crate::image::unit_ai::GAIA_TARGET_REACH;
 /// asked for any target.
 const PACKED_UNIT_CLASS: i16 = 51;
 
+/// The defend stance's leash from a saved patrol's path (`DAT_14330ebb8`, 5).
+const DEFEND_PATROL_LEASH: f32 = crate::image::unit_ai::DEFEND_PATROL_LEASH;
+/// Stand ground's leash from a saved patrol's path (`DAT_142e7f384`, 0.5).
+const STAND_GROUND_PATROL_LEASH: f32 = crate::image::unit_ai::STAND_GROUND_PATROL_LEASH;
+/// `FUN_140f95e10`'s first least distance (`DAT_14330ebf4`, the largest f32).
+const PATROL_FARTHEST: f32 = crate::image::unit_ai::PATROL_FARTHEST;
+
+/// `FUN_14087e7c0`: the distance from `p` to the line through `a` and `b` (the cross product's
+/// length over the direction's, its squares divided before `sqrtf`, in the routine's order).
+/// Its flag whether `p` lies between the two (the dot products' signs) is not read here.
+fn line_distance(p: Vec3, a: Vec3, b: Vec3) -> f32 {
+    let [px, py, pz] = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+    let [dx, dy, dz] = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let c1 = py * dz - pz * dy;
+    let c3 = px * dy - py * dx;
+    let c2 = pz * dx - px * dz;
+    let cross = c2 * c2 + c1 * c1 + c3 * c3;
+    let length = dy * dy + dx * dx + dz * dz;
+    crate::fmath::sqrt(cross / length)
+}
+
+/// `FUN_140f95e10`: the least distance from `point` to the lines through a path's consecutive
+/// `points` ([`line_distance`]), from [`PATROL_FARTHEST`], each new one kept unless the least so
+/// far is at most it (a NaN distance is kept, and the next one replaces it); a path of one point
+/// answers [`PATROL_FARTHEST`].
+///
+/// # Errors
+///
+/// An empty path, whose loop the game runs past its end.
+pub(crate) fn patrol_distance(points: &[Vec3], point: Vec3) -> Result<f32, GenieError> {
+    if points.is_empty() {
+        return Err(GenieError::unreachable("a saved patrol without points"));
+    }
+    let mut least = PATROL_FARTHEST;
+    for pair in points.windows(2) {
+        let d = line_distance(point, pair[0], pair[1]);
+        least = if least <= d { least } else { d };
+    }
+    Ok(least)
+}
+
 /// `FUN_14118faf0`: the gap from an object at `at` with radii `radius` to `point`: each axis's
 /// distance less the radius, `MAXSS` 0 (an unordered one is 0), then the length (`sqrtf`).
 fn footprint_point_gap(at: [f32; 3], radius: [f32; 2], point: [f32; 2]) -> f32 {
@@ -2160,6 +2202,9 @@ pub struct Surroundings {
     pub min_range: f32,
     /// The unit's `+0x7fb`, `mAttackMoving`.
     pub attack_moving: bool,
+    /// Where the unit last moved to (slot 0x520: `+0x824`), as the game's vector (x, height,
+    /// y); an object without movement state, its place.
+    pub moved_at: Vec3,
     /// Its owner's `chance_to_dodge_missiles` (`player+0xe10`, saved): a ship's handler takes a
     /// missile's warning (`0x20f`) as damage unless a draw below it dodges.
     pub dodge_chance: u8,
@@ -8162,12 +8207,28 @@ impl UnitAi {
         let leashed = matches!(self.stance, 1 | 2)
             && !matches!(self.current_order, 0x2c7 | 0x2dd | 0x323)
             && !at.group.is_some_and(|g| g.patrol);
-        if leashed && self.patrol_path.is_some() {
-            return Err(GenieError::unsupported(
-                "a stance's leash with patrol information (FUN_140f95e10)",
-            ));
+        // with patrol information (+0x1c0) the leash is the distance from where the unit last
+        // moved to (slot 0x520) to the patrol's path (FUN_140f95e10): beyond it the unit stops
+        // (slot 0xb0 with 1), forgets its target and walks the patrol on
+        // (restorePatrolInformation): "That's too far out, returning to patrol." (10); within
+        // it the defend stance ends slot 73 (9), stand ground goes on to the retarget check
+        if let Some(saved) = self.patrol_path.as_ref().filter(|_| leashed) {
+            let leash = if self.stance == 1 {
+                DEFEND_PATROL_LEASH
+            } else {
+                STAND_GROUND_PATROL_LEASH
+            };
+            if leash < patrol_distance(&saved.path.points, at.moved_at)? {
+                self.stop_current(true, at, fx)?;
+                self.remove_target();
+                let _ = self.restore_patrol(at, ai, fx);
+                return Ok(false);
+            }
+            if self.stance == 1 {
+                return Ok(false);
+            }
         }
-        if leashed && self.stance == 1 {
+        if leashed && self.stance == 1 && self.patrol_path.is_none() {
             // the defend stance's: a unit more than 5 tiles (DAT_142ed6f20, squared) from its
             // state position stops (slot 0xb0 with 1), forgets its target and walks back ("We're
             // too far out, returning."), then on to the retarget check
@@ -8178,7 +8239,11 @@ impl UnitAi {
                 let _ = self.walk_back(at, fx);
             }
         }
-        if leashed && self.stance == 2 && !matches!(self.current_action, 0x2bf | 0x2c0) {
+        if leashed
+            && self.stance == 2
+            && self.patrol_path.is_none()
+            && !matches!(self.current_action, 0x2bf | 0x2c0)
+        {
             // stand ground's: the squared gap against the range plus 0.25 (ADDSS, then COMISS
             // and JBE); a unit with an action value stops, forgets its target and walks back,
             // and slot 73 returns 10 ("We're too far out, returning.", "SO Call 40.")
@@ -16806,21 +16871,103 @@ mod tests {
             .retarget_check(0, false, &at, &mut rng(), &mut finds_nothing(), &mut fx)
             .unwrap();
         assert_eq!(fx, Vec::<Effect>::new());
-        // with patrol information neither leash is modelled
-        let mut u = UnitAi {
-            patrol_path: Some(PatrolPath::default()),
-            ..standing(ATTACK_ACTION)
-        };
+    }
+
+    /// `FUN_14087e7c0` and `FUN_140f95e10`: the least distance to the lines through a path's
+    /// consecutive points (the lines, not the segments); a path of one point answers the largest
+    /// f32, an empty one is unreachable; a NaN distance is kept until the next one.
+    #[test]
+    fn a_patrol_s_distance_is_the_least_to_the_lines_through_its_points() {
+        assert_eq!(
+            line_distance([3.0, 0.0, 4.0], [0.0; 3], [10.0, 0.0, 0.0]),
+            4.0
+        );
+        // beyond the segment's end the line still counts
+        assert_eq!(
+            line_distance([30.0, 0.0, 4.0], [0.0; 3], [10.0, 0.0, 0.0]),
+            4.0
+        );
+        let path = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.0, 10.0]];
+        assert_eq!(patrol_distance(&path, [9.0, 0.0, 4.0]), Ok(1.0));
+        assert_eq!(
+            patrol_distance(&path[..1], [9.0, 0.0, 4.0]),
+            Ok(PATROL_FARTHEST)
+        );
+        assert!(patrol_distance(&[], [9.0, 0.0, 4.0]).is_err());
+        // two equal points make a NaN, which the next line replaces
+        let doubled = [[0.0; 3], [0.0; 3], [10.0, 0.0, 0.0]];
+        assert_eq!(patrol_distance(&doubled, [3.0, 0.0, 4.0]), Ok(4.0));
         assert!(
-            u.retarget_check(
-                0,
-                false,
-                &at,
-                &mut rng(),
-                &mut finds_nothing(),
-                &mut Vec::new()
-            )
-            .is_err()
+            patrol_distance(&doubled[..2], [3.0, 0.0, 4.0])
+                .unwrap()
+                .is_nan()
+        );
+    }
+
+    /// processMisc's leash with patrol information (`+0x1c0`): from where the unit last moved to
+    /// (slot 0x520) to the saved patrol's path (`FUN_140f95e10`). Beyond stand ground's 0.5 or
+    /// the defend stance's 5 the unit stops, forgets its target and walks its patrol on, its
+    /// order the patrol's (10); within it stand ground goes on to the retarget check (its
+    /// state position's leash not read), the defend stance ends slot 73 (9) before it.
+    #[test]
+    fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
+        let path = PatrolPath {
+            path: crate::tile_path::Path {
+                points: vec![[0.0, 0.0, 10.0], [20.0, 0.0, 10.0]],
+                length: 20.0,
+            },
+            flags: 3,
+        };
+        // where the unit last moved to: on the path's line, 1 or 6 off it
+        let at = |y: f32| Surroundings {
+            position: [14.0, y, 0.0],
+            moved_at: [14.0, 0.0, y],
+            weapon_range: 15.0,
+            player: 1,
+            ..Surroundings::default()
+        };
+        let unit = |stance| UnitAi {
+            stance,
+            state_position: [10.0, 30.0],
+            current_action: ATTACK_ACTION,
+            current_target: 500,
+            retarget_timer: 0,
+            last_retarget_time: 0,
+            patrol_path: Some(path.clone()),
+            ..idle(13)
+        };
+        let run = |u: &mut UnitAi, at: &Surroundings| {
+            let mut fx = Vec::new();
+            let r = u.retarget_check(1000, false, at, &mut rng(), &mut finds_nothing(), &mut fx);
+            (r, fx)
+        };
+        // stand ground within 0.5: no leash, on to the retarget check (the timer runs out)
+        let mut u = unit(2);
+        let (r, fx) = run(&mut u, &at(10.0));
+        assert_eq!((r, fx), (Ok(true), vec![]));
+        assert_eq!(u.last_retarget_time, 1000);
+        // beyond it: stop, the target forgotten, the patrol walked on (10)
+        let mut u = unit(2);
+        let (r, fx) = run(&mut u, &at(11.0));
+        assert_eq!(
+            (r, fx),
+            (Ok(false), vec![Effect::Stop, Effect::RestorePatrol])
+        );
+        assert_eq!(
+            (u.current_target, u.current_order, u.secondary_timer),
+            (-1, PATROL, 750)
+        );
+        // the defend stance within 5 ends slot 73 before the retarget check (9)
+        let mut u = unit(1);
+        let (r, fx) = run(&mut u, &at(11.0));
+        assert_eq!((r, fx), (Ok(false), vec![]));
+        assert_eq!(u.last_retarget_time, 0);
+        // beyond 5 it walks the patrol on
+        let mut u = unit(1);
+        let (r, fx) = run(&mut u, &at(16.0));
+        assert_eq!(
+            (r, fx),
+            (Ok(false), vec![Effect::Stop, Effect::RestorePatrol])
         );
     }
 
