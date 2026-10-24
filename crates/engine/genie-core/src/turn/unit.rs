@@ -6510,6 +6510,7 @@ impl Unit {
                 ai_settings: view.ai_settings,
                 drop_sites: c.drop_sites,
                 mode_680: c.mode_680,
+                carry_rule: c.carry_rule,
             };
             f(&mut ai, &mut side, ai_stream)
         };

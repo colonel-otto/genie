@@ -195,6 +195,9 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) attribute_204: bool,
     /// [`Turns::mode_680`].
     pub(in crate::turn) mode_680: i32,
+    /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
+    /// reads.
+    pub(in crate::turn) carry_rule: bool,
     /// The game mode is one of `FUN_141302540`'s ([`scenario_mode`]).
     pub(in crate::turn) scenario: bool,
     /// The game mode's descriptor flag `+0x9c` ([`standard_mode`]) and each player's computer
@@ -649,6 +652,9 @@ pub(in crate::turn) struct UnitView<'u> {
     pub(in crate::turn) drop_sites: &'u [DropSite],
     /// The game's setting at `+0x680` ([`Turns::mode_680`]), which a hit's source carries.
     pub(in crate::turn) mode_680: i32,
+    /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
+    /// reads.
+    pub(in crate::turn) carry_rule: bool,
 }
 
 impl UnitView<'_> {
@@ -2197,6 +2203,189 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         self.takes.push((foundation, by));
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
         unit.build = Some(build);
+        Ok(())
+    }
+
+    /// `HuntObject`'s unit part at once ([`Turns::hunt_command`] in the view): the stopAction
+    /// (the actions go, and in state 2 the master's standing sprite, slot 0x68), then the hunt
+    /// command: slot 0x820's task with any filter and the switch ([`task_search`]; the switch,
+    /// slot 0x90 with 0, [`crate::order::switch_master`], its owner's part after the update) and a
+    /// Hunt on it ([`Turns::start_hunt`]'s: the target taken, slot 0x178; the actions cleared;
+    /// [`crate::hunt::HuntAction::start`] with the target as it stands, its master among the
+    /// unit's drop sites, the engagement and arms; an Attack that starts arrived shows the idle
+    /// sprite; a load to its own drop site takes the target as the second and lets it go as the
+    /// first).
+    fn hunt_now(&mut self, target: i32, ai: &UnitAi) -> Result<(), GenieError> {
+        use crate::hunt::{HuntAction, HuntTask, Quarry};
+        use crate::tasks::Diplomacy;
+        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let own_class = self
+            .masters
+            .and_then(|m| m.get(self.unit.life.master_id))
+            .ok_or(crate::turn::HUNTER_MASTER)?
+            .class;
+        let by = Releaser {
+            id: self.unit.id,
+            class: own_class,
+            player,
+        };
+        self.unit
+            .tear_down_actions(self.releases, self.builder_leaves, by)?;
+        if self.unit.life.state == 2 {
+            self.unit
+                .show_standing(self.masters, self.graphics, self.sprite)?;
+        }
+        let unit = &*self.unit;
+        let find = |id: i32| {
+            if id == unit.id {
+                return Some((player, unit));
+            }
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        let (tp, t) = find(target).ok_or(crate::order::HUNT_TARGET_GONE)?;
+        let t_master = self
+            .every
+            .get(tp)
+            .and_then(|m| m.get(t.life.master_id))
+            .ok_or(crate::turn::OBJECT_MASTER)?;
+        let main = if t_master.kind == crate::order::BUILDING {
+            t.annex_of.unwrap_or(target)
+        } else {
+            target
+        };
+        let main_master = match find(main) {
+            Some((mp, m)) => {
+                self.every
+                    .get(mp)
+                    .and_then(|ms| ms.get(m.life.master_id))
+                    .ok_or(crate::turn::OBJECT_MASTER)?
+                    .id
+            }
+            None => t_master.id,
+        };
+        let (Some(task_t), Some(general)) = (
+            task_target_with(target, 1, &find, self.every)?,
+            task_target_with(target, 2, &find, self.every)?,
+        ) else {
+            return Err(crate::order::HUNT_TARGET_GONE);
+        };
+        let masters = self.masters.ok_or(crate::turn::HUNTER_MASTER)?;
+        let own = masters
+            .get(unit.life.master_id)
+            .ok_or(crate::turn::HUNTER_MASTER)?;
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            civ: self.civ,
+        };
+        let dip = SideWorld {
+            player,
+            relations: self.relations,
+            foreign,
+            drop_sites: self.drop_sites,
+        };
+        let (task, switch) = task_search(masters, &actor, &task_t, &general, -1, &dip)?
+            .ok_or(crate::order::NO_HUNT_TASK)?;
+        let hunter = switch.unwrap_or(own);
+        let quarry = Quarry {
+            id: target,
+            position: t.position,
+            class: t_master.class,
+            kind: t_master.kind,
+            state: t.life.state,
+            player: tp,
+            amount: t.life.amount,
+            allied: dip.allied(player, tp, true),
+            top_action: t.top_action_kind(),
+            drop_site: hunter.drop_sites.contains(&main_master),
+        };
+        let them = *self
+            .spatial
+            .get_known(target)?
+            .ok_or(GenieError::unsupported(
+                "an attack's target without a place",
+            ))?;
+        let id = unit.id;
+        let unit = &mut *self.unit;
+        if let Some(next) = switch {
+            unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+            let world = crate::order::SwitchWorld {
+                spatial: self.spatial,
+                pathing: self.pathing,
+                graphics: self.graphics,
+                sprite: self.sprite,
+            };
+            let switched = crate::order::switch_master(unit, own, next, world)?;
+            self.attribute_adds.extend(switched.leaving);
+            if switched.promoted {
+                self.promotions.push((id, own.id, next.id));
+            }
+            self.attribute_adds.extend(switched.coming);
+        }
+        let hunt_task = HuntTask {
+            id: task.id,
+            range: task.work_range,
+            resource: task.attribute_type,
+            sprites: task.sprites,
+            work_value: task.work_val1,
+            productivity: task.attribute_type2,
+            kind4: task.attribute_type4,
+        };
+        let by = Releaser {
+            id,
+            class: hunter.class,
+            player,
+        };
+        self.takes.push((target, by));
+        unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+        let me = *self
+            .spatial
+            .get(id)
+            .ok_or(GenieError::unsupported("an attacker without a place"))?;
+        let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let engagement =
+            crate::attack::engagement(Some(ai), speed, hunter, &me, &them, self.world_time)?;
+        let moving = hunt_task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
+        let arms = crate::attack::arms(hunter, self.graphics, hunt_task.sprites, moving);
+        let mover = unit
+            .mover
+            .as_mut()
+            .ok_or(GenieError::unsupported("a hunter without movement state"))?;
+        let mut held = (unit.life.attribute_type, unit.life.amount);
+        let (hunt, arrived) = HuntAction::start(
+            hunt_task,
+            &quarry,
+            player,
+            self.computer,
+            self.carry_rule,
+            &mut held,
+            &engagement,
+            arms,
+            mover,
+        )?;
+        (unit.life.attribute_type, unit.life.amount) = held;
+        if arrived {
+            let g = arms.idle_sprite.ok_or(GenieError::unsupported(
+                "an attacker without its standing sprite",
+            ))?;
+            crate::attack::set_sprite(&mut unit.sprite, g, self.sprite);
+            if let Some(a) = unit.anim_speed.as_mut() {
+                *a = 0.0;
+            }
+        }
+        let drops = hunt.target == -1 && hunt.carry_to == target;
+        unit.hunt = Some(hunt);
+        if drops {
+            self.takes.push((target, by));
+            self.releases.push((target, by));
+        }
         Ok(())
     }
 

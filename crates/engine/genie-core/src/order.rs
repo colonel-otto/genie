@@ -164,6 +164,13 @@ struct Followed {
 type SplitPath<'a> =
     dyn FnMut(&Splittable, &Splittable) -> Result<Option<(u8, f32)>, GenieError> + 'a;
 
+/// A hunt command on an object the world does not hold.
+pub(crate) const HUNT_TARGET_GONE: GenieError =
+    GenieError::unsupported("a hunt command on an object the world does not hold");
+/// A hunt command whose unit has no task for its target.
+pub(crate) const NO_HUNT_TASK: GenieError =
+    GenieError::unsupported("a hunt command without a task");
+
 /// The splitter groups units of a type above this (`0x45`).
 const MAX_UNGROUPED: u8 = 69;
 /// Units whose speeds differ by more than this do not join where the player breaks formations by
@@ -3317,13 +3324,11 @@ impl Turns {
         if self.players[player].objects[idx].life.state == 2 {
             self.standing_sprite(player, idx)?;
         }
-        let (_, t) = self.object(target).ok_or(GenieError::unsupported(
-            "a hunt command on an object the world does not hold",
-        ))?;
+        let (_, t) = self.object(target).ok_or(HUNT_TARGET_GONE)?;
         let point = t.position;
         let task = self
             .find_work_task(player, idx, target, -1, true)?
-            .ok_or(GenieError::unsupported("a hunt command without a task"))?;
+            .ok_or(NO_HUNT_TASK)?;
         self.start_hunt(
             player,
             idx,

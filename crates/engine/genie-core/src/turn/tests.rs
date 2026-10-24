@@ -1813,6 +1813,80 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
     assert_eq!(taken(&now), taken(&later));
 }
 
+/// The hunt command at once from the unit AI's run (`UnitSide::hunt_now`: a requeued hunt
+/// order's, which a following attack command replaces) does what `HuntObject`'s unit part after
+/// the update does: the stopAction's standing sprite, the switch to the hunter (122) whose task
+/// hunts deer (class 9), the Hunt on the deer, which it takes.
+#[test]
+fn the_hunt_command_at_once_matches_the_one_after_the_update() {
+    let mut later = sent_off_world(vec![]);
+    for masters in &mut later.masters {
+        let hunter = Master {
+            id: 122,
+            tasks: vec![crate::masters::Task {
+                action_type: 110,
+                object_group: 9,
+                work_range: 0.5,
+                ..crate::masters::Task::default()
+            }],
+            ..masters.get(83).unwrap().clone()
+        };
+        let deer = Master {
+            id: 65,
+            kind: 70,
+            class: 9,
+            radius: [0.4, 0.4],
+            ..Master::default()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([hunter, deer]));
+    }
+    later.players[0].objects.push(Unit {
+        id: 500,
+        position: [32.5, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 5.0,
+            master_id: 65,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    });
+    let placed = |x: f32, class, player, master| Placed {
+        position: [x, 89.5, 0.0],
+        radius: [0.2, 0.2],
+        class,
+        player,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    later.spatial.insert(9175, placed(29.5, 4, 1, 83));
+    later.spatial.insert(500, placed(32.5, 9, 0, 65));
+    later.players[1].objects[0].mover = Some(crate::hunt::tests::walker());
+    let mut now = later.clone();
+    later.hunt_command(1, 0, 500).unwrap();
+    let ai = now.players[1].objects[0].ai.clone().unwrap();
+    now.run_unit_ai((1, 0), |_, _, side, _, _| {
+        side.hunt_now(500, &ai)?;
+        Ok(Vec::new())
+    })
+    .unwrap();
+    let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
+    assert_eq!(b.life.master_id, 122);
+    assert!(b.hunt.is_some_and(|h| h.target == 500));
+    assert_eq!(
+        (b.life.master_id, b.hunt, &b.sprite, &b.mover),
+        (a.life.master_id, a.hunt, &a.sprite, &a.mover)
+    );
+    assert_eq!(now.players[1].attributes, later.players[1].attributes);
+    assert_eq!(now.streams, later.streams);
+    assert_eq!(now.players[0].objects, later.players[0].objects);
+}
+
 #[test]
 fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_units() {
     // MarvinBlue/426048731 tick 281: player 1's BUILD draws three AI values in the command
@@ -6001,6 +6075,7 @@ fn scout_attack_on(
             ai_settings: AiSettings::default(),
             drop_sites: &[],
             mode_680: 0,
+            carry_rule: false,
         };
         side.attack(50, force, &ai).unwrap()
     };
@@ -6178,6 +6253,7 @@ fn attack_by(
             ai_settings: AiSettings::default(),
             drop_sites: &[],
             mode_680: 0,
+            carry_rule: false,
         };
         side.attack(50, force, &ai).unwrap()
     };
@@ -6352,6 +6428,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
         ai_settings: AiSettings::default(),
         drop_sites: &[],
         mode_680: 0,
+        carry_rule: false,
     };
     side.helper_free(1, &others[0], &scout, 50).unwrap()
 }

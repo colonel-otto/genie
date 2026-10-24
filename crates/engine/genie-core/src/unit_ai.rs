@@ -1632,6 +1632,17 @@ pub trait UnitSide {
         Err(WITHOUT_UNIT)
     }
 
+    /// `HuntObject`'s unit part run at once ([`Effect::HuntObject`]): its stopAction, then its
+    /// hunt command on `target` (slot 0x360, forced), ahead of a command that follows it in the
+    /// same AI run; `ai` is the unit AI as it stands.
+    ///
+    /// # Errors
+    ///
+    /// A side without its unit, and what the hunt command does not model.
+    fn hunt_now(&mut self, _target: i32, _ai: &UnitAi) -> Result<(), GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
     /// `AttackObject`'s test of object `target` (`FUN_140c43720`): the world holds it and the unit
     /// AI's attack check (slot 0xa0, [`can_attack`], as `seeker` stands) passes; then its master's
     /// class and its place.
@@ -5842,17 +5853,21 @@ impl UnitAi {
             if fx.iter().any(|e| {
                 !matches!(
                     e,
-                    Effect::Stop | Effect::CapHumanOrder(_) | Effect::BuildObject(_)
+                    Effect::Stop
+                        | Effect::CapHumanOrder(_)
+                        | Effect::BuildObject(_)
+                        | Effect::HuntObject(_)
                 )
             }) {
                 return Err(PENDING_BEFORE_ATTACK.with("effects", format!("{fx:?}")));
             }
-            // the effects before it ran before it: in order (a requeued build order's build
-            // command too, whose Build the attack command replaces)
+            // the effects before it ran before it: in order (a requeued build or hunt order's
+            // command too, whose action the attack command replaces)
             for e in std::mem::take(fx) {
                 match e {
                     Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
                     Effect::BuildObject(foundation) => side.build_now(foundation)?,
+                    Effect::HuntObject(quarry) => side.hunt_now(quarry, self)?,
                     _ => side.stop()?,
                 }
             }

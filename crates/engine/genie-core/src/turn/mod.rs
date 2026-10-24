@@ -1151,6 +1151,7 @@ impl Turns {
             keep_distance_chances: &frame.keep_distance_chances,
             attribute_204: frame.attribute_204,
             mode_680: self.mode_680,
+            carry_rule: self.settings.carry_rule(),
             scenario: scenario_mode(self.settings.game_mode),
             standard: standard_mode(self.settings.game_mode),
             sight_takers: &frame.sight_takers,
