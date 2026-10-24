@@ -4391,9 +4391,10 @@ impl UnitAi {
     /// (every relation, below one worker for class 49) over the civilian's search
     /// ([`civilian_search_radius`]) names the next target, which it hunts (`HuntObject`, slot 0xc8
     /// with 1, [`UnitAi::hunt_object`]) and the processing breaks; finding none, a human player's
-    /// villager does nothing more. The search by kind (slot 0x80, `ClosestResourceObject` with the
-    /// notify's drop site), a farm found (class 49) and a computer player's villager are not
-    /// modelled.
+    /// villager does nothing more. A class the slot names a kind of searches by it (slot 0x80,
+    /// `ClosestResourceObject` from the notify's drop site, its third parameter: kind 0 below 2
+    /// workers, the others any; [`UnitSide::closest_resource`]). A farm found (class 49) and a
+    /// computer player's villager that found nothing are not modelled.
     fn hunter_search(
         &mut self,
         n: Notify,
@@ -4414,43 +4415,59 @@ impl UnitAi {
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
-        if civilian_kind(class) != -1 {
-            return Err(GenieError::unsupported(
-                "a hunter's search by kind (ClosestResourceObject, slot 0x80)",
-            ));
-        }
-        let found = side.closest(&Search {
-            at: [at.position[0], at.position[1]],
-            radius: civilian_search_radius(at.los, at.search_radius),
-            classes: &CIVILIAN_CARED,
-            size: at.size,
-            pick: Pick::Closest {
-                group: class,
-                relation: -1,
-                state: -1,
-                master: -1,
-                workers: if class == 49 { 1 } else { -1 },
-                spared: -1,
-                reach: true,
-            },
-            memory: Memory::default(),
-        })?;
-        self.alert(found, at.dt_seconds);
-        if found.id == -1 {
+        let kind = civilian_kind(class);
+        let found = if kind == -1 {
+            let found = side.closest(&Search {
+                at: [at.position[0], at.position[1]],
+                radius: civilian_search_radius(at.los, at.search_radius),
+                classes: &CIVILIAN_CARED,
+                size: at.size,
+                pick: Pick::Closest {
+                    group: class,
+                    relation: -1,
+                    state: -1,
+                    master: -1,
+                    workers: if class == 49 { 1 } else { -1 },
+                    spared: -1,
+                    reach: true,
+                },
+                memory: Memory::default(),
+            })?;
+            self.alert(found, at.dt_seconds);
+            match found.position {
+                Some(position) if found.id != -1 => Some(Gatherable {
+                    id: found.id,
+                    position,
+                    class: class as i16,
+                }),
+                None if found.id != -1 => {
+                    return Err(GenieError::unsupported("a found object without its place"));
+                }
+                _ => None,
+            }
+        } else {
+            // slot 0x80 from the notify's drop site: kind 0 below 2 workers, any other any
+            side.closest_resource(ResourceSearch {
+                kind: kind as u8,
+                cap: if kind == 0 { 2 } else { -1 },
+                site: n.p[2],
+                current: self.current_target,
+                point: NO_POINT,
+                min_state: 2,
+            })?
+        };
+        let Some(found) = found else {
             if computer {
                 return Err(GenieError::unsupported(
                     "a computer player's hunter that found nothing",
                 ));
             }
             return Ok(GO_ON);
-        }
+        };
         if class == 49 {
             return Err(GenieError::unsupported("a hunter's search finding a farm"));
         }
-        let point = found
-            .position
-            .ok_or(GenieError::unsupported("a found object without its place"))?;
-        self.hunt_object(found.id, class, point, at, fx)?;
+        self.hunt_object(found.id, i32::from(found.class), found.position, at, fx)?;
         Ok(BREAK)
     }
 
@@ -9220,6 +9237,52 @@ mod tests {
         assert_eq!((side.1[0].0, side.1[0].1), (4, 4));
         assert_eq!(fx, Vec::new());
         assert_eq!(ai.current_action, GATHER_ACTION);
+    }
+
+    /// The villager's notify 0x202 on its hunt (`FUN_140c22bf0`, action 0x265) of a class the
+    /// civilian's slot 0x1b0 names a kind of: `ClosestResourceObject` (slot 0x80) from the
+    /// notify's drop site, kind 0 below 2 workers, another any; what it finds it hunts
+    /// (`HuntObject`, slot 0xc8 with 1). Finding nothing a human player's villager stays.
+    #[test]
+    fn a_hunter_of_a_kind_searches_by_it_from_its_drop_site() {
+        let tree = Gatherable {
+            id: 28300,
+            position: [50.5, 60.5, 0.0],
+            class: 15,
+        };
+        let mut ai = UnitAi {
+            ai_type: CIVILIAN,
+            current_action: 0x265,
+            current_target: 28301,
+            target_type: 15,
+            ..UnitAi::default()
+        };
+        let mut side = ResourceSide(Some(tree), Vec::new());
+        let mut fx = Vec::new();
+        let at = Surroundings::default();
+        let n = Notify::own(31237, REQUIRES_SEARCH, [0x265, 15, 31247]);
+        assert_eq!(
+            ai.hunter_search(n, &at, false, &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(side.1, vec![(0, 2, 31247, 28301)]);
+        assert_eq!(fx, vec![Effect::HuntObject(28300)]);
+        assert_eq!(ai.current_target, 28300);
+        let mut ai = UnitAi {
+            ai_type: CIVILIAN,
+            current_action: 0x265,
+            current_target: -1,
+            ..UnitAi::default()
+        };
+        let mut side = ResourceSide(None, Vec::new());
+        let mut fx = Vec::new();
+        let n = Notify::own(31237, REQUIRES_SEARCH, [0x265, 32, -1]);
+        assert_eq!(
+            ai.hunter_search(n, &at, false, &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!(side.1, vec![(4, -1, -1, -1)]);
+        assert_eq!(fx, Vec::new());
     }
 
     fn hit_boar() -> UnitAi {
