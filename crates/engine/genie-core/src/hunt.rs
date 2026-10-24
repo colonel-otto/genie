@@ -266,6 +266,20 @@ pub struct HuntSprites {
 }
 
 impl HuntTask {
+    /// The hunt's view of master task `t`.
+    #[must_use]
+    pub const fn of(t: &crate::masters::Task) -> Self {
+        Self {
+            id: t.id,
+            range: t.work_range,
+            resource: t.attribute_type,
+            sprites: t.sprites,
+            work_value: t.work_val1,
+            productivity: t.attribute_type2,
+            kind4: t.attribute_type4,
+        }
+    }
+
     /// [`walk_sprite`]'s id from the task's sprites (`FUN_140ac51d0`), which the hunt's Attack
     /// takes for its `MoveTo` (`FUN_140a7c210`'s argument 4).
     #[must_use]

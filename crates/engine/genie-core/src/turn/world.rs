@@ -1654,7 +1654,7 @@ pub(crate) fn count_class(attributes: &mut [f32], master: &Master, by: f32) {
 
 /// The master types whose death-spawn master an ownership change copies (`FUN_14120f800`'s
 /// switch on the master's `+0x8`): static to moving objects, combat units and buildings.
-pub(in crate::turn) const DEAD_COPY_TYPES: [u8; 6] = [10, 20, 30, 40, 70, 80];
+pub(crate) const DEAD_COPY_TYPES: [u8; 6] = [10, 20, 30, 40, 70, 80];
 
 /// `FUN_14120f800`, slot 0x70 of a combat object (`TRIBE_Combat_Object`'s): unit `u` of player
 /// `old` goes to player `new` (`masters`, every player's). First its records take the new owner

@@ -93,6 +93,9 @@ pub struct BuildTask {
     /// The task's resource (`attribute_type`, `+0x20`, −1 for any): `UNIT_ORDER`'s drop-off
     /// (slot 0x78) asks a builder carrying another one to its unit AI instead.
     pub resource: i16,
+    /// The task's id in its master's list (`+0xa`), which a master's upgrade finds the new
+    /// master's task by (−1 for none).
+    pub id: i16,
 }
 
 /// A building under construction (`TRIBE_Building_Object`), with what its master says of it.
@@ -3053,6 +3056,7 @@ mod tests {
         work_value: 1.0,
         work_rate: 1.0,
         resource: -1,
+        id: -1,
     };
 
     /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
@@ -3574,6 +3578,7 @@ mod tests {
                 head_unit: -1,
                 transform_unit: -1,
                 destruction_sprite: -1,
+                construction_sprite: -1,
             }),
             ..Master::default()
         };
@@ -3687,6 +3692,7 @@ mod tests {
                     head_unit: -1,
                     transform_unit: -1,
                     destruction_sprite: -1,
+                    construction_sprite: -1,
                 }),
                 ..Master::default()
             };

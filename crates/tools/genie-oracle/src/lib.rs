@@ -1711,12 +1711,13 @@ fn build_task(
         .ok_or(GenieError::unsupported(
             "a builder master without an action part",
         ))?;
-    let (range, work_value, resource) = build_range(objects, civ, masters, m, master)?;
+    let (range, work_value, resource, id) = build_range(objects, civ, masters, m, master)?;
     Ok(genie_core::build::BuildTask {
         range,
         work_value,
         work_rate,
         resource,
+        id,
     })
 }
 
@@ -1759,7 +1760,7 @@ fn build_range(
     masters: Option<&MasterTable>,
     m: &Master,
     master: i16,
-) -> Result<(f32, f32, i16), GenieError> {
+) -> Result<(f32, f32, i16, i16), GenieError> {
     let saved = m.tribe_master_combat_object.as_deref().and_then(|c| {
         c.rge_master_combat_object
             .rge_master_action_object
@@ -1772,7 +1773,14 @@ fn build_range(
             .list
             .iter()
             .find(|e| e.task.action_type == build)
-            .map(|e| (e.task.work_range, e.task.work_val1, e.task.attribute_type))
+            .map(|e| {
+                (
+                    e.task.work_range,
+                    e.task.work_val1,
+                    e.task.attribute_type,
+                    e.task.id,
+                )
+            })
             .ok_or(GenieError::unsupported(
                 "a builder whose master has no Build task",
             ));
@@ -1780,7 +1788,7 @@ fn build_range(
     masters
         .and_then(|t| t.work(civ, objects.dat_master(master)))
         .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
-        .map(|t| (t.work_range, t.work_val1, t.attribute_type))
+        .map(|t| (t.work_range, t.work_val1, t.attribute_type, t.id))
         .ok_or(GenieError::unsupported(
             "a builder whose Build task is not in the data file",
         ))
@@ -3052,6 +3060,8 @@ fn work_masters(
             b.foundation_terrain = saved.on_build_make_tile;
             // `+0x960`, the third of its sprites (`tempId`)
             b.destruction_sprite = saved.temp_id_3.cast_signed();
+            // `+0x950`, the first (`tempId`)
+            b.construction_sprite = saved.temp_id.cast_signed();
         }
         // a missile master's flight: the save's three bytes and arc, the data file's projectile
         // type

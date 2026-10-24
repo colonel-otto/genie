@@ -930,6 +930,12 @@ pub mod unit_ai {
     pub const STILL: f32 = f32::from_bits(0x33d6_bf95);
 }
 
+/// The values `crate::upgrade`'s port reads.
+pub mod upgrade {
+    /// 100.0
+    pub const WHOLE: f32 = f32::from_bits(0x42c8_0000);
+}
+
 /// The values `crate::visibility`'s port reads.
 pub mod visibility {
     /// 0.009999999776482582

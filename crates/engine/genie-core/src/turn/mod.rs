@@ -45,8 +45,8 @@ pub(crate) use crate::turn::view::DropWorld;
 use crate::turn::view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
 pub(crate) use crate::turn::view::{EnterOrder, RepairOrder};
 pub(crate) use crate::turn::world::{
-    Releaser, World, built_death, combat_dies, count_class, drop_site_search, farm_bonus,
-    forget_resource, refund_of, released, storage_leaves, victim_of,
+    DEAD_COPY_TYPES, Releaser, World, built_death, combat_dies, count_class, drop_site_search,
+    farm_bonus, forget_resource, refund_of, released, storage_leaves, victim_of,
 };
 
 /// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the

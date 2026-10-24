@@ -225,6 +225,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
             head_unit: b.head_unit,
             transform_unit: b.transform_unit,
             destruction_sprite: b.destruction_graphic_id,
+            construction_sprite: b.construction_graphic_id,
         }),
         garrison: unit.garrison_capacity,
         recyclable: unit.recyclable != 0,

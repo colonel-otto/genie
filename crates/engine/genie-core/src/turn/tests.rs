@@ -3495,6 +3495,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             work_value: 0.0,
             work_rate: 1.0,
             resource: -1,
+            id: -1,
         },
         added: true,
         timer: 0.0,
@@ -3560,6 +3561,7 @@ fn deaths_world() -> Turns {
             work_value: 1.0,
             work_rate: 1.0,
             resource: -1,
+            id: -1,
         },
         added: true,
         timer: 0.0,
@@ -5344,6 +5346,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             head_unit: -1,
             transform_unit: -1,
             destruction_sprite,
+            construction_sprite: -1,
             ..crate::masters::BuildingMaster::default()
         }),
         ..Master::default()
@@ -5624,6 +5627,7 @@ fn building_short_of_its_build_time_dies(state: u8) {
         hit_points: 1200,
         building: Some(crate::masters::BuildingMaster {
             destruction_sprite: 389,
+            construction_sprite: -1,
             ..crate::masters::BuildingMaster::default()
         }),
         ..Master::default()

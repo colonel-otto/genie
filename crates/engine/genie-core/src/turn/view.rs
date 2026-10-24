@@ -2168,6 +2168,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 work_value: task.work_val1,
                 work_rate: builder.work_rate + unit.work_rate_powerup,
                 resource: task.attribute_type,
+                id: task.id,
             },
         );
         let id = unit.id;

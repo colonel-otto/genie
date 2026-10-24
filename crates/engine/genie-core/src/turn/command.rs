@@ -1790,6 +1790,7 @@ impl Turns {
             work_value: task.work_val1,
             work_rate: builder.work_rate + unit.work_rate_powerup,
             resource: task.attribute_type,
+            id: task.id,
         };
         Ok((with, BuildAction::start(foundation, position, gap, task)))
     }
@@ -1966,6 +1967,7 @@ impl Turns {
                 work_value: task.work_val1,
                 work_rate: builder.work_rate + unit.work_rate_powerup,
                 resource: task.attribute_type,
+                id: task.id,
             },
         );
         let class = i32::from(site.class);

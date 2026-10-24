@@ -495,6 +495,7 @@ mod tests {
             build_time: 50,
             building: Some(crate::masters::BuildingMaster {
                 destruction_sprite: 389,
+                construction_sprite: -1,
                 ..crate::masters::BuildingMaster::default()
             }),
             ..Master::default()

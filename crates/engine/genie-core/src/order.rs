@@ -3664,6 +3664,7 @@ impl Turns {
             work_value: task.work_val1,
             work_rate: builder.work_rate + unit.work_rate_powerup,
             resource: task.attribute_type,
+            id: task.id,
         };
         self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
@@ -5748,6 +5749,7 @@ mod tests {
                         work_value: 1.0,
                         work_rate: 1.0,
                         resource: -1,
+                        id: -1,
                     },
                 )
             }),
@@ -7118,6 +7120,7 @@ mod tests {
                 work_value: 1.0,
                 work_rate: 1.0,
                 resource: -1,
+                id: -1,
             },
             added: true,
             timer: 0.0,

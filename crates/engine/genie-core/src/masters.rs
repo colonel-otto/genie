@@ -164,6 +164,9 @@ pub struct BuildingMaster {
     /// sprite a building that dies before it is built shows (`RGE_Static_Object::update`), −1
     /// for none.
     pub destruction_sprite: i16,
+    /// `+0x950`, the `.dat`'s `construction_graphic_id` (the save's first building sprite): the
+    /// sprite a building under construction shows, −1 for none.
+    pub construction_sprite: i16,
 }
 
 /// The master values the task finder and the work command read.

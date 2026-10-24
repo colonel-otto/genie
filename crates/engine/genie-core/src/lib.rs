@@ -96,6 +96,7 @@ pub mod treason;
 pub mod tribute;
 pub mod turn;
 pub mod unit_ai;
+pub mod upgrade;
 pub mod visibility;
 pub mod vision;
 pub mod wait_solidify;

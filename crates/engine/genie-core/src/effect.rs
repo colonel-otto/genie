@@ -1143,42 +1143,23 @@ impl Turns {
             }
             return Ok(());
         }
-        let moving = g(master.move_sprite);
-        let attack = g(master.attack_sprite);
-        let standing = g(master.standing_sprite);
-        let combat = master_type::COMBAT <= master.kind;
-        let idle_attack = g(master.idle_attack_sprite);
-        let second = g(master.attack_sprite2);
-        let follow = |arms: &mut crate::attack::Arms, task: Option<[i16; 4]>| {
-            let of_task = |s: Option<crate::sprite::Graphic>, i: usize| {
-                task.zip(s).is_some_and(|(t, s)| t[i] == s.id)
-            };
-            if arms.move_sprite.is_some() && !of_task(arms.move_sprite, 0) {
-                arms.move_sprite = moving;
-            }
-            if arms.sprite.is_some() && !of_task(arms.sprite, 1) && !of_task(arms.sprite, 2) {
-                arms.sprite = attack;
-            }
-            if arms.idle_sprite.is_some()
-                && !of_task(arms.idle_sprite, 1)
-                && !of_task(arms.idle_sprite, 2)
-            {
-                arms.idle_sprite = standing;
-            }
-            if combat {
-                arms.idle_attack_sprite = idle_attack;
-                arms.second_sprite = second;
-            }
+        let sprites = MasterSprites {
+            moving: g(master.move_sprite),
+            attack: g(master.attack_sprite),
+            standing: g(master.standing_sprite),
+            idle_attack: g(master.idle_attack_sprite),
+            second: g(master.attack_sprite2),
+            combat: master_type::COMBAT <= master.kind,
         };
         let (_, u) = self.object_mut(id).expect("found above");
         // a unit's own Attack's task (the work command's attack task) has no sprites
         if let Some(attack) = u.attack.as_mut() {
-            follow(&mut attack.arms, None);
+            follow_master(&mut attack.arms, None, &sprites);
         }
         if let Some(hunt) = u.hunt.as_mut() {
             let task = hunt.task.sprites;
             if let Some(attack) = hunt.attack.as_mut() {
-                follow(&mut attack.arms, Some(task));
+                follow_master(&mut attack.arms, Some(task), &sprites);
             }
         }
         Ok(())
@@ -1467,6 +1448,47 @@ impl Turns {
 }
 
 impl Turns {}
+
+/// A master's sprites an Attack's slot 0x50 (`FUN_140a7f800`) takes ([`follow_master`]), as
+/// graphics: the walking, attack, standing, idle attack and second attack sprites, and whether
+/// the master is of a combat type (70 and up).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MasterSprites {
+    pub(crate) moving: Option<crate::sprite::Graphic>,
+    pub(crate) attack: Option<crate::sprite::Graphic>,
+    pub(crate) standing: Option<crate::sprite::Graphic>,
+    pub(crate) idle_attack: Option<crate::sprite::Graphic>,
+    pub(crate) second: Option<crate::sprite::Graphic>,
+    pub(crate) combat: bool,
+}
+
+/// An Attack's slot 0x50 (`FUN_140a7f800`): its walking, attack and standing sprites take the
+/// master's (`sprites`) unless they are its task's (`task`, the moving, proceeding, working and
+/// carrying sprites; none for a unit's own Attack), and from type 70 on its idle attack and
+/// second attack sprites.
+pub(crate) fn follow_master(
+    arms: &mut crate::attack::Arms,
+    task: Option<[i16; 4]>,
+    sprites: &MasterSprites,
+) {
+    let of_task = |s: Option<crate::sprite::Graphic>, i: usize| {
+        task.zip(s).is_some_and(|(t, s)| t[i] == s.id)
+    };
+    if arms.move_sprite.is_some() && !of_task(arms.move_sprite, 0) {
+        arms.move_sprite = sprites.moving;
+    }
+    if arms.sprite.is_some() && !of_task(arms.sprite, 1) && !of_task(arms.sprite, 2) {
+        arms.sprite = sprites.attack;
+    }
+    if arms.idle_sprite.is_some() && !of_task(arms.idle_sprite, 1) && !of_task(arms.idle_sprite, 2)
+    {
+        arms.idle_sprite = sprites.standing;
+    }
+    if sprites.combat {
+        arms.idle_attack_sprite = sprites.idle_attack;
+        arms.second_sprite = sprites.second;
+    }
+}
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
 /// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
@@ -1913,17 +1935,8 @@ impl Turns {
 
 impl Turns {
     /// Slot 0x1a0 (`FUN_14160e410`) of player `p`: master `from` upgrades to `to` by `mode`
-    /// (`FUN_141657d10`), with the volleys' hooks around it (the abilities, `+0x930`, are not
-    /// held). For `mode` −1 or 3 and two masters of one type the player's `from` takes `to`'s
-    /// values ([`Master::copy_from`]); before it each of the player's objects of `from` (live,
-    /// then sleeping) changes (slot 0x98), one past its use (`+0x640` 4 on) and each object of
-    /// `from`'s dead unit master (when `to`'s differs) takes a master of its own
-    /// (`FUN_141186d10`), as an object with an own master of `from`'s id does in mode 3 and
-    /// mode 2's object; those changes are the objects' (slot 0x98 from `FUN_141201a60` down to
-    /// `FUN_141186580`, the own masters), which the slice does not hold: an upgrade with such
-    /// objects stops. Without them only the masters change. Upgrades to 0x67f and 0x6a1 also
-    /// move the tracker's list of `from` to `to`'s (`FUN_14104fd10`,
-    /// [`crate::tracker::Tracker::move_all`]).
+    /// ([`Turns::upgrade_objects`]), with the volleys' hooks around it (the abilities, `+0x930`,
+    /// are not held).
     fn upgrade_master(
         &mut self,
         p: usize,
@@ -1937,8 +1950,22 @@ impl Turns {
         self.all_garrison_volleys(p, true)
     }
 
-    /// `FUN_141657d10`, the upgrade's own part ([`Turns::upgrade_master`]).
-    fn upgrade_objects(
+    /// `FUN_141657d10`, the upgrade's own part: of two masters `from` and `to` of player `p`'s
+    /// table, mode 2 with the effect's `object` gives that object a master of its own
+    /// (`FUN_141186d10`, a copy of the one it reads) where slot 0xa8 lets it
+    /// ([`crate::upgrade::upgradable`]), runs its slot 0x98 to `to` keeping its master
+    /// ([`Turns::upgrade_object`]) and copies `to` into its own master (slot 8). Any other mode
+    /// goes through the live objects in order: one reading `from` takes its slot 0x98 (its master
+    /// kept in modes −1 and 3), or past its use a master of its own and its old death spawn's
+    /// copy (`FUN_141201d50`); one reading `from`'s dead unit master (`+0x5e4`, when `to`'s
+    /// differs by its copy id) takes a master of its own; in mode 3 one whose own master has
+    /// `from`'s id takes slot 0x98 keeping it and copies `to` into it (a building's research
+    /// buttons, `FUN_1411c78f0`, are the interface's). Then the sleeping objects reading `from`
+    /// take slot 0x98. Upgrades to 0x67f and 0x6a1 move the tracker's list of `from` to `to`'s
+    /// (`FUN_14104fd10`, [`crate::tracker::Tracker::move_all`]). In modes −1 and 3 two masters of
+    /// one type end with `from` taking `to`'s values ([`Master::copy_from`]; the masters' slot
+    /// 0xa8, their graphics' loading, is not simulation).
+    pub(crate) fn upgrade_objects(
         &mut self,
         p: usize,
         from: i16,
@@ -1946,6 +1973,8 @@ impl Turns {
         mode: i16,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
+        use crate::order::Place;
+        use crate::upgrade::upgradable;
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
         };
@@ -1959,38 +1988,95 @@ impl Turns {
                 .get(new.death_spawns[0])
                 .is_some_and(|e| d.copy_id != e.copy_id)
         });
-        let dead = dead.map(|d| d.id);
-        let both = mode == -1 || mode == 3;
-        let same_type = old.kind == new.kind;
-        if mode == 2 && object.is_some() {
-            return Err(GenieError::unsupported(
-                "an upgrade of the effect's object (mode 2, slot 0x98 on a master of its own)",
-            ));
-        }
-        let player = &self.players[p];
-        let objects = player.objects.iter().chain(&player.sleeping);
-        if objects
-            .clone()
-            .any(|u| u.life.master_id == from || Some(u.life.master_id) == dead)
+        let dead = dead.cloned();
+        let keep = mode == -1 || mode == 3;
+        let (old, new) = (old.clone(), new.clone());
+        if mode == 2
+            && let Some(id) = object
         {
-            return Err(GenieError::unsupported(
-                "an upgrade of objects (slot 0x98, FUN_141201a60 down to FUN_141186580)",
-            ));
+            if let Some(place) = self.place(id) {
+                let u = self.object_at(place);
+                let reads = self.master_read(p, u)?;
+                if upgradable(reads.kind, u.life.state) {
+                    self.object_at_mut(place).own_master = Some(Box::new(reads.clone()));
+                    self.upgrade_object(p, place, (&reads, &new), true)?;
+                    if let Some(own) = self.object_at_mut(place).own_master.as_mut() {
+                        own.copy_from(&new);
+                    }
+                }
+            }
+        } else {
+            for i in 0..self.players[p].objects.len() {
+                let place = Place::Live(p, i);
+                let u = &self.players[p].objects[i];
+                let table = u.own_master.is_none();
+                if table && u.life.master_id == from {
+                    if upgradable(old.kind, u.life.state) {
+                        self.upgrade_object(p, place, (&old, &new), keep)?;
+                    } else {
+                        self.own_and_dead_master(p, i, &old);
+                    }
+                } else if table && dead.as_ref().is_some_and(|d| d.id == u.life.master_id) {
+                    let d = dead.clone().expect("checked");
+                    self.players[p].objects[i].own_master = Some(Box::new(d));
+                } else if mode == 3
+                    && let Some(own) = u.own_master.as_deref().filter(|m| m.id == from)
+                    && upgradable(own.kind, u.life.state)
+                {
+                    let own = own.clone();
+                    self.upgrade_object(p, place, (&own, &new), true)?;
+                    if let Some(m) = self.players[p].objects[i].own_master.as_mut() {
+                        m.copy_from(&new);
+                    }
+                }
+            }
+            for i in 0..self.players[p].sleeping.len() {
+                let u = &self.players[p].sleeping[i];
+                if u.own_master.is_none() && u.life.master_id == from {
+                    self.upgrade_object(p, Place::Sleeping(p, i), (&old, &new), keep)?;
+                }
+            }
         }
         // the upgrades to 0x67f and 0x6a1 move the tracker's list of `from` (FUN_14104fd10)
         if matches!(to, 0x67f | 0x6a1) {
             self.track_move_all(p, from, to);
         }
-        let Some(new) = self.masters.get(p).and_then(|m| m.get(to)) else {
-            return Ok(());
-        };
-        if both && same_type {
-            let new = new.clone();
-            if let Some(m) = self.masters[p].get_mut(from) {
-                m.copy_from(&new);
-            }
+        if keep
+            && old.kind == new.kind
+            && let Some(m) = self.masters[p].get_mut(from)
+        {
+            m.copy_from(&new);
         }
         Ok(())
+    }
+
+    /// The master object `u` of player `p` reads: its own, else its player's.
+    fn master_read(&self, p: usize, u: &Unit) -> Result<Master, GenieError> {
+        u.own_master.as_deref().map_or_else(
+            || self.master_of(p, u.life.master_id).cloned(),
+            |m| Ok(m.clone()),
+        )
+    }
+
+    /// An object of master `old` past its use (slot 0xa8 false) in an upgrade: a master of its own
+    /// (`FUN_141186d10`: a copy of `old` unless it has one) and its dead master
+    /// (`FUN_141201d50`: unless it has one, a copy of `old`'s death spawn, `+0x5e4`, of type 10 to
+    /// 40, 70 or 80, from its player's table; its slot 0xa8, the graphics, is not simulation).
+    fn own_and_dead_master(&mut self, p: usize, i: usize, old: &Master) {
+        let dead = self
+            .masters
+            .get(p)
+            .and_then(|m| m.get(old.death_spawns[0]))
+            .cloned();
+        let u = &mut self.players[p].objects[i];
+        if u.own_master.is_none() {
+            u.own_master = Some(Box::new(old.clone()));
+        }
+        if u.dead_master.is_none() && 0 <= old.death_spawns[0] {
+            u.dead_master = dead
+                .filter(|d| crate::turn::DEAD_COPY_TYPES.contains(&d.kind))
+                .map(Box::new);
+        }
     }
 
     /// Slot 0x1a8 (`FUN_1416136f0`) of player `p`: `count` objects of master `master` (Gaia's when
@@ -2713,9 +2799,9 @@ mod tests {
         assert_eq!(t.players[0].attributes[0x15], 2.0);
     }
 
-    /// Kind 3 (`FUN_14160e410`, mode −1): without objects of the old master, the old master takes
-    /// the new one's values but keeps its id, class, availability and disabling
-    /// (`Master::copy_from`); with objects the objects' change (slot 0x98) is not this file's.
+    /// Kind 3 (`FUN_14160e410`, mode −1): the old master takes the new one's values but keeps its
+    /// id, class, availability and disabling (`Master::copy_from`); its objects first take the
+    /// new one through their slot 0x98 ([`Turns::upgrade_object`]).
     #[test]
     fn an_upgrade_copies_the_new_master_into_the_old() {
         let player = Player::default();
@@ -2739,11 +2825,13 @@ mod tests {
         t.do_effect(0, &[attribute(3, 74, 75, 1, 0.0)], None)
             .unwrap();
         assert_eq!(t.masters[0].get(74).unwrap().hit_points, 45);
+        // with an object: its slot 0x98 keeps its share of the hit points (45 of 45: 50 of 50)
         t.players[0].objects.push(unit_of(1, 74, 45.0));
-        assert!(
-            t.do_effect(0, &[attribute(3, 74, 75, -1, 0.0)], None)
-                .is_err()
-        );
+        t.do_effect(0, &[attribute(3, 74, 75, -1, 0.0)], None)
+            .unwrap();
+        let u = &t.players[0].objects[0];
+        assert_eq!((u.life.master_id, u.life.hp), (74, 50.0));
+        assert_eq!(t.masters[0].get(74).unwrap().hit_points, 50);
     }
 
     /// Kind 7 (`FUN_1416136f0`) makes objects at the built buildings of a master, which this file
