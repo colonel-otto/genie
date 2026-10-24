@@ -424,6 +424,108 @@ pub(in crate::turn) struct UnitView<'u> {
 }
 
 impl UnitView<'_> {
+    /// `AskForHelp`'s tests of a helper `u` (of player `owner`, master `m`) that passed its
+    /// class, owner and reach tests, against `attacker`, all reads (the game asks its attack
+    /// check before its owner's test; neither changes what the other reads): a helper in no group
+    /// helps only when idle (no action value, no action, no order, an empty queue and no target:
+    /// "He has a `UnitAIaction`"), one in a group only when the group patrols (`FUN_141017c30` or
+    /// `FUN_141017c40`); then its top action's target within its range (slot 400, slot 0x1e8:
+    /// the footprints' squared gap between the least and the weapon range squared) keeps it, but
+    /// a building whose master has no attack for a patrolling group's member; then its unit AI's
+    /// attack check (slot 0xa0 with 0, [`crate::unit_ai::can_attack`]) on the attacker. True for
+    /// a helper that answers.
+    pub(in crate::turn) fn helper_free(
+        &self,
+        owner: usize,
+        u: &Unit,
+        m: &crate::masters::Master,
+        attacker: i32,
+    ) -> Result<bool, GenieError> {
+        let (others, foreign, player) = (self.others, self.foreign, self.player);
+        let find = |id: i32| {
+            others
+                .iter()
+                .find(|o| o.id == id)
+                .map(|o| (player, o))
+                .or_else(|| foreign.find(id))
+        };
+        let master_of =
+            |q: usize, o: &Unit| self.every.get(q).and_then(|ms| ms.get(o.life.master_id));
+        let Some(ai) = u.ai.as_ref() else {
+            return Ok(false);
+        };
+        let patrolling = match self.groups.get(u.group.id) {
+            None => {
+                let busy = u.top_action_kind().is_some() || u.unmodelled_action.is_some();
+                if ai.current_action != -1
+                    || busy
+                    || ai.current_order != -1
+                    || !ai.orders.is_empty()
+                    || ai.current_target != -1
+                {
+                    return Ok(false);
+                }
+                false
+            }
+            Some(g) if g.patrols() => true,
+            Some(_) => return Ok(false),
+        };
+        if let Some((tq, t)) = u.top_target().filter(|&t| t != -1).and_then(find) {
+            let tm = master_of(tq, t).ok_or(NOT_HELD)?;
+            let gap = footprint_gap_squared(u.position, m.radius, t.position, tm.radius);
+            let in_range =
+                gap <= m.weapon_range * m.weapon_range && m.min_range * m.min_range <= gap;
+            let spared = patrolling && tm.kind == crate::order::BUILDING && tm.weapons.is_empty();
+            if in_range && !spared {
+                return Ok(false);
+            }
+        }
+        let computer = if owner == self.player {
+            self.computer
+        } else {
+            self.foreign.player(owner).is_some_and(|q| q.computer)
+        };
+        let capture = self
+            .spatial
+            .sight
+            .as_ref()
+            .and_then(|v| v.seer(u.id))
+            .map_or(0, |s| s.capture);
+        let me = u.attacker_of(
+            ai.ai_type,
+            Some(m),
+            (owner, computer),
+            self.attacker.scenario,
+            capture,
+        );
+        let target_kind = (ai.current_target != -1)
+            .then(|| {
+                find(ai.current_target)
+                    .and_then(|(q, o)| master_of(q, o))
+                    .map(|tm| tm.kind)
+            })
+            .flatten();
+        let picker = WorldPicker {
+            attacker: &self.attacker,
+            seeker: None,
+            me: self.unit.id,
+            player: self.player,
+            others: self.others,
+            foreign: self.foreign,
+            spatial: self.spatial,
+            every: self.every,
+            restriction: -1,
+            unit: &*self.unit,
+            attributes: self.attributes,
+            relations: self.relations,
+            ai_settings: self.ai_settings,
+            now: self.world_time,
+            mode_680: self.mode_680,
+        };
+        let (target, _) = picker.target(attacker)?;
+        crate::unit_ai::can_attack(&me, &ai.seeker_with(target_kind), &target)
+    }
+
     /// The forced attack command on the target of the unit's own Attack (`FUN_141081a80`): the
     /// top Attack's slot 0x48 (`FUN_140a841d0`, [`crate::attack::Attack::work`]) on the target
     /// and its place, with the main building of an annex for a unit of an area effect, the
@@ -1172,6 +1274,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             }
             let gap = footprint_gap_squared(self.unit.position, my_radius, u.position, m.radius);
             if HELP_REACH < gap {
+                continue;
+            }
+            if !self.helper_free(owner, u, m, attacker)? {
                 continue;
             }
             return crate::unit_ai::helper_answers();

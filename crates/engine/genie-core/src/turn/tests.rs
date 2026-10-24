@@ -5510,6 +5510,179 @@ fn scout_attack_on(
     (unit, attacked, takes.into_iter().map(|(t, _)| t).collect())
 }
 
+/// `AskForHelp`'s tests of the scout 124 (player 1, master 448, at (10.3, 10), its unit AI
+/// `helper`, its own Attack `own`) as a helper against Gaia's wolf 50, asked by the scout 123.
+fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
+    let scout = Master {
+        id: 448,
+        kind: 70,
+        class: 47,
+        weapon_range: 1.0,
+        weapons: vec![(4, 3)],
+        ..Master::default()
+    };
+    let wolf = Master {
+        id: 126,
+        kind: 70,
+        class: 10,
+        combat_level: 4,
+        ..Master::default()
+    };
+    let placed = |x: f32, class, player, master| Placed {
+        position: [x, 10.0, 0.0],
+        radius: [0.2, 0.2],
+        class,
+        player,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    let mut spatial = Spatial::new([120, 120]);
+    spatial.insert(123, placed(10.0, 47, 1, 448));
+    spatial.insert(124, placed(10.3, 47, 1, 448));
+    spatial.insert(50, placed(10.5, 10, 0, 126));
+    let gaia = Player {
+        objects: vec![Unit {
+            id: 50,
+            position: [10.5, 10.0, 0.0],
+            life: Lifecycle {
+                master_id: 126,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        }],
+        ..Player::default()
+    };
+    let players = [gaia];
+    let helper_unit = Unit {
+        id: 124,
+        position: [10.3, 10.0, 0.0],
+        attack: own,
+        ai: Some(helper),
+        life: Lifecycle {
+            master_id: 448,
+            state: 2,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let others = [helper_unit];
+    let mut unit = Unit {
+        id: 123,
+        position: [10.0, 10.0, 0.0],
+        life: Lifecycle {
+            master_id: 448,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let masters = Masters::new([scout.clone()]);
+    let every = [Masters::new([wolf]), masters.clone()];
+    let (mut pathing, mut zones) = (Pathing::default(), crate::zones::Zones::default());
+    let groups = crate::group::UnitGroups::default();
+    let (mut object, mut sprite) = (Well512::default(), Well512::default());
+    let (mut takes, mut releases, mut leaves, mut waits) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let graphics = std::collections::BTreeMap::new();
+    let side = view::UnitView {
+        unit: &mut unit,
+        attacker: crate::unit_ai::Attacker {
+            ai_type: 13,
+            player: 1,
+            computer: false,
+            state: 2,
+            held: -1,
+            top_action: None,
+            master: 448,
+            kind: 70,
+            class: 47,
+            attack_priority: 0,
+            missile: -1,
+            range: 1.0,
+            min_range: 0.0,
+            charge_type: 0,
+            area_effect: 0.0,
+            blast_level: 0,
+            los: 4.0,
+            position: [10.0, 10.0, 0.0],
+            radius: [0.2, 0.2],
+            speed: 1.2,
+            scenario: false,
+            firepower: 0.0,
+            capture: 0,
+        },
+        player: 1,
+        computer: false,
+        spatial: &mut spatial,
+        pathing: &mut pathing,
+        groups: &groups,
+        object: &mut object,
+        sprite: &mut sprite,
+        world_time: 0,
+        construction_rate: 1.0,
+        others: &others,
+        zones: &mut zones,
+        foreign: Foreign {
+            before: &players,
+            after: &[],
+            left: None,
+        },
+        every: &every,
+        masters: Some(&masters),
+        graphics: &graphics,
+        takes: &mut takes,
+        releases: &mut releases,
+        builder_leaves: &mut leaves,
+        waits: &mut waits,
+        relations: &[0, 0],
+        attributes: &[],
+        civ: 0,
+        ai_settings: AiSettings::default(),
+        drop_sites: &[],
+        mode_680: 0,
+    };
+    side.helper_free(1, &others[0], &scout, 50).unwrap()
+}
+
+/// `AskForHelp` (`FUN_140c42ce0`) asks only an idle helper in no group (no action value, action,
+/// order, queued order or target) whose attack check lets it attack the attacker; a helper whose
+/// top action's target lies within its range keeps it.
+#[test]
+fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
+    let idle = UnitAi {
+        ai_type: 13,
+        current_order: -1,
+        current_action: -1,
+        current_target: -1,
+        stance: 0,
+        ..UnitAi::default()
+    };
+    assert!(helper_free(idle.clone(), None));
+    let busy = [
+        UnitAi {
+            current_action: 600,
+            ..idle.clone()
+        },
+        UnitAi {
+            current_order: 700,
+            ..idle.clone()
+        },
+        UnitAi {
+            current_target: 50,
+            ..idle.clone()
+        },
+    ];
+    for ai in busy {
+        assert!(!helper_free(ai, None));
+    }
+    // an action of its own makes it busy
+    assert!(!helper_free(idle, Some(own_attack(50, -1, 4))));
+}
+
 /// `FUN_141081a80` on the target of the unit's own Attack: it answers true; forced, the Attack's
 /// slot 0x48 (`FUN_140a841d0`) runs on the target first. In state 1 the scout, which may not move
 /// (stance 2, no order), keeps the wolf in its reach: where it saw it becomes its place, the

@@ -3974,6 +3974,17 @@ impl UnitAi {
     /// What `bestUnitToAttack` reads of this unit AI ([`Seeker`]), its current target's master
     /// type as the unit's surroundings `at` hold it.
     fn seeker(&self, at: &Surroundings) -> Seeker {
+        self.seeker_with(
+            at.target
+                .filter(|_| self.current_target != -1)
+                .map(|t| t.kind),
+        )
+    }
+
+    /// What the attack tests read of the unit AI ([`Seeker`]), its current target's master type
+    /// `target_kind` as the world holds it.
+    #[must_use]
+    pub(crate) const fn seeker_with(&self, target_kind: Option<u8>) -> Seeker {
         Seeker {
             stance: self.stance,
             state_position: self.state_position,
@@ -3983,10 +3994,7 @@ impl UnitAi {
             target_type: self.target_type,
             last_target_type: self.last_target_type,
             patrol_path: self.patrol_path.is_some(),
-            target_kind: at
-                .target
-                .filter(|_| self.current_target != -1)
-                .map(|t| t.kind),
+            target_kind,
         }
     }
 

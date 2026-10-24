@@ -6192,31 +6192,13 @@ impl Unit {
             let mut ai = self.ai.take().expect("filtered above");
             let effects = {
                 {
-                    let attacker = crate::unit_ai::Attacker {
-                        ai_type: ai.ai_type,
-                        player,
-                        computer,
-                        state: self.life.state,
-                        held: self.life.attribute_type,
-                        top_action: self.top_action_kind().map(i32::from),
-                        master: self.life.master_id,
-                        kind: master.map_or(0, |m| m.kind),
-                        class: master.map_or(-1, |m| m.class),
-                        attack_priority: master.map_or(0, |m| m.attack_priority),
-                        missile: master.map_or(-1, |m| m.missile),
-                        range: master.map_or(0.0, |m| m.weapon_range),
-                        min_range: master.map_or(0.0, |m| m.min_range),
-                        charge_type: master.map_or(0, |m| m.charge_type),
-                        area_effect: master.map_or(0.0, |m| m.area_effect),
-                        blast_level: master.map_or(0, |m| m.blast_level),
-                        los: master.map_or(0.0, |m| m.line_of_sight),
-                        position: self.position,
-                        radius: master.map_or([0.0; 2], |m| m.radius),
-                        speed: self.mover.as_ref().map_or(0.0, |m| m.stats.speed),
-                        scenario: c.scenario,
-                        firepower: self.firepower,
-                        capture: at.capture,
-                    };
+                    let attacker = self.attacker_of(
+                        ai.ai_type,
+                        master,
+                        (player, computer),
+                        c.scenario,
+                        at.capture,
+                    );
                     let [ai_stream, object, sprite] =
                         c.streams.three(Stream::Ai, Stream::Object, Stream::Sprite);
                     let result = {
@@ -6288,6 +6270,44 @@ impl Unit {
     /// Slot 400 (`FUN_14106d090`) as the unit AI reads it: its top action's target as the world
     /// holds it (its owner's other objects as they stand, the other players' lists), with its
     /// type, place and its master's radii; None without one.
+    /// What the attack tests read of the unit as an attacker ([`crate::unit_ai::Attacker`]) with
+    /// a unit AI of type `ai_type`, its master `master`, its owner and the owner's type, the game
+    /// mode (a scenario's) and its `+0x924`.
+    pub(in crate::turn) fn attacker_of(
+        &self,
+        ai_type: u32,
+        master: Option<&Master>,
+        (player, computer): (usize, bool),
+        scenario: bool,
+        capture: u8,
+    ) -> crate::unit_ai::Attacker {
+        crate::unit_ai::Attacker {
+            ai_type,
+            player,
+            computer,
+            state: self.life.state,
+            held: self.life.attribute_type,
+            top_action: self.top_action_kind().map(i32::from),
+            master: self.life.master_id,
+            kind: master.map_or(0, |m| m.kind),
+            class: master.map_or(-1, |m| m.class),
+            attack_priority: master.map_or(0, |m| m.attack_priority),
+            missile: master.map_or(-1, |m| m.missile),
+            range: master.map_or(0.0, |m| m.weapon_range),
+            min_range: master.map_or(0.0, |m| m.min_range),
+            charge_type: master.map_or(0, |m| m.charge_type),
+            area_effect: master.map_or(0.0, |m| m.area_effect),
+            blast_level: master.map_or(0, |m| m.blast_level),
+            los: master.map_or(0.0, |m| m.line_of_sight),
+            position: self.position,
+            radius: master.map_or([0.0; 2], |m| m.radius),
+            speed: self.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+            scenario,
+            firepower: self.firepower,
+            capture,
+        }
+    }
+
     pub(in crate::turn) fn top_target_seen(
         &self,
         c: &Context<'_>,
