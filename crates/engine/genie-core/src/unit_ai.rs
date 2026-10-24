@@ -867,17 +867,45 @@ const PRIORITY_3_CLASSES: [i16; 6] = [3, 27, 39, 49, 52, 60];
 /// The masters a tower never attacks (`FUN_140c1a760`, raw `0x60ce`, `0x653f`).
 const TOWER_SPARED: [i16; 2] = [50, 1187];
 
-/// Slot 0xa0 of `me`'s unit AI with 0, `CanAttack`: whether it may attack `t`: the tower's
-/// ([`tower_can_attack`]) or the soldier's ([`soldier_can_attack`]); the other types' are not
-/// modelled.
+/// Slot 0xa0 of `me`'s unit AI with 0, `CanAttack`: whether it may attack `t`, by type: the
+/// hunted animal's (`FUN_140c18d00`) while its action list holds an Attack (type 9) or a type 7
+/// (slot 0x538); the predator's ([`predator_may_attack`]), the lion's ([`lion_may_attack`]) and
+/// the civilian's ([`civilian_may_attack`]) by attack priority and class; the base's
+/// (`FUN_140c48400`: the boar, the ranged units, the ships, the artifact, the siege tower,
+/// livestock) always; the building's (`FUN_140c18b60`) never; the tower's
+/// ([`tower_can_attack`]), the soldier's ([`soldier_can_attack`]) and the siege unit's. The
+/// priest's (`FUN_140c19020`: its conversion test, slot 0x1b8) is not modelled here.
 pub fn can_attack(me: &Attacker, seeker: &Seeker, t: &Target) -> Result<bool, GenieError> {
     match me.ai_type {
+        2 => Ok(matches!(me.top_action, Some(9 | 7))),
+        3 => Ok(predator_may_attack(me.attack_priority, t.class)),
+        BOAR_AI | 6 | 7 | TRADE_AI | TRANSPORT_AI | FISHING_AI | ARTIFACT_AI | SIEGE_TOWER_AI
+        | 0x13 => Ok(true),
+        5 => Ok(lion_may_attack(me.attack_priority, t.class)),
+        CIVILIAN => Ok(civilian_may_attack(me.attack_priority, t.class)),
+        BUILDING_AI => Ok(false),
         15 => tower_can_attack(me, t),
         13 => soldier_can_attack(me, seeker, t),
         SIEGE_AI => siege_can_attack(me, seeker, t, false),
         _ => Err(GenieError::unsupported(
             "an attack check (slot 0xa0) of a unit-AI type not modelled",
         )),
+    }
+}
+
+/// The classes a predator attacks by its own choice (its slot 0xa0's list, `FUN_140c18ed0`).
+const PREDATOR_ATTACKS: [i16; 18] = [
+    0, 4, 6, 12, 23, 24, 25, 26, 28, 35, 36, 44, 45, 46, 47, 50, 56, 57,
+];
+
+/// The predator's slot 0xa0 (`FUN_140c18ed0`) without its `any` flag: by the master's attack
+/// priority 1 and 2 anything, 3 the classes of [`PRIORITY_3_CLASSES`], any other the classes of
+/// [`PREDATOR_ATTACKS`].
+fn predator_may_attack(attack_priority: u8, class: i16) -> bool {
+    match attack_priority {
+        1 | 2 => true,
+        3 => PRIORITY_3_CLASSES.contains(&class),
+        _ => PREDATOR_ATTACKS.contains(&class),
     }
 }
 
@@ -12566,6 +12594,53 @@ mod tests {
         target_kind: None,
     };
 
+    /// Slot 0xa0 by unit-AI type: the base's always, the building's never, the hunted
+    /// animal's only with an Attack (or a type 7) in its list, the predator's and lion's by
+    /// class under attack priority 0 (anything under 1 and 2), the civilian's but classes 1 and
+    /// 42; the priest's is not modelled.
+    #[test]
+    fn each_unit_ai_type_has_its_own_attack_check() {
+        let check = |ai_type: u32, top_action: Option<i32>, priority: u8, class: i16| {
+            let me = Attacker {
+                ai_type,
+                top_action,
+                attack_priority: priority,
+                ..TC
+            };
+            can_attack(&me, &IDLE, &Target { class, ..BOAR })
+        };
+        for t in [
+            BOAR_AI,
+            6,
+            7,
+            TRADE_AI,
+            TRANSPORT_AI,
+            FISHING_AI,
+            ARTIFACT_AI,
+            0x12,
+            0x13,
+        ] {
+            assert_eq!(check(t, None, 0, 42), Ok(true), "{t}");
+        }
+        assert_eq!(check(BUILDING_AI, None, 0, 4), Ok(false));
+        assert_eq!(check(2, None, 0, 4), Ok(false));
+        assert_eq!(check(2, Some(9), 0, 4), Ok(true));
+        assert_eq!(check(2, Some(7), 0, 4), Ok(true));
+        // the predator's list and the lion's: 4 (villagers) yes, 10 no
+        assert_eq!(
+            (check(3, None, 0, 4), check(3, None, 0, 10)),
+            (Ok(true), Ok(false))
+        );
+        assert_eq!(check(3, None, 2, 10), Ok(true));
+        assert_eq!(
+            (check(5, None, 0, 9), check(3, None, 0, 9)),
+            (Ok(true), Ok(false))
+        );
+        assert_eq!(check(CIVILIAN, None, 0, 42), Ok(false));
+        assert_eq!(check(CIVILIAN, None, 0, 10), Ok(true));
+        assert!(check(PRIEST_AI, None, 0, 4).is_err());
+    }
+
     #[test]
     fn a_tower_passes_a_boar_but_not_a_wolf() {
         assert_eq!(can_attack(&TC, &IDLE, &BOAR), Ok(false));
@@ -12586,8 +12661,18 @@ mod tests {
             ..BOAR
         };
         assert_eq!(can_attack(&TC, &IDLE, &sheep), Ok(false));
-        // a type whose attack check is not modelled
-        assert!(can_attack(&Attacker { ai_type: 5, ..TC }, &IDLE, &BOAR).is_err());
+        // a type whose attack check is not modelled (the priest's conversion test)
+        assert!(
+            can_attack(
+                &Attacker {
+                    ai_type: PRIEST_AI,
+                    ..TC
+                },
+                &IDLE,
+                &BOAR
+            )
+            .is_err()
+        );
         // a tower without a missile is armed only by the firepower of the units inside it
         let bare = Attacker { missile: -1, ..TC };
         let enemy = Target {
