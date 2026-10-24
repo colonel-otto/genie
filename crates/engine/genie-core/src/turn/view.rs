@@ -424,6 +424,85 @@ pub(in crate::turn) struct UnitView<'u> {
 }
 
 impl UnitView<'_> {
+    /// The forced attack command on the target of the unit's own Attack (`FUN_141081a80`): the
+    /// top Attack's slot 0x48 (`FUN_140a841d0`, [`crate::attack::Attack::work`]) on the target
+    /// and its place, with the main building of an annex for a unit of an area effect, the
+    /// unit's top speed and canMoveToAttack ([`crate::unit_ai::Seeker::can_move`]); what it takes
+    /// and lets go is the caller's ([`UnitView::takes`], [`UnitView::releases`]), a new target
+    /// clearing the unit's attack count (`+0x900`). Its answer is not read.
+    fn attack_again(
+        &mut self,
+        target: i32,
+        t: &Placed,
+        master: &crate::masters::Master,
+        ai: &UnitAi,
+    ) -> Result<(), GenieError> {
+        let mark = |id: i32, p: &Placed| -> Result<crate::attack::Mark, GenieError> {
+            let (_, u) = self
+                .foreign
+                .find(id)
+                .or_else(|| self.others.iter().find(|u| u.id == id).map(|u| (0, u)))
+                .ok_or(NOT_HELD)?;
+            let m = self
+                .every
+                .get(p.player)
+                .and_then(|ms| ms.get(p.master))
+                .ok_or(NOT_HELD)?;
+            Ok(crate::attack::Mark {
+                id,
+                kind: m.kind,
+                class: m.class,
+                state: u.life.state,
+                position: p.position,
+                radius: p.radius,
+            })
+        };
+        let target_mark = mark(target, t)?;
+        let main = match self
+            .foreign
+            .find(target)
+            .map(|(_, u)| u.annex_of)
+            .or_else(|| {
+                self.others
+                    .iter()
+                    .find(|u| u.id == target)
+                    .map(|u| u.annex_of)
+            })
+            .flatten()
+        {
+            Some(m) => match self.spatial.get(m).copied() {
+                Some(p) => Some(mark(m, &p)?),
+                None => None,
+            },
+            None => None,
+        };
+        let unit = &mut *self.unit;
+        let wielder = crate::attack::Wielder {
+            area_effect: master.area_effect,
+            speed: unit.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+            position: unit.position,
+            radius: master.radius,
+        };
+        let can_move = ai.current_order != -1 || ai.stance <= 1;
+        let attack = unit.attack.as_mut().expect("the caller's own Attack");
+        let w = attack.work(Some(target_mark), main, &wielder, |_| can_move);
+        let by = Releaser {
+            id: unit.id,
+            class: master.class,
+            player: self.player,
+        };
+        if w.clears_count {
+            unit.attack_count = 0;
+        }
+        if let Some(old) = w.lets_go {
+            self.releases.push((old, by));
+        }
+        if let Some(new) = w.takes {
+            self.takes.push((new, by));
+        }
+        Ok(())
+    }
+
     /// What a hit of the unit reads of the object `id` ([`victim_in`]): one of the owner's live
     /// objects or another player's; None for an object the view does not hold (the owner's
     /// sleeping objects, or the old owner's of a unit taken over in its update, whose attributes
@@ -1371,8 +1450,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     /// The attack command (slot 0x338, `FUN_14120cea0`; classes 51 and 54 are not modelled) ->
     /// `FUN_141081a80`: a target the world does not hold fails; `+0x648` takes the world's time
-    /// (not held); the unit's own Attack on the target answers true unless forced (its slot 0x48
-    /// then, not modelled); a villager's master switch (slot 0x90) is not modelled. Then the new
+    /// (not held); the unit's own Attack on the target answers true, forced after its slot 0x48
+    /// on it ([`UnitView::attack_again`]); a villager's master switch (slot 0x90) is not modelled.
+    /// Then the new
     /// Attack ([`crate::attack::Attack::command`]): the constructor takes its target (slot 0x178,
     /// the caller's) and clears the unit's `+0x900` (its target is new), the action list clears
     /// (the old actions' teardowns), and the install's start (`0x140a7f8c0`) of a unit inside
@@ -1408,9 +1488,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         };
         if unit.attack.is_some_and(|a| a.target == target) {
             if force {
-                return Err(GenieError::unsupported(
-                    "a forced attack command on its own Attack's target (slot 0x48)",
-                ));
+                self.attack_again(target, &t, master, ai)?;
             }
             return Ok(crate::unit_ai::Attacked {
                 attacks: true,

@@ -5342,6 +5342,16 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
 /// 448, class 47, 426049998's) on Gaia's wolf 50 half a tile east, its attack timer `timer`, inside
 /// `inside` if any: the scout and what the command answered and took.
 fn scout_attack(timer: f32, inside: Option<i32>) -> (Unit, crate::unit_ai::Attacked, Vec<i32>) {
+    scout_attack_on(timer, inside, None, false)
+}
+
+/// [`scout_attack`] of a scout whose own Attack is `own`, the command `force`d or not.
+fn scout_attack_on(
+    timer: f32,
+    inside: Option<i32>,
+    own: Option<crate::attack::Attack>,
+    force: bool,
+) -> (Unit, crate::unit_ai::Attacked, Vec<i32>) {
     use crate::unit_ai::UnitSide;
     let standing = Graphic {
         id: 300,
@@ -5416,6 +5426,7 @@ fn scout_attack(timer: f32, inside: Option<i32>) -> (Unit, crate::unit_ai::Attac
         mover: Some(walker),
         sprite: Some(crate::sprite::ActiveSprite::start(standing, &mut rng)),
         attack_timer: timer,
+        attack: own,
         life: Lifecycle {
             master_id: 448,
             inside,
@@ -5494,9 +5505,32 @@ fn scout_attack(timer: f32, inside: Option<i32>) -> (Unit, crate::unit_ai::Attac
             drop_sites: &[],
             mode_680: 0,
         };
-        side.attack(50, false, &ai).unwrap()
+        side.attack(50, force, &ai).unwrap()
     };
     (unit, attacked, takes.into_iter().map(|(t, _)| t).collect())
+}
+
+/// `FUN_141081a80` on the target of the unit's own Attack: it answers true; forced, the Attack's
+/// slot 0x48 (`FUN_140a841d0`) runs on the target first. In state 1 the scout, which may not move
+/// (stance 2, no order), keeps the wolf in its reach: where it saw it becomes its place, the
+/// target the same (nothing taken). In state 4 the Attack keeps it as it is; unforced nothing
+/// changes either.
+#[test]
+fn an_attack_command_on_its_own_attack_s_target_asks_that_attack_again() {
+    let own = |state: u8| crate::attack::Attack {
+        state,
+        seen: [-1.0; 3],
+        ..own_attack(50, -1, state)
+    };
+    let (unit, attacked, takes) = scout_attack_on(0.0, None, Some(own(1)), true);
+    assert_eq!((attacked.attacks, takes), (true, vec![]));
+    let a = unit.attack.expect("the scout's Attack");
+    assert_eq!((a.state, a.target, a.seen), (1, 50, [10.5, 10.0, 0.0]));
+    let (unit, attacked, _) = scout_attack_on(0.0, None, Some(own(4)), true);
+    assert!(attacked.attacks);
+    assert_eq!(unit.attack.map(|a| a.seen), Some([-1.0; 3]));
+    let (unit, _, _) = scout_attack_on(0.0, None, Some(own(1)), false);
+    assert_eq!(unit.attack.map(|a| a.seen), Some([-1.0; 3]));
 }
 
 /// `FUN_141081a80`'s start (`0x140a7f8c0`) of a unit that cannot move (stance 2, no order) in
