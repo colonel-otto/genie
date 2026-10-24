@@ -253,6 +253,132 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) foreign: Foreign<'a>,
 }
 
+/// What an object's step gathered in its Context for the world to apply after it
+/// ([`crate::turn::Turns::finish_object`]): the Context's fields of the same meaning; the left
+/// group carries the unit's id.
+pub(in crate::turn) struct ObjectOutputs {
+    /// [`Context`]'s `attribute_adds`.
+    pub(in crate::turn) adds: Vec<(i16, f32)>,
+    /// [`Context`]'s `order_on_target`.
+    pub(in crate::turn) ordered: Option<(
+        crate::unit_ai::QueuedOrder,
+        Option<crate::unit_ai::AfterOrder>,
+    )>,
+    /// [`Context`]'s `history_events`.
+    pub(in crate::turn) history_events: Vec<u8>,
+    /// [`Context`]'s `works`.
+    pub(in crate::turn) works: Vec<AiWork>,
+    /// [`Context`]'s `leads`.
+    pub(in crate::turn) leads: Option<(i32, i32)>,
+    /// [`Context`]'s `build_command`.
+    pub(in crate::turn) build_command: Option<i32>,
+    /// [`Context`]'s `reseed`.
+    pub(in crate::turn) reseed: Option<bool>,
+    /// [`Context`]'s `move_aside`.
+    pub(in crate::turn) move_aside: Vec<AiMove>,
+    /// [`Context`]'s `transport_moves`.
+    pub(in crate::turn) transport_moves: Vec<(i32, [f32; 3])>,
+    /// [`Context`]'s `entered`.
+    pub(in crate::turn) entered: Option<(i32, f32)>,
+    /// [`Context`]'s `waits`.
+    pub(in crate::turn) waits: Vec<Wait>,
+    /// [`Context`]'s `techs_done`.
+    pub(in crate::turn) techs_done: Vec<i16>,
+    /// [`Context`]'s `carts`.
+    pub(in crate::turn) carts: Vec<(i32, u8)>,
+    /// [`Context`]'s `completions`.
+    pub(in crate::turn) completions: Vec<(i32, Option<crate::build::StackUnit>, bool)>,
+    /// [`Context`]'s `work_order`.
+    pub(in crate::turn) work_order: Option<crate::order::Work>,
+    /// [`Context`]'s `blasted`.
+    pub(in crate::turn) blasted: Vec<Victim>,
+    /// [`Context`]'s `own_killed`.
+    pub(in crate::turn) own_killed: Option<crate::damage::Kill>,
+    /// [`Context`]'s `remains`.
+    pub(in crate::turn) remains: Option<(i16, [f32; 3], Option<u8>)>,
+    /// [`Context`]'s `refund`.
+    pub(in crate::turn) refund: Vec<(i16, f32)>,
+    /// [`Context`]'s `annex_states`.
+    pub(in crate::turn) annex_states: Vec<(i32, u8)>,
+    /// [`Context`]'s `cleared`.
+    pub(in crate::turn) cleared: Vec<crate::build::Cleared>,
+    /// [`Context`]'s `released_annexes`.
+    pub(in crate::turn) released_annexes: Vec<(i32, f32)>,
+    /// [`Context`]'s `main_works`.
+    pub(in crate::turn) main_works: Vec<(i32, f32)>,
+    /// [`Context`]'s `building_death`.
+    pub(in crate::turn) building_death: Option<BuildingDeath>,
+    /// [`Context`]'s `pauses`.
+    pub(in crate::turn) pauses: Vec<(i32, f32)>,
+    /// [`Context`]'s `gate_toggle`.
+    pub(in crate::turn) gate_toggle: bool,
+    /// [`Context`]'s `ai_resume`.
+    pub(in crate::turn) ai_resume: Option<AiResume>,
+    /// [`Context`]'s `releases`.
+    pub(in crate::turn) releases: Vec<(i32, Releaser)>,
+    /// [`Context`]'s `builder_leaves`.
+    pub(in crate::turn) builder_leaves: Vec<i32>,
+    /// [`Context`]'s `left_group`.
+    pub(in crate::turn) left_group: Option<(i32, i32, i32)>,
+    /// [`Context`]'s `takes`.
+    pub(in crate::turn) takes: Vec<(i32, Releaser)>,
+    /// [`Context`]'s `made`.
+    pub(in crate::turn) made: Vec<Unit>,
+    /// [`Context`]'s `ghost_deaths`.
+    pub(in crate::turn) ghost_deaths: Vec<i32>,
+    /// [`Context`]'s `started`.
+    pub(in crate::turn) started: Vec<i32>,
+    /// [`Context`]'s `unwatched`.
+    pub(in crate::turn) unwatched: Vec<i32>,
+    /// [`Context`]'s `evacuations`.
+    pub(in crate::turn) evacuations: Vec<(i32, Vec<i32>)>,
+}
+
+impl Context<'_> {
+    /// What the step gathered ([`ObjectOutputs`]), taken out of the Context; `id` is the
+    /// unit's.
+    pub(in crate::turn) fn outputs(&mut self, id: i32) -> ObjectOutputs {
+        ObjectOutputs {
+            adds: std::mem::take(&mut self.attribute_adds),
+            ordered: self.order_on_target.take(),
+            history_events: std::mem::take(&mut self.history_events),
+            works: std::mem::take(&mut self.works),
+            leads: self.leads.take(),
+            build_command: self.build_command.take(),
+            reseed: self.reseed.take(),
+            move_aside: std::mem::take(&mut self.move_aside),
+            transport_moves: std::mem::take(&mut self.transport_moves),
+            entered: self.entered.take(),
+            waits: std::mem::take(&mut self.waits),
+            techs_done: std::mem::take(&mut self.techs_done),
+            carts: std::mem::take(&mut self.carts),
+            completions: std::mem::take(&mut self.completions),
+            work_order: self.work_order.take(),
+            blasted: std::mem::take(&mut self.blasted),
+            own_killed: self.own_killed.take(),
+            remains: self.remains.take(),
+            refund: std::mem::take(&mut self.refund),
+            annex_states: std::mem::take(&mut self.annex_states),
+            cleared: std::mem::take(&mut self.cleared),
+            released_annexes: std::mem::take(&mut self.released_annexes),
+            main_works: std::mem::take(&mut self.main_works),
+            building_death: self.building_death.take(),
+            pauses: std::mem::take(&mut self.pauses),
+            gate_toggle: std::mem::take(&mut self.gate_toggle),
+            ai_resume: self.ai_resume.take(),
+            releases: std::mem::take(&mut self.releases),
+            builder_leaves: std::mem::take(&mut self.builder_leaves),
+            left_group: self.left_group.take().map(|(g, b)| (g, id, b)),
+            takes: std::mem::take(&mut self.takes),
+            made: std::mem::take(&mut self.made),
+            ghost_deaths: std::mem::take(&mut self.ghost_deaths),
+            started: std::mem::take(&mut self.started),
+            unwatched: std::mem::take(&mut self.unwatched),
+            evacuations: std::mem::take(&mut self.evacuations),
+        }
+    }
+}
+
 /// What the unit's slot 0x388 (`FUN_141226fc0`) found while its unit AI ran
 /// ([`crate::unit_ai::UnitSide::wait_solidify`]): the foundation, the task its slot 0x820 found
 /// on it and the master the search switches the unit to (slot 0x90; None when its own master's
