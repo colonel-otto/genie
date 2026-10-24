@@ -1792,10 +1792,7 @@ pub trait UnitSide {
     ///
     /// The commands the slice holds no action for.
     fn command(&mut self, _command: UnitCommand) -> Result<bool, GenieError> {
-        Err(GenieError::unsupported(
-            "a unit command the slice does not model (heal, conversion, repair, enter, transport, \
-             unload)",
-        ))
+        Err(UNMODELLED_COMMAND)
     }
 
     /// The soldier's `AttackObject` (`FUN_140c17550`) after the attack, for a unit whose group
@@ -1812,6 +1809,11 @@ pub trait UnitSide {
         ))
     }
 }
+
+/// A unit command the slice holds no action for ([`UnitSide::command`]).
+pub(crate) const UNMODELLED_COMMAND: GenieError = GenieError::unsupported(
+    "a unit command the slice does not model (heal, conversion, enter, transport, unload)",
+);
 
 /// The unit's commands the unit AI's order slots give ([`UnitSide::command`]), each the unit's
 /// slot of `TRIBE_Combat_Object`.

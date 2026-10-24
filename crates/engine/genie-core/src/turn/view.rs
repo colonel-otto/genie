@@ -237,9 +237,9 @@ pub(in crate::turn) struct Context<'a> {
     /// Another player's transport or building the unit entered, with what its volleys gain: the
     /// caller adds them and the unit to its list after the update.
     pub(in crate::turn) entered: Option<(i32, f32)>,
-    /// The waits for foundations the unit's slot 0x388 found while its unit AI ran, which the
-    /// caller makes the unit's after the update ([`Turns::wait_for_foundation`]).
-    pub(in crate::turn) waits: Vec<Wait>,
+    /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
+    /// which the caller makes the unit's after the update, in order.
+    pub(in crate::turn) starts: Vec<AiStart>,
     /// The work a builder gave an annex whose main building takes it (the foundation, the
     /// seconds; [`crate::build::Worked::Main`]), which the caller runs after the update
     /// ([`Turns::work_building`]).
@@ -285,8 +285,8 @@ pub(in crate::turn) struct ObjectOutputs {
     pub(in crate::turn) transport_moves: Vec<(i32, [f32; 3])>,
     /// [`Context`]'s `entered`.
     pub(in crate::turn) entered: Option<(i32, f32)>,
-    /// [`Context`]'s `waits`.
-    pub(in crate::turn) waits: Vec<Wait>,
+    /// [`Context`]'s `starts`.
+    pub(in crate::turn) starts: Vec<AiStart>,
     /// [`Context`]'s `techs_done`.
     pub(in crate::turn) techs_done: Vec<i16>,
     /// [`Context`]'s `carts`.
@@ -356,7 +356,7 @@ impl Context<'_> {
             move_aside: std::mem::take(&mut self.move_aside),
             transport_moves: std::mem::take(&mut self.transport_moves),
             entered: self.entered.take(),
-            waits: std::mem::take(&mut self.waits),
+            starts: std::mem::take(&mut self.starts),
             techs_done: std::mem::take(&mut self.techs_done),
             carts: std::mem::take(&mut self.carts),
             completions: std::mem::take(&mut self.completions),
@@ -412,6 +412,31 @@ pub(crate) struct Wait {
     pub(crate) target: i32,
     pub(crate) task: crate::masters::Task,
     pub(crate) switch: Option<i16>,
+}
+
+/// The unit's repair command (slot 0x378, `FUN_141217c00`) as its unit AI gave it
+/// ([`UnitView::repair_command`]), which the caller makes after the update
+/// ([`Turns::repair_order`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum RepairOrder {
+    /// The Repair on top takes the target (its slot 0x48, `FUN_140adb480`).
+    Retake(i32),
+    /// The masters the unit switches to (slot 0x90 with 0): the repairer of its task swap group,
+    /// then the one the task search's swap group gave; then a Repair on the task found, if any.
+    Start {
+        target: i32,
+        switches: [Option<i16>; 2],
+        task: Option<crate::masters::Task>,
+    },
+}
+
+/// An action the unit AI gave its unit while it ran, made after the update.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum AiStart {
+    /// A wait for a foundation ([`Wait`], [`Turns::wait_for_foundation`]).
+    Wait(Wait),
+    /// A repair ([`RepairOrder`], [`Turns::repair_order`]).
+    Repair(RepairOrder),
 }
 
 /// The players but the owner of the unit that updates, read-only: the players before it and
@@ -558,8 +583,8 @@ pub(in crate::turn) struct UnitView<'u> {
     /// The foundations a counted builder's Build left ([`Context::builder_leaves`]), the
     /// caller's.
     pub(in crate::turn) builder_leaves: &'u mut Vec<i32>,
-    /// The waits for foundations its slot 0x388 found ([`Wait`]), the caller's.
-    pub(in crate::turn) waits: &'u mut Vec<Wait>,
+    /// The actions its slots 0x388 and 0x378 gave ([`AiStart`]), the caller's.
+    pub(in crate::turn) starts: &'u mut Vec<AiStart>,
     /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
     /// sites.
     pub(in crate::turn) relations: &'u [u8],
@@ -1975,6 +2000,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// type (`0xffff`) and the switch ([`task_search`] on the target and its main building);
     /// with a task the new wait replaces the unit's actions, which the caller makes after the
     /// update ([`Wait`], [`Turns::wait_for_foundation`]).
+    fn command(&mut self, command: crate::unit_ai::UnitCommand) -> Result<bool, GenieError> {
+        match command {
+            crate::unit_ai::UnitCommand::Repair(target) => self.repair_command(target),
+            _ => Err(crate::unit_ai::UNMODELLED_COMMAND),
+        }
+    }
+
     fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (self.player, self.others, self.foreign);
@@ -2017,11 +2049,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let Some((task, switch)) = task_search(masters, &actor, &t, &general, -1, &dip)? else {
             return Ok(false);
         };
-        self.waits.push(Wait {
+        self.starts.push(AiStart::Wait(Wait {
             target,
             task,
             switch: switch.map(|m| m.id),
-        });
+        }));
         Ok(true)
     }
 
@@ -2040,14 +2072,24 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         Ok(())
     }
 
-    /// Slot 400 at the full update's tail: a wait for a foundation the AI gave (made after the
-    /// update, [`Wait`]) holds no object; else its top action's target ([`Unit::top_target`])
-    /// while the world holds it.
+    /// Slot 400 at the full update's tail, after what the AI gave (made after the update,
+    /// [`AiStart`], the last of them counting): a wait for a foundation holds no object, a
+    /// repair its target, a master switch without a task left no action; else the top
+    /// action's target ([`Unit::top_target`]); either while the world holds it.
     fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
-        if !self.waits.is_empty() {
-            return Ok(None);
-        }
-        let target = self.unit.top_target().filter(|&t| t != -1);
+        let target = match self.starts.last() {
+            Some(AiStart::Wait(_)) => return Ok(None),
+            Some(AiStart::Repair(
+                RepairOrder::Retake(t)
+                | RepairOrder::Start {
+                    target: t,
+                    task: Some(_),
+                    ..
+                },
+            )) => Some(*t),
+            Some(AiStart::Repair(RepairOrder::Start { task: None, .. })) => None,
+            None => self.unit.top_target().filter(|&t| t != -1),
+        };
         Ok(target.filter(|&t| self.spatial.get(t).is_some()))
     }
 
@@ -2081,6 +2123,84 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 }
 
 impl UnitView<'_> {
+    /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the
+    /// world (`FUN_1415417a0`) does not hold is 0. A Repair on top takes it (its slot 0x48,
+    /// `FUN_140adb480`): 1. Else a unit of task swap group 1 or 2 switches to its player's
+    /// repairer ([`crate::repair::REPAIRERS`], slot 0x90 with 0), and its slot 0x820 with the
+    /// repair's action type (`0x6a`) and the switch ([`task_search`] on the target and its main
+    /// building, the new master's list first) finds a task: a new Repair on it
+    /// (`FUN_140ad7fa0`) replaces the unit's actions (slot 0x808): 1; none: 0. The caller makes
+    /// the switches and the Repair after the update ([`RepairOrder`], [`Turns::repair_order`]).
+    fn repair_command(&mut self, target: i32) -> Result<bool, GenieError> {
+        let unit = &*self.unit;
+        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let find = |id: i32| {
+            if id == unit.id {
+                return Some((player, unit));
+            }
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        if find(target).is_none() {
+            return Ok(false);
+        }
+        if unit.top_action_kind() == Some(crate::repair::REPAIR) {
+            self.starts
+                .push(AiStart::Repair(RepairOrder::Retake(target)));
+            return Ok(true);
+        }
+        let masters = self.masters.ok_or(GenieError::unsupported(
+            "a unit AI's unit of a master the slice does not have",
+        ))?;
+        let own = masters
+            .get(unit.life.master_id)
+            .ok_or(GenieError::unsupported(
+                "a unit AI's unit of a master the slice does not have",
+            ))?;
+        let switch = crate::repair::REPAIRERS
+            .iter()
+            .find(|&&(group, _)| group == own.task_by_group)
+            .and_then(|&(_, id)| masters.get(id));
+        let (Some(t), Some(general)) = (
+            task_target_with(target, 1, &find, self.every)?,
+            task_target_with(target, 2, &find, self.every)?,
+        ) else {
+            return Err(GenieError::unreachable(
+                "a repair command's target the world holds without its task target",
+            ));
+        };
+        let actor = Actor {
+            id: unit.id,
+            master: switch.unwrap_or(own),
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            civ: self.civ,
+        };
+        let dip = SideWorld {
+            player,
+            relations: self.relations,
+            foreign,
+            drop_sites: self.drop_sites,
+        };
+        let found = task_search(masters, &actor, &t, &general, crate::repair::REPAIR, &dip)?;
+        if switch.is_none() && found.is_none() {
+            return Ok(false);
+        }
+        self.starts.push(AiStart::Repair(RepairOrder::Start {
+            target,
+            switches: [
+                switch.map(|m| m.id),
+                found.and_then(|(_, m)| m.map(|m| m.id)),
+            ],
+            task: found.map(|(task, _)| task),
+        }));
+        Ok(found.is_some())
+    }
+
     /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.
     pub(in crate::turn) fn scout_area(
         &mut self,

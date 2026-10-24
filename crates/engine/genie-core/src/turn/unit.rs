@@ -6324,7 +6324,7 @@ impl Unit {
                 takes: &mut c.takes,
                 releases: &mut c.releases,
                 builder_leaves: &mut c.builder_leaves,
-                waits: &mut c.waits,
+                starts: &mut c.starts,
                 relations: view.relations,
                 attributes: view.attributes,
                 civ: view.civ,

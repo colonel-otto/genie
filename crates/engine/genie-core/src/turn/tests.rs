@@ -1371,6 +1371,65 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
     assert_eq!(t.players[1].objects[1].construction.unwrap().builders, 0);
 }
 
+/// The unit AI's repair order on the player's damaged house (`0x2ce`, slot 0x378 forced,
+/// `FUN_141217c00`): the villager (83, task swap group 1) becomes its player's repairer (156,
+/// slot 0x90), whose task list gives the Repair task; after the update the Repair walks to the
+/// house (state 4) and the AI holds the repair action on it. Without the repairer master the
+/// villager's own list must give the task, which it does not: the order is not taken.
+#[test]
+fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
+    use crate::unit_ai::QueuedOrder;
+    let order = QueuedOrder {
+        issuer: 1,
+        order: crate::ai_kinds::ORDER_REPAIR,
+        priority: 100,
+        target: 10028,
+        target_owner: 1,
+        point: [30.0, 88.0, 0.0],
+        range: 0.0,
+        shown: [30.0, 88.0],
+        ready: true,
+        target_type: 80,
+    };
+    let world = |repairer: bool| {
+        let mut t = sent_off_world(vec![order]);
+        let house = &mut t.players[1].objects[1];
+        house.life.state = 2;
+        house.life.hp = 300.0;
+        let c = house.construction.as_mut().unwrap();
+        (c.progress, c.desolid) = (1.0, false);
+        if repairer {
+            for masters in &mut t.masters {
+                let mut m = masters.get(83).unwrap().clone();
+                m.id = 156;
+                m.weapon_range = 0.5;
+                m.tasks.push(crate::masters::Task {
+                    id: 4,
+                    work_val1: 0.5,
+                    ..task(crate::repair::REPAIR)
+                });
+                *masters = Masters::new(masters.iter().cloned().chain([m]));
+            }
+        }
+        t
+    };
+    let mut t = world(true);
+    t.tick(50);
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.master_id, 156);
+    let r = v.repair.expect("the Repair");
+    assert_eq!((r.target, r.state, r.range, r.task.id), (10028, 4, 0.5, 4));
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_action, ai.current_target),
+        (crate::repair::REPAIR_ACTION, 10028)
+    );
+    let mut t = world(false);
+    t.tick(50);
+    let v = &t.players[1].objects[0];
+    assert_eq!((v.life.master_id, v.repair), (83, None));
+}
+
 /// The whole of it: a villager the foundation sent off (its queue the foundation's order)
 /// runs the order on its turn (slot 0x108 forced: its slot 0x388 finds the builder's task by
 /// the swap group), becomes the builder with the wait as its only action, and keeps waiting
@@ -5626,7 +5685,7 @@ fn scout_attack_on(
             takes: &mut takes,
             releases: &mut releases,
             builder_leaves: &mut leaves,
-            waits: &mut waits,
+            starts: &mut waits,
             relations: &[0, 0],
             attributes: &[],
             civ: 0,
@@ -5766,7 +5825,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
         takes: &mut takes,
         releases: &mut releases,
         builder_leaves: &mut leaves,
-        waits: &mut waits,
+        starts: &mut waits,
         relations: &[0, 0],
         attributes: &[],
         civ: 0,

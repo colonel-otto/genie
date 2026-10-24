@@ -42,7 +42,8 @@ pub use crate::turn::unit::Unit;
 use crate::turn::unit::{AiResume, Captured, Step, same_members};
 pub(crate) use crate::turn::unit::{PointMove, annexes_of, give_load};
 pub(crate) use crate::turn::view::DropWorld;
-use crate::turn::view::{AiWork, Context, Foreign, ObjectOutputs};
+pub(crate) use crate::turn::view::RepairOrder;
+use crate::turn::view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
 pub(crate) use crate::turn::world::{
     Releaser, World, built_death, combat_dies, count_class, farm_bonus, forget_resource, refund_of,
     released, storage_leaves, victim_of,
@@ -1151,7 +1152,7 @@ impl Turns {
             move_aside: Vec::new(),
             transport_moves: Vec::new(),
             entered: None,
-            waits: Vec::new(),
+            starts: Vec::new(),
             main_works: Vec::new(),
             repair_writes: Vec::new(),
             relations: &player.relations,
@@ -1217,7 +1218,7 @@ impl Turns {
             move_aside,
             transport_moves,
             entered,
-            waits,
+            starts,
             techs_done,
             carts,
             completions,
@@ -1495,8 +1496,9 @@ impl Turns {
                 result = result.and(Err(e));
             }
         }
-        // the waits for foundations the unit AI's orders found (slot 0x388)
-        for w in waits {
+        // the waits for foundations (slot 0x388) and the repairs (slot 0x378) the unit AI's
+        // orders gave
+        for start in starts {
             // a unit that ran its orders stays in its list: the full update runs them
             // only for a unit alive and not inside another, between turns only for a
             // unit of a type below 70 or outside, and nothing after the queue in the
@@ -1505,7 +1507,11 @@ impl Turns {
             if !matches!(result, Ok(Step::Stay)) {
                 break;
             }
-            if let Err(e) = self.wait_for_foundation(p, i, w) {
+            let made = match start {
+                AiStart::Wait(w) => self.wait_for_foundation(p, i, w),
+                AiStart::Repair(r) => self.repair_order(p, i, r),
+            };
+            if let Err(e) = made {
                 result = Err(e);
             }
         }
