@@ -59,6 +59,9 @@ pub enum Command {
         /// `+0x1f` is 0: a builder with a unit AI holding an order not ready takes it as an order
         /// too, and the queue's orders become ready after (`FUN_140c42b60`).
         commits: bool,
+        /// `+0x1c`: the frame the foundation's standing sprite takes once built (its `+0xc54`,
+        /// [`crate::turn::Unit::build_frame`]).
+        frame: u8,
     },
     /// `BUILD_WALL` (0x69, `FUN_140e7b2e0`): a line of the player's wall foundations and its
     /// builders shared out over them ([`crate::wall`]).
@@ -417,6 +420,7 @@ impl Turns {
                 ref builders,
                 queued,
                 commits,
+                frame,
             } => {
                 let master = self.farm_on_rice_terrain(master, position);
                 // the pending debit first (FUN_141630d10 with 0), then the builders' test, the
@@ -444,6 +448,10 @@ impl Turns {
                 let built = self
                     .found(player, master, unit_ai.clone(), position)
                     .and_then(|(id, position)| {
+                        // the foundation keeps the command's frame (+0xc54) before its builders
+                        if let Some((_, u)) = self.object_mut(id) {
+                            u.build_frame = frame;
+                        }
                         self.task_builders(
                             player,
                             id,
@@ -860,12 +868,14 @@ impl Turns {
             None
         });
         // the setups the combat setup runs first, with its master's standing sprite current
-        // (slot 0x798, FUN_1412029f0): their draws and the angle it faces; the constructor
-        // replaces the sprite (not held)
-        let angle = (0 <= made.standing_sprite)
+        // (slot 0x798, FUN_1412029f0): their draws, the sprite and the angle it faces
+        let standing = (0 <= made.standing_sprite)
             .then(|| self.graphics.get(&made.standing_sprite).copied())
-            .flatten()
-            .map_or(0.0, |standing| self.setup_draws(standing).2);
+            .flatten();
+        let (mut sprite, angle) = standing.map_or((None, 0.0), |g| {
+            let (s, _, angle) = self.setup_draws(g);
+            (Some(s), angle)
+        });
         // the combat setup (FUN_14121df60): its class counters (FUN_141226060), its powerup
         // offset (`+0xa54`, the "setup" draw) and, for a building with a train location (an
         // entry of `+0x898` other than -1), its paid cost in attribute 247 (slot 0xf8)
@@ -952,6 +962,17 @@ impl Turns {
         } else {
             f32::from(made.hit_points)
         };
+        // a foundation shows its master's construction sprite (+0x950; its standing one for
+        // none, FUN_141158620) through slot 0x68 (FUN_141217000)
+        if foundation && 0 < made.build_time {
+            let shown = (0 <= building.construction_sprite)
+                .then(|| self.graphics.get(&building.construction_sprite).copied())
+                .flatten()
+                .or(standing);
+            if let Some(g) = shown {
+                crate::attack::set_sprite(&mut sprite, g, self.streams.get(Stream::Sprite));
+            }
+        }
         let progress = if foundation {
             0.0
         } else {
@@ -1040,6 +1061,7 @@ impl Turns {
             livestock_summation: 0.0,
             livestock: Vec::new(),
             pasture_workers: Vec::new(),
+            build_frame: 0,
             raider_countdown: 0,
             // every building holds a gate's lock, open
             gate: Some(Gate {
@@ -1055,7 +1077,7 @@ impl Turns {
             make: None,
             wait_solidify: None,
             stopped: false,
-            sprite: None,
+            sprite,
             // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             anim_speed: Some(0.0),
             attack_timer: 0.0,

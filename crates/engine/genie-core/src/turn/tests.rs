@@ -1273,6 +1273,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
             builders: vec![9175, 9181],
             queued: false,
             commits: false,
+            frame: 0,
         }],
     );
     let p = &t.players[1];
@@ -1369,7 +1370,10 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         builders: vec![9618, 9175],
         queued: true,
         commits: false,
+        frame: 2,
     });
+    // the foundation keeps the command's frame (+0xc54)
+    assert_eq!(t.object(10028).map(|(_, u)| u.build_frame), Some(2));
     let order = |p: usize| {
         t.players[p].objects[0]
             .ai
@@ -2406,6 +2410,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
             builders: vec![],
             queued: false,
             commits: false,
+            frame: 0,
         }],
     );
     let foundation = &built.players[0].objects[0];
@@ -7090,6 +7095,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         builders: vec![9175],
         queued: false,
         commits: false,
+        frame: 0,
     });
     assert_eq!(t.players[1].unsupported, None);
     let foundation = t.players[1].objects.last().unwrap();
@@ -7184,6 +7190,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
             builders: vec![9175],
             queued: false,
             commits: false,
+            frame: 0,
         });
         assert_eq!(t.players[1].unsupported, None);
         (t, before)
@@ -7431,6 +7438,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
         builders: vec![9175],
         queued: false,
         commits: true,
+        frame: 0,
     });
     assert_eq!(t.players[1].unsupported, None);
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();

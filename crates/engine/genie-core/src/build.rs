@@ -378,6 +378,64 @@ pub struct StackUnit {
     pub hp_lost: f32,
 }
 
+/// The completion's sprite (`FUN_1411dbb70` from state 0 to 2, after its storage): slot 0x68
+/// (`FUN_141217000`) with the master's standing sprite (`+0x470`), then its sprite list's slot
+/// 0x28 (`FUN_1413ba880`) sets that sprite's node to the frame its BUILD command chose
+/// (`+0xc54`, [`crate::turn::Unit::build_frame`]; slot 9 with it, [`ActiveSprite::set_frame`]).
+pub(crate) fn show_built(
+    sprite: &mut Option<crate::sprite::ActiveSprite>,
+    master: &Master,
+    frame: u8,
+    graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+    sprite_rng: &mut crate::rng::Well512,
+) {
+    let standing = (0 <= master.standing_sprite)
+        .then(|| graphics.get(&master.standing_sprite).copied())
+        .flatten();
+    if let Some(g) = standing {
+        crate::attack::set_sprite(sprite, g, sprite_rng);
+        if let Some(s) = sprite.as_mut().filter(|s| s.graphic.id == g.id) {
+            s.set_frame(i16::from(frame));
+        }
+    }
+}
+
+#[cfg(test)]
+mod built_sprite_tests {
+    use super::*;
+    use crate::sprite::{ActiveSprite, Graphic};
+
+    /// The completion's sprite (`FUN_1411dbb70`): the foundation's construction sprite gives way
+    /// to the master's standing one (slot 0x68), whose node takes the BUILD command's frame
+    /// (slot 0x28, slot 9 with it); a static standing sprite takes the frame alone.
+    #[test]
+    fn a_completed_building_shows_its_standing_sprite_at_its_frame() {
+        let g = |id, flags| Graphic {
+            id,
+            frames: 4,
+            facets: 1,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags,
+        };
+        let graphics = std::collections::BTreeMap::from([(10, g(10, 1)), (11, g(11, 1))]);
+        let master = Master {
+            standing_sprite: 11,
+            ..Master::default()
+        };
+        let mut rng = crate::rng::Well512::default();
+        let mut sprite = Some(ActiveSprite::start(g(10, 1), &mut rng));
+        show_built(&mut sprite, &master, 2, &graphics, &mut rng);
+        let s = sprite.unwrap();
+        assert_eq!((s.graphic.id, s.frame, s.last_frame), (11, 2, 2));
+        let statics = std::collections::BTreeMap::from([(11, g(11, 0))]);
+        let mut none = None;
+        show_built(&mut none, &master, 3, &statics, &mut rng);
+        assert_eq!(none.map(|s| (s.graphic.id, s.frame)), Some((11, 3)));
+    }
+}
+
 /// What a builder brings to its Build action's update besides its walk.
 #[derive(Debug)]
 pub struct Builder<'a> {
@@ -2243,6 +2301,16 @@ impl crate::turn::Turns {
             main_builders: None,
         };
         let built = Construction::complete(&mut site, &mut self.spatial, &mut self.pathing)?;
+        let u = held(&mut self.players, place);
+        if let Some(m) = self.masters.get(p).and_then(|m| m.get(u.life.master_id)) {
+            show_built(
+                &mut u.sprite,
+                m,
+                u.build_frame,
+                &self.graphics,
+                self.streams.get(crate::rng::Stream::Sprite),
+            );
+        }
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
         let master_id = held(&mut self.players, place).life.master_id;
         self.track_complete(p, id, master_id);

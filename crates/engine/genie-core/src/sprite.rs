@@ -172,6 +172,16 @@ impl ActiveSprite {
         self.last_frame = self.frame;
     }
 
+    /// Slot 9 with `frame` other than `0x7fff` (`FUN_1413b4ff0`): the frame and the last frame
+    /// take it (and `+0x32`, not held), the loop flag stays; a static sprite (`FUN_1413b5030`)
+    /// only takes the frame.
+    pub const fn set_frame(&mut self, frame: i16) {
+        self.frame = frame;
+        if self.graphic.animated() {
+            self.last_frame = frame;
+        }
+    }
+
     /// Slot 11 (`FUN_1413b2d70`): the last advance passed `frame` or looped; a static sprite
     /// (`FUN_1413b2d90`) has reached every frame.
     #[must_use]

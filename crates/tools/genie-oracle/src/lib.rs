@@ -4252,6 +4252,7 @@ fn build_command(packet: &de::command::Build, sections: &[PlayerSection<'_>]) ->
             .collect(),
         queued: packet.field_0x1e != 0,
         commits: packet.field_0x1f == 0,
+        frame: packet.frame,
     }
 }
 

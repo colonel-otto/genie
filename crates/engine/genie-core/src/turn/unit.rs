@@ -153,6 +153,9 @@ pub struct Unit {
     /// A pasture's workers (`+0xcb8`, saved as `pastureWorkerId`): the units that tend it
     /// ([`crate::turn::Turns::tend_pasture`]), in the order they came.
     pub pasture_workers: Vec<i32>,
+    /// A building's `+0xc54`: the frame its BUILD command chose (`FUN_140e7a400`, the packet's
+    /// `+0x1c`), which its standing sprite takes once built; 0 from its constructor and the load.
+    pub build_frame: u8,
     /// A combat object's `raider_build_countdown` (`+0x9a0`): the seconds it may stay inside a
     /// building.
     pub raider_countdown: i32,
@@ -4440,6 +4443,15 @@ impl Unit {
             main_builders: None,
         };
         let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
+        if let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) {
+            crate::build::show_built(
+                &mut self.sprite,
+                m,
+                self.build_frame,
+                c.graphics,
+                c.streams.get(Stream::Sprite),
+            );
+        }
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
         let k = crate::tracker::key(c.masters, c.lines, self.life.master_id);
         c.tracker.complete(self.id, k);
@@ -5428,9 +5440,19 @@ impl Unit {
             if let Some(built) = step.completed {
                 // the completion's first part's tracker part (FUN_1411c6bd0 ->
                 // FUN_14104eac0); the foundation is the builder's player's
-                if let Some(m) = others.iter().find(|u| u.id == target) {
-                    let k = crate::tracker::key(c.masters, c.lines, m.life.master_id);
+                if let Some(u) = others.iter_mut().find(|u| u.id == target) {
+                    let k = crate::tracker::key(c.masters, c.lines, u.life.master_id);
                     c.tracker.complete(target, k);
+                    // its set_state(2)'s standing sprite (FUN_1411dbb70)
+                    if let Some(m) = c.masters.and_then(|m| m.get(u.life.master_id)) {
+                        crate::build::show_built(
+                            &mut u.sprite,
+                            m,
+                            u.build_frame,
+                            c.graphics,
+                            c.streams.get(Stream::Sprite),
+                        );
+                    }
                 }
                 // its set_state(2) took its annexes along first (FUN_1411dbb70)
                 for annex in c.spatial.annexes_of(target) {
