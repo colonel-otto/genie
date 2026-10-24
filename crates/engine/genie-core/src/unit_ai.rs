@@ -2756,13 +2756,13 @@ const fn alert_owner(computer: bool) -> Result<(), GenieError> {
     Ok(())
 }
 
-/// `AskForHelp`'s helper that passes every test the slice models (the owner's own or an ally's
-/// living unit within 3 tiles): its attack check (slot 0xa0), its group's or its own idleness,
-/// its target, its reach (`FUN_14104c220`), `bestUnitToAttack` (`FUN_140c44680`) and its
-/// `AttackObject` (slot 0xb8, forced) are not modelled.
+/// `AskForHelp`'s helper that passes every test ([`crate::turn::view::UnitView::helper_free`]):
+/// its reach to the attacker (`FUN_14104c220` within its weapon range), its own
+/// `bestUnitToAttack` (`FUN_140c44680` from its place) and its `AttackObject` (slot 0xb8, any)
+/// on the nearer of that and the attacker, which run as the helper's, are not modelled.
 pub(crate) const fn helper_answers() -> Result<(), GenieError> {
     Err(GenieError::unsupported(
-        "a unit that may answer a call for help (AskForHelp's attack check, reach and AttackObject)",
+        "a helper that answers a call for help (its reach, bestUnitToAttack and AttackObject)",
     ))
 }
 
