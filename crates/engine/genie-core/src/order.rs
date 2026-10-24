@@ -1907,25 +1907,29 @@ impl Turns {
     }
 
     /// `UNIT_ORDER`'s order `action` to the units `ids` (`FUN_14161e370`) of `player`'s command,
-    /// any player's. Action 8, the drop-off
-    /// (as 6 and 7): each unit the world holds in state 2 of a type above 39 that carries
-    /// something (`+0x310` above 0) and whose top action is a Hunt (110) or a Gather (5) with a
-    /// target or a point gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`], then
-    /// `set_state(8)`: [`Unit::drop_off_in`], [`Unit::gather_drop_off_in`]). A Build's (101) and
-    /// a top action without a target (`FUN_141206a20`, `FUN_141205ac0` around it) are not
-    /// modelled, nor are the other actions; a unit without one of
-    /// these actions: [`Turns::drop_off_unasked`].
+    /// any player's: the drop-offs 6, 7 and 8 (one case): each unit the world holds in state 2 of
+    /// a type above 39 that carries something (`+0x310` above 0). For 7 and 8 a top Hunt (110),
+    /// Gather (5) or Build (101) gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`],
+    /// then `set_state(8)`: [`Unit::drop_off_in`], [`Unit::gather_drop_off_in`],
+    /// [`Turns::build_drop_off_now`]); for 8 one without a target or a point records its work for
+    /// the town bell first (`FUN_141206a20`) and queues the way back after (`FUN_141205ac0`). For
+    /// 6, and a unit without one of these actions: [`Turns::drop_off_unasked`] (the way back for
+    /// 8 alone).
     pub(crate) fn unit_order(
         &mut self,
         _player: usize,
         ids: &[i32],
         action: u8,
     ) -> Result<(), GenieError> {
-        if action != 8 {
+        if !matches!(action, 6..=8) {
             return Err(GenieError::unsupported(
-                "a UNIT_ORDER other than the garrison (5) and the drop-off (8)",
+                "a UNIT_ORDER other than the garrison (5) and the drop-offs (6 to 8)",
             ));
         }
+        // 8 records an unaimed action's work for the town bell and queues the way back after;
+        // 6 asks no gather action (the search alone)
+        let way_back = action == 8;
+        let asks = action != 6;
         for &id in ids {
             let Some(place) = self.place(id) else {
                 continue;
@@ -1948,11 +1952,12 @@ impl Turns {
             if let Some(gather) = unit
                 .gather
                 .as_ref()
-                .filter(|_| unit.top_action_kind() == Some(crate::gather::GATHER))
+                .filter(|_| asks && unit.top_action_kind() == Some(crate::gather::GATHER))
             {
                 // without a target or a point the work goes into the town-bell records first
                 // (FUN_141206a20) and the way back after the drop-off (FUN_141205ac0)
-                let unaimed = gather.target == -1
+                let unaimed = way_back
+                    && gather.target == -1
                     && gather.point[0] == NO_POINT
                     && gather.point[1] == NO_POINT;
                 let attributes = self.players[p].attributes.len();
@@ -1992,11 +1997,13 @@ impl Turns {
             if let Some(build) = unit
                 .build
                 .as_ref()
-                .filter(|_| unit.top_action_kind() == Some(crate::build::BUILD))
+                .filter(|_| asks && unit.top_action_kind() == Some(crate::build::BUILD))
             {
                 // a Build without a target or a point as the Gather's above
-                let unaimed =
-                    build.target == -1 && build.point[0] == NO_POINT && build.point[1] == NO_POINT;
+                let unaimed = way_back
+                    && build.target == -1
+                    && build.point[0] == NO_POINT
+                    && build.point[1] == NO_POINT;
                 let attributes = self.players[p].attributes.len();
                 let asked = crate::hunt::asked_drop_off(
                     build.task.resource,
@@ -2017,13 +2024,15 @@ impl Turns {
             let Some(hunt) = unit
                 .hunt
                 .as_ref()
-                .filter(|_| unit.top_action_kind() == Some(HUNT))
+                .filter(|_| asks && unit.top_action_kind() == Some(HUNT))
             else {
-                self.drop_off_unasked(p, idx)?;
+                self.drop_off_unasked(p, idx, way_back)?;
                 continue;
             };
-            let unaimed =
-                hunt.target == -1 && hunt.point[0] == NO_POINT && hunt.point[1] == NO_POINT;
+            let unaimed = way_back
+                && hunt.target == -1
+                && hunt.point[0] == NO_POINT
+                && hunt.point[1] == NO_POINT;
             let attributes = self.players[p].attributes.len();
             let asked = hunt.drop_off_asked(unit.life.attribute_type, attributes)?;
             if unaimed {
@@ -2067,8 +2076,9 @@ impl Turns {
     /// resource it holds from its class ([`Turns::table_drop_site`]); with none, nothing. A unit
     /// (type 70 and up) then works on it (slot 0x7e8 at (−1, −1, −1): no carried-resource test,
     /// the task filter 110 for a load of meat, wood or food, kinds 15, 1 and 0, else 5;
-    /// [`Turns::order_work`]) and queues its way back to work ([`Turns::queue_way_back`]).
-    fn drop_off_unasked(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+    /// [`Turns::order_work`]) and, for the drop-off 8 (`way_back`), queues its way back to work
+    /// ([`Turns::queue_way_back`]).
+    fn drop_off_unasked(&mut self, p: usize, idx: usize, way_back: bool) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[idx];
         let master = self.master_of(p, unit.life.master_id)?;
         let (kind, class, at) = (
@@ -2103,7 +2113,10 @@ impl Turns {
             notified: false,
         };
         self.order_work(p, idx, &work)?;
-        self.queue_way_back(p, idx)
+        if way_back {
+            self.queue_way_back(p, idx)?;
+        }
+        Ok(())
     }
 
     /// `FUN_1411671e0` as `UNIT_ORDER`'s drop-off calls it for the unit at (`p`, `idx`): over its
@@ -5653,7 +5666,7 @@ mod tests {
             ..crate::tasks::DropSite::default()
         };
         t.drop_sites = vec![tc.clone()];
-        assert!(t.drop_off_unasked(0, 0).is_ok());
+        assert!(t.drop_off_unasked(0, 0, true).is_ok());
         t.drop_sites = vec![
             tc,
             crate::tasks::DropSite {
@@ -5701,7 +5714,7 @@ mod tests {
         assert_eq!(t.table_drop_site(0, [10.0, 10.0], 0, 58), Some(503));
         assert_eq!(t.table_drop_site(0, [10.0, 10.0], 1, 58), None);
         let before = t.players[0].objects[0].clone();
-        assert!(t.drop_off_unasked(0, 0).is_ok());
+        assert!(t.drop_off_unasked(0, 0, true).is_ok());
         assert_eq!(t.players[0].objects[0], before);
     }
 
@@ -5862,6 +5875,24 @@ mod tests {
         t.players[0].objects[0].life.amount = 0.0;
         t.unit_order(0, &[10], 8).unwrap();
         assert_eq!(t.players[0].objects[0].build.map(|b| b.state), Some(6));
+        // 7 asks the Build as 8 does; 6 does not ask it: the search alone (no drop site in the
+        // table here, nothing to work on)
+        let mut t = world();
+        t.drop_sites = vec![crate::tasks::DropSite {
+            building: 68,
+            worker_class: 4,
+            resource_types: vec![1],
+            ..crate::tasks::DropSite::default()
+        }];
+        t.unit_order(0, &[10], 7).unwrap();
+        assert_eq!(
+            t.players[0].objects[0].build.map(|b| (b.state, b.site)),
+            Some((crate::build::DROP, 503))
+        );
+        let mut t = world();
+        t.unit_order(0, &[10], 6).unwrap();
+        assert_eq!(t.players[0].objects[0].build.map(|b| b.state), Some(6));
+        assert!(t.unit_order(0, &[10], 3).is_err());
     }
 
     /// The work command's Attack (`0x140a7f8c0`) of a soldier that may move, touching Gaia's
