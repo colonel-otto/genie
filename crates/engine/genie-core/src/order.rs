@@ -82,6 +82,8 @@ const MASTER_84: i16 = 84;
 const MASTER_1808: i16 = 1808;
 const MASTER_1893: i16 = 1893;
 const MASTER_1897: i16 = 1897;
+/// The range of GUARD's defend order (`DAT_142eb3634`, [`Turns::guard`]).
+const GUARD_RANGE: f32 = crate::image::order::GUARD_RANGE;
 /// A building's master type (`'P'`); types below 30 do not move.
 pub(crate) const BUILDING: u8 = 80;
 const MOVING: u8 = 30;
@@ -1262,6 +1264,77 @@ impl Turns {
         }
         for i in 0..loose.len() {
             self.follow_unit(&loose, i, followed)?;
+        }
+        Ok(())
+    }
+
+    /// GUARD (0x13) after its check and its unit AI resets (the caller's, [`crate::turn`]):
+    /// `FUN_140e67620`'s first 60 units (500 for a computer player) go, gone ones null
+    /// (`FUN_140e6b750`), to `FUN_14161dee0`: each unit the world holds leaves the unit group the
+    /// world holds of its link (`FUN_14102c160` with −1 and 0), and its unit AI takes the defend
+    /// order (`0x2bd`) on `target` at once (slot 0x30 -> slot 0x28 with Immediate set and inFront
+    /// clear, [`crate::unit_ai::UnitAi::take_order_now_with`], run outside the unit's update by
+    /// [`Turns::run_unit_ai`]): issued by the unit's owner, on the target with its master as the
+    /// target type and its owner, at the target's place, within [`GUARD_RANGE`], priority 100. Of
+    /// the record's last three fields the call writes only the first's low byte (1, the shown x:
+    /// its upper bytes are the stack's, not held); the stack slots it leaves as the other two hold
+    /// the place's decoded y (the shown y) and x, whose low byte becomes the ready flag.
+    pub(crate) fn guard(
+        &mut self,
+        player: usize,
+        units: &[i32],
+        target: i32,
+    ) -> Result<(), GenieError> {
+        let Some((tp, t)) = self.object(target) else {
+            return Ok(());
+        };
+        let tm = self.master_of(tp, t.life.master_id)?;
+        let [x, y, z] = t.position;
+        let order = crate::unit_ai::QueuedOrder {
+            issuer: -1,
+            order: crate::unit_ai::DEFEND_ORDER,
+            priority: 100,
+            target,
+            target_owner: tp as i32,
+            point: [x, y, z],
+            range: GUARD_RANGE,
+            shown: [f32::from_bits(1), y],
+            ready: x.to_bits() as u8 != 0,
+            target_type: i32::from(tm.id),
+        };
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        for &id in &units[..units.len().min(cap)] {
+            let Some(place) = self.place(id) else {
+                continue;
+            };
+            self.leave_group_of(id, -1)?;
+            let (p, idx) = match place {
+                Place::Live(p, i) => (p, i),
+                // only slot 0x180 puts an object to sleep, one of a type below 30 without a
+                // unit AI
+                Place::Sleeping(p, i) if self.players[p].sleeping[i].ai.is_none() => continue,
+                Place::Sleeping(..) => {
+                    return Err(GenieError::unsupported(
+                        "a GUARD of a sleeping object with a unit AI",
+                    ));
+                }
+            };
+            if self.players[p].objects[idx].ai.is_none() {
+                continue;
+            }
+            let order = crate::unit_ai::QueuedOrder {
+                issuer: p as i32,
+                ..order
+            };
+            self.run_unit_ai((p, idx), |ai, at, side, computer, rng| {
+                let mut fx = Vec::new();
+                ai.take_order_now_with(order, (at, side, computer), rng, &mut fx)?;
+                Ok(fx)
+            })?;
         }
         Ok(())
     }
@@ -5965,6 +6038,47 @@ mod tests {
             },
         );
         t
+    }
+
+    /// GUARD (`FUN_14161dee0`): each unit's AI takes the defend order on the target at once,
+    /// run outside its update: it stops, forgets its target and defends the target within 2.5
+    /// (the defend action, the target at its place), the order processed and gone. The ready
+    /// flag is the low byte of the target's x: a whole x leaves the order queued, unprocessed.
+    #[test]
+    fn a_guard_gives_its_units_the_defend_order_at_once() {
+        let mut t = followers();
+        t.players[2].objects[0].position = [20.3, 20.0, 0.0];
+        t.spatial.set_position(30, [20.3, 20.0, 0.0]);
+        t.guard(1, &[11], 30).unwrap();
+        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.current_action, ai.order_priority),
+            (crate::unit_ai::DEFEND_ORDER, 0x259, 100)
+        );
+        assert_eq!(
+            (ai.current_target, ai.defend_target, ai.desired_distance),
+            (30, 30, GUARD_RANGE)
+        );
+        assert_eq!(ai.target_point, [20.3, 20.0, 0.0]);
+        assert_eq!(ai.orders.len(), 0);
+        // a whole x: the order waits in the queue, the unit stopped and without a target
+        let mut t = followers();
+        t.guard(1, &[12], 30).unwrap();
+        let ai = t.players[1].objects[1].ai.as_ref().unwrap();
+        assert_eq!((ai.current_order, ai.current_target), (-1, -1));
+        assert_eq!(ai.orders.len(), 1);
+        assert_eq!(
+            (ai.orders[0].order, ai.orders[0].target, ai.orders[0].ready),
+            (crate::unit_ai::DEFEND_ORDER, 30, false)
+        );
+        assert_eq!(
+            (
+                ai.orders[0].issuer,
+                ai.orders[0].target_owner,
+                ai.orders[0].target_type
+            ),
+            (1, 2, 5)
+        );
     }
 
     /// `FUN_14161c920` for one unit: it follows the target (a `MoveTo` to it), its unit AI takes

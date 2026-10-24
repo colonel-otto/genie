@@ -3707,6 +3707,11 @@ impl Decoder {
                 let order = genie_core::turn::Order::Follow(c.target);
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
+            // GUARD: its units as FOLLOW's, the target at +8
+            Packet::Guard(c) => {
+                let order = genie_core::turn::Order::Guard(c.target);
+                (c.commp_id, c.num, c.ids, true, Some(order))
+            }
             // RESIGN: the comm player, the world player of the same number in these games
             Packet::Resign(c) => {
                 return Some(Command::Resign {

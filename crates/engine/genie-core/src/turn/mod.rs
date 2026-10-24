@@ -1188,11 +1188,13 @@ impl Turns {
     /// abilities and production of a full update, the unit AI's works, moves, waits and order on
     /// a target, the hit's write-backs, the takes and releases). Returns the result, the resume
     /// of a unit AI part the update stopped before, and the tail after an order on a target.
+    /// Without `full` (a unit AI run outside the object's update) the parts that only its update
+    /// runs (regeneration, passive abilities, production) do not.
     #[allow(clippy::too_many_lines)]
     fn finish_object(
         &mut self,
         (p, i, id): (usize, usize, i32),
-        dt: u32,
+        (dt, full): (u32, bool),
         out: ObjectOutputs,
         mut victim: Option<Victim>,
         mut result: Result<Step, GenieError>,
@@ -1377,13 +1379,14 @@ impl Turns {
         }
         // TRIBE_Combat_Object::update's regeneration after RGE_Combat_Object::update
         // (once, with the update's unit AI part)
-        if ai_resume.is_none() && result.is_ok() {
+        if full && ai_resume.is_none() && result.is_ok() {
             self.regenerate_object(id, seconds(dt));
         }
         // TRIBE_Combat_Object::update's passive abilities (FUN_1412072f0, once, with the
         // update's unit AI part) as the object's owner after its update; a removal
         // reward's command comes back as the recording's own
-        if ai_resume.is_none()
+        if full
+            && ai_resume.is_none()
             && let Ok(step) = &result
         {
             let (owner, leaves) = match step {
@@ -1406,6 +1409,7 @@ impl Turns {
         // (after the unit AI's rest, when an order on a target stopped it)
         let after_order = ordered.as_ref().and_then(|&(_, tail)| tail);
         if matches!(result, Ok(Step::Stay))
+            && full
             && ai_resume.is_none()
             && after_order.is_none()
             && let Err(e) = self.produce(p, i, seconds(dt))
@@ -1559,6 +1563,40 @@ impl Turns {
         (result, ai_resume, after_order)
     }
 
+    /// Runs `f` on the unit AI of object `i` of player `p` outside its update (a command's
+    /// immediate order, `FUN_140c55c90`): the object's step ([`Turns::run_object`]) whose only
+    /// part is the AI's run with what it reads of the world ([`Unit::run_ai`]), then what that
+    /// gathered ([`Turns::finish_object`] without the update's own parts).
+    ///
+    /// # Errors
+    ///
+    /// What the AI's run and its effects do not model.
+    pub(crate) fn run_unit_ai(
+        &mut self,
+        (p, i): (usize, usize),
+        f: impl FnOnce(
+            &mut crate::unit_ai::UnitAi,
+            &crate::unit_ai::Surroundings,
+            &mut dyn crate::unit_ai::UnitSide,
+            bool,
+            &mut crate::rng::Well512,
+        ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
+    ) -> Result<(), GenieError> {
+        let frame = self.player_frame();
+        let id = self.players[p].objects[i].id;
+        let (result, out, victim) =
+            self.run_object((p, i), (0, None), &frame, None, |unit, c, objects| {
+                unit.run_ai(c, objects, f).map(|()| Step::Stay)
+            });
+        let (result, ..) = self.finish_object((p, i, id), (0, false), out, victim, result);
+        match result? {
+            Step::Stay => Ok(()),
+            _ => Err(GenieError::unsupported(
+                "a unit AI run outside its update that takes the unit out of its list",
+            )),
+        }
+    }
+
     /// One world update of `dt` game milliseconds, with the commands recorded in it.
     ///
     /// # Panics
@@ -1629,7 +1667,7 @@ impl Turns {
                     |unit, c, objects| unit.update(c, objects),
                 );
                 let (result, ai_resume, after_order) =
-                    self.finish_object((p, i, id), dt, out, victim, result);
+                    self.finish_object((p, i, id), (dt, true), out, victim, result);
                 if matches!(result, Ok(Step::Stay)) && ai_resume.is_some() {
                     resume = ai_resume;
                     continue;

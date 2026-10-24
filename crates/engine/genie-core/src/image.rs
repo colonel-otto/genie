@@ -634,6 +634,8 @@ pub mod order {
     pub const GRID_AREA: f32 = f32::from_bits(0x3fc0_0000);
     /// 0.5
     pub const GRID_STEP: f32 = f32::from_bits(0x3f00_0000);
+    /// 2.5
+    pub const GUARD_RANGE: f32 = f32::from_bits(0x4020_0000);
     /// 20.0
     pub const SPLIT_PATH_REACH: f32 = f32::from_bits(0x41a0_0000);
     /// 0.20000000298023224
@@ -814,6 +816,8 @@ pub mod unit_ai {
     pub const DEFEND_GROWTH: f32 = f32::from_bits(0x40a0_0000);
     /// 25.0
     pub const DEFEND_LEASH: f32 = f32::from_bits(0x41c8_0000);
+    /// 1.0
+    pub const DEFEND_SLACK: f32 = f32::from_bits(0x3f80_0000);
     /// 10.0
     pub const ENEMY_SIGHTING_GAP: f32 = f32::from_bits(0x4120_0000);
     /// 1.0
@@ -840,6 +844,8 @@ pub mod unit_ai {
     pub const HARMLESS_RANGE: f32 = f32::from_bits(0x3f00_0000);
     /// 9.0
     pub const HELP_REACH: f32 = f32::from_bits(0x4110_0000);
+    /// -1.0
+    pub const INVALID_POINT: f32 = f32::from_bits(0xbf80_0000);
     /// 3.0
     pub const LION_SIGHT_DIVISOR: f32 = f32::from_bits(0x4040_0000);
     /// 0.5

@@ -351,6 +351,8 @@ pub enum Order {
     Move(MoveOrder),
     /// FOLLOW's target (`+0x8`).
     Follow(i32),
+    /// GUARD's target (`+0x8`).
+    Guard(i32),
 }
 
 /// RESEARCH's fields ([`Command::Research`] but the player).
@@ -658,11 +660,19 @@ impl Turns {
                         return;
                     }
                     &checked
+                } else if matches!(order, Some(Order::Guard(_))) {
+                    // GUARD's check (FUN_140e550d0, FOLLOW's twin)
+                    let Some(ids) = self.command_check(player, units) else {
+                        return;
+                    };
+                    checked = ids;
+                    &checked
                 } else {
                     units
                 };
-                // FOLLOW (FUN_140e66a60) of a target the world lacks does nothing
-                if let Some(Order::Follow(target)) = order
+                // FOLLOW (FUN_140e66a60) and GUARD (FUN_140e67620) of a target the world lacks do
+                // nothing
+                if let Some(Order::Follow(target) | Order::Guard(target)) = order
                     && self.object(target).is_none()
                 {
                     return;
@@ -673,7 +683,7 @@ impl Turns {
                 let human = match order {
                     Some(Order::Interact(o)) => o.human,
                     Some(Order::Move(o)) => o.human,
-                    Some(Order::Follow(_)) => units.iter().any(|&id| {
+                    Some(Order::Follow(_) | Order::Guard(_)) => units.iter().any(|&id| {
                         self.object(id)
                             .is_some_and(|(p, _)| !self.players[p].computer)
                     }),
@@ -687,6 +697,7 @@ impl Turns {
                     Some(Order::Interact(o)) => self.interact(player, units, &o),
                     Some(Order::Move(o)) => self.move_order(player, units, &o),
                     Some(Order::Follow(target)) => self.follow(player, units, target),
+                    Some(Order::Guard(target)) => self.guard(player, units, target),
                     None => Err(GenieError::unsupported("an order moves its units")),
                 };
                 if let Err(e) = result {

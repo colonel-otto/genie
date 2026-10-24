@@ -1025,6 +1025,26 @@ impl WorldPicker<'_> {
         Ok(crate::damage::shown_range(&v, &shown) <= HARMLESS_RANGE)
     }
 
+    /// Slot 0x78 of object `target`'s unit AI (`FUN_140c48610`): of its attackers in their order,
+    /// those the world holds, the one with the least footprint gap to it (`FUN_14118f680`,
+    /// [`crate::movement::footprint_gap`]; the first of a tie, `COMISS`: a NaN gap takes none
+    /// over), −1 for none; None for a target the world does not hold or without a unit AI.
+    pub(in crate::turn) fn nearest_attacker_of(&self, target: i32) -> Option<i32> {
+        let (_, t, _, tm) = self.held(target)?;
+        let ai = t.ai.as_ref()?;
+        let mut best: Option<(f32, i32)> = None;
+        for &id in &ai.attackers {
+            let Some((_, a, _, am)) = self.held(id) else {
+                continue;
+            };
+            let gap = crate::movement::footprint_gap(t.position, tm.radius, a.position, am.radius);
+            if best.is_none_or(|(least, _)| gap < least) {
+                best = Some((gap, id));
+            }
+        }
+        Some(best.map_or(-1, |(_, id)| id))
+    }
+
     /// The object `id` as the attack tests read it, and whether it moves (slot 0x208 above 0).
     pub(in crate::turn) fn target(
         &self,
@@ -1471,6 +1491,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
         self.picker(None).harmless(attacker)
+    }
+
+    fn defended_attacker(&mut self, target: i32) -> Result<Option<i32>, GenieError> {
+        Ok(self.picker(None).nearest_attacker_of(target))
     }
 
     fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
@@ -2396,6 +2420,106 @@ mod tests {
             mode_680: 0,
         };
         picker.harmless(50).unwrap()
+    }
+
+    /// Slot 0x78 of the ward's unit AI: of its attackers the world holds, the nearest by the
+    /// footprint gap, the first of a tie; −1 for none, None for a ward without a unit AI.
+    #[test]
+    fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
+        let master = |id, radius| crate::masters::Master {
+            id,
+            kind: 70,
+            radius,
+            ..crate::masters::Master::default()
+        };
+        let unit = |id, x, master_id, ai: Option<UnitAi>| Unit {
+            id,
+            position: [x, 10.0, 0.0],
+            ai,
+            life: crate::lifecycle::Lifecycle {
+                master_id,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let attacked = |attackers| UnitAi {
+            attackers,
+            ..UnitAi::default()
+        };
+        let me = unit(123, 10.0, 4, None);
+        let others = [
+            unit(20, 12.0, 4, Some(attacked(vec![50, 51, 52, 53]))),
+            unit(21, 12.0, 4, None),
+            unit(22, 12.0, 4, Some(attacked(vec![99]))),
+        ];
+        let enemy = Player {
+            // 50 at a gap of 4.4, 51 of 2.4 (its radius 1), 53 of 2.4 too
+            objects: vec![
+                unit(50, 17.0, 5, None),
+                unit(51, 16.0, 6, None),
+                unit(53, 16.0, 6, None),
+            ],
+            ..Player::default()
+        };
+        let (gaia, after) = (Player::default(), [enemy]);
+        let before = [gaia];
+        let every = [
+            Masters::default(),
+            Masters::new([master(4, [0.3, 0.3])]),
+            Masters::new([master(5, [0.3, 0.3]), master(6, [1.3, 0.3])]),
+        ];
+        let spatial = Spatial::new([120, 120]);
+        let attacker = crate::unit_ai::Attacker {
+            ai_type: 13,
+            player: 1,
+            computer: false,
+            state: 2,
+            held: -1,
+            top_action: None,
+            master: 4,
+            kind: 70,
+            class: 6,
+            attack_priority: 0,
+            missile: -1,
+            range: 0.0,
+            min_range: 0.0,
+            charge_type: 0,
+            area_effect: 0.0,
+            blast_level: 0,
+            los: 4.0,
+            position: [10.0, 10.0, 0.0],
+            radius: [0.3, 0.3],
+            speed: 1.0,
+            scenario: false,
+            firepower: 0.0,
+            capture: 0,
+        };
+        let picker = WorldPicker {
+            attacker: &attacker,
+            seeker: None,
+            me: 123,
+            player: 1,
+            others: &others,
+            foreign: Foreign {
+                before: &before,
+                after: &after,
+                left: None,
+            },
+            spatial: &spatial,
+            every: &every,
+            restriction: -1,
+            unit: &me,
+            attributes: &[],
+            relations: &[0, 0, 0],
+            ai_settings: crate::turn::player::AiSettings::default(),
+            now: 0,
+            mode_680: 0,
+        };
+        assert_eq!(picker.nearest_attacker_of(20), Some(51));
+        assert_eq!(picker.nearest_attacker_of(21), None);
+        assert_eq!(picker.nearest_attacker_of(22), Some(-1));
+        assert_eq!(picker.nearest_attacker_of(77), None);
     }
 
     #[test]

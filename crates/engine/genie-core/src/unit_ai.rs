@@ -1705,6 +1705,20 @@ pub trait UnitSide {
         ))
     }
 
+    /// The attacker of object `target` nearest to it (its unit AI's slot 0x78, `FUN_140c48610`:
+    /// of its attackers in their order, those the world holds, the least footprint gap,
+    /// `FUN_14118f680`, the first of a tie), −1 for none; None when `target` holds no unit AI
+    /// ([`UnitAi::defend_misc`]).
+    ///
+    /// # Errors
+    ///
+    /// A side without the world.
+    fn defended_attacker(&mut self, _target: i32) -> Result<Option<i32>, GenieError> {
+        Err(GenieError::missing_data(
+            "a defended unit's attackers without the world",
+        ))
+    }
+
     /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) as `search` asks it:
     /// what it found, None for nothing.
     ///
@@ -2462,9 +2476,13 @@ pub const FOLLOW_ORDER: i32 = 0x2c8;
 /// The follow action value (`0x264`).
 pub const FOLLOW_ACTION: i32 = 0x264;
 /// The defend order (`0x2bd`, "I have a defend order for Unit #%d" in slot 73).
-const DEFEND_ORDER: i32 = 0x2bd;
+pub const DEFEND_ORDER: i32 = 0x2bd;
 /// The defend's action value (`0x259`, slots 0x170 and 0x178).
 const DEFEND_ACTION: i32 = 0x259;
+/// The target point's x that marks it unset (`DAT_14330ec20`, −1), which the defend order fills.
+const INVALID_POINT: f32 = crate::image::unit_ai::INVALID_POINT;
+/// What the defend order adds to its desired distance before it follows (`DAT_14330eb8c`, 1).
+const DEFEND_SLACK: f32 = crate::image::unit_ai::DEFEND_SLACK;
 /// The master whose unit takes no defend order (slot 0x230's case 0x2bd: raw `0x611c`).
 const DEFENDLESS_MASTER: i16 = 128;
 /// The run away order (`0x2c3`, "I have a runAway order").
@@ -7675,7 +7693,7 @@ impl UnitAi {
                 position: t.position,
                 ..Seen::default()
             };
-            self.move_to_object(target, seen, range, fx);
+            self.move_to_object(target, (seen.state, seen.class, seen.position), range, fx);
         }
         Ok(true)
     }
@@ -7940,6 +7958,29 @@ impl UnitAi {
         self.order_now(order, None, Some(place), None, ai, fx)
     }
 
+    /// Slot 0x28 (`FUN_140c55c90`) with Immediate set and inFront clear, from outside the unit
+    /// AI's update with what it reads of its unit and the world (`world`: the surroundings, the
+    /// side, the owner's computer flag): for a unit in state 2 or below and an order (not −1),
+    /// [`UnitAi::order_now`] without keeping the current order, the order run at once with
+    /// `world` ([`UnitAi::process_order`]). `ai` is the AI stream.
+    ///
+    /// # Errors
+    ///
+    /// What the order's run does not model.
+    pub fn take_order_now_with(
+        &mut self,
+        order: QueuedOrder,
+        (at, side, computer): (&Surroundings, &mut dyn UnitSide, bool),
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        if 2 < at.state || order.order == -1 {
+            return Ok(());
+        }
+        let place = ([at.position[0], at.position[1]], at.class);
+        self.order_now(order, None, Some(place), Some((at, side, computer)), ai, fx)
+    }
+
     /// The idle part of the full update (`0x140c66b10` after slot 73): a unit without an action
     /// value (and without a target or not busy) runs slot 72 once its idle timer passes its
     /// timeout, unless it is a busy unit of class 20 or its group ([`group_lets_idle`]) holds it;
@@ -8074,8 +8115,8 @@ impl UnitAi {
     }
 
     /// Slot 73 (`0x140c567c0`, processMisc). Its order part first, by the order (an action's
-    /// value plus 100 without one): the follow order's ([`UnitAi::follow`]); the defend order's
-    /// is not modelled. Then the leash checks (not on the orders 0x2c7, 0x2dd and 0x323, nor in a
+    /// value plus 100 without one): the follow order's ([`UnitAi::follow`]) and the defend
+    /// order's ([`UnitAi::defend_misc`]). Then the leash checks (not on the orders 0x2c7, 0x2dd and 0x323, nor in a
     /// group that patrols, [`GroupState::patrol`]): stance 1's (Defend) stops a unit more than 5
     /// tiles (`DEFEND_LEASH`, squared) from its state position, forgets its target and walks
     /// back ([`UnitAi::walk_back`]), then goes on. Stance 2's (stand ground) stops a unit with an
@@ -8107,8 +8148,8 @@ impl UnitAi {
             (-1, action) => action + 100,
             (order, _) => order,
         };
-        if order == DEFEND_ORDER {
-            return Err(GenieError::unsupported("a defend order's processMisc"));
+        if order == DEFEND_ORDER && self.defend_misc(at, computer, ai, side, fx)? {
+            return Ok(false);
         }
         if order == FOLLOW_ORDER && self.follow(at, fx)? {
             return Ok(false);
@@ -8331,6 +8372,98 @@ impl UnitAi {
         Ok(())
     }
 
+    /// processMisc's defend order (`0x140c567c0`, "I have a defend order for Unit #%d"). A defend
+    /// target (`+0x60`) the world does not hold, or not the owner's own or an ally's
+    /// (`FUN_141663d90` with the ally flag), ends it ("Unit #%d is invalid, stopping."); one held,
+    /// it first gives a target point at (−1, x) its place (`UCOMISS`: not a NaN) and ends the
+    /// order once dead (above state 2) but for Gaia's ("Unit #%d is dead, stopping."). The end:
+    /// the defend target and the target go (`FUN_140c5e1e0`), the current action stops (slot 0xb0
+    /// with 1), a patrol order leaves its timers ([`UnitAi::leave_patrol_timers`]) and the order
+    /// is −1. Else, but on the attack action (600), the evacuation (`0x2bf`) or a move toward the
+    /// defend target (`0x262` with the unit's top action's target, slot 0x280, the defend
+    /// target): with a defend target the target point takes its place (x, y, z) and the distance
+    /// is the footprints' squared gap (`FUN_14118f8c0`), without one the squared gap from the
+    /// unit's footprint to the point (`FUN_140a847c0`); beyond the desired distance plus 1,
+    /// squared (`ADDSS`, `MULSS`, `COMISS` with `JBE`: a NaN stays), the unit moves to the
+    /// target (slot 0x138, [`UnitAi::move_to_object`], within the desired distance) or to the
+    /// point (slot 0x130 forced, running, within the desired distance). Within it, a defend
+    /// target with a unit AI names the attacker of its nearest to it (its AI's slot 0x78,
+    /// [`UnitSide::defended_attacker`]), which the unit attacks (slot 0xb8 forced, not any:
+    /// [`UnitAi::attack_slot`]); with none, its processIdle (slot 0x240 with 0,
+    /// [`UnitAi::process_idle`]) and an action it produced end slot 73. True when slot 73 ends
+    /// here (10, or 9 after the order ended).
+    fn defend_misc(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, GenieError> {
+        let target = self.defend_target;
+        let mut defended = None;
+        if target != -1 {
+            let held = Self::world_object(target, at, side)?.filter(|t| t.allied);
+            let ends = match held {
+                None => true,
+                Some(t) => {
+                    if self.target_point[0] == INVALID_POINT {
+                        self.target_point[0] = t.position[0];
+                        self.target_point[1] = t.position[1];
+                    }
+                    2 < t.state && t.owner != 0
+                }
+            };
+            if ends {
+                self.defend_target = -1;
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+                self.leave_patrol_timers(ai);
+                self.current_order = -1;
+                return Ok(true);
+            }
+            defended = held;
+        }
+        let toward_it = self.current_action == MOVE_ACTION
+            && at.top_target.map_or(-1, |t| t.id) == self.defend_target;
+        if matches!(self.current_action, ATTACK_ACTION | MOVE_ASIDE_ACTION) || toward_it {
+            return Ok(false);
+        }
+        let gap = if let Some(t) = defended {
+            self.target_point = t.position;
+            t.gap_squared
+        } else {
+            let [x, y, _] = self.target_point;
+            point_gap_squared([x, y], at.position, at.size)
+        };
+        let reach = self.desired_distance + DEFEND_SLACK;
+        if reach * reach < gap {
+            if let Some(t) = defended {
+                let range = self.desired_distance;
+                self.move_to_object(target, (t.state, t.class, t.position), range, fx);
+            } else {
+                let m = self.move_to(AiMove {
+                    point: self.target_point,
+                    range: self.desired_distance,
+                    force: true,
+                    walk: false,
+                });
+                fx.extend(m.map(Effect::Move));
+            }
+            return Ok(true);
+        }
+        if defended.is_some()
+            && let Some(attacker) = side.defended_attacker(target)?
+        {
+            if attacker != -1 {
+                let _ = self.attack_slot(attacker, true, at, side, fx)?;
+                return Ok(true);
+            }
+            return self.process_idle(at, computer, ai, side, fx);
+        }
+        Ok(false)
+    }
+
     /// processMisc's follow order (`0x140c567c0`, "I have a follow order for Unit #%d"): a
     /// target gone or dying (above state 2) or on a tile the unit's player does not see now ends
     /// it ("Target is gone or dying, stopping.", "He's NOT on a visible tile, stopping."): the
@@ -8374,7 +8507,8 @@ impl UnitAi {
         );
         let range = self.desired_distance;
         if range * range < gap {
-            self.move_to_object(self.current_target, target, range, fx);
+            let held = (target.state, target.class, target.position);
+            self.move_to_object(self.current_target, held, range, fx);
             return Ok(true);
         }
         Ok(false)
@@ -8386,14 +8520,20 @@ impl UnitAi {
     /// and point (`FUN_140c64c10`; the target and class it had become the last). The routine's
     /// branch for a target the world does not hold after slot 0x348 cannot run: slot 0x348
     /// (`FUN_141086440`) answers 0 for such a target, and the routine then changes nothing.
-    fn move_to_object(&mut self, id: i32, target: Seen, range: f32, fx: &mut Vec<Effect>) {
+    fn move_to_object(
+        &mut self,
+        id: i32,
+        (state, class, position): (u8, i16, [f32; 3]),
+        range: f32,
+        fx: &mut Vec<Effect>,
+    ) {
         fx.push(Effect::MoveToObject {
             target: id,
-            state: target.state,
+            state,
             range,
         });
         self.set_action(MOVE_ACTION);
-        self.target_at(id, Some(i32::from(target.class)), target.position);
+        self.target_at(id, Some(i32::from(class)), position);
     }
 
     /// The boar's end of its full update: without a target it is no longer furious.
@@ -9664,6 +9804,7 @@ mod tests {
         under_attack: Vec<bool>,
         patrol: Option<(PatrolPath, i32)>,
         harmless: Vec<i32>,
+        defended: Option<i32>,
     }
 
     impl UnitSide for DamageSide {
@@ -9746,6 +9887,9 @@ mod tests {
         }
         fn harmless(&mut self, attacker: i32) -> Result<bool, GenieError> {
             Ok(self.harmless.contains(&attacker))
+        }
+        fn defended_attacker(&mut self, _: i32) -> Result<Option<i32>, GenieError> {
+            Ok(self.defended)
         }
         fn can_stand(&mut self, _: [f32; 2]) -> Result<bool, GenieError> {
             Ok(true)
@@ -9967,6 +10111,168 @@ mod tests {
                 &mut Vec::new()
             )
             .is_err()
+        );
+    }
+
+    /// A friend (player 1, allied) at (11, 10) the soldier guards, `gap_squared` from it.
+    fn ward(gap_squared: f32) -> UnitSeen {
+        UnitSeen {
+            id: 20,
+            class: 6,
+            owner: 1,
+            state: 2,
+            position: [11.0, 10.0, 0.0],
+            gap_squared,
+            kind: 70,
+            allied: true,
+            ..UnitSeen::default()
+        }
+    }
+
+    /// A soldier on the defend order of `defend_target` within 2.5.
+    fn guarding(defend_target: i32) -> UnitAi {
+        UnitAi {
+            current_order: DEFEND_ORDER,
+            current_action: DEFEND_ACTION,
+            current_target: defend_target,
+            defend_target,
+            desired_distance: 2.5,
+            target_point: [11.0, 10.0, 0.0],
+            ..idle(13)
+        }
+    }
+
+    /// processMisc's defend order: a ward the world does not hold, another player's or a dead
+    /// player's ward ends it (the target goes, the action stops, the order is −1); Gaia's dead
+    /// ward does not; an unset target point takes the ward's place.
+    #[test]
+    fn a_defend_order_ends_with_its_ward_gone_foreign_or_dead() {
+        let at = soldier_at();
+        let foreign = UnitSeen {
+            allied: false,
+            ..ward(1.0)
+        };
+        let dead = UnitSeen {
+            state: 3,
+            ..ward(1.0)
+        };
+        for units in [vec![], vec![foreign], vec![dead]] {
+            let mut u = guarding(20);
+            let mut side = DamageSide {
+                units,
+                ..DamageSide::default()
+            };
+            let mut fx = Vec::new();
+            assert_eq!(
+                u.defend_misc(&at, false, &mut rng(), &mut side, &mut fx),
+                Ok(true)
+            );
+            assert_eq!(
+                (u.defend_target, u.current_target, u.current_order),
+                (-1, -1, -1)
+            );
+            assert!(fx.contains(&Effect::Stop), "{fx:?}");
+        }
+        let gaia = UnitSeen { owner: 0, ..dead };
+        let mut u = guarding(20);
+        let mut side = DamageSide {
+            units: vec![gaia],
+            ..DamageSide::default()
+        };
+        assert_eq!(
+            u.defend_misc(&at, false, &mut rng(), &mut side, &mut Vec::new()),
+            Ok(false)
+        );
+        assert_eq!(u.defend_target, 20);
+        // on the attack action only the unset point takes the ward's place
+        let mut u = UnitAi {
+            current_action: ATTACK_ACTION,
+            target_point: [-1.0, -1.0, 3.0],
+            ..guarding(20)
+        };
+        let mut side = DamageSide {
+            units: vec![ward(1.0)],
+            ..DamageSide::default()
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.defend_misc(&at, false, &mut rng(), &mut side, &mut fx),
+            Ok(false)
+        );
+        assert_eq!((u.target_point, fx), ([11.0, 10.0, 3.0], Vec::new()));
+    }
+
+    /// processMisc's defend order beyond the desired distance plus 1: the soldier walks to its
+    /// ward (slot 0x138) or runs to the point it defends (slot 0x130, forced); within it, it
+    /// attacks the ward's nearest attacker (slot 0xb8, forced), or with none its processIdle runs.
+    #[test]
+    fn a_defend_order_follows_its_ward_and_attacks_its_attackers() {
+        let at = soldier_at();
+        let mut u = guarding(20);
+        let mut side = DamageSide {
+            units: vec![ward(100.0)],
+            ..DamageSide::default()
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.defend_misc(&at, false, &mut rng(), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::MoveToObject {
+                target: 20,
+                state: 2,
+                range: 2.5
+            }]
+        );
+        assert_eq!((u.current_action, u.current_target), (MOVE_ACTION, 20));
+        // (2.5 + 1)^2 is 12.25: within it the ward's nearest attacker is attacked
+        let mut u = guarding(20);
+        let mut side = DamageSide {
+            units: vec![ward(12.25), foe(40, 6)],
+            defended: Some(40),
+            ..DamageSide::default()
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.defend_misc(&at, false, &mut rng(), &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(side.attacks, vec![40]);
+        // a point to defend, beyond reach: the forced run to it
+        let mut u = UnitAi {
+            target_point: [20.0, 10.0, 0.0],
+            ..guarding(-1)
+        };
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.defend_misc(&at, false, &mut rng(), &mut DamageSide::default(), &mut fx),
+            Ok(true)
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Move(AiMove {
+                point: [20.0, 10.0, 0.0],
+                range: 2.5,
+                force: true,
+                walk: false
+            })]
+        );
+        // within reach of its point, nothing
+        let mut u = UnitAi {
+            target_point: [12.0, 10.0, 0.0],
+            ..guarding(-1)
+        };
+        assert_eq!(
+            u.defend_misc(
+                &at,
+                false,
+                &mut rng(),
+                &mut DamageSide::default(),
+                &mut Vec::new()
+            ),
+            Ok(false)
         );
     }
 
