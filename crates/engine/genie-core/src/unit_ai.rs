@@ -97,6 +97,10 @@ pub const MOVE_ASIDE_ACTION: i32 = 0x2bf;
 /// `0x20f`: a missile's warning, which a shot whose blast does not spare friends sends its
 /// target when a computer player owns it (`FUN_141081020`).
 const MISSILE_WARNING: i32 = 0x20f;
+/// The damage case's unit too slow to run away (`DAT_142eb0c60`, [`UnitAi::damaged`]).
+const STILL: f32 = crate::image::unit_ai::STILL;
+/// The damage case's kill time of an object the unit cannot harm (`DAT_142efe41c`, 25000).
+const NEVER_KILLED: f32 = crate::image::unit_ai::NEVER_KILLED;
 /// The action value of a unit moving off a footprint with a group.
 pub const GROUP_ASIDE_ACTION: i32 = 0x2c0;
 /// The order on a foundation a villager sent off its footprint takes up again (slot 0x108,
@@ -434,6 +438,10 @@ pub struct UnitAi {
     /// not path to, each with the world time until which it ignores them (`FUN_140c42320`); the
     /// full update lets the expired go ([`UnitAi::expire_retries`]).
     pub retries: Vec<(i32, u32)>,
+    /// `+0x1d0`, `mBestUnitToAttackThisUpdate`: what the damage notify's `bestUnitToAttack`
+    /// found this update ([`UnitAi::damaged`]), −1 before one ran (the constructor's, and the
+    /// full update's start); the update's later damage notifies take it.
+    pub best_this_update: i32,
 }
 
 /// An order on a target in a unit AI's history (`FUN_140c42080`, a node of `+0x78`'s list).
@@ -547,6 +555,12 @@ pub const fn civilian_kind(class: i32) -> i8 {
 pub const SOLDIER_CARED: [i32; 39] = [
     0, 3, 4, 26, 24, 6, 35, 25, 17, 12, 23, 36, 28, 18, 13, 27, 22, 20, 2, 21, 44, 46, 43, 45, 47,
     50, 51, 52, 53, 54, 55, 39, 56, 57, 19, 59, 49, 42, 61,
+];
+
+/// A computer player's soldier's classes: [`SOLDIER_CARED`], then 10 (`FUN_140c12300`).
+pub const SOLDIER_CARED_COMPUTER: [i32; 40] = [
+    0, 3, 4, 26, 24, 6, 35, 25, 17, 12, 23, 36, 28, 18, 13, 27, 22, 20, 2, 21, 44, 46, 43, 45, 47,
+    50, 51, 52, 53, 54, 55, 39, 56, 57, 19, 59, 49, 42, 61, 10,
 ];
 
 /// The classes a building cares about (`+0x190`, `TribeBuildingUnitAIModule`'s constructor
@@ -1630,6 +1644,16 @@ pub trait UnitSide {
         ))
     }
 
+    /// What a computer player's unit weighs of object `other` (its current target or its
+    /// attacker) on a damage notify ([`Duel`], [`UnitAi::damaged`]).
+    ///
+    /// # Errors
+    ///
+    /// An object the side does not hold, and a side without the world.
+    fn duel(&mut self, _other: i32) -> Result<Duel, GenieError> {
+        Err(GenieError::missing_data("a duel without the world"))
+    }
+
     /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) as `search` asks it:
     /// what it found, None for nothing.
     ///
@@ -2075,6 +2099,14 @@ pub struct Surroundings {
     /// Its owner's `chance_for_archers_to_maintain_distance` (`player+0xe11`, saved): a computer
     /// player's siege unit backs up after a shot on a draw at least this.
     pub keep_distance_chance: u8,
+    /// Its owner's `disableTowerPriority` (`player+0x620`, GAME 0xb's setting 0xe): a computer
+    /// player's unit but a siege weapon, unpacked trebuchet or warship ignores a tower's damage
+    /// ([`UnitAi::damaged`]).
+    pub disable_tower_priority: bool,
+    /// An object inside it (`+0x2f8`) belongs to another owner that is a computer player: a
+    /// building's or tower's damage alert (0x201) reaches that owner's AI too (its slot 0x2e8,
+    /// then slot 0x3c8, [`alert_owner`]).
+    pub guest_computer: bool,
 }
 
 /// The target of a unit's top action as its unit AI reads it ([`Surroundings::top_target`]).
@@ -2157,6 +2189,26 @@ pub struct UnitSeen {
     pub kind: u8,
     /// An annex's main building (`+0xbb8`).
     pub main: Option<i32>,
+    /// The unit's owner counts its owner as its own or an ally (`FUN_141663d90` with the ally
+    /// flag, [`crate::tasks::allied`]).
+    pub allied: bool,
+}
+
+/// What a computer player's unit weighs of an object on a damage notify ([`UnitAi::damaged`]):
+/// its current target's or its attacker's threat and how long it would take to kill.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Duel {
+    /// The object may convert the unit (its unit AI's slot 0x1b8 with the unit and 1: a priest's
+    /// [`can_convert`], any other's 0).
+    pub converts: bool,
+    /// Its attacks' sum (slot 0x228, `FUN_141084070`: its master's attacks above 0).
+    pub attacks: f32,
+    /// What it deals the unit per hit (the unit's slot 0x220 with it, `FUN_141083f20`).
+    pub harms: f32,
+    /// What the unit deals it per hit (its slot 0x220 with the unit).
+    pub harmed: f32,
+    /// Its hit points (`+0x278`).
+    pub hp: f32,
 }
 
 /// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`); as
@@ -2444,22 +2496,38 @@ struct RetargetSearch {
     work_state: bool,
 }
 
-/// The classes a unit AI of factory type `ai_type` cares about (its constructor's `+0x190`
-/// list), which its searches read: the soldier's ([`SOLDIER_CARED`]) and the siege unit's
-/// ([`SIEGE_CARED`]).
+/// The classes a unit AI of factory type `ai_type` cares about (its constructor's `+0x190` list),
+/// which its searches read: the trade AI's by its unit's `class` (a boat's or a cart's), the
+/// soldier's with 10 for a computer player's (`FUN_140c12300` asks the owner when the AI is made;
+/// taken as its owner now).
 ///
 /// # Errors
 ///
 /// Another type, whose list is not held here.
-const fn cared_classes(ai_type: u32) -> Result<&'static [i32], GenieError> {
+const fn cared_classes(
+    ai_type: u32,
+    class: i16,
+    computer: bool,
+) -> Result<&'static [i32], GenieError> {
     match ai_type {
-        13 => Ok(&SOLDIER_CARED),
+        CIVILIAN => Ok(&CIVILIAN_CARED),
+        BUILDING_AI => Ok(&BUILDING_CARED),
+        TRANSPORT_AI => Ok(&TRANSPORT_CARED),
+        SIEGE_TOWER_AI => Ok(&SIEGE_TOWER_CARED),
+        TRADE_AI if class == TRADE_BOAT_CLASS => Ok(&TRADE_SHIP_CARED),
+        TRADE_AI => Ok(&TRADE_CART_CARED),
+        FISHING_AI => Ok(&FISHING_CARED),
+        ARTIFACT_AI => Ok(&ARTIFACT_CARED),
+        TOWER_AI => Ok(&TOWER_CARED),
+        SOLDIER_AI if computer => Ok(&SOLDIER_CARED_COMPUTER),
+        SOLDIER_AI => Ok(&SOLDIER_CARED),
         SIEGE_AI => Ok(&SIEGE_CARED),
         _ => Err(GenieError::unsupported(
             "a retarget search of a unit-AI type whose classes are not held",
         )),
     }
 }
+
 /// The action values that need a live target (the target block's mask `0x4002080d` over the
 /// value − `0x259`).
 const LIVE_TARGET_ACTIONS: [i32; 6] = [0x259, 0x25b, 0x25c, 0x264, 0x26a, 0x277];
@@ -2864,6 +2932,7 @@ impl UnitAi {
             attackers: Vec::new(),
             order_history: Vec::new(),
             retries: Vec::new(),
+            best_this_update: -1,
         }
     }
 
@@ -3936,8 +4005,9 @@ impl UnitAi {
     /// applies in order. A unit in a group ([`Surroundings::group`]) keeps its state position
     /// while the group has a command, runs its order queue only while the group is idle, its idle
     /// check only while the group is idle and the unit still, and takes the patrol branches while
-    /// the group patrols. The retarget entries and the attackers list (the save's, empty in every
-    /// unit probed) are not modelled.
+    /// the group patrols. Its start lets the expired retarget entries go
+    /// ([`UnitAi::expire_retries`]) and forgets the update's best unit to attack
+    /// ([`UnitAi::best_this_update`]).
     pub fn update(
         &mut self,
         dt: u32,
@@ -3949,6 +4019,7 @@ impl UnitAi {
     ) -> Result<Vec<Effect>, GenieError> {
         let retarget = retarget_kind(self.ai_type)?;
         self.commanded = false;
+        self.best_this_update = -1;
         // the full update's start: the time since the last enemy sighting grows by the world's dt
         self.time_since_enemy += at.dt_seconds;
         let mut fx = Vec::new();
@@ -4863,7 +4934,7 @@ impl UnitAi {
         if side.seen_unit(attacker)?.is_none() {
             return Ok(());
         }
-        let (classes, radius) = self.help_search(at)?;
+        let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
             at: [at.position[0], at.position[1]],
             radius,
@@ -4876,33 +4947,26 @@ impl UnitAi {
         side.call_for_help(attacker)
     }
 
-    /// What the search of a unit AI that calls for help covers (`FUN_140c63e20`): the classes its
-    /// constructor gave it (`+0x190`: the villager's, the building's, the transport ship's, the
-    /// siege tower's, the trade boat's (class 2) or cart's, the fishing ship's), within its search
-    /// radius, the line of sight plus 1 if that is farther, plus its growth (`+0x1e8`,
-    /// `FUN_140c2e080`'s fourth argument: 7 for the villager and the fishing ship, 0 for the
-    /// others).
+    /// What a search of the unit AI covers (`FUN_140c63e20`): the classes its constructor gave
+    /// it ([`cared_classes`]), within its search radius, the line of sight plus 1 if that is
+    /// farther, plus its growth (`+0x1e8`, `FUN_140c2e080`'s fourth argument: 7 for the villager
+    /// and the fishing ship, 0 for the others).
     ///
     /// # Errors
     ///
-    /// A unit AI type that never calls for help.
-    fn help_search(&self, at: &Surroundings) -> Result<(&'static [i32], f32), GenieError> {
-        let grown = civilian_search_radius(at.los, at.search_radius);
-        let plain = search_radius(at.los, at.search_radius);
-        Ok(match self.ai_type {
-            CIVILIAN => (&CIVILIAN_CARED, grown),
-            BUILDING_AI => (&BUILDING_CARED, plain),
-            TRANSPORT_AI => (&TRANSPORT_CARED, plain),
-            SIEGE_TOWER_AI => (&SIEGE_TOWER_CARED, plain),
-            TRADE_AI if at.class == TRADE_BOAT_CLASS => (&TRADE_SHIP_CARED, plain),
-            TRADE_AI => (&TRADE_CART_CARED, plain),
-            FISHING_AI => (&FISHING_CARED, grown),
-            _ => {
-                return Err(GenieError::unreachable(
-                    "a call for help of a unit AI type that never calls",
-                ));
-            }
-        })
+    /// A unit AI type whose classes are not held.
+    fn search_area(
+        &self,
+        at: &Surroundings,
+        computer: bool,
+    ) -> Result<(&'static [i32], f32), GenieError> {
+        let classes = cared_classes(self.ai_type, at.class, computer)?;
+        let radius = if matches!(self.ai_type, CIVILIAN | FISHING_AI) {
+            civilian_search_radius(at.los, at.search_radius)
+        } else {
+            search_radius(at.los, at.search_radius)
+        };
+        Ok((classes, radius))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -5242,6 +5306,9 @@ impl UnitAi {
     ) -> Result<u32, GenieError> {
         let new = self.attackers.binary_search(&n.caller).is_err();
         alert_owner(computer)?;
+        if n.p[1] >= 1 {
+            alert_owner(at.guest_computer)?;
+        }
         if n.p[1] >= 1 && new && self.current_target != n.caller {
             self.ask_for_help(n.caller, at, computer, side)?;
         }
@@ -5798,14 +5865,16 @@ impl UnitAi {
                 // player's alert list and the old pather's hulled-area reset, not held; a
                 // computer player's AI hears it), the notifies end and it gives up. Alive, the
                 // other owners of the units inside it hear 0x201 and the base handler's damage
-                // case follows, which is not modelled
-                DAMAGED if n.p[1] < 1 && !computer => {
+                // case follows
+                DAMAGED if n.p[1] < 1 => {
+                    alert_owner(computer)?;
                     self.end_notifies(time, at, fx)?;
                     Ok(DEAD)
                 }
-                DAMAGED => Err(GenieError::unsupported(
-                    "a tower's damage notify (its computer owner's AI, the base handler's case)",
-                )),
+                DAMAGED => {
+                    alert_owner(at.guest_computer)?;
+                    self.damaged(n, time, at, computer, ai_rng, side, fx)
+                }
                 // "I am a defensive building and my current target has been destroyed, purging
                 // attack order.": a target gone or dead (above state 2) is forgotten
                 // (`FUN_140c5e1e0`) and the current action stops (slot 0xb0 with 1)
@@ -6034,6 +6103,7 @@ impl UnitAi {
                 }
                 Ok(GO_ON)
             }
+            DAMAGED | MISSILE_WARNING => self.damaged(n, time, at, computer, ai_rng, side, fx),
             IN_THE_WAY => self.in_the_way(n, at, side, fx),
             SENT_OFF => self.sent_off(n, side, fx),
             // a unit of a group sent off a footprint: the action value 0x2c0
@@ -6054,6 +6124,232 @@ impl UnitAi {
                     .with("caller", n.caller),
             ),
         }
+    }
+
+    /// The base handler's damage case (`FUN_140c589c0`, cases 500 and a missile's warning, 0x20f:
+    /// "I took some damage from Unit #%d"), the attacker `n.caller`:
+    ///
+    /// 1. The retarget entries go (`+0x1d8` 0). An attacker already in the set (`FUN_140bf4cb0`)
+    ///    of a unit whose top action has a target (slot 400) changes nothing (2).
+    /// 2. The owner hears the notify (slot 0x48: slot 0x40, `FUN_140c55b80`, its slot 0x2e8) and
+    ///    the unit's group only logs it (`FUN_141027d60`); the owner's alert 0x201
+    ///    ([`alert_owner`]); the attacker joins the set (`FUN_140b43f30`) and the unit is under
+    ///    attack (`FUN_14119d2d0` with 1). At no hit points left ("I'm dead, I give up.") the
+    ///    owner's alert 0x209, the notifies end (`FUN_140c5dc10`) and it returns 4.
+    /// 3. It ignores (2) an attacker the world no longer holds or of a player its owner counts as
+    ///    its own or an ally. A new attacker that is not its target makes a human player's unit
+    ///    outside a group that is not idle ask for help (`AskForHelp`, [`UnitAi::ask_for_help`]).
+    ///    It ignores (2): its attack on the attacker; a human player's unit's order other than
+    ///    the patrols (711, 733), or its group that is not idle; a computer player's unit on the
+    ///    explore order (0x2c1) attacked by another player than Gaia.
+    /// 4. `bestUnitToAttack` once per update ([`UnitAi::best_this_update`], `+0x1d0`): from the
+    ///    current target's place (slot 0x520) while the world holds it, else its own; no
+    ///    reference distance, no idle check, no path checks, the attacker as its extra object,
+    ///    any class, no attack work state. With none and no target, order or action: a unit that
+    ///    does not move (its top speed below [`STILL`]) ignores it (2), another runs from its
+    ///    attackers (slot 0x160 with 1, [`UnitAi::run_away`]): 3 when it moves, else 2. Anything
+    ///    but the attacker is ignored (2).
+    /// 5. Its reach to the attacker within its weapon range (slot 0x3d0 with slot 0x230). Without
+    ///    a current target the world holds: reached, it attacks back ([`UnitAi::strike_back`]);
+    ///    else off the move action it runs from its attackers; 3 either way. With one: not
+    ///    reached, 2; a human player's unit attacks back from a building, wall or tower target
+    ///    (classes 3, 27, 52; 3), else 2.
+    /// 6. A computer player's unit ignores it (2) on a wonder target (master 276), a tower
+    ///    attacked by a tower (class 52), a missile attacker (type 60), and a tower attacker
+    ///    under its owner's `disableTowerPriority` but for a siege weapon, unpacked trebuchet or
+    ///    warship (classes 13, 54, 22). Then ([`UnitSide::duel`]) a target that cannot convert it
+    ///    (its slot 0x1b8 with 1) but cannot harm it either (its attacks' sum, slot 0x228, or its
+    ///    damage to the unit, the unit's slot 0x220, exactly 0) makes it ask for help and attack
+    ///    back; and then still, as long as the target cannot convert it, an attacker that would
+    ///    die sooner (its hit points over the unit's damage to it, [`NEVER_KILLED`] for none:
+    ///    `COMISS`, `JA`) or could convert it makes it attack back. It returns 2.
+    #[allow(clippy::too_many_arguments)]
+    fn damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let attacker_id = n.caller;
+        let known = self.attackers.binary_search(&attacker_id).is_ok();
+        self.retries.clear();
+        if known && top_target_after(fx, side)?.is_some() {
+            return Ok(GO_ON);
+        }
+        // slot 0x48's notify and the alert 0x201 reach the same owner
+        alert_owner(computer)?;
+        let _ = self.add_attacker(attacker_id);
+        side.set_under_attack(true);
+        if n.p[1] < 1 {
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        let Some(attacker) = Self::world_object(attacker_id, at, side)? else {
+            return Ok(GO_ON);
+        };
+        if attacker.allied {
+            return Ok(GO_ON);
+        }
+        // `IsIdle` (FUN_141017ad0) of the unit's group, read at the handler's start
+        let held_by_group = at.group.is_some_and(|g| !g.idle);
+        if !known && !computer && self.current_target != attacker_id && !held_by_group {
+            self.ask_for_help(attacker_id, at, computer, side)?;
+        }
+        if self.current_action == ATTACK_ACTION && self.current_target == attacker_id {
+            return Ok(GO_ON);
+        }
+        if !computer && !matches!(self.current_order, -1 | PATROL | PATROL_2) {
+            return Ok(GO_ON);
+        }
+        if !computer && held_by_group {
+            return Ok(GO_ON);
+        }
+        if computer && self.current_order == crate::ai_kinds::ORDER_EXPLORE && attacker.owner != 0 {
+            return Ok(GO_ON);
+        }
+        let current = if self.current_target == -1 {
+            None
+        } else {
+            Self::world_object(self.current_target, at, side)?
+        };
+        if self.best_this_update == -1 {
+            let from = current.map_or(at.position, |t| t.position);
+            let (classes, radius) = self.search_area(at, computer)?;
+            let found = side.closest(&Search {
+                at: [from[0], from[1]],
+                radius,
+                classes,
+                size: at.size,
+                pick: Pick::Attack {
+                    lowest: if at.scenario && !computer { 2 } else { 0 },
+                    seeker: self.seeker(at),
+                    ask: AttackAsk {
+                        distance: 0.0,
+                        idle: false,
+                        paths: false,
+                        extra: Some(attacker_id),
+                        any_class: true,
+                        work_state: false,
+                    },
+                },
+                memory: self.memory(),
+            })?;
+            self.add_retries(&found);
+            self.attack_search_alert(found, computer)?;
+            self.best_this_update = found.id;
+        }
+        if self.best_this_update == -1
+            && self.current_target == -1
+            && self.current_order == -1
+            && self.current_action == -1
+        {
+            // "BUTA returned -1 and I'm idle without a target": COMISS, JBE (a NaN runs)
+            if at.speed < STILL {
+                return Ok(GO_ON);
+            }
+            let ran = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            return Ok(if ran { BREAK } else { GO_ON });
+        }
+        if self.best_this_update != attacker_id {
+            return Ok(GO_ON);
+        }
+        let reaches = side.reaches(attacker_id, at.weapon_range)?;
+        let Some(target) = current else {
+            if reaches {
+                return self.strike_back(attacker_id, at, ai_rng, side, fx);
+            }
+            if self.current_action != MOVE_ACTION {
+                let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            }
+            return Ok(BREAK);
+        };
+        if !reaches {
+            return Ok(GO_ON);
+        }
+        if !computer {
+            if matches!(target.class, 3 | 27 | 52) {
+                return self.strike_back(attacker_id, at, ai_rng, side, fx);
+            }
+            return Ok(GO_ON);
+        }
+        self.computer_weighs(&attacker, &target, at, ai_rng, side, fx)
+    }
+
+    /// The damage case's end for a computer player's unit ([`UnitAi::damaged`]'s step 6) that
+    /// reaches `attacker` while the world holds its current `target`.
+    fn computer_weighs(
+        &mut self,
+        attacker: &UnitSeen,
+        target: &UnitSeen,
+        at: &Surroundings,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let attacker_id = attacker.id;
+        if target.master == crate::turn::WONDER
+            || (target.class == 52 && attacker.class == 52)
+            || attacker.kind == 60
+            || (attacker.class == 52
+                && !matches!(at.class, 13 | 54 | 22)
+                && at.disable_tower_priority)
+        {
+            return Ok(GO_ON);
+        }
+        let t = side.duel(target.id)?;
+        // "my current target cannot damage me": UCOMISS, JP, JNZ (exactly 0)
+        if (t.attacks == 0.0 || t.harms == 0.0) && !t.converts {
+            if matches!(self.current_order, PATROL | PATROL_2) {
+                self.save_patrol(side);
+            }
+            self.ask_for_help(attacker_id, at, true, side)?;
+            if self.attack_slot(attacker_id, true, at, side, fx)? {
+                self.leave_patrol_timers(ai_rng);
+                self.current_order = -1;
+            }
+        }
+        let target_time = if 0.0 < t.harmed {
+            t.hp / t.harmed
+        } else {
+            NEVER_KILLED
+        };
+        let a = side.duel(attacker_id)?;
+        let attacker_time = if 0.0 < a.harmed {
+            a.hp / a.harmed
+        } else {
+            NEVER_KILLED
+        };
+        // "my current target will take longer to kill"
+        if !t.converts && (attacker_time < target_time || a.converts) {
+            let _ = self.strike_back(attacker_id, at, ai_rng, side, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// The damage case's attack back on `attacker` (`FUN_140c589c0`): a unit on a patrol order
+    /// (711, 733) saves its patrol first (`savePatrolInformation`, [`UnitAi::save_patrol`]);
+    /// `AttackObject` (slot 0xb8, any: [`UnitAi::attack_slot`]); when it takes, a patrol order
+    /// lets its timers go ([`UnitAi::leave_patrol_timers`]) and the order is −1. It answers 3.
+    fn strike_back(
+        &mut self,
+        attacker: i32,
+        at: &Surroundings,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        if matches!(self.current_order, PATROL | PATROL_2) {
+            self.save_patrol(side);
+        }
+        if self.attack_slot(attacker, true, at, side, fx)? {
+            self.leave_patrol_timers(ai_rng);
+            self.current_order = -1;
+        }
+        Ok(BREAK)
     }
 
     /// The base handler's case 0x215 ([`IN_THE_WAY`]): a unit not of a boar's master (class 10
@@ -6990,6 +7286,7 @@ impl UnitAi {
                 master: at.master,
                 kind: at.kind,
                 main: None,
+                allied: true,
             }));
         }
         at.unit(id)
@@ -7761,10 +8058,10 @@ impl UnitAi {
                     search.work_state,
                 )
             });
-        let classes = cared_classes(self.ai_type)?;
+        let (classes, radius) = self.search_area(at, computer)?;
         let found = side.closest(&Search {
             at: [from[0], from[1]],
-            radius: attack_search_radius(at),
+            radius,
             classes,
             size: at.size,
             pick: Pick::Attack {
@@ -8036,6 +8333,7 @@ mod tests {
             adjusted_idle_timeout: 3000,
             look_around_timeout: 1000,
             retarget_timer: 900,
+            best_this_update: -1,
             ..UnitAi::default()
         }
     }
@@ -8199,6 +8497,7 @@ mod tests {
                 master: 0,
                 kind: 0,
                 main: None,
+                allied: false,
             }))
         }
         fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
@@ -9164,6 +9463,401 @@ mod tests {
         }
     }
 
+    /// A side for the base handler's damage case: the objects it holds, the attack search's
+    /// answer, the reach, the duels, and what the case asked of it.
+    #[derive(Default)]
+    struct DamageSide {
+        units: Vec<UnitSeen>,
+        found: i32,
+        reaches: bool,
+        top: Option<i32>,
+        duels: Vec<(i32, Duel)>,
+        attack_searches: usize,
+        attacks: Vec<i32>,
+        helps: Vec<i32>,
+        under_attack: Vec<bool>,
+        patrol: Option<(PatrolPath, i32)>,
+    }
+
+    impl UnitSide for DamageSide {
+        fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
+            let id = if matches!(search.pick, Pick::Attack { .. }) {
+                self.attack_searches += 1;
+                self.found
+            } else {
+                -1
+            };
+            Ok(Found {
+                id,
+                enemies: id != -1,
+                position: None,
+                fresh: true,
+                players: 0,
+                distance: -1,
+                retries: [None; 3],
+            })
+        }
+        fn attack(&mut self, target: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            self.attacks.push(target);
+            Ok(Attacked {
+                attacks: true,
+                posted: Vec::new(),
+            })
+        }
+        fn set_under_attack(&mut self, value: bool) {
+            self.under_attack.push(value);
+        }
+        fn stop(&mut self) -> Result<(), GenieError> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            target: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Ok(self
+                .units
+                .iter()
+                .find(|u| u.id == target)
+                .map(|u| (u.class, u.position)))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Err(GenieError::unsupported("no search here"))
+        }
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            Err(GenieError::unsupported("no world here"))
+        }
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            self.patrol.clone()
+        }
+        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, GenieError> {
+            Ok(self.reaches)
+        }
+        fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
+            self.helps.push(attacker);
+            Ok(())
+        }
+        fn seen_unit(&mut self, id: i32) -> Result<Option<UnitSeen>, GenieError> {
+            Ok(self.units.iter().find(|u| u.id == id).copied())
+        }
+        fn duel(&mut self, other: i32) -> Result<Duel, GenieError> {
+            self.duels
+                .iter()
+                .find(|d| d.0 == other)
+                .map(|d| d.1)
+                .ok_or(GenieError::unsupported("no duel here"))
+        }
+        fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
+            Ok(self.top)
+        }
+    }
+
+    /// An enemy (player 2) of `class` the damage case's side holds.
+    fn foe(id: i32, class: i16) -> UnitSeen {
+        UnitSeen {
+            id,
+            class,
+            owner: 2,
+            state: 2,
+            position: [12.0, 10.0, 0.0],
+            hp: 30.0,
+            kind: 70,
+            ..UnitSeen::default()
+        }
+    }
+
+    /// A human player's soldier at (10, 10) that moves.
+    fn soldier_at() -> Surroundings {
+        Surroundings {
+            id: 1,
+            player: 1,
+            kind: 70,
+            class: 6,
+            speed: 1.0,
+            los: 4.0,
+            weapon_range: 0.0,
+            action_state: Some(0),
+            position: [10.0, 10.0, 0.0],
+            ..Surroundings::default()
+        }
+    }
+
+    fn damage(caller: i32, hp: i32) -> Notify {
+        Notify {
+            caller,
+            recipient: 1,
+            kind: DAMAGED,
+            p: [0, hp, 0],
+        }
+    }
+
+    /// `FUN_140c589c0`'s case 500 up to its attack search: a known attacker of a unit whose top
+    /// action has a target changes nothing but the retarget entries; the dead give up; an allied
+    /// attacker is let be once it joined the set; a human player's unit on an order other than
+    /// a patrol ignores it.
+    #[test]
+    fn the_damage_case_lets_known_dead_allied_and_ordered_ones_be() {
+        let at = soldier_at();
+        let mut fx = Vec::new();
+        let mut u = UnitAi {
+            attackers: vec![7],
+            retries: vec![(3, 900)],
+            ..idle(13)
+        };
+        let mut side = DamageSide {
+            units: vec![foe(7, 6)],
+            top: Some(9),
+            found: 7,
+            ..DamageSide::default()
+        };
+        let r = u.damaged(damage(7, 20), 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r.unwrap(), GO_ON);
+        assert_eq!(u.retries, vec![]);
+        assert_eq!(side.under_attack, Vec::<bool>::new());
+        assert_eq!(side.attack_searches, 0);
+
+        let mut u = idle(13);
+        let mut side = DamageSide {
+            units: vec![foe(7, 6)],
+            ..DamageSide::default()
+        };
+        let r = u.damaged(damage(7, 0), 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r.unwrap(), DEAD);
+        assert_eq!(
+            (u.attackers.clone(), side.under_attack),
+            (vec![7], vec![true])
+        );
+
+        let mut u = idle(13);
+        let mut side = DamageSide {
+            units: vec![UnitSeen {
+                allied: true,
+                ..foe(7, 6)
+            }],
+            found: 7,
+            ..DamageSide::default()
+        };
+        let r = u.damaged(damage(7, 20), 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r.unwrap(), GO_ON);
+        assert_eq!(u.attackers, vec![7]);
+        assert_eq!((side.attack_searches, side.helps.len()), (0, 0));
+
+        let mut u = UnitAi {
+            current_order: ATTACK_ORDER,
+            ..idle(13)
+        };
+        let mut side = DamageSide {
+            units: vec![foe(7, 6)],
+            found: 7,
+            ..DamageSide::default()
+        };
+        let r = u.damaged(damage(7, 20), 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r.unwrap(), GO_ON);
+        // the new attacker made it ask for help first
+        assert_eq!((side.attack_searches, side.helps.clone()), (0, vec![7]));
+    }
+
+    /// An idle human player's soldier without a target: `bestUnitToAttack` names the attacker,
+    /// which it reaches and attacks back (3); a second attacker in the same update takes the
+    /// first search's answer and is ignored. Unreached, it runs (its stance keeps it: 3);
+    /// nothing found and too slow to run, it lets it be.
+    #[test]
+    fn an_idle_soldier_attacks_back_what_best_unit_to_attack_names() {
+        let at = soldier_at();
+        let mut fx = Vec::new();
+        let mut u = idle(13);
+        let mut side = DamageSide {
+            units: vec![foe(7, 6), foe(8, 6)],
+            found: 7,
+            reaches: true,
+            ..DamageSide::default()
+        };
+        let r = u.damaged(damage(7, 20), 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r.unwrap(), BREAK);
+        assert_eq!(u.best_this_update, 7);
+        assert_eq!(side.attacks, vec![7]);
+        assert_eq!((u.current_action, u.current_target), (ATTACK_ACTION, 7));
+        let r = u.damaged(damage(8, 20), 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r.unwrap(), GO_ON);
+        assert_eq!(side.attack_searches, 1);
+        assert_eq!(side.helps, vec![7, 8]);
+        assert_eq!(u.attackers, vec![7, 8]);
+
+        let mut u = UnitAi {
+            stance: 3,
+            ..idle(13)
+        };
+        let mut side = DamageSide {
+            units: vec![foe(7, 6)],
+            found: 7,
+            ..DamageSide::default()
+        };
+        let r = u.damaged(damage(7, 20), 0, &at, false, &mut rng(), &mut side, &mut fx);
+        assert_eq!(r.unwrap(), BREAK);
+        assert_eq!(side.attacks, Vec::<i32>::new());
+
+        let still = Surroundings {
+            speed: 0.0,
+            ..soldier_at()
+        };
+        let mut u = idle(13);
+        let mut side = DamageSide {
+            units: vec![foe(7, 6)],
+            found: -1,
+            ..DamageSide::default()
+        };
+        let r = u.damaged(
+            damage(7, 20),
+            0,
+            &still,
+            false,
+            &mut rng(),
+            &mut side,
+            &mut fx,
+        );
+        assert_eq!(r.unwrap(), GO_ON);
+        assert_eq!(u.best_this_update, -1);
+    }
+
+    /// A human player's soldier with a live target attacks back only from a building, wall or
+    /// tower target; on a patrol its patrol is saved and, the attack taken, the order ends with
+    /// its timers (an adjusted idle timeout of 750 redrawn, the secondary timer capped).
+    #[test]
+    fn a_soldier_with_a_target_attacks_back_from_buildings_only() {
+        let at = soldier_at();
+        let run = |class: i16, order: i32| {
+            let mut fx = Vec::new();
+            let mut u = UnitAi {
+                current_order: order,
+                current_action: ATTACK_ACTION,
+                current_target: 9,
+                idle_timeout: 3000,
+                adjusted_idle_timeout: 750,
+                secondary_timer: 900,
+                ..idle(13)
+            };
+            let mut side = DamageSide {
+                units: vec![foe(7, 6), foe(9, class)],
+                found: 7,
+                reaches: true,
+                patrol: Some((PatrolPath::default(), 2)),
+                ..DamageSide::default()
+            };
+            let r = u
+                .damaged(damage(7, 20), 0, &at, false, &mut rng(), &mut side, &mut fx)
+                .unwrap();
+            (r, u, side.attacks)
+        };
+        let (r, _, attacks) = run(6, -1);
+        assert_eq!((r, attacks), (GO_ON, vec![]));
+        for class in [3, 27, 52] {
+            let (r, u, attacks) = run(class, -1);
+            assert_eq!((r, attacks, u.current_target), (BREAK, vec![7], 7));
+        }
+        let (r, u, attacks) = run(3, PATROL);
+        assert_eq!((r, attacks), (BREAK, vec![7]));
+        assert_eq!(u.current_order, -1);
+        assert_eq!(u.patrol_waypoint, 2);
+        assert!(u.patrol_path.is_some());
+        assert_eq!(u.secondary_timer, 750);
+        assert_ne!(u.adjusted_idle_timeout, 750);
+    }
+
+    /// The computer player's end of the damage case: a wonder target, a tower against a tower,
+    /// a missile, and a tower under `disableTowerPriority` (but for a siege weapon) are let be;
+    /// a harmless target makes it ask for help and attack back, then the kill times decide again
+    /// (the attacker's sooner, or its conversion, but never against a converting target).
+    #[test]
+    fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
+        let duel = |converts: bool, attacks: f32, harmed: f32, hp: f32| Duel {
+            converts,
+            attacks,
+            harms: 2.0,
+            harmed,
+            hp,
+        };
+        let run = |at: &Surroundings, attacker: UnitSeen, target: UnitSeen, duels| {
+            let mut fx = Vec::new();
+            let mut u = UnitAi {
+                current_action: ATTACK_ACTION,
+                current_target: target.id,
+                ..idle(13)
+            };
+            let mut side = DamageSide {
+                units: vec![attacker, target],
+                duels,
+                ..DamageSide::default()
+            };
+            let r = u
+                .computer_weighs(&attacker, &target, at, &mut rng(), &mut side, &mut fx)
+                .unwrap();
+            (r, side.attacks, side.helps)
+        };
+        let at = soldier_at();
+        let fair = vec![
+            (9, duel(false, 5.0, 10.0, 100.0)),
+            (7, duel(false, 5.0, 10.0, 50.0)),
+        ];
+        let wonder = UnitSeen {
+            master: crate::turn::WONDER,
+            ..foe(9, 3)
+        };
+        assert_eq!(run(&at, foe(7, 6), wonder, fair.clone()).0, GO_ON);
+        let tower = UnitSeen {
+            class: 52,
+            ..foe(9, 52)
+        };
+        assert_eq!(
+            run(&at, foe(7, 52), tower, fair.clone()),
+            (GO_ON, vec![], vec![])
+        );
+        let missile = UnitSeen {
+            kind: 60,
+            ..foe(7, 6)
+        };
+        assert_eq!(run(&at, missile, foe(9, 6), fair.clone()).1, vec![]);
+        let shy = Surroundings {
+            disable_tower_priority: true,
+            ..soldier_at()
+        };
+        assert_eq!(run(&shy, foe(7, 52), foe(9, 6), fair.clone()).1, vec![]);
+        let siege = Surroundings { class: 13, ..shy };
+        // the attacker dies in 5 hits, the target in 10
+        assert_eq!(run(&siege, foe(7, 52), foe(9, 6), fair.clone()).1, vec![7]);
+        assert_eq!(run(&at, foe(7, 6), foe(9, 6), fair).1, vec![7]);
+        let slow = vec![
+            (9, duel(false, 5.0, 10.0, 100.0)),
+            (7, duel(false, 5.0, 10.0, 200.0)),
+        ];
+        assert_eq!(run(&at, foe(7, 6), foe(9, 6), slow).1, vec![]);
+        let converting = vec![
+            (9, duel(false, 5.0, 10.0, 100.0)),
+            (7, duel(true, 5.0, 10.0, 200.0)),
+        ];
+        assert_eq!(run(&at, foe(7, 6), foe(9, 6), converting).1, vec![7]);
+        let harmless = vec![
+            (9, duel(false, 0.0, 10.0, 100.0)),
+            (7, duel(false, 5.0, 0.0, 50.0)),
+        ];
+        // the attack back, then the kill times: the attacker never dies (25000) against 10
+        assert_eq!(
+            run(&at, foe(7, 6), foe(9, 6), harmless),
+            (GO_ON, vec![7], vec![7])
+        );
+        let priest = vec![
+            (9, duel(true, 0.0, 10.0, 100.0)),
+            (7, duel(true, 5.0, 10.0, 1.0)),
+        ];
+        assert_eq!(run(&at, foe(7, 6), foe(9, 6), priest).1, vec![]);
+    }
+
     /// A scout (master 448) in stand ground whose sheep died (census v4's blocker): its
     /// processIdle with 0 (`FUN_140c20db0`) attacks the next sheep `bestUnitToAttack` finds,
     /// forced, and its order goes; finding none, it moves to the dead sheep's point.
@@ -9822,6 +10516,7 @@ mod tests {
                 attackers: Vec::new(),
                 order_history: Vec::new(),
                 retries: Vec::new(),
+                best_this_update: -1,
             }
         );
     }

@@ -21,6 +21,10 @@ use crate::fmath;
 /// 212/273).
 const HIGHER: f32 = crate::image::damage::HIGHER;
 const LOWER: f32 = crate::image::damage::LOWER;
+/// A building's hits with a specific relic inside (`DAT_142ed66b4`, 1.2), and with any relic
+/// (`DAT_142e86c14`, 1.1), [`building_elevation_factor`].
+const SPECIFIC_RELIC_BOOST: f32 = crate::image::damage::SPECIFIC_RELIC_BOOST;
+const RELIC_BOOST: f32 = crate::image::damage::RELIC_BOOST;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`), and the share of
 /// reflected damage above which a target reflects.
 const EPSILON: f32 = crate::image::damage::EPSILON;
@@ -333,6 +337,35 @@ pub fn elevation_factor(z: f32, up_down: [f32; 2], to: &Victim) -> f32 {
     } else {
         1.0
     }
+}
+
+/// Slot 0x1f0 of a building (`FUN_1411cc890`): the combat object's `factor`
+/// ([`elevation_factor`]), times [`SPECIFIC_RELIC_BOOST`] while its `specific_relic_count`
+/// (`+0xc24`, `relics[1]`) is above 0, else [`RELIC_BOOST`] while its `relic_count` (`+0xc20`,
+/// `relics[0]`) is; a building victim (type 80, `kind`) divides it by the same of its own counts
+/// (`victim_relics`). Each count compares signed.
+#[must_use]
+pub fn building_elevation_factor(
+    factor: f32,
+    relics: [i32; 2],
+    kind: u8,
+    victim_relics: [i32; 2],
+) -> f32 {
+    let mut f = factor;
+    if 0 < relics[1] {
+        f *= SPECIFIC_RELIC_BOOST;
+    } else if 0 < relics[0] {
+        f *= RELIC_BOOST;
+    }
+    if kind == 80 {
+        if 0 < victim_relics[1] {
+            return f / SPECIFIC_RELIC_BOOST;
+        }
+        if 0 < victim_relics[0] {
+            f /= RELIC_BOOST;
+        }
+    }
+    f
 }
 
 /// `FUN_14114eaa0` toward another object: how far `other` lies from where an object at `at`
@@ -1254,6 +1287,38 @@ pub fn blast(
 
 #[cfg(test)]
 mod tests {
+    /// `FUN_1411cc890`: a building's relics raise its factor (a specific one 1.2, else any 1.1),
+    /// a building victim's lower it back the same way; another victim's count for nothing.
+    #[test]
+    fn a_building_s_relics_scale_its_elevation_factor() {
+        let up = 1.25_f32;
+        assert_eq!(
+            building_elevation_factor(up, [0, 0], 70, [5, 5]).to_bits(),
+            up.to_bits()
+        );
+        assert_eq!(
+            building_elevation_factor(up, [3, 1], 70, [0, 0]).to_bits(),
+            (up * SPECIFIC_RELIC_BOOST).to_bits()
+        );
+        assert_eq!(
+            building_elevation_factor(up, [3, 0], 70, [0, 0]).to_bits(),
+            (up * RELIC_BOOST).to_bits()
+        );
+        assert_eq!(
+            building_elevation_factor(up, [3, 0], 80, [0, 2]).to_bits(),
+            (up * RELIC_BOOST / SPECIFIC_RELIC_BOOST).to_bits()
+        );
+        assert_eq!(
+            building_elevation_factor(up, [0, 0], 80, [1, -1]).to_bits(),
+            (up / RELIC_BOOST).to_bits()
+        );
+        // the counts compare signed
+        assert_eq!(
+            building_elevation_factor(up, [-1, -1], 80, [-1, -1]).to_bits(),
+            up.to_bits()
+        );
+    }
+
     use super::*;
 
     fn sheep() -> Victim {

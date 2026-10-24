@@ -530,6 +530,19 @@ impl UnitView<'_> {
     }
 }
 
+/// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0.
+fn attacks(m: &crate::masters::Master) -> f32 {
+    m.weapons
+        .iter()
+        .filter(|w| 0 < w.1)
+        .map(|w| f32::from(w.1))
+        .sum()
+}
+
+/// An object the unit AI found or names that the slice does not hold (another player's it does
+/// not keep).
+const NOT_HELD: GenieError = GenieError::unsupported("a found object the slice does not hold");
+
 /// What `bestUnitToAttack` reads of the world for the unit whose AI runs
 /// ([`crate::unit_ai::AttackPicker`]): the objects it found, by what the world holds of them, and
 /// the unit's quick path to them.
@@ -619,6 +632,38 @@ impl WorldPicker<'_> {
         ))
     }
 
+    /// What object `from` deals object `to` per hit (`to`'s slot 0x220 with `from`,
+    /// `FUN_141083f20`): `from`'s elevation factor against it (slot 0x1f0: a combat object's
+    /// [`crate::damage::elevation_factor`], a building's [`crate::damage::building_elevation_factor`]
+    /// over it), then `to`'s armor (slot 0xf0, [`crate::damage::armor_damage`]) against `from`'s
+    /// attacks.
+    fn damage(&self, from: i32, to: i32) -> Result<f32, GenieError> {
+        let (fq, f, fa, fm) = self.held(from).ok_or(NOT_HELD)?;
+        let (tq, t, ta, tm) = self.held(to).ok_or(NOT_HELD)?;
+        let terrain = self.spatial.terrain.as_ref();
+        let target = victim_of(t, tm, ta, tq, terrain, self.mode_680);
+        let unit = victim_of(f, fm, fa, fq, terrain, self.mode_680);
+        let mut factor =
+            crate::damage::elevation_factor(f.position[2], unit.attack_elevation, &target);
+        if fm.kind == crate::order::BUILDING {
+            factor = crate::damage::building_elevation_factor(factor, f.relics, tm.kind, t.relics);
+        }
+        crate::damage::armor_damage(&target, &unit.weapons, factor, &unit.source)
+    }
+
+    /// What a computer player's unit weighs of object `other` on a damage notify
+    /// ([`crate::unit_ai::Duel`]).
+    pub(in crate::turn) fn duel(&self, other: i32) -> Result<crate::unit_ai::Duel, GenieError> {
+        let (_, o, _, om) = self.held(other).ok_or(NOT_HELD)?;
+        Ok(crate::unit_ai::Duel {
+            converts: self.converts(other, self.me, true)?,
+            attacks: attacks(om),
+            harms: self.damage(other, self.me)?,
+            harmed: self.damage(self.me, other)?,
+            hp: o.life.hp,
+        })
+    }
+
     /// The object `id` as the attack tests read it, and whether it moves (slot 0x208 above 0).
     pub(in crate::turn) fn target(
         &self,
@@ -633,9 +678,7 @@ impl WorldPicker<'_> {
                     .find(|u| u.id == id)
                     .map(|u| (self.player, u))
             })
-            .ok_or(GenieError::unsupported(
-                "a found object the slice does not hold",
-            ))?;
+            .ok_or(NOT_HELD)?;
         let m = self
             .every
             .get(owner)
@@ -788,25 +831,12 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         distance: f32,
         category: i32,
     ) -> Result<crate::best_target::Candidate, GenieError> {
-        let (q, t, attributes, m) = self.held(id).ok_or(GenieError::unsupported(
-            "a found object the slice does not hold",
-        ))?;
-        let (_, me, own, mm) = self.held(self.me).ok_or(GenieError::unsupported(
+        let (_, t, _, m) = self.held(id).ok_or(NOT_HELD)?;
+        let (_, me, _, mm) = self.held(self.me).ok_or(GenieError::unsupported(
             "a searching unit of a master the slice does not have",
         ))?;
-        let terrain = self.spatial.terrain.as_ref();
-        let target = victim_of(t, m, attributes, q, terrain, self.mode_680);
-        let unit = victim_of(me, mm, own, self.player, terrain, self.mode_680);
-        let factor =
-            crate::damage::elevation_factor(me.position[2], unit.attack_elevation, &target);
-        let damage = crate::damage::armor_damage(&target, &unit.weapons, factor, &unit.source)?;
-        let armed = 0.0
-            < m.weapons
-                .iter()
-                .filter(|w| 0 < w.1)
-                .map(|w| f32::from(w.1))
-                .sum::<f32>()
-            || self.converts(id, self.me, true)?;
+        let damage = self.damage(self.me, id)?;
+        let armed = 0.0 < attacks(m) || self.converts(id, self.me, true)?;
         Ok(crate::best_target::Candidate {
             id,
             distance,
@@ -827,9 +857,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     /// 3; else the base armor or the highest armor of any class) plus the pierce armor powerup
     /// (`+0xa4c`, slot 0x710; slot 0x778's stinger `+0xb50` is 0), at least 100.
     fn armored(&mut self, id: i32) -> Result<bool, GenieError> {
-        let (_, t, _, m) = self.held(id).ok_or(GenieError::unsupported(
-            "a found object the slice does not hold",
-        ))?;
+        let (_, t, _, m) = self.held(id).ok_or(NOT_HELD)?;
         let class3 = m.armors.iter().filter(|a| a.0 == 3).map(|a| a.1).max();
         let armor = class3.unwrap_or_else(|| {
             m.armors.iter().fold(
@@ -842,23 +870,13 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
 
     /// Object `id`'s weapon range (slot 0x230: a combat object's master's, else 0).
     fn weapon_range(&mut self, id: i32) -> Result<f32, GenieError> {
-        let (_, _, _, m) = self.held(id).ok_or(GenieError::unsupported(
-            "a found object the slice does not hold",
-        ))?;
+        let (_, _, _, m) = self.held(id).ok_or(NOT_HELD)?;
         Ok(if 50 <= m.kind { m.weapon_range } else { 0.0 })
     }
 
     fn engages(&mut self, id: i32) -> Result<bool, GenieError> {
-        let (_, _, _, m) = self.held(id).ok_or(GenieError::unsupported(
-            "a found object the slice does not hold",
-        ))?;
-        let attacks = m
-            .weapons
-            .iter()
-            .filter(|w| 0 < w.1)
-            .map(|w| f32::from(w.1))
-            .sum::<f32>();
-        Ok(0.0 < attacks || self.converts(id, self.me, true)?)
+        let (_, _, _, m) = self.held(id).ok_or(NOT_HELD)?;
+        Ok(0.0 < attacks(m) || self.converts(id, self.me, true)?)
     }
 
     /// The quick path (slot 0x3e0) within `range`, with its master's terrain mask and radius on
@@ -1083,6 +1101,27 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         Ok(())
     }
 
+    fn duel(&mut self, other: i32) -> Result<crate::unit_ai::Duel, GenieError> {
+        let picker = WorldPicker {
+            attacker: &self.attacker,
+            seeker: None,
+            me: self.unit.id,
+            player: self.player,
+            others: self.others,
+            foreign: self.foreign,
+            spatial: self.spatial,
+            every: self.every,
+            restriction: -1,
+            unit: &*self.unit,
+            attributes: self.attributes,
+            relations: self.relations,
+            ai_settings: self.ai_settings,
+            now: self.world_time,
+            mode_680: self.mode_680,
+        };
+        picker.duel(other)
+    }
+
     fn seen_unit(&mut self, id: i32) -> Result<Option<crate::unit_ai::UnitSeen>, GenieError> {
         let Some(p) = self.spatial.get(id) else {
             return Ok(None);
@@ -1120,6 +1159,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             master: u.life.master_id,
             kind: m.kind,
             main: u.annex_of,
+            allied: crate::tasks::allied(self.relations, self.player, owner, true),
         }))
     }
 

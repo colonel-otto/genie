@@ -104,12 +104,16 @@ pub mod damage {
     pub const ONE: f32 = f32::from_bits(0x3f80_0000);
     /// 3.1415927410125732
     pub const PI: f32 = f32::from_bits(0x4049_0fdb);
+    /// 1.100000023841858
+    pub const RELIC_BOOST: f32 = f32::from_bits(0x3f8c_cccd);
     /// 0.20000000298023224
     pub const RETALIATION_RANGE: f32 = f32::from_bits(0x3e4c_cccd);
     /// 4.0
     pub const RETALIATION_SCALE: f32 = f32::from_bits(0x4080_0000);
     /// 0.6600000262260437
     pub const SPECIAL: f32 = f32::from_bits(0x3f28_f5c3);
+    /// 1.2000000476837158
+    pub const SPECIFIC_RELIC_BOOST: f32 = f32::from_bits(0x3f99_999a);
     /// 6.2831854820251465
     pub const TWO_PI: f32 = f32::from_bits(0x40c9_0fdb);
     /// 1.6699999570846558
@@ -834,6 +838,8 @@ pub mod unit_ai {
     pub const LION_SIGHT_DIVISOR: f32 = f32::from_bits(0x4040_0000);
     /// 0.5
     pub const LION_SIGHT_SHARE: f32 = f32::from_bits(0x3f00_0000);
+    /// 25000.0
+    pub const NEVER_KILLED: f32 = f32::from_bits(0x46c3_5000);
     /// 3.0
     pub const PATROL_TURN_REACH: f32 = f32::from_bits(0x4040_0000);
     /// 100.0
@@ -860,6 +866,8 @@ pub mod unit_ai {
     pub const STANCE_RANGE_GROWTH: f32 = f32::from_bits(0x3f00_0000);
     /// 0.25
     pub const STAND_GROUND_SLACK: f32 = f32::from_bits(0x3e80_0000);
+    /// 1.0000000116860974e-07
+    pub const STILL: f32 = f32::from_bits(0x33d6_bf95);
 }
 
 /// The values `crate::visibility`'s port reads.

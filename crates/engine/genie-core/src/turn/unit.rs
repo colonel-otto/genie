@@ -2968,6 +2968,7 @@ impl Unit {
                 master: u.life.master_id,
                 kind: m.kind,
                 main: u.annex_of,
+                allied: crate::tasks::allied(view.relations, view.player, owner, true),
             });
         }
         Ok(seen)
@@ -6180,6 +6181,12 @@ impl Unit {
                 attack_moving: self.mover.as_ref().is_some_and(|m| m.attack_moving),
                 dodge_chance: c.dodge_chances.get(player).copied().unwrap_or(0),
                 keep_distance_chance: c.keep_distance_chances.get(player).copied().unwrap_or(0),
+                disable_tower_priority: view.ai_settings.disable_tower_priority,
+                guest_computer: self.garrison.iter().any(|&g| {
+                    c.spatial.get(g).is_some_and(|p| {
+                        p.player != player && c.computers.get(p.player).copied().unwrap_or(false)
+                    })
+                }),
             };
             // the unit AI runs on its own; what it asks of its unit comes back through `UnitView`
             let mut ai = self.ai.take().expect("filtered above");

@@ -2063,6 +2063,7 @@ fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai::UnitAi> {
             .iter()
             .map(|e| (e.target_id, e.timeout))
             .collect(),
+        best_this_update: ai.best_unit_to_attack_this_update,
         orders: ai
             .temp_order
             .iter()
