@@ -1381,6 +1381,7 @@ impl Unit {
                     spared: -1,
                     reach: true,
                 },
+                memory: crate::unit_ai::Memory::default(),
             };
             let me = Me {
                 id: self.id,
@@ -6234,6 +6235,7 @@ impl Unit {
                             relations: view.relations,
                             attributes: view.attributes,
                             civ: view.civ,
+                            ai_settings: view.ai_settings,
                             drop_sites: c.drop_sites,
                             mode_680: c.mode_680,
                         };

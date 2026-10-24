@@ -30,6 +30,64 @@ const LIVESTOCK_CLASS: i32 = 58;
 /// The caller's reachability check of a found object (slot 0x3d0 within a range).
 pub type Reach<'a> = dyn FnMut(i32, f32) -> Result<bool, GenieError> + 'a;
 
+/// `bestUnitToAttack`'s world ([`crate::best_target::Battlefield`]): the unit AI's picker for its
+/// reads and tests, the search's reachability for its paths (slot 0x3d0).
+struct AttackField<'p, 'r> {
+    picker: &'p mut dyn crate::unit_ai::AttackPicker,
+    reach: &'p mut Reach<'r>,
+}
+
+impl crate::best_target::Battlefield for AttackField<'_, '_> {
+    fn thing(&mut self, id: i32) -> Result<Option<crate::best_target::Thing>, GenieError> {
+        self.picker.thing(id)
+    }
+
+    fn can_attack(&mut self, id: i32) -> Result<bool, GenieError> {
+        self.picker.can_attack(id)
+    }
+
+    fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError> {
+        self.picker.attacks_neutral(class)
+    }
+
+    fn spares_friends(&mut self, id: i32) -> Result<bool, GenieError> {
+        self.picker.spares_friends(id)
+    }
+
+    fn shuns(&mut self, id: i32) -> Result<bool, GenieError> {
+        self.picker.shuns(id)
+    }
+
+    fn candidate(
+        &mut self,
+        id: i32,
+        distance: f32,
+        category: i32,
+    ) -> Result<crate::best_target::Candidate, GenieError> {
+        self.picker.candidate(id, distance, category)
+    }
+
+    fn armored(&mut self, id: i32) -> Result<bool, GenieError> {
+        self.picker.armored(id)
+    }
+
+    fn weapon_range(&mut self, id: i32) -> Result<f32, GenieError> {
+        self.picker.weapon_range(id)
+    }
+
+    fn engages(&mut self, id: i32) -> Result<bool, GenieError> {
+        self.picker.engages(id)
+    }
+
+    fn quick_path(&mut self, id: i32, range: f32) -> Result<bool, GenieError> {
+        self.picker.quick_path(id, range)
+    }
+
+    fn path(&mut self, id: i32, range: f32) -> Result<bool, GenieError> {
+        (self.reach)(id, range)
+    }
+}
+
 /// What `ClosestObject` keeps of the objects found (its arguments 2 to 6; each −1 for any): the
 /// master class, the relation (0 itself or friends, 1 neutrals, 2 enemies, 3 itself), the state,
 /// the master and the cap of workers.
@@ -1498,9 +1556,6 @@ impl Spatial {
         let v = self.sight.as_ref().ok_or(GenieError::unsupported(
             "a search without the players' sight",
         ))?;
-        let own = self.relations.get(player).ok_or(GenieError::unsupported(
-            "a search of a player without relations",
-        ))?;
         let fresh = self.search_query(player, search)?;
         let cache = self.search_cache.borrow();
         let found = cache.last.as_ref().ok_or(GenieError::unsupported(
@@ -1508,7 +1563,6 @@ impl Spatial {
         ))?;
         self.pick_found(
             v,
-            own,
             (me, player),
             search,
             found,
@@ -1595,7 +1649,6 @@ impl Spatial {
     fn pick_found(
         &self,
         v: &Visibility,
-        own: &[u8],
         (me, player): (i32, usize),
         search: &Search<'_>,
         found: &[Vec<Record>; 5],
@@ -1635,6 +1688,7 @@ impl Spatial {
                     fresh,
                     players: players_seen(found),
                     distance: crate::checkpoint::cvttss2si(distance),
+                    retries: [None; 3],
                 })
             }
             Pick::Look => Ok(Found {
@@ -1644,10 +1698,15 @@ impl Spatial {
                 fresh,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             }),
-            Pick::Attack { lowest, seeker } => {
-                let id =
-                    self.best_unit_to_attack(v, own, player, found, lowest, seeker.target, attack)?;
+            Pick::Attack { ask, .. } => {
+                let choice = Self::best_unit_to_attack(found, &ask, search.memory, attack, reach)?;
+                let id = choice.target;
+                let mut retries = [None; 3];
+                for (slot, r) in retries.iter_mut().zip(choice.retries) {
+                    *slot = Some(r);
+                }
                 Ok(Found {
                     id,
                     enemies: !found[4].is_empty(),
@@ -1655,6 +1714,7 @@ impl Spatial {
                     fresh,
                     players: 0,
                     distance: -1,
+                    retries,
                 })
             }
         }
@@ -1791,53 +1851,27 @@ impl Spatial {
         Ok(best.unwrap_or((-1, -1.0)))
     }
 
-    /// `bestUnitToAttack` (`FUN_140c44680`) for a unit of `player` (diplomacy `own`, its
-    /// `player+0x260`) without extra objects, over what its search `found`: its statistics take
-    /// the unit AI's current target (`current`, `+0x48`) when the world holds it in state 2 or
-    /// below and it is not allied, then the relations from enemies down to `lowest`, each record
-    /// in order but the current target: an object that is gone, dead (state 3 and up) or allied
-    /// (`FUN_141663d90` with the ally flag) is passed, and `attack` tests the others
-    /// ([`crate::unit_ai::AttackPicker::candidate`]); the unit AI's retarget entries are not held
-    /// (the save's: empty in every unit probed). `attack` then chooses among the statistics.
-    #[allow(clippy::too_many_arguments)]
+    /// `bestUnitToAttack` (`FUN_140c44680`, [`crate::best_target::best_unit_to_attack`]) over
+    /// the relation lists its search `found` (each record's id in order), with the unit AI's
+    /// `memory`: `attack` reads the unit and the objects, the paths (slot 0x3d0) are `reach`'s.
+    ///
+    /// # Errors
+    ///
+    /// What the reads and tests do not model.
     fn best_unit_to_attack(
-        &self,
-        v: &Visibility,
-        own: &[u8],
-        player: usize,
         found: &[Vec<Record>; 5],
-        lowest: usize,
-        current: i32,
+        ask: &crate::unit_ai::AttackAsk,
+        memory: crate::unit_ai::Memory<'_>,
         attack: &mut dyn crate::unit_ai::AttackPicker,
-    ) -> Result<i32, GenieError> {
-        let mut stats = Vec::new();
-        if current != -1
-            && let (Some(seer), Some(p)) = (v.seer(current), self.objects.get(&current))
-            && seer.state <= 2
-            && !crate::tasks::allied(own, player, p.player, true)
-        {
-            stats.extend(attack.candidate(current, None)?);
-        }
-        let lowest = lowest.min(4);
-        for (list, records) in found.iter().enumerate().skip(lowest).rev() {
-            for record in records {
-                if record.id == current {
-                    continue;
-                }
-                let Some(seer) = v
-                    .seer(record.id)
-                    .filter(|_| self.objects.contains_key(&record.id))
-                else {
-                    continue;
-                };
-                let owner = usize::from(record.owner);
-                if 3 <= seer.state || crate::tasks::allied(own, player, owner, true) {
-                    continue;
-                }
-                stats.extend(attack.candidate(record.id, Some(list))?);
-            }
-        }
-        attack.choose(&stats)
+        reach: &mut Reach<'_>,
+    ) -> Result<crate::best_target::Choice, GenieError> {
+        let me = attack.searcher(memory)?;
+        let lists: [Vec<i32>; 5] = std::array::from_fn(|k| found[k].iter().map(|r| r.id).collect());
+        let mut field = AttackField {
+            picker: attack,
+            reach,
+        };
+        crate::best_target::best_unit_to_attack(&me, &ask.ask(), &lists, &mut field)
     }
 
     /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects
@@ -2977,6 +3011,7 @@ mod tests {
             classes: &[4],
             size: [0.2, 0.2],
             pick: Pick::Look,
+            memory: crate::unit_ai::Memory::default(),
         };
         let mut never = crate::unit_ai::NoAttack;
         let mut reach = |_: i32, _: f32| Ok(true);

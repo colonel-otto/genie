@@ -824,6 +824,8 @@ pub mod unit_ai {
     pub const FOLLOW_SLACK_LOW: f32 = f32::from_bits(0xbf80_0000);
     /// 0.10000000149011612
     pub const FOUNDATION_REACH: f32 = f32::from_bits(0x3dcc_cccd);
+    /// 100.0
+    pub const FULL_FAITH: f32 = f32::from_bits(0x42c8_0000);
     /// 1.5
     pub const GAIA_TARGET_REACH: f32 = f32::from_bits(0x3fc0_0000);
     /// 9.0

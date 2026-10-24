@@ -5489,6 +5489,7 @@ fn scout_attack(timer: f32, inside: Option<i32>) -> (Unit, crate::unit_ai::Attac
             relations: &[0, 0],
             attributes: &[],
             civ: 0,
+            ai_settings: AiSettings::default(),
             drop_sites: &[],
             mode_680: 0,
         };

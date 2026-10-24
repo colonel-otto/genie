@@ -1124,6 +1124,7 @@ impl Turns {
                     mode_1: self.mode_680 == 1,
                     player: p,
                     civ: player.civ,
+                    ai_settings: player.ai_settings,
                     sharing: player.sharing,
                     farm_stops: self.settings.walkable_farms,
                     predator_hunts_end: self.settings.predator_hunts_end(),

@@ -457,6 +457,7 @@ impl Turns {
             classes: &crate::unit_ai::SOLDIER_CARED,
             size: master.radius,
             pick: crate::unit_ai::Pick::Look,
+            memory: crate::unit_ai::Memory::default(),
         };
         let fresh = self.spatial.search_query(p, &search)?;
         let lists = self.spatial.searched().ok_or(GenieError::unsupported(

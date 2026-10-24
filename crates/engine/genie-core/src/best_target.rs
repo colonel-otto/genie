@@ -1216,6 +1216,43 @@ mod tests {
         assert_eq!(c.target, 9);
     }
 
+    /// The lists' records pass the objects without a unit AI, inside another, dead or allied,
+    /// and those beyond the sight (twice the line of sight: 12) or under the least range; the
+    /// one left answers.
+    #[test]
+    fn the_lists_pass_over_what_the_unit_may_not_attack() {
+        let mut field = Field::default();
+        let mut no_ai = enemy(30, 0, 3.0, 40.0);
+        no_ai.0.has_ai = false;
+        let mut inside = enemy(31, 0, 3.0, 40.0);
+        inside.0.inside = true;
+        let mut dead = enemy(32, 0, 3.0, 40.0);
+        dead.0.state = 3;
+        let mut ally = enemy(33, 0, 3.0, 40.0);
+        ally.0.allied = true;
+        for (id, t) in [(30, no_ai), (31, inside), (32, dead), (33, ally)] {
+            let _ = field.things.insert(id, t);
+        }
+        let _ = field.things.insert(34, enemy(34, 0, 12.5, 40.0));
+        let _ = field.things.insert(35, enemy(35, 0, 0.1, 40.0));
+        let _ = field.things.insert(36, enemy(36, 0, 11.9, 40.0));
+        field.quick = (30..=36).collect();
+        let lists = [vec![], vec![], vec![], vec![], (30..=36).collect()];
+        let ask = Ask {
+            idle: true,
+            paths: 1,
+            any_class: true,
+            ..Ask::default()
+        };
+        let me = Searcher {
+            min_range: 0.2,
+            ..soldier()
+        };
+        let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
+        assert_eq!(c.target, 36);
+        assert_eq!(field.asked, [('q', 36)]);
+    }
+
     /// A unit that attacks walls (its last target a wall) and finds only walls and gates takes
     /// the closest gate; one that does not passes them over.
     #[test]

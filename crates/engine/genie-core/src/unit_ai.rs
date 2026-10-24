@@ -136,7 +136,7 @@ const SIEGE_TOWER_AI: u32 = 0x12;
 /// The priest's factory type (`TribePriestUnitAIModule`: classes 18, 43 and 53), whose slot 72,
 /// notify handler and attack checks (its conversions and heals, `FUN_140c1feb0`,
 /// `FUN_140c26f60`, `FUN_140c19020`, `FUN_140c1af00`) are not modelled.
-const PRIEST_AI: u32 = 9;
+pub(crate) const PRIEST_AI: u32 = 9;
 /// The siege unit's factory type (`TribeSiegeUnitAIModule`: classes 13, 51, 54, 55, masters 1744
 /// and 1746).
 const SIEGE_AI: u32 = 0x10;
@@ -611,6 +611,62 @@ pub struct Search<'a> {
     pub size: [f32; 2],
     /// What it picks of what it finds.
     pub pick: Pick,
+    /// What an attack pick reads of the unit AI's memory.
+    pub memory: Memory<'a>,
+}
+
+/// `bestUnitToAttack`'s arguments past its point ([`crate::best_target::Ask`] without its
+/// list: at most one extra object).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AttackAsk {
+    /// The reference distance (0: none).
+    pub distance: f32,
+    /// An idle check.
+    pub idle: bool,
+    /// The path checks.
+    pub paths: bool,
+    /// An extra object for the statistics.
+    pub extra: Option<i32>,
+    /// Any class.
+    pub any_class: bool,
+    /// The unit is in an attack work state.
+    pub work_state: bool,
+}
+
+impl AttackAsk {
+    /// The idle checks' call: no reference distance, an idle check, path checks on, no extra
+    /// object, any class, not in an attack work state.
+    pub const IDLE: Self = Self {
+        distance: 0.0,
+        idle: true,
+        paths: true,
+        extra: None,
+        any_class: true,
+        work_state: false,
+    };
+
+    /// The full arguments ([`crate::best_target::Ask`]).
+    #[must_use]
+    pub fn ask(&self) -> crate::best_target::Ask {
+        crate::best_target::Ask {
+            distance: self.distance,
+            idle: self.idle,
+            paths: u8::from(self.paths),
+            extra: self.extra.into_iter().collect(),
+            any_class: self.any_class,
+            work_state: self.work_state,
+        }
+    }
+}
+
+/// What `bestUnitToAttack` reads of the searching unit AI's memory: its retarget entries
+/// (`+0x1e0`) and its order history (`+0x78`'s list).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Memory<'a> {
+    /// The retarget entries.
+    pub retries: &'a [(i32, u32)],
+    /// The order history, the newest first.
+    pub history: &'a [OrderRecord],
 }
 
 /// What a [`Search`] picks.
@@ -649,6 +705,8 @@ pub enum Pick {
         lowest: usize,
         /// What the pick reads of the searching unit AI.
         seeker: Seeker,
+        /// `bestUnitToAttack`'s arguments past its point.
+        ask: AttackAsk,
     },
     /// The search alone (slot 0x50 as a `NoAttack` soldier's idle check calls it): no object, and
     /// whether it found enemies (the alert mode).
@@ -938,7 +996,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
 /// [`PRIORITY_3_CLASSES`]; a ranged one (range above 1) with a blast (`+0x82c` above 0) whose
 /// `area_effect_level` has neither bit 2 nor 3 (`FUN_1410bf160`, `FUN_1410bfcb0`) scans the tiles
 /// of the blast around the target for its own or allied objects (not modelled).
-fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
+pub(crate) fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     if me.attack_priority == 3 && !PRIORITY_3_CLASSES.contains(&t.class) {
         return Ok(false);
     }
@@ -951,84 +1009,275 @@ fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
     Ok(true)
 }
 
-/// An object in `bestUnitToAttack`'s statistics (`FUN_140c66590`): its id, its footprints' gap
-/// to the unit and whether it moves (its slot 0x208 above 0).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AttackStat {
-    /// The object.
-    pub id: i32,
-    /// The gap between its footprint and the unit's (`FUN_14118f680`).
-    pub gap: f32,
-    /// Its speed (slot 0x208) is above 0.
-    pub moving: bool,
-}
-
-/// What `bestUnitToAttack` asks of the world while its unit AI runs: the tests of an object it
-/// found ([`attack_candidate`] with what the world holds of it) and the choice among those that
-/// went into the statistics ([`choose_attack`] with the unit's path tests).
+/// What `bestUnitToAttack` (`FUN_140c44680`, [`crate::best_target::best_unit_to_attack`]) asks
+/// of the world while its unit AI runs: the searching unit ([`AttackPicker::searcher`]) and its
+/// reads and tests of the objects its search found; the paths (slot 0x3d0) are the search's.
 pub trait AttackPicker {
-    /// The object `id` of relation list `list` (`None`: the unit AI's current target) goes into
-    /// the statistics.
+    /// The searching unit as `bestUnitToAttack` reads it, with its AI's `memory`.
     ///
     /// # Errors
     ///
-    /// What the tests do not model.
-    fn candidate(&self, id: i32, list: Option<usize>) -> Result<Option<AttackStat>, GenieError>;
+    /// A unit the reads do not model (a computer player's).
+    fn searcher(&mut self, memory: Memory<'_>) -> Result<crate::best_target::Searcher, GenieError>;
 
-    /// The object to attack among the statistics, −1 for none.
+    /// [`crate::best_target::Battlefield::thing`].
     ///
     /// # Errors
     ///
-    /// What the choice does not model.
-    fn choose(&mut self, stats: &[AttackStat]) -> Result<i32, GenieError>;
+    /// An object the slice does not hold.
+    fn thing(&mut self, id: i32) -> Result<Option<crate::best_target::Thing>, GenieError>;
+
+    /// [`crate::best_target::Battlefield::can_attack`].
+    ///
+    /// # Errors
+    ///
+    /// What the attack check does not model.
+    fn can_attack(&mut self, id: i32) -> Result<bool, GenieError>;
+
+    /// [`crate::best_target::Battlefield::attacks_neutral`].
+    ///
+    /// # Errors
+    ///
+    /// A unit-AI type whose test is not modelled.
+    fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError>;
+
+    /// [`crate::best_target::Battlefield::spares_friends`].
+    ///
+    /// # Errors
+    ///
+    /// What the scan does not model.
+    fn spares_friends(&mut self, id: i32) -> Result<bool, GenieError>;
+
+    /// [`crate::best_target::Battlefield::shuns`].
+    ///
+    /// # Errors
+    ///
+    /// What the test does not model.
+    fn shuns(&mut self, id: i32) -> Result<bool, GenieError>;
+
+    /// [`crate::best_target::Battlefield::candidate`].
+    ///
+    /// # Errors
+    ///
+    /// What the reads do not model.
+    fn candidate(
+        &mut self,
+        id: i32,
+        distance: f32,
+        category: i32,
+    ) -> Result<crate::best_target::Candidate, GenieError>;
+
+    /// [`crate::best_target::Battlefield::armored`].
+    ///
+    /// # Errors
+    ///
+    /// What the read does not model.
+    fn armored(&mut self, id: i32) -> Result<bool, GenieError>;
+
+    /// [`crate::best_target::Battlefield::weapon_range`].
+    ///
+    /// # Errors
+    ///
+    /// What the read does not model.
+    fn weapon_range(&mut self, id: i32) -> Result<f32, GenieError>;
+
+    /// [`crate::best_target::Battlefield::engages`].
+    ///
+    /// # Errors
+    ///
+    /// What the reads do not model.
+    fn engages(&mut self, id: i32) -> Result<bool, GenieError>;
+
+    /// [`crate::best_target::Battlefield::quick_path`].
+    ///
+    /// # Errors
+    ///
+    /// What the path does not model.
+    fn quick_path(&mut self, id: i32, range: f32) -> Result<bool, GenieError>;
 }
 
-/// An [`AttackPicker`] for searches that pick no attack: a test of an object fails.
+/// A search that picks no attack, asked about one ([`NoAttack`]).
+const NO_ATTACK: GenieError =
+    GenieError::unsupported("an attack test in a search that picks no attack");
+
+/// An [`AttackPicker`] for searches that pick no attack: every read fails.
 #[derive(Clone, Copy, Debug)]
 pub struct NoAttack;
 
 impl AttackPicker for NoAttack {
-    fn candidate(&self, _: i32, _: Option<usize>) -> Result<Option<AttackStat>, GenieError> {
-        Err(GenieError::unsupported(
-            "an attack test in a search that picks no attack",
-        ))
+    fn searcher(&mut self, _: Memory<'_>) -> Result<crate::best_target::Searcher, GenieError> {
+        Err(NO_ATTACK)
     }
 
-    fn choose(&mut self, _: &[AttackStat]) -> Result<i32, GenieError> {
-        Err(GenieError::unsupported(
-            "an attack choice in a search that picks no attack",
-        ))
+    fn thing(&mut self, _: i32) -> Result<Option<crate::best_target::Thing>, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn can_attack(&mut self, _: i32) -> Result<bool, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn attacks_neutral(&mut self, _: i16) -> Result<bool, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn spares_friends(&mut self, _: i32) -> Result<bool, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn shuns(&mut self, _: i32) -> Result<bool, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn candidate(
+        &mut self,
+        _: i32,
+        _: f32,
+        _: i32,
+    ) -> Result<crate::best_target::Candidate, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn armored(&mut self, _: i32) -> Result<bool, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn weapon_range(&mut self, _: i32) -> Result<f32, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn engages(&mut self, _: i32) -> Result<bool, GenieError> {
+        Err(NO_ATTACK)
+    }
+
+    fn quick_path(&mut self, _: i32, _: f32) -> Result<bool, GenieError> {
+        Err(NO_ATTACK)
     }
 }
 
-/// `bestUnitToAttack`'s choice (`FUN_140c44680` after its statistics) as the idle checks call it
-/// (an idle check, path tests on, not in an attack work state): none without statistics. One
-/// object needs no scoring (`FUN_140c48150`) nor sort (`FUN_140c41830`, `FUN_140c41b40`): it
-/// passes the first test of the first three (it moves, or none of the objects moves) and is the
-/// choice when the unit reaches it by the quick path (`quick`, slot 0x3e0, within the unit's range
-/// against it); else the path test (slot 0x3d0) follows, whose failure gives the object an
-/// ignored retry entry (`FUN_140c42320`), not modelled. Several objects are not modelled.
+/// What a priest's conversion test (`FUN_140c1af00`, the priest's slot 0x1b8) reads of the
+/// priest: its master's class and id, its faith (`+0x310`), its owner's attributes and its
+/// master's tasks.
+#[derive(Clone, Copy, Debug)]
+pub struct Converter<'a> {
+    /// Its master's class.
+    pub class: i16,
+    /// Its master's id.
+    pub master: i16,
+    /// Its faith (`+0x310`, what it holds).
+    pub faith: f32,
+    /// Its owner's attributes (`player+0x100`, count `+0x90`).
+    pub attributes: &'a [f32],
+    /// Its master's tasks (`+0x788`).
+    pub tasks: &'a [crate::masters::Task],
+}
+
+/// What the conversion test reads of the object: its owner, its master's class, id and hero
+/// flag (`+0x8d9`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Convertee {
+    /// Its owner's id.
+    pub owner: usize,
+    /// Its master's class.
+    pub class: i16,
+    /// Its master's id.
+    pub master: i16,
+    /// Its master's hero flag (`hero_flag`, `+0x8d9`).
+    pub hero: u8,
+}
+
+/// The faith a priest's conversion asks unless `any` (`DAT_14330ebcc`).
+const FULL_FAITH: f32 = crate::image::unit_ai::FULL_FAITH;
+/// The town centres a priest never converts (109, 618 to 621), the relic cart's master 159, the
+/// farms and fish trap (50, 1187, 199).
+const NEVER_CONVERTED: [i16; 9] = [109, 618, 619, 620, 621, 159, 50, 1187, 199];
+/// The priest master that converts only boats (53).
+const BOAT_CONVERTER: i16 = 53;
+
+/// The priest's slot 0x1b8 (`FUN_140c1af00`, "CanConvert"): whether priest `p` may convert
+/// object `t` (None: one the world does not hold), with `any` its faith not asked. Never for
+/// class 43, nor without full faith (100, `COMISS`: a NaN fails) unless `any`; never a Gaia
+/// object, nor with the owner's attribute 67 at most 0, nor livestock (58); master 53 converts
+/// only the boats (2, 20, 21, 22, 53); never the [`NEVER_CONVERTED`] masters, walls (27), gates
+/// (39) or flags (30); never a master whose hero flag forbids it (bit 0 or 1 set, but bit 7 with
+/// bit 1). Then the priest's convert task (action type 104): its last for any class and master,
+/// or the first for the object's master or class; one that names an attribute (`+0x26`) the
+/// owner holds at most 0 (or not a number) fails.
+#[must_use]
+pub fn can_convert(p: &Converter<'_>, t: Option<&Convertee>, any: bool) -> bool {
+    if p.class == 43 {
+        return false;
+    }
+    // full faith (`COMISS`: a NaN has none)
+    let faithful = FULL_FAITH <= p.faith;
+    if !any && !faithful {
+        return false;
+    }
+    let Some(t) = t else {
+        return false;
+    };
+    if t.owner == 0 || p.attributes.get(67).is_some_and(|&a| a <= 0.0) || t.class == 58 {
+        return false;
+    }
+    if p.master == BOAT_CONVERTER {
+        return matches!(t.class, 2 | 20 | 21 | 22 | 53);
+    }
+    if NEVER_CONVERTED.contains(&t.master) || matches!(t.class, 27 | 39 | 30) {
+        return false;
+    }
+    let hero = t.hero;
+    let free = hero.trailing_zeros() >= 2 || ((hero as i8) < 0 && hero & 2 != 0);
+    if !free {
+        return false;
+    }
+    let mut task = None;
+    for k in p.tasks.iter().filter(|k| k.action_type == 0x68) {
+        if k.object_group == -1 && k.object_id == -1 {
+            task = Some(k);
+        }
+        if k.object_id == t.master || k.object_group == t.class {
+            task = Some(k);
+            break;
+        }
+    }
+    if let Some(k) = task
+        && let Ok(i) = usize::try_from(k.attribute_type4)
+        && let Some(&a) = p.attributes.get(i)
+        && crate::fmath::at_most_or_unordered(a, 0.0)
+    {
+        return false;
+    }
+    true
+}
+
+/// `FUN_140c47f90` for a human player's unit (`me`): the farthest `bestUnitToAttack` looks, twice
+/// its master's line of sight. A computer player's (by the game's difficulty and the player's
+/// `+0x608`/`+0x60c` in a scenario) is not modelled.
 ///
 /// # Errors
 ///
-/// What the choice does not model.
-pub fn choose_attack(
-    stats: &[AttackStat],
-    quick: &mut dyn FnMut(i32) -> Result<bool, GenieError>,
-) -> Result<i32, GenieError> {
-    match stats {
-        [] => Ok(-1),
-        [one] => {
-            if quick(one.id)? {
-                Ok(one.id)
-            } else {
-                Err(GenieError::unsupported(
-                    "bestUnitToAttack's path test after its quick path (slot 0x3d0)",
-                ))
-            }
-        }
+/// A computer player's unit.
+pub const fn attack_sight(me: &Attacker) -> Result<f32, GenieError> {
+    if me.computer {
+        return Err(GenieError::unsupported(
+            "a computer player's bestUnitToAttack",
+        ));
+    }
+    Ok(me.los + me.los)
+}
+
+/// The unit AI's slot 0xa8 (`me`'s type): the soldier's ([`soldier_attacks_neutral`]) or the
+/// siege unit's ([`siege_attacks_neutral`]) test of a neutral object of `class`.
+///
+/// # Errors
+///
+/// Another unit-AI type.
+pub fn attacks_neutral(me: &Attacker, class: i16) -> Result<bool, GenieError> {
+    match me.ai_type {
+        13 => Ok(soldier_attacks_neutral(me.attack_priority, class)),
+        SIEGE_AI => Ok(siege_attacks_neutral(me.attack_priority, class)),
         _ => Err(GenieError::unsupported(
-            "bestUnitToAttack's scoring of several candidates (FUN_140c48150)",
+            "a neutral object's test (slot 0xa8) of a unit-AI type not modelled",
         )),
     }
 }
@@ -1195,81 +1444,6 @@ pub fn siege_can_attack(
         return Ok(priority == 1 || priority & 0xfc != 0);
     }
     Ok(priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
-}
-
-/// `bestUnitToAttack`'s (`FUN_140c44680`, as the idle checks call it: no reference distance, an
-/// idle check, path checks on, no extra objects, the class filter off) tests of an object it
-/// found in relation list `list` (4 enemies down), or of its current target (`None`): whether it
-/// goes into the statistics, and its gap. An object without a unit AI (`+0x6b0`), inside another
-/// (`+0x2f0`) or one the attack check passes ([`can_attack`]) is left; an attacker of type 70 also
-/// asks [`spares_friends`]; a neutral one slot 0xa8 (the soldier's: not [`NEUTRAL_SPARED`] nor,
-/// at attack priority 3, outside [`PRIORITY_3_CLASSES`]); a Gaia unit of the combat type taken by
-/// sight is left outside the scenario modes, as are an object with its targeting flag off
-/// (`+0x689`) and, while the attack action (600) is current, one not attackable (`+0x68a`). A
-/// computer player's tests (`FUN_140c41690`, the ship and priority rules) are not modelled. Then
-/// the footprints' gap (`FUN_14118f680`) must be at least the least range, within the weapon
-/// range unless the unit moves (slot 0x208), and within twice the line of sight
-/// (`FUN_140c47f90`, a human player's). Walls (27) and gates (39) count only for a unit that
-/// attacks walls (its current or last target one), which is not modelled.
-pub fn attack_candidate(
-    me: &Attacker,
-    s: &Seeker,
-    t: &Target,
-    list: Option<usize>,
-) -> Result<Option<f32>, GenieError> {
-    if me.computer {
-        return Err(GenieError::unsupported(
-            "a computer player's bestUnitToAttack",
-        ));
-    }
-    let gap = crate::movement::footprint_gap(me.position, me.radius, t.position, t.radius);
-    let Some(list) = list else {
-        // the current target: in the statistics when in range or the unit moves
-        let range = me.range_against()?;
-        return Ok((gap <= range || 0.0 < me.speed).then_some(gap));
-    };
-    if !t.has_ai || t.inside || !can_attack(me, s, t)? {
-        return Ok(None);
-    }
-    if me.kind == 70 && !spares_friends(me, t)? {
-        return Ok(None);
-    }
-    if list == 3 {
-        let attacks = match me.ai_type {
-            13 => soldier_attacks_neutral(me.attack_priority, t.class),
-            SIEGE_AI => siege_attacks_neutral(me.attack_priority, t.class),
-            _ => {
-                return Err(GenieError::unsupported(
-                    "a neutral object's test (slot 0xa8) of a unit-AI type not modelled",
-                ));
-            }
-        };
-        if !attacks {
-            return Ok(None);
-        }
-    }
-    let gaia_unit = !me.scenario && t.owner == 0 && 70 <= t.kind;
-    if gaia_unit && t.capture != 0 {
-        return Ok(None);
-    }
-    if !t.targeting || (!t.attackable && s.action == 600) {
-        return Ok(None);
-    }
-    let sight = me.los + me.los;
-    let in_range = me.min_range <= gap && (gap <= me.range || me.speed != 0.0);
-    if !in_range || !(s.can_move() || gap <= sight) || sight < gap {
-        return Ok(None);
-    }
-    if matches!(t.class, 27 | 39) {
-        let walls = matches!(s.target_type, 27 | 39) || matches!(s.last_target_type, 27 | 39);
-        if walls {
-            return Err(GenieError::unsupported(
-                "bestUnitToAttack of a unit that attacks walls (the closest wall)",
-            ));
-        }
-        return Ok(None);
-    }
-    Ok(Some(gap))
 }
 
 /// The classes a lion attacks by its own choice (its slot 0xa0's list, `FUN_140c18d50`; the
@@ -1728,6 +1902,9 @@ pub struct Found {
     /// What `ClosestObject` writes to its seventh argument: the object's search distance,
     /// truncated (`CVTTSS2SI`); −1 (`DAT_14330ec20`) without one and from the other picks.
     pub distance: i32,
+    /// The retarget entries `bestUnitToAttack`'s failed paths add (`FUN_140c42320`: a target and
+    /// the world time until which it is ignored; at most three), the unit AI's.
+    pub retries: [Option<(i32, u32)>; 3],
 }
 
 impl Found {
@@ -1739,6 +1916,7 @@ impl Found {
         fresh: true,
         players: 0,
         distance: -1,
+        retries: [None; 3],
     };
 }
 
@@ -2655,6 +2833,21 @@ impl UnitAi {
         }
     }
 
+    /// `FUN_140c42320` for each retarget entry an attack search's `bestUnitToAttack` added
+    /// ([`Found::retries`]): it joins the end of the entries.
+    pub fn add_retries(&mut self, found: &Found) {
+        self.retries.extend(found.retries.iter().flatten());
+    }
+
+    /// The memory `bestUnitToAttack` reads ([`Memory`]).
+    #[must_use]
+    pub fn memory(&self) -> Memory<'_> {
+        Memory {
+            retries: &self.retries,
+            history: &self.order_history,
+        }
+    }
+
     /// `FUN_140c42080` once the world holds the target (the callers' `FUN_1415417a0`; an order on
     /// a point records nothing): the order joins the history first, a ninth recycling the
     /// oldest ([`ORDER_HISTORY`]).
@@ -3139,6 +3332,7 @@ impl UnitAi {
                 spared: -1,
                 reach: true,
             },
+            memory: Memory::default(),
         })?;
         self.alert(found, at.dt_seconds);
         if found.id != -1 {
@@ -3214,6 +3408,7 @@ impl UnitAi {
                 spared: -1,
                 reach: true,
             },
+            memory: Memory::default(),
         };
         let mut reach = if at.mode_1 {
             at.los
@@ -3331,6 +3526,7 @@ impl UnitAi {
                 spared: -1,
                 reach: true,
             },
+            memory: Memory::default(),
         })?;
         self.alert(found, at.dt_seconds);
         if found.id == -1 {
@@ -3388,6 +3584,7 @@ impl UnitAi {
                 classes: &SIEGE_CARED,
                 size: at.size,
                 pick: Pick::Look,
+                memory: Memory::default(),
             })?;
             self.attack_search_alert(found, computer)?;
             if !matches!(self.current_order, PATROL | PATROL_2) {
@@ -3415,8 +3612,11 @@ impl UnitAi {
                 pick: Pick::Attack {
                     lowest: if at.scenario { 2 } else { 0 },
                     seeker: self.seeker(at),
+                    ask: AttackAsk::IDLE,
                 },
+                memory: self.memory(),
             })?;
+            self.add_retries(&found);
             self.attack_search_alert(found, computer)?;
             target = found.id;
         }
@@ -3503,8 +3703,11 @@ impl UnitAi {
                 pick: Pick::Attack {
                     lowest: if at.scenario { 2 } else { 0 },
                     seeker: self.seeker(at),
+                    ask: AttackAsk::IDLE,
                 },
+                memory: self.memory(),
             })?;
+            self.add_retries(&found);
             self.attack_search_alert(found, computer)?;
             found.id
         };
@@ -3578,6 +3781,7 @@ impl UnitAi {
             classes: &SOLDIER_CARED,
             size: at.size,
             pick: Pick::Look,
+            memory: Memory::default(),
         })?;
         if found.enemies {
             return Err(GenieError::unsupported(
@@ -3621,6 +3825,7 @@ impl UnitAi {
                 classes: &TOWER_CARED,
                 size: at.size,
                 pick: Pick::Look,
+                memory: Memory::default(),
             })?;
             self.attack_search_alert(found, computer)?;
             return Ok(false);
@@ -3633,8 +3838,11 @@ impl UnitAi {
             pick: Pick::Attack {
                 lowest: if at.scenario && !computer { 2 } else { 0 },
                 seeker: self.seeker(at),
+                ask: AttackAsk::IDLE,
             },
+            memory: self.memory(),
         })?;
+        self.add_retries(&found);
         self.attack_search_alert(found, computer)?;
         if found.id == -1 {
             return Ok(false);
@@ -4067,6 +4275,7 @@ impl UnitAi {
                 spared: -1,
                 reach: true,
             },
+            memory: Memory::default(),
         })?;
         self.alert(found, at.dt_seconds);
         if found.id == -1 {
@@ -4140,6 +4349,7 @@ impl UnitAi {
                     spared,
                     reach: true,
                 },
+                memory: Memory::default(),
             })?;
             self.alert(found, at.dt_seconds);
             match found.position {
@@ -4626,6 +4836,7 @@ impl UnitAi {
             classes,
             size: at.size,
             pick: Pick::Look,
+            memory: Memory::default(),
         })?;
         self.attack_search_alert(found, computer)?;
         side.call_for_help(attacker)
@@ -4936,6 +5147,7 @@ impl UnitAi {
                     spared: -1,
                     reach: true,
                 },
+                memory: Memory::default(),
             })?;
             self.alert(found, at.dt_seconds);
             if found.id != -1 && found.distance < best.1 {
@@ -5701,6 +5913,7 @@ impl UnitAi {
                 spared: -1,
                 reach: 0.0 < at.speed,
             },
+            memory: Memory::default(),
         })?;
         self.alert(found, at.dt_seconds);
         if found.players < 2
@@ -7797,6 +8010,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: 0,
+                retries: [None; 3],
             })
         }
         fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
@@ -7843,6 +8057,74 @@ mod tests {
             self.walks.push(attacker);
             Ok(())
         }
+    }
+
+    /// The priest's slot 0x1b8 (`FUN_140c1af00`): faith asked unless `any`; never Gaia, sheep,
+    /// town centres, walls or a master whose hero flag forbids it; the convert task's attribute
+    /// (`+0x26`) must be above 0 for the object's class.
+    #[test]
+    fn a_priest_converts_by_its_faith_its_task_and_the_object() {
+        let attributes = {
+            let mut a = vec![0.0f32; 100];
+            a[67] = 1.0;
+            a[28] = 0.0;
+            a
+        };
+        let tasks = [
+            crate::masters::Task {
+                action_type: 0x68,
+                ..crate::masters::Task::default()
+            },
+            crate::masters::Task {
+                action_type: 0x68,
+                object_group: 3,
+                attribute_type4: 28,
+                ..crate::masters::Task::default()
+            },
+        ];
+        let monk = Converter {
+            class: 18,
+            master: 125,
+            faith: 100.0,
+            attributes: &attributes,
+            tasks: &tasks,
+        };
+        let knight = Convertee {
+            owner: 2,
+            class: 12,
+            master: 38,
+            hero: 0,
+        };
+        assert!(can_convert(&monk, Some(&knight), false));
+        let tired = Converter {
+            faith: 99.0,
+            ..monk
+        };
+        assert!(!can_convert(&tired, Some(&knight), false));
+        assert!(can_convert(&tired, Some(&knight), true));
+        assert!(!can_convert(&monk, None, true));
+        let gaia = Convertee { owner: 0, ..knight };
+        assert!(!can_convert(&monk, Some(&gaia), true));
+        let sheep = Convertee {
+            class: 58,
+            ..knight
+        };
+        assert!(!can_convert(&monk, Some(&sheep), true));
+        let tc = Convertee {
+            class: 3,
+            master: 109,
+            ..knight
+        };
+        assert!(!can_convert(&monk, Some(&tc), true));
+        let hero = Convertee { hero: 1, ..knight };
+        assert!(!can_convert(&monk, Some(&hero), true));
+        // a building's task names attribute 28, which the owner holds at 0
+        let house = Convertee {
+            class: 3,
+            master: 70,
+            ..knight
+        };
+        assert!(!can_convert(&monk, Some(&house), true));
     }
 
     /// `FUN_140c42080`: an order joins the history first; a ninth recycles the oldest.
@@ -8591,6 +8873,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             })
         }
         fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
@@ -8697,6 +8980,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             })
         }
         fn attack(&mut self, target: i32, force: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
@@ -10389,6 +10673,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             })
         };
         let moved = u
@@ -11286,6 +11571,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             })
         };
         assert!(u.update(28, 0, false, &at, &mut rng(), &mut found).is_err());
@@ -11486,60 +11772,6 @@ mod tests {
             ..villager(119.0)
         };
         assert_eq!(soldier_can_attack(&SCOUT, &STAND_GROUND, &relic), Ok(false));
-    }
-
-    #[test]
-    fn best_unit_to_attack_takes_an_enemy_within_twice_the_line_of_sight() {
-        let aggressive = Seeker {
-            stance: 0,
-            ..STAND_GROUND
-        };
-        let enemy = |x: f32| Target {
-            owner: 2,
-            class: 6,
-            master: 74,
-            position: [x, 183.5, 0.0],
-            radius: [0.2, 0.2],
-            ..BOAR
-        };
-        // the footprints' gap: 0.4 + 0.2 off the centres' distance
-        let gap = attack_candidate(&SCOUT, &aggressive, &enemy(126.0), Some(4)).unwrap();
-        assert!(gap.is_some_and(|g| (g - 6.9).abs() < 1e-4));
-        assert_eq!(
-            attack_candidate(&SCOUT, &aggressive, &enemy(127.2), Some(4)),
-            Ok(None)
-        );
-        // one without a unit AI or inside another is none
-        let no_ai = Target {
-            has_ai: false,
-            ..enemy(120.0)
-        };
-        assert_eq!(
-            attack_candidate(&SCOUT, &aggressive, &no_ai, Some(4)),
-            Ok(None)
-        );
-        let inside = Target {
-            inside: true,
-            ..enemy(120.0)
-        };
-        assert_eq!(
-            attack_candidate(&SCOUT, &aggressive, &inside, Some(4)),
-            Ok(None)
-        );
-        // a wall counts only for a unit that attacks walls
-        let wall = Target {
-            class: 27,
-            ..enemy(120.0)
-        };
-        assert_eq!(
-            attack_candidate(&SCOUT, &aggressive, &wall, Some(4)),
-            Ok(None)
-        );
-        let at_walls = Seeker {
-            last_target_type: 27,
-            ..aggressive
-        };
-        assert!(attack_candidate(&SCOUT, &at_walls, &wall, Some(4)).is_err());
     }
 
     #[test]
@@ -12215,6 +12447,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             })
         };
         let fx = u
@@ -12581,6 +12814,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             })
         };
         let moved = u
@@ -12602,6 +12836,7 @@ mod tests {
                 fresh: true,
                 players: 0,
                 distance: -1,
+                retries: [None; 3],
             })
         };
         let moved = u
