@@ -1765,8 +1765,8 @@ impl crate::turn::Turns {
     /// keeps the point alone, and with x or y −1 none); then the new object loses the hit points
     /// the old one lacked. Not modelled: the attacking units of the foundation the world still
     /// holds (`+0xce0`, [`crate::turn::Unit::attacking_units`]: slot 0x140 on each with the new
-    /// object, a repeat of the last skipped) and a gate's stack gate (slot 0x670 with the old
-    /// one's lock). Not held: `+0xcb0` (the new id) and the local
+    /// object, a repeat of the last skipped). A gate's stack gate takes the old one's lock (slot
+    /// 0x670 with `+0xc7c`, [`crate::order::lock_gate`]). Not held: `+0xcb0` (the new id) and the local
     /// player's tracker (`FUN_14165c2a0`, `FUN_14165c470`).
     ///
     /// # Errors
@@ -1787,6 +1787,7 @@ impl crate::turn::Turns {
             old.gather_point,
         );
         let old_class = self.master_of(p, old.life.master_id)?.class;
+        let old_lock = old.gate.map(|g| g.locked);
         // its attacking units (+0xce0) the world still holds each hear of the new object (their
         // slot 0x140), which is not modelled
         let enemies = old
@@ -1805,12 +1806,9 @@ impl crate::turn::Turns {
         let new_master = self.master_of(q, nu.life.master_id)?;
         let mut point = None;
         let building_made = new_master.kind == BUILDING_TYPE;
+        let gate_lock = (building_made && old_class == CLASS_39 && new_master.class == CLASS_39)
+            .then_some(old_lock);
         if building_made {
-            if old_class == CLASS_39 && new_master.class == CLASS_39 {
-                return Err(GenieError::unsupported(
-                    "a gate's stack gate (slot 0x670 with the old one's lock)",
-                ));
-            }
             // a gather point on the old building names the new one; one whose target the world
             // no longer holds keeps its point, none at x or y −1 (compared as floats)
             point = gather.map(|g| {
@@ -1831,6 +1829,7 @@ impl crate::turn::Turns {
                 }
             });
         }
+        let now = self.world_time;
         let (_, nu) = self.object_mut(new).ok_or(NOT_HELD)?;
         if building_made {
             if let Some(ai) = nu.ai.as_mut().filter(|_| !orders.is_empty()) {
@@ -1839,6 +1838,13 @@ impl crate::turn::Turns {
             if let Some(g) = point {
                 nu.gather_point = g;
             }
+        }
+        // a gate's stack gate takes the old one's lock (its slot 0x670 with `+0xc7c`)
+        if let Some(lock) = gate_lock {
+            let locked = lock.ok_or(GenieError::unreachable(
+                "a building without its gate state (every building holds one)",
+            ))?;
+            crate::order::lock_gate(nu, locked, now)?;
         }
         nu.life.hp -= stack.hp_lost;
         Ok(())
@@ -4344,6 +4350,70 @@ mod stack_tests {
         let gone = unit(8759);
         assert_eq!((gone.life.hp, gone.roo_called), (0.0, true));
         assert_eq!(t.spatial.get(8759).unwrap().obstruction, None);
+    }
+
+    /// A gate foundation's stack gate takes the foundation's lock (`FUN_1411dbb70`: the new
+    /// gate's slot 0x670 with the old one's `+0xc7c`): locked, the new gate's last move time is
+    /// the world time plus 1; unlocked it stays unlocked and keeps its last move time.
+    #[test]
+    fn a_gate_s_stack_gate_takes_the_foundation_s_lock() {
+        for locked in [true, false] {
+            let mut t = world();
+            t.world_time = 5000;
+            for ms in &mut t.masters {
+                for id in [621, 109] {
+                    let m = ms.get_mut(id).unwrap();
+                    m.class = 39;
+                    m.storage.clear();
+                    m.volley_missile = None;
+                    // every building holds its movement state
+                    m.moving = Some(crate::movement::MoveStats {
+                        fly_mode: 0,
+                        speed: 0.0,
+                        walk_speed: 0.0,
+                        run_speed: 0.0,
+                        stand_speed: 0.0,
+                        turn_rate: 0.0,
+                        turn_radius: 0.0,
+                        turn_radius_speed: f32::MAX,
+                        radius: [2.0, 2.0, 0.0],
+                        restriction: 0,
+                        restriction_mask: 255,
+                        turn_time: 0.0,
+                        move_algorithm: 0,
+                        min_collision: 0.0,
+                        fast_turn: false,
+                        facets: None,
+                        weapon_range: 0.0,
+                    });
+                    if let Some(b) = m.building.as_mut() {
+                        b.annexes = [-1; 4];
+                    }
+                }
+            }
+            t.players[1].objects[0].gate = Some(crate::turn::Gate {
+                locked,
+                ..crate::turn::Gate::default()
+            });
+            t.stack_unit(
+                1,
+                8759,
+                StackUnit {
+                    master: 109,
+                    at: [54.0, 147.0, 0.0],
+                    hp_lost: 0.0,
+                },
+            )
+            .unwrap();
+            let gate = t.players[1].objects.iter().find(|u| u.id == 8768).unwrap();
+            assert_eq!(gate.gate.map(|g| g.locked), Some(locked));
+            let last_move = gate.mover.as_ref().map(|m| m.last_move);
+            assert_eq!(
+                last_move,
+                Some(if locked { 5001 } else { 5000 }),
+                "{locked}"
+            );
+        }
     }
 
     /// The stack unit's completion tells each attacking unit of the foundation (`+0xce0`) the

@@ -4824,7 +4824,7 @@ fn set_stance(
 /// A building's slot 0x670 (`FUN_1411dba30`): its gate lock (`mGateLocked`, `+0xc7c`, an int its
 /// callers set to 0 or 1) takes `locked`; a lock also sets its last move time (`+0x870`,
 /// [`crate::movement::Mover::last_move`]) to the world time (`FUN_1415300d0`) plus 1.
-fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), GenieError> {
+pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), GenieError> {
     let gate = unit.gate.as_mut().ok_or(GenieError::unsupported(
         "a GATE of a building without its gate state",
     ))?;
