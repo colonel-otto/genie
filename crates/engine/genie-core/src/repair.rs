@@ -1111,4 +1111,39 @@ mod tests {
             (DONE, vec![crate::unit_ai::ACTION_COMPLETED])
         );
     }
+
+    /// Slot 7 (`FUN_140adaa00`, `set_state(2)`): a counted repairer is no longer counted (the
+    /// caller's to leave the repairers), the `MoveTo` goes, the target stays.
+    #[test]
+    fn a_halt_stops_the_repair_and_answers_whether_it_counted() {
+        let mut mover = crate::hunt::tests::walker();
+        let mut r = RepairAction {
+            state: WORK,
+            counted: true,
+            ..RepairAction::start(20, [11.0, 10.0, 0.0], TASK, 0.0)
+        };
+        assert_eq!(r.halt(Some(&mut mover)), Ok(true));
+        assert_eq!(
+            (r.state, r.counted, r.move_to, r.target),
+            (HALTED, false, None, 20)
+        );
+        assert_eq!(r.halt(None), Ok(false));
+    }
+
+    /// `set_state(4)` from a new target: the old `MoveTo` and point go, a new walk starts.
+    #[test]
+    fn walking_again_starts_a_new_move_to_the_target() {
+        let mut mover = crate::hunt::tests::walker();
+        let mut r = RepairAction {
+            state: WALK_POINT,
+            goal: Some([3.0, 4.0, 0.0]),
+            move_to: Some(MoveTo::Arrived),
+            ..RepairAction::start(20, [11.0, 10.0, 0.0], TASK, 0.0)
+        };
+        assert_eq!(r.walk_again(Some(&mut mover)), Ok(()));
+        assert_eq!(
+            (r.state, r.goal, r.move_to),
+            (MOVE, None, Some(MoveTo::Start))
+        );
+    }
 }
