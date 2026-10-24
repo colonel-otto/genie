@@ -767,22 +767,11 @@ pub fn build_placement(
 /// How far BUILD's placement scan looks around the point (`FUN_14123aee0`, `DAT_142eb9430`).
 const BUILD_SCAN: f32 = crate::image::spawn::BUILD_SCAN;
 
-/// The first object of a scan, which the game reports as the blocker. Objects on one tile come
-/// in its list's order, which the slice does not hold: several there must agree on staying.
-fn first(found: &[Found]) -> Result<Option<Near>, GenieError> {
-    let Some(&(tile, o)) = found.first() else {
-        return Ok(None);
-    };
-    let disagree = found
-        .iter()
-        .take_while(|(t, _)| *t == tile)
-        .any(|(_, other)| other.stays() != o.stays());
-    if disagree {
-        return Err(GenieError::unsupported(
-            "objects on one tile that block a spawn point differently (the tile list's order)",
-        ));
-    }
-    Ok(Some(o))
+/// The first object of a scan, which the game reports as the blocker: the tiles row by row, each
+/// tile's objects in its list's order ([`crate::spatial::Spatial::objects_on`], the game's: the
+/// load files them in the save's order, as the game's load does).
+fn first(found: &[Found]) -> Option<Near> {
+    found.first().map(|&(_, o)| o)
 }
 
 /// The master's slot 0x50 (`0x141264db0`) with the spawn's arguments: `FUN_141123f80`'s test
@@ -854,7 +843,7 @@ pub fn placement(
             } else {
                 Vec::new()
             };
-            base_blocker = first(&found)?;
+            base_blocker = first(&found);
             base_blocker.is_none()
         } else {
             true
@@ -873,7 +862,7 @@ pub fn placement(
     } else {
         Vec::new()
     };
-    let blocker = first(&found)?.or(base_blocker);
+    let blocker = first(&found).or(base_blocker);
     if base_free && found.is_empty() {
         return Ok(Tested::Free);
     }
@@ -2977,5 +2966,33 @@ mod tests {
         assert_eq!(at(106.5, 47.5), Tested::Blocked { stays: true });
         assert_eq!(at(106.5, 47.0), Tested::Blocked { stays: true });
         assert_eq!(at(106.5, 46.5), Tested::Free);
+    }
+
+    /// Two objects on one tile that block the point differently: the first of the tile's list
+    /// reports (the game's scan, `FUN_141264db0`), whichever stays.
+    #[test]
+    fn the_first_object_of_a_tile_s_list_reports_the_block() {
+        let villager = Placing {
+            player: 1,
+            radius: [0.2, 0.2],
+            tall: true,
+            class: 4,
+            restriction: &[1.0],
+            hill_mode: 0,
+            placement: [-1; 4],
+        };
+        // a sheep that stays (state 2) and a soldier that does not, on the same tile
+        let soldier = Near {
+            id: 9521,
+            class: 6,
+            master: 4,
+            ..sheep(2)
+        };
+        let at = |list: Vec<Near>| placement(&villager, &Flat(list), [106.5, 47.5], false).unwrap();
+        assert_eq!(at(vec![sheep(2), soldier]), Tested::Blocked { stays: true });
+        assert_eq!(
+            at(vec![soldier, sheep(2)]),
+            Tested::Blocked { stays: false }
+        );
     }
 }
