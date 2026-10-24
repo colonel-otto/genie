@@ -430,6 +430,20 @@ pub(crate) enum RepairOrder {
     },
 }
 
+/// The unit's enter command (slot 0x3a0, `FUN_1410847e0`, forced) as its unit AI gave it
+/// ([`UnitView::enter_command`]), which the caller makes after the update
+/// ([`Turns::enter_order`]): the master the task search's swap group gave (slot 0x90 with 0),
+/// then the Enter on the task found into the target (an annex: its main building, the Enter's
+/// target), under an Artifact on top or not.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct EnterOrder {
+    pub(crate) target: i32,
+    pub(crate) entered: i32,
+    pub(crate) task: crate::masters::Task,
+    pub(crate) switch: Option<i16>,
+    pub(crate) under_artifact: bool,
+}
+
 /// An action the unit AI gave its unit while it ran, made after the update.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum AiStart {
@@ -437,6 +451,8 @@ pub(crate) enum AiStart {
     Wait(Wait),
     /// A repair ([`RepairOrder`], [`Turns::repair_order`]).
     Repair(RepairOrder),
+    /// An enter ([`EnterOrder`], [`Turns::enter_order`]).
+    Enter(EnterOrder),
 }
 
 /// The players but the owner of the unit that updates, read-only: the players before it and
@@ -2003,6 +2019,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     fn command(&mut self, command: crate::unit_ai::UnitCommand) -> Result<bool, GenieError> {
         match command {
             crate::unit_ai::UnitCommand::Repair(target) => self.repair_command(target),
+            crate::unit_ai::UnitCommand::Enter(target) => self.enter_command(target),
             _ => Err(crate::unit_ai::UNMODELLED_COMMAND),
         }
     }
@@ -2074,8 +2091,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
 
     /// Slot 400 at the full update's tail, after what the AI gave (made after the update,
     /// [`AiStart`], the last of them counting): a wait for a foundation holds no object, a
-    /// repair its target, a master switch without a task left no action; else the top
-    /// action's target ([`Unit::top_target`]); either while the world holds it.
+    /// repair its target, a master switch without a task left no action, an enter the object
+    /// it enters; else the top action's target ([`Unit::top_target`]); either while the world
+    /// holds it.
     fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
         let target = match self.starts.last() {
             Some(AiStart::Wait(_)) => return Ok(None),
@@ -2088,6 +2106,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 },
             )) => Some(*t),
             Some(AiStart::Repair(RepairOrder::Start { task: None, .. })) => None,
+            Some(AiStart::Enter(e)) => Some(e.entered),
             None => self.unit.top_target().filter(|&t| t != -1),
         };
         Ok(target.filter(|&t| self.spatial.get(t).is_some()))
@@ -2199,6 +2218,85 @@ impl UnitView<'_> {
             task: found.map(|(task, _)| task),
         }));
         Ok(found.is_some())
+    }
+
+    /// The unit's enter command (slot 0x3a0, `FUN_1410847e0`, forced) on `target`: an object the
+    /// world (`FUN_1415417a0`) does not hold is 0; its slot 0x820 with the garrison filter (3)
+    /// and the switch ([`task_search`] on the target and its main building) finds a task, whose
+    /// Enter (`FUN_140a855d0`) replaces the unit's actions (an Artifact on top would take it as
+    /// its sub-action): 1; none: 0. The caller makes the switch and the Enter after the update
+    /// ([`EnterOrder`], [`Turns::enter_order`]).
+    fn enter_command(&mut self, target: i32) -> Result<bool, GenieError> {
+        let unit = &*self.unit;
+        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let find = |id: i32| {
+            if id == unit.id {
+                return Some((player, unit));
+            }
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        let Some((tp, t_unit)) = find(target) else {
+            return Ok(false);
+        };
+        let under_artifact = unit.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE);
+        let masters = self.masters.ok_or(GenieError::unsupported(
+            "a unit AI's unit of a master the slice does not have",
+        ))?;
+        let own = masters
+            .get(unit.life.master_id)
+            .ok_or(GenieError::unsupported(
+                "a unit AI's unit of a master the slice does not have",
+            ))?;
+        let (Some(t), Some(general)) = (
+            task_target_with(target, 1, &find, self.every)?,
+            task_target_with(target, 2, &find, self.every)?,
+        ) else {
+            return Err(GenieError::unreachable(
+                "an enter command's target the world holds without its task target",
+            ));
+        };
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            civ: self.civ,
+        };
+        let dip = SideWorld {
+            player,
+            relations: self.relations,
+            foreign,
+            drop_sites: self.drop_sites,
+        };
+        let Some((task, switch)) =
+            task_search(masters, &actor, &t, &general, crate::order::GARRISON, &dip)?
+        else {
+            return Ok(false);
+        };
+        // the constructor's target: a building's annex enters its main building
+        let building = self
+            .every
+            .get(tp)
+            .and_then(|m| m.get(t_unit.life.master_id))
+            .is_some_and(|m| m.kind == crate::order::BUILDING);
+        let entered = if building {
+            t_unit.annex_of.unwrap_or(target)
+        } else {
+            target
+        };
+        self.starts.push(AiStart::Enter(EnterOrder {
+            target,
+            entered,
+            task,
+            switch: switch.map(|m| m.id),
+            under_artifact,
+        }));
+        Ok(true)
     }
 
     /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.

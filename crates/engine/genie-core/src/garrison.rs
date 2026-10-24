@@ -24,6 +24,10 @@ pub(crate) const NEARBY: f32 = crate::image::garrison::NEARBY;
 /// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
 /// An enter into an object the world holds asleep.
 const ENTER_SLEEPING: GenieError = GenieError::unsupported("an enter into a sleeping object");
+/// An enter command under an Artifact on top (`FUN_1410847e0`: the Enter becomes the
+/// Artifact's sub-action), which is not modelled.
+const ENTER_UNDER_ARTIFACT: GenieError =
+    GenieError::unsupported("an enter command under an Artifact (its sub-action)");
 /// An enter without its owner's masters.
 pub(crate) const NO_MASTERS: GenieError = GenieError::unsupported("an enter without the masters");
 pub(crate) const TOWN_BELL_REACH: f32 = crate::image::garrison::TOWN_BELL_REACH;
@@ -296,15 +300,9 @@ impl Turns {
         Ok(self.garrisoned(b.id)? + with <= capacity)
     }
 
-    /// The work command's Enter (its action type 3): the factory's constructor (`FUN_140a855d0`:
-    /// its target, an annex its main building; the point [`meeting`] gives at the target's
-    /// height, [`Turns::enter_meeting`]) takes the target (slot 0x178), the unit AI hears of it
-    /// (slot 0x828: the enter order and action, the target with its class and the work's point),
-    /// the action list empties and the Enter starts (slot 5, `FUN_140a86f20`): a unit inside an
-    /// object (`set_state(13)`) and a target without room (`FUN_140a864d0`, `set_state(11)`)
-    /// are not modelled; else its `set_state(4)` ([`EnterAction::walk_again`]): a unit in reach
-    /// enters at once ([`Turns::enter_now`]), else it walks, a transport to the point first
-    /// ([`Turns::move_transport`]).
+    /// The work command's Enter (its action type 3, [`Turns::new_enter`]), the unit AI hearing of
+    /// it (slot 0x828: the enter order and action, the target with its class and the work's
+    /// point), then its install ([`Turns::install_enter`]).
     pub(crate) fn start_enter(
         &mut self,
         player: usize,
@@ -314,6 +312,107 @@ impl Turns {
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), GenieError> {
+        let (action, target, class) = self.new_enter(player, idx, target, task)?;
+        if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
+            ai.notify_work(
+                ENTER_ORDER,
+                ENTER_ACTION,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(crate::rng::Stream::Ai),
+            )?;
+            self.remember_order(player, idx, (ENTER_ORDER, ENTER_ACTION))?;
+        }
+        self.install_enter(player, idx, target, action, task)
+    }
+
+    /// Slot 0x3a0 (`FUN_1410847e0`, the enter command) of the unit at `idx` of `player` on
+    /// `target`, `forced` its third argument: a target the world does not hold is false;
+    /// unforced, a unit entering the target already (its top action an Enter on it) is true.
+    /// Slot 0x820 ([`Turns::find_work_task`]) looks for a task on the target with the garrison
+    /// filter (3) and the switch (the unit takes the master that gave it, slot 0x90): none is
+    /// false; else its Enter ([`Turns::enter_with`]): true.
+    ///
+    /// # Errors
+    ///
+    /// What the Enter does not model.
+    pub(crate) fn enter_command(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        forced: bool,
+    ) -> Result<bool, GenieError> {
+        if self.object(target).is_none() {
+            return Ok(false);
+        }
+        let unit = &self.players[player].objects[idx];
+        let top = unit.top_action_kind();
+        if !forced && top == Some(ENTER) && unit.top_target() == Some(target) {
+            return Ok(true);
+        }
+        let Some(task) = self.find_work_task(player, idx, target, GARRISON, true)? else {
+            return Ok(false);
+        };
+        let under_artifact = top == Some(crate::artifact::ARTIFACT_TYPE);
+        self.enter_with(player, idx, target, &task, under_artifact)?;
+        Ok(true)
+    }
+
+    /// The unit's enter command its unit AI gave ([`crate::turn::EnterOrder`]), after the
+    /// update: the master switch (slot 0x90 with 0, [`Turns::change_master`]), then the Enter
+    /// ([`Turns::enter_with`]).
+    ///
+    /// # Errors
+    ///
+    /// What the master change and the Enter do not model.
+    pub(crate) fn enter_order(
+        &mut self,
+        player: usize,
+        idx: usize,
+        order: crate::turn::EnterOrder,
+    ) -> Result<(), GenieError> {
+        if let Some(master) = order.switch {
+            self.change_master(player, idx, master)?;
+        }
+        self.enter_with(player, idx, order.target, &order.task, order.under_artifact)
+    }
+
+    /// The enter command's Enter on `task` (`FUN_140a855d0`, [`Turns::new_enter`]): under an
+    /// Artifact on top (`under_artifact`, read before the task search) it would become the
+    /// Artifact's sub-action, which is not modelled; else the action list empties and the Enter
+    /// is installed (slot 0x808, [`Turns::install_enter`]).
+    ///
+    /// # Errors
+    ///
+    /// What the Enter does not model.
+    pub(crate) fn enter_with(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        task: &Task,
+        under_artifact: bool,
+    ) -> Result<(), GenieError> {
+        if under_artifact {
+            return Err(ENTER_UNDER_ARTIFACT);
+        }
+        let (action, target, _) = self.new_enter(player, idx, target, task)?;
+        self.install_enter(player, idx, target, action, task)
+    }
+
+    /// The Enter's constructor (`FUN_140a855d0`) on `target` with `task`: its target, an annex
+    /// its main building; the point [`meeting`] gives at the target's height
+    /// ([`Turns::enter_meeting`]); it takes the target (slot 0x178). With the target and its
+    /// class.
+    fn new_enter(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        task: &Task,
+    ) -> Result<(EnterAction, i32, i32), GenieError> {
         let target = self
             .object(target)
             .and_then(|(tp, t)| {
@@ -329,25 +428,30 @@ impl Turns {
         let tm = self.master_of(tp, t.life.master_id)?;
         let (class, height) = (i32::from(tm.class), t.position[2]);
         let (at, _) = self.enter_meeting(player, idx, target)?;
-        let mut action = EnterAction::new(
+        let action = EnterAction::new(
             target,
             [at[0], at[1], height],
             task.work_range,
             task.object_group,
         );
         self.take(target, self.releaser(player, idx));
+        Ok((action, target, class))
+    }
+
+    /// The Enter's install (slot 0x808): the action list empties and the Enter starts (slot 5,
+    /// `FUN_140a86f20`): a unit inside an object (`set_state(13)`) and a target without room
+    /// (`FUN_140a864d0`, `set_state(11)`) are not modelled; else its `set_state(4)`
+    /// ([`EnterAction::walk_again`]): a unit in reach enters at once ([`Turns::enter_now`]),
+    /// else it walks, a transport to the point first ([`Turns::move_transport`]).
+    fn install_enter(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        mut action: EnterAction,
+        task: &Task,
+    ) -> Result<(), GenieError> {
         let id = self.players[player].objects[idx].id;
-        if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
-            ai.notify_work(
-                ENTER_ORDER,
-                ENTER_ACTION,
-                Some((target, class)),
-                point,
-                clears,
-                self.streams.get(crate::rng::Stream::Ai),
-            )?;
-            self.remember_order(player, idx, (ENTER_ORDER, ENTER_ACTION))?;
-        }
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
         if unit.life.inside.is_some() {

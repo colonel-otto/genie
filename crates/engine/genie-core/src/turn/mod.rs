@@ -42,8 +42,8 @@ pub use crate::turn::unit::Unit;
 use crate::turn::unit::{AiResume, Captured, Step, same_members};
 pub(crate) use crate::turn::unit::{PointMove, annexes_of, give_load};
 pub(crate) use crate::turn::view::DropWorld;
-pub(crate) use crate::turn::view::RepairOrder;
 use crate::turn::view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
+pub(crate) use crate::turn::view::{EnterOrder, RepairOrder};
 pub(crate) use crate::turn::world::{
     Releaser, World, built_death, combat_dies, count_class, farm_bonus, forget_resource, refund_of,
     released, storage_leaves, victim_of,
@@ -1510,6 +1510,7 @@ impl Turns {
             let made = match start {
                 AiStart::Wait(w) => self.wait_for_foundation(p, i, w),
                 AiStart::Repair(r) => self.repair_order(p, i, r),
+                AiStart::Enter(e) => self.enter_order(p, i, e),
             };
             if let Err(e) = made {
                 result = Err(e);

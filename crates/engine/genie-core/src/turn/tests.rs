@@ -1430,6 +1430,125 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     assert_eq!((v.life.master_id, v.repair), (83, None));
 }
 
+/// The world of [`sent_off_world`] with the queue `orders`, the house built and whole, taking
+/// villagers in with room for `room`, both placed and the villager moving.
+fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> Turns {
+    let mut t = sent_off_world(orders);
+    let house = &mut t.players[1].objects[1];
+    house.life.state = 2;
+    house.life.hp = 550.0;
+    let c = house.construction.as_mut().unwrap();
+    (c.progress, c.desolid) = (1.0, false);
+    for masters in &mut t.masters {
+        let house = masters.get_mut(70).unwrap();
+        house.garrison = room;
+        // it takes villagers in (bit 0)
+        house.building.as_mut().unwrap().garrison_type = 1;
+    }
+    t.players[1].objects[0].mover = Some(crate::hunt::tests::walker());
+    t.spatial = Spatial::with_tiles(
+        [120, 120],
+        crate::spatial::Tiles::new(120, 120, vec![4; 14400]),
+    );
+    t.spatial.insert(
+        10028,
+        Placed {
+            position: [30.0, 88.0, 0.0],
+            radius: [1.0, 1.0],
+            class: 3,
+            player: 1,
+            master: 70,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t.spatial.insert(
+        9175,
+        Placed {
+            position: [29.5, 89.5, 0.0],
+            radius: [0.2, 0.2],
+            class: 4,
+            player: 1,
+            master: 83,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.8,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t
+}
+
+/// Slot 0x3a0 (`FUN_1410847e0`) itself: a target the world does not hold is 0; a task found
+/// gives the unit its Enter (1); unforced, a unit entering the target already keeps its Enter
+/// (1), forced it takes a new one.
+#[test]
+fn the_enter_command_enters_or_keeps_the_enter_on_its_target() {
+    let mut t = enter_world(vec![], 5);
+    // the villager out of reach, so that it walks
+    t.players[1].objects[0].position = [20.0, 80.0, 0.0];
+    t.spatial.set_position(9175, [20.0, 80.0, 0.0]);
+    assert_eq!(t.enter_command(1, 0, 4242, true), Ok(false));
+    assert_eq!(t.players[1].objects[0].enter, None);
+    assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
+    let first = t.players[1].objects[0].enter.expect("the Enter");
+    assert_eq!((first.target, first.state), (10028, 4));
+    t.players[1].objects[0].enter.as_mut().unwrap().timer = 7.0;
+    assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
+    assert_eq!(t.players[1].objects[0].enter.unwrap().timer, 7.0);
+    assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
+    assert_eq!(t.players[1].objects[0].enter.unwrap().timer, first.timer);
+}
+
+/// The unit AI's enter order on the player's house (`0x2cb`, slot 0x3a0 forced,
+/// `FUN_1410847e0`): its slot 0x820 with the garrison filter finds the villager's Enter task on
+/// buildings (action 3, class 3); after the update the Enter is the unit's (or the unit inside
+/// the house), and the AI holds the enter action on it. A house without room gives no task:
+/// the order is not taken.
+#[test]
+fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
+    use crate::unit_ai::QueuedOrder;
+    let order = QueuedOrder {
+        issuer: 1,
+        order: crate::garrison::ENTER_ORDER,
+        priority: 100,
+        target: 10028,
+        target_owner: 1,
+        point: [30.0, 88.0, 0.0],
+        range: 0.0,
+        shown: [30.0, 88.0],
+        ready: true,
+        target_type: 80,
+    };
+    let mut t = enter_world(vec![order], 5);
+    t.tick(50);
+    let v = &t.players[1].objects[0];
+    assert!(
+        v.enter.is_some_and(|e| e.target == 10028) || v.life.inside == Some(10028),
+        "{:?}",
+        t.players[1].freezes
+    );
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_action, ai.current_target),
+        (crate::garrison::ENTER_ACTION, 10028)
+    );
+    let mut t = enter_world(vec![order], 0);
+    t.tick(50);
+    let v = &t.players[1].objects[0];
+    assert_eq!((t.players[1].freezes.len(), v.enter), (0, None));
+    assert_ne!(
+        v.ai.as_ref().unwrap().current_action,
+        crate::garrison::ENTER_ACTION
+    );
+}
+
 /// The whole of it: a villager the foundation sent off (its queue the foundation's order)
 /// runs the order on its turn (slot 0x108 forced: its slot 0x388 finds the builder's task by
 /// the swap group), becomes the builder with the wait as its only action, and keeps waiting

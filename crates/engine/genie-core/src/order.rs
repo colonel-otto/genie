@@ -2576,12 +2576,7 @@ impl Turns {
         // livestock (class 58) takes the enter command (slot 0x3a0); where it enters nothing, the
         // work command goes to the target's place without a target
         let mut order = *order;
-        if master.class == LIVESTOCK {
-            if self.livestock_enters(player, idx, order.target)? {
-                return Err(GenieError::unsupported(
-                    "livestock entering its target (slot 0x3a0's Enter)",
-                ));
-            }
+        if master.class == LIVESTOCK && !self.enter_command(player, idx, order.target, false)? {
             let at = self
                 .spatial
                 .get_known(order.target)?
@@ -2610,31 +2605,6 @@ impl Turns {
             return Err(GenieError::unsupported("a unit that leaves its pasture"));
         }
         Ok(())
-    }
-
-    /// Slot 0x3a0 (`FUN_1410847e0`, the enter command, with 0) of the unit at `idx` on `target`:
-    /// true when it enters, false when nothing comes of it (a target the world does not hold, or
-    /// no task). It is entering the target already (its top action an Enter on it); else slot
-    /// 0x820 ([`Turns::find_work_task`]) looks for a task on the target with the garrison filter
-    /// (3) and the master's change, whose Enter it would take.
-    fn livestock_enters(
-        &mut self,
-        player: usize,
-        idx: usize,
-        target: i32,
-    ) -> Result<bool, GenieError> {
-        if self.object(target).is_none() {
-            return Ok(false);
-        }
-        let unit = &self.players[player].objects[idx];
-        if unit.top_action_kind() == Some(crate::garrison::ENTER)
-            && unit.top_target() == Some(target)
-        {
-            return Ok(true);
-        }
-        Ok(self
-            .find_work_task(player, idx, target, GARRISON, true)?
-            .is_some())
     }
 
     /// Slot 0x138 (`FUN_141216f10`) without a target, outside slot 0x128's work command (the
@@ -3166,7 +3136,7 @@ impl Turns {
     /// not passed.
     ///
     /// [`find_task`]: crate::tasks::find_task
-    fn find_work_task(
+    pub(crate) fn find_work_task(
         &mut self,
         player: usize,
         idx: usize,
