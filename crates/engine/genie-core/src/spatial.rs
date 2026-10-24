@@ -1900,9 +1900,15 @@ impl Spatial {
         let Some(v) = self.sight.as_ref() else {
             return Ok(None);
         };
-        let p = self.objects.get(&me).ok_or(GenieError::unsupported(
-            "an owner search of an object the world does not hold",
-        ))?;
+        // an animal inside another object (in this update, its Artifact's Enter got it in)
+        // searches about its record there
+        let p = self
+            .objects
+            .get(&me)
+            .or_else(|| self.inside.get(&me))
+            .ok_or(GenieError::unsupported(
+                "an owner search of an object the world does not hold",
+            ))?;
         let reach = (p.radius[0] as i32 as i16).wrapping_add(3);
         let [x, y, _] = p.position;
         let (x0, x1) = (
