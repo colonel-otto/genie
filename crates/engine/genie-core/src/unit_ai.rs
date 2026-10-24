@@ -509,6 +509,16 @@ pub const LION_CARED: [i32; 18] = [
     4, 0, 26, 24, 6, 25, 12, 35, 23, 36, 28, 44, 46, 45, 50, 56, 57, 9,
 ];
 
+/// The classes a predator (`TribePreditorUnitAIModule`, factory type 3) cares about (`+0x190`,
+/// `FUN_140c11da0`'s list).
+pub const PREDATOR_CARED: [i32; 2] = [58, 4];
+
+/// The classes a priest (factory type 9) cares about (`+0x190`, `FUN_140c11e30`'s 30 entries).
+pub const PRIEST_CARED: [i32; 30] = [
+    3, 0, 4, 26, 24, 6, 25, 17, 10, 12, 35, 23, 36, 28, 18, 13, 44, 46, 43, 45, 47, 50, 51, 54, 55,
+    56, 57, 19, 52, 42,
+];
+
 /// The civilian's factory type (`TribeCivilianUnitAIModule`, the villagers').
 pub const CIVILIAN: u32 = 8;
 
@@ -2499,7 +2509,7 @@ struct RetargetSearch {
 /// The classes a unit AI of factory type `ai_type` cares about (its constructor's `+0x190` list),
 /// which its searches read: the trade AI's by its unit's `class` (a boat's or a cart's), the
 /// soldier's with 10 for a computer player's (`FUN_140c12300` asks the owner when the AI is made;
-/// taken as its owner now).
+/// taken as its owner now), the lion's without the four the world's `+0x6b4` of 1 adds.
 ///
 /// # Errors
 ///
@@ -2510,6 +2520,13 @@ const fn cared_classes(
     computer: bool,
 ) -> Result<&'static [i32], GenieError> {
     match ai_type {
+        2 => Ok(&HUNTED_CARED),
+        3 => Ok(&PREDATOR_CARED),
+        // the boar's (`FUN_140c11720`) and the ranged units' (`FUN_140c11f80`, `FUN_140c11f50`)
+        // constructors give none
+        BOAR_AI | 6 | 7 => Ok(&[]),
+        5 => Ok(&LION_CARED),
+        PRIEST_AI => Ok(&PRIEST_CARED),
         CIVILIAN => Ok(&CIVILIAN_CARED),
         BUILDING_AI => Ok(&BUILDING_CARED),
         TRANSPORT_AI => Ok(&TRANSPORT_CARED),
@@ -9662,6 +9679,26 @@ mod tests {
         assert_eq!(r.unwrap(), GO_ON);
         // the new attacker made it ask for help first
         assert_eq!((side.attack_searches, side.helps.clone()), (0, vec![7]));
+    }
+
+    /// The unit AIs' class lists by factory type (their constructors' `+0x190`): the animals',
+    /// the boar's and ranged units' empty ones, the priest's 30, the trade AI's by class, a
+    /// computer player's soldier's with 10.
+    #[test]
+    fn each_unit_ai_type_searches_its_constructor_s_classes() {
+        let list = |t: u32, class: i16, computer: bool| cared_classes(t, class, computer).unwrap();
+        assert_eq!(list(2, 9, false), &HUNTED_CARED);
+        assert_eq!(list(3, 10, false), &[58, 4]);
+        let none: &[i32] = &[];
+        assert_eq!(list(BOAR_AI, 10, false), none);
+        assert_eq!((list(6, 0, false), list(7, 0, false)), (none, none));
+        assert_eq!(list(5, 10, false), &LION_CARED);
+        assert_eq!(list(PRIEST_AI, 18, false).len(), 30);
+        assert_eq!(list(TRADE_AI, TRADE_BOAT_CLASS, false), &TRADE_SHIP_CARED);
+        assert_eq!(list(TRADE_AI, 19, false), &TRADE_CART_CARED);
+        assert_eq!(list(SOLDIER_AI, 6, true).last(), Some(&10));
+        assert_eq!(list(SOLDIER_AI, 6, false), &SOLDIER_CARED);
+        assert!(cared_classes(0x13, 58, false).is_err());
     }
 
     /// An idle human player's soldier without a target: `bestUnitToAttack` names the attacker,
