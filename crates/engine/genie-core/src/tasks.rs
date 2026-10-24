@@ -145,6 +145,9 @@ pub struct DropSite {
     pub auto_work: bool,
     /// `+0x50`, `target_list`: the objects whose resources it takes, in the file's order.
     pub targets: Vec<DropTarget>,
+    /// `+0x30`, `update_ai_resource_types`: the basic resources (0 to 3) it takes, which the
+    /// table's search by resource reads ([`table_drop_buildings`]).
+    pub resource_types: Vec<i32>,
     /// The entry has `accepts_livestock` (`FUN_140fdf480` keeps the key's presence): its building
     /// is one of the drop sites a hunted livestock is led to (`DAT_143f157f0`, in table order).
     pub livestock: bool,
@@ -207,6 +210,30 @@ pub fn drops_at(table: &[DropSite], building: i16, actor: &Actor<'_>) -> bool {
         }
     }
     false
+}
+
+/// `FUN_140fdd950` with no buildings left out: the buildings of the drop-site table's entries
+/// for workers of class `class` (any for −1; an entry's own worker list is not read) that list
+/// resource types (`+0x40`), for `civ` where the entry names civs, that take `kind`: a basic
+/// resource (below 4, compared unsigned, so −1 is not one) among their resource types, any other
+/// among their targets' attribute types; in table order.
+#[must_use]
+pub fn table_drop_buildings(table: &[DropSite], kind: i16, class: i16, civ: u8) -> Vec<i16> {
+    let kind = i32::from(kind);
+    table
+        .iter()
+        .filter(|e| class == -1 || e.worker_class == class)
+        .filter(|e| !e.resource_types.is_empty())
+        .filter(|e| e.civs.is_empty() || e.civs.contains(&civ))
+        .filter(|e| {
+            if (kind as u32) < 4 {
+                e.resource_types.contains(&kind)
+            } else {
+                e.targets.iter().any(|t| i32::from(t.attribute) == kind)
+            }
+        })
+        .map(|e| e.building)
+        .collect()
 }
 
 /// A task's requirement (`FUN_1410622c0`): no enabling resource (−1), or the player's attribute of
@@ -682,6 +709,40 @@ mod tests {
         t: &TaskTarget<'_>,
     ) -> Result<Option<&'m Task>, GenieError> {
         find_task(list, &actor(list, held), Some(t), Some(t), None, -1, &Alone)
+    }
+
+    /// `FUN_140fdd950`: an entry for the worker class with resource types, for the civ, whose
+    /// basic resources or targets take the kind.
+    #[test]
+    fn the_table_gives_the_buildings_that_take_a_kind_from_a_class() {
+        let entry = |building, class, types: Vec<i32>, civs: Vec<u8>, attribute| DropSite {
+            building,
+            worker_class: class,
+            civs,
+            resource_types: types,
+            targets: vec![DropTarget {
+                class: 15,
+                workers: -1,
+                state: -1,
+                attribute,
+            }],
+            ..DropSite::default()
+        };
+        let table = [
+            entry(109, 4, vec![0, 1, 2, 3], vec![], 15),
+            // no resource types: never listed
+            entry(68, 4, vec![], vec![], 1),
+            entry(562, 4, vec![1], vec![], 1),
+            // another civ's
+            entry(1754, 4, vec![1], vec![17], 1),
+            entry(45, 13, vec![0], vec![], 17),
+        ];
+        assert_eq!(table_drop_buildings(&table, 1, 4, 1), [109, 562]);
+        assert_eq!(table_drop_buildings(&table, 1, 4, 17), [109, 562, 1754]);
+        // a kind of 4 or more by the targets' attribute types; −1 is not a basic resource
+        assert_eq!(table_drop_buildings(&table, 15, 4, 1), [109]);
+        assert_eq!(table_drop_buildings(&table, 17, -1, 1), [45]);
+        assert_eq!(table_drop_buildings(&table, -1, 4, 1), [0i16; 0]);
     }
 
     #[test]

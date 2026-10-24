@@ -583,6 +583,7 @@ mod tests {
                 attribute: 1,
             }],
             livestock: false,
+            resource_types: vec![1],
         }
     }
 

@@ -18,7 +18,7 @@ use crate::turn::{
 use crate::unit_ai::{GenieError, Notify, OWNER_CHANGED};
 
 /// The unit a drop-site search goes from ([`drop_site_search`]).
-pub(in crate::turn) struct Seeker<'a, 'b> {
+pub(crate) struct Seeker<'a, 'b> {
     pub(in crate::turn) me: Me,
     pub(in crate::turn) mover: &'a Mover,
     pub(in crate::turn) plan: &'a mut Planning<'b>,
@@ -31,9 +31,10 @@ pub(in crate::turn) struct Seeker<'a, 'b> {
     pub(in crate::turn) by_path: bool,
 }
 
-/// A search for drop sites (`FUN_1411671e0` as the Gather's `set_state` 8 and 3 call it: in state
-/// 2, not at work on task `0x7d` or `0x7c` (an object of type 40 up whose top action is one), not
-/// inside another when `outside`): of the player's live objects (`units`, in list order) of a
+/// A search for drop sites (`FUN_1411671e0`: in state 2, not at work on the action type `at_work`
+/// (its argument 8: an object of type 40 up whose top action is of that type, or `0x7c` too for
+/// `0x7d`, as the Gather's `set_state` 8 and 3 call it; −1 none), not inside another when
+/// `outside`): of the player's live objects (`units`, in list order) of a
 /// master in `sites`, the nearest to `at`. With the `seeker`, only objects in its zone count (its
 /// restriction's zone of its tile against each object's tile) and only those the tile planner
 /// reaches (its goal or its range; radii the seeker's and the object's, [`Mover::plan_length`]),
@@ -43,15 +44,14 @@ pub(in crate::turn) struct Seeker<'a, 'b> {
 /// measured (of an earlier object, else the largest float) by path. Without a seeker, by the
 /// squared distance of the centres. The seeker's class 21 (its gap test) and a villager tending
 /// a pasture (its pasture's place) are not modelled. The first of equals wins.
-pub(in crate::turn) fn drop_site_search(
+pub(crate) fn drop_site_search(
     units: &[Unit],
     masters: &Masters,
     sites: &[i16],
     at: [f32; 3],
     mut seeker: Option<Seeker<'_, '_>>,
-    outside: bool,
+    (outside, at_work): (bool, i16),
 ) -> Result<Option<i32>, GenieError> {
-    const AT_WORK: [i16; 2] = [0x7d, 0x7c];
     let [x, y, _] = at;
     if seeker.as_ref().is_some_and(|s| s.class == 21) {
         return Err(GenieError::unsupported(
@@ -76,9 +76,11 @@ pub(in crate::turn) fn drop_site_search(
         {
             continue;
         }
-        let at_work =
-            40 <= master.kind && o.top_action_kind().is_some_and(|k| AT_WORK.contains(&k));
-        if at_work || (outside && o.life.inside.is_some()) {
+        let busy = at_work != -1
+            && 40 <= master.kind
+            && o.top_action_kind()
+                .is_some_and(|k| k == at_work || (at_work == UNPACK && k == PACK));
+        if busy || (outside && o.life.inside.is_some()) {
             continue;
         }
         let (dx, dy) = (x - o.position[0], y - o.position[1]);
@@ -291,6 +293,11 @@ pub(in crate::turn) fn closest_resource_of(
         &mut |id| mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id),
     )
 }
+
+/// The action types the Gather's drop-site searches pass over (`FUN_1411671e0`'s argument 8
+/// `0x7d`, which takes `0x7c` with it).
+pub(in crate::turn) const UNPACK: i16 = 0x7d;
+const PACK: i16 = 0x7c;
 
 /// A drop site within this path length is measured by the short path too (`FUN_1411671e0`,
 /// `DAT_142eb0f4c`).

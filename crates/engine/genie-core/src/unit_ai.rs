@@ -2587,8 +2587,9 @@ const DEFENDLESS_MASTER: i16 = 128;
 const RUN_AWAY_ORDER: i32 = 0x2c3;
 /// The repair order (`0x2ce`).
 const REPAIR_ORDER: i32 = crate::ai_kinds::ORDER_REPAIR;
-/// The second value of the order on a target (`0x325`), which shares `0x2db`'s case.
-const ORDER_ON_TARGET_2: i32 = 0x325;
+/// The second value of the order on a target (`0x325`), which shares `0x2db`'s case: the way
+/// back to work after a drop-off (`FUN_140c41ab0`).
+pub(crate) const ORDER_ON_TARGET_2: i32 = 0x325;
 /// The heal's action value (`0x25b`, slot 0xe0).
 const HEAL_ACTION: i32 = 0x25b;
 /// The conversion's action value (`0x25c`, slot 0xd8).

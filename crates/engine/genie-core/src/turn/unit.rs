@@ -2377,7 +2377,14 @@ impl Unit {
             let sites = &master.drop_sites;
             site = match self.drop_site_from(c, others, state, true)? {
                 Some(s) => Some(s),
-                None => drop_site_search(others, masters, sites, self.position, None, true)?,
+                None => drop_site_search(
+                    others,
+                    masters,
+                    sites,
+                    self.position,
+                    None,
+                    (true, crate::turn::world::UNPACK),
+                )?,
             }
             .unwrap_or(-1);
         }
@@ -2398,13 +2405,31 @@ impl Unit {
     /// `FUN_1411671e0` from the unit (`state` its action's, which the planner reads) over its
     /// master's drop sites (`+0x7a0`): [`drop_site_search`] with the unit as the seeker, by path
     /// for a human player (its argument 9, `FUN_141659cf0` false), skipping objects inside others
-    /// when `outside` (its argument 10).
+    /// when `outside` (its argument 10) and those at work on `0x7d` or `0x7c` (its argument 8).
     pub(in crate::turn) fn drop_site_from(
         &self,
         c: &mut DropWorld<'_>,
         others: &[Self],
         state: u8,
         outside: bool,
+    ) -> Result<Option<i32>, GenieError> {
+        let by_path = !c.computer;
+        self.drop_site_with(
+            c,
+            others,
+            state,
+            (outside, by_path, crate::turn::world::UNPACK),
+        )
+    }
+
+    /// [`Unit::drop_site_from`] with the search's arguments 10, 9 and 8: `outside`, `by_path`
+    /// and the action type `at_work` it passes over (−1 none).
+    pub(crate) fn drop_site_with(
+        &self,
+        c: &mut DropWorld<'_>,
+        others: &[Self],
+        state: u8,
+        (outside, by_path, at_work): (bool, bool, i16),
     ) -> Result<Option<i32>, GenieError> {
         let masters = c.masters.ok_or(GenieError::unsupported(
             "a drop-off of a player without masters",
@@ -2431,7 +2456,6 @@ impl Unit {
             group: self.group.id,
             action_state: state,
         };
-        let by_path = !c.computer;
         let mut plan = Planning {
             pathing: &mut *c.pathing,
             now: c.world_time,
@@ -2455,7 +2479,7 @@ impl Unit {
             &master.drop_sites,
             self.position,
             Some(seeker),
-            outside,
+            (outside, at_work),
         )
     }
 

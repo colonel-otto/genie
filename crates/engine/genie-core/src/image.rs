@@ -646,6 +646,8 @@ pub mod order {
     pub const SPLIT_SPEED_GAP: f32 = f32::from_bits(0x3e4c_cccd);
     /// 8.0
     pub const SPREAD: f32 = f32::from_bits(0x4100_0000);
+    /// 1000000.0
+    pub const TABLE_DROP_FAR: f32 = f32::from_bits(0x4974_2400);
     /// 1.0
     pub const WAYPOINT_APART: f32 = f32::from_bits(0x3f80_0000);
     /// -1.0

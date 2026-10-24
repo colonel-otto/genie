@@ -6581,8 +6581,8 @@ pub fn unit_lines(json: &str) -> Result<Vec<genie_core::lines::UnitLine>, UnitLi
 }
 
 /// The game's drop-site table (`resources/_common/dat/dropsites.json`): each entry's
-/// `building_id`, `worker_object_group` (−1 when absent), `worker_object_list`, `target_civs`
-/// and its targets' `attribute_type`s, in file order.
+/// `building_id`, `worker_object_group` (−1 when absent), `worker_object_list`, `target_civs`,
+/// its targets' `attribute_type`s and its `update_ai_resource_types`, in file order.
 pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(json)?;
     let num = |v: &serde_json::Value| v.as_i64().unwrap_or(-1);
@@ -6623,6 +6623,14 @@ pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_
                             .collect()
                     }),
                     livestock: e.get("accepts_livestock").is_some(),
+                    resource_types: e["update_ai_resource_types"].as_array().map_or_else(
+                        Vec::new,
+                        |ts| {
+                            ts.iter()
+                                .map(|t| t.get("resource_type").map_or(-1, num) as i32)
+                                .collect()
+                        },
+                    ),
                 })
                 .collect()
         }))

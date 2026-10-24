@@ -164,6 +164,15 @@ struct Followed {
 type SplitPath<'a> =
     dyn FnMut(&Splittable, &Splittable) -> Result<Option<(u8, f32)>, GenieError> + 'a;
 
+/// The drop-site table's search starts beyond this squared distance (`FUN_141658e20`,
+/// `DAT_142f89ac4`).
+const TABLE_DROP_FAR: f32 = crate::image::order::TABLE_DROP_FAR;
+/// The loads whose drop-off works with the hunt's task filter (`FUN_14161e370`'s list: meat 15,
+/// wood 1, food 0).
+const HUNTED_LOADS: [i16; 3] = [15, 1, 0];
+/// The action's point on neither axis (`DAT_14330ec20`).
+const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+
 /// A hunt command on an object the world does not hold.
 pub(crate) const HUNT_TARGET_GONE: GenieError =
     GenieError::unsupported("a hunt command on an object the world does not hold");
@@ -1941,13 +1950,20 @@ impl Turns {
                 .as_ref()
                 .filter(|_| unit.top_action_kind() == Some(crate::gather::GATHER))
             {
-                if gather.target == -1 && gather.point[0] == -1.0 && gather.point[1] == -1.0 {
-                    return Err(GenieError::unsupported(
-                        "a UNIT_ORDER drop-off of a Gather without a target (FUN_141206a20)",
-                    ));
-                }
+                // without a target or a point the work goes into the town-bell records first
+                // (FUN_141206a20) and the way back after the drop-off (FUN_141205ac0)
+                let unaimed = gather.target == -1
+                    && gather.point[0] == NO_POINT
+                    && gather.point[1] == NO_POINT;
                 let attributes = self.players[p].attributes.len();
-                if !gather.drop_off_asked(unit.life.attribute_type, attributes)? {
+                let asked = gather.drop_off_asked(unit.life.attribute_type, attributes)?;
+                if unaimed {
+                    self.record_town_bell(p, idx)?;
+                }
+                if !asked {
+                    if unaimed {
+                        self.queue_way_back(p, idx)?;
+                    }
                     continue;
                 }
                 let mut unit = std::mem::take(&mut self.players[p].objects[idx]);
@@ -1968,6 +1984,9 @@ impl Turns {
                 if let Some(site) = result? {
                     self.take(site, self.releaser(p, idx));
                 }
+                if unaimed {
+                    self.queue_way_back(p, idx)?;
+                }
                 continue;
             }
             if unit.top_action_kind() == Some(crate::build::BUILD) {
@@ -1983,13 +2002,17 @@ impl Turns {
                 self.drop_off_unasked(p, idx)?;
                 continue;
             };
-            if hunt.target == -1 && hunt.point[0] == -1.0 && hunt.point[1] == -1.0 {
-                return Err(GenieError::unsupported(
-                    "a UNIT_ORDER drop-off of a Hunt without a target (FUN_141206a20)",
-                ));
-            }
+            let unaimed =
+                hunt.target == -1 && hunt.point[0] == NO_POINT && hunt.point[1] == NO_POINT;
             let attributes = self.players[p].attributes.len();
-            if !hunt.drop_off_asked(unit.life.attribute_type, attributes)? {
+            let asked = hunt.drop_off_asked(unit.life.attribute_type, attributes)?;
+            if unaimed {
+                self.record_town_bell(p, idx)?;
+            }
+            if !asked {
+                if unaimed {
+                    self.queue_way_back(p, idx)?;
+                }
                 continue;
             }
             let mut unit = std::mem::take(&mut self.players[p].objects[idx]);
@@ -2010,36 +2033,191 @@ impl Turns {
             if let Some(site) = result? {
                 self.take(site, self.releaser(p, idx));
             }
+            if unaimed {
+                self.queue_way_back(p, idx)?;
+            }
         }
         Ok(())
     }
 
     /// `UNIT_ORDER`'s drop-off of a carrying unit without a gather action on top
     /// (`FUN_14161e370`'s case 8, past the Gather, Hunt and Build): a master with drop sites
-    /// (`FUN_14109e210`) searches from the unit (`FUN_1411671e0`), which is not modelled; any
-    /// other asks the drop-site table (`FUN_141658e20` -> `FUN_140fdd950`) for buildings taking
-    /// its held resource from its class: entries of its class with resource types, for its civ.
-    /// With none the unit does nothing (a livestock with its food); a building found (the
-    /// player's closest in state 2, then the work command on it, slot 0x7e8) is not modelled.
-    fn drop_off_unasked(&self, p: usize, idx: usize) -> Result<(), GenieError> {
+    /// (`FUN_14109e210`: one not below 0) searches them from the unit ([`Turns::ordered_drop_site`]);
+    /// with none found, or without drop sites, the drop-site table's nearest building for the
+    /// resource it holds from its class ([`Turns::table_drop_site`]); with none, nothing. A unit
+    /// (type 70 and up) then works on it (slot 0x7e8 at (−1, −1, −1): no carried-resource test,
+    /// the task filter 110 for a load of meat, wood or food, kinds 15, 1 and 0, else 5;
+    /// [`Turns::order_work`]) and queues its way back to work ([`Turns::queue_way_back`]).
+    fn drop_off_unasked(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[idx];
         let master = self.master_of(p, unit.life.master_id)?;
+        let (kind, class, at) = (
+            master.kind,
+            master.class,
+            [unit.position[0], unit.position[1]],
+        );
+        let held = unit.life.attribute_type;
+        let mut site = None;
         if master.drop_sites.iter().any(|&d| 0 <= d) {
-            return Err(GenieError::unsupported(
-                "a UNIT_ORDER drop-off of a unit with drop sites and no gather action (FUN_1411671e0)",
-            ));
+            site = self.ordered_drop_site(p, idx)?;
         }
+        if site.is_none() {
+            site = self.table_drop_site(p, at, held, class);
+        }
+        let Some(site) = site else {
+            return Ok(());
+        };
+        if kind < crate::garrison::COMBAT_KIND {
+            return Ok(());
+        }
+        let filter = if HUNTED_LOADS.contains(&held) {
+            HUNT
+        } else {
+            crate::gather::GATHER
+        };
+        let work = Work {
+            target: site,
+            point: [NO_POINT; 3],
+            carry_test: false,
+            filter,
+            notified: false,
+        };
+        self.order_work(p, idx, &work)?;
+        self.queue_way_back(p, idx)
+    }
+
+    /// `FUN_1411671e0` as `UNIT_ORDER`'s drop-off calls it for the unit at (`p`, `idx`): over its
+    /// master's drop sites, of its player's live objects in state 2, inside others too, at work
+    /// or not, by the squared distance (not by path); the unit the seeker (its zone, its
+    /// planner) where its slot 0x2c0 answers 1: any unit below type 70, else one whose master
+    /// drops at neither 45 nor 2172 and of a class other than 21 and 2 (`FUN_141226580`).
+    fn ordered_drop_site(&mut self, p: usize, idx: usize) -> Result<Option<i32>, GenieError> {
+        let unit = &self.players[p].objects[idx];
+        let master = self.master_of(p, unit.life.master_id)?;
+        let seeks = master.kind < crate::garrison::COMBAT_KIND
+            || (!master.drop_sites.iter().any(|&d| d == 45 || d == 2172)
+                && !matches!(master.class, 21 | 2));
+        let masters = self.masters.get(p).ok_or(GenieError::unsupported(
+            "a drop-off of a player without masters",
+        ))?;
+        if !seeks {
+            return crate::turn::drop_site_search(
+                &self.players[p].objects,
+                masters,
+                &master.drop_sites,
+                unit.position,
+                None,
+                (false, -1),
+            );
+        }
+        let state = unit.top_action().map_or(0, |a| a.state);
+        let player = &self.players[p];
+        let mut world = crate::turn::DropWorld {
+            masters: self.masters.get(p),
+            spatial: &self.spatial,
+            zones: &mut self.zones,
+            pathing: &mut self.pathing,
+            object: self.streams.get(Stream::Object),
+            world_time: self.world_time,
+            computer: player.computer,
+            construction_rate: player.construction_rate,
+            groups: &self.groups,
+        };
+        player.objects[idx].drop_site_with(&mut world, &player.objects, state, (false, false, -1))
+    }
+
+    /// `FUN_141658e20` for player `p` at `at`: of the buildings the drop-site table gives for the
+    /// resource `held` from workers of `class` ([`crate::tasks::table_drop_buildings`] for the
+    /// player's civ), the objects of each master's done list in the player's tracker in turn
+    /// (`FUN_14104f600`, the master itself the key) that the world holds in state 2, the nearest
+    /// by the squared distance of the centres (the first of equals; none from
+    /// [`TABLE_DROP_FAR`] on).
+    pub(crate) fn table_drop_site(
+        &self,
+        p: usize,
+        at: [f32; 2],
+        held: i16,
+        class: i16,
+    ) -> Option<i32> {
         let civ = self.players[p].civ;
-        let class = master.class;
-        if self
-            .drop_sites
-            .iter()
-            .any(|d| d.worker_class == class && (d.civs.is_empty() || d.civs.contains(&civ)))
-        {
-            return Err(GenieError::unsupported(
-                "a UNIT_ORDER drop-off at a building of the drop-site table (slot 0x7e8)",
-            ));
+        let buildings = crate::tasks::table_drop_buildings(&self.drop_sites, held, class, civ);
+        let mut best = (None, TABLE_DROP_FAR);
+        for m in buildings {
+            for &id in self.players[p].tracker.list(i32::from(m)) {
+                let Some((_, o)) = self.object(id) else {
+                    continue;
+                };
+                if o.life.state != 2 {
+                    continue;
+                }
+                let (dx, dy) = (at[0] - o.position[0], at[1] - o.position[1]);
+                let d = dy * dy + dx * dx;
+                if d < best.1 {
+                    best = (Some(id), d);
+                }
+            }
         }
+        best.0
+    }
+
+    /// `FUN_141205ac0`: the unit at (`p`, `idx`) queues its way back to work: the work its
+    /// town-bell records keep ([`crate::town_bell::TownBell::back_to_work`]: the object the world
+    /// holds, the second record moved up when it holds the object; else the record as it is)
+    /// goes in front of its unit AI's queue (`FUN_140c41ab0` -> `FUN_140c42640`): the order on a
+    /// target (`0x325`) issued by its owner on the object (its master the target type, its owner
+    /// the target's, its place the point) or on the record's target (its target type, owner −1,
+    /// its point); height 0, range 0, priority 100, shown at the point, ready. A unit without a
+    /// unit AI only looks the records up.
+    pub(crate) fn queue_way_back(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+        use crate::town_bell::RecordTarget;
+        let mut bell = self.players[p].objects[idx].town_bell;
+        let lookup = |t: i32| -> Option<RecordTarget> {
+            let (op, o) = self.object(t)?;
+            let m = self.master_of(op, o.life.master_id).ok()?;
+            Some(RecordTarget {
+                id: t,
+                building: m.kind == BUILDING,
+                class: m.class,
+                built: o
+                    .construction
+                    .is_some_and(|c| f32::from(m.build_time) <= c.progress),
+            })
+        };
+        let (found, record) = bell.back_to_work(&lookup);
+        let target = match found {
+            Some(f) => {
+                let (op, o) = self.object(f.id).expect("the lookup found it");
+                let master = self.master_of(op, o.life.master_id)?.id;
+                (
+                    f.id,
+                    i32::from(master),
+                    op as i32,
+                    [o.position[0], o.position[1]],
+                )
+            }
+            None => (record.target, record.target_type, -1, record.point),
+        };
+        let unit = &mut self.players[p].objects[idx];
+        unit.town_bell = bell;
+        let Some(ai) = unit.ai.as_mut() else {
+            return Ok(());
+        };
+        let (id, target_type, owner, [x, y]) = target;
+        ai.insert_order(
+            crate::unit_ai::QueuedOrder {
+                issuer: p as i32,
+                order: crate::unit_ai::ORDER_ON_TARGET_2,
+                priority: 100,
+                target: id,
+                target_owner: owner,
+                point: [x, y, 0.0],
+                range: 0.0,
+                shown: [x, y],
+                ready: true,
+                target_type,
+            },
+            true,
+        );
         Ok(())
     }
 
@@ -5332,7 +5510,9 @@ mod tests {
 
     /// records/425906646's update 1641: player 6's drop-off order reaches its goose 28766 (class
     /// 58, 100 food, no drop sites, its default task on top): no table entry takes class 58, so
-    /// it does nothing; an entry of its class would find a building.
+    /// it does nothing. An entry of its class (taking food) leads to the nearest such building
+    /// of the player's tracker in state 2 (`FUN_141658e20`), but a goose (below type 70) does no
+    /// work on it.
     #[test]
     fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         let goose = Unit {
@@ -5370,10 +5550,50 @@ mod tests {
             crate::tasks::DropSite {
                 building: 1897,
                 worker_class: 58,
+                resource_types: vec![0],
                 ..crate::tasks::DropSite::default()
             },
         ];
-        assert!(t.drop_off_unasked(0, 0).is_err());
+        let pen = |id, x: f32, state| Unit {
+            id,
+            position: [x, 10.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: 1897,
+                state,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        t.masters[0] = crate::masters::Masters::new([
+            t.masters[0].get(1243).unwrap().clone(),
+            Master {
+                id: 1897,
+                kind: 80,
+                class: 3,
+                ..Master::default()
+            },
+        ]);
+        t.players[0].objects[0].life.attribute_type = 0;
+        t.players[0].objects[0].position = [10.0, 10.0, 0.0];
+        for (id, x, state) in [
+            (500, 30.0, 2),
+            (501, 12.0, 0),
+            (502, 20.0, 2),
+            (503, 15.0, 2),
+        ] {
+            t.players[0].objects.push(pen(id, x, state));
+            t.track_add(0, id, 1897);
+        }
+        // the tracker's done list: the foundation 501 waits, 503 is the nearest standing one
+        let key = t.tracker_key(0, 1897);
+        for id in [503, 502, 500] {
+            t.players[0].tracker.complete(id, key);
+        }
+        assert_eq!(t.table_drop_site(0, [10.0, 10.0], 0, 58), Some(503));
+        assert_eq!(t.table_drop_site(0, [10.0, 10.0], 1, 58), None);
+        let before = t.players[0].objects[0].clone();
+        assert!(t.drop_off_unasked(0, 0).is_ok());
+        assert_eq!(t.players[0].objects[0], before);
     }
 
     /// The work command's Attack (`0x140a7f8c0`) of a soldier that may move, touching Gaia's

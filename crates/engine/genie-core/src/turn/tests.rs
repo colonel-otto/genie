@@ -1806,6 +1806,57 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
     assert_eq!(taken(&now), taken(&later));
 }
 
+/// `FUN_141205ac0`, the way back after a drop-off: the order on a target `0x325` in front of the
+/// unit AI's queue, on the town-bell record's object the world holds (its master the target
+/// type, its owner the target's, its place the point), else on the record's target as recorded
+/// (owner −1, the record's point); issued by the unit's owner, priority 100, ready.
+#[test]
+fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
+    use crate::town_bell::BackToWork;
+    let mut t = sent_off_world(vec![]);
+    let work = BackToWork {
+        target: 10028,
+        target_type: 3,
+        action: 0x25a,
+        target2: -1,
+        point: [1.0, 2.0],
+    };
+    t.players[1].objects[0].town_bell.work = work;
+    t.queue_way_back(1, 0).unwrap();
+    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    assert_eq!(
+        ai.orders,
+        [crate::unit_ai::QueuedOrder {
+            issuer: 1,
+            order: 0x325,
+            priority: 100,
+            target: 10028,
+            target_owner: 1,
+            point: [30.0, 88.0, 0.0],
+            range: 0.0,
+            shown: [30.0, 88.0],
+            ready: true,
+            target_type: 70,
+        }]
+    );
+    // a recorded target the world no longer holds: the record as it is, in front
+    t.players[1].objects[0].town_bell.work = BackToWork {
+        target: 999,
+        ..work
+    };
+    t.queue_way_back(1, 0).unwrap();
+    let first = t.players[1].objects[0].ai.as_ref().unwrap().orders[0];
+    assert_eq!(
+        (
+            first.target,
+            first.target_type,
+            first.target_owner,
+            first.point
+        ),
+        (999, 3, -1, [1.0, 2.0, 0.0])
+    );
+}
+
 /// `UNIT_ORDER`'s drop-off (action 8, `FUN_14161e370`) runs on any player's units its command
 /// names: a carrying villager without a gather action, of a master without drop sites and a
 /// class the drop-site table does not list, does nothing, whoever commands it.
