@@ -292,6 +292,42 @@ pub struct Strike<'a> {
     /// The update sent a boar home at its next idle check (its unit AI's slot 0x1f0,
     /// `FUN_140c16d50`: `+0x1fd`), the caller's.
     pub sends_home: bool,
+    /// The swing's own sprites ([`Attack::set_swing`]): its terrain look's attack sprite and its
+    /// master's special graphic.
+    pub swing_sprites: SwingSprites,
+}
+
+/// The sprites a swing of a unit (its terrain look `look`, its master `master`) takes before its
+/// Attack's own ([`SwingSprites`]): its look's attack sprite while it shows its look, its
+/// master's special graphic.
+#[must_use]
+pub fn swing_sprites(
+    look: Option<&crate::abilities::Look>,
+    master: &crate::masters::Master,
+    graphics: &std::collections::BTreeMap<i16, Graphic>,
+) -> SwingSprites {
+    let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
+    SwingSprites {
+        look: look.and_then(|l| l.attacking).and_then(g),
+        special: master
+            .special_graphic
+            .then(|| g(master.special_sprite))
+            .flatten(),
+    }
+}
+
+/// An Attack's draw (its hit's, its swing's second sprite) where the caller's walk holds no
+/// Object stream (`Walk::plan`).
+const NO_OBJECT_STREAM: GenieError = GenieError::unsupported("a hit without the Object stream");
+
+/// The sprites a swing takes before the Attack's own ([`Attack::set_swing`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SwingSprites {
+    /// The unit's terrain look's attack sprite (`+0x970`, `FUN_14107cc20`) while it shows its
+    /// look (`+0x8a9`).
+    pub look: Option<Graphic>,
+    /// Its master's special graphic (`+0x8e8`, a `TRIBE_Master_Combat_Object`'s).
+    pub special: Option<Graphic>,
 }
 
 /// readyToAttack's gap for a range up to [`NO_RANGE`]: half a tile less (`DAT_142eb6e58`).
@@ -1056,24 +1092,52 @@ impl Attack {
         )
     }
 
-    /// `set_state(7)` (case 7): the swing. The unit takes the attack sprite (a second attack sprite,
-    /// picked by an Object-stream draw, is not modelled; without one slot 0x68 shows its master's
-    /// standing sprite) from its first frame (`FUN_1413b9f00`); a hit is pending; a reload shorter
-    /// than the sprite speeds the animation up to fit it.
+    /// `set_state(7)` (case 7): the swing. Its sprite: the terrain look's attack sprite while
+    /// the unit shows its look ([`SwingSprites::look`]); else the master's special graphic on a
+    /// charge that hits the target (slot 0x2f0, [`crate::damage::charge_hit`]; slot 0x2f8's
+    /// charge range is a charge of types 6 and 7, which [`engagement`] does not take); else the
+    /// attack sprite (`+0x70`) or, with a second one (`+0x78`), a draw of the Object stream
+    /// (`FUN_140810fc0` with 2, [`crate::rng::Well512::below_checked`]: 0 the first) for a master
+    /// whose move algorithm lacks bit 0 (slot 0x5d8); one with it takes the second after a stop
+    /// (`+0x958`, not held). The unit takes it (without one slot 0x68 shows its master's standing
+    /// sprite) from its first frame (`FUN_1413b9f00`); a hit is pending; a reload shorter than
+    /// the sprite speeds the animation up to fit it.
     fn set_swing(&mut self, walk: &mut Walk<'_>, s: &mut Strike<'_>) -> Result<(), GenieError> {
         self.enter(SWING, walk, s)?;
-        if self.arms.second_sprite.is_some() {
-            return Err(GenieError::unsupported(
-                "an attacker with a second attack sprite (its draw)",
-            ));
-        }
-        let g = self
-            .arms
-            .sprite
-            .or(s.standing)
-            .ok_or(GenieError::unsupported(
-                "an attacker without an attack or standing sprite",
-            ))?;
+        let alternates = walk
+            .mover
+            .as_ref()
+            .is_some_and(|m| m.stats.move_algorithm & 1 != 0);
+        let special = s
+            .swing_sprites
+            .special
+            .filter(|_| 70 <= s.own.kind && damage::charge_hit(&s.own.source, s.victim));
+        let chosen = if let Some(look) = s.swing_sprites.look {
+            Some(look)
+        } else if let Some(special) = special {
+            Some(special)
+        } else if let Some(second) = self.arms.second_sprite {
+            if alternates {
+                return Err(GenieError::unsupported(
+                    "an attacker with a second attack sprite (its draw)",
+                ));
+            }
+            let object = walk
+                .plan
+                .as_mut()
+                .map(|p| &mut *p.object)
+                .ok_or(NO_OBJECT_STREAM)?;
+            if object.below_checked(2) == 0 {
+                self.arms.sprite
+            } else {
+                Some(second)
+            }
+        } else {
+            self.arms.sprite
+        };
+        let g = chosen.or(s.standing).ok_or(GenieError::unsupported(
+            "an attacker without an attack or standing sprite",
+        ))?;
         set_sprite(s.sprite, g, s.sprite_rng);
         // FUN_1413b9f00 on the unit's sprite list with its sprite (`+0x140`)
         if let Some(current) = s.sprite.map(|sp| sp.graphic) {
@@ -1699,7 +1763,7 @@ impl Attack {
                     .plan
                     .as_mut()
                     .map(|p| &mut *p.object)
-                    .ok_or(GenieError::unsupported("a hit without the Object stream"))?;
+                    .ok_or(NO_OBJECT_STREAM)?;
                 self.hit(s, object)?;
             }
             self.pending = false;
@@ -2569,6 +2633,7 @@ mod tests {
                 let_go: None,
                 forgets: false,
                 sends_home: false,
+                swing_sprites: SwingSprites::default(),
             }
         }
     }
@@ -3553,6 +3618,74 @@ mod tests {
         a.enter_ready(walk, &mut s).unwrap();
         assert_eq!(a.state, DONE);
         assert_eq!(s.posted, vec![(0x1fa, [600, 0, 0])]);
+    }
+
+    /// `set_state(7)`'s sprite: a second attack sprite makes the swing draw the Object stream
+    /// (`FUN_140810fc0` with 2: 0 the first sprite, 1 the second); the terrain look's attack
+    /// sprite comes first and draws nothing, and so does a special graphic on a charge that
+    /// hits.
+    #[test]
+    fn a_swing_with_a_second_sprite_draws_which_one_it_shows() {
+        let at = [10.5, 10.0, 0.0];
+        let sprite = |id: i16| Graphic { id, ..STANDING };
+        let swing = |object: Well512, sprites: SwingSprites| {
+            let mut object = object;
+            let mut world = world_with(7, 0, 6, at);
+            let mut mover = soldier_mover(0.0);
+            let mut pathing = crate::pathing::Pathing::default();
+            let groups = crate::group::UnitGroups::default();
+            let mut walk = walk_in(&mut mover, &mut world);
+            walk.plan = Some(crate::movement::Planning {
+                pathing: &mut pathing,
+                now: 0,
+                computer: false,
+                object: &mut object,
+                construction_rate: 1.0,
+                groups: &groups,
+            });
+            let mut rig = Rig::new(Victim {
+                id: 7,
+                position: at,
+                ..Victim::default()
+            });
+            let mut s = rig.strike();
+            s.can_move = false;
+            s.swing_sprites = sprites;
+            let mut a = soldier_attack(7, 1.0, 0.0, at);
+            a.arms.sprite = Some(sprite(301));
+            a.arms.second_sprite = Some(sprite(302));
+            a.state = 0;
+            a.enter_ready(walk, &mut s).unwrap();
+            (rig.sprite.map(|sp| sp.graphic.id), object)
+        };
+        // two seeds whose first draw scales to 0 and to 1
+        let seeded = |seed: u32| {
+            let mut r = Well512::default();
+            r.set_seed(seed);
+            r
+        };
+        let first = |seed: u32| seeded(seed).below_checked(2);
+        let (zero, one) = (
+            (0..64).find(|&s| first(s) == 0).unwrap(),
+            (0..64).find(|&s| first(s) == 1).unwrap(),
+        );
+        let (shown, left) = swing(seeded(zero), SwingSprites::default());
+        let mut drawn = seeded(zero);
+        let _ = drawn.below_checked(2);
+        assert_eq!((shown, left), (Some(301), drawn));
+        assert_eq!(swing(seeded(one), SwingSprites::default()).0, Some(302));
+        // the look's sprite draws nothing
+        let looked = SwingSprites {
+            look: Some(sprite(303)),
+            special: None,
+        };
+        assert_eq!(swing(seeded(one), looked), (Some(303), seeded(one)));
+        // a special graphic without a charge that hits draws as before
+        let special = SwingSprites {
+            look: None,
+            special: Some(sprite(304)),
+        };
+        assert_eq!(swing(seeded(one), special).0, Some(302));
     }
 
     /// readyToAttack's leash in an update: a unit in stance 1 whose target stands the range

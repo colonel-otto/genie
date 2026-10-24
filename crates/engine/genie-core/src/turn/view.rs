@@ -702,6 +702,11 @@ impl UnitView<'_> {
             let_go: None,
             forgets: false,
             sends_home: false,
+            swing_sprites: crate::attack::swing_sprites(
+                unit.abilities.look.as_ref(),
+                master,
+                self.graphics,
+            ),
         };
         attack.enter_ready(walk, &mut strike)?;
         // set_state 6 and 7 hit nothing, fire nothing and let nothing go: the update does

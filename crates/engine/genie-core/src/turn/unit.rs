@@ -5772,6 +5772,8 @@ impl Unit {
             let world_time = c.world_time;
             let standing = c.graphics.get(&master.standing_sprite).copied();
             let volleys = c.masters.is_some_and(|m| crate::attack::volleys(master, m));
+            let swing_sprites =
+                crate::attack::swing_sprites(self.abilities.look.as_ref(), master, c.graphics);
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -5802,6 +5804,7 @@ impl Unit {
                 let_go: None,
                 forgets: false,
                 sends_home: false,
+                swing_sprites,
             };
             let full = hunt.update(walk, computer, &mut strike, &mut gather, herd)?;
             let searches = gather.searches;
@@ -5903,6 +5906,8 @@ impl Unit {
             let world_time = c.world_time;
             let standing = c.graphics.get(&master.standing_sprite).copied();
             let volleys = c.masters.is_some_and(|m| crate::attack::volleys(master, m));
+            let swing_sprites =
+                crate::attack::swing_sprites(self.abilities.look.as_ref(), master, c.graphics);
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -5933,6 +5938,7 @@ impl Unit {
                 let_go: None,
                 forgets: false,
                 sends_home: false,
+                swing_sprites,
             };
             let code = attack.update(walk, &mut strike)?;
             let fired = strike.fire.map(|target| {

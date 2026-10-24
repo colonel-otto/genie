@@ -3511,6 +3511,11 @@ impl Turns {
             u.reload_stinger + (master.reload - u.reload_powerup)
         };
         let hit_chance = master.hit_chance;
+        let swing_sprites = crate::attack::swing_sprites(
+            self.players[player].objects[idx].abilities.look.as_ref(),
+            master,
+            &self.graphics,
+        );
         let computer = self.players[player].computer;
         let volleys = self
             .masters
@@ -3636,6 +3641,7 @@ impl Turns {
                 let_go: None,
                 forgets: false,
                 sends_home: false,
+                swing_sprites,
             };
             attack.enter_ready(walk, &mut strike)?;
             if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {
