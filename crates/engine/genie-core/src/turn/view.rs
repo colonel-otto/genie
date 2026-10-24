@@ -1962,6 +1962,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .stop_with(lets, by, masters, self.graphics, self.sprite)
     }
 
+    fn cap_human_order(&mut self, cap: u32) -> Result<(), GenieError> {
+        self.unit.last_human_order = self.unit.last_human_order.min(cap);
+        self.spatial.set_gait(self.unit.id, self.unit.gait());
+        Ok(())
+    }
+
     fn seek_unexplored(
         &mut self,
         ai: &UnitAi,

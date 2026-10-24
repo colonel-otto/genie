@@ -1607,6 +1607,16 @@ pub trait UnitSide {
     /// What the stop does not model.
     fn stop(&mut self) -> Result<(), GenieError>;
 
+    /// `FUN_140c41e50`'s cap on the unit's last human order time (`+0x650`, [`Effect::CapHumanOrder`])
+    /// run at once, ahead of a stop that runs at once ([`UnitSide::stop`]).
+    ///
+    /// # Errors
+    ///
+    /// A side without its unit.
+    fn cap_human_order(&mut self, _cap: u32) -> Result<(), GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
     /// `AttackObject`'s test of object `target` (`FUN_140c43720`): the world holds it and the unit
     /// AI's attack check (slot 0xa0, [`can_attack`], as `seeker` stands) passes; then its master's
     /// class and its place.
@@ -1852,6 +1862,10 @@ pub trait UnitSide {
     }
 }
 
+/// A unit AI's call on its unit from a side that holds none (a search's closure).
+const WITHOUT_UNIT: GenieError =
+    GenieError::unsupported("a unit AI's call on its unit from a side without it");
+
 /// A unit command the slice holds no action for ([`UnitSide::command`]).
 pub(crate) const UNMODELLED_COMMAND: GenieError = GenieError::unsupported(
     "a unit command the slice does not model (heal, conversion, enter, transport, unload)",
@@ -1981,7 +1995,7 @@ impl<F: FnMut(&Search<'_>) -> Result<Found, GenieError>> UnitSide for F {
     fn set_under_attack(&mut self, _: bool) {}
 
     fn stop(&mut self) -> Result<(), GenieError> {
-        Err(GenieError::unsupported("a unit AI's stop without its unit"))
+        Err(WITHOUT_UNIT)
     }
 
     fn may_attack(&mut self, _: i32, _: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
@@ -5773,7 +5787,8 @@ impl UnitAi {
     /// The unit's attack command (slot 0x338, [`UnitSide::attack`]) on `target`, `force`d or not,
     /// as `AttackObject`, `attackRoundupObject` and seek and destroy give it: a stop the
     /// processing made before (slot 0x3c0, a pending [`Effect::Stop`]) emptied the action list
-    /// before the command fills it, so it runs first ([`UnitSide::stop`]). The notifies the
+    /// before the command fills it, so it runs first ([`UnitSide::stop`]), with the caps on the
+    /// last human order time before it ([`UnitSide::cap_human_order`]) in their order. The notifies the
     /// command posts (the unit's slot 0x328 -> the AI's slot 0x38) go into the queue, or the
     /// buffer while it is full. True when the unit attacks: it then holds an action of its own
     /// ([`UnitAi::commanded`]).
@@ -5786,14 +5801,22 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         if fx.contains(&Effect::Stop) {
-            if fx.iter().any(|e| *e != Effect::Stop) {
+            if fx
+                .iter()
+                .any(|e| !matches!(e, Effect::Stop | Effect::CapHumanOrder(_)))
+            {
                 return Err(GenieError::unsupported(
                     "an attack command after a stop with other effects pending",
                 )
                 .with("effects", format!("{fx:?}")));
             }
-            fx.clear();
-            side.stop()?;
+            // the effects before it ran before it: in order
+            for e in std::mem::take(fx) {
+                match e {
+                    Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
+                    _ => side.stop()?,
+                }
+            }
         }
         let attacked = side.attack(target, force, self)?;
         for (kind, p) in attacked.posted {
@@ -8692,13 +8715,15 @@ mod tests {
         r
     }
 
-    /// A unit side that records the attack commands, the under-attack flag and the stops (as
-    /// many attack commands as came before each).
+    /// A unit side that records the attack commands, the under-attack flag, the stops (as
+    /// many attack commands as came before each) and the caps on the last human order time (with
+    /// as many stops before each).
     #[derive(Default)]
     struct Recorder {
         attacks: Vec<(i32, bool)>,
         under_attack: Option<bool>,
         stops: Vec<usize>,
+        caps: Vec<(u32, usize)>,
     }
 
     /// The builder's flood: of two foundations two tiles off, the one left of the unit comes before
@@ -8752,6 +8777,11 @@ mod tests {
 
         fn stop(&mut self) -> Result<(), GenieError> {
             self.stops.push(self.attacks.len());
+            Ok(())
+        }
+
+        fn cap_human_order(&mut self, cap: u32) -> Result<(), GenieError> {
+            self.caps.push((cap, self.stops.len()));
             Ok(())
         }
 
@@ -9650,6 +9680,38 @@ mod tests {
         assert_eq!((side.stops, side.attacks), (vec![0], vec![(27240, true)]));
         assert_eq!(fx, vec![]);
         assert_eq!((u.current_action, u.current_target), (ATTACK_ACTION, 27240));
+    }
+
+    /// 428506340's Gaia 31602 (update 4609): a cap on the last human order time and a stop wait
+    /// when an attack command comes; both run before it, in their order. Another effect still
+    /// stops the slice.
+    #[test]
+    fn an_attack_command_runs_the_pending_cap_and_stop_first() {
+        let mut u = hit_boar();
+        let at = Surroundings {
+            id: 31602,
+            ..Surroundings::default()
+        };
+        let mut side = Recorder::default();
+        let mut fx = vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP), Effect::Stop];
+        assert_eq!(
+            u.attack_command(27240, true, &at, &mut side, &mut fx),
+            Ok(true)
+        );
+        assert_eq!(
+            (side.caps, side.stops, side.attacks, fx),
+            (
+                vec![(HUMAN_ORDER_CAP, 0)],
+                vec![0],
+                vec![(27240, true)],
+                vec![]
+            )
+        );
+        let mut fx = vec![Effect::Stop, Effect::RestorePatrol];
+        assert!(
+            u.attack_command(27240, true, &at, &mut Recorder::default(), &mut fx)
+                .is_err()
+        );
     }
 
     /// The 4v4's boar 29823 in update 2917 walks to its villager and meets another of the same
@@ -17947,8 +18009,9 @@ mod tests {
 
     #[test]
     fn the_attack_command_runs_a_pending_stop_first() {
-        // the attack command runs at once: a stop pending runs first; a stop with another
-        // command pending is not modelled
+        // the attack command runs at once: each stop pending runs first (the second on an empty
+        // list with its standing sprite shown already); a stop with another command pending is
+        // not modelled
         let mut u = idle(BOAR_AI);
         let mut side = OrderSide::holding(&[(70, 6)]);
         let at = Surroundings::default();
@@ -17957,7 +18020,7 @@ mod tests {
             u.attack_command(70, true, &at, &mut side, &mut fx),
             Ok(true)
         );
-        assert_eq!((fx, side.stops, u.commanded), (Vec::new(), 1, true));
+        assert_eq!((fx, side.stops, u.commanded), (Vec::new(), 2, true));
         let mut fx = vec![Effect::Stop, Effect::GatherObject(1)];
         assert!(u.attack_command(70, true, &at, &mut side, &mut fx).is_err());
     }
