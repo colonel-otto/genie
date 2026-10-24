@@ -413,14 +413,18 @@ pub fn find_task<'m>(
             return Ok(None);
         }
     }
+    // a master with object flag 0x10 has no task on prey whose master stores something
+    // (`+0x610`, its first storage amount, above 0)
     if let Some(t) = target
         && own.object_flags & 0x10 != 0
         && t.master.class == class::PREY
+        && 0.0
+            < t.master
+                .storage
+                .first()
+                .map_or(0.0, |&(_, amount, _)| amount)
     {
-        return Err(GenieError::unsupported(
-            "the task finder on prey for a hunter master (+0x610)",
-        )
-        .with("target master", t.master.id));
+        return Ok(None);
     }
     // LAB_141278e9f: the monk tasks for carried relics and conversions of villagers
     let (held_kind, held_amount) = actor.held;
@@ -743,6 +747,36 @@ mod tests {
         assert_eq!(table_drop_buildings(&table, 15, 4, 1), [109]);
         assert_eq!(table_drop_buildings(&table, 17, -1, 1), [45]);
         assert_eq!(table_drop_buildings(&table, -1, 4, 1), [0i16; 0]);
+    }
+
+    /// `FUN_1412784d0` for a master with object flag 0x10: no task on prey (class 9) whose master
+    /// stores something (`+0x610` above 0); prey without storage takes its task as any target.
+    #[test]
+    fn a_flag_0x10_master_has_no_task_on_prey_that_stores_food() {
+        let hunt = task(110, class::PREY, -1, 1.0);
+        let hunter = Master {
+            object_flags: 0x10,
+            ..master(122, 70, class::VILLAGER, vec![hunt])
+        };
+        let deer = Master {
+            storage: vec![(0, 100.0, 1)],
+            ..master(65, 70, class::PREY, vec![])
+        };
+        let target = |m| TaskTarget {
+            state: 2,
+            ..building(m, 0, 2)
+        };
+        assert_eq!(find(&hunter, (-1, 0.0), &target(&deer)), Ok(None));
+        let eaten = Master {
+            storage: vec![(0, 0.0, 1)],
+            ..deer.clone()
+        };
+        assert_eq!(find(&hunter, (-1, 0.0), &target(&eaten)), Ok(Some(&hunt)));
+        let plain = Master {
+            object_flags: 0,
+            ..hunter
+        };
+        assert_eq!(find(&plain, (-1, 0.0), &target(&deer)), Ok(Some(&hunt)));
     }
 
     #[test]
