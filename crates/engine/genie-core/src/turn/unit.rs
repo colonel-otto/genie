@@ -2965,6 +2965,9 @@ impl Unit {
                 gap_squared: footprint_gap_squared(self.position, me.radius, p.position, p.radius),
                 position: p.position,
                 hp: u.life.hp,
+                master: u.life.master_id,
+                kind: m.kind,
+                main: u.annex_of,
             });
         }
         Ok(seen)

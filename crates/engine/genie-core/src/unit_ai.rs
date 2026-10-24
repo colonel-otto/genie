@@ -2151,6 +2151,12 @@ pub struct UnitSeen {
     pub position: [f32; 3],
     /// Its hit points (`+0x278`).
     pub hp: f32,
+    /// Its master's id and type (`+0xf`).
+    pub master: i16,
+    /// Its type (`+0xf`).
+    pub kind: u8,
+    /// An annex's main building (`+0xbb8`).
+    pub main: Option<i32>,
 }
 
 /// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`); as
@@ -2426,6 +2432,34 @@ const ATTACK_ORDER: i32 = 700;
 /// A human player's unit on the attack order with a range above this does not retarget
 /// (processMisc).
 const RETARGET_RANGE: f32 = crate::image::unit_ai::RETARGET_RANGE;
+/// The retarget's reference distance about a current target (`DAT_142eb9430`).
+const RETARGET_REACH: f32 = crate::image::unit_ai::RETARGET_REACH;
+
+/// What the retarget's search reads of its checks ([`UnitAi::retarget_outcome`]): the current
+/// target is a building's, wall's or trebuchet's (or one off the attack order), and the top
+/// action is in an attack's work state (6 or 7).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RetargetSearch {
+    building: bool,
+    work_state: bool,
+}
+
+/// The classes a unit AI of factory type `ai_type` cares about (its constructor's `+0x190`
+/// list), which its searches read: the soldier's ([`SOLDIER_CARED`]) and the siege unit's
+/// ([`SIEGE_CARED`]).
+///
+/// # Errors
+///
+/// Another type, whose list is not held here.
+const fn cared_classes(ai_type: u32) -> Result<&'static [i32], GenieError> {
+    match ai_type {
+        13 => Ok(&SOLDIER_CARED),
+        SIEGE_AI => Ok(&SIEGE_CARED),
+        _ => Err(GenieError::unsupported(
+            "a retarget search of a unit-AI type whose classes are not held",
+        )),
+    }
+}
 /// The action values that need a live target (the target block's mask `0x4002080d` over the
 /// value − `0x259`).
 const LIVE_TARGET_ACTIONS: [i32; 6] = [0x259, 0x25b, 0x25c, 0x264, 0x26a, 0x277];
@@ -4024,12 +4058,12 @@ impl UnitAi {
     ) -> Result<(), GenieError> {
         match retarget {
             Retarget::Base => {
-                let _ = self.retarget_check(world_time, computer, at, ai, fx)?;
+                let _ = self.retarget_check(world_time, computer, at, ai, side, fx)?;
             }
             // the priest's checks but on the order on a target and for a computer player's
             Retarget::Priest => {
                 if self.current_order != ORDER_ON_TARGET && !computer {
-                    let _ = self.retarget_check(world_time, computer, at, ai, fx)?;
+                    let _ = self.retarget_check(world_time, computer, at, ai, side, fx)?;
                 }
             }
             Retarget::Civilian => self.civilian_misc(at, fx)?,
@@ -6953,6 +6987,9 @@ impl UnitAi {
                 ),
                 position: at.position,
                 hp: at.hp,
+                master: at.master,
+                kind: at.kind,
+                main: None,
             }));
         }
         at.unit(id)
@@ -7625,6 +7662,7 @@ impl UnitAi {
         computer: bool,
         at: &Surroundings,
         ai: &mut Well512,
+        side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
         let order = match (self.current_order, self.current_action) {
@@ -7681,8 +7719,109 @@ impl UnitAi {
         self.retarget_timer = 750 + ai.rand15() % 500;
         let target = at.target.map(|t| (t.owner, t.class));
         let listed = at.action_state.map(|_| at.attack_listed);
-        self.retarget_outcome(target, at.weapon_range, computer, at.action_state, listed)?;
+        if let Some(search) =
+            self.retarget_outcome(target, at.weapon_range, computer, at.action_state, listed)?
+        {
+            let _ = self.retarget_search(search, computer, at, side, fx)?;
+        }
         Ok(true)
+    }
+
+    /// The retarget's search for a better target (`0x140c567c0` past its checks):
+    /// `bestUnitToAttack` from the current target's place (slot 0x520) within 8
+    /// (`DAT_142eb9430`), else from the unit's own without a reference distance; an idle check
+    /// with path checks, any class without a target or with a building's, in the attack work
+    /// state the checks read (none without a target). Its retarget entries join the AI's, its
+    /// search sets the alert mode. Then, unless a computer player's unit in stance 0 keeps a
+    /// building target: on the attack order a found object whose attack category differs from
+    /// a live current target's (state 2) ends it (9). Without a building target (the attack
+    /// order, so) nothing more happens (9). With one: a found building but a trebuchet's
+    /// classes (51, 54), unless the current target is a farm (49) and it is none, keeps the
+    /// current target (10); a found annex names its main building. A found object other than the
+    /// current target is attacked (slot 0xb8, not any: [`UnitAi::attack_slot`], 10).
+    fn retarget_search(
+        &mut self,
+        search: RetargetSearch,
+        computer: bool,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let current = if self.current_target == -1 {
+            None
+        } else {
+            Self::world_object(self.current_target, at, side)?
+        };
+        let (from, distance, any_class, work_state) =
+            current.map_or((at.position, 0.0, true, false), |t| {
+                (
+                    t.position,
+                    RETARGET_REACH,
+                    search.building,
+                    search.work_state,
+                )
+            });
+        let classes = cared_classes(self.ai_type)?;
+        let found = side.closest(&Search {
+            at: [from[0], from[1]],
+            radius: attack_search_radius(at),
+            classes,
+            size: at.size,
+            pick: Pick::Attack {
+                lowest: if at.scenario && !computer { 2 } else { 0 },
+                seeker: self.seeker(at),
+                ask: AttackAsk {
+                    distance,
+                    idle: true,
+                    paths: true,
+                    extra: None,
+                    any_class,
+                    work_state,
+                },
+            },
+            memory: self.memory(),
+        })?;
+        self.add_retries(&found);
+        self.attack_search_alert(found, computer)?;
+        let keeps = search.building && computer && self.stance == 0;
+        let new = if found.id == -1 {
+            None
+        } else {
+            Self::world_object(found.id, at, side)?
+        };
+        if !keeps
+            && self.current_order == ATTACK_ORDER
+            && let (Some(n), Some(c)) = (new, current)
+            && c.state == 2
+            && crate::best_target::category(n.master, n.class)
+                != crate::best_target::category(c.master, c.class)
+        {
+            return Ok(9);
+        }
+        if !search.building {
+            return Ok(9);
+        }
+        let mut id = found.id;
+        if let Some(n) = new
+            && id != -1
+        {
+            if n.kind == 80 {
+                let farm_rule = current.is_none_or(|c| c.class != 49) || n.class == 49;
+                if !matches!(n.class, 51 | 54) && farm_rule {
+                    return Ok(10);
+                }
+            }
+            if 80 <= n.kind
+                && let Some(main) = n.main
+            {
+                id = main;
+            }
+        }
+        if id == -1 || id == self.current_target {
+            return Ok(9);
+        }
+        let _ = self.attack_slot(id, false, at, side, fx)?;
+        Ok(10)
     }
 
     /// The retarget check after its timer's redraw: a human player's unit of a range above 3 on
@@ -7692,9 +7831,8 @@ impl UnitAi {
     /// Attack in its action list (slot 0x538 with 9: `attack_listed`, None when the slice does
     /// not hold the list) stops, as does a unit in stand ground or no attack (stance above 1)
     /// with an order, and one whose top action is in an attack's work state (6 or 7, slot 0x2b0:
-    /// `action_state`, None when not held) without a building target. The search for a better
-    /// target that follows (`bestUnitToAttack`, `FUN_140c44680`, from the target's slot 0x520
-    /// place) is not modelled.
+    /// `action_state`, None when not held) without a building target. What the search for a
+    /// better target reads ([`UnitAi::retarget_search`]), or None.
     fn retarget_outcome(
         &self,
         target: Option<(usize, i16)>,
@@ -7702,18 +7840,18 @@ impl UnitAi {
         computer: bool,
         action_state: Option<u8>,
         attack_listed: Option<bool>,
-    ) -> Result<(), GenieError> {
+    ) -> Result<Option<RetargetSearch>, GenieError> {
         let attack_order = self.current_order == ATTACK_ORDER;
         if attack_order && RETARGET_RANGE < weapon_range && !computer {
-            return Ok(());
+            return Ok(None);
         }
         let mut search = false;
         if self.current_target != -1 {
             match target {
-                Some((0, _)) => return Ok(()),
+                Some((0, _)) => return Ok(None),
                 Some((_, 3 | 27 | 39 | 49 | 52 | 51 | 54)) => {
                     if attack_order && !computer {
-                        return Ok(());
+                        return Ok(None);
                     }
                     search = true;
                 }
@@ -7722,24 +7860,26 @@ impl UnitAi {
             }
         }
         if !attack_order && !search {
-            return Ok(());
+            return Ok(None);
         }
         // slot 0x538 with 9: without an Attack in the action list, no search (an action list
         // the slice does not hold goes on to the state's test below, which stops)
         if attack_listed == Some(false) {
-            return Ok(());
+            return Ok(None);
         }
         // a unit in stand ground or no attack with an order goes no further
         if 1 < self.stance && self.current_order != -1 {
-            return Ok(());
+            return Ok(None);
         }
         // "I have an game attack action without an order ... inAttackWorkState"
         if matches!(held_action_state(action_state)?, 6 | 7) && !search {
-            return Ok(());
+            return Ok(None);
         }
-        Err(GenieError::unsupported(
-            "a unit AI's search for a better target (slot 0x538 with 9, then slot 0x520)",
-        ))
+        let work_state = matches!(held_action_state(action_state)?, 6 | 7);
+        Ok(Some(RetargetSearch {
+            building: search,
+            work_state,
+        }))
     }
 
     /// The civilian's slot 73 (`FUN_140c21da0`, processMisc): on the attack order (700) without
@@ -7858,6 +7998,11 @@ pub const GATHER_ACTION: i32 = 0x261;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A side whose searches find nothing (`Found::NONE`).
+    fn finds_nothing() -> impl FnMut(&Search<'_>) -> Result<Found, GenieError> {
+        |_| Ok(Found::NONE)
+    }
 
     impl UnitAi {
         const fn is_idle(&self) -> bool {
@@ -8051,6 +8196,9 @@ mod tests {
                 gap_squared: 0.0,
                 position: [101.5, 158.5, 0.0],
                 hp: 0.0,
+                master: 0,
+                kind: 0,
+                main: None,
             }))
         }
         fn call_for_help(&mut self, attacker: i32) -> Result<(), GenieError> {
@@ -9121,22 +9269,26 @@ mod tests {
         let sheep = Some((1, 58));
         assert_eq!(
             scout(2).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
-            Ok(())
+            Ok(None)
         );
         assert_eq!(
             scout(0).retarget_outcome(sheep, 0.0, false, Some(6), Some(true)),
-            Ok(())
+            Ok(None)
         );
-        assert!(
-            scout(0)
-                .retarget_outcome(sheep, 0.0, false, Some(4), Some(true))
-                .is_err()
+        assert_eq!(
+            scout(0).retarget_outcome(sheep, 0.0, false, Some(4), Some(true)),
+            Ok(Some(RetargetSearch {
+                building: false,
+                work_state: false
+            }))
         );
         // a building target is searched past even while attacking
-        assert!(
-            scout(0)
-                .retarget_outcome(Some((1, 3)), 0.0, true, Some(6), Some(true))
-                .is_err()
+        assert_eq!(
+            scout(0).retarget_outcome(Some((1, 3)), 0.0, true, Some(6), Some(true)),
+            Ok(Some(RetargetSearch {
+                building: true,
+                work_state: true
+            }))
         );
         // without an Attack in the action list (slot 0x538 with 9) there is no search: a king
         // entering a castle, its target a building (records 426406723's type-2 unit AIs)
@@ -9149,7 +9301,7 @@ mod tests {
         };
         assert_eq!(
             entering.retarget_outcome(Some((8, 3)), 0.0, false, Some(4), Some(false)),
-            Ok(())
+            Ok(None)
         );
         // an action list the slice does not hold stops at the state's test
         assert!(
@@ -9408,12 +9560,18 @@ mod tests {
         let (mut u, at) = defender(15.4);
         let mut fx = Vec::new();
         let mut r = rng();
-        assert!(u.retarget_check(0, false, &at, &mut r, &mut fx).is_ok());
+        assert!(
+            u.retarget_check(0, false, &at, &mut r, &mut finds_nothing(), &mut fx)
+                .is_ok()
+        );
         assert_eq!(fx, Vec::<Effect>::new());
         // 5.1 tiles off its footprint: it stops, forgets its target and walks back to its state
         // position (FUN_140c5e7d0), then goes on to the retarget check (its timer not used up)
         let (mut u, at) = defender(15.6);
-        assert_eq!(u.retarget_check(0, false, &at, &mut r, &mut fx), Ok(false));
+        assert_eq!(
+            u.retarget_check(0, false, &at, &mut r, &mut finds_nothing(), &mut fx),
+            Ok(false)
+        );
         assert_eq!(
             fx,
             vec![
@@ -15099,7 +15257,7 @@ mod tests {
         let mut u = standing(ATTACK_ACTION);
         let mut fx = Vec::new();
         assert_eq!(
-            u.retarget_check(0, false, &at, &mut rng(), &mut fx),
+            u.retarget_check(0, false, &at, &mut rng(), &mut finds_nothing(), &mut fx),
             Ok(false)
         );
         assert_eq!(fx[0], Effect::Stop);
@@ -15141,7 +15299,9 @@ mod tests {
             (standing(ATTACK_ACTION), &patrolling),
         ] {
             let mut fx = Vec::new();
-            let _ = u.retarget_check(0, false, at, &mut rng(), &mut fx).unwrap();
+            let _ = u
+                .retarget_check(0, false, at, &mut rng(), &mut finds_nothing(), &mut fx)
+                .unwrap();
             assert_eq!(fx, Vec::<Effect>::new(), "{:?}", u.current_action);
         }
         // a gap that is not a number stays (COMISS, JBE)
@@ -15151,7 +15311,7 @@ mod tests {
         };
         let mut fx = Vec::new();
         let _ = u
-            .retarget_check(0, false, &at, &mut rng(), &mut fx)
+            .retarget_check(0, false, &at, &mut rng(), &mut finds_nothing(), &mut fx)
             .unwrap();
         assert_eq!(fx, Vec::<Effect>::new());
         // with patrol information neither leash is modelled
@@ -15160,8 +15320,15 @@ mod tests {
             ..standing(ATTACK_ACTION)
         };
         assert!(
-            u.retarget_check(0, false, &at, &mut rng(), &mut Vec::new())
-                .is_err()
+            u.retarget_check(
+                0,
+                false,
+                &at,
+                &mut rng(),
+                &mut finds_nothing(),
+                &mut Vec::new()
+            )
+            .is_err()
         );
     }
 
