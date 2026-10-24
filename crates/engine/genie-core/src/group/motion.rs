@@ -675,6 +675,7 @@ fn request(
             if beyond < CLOSE || target_gap2 < CLOSE {
                 // the straight way when nothing stands on it (FUN_1411570c0 with its tiles)
                 let ignore = lead_group.map_or_else(|| vec![lead.walker.id], |g| g.members.clone());
+                spatial.set_manager_ignore(&ignore);
                 let hits = spatial.line_hits(
                     hold(at, spatial.map),
                     hold(waypoint, spatial.map),
@@ -860,6 +861,8 @@ fn steer(
         Some(g) if !g.differentiator_units.is_empty() => g.differentiator_units.clone(),
         _ => vec![lead.walker.id],
     };
+    // FUN_1411570c0 sets the manager's ignore list to it (FUN_1410562e0)
+    spatial.set_manager_ignore(&ignore);
     let hits = spatial.line_hits(
         hold(at, spatial.map),
         hold(next, spatial.map),

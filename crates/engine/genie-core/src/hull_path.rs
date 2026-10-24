@@ -2028,6 +2028,8 @@ impl<'w> HullPather<'w> {
             return Ok((0, path));
         }
         self.buffer = (0.0 < r).then_some(r * HALF);
+        // the pather's ignore list into the manager's (FUN_1410562e0 with +0xc0..+0xd0)
+        self.world.set_manager_ignore(&self.ignore);
         // the quick path, to the goal moved by the range or short of the target
         let quick = if range == 0.0
             || target

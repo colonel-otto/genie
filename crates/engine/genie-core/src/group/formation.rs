@@ -1467,6 +1467,10 @@ impl Turns {
         }
         let temporary = ([min_x, min_z, max_x, max_z], mask);
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        // the members are the manager's ignore list while the passability runs
+        // (FUN_1410562e0, 0x14103b916), which every way out of it clears (0x14103ce93,
+        // 0x14103cf93): none after it
+        self.spatial.set_manager_ignore(&[]);
         let mut reachable = Vec::new();
         let mut unreachable = Vec::new();
         for (j, t) in formation.slots.iter().enumerate() {

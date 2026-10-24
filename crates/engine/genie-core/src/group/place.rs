@@ -160,6 +160,8 @@ impl Turns {
             ));
         }
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
+        // the manager's ignore list (FUN_1410562e0 with the group's +0xf0, +0xe4)
+        self.spatial.set_manager_ignore(&members);
         let mut spiral = Spiral::from([centroid[0], centroid[2]]);
         for _ in 0..SPIRAL_POINTS {
             let at = on_map([spiral.at[0], centroid[1], spiral.at[1]], self.spatial.map);

@@ -1257,15 +1257,17 @@ impl Mover {
         if level.level != 0 && next < level.points.len() as i32 {
             let d = fmath::sub(vector(me.position), level.points[next as usize]);
             if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
+                // the manager's point query at the waypoint (FUN_141051900 with flags 0x20, no
+                // grow: its setters clear their buffers): its ignore list as the last
+                // FUN_1410562e0 left it; a gate the owner may pass has no record during its
+                // owner's update ([`crate::turn::Turns::open_gates`]), so slot 0x678 passes
+                // none of those found
                 let [x, _, y] = level.points[level.waypoint as usize];
-                world.check_known_records([x, y, x, y])?;
-                let standing = world.obstruction_candidates([x, y, x, y], 0.0, &[]);
-                if !standing.is_empty() {
-                    return Err(
-                        GenieError::unsupported("a next waypoint some object stands on")
-                            .with("waypoint", format_args!("({x}, {y})"))
-                            .with("objects", format_args!("{standing:?}")),
-                    );
+                let ignore = world.manager_ignore();
+                if world.object_holds([x, y], 0.0, &ignore, false)? {
+                    let level = &mut self.paths[0];
+                    let removed = remove_point(&mut level.points, level.waypoint);
+                    debug_assert!(removed, "the waypoint lies within the path");
                 }
             }
         }
@@ -3365,6 +3367,8 @@ pub(crate) fn tile_plan_for(
     let found = planner.plan(&req, target_box, out, Some(&mut blocked))?;
     if smoothed.get() {
         plan.pathing.smoothing_ran(slots);
+        // FUN_140f7dbb0 sets the manager's ignore list to it (FUN_1410562e0)
+        world.set_manager_ignore(&ignore);
     }
     Ok(Some(found.code()))
 }
@@ -4799,6 +4803,73 @@ mod tests {
                 .map(|v| (v.velocity[2], v.acceleration[2])),
             Some((0.0, 0.0))
         );
+    }
+
+    /// `LAB_14115136c` on a level 1 or 2 whose next waypoint lies within reach (its squared
+    /// distance below [`TARGET_SHORT_REACH`]): the manager's point query at the waypoint it moves
+    /// on to (`FUN_141051900`, flags 0x20) drops that waypoint (`FUN_140f98d50`) when an object's
+    /// record holds it, unless the manager's ignore list as the last `FUN_1410562e0` left it
+    /// holds the object (426916909's p0 in update 4036, 428265662's in 4931).
+    #[test]
+    fn a_next_waypoint_an_object_stands_on_goes() {
+        let walk = || {
+            let mut m = builder_9177();
+            m.paths = vec![level(
+                2,
+                &[[28.0, 89.0], [30.0, 88.0], [31.0, 88.0], [32.0, 88.0]],
+                3,
+            )];
+            let l = &mut m.paths[0];
+            l.target = -1;
+            l.flags = 1;
+            m
+        };
+        let mut world = Spatial::new([120, 120]);
+        world.insert(
+            500,
+            Placed {
+                position: [31.0, 88.5, 0.0],
+                radius: [0.5, 0.5],
+                class: 3,
+                player: 2,
+                master: 70,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 2, class: 2 }),
+            },
+        );
+        let mut me = Me {
+            id: 9177,
+            position: [30.0, 88.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let goal = Goal {
+            target: None,
+            gap: FAR,
+            to_end: FAR,
+        };
+        let mut m = walk();
+        let _ = m.reached(&mut me, &mut world, None, goal, 0).unwrap();
+        assert_eq!(
+            m.paths[0].points,
+            vec![[28.0, 0.0, 89.0], [30.0, 0.0, 88.0], [32.0, 0.0, 88.0]]
+        );
+        assert_eq!(m.paths[0].waypoint, 2);
+        // the house in the manager's ignore list: the waypoint stays
+        world.set_manager_ignore(&[500]);
+        let mut m = walk();
+        let _ = m.reached(&mut me, &mut world, None, goal, 0).unwrap();
+        assert_eq!(m.paths[0].points.len(), 4);
+        // the next waypoint out of reach: no query
+        world.set_manager_ignore(&[]);
+        let mut m = walk();
+        m.paths[0].points[3] = [40.0, 0.0, 88.0];
+        let _ = m.reached(&mut me, &mut world, None, goal, 0).unwrap();
+        assert_eq!(m.paths[0].points.len(), 4);
     }
 
     /// MarvinBlue/426048731's 9175 in update 724..726: the step that reaches its waypoint marks it

@@ -260,7 +260,8 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Genie
 /// target ([`Mover::follow_path_end`], its point the target's place) when the unit walks to that
 /// end ([`Mover::walks_to_path_end`]) and the straight line from the unit to the target is clear
 /// (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`, [`Spatial::segment_blocked`]: the
-/// obstruction manager's buffer radius and ignore list, which nothing set, none), and walks on;
+/// obstruction manager's buffer radius, which its setters clear, none, and its ignore list as the
+/// last `FUN_1410562e0` left it, [`Spatial::manager_ignore`]), and walks on;
 /// else it tells the unit (notify 0x1fc), turns to state 3 and the motion step runs on. True when
 /// the `MoveTo` turns to state 3.
 pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow, GenieError> {
@@ -296,9 +297,10 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
             a[0].max(b[0]),
             a[1].max(b[1]),
         ])?;
+        let ignore = walk.world.manager_ignore();
         if !walk
             .world
-            .segment_blocked(a, b, 0.0, mover.stats.restriction_mask, &[])
+            .segment_blocked(a, b, 0.0, mover.stats.restriction_mask, &ignore)
         {
             return Ok(Follow::PathEnd(t.position));
         }

@@ -465,6 +465,12 @@ impl Tiles {
 pub struct Spatial {
     /// The map's size in tiles.
     pub map: [i32; 2],
+    /// The obstruction manager's ignore list (`+0x2c` set, `+0x30` count, `+0x38` ids) as the
+    /// last `FUN_1410562e0` left it: the queries that set it before they ask
+    /// ([`Spatial::set_manager_ignore`]) leave it to the ones that do not (the motion step's
+    /// query of a level's waypoint). The game keeps a pointer to the caller's list; the slice
+    /// keeps the ids it held then.
+    manager_ignore: std::cell::RefCell<Vec<i32>>,
     objects: BTreeMap<i32, Placed>,
     /// The objects inside others (`+0x2f0`): off the tiles' lists and the obstruction manager,
     /// without a record, at their container's x and y; a lookup by id still finds them.
@@ -555,6 +561,7 @@ impl Spatial {
     pub fn with_tiles(map: [i32; 2], tiles: Tiles) -> Self {
         Self {
             map,
+            manager_ignore: std::cell::RefCell::new(Vec::new()),
             objects: BTreeMap::new(),
             inside: BTreeMap::new(),
             tiles,
@@ -1225,6 +1232,21 @@ impl Spatial {
         )
     }
 
+    /// `FUN_1410562e0` on the obstruction manager: its ignore list becomes `ids` (none for an
+    /// empty list), until the next call.
+    pub fn set_manager_ignore(&self, ids: &[i32]) {
+        let mut list = self.manager_ignore.borrow_mut();
+        list.clear();
+        list.extend_from_slice(ids);
+    }
+
+    /// The obstruction manager's ignore list as the last `FUN_1410562e0` left it
+    /// ([`Spatial::set_manager_ignore`]).
+    #[must_use]
+    pub fn manager_ignore(&self) -> Vec<i32> {
+        self.manager_ignore.borrow().clone()
+    }
+
     /// The walk's obstruction query (`FUN_14114cc60` -> `FUN_141051900` with flags `0x90`, each
     /// cell's records by `FUN_141051e00`): the records of a tested kind (kind 10 filed as 2),
     /// except the `ignore`d objects', in the cells the query visits ([`Spatial::visits`], `rect`
@@ -1234,7 +1256,9 @@ impl Spatial {
     /// `player` or an ally grows by `grow × ally_factor` instead (`+0x84`, the walker's master's
     /// `min_collision_size_multiplier`). The ids hit, in id order; the game's are in its grid's,
     /// which no caller reads yet. A rectangle that, grown, leaves the map meets the map edge's
-    /// records first ([`Spatial::edge_records`], `FUN_141057290`).
+    /// records first ([`Spatial::edge_records`], `FUN_141057290`). Both its callers
+    /// (`FUN_14114cc60`, the gate's `FUN_1411d0570`) set the manager's ignore list to `ignore`
+    /// first ([`Spatial::set_manager_ignore`]).
     #[allow(clippy::too_many_arguments)]
     pub fn walk_hits(
         &self,
@@ -1246,6 +1270,7 @@ impl Spatial {
         player: Option<usize>,
         ignore: &[i32],
     ) -> Result<Vec<i32>, GenieError> {
+        self.set_manager_ignore(ignore);
         let [w, h] = self.map;
         let walk = [from[0], from[1], to[0], to[1]];
         let query = [
@@ -2546,6 +2571,8 @@ impl Spatial {
         if word & u64::from(mask ^ 0xff) != 0 {
             return Ok(false);
         }
+        // the unit alone the manager's ignore list (FUN_1410562e0 with DAT_143f49fc8)
+        self.set_manager_ignore(&[me]);
         Ok(!self.point_hit(point, grow, &[me], false)?)
     }
 
@@ -2576,6 +2603,7 @@ impl Spatial {
             return Ok(false);
         }
         let ignore = if ignore.is_empty() { &[me][..] } else { ignore };
+        self.set_manager_ignore(ignore);
         Ok(!self.point_hit(point, grow, ignore, false)?)
     }
 
@@ -2605,6 +2633,26 @@ impl Spatial {
         {
             return Ok(true);
         }
+        self.object_holds(point, grow, ignore, still)
+    }
+
+    /// The objects' records of [`Spatial::point_hit`]'s query (`FUN_141051900` with flags 0x20,
+    /// the point test `FUN_141052160`): whether a record with an object (`+8`), not one of
+    /// `ignore`, holds `point` within its box grown by `grow`, edges included (with `still` a
+    /// moving object's is left out); the edge's and the tiles' records have no object.
+    ///
+    /// # Errors
+    ///
+    /// A record whose place the slice does not know near the point.
+    pub fn object_holds(
+        &self,
+        point: [f32; 2],
+        grow: f32,
+        ignore: &[i32],
+        still: bool,
+    ) -> Result<bool, GenieError> {
+        let [x, y] = point;
+        let rect = [x - grow, y - grow, grow + x, grow + y];
         self.check_known_records(rect)?;
         Ok(self.objects.iter().any(|(id, p)| {
             let Some(o) = p.obstruction.filter(|_| !ignore.contains(id)) else {
@@ -3763,5 +3811,30 @@ mod tests {
         assert!(s.check_known(near).is_ok());
         s.grow_unknown(2.0);
         assert!(s.check_known(near).is_err());
+    }
+
+    /// `FUN_1410562e0`'s list stays with the obstruction manager: the walk's query and the stand
+    /// tests set it (`FUN_14114cc60`, `FUN_141158720`, `FUN_141158940`), and it holds until the
+    /// next set; the objects' part of the point query leaves the edge's records out.
+    #[test]
+    fn the_manager_keeps_the_last_ignore_list_set() {
+        let s = Spatial::new([10, 10]);
+        assert_eq!(s.manager_ignore(), Vec::<i32>::new());
+        let rect = [2.0, 5.0, 3.0, 5.0];
+        let _ = s
+            .walk_hits([2.0, 5.0], [3.0, 5.0], rect, 0.2, 1.0, None, &[7, 8])
+            .unwrap();
+        assert_eq!(s.manager_ignore(), [7, 8]);
+        assert!(s.point_clear(3, [4.5, 4.5], 0.1, 0xff).unwrap());
+        assert_eq!(s.manager_ignore(), [3]);
+        assert!(s.point_clear_among(4, [4.5, 4.5], 0.1, 0xff, &[]).unwrap());
+        assert_eq!(s.manager_ignore(), [4]);
+        // a point off the map's tiles sets nothing
+        assert!(!s.point_clear(5, [-1.0, 4.5], 0.1, 0xff).unwrap());
+        assert_eq!(s.manager_ignore(), [4]);
+        s.set_manager_ignore(&[]);
+        assert_eq!(s.manager_ignore(), Vec::<i32>::new());
+        assert!(s.point_hit([0.05, 4.5], 0.1, &[], false).unwrap());
+        assert!(!s.object_holds([0.05, 4.5], 0.1, &[], false).unwrap());
     }
 }
