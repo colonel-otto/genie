@@ -5043,6 +5043,7 @@ impl Unit {
             };
             let step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
             c.cleared.extend(step.cleared.iter().copied());
+            c.site_removals.extend(step.removes);
             if !step.occupants.is_empty() {
                 c.evacuations.push((target, step.occupants.clone()));
             }

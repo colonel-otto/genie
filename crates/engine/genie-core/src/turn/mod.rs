@@ -1108,6 +1108,7 @@ impl Turns {
             annex_states: Vec::new(),
             released_annexes: Vec::new(),
             cleared: Vec::new(),
+            site_removals: Vec::new(),
             evacuations: Vec::new(),
             recycling: &mut self.recycling,
             mode_1: self.mode_680 == 1,
@@ -1229,6 +1230,7 @@ impl Turns {
             refund,
             annex_states,
             cleared,
+            site_removals,
             released_annexes,
             main_works,
             building_death,
@@ -1289,6 +1291,16 @@ impl Turns {
         // the objects a builder's footprint clearing deleted (FUN_1415c3620)
         for cl in cleared {
             if let Err(e) = self.clear_object(cl, true) {
+                result = result.and(Err(e));
+            }
+        }
+        // the foundations a builder found another player's marks on: a human owner's goes
+        // (FUN_1411ccbb0)
+        for site in site_removals {
+            if let Some((q, _)) = self.object(site)
+                && !self.players[q].computer
+                && let Err(e) = self.remove_building(q, site)
+            {
                 result = result.and(Err(e));
             }
         }

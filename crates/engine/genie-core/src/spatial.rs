@@ -587,6 +587,12 @@ impl Spatial {
         &self.tiles
     }
 
+    /// The tiles, for a test's marks.
+    #[cfg(test)]
+    pub(crate) const fn tiles_mut_for_test(&mut self) -> &mut Tiles {
+        &mut self.tiles
+    }
+
     /// An object gets its obstruction record (`FUN_141056460` for a started foundation): a static
     /// one marks its tiles.
     pub fn add_record(&mut self, id: i32, o: Obstruction) {

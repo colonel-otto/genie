@@ -440,6 +440,10 @@ pub struct BuildStep {
     /// The seconds of work an annex's main building takes ([`Worked::Main`]): the caller's
     /// after the update ([`crate::turn::Turns::work_building`] on the foundation).
     pub main_work: Option<f32>,
+    /// The foundation another player's marks lie on (`set_state(7)`'s `FUN_1411d4b80`), which
+    /// goes when its owner is human (`FUN_1411ccbb0`, [`crate::turn::Turns::remove_building`]):
+    /// the caller's after the update.
+    pub removes: Option<i32>,
 }
 
 /// A load a builder drops at the end of its work: kind and amount ([`BuildStep::dropped`]).
@@ -1045,7 +1049,8 @@ impl BuildAction {
     /// [`footprint_clearing`]: the records of what goes go now, the deletes are the caller's
     /// after the update, [`BuildStep::cleared`]), find who stands on it (those just cleared are in
     /// state 7, which the test passes over), and send this builder off it if it stands there
-    /// itself.
+    /// itself. Another player's marks on the footprint ([`Spatial::foreign_marks`]) halt it
+    /// ([`BuildStep::removes`]).
     fn place(
         &mut self,
         walk: &mut Walk<'_>,
@@ -1105,9 +1110,16 @@ impl BuildAction {
             .filter(|&id| id != walk.me.id)
             .collect();
         if world.foreign_marks(site) {
-            return Err(GenieError::unsupported(
-                "another player's marks on the footprint",
-            ));
+            // FUN_1411d4b80: a human owner's foundation goes (FUN_1411ccbb0, the caller's after
+            // the update), the interface hears of it (FUN_140c898a0 0x88, not held), and
+            // set_state(2) halts the Build: the standing sprite, the foundation let go, no point
+            step.removes = Some(self.target);
+            step.stands = true;
+            step.released = true;
+            self.target = -1;
+            self.point = [-1.0; 3];
+            self.state = HALTED;
+            return Ok(());
         }
         if occupants.is_empty() {
             return self.join(walk, site_ref);
@@ -3796,6 +3808,138 @@ mod tests {
         assert_eq!(
             (build.state, build.added, construction.builders),
             (PLACE, true, 1)
+        );
+    }
+
+    /// `set_state(7)` with another player's marks on the footprint (`FUN_1411d4b80`): the
+    /// foundation goes when its owner is human (`FUN_1411ccbb0`, the caller's,
+    /// [`BuildStep::removes`]) and `set_state(2)` halts the Build: the standing sprite, the
+    /// foundation let go, no point.
+    #[test]
+    fn another_player_s_marks_on_the_footprint_halt_the_build() {
+        use crate::spatial::{Placed, Tiles};
+        let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
+        world.insert(
+            10028,
+            Placed {
+                position: [10.5, 10.5, 0.0],
+                player: 1,
+                ..house()
+            },
+        );
+        world.insert(
+            77,
+            Placed {
+                position: [10.2, 10.2, 0.0],
+                radius: [0.5, 0.5],
+                class: TREE,
+                player: 0,
+                master: 349,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: Some(Obstruction { kind: 2, class: 0 }),
+            },
+        );
+        assert_ne!(world.tiles().word(10, 10).unwrap() >> 23, 0);
+        let looks = |id: i32| {
+            (id == 77).then_some(ClearLook {
+                hp: 0.5,
+                height: 1.0,
+                roo_called: false,
+                kind: 10,
+                state: 2,
+                desolid: false,
+            })
+        };
+        let mut life = Lifecycle {
+            state: 0,
+            master_id: 70,
+            ..Lifecycle::default()
+        };
+        let mut construction = Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 0,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let site = Site {
+            id: 10028,
+            life: &mut life,
+            construction: &mut construction,
+            mover: None,
+            firepower: None,
+            roo_called: None,
+            store: None,
+            completion: Completion {
+                master: None,
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
+                main: false,
+                now: 0,
+                rice: false,
+            },
+            chain: WorkChain::default(),
+            main_builders: None,
+        };
+        // player 3's mark on a tile of the footprint (10, 10)
+        world
+            .tiles_mut_for_test()
+            .mark_for_test(10, 10, 0x80_0000 << 3);
+        let mut build = BuildAction {
+            state: WAIT,
+            move_to: None,
+            timer: 0.01,
+            ..BuildAction::start(10028, [0.0; 3], 0.0, TASK)
+        };
+        let step = build
+            .update(
+                Walk {
+                    mover: None,
+                    me: Me {
+                        id: 5,
+                        position: [12.5, 10.5, 0.0],
+                        group: -1,
+                        action_state: 0,
+                    },
+                    dt: 0.02,
+                    world: &mut world,
+                    plan: None,
+                },
+                Some(site),
+                Builder {
+                    class: VILLAGER,
+                    master: 83,
+                    held: 0.0,
+                    held_kind: -1,
+                    drop_site: false,
+                    ai: None,
+                    waits: &mut 0,
+                    build_targets: &[],
+                    look: Looks(&looks),
+                    walk_target_state: Some(0),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            (step.removes, step.stands, step.released),
+            (Some(10028), true, true)
+        );
+        assert_eq!(
+            (build.state, build.target, build.point),
+            (HALTED, -1, [-1.0; 3])
         );
     }
 

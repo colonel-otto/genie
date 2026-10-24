@@ -135,6 +135,10 @@ pub(in crate::turn) struct Context<'a> {
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
     /// update ([`Turns::clear_object`]).
     pub(in crate::turn) cleared: Vec<crate::build::Cleared>,
+    /// The foundations another player's marks lie on, which a builder's `set_state(7)` removes
+    /// when their owner is human ([`crate::build::BuildStep::removes`]), the caller's after the
+    /// update ([`Turns::remove_building`]).
+    pub(in crate::turn) site_removals: Vec<i32>,
     /// The units on a foundation's footprint its builder's test met (the foundation, them):
     /// the caller sends off those the test would ([`Turns::evacuate`]).
     pub(in crate::turn) evacuations: Vec<(i32, Vec<i32>)>,
@@ -307,6 +311,8 @@ pub(in crate::turn) struct ObjectOutputs {
     pub(in crate::turn) annex_states: Vec<(i32, u8)>,
     /// [`Context`]'s `cleared`.
     pub(in crate::turn) cleared: Vec<crate::build::Cleared>,
+    /// [`Context`]'s `site_removals`.
+    pub(in crate::turn) site_removals: Vec<i32>,
     /// [`Context`]'s `released_annexes`.
     pub(in crate::turn) released_annexes: Vec<(i32, f32)>,
     /// [`Context`]'s `main_works`.
@@ -367,6 +373,7 @@ impl Context<'_> {
             refund: std::mem::take(&mut self.refund),
             annex_states: std::mem::take(&mut self.annex_states),
             cleared: std::mem::take(&mut self.cleared),
+            site_removals: std::mem::take(&mut self.site_removals),
             released_annexes: std::mem::take(&mut self.released_annexes),
             main_works: std::mem::take(&mut self.main_works),
             building_death: self.building_death.take(),
