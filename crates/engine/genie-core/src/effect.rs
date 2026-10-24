@@ -220,11 +220,10 @@ impl Turns {
                 self.players[p].techs[d].state = -1;
                 continue;
             }
-            // FUN_1413cf2f0: modes 0 and 1 are for every game
-            if !matches!(def.mode, 0 | 1) {
-                return Err(GenieError::unsupported(
-                    "a technology for some game modes (FUN_1413cf2f0)",
-                ));
+            // FUN_1413cf2f0: a technology for other games turns to −1 too
+            if !self.settings.tech_mode_allows(def.mode)? {
+                self.players[p].techs[d].state = -1;
+                continue;
             }
             counted += 1;
             let techs = &self.players[p].techs;

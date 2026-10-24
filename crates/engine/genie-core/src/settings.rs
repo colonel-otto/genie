@@ -60,9 +60,77 @@ pub struct Settings {
     /// `mTeamsLocked` (`+0x64`): the world's teams stay as the game began
     /// ([`crate::turn::Turns::resolve_teams`]).
     pub teams_locked: bool,
+    /// `mStartingAge` (`+0x3c`): 0 the mode's default, 2 to 6 the ages.
+    pub starting_age: i32,
+    /// `mResourceLevel` (`+0x54`).
+    pub resource_level: i32,
+    /// `mTurboEnabled` (`+0x67`).
+    pub turbo: bool,
+    /// `mSharedExploration` (`+0x68`).
+    pub shared_exploration: bool,
+    /// `mAntiquityMode` (`+0x6a`).
+    pub antiquity: bool,
 }
 
+/// A technology's mode (its `+0x28`) that tests the root's `+0x560` entry (`FUN_140c87f20`),
+/// which the slice does not hold.
+const ROOT_MODE: crate::GenieError =
+    crate::GenieError::unsupported("a technology of mode 15 or -15 (FUN_140c87f20's entry)");
+
 impl Settings {
+    /// `FUN_1413cf2f0`: whether a technology of mode `mode` (its `+0x28`) is for this game.
+    /// Modes 0 and 1 (and any not listed) are for every game; a negative mode is the opposite of
+    /// its positive one (but −32, every game). By the game mode: 2 (0), 3 (2), 4 (13 or the sub
+    /// mode flag's bit 0), 5 (7), 6 (8), 7 (11 or bit 1), 8 (6 or bit 3), 9 (10), 10 (12), 11
+    /// (1), 13 (4, 3, 5 or 15), 16 (16); 12 turbo, 14 bit 2, 17 farms not walkable, 18 shared
+    /// exploration, 19 to 25 a resource level of 0 to 6, 26 antiquity. By the starting age, its
+    /// default 0 by the mode: 27 Feudal (2, or 0 but in modes 13, 2 and 12), 28 Castle (3, or 0
+    /// in mode 13), 29 Imperial (4), 30 post-Imperial (5), 31 6 (or 0 in modes 2 and 12); 32 at
+    /// least Castle (3 and up as unsigned, or 0 in modes 13, 2 and 12), 33 at least Imperial (4
+    /// up, or 0 in modes 2 and 12), 34 at least 5 (or 0 in modes 2 and 12).
+    ///
+    /// # Errors
+    ///
+    /// Modes 15 and −15 (the root's `+0x560` entry, not held).
+    pub fn tech_mode_allows(&self, mode: i16) -> Result<bool, crate::GenieError> {
+        let (m, flags) = (self.game_mode, self.sub_game_mode_flag);
+        let age = self.starting_age;
+        let below = |n: u32| (age as u32) < n;
+        let default_in = |modes: &[i32]| age == 0 && modes.contains(&m);
+        let positive = match mode.unsigned_abs() {
+            2 => m == 0,
+            3 => m == 2,
+            4 => m == 13 || flags & 1 != 0,
+            5 => m == 7,
+            6 => m == 8,
+            7 => m == 11 || flags & 2 != 0,
+            8 => m == 6 || flags & 8 != 0,
+            9 => m == 10,
+            10 => m == 12,
+            11 => m == 1,
+            12 => self.turbo,
+            13 => matches!(m, 4 | 3 | 5 | 15),
+            14 => flags & 4 != 0,
+            15 => return Err(ROOT_MODE),
+            16 => m == 16,
+            17 => !self.walkable_farms,
+            18 => self.shared_exploration,
+            n @ 19..=25 => self.resource_level == i32::from(n) - 19,
+            26 => self.antiquity,
+            27 => age == 2 || (age == 0 && !matches!(m, 13 | 2 | 12)),
+            28 => age == 3 || default_in(&[13]),
+            29 => age == 4,
+            30 => age == 5,
+            31 => age == 6 || default_in(&[2, 12]),
+            32 if mode < 0 => return Ok(true),
+            32 => !below(3) || default_in(&[13, 2, 12]),
+            33 => !below(4) || default_in(&[2, 12]),
+            34 => !below(5) || default_in(&[2, 12]),
+            _ => return Ok(true),
+        };
+        Ok(if mode < 0 { !positive } else { positive })
+    }
+
     /// `FUN_141302150`: with the villagers' force drop on, a game mode other than King of the
     /// Hill whose descriptor's `+0x9c` is not 1 (not [`standard_mode`]): a hunter drops another
     /// resource it carries.
@@ -195,5 +263,62 @@ mod tests {
         for mode in [0, 2, 3] {
             assert!(!with(mode).predator_hunts_end());
         }
+    }
+
+    /// `FUN_1413cf2f0` by mode: the game mode's (2, 3, 13), the sub mode flag's (4), the
+    /// options' (17, 26), the resource level's (19 to 25), the starting age's with its default 0
+    /// by the game mode (27, 28, 32, 34), a negative mode the opposite (but −32), 0, 1 and those
+    /// not listed for every game; 15 is the root's entry, not held.
+    #[test]
+    fn a_technology_s_mode_reads_the_game_s_options() {
+        let s = Settings {
+            game_mode: 2,
+            ..Settings::default()
+        };
+        assert_eq!(s.tech_mode_allows(0), Ok(true));
+        assert_eq!(s.tech_mode_allows(1), Ok(true));
+        assert_eq!(s.tech_mode_allows(99), Ok(true));
+        assert_eq!(s.tech_mode_allows(3), Ok(true));
+        assert_eq!(s.tech_mode_allows(-3), Ok(false));
+        assert_eq!(s.tech_mode_allows(2), Ok(false));
+        assert_eq!(s.tech_mode_allows(-2), Ok(true));
+        assert_eq!(s.tech_mode_allows(13), Ok(false));
+        assert!(s.tech_mode_allows(15).is_err() && s.tech_mode_allows(-15).is_err());
+        // mode 2 (death match) with the default age: at least Castle and Imperial and 5, not
+        // Feudal (27) and not 28
+        assert_eq!(
+            [27, 28, 32, 33, 34].map(|m| s.tech_mode_allows(m)),
+            [Ok(false), Ok(false), Ok(true), Ok(true), Ok(true)]
+        );
+        assert_eq!(s.tech_mode_allows(-32), Ok(true));
+        let feudal = Settings {
+            starting_age: 2,
+            ..Settings::default()
+        };
+        assert_eq!(
+            [27, -27, 32, 34].map(|m| feudal.tech_mode_allows(m)),
+            [Ok(true), Ok(false), Ok(false), Ok(false)]
+        );
+        // the default age in the random map mode (0) is Feudal's (27)
+        assert_eq!(Settings::default().tech_mode_allows(27), Ok(true));
+        let options = Settings {
+            sub_game_mode_flag: 1,
+            resource_level: 3,
+            walkable_farms: true,
+            antiquity: true,
+            ..Settings::default()
+        };
+        assert_eq!(
+            [4, 22, 21, -22, 17, -17, 26].map(|m| options.tech_mode_allows(m)),
+            [
+                Ok(true),
+                Ok(true),
+                Ok(false),
+                Ok(false),
+                Ok(false),
+                Ok(true),
+                Ok(true)
+            ]
+        );
     }
 }

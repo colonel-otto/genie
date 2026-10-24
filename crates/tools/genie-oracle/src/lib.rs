@@ -2617,6 +2617,11 @@ pub const fn settings(
         cheats_enabled: o.cheats_enabled != 0,
         treaty_length: o.treaty_length,
         teams_locked: o.teams_locked != 0,
+        starting_age: o.starting_age,
+        resource_level: o.resource_level,
+        turbo: o.turbo_enabled != 0,
+        shared_exploration: o.shared_exploration != 0,
+        antiquity: o.antiquity_mode != 0,
     }
 }
 
