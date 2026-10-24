@@ -4524,6 +4524,9 @@ pub struct ObjectRow {
     pub volley: Option<(u8, u32)>,
     /// Its unit group (`mGroupID`, `mGroupFlag`).
     pub group: genie_core::group::GroupLink,
+    /// A building's production action (its make action or research): its state, which the
+    /// checkpoint's word 9 reads as the building's action state, and its progress.
+    pub making: Option<(u8, f32)>,
 }
 
 /// What an object's row compares of its unit AI (named as in the save).
@@ -4796,6 +4799,7 @@ impl Same for ObjectRow {
             && self.town_bell.same(&other.town_bell)
             && self.volley == other.volley
             && self.group == other.group
+            && self.making.same(&other.making)
     }
 }
 
@@ -4880,6 +4884,14 @@ impl ObjectRow {
                 .combat
                 .then_some((unit.next_volley, unit.reload_worldtime)),
             group: unit.group,
+            making: unit
+                .production
+                .as_ref()
+                .and_then(|p| p.action.as_ref())
+                .map(|a| match a {
+                    genie_core::production::Making::Unit(m) => (m.state, m.progress),
+                    genie_core::production::Making::Research(t) => (t.state, t.progress),
+                }),
         }
     }
 }
@@ -5005,6 +5017,21 @@ pub(crate) fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>,
                 )
             }),
             group: group_link(s),
+            making: object.tribe_building_object.as_deref().and_then(|b| {
+                let (kind, action) = b.production_queue_actions.entries().next()?;
+                let state = action.base()?.state;
+                match kind {
+                    102 => Some((state, action.tribe_action_make_obj.as_deref()?.work_done)),
+                    103 => Some((
+                        state,
+                        action
+                            .tribe_action_make_tech
+                            .as_deref()?
+                            .m_research_progress,
+                    )),
+                    _ => None,
+                }
+            }),
         })
         .collect())
 }
@@ -6688,6 +6715,11 @@ pub fn object_field_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<
             "unit group",
             format!("{:?}", s.group),
             format!("{:?}", g.group),
+        );
+        field(
+            "production action (state, progress)",
+            format!("{:?}", s.making),
+            format!("{:?}", g.making),
         );
         match (&s.ai, &g.ai) {
             (Some(a), Some(b)) => {
