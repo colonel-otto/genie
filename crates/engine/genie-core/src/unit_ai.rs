@@ -2445,6 +2445,13 @@ const FOUNDATION_REACH: f32 = crate::image::unit_ai::FOUNDATION_REACH;
 /// The move action value (`0x262`).
 pub const MOVE_ACTION: i32 = 0x262;
 
+/// A villager's notify, or a part of one, the slice does not model.
+const VILLAGER_NOTIFY: GenieError =
+    GenieError::unsupported("a villager's notify the slice does not model");
+
+/// The shepherd's action value (`0x278`), whose search the villager's case 0x202 runs.
+const SHEPHERD_ACTION: i32 = 0x278;
+
 /// A villager's damage notify that reads its animation speed (slot 0x1f8) while the slice does
 /// not know it ([`Surroundings::anim_speed`]).
 const NO_ANIM_SPEED: GenieError =
@@ -5036,6 +5043,59 @@ impl UnitAi {
         Ok((classes, radius))
     }
 
+    /// The villager's cases 0x1fb, 0x1fc and 0x202 off the attack action (`FUN_140c22bf0`,
+    /// "Action %d has been invalidated or requires a search."): on the hunt action the
+    /// hunter's search ([`UnitAi::hunter_search`]), on the gather action the gatherer's
+    /// ([`UnitAi::gatherer_search`]); on the build action the builder looks for another
+    /// foundation (`FUN_140c1c7c0`, when the player's `+0x613` is 0: unsaved, 0 in this game):
+    /// one the unit reaches within 0.1 (slot 0x3d0) it builds (slot 0xf0 with 1) and the
+    /// processing breaks; finding none, or not reaching it, a human player's villager stops
+    /// (slot 0x3c0) and the processing breaks. On the explore action the explorer looks for the
+    /// closest undiscovered tile ([`closest_undiscovered_tile`]). The shepherd's search (action
+    /// `0x278`: `ClosestObject` for livestock, then slot 600) and the search for the class of
+    /// an invalidated gather or hunt (`p[0]` `0x261` or `0x265`, `p[1]` not 10) are not
+    /// modelled. Else any notify but 0x202, off the actions `0x278` and `0x26a`, makes the
+    /// target go (`FUN_140c5e1e0`) and the action stop (slot 0xb0 with 1; slot 0x48 hands the
+    /// notify to the owner, not held); it returns 2.
+    fn villager_search(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        match self.current_action {
+            HUNT_ACTION => return self.hunter_search(n, at, computer, side, fx),
+            SHEPHERD_ACTION => return Err(VILLAGER_NOTIFY.with("action", SHEPHERD_ACTION)),
+            GATHER_ACTION => return self.gatherer_search(n, at, computer, side, fx),
+            BUILD_ACTION => {
+                let found = side.foundation_search()?;
+                if found != -1 && side.reaches(found, FOUNDATION_REACH)? {
+                    let _ = self.build_object(found, true, at, side, fx)?;
+                    return Ok(BREAK);
+                }
+                if computer {
+                    return Err(GenieError::unsupported(
+                        "a computer builder without a foundation",
+                    ));
+                }
+                fx.push(Effect::Stop);
+                return Ok(BREAK);
+            }
+            EXPLORE_ACTION => closest_undiscovered_tile()?,
+            _ => {}
+        }
+        if matches!(n.p[0], GATHER_ACTION | HUNT_ACTION) && n.p[1] != 10 {
+            return Err(VILLAGER_NOTIFY.with("notify", format!("{:#x} {:?}", n.kind, n.p)));
+        }
+        if n.kind != REQUIRES_SEARCH && !matches!(self.current_action, SHEPHERD_ACTION | 0x26a) {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
     /// The villager's damage notify (`FUN_140c22bf0`, case 500, "I took some damage from Unit
     /// #%d"): the unit's group (`+0x6d0`, `FUN_140c55c00`) would hear of it, and the slice holds
     /// none. At no hit points left (`p[1]` below 1) it gives up: the owner's alert (slot 0x2e8
@@ -5663,7 +5723,8 @@ impl UnitAi {
             if fx.iter().any(|e| *e != Effect::Stop) {
                 return Err(GenieError::unsupported(
                     "an attack command after a stop with other effects pending",
-                ));
+                )
+                .with("effects", format!("{fx:?}")));
             }
             fx.clear();
             side.stop()?;
@@ -5831,25 +5892,8 @@ impl UnitAi {
                     }
                     self.base_notify(n, time, at, computer, ai_rng, side, fx)
                 }
-                0x202 if self.current_action == HUNT_ACTION => {
-                    self.hunter_search(n, at, computer, side, fx)
-                }
-                0x202 if self.current_action == GATHER_ACTION => {
-                    self.gatherer_search(n, at, computer, side, fx)
-                }
-                0x202 if self.current_action == BUILD_ACTION => {
-                    let found = side.foundation_search()?;
-                    if found != -1 && side.reaches(found, FOUNDATION_REACH)? {
-                        let _ = self.build_object(found, true, at, side, fx)?;
-                        return Ok(BREAK);
-                    }
-                    if computer {
-                        return Err(GenieError::unsupported(
-                            "a computer builder without a foundation",
-                        ));
-                    }
-                    fx.push(Effect::Stop);
-                    Ok(BREAK)
+                ACTION_INVALIDATED | TARGET_MOVED | REQUIRES_SEARCH => {
+                    self.villager_search(n, at, computer, side, fx)
                 }
                 // a completion or a failure of its action (0x1fa, 0x1f9) stops it
                 ACTION_COMPLETED | ACTION_FAILED => {
@@ -5863,17 +5907,15 @@ impl UnitAi {
                     "a computer villager's executed action",
                 )),
                 ACTION_EXECUTED => self.base_notify(n, time, at, computer, ai_rng, side, fx),
-                DAMAGED => self.villager_damaged(n, time, at, computer, ai_rng, side, fx),
+                // a missile's warning it does not dodge (the player's `+0xe10`) is its damage
+                MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
+                DAMAGED | MISSILE_WARNING => {
+                    self.villager_damaged(n, time, at, computer, ai_rng, side, fx)
+                }
                 // its own cases the slice does not model; any other is the base handler's
-                ACTION_INVALIDATED
-                | TARGET_MOVED
-                | 0x202
-                | 0x20f
-                | 0x217..=0x21a
-                | 0x21c
-                | 0x21d => Err(GenieError::unsupported(
-                    "a villager's notify the slice does not model",
-                )),
+                0x217..=0x21a | 0x21c | 0x21d => {
+                    Err(VILLAGER_NOTIFY.with("notify", format!("{:#x} {:?}", n.kind, n.p)))
+                }
                 _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
             },
             // the transport ship (FUN_140c2a580): its damage notify, and a missile's warning it
@@ -9770,6 +9812,90 @@ mod tests {
         assert!(m.point[0] < 10.0 && m.point[1] == 10.0, "{m:?}");
         assert_eq!(side.attacks, Vec::<i32>::new());
         assert_eq!(u.current_action, MOVE_ACTION);
+    }
+
+    /// The villager's cases 0x1fb, 0x1fc and 0x202 off its searching actions: on the move
+    /// action an invalidated Attack (600) makes the target go and the action stop (records
+    /// 426339330's villager 34028 in update 5296, running from its attackers); a search (0x202)
+    /// or the action `0x26a` changes nothing; an invalidated gather or hunt of a class other
+    /// than 10 would search for another of that class (not modelled).
+    #[test]
+    fn a_villager_s_invalidated_action_off_its_searches_stops_it() {
+        let moving = || UnitAi {
+            current_action: MOVE_ACTION,
+            current_target: 30,
+            ..idle(CIVILIAN)
+        };
+        let at = Surroundings {
+            id: 20,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let n = Notify::own(20, ACTION_INVALIDATED, [ATTACK_ACTION, 0, 514]);
+        let mut side = DamageSide::default();
+        let mut u = moving();
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.villager_search(n, &at, false, &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!((fx, u.current_target), (vec![Effect::Stop], -1));
+        for (kind, action) in [(REQUIRES_SEARCH, MOVE_ACTION), (TARGET_MOVED, 0x26a)] {
+            let mut u = UnitAi {
+                current_action: action,
+                ..moving()
+            };
+            let mut fx = Vec::new();
+            let n = Notify { kind, ..n };
+            assert_eq!(
+                u.villager_search(n, &at, false, &mut side, &mut fx),
+                Ok(GO_ON)
+            );
+            assert_eq!((fx, u.current_target), (Vec::new(), 30));
+        }
+        let gather = Notify::own(20, ACTION_INVALIDATED, [GATHER_ACTION, 5, -1]);
+        assert!(
+            moving()
+                .villager_search(gather, &at, false, &mut side, &mut Vec::new())
+                .is_err()
+        );
+        let mut fx = Vec::new();
+        let tree = Notify::own(20, ACTION_INVALIDATED, [GATHER_ACTION, 10, -1]);
+        assert_eq!(
+            moving().villager_search(tree, &at, false, &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!(fx, vec![Effect::Stop]);
+    }
+
+    /// A villager dodges a missile's warning by its owner's chance (one AI draw); one it does
+    /// not dodge is its damage.
+    #[test]
+    fn a_villager_dodges_a_missile_s_warning_or_takes_it_as_damage() {
+        let r = rng().rand15() as i32 * 100 / 0x7fff;
+        let (mut u, mut at, hit) = hit_villager();
+        let warning = Notify {
+            kind: MISSILE_WARNING,
+            ..hit
+        };
+        at.dodge_chance = u8::try_from(r + 1).unwrap();
+        let mut side = DamageSide {
+            units: vec![foe(30, 6)],
+            ..DamageSide::default()
+        };
+        let mut ai = rng();
+        let mut fx = Vec::new();
+        assert_eq!(
+            u.handle(warning, 0, &at, false, &mut ai, &mut side, &mut fx),
+            Ok(GO_ON)
+        );
+        assert_eq!((ai.draws, fx.len(), u.attackers.len()), (1, 0, 0));
+        at.dodge_chance = u8::try_from(r).unwrap();
+        assert_eq!(
+            u.handle(warning, 0, &at, false, &mut rng(), &mut side, &mut fx),
+            Ok(BREAK)
+        );
+        assert_eq!(u.attackers, vec![30]);
     }
 
     /// A villager's harmless attacker ([`UnitSide::harmless`]) is attacked back, as a Gaia
