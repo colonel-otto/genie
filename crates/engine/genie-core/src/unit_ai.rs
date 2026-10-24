@@ -2314,9 +2314,10 @@ const CLASS_18: i16 = 18;
 /// A patrol's path goes back and forth when its point is at least this far from the unit
 /// (`0x140aa2a70`, `DAT_142eb1c98`).
 const PATROL_TURN_REACH: f32 = crate::image::unit_ai::PATROL_TURN_REACH;
-/// The patrol orders (`0x2c7`, `0x2dd`), whose ends reset the idle and secondary timers.
+/// The patrol orders, the patrol's (`0x2c7`) and the attack move's (`0x2dd`), whose ends reset
+/// the idle and secondary timers.
 pub(crate) const PATROL: i32 = 0x2c7;
-const PATROL_2: i32 = 0x2dd;
+pub(crate) const ATTACK_MOVE: i32 = 0x2dd;
 /// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
 /// `-0xe78` raw).
 const CLASS_3: i16 = 3;
@@ -3129,9 +3130,9 @@ impl UnitAi {
         fx.push(Effect::RestorePatrol);
         if at.group.is_none() {
             let (order, other) = if at.attack_moving {
-                (PATROL_2, PATROL)
+                (ATTACK_MOVE, PATROL)
             } else {
-                (PATROL, PATROL_2)
+                (PATROL, ATTACK_MOVE)
             };
             if self.current_order == other && self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
@@ -3158,7 +3159,7 @@ impl UnitAi {
                 ..PathAsk::default()
             };
         };
-        let patrolling = matches!(ai.current_order, PATROL | PATROL_2);
+        let patrolling = matches!(ai.current_order, PATROL | ATTACK_MOVE);
         let mut ask = PathAsk {
             ends_in_range: !patrolling,
             ..PathAsk::default()
@@ -3178,7 +3179,7 @@ impl UnitAi {
         ask.attack_move = ai
             .patrol_path
             .is_none()
-            .then_some(ai.current_order == PATROL_2);
+            .then_some(ai.current_order == ATTACK_MOVE);
         ask
     }
 
@@ -3203,7 +3204,7 @@ impl UnitAi {
     /// before becomes the last (`+0x64`), else the last stays; then the order.
     pub(crate) fn set_order_with(&mut self, order: i32, history: bool, ai: &mut Well512) {
         let leaving = |o| self.current_order == o && order != o;
-        if leaving(PATROL) || leaving(PATROL_2) {
+        if leaving(PATROL) || leaving(ATTACK_MOVE) {
             if self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
             }
@@ -3780,7 +3781,7 @@ impl UnitAi {
                 memory: Memory::default(),
             })?;
             self.attack_search_alert(found, computer)?;
-            if !matches!(self.current_order, PATROL | PATROL_2) {
+            if !matches!(self.current_order, PATROL | ATTACK_MOVE) {
                 let _ = self.walk_back(at, fx);
             }
             return Ok(false);
@@ -3814,7 +3815,7 @@ impl UnitAi {
             target = found.id;
         }
         if target != -1 {
-            if matches!(self.current_order, PATROL | PATROL_2) {
+            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
                 self.save_patrol(side);
             }
             if self.attack_object(target, true, false, at, side, fx)? {
@@ -3823,11 +3824,11 @@ impl UnitAi {
                 }
                 return Ok(true);
             }
-            if matches!(self.current_order, PATROL | PATROL_2) {
+            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
                 self.zero_patrol();
             }
         }
-        if matches!(self.current_order, PATROL | PATROL_2) {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
             return Ok(false);
         }
         if !computer {
@@ -3906,7 +3907,7 @@ impl UnitAi {
         };
         if target != -1 {
             // "I need to save the patrol information in case the attack works."
-            if matches!(self.current_order, PATROL | PATROL_2) {
+            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
                 self.save_patrol(side);
             }
             // slot 0xb8 forced (FUN_140c17550: the base's, then the unit's group);
@@ -3918,12 +3919,12 @@ impl UnitAi {
                 return Ok(true);
             }
             // "Attack failed, so I'm nuking the saved patrol information."
-            if matches!(self.current_order, PATROL | PATROL_2) {
+            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
                 self.zero_patrol();
             }
         }
         // "I have a patrol order, so I'm stopping here."
-        if matches!(self.current_order, PATROL | PATROL_2) {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
             return Ok(false);
         }
         // "I'm in Defend or StandGround, returning to state pos.": the walk back's result does
@@ -3984,7 +3985,7 @@ impl UnitAi {
         if found.fresh {
             self.alert_mode = false;
         }
-        if !matches!(self.current_order, PATROL | PATROL_2) {
+        if !matches!(self.current_order, PATROL | ATTACK_MOVE) {
             let _ = self.walk_back(at, fx);
         }
         if at.task_0x69 {
@@ -4405,7 +4406,7 @@ impl UnitAi {
                 // `FUN_141017c30`), FUN_140c41690 tests the target's range; for a player that
                 // is not a computer (FUN_141659cf0) it answers 0 at once
                 if computer
-                    && (matches!(self.current_order, PATROL | PATROL_2)
+                    && (matches!(self.current_order, PATROL | ATTACK_MOVE)
                         || at.group.is_some_and(|g| g.patrol))
                 {
                     return Err(GenieError::unsupported(
@@ -6362,7 +6363,7 @@ impl UnitAi {
         if self.current_action == ATTACK_ACTION && self.current_target == attacker_id {
             return Ok(GO_ON);
         }
-        if !computer && !matches!(self.current_order, -1 | PATROL | PATROL_2) {
+        if !computer && !matches!(self.current_order, -1 | PATROL | ATTACK_MOVE) {
             return Ok(GO_ON);
         }
         if !computer && held_by_group {
@@ -6463,7 +6464,7 @@ impl UnitAi {
         let t = side.duel(target.id)?;
         // "my current target cannot damage me": UCOMISS, JP, JNZ (exactly 0)
         if (t.attacks == 0.0 || t.harms == 0.0) && !t.converts {
-            if matches!(self.current_order, PATROL | PATROL_2) {
+            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
                 self.save_patrol(side);
             }
             self.ask_for_help(attacker_id, at, true, side)?;
@@ -6502,7 +6503,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
-        if matches!(self.current_order, PATROL | PATROL_2) {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
             self.save_patrol(side);
         }
         if self.attack_slot(attacker, true, at, side, fx)? {
@@ -6933,7 +6934,7 @@ impl UnitAi {
             return Err(GenieError::unsupported("a stop on a patrol order"));
         }
         self.last_action = action;
-        if !keep_order || action + 100 == order || matches!(order, PATROL | PATROL_2) {
+        if !keep_order || action + 100 == order || matches!(order, PATROL | ATTACK_MOVE) {
             self.cap_patrol_secondary();
             self.last_order = order;
             self.current_order = -1;
@@ -7018,13 +7019,13 @@ impl UnitAi {
     /// On a patrol order (711, 733) with an adjusted idle timeout of exactly 750: leaving the
     /// order redraws it (slot 0x1a8), which draws from the AI stream.
     const fn patrol_redraws(&self) -> bool {
-        matches!(self.current_order, PATROL | PATROL_2) && self.adjusted_idle_timeout == 750
+        matches!(self.current_order, PATROL | ATTACK_MOVE) && self.adjusted_idle_timeout == 750
     }
 
     /// The rest of leaving a patrol order (711, 733) once the redraw is not due
     /// ([`UnitAi::patrol_redraws`]): the secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
     const fn cap_patrol_secondary(&mut self) {
-        if matches!(self.current_order, PATROL | PATROL_2) && 750 < self.secondary_timer as i32 {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) && 750 < self.secondary_timer as i32 {
             self.secondary_timer = 750;
         }
     }
@@ -7033,7 +7034,7 @@ impl UnitAi {
     /// order by hand: an adjusted idle timeout of exactly 750 is redrawn (slot 0x1a8) and the
     /// secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
     fn leave_patrol_timers(&mut self, ai: &mut Well512) {
-        if matches!(self.current_order, PATROL | PATROL_2) {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
             if self.adjusted_idle_timeout == 750 {
                 self.update_adjusted_idle_timeout(ai);
             }
@@ -7348,7 +7349,7 @@ impl UnitAi {
                 let (at, side, _) = world.ok_or(outside)?;
                 return self.order_on_target(o, class, at, side, ai, fx);
             }
-            PATROL_2 => {
+            ATTACK_MOVE => {
                 let (at, side, _) = world.ok_or(outside)?;
                 if o.target != -1 && matches!(at.class, TREBUCHET_CLASS | TREBUCHET_PACKED_CLASS) {
                     attack_move = true;
@@ -8052,7 +8053,7 @@ impl UnitAi {
     /// The idle part's patrol branch (`0x140c67f0b`): a patrol order (`0x2c7`, `0x2dd`), or a
     /// group that patrols ([`GroupState::patrol`]) off order `0x326`.
     fn patrols(&self, group: Option<GroupState>) -> bool {
-        matches!(self.current_order, PATROL | PATROL_2)
+        matches!(self.current_order, PATROL | ATTACK_MOVE)
             || group.is_some_and(|g| g.patrol && self.current_order != 0x326)
     }
 
@@ -14729,7 +14730,7 @@ mod tests {
         assert_eq!((u.current_order, u.last_order), (ATTACK_ORDER, 5));
         assert_eq!(u.secondary_timer, 0x8000_0000);
         let mut u = UnitAi {
-            current_order: PATROL_2,
+            current_order: ATTACK_MOVE,
             adjusted_idle_timeout: 750,
             idle_timeout: 3000,
             secondary_timer: 900,
@@ -14737,7 +14738,7 @@ mod tests {
         };
         let mut r = rng();
         u.set_order(-1, &mut r);
-        assert_eq!((u.current_order, u.last_order), (-1, PATROL_2));
+        assert_eq!((u.current_order, u.last_order), (-1, ATTACK_MOVE));
         assert_eq!(u.secondary_timer, 750);
         assert_eq!(r.draws, 1);
     }
@@ -15006,7 +15007,7 @@ mod tests {
         assert!(far.back_and_forth);
         let nan = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [f32::NAN, 23.0]);
         assert!(nan.back_and_forth);
-        u.current_order = PATROL_2;
+        u.current_order = ATTACK_MOVE;
         let attack = UnitAi::path_ask(Some(&mut u), [20.0, 20.0], [22.9, 20.0]);
         assert_eq!((attack.patrol, attack.attack_move), (true, Some(true)));
     }
@@ -15200,7 +15201,7 @@ mod tests {
             u.soldier_idle(&at, false, &mut rng(), &mut side, &mut Vec::new()),
             Ok(true)
         );
-        assert_eq!(u.current_order, PATROL_2);
+        assert_eq!(u.current_order, ATTACK_MOVE);
     }
 
     /// The order check of a unit no longer busy: the attack move (733) ends, its timers reset
@@ -15210,7 +15211,7 @@ mod tests {
     fn an_attack_move_not_busy_ends_and_a_patrol_stays() {
         let at = Surroundings::default();
         let mut u = UnitAi {
-            current_order: PATROL_2,
+            current_order: ATTACK_MOVE,
             idle_timeout: 3000,
             adjusted_idle_timeout: 750,
             secondary_timer: 900,
@@ -15247,7 +15248,7 @@ mod tests {
         );
         assert_eq!((fx, u.state_position), (vec![Effect::Stop], [3.0, 4.0]));
         let mut u = UnitAi {
-            current_order: PATROL_2,
+            current_order: ATTACK_MOVE,
             adjusted_idle_timeout: 750,
             ..idle(SOLDIER_AI)
         };
@@ -17725,7 +17726,7 @@ mod tests {
         let mut side = OrderSide::holding(&[(70, 3)]);
         for class in [TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS] {
             let mut u = idle(SIEGE_AI);
-            let (r, fx, _) = run_order(&mut u, queued(PATROL_2, 70), class, &mut side);
+            let (r, fx, _) = run_order(&mut u, queued(ATTACK_MOVE, 70), class, &mut side);
             assert_eq!((r, fx), (Ok(1), Vec::new()));
             assert_eq!(
                 (u.current_order, u.current_action),
@@ -17734,10 +17735,13 @@ mod tests {
         }
         for (class, target) in [(6, 70), (TREBUCHET_CLASS, -1)] {
             let mut u = idle(SOLDIER_AI);
-            let (r, fx, _) = run_order(&mut u, queued(PATROL_2, target), class, &mut side);
+            let (r, fx, _) = run_order(&mut u, queued(ATTACK_MOVE, target), class, &mut side);
             assert_eq!(r, Ok(1));
             assert!(matches!(fx[..], [Effect::Move(_)]));
-            assert_eq!((u.current_order, u.current_action), (PATROL_2, MOVE_ACTION));
+            assert_eq!(
+                (u.current_order, u.current_action),
+                (ATTACK_MOVE, MOVE_ACTION)
+            );
         }
     }
 
@@ -17767,9 +17771,9 @@ mod tests {
             (MOVE_ORDER, 40, 750, 1)
         );
         // staying on it does nothing to the timers
-        let mut u = patrolling(PATROL_2);
+        let mut u = patrolling(ATTACK_MOVE);
         let mut r = rng();
-        let _ = u.order_tail(PATROL_2, 40, 6, false, &mut r);
+        let _ = u.order_tail(ATTACK_MOVE, 40, 6, false, &mut r);
         assert_eq!(
             (u.secondary_timer, u.adjusted_idle_timeout, r.draws),
             (2000, 750, 0)
@@ -17782,8 +17786,8 @@ mod tests {
             (-1, -1, 750)
         );
         // the attack move's attack and the roundup become the attack order
-        let mut u = patrolling(PATROL_2);
-        let _ = u.order_tail(PATROL_2, 40, 51, true, &mut rng());
+        let mut u = patrolling(ATTACK_MOVE);
+        let _ = u.order_tail(ATTACK_MOVE, 40, 51, true, &mut rng());
         assert_eq!((u.current_order, u.secondary_timer), (ATTACK_ORDER, 750));
         // a class-18 unit's attack order: the target goes, the order is -1
         let mut u = patrolling(-1);

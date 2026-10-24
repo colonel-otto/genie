@@ -3940,6 +3940,9 @@ impl Decoder {
             // or 500); the command's check refuses a count past the ids the packet holds
             // (`FUN_140e55590`), and the handler does nothing without 1 to 10 waypoints (`+0xb`)
             Packet::Patrol(c) => return patrol_command(&c),
+            // ATTACK_MOVE: the same layout and check (`FUN_140e54490`); the handler does nothing
+            // without 1 to 10 waypoints (`+0xb`)
+            Packet::AttackMove(c) => return attack_move_command(&c),
             // SEEK_SHELTER: the units listed (at most a human player's 60), the count at +4
             Packet::SeekShelter(c) => {
                 return Some(Command::SeekShelter {
@@ -3999,6 +4002,27 @@ impl Decoder {
 /// at `+0xb` (x from `+0xc`, y from `+0x34`, each an f32's bits), `+0x8`. None where the
 /// command does nothing: a count past the ids the packet holds (the check `FUN_140e55590`),
 /// no waypoints or more than 10 (`FUN_140e69cc0`).
+fn attack_move_command(c: &de::command::AttackMove) -> Option<Command> {
+    let count = usize::from(c.num);
+    let waypoints = usize::from(c.waypoints_count);
+    if c.ids.len() < count || !(1..=10).contains(&waypoints) {
+        return None;
+    }
+    // x from +0xc (the first as bits, nine more after it), y from +0x34 (likewise)
+    let word = |b: &[u8], i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    let xs = std::iter::once(f32::from_bits(c.field_0x0c))
+        .chain((0..9).map(|i| word(&c.gap_0x10, 4 * i)));
+    let ys = std::iter::once(c.field_0x34).chain((0..9).map(|i| word(&c.gap_0x38, 4 * i)));
+    Some(Command::AttackMove {
+        player: c.commp_id as usize,
+        ids: c.ids[..count].to_vec(),
+        waypoints: xs.zip(ys).take(waypoints).map(<[f32; 2]>::from).collect(),
+        reset: c.field_0x08 != 0,
+        queued: c.field_0x09 != 0,
+        ignore_pending: c.field_0x0a != 0,
+    })
+}
+
 fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
     let count = usize::from(c.num);
     let waypoints = usize::from(c.waypoints_count);
@@ -7001,6 +7025,50 @@ mod tests {
         assert_eq!(d.command(&patrol(4, vec![9397, 9398], 1, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 0, 0), &[]), None);
         assert_eq!(d.command(&patrol(1, vec![9397], 11, 0), &[]), None);
+    }
+
+    /// `ATTACK_MOVE` (0x21): the counted units, the counted waypoints (the first x as an f32's
+    /// bits, nine more from `+0x10`; the first y at `+0x34`, nine more from `+0x38`) and the flags
+    /// `+0x8`, `+0x9`, `+0xa`; no command for a count past the packet's ids, nor without 1 to 10
+    /// waypoints.
+    #[test]
+    fn an_attack_move_packet_decodes_its_units_waypoints_and_flags() {
+        let packet = |num: u16, ids: Vec<i32>, count: u8| {
+            let mut xs = [0; 36];
+            let mut ys = [0; 36];
+            xs[..4].copy_from_slice(&11.0f32.to_le_bytes());
+            ys[..4].copy_from_slice(&21.0f32.to_le_bytes());
+            de::command::AttackMove {
+                commp_id: 6,
+                num,
+                gap_0x06: [0; 2],
+                field_0x08: 1,
+                field_0x09: 0,
+                field_0x0a: 1,
+                waypoints_count: count,
+                field_0x0c: 10.0f32.to_bits(),
+                gap_0x10: xs,
+                field_0x34: 20.0,
+                gap_0x38: ys,
+                ids,
+            }
+            .encode()
+        };
+        let mut d = Decoder::default();
+        assert_eq!(
+            d.command(&packet(1, vec![30065, 1], 2), &[]),
+            Some(Command::AttackMove {
+                player: 6,
+                ids: vec![30065],
+                waypoints: vec![[10.0, 20.0], [11.0, 21.0]],
+                reset: true,
+                queued: false,
+                ignore_pending: true,
+            })
+        );
+        assert_eq!(d.command(&packet(3, vec![30065], 1), &[]), None);
+        assert_eq!(d.command(&packet(1, vec![30065], 0), &[]), None);
+        assert_eq!(d.command(&packet(1, vec![30065], 11), &[]), None);
     }
 
     /// `SELL_COMMODITY` and `BUY_COMMODITY`: the commodity is `+0x4`'s low byte, food, wood or

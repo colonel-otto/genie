@@ -969,6 +969,34 @@ impl Turns {
         self.patrol_order(&ids[..ids.len().min(cap)], waypoints, reset)
     }
 
+    /// `ATTACK_MOVE` (0x21): the command's check (`FUN_140e54490`, [`Turns::command_check`], as
+    /// PATROL's), then `FUN_140e66200`: with `+0x9` it takes the first waypoint out of the local
+    /// player's list of attack-move points (`FUN_140e640a0`, the interface's: no simulation
+    /// state); the first 60 ids (500 for a computer player) go, gone ones null
+    /// (`FUN_140e6b750`), with the waypoints (1 to 10, the decoder's) and the analytics record
+    /// (`FUN_1409648c0`) to `FUN_14161b970` without a target ([`Turns::sweep_order`]).
+    ///
+    /// # Errors
+    ///
+    /// What the order does not model.
+    pub(crate) fn attack_move(
+        &mut self,
+        player: usize,
+        ids: &[i32],
+        waypoints: &[[f32; 2]],
+        sweep: Sweep,
+    ) -> Result<(), GenieError> {
+        let Some(ids) = self.command_check(player, ids) else {
+            return Ok(());
+        };
+        let cap = if self.players[player].computer {
+            500
+        } else {
+            60
+        };
+        self.sweep_order(&ids[..ids.len().min(cap)], waypoints, sweep)
+    }
+
     /// `FUN_14161b970` for PATROL (its patrol flag 1, no target, `param_7` 0, `param_8` 1):
     /// first each listed unit's AI (the gone entries count in the list) takes an idle timer of
     /// 0 and an adjusted idle timeout and secondary timer of [`patrol_timeout`]; with `reset`
@@ -989,8 +1017,45 @@ impl Turns {
         waypoints: &[[f32; 2]],
         reset: bool,
     ) -> Result<(), GenieError> {
+        let sweep = Sweep {
+            patrol: true,
+            reset,
+            queued: false,
+            ignore_pending: true,
+        };
+        self.sweep_order(ids, waypoints, sweep)
+    }
+
+    /// `FUN_14161b970` without a target for PATROL ([`Turns::patrol_order`]) and `ATTACK_MOVE`: an
+    /// attack move first resets each listed unit's AI as for an order (`FUN_141631040`,
+    /// [`crate::unit_ai::UnitAi::reset_for_order`]); then as PATROL's, but that a group's move
+    /// to the last waypoint holds (`commandMoveTo` with `param_6` 0, `param_8` 1) and each loose
+    /// unit's is [`Turns::sweep_unit`]'s.
+    ///
+    /// # Errors
+    ///
+    /// What the groups' and the units' moves do not model.
+    pub(crate) fn sweep_order(
+        &mut self,
+        ids: &[i32],
+        waypoints: &[[f32; 2]],
+        sweep: Sweep,
+    ) -> Result<(), GenieError> {
         /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
         const LISTED: usize = 60;
+        let Sweep { patrol, reset, .. } = sweep;
+        if !patrol {
+            for &id in ids {
+                let unit = match self.place(id) {
+                    Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
+                    Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
+                    None => continue,
+                };
+                if let Some(ai) = unit.ai.as_mut() {
+                    ai.reset_for_order(self.streams.get(Stream::Ai));
+                }
+            }
+        }
         let dt = self.dt;
         for (i, &id) in ids.iter().enumerate() {
             if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
@@ -1047,9 +1112,9 @@ impl Turns {
             }
             let leg = crate::group::CommandMoveTo {
                 range: 0.0,
-                leg: true,
+                leg: patrol,
                 forget_target: true,
-                hold: false,
+                hold: !patrol,
                 queued: false,
                 direct: true,
                 keep_flag: false,
@@ -1064,7 +1129,7 @@ impl Turns {
         }
         self.groups.count_command();
         for i in 0..split.loose.len() {
-            self.patrol_unit(&split.loose, i, waypoints)?;
+            self.sweep_unit(&split.loose, i, waypoints, sweep)?;
         }
         Ok(())
     }
@@ -1130,31 +1195,45 @@ impl Turns {
         Ok(())
     }
 
-    /// PATROL's loose unit `loose[i]` (`FUN_14161b970`'s loop over the splitter's loose units):
-    /// one the world does not hold takes nothing. It leaves its unit group (`FUN_14102c160` with
+    /// The loose unit `loose[i]` of PATROL or `ATTACK_MOVE` (`FUN_14161b970`'s loop over the
+    /// splitter's loose units): one the world does not hold takes nothing. An attack move's unit
+    /// with a unit AI, `queued` (`+0x9`) or, without `ignore_pending` (`+0xa`), with an order in
+    /// its queue that is not ready ([`crate::unit_ai::UnitAi::has_unready_order`]), takes the
+    /// order through its queue (slot 0x30: the attack move `0x2dd` at the first waypoint,
+    /// priority 100), which is not modelled: the call leaves the record's shown point and ready
+    /// flag to the stack ([`ATTACK_MOVE_QUEUED`]). Any other leaves its unit group (`FUN_14102c160` with
     /// −1); a unit that moves (with movement state: type 30 or more) loses its own waypoints
     /// (slot 0x450) and its ignore list (`FUN_141197da0`), waits to move (slot 0x2a0 with 1) and
     /// lists the other loose units (`FUN_14118c790`); an object below type 30 has those slots
     /// empty, and its ignore list (the static part's, which only a walker's short pather reads)
     /// is not held. Of the waypoints its place passes ([`waypoints_from`]) none leaves it there;
     /// else each but the last becomes its own (slot 0x448 at its height) and it moves to the last
-    /// (slot 0x340: range 0, forced, walking): of type 70 or 80 through `FUN_141216c50`
-    /// ([`Turns::move_aside`]; type 50 and 60 run `FUN_1410866e0` without its class test, which
-    /// only masters of type 70 meet), types 30 and 40 not at all (`FUN_14106d330`). Its unit AI
-    /// takes the patrol order and the move action (`FUN_140c64b60` with 1, `FUN_140c64b50`) and
-    /// no target at the command's last waypoint at the unit's height (`FUN_140c64be0`), even
-    /// where the filter left that waypoint out.
-    fn patrol_unit(
+    /// (slot 0x340: range 0, forced for a patrol only, walking): of type 70 or 80 through
+    /// `FUN_141216c50` ([`Turns::move_aside`]; type 50 and 60 run `FUN_1410866e0` without its
+    /// class test, which only masters of type 70 meet), types 30 and 40 not at all
+    /// (`FUN_14106d330`). Its unit AI takes the patrol order (an attack move's `0x2dd`) and the
+    /// move action (`FUN_140c64b60` with 1, `FUN_140c64b50`) and no target at the command's last
+    /// waypoint at the unit's height (`FUN_140c64be0`), even where the filter left that waypoint
+    /// out.
+    fn sweep_unit(
         &mut self,
         loose: &[i32],
         i: usize,
         waypoints: &[[f32; 2]],
+        sweep: Sweep,
     ) -> Result<(), GenieError> {
-        use crate::unit_ai::{MOVE_ACTION, PATROL};
+        use crate::unit_ai::{ATTACK_MOVE, MOVE_ACTION, PATROL};
         let id = loose[i];
         let Some((p, u)) = self.object(id) else {
             return Ok(());
         };
+        if !sweep.patrol
+            && u.ai
+                .as_ref()
+                .is_some_and(|ai| sweep.queued || (!sweep.ignore_pending && ai.has_unready_order()))
+        {
+            return Err(ATTACK_MOVE_QUEUED);
+        }
         let kind = self.master_of(p, u.life.master_id)?.kind;
         self.leave_group_of(id, -1)?;
         let (_, u) = self.object_mut(id).expect("the unit found above");
@@ -1185,7 +1264,7 @@ impl Turns {
             let walk = crate::unit_ai::AiMove {
                 point: [lx, ly, z],
                 range: 0.0,
-                force: true,
+                force: sweep.patrol,
                 walk: true,
             };
             self.move_aside(p, idx, walk)?;
@@ -1198,7 +1277,7 @@ impl Turns {
         let rng = self.streams.get(Stream::Ai);
         if let Some(ai) = unit.ai.as_mut() {
             let shown = waypoints.last().copied().unwrap_or_default();
-            ai.set_order(PATROL, rng);
+            ai.set_order(if sweep.patrol { PATROL } else { ATTACK_MOVE }, rng);
             ai.set_action(MOVE_ACTION);
             ai.set_target(-1, -1, [shown[0], shown[1], z]);
         }
@@ -5034,6 +5113,23 @@ fn patrol_timeout(i: usize, dt: u32) -> u32 {
     (stagger as u32).wrapping_add(750)
 }
 
+/// What `FUN_14161b970` is told besides its units, its waypoints and its target (none here):
+/// its patrol flag (`param_2`), `param_6` (the command's `+0x8`: the unit AIs' saved patrols
+/// go), `param_7` (`+0x9`) and `param_8` (`+0xa`). PATROL passes 0 and 1 for the last two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Sweep {
+    pub(crate) patrol: bool,
+    pub(crate) reset: bool,
+    pub(crate) queued: bool,
+    pub(crate) ignore_pending: bool,
+}
+
+/// An attack move through a unit AI's queue (`FUN_14161b970`'s slot 0x30): the call writes only
+/// the low byte of the record's shown x and leaves its shown y and ready flag to the stack, which
+/// is not modelled.
+const ATTACK_MOVE_QUEUED: GenieError =
+    GenieError::unsupported("an attack move through a unit AI's queue (slot 0x30)");
+
 /// The waypoints a walker from `from` passes on its way (`FUN_14161b970`'s two filters): each
 /// one at least [`WAYPOINT_APART`] from the last one kept on x or on y, either way
 /// (`COMISS`/`JNC` on each of the four: a NaN difference is not), the first measured from
@@ -7057,6 +7153,95 @@ mod tests {
         assert!(ai.patrol_path.is_some());
     }
 
+    /// The attack move of 428506340's update 940 (`+0x8` and `+0xa` set): player 1's lone unit
+    /// first resets its AI as for an order (`FUN_141631040`: its saved patrol goes even without
+    /// `+0x8`), then moves loose as a patrol's unit but unforced (a `MoveTo` already to the point
+    /// stands), its unit AI on the attack move order (`0x2dd`), the move action and no target at
+    /// the waypoint.
+    #[test]
+    fn a_lone_unit_attack_moves_to_its_waypoint() {
+        let sweep = Sweep {
+            patrol: false,
+            reset: false,
+            queued: false,
+            ignore_pending: true,
+        };
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0])], &[]);
+        // the reset redraws the adjusted idle timeout from it
+        t.players[1].objects[0].ai.as_mut().unwrap().idle_timeout = 3000;
+        t.attack_move(1, &[11], &[[30.0, 20.0]], sweep).unwrap();
+        let u = &t.players[1].objects[0];
+        assert_eq!(u.move_to.unwrap().goal, Some([30.0, 20.0, 0.0]));
+        let ai = u.ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.current_action, ai.target_point),
+            (
+                crate::unit_ai::ATTACK_MOVE,
+                crate::unit_ai::MOVE_ACTION,
+                [30.0, 20.0, 0.0]
+            )
+        );
+        assert_eq!(
+            (ai.idle_timer, ai.adjusted_idle_timeout, ai.secondary_timer),
+            (0, 750, 750)
+        );
+        assert!(ai.patrol_path.is_none());
+        // unforced: the MoveTo to the same point stands
+        t.players[1].objects[0].move_to.as_mut().unwrap().range = 0.25;
+        t.attack_move(1, &[11], &[[30.0, 20.0]], sweep).unwrap();
+        assert_eq!(t.players[1].objects[0].move_to.unwrap().range, 0.25);
+        // a patrol's forced move makes a new one
+        t.patrol(1, &[11], &[[30.0, 20.0]], false).unwrap();
+        assert_eq!(t.players[1].objects[0].move_to.unwrap().range, 0.0);
+    }
+
+    /// An attack move through the unit AI's queue (`+0x9`, or without `+0xa` an order in the
+    /// queue not ready) leaves the record's shown point and ready flag to the stack, which is
+    /// not modelled; with `+0xa` an unready order does not send it there.
+    #[test]
+    fn an_attack_move_through_the_unit_ai_s_queue_is_not_modelled() {
+        let sweep = |queued, ignore_pending| Sweep {
+            patrol: false,
+            reset: true,
+            queued,
+            ignore_pending,
+        };
+        let patrollers = |units: &[(i32, i16, [f32; 2])]| {
+            let mut t = patrollers(units, &[]);
+            t.players[1].objects[0].ai.as_mut().unwrap().idle_timeout = 3000;
+            t
+        };
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0])]);
+        assert_eq!(
+            t.attack_move(1, &[11], &[[30.0, 20.0]], sweep(true, true)),
+            Err(ATTACK_MOVE_QUEUED)
+        );
+        let unready = crate::unit_ai::QueuedOrder {
+            issuer: 1,
+            order: MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target_owner: -1,
+            point: [25.0, 20.0, 0.0],
+            range: 0.0,
+            shown: [0.0; 2],
+            ready: false,
+            target_type: -1,
+        };
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0])]);
+        t.players[1].objects[0].ai.as_mut().unwrap().orders = vec![unready];
+        assert_eq!(
+            t.attack_move(1, &[11], &[[30.0, 20.0]], sweep(false, false)),
+            Err(ATTACK_MOVE_QUEUED)
+        );
+        let mut t = patrollers(&[(11, 4, [20.0, 20.0])]);
+        t.players[1].objects[0].ai.as_mut().unwrap().orders = vec![unready];
+        assert_eq!(
+            t.attack_move(1, &[11], &[[30.0, 20.0]], sweep(false, true)),
+            Ok(())
+        );
+    }
+
     /// Loose units of a PATROL (villagers, category 0) list each other in their ignore lists;
     /// one whose waypoints all lie within a tile of it stays where it is, its order unchanged.
     #[test]
@@ -7116,12 +7301,8 @@ mod tests {
         assert_eq!(split.loose, [15]);
     }
 
-    /// A PATROL of two soldiers near each other: the splitter's group becomes a new group of
-    /// player 1, listed (its differentiators the command count before and itself), with the
-    /// waypoints but the last as its own and a looping path to the last, back and forth from 5
-    /// tiles; the command count goes on.
-    #[test]
-    fn a_patrolling_group_walks_a_loop_through_its_waypoints() {
+    /// [`patrollers`]' two soldiers near each other in a world whose statistics search works.
+    fn two_patrollers() -> Turns {
         let mut t = patrollers(&[(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])], &[]);
         // the group's statistics search the members' surroundings
         let mut s = crate::spatial::Spatial::with_tiles(
@@ -7146,6 +7327,44 @@ mod tests {
         v.registry = Some(crate::registry::Registry::new(2, 65));
         s.sight = Some(v);
         t.spatial = s;
+        t
+    }
+
+    /// An attack move of two soldiers near each other: their group's move to the last waypoint
+    /// holds (`commandMoveTo` with `param_6` 0, `param_8` 1): its path does not loop (bit 0)
+    /// and its flags bit 11 is set, where a patrol's loops and leaves it clear.
+    #[test]
+    fn an_attack_moving_group_holds_its_path_to_the_last_waypoint() {
+        let sweep = Sweep {
+            patrol: false,
+            reset: true,
+            queued: false,
+            ignore_pending: true,
+        };
+        let mut t = two_patrollers();
+        for u in &mut t.players[1].objects {
+            u.ai.as_mut().unwrap().idle_timeout = 3000;
+        }
+        t.attack_move(1, &[11, 12], &[[25.0, 25.0], [30.0, 20.0]], sweep)
+            .unwrap();
+        let g = &t.groups.groups[0];
+        let top = g.motion.paths.last().unwrap();
+        assert_eq!((top.path_flags & 1, g.flags & 0x800), (0, 0x800));
+        let mut t = two_patrollers();
+        t.patrol(1, &[11, 12], &[[25.0, 25.0], [30.0, 20.0]], true)
+            .unwrap();
+        let g = &t.groups.groups[0];
+        let top = g.motion.paths.last().unwrap();
+        assert_eq!((top.path_flags & 1, g.flags & 0x800), (1, 0));
+    }
+
+    /// A PATROL of two soldiers near each other: the splitter's group becomes a new group of
+    /// player 1, listed (its differentiators the command count before and itself), with the
+    /// waypoints but the last as its own and a looping path to the last, back and forth from 5
+    /// tiles; the command count goes on.
+    #[test]
+    fn a_patrolling_group_walks_a_loop_through_its_waypoints() {
+        let mut t = two_patrollers();
         let w = [[25.0, 25.0], [30.0, 20.0]];
         t.patrol(1, &[11, 12], &w, true).unwrap();
         assert_eq!(t.groups.groups.len(), 1);
