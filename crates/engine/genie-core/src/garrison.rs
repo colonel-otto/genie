@@ -455,9 +455,28 @@ impl Turns {
         self.clear_actions(player, idx)?;
         let unit = &self.players[player].objects[idx];
         if unit.life.inside.is_some() {
-            return Err(GenieError::unsupported(
-                "an Enter of a unit inside an object (state 13)",
-            ));
+            // set_state(13): the unit takes its master's standing sprite (slot 0x68 with
+            // `+0x470`) and, its `+0x60` 0 in a new Enter, posts notify 0x1f9 with the enter's
+            // action value to its unit AI; the update returns 3 then
+            action.state = FAILED;
+            let masters = self.masters.get(player);
+            let unit = &mut self.players[player].objects[idx];
+            unit.enter = Some(action);
+            unit.shows_standing_sprite(
+                masters,
+                &self.graphics,
+                self.streams.get(crate::rng::Stream::Sprite),
+            )?;
+            let state = unit.life.state;
+            if let Some(ai) = unit.ai.as_mut() {
+                let n = crate::unit_ai::Notify::own(
+                    id,
+                    crate::unit_ai::ACTION_FAILED,
+                    [ENTER_ACTION, 0, 0],
+                );
+                ai.post(n, state)?;
+            }
+            return Ok(());
         }
         let (tp, t) = self.object(target).expect("found above");
         if !self.has_room(tp, t, Some(id))? {
@@ -1644,6 +1663,8 @@ const ARRIVED: f32 = crate::image::move_to::ARRIVED;
 /// The Enter action's states the slice models: 1 done (inside), 2 waiting to try again, 4
 /// walking to the target.
 pub const ENTERED: u8 = 1;
+/// The failed Enter (`set_state(13)`), whose update returns 3.
+pub const FAILED: u8 = 13;
 const WAIT: u8 = 2;
 const WALK: u8 = 4;
 /// `set_state(2)`'s wait before the Enter walks again, in seconds (`FUN_140a87320`, the constant
@@ -1881,7 +1902,8 @@ impl EnterAction {
             ));
         }
         match self.state {
-            ENTERED => step.done = true,
+            // state 1 returns 1, state 13 returns 3: either way the list removes the action
+            ENTERED | FAILED => step.done = true,
             WAIT => {
                 self.timer -= walk.dt;
                 if self.timer <= 0.0 {

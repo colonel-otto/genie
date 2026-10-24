@@ -1406,7 +1406,7 @@ fn saved_actions(
                     ));
                 }
             };
-            if !matches!(base.state, ENTERED | 2 | 4) {
+            if !matches!(base.state, ENTERED | 2 | 4 | genie_core::garrison::FAILED) {
                 return Err(GenieError::unsupported(
                     "a saved Enter in a state the slice does not model",
                 ));

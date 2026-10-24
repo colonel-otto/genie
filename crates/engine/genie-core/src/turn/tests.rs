@@ -1506,6 +1506,26 @@ fn the_enter_command_enters_or_keeps_the_enter_on_its_target() {
     assert_eq!(t.players[1].objects[0].enter.unwrap().timer, first.timer);
 }
 
+/// The Enter's start (`FUN_140a86f20`) of a unit inside an object: `set_state(13)`, its
+/// standing sprite and notify 0x1f9 with the enter's action value to its unit AI; the update
+/// then returns 3 and the list removes it.
+#[test]
+fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
+    let mut t = enter_world(vec![], 5);
+    t.players[1].objects[0].life.inside = Some(4242);
+    assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.enter.map(|e| e.state), Some(crate::garrison::FAILED));
+    assert_eq!(
+        v.ai.as_ref().unwrap().notifies,
+        [Notify::own(
+            9175,
+            crate::unit_ai::ACTION_FAILED,
+            [crate::garrison::ENTER_ACTION, 0, 0]
+        )]
+    );
+}
+
 /// The unit AI's enter order on the player's house (`0x2cb`, slot 0x3a0 forced,
 /// `FUN_1410847e0`): its slot 0x820 with the garrison filter finds the villager's Enter task on
 /// buildings (action 3, class 3); after the update the Enter is the unit's (or the unit inside
