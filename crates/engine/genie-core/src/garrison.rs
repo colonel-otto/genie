@@ -850,8 +850,9 @@ impl Turns {
     /// building and no point, it then goes to work on the gather point's target when the world
     /// holds it (its unit AI forgets its target, `FUN_140c5e1e0`; [`Turns::gather`]); else, or
     /// with a point, it moves there ([`Turns::gather_move`] after the same forgetting). False
-    /// when no spot is free. Not modelled: the work given (slot 0x128 with a target), neither a
-    /// point nor a gather point (the unit AI's slots 0xb0 and 0x1c0), a gather point of kind 0xff,
+    /// when no spot is free. With neither a point nor a gather point its unit AI stops, forgets
+    /// its target and takes its stance again (slots 0xb0 and 0x1c0). Not modelled: the work given
+    /// (slot 0x128 with a target), a gather point of kind 0xff,
     /// class 42's and livestock's counts in a building of a player with `+0x88`, a siege
     /// building's (class 13) slot 0x1b0; not held: the building's villager count (`+0xba8`) and
     /// raider count (`+0xc2c`, which the building's slot 0x1c8 `FUN_1411d6ad0` lowers for a unit
@@ -870,18 +871,23 @@ impl Turns {
         let bid = b.id;
         let bm = self.master_of(player, b.life.master_id)?.clone();
         let gather = b.gather_point;
+        // the spot's goal (`FUN_1411d12d0` with x −1): without a gather point the first location
+        // of the building unit AI's command queue (slot 0x218, then slot 0x220), else a gather
+        // point that is not on the building, else none
+        let queue_first =
+            b.ai.as_ref()
+                .and_then(|a| a.building_orders.first())
+                .map(|o| [o.point[0], o.point[1]]);
         let toward = if point[0] == NO_POINT {
-            gather
-                .filter(|g| g.target != bid)
-                .map(|g| [g.point[0], g.point[1]])
+            match (gather, queue_first) {
+                (None, Some(q)) => Some(q),
+                _ => gather
+                    .filter(|g| g.target != bid)
+                    .map(|g| [g.point[0], g.point[1]]),
+            }
         } else {
             Some(point)
         };
-        if point[0] == NO_POINT && gather.is_none() {
-            return Err(GenieError::unsupported(
-                "an unload without a gather point (the unit AI's command queue location)",
-            ));
-        }
         // the unit is any player's (an ally's too): its own player's masters and orders
         let (up, ui) = self.live_inside(id)?;
         let unit = &self.players[up].objects[ui];
@@ -996,9 +1002,24 @@ impl Turns {
             _ => point,
         };
         if to[0] == NO_POINT || to[1] == NO_POINT {
-            return Err(GenieError::unsupported(
-                "an unloaded unit without a point (its unit AI's slots 0xb0 and 0x1c0)",
-            ));
+            // neither a point nor a gather point: the unit AI stops its action (slot 0xb0 with
+            // 1, whose stopAction runs on the unit), forgets its target (`FUN_140c5e1e0`) and
+            // takes its own stance again at the unit's place (slot 0x1c0 with `+0x1a9`); a unit
+            // without a unit AI stays where it came out
+            let class = made.class;
+            let unit = &mut self.players[up].objects[ui];
+            let place = ([unit.position[0], unit.position[1]], class);
+            if let Some(ai) = unit.ai.as_mut() {
+                let mut fx = Vec::new();
+                ai.stop_with(true, Some(place), &mut fx)?;
+                ai.remove_target();
+                let stance = ai.stance;
+                crate::order::set_stance(ai, stance, place, &mut fx)?;
+                for _ in fx.iter().filter(|e| **e == crate::unit_ai::Effect::Stop) {
+                    self.command_stop(up, ui)?;
+                }
+            }
+            return Ok(true);
         }
         // a move to the point: the unit AI forgets its target (`FUN_140c5e1e0`), then slot 0x2a0
         // and slot 0x128 with no target, `+0xa14` 0
@@ -3912,6 +3933,39 @@ pub(crate) mod tests {
         u.life.inside = Some(200);
         t.players[1].objects.push(u);
         assert!(t.unload(1, &[1000], [4.5, 4.5], 0, -1, false).is_err());
+    }
+
+    /// `FUN_1411e7220` toward no point from a building without a gather point (nor a command
+    /// queue): the unit comes out, its unit AI stops (slot 0xb0 with 1: its stopAction), forgets
+    /// its target and takes its stance again at its new place (slot 0x1c0 with `+0x1a9`).
+    #[test]
+    fn a_unit_let_out_toward_nothing_stops_and_keeps_its_stance() {
+        let mut t = let_out_world();
+        inside_tc(&mut t, 1, 1000, VILLAGER);
+        let v = t.object_mut(1000).unwrap().1;
+        v.ai = Some(crate::unit_ai::UnitAi {
+            current_action: 0x261,
+            current_target: 77,
+            stance: 1,
+            ..crate::unit_ai::UnitAi::default()
+        });
+        assert_eq!(
+            t.let_out(1, 0, 1000, [NO_POINT, NO_POINT], (None, false)),
+            Ok(true)
+        );
+        let v = t.object(1000).unwrap().1;
+        assert_eq!(v.life.inside, None);
+        let ai = v.ai.as_ref().unwrap();
+        assert_eq!(
+            (
+                ai.current_action,
+                ai.current_target,
+                ai.stance,
+                ai.last_action
+            ),
+            (-1, -1, 1, 0x261)
+        );
+        assert_eq!(ai.state_position, [v.position[0], v.position[1]]);
     }
 
     #[test]

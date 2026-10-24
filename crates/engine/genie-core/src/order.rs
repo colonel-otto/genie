@@ -4812,7 +4812,7 @@ fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
 /// unit AI that attacks (its order 700 or its action 600) stops the action (slot 0xb0 with 1,
 /// [`crate::unit_ai::UnitAi::stop_with`], whose stopAction the caller runs) and forgets the
 /// target (`FUN_140c5e1e0`).
-fn set_stance(
+pub(crate) fn set_stance(
     ai: &mut crate::unit_ai::UnitAi,
     state: u8,
     place: ([f32; 2], i16),
