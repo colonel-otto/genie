@@ -530,13 +530,12 @@ impl UnitView<'_> {
     }
 }
 
-/// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0.
+/// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0 (`COMISS`), from +0.
 fn attacks(m: &crate::masters::Master) -> f32 {
     m.weapons
         .iter()
         .filter(|w| 0 < w.1)
-        .map(|w| f32::from(w.1))
-        .sum()
+        .fold(0.0, |sum, w| sum + f32::from(w.1))
 }
 
 /// An object the unit AI found or names that the slice does not hold (another player's it does
@@ -1958,5 +1957,29 @@ impl crate::explore::Area for ScoutArea<'_> {
         let gx = gap(x as f32 - self.me.position[0], self.radius[0]);
         let gy = gap(y as f32 - self.me.position[1], self.radius[1]);
         crate::fmath::sqrt(gy * gy + gx * gx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Slot 0x228 (`FUN_141084070`): the attacks above 0 add up in their order from +0; none
+    /// (or none above 0) is +0.
+    #[test]
+    fn the_attacks_sum_is_the_positive_ones() {
+        let m = |weapons: Vec<(i16, i16)>| crate::masters::Master {
+            weapons,
+            ..crate::masters::Master::default()
+        };
+        assert_eq!(
+            attacks(&m(vec![(4, 6), (3, -2), (11, 1)])).to_bits(),
+            7.0f32.to_bits()
+        );
+        assert_eq!(attacks(&m(vec![])).to_bits(), 0.0f32.to_bits());
+        assert_eq!(
+            attacks(&m(vec![(4, 0), (3, -5)])).to_bits(),
+            0.0f32.to_bits()
+        );
     }
 }
