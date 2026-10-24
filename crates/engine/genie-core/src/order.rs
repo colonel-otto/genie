@@ -4843,108 +4843,167 @@ impl Turns {
         let unit = &self.players[player].objects[idx];
         let old = self.master_of(player, unit.life.master_id)?.clone();
         let next = self.master_of(player, new)?.clone();
-        if unit.life.state < 3 {
-            if unit.life.inside.is_some() {
-                return Err(GenieError::unsupported(
-                    "a master change of an object inside another",
-                ));
-            }
-            let owner = &mut self.players[player];
-            for &(kind, amount, flag) in &old.storage {
-                if kind >= 0 && matches!(flag, 2 | 16 | 32) {
-                    owner.add_attribute(kind, -amount)?;
-                }
-            }
-            let unit = &mut owner.objects[idx];
-            let new_hp = f32::from(next.hit_points);
-            let share = unit.life.hp / f32::from(old.hit_points) * new_hp;
-            let hp = if share > new_hp {
-                new_hp
-            } else if 1.0 <= share {
-                share
-            } else {
-                1.0
-            };
-            let old_hp = unit.life.hp;
-            unit.life.hp = f32::from(hp as i32 as i16);
-            // FUN_1411859a0: the damage share picks the damage sprites; one that stays keeps them
-            // (the object's `+0xd`, not held, taken to be the old master's share)
-            if (old.damage_sprites || next.damage_sprites)
-                && (damage_share(old_hp, old.hit_points, old.class)?
-                    != damage_share(unit.life.hp, next.hit_points, next.class)?)
-            {
-                return Err(GenieError::unsupported(
-                    "a master change that changes the damage sprites (FUN_1411859a0)",
-                ));
-            }
-            unit.life.master_id = new;
-            let moving = unit
-                .mover
-                .as_ref()
-                .is_some_and(crate::movement::Mover::is_moving);
-            if let Some(m) = unit.mover.as_mut() {
-                m.stats = next.moving.ok_or(GenieError::unsupported(
-                    "a moving unit's new master does not move",
-                ))?;
-            }
-            let id = unit.id;
-            if let Some(mut placed) = self.spatial.get(id).copied() {
-                placed.radius = next.radius;
-                placed.class = next.class;
-                placed.master = new;
-                placed.obstruction_type = next.obstruction_type;
-                placed.buildable_on = next.buildable_on;
-                placed.tall = next.tall;
-                placed.speed = next.moving.as_ref().map_or(0.0, |m| m.speed);
-                if let Some(o) = placed.obstruction.as_mut() {
-                    o.kind = next.obstruction_type;
-                    o.class = next.obstruction_class;
-                }
-                self.pathing.removed(id);
-                self.spatial
-                    .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
-                self.spatial.change_master(id, placed);
-                self.pathing.moved(id, &placed, moving);
-            }
-            // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new
-            // instance unless the unit shows it already. The slice holds sprites from an attack
-            // on; a unit whose sprite it does not hold shows its old master's. Without the
-            // graphics (no data file) the Sprite stream is not modelled.
-            if !self.graphics.is_empty() && old.standing_sprite != next.standing_sprite {
-                let g = (0 <= next.standing_sprite)
-                    .then(|| self.graphics.get(&next.standing_sprite).copied())
-                    .flatten()
-                    .ok_or(GenieError::unsupported(
-                        "a new master's standing sprite the data file does not have",
-                    ))?;
-                let rng = self.streams.get(Stream::Sprite);
-                let unit = &mut self.players[player].objects[idx];
-                if unit.sprite.is_some() {
-                    crate::attack::set_sprite(&mut unit.sprite, g, rng);
-                } else {
-                    let _ = crate::sprite::ActiveSprite::start(g, rng);
-                }
-            }
+        let world = SwitchWorld {
+            spatial: &mut self.spatial,
+            pathing: &mut self.pathing,
+            graphics: &self.graphics,
+            sprite: self.streams.get(Stream::Sprite),
+        };
+        let unit = &mut self.players[player].objects[idx];
+        let switched = switch_master(unit, &old, &next, world)?;
+        let owner = &mut self.players[player];
+        for &(kind, amount) in &switched.leaving {
+            owner.add_attribute(kind, amount)?;
+        }
+        if switched.promoted {
             // the tracker's promotion (FUN_14104fb20): last in its new key master's list and
             // class's
             let id = self.players[player].objects[idx].id;
             self.track_promote(player, id, old.id, new);
-            let owner = &mut self.players[player];
-            for &(kind, amount, flag) in &next.storage {
-                if kind >= 0 && flag == 2 {
-                    owner.add_attribute(kind, amount)?;
-                }
-            }
         }
-        let unit = &mut self.players[player].objects[idx];
-        clear_powerups(unit);
-        // in state 2 the volleys (`+0xa00`) are the new master's volley fire, the shares of the
-        // units inside dropped
-        if unit.life.state == 2 {
-            unit.firepower = next.volley_fire;
+        let owner = &mut self.players[player];
+        for &(kind, amount) in &switched.coming {
+            owner.add_attribute(kind, amount)?;
         }
         Ok(())
     }
+}
+
+/// What a master change ([`switch_master`]) changes of the world besides its unit: the place and
+/// its records, the pathing, and the sprites with the Sprite stream.
+pub(crate) struct SwitchWorld<'a> {
+    pub(crate) spatial: &'a mut crate::spatial::Spatial,
+    pub(crate) pathing: &'a mut crate::pathing::Pathing,
+    pub(crate) graphics: &'a std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+    pub(crate) sprite: &'a mut crate::rng::Well512,
+}
+
+/// What [`switch_master`] leaves to its owner, in the game's order: the old master's storage
+/// leaving its player's attributes, the tracker's promotion (`FUN_14104fb20`), the new master's
+/// storage coming in.
+#[derive(Debug, Default)]
+pub(crate) struct Switched {
+    pub(crate) leaving: Vec<(i16, f32)>,
+    pub(crate) promoted: bool,
+    pub(crate) coming: Vec<(i16, f32)>,
+}
+
+/// Slot 0x90's unit part (`FUN_141225b70` with 0) of a master change from `old` to `next`, its
+/// action list cleared by the caller: in a state below 3 (`FUN_1411a6a70`) the old master's
+/// storage leaves its player's attributes and the new one's comes in (`FUN_1411a56c0`, flag 2:
+/// the owner's, [`Switched`]), its hit points keep their share of the new master's (whole, at
+/// least 1), its sight goes and the new master's comes (slots 0x1d8, 0x1d0), its place and
+/// obstruction record take the new master's (`FUN_141055b40`, `FUN_14118c540`) and it moves with
+/// the new master's values; it takes the new master's standing sprite (slot 0x68). Then its
+/// powerups go ([`clear_powerups`]) and in state 2 its volleys (`+0xa00`) are the new master's
+/// volley fire. Its per-master counts, facet, class registry (`DAT_143f69170`) and particles are
+/// not held.
+///
+/// # Errors
+///
+/// An object inside another, a change of its damage sprites, a moving unit's new master that does
+/// not move and a standing sprite the data file lacks.
+pub(crate) fn switch_master(
+    unit: &mut Unit,
+    old: &Master,
+    next: &Master,
+    world: SwitchWorld<'_>,
+) -> Result<Switched, GenieError> {
+    let mut switched = Switched::default();
+    let new = next.id;
+    if unit.life.state < 3 {
+        if unit.life.inside.is_some() {
+            return Err(GenieError::unsupported(
+                "a master change of an object inside another",
+            ));
+        }
+        for &(kind, amount, flag) in &old.storage {
+            if kind >= 0 && matches!(flag, 2 | 16 | 32) {
+                switched.leaving.push((kind, -amount));
+            }
+        }
+        let new_hp = f32::from(next.hit_points);
+        let share = unit.life.hp / f32::from(old.hit_points) * new_hp;
+        let hp = if share > new_hp {
+            new_hp
+        } else if 1.0 <= share {
+            share
+        } else {
+            1.0
+        };
+        let old_hp = unit.life.hp;
+        unit.life.hp = f32::from(hp as i32 as i16);
+        // FUN_1411859a0: the damage share picks the damage sprites; one that stays keeps them
+        // (the object's `+0xd`, not held, taken to be the old master's share)
+        if (old.damage_sprites || next.damage_sprites)
+            && (damage_share(old_hp, old.hit_points, old.class)?
+                != damage_share(unit.life.hp, next.hit_points, next.class)?)
+        {
+            return Err(GenieError::unsupported(
+                "a master change that changes the damage sprites (FUN_1411859a0)",
+            ));
+        }
+        unit.life.master_id = new;
+        let moving = unit
+            .mover
+            .as_ref()
+            .is_some_and(crate::movement::Mover::is_moving);
+        if let Some(m) = unit.mover.as_mut() {
+            m.stats = next.moving.ok_or(GenieError::unsupported(
+                "a moving unit's new master does not move",
+            ))?;
+        }
+        let id = unit.id;
+        if let Some(mut placed) = world.spatial.get(id).copied() {
+            placed.radius = next.radius;
+            placed.class = next.class;
+            placed.master = new;
+            placed.obstruction_type = next.obstruction_type;
+            placed.buildable_on = next.buildable_on;
+            placed.tall = next.tall;
+            placed.speed = next.moving.as_ref().map_or(0.0, |m| m.speed);
+            if let Some(o) = placed.obstruction.as_mut() {
+                o.kind = next.obstruction_type;
+                o.class = next.obstruction_class;
+            }
+            world.pathing.removed(id);
+            world
+                .spatial
+                .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
+            world.spatial.change_master(id, placed);
+            world.pathing.moved(id, &placed, moving);
+        }
+        // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new
+        // instance unless the unit shows it already. The slice holds sprites from an attack
+        // on; a unit whose sprite it does not hold shows its old master's. Without the
+        // graphics (no data file) the Sprite stream is not modelled.
+        if !world.graphics.is_empty() && old.standing_sprite != next.standing_sprite {
+            let g = (0 <= next.standing_sprite)
+                .then(|| world.graphics.get(&next.standing_sprite).copied())
+                .flatten()
+                .ok_or(GenieError::unsupported(
+                    "a new master's standing sprite the data file does not have",
+                ))?;
+            if unit.sprite.is_some() {
+                crate::attack::set_sprite(&mut unit.sprite, g, world.sprite);
+            } else {
+                let _ = crate::sprite::ActiveSprite::start(g, world.sprite);
+            }
+        }
+        switched.promoted = true;
+        for &(kind, amount, flag) in &next.storage {
+            if kind >= 0 && flag == 2 {
+                switched.coming.push((kind, amount));
+            }
+        }
+    }
+    clear_powerups(unit);
+    // in state 2 the volleys (`+0xa00`) are the new master's volley fire, the shares of the
+    // units inside dropped
+    if unit.life.state == 2 {
+        unit.firepower = next.volley_fire;
+    }
+    Ok(switched)
 }
 
 /// The box of an order's units (`0x140e68b90`, the loop after the splitter): the least and the

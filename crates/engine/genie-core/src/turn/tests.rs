@@ -5806,6 +5806,7 @@ fn scout_attack_on(
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut adds, mut promotions) = (Vec::new(), Vec::new());
     let attacked = {
         let mut side = view::UnitView {
             unit: &mut unit,
@@ -5857,6 +5858,8 @@ fn scout_attack_on(
             releases: &mut releases,
             builder_leaves: &mut leaves,
             starts: &mut waits,
+            attribute_adds: &mut adds,
+            promotions: &mut promotions,
             relations: &[0, 0],
             attributes: &[],
             civ: 0,
@@ -5867,6 +5870,214 @@ fn scout_attack_on(
         side.attack(50, force, &ai).unwrap()
     };
     (unit, attacked, takes.into_iter().map(|(t, _)| t).collect())
+}
+
+/// The attack command of unit 123 of master `who` (in a table with `also`) on Gaia's wolf 50, as
+/// [`scout_attack_on`]: the unit, the answer, the attribute changes and the tracker's promotions
+/// it left its owner.
+#[allow(clippy::type_complexity)]
+fn attack_by(
+    who: Master,
+    also: Vec<Master>,
+) -> (
+    Unit,
+    crate::unit_ai::Attacked,
+    Vec<(i16, f32)>,
+    Vec<(i32, i16, i16)>,
+) {
+    use crate::unit_ai::UnitSide;
+    let (timer, inside, own, force) = (0.0, None, None, true);
+    let attacker_master = who.id;
+    let standing = Graphic {
+        id: 300,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let graphics = std::collections::BTreeMap::from([
+        (300, standing),
+        (
+            301,
+            Graphic {
+                id: 301,
+                ..standing
+            },
+        ),
+    ]);
+    let scout = Master {
+        id: 448,
+        kind: 70,
+        class: 47,
+        standing_sprite: 300,
+        attack_sprite: 301,
+        weapon_range: 1.0,
+        reload: 2.0,
+        ..Master::default()
+    };
+    let wolf = Master {
+        id: 126,
+        kind: 70,
+        class: 10,
+        ..Master::default()
+    };
+    let placed = |x: f32, class, player, master| Placed {
+        position: [x, 10.0, 0.0],
+        radius: [0.2, 0.2],
+        class,
+        player,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    let mut spatial = Spatial::new([120, 120]);
+    spatial.insert(123, placed(10.0, 47, 1, 448));
+    spatial.insert(50, placed(10.5, 10, 0, 126));
+    let gaia = Player {
+        objects: vec![Unit {
+            id: 50,
+            position: [10.5, 10.0, 0.0],
+            life: Lifecycle {
+                master_id: 126,
+                ..Lifecycle::default()
+            },
+            ..Unit::default()
+        }],
+        ..Player::default()
+    };
+    let players = [gaia];
+    let mut rng = Well512::default();
+    let mut walker = crate::hunt::tests::walker();
+    walker.stats.speed = 1.2;
+    let mut unit = Unit {
+        id: 123,
+        position: [10.0, 10.0, 0.0],
+        mover: Some(walker),
+        sprite: Some(crate::sprite::ActiveSprite::start(standing, &mut rng)),
+        attack_timer: timer,
+        attack: own,
+        life: Lifecycle {
+            master_id: attacker_master,
+            inside,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let ai = UnitAi {
+        stance: 2,
+        current_order: -1,
+        ai_type: 13,
+        ..UnitAi::default()
+    };
+    let _ = scout;
+    let masters = Masters::new(std::iter::once(who).chain(also));
+    let every = [Masters::new([wolf]), masters.clone()];
+    let (mut pathing, mut zones) = (Pathing::default(), crate::zones::Zones::default());
+    let groups = crate::group::UnitGroups::default();
+    let (mut object, mut sprite) = (Well512::default(), Well512::default());
+    let (mut takes, mut releases, mut leaves, mut waits) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut adds, mut promotions) = (Vec::new(), Vec::new());
+    let attacked = {
+        let mut side = view::UnitView {
+            unit: &mut unit,
+            attacker: crate::unit_ai::Attacker {
+                ai_type: 13,
+                player: 1,
+                computer: false,
+                state: 2,
+                held: -1,
+                top_action: None,
+                master: 448,
+                kind: 70,
+                class: 47,
+                attack_priority: 0,
+                missile: -1,
+                range: 1.0,
+                min_range: 0.0,
+                charge_type: 0,
+                area_effect: 0.0,
+                blast_level: 0,
+                los: 4.0,
+                position: [10.0, 10.0, 0.0],
+                radius: [0.2, 0.2],
+                speed: 1.2,
+                scenario: false,
+                firepower: 0.0,
+                capture: 0,
+            },
+            player: 1,
+            computer: false,
+            spatial: &mut spatial,
+            pathing: &mut pathing,
+            groups: &groups,
+            object: &mut object,
+            sprite: &mut sprite,
+            world_time: 0,
+            construction_rate: 1.0,
+            others: &[],
+            zones: &mut zones,
+            foreign: Foreign {
+                before: &players,
+                after: &[],
+                left: None,
+            },
+            every: &every,
+            masters: Some(&masters),
+            graphics: &graphics,
+            takes: &mut takes,
+            releases: &mut releases,
+            builder_leaves: &mut leaves,
+            starts: &mut waits,
+            attribute_adds: &mut adds,
+            promotions: &mut promotions,
+            relations: &[0, 0],
+            attributes: &[],
+            civ: 0,
+            ai_settings: AiSettings::default(),
+            drop_sites: &[],
+            mode_680: 0,
+        };
+        side.attack(50, force, &ai).unwrap()
+    };
+    let _ = takes;
+    (unit, attacked, adds, promotions)
+}
+
+/// A villager's attack command (`FUN_141081a80`): a builder (118, task swap group 1) switches to
+/// its player's villager 83 first (slot 0x90 with 0: its storage leaves and the new one's comes,
+/// the tracker promotes it), then attacks with the new master.
+#[test]
+fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
+    let villager = |id, storage| Master {
+        id,
+        kind: 70,
+        class: 4,
+        task_by_group: 1,
+        hit_points: 25,
+        standing_sprite: 300,
+        attack_sprite: 301,
+        weapon_range: 0.5,
+        reload: 2.0,
+        storage,
+        moving: Some(crate::hunt::tests::walker().stats),
+        ..Master::default()
+    };
+    let (unit, attacked, adds, promotions) = attack_by(
+        villager(118, vec![(4, 1.0, 2)]),
+        vec![villager(83, vec![(4, 1.0, 2)])],
+    );
+    assert_eq!(unit.life.master_id, 83);
+    assert!(attacked.attacks);
+    assert!(unit.attack.is_some_and(|a| a.target == 50));
+    assert_eq!(adds, [(4, -1.0), (4, 1.0)]);
+    assert_eq!(promotions, [(123, 118, 83)]);
 }
 
 /// `AskForHelp`'s tests of the scout 124 (player 1, master 448, at (10.3, 10), its unit AI
@@ -5946,6 +6157,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut adds, mut promotions) = (Vec::new(), Vec::new());
     let graphics = std::collections::BTreeMap::new();
     let side = view::UnitView {
         unit: &mut unit,
@@ -5997,6 +6209,8 @@ fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
         releases: &mut releases,
         builder_leaves: &mut leaves,
         starts: &mut waits,
+        attribute_adds: &mut adds,
+        promotions: &mut promotions,
         relations: &[0, 0],
         attributes: &[],
         civ: 0,

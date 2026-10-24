@@ -1110,6 +1110,7 @@ impl Turns {
             cleared: Vec::new(),
             site_removals: Vec::new(),
             flares: Vec::new(),
+            promotions: Vec::new(),
             evacuations: Vec::new(),
             recycling: &mut self.recycling,
             mode_1: self.mode_680 == 1,
@@ -1233,6 +1234,7 @@ impl Turns {
             cleared,
             site_removals,
             flares,
+            promotions,
             released_annexes,
             main_works,
             building_death,
@@ -1264,6 +1266,10 @@ impl Turns {
                     u.armor_removed = [0; 2];
                 }
             }
+        }
+        // the tracker's promotions of the units whose master changed while their unit AI ran
+        for (id, old, new) in promotions {
+            self.track_promote(p, id, old, new);
         }
         // the flares a hit on a player's object made for that player
         for (q, at, doubled) in flares {

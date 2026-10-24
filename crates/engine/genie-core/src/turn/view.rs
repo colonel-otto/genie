@@ -19,6 +19,11 @@ use crate::turn::world::{
 use crate::turn::{BuildingDeath, PETARD, Recycling};
 use crate::unit_ai::{AiMove, GenieError, Search, UnitAi};
 
+/// The villagers a villager's attack command switches to by its task swap group (its player's
+/// master table's entries at `+0x298` and `+0x928`).
+const VILLAGER_MALE: i16 = 83;
+const VILLAGER_FEMALE: i16 = 293;
+
 /// What a tick's update of one object needs from the world.
 /// What a hunt's drop-off ([`Unit::drop_off_in`]) reads besides its unit: the owner's masters,
 /// the world with its zone maps and planners, the world's time, the Object stream (the drop-site
@@ -135,6 +140,10 @@ pub(in crate::turn) struct Context<'a> {
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
     /// update ([`Turns::clear_object`]).
     pub(in crate::turn) cleared: Vec<crate::build::Cleared>,
+    /// The tracker's promotions (`FUN_14104fb20`) of the owner's units whose master changed
+    /// while the unit AI ran (the unit, its old master, its new one), the caller's after the
+    /// update ([`Turns::track_promote`]).
+    pub(in crate::turn) promotions: Vec<(i32, i16, i16)>,
     /// The flares a hit on a player's object has that player make (master 112, its slot 0x1c0)
     /// at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's
     /// after the update ([`Turns::make_flare`]).
@@ -319,6 +328,8 @@ pub(in crate::turn) struct ObjectOutputs {
     pub(in crate::turn) site_removals: Vec<i32>,
     /// [`Context`]'s `flares`.
     pub(in crate::turn) flares: Vec<(usize, [f32; 3], bool)>,
+    /// [`Context`]'s `promotions`.
+    pub(in crate::turn) promotions: Vec<(i32, i16, i16)>,
     /// [`Context`]'s `released_annexes`.
     pub(in crate::turn) released_annexes: Vec<(i32, f32)>,
     /// [`Context`]'s `main_works`.
@@ -381,6 +392,7 @@ impl Context<'_> {
             cleared: std::mem::take(&mut self.cleared),
             site_removals: std::mem::take(&mut self.site_removals),
             flares: std::mem::take(&mut self.flares),
+            promotions: std::mem::take(&mut self.promotions),
             released_annexes: std::mem::take(&mut self.released_annexes),
             main_works: std::mem::take(&mut self.main_works),
             building_death: self.building_death.take(),
@@ -615,6 +627,10 @@ pub(in crate::turn) struct UnitView<'u> {
     pub(in crate::turn) builder_leaves: &'u mut Vec<i32>,
     /// The actions its slots 0x388 and 0x378 gave ([`AiStart`]), the caller's.
     pub(in crate::turn) starts: &'u mut Vec<AiStart>,
+    /// What its master change (slot 0x90) gives or takes of its owner's attributes, the caller's.
+    pub(in crate::turn) attribute_adds: &'u mut Vec<(i16, f32)>,
+    /// Its master change's tracker promotion ([`Context::promotions`]), the caller's.
+    pub(in crate::turn) promotions: &'u mut Vec<(i32, i16, i16)>,
     /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
     /// sites.
     pub(in crate::turn) relations: &'u [u8],
@@ -1851,11 +1867,40 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 posted: Vec::new(),
             });
         }
-        if master.class == 4 {
-            return Err(GenieError::unsupported(
-                "a villager's attack command (its master switch, slot 0x90)",
-            ));
-        }
+        // a villager switches to its player's villager of its task swap group (`+0x7b8` 1: the
+        // master table's `+0x298`, 83; else `+0x928`, 293) when the player has it (slot 0x90 with
+        // 0: the action list clears, then the master's unit part; its owner's part after the
+        // update)
+        let master = if master.class == 4
+            && let Some(next) = self.masters.and_then(|m| {
+                m.get(if master.task_by_group == 1 {
+                    VILLAGER_MALE
+                } else {
+                    VILLAGER_FEMALE
+                })
+            }) {
+            let by = Releaser {
+                id: unit.id,
+                class: master.class,
+                player: self.player,
+            };
+            unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+            let world = crate::order::SwitchWorld {
+                spatial: self.spatial,
+                pathing: self.pathing,
+                graphics: self.graphics,
+                sprite: self.sprite,
+            };
+            let switched = crate::order::switch_master(unit, master, next, world)?;
+            self.attribute_adds.extend(switched.leaving);
+            if switched.promoted {
+                self.promotions.push((unit.id, master.id, next.id));
+            }
+            self.attribute_adds.extend(switched.coming);
+            next
+        } else {
+            master
+        };
         let me_at = *self
             .spatial
             .get(unit.id)

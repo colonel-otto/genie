@@ -6337,6 +6337,8 @@ impl Unit {
                 releases: &mut c.releases,
                 builder_leaves: &mut c.builder_leaves,
                 starts: &mut c.starts,
+                attribute_adds: &mut c.attribute_adds,
+                promotions: &mut c.promotions,
                 relations: view.relations,
                 attributes: view.attributes,
                 civ: view.civ,
