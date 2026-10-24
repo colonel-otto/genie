@@ -504,14 +504,15 @@ impl Turns {
 
     /// Slot 0x238 of `object` against `target` (the group's, as the world's table gives it): a
     /// combat object's (types 50 to 80, `FUN_14108d9b0`) weapon range (slot 0x230,
-    /// [`weapon_range`]), to which charge types 6 and 7 add the charge's against the target, or
-    /// without one its current action's (slot 0x2f8, `FUN_14120f510`); any other object's 0
-    /// (`FUN_14106ff60`).
+    /// [`weapon_range`]) plus its master's `charge_event` (`+0x920`) when slot 0x2f8
+    /// (`FUN_14120f510`, [`crate::damage::range_charge_hit`]) holds against the target, or
+    /// without one its top action's target: a charge of type 6 or 7 (slot 0x308) that works on
+    /// it ([`crate::damage::charge_works`]) and is ready (slot 0x300: at least 1); any other
+    /// object's 0 (`FUN_14106ff60`).
     ///
     /// # Errors
     ///
-    /// A charge type 6 or 7 with a target: its `charge_event` (`+0x920`) is not in the slice's
-    /// masters; and an object of a master the slice does not have.
+    /// An object of a master the slice does not have.
     fn range_against(
         &self,
         object: crate::group::WorldObject<'_>,
@@ -521,21 +522,34 @@ impl Turns {
         if !COMBAT_KINDS.contains(&master.kind) {
             return Ok(0.0);
         }
-        if matches!(master.charge_type, 6 | 7) {
-            let action_target = match object {
-                crate::group::WorldObject::Unit(_, u) => u
-                    .top_target()
-                    .filter(|&t| -1 < t)
-                    .and_then(|t| self.world_object(t)),
-                crate::group::WorldObject::Ghost(..) => None,
-            };
-            if target.or(action_target).is_some() {
-                return Err(GenieError::unsupported(
-                    "a charge's range against its target (slot 0x2f8, charge_event +0x920)",
-                ));
-            }
+        let range = weapon_range(master);
+        let crate::group::WorldObject::Unit(_, u) = object else {
+            return Ok(range);
+        };
+        let target = target.or_else(|| {
+            u.top_target()
+                .filter(|&t| -1 < t)
+                .and_then(|t| self.world_object(t))
+        });
+        let Some(t) = target else {
+            return Ok(range);
+        };
+        if !matches!(master.charge_type, 6 | 7) {
+            return Ok(range);
         }
-        Ok(weapon_range(master))
+        let tm = self.master_of(t.player(), t.master_id())?;
+        let works = crate::damage::charge_works(
+            master.charge_target,
+            master.charge_type,
+            tm.class,
+            tm.kind,
+        );
+        // slot 0x300 of a charge type other than 1 and 3: at least 1 (`COMISS`, a NaN is not)
+        Ok(if works && 1.0 <= u.charge {
+            range + f32::from(master.charge_event)
+        } else {
+            range
+        })
     }
 
     /// `FUN_14100bcb0`'s far test (`0x14100be04`..`0x14100c1c9`, `param_2` 1) of member
@@ -631,6 +645,33 @@ mod tests {
     use crate::group::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
+
+    /// Slot 0x238 (`FUN_14108d9b0`): the weapon range, plus `charge_event` for a ready charge of
+    /// type 6 or 7 that works on the target (here every class, −1); without the charge ready, of
+    /// another type, on no target (and no action's) or on a class outside its groups, the
+    /// weapon range alone.
+    #[test]
+    fn a_ready_charge_of_type_6_adds_its_charge_event_to_the_range() {
+        let mut t = searched_world();
+        let charging = |t: &mut Turns, charge_type: i16, charge_target: i16| {
+            let m = t.masters[1].get_mut(4).unwrap();
+            (m.charge_type, m.charge_target, m.charge_event) = (charge_type, charge_target, 2);
+        };
+        let range = |t: &Turns, target: Option<i32>| {
+            let me = t.world_object(10).unwrap();
+            t.range_against(me, target.and_then(|id| t.world_object(id)))
+                .unwrap()
+        };
+        charging(&mut t, 6, -1);
+        assert_eq!(range(&t, Some(20)), 1.0);
+        t.players[1].objects[0].charge = 1.0;
+        assert_eq!(range(&t, Some(20)), 3.0);
+        assert_eq!(range(&t, None), 1.0);
+        charging(&mut t, 7, 1 << 5);
+        assert_eq!((range(&t, Some(20)), range(&t, Some(31))), (1.0, 3.0));
+        charging(&mut t, 1, -1);
+        assert_eq!(range(&t, Some(20)), 1.0);
+    }
 
     /// Player 1's soldier 10 (master 4, class 6) at (5, 5) in group 1; player 2 (its enemy)
     /// holds 20 at (6, 5) and 21 (state 3) at (5, 6); player 3 (neutral) holds 30 (class 6) at
