@@ -3070,10 +3070,11 @@ impl Unit {
     /// the volley's last (masters 73 and 559 tell their unit AI the action executed) leaves
     /// `next_volley` 0. Of the missiles at a time, the first of a volley is its missile (none
     /// without one) and the others its extra missiles ([`Unit::volley_missile`]), each scattered
-    /// by two draws. Not modelled: the self-destructing masters (527, 528, 1104, 2133..2135,
-    /// classes 35 and 64 alive), a charge (charge types 6 and 7), a target of another player
-    /// than Gaia (its player's object 112, slot 0x1c0) or of a computer player (its notify
-    /// 0x214). Not held: the local player's statistics (`FUN_140a4ba80`).
+    /// by two draws. A target of a player but Gaia has its player make a flare at the attacker
+    /// ([`Context::flares`]). Not modelled: the self-destructing masters (527, 528, 1104,
+    /// 2133..2135, classes 35 and 64 alive), a charge (charge types 6 and 7) and a target of a
+    /// computer player (its notify 0x214). Not held: the local player's statistics
+    /// (`FUN_140a4ba80`).
     pub(in crate::turn) fn volley(
         &mut self,
         c: &mut Context<'_>,
@@ -3130,10 +3131,12 @@ impl Unit {
             (old == 0, if old == 0 { n - 1 } else { n })
         };
         if missile || 0 < extra {
+            // a target of a player but Gaia: its player makes a flare (master 112, slot 0x1c0)
+            // at the attacker's place, which lasts twice as long from a trebuchet (class 54:
+            // its amount, +0x310, doubled); the caller's after the update
             if 0 < aimed.player {
-                return Err(GenieError::unsupported(
-                    "a hit on a player's object (its player's object 112, slot 0x1c0)",
-                ));
+                c.flares
+                    .push((aimed.player, self.position, master.class == 54));
             }
             let [x_spread, y_spread, _] = master.volley_spread;
             for _ in 0..extra {

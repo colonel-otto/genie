@@ -1109,6 +1109,7 @@ impl Turns {
             released_annexes: Vec::new(),
             cleared: Vec::new(),
             site_removals: Vec::new(),
+            flares: Vec::new(),
             evacuations: Vec::new(),
             recycling: &mut self.recycling,
             mode_1: self.mode_680 == 1,
@@ -1231,6 +1232,7 @@ impl Turns {
             annex_states,
             cleared,
             site_removals,
+            flares,
             released_annexes,
             main_works,
             building_death,
@@ -1261,6 +1263,12 @@ impl Turns {
                 if w.restored {
                     u.armor_removed = [0; 2];
                 }
+            }
+        }
+        // the flares a hit on a player's object made for that player
+        for (q, at, doubled) in flares {
+            if let Err(e) = self.make_flare(q, at, doubled) {
+                result = result.and(Err(e));
             }
         }
         // the gate's player opens or shuts it, in the gate's update before the rest

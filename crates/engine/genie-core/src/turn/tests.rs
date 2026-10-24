@@ -482,6 +482,35 @@ fn a_flare_at_a_point_stands_on_the_ground() {
     }
 }
 
+/// A hit on player 2's object makes player 2 a flare (master 112) at the attacker's place
+/// (`FUN_14120c0a0`'s slot 0x1c0), whose amount (`+0x310`, its time) a trebuchet's hit doubles.
+#[test]
+fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
+    let player = || Player {
+        attributes: vec![0.0; 300],
+        ..Player::default()
+    };
+    let mut t = Turns::new(0, 1, 0, vec![0, 0, 0], vec![player(), player(), player()]);
+    placeable(&mut t);
+    let flare = Master {
+        id: 112,
+        kind: crate::masters::master_type::ANIMATED,
+        standing_sprite: -1,
+        storage: vec![(12, 1.0, 0)],
+        ..Master::default()
+    };
+    t.masters = (0..3).map(|_| Masters::new([flare.clone()])).collect();
+    t.next_object_id = 100;
+    t.make_flare(2, [10.5, 12.5, 0.0], false).unwrap();
+    t.make_flare(2, [10.5, 12.5, 0.0], true).unwrap();
+    let flares: Vec<(i16, f32)> = t.players[2]
+        .objects
+        .iter()
+        .map(|u| (u.life.master_id, u.life.amount))
+        .collect();
+    assert_eq!(flares, [(112, 1.0), (112, 2.0)]);
+}
+
 /// `Process_New_Tiles`: player 1's newly explored tiles, in order, give the objects of its
 /// masters that gather by themselves to its lists by group, at their places.
 #[test]

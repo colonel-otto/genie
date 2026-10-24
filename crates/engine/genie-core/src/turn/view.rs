@@ -135,6 +135,10 @@ pub(in crate::turn) struct Context<'a> {
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
     /// update ([`Turns::clear_object`]).
     pub(in crate::turn) cleared: Vec<crate::build::Cleared>,
+    /// The flares a hit on a player's object has that player make (master 112, its slot 0x1c0)
+    /// at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's
+    /// after the update ([`Turns::make_flare`]).
+    pub(in crate::turn) flares: Vec<(usize, [f32; 3], bool)>,
     /// The foundations another player's marks lie on, which a builder's `set_state(7)` removes
     /// when their owner is human ([`crate::build::BuildStep::removes`]), the caller's after the
     /// update ([`Turns::remove_building`]).
@@ -313,6 +317,8 @@ pub(in crate::turn) struct ObjectOutputs {
     pub(in crate::turn) cleared: Vec<crate::build::Cleared>,
     /// [`Context`]'s `site_removals`.
     pub(in crate::turn) site_removals: Vec<i32>,
+    /// [`Context`]'s `flares`.
+    pub(in crate::turn) flares: Vec<(usize, [f32; 3], bool)>,
     /// [`Context`]'s `released_annexes`.
     pub(in crate::turn) released_annexes: Vec<(i32, f32)>,
     /// [`Context`]'s `main_works`.
@@ -374,6 +380,7 @@ impl Context<'_> {
             annex_states: std::mem::take(&mut self.annex_states),
             cleared: std::mem::take(&mut self.cleared),
             site_removals: std::mem::take(&mut self.site_removals),
+            flares: std::mem::take(&mut self.flares),
             released_annexes: std::mem::take(&mut self.released_annexes),
             main_works: std::mem::take(&mut self.main_works),
             building_death: self.building_death.take(),

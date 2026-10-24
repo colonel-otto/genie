@@ -2255,6 +2255,31 @@ impl Turns {
         Ok(())
     }
 
+    /// The flare a hit on player `p`'s object makes for it (`FUN_14120c0a0`: the player's slot
+    /// 0x1c0 with master 112, `FUN_14162ce00` with the footprint left alone, as FLARE's,
+    /// [`Turns::remains`] then [`Turns::made_new_object`]) at the attacker's place `at`; from a
+    /// trebuchet (`doubled`) its amount (`+0x310`, which runs down as its time) doubles.
+    ///
+    /// # Errors
+    ///
+    /// What the new object does not model.
+    pub(crate) fn make_flare(
+        &mut self,
+        p: usize,
+        at: [f32; 3],
+        doubled: bool,
+    ) -> Result<(), GenieError> {
+        /// The flare a hit leaves (`0x70`, FLARE).
+        const HIT_FLARE: i16 = 112;
+        let before = self.players[p].objects.len();
+        self.remains(p, HIT_FLARE, at, None)?;
+        self.made_new_object(p)?;
+        if doubled && let Some(f) = self.players[p].objects.get_mut(before) {
+            f.life.amount += f.life.amount;
+        }
+        Ok(())
+    }
+
     /// A death spawn or the remains of a building master: its slot 0x40 (`FUN_14123d1a0`) makes a
     /// building at `at` (`FUN_1411ac5c0` with 1, so its init `FUN_1411de5f0`): the combat setup
     /// (`FUN_14121df60`) with its draws, the unit AI's three ([`UnitAi::constructed`]; the
