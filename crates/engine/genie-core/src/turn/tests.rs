@@ -1806,6 +1806,35 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
     assert_eq!(taken(&now), taken(&later));
 }
 
+/// The unit AI's move at once (`UnitSide::ai_move_now`, ahead of a stop and an attack command
+/// in the same run) does what the move after the update does (slot 0x340: the actions go, a
+/// `MoveTo` to the point).
+#[test]
+fn the_ai_move_at_once_matches_the_one_after_the_update() {
+    let mut later = sent_off_world(vec![]);
+    later.players[1].objects[0].mover = Some(crate::hunt::tests::walker());
+    let mut now = later.clone();
+    let m = crate::unit_ai::AiMove {
+        point: [35.0, 80.0, 0.0],
+        range: 0.0,
+        force: true,
+        walk: false,
+    };
+    later.move_aside(1, 0, m).unwrap();
+    now.run_unit_ai((1, 0), |_, _, side, _, _| {
+        side.ai_move_now(m)?;
+        Ok(Vec::new())
+    })
+    .unwrap();
+    let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
+    assert_eq!(b.move_to.and_then(|mt| mt.goal), Some([35.0, 80.0, 0.0]));
+    assert_eq!(
+        (b.move_to, &b.mover, &b.sprite),
+        (a.move_to, &a.mover, &a.sprite)
+    );
+    assert_eq!(now.streams, later.streams);
+}
+
 /// The hunt command at once from the unit AI's run (`UnitSide::hunt_now`: a requeued hunt
 /// order's, which a following attack command replaces) does what `HuntObject`'s unit part after
 /// the update does: the stopAction's standing sprite, the switch to the hunter (122) whose task

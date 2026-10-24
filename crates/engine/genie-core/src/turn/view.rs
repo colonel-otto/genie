@@ -2375,6 +2375,36 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         Ok(())
     }
 
+    /// The unit's slot 0x340 on its unit AI's move at once ([`Unit::ai_move_with`]; a Transport
+    /// on top sails there, [`Unit::transport_sail`]), its releases and its standing sprite as
+    /// the move after the update gives them.
+    fn ai_move_now(&mut self, m: AiMove) -> Result<(), GenieError> {
+        let class = self
+            .masters
+            .and_then(|ms| ms.get(self.unit.life.master_id))
+            .ok_or(crate::turn::UNIT_AI_MASTER)?
+            .class;
+        let by = Releaser {
+            id: self.unit.id,
+            class,
+            player: self.player,
+        };
+        let sails = self.unit.ai_move_with(
+            m,
+            (class, self.player),
+            (self.releases, self.builder_leaves, by),
+            (self.masters, self.graphics, self.sprite),
+        )?;
+        if sails {
+            self.unit.transport_sail(
+                m.point,
+                (self.spatial, self.zones, self.pathing),
+                (self.masters, self.graphics, self.sprite),
+            )?;
+        }
+        Ok(())
+    }
+
     fn wait_solidify(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (self.player, self.others, self.foreign);

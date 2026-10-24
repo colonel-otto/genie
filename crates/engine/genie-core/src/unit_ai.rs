@@ -1643,6 +1643,16 @@ pub trait UnitSide {
         Err(WITHOUT_UNIT)
     }
 
+    /// The unit's slot 0x340 on a move its unit AI gave ([`Effect::Move`]) run at once, ahead of
+    /// a command that follows it in the same AI run.
+    ///
+    /// # Errors
+    ///
+    /// A side without its unit, and what the move does not model.
+    fn ai_move_now(&mut self, _m: AiMove) -> Result<(), GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
     /// `AttackObject`'s test of object `target` (`FUN_140c43720`): the world holds it and the unit
     /// AI's attack check (slot 0xa0, [`can_attack`], as `seeker` stands) passes; then its master's
     /// class and its place.
@@ -5857,6 +5867,7 @@ impl UnitAi {
                         | Effect::CapHumanOrder(_)
                         | Effect::BuildObject(_)
                         | Effect::HuntObject(_)
+                        | Effect::Move(_)
                 )
             }) {
                 return Err(PENDING_BEFORE_ATTACK.with("effects", format!("{fx:?}")));
@@ -5868,6 +5879,7 @@ impl UnitAi {
                     Effect::CapHumanOrder(cap) => side.cap_human_order(cap)?,
                     Effect::BuildObject(foundation) => side.build_now(foundation)?,
                     Effect::HuntObject(quarry) => side.hunt_now(quarry, self)?,
+                    Effect::Move(m) => side.ai_move_now(m)?,
                     _ => side.stop()?,
                 }
             }
