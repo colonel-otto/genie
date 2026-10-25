@@ -219,47 +219,11 @@
     },
     {
       "file": "crates/engine/genie-core/src/gather.rs",
-      "function": "GatherAction::set_work",
-      "line": 1370,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gather.rs",
-      "function": "GatherAction::step_move",
-      "line": 1264,
-      "cyclomatic": 18.0,
-      "coverage": 0.0,
-      "crap": 342.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gather.rs",
       "function": "GatherAction::update",
       "line": 1062,
       "cyclomatic": 41.0,
-      "coverage": 42.3728813559322,
-      "crap": 362.69805092049336,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gather.rs",
-      "function": "GatherAction::update_drop",
-      "line": 1446,
-      "cyclomatic": 24.0,
-      "coverage": 0.0,
-      "crap": 600.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gather.rs",
-      "function": "GatherAction::update_walk",
-      "line": 1215,
-      "cyclomatic": 10.0,
-      "coverage": 0.0,
-      "crap": 110.0,
+      "coverage": 49.152542372881356,
+      "crap": 261.9914353463596,
       "crate": "genie-core"
     },
     {
@@ -390,56 +354,11 @@
     },
     {
       "file": "crates/engine/genie-core/src/hunt.rs",
-      "function": "HuntAction::set_face",
-      "line": 1420,
-      "cyclomatic": 21.0,
-      "coverage": 45.76271186440678,
-      "crap": 91.3610787860492,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/hunt.rs",
-      "function": "HuntAction::set_walk",
-      "line": 1369,
-      "cyclomatic": 11.0,
-      "coverage": 0.0,
-      "crap": 132.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/hunt.rs",
       "function": "HuntAction::update",
       "line": 985,
       "cyclomatic": 56.0,
       "coverage": 0.0,
       "crap": 3192.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/hunt.rs",
-      "function": "HuntAction::update_drop",
-      "line": 843,
-      "cyclomatic": 23.0,
-      "coverage": 56.16438356164384,
-      "crap": 67.55916322422927,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/hunt.rs",
-      "function": "HuntAction::update_lead",
-      "line": 1300,
-      "cyclomatic": 10.0,
-      "coverage": 0.0,
-      "crap": 110.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/hunt.rs",
-      "function": "HuntAction::update_point_walk",
-      "line": 715,
-      "cyclomatic": 20.0,
-      "coverage": 59.61538461538461,
-      "crap": 46.3455848884843,
       "crate": "genie-core"
     },
     {
@@ -461,15 +380,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/move_to.rs",
-      "function": "target_moved",
-      "line": 248,
-      "cyclomatic": 15.0,
-      "coverage": 0.0,
-      "crap": 240.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::close_in",
       "line": 1537,
@@ -483,8 +393,8 @@
       "function": "Mover::ignore_list",
       "line": 2342,
       "cyclomatic": 17.0,
-      "coverage": 41.935483870967744,
-      "crap": 73.57574435232115,
+      "coverage": 54.83870967741935,
+      "crap": 43.61931455808802,
       "crate": "genie-core"
     },
     {
@@ -510,8 +420,8 @@
       "function": "Mover::request",
       "line": 1720,
       "cyclomatic": 94.0,
-      "coverage": 36.97749196141479,
-      "crap": 2305.784214556064,
+      "coverage": 37.29903536977492,
+      "crap": 2272.10280446317,
       "crate": "genie-core"
     },
     {

@@ -3730,8 +3730,9 @@ pub(crate) fn short_path_including(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use crate::move_to::Walk;
     use crate::spatial::{Gait, Obstruction, Placed};
 
     const DT: f32 = 0.02;
@@ -3840,7 +3841,7 @@ mod tests {
 
     /// MarvinBlue/426048731's builder 9177 as the game saved it after tick 679 (update 680): its
     /// first path toward the house foundation 10028, facing along it, not yet moving.
-    fn builder_9177() -> Mover {
+    pub(crate) fn builder_9177() -> Mover {
         Mover {
             forward: [0.894_427_2, 0.0, -0.447_213_62],
             right: [-0.447_213_62, 0.0, -0.894_427_2],
@@ -4831,7 +4832,7 @@ mod tests {
         assert_eq!(lowered_units(&walker, &s, None), Vec::<i32>::new());
     }
 
-    fn world() -> Spatial {
+    pub(crate) fn world() -> Spatial {
         let mut s = Spatial::new([120, 120]);
         let unit = |x, y| Placed {
             position: [x, y, 0.0],
@@ -4865,6 +4866,69 @@ mod tests {
             },
         );
         s
+    }
+
+    /// [`world`]'s objects on a 120 × 120 map of tiles of `classes` (row by row), which the
+    /// pather reads.
+    pub(crate) fn tiled_world(classes: Vec<u8>) -> Spatial {
+        let objects = world();
+        let tiles = crate::spatial::Tiles::new(120, 120, classes);
+        let mut s = Spatial::with_tiles([120, 120], tiles);
+        for id in [9175, 9177, 10028] {
+            s.insert(id, *objects.get(id).expect("in the world"));
+        }
+        s
+    }
+
+    /// A unit's walk for the actions' tests: MarvinBlue/426048731's builder 9177 on its first
+    /// path toward house 10028 ([`builder_9177`]), its `MoveTo`'s point the house's, on open
+    /// tiles ([`tiled_world`]) with the pather's mesh, a fresh Object stream and no unit groups.
+    pub(crate) struct WalkRig {
+        pub(crate) mover: Mover,
+        pub(crate) world: Spatial,
+        pathing: Pathing,
+        object: Well512,
+        groups: crate::group::UnitGroups,
+    }
+
+    impl WalkRig {
+        pub(crate) fn on_the_path() -> Self {
+            let mut mover = builder_9177();
+            mover.move_to_point = Some([30.0, 88.0, 0.0]);
+            let mut pathing = Pathing::default();
+            pathing.start_mesh(120);
+            Self {
+                mover,
+                world: tiled_world(vec![4; 120 * 120]),
+                pathing,
+                object: Well512::default(),
+                groups: crate::group::UnitGroups::default(),
+            }
+        }
+
+        /// The walk of unit 9177 at (28, 89) in action state `state`, a tenth of a second long,
+        /// with the world's planners.
+        pub(crate) fn walk(&mut self, state: u8) -> Walk<'_> {
+            Walk {
+                mover: Some(&mut self.mover),
+                me: Me {
+                    id: 9177,
+                    position: [28.0, 89.0, 0.0],
+                    group: -1,
+                    action_state: state,
+                },
+                dt: 0.1,
+                world: &mut self.world,
+                plan: Some(Planning {
+                    pathing: &mut self.pathing,
+                    now: 0,
+                    computer: false,
+                    object: &mut self.object,
+                    construction_rate: 1.0,
+                    groups: &self.groups,
+                }),
+            }
+        }
     }
 
     /// One tick of the walker: the velocity step, then the motion step from where it got.

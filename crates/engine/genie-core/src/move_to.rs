@@ -661,6 +661,49 @@ mod tests {
         }
     }
 
+    /// `0x140aa2a70`'s check of its target in state 4: a target within half a tile of the
+    /// `MoveTo`'s point stays; off it, a quiet `MoveTo` asks for a path again, and one of its own
+    /// moves its path's end to the target while the line to it is clear, else asks again. A
+    /// target gone and a point not held are not modelled.
+    #[test]
+    fn a_target_off_the_move_to_s_point_asks_again_or_moves_the_path_s_end() {
+        let open = vec![4; 120 * 120];
+        let mut walled = open.clone();
+        for y in 85..92 {
+            walled[y * 120 + 29] = 1;
+        }
+        let moved = |classes: &[u8], point, target, quiet| {
+            let mut world = crate::movement::tests::tiled_world(classes.to_vec());
+            let mut mover = crate::movement::tests::builder_9177();
+            mover.move_to_point = point;
+            let walk = Walk {
+                mover: Some(&mut mover),
+                me: Me {
+                    id: 9177,
+                    position: [28.0, 89.0, 0.0],
+                    group: -1,
+                    action_state: 4,
+                },
+                dt: 0.1,
+                world: &mut world,
+                plan: None,
+            };
+            target_moved(&walk, target, quiet)
+        };
+        let on = Some([30.4, 88.0, 0.0]);
+        let off = Some([30.6, 88.0, 0.0]);
+        assert_eq!(moved(&open, on, 10028, true), Ok(Follow::Stays));
+        assert_eq!(moved(&open, on, 10028, false), Ok(Follow::Stays));
+        assert_eq!(moved(&open, off, 10028, true), Ok(Follow::Again));
+        assert_eq!(
+            moved(&open, off, 10028, false),
+            Ok(Follow::PathEnd([30.0, 88.0, 0.0]))
+        );
+        assert_eq!(moved(&walled, off, 10028, false), Ok(Follow::Again));
+        assert!(moved(&open, None, 10028, true).is_err());
+        assert!(moved(&open, on, 4242, true).is_err());
+    }
+
     #[test]
     fn a_move_to_an_object_at_hand_starts_arrived_and_shows_the_standing_sprite() {
         let mut world = Spatial::new([120, 120]);
