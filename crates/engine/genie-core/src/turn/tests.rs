@@ -7938,3 +7938,464 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
     assert_eq!(p.objects[0].build.map(|b| b.target), Some(10028));
     assert_eq!(t.players[0].objects[0].build, None);
 }
+
+/// The archer's master (4, 2 s reload, range 4, its missile 363 a tile up), its arrow (363,
+/// speed 7, straight) and a deer (65, 5 hit points, 1.5 high) for [`archer_world`].
+fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
+    let archer = Master {
+        id: 4,
+        kind: 70,
+        class: 0,
+        hit_points: 30,
+        radius: [0.2, 0.2],
+        standing_sprite: 300,
+        attack_sprite: 301,
+        missile: 363,
+        weapon_offset: [0.0, 0.0, 1.0],
+        weapon_range: 4.0,
+        reload: 2.0,
+        hit_chance,
+        max_volley,
+        volley_spread: [spread, spread, 0.0],
+        moving: Some(crate::hunt::tests::walker().stats),
+        ..Master::default()
+    };
+    let arrow = Master {
+        id: 363,
+        kind: 60,
+        class: 27,
+        hit_points: 1,
+        radius: [0.1, 0.1],
+        standing_sprite: -1,
+        death_sprite: -1,
+        death_spawns: [-1, -1],
+        life: Some(MasterData::default()),
+        recyclable: true,
+        moving: Some(crate::movement::MoveStats {
+            speed: 7.0,
+            ..crate::hunt::tests::walker().stats
+        }),
+        missile_stats: Some(crate::missile::MissileStats {
+            speed: 7.0,
+            radius: [0.1, 0.1, 0.0],
+            ..crate::missile::MissileStats::default()
+        }),
+        ..Master::default()
+    };
+    let deer = Master {
+        id: 65,
+        kind: 70,
+        class: 10,
+        hit_points: 5,
+        radius: [0.2, 0.2],
+        height: 1.5,
+        terrain_bonus: -1,
+        ..Master::default()
+    };
+    Masters::new([archer, arrow, deer])
+}
+
+/// A flat 40-tile map: player 1's archer 123 at (10, 10) in its Attack's READY on Gaia's deer 50
+/// at (13, 10); its swing fires at frame 5 of 0.1 s. The masters as [`archer_masters`]; the next
+/// reusable id −1.
+fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Turns {
+    use crate::garrison::tests::{unit, walker};
+    let mut players: Vec<Player> = (0..2).map(|_| Player::default()).collect();
+    players[0].relations = vec![0, 3];
+    players[1].relations = vec![3, 0];
+    let mut t = Turns::new(0, 29910, 1, vec![0; 2], players);
+    t.spatial = Spatial::new([40, 40]);
+    let mut terrain = crate::terrain::Terrain::new(
+        40,
+        40,
+        vec![(0, 0, -1); 40 * 40],
+        vec![crate::terrain::TerrainKind {
+            shown: true,
+            flags: 0,
+            forest: false,
+        }],
+        Vec::new(),
+    );
+    terrain.set_elevations(vec![0; 40 * 40]);
+    t.spatial.terrain = Some(terrain);
+    let sprite = |id| Graphic {
+        id,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    t.graphics = std::collections::BTreeMap::from([(300, sprite(300)), (301, sprite(301))]);
+    let masters = archer_masters(hit_chance, max_volley, spread);
+    t.masters = vec![masters.clone(), masters];
+    walker(&mut t, 1, 123, 4, [10.0, 10.0]);
+    let archer = &mut t.players[1].objects[0];
+    if let Some(m) = archer.mover.as_mut() {
+        m.sprite_facets = Some(crate::facing::SpriteFacets {
+            count: 8,
+            flag_1: false,
+        });
+    }
+    archer.firepower = f32::from(max_volley);
+    let mut attack = own_attack(50, -1, crate::attack::READY);
+    attack.range = 4.0;
+    attack.arms.missile = 363;
+    attack.arms.fire_frame = 5;
+    attack.arms.sprite = Some(sprite(301));
+    attack.arms.idle_sprite = Some(sprite(300));
+    archer.attack = Some(attack);
+    let mut deer = unit(50, 65, 5.0);
+    deer.position = [13.0, 10.0, 0.0];
+    t.players[0].objects.push(deer);
+    t.spatial.insert(
+        50,
+        Placed {
+            position: [13.0, 10.0, 0.0],
+            radius: [0.2, 0.2],
+            class: 10,
+            player: 0,
+            master: 65,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: Some(crate::spatial::Obstruction { kind: 2, class: 0 }),
+        },
+    );
+    t.recycling.next_id = -1;
+    t.next_object_id = 200;
+    t
+}
+
+/// The missiles in player 1's list: id, master, place.
+fn missiles(t: &Turns) -> Vec<(i32, i16, [f32; 3])> {
+    t.players[1]
+        .objects
+        .iter()
+        .filter(|u| u.missile.is_some())
+        .map(|u| (u.id, u.life.master_id, u.position))
+        .collect()
+}
+
+/// The deer's hit points in [`archer_world`].
+fn deer_hp(t: &Turns) -> f32 {
+    t.players[0].objects[0].life.hp
+}
+
+/// `a` within 1e-5 of `b` on each axis.
+fn assert_near(a: [f32; 3], b: [f32; 3]) {
+    assert!(
+        (0..3).all(|i| (a[i] - b[i]).abs() < 1e-5),
+        "{a:?} against {b:?}"
+    );
+}
+
+/// Slot 0x858 (`FUN_14120c0a0`) and `FUN_141081020`: the archer's swing fires at its firing
+/// frame (frame 5 of 0.1 s: the sixth update) its master's missile (363) with the next reusable
+/// id (−1), a tile up (its weapon offset) and aimed at the deer a third of its height up; each
+/// update the missile flies its speed's share (0.7 of a tile) along that line. It hits the deer
+/// in the update its sweep, grown by its radius, meets the deer's footprint: 1 hit point (the
+/// least damage, as neither has attacks) and its action done. The dead missile leaves the list
+/// four updates after the hit for the pool of type 60, whose id the next swing takes again 20
+/// updates after the first (the 2 s reload).
+#[test]
+fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
+    let mut t = archer_world(100, 0, 0.0);
+    for _ in 0..5 {
+        t.tick(100);
+    }
+    assert_eq!(missiles(&t), vec![]);
+    let way = [3.0f32, 0.0, -0.5];
+    let length = (way[0] * way[0] + way[2] * way[2]).sqrt();
+    let flown = |k: f32| {
+        [
+            10.0 + k * 0.7 * way[0] / length,
+            10.0,
+            1.0 + k * 0.7 * way[2] / length,
+        ]
+    };
+    for k in 1..=3 {
+        t.tick(100);
+        let m = missiles(&t);
+        assert_eq!((m.len(), m[0].0, m[0].1), (1, -1, 363));
+        assert_near(m[0].2, flown(k as f32));
+        assert_eq!(deer_hp(&t), 5.0);
+    }
+    // the fourth step ends 0.1 short of the deer's footprint (12.8): its sweep meets it
+    t.tick(100);
+    assert_near(missiles(&t)[0].2, flown(4.0));
+    assert_eq!(deer_hp(&t), 4.0);
+    let action = t.players[1].objects[1]
+        .missile
+        .as_ref()
+        .and_then(|m| m.action.as_ref())
+        .map(|a| (a.state, a.result));
+    assert_eq!(action, Some((crate::missile::DONE, 1)));
+    for _ in 0..3 {
+        t.tick(100);
+    }
+    assert_eq!(missiles(&t).len(), 1);
+    t.tick(100);
+    assert_eq!(missiles(&t), vec![]);
+    assert_eq!(t.recycling.missiles, vec![(-1, true)]);
+    for _ in 0..12 {
+        t.tick(100);
+    }
+    assert_eq!(missiles(&t), vec![]);
+    t.tick(100);
+    assert_eq!(missiles(&t).iter().map(|m| m.0).collect::<Vec<_>>(), [-1]);
+    assert_eq!(t.recycling.missiles, vec![]);
+}
+
+/// `FUN_140a9c600`'s miss: a hit chance of 0 strays the missile by up to the ground distance
+/// times the master's missed spread; it flies past the deer, lands on the ground (its height 0,
+/// `FUN_140a9c890`) and goes to the pool as landed (not flying).
+#[test]
+fn a_missed_missile_strays_and_lands_on_the_ground() {
+    let mut t = archer_world(0, 0, 0.0);
+    for m in &mut t.masters {
+        m.get_mut(4).unwrap().missed_spread = 2.0;
+    }
+    for _ in 0..6 {
+        t.tick(100);
+    }
+    let at = missiles(&t)[0].2;
+    assert_ne!(at[1], 10.0);
+    for _ in 0..4 {
+        t.tick(100);
+    }
+    assert_eq!(missiles(&t)[0].2[2], 0.0);
+    for _ in 0..2 {
+        t.tick(100);
+    }
+    assert_eq!(missiles(&t), vec![]);
+    assert_eq!(t.recycling.missiles, vec![(-1, false)]);
+    assert_eq!(deer_hp(&t), 5.0);
+    // the next shot takes the landed missile again: on the ground by its fly mode, a tile up
+    // again once it is placed (its new position's height is the weapon offset's)
+    for _ in 0..14 {
+        t.tick(100);
+    }
+    assert_eq!(missiles(&t).iter().map(|m| m.0).collect::<Vec<_>>(), [-1]);
+    assert_eq!(t.recycling.missiles, vec![]);
+}
+
+/// A volley (`max_attacks_in_volley` 3, firepower 3): with a spread, a swing fires 1 to 3 of its
+/// missiles (an Object-stream draw), the first the master's missile on the line and the others
+/// scattered off it, fired before it; `next_volley` counts the fired, the rest follow at the next
+/// swing and then it is 0. Each missile that meets the deer takes a hit point. Without a spread
+/// one missile a swing.
+#[test]
+fn a_volley_fires_its_missiles_over_swings_scattered_by_its_spread() {
+    let mut t = archer_world(100, 3, 0.5);
+    for _ in 0..6 {
+        t.tick(100);
+    }
+    let first = missiles(&t);
+    let fired = t.players[1].objects[0].next_volley;
+    assert!((1..3).contains(&fired), "{fired}");
+    assert_eq!(first.len(), usize::from(fired));
+    let (main, scattered) = first.split_last().unwrap();
+    assert_eq!(main.0, -i32::from(fired));
+    assert!(scattered.iter().all(|m| m.2 != main.2));
+    for _ in 0..3 {
+        t.tick(100);
+    }
+    assert_eq!(deer_hp(&t), 5.0 - f32::from(fired));
+    // the next swing, six updates after the first, fires the rest
+    t.tick(100);
+    t.tick(100);
+    assert_eq!(t.players[1].objects[0].next_volley, fired);
+    t.tick(100);
+    assert_eq!(t.players[1].objects[0].next_volley, 0);
+    let mut one = archer_world(100, 3, 0.0);
+    for _ in 0..6 {
+        one.tick(100);
+    }
+    assert_eq!(
+        (missiles(&one).len(), one.players[1].objects[0].next_volley),
+        (1, 1)
+    );
+}
+
+/// `FUN_141226690` with the master's own volley missile (`volley_missile`, 364): the extra
+/// missiles are shooterless, each hits by its own master (`FUN_140a9e6e0`'s slot 0x860, the
+/// missile as the attacker: 1 hit point), the first stays the master's missile with the shooter.
+#[test]
+fn a_volley_s_own_missiles_hit_without_the_shooter() {
+    let mut t = archer_world(100, 3, 0.5);
+    for m in &mut t.masters {
+        let mut all: Vec<Master> = m.iter().cloned().collect();
+        let own = Master {
+            id: 364,
+            ..m.get(363).unwrap().clone()
+        };
+        all.push(own);
+        m.get_mut(4).unwrap().volley_missile = Some(364);
+        all.retain(|x| x.id != 4);
+        all.push(m.get(4).unwrap().clone());
+        *m = Masters::new(all);
+    }
+    for _ in 0..6 {
+        t.tick(100);
+    }
+    let fired = t.players[1].objects[0].next_volley;
+    let first = missiles(&t);
+    let masters: Vec<i16> = first.iter().map(|m| m.1).collect();
+    let mut expected = vec![364; usize::from(fired) - 1];
+    expected.push(363);
+    assert_eq!(masters, expected);
+    let shooters: Vec<i32> = t.players[1].objects[1..]
+        .iter()
+        .filter_map(|u| u.missile.as_ref()?.action.as_ref().map(|a| a.fired_from))
+        .collect();
+    let mut expected = vec![-1; usize::from(fired) - 1];
+    expected.push(123);
+    assert_eq!(shooters, expected);
+    for _ in 0..3 {
+        t.tick(100);
+    }
+    assert_eq!(deer_hp(&t), 5.0 - f32::from(fired));
+}
+
+/// `FUN_1410d5920`'s setups for a new missile draw as a new object's: an animated standing sprite
+/// (flag 1) with a random first frame (flag 4) starts on the Sprite stream (two draws), then its
+/// facet and, as it turns (flag 2) with several facets, its angle on the Object stream; the
+/// missile's angle is then its flight's. A missile without a standing sprite draws none of them
+/// (the draw counters count each step; the streams' indexes restart at each seeding).
+#[test]
+fn a_new_missile_s_sprite_draws_as_a_new_object_s() {
+    let mut plain = archer_world(100, 0, 0.0);
+    let mut drawn = archer_world(100, 0, 0.0);
+    let sprite = Graphic {
+        id: 302,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 7,
+    };
+    let _ = drawn.graphics.insert(302, sprite);
+    for m in &mut drawn.masters {
+        m.get_mut(363).unwrap().standing_sprite = 302;
+    }
+    for _ in 0..6 {
+        plain.tick(100);
+        drawn.tick(100);
+    }
+    assert_eq!(missiles(&plain), missiles(&drawn));
+    let mut more = |stream| drawn.streams.get(stream).draws - plain.streams.get(stream).draws;
+    assert_eq!((more(Stream::Sprite), more(Stream::Object)), (2, 2));
+}
+
+/// The missile chain's cases the slice does not model stop the shooter's player with their
+/// reason, in the update the swing fires (or the missile flies): a charged hit, a target of a
+/// computer player (its notify 0x214), a missile master that cannot be pooled, moved or flown,
+/// a smart missile and a projectile of type 1.
+#[test]
+fn the_missile_chain_s_unmodelled_cases_stop_the_player_with_their_reason() {
+    type Change = fn(&mut Turns);
+    let cases: [(Change, &str); 7] = [
+        (
+            |t| {
+                for m in &mut t.masters {
+                    m.get_mut(4).unwrap().charge_type = 6;
+                }
+            },
+            "a charged hit",
+        ),
+        (
+            |t| t.players[0].computer = true,
+            "a hit on a computer player's object",
+        ),
+        (
+            |t| {
+                for m in &mut t.masters {
+                    m.get_mut(363).unwrap().recyclable = false;
+                }
+            },
+            "a missile of a master that is not recyclable",
+        ),
+        (
+            |t| {
+                for m in &mut t.masters {
+                    m.get_mut(363).unwrap().moving = None;
+                }
+            },
+            "a missile master that does not move",
+        ),
+        (
+            |t| {
+                for m in &mut t.masters {
+                    m.get_mut(363).unwrap().missile_stats = None;
+                }
+            },
+            "a missile master without its flight",
+        ),
+        (
+            |t| {
+                for m in &mut t.masters {
+                    if let Some(s) = m.get_mut(363).unwrap().missile_stats.as_mut() {
+                        s.smart_mode = 1;
+                    }
+                }
+            },
+            "a smart missile leading its target",
+        ),
+        (
+            |t| {
+                for m in &mut t.masters {
+                    if let Some(s) = m.get_mut(363).unwrap().missile_stats.as_mut() {
+                        s.projectile_type = 1;
+                    }
+                }
+            },
+            "a missile of projectile type 1 or 2",
+        ),
+    ];
+    for (change, reason) in cases {
+        let mut t = archer_world(100, 0, 0.0);
+        change(&mut t);
+        for _ in 0..6 {
+            t.tick(100);
+        }
+        let stopped = t.players[1].unsupported.as_ref().map(|u| u.2.to_string());
+        assert!(
+            stopped.as_deref().is_some_and(|s| s.starts_with(reason)),
+            "{reason}: {stopped:?}"
+        );
+    }
+}
+
+/// `FUN_140a9e6e0`'s start: a missile whose target died (state 3) lets it go (its release) and
+/// flies on without one: past the place it would have hit the live deer, down to the ground, and
+/// into the pool as landed.
+#[test]
+fn a_missile_whose_target_died_flies_on_without_it_and_lands() {
+    let mut t = archer_world(100, 0, 0.0);
+    for _ in 0..7 {
+        t.tick(100);
+    }
+    t.players[0].objects[0].life.state = 3;
+    t.tick(100);
+    let target = t.players[1].objects[1]
+        .missile
+        .as_ref()
+        .and_then(|m| m.action.as_ref())
+        .map(|a| a.target);
+    assert_eq!(target, Some(-1));
+    // the update the live deer took its hit in passes it by
+    t.tick(100);
+    assert_eq!(deer_hp(&t), 5.0);
+    t.tick(100);
+    assert_eq!(missiles(&t)[0].2[2], 0.0);
+    t.tick(100);
+    t.tick(100);
+    assert_eq!(missiles(&t), vec![]);
+    assert_eq!(t.recycling.missiles, vec![(-1, false)]);
+    assert_eq!(deer_hp(&t), 5.0);
+}
