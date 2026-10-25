@@ -319,6 +319,33 @@ fn search_refused(map: [i32; 2], req: &LongRequest, gap2: i32) -> Option<Searche
     (!req.moves).then_some(Searched::Refused)
 }
 
+/// [`search`]'s goal test of the popped tile `d` tiles from the goal: a target's gap within the
+/// range ([`EPSILON`]) or the tile within [`REACHED`]; without a target, a search to within
+/// range by `d` against the range, else `d` within [`REACHED`].
+fn search_reached(req: &LongRequest, d: f32) -> bool {
+    match req.target {
+        Some(t) => t.gap - req.range < EPSILON || d < REACHED,
+        None if req.within_range => d - req.range < EPSILON,
+        None => d < REACHED,
+    }
+}
+
+/// [`search`]'s cost of the step from `from` (its cost `here`) to `to`: the step's length in
+/// quarter tiles squared over 4, and the estimate to the goal (`goal`, quarter tiles squared
+/// per axis) moved from `from`'s to `to`'s, in the game's wrapping arithmetic.
+const fn step_cost(here: i32, from: [i32; 2], to: [i32; 2], goal: [i32; 2]) -> i32 {
+    const fn quad(a: i32) -> i32 {
+        (a * 4).wrapping_mul(a * 4)
+    }
+    let walked = quad(to[1] - from[1]).wrapping_add(quad(to[0] - from[0])) >> 2;
+    walked
+        .wrapping_add(here)
+        .wrapping_sub(quad(goal[1] - from[1]))
+        .wrapping_sub(quad(goal[0] - from[0]))
+        .wrapping_add(quad(goal[1] - to[1]))
+        .wrapping_add(quad(goal[0] - to[0]))
+}
+
 /// The tiles beside a diagonal step (directions 0, 2, 4, 6) onto `n`, which the step needs as
 /// clear as the tile.
 const fn beside_diagonal(dir: u8, [nx, ny]: [i32; 2]) -> Option<[[i32; 2]; 2]> {
@@ -472,12 +499,7 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
         let ([cx, cy], _) = heap.slots[1];
         let (gx, gy) = (x1 - cx, y1 - cy);
         let d = crate::fmath::sqrt(gx.wrapping_mul(gx).wrapping_add(gy.wrapping_mul(gy)) as f32);
-        let reached = match req.target {
-            Some(t) => t.gap - req.range < EPSILON || d < REACHED,
-            None if req.within_range => d - req.range < EPSILON,
-            None => d < REACHED,
-        };
-        if in_rect(cx, cy) || reached {
+        if in_rect(cx, cy) || search_reached(req, d) {
             return Ok(Searched::Ran {
                 reached: true,
                 end: [cx, cy],
@@ -503,13 +525,7 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
             {
                 continue;
             }
-            let walked = quad(ny - cy).wrapping_add(quad(nx - cx)) >> 2;
-            let new_cost = walked
-                .wrapping_add(cost[index(cx, cy)])
-                .wrapping_sub(quad(y1 - cy))
-                .wrapping_sub(quad(x1 - cx))
-                .wrapping_add(quad(y1 - ny))
-                .wrapping_add(quad(x1 - nx));
+            let new_cost = step_cost(cost[index(cx, cy)], [cx, cy], [nx, ny], [x1, y1]);
             let seen = entered[index(nx, ny)];
             if seen.is_some() && new_cost >= cost[index(nx, ny)] {
                 continue;

@@ -618,6 +618,122 @@ const CASTLE_WONDER_COST: i16 = 184;
 /// The wall class (27, `0x1b`): two walls beside a builder on a footprint's diagonal stop it.
 const WALL: i16 = 27;
 
+/// [`Construction::complete`]'s storage: its master's entries of modes 4, 8 and 64 go to its
+/// owner (slot 0xf8, into `attributes`), those of mode 16 to its own `store` (`FUN_1411abad0`: an
+/// entry from 0); an entry of no resource or no amount gives nothing.
+fn hand_storage(
+    master: &Master,
+    attributes: &mut Vec<(i16, f32)>,
+    mut store: Option<&mut Vec<(i16, f32)>>,
+) {
+    for &(kind, amount, flag) in &master.storage {
+        if kind < 0 || amount <= 0.0 {
+            continue;
+        }
+        if matches!(flag, 4 | 8 | 64) {
+            attributes.push((kind, amount));
+        }
+    }
+    // the entries of mode 16 go to its own store (FUN_1411abad0: an entry from 0)
+    for &(kind, amount, flag) in &master.storage {
+        if kind < 0 || amount <= 0.0 || flag & 0x10 == 0 {
+            continue;
+        }
+        if let Some(store) = store.as_deref_mut() {
+            match store.iter_mut().find(|e| e.0 == kind) {
+                Some(e) => e.1 += amount,
+                None => store.push((kind, amount)),
+            }
+        }
+    }
+}
+
+/// [`Construction::complete`]'s ground: on snow the building gets its snow flag; its foundation
+/// terrain covers its clearance (terrain 0x3f under master 1889's pasture on mangrove or rice,
+/// `stack_master` [`RICE_PASTURE`]; [`crate::terrain::Terrain::cover`]).
+///
+/// # Errors
+///
+/// A map without its terrain, and a tile the terrain does not hold.
+fn lay_foundation(
+    c: &mut Construction,
+    world: &mut Spatial,
+    placed: &crate::spatial::Placed,
+    master: &Master,
+    building: &crate::masters::BuildingMaster,
+    stack_master: i16,
+    mode_680: i32,
+) -> Result<(), GenieError> {
+    /// The terrain the pasture master 1889's stack unit on mangrove or rice terrain lays
+    /// (`0x3f`).
+    const RICE_PASTURE_TERRAIN: u8 = 0x3f;
+    let terrain = world.terrain.as_mut().ok_or(GenieError::unsupported(
+        "a completion without the map's terrain",
+    ))?;
+    let [x, y, _] = placed.position;
+    if !c.snow && 0 <= x as i32 && 0 <= y as i32 && terrain.snow_under(x as i32, y as i32)? {
+        c.snow = true;
+    }
+    if 0 <= building.foundation_terrain {
+        let laid = if stack_master == RICE_PASTURE {
+            RICE_PASTURE_TERRAIN
+        } else {
+            building.foundation_terrain as u8
+        };
+        terrain.cover(&crate::terrain::Foundation {
+            position: placed.position,
+            clearance: master.clearance,
+            terrain: laid,
+            snow: c.snow,
+            master: master.id,
+            class: master.class,
+            terrain_bonus: master.terrain_bonus,
+            mode_680,
+        })?;
+    }
+    Ok(())
+}
+
+/// [`Construction::complete`]'s counts into `attributes`: the castle and the wonder count in
+/// attributes 134 and 173, 42 and 174 and add their paid cost to 184; the monastery counts in
+/// 52; any other building's paid cost grows 98 and 165 unless it is an annex (`main`) or has a
+/// stack unit. The paid cost sums the cost entries of a resource flagged paid (`+0x880`) as
+/// shorts. The castle's and the wonder's history event (0x1411dd094), returned.
+fn completion_counts(
+    master: &Master,
+    building: &crate::masters::BuildingMaster,
+    main: bool,
+    attributes: &mut Vec<(i16, f32)>,
+) -> Option<u8> {
+    // the castle's and the wonder's history event (0x1411dd094), the counts (slot 0xf8 with
+    // 1.0, 0x14330eb8c)
+    let history = match master.id {
+        CASTLE => Some(crate::history::CASTLE_BUILT),
+        WONDER => Some(crate::history::WONDER_BUILT),
+        _ => None,
+    };
+    match master.id {
+        MONASTERY => attributes.push((MONASTERIES, 1.0)),
+        WONDER => attributes.extend([(WONDERS, 1.0), (WONDERS_BUILT, 1.0)]),
+        CASTLE => attributes.extend([(CASTLES, 1.0), (CASTLES_BUILT, 1.0)]),
+        _ => {}
+    }
+    // its paid cost: the cost entries of a resource flagged paid (`+0x880`), summed as shorts
+    let paid: i32 = master
+        .cost
+        .iter()
+        .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+        .map(|&(_, amount, _)| i32::from(amount))
+        .sum();
+    if matches!(master.id, CASTLE | WONDER) {
+        attributes.push((CASTLE_WONDER_COST, paid as f32));
+    } else if !main && building.stack_unit == -1 {
+        attributes.push((98, paid as f32));
+        attributes.push((165, paid as f32));
+    }
+    history
+}
+
 /// The Build action's states the slice models.
 const MOVE: u8 = 4;
 const WORK: u8 = 6;
@@ -2745,9 +2861,6 @@ impl Construction {
         world: &mut Spatial,
         pathing: &mut Pathing,
     ) -> Result<Built, GenieError> {
-        /// The terrain the pasture master 1889's stack unit on mangrove or rice terrain lays
-        /// (`0x3f`).
-        const RICE_PASTURE_TERRAIN: u8 = 0x3f;
         let id = site.id;
         let done = site.completion;
         let master = done.master.ok_or(GenieError::unsupported(
@@ -2782,26 +2895,7 @@ impl Construction {
         }
         let c = &mut *site.construction;
         c.progress = f32::from(c.build_time);
-        for &(kind, amount, flag) in &master.storage {
-            if kind < 0 || amount <= 0.0 {
-                continue;
-            }
-            if matches!(flag, 4 | 8 | 64) {
-                attributes.push((kind, amount));
-            }
-        }
-        // the entries of mode 16 go to its own store (FUN_1411abad0: an entry from 0)
-        for &(kind, amount, flag) in &master.storage {
-            if kind < 0 || amount <= 0.0 || flag & 0x10 == 0 {
-                continue;
-            }
-            if let Some(store) = site.store.as_deref_mut() {
-                match store.iter_mut().find(|e| e.0 == kind) {
-                    Some(e) => e.1 += amount,
-                    None => store.push((kind, amount)),
-                }
-            }
-        }
+        hand_storage(master, &mut attributes, site.store.as_deref_mut());
         let placed = *world.get(id).ok_or(GenieError::unsupported(
             "a completed building without a place",
         ))?;
@@ -2834,56 +2928,16 @@ impl Construction {
                 *r = true;
             }
         }
-        let terrain = world.terrain.as_mut().ok_or(GenieError::unsupported(
-            "a completion without the map's terrain",
-        ))?;
-        let [x, y, _] = placed.position;
-        if !c.snow && 0 <= x as i32 && 0 <= y as i32 && terrain.snow_under(x as i32, y as i32)? {
-            c.snow = true;
-        }
-        if 0 <= building.foundation_terrain {
-            let laid = if stack_master == RICE_PASTURE {
-                RICE_PASTURE_TERRAIN
-            } else {
-                building.foundation_terrain as u8
-            };
-            terrain.cover(&crate::terrain::Foundation {
-                position: placed.position,
-                clearance: master.clearance,
-                terrain: laid,
-                snow: c.snow,
-                master: master.id,
-                class: master.class,
-                terrain_bonus: master.terrain_bonus,
-                mode_680: done.mode_680,
-            })?;
-        }
-        // the castle's and the wonder's history event (0x1411dd094), the counts (slot 0xf8 with
-        // 1.0, 0x14330eb8c)
-        let history = match master.id {
-            CASTLE => Some(crate::history::CASTLE_BUILT),
-            WONDER => Some(crate::history::WONDER_BUILT),
-            _ => None,
-        };
-        match master.id {
-            MONASTERY => attributes.push((MONASTERIES, 1.0)),
-            WONDER => attributes.extend([(WONDERS, 1.0), (WONDERS_BUILT, 1.0)]),
-            CASTLE => attributes.extend([(CASTLES, 1.0), (CASTLES_BUILT, 1.0)]),
-            _ => {}
-        }
-        // its paid cost: the cost entries of a resource flagged paid (`+0x880`), summed as shorts
-        let paid: i32 = master
-            .cost
-            .iter()
-            .filter(|&&(resource, _, paid)| 0 <= resource && paid)
-            .map(|&(_, amount, _)| i32::from(amount))
-            .sum();
-        if matches!(master.id, CASTLE | WONDER) {
-            attributes.push((CASTLE_WONDER_COST, paid as f32));
-        } else if !done.main && building.stack_unit == -1 {
-            attributes.push((98, paid as f32));
-            attributes.push((165, paid as f32));
-        }
+        lay_foundation(
+            c,
+            world,
+            &placed,
+            master,
+            &building,
+            stack_master,
+            done.mode_680,
+        )?;
+        let history = completion_counts(master, &building, done.main, &mut attributes);
         let before = site.life.state;
         site.life.state = 2;
         world.sight_state(id, 2);

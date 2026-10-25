@@ -343,10 +343,6 @@ pub fn closest_resource_at(
 ) -> Result<(i32, Option<i32>), GenieError> {
     /// The fallback's steps before it has one (`1000000`).
     const NO_STEPS: i32 = 1_000_000;
-    const DIAGONAL: f32 = crate::image::gather_search::DIAGONAL;
-    const ROUNDING: f32 = crate::image::gather_search::ROUNDING;
-    const SITE_SHARE: f32 = crate::image::gather_search::SITE_SHARE;
-    const UNIT_SHARE: f32 = crate::image::gather_search::UNIT_SHARE;
     const TILE_CENTRE: f32 = crate::image::gather_search::TILE_CENTRE;
     if seeker.state < seeker.min_state {
         return Ok((-1, None));
@@ -369,27 +365,7 @@ pub fn closest_resource_at(
         }],
     };
     // the sort's point, and the box's side (fixed for both passes)
-    let (sort_at, side) = site.map_or(((ux, uy), (los + 10) * 3), |s| {
-        let [sx, sy, _] = s.position;
-        let at = (
-            sx * SITE_SHARE + ux * UNIT_SHARE,
-            sy * SITE_SHARE + uy * UNIT_SHARE,
-        );
-        let site_los = s.line_of_sight as i32;
-        let wide = if site_los + 10 <= los + 10 {
-            los
-        } else {
-            site_los
-        };
-        (
-            at,
-            if s.footprint {
-                (wide + 10) * 3
-            } else {
-                (los + 10) * 3
-            },
-        )
-    });
+    let (sort_at, side) = sort_point_and_side([ux, uy], los, site);
     let half = side / 2;
     let nearer = |a: Cell, b: Cell| {
         let d = |c: Cell| {
@@ -402,23 +378,10 @@ pub fn closest_resource_at(
     let mut passes = Vec::with_capacity(2);
     match site {
         Some(s) if s.footprint => {
-            let [sx, sy, _] = s.position;
-            let [rx, ry] = s.radius;
-            let x0 = ((sx - rx) as i32).max(1) - 1;
-            let x1 = ((sx + rx) as i32).min(map[0] - 1);
-            let y0 = ((sy - ry) as i32).max(1) - 1;
-            let y1 = ((sy + ry) as i32).min(map[1] - 1);
-            let mut seeds = Vec::new();
-            for y in y0..=y1 {
-                for x in x0..=x1 {
-                    if passable(x, y) {
-                        seeds.push(Cell { x, y, steps: 0 });
-                    }
-                }
-            }
+            let mut seeds = footprint_seeds(s, map, passable);
             msvc::sort(&mut seeds, &nearer);
             passes.push(Pass {
-                origin: (sx as i32, sy as i32),
+                origin: (s.position[0] as i32, s.position[1] as i32),
                 max_steps: s.line_of_sight as i32 + 10,
                 seeds,
             });
@@ -448,12 +411,7 @@ pub fn closest_resource_at(
             if !explored(x, y)? {
                 continue;
             }
-            let (dx, dy) = ((pass.origin.0 - x).abs(), (pass.origin.1 - y).abs());
-            let d = if dy < dx {
-                ((dy as f32 * DIAGONAL + ROUNDING) as i32 - dy) + dx
-            } else {
-                ((dx as f32 * DIAGONAL + ROUNDING) as i32 - dx) + dy
-            };
+            let d = pass_distance(pass.origin, x, y);
             if pass.max_steps < d || x < 0 || y < 0 || map[0] <= x || map[1] <= y {
                 continue;
             }
@@ -500,6 +458,75 @@ pub fn closest_resource_at(
         }
     }
     Ok((-1, None))
+}
+
+/// [`closest_resource_at`]'s sort point and box side: without a site the unit's place and
+/// three times its line of sight plus 10; with one the point a quarter of the way from the
+/// site's place to the unit's, and for a footprint search the larger line of sight of the two.
+fn sort_point_and_side(at: [f32; 2], los: i32, site: Option<&SearchSite>) -> ((f32, f32), i32) {
+    const SITE_SHARE: f32 = crate::image::gather_search::SITE_SHARE;
+    const UNIT_SHARE: f32 = crate::image::gather_search::UNIT_SHARE;
+    let [ux, uy] = at;
+    site.map_or(((ux, uy), (los + 10) * 3), |s| {
+        let [sx, sy, _] = s.position;
+        let at = (
+            sx * SITE_SHARE + ux * UNIT_SHARE,
+            sy * SITE_SHARE + uy * UNIT_SHARE,
+        );
+        let site_los = s.line_of_sight as i32;
+        let wide = if site_los + 10 <= los + 10 {
+            los
+        } else {
+            site_los
+        };
+        (
+            at,
+            if s.footprint {
+                (wide + 10) * 3
+            } else {
+                (los + 10) * 3
+            },
+        )
+    })
+}
+
+/// [`closest_resource_at`]'s first pass from a site's footprint: every tile of the footprint
+/// the unit can stand on (x from the site's x less its radius, truncated, at least 1, less 1, to
+/// the site's x plus its radius, truncated, at most the map's last column; y alike), row by row.
+fn footprint_seeds(
+    s: &SearchSite,
+    map: [i32; 2],
+    passable: &dyn Fn(i32, i32) -> bool,
+) -> Vec<Cell> {
+    let [sx, sy, _] = s.position;
+    let [rx, ry] = s.radius;
+    let x0 = ((sx - rx) as i32).max(1) - 1;
+    let x1 = ((sx + rx) as i32).min(map[0] - 1);
+    let y0 = ((sy - ry) as i32).max(1) - 1;
+    let y1 = ((sy + ry) as i32).min(map[1] - 1);
+    let mut seeds = Vec::new();
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            if passable(x, y) {
+                seeds.push(Cell { x, y, steps: 0 });
+            }
+        }
+    }
+    seeds
+}
+
+/// The search's distance of tile (`x`, `y`) from a pass's origin: the longer axis plus the
+/// shorter one times 1.4 rounded down, less the shorter one (`DIAGONAL` plus `ROUNDING`,
+/// truncated).
+fn pass_distance(origin: (i32, i32), x: i32, y: i32) -> i32 {
+    const DIAGONAL: f32 = crate::image::gather_search::DIAGONAL;
+    const ROUNDING: f32 = crate::image::gather_search::ROUNDING;
+    let (dx, dy) = ((origin.0 - x).abs(), (origin.1 - y).abs());
+    if dy < dx {
+        ((dy as f32 * DIAGONAL + ROUNDING) as i32 - dy) + dx
+    } else {
+        ((dx as f32 * DIAGONAL + ROUNDING) as i32 - dx) + dy
+    }
 }
 
 /// The object of a tile's list `ClosestResourceObject` takes: the first in a pasture or

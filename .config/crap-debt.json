@@ -67,7 +67,7 @@
     {
       "file": "crates/engine/genie-core/src/build.rs",
       "function": "BuildAction::update",
-      "line": 724,
+      "line": 840,
       "cyclomatic": 78.0,
       "coverage": 82.73809523809523,
       "crap": 109.29358752429552,
@@ -76,7 +76,7 @@
     {
       "file": "crates/engine/genie-core/src/build.rs",
       "function": "BuildAction::update_drop",
-      "line": 1225,
+      "line": 1341,
       "cyclomatic": 36.0,
       "coverage": 74.22680412371135,
       "crap": 58.18757430098183,
@@ -85,19 +85,10 @@
     {
       "file": "crates/engine/genie-core/src/build.rs",
       "function": "BuildAction::walk_failed",
-      "line": 1825,
+      "line": 1941,
       "cyclomatic": 17.0,
       "coverage": 57.407407407407405,
       "crap": 39.33058349845044,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/build.rs",
-      "function": "Construction::complete",
-      "line": 2743,
-      "cyclomatic": 51.0,
-      "coverage": 87.05035971223022,
-      "crap": 56.64824422228171,
       "crate": "genie-core"
     },
     {
@@ -302,9 +293,9 @@
       "file": "crates/engine/genie-core/src/gather_search.rs",
       "function": "closest_resource_at",
       "line": 333,
-      "cyclomatic": 39.0,
-      "coverage": 88.27586206896552,
-      "crap": 41.45116175324941,
+      "cyclomatic": 35.0,
+      "coverage": 85.59322033898306,
+      "crap": 38.66299925990486,
       "crate": "genie-core"
     },
     {
@@ -386,15 +377,6 @@
       "cyclomatic": 34.0,
       "coverage": 46.478873239436616,
       "crap": 211.2285065281592,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/group/stats.rs",
-      "function": "Turns::statistics_only",
-      "line": 85,
-      "cyclomatic": 44.0,
-      "coverage": 88.81987577639751,
-      "crap": 46.7054856838061,
       "crate": "genie-core"
     },
     {
@@ -503,15 +485,6 @@
       "cyclomatic": 20.0,
       "coverage": 59.61538461538461,
       "crap": 46.3455848884843,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/long_path.rs",
-      "function": "search",
-      "line": 431,
-      "cyclomatic": 32.0,
-      "coverage": 91.58878504672897,
-      "crap": 32.60936309990751,
       "crate": "genie-core"
     },
     {
@@ -697,7 +670,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::build_take",
-      "line": 4076,
+      "line": 4107,
       "cyclomatic": 13.0,
       "coverage": 0.0,
       "crap": 182.0,
@@ -706,7 +679,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::gather_command",
-      "line": 3767,
+      "line": 3798,
       "cyclomatic": 7.0,
       "coverage": 0.0,
       "crap": 56.0,
@@ -715,7 +688,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::gather_take_move",
-      "line": 4632,
+      "line": 4663,
       "cyclomatic": 11.0,
       "coverage": 0.0,
       "crap": 132.0,
@@ -724,7 +697,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::hunt_take_move",
-      "line": 4705,
+      "line": 4736,
       "cyclomatic": 13.0,
       "coverage": 0.0,
       "crap": 182.0,
@@ -770,9 +743,9 @@
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::order_work",
       "line": 2998,
-      "cyclomatic": 44.0,
-      "coverage": 89.32038834951457,
-      "crap": 46.35815167008777,
+      "cyclomatic": 28.0,
+      "coverage": 80.76923076923077,
+      "crap": 33.57578516158398,
       "crate": "genie-core"
     },
     {
@@ -787,7 +760,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::retarget_gather",
-      "line": 4527,
+      "line": 4558,
       "cyclomatic": 27.0,
       "coverage": 0.0,
       "crap": 756.0,
@@ -796,7 +769,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::retarget_hunt",
-      "line": 4438,
+      "line": 4469,
       "cyclomatic": 11.0,
       "coverage": 0.0,
       "crap": 132.0,
@@ -805,7 +778,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::start_attack",
-      "line": 4205,
+      "line": 4236,
       "cyclomatic": 39.0,
       "coverage": 60.19417475728155,
       "crap": 134.93323950080855,
@@ -814,7 +787,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::start_build",
-      "line": 3799,
+      "line": 3830,
       "cyclomatic": 8.0,
       "coverage": 0.0,
       "crap": 72.0,
@@ -823,7 +796,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::start_gather",
-      "line": 4781,
+      "line": 4812,
       "cyclomatic": 18.0,
       "coverage": 0.0,
       "crap": 342.0,
@@ -841,7 +814,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::toggle_gate",
-      "line": 5165,
+      "line": 5196,
       "cyclomatic": 11.0,
       "coverage": 0.0,
       "crap": 132.0,
@@ -859,7 +832,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::work_command",
-      "line": 3376,
+      "line": 3407,
       "cyclomatic": 63.0,
       "coverage": 43.39622641509434,
       "crap": 782.8089698207244,
@@ -868,7 +841,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "Turns::work_move",
-      "line": 3587,
+      "line": 3618,
       "cyclomatic": 15.0,
       "coverage": 30.952380952380953,
       "crap": 89.06766277939747,
@@ -877,7 +850,7 @@
     {
       "file": "crates/engine/genie-core/src/order.rs",
       "function": "switch_master",
-      "line": 5317,
+      "line": 5348,
       "cyclomatic": 27.0,
       "coverage": 74.71264367816092,
       "crap": 38.78793718479643,
@@ -1201,7 +1174,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::ai_part",
-      "line": 6492,
+      "line": 6511,
       "cyclomatic": 30.0,
       "coverage": 95.65217391304348,
       "crap": 30.0739705761486,
@@ -1228,7 +1201,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::building_seconds",
-      "line": 4507,
+      "line": 4526,
       "cyclomatic": 21.0,
       "coverage": 47.94520547945205,
       "crap": 83.20435610783079,
@@ -1237,7 +1210,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::capture_stop",
-      "line": 7245,
+      "line": 7264,
       "cyclomatic": 16.0,
       "coverage": 50.0,
       "crap": 48.0,
@@ -1255,7 +1228,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::complete_on_update",
-      "line": 4414,
+      "line": 4433,
       "cyclomatic": 15.0,
       "coverage": 16.455696202531644,
       "crap": 146.19976310190472,
@@ -1300,7 +1273,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::gate_update",
-      "line": 4296,
+      "line": 4315,
       "cyclomatic": 15.0,
       "coverage": 31.818181818181817,
       "crap": 86.31620961682947,
@@ -1355,9 +1328,9 @@
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::missile_hits",
       "line": 3944,
-      "cyclomatic": 32.0,
-      "coverage": 86.73469387755102,
-      "crap": 34.390296560106755,
+      "cyclomatic": 28.0,
+      "coverage": 84.7457627118644,
+      "crap": 30.78283563558105,
       "crate": "genie-core"
     },
     {
@@ -1372,7 +1345,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::move_to_object",
-      "line": 7556,
+      "line": 7575,
       "cyclomatic": 10.0,
       "coverage": 0.0,
       "crap": 110.0,
@@ -1381,7 +1354,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::repair_part",
-      "line": 6861,
+      "line": 6880,
       "cyclomatic": 40.0,
       "coverage": 0.0,
       "crap": 1640.0,
@@ -1399,7 +1372,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/unit.rs",
       "function": "Unit::update",
-      "line": 4827,
+      "line": 4846,
       "cyclomatic": 396.0,
       "coverage": 47.89244186046512,
       "crap": 22582.69111640843,
@@ -1407,17 +1380,8 @@
     },
     {
       "file": "crates/engine/genie-core/src/turn/view.rs",
-      "function": "UnitView::attack",
-      "line": 2039,
-      "cyclomatic": 30.0,
-      "coverage": 87.71929824561403,
-      "crap": 31.6669096564125,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/view.rs",
       "function": "UnitView::call_for_help",
-      "line": 1718,
+      "line": 1734,
       "cyclomatic": 18.0,
       "coverage": 0.0,
       "crap": 342.0,
@@ -1435,7 +1399,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/view.rs",
       "function": "UnitView::off_footprint",
-      "line": 1628,
+      "line": 1644,
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
@@ -1444,7 +1408,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/view.rs",
       "function": "UnitView::seek_unexplored",
-      "line": 2195,
+      "line": 2209,
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
@@ -1516,7 +1480,7 @@
     {
       "file": "crates/engine/genie-core/src/unit_ai.rs",
       "function": "UnitAi::action_completed",
-      "line": 7124,
+      "line": 7174,
       "cyclomatic": 22.0,
       "coverage": 66.66666666666666,
       "crap": 39.92592592592595,
@@ -1525,7 +1489,7 @@
     {
       "file": "crates/engine/genie-core/src/unit_ai.rs",
       "function": "UnitAi::action_invalidated",
-      "line": 7069,
+      "line": 7119,
       "cyclomatic": 15.0,
       "coverage": 51.162790697674424,
       "crap": 41.20806972970934,
@@ -1538,15 +1502,6 @@
       "cyclomatic": 22.0,
       "coverage": 48.93617021276596,
       "crap": 86.44444872523432,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::damaged",
-      "line": 6630,
-      "cyclomatic": 46.0,
-      "coverage": 87.5,
-      "crap": 50.1328125,
       "crate": "genie-core"
     },
     {
@@ -1579,7 +1534,7 @@
     {
       "file": "crates/engine/genie-core/src/unit_ai.rs",
       "function": "UnitAi::retarget_search",
-      "line": 8663,
+      "line": 8713,
       "cyclomatic": 29.0,
       "coverage": 0.0,
       "crap": 870.0,
@@ -1597,7 +1552,7 @@
     {
       "file": "crates/engine/genie-core/src/unit_ai.rs",
       "function": "UnitAi::seek_unexplored",
-      "line": 6934,
+      "line": 6984,
       "cyclomatic": 14.0,
       "coverage": 0.0,
       "crap": 210.0,

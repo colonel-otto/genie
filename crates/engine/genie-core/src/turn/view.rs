@@ -1469,6 +1469,22 @@ impl<'u> UnitView<'u> {
         Ok(())
     }
 
+    /// The attack command's sight of its target `t` (of master `t_master`): its tile seen by the
+    /// unit's player, or explored when the master shows in the fog (its fog flag).
+    ///
+    /// # Errors
+    ///
+    /// A tile the map's sight does not hold.
+    fn target_visible(
+        &self,
+        t: &Placed,
+        t_master: &crate::masters::Master,
+    ) -> Result<bool, GenieError> {
+        let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
+        Ok(self.spatial.sees_tile(self.player, tx, ty)
+            || (t_master.fog_visibility != 0 && self.spatial.explored(self.player, tx, ty)?))
+    }
+
     /// The attack command's villager swap: a villager (class 4) switches to its player's villager
     /// of its task swap group (`+0x7b8` 1: the master table's `+0x298`, 83; else `+0x928`, 293)
     /// when the player has it.
@@ -2076,10 +2092,9 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             }
             None => master,
         };
-        let unit = &mut *self.unit;
         let me_at = *self
             .spatial
-            .get(unit.id)
+            .get(self.unit.id)
             .ok_or(crate::turn::ATTACKER_UNPLACED)?;
         let t_master = self
             .every
@@ -2088,9 +2103,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .ok_or(GenieError::unsupported(
                 "an attack's target of a master the slice does not have",
             ))?;
-        let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
-        let visible = self.spatial.sees_tile(self.player, tx, ty)
-            || (t_master.fog_visibility != 0 && self.spatial.explored(self.player, tx, ty)?);
+        let visible = self.target_visible(&t, t_master)?;
+        let unit = &mut *self.unit;
         // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
         let look = unit.abilities.look.as_ref();
         let arms = crate::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);

@@ -25,6 +25,9 @@ const MOST_OBJECTS: usize = 70;
 /// (`mSecondsSinceAttacking` 0).
 const ATTACK_ACTION: i32 = 600;
 
+/// The members' views in the members' order, each with the index the member has then.
+type MemberViews = Vec<(usize, MemberView)>;
+
 /// What the statistics read of one member.
 struct MemberView {
     id: i32,
@@ -84,10 +87,72 @@ impl Turns {
     /// caller that holds it.
     pub fn statistics_only(&mut self, group: i32, far: bool) -> Result<bool, GenieError> {
         let dt = self.dt_seconds;
+        let (views, objects) = self.member_views(group, far)?;
+        let g = self.groups.get_mut(group).expect("the group read above");
+        let (held, mut slowest, under_attack) = member_totals(g, &views, objects, dt);
+        if held == 0 {
+            g.smallest_unit_radius = 0.0;
+            g.desired_spacing = 0.0;
+            g.smallest_unit_range = 0.0;
+            g.smallest_ranged_unit_range = 0.0;
+            return Ok(false);
+        }
+        // a member inside another object (`+0x2f0`) stops (slot 0x5d0), in the members' order
+        for (_, v) in &views {
+            self.stop_if_inside(v.id)?;
+        }
+        let g = self.groups.get_mut(group).expect("the group read above");
+        let n = held as f32;
+        g.centroid = [g.centroid[0] / n, g.centroid[1] / n, g.centroid[2] / n];
+        g.desired_height /= n;
+        let largest = g.largest_unit_radius;
+        g.desired_spacing = largest + largest;
+        g.total_spacing = largest + g.total_spacing + largest + g.total_spacing;
+        g.stored_positions.desired_length = g.members.len() as f32 * (largest + largest);
+        if g.flags >> 9 & 1 != 0 {
+            slowest /= SLOW_GROUP_FACTOR;
+        }
+        g.motion.maximum_velocity_forward = slowest;
+        if under_attack {
+            g.seconds_not_under_attack = 0.0;
+        } else {
+            g.seconds_not_under_attack += dt;
+        }
+        let old_plan = g.attack_plan_type;
+        g.attack_plan_type = 0;
+        let target = g.current_target.target;
+        // each sub-formation with units: its attack range the largest of its units' slot 0x238
+        // against the group's target, its spacing twice its widest unit (the first unit's
+        // place counts even when the world does not hold it); its units are looked up in the
+        // world's table, members or not
+        self.sub_formation_stats(group, target)?;
+        let g = self.groups.get(group).expect("the group read above");
+        // the re-attack: an attack plan of 1 before, command 9 (attack) and a target the
+        // world's table holds; a target it does not hold does nothing
+        if old_plan == 1
+            && g.current_command == 9
+            && target != -1
+            && self.world_object(target).is_some()
+        {
+            return Err(GenieError::unsupported(
+                "a group's attack plan that attacks again (FUN_14100f7f0)",
+            ));
+        }
+        // the motion flags' bit 1 (`+0xb8`, 0x14100c657), not the group flags'
+        Ok(g.motion.flags >> 1 & 1 != 0)
+    }
+
+    /// [`Turns::statistics_only`]'s member loop: each member's view in the members' order with the
+    /// index it has then, and the objects of their searches.
+    fn member_views(
+        &mut self,
+        group: i32,
+        far: bool,
+    ) -> Result<(MemberViews, Vec<i32>), GenieError> {
         // each member's view in the members' order, its search first (FUN_140c65c60 before
         // anything else of it), then the far test; the index the member has then, which a
         // later member's leaving does not move
-        let mut views: Vec<(usize, MemberView)> = Vec::new();
+        let mut views: MemberViews = Vec::new();
         let mut objects = Vec::new();
         // `+0x154` as the loop goes, which the far test reads
         let mut largest = 0.0f32;
@@ -140,92 +205,13 @@ impl Turns {
             views.push((i, view));
             i += 1;
         }
-        let g = self.groups.get_mut(group).expect("the group read above");
-        g.centroid = [0.0; 3];
-        g.desired_height = 0.0;
-        g.largest_unit_radius = 0.0;
-        g.smallest_unit_radius = f32::MAX;
-        g.desired_spacing = 0.0;
-        g.smallest_unit_range = f32::MAX;
-        g.smallest_ranged_unit_range = f32::MAX;
-        g.largest_unit_range = 0.0;
-        g.largest_ranged_unit_range = 0.0;
-        g.total_spacing = 0.0;
-        g.sighted = objects;
-        let mut slowest = f32::MAX;
-        let mut held = 0;
-        let mut under_attack = false;
-        for &(i, ref v) in &views {
-            held += 1;
-            g.centroid[0] += v.at[0];
-            g.centroid[1] += v.at[1];
-            g.centroid[2] += v.at[2];
-            let r = v.unit.radius;
-            g.total_spacing += r;
-            if g.largest_unit_radius < r {
-                g.largest_unit_radius = r;
-            }
-            if r < g.smallest_unit_radius {
-                g.smallest_unit_radius = r;
-            }
-            if v.speed < slowest {
-                slowest = v.speed;
-            }
-            if v.range < g.smallest_unit_range {
-                g.smallest_unit_range = v.range;
-            }
-            if g.largest_unit_range < v.range {
-                g.largest_unit_range = v.range;
-            }
-            if 0.0 < v.range && v.range < g.smallest_ranged_unit_range {
-                g.smallest_ranged_unit_range = v.range;
-            }
-            if 0.0 < v.range && g.largest_ranged_unit_range < v.range {
-                g.largest_ranged_unit_range = v.range;
-            }
-            under_attack |= v.under_attack;
-            let m = &mut g.members[i];
-            if v.attacking {
-                m.seconds_since_attacking = 0.0;
-            } else {
-                m.seconds_since_attacking += dt;
-            }
-        }
-        if held == 0 {
-            g.smallest_unit_radius = 0.0;
-            g.desired_spacing = 0.0;
-            g.smallest_unit_range = 0.0;
-            g.smallest_ranged_unit_range = 0.0;
-            return Ok(false);
-        }
-        // a member inside another object (`+0x2f0`) stops (slot 0x5d0), in the members' order
-        for (_, v) in &views {
-            self.stop_if_inside(v.id)?;
-        }
-        let g = self.groups.get_mut(group).expect("the group read above");
-        let n = held as f32;
-        g.centroid = [g.centroid[0] / n, g.centroid[1] / n, g.centroid[2] / n];
-        g.desired_height /= n;
-        let largest = g.largest_unit_radius;
-        g.desired_spacing = largest + largest;
-        g.total_spacing = largest + g.total_spacing + largest + g.total_spacing;
-        g.stored_positions.desired_length = g.members.len() as f32 * (largest + largest);
-        if g.flags >> 9 & 1 != 0 {
-            slowest /= SLOW_GROUP_FACTOR;
-        }
-        g.motion.maximum_velocity_forward = slowest;
-        if under_attack {
-            g.seconds_not_under_attack = 0.0;
-        } else {
-            g.seconds_not_under_attack += dt;
-        }
-        let old_plan = g.attack_plan_type;
-        g.attack_plan_type = 0;
-        let target = g.current_target.target;
-        // each sub-formation with units: its attack range the largest of its units' slot 0x238
-        // against the group's target, its spacing twice its widest unit (the first unit's
-        // place counts even when the world does not hold it); its units are looked up in the
-        // world's table, members or not
+        Ok((views, objects))
+    }
+
+    /// [`Turns::statistics_only`]'s sub-formations: each one with units gets its attack range
+    /// against `target` and its spacing.
+    fn sub_formation_stats(&mut self, group: i32, target: i32) -> Result<(), GenieError> {
+        let g = self.groups.get(group).expect("the caller holds the group");
         let stats: Vec<Vec<i32>> = g.unit_types.iter().map(|u| u.units.clone()).collect();
         for (n, units) in stats.iter().enumerate() {
             if units.is_empty() {
@@ -257,20 +243,7 @@ impl Turns {
             g.unit_types[n].attack_range = range;
             g.unit_types[n].desired_spacing = widest + widest;
         }
-        let g = self.groups.get(group).expect("the group read above");
-        // the re-attack: an attack plan of 1 before, command 9 (attack) and a target the
-        // world's table holds; a target it does not hold does nothing
-        if old_plan == 1
-            && g.current_command == 9
-            && target != -1
-            && self.world_object(target).is_some()
-        {
-            return Err(GenieError::unsupported(
-                "a group's attack plan that attacks again (FUN_14100f7f0)",
-            ));
-        }
-        // the motion flags' bit 1 (`+0xb8`, 0x14100c657), not the group flags'
-        Ok(g.motion.flags >> 1 & 1 != 0)
+        Ok(())
     }
 
     /// `CalcFormationType` (`FUN_14100b940`): the members' unit AIs' formation types (`+0x1d4`,
@@ -632,6 +605,68 @@ impl Turns {
 /// The master types of the combat objects (`RGE_Combat_Object` and its subclasses: combat,
 /// missile, TRIBE combat and building), whose slot 0x230 is `FUN_14108d960`.
 const COMBAT_KINDS: [u8; 4] = [50, 60, 70, 80];
+
+/// [`Turns::statistics_only`]'s totals: the group's statistics reset, then the members' views
+/// added up (centroid, radii, ranges, attack times), `objects` its search list; the members
+/// counted, the slowest speed and whether any member is under attack.
+fn member_totals(
+    g: &mut crate::group::UnitGroup,
+    views: &[(usize, MemberView)],
+    objects: Vec<i32>,
+    dt: f32,
+) -> (i32, f32, bool) {
+    g.centroid = [0.0; 3];
+    g.desired_height = 0.0;
+    g.largest_unit_radius = 0.0;
+    g.smallest_unit_radius = f32::MAX;
+    g.desired_spacing = 0.0;
+    g.smallest_unit_range = f32::MAX;
+    g.smallest_ranged_unit_range = f32::MAX;
+    g.largest_unit_range = 0.0;
+    g.largest_ranged_unit_range = 0.0;
+    g.total_spacing = 0.0;
+    g.sighted = objects;
+    let mut slowest = f32::MAX;
+    let mut held = 0;
+    let mut under_attack = false;
+    for &(i, ref v) in views {
+        held += 1;
+        g.centroid[0] += v.at[0];
+        g.centroid[1] += v.at[1];
+        g.centroid[2] += v.at[2];
+        let r = v.unit.radius;
+        g.total_spacing += r;
+        if g.largest_unit_radius < r {
+            g.largest_unit_radius = r;
+        }
+        if r < g.smallest_unit_radius {
+            g.smallest_unit_radius = r;
+        }
+        if v.speed < slowest {
+            slowest = v.speed;
+        }
+        if v.range < g.smallest_unit_range {
+            g.smallest_unit_range = v.range;
+        }
+        if g.largest_unit_range < v.range {
+            g.largest_unit_range = v.range;
+        }
+        if 0.0 < v.range && v.range < g.smallest_ranged_unit_range {
+            g.smallest_ranged_unit_range = v.range;
+        }
+        if 0.0 < v.range && g.largest_ranged_unit_range < v.range {
+            g.largest_ranged_unit_range = v.range;
+        }
+        under_attack |= v.under_attack;
+        let m = &mut g.members[i];
+        if v.attacking {
+            m.seconds_since_attacking = 0.0;
+        } else {
+            m.seconds_since_attacking += dt;
+        }
+    }
+    (held, slowest, under_attack)
+}
 
 /// Slot 0x230 of an object of `master`: a combat object's weapon range (`+0x828`,
 /// `FUN_14108d960`), any other's 0 (`FUN_14106ff50`).

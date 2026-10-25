@@ -6662,16 +6662,7 @@ impl UnitAi {
         if !known && !computer && self.current_target != attacker_id && !held_by_group {
             self.ask_for_help(attacker_id, at, computer, side)?;
         }
-        if self.current_action == ATTACK_ACTION && self.current_target == attacker_id {
-            return Ok(GO_ON);
-        }
-        if !computer && !matches!(self.current_order, -1 | PATROL | ATTACK_MOVE) {
-            return Ok(GO_ON);
-        }
-        if !computer && held_by_group {
-            return Ok(GO_ON);
-        }
-        if computer && self.current_order == crate::ai_kinds::ORDER_EXPLORE && attacker.owner != 0 {
+        if self.ignores_attacker(&attacker, attacker_id, computer, held_by_group) {
             return Ok(GO_ON);
         }
         let current = if self.current_target == -1 {
@@ -6680,30 +6671,7 @@ impl UnitAi {
             Self::world_object(self.current_target, at, side)?
         };
         if self.best_this_update == -1 {
-            let from = current.map_or(at.position, |t| t.position);
-            let (classes, radius) = self.search_area(at, computer)?;
-            let found = side.closest(&Search {
-                at: [from[0], from[1]],
-                radius,
-                classes,
-                size: at.size,
-                pick: Pick::Attack {
-                    lowest: if at.scenario && !computer { 2 } else { 0 },
-                    seeker: self.seeker(at),
-                    ask: AttackAsk {
-                        distance: 0.0,
-                        idle: false,
-                        paths: false,
-                        extra: Some(attacker_id),
-                        any_class: true,
-                        work_state: false,
-                    },
-                },
-                memory: self.memory(),
-            })?;
-            self.add_retries(&found);
-            self.attack_search_alert(found, computer)?;
-            self.best_this_update = found.id;
+            self.best_against(attacker_id, current.as_ref(), at, computer, side)?;
         }
         if self.best_this_update == -1
             && self.current_target == -1
@@ -6720,6 +6688,88 @@ impl UnitAi {
         if self.best_this_update != attacker_id {
             return Ok(GO_ON);
         }
+        self.answer_attacker(&attacker, current, at, computer, ai_rng, side, fx)
+    }
+
+    /// [`UnitAi::damaged`]'s step 3 after the call for help: true when the unit ignores
+    /// `attacker` (`attacker_id`): its attack on it already; a human player's unit's order other
+    /// than the patrols (711, 733), or its group that is not idle (`held_by_group`); a computer
+    /// player's unit on the explore order (0x2c1) attacked by another player than Gaia.
+    const fn ignores_attacker(
+        &self,
+        attacker: &UnitSeen,
+        attacker_id: i32,
+        computer: bool,
+        held_by_group: bool,
+    ) -> bool {
+        if self.current_action == ATTACK_ACTION && self.current_target == attacker_id {
+            return true;
+        }
+        if !computer && !matches!(self.current_order, -1 | PATROL | ATTACK_MOVE) {
+            return true;
+        }
+        if !computer && held_by_group {
+            return true;
+        }
+        computer && self.current_order == crate::ai_kinds::ORDER_EXPLORE && attacker.owner != 0
+    }
+
+    /// [`UnitAi::damaged`]'s step 4's search, `bestUnitToAttack` into
+    /// [`UnitAi::best_this_update`]: from the `current` target's place while the world holds it,
+    /// else its own; no reference distance, no idle check, no path checks, `attacker_id` as its
+    /// extra object, any class, no attack work state.
+    fn best_against(
+        &mut self,
+        attacker_id: i32,
+        current: Option<&UnitSeen>,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+    ) -> Result<(), GenieError> {
+        let from = current.map_or(at.position, |t| t.position);
+        let (classes, radius) = self.search_area(at, computer)?;
+        let found = side.closest(&Search {
+            at: [from[0], from[1]],
+            radius,
+            classes,
+            size: at.size,
+            pick: Pick::Attack {
+                lowest: if at.scenario && !computer { 2 } else { 0 },
+                seeker: self.seeker(at),
+                ask: AttackAsk {
+                    distance: 0.0,
+                    idle: false,
+                    paths: false,
+                    extra: Some(attacker_id),
+                    any_class: true,
+                    work_state: false,
+                },
+            },
+            memory: self.memory(),
+        })?;
+        self.add_retries(&found);
+        self.attack_search_alert(found, computer)?;
+        self.best_this_update = found.id;
+        Ok(())
+    }
+
+    /// [`UnitAi::damaged`]'s step 5, for the `attacker` `bestUnitToAttack` gave: its reach within
+    /// the weapon range. Without a `current` target the world holds: reached, it attacks back;
+    /// else off the move action it runs from its attackers; 3 either way. With one: not reached,
+    /// 2; a human player's unit attacks back from a building, wall or tower target (classes 3,
+    /// 27, 52; 3), else 2; a computer player's unit weighs it ([`UnitAi::computer_weighs`]).
+    #[allow(clippy::too_many_arguments)]
+    fn answer_attacker(
+        &mut self,
+        attacker: &UnitSeen,
+        current: Option<UnitSeen>,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let attacker_id = attacker.id;
         let reaches = side.reaches(attacker_id, at.weapon_range)?;
         let Some(target) = current else {
             if reaches {
@@ -6739,7 +6789,7 @@ impl UnitAi {
             }
             return Ok(GO_ON);
         }
-        self.computer_weighs(&attacker, &target, at, ai_rng, side, fx)
+        self.computer_weighs(attacker, &target, at, ai_rng, side, fx)
     }
 
     /// The damage case's end for a computer player's unit ([`UnitAi::damaged`]'s step 6) that

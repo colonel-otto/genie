@@ -3957,51 +3957,7 @@ impl Unit {
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .map_or(0, |m| m.blast_level);
-        let [w, h] = c.spatial.map;
-        let hold = |v: f32, size: i32| {
-            if v < 0.0 {
-                0.0
-            } else if size as f32 <= v {
-                size as f32 - crate::missile::QUERY_EDGE
-            } else {
-                v
-            }
-        };
-        let at = self.position;
-        let from = [hold(old[0], w), hold(old[1], h)];
-        let to = [hold(at[0], w), hold(at[1], h)];
-        let rect = [
-            from[0].min(to[0]),
-            from[1].min(to[1]),
-            from[0].max(to[0]),
-            from[1].max(to[1]),
-        ];
-        let grow = stats.radius[0];
-        c.spatial.check_known_records([
-            rect[0] - grow,
-            rect[1] - grow,
-            rect[2] + grow,
-            rect[3] + grow,
-        ])?;
-        let crossed = c
-            .spatial
-            .walk_hits(from, to, rect, grow, 1.0, Some(c.player), &[self.id])?;
-        let mut met = Vec::new();
-        for id in crossed {
-            let Some(p) = c.spatial.get(id) else {
-                continue;
-            };
-            let m = c
-                .every_masters
-                .get(p.player)
-                .and_then(|m| m.get(p.master))
-                .ok_or(GenieError::unsupported(
-                    "an object a missile meets of a master the slice does not have",
-                ))?;
-            if crate::missile::meets_height(p.position[2], m.height, at[2], stats.radius[2]) {
-                met.push((id, p.player, m.kind, m.blast_defense));
-            }
-        }
+        let met = self.missile_meets(stats, old, c)?;
         for &(id, player, kind, level) in &met {
             if action.state == crate::missile::DONE {
                 break;
@@ -4051,6 +4007,69 @@ impl Unit {
             action.met = met.iter().map(|m| m.0).collect();
         }
         Ok(())
+    }
+
+    /// [`Unit::missile_hits`]'s objects the missile meets on its step from `old`: the step held
+    /// on the map ([`crate::missile::QUERY_EDGE`] short of its far edges), the records its sweep
+    /// grown by the missile's radius crosses (the manager's walk query with the missile's player,
+    /// the missile itself ignored), of those each whose height the missile's meets
+    /// ([`crate::missile::meets_height`]): its id, player, master type and blast defence.
+    ///
+    /// # Errors
+    ///
+    /// A frozen object the sweep may cross, and an object of a master the slice does not have.
+    fn missile_meets(
+        &self,
+        stats: &crate::missile::MissileStats,
+        old: [f32; 3],
+        c: &Context<'_>,
+    ) -> Result<Vec<(i32, usize, u8, u8)>, GenieError> {
+        let [w, h] = c.spatial.map;
+        let hold = |v: f32, size: i32| {
+            if v < 0.0 {
+                0.0
+            } else if size as f32 <= v {
+                size as f32 - crate::missile::QUERY_EDGE
+            } else {
+                v
+            }
+        };
+        let at = self.position;
+        let from = [hold(old[0], w), hold(old[1], h)];
+        let to = [hold(at[0], w), hold(at[1], h)];
+        let rect = [
+            from[0].min(to[0]),
+            from[1].min(to[1]),
+            from[0].max(to[0]),
+            from[1].max(to[1]),
+        ];
+        let grow = stats.radius[0];
+        c.spatial.check_known_records([
+            rect[0] - grow,
+            rect[1] - grow,
+            rect[2] + grow,
+            rect[3] + grow,
+        ])?;
+        let crossed = c
+            .spatial
+            .walk_hits(from, to, rect, grow, 1.0, Some(c.player), &[self.id])?;
+        let mut met = Vec::new();
+        for id in crossed {
+            let Some(p) = c.spatial.get(id) else {
+                continue;
+            };
+            let m = c
+                .every_masters
+                .get(p.player)
+                .and_then(|m| m.get(p.master))
+                .ok_or(GenieError::unsupported(
+                    "an object a missile meets of a master the slice does not have",
+                ))?;
+            if crate::missile::meets_height(p.position[2], m.height, at[2], stats.radius[2]) {
+                met.push((id, p.player, m.kind, m.blast_defense));
+            }
+        }
+        Ok(met)
     }
 
     /// The missile action's `set_state(1)` (`FUN_140a9de70`): the missile's slot 0xd8
