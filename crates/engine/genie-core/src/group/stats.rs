@@ -151,7 +151,7 @@ impl Turns {
         g.largest_unit_range = 0.0;
         g.largest_ranged_unit_range = 0.0;
         g.total_spacing = 0.0;
-        g.objects = objects;
+        g.sighted = objects;
         let mut slowest = f32::MAX;
         let mut held = 0;
         let mut under_attack = false;
@@ -411,23 +411,24 @@ impl Turns {
     }
 
     /// `FUN_140c65c60` with -1 and [`MOST_OBJECTS`] for member `id` into the group's
-    /// `objects` (`+0x49c`, its count `+0x5b4`): nothing once they are full. Else its unit AI's
-    /// slot 0x50 with 1 from its place (x, y): the search (`FUN_140c63e20` mode 1,
-    /// [`crate::unit_ai::Pick::Look`] over the soldier's cared classes), which, when it queried
+    /// sighted objects (`+0x49c`, its count `+0x5b4`, [`crate::group::UnitGroup::sighted`]):
+    /// nothing once they are full. Else its unit AI's
+    /// slot 0x50 with 1 from its place (x, y): the search (`FUN_140c63e20` mode 1, every type's,
+    /// [`crate::unit_ai::Pick::Look`] over its type's area, [`crate::unit_ai::search_area`]),
+    /// which, when it queried
     /// afresh, sets the alert mode (`+0x1b8`) to whether it found enemies and, with enemies,
     /// restarts the time since a sighting (`+0x1b4`; a computer player's notify after 10 s is
     /// not modelled). Then the objects of the search's lists 4, 3 and 2 in that order
     /// ([`crate::spatial::Spatial::searched`]) that the world's table holds in a state below 3
     /// (`+0x640`), of any owner, the third list's only of a class the unit AI attacks among
-    /// neutrals (slot 0xa8, [`crate::unit_ai::soldier_attacks_neutral`]), join the list: each
+    /// neutrals (slot 0xa8, [`crate::unit_ai::type_attacks_neutral`]), join the list: each
     /// once when it held any on entry (the duplicate test runs only then), and the list stops at
     /// [`MOST_OBJECTS`].
     ///
     /// # Errors
     ///
     /// A member without a unit AI (the game calls through its null pointer), of a unit-AI type
-    /// other than the soldier's (13) or of a computer player (slot 0x50's and 0xa8's per type),
-    /// and the search's.
+    /// whose classes are not held or of a computer player (its notify), and the search's.
     fn member_objects(&mut self, id: i32, objects: &mut Vec<i32>) -> Result<(), GenieError> {
         if MOST_OBJECTS <= objects.len() {
             return Ok(());
@@ -439,11 +440,7 @@ impl Turns {
         let ai =
             u.ai.as_ref()
                 .ok_or(GenieError::unsupported("a group member without a unit AI"))?;
-        if ai.ai_type != crate::unit_ai::SOLDIER_AI {
-            return Err(GenieError::unsupported(
-                "a group member's search of a unit-AI type not modelled (FUN_140c65c60)",
-            ));
-        }
+        let ai_type = ai.ai_type;
         if self.players[p].computer {
             return Err(GenieError::unsupported(
                 "a computer player's group member's search (its cared classes)",
@@ -451,10 +448,17 @@ impl Turns {
         }
         let master = self.master_of(p, u.life.master_id)?;
         let attack_priority = master.attack_priority;
+        let (classes, radius) = crate::unit_ai::search_area(
+            ai_type,
+            master.class,
+            master.line_of_sight,
+            master.search_radius,
+            false,
+        )?;
         let search = crate::unit_ai::Search {
             at: [u.position[0], u.position[1]],
-            radius: crate::unit_ai::search_radius(master.line_of_sight, master.search_radius),
-            classes: &crate::unit_ai::SOLDIER_CARED,
+            radius,
+            classes,
             size: master.radius,
             pick: crate::unit_ai::Pick::Look,
             memory: crate::unit_ai::Memory::default(),
@@ -486,7 +490,7 @@ impl Turns {
                 }
                 if list == 3 {
                     let class = self.master_of(object.player(), object.master_id())?.class;
-                    if !crate::unit_ai::soldier_attacks_neutral(attack_priority, class) {
+                    if !crate::unit_ai::type_attacks_neutral(ai_type, attack_priority, class) {
                         continue;
                     }
                 }
@@ -801,9 +805,46 @@ mod tests {
         assert_eq!(full.len(), 70);
     }
 
+    /// Slot 0x50's search and slot 0xa8 by the member's type: a transport (type 11) cares about
+    /// neither class around (6, 4), so it lists nothing and finds no enemy; a civilian (8) lists
+    /// its enemies within its grown radius (22, 8 tiles off: its line of sight 4 plus 1 plus 7)
+    /// but no neutral (its slot 0xa8 never attacks one); a soldier the near ones only.
+    #[test]
+    fn a_member_s_search_takes_its_type_s_classes_radius_and_neutral_test() {
+        let world = |ai_type: u32| {
+            let mut t = searched_world();
+            let mut far = t.players[2].objects[0].clone();
+            far.id = 22;
+            far.position = [13.0, 5.0, 0.0];
+            t.players[2].objects.push(far);
+            let sight = t.spatial.sight.as_mut().unwrap();
+            sight
+                .registry
+                .as_mut()
+                .unwrap()
+                .update_unit(22, 2, [13.0, 5.0], [0.2, 0.2], 6, 0, 1 << 1)
+                .unwrap();
+            t.players[1].objects[0].ai.as_mut().unwrap().ai_type = ai_type;
+            t
+        };
+        let found = |ai_type: u32| {
+            let mut t = world(ai_type);
+            let mut objects = Vec::new();
+            t.member_objects(10, &mut objects).unwrap();
+            (
+                objects,
+                t.players[1].objects[0].ai.as_ref().unwrap().alert_mode,
+            )
+        };
+        assert_eq!(found(11), (vec![], false));
+        assert_eq!(found(crate::unit_ai::CIVILIAN), (vec![20, 22], true));
+        assert_eq!(found(crate::unit_ai::SOLDIER_AI), (vec![20, 30], true));
+    }
+
     /// `FUN_14100bcb0`'s sub-formations: a statistic's unit the world holds that is no member
     /// (50, weapon range 6) counts for its attack range; a group target the world does not hold
-    /// is none (slot 0x238 is the weapon range), and with it the re-attack does nothing.
+    /// is none (slot 0x238 is the weapon range), and with it the re-attack does nothing. The
+    /// searches fill the sighted objects and leave the units kept apart.
     #[test]
     fn a_sub_formation_s_range_takes_its_held_units_against_the_group_s_target() {
         let mut t = searched_world();
@@ -829,10 +870,12 @@ mod tests {
         g.current_target.target = 99;
         g.attack_plan_type = 1;
         g.current_command = 9;
+        g.objects = vec![77];
         let _ = t.statistics_only(1, false).unwrap();
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.unit_types[0].attack_range, 6.0);
-        assert_eq!(g.objects, [20, 30]);
+        // the searches fill their own list (+0x49c), not the units kept apart (+0x458)
+        assert_eq!((&g.sighted[..], &g.objects[..]), (&[20, 30][..], &[77][..]));
         assert_eq!(g.attack_plan_type, 0);
         // a target the world holds: the re-attack is not modelled
         let g = t.groups.get_mut(1).unwrap();

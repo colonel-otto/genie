@@ -644,8 +644,13 @@ pub struct UnitGroup {
     pub hibernating: u8,
     /// The command queue.
     pub command_queue: Vec<GroupCommand>,
-    /// The objects the save lists after the queues (`objCount`, `objId`).
+    /// The objects the save lists after the queues (`objCount`, `objId`): the units the group
+    /// keeps apart (`+0x458`, size `+0x468`).
     pub objects: Vec<i32>,
+    /// What the members' searches found (`+0x49c`, at most 70, its count `+0x5b4`; not saved):
+    /// the statistics refill it ([`crate::turn::Turns::statistics_only`]), and nothing else in
+    /// the game reads or writes it.
+    pub sighted: Vec<i32>,
     /// `mDifferentiatorID`.
     pub differentiator_id: i32,
     /// `mSecondsNotUnderAttack`.

@@ -213,6 +213,8 @@ fn group(g: &saved::UnitGroup, paths: &[saved::Path]) -> Result<UnitGroup, Genie
             })
             .collect(),
         objects: g.obj_id.clone(),
+        // unsaved: the next statistics fill it
+        sighted: Vec::new(),
         differentiator_id: g.differentiator_id,
         seconds_not_under_attack: g.seconds_not_under_attack,
         differentiator_groups: g.differentiator_groups.clone(),

@@ -157,6 +157,12 @@ pub(crate) const PRIEST_AI: u32 = 9;
 /// The siege unit's factory type (`TribeSiegeUnitAIModule`: classes 13, 51, 54, 55, masters 1744
 /// and 1746).
 const SIEGE_AI: u32 = 0x10;
+/// The predator's factory type (`TribePreditorUnitAIModule`, `FUN_140c11da0`).
+const PREDATOR_AI: u32 = 3;
+/// The lion's factory type (`TribeLionUnitAIModule`, `FUN_140c11bd0`).
+const LION_AI: u32 = 5;
+/// The livestock's factory type (`TribeLivestockUnitAIModule`, `FUN_140c11d70`).
+const LIVESTOCK_AI: u32 = 0x13;
 /// The trade ship's and the trade cart's factory type (`TribeTradeShipUnitAIModule`, classes 2
 /// and 19).
 const TRADE_AI: u32 = 0xa;
@@ -1341,20 +1347,50 @@ pub const fn attack_sight(me: &Attacker) -> Result<f32, GenieError> {
     Ok(me.los + me.los)
 }
 
-/// The unit AI's slot 0xa8 (`me`'s type): the soldier's ([`soldier_attacks_neutral`]) or the
-/// siege unit's ([`siege_attacks_neutral`]) test of a neutral object of `class`.
-///
-/// # Errors
-///
-/// Another unit-AI type.
-pub fn attacks_neutral(me: &Attacker, class: i16) -> Result<bool, GenieError> {
-    match me.ai_type {
-        13 => Ok(soldier_attacks_neutral(me.attack_priority, class)),
-        SIEGE_AI => Ok(siege_attacks_neutral(me.attack_priority, class)),
-        _ => Err(GenieError::unsupported(
-            "a neutral object's test (slot 0xa8) of a unit-AI type not modelled",
-        )),
+/// The unit AI's slot 0xa8 (`me`'s type, [`type_attacks_neutral`]) on a neutral object of
+/// `class`.
+#[must_use]
+pub fn attacks_neutral(me: &Attacker, class: i16) -> bool {
+    type_attacks_neutral(me.ai_type, me.attack_priority, class)
+}
+
+/// Slot 0xa8 of the unit AI of factory type `ai_type` (`FUN_141215560`'s modules), whether it
+/// attacks a neutral object of `class`, its unit's master of `attack_priority`: the civilian's
+/// (`FUN_140c1acf0`) and the building's (`FUN_140c1ace0`) never; the predator's
+/// (`FUN_140c1ad60`) and the lion's (`FUN_140c1ad00`) not classes 13, 22, 52, 54 and 55; the
+/// priest's ([`priest_attacks_neutral`]), the soldier's and the tower's (`FUN_140c1aeb0`, the
+/// soldier's mask: [`soldier_attacks_neutral`]) and the siege unit's ([`siege_attacks_neutral`]);
+/// the others' the base's (`FUN_140c48410`): always. The predator's and the lion's also take
+/// attack priority 3 to [`PRIORITY_3_CLASSES`].
+#[must_use]
+pub fn type_attacks_neutral(ai_type: u32, attack_priority: u8, class: i16) -> bool {
+    match ai_type {
+        CIVILIAN | BUILDING_AI => false,
+        PREDATOR_AI | LION_AI => {
+            !matches!(class, 13 | 22 | 52 | 54 | 55)
+                && (attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class))
+        }
+        PRIEST_AI => priest_attacks_neutral(attack_priority, class),
+        SOLDIER_AI | TOWER_AI => soldier_attacks_neutral(attack_priority, class),
+        SIEGE_AI => siege_attacks_neutral(attack_priority, class),
+        _ => true,
     }
+}
+
+/// The classes the priest never attacks as neutral objects (`FUN_140c1adc0`'s mask
+/// `0x200800838001c` below class 50: 2, 3, 4, 19, 20, 21, 27, 39, 49).
+const PRIEST_NEUTRAL_SPARED: u64 = 0x2_0080_0838_001c;
+
+/// Slot 0xa8 of the priest's unit AI (`FUN_140c1adc0`): never a class below 50 of
+/// [`PRIEST_NEUTRAL_SPARED`] (`class` taken as unsigned), and with attack priority 3 only
+/// [`PRIORITY_3_CLASSES`].
+#[must_use]
+pub fn priest_attacks_neutral(attack_priority: u8, class: i16) -> bool {
+    let class_bits = i32::from(class) as u32;
+    if class_bits < 0x32 && PRIEST_NEUTRAL_SPARED >> class_bits & 1 != 0 {
+        return false;
+    }
+    attack_priority != 3 || PRIORITY_3_CLASSES.contains(&class)
 }
 
 /// The classes slot 0xa8 of the soldier's unit AI (`FUN_140c1ae60`) passes among neutral objects:
@@ -2713,18 +2749,19 @@ struct RetargetSearch {
 /// # Errors
 ///
 /// Another type, whose list is not held here.
-const fn cared_classes(
+pub(crate) const fn cared_classes(
     ai_type: u32,
     class: i16,
     computer: bool,
 ) -> Result<&'static [i32], GenieError> {
     match ai_type {
         2 => Ok(&HUNTED_CARED),
-        3 => Ok(&PREDATOR_CARED),
-        // the boar's (`FUN_140c11720`) and the ranged units' (`FUN_140c11f80`, `FUN_140c11f50`)
-        // constructors give none
-        BOAR_AI | 6 | 7 => Ok(&[]),
-        5 => Ok(&LION_CARED),
+        PREDATOR_AI => Ok(&PREDATOR_CARED),
+        // the boar's (`FUN_140c11720`), the ranged units' (`FUN_140c11f80`, `FUN_140c11f50`) and
+        // the livestock's (`FUN_140c11d70`) constructors give none: the base's (`FUN_140c2e080`
+        // with 0) alone
+        BOAR_AI | 6 | 7 | LIVESTOCK_AI => Ok(&[]),
+        LION_AI => Ok(&LION_CARED),
         PRIEST_AI => Ok(&PRIEST_CARED),
         CIVILIAN => Ok(&CIVILIAN_CARED),
         BUILDING_AI => Ok(&BUILDING_CARED),
@@ -2742,6 +2779,30 @@ const fn cared_classes(
             "a retarget search of a unit-AI type whose classes are not held",
         )),
     }
+}
+
+/// What a search of a unit AI of `ai_type` covers (`FUN_140c63e20`), its unit of `class`, line
+/// of sight `los` and search radius (slot 0x2c8): its type's [`cared_classes`] and its radius
+/// ([`search_radius`]), the civilian's and the fishing ship's grown by their `+0x1e8`
+/// ([`civilian_search_radius`]).
+///
+/// # Errors
+///
+/// A unit AI type whose classes are not held.
+pub(crate) fn search_area(
+    ai_type: u32,
+    class: i16,
+    los: f32,
+    radius: f32,
+    computer: bool,
+) -> Result<(&'static [i32], f32), GenieError> {
+    let classes = cared_classes(ai_type, class, computer)?;
+    let radius = if matches!(ai_type, CIVILIAN | FISHING_AI) {
+        civilian_search_radius(los, radius)
+    } else {
+        search_radius(los, radius)
+    };
+    Ok((classes, radius))
 }
 
 /// The action values that need a live target (the target block's mask `0x4002080d` over the
@@ -5203,13 +5264,7 @@ impl UnitAi {
         at: &Surroundings,
         computer: bool,
     ) -> Result<(&'static [i32], f32), GenieError> {
-        let classes = cared_classes(self.ai_type, at.class, computer)?;
-        let radius = if matches!(self.ai_type, CIVILIAN | FISHING_AI) {
-            civilian_search_radius(at.los, at.search_radius)
-        } else {
-            search_radius(at.los, at.search_radius)
-        };
-        Ok((classes, radius))
+        search_area(self.ai_type, at.class, at.los, at.search_radius, computer)
     }
 
     /// The villager's cases 0x1fb, 0x1fc and 0x202 off the attack action (`FUN_140c22bf0`,
@@ -10680,7 +10735,53 @@ mod tests {
         assert_eq!(list(TRADE_AI, 19, false), &TRADE_CART_CARED);
         assert_eq!(list(SOLDIER_AI, 6, true).last(), Some(&10));
         assert_eq!(list(SOLDIER_AI, 6, false), &SOLDIER_CARED);
-        assert!(cared_classes(0x13, 58, false).is_err());
+        assert_eq!(list(LIVESTOCK_AI, 58, false), none);
+        assert!(cared_classes(1, 58, false).is_err());
+    }
+
+    /// Slot 0xa8 by factory type: the civilian and the building never attack a neutral object,
+    /// the base's types always; the predator and the lion spare their five classes, the priest
+    /// its mask below 50 (61 passes), the tower the soldier's mask; attack priority 3 keeps only
+    /// its classes.
+    #[test]
+    fn each_unit_ai_type_tests_a_neutral_object_by_its_module() {
+        for t in [CIVILIAN, BUILDING_AI] {
+            assert!(!type_attacks_neutral(t, 0, 6));
+        }
+        for t in [
+            2,
+            BOAR_AI,
+            6,
+            7,
+            TRADE_AI,
+            TRANSPORT_AI,
+            FISHING_AI,
+            ARTIFACT_AI,
+        ] {
+            assert!(type_attacks_neutral(t, 0, 4), "type {t}");
+            assert!(type_attacks_neutral(t, 3, 6), "type {t}");
+        }
+        assert!(type_attacks_neutral(SIEGE_TOWER_AI, 0, 3));
+        assert!(type_attacks_neutral(LIVESTOCK_AI, 0, 3));
+        for t in [PREDATOR_AI, LION_AI] {
+            for class in [13, 22, 52, 54, 55] {
+                assert!(!type_attacks_neutral(t, 0, class), "type {t} class {class}");
+            }
+            assert!(type_attacks_neutral(t, 0, 4));
+            assert!(!type_attacks_neutral(t, 3, 6));
+        }
+        for class in [2, 3, 4, 19, 20, 21, 27, 39, 49] {
+            assert!(!type_attacks_neutral(PRIEST_AI, 0, class), "class {class}");
+            assert!(!type_attacks_neutral(TOWER_AI, 0, class), "class {class}");
+        }
+        assert!(type_attacks_neutral(PRIEST_AI, 0, 61));
+        assert!(!type_attacks_neutral(TOWER_AI, 0, 61));
+        assert!(type_attacks_neutral(PRIEST_AI, 0, 6));
+        assert!(!type_attacks_neutral(PRIEST_AI, 3, 6));
+        assert_eq!(
+            type_attacks_neutral(SIEGE_AI, 0, 19),
+            siege_attacks_neutral(0, 19)
+        );
     }
 
     /// An idle human player's soldier without a target: `bestUnitToAttack` names the attacker,

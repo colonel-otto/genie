@@ -1305,7 +1305,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     }
 
     fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError> {
-        crate::unit_ai::attacks_neutral(self.attacker, class)
+        Ok(crate::unit_ai::attacks_neutral(self.attacker, class))
     }
 
     fn spares_friends(&mut self, id: i32) -> Result<bool, GenieError> {
