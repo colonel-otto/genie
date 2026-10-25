@@ -1214,6 +1214,16 @@ impl Spatial {
         }
     }
 
+    /// The walk's view of the moving object `id`'s last move time (`+0x870`, slot 0x5e8) as
+    /// the field changes outside its own update (a construction's start, a gate that shuts or
+    /// locks): a later walker of the same update reads it at once; nothing for an object without
+    /// movement state.
+    pub fn set_last_move(&mut self, id: i32, last_move: u32) {
+        if let Some(g) = self.gaits.get_mut(&id) {
+            g.last_move = last_move;
+        }
+    }
+
     /// What the walk reads of the moving object `id`.
     pub fn gait(&self, id: i32) -> Option<Gait> {
         self.gaits.get(&id).copied()
@@ -3471,6 +3481,25 @@ mod tests {
             .unwrap();
         assert_eq!(edge.len(), 1);
         assert_eq!(edge[0] as u32 & 0xff00_0000, 0xff00_0000);
+    }
+
+    /// The walk reads a met object's last move time (slot 0x5e8, `+0x870`) live: a change from
+    /// outside the object's own update reaches the mirror at once, and an object without
+    /// movement state stays without one.
+    #[test]
+    fn a_last_move_set_outside_the_object_s_update_reaches_the_walk() {
+        let mut s = Spatial::default();
+        s.set_gait(
+            33439,
+            Some(Gait {
+                last_move: 7000,
+                ..Gait::default()
+            }),
+        );
+        s.set_last_move(33439, 8281);
+        assert_eq!(s.gait(33439).map(|g| g.last_move), Some(8281));
+        s.set_last_move(33440, 8281);
+        assert_eq!(s.gait(33440), None);
     }
 
     /// `FUN_1410562d0`'s buffer stays with the obstruction manager until the next call: the

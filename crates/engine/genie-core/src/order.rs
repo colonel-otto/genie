@@ -2484,7 +2484,12 @@ impl Turns {
         let (_, unit) = self.object_mut(id).expect("found above");
         // slot 0x668: the lock's value (a building without its gate state is lock_gate's)
         let locked = unit.gate.is_some_and(|g| g.locked);
-        lock_gate(unit, !locked, now)
+        lock_gate(unit, !locked, now)?;
+        // the walks of this update read the last move time the lock set
+        if let Some(t) = unit.mover.as_ref().map(|m| m.last_move) {
+            self.spatial.set_last_move(id, t);
+        }
+        Ok(())
     }
 
     /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): of the first 60 ids (500 for a computer player,
@@ -5175,6 +5180,7 @@ impl Turns {
                     "a shut gate without its moving part",
                 ))?
                 .last_move = now.wrapping_add(1);
+            self.spatial.set_last_move(id, now.wrapping_add(1));
         }
         Ok(())
     }

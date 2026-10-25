@@ -2486,6 +2486,10 @@ impl crate::turn::Turns {
             crate::order::lock_gate(nu, locked, now)?;
         }
         nu.life.hp -= stack.hp_lost;
+        // the walks of this update read the last move time the lock set
+        if let Some(t) = nu.mover.as_ref().map(|m| m.last_move) {
+            self.spatial.set_last_move(new, t);
+        }
         Ok(())
     }
 
@@ -2918,6 +2922,7 @@ impl Construction {
         }
         if let Some(m) = mover {
             m.last_move = now.wrapping_add(1);
+            world.set_last_move(id, m.last_move);
         }
         Ok(true)
     }
@@ -4212,6 +4217,53 @@ mod tests {
         assert!(world.get(10029).unwrap().obstruction.is_some());
         assert_eq!((started_post, started_fire), (foundation(false), 0.0));
         assert!(!c.desolid);
+    }
+
+    /// The construction's start (`FUN_1411e5670`) sets the foundation's last move time to the
+    /// world's time plus 1, which a walker later in the same update reads (slot 0x5e8) when it
+    /// meets the new record: it outranks a path made before (429513284's builder 30830 meeting
+    /// the house 33439 that 30828 started in update 199).
+    #[test]
+    fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
+        use crate::spatial::Tiles;
+        let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
+        world.insert(
+            33439,
+            crate::spatial::Placed {
+                position: [194.0, 64.0, 0.0],
+                ..house()
+            },
+        );
+        world.set_gait(
+            33439,
+            Some(crate::spatial::Gait {
+                last_move: 7000,
+                ..crate::spatial::Gait::default()
+            }),
+        );
+        let mut c = Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 1,
+            hit_points: 550,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let mut mover = crate::hunt::tests::walker();
+        let started = Construction::begin(
+            33439,
+            &mut c,
+            Some(&mut mover),
+            &mut world,
+            &mut Pathing::default(),
+            8280,
+        );
+        assert_eq!(started, Ok(true));
+        assert_eq!(mover.last_move, 8281);
+        assert_eq!(world.gait(33439).map(|g| g.last_move), Some(8281));
     }
 
     /// An annex (a gate's post) whose main building is in state 0 with a hit point gives it the
