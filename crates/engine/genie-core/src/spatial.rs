@@ -1170,6 +1170,14 @@ impl Spatial {
         }
     }
 
+    /// The walk's view of the moving object `id`'s last human order time (`+0x650`) as the field
+    /// changes; nothing for an object without one.
+    pub fn set_human_order(&mut self, id: i32, human_order: u32) {
+        if let Some(g) = self.gaits.get_mut(&id) {
+            g.human_order = human_order;
+        }
+    }
+
     /// What the walk reads of the moving object `id`.
     pub fn gait(&self, id: i32) -> Option<Gait> {
         self.gaits.get(&id).copied()

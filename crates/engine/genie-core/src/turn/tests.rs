@@ -7633,3 +7633,26 @@ fn a_farm_foundation_lays_its_stage_terrain() {
     assert_eq!(farm_stage_terrain(1889, (false, -1), 0.0, 15), Some(1));
     assert_eq!(farm_stage_terrain(70, (false, -1), 0.0, 15), None);
 }
+
+/// `RGE_Moving_Object::update`'s count-down of the last human order time (`+0x650`, at most
+/// `FUN_140fe0d10`'s 5000, by the world's dt `+0x7c`, not below 0) is the world's view at once:
+/// the unit's own walk later in the update ranks a met unit by the counted-down time
+/// (431096717's goat 12959 in update 78: 2001 against villager 16025's 2034, so it does not
+/// pause it).
+#[test]
+fn a_unit_s_human_order_count_down_is_the_walk_s_view_at_once() {
+    let mut t = enter_world(vec![], 5);
+    let mut counted = |before: u32| {
+        let v = &mut t.players[1].objects[0];
+        v.last_human_order = before;
+        let id = v.id;
+        t.spatial.set_gait(id, v.gait());
+        v.count_down_human_order(33, &mut t.spatial);
+        let seen = t.spatial.gait(id).map(|g| g.human_order);
+        (t.players[1].objects[0].last_human_order, seen)
+    };
+    assert_eq!(counted(2034), (2001, Some(2001)));
+    assert_eq!(counted(5000), (4967, Some(4967)));
+    assert_eq!(counted(20), (0, Some(0)));
+    assert_eq!(counted(5001), (5001, Some(5001)));
+}

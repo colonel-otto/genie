@@ -4808,6 +4808,17 @@ impl Unit {
         Ok(())
     }
 
+    /// `RGE_Moving_Object::update`: a last human order time (`+0x650`) at most `FUN_140fe0d10`'s
+    /// counts down by the world's dt (`+0x7c`, in ms), not below 0. The walk reads the field
+    /// live, so the world's view follows at once: the unit's own walk later in this update ranks
+    /// the units it meets by the counted-down time.
+    pub(in crate::turn) fn count_down_human_order(&mut self, dt: u32, spatial: &mut Spatial) {
+        if self.last_human_order <= crate::unit_ai::HUMAN_ORDER_CAP {
+            self.last_human_order = self.last_human_order.saturating_sub(dt);
+            spatial.set_human_order(self.id, self.last_human_order);
+        }
+    }
+
     pub(in crate::turn) fn update(
         &mut self,
         c: &mut Context<'_>,
@@ -4853,6 +4864,11 @@ impl Unit {
             self.next_volley = 0;
             self.reload_worldtime = 0;
         }
+        // RGE_Moving_Object::update counts the last human order time down before its velocity
+        // step
+        if self.mover.is_some() {
+            self.count_down_human_order(c.dt, c.spatial);
+        }
         if let Some(mover) = self.mover.as_mut() {
             let at = mover.step_velocity(
                 self.position,
@@ -4867,11 +4883,6 @@ impl Unit {
                 if let Some(p) = c.spatial.get(self.id) {
                     c.pathing.moved(self.id, p, mover.is_moving());
                 }
-            }
-            // RGE_Moving_Object::update: a last human order time (+0x650) at most FUN_140fe0d10's
-            // counts down by the world's dt (+0x7c), not below 0
-            if self.last_human_order <= crate::unit_ai::HUMAN_ORDER_CAP {
-                self.last_human_order = self.last_human_order.saturating_sub(c.dt);
             }
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
             if let Some(v) = mover.velocity.as_ref() {
