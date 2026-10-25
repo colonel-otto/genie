@@ -382,49 +382,16 @@ impl Turns {
     /// What the update does not model.
     fn awake_update(&mut self, group: i32) -> Result<bool, GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
-        let mut far = false;
-        if g.command_queue.is_empty() {
-            let patrol = crate::group::formation::top_path(&g.motion.paths)
-                .is_some_and(|p| p.path_flags & 1 != 0);
-            // the dword compare at 0x14103dd78: the list's size (64 bits) against the count
-            if g.objects.len() as u32 == g.members.len() as u32
-                && !self.target_pending(group)?
-                && !patrol
-                && g.flags >> 11 & 1 == 0
-            {
-                while let Some(&id) = self.groups.get(group).expect("held").objects.first() {
-                    if !self.remove_unit(group, id, -1, false)? {
-                        let _ = self.groups.get_mut(group).expect("held").objects.remove(0);
-                    }
-                }
-            }
-            let g = self.groups.get(group).expect("held");
-            far = g.command_queue.is_empty() && g.motion.flags & 2 == 0;
-        }
+        let far = if g.command_queue.is_empty() {
+            self.kept_apart_leave(group)?
+        } else {
+            false
+        };
         if self.groups.get(group).expect("held").flags & 0x4_0000 != 0 {
-            let lead = self.nearest_to_target(group);
-            self.groups.get_mut(group).expect("held").motion.lead = lead;
-            if lead != -1 {
-                self.motion_update(group, false)?;
-                if self.groups.get(group).expect("held").motion.flags & 2 == 0 {
-                    self.group_statistics(group, far)?;
-                    let g = self.groups.get_mut(group).expect("held");
-                    g.motion.new_position[0] = g.centroid;
-                    g.motion.position[0] = g.centroid;
-                }
-                self.groups.get_mut(group).expect("held").flags &= !0x4_0000;
-            }
+            self.lead_to_target(group, far)?;
         }
         let g = self.groups.get(group).expect("held");
-        if g.members.is_empty() {
-            return Ok(false);
-        }
-        if g.command_queue.is_empty()
-            && g.current_command == NO_COMMAND
-            && g.current_formation
-                .as_ref()
-                .is_some_and(|f| f.slots.iter().all(|s| s.state == 3))
-        {
+        if awake_group_ends(g) {
             return Ok(false);
         }
         if self.any_member_held(group) && g.flags & 0x1_0000 != 0 {
@@ -453,6 +420,60 @@ impl Turns {
         let forward = g.motion.position[1];
         self.motion_update(group, budget)?;
         self.after_motion(group, far, forward)
+    }
+
+    /// [`Turns::awake_update`] without queued commands: when the group keeps every member apart
+    /// (`+0x468` equal to the member count), its target is not pending, it walks no patrol and
+    /// flags bit 11 is clear, each kept-apart unit leaves (`removeUnit` with target −1; one that
+    /// is no member leaves the list instead, `FUN_140a63bd0`). The statistics' far flag: no
+    /// queued command and motion flags bit 1 clear.
+    ///
+    /// # Errors
+    ///
+    /// What the target's test and the leaving do not model.
+    fn kept_apart_leave(&mut self, group: i32) -> Result<bool, GenieError> {
+        let g = self.groups.get(group).expect("the caller holds the group");
+        let patrol = crate::group::formation::top_path(&g.motion.paths)
+            .is_some_and(|p| p.path_flags & 1 != 0);
+        // the dword compare at 0x14103dd78: the list's size (64 bits) against the count
+        if g.objects.len() as u32 == g.members.len() as u32
+            && !self.target_pending(group)?
+            && !patrol
+            && g.flags >> 11 & 1 == 0
+        {
+            while let Some(&id) = self.groups.get(group).expect("held").objects.first() {
+                if !self.remove_unit(group, id, -1, false)? {
+                    let _ = self.groups.get_mut(group).expect("held").objects.remove(0);
+                }
+            }
+        }
+        let g = self.groups.get(group).expect("held");
+        Ok(g.command_queue.is_empty() && g.motion.flags & 2 == 0)
+    }
+
+    /// [`Turns::awake_update`] with flags bit 18: the lead is the member nearest the target's
+    /// place ([`Turns::nearest_to_target`]); a lead found has the motion update with 0, then
+    /// without motion flags bit 1 the statistics (`far`) and the centroid as the motion's
+    /// position and new position, and bit 18 clears.
+    ///
+    /// # Errors
+    ///
+    /// What the motion update and the statistics do not model.
+    fn lead_to_target(&mut self, group: i32, far: bool) -> Result<(), GenieError> {
+        let lead = self.nearest_to_target(group);
+        self.groups.get_mut(group).expect("held").motion.lead = lead;
+        if lead == -1 {
+            return Ok(());
+        }
+        self.motion_update(group, false)?;
+        if self.groups.get(group).expect("held").motion.flags & 2 == 0 {
+            self.group_statistics(group, far)?;
+            let g = self.groups.get_mut(group).expect("held");
+            g.motion.new_position[0] = g.centroid;
+            g.motion.position[0] = g.centroid;
+        }
+        self.groups.get_mut(group).expect("held").flags &= !0x4_0000;
+        Ok(())
     }
 
     /// `BUnitGroup::update` after `BMotion`'s update (`0x14103e017` on), `forward` the motion's
@@ -1679,6 +1700,19 @@ impl Turns {
 
 /// The idle timer's span (`FUN_14102d370`'s `% 0x2ee`, its division at `0x14102d395`).
 pub const IDLE_SPAN: u32 = 750;
+
+/// [`Turns::awake_update`]'s end before the motion: the group goes without members, and without
+/// a queued command or a current one when its formation has every slot in state 3 (or has none).
+fn awake_group_ends(g: &UnitGroup) -> bool {
+    if g.members.is_empty() {
+        return true;
+    }
+    g.command_queue.is_empty()
+        && g.current_command == NO_COMMAND
+        && g.current_formation
+            .as_ref()
+            .is_some_and(|f| f.slots.iter().all(|s| s.state == 3))
+}
 
 #[cfg(test)]
 mod tests {

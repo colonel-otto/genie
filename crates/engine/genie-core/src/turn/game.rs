@@ -176,46 +176,16 @@ impl Turns {
                     self.set_ai_setting(p, g.a, g.value);
                 }
             }
-            sub::FARM_QUEUE | sub::PASTURE_QUEUE => {
+            sub::FARM_QUEUE
+            | sub::PASTURE_QUEUE
+            | sub::FARM_UNQUEUE
+            | sub::PASTURE_UNQUEUE
+            | sub::AUTO_FARM_QUEUE
+            | sub::FISH_TRAP_QUEUE
+            | sub::FISH_TRAP_UNQUEUE
+            | sub::AUTO_FISH_TRAP_QUEUE => {
                 if let Some(p) = target {
-                    let master = if g.sub == sub::FARM_QUEUE {
-                        FARM
-                    } else {
-                        PASTURE
-                    };
-                    let _ = self.queue_farms(p, i32::from(g.a), master)?;
-                }
-            }
-            sub::FARM_UNQUEUE | sub::PASTURE_UNQUEUE => {
-                if let Some(p) = target {
-                    let master = if g.sub == sub::FARM_UNQUEUE {
-                        FARM
-                    } else {
-                        PASTURE
-                    };
-                    let _ = self.unqueue_farms(p, i32::from(g.a), master)?;
-                }
-            }
-            sub::AUTO_FARM_QUEUE => {
-                if let Some(p) = target {
-                    let owner = &mut self.players[p];
-                    owner.auto_farm_queue = !owner.auto_farm_queue;
-                }
-            }
-            sub::FISH_TRAP_QUEUE => {
-                if let Some(p) = target {
-                    let _ = self.queue_fish_traps(p, i32::from(g.a))?;
-                }
-            }
-            sub::FISH_TRAP_UNQUEUE => {
-                if let Some(p) = target {
-                    let _ = self.unqueue_fish_traps(p, i32::from(g.a))?;
-                }
-            }
-            sub::AUTO_FISH_TRAP_QUEUE => {
-                if let Some(p) = target {
-                    let owner = &mut self.players[p];
-                    owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
+                    self.game_queue(p, g)?;
                 }
             }
             sub::POSTURE => {
@@ -227,6 +197,49 @@ impl Turns {
             // 1 (the game speed) changes nothing a playback's simulation reads; 0 and 5 with
             // `allianceLocked`, 4 and 6 without cheats, and the sub-commands without a case do
             // nothing
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// `FUN_140e7c330`'s queue cases on player `p`: the mill's queue buys or gives back `+0xa`
+    /// farms (0xd, 0xe) or pastures (0x15, 0x16) ([`Turns::queue_farms`],
+    /// [`Turns::unqueue_farms`]), the dock's fish traps (0x11, 0x12, [`Turns::queue_fish_traps`],
+    /// [`Turns::unqueue_fish_traps`]); `autoFarmQueue` (0x10, `+0x1424`) or `autoFishTrapQueue`
+    /// (0x13, `+0x1425`) flips.
+    ///
+    /// # Errors
+    ///
+    /// What the purchase and the refund do not model.
+    fn game_queue(&mut self, p: usize, g: &GameCommand) -> Result<(), GenieError> {
+        let count = i32::from(g.a);
+        match g.sub {
+            sub::FARM_QUEUE => {
+                let _ = self.queue_farms(p, count, FARM)?;
+            }
+            sub::PASTURE_QUEUE => {
+                let _ = self.queue_farms(p, count, PASTURE)?;
+            }
+            sub::FARM_UNQUEUE => {
+                let _ = self.unqueue_farms(p, count, FARM)?;
+            }
+            sub::PASTURE_UNQUEUE => {
+                let _ = self.unqueue_farms(p, count, PASTURE)?;
+            }
+            sub::AUTO_FARM_QUEUE => {
+                let owner = &mut self.players[p];
+                owner.auto_farm_queue = !owner.auto_farm_queue;
+            }
+            sub::FISH_TRAP_QUEUE => {
+                let _ = self.queue_fish_traps(p, count)?;
+            }
+            sub::FISH_TRAP_UNQUEUE => {
+                let _ = self.unqueue_fish_traps(p, count)?;
+            }
+            sub::AUTO_FISH_TRAP_QUEUE => {
+                let owner = &mut self.players[p];
+                owner.auto_fishtrap_queue = !owner.auto_fishtrap_queue;
+            }
             _ => {}
         }
         Ok(())
@@ -309,6 +322,46 @@ mod tests {
             speed: 0.0,
             value,
         }
+    }
+
+    /// GAME's queue cases for the command's player: 0xd and 0x15 buy farms and pastures for the
+    /// mill's queue, 0xe and 0x16 give them back (refunded), 0x11 and 0x12 the dock's fish traps;
+    /// a player outside the world changes nothing.
+    #[test]
+    fn the_queue_sub_commands_buy_and_give_back_for_their_player() {
+        use crate::farm_queue::FISH_TRAP;
+        use crate::masters::{Master, Masters, master_type};
+        let costing = |id, wood| Master {
+            id,
+            kind: master_type::COMBAT,
+            cost: vec![(1, wood, true)],
+            ..Master::default()
+        };
+        let mut t = world();
+        t.players[1].resources = [0.0, 1000.0, 0.0, 0.0];
+        let masters = Masters::new([
+            costing(FARM, 60),
+            costing(PASTURE, 100),
+            costing(FISH_TRAP, 100),
+        ]);
+        t.masters = vec![Masters::new([]), masters];
+        let wood = |t: &Turns| t.players[1].resources[1];
+        t.game(&game(1, sub::FARM_QUEUE, 1, 2, 0)).unwrap();
+        assert_eq!((t.players[1].farm_queue, wood(&t)), (2, 880.0));
+        t.game(&game(1, sub::PASTURE_QUEUE, 1, 1, 0)).unwrap();
+        assert_eq!((t.players[1].farm_queue, wood(&t)), (3, 780.0));
+        t.game(&game(1, sub::PASTURE_UNQUEUE, 1, 1, 0)).unwrap();
+        assert_eq!((t.players[1].farm_queue, wood(&t)), (2, 880.0));
+        t.game(&game(1, sub::FARM_UNQUEUE, 1, 1, 0)).unwrap();
+        assert_eq!((t.players[1].farm_queue, wood(&t)), (1, 940.0));
+        t.game(&game(1, sub::FISH_TRAP_QUEUE, 1, 3, 0)).unwrap();
+        assert_eq!((t.players[1].fish_trap_queue, wood(&t)), (3, 640.0));
+        t.game(&game(1, sub::FISH_TRAP_UNQUEUE, 1, 2, 0)).unwrap();
+        assert_eq!((t.players[1].fish_trap_queue, wood(&t)), (1, 840.0));
+        // player 9 is outside the world: nothing
+        t.settings.cheats_enabled = true;
+        t.game(&game(1, sub::FARM_QUEUE, 9, 2, 0)).unwrap();
+        assert_eq!((t.players[1].farm_queue, wood(&t)), (1, 840.0));
     }
 
     /// `do_command`'s gate: a sub-command for another player runs only with the game's cheats,

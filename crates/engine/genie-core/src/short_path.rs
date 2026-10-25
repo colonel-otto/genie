@@ -207,107 +207,116 @@ fn segment_hit(a: Point, b: Point, c: Point, e: Point, t: &mut i32) -> i32 {
 /// hit. Returns 0..3 as [`segment_hit`]; a y side wins only when strictly nearer.
 fn ray_rect(a: Point, b: Point, r: Rect, t: &mut i32, side: &mut u8) -> i32 {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
-    let [rx0, ry0, rx1, ry1] = r;
-    let ratio = |num: i32, den: i32| ((i64::from(num) << 22) / i64::from(den)) as i32;
     let mut found = 0;
-    if dx < 1 {
-        if dx < 0 {
-            let k;
-            if dy == 0 {
-                if a[1] <= ry0 || ry1 <= a[1] {
-                    k = 0;
-                } else {
-                    if rx1 <= b[0] || a[0] < rx1 {
-                        return 0;
-                    }
-                    let u = ratio(rx1 - a[0], dx);
-                    if *t <= u {
-                        return 0;
-                    }
-                    *t = u;
-                    k = 1;
-                }
-            } else {
-                k = segment_hit(a, b, [rx1, ry0], [rx1, ry1], t);
-            }
-            if k != 0 {
-                *side = 1;
-                found = k;
-            }
-        }
-    } else {
-        let k;
-        if dy == 0 {
-            if a[1] <= ry0 || ry1 <= a[1] {
-                k = 0;
-            } else {
-                if b[0] <= rx0 || rx0 < a[0] {
-                    return 0;
-                }
-                let u = ratio(rx0 - a[0], dx);
-                if *t <= u {
-                    return 0;
-                }
-                *t = u;
-                k = 1;
-            }
-        } else {
-            k = segment_hit(a, b, [rx0, ry0], [rx0, ry1], t);
-        }
-        if k != 0 {
-            *side = 3;
-            found = k;
-        }
+    // the side across x it faces: the right (1) for a ray going left, the left (3) for one going
+    // right
+    let (k, s) = match dx {
+        ..0 => (ray_right_side(a, b, r, t), 1),
+        0 => (0, 1),
+        _ => (ray_left_side(a, b, r, t), 3),
+    };
+    if k != 0 {
+        *side = s;
+        found = k;
     }
-    if 0 < dy {
-        let k = if dx == 0 {
-            if rx0 < a[0] && a[0] < rx1 {
-                if b[1] <= ry0 || ry0 < a[1] {
-                    return found;
-                }
-                let u = ratio(ry0 - a[1], dy);
-                if *t <= u {
-                    return found;
-                }
-                *t = u;
-                *side = 0;
-                return 1;
-            }
-            0
-        } else {
-            segment_hit(a, b, [rx0, ry0], [rx1, ry0], t)
-        };
-        if k == 0 {
-            return found;
-        }
-        *side = 0;
-        return k;
-    }
-    if 0 <= dy {
-        return found;
-    }
-    let k = if dx == 0 {
-        if rx0 < a[0] && a[0] < rx1 {
-            if ry1 <= b[1] || a[1] < ry1 {
-                return found;
-            }
-            let u = ratio(ry1 - a[1], dy);
-            if *t <= u {
-                return found;
-            }
-            *t = u;
-            *side = 2;
-            return 1;
-        }
-        0
-    } else {
-        segment_hit(a, b, [rx0, ry1], [rx1, ry1], t)
+    // then the bottom (0) for a ray going up in y, the top (2) for one going down
+    let (k, s) = match dy {
+        1.. => (ray_bottom_side(a, b, r, t), 0),
+        0 => return found,
+        _ => (ray_top_side(a, b, r, t), 2),
     };
     if k == 0 {
         return found;
     }
-    *side = 2;
+    *side = s;
     k
+}
+
+/// [`ray_rect`]'s ratio of a side's offset `num` along the ray's `den` (`num << 22 / den`).
+fn ray_ratio(num: i32, den: i32) -> i32 {
+    ((i64::from(num) << 22) / i64::from(den)) as i32
+}
+
+/// [`ray_rect`]'s right side (x1) for the ray `a`–`b` going left: a ray along x (no y step)
+/// crosses it within its open span from at or right of it to left of it, nearer than `t` (1, its
+/// ratio into `t`); any other ray as [`segment_hit`]; 0 for none.
+fn ray_right_side(a: Point, b: Point, [_, ry0, rx1, ry1]: Rect, t: &mut i32) -> i32 {
+    if b[1] - a[1] != 0 {
+        return segment_hit(a, b, [rx1, ry0], [rx1, ry1], t);
+    }
+    if a[1] <= ry0 || ry1 <= a[1] {
+        return 0;
+    }
+    if rx1 <= b[0] || a[0] < rx1 {
+        return 0;
+    }
+    let u = ray_ratio(rx1 - a[0], b[0] - a[0]);
+    if *t <= u {
+        return 0;
+    }
+    *t = u;
+    1
+}
+
+/// [`ray_rect`]'s left side (x0) for the ray `a`–`b` going right, as [`ray_right_side`]: a ray
+/// along x crosses it from at or left of it to right of it.
+fn ray_left_side(a: Point, b: Point, [rx0, ry0, _, ry1]: Rect, t: &mut i32) -> i32 {
+    if b[1] - a[1] != 0 {
+        return segment_hit(a, b, [rx0, ry0], [rx0, ry1], t);
+    }
+    if a[1] <= ry0 || ry1 <= a[1] {
+        return 0;
+    }
+    if b[0] <= rx0 || rx0 < a[0] {
+        return 0;
+    }
+    let u = ray_ratio(rx0 - a[0], b[0] - a[0]);
+    if *t <= u {
+        return 0;
+    }
+    *t = u;
+    1
+}
+
+/// [`ray_rect`]'s bottom side (y0) for the ray `a`–`b` going up in y: a ray along y (no x step)
+/// crosses it within its open span from at or below it to above it, nearer than `t` (1, its
+/// ratio into `t`); any other ray as [`segment_hit`]; 0 for none.
+fn ray_bottom_side(a: Point, b: Point, [rx0, ry0, rx1, _]: Rect, t: &mut i32) -> i32 {
+    if b[0] - a[0] != 0 {
+        return segment_hit(a, b, [rx0, ry0], [rx1, ry0], t);
+    }
+    if !(rx0 < a[0] && a[0] < rx1) {
+        return 0;
+    }
+    if b[1] <= ry0 || ry0 < a[1] {
+        return 0;
+    }
+    let u = ray_ratio(ry0 - a[1], b[1] - a[1]);
+    if *t <= u {
+        return 0;
+    }
+    *t = u;
+    1
+}
+
+/// [`ray_rect`]'s top side (y1) for the ray `a`–`b` going down in y, as [`ray_bottom_side`]: a
+/// ray along y crosses it from at or above it to below it.
+fn ray_top_side(a: Point, b: Point, [rx0, _, rx1, ry1]: Rect, t: &mut i32) -> i32 {
+    if b[0] - a[0] != 0 {
+        return segment_hit(a, b, [rx0, ry1], [rx1, ry1], t);
+    }
+    if !(rx0 < a[0] && a[0] < rx1) {
+        return 0;
+    }
+    if ry1 <= b[1] || a[1] < ry1 {
+        return 0;
+    }
+    let u = ray_ratio(ry1 - a[1], b[1] - a[1]);
+    if *t <= u {
+        return 0;
+    }
+    *t = u;
+    1
 }
 
 /// A hit of the raycast or a sweep: the shape and its side.
@@ -2815,6 +2824,44 @@ mod tests {
             ray_rect([0, 3 * ONE], [4 * ONE, 3 * ONE], r, &mut t, &mut side),
             0
         );
+    }
+
+    /// `FUN_140faa4e0` on the y sides: a ray along y within the box's open x span meets the
+    /// bottom going up and the top going down, nearer than `t` and from at or outside the side;
+    /// a slanted ray meets them as `FUN_140fa9f10` does.
+    #[test]
+    fn a_ray_along_y_crosses_the_bottom_or_the_top() {
+        let r = [2 * ONE, 0, 3 * ONE, 2 * ONE];
+        let x = 2 * ONE + ONE / 2;
+        let cast = |a: Point, b: Point, t: i32| {
+            let (mut t, mut side) = (t, 9);
+            let k = ray_rect(a, b, r, &mut t, &mut side);
+            (k, side, t)
+        };
+        // up from y = -1 to 3: the bottom at a quarter of the way
+        assert_eq!(cast([x, -ONE], [x, 3 * ONE], T_START), (1, 0, ONE / 4));
+        // down from 3 to -1: the top at a quarter
+        assert_eq!(cast([x, 3 * ONE], [x, -ONE], T_START), (1, 2, ONE / 4));
+        // a nearer hit already: none
+        assert_eq!(cast([x, -ONE], [x, 3 * ONE], ONE / 8), (0, 9, ONE / 8));
+        // from inside the box, or beside it (x on its edge): none
+        assert_eq!(cast([x, ONE], [x, 3 * ONE], T_START), (0, 9, T_START));
+        assert_eq!(
+            cast([3 * ONE, -ONE], [3 * ONE, 3 * ONE], T_START),
+            (0, 9, T_START)
+        );
+        assert_eq!(cast([x, ONE], [x, -ONE], T_START), (0, 9, T_START));
+        // a slanted ray up through the bottom: the segment test against it
+        let (a, b) = ([2 * ONE + ONE / 4, -ONE], [2 * ONE + 3 * ONE / 4, 3 * ONE]);
+        let mut t = T_START;
+        let k = segment_hit(a, b, [2 * ONE, 0], [3 * ONE, 0], &mut t);
+        assert_ne!(k, 0);
+        assert_eq!(cast(a, b, T_START), (k, 0, t));
+        // and down through the top
+        let mut t = T_START;
+        let k = segment_hit(b, a, [2 * ONE, 2 * ONE], [3 * ONE, 2 * ONE], &mut t);
+        assert_ne!(k, 0);
+        assert_eq!(cast(b, a, T_START), (k, 2, t));
     }
 
     /// `FUN_140fa16d0`: a segment through the box keeps the part inside, each end moved to the

@@ -925,19 +925,7 @@ impl Turns {
         new: usize,
         watched: bool,
     ) -> Result<(), GenieError> {
-        for annex in self.spatial.annexes_of(id) {
-            let Some((q, a)) = self.object(annex) else {
-                continue;
-            };
-            if self.master_of(q, a.life.master_id)?.kind != BUILDING_KIND {
-                continue;
-            }
-            let annex_watched = self.players[old].watched.iter().any(|w| w.id == annex);
-            if annex_watched {
-                self.unwatch(old, annex);
-            }
-            self.building_changes_hands(q, annex, new, false)?;
-        }
+        self.annexes_change_hands(old, id, new)?;
         let Some(crate::order::Place::Live(_, idx)) = self.place(id) else {
             return Err(crate::turn::unit::HANDS_LEFT);
         };
@@ -958,14 +946,7 @@ impl Turns {
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if state == 2 {
-            for &(kind, amount, flag) in &master.storage {
-                if flag == STORAGE_WHILE_BUILT && 0 <= kind {
-                    self.players[old].add_attribute(kind, -amount)?;
-                }
-            }
-            if held == POPULATION_HEADROOM {
-                self.players[old].add_attribute(POPULATION_HEADROOM, -amount)?;
-            }
+            lose_built_storage(&mut self.players[old], &master, held, amount)?;
         }
         if state == 0
             && let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut())
@@ -978,27 +959,7 @@ impl Turns {
         if watched {
             self.unwatch(old, id);
         }
-        let mut unit = std::mem::replace(&mut self.players[old].objects[idx], Unit::taken_out());
-        let changed = change_hands(
-            &mut unit,
-            (old, new),
-            &self.masters,
-            &mut self.spatial,
-            self.world_time,
-        );
-        self.players[old].objects[idx] = unit;
-        let owner = if changed? {
-            let unit = self.players[old].objects.swap_remove(idx);
-            let handed = self.hand_over_attributes(old, new, &unit);
-            let master_id = unit.life.master_id;
-            self.players[new].objects.push(unit);
-            self.track_remove(old, id, master_id);
-            self.track_add(new, id, master_id);
-            handed?;
-            new
-        } else {
-            old
-        };
+        let owner = self.hand_building_over(old, idx, new, id)?;
         if built {
             self.track_complete(new, id, master.id);
         }
@@ -1016,28 +977,129 @@ impl Turns {
             let _ = v.sight_on(id, p.position, p.radius, true, false);
         }
         if state == 2 {
-            let building = master.building.as_ref();
-            if let Some(stack) = building.map(|b| b.stack_unit).filter(|&s| 0 <= s) {
-                let stack = if master.id == crate::build::MASTER_1889 && rice {
-                    crate::build::RICE_PASTURE
-                } else {
-                    stack
-                };
-                let at = self.object(id).map_or([0.0; 3], |(_, u)| u.position);
-                self.remains(owner, stack, at, None)?;
-            }
-            if let Some(tech) = building.map(|b| b.tech).filter(|&t| 0 <= t) {
-                self.research_built(owner, tech)?;
-            }
-            for &(kind, amount, flag) in &master.storage {
-                if matches!(flag, STORAGE_WHILE_BUILT | STORAGE_8) && 0 <= kind {
-                    self.players[owner].add_attribute(kind, amount)?;
+            self.built_with_new_owner(owner, id, &master, rice)?;
+            gain_built_storage(&mut self.players[owner], &master, held, amount)?;
+        }
+        self.garrison_leaves(owner, id)?;
+        if state < 3 {
+            let record = crate::spatial::Obstruction {
+                kind: master.obstruction_type,
+                class: master.obstruction_class,
+            };
+            if record.recorded() {
+                self.spatial.add_record(id, record);
+                if let Some(p) = self.spatial.get(id).copied() {
+                    self.pathing.place_shape(id, &p);
                 }
-            }
-            if held == POPULATION_HEADROOM {
-                self.players[owner].add_attribute(POPULATION_HEADROOM, amount)?;
+                self.pathing.tiles_changed(self.spatial.take_changes());
             }
         }
+        if let Some((_, u)) = self.object_mut(id) {
+            u.gather_point = None;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::building_changes_hands`]'s annexes of `id` of a building type first, each leaving
+    /// the old owner's watched list and changing hands (depth first).
+    ///
+    /// # Errors
+    ///
+    /// An annex of a master the slice does not have, and what its change does not model.
+    fn annexes_change_hands(&mut self, old: usize, id: i32, new: usize) -> Result<(), GenieError> {
+        for annex in self.spatial.annexes_of(id) {
+            let Some((q, a)) = self.object(annex) else {
+                continue;
+            };
+            if self.master_of(q, a.life.master_id)?.kind != BUILDING_KIND {
+                continue;
+            }
+            let annex_watched = self.players[old].watched.iter().any(|w| w.id == annex);
+            if annex_watched {
+                self.unwatch(old, annex);
+            }
+            self.building_changes_hands(q, annex, new, false)?;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::building_changes_hands`]'s combat object's slot 0x70 (`FUN_14120f800`,
+    /// [`change_hands`]) on building `id` (player `old`'s `idx`): when it changes, it moves to
+    /// `new`'s objects with its attributes ([`Turns::hand_over_attributes`]) and trackers; the
+    /// owner it then has.
+    ///
+    /// # Errors
+    ///
+    /// What the change and the attributes do not model.
+    fn hand_building_over(
+        &mut self,
+        old: usize,
+        idx: usize,
+        new: usize,
+        id: i32,
+    ) -> Result<usize, GenieError> {
+        let mut unit = std::mem::replace(&mut self.players[old].objects[idx], Unit::taken_out());
+        let changed = change_hands(
+            &mut unit,
+            (old, new),
+            &self.masters,
+            &mut self.spatial,
+            self.world_time,
+        );
+        self.players[old].objects[idx] = unit;
+        Ok(if changed? {
+            let unit = self.players[old].objects.swap_remove(idx);
+            let handed = self.hand_over_attributes(old, new, &unit);
+            let master_id = unit.life.master_id;
+            self.players[new].objects.push(unit);
+            self.track_remove(old, id, master_id);
+            self.track_add(new, id, master_id);
+            handed?;
+            new
+        } else {
+            old
+        })
+    }
+
+    /// [`Turns::building_changes_hands`] of a building in state 2 with its `owner`: its master's
+    /// stack unit (`+0x986`; 1889's on rice terrain 1893) comes at its place (the master's slot
+    /// 0x40, [`Turns::remains`]) and its master's technology is researched
+    /// ([`Turns::research_built`]).
+    ///
+    /// # Errors
+    ///
+    /// What the stack unit and the research do not model.
+    fn built_with_new_owner(
+        &mut self,
+        owner: usize,
+        id: i32,
+        master: &Master,
+        rice: bool,
+    ) -> Result<(), GenieError> {
+        let building = master.building.as_ref();
+        if let Some(stack) = building.map(|b| b.stack_unit).filter(|&s| 0 <= s) {
+            let stack = if master.id == crate::build::MASTER_1889 && rice {
+                crate::build::RICE_PASTURE
+            } else {
+                stack
+            };
+            let at = self.object(id).map_or([0.0; 3], |(_, u)| u.position);
+            self.remains(owner, stack, at, None)?;
+        }
+        if let Some(tech) = building.map(|b| b.tech).filter(|&t| 0 <= t) {
+            self.research_built(owner, tech)?;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::building_changes_hands`]'s units inside building `id` leave it toward no point,
+    /// from the last ([`Turns::let_out`] with −1, −1, `DAT_14330ec20`); one that finds no spot
+    /// leaves and is destroyed (slots 0x1a8, 0xd0).
+    ///
+    /// # Errors
+    ///
+    /// What the leaving and the destruction do not model.
+    fn garrison_leaves(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let inside = self
             .object(id)
             .map_or_else(Vec::new, |(_, u)| u.garrison.clone());
@@ -1054,22 +1116,6 @@ impl Turns {
             if let Some((q, _)) = self.object(g) {
                 self.destroy(q, g)?;
             }
-        }
-        if state < 3 {
-            let record = crate::spatial::Obstruction {
-                kind: master.obstruction_type,
-                class: master.obstruction_class,
-            };
-            if record.recorded() {
-                self.spatial.add_record(id, record);
-                if let Some(p) = self.spatial.get(id).copied() {
-                    self.pathing.place_shape(id, &p);
-                }
-                self.pathing.tiles_changed(self.spatial.take_changes());
-            }
-        }
-        if let Some((_, u)) = self.object_mut(id) {
-            u.gather_point = None;
         }
         Ok(())
     }
@@ -1962,6 +2008,53 @@ pub(crate) fn paid_cost(master: &Master) -> f32 {
         }
     }
     cost
+}
+
+/// [`Turns::building_changes_hands`] of a building in state 2: its old owner `p` loses its
+/// master's storage of flag 4 and a `held` attribute 4 (slot 0xf8, the `amount`'s sign
+/// flipped, `DAT_142e88e80`).
+///
+/// # Errors
+///
+/// An attribute the player does not hold.
+fn lose_built_storage(
+    p: &mut Player,
+    master: &Master,
+    held: i16,
+    amount: f32,
+) -> Result<(), GenieError> {
+    for &(kind, amount, flag) in &master.storage {
+        if flag == STORAGE_WHILE_BUILT && 0 <= kind {
+            p.add_attribute(kind, -amount)?;
+        }
+    }
+    if held == POPULATION_HEADROOM {
+        p.add_attribute(POPULATION_HEADROOM, -amount)?;
+    }
+    Ok(())
+}
+
+/// [`Turns::building_changes_hands`] of a building in state 2: its new owner `p` gains its
+/// master's storage of flags 4 and 8 and a `held` attribute 4 (its `amount`).
+///
+/// # Errors
+///
+/// An attribute the player does not hold.
+fn gain_built_storage(
+    p: &mut Player,
+    master: &Master,
+    held: i16,
+    amount: f32,
+) -> Result<(), GenieError> {
+    for &(kind, amount, flag) in &master.storage {
+        if matches!(flag, STORAGE_WHILE_BUILT | STORAGE_8) && 0 <= kind {
+            p.add_attribute(kind, amount)?;
+        }
+    }
+    if held == POPULATION_HEADROOM {
+        p.add_attribute(POPULATION_HEADROOM, amount)?;
+    }
+    Ok(())
 }
 
 /// A building's storage flag that its owner holds while it stands built (slot 0x70's).

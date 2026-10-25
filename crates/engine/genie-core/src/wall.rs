@@ -224,6 +224,35 @@ impl Turns {
         if !computer && capable == 0 {
             return Ok(());
         }
+        let placed = self.wall_foundations(w, radius)?;
+        // the builders, the farthest from the line's last tile first
+        let sorted = self.builders_by_gap(w, builders)?;
+        if placed.is_empty() || capable == 0 {
+            return Ok(());
+        }
+        for (i, &(id, _)) in sorted.iter().enumerate() {
+            let k = share(i, capable, placed.len()).ok_or(GenieError::unsupported(
+                "a wall builder past the foundations the game shares out",
+            ))?;
+            self.wall_builder_takes(w, id, &placed, placed[k])?;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::build_wall`]'s foundations, tile by tile along the line's segments: each tile
+    /// snapped for a building of `radius` that passes the placement test (with the explored test
+    /// on) gets a foundation ([`Turns::found`]) while the player affords one; the foundations'
+    /// ids and places.
+    ///
+    /// # Errors
+    ///
+    /// What the placement test, the payment and the foundation do not model.
+    fn wall_foundations(
+        &mut self,
+        w: &Wall,
+        radius: [f32; 2],
+    ) -> Result<Vec<(i32, [f32; 3])>, GenieError> {
+        let player = w.player;
         let ([x1, y1], [x2, y2]) = (w.from.map(i32::from), w.to.map(i32::from));
         let mut placed: Vec<(i32, [f32; 3])> = Vec::new();
         for (a, b) in segments([x1, y1], [x2, y2]) {
@@ -243,9 +272,19 @@ impl Turns {
                 )?);
             }
         }
-        // the builders, the farthest from the line's last tile first
+        Ok(placed)
+    }
+
+    /// [`Turns::build_wall`]'s builders the command check holds, sorted by their footprints'
+    /// squared distance to the line's last tile, the farthest first (the game's insertion sort).
+    ///
+    /// # Errors
+    ///
+    /// A builder of a master the slice does not have, and more builders than the insertion sort
+    /// takes.
+    fn builders_by_gap(&self, w: &Wall, builders: &[i32]) -> Result<Vec<(i32, f32)>, GenieError> {
         let mut sorted = Vec::new();
-        for id in self.checked_units(player, builders) {
+        for id in self.checked_units(w.player, builders) {
             let Some((owner, u)) = self.object(id) else {
                 continue;
             };
@@ -264,37 +303,48 @@ impl Turns {
             ));
         }
         sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        if placed.is_empty() || capable == 0 {
-            return Ok(());
-        }
-        for (i, &(id, _)) in sorted.iter().enumerate() {
-            let k = share(i, capable, placed.len()).ok_or(GenieError::unsupported(
-                "a wall builder past the foundations the game shares out",
-            ))?;
-            let (foundation, at) = placed[k];
-            let Some(Place::Live(q, idx)) = self.place(id) else {
-                return Err(GenieError::unsupported(
-                    "a wall builder the slice does not have",
-                ));
-            };
-            let direct = self.players[q].objects[idx]
-                .ai
-                .as_ref()
-                .is_none_or(|ai| !w.queued && (!w.commits || !ai.has_unready_order()));
-            if direct {
-                let task: (i16, BuildAction) =
-                    self.build_task(q, id, (player, foundation, w.master), at)?;
-                self.build_directly(q, idx, task, (player, foundation, w.master), at)?;
-            } else {
-                for &(f, p) in &placed {
-                    self.queue_build(q, idx, (player, f, w.master), p)?;
-                }
-                if w.commits
-                    && let Some(ai) = self.players[q].objects[idx].ai.as_mut()
-                {
-                    // the readiness pass with 0: every queued order is ready
-                    crate::order::readiness(&mut ai.orders, false);
-                }
+        Ok(sorted)
+    }
+
+    /// [`Turns::build_wall`]'s builder `id` and its foundation (`foundation` at `at`, its share
+    /// of `placed`): directly ([`Turns::build_task`], [`Turns::build_directly`]) without a unit
+    /// AI, or off the queue path (a queued line, or a committing one with an order not ready);
+    /// else a build order on each foundation ([`Turns::queue_build`]), a committing line's
+    /// readiness pass with 0 after.
+    ///
+    /// # Errors
+    ///
+    /// A builder the slice does not have, and what the build does not model.
+    fn wall_builder_takes(
+        &mut self,
+        w: &Wall,
+        id: i32,
+        placed: &[(i32, [f32; 3])],
+        (foundation, at): (i32, [f32; 3]),
+    ) -> Result<(), GenieError> {
+        let player = w.player;
+        let Some(Place::Live(q, idx)) = self.place(id) else {
+            return Err(GenieError::unsupported(
+                "a wall builder the slice does not have",
+            ));
+        };
+        let direct = self.players[q].objects[idx]
+            .ai
+            .as_ref()
+            .is_none_or(|ai| !w.queued && (!w.commits || !ai.has_unready_order()));
+        if direct {
+            let task: (i16, BuildAction) =
+                self.build_task(q, id, (player, foundation, w.master), at)?;
+            self.build_directly(q, idx, task, (player, foundation, w.master), at)?;
+        } else {
+            for &(f, p) in placed {
+                self.queue_build(q, idx, (player, f, w.master), p)?;
+            }
+            if w.commits
+                && let Some(ai) = self.players[q].objects[idx].ai.as_mut()
+            {
+                // the readiness pass with 0: every queued order is ready
+                crate::order::readiness(&mut ai.orders, false);
             }
         }
         Ok(())
