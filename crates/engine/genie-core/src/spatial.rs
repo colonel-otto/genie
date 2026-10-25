@@ -460,6 +460,15 @@ impl Tiles {
     }
 }
 
+/// The obstruction manager's grid as a lookup (FD-030-D03): the cell each object's record is
+/// filed in ([`Spatial::filed`], as (level, x, y)) and the ids filed in each cell, so a query
+/// reads the cells it visits ([`Spatial::visited_records`]) instead of testing every object.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct RecordCells {
+    cells: std::collections::HashMap<(i32, i32, i32), std::collections::BTreeSet<i32>>,
+    filed: std::collections::HashMap<i32, (i32, i32, i32)>,
+}
+
 /// The world's objects by id, the map's size in tiles and what the game keeps per tile.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Spatial {
@@ -482,6 +491,9 @@ pub struct Spatial {
     /// set none read what is left ([`Spatial::manager_grow`]).
     manager_buffer: std::cell::Cell<Option<f32>>,
     objects: BTreeMap<i32, Placed>,
+    /// The cell of each object's record ([`RecordCells`]), kept with `objects`
+    /// ([`Spatial::refile`]).
+    records: RecordCells,
     /// The objects inside others (`+0x2f0`): off the tiles' lists and the obstruction manager,
     /// without a record, at their container's x and y; a lookup by id still finds them.
     inside: BTreeMap<i32, Placed>,
@@ -575,6 +587,7 @@ impl Spatial {
             tile_records: std::cell::RefCell::default(),
             manager_buffer: std::cell::Cell::new(None),
             objects: BTreeMap::new(),
+            records: RecordCells::default(),
             inside: BTreeMap::new(),
             tiles,
             changed: Vec::new(),
@@ -623,6 +636,7 @@ impl Spatial {
             self.tiles.mark(p, o);
             self.changed.push(self.tiles.covered_rect(p));
         }
+        self.refile(id);
     }
 
     /// Whether an object on tile (`x`, `y`) (its centre there) satisfies `pred`.
@@ -682,6 +696,7 @@ impl Spatial {
         match self.objects.get_mut(&id) {
             Some(o) if o.obstruction.is_some() => {
                 o.obstruction = None;
+                self.refile(id);
                 true
             }
             _ => false,
@@ -914,6 +929,7 @@ impl Spatial {
             self.changed.push(self.tiles.covered_rect(&placed));
         }
         let _ = self.objects.insert(id, placed);
+        self.refile(id);
         if let Some(i) = self.tiles.tile_of(placed.position) {
             let objects = &self.objects;
             self.tiles.append(i, id, |o| Self::is_tall(objects, o));
@@ -945,6 +961,7 @@ impl Spatial {
             self.changed.push(self.tiles.covered_rect(&placed));
         }
         let _ = self.objects.insert(id, placed);
+        self.refile(id);
     }
 
     /// The object leaves the world: its place, its sight's state and its records in the registry
@@ -989,6 +1006,7 @@ impl Spatial {
     pub fn remove(&mut self, id: i32) {
         let _ = self.inside.remove(&id);
         if let Some(gone) = self.objects.remove(&id) {
+            self.refile(id);
             if let Some(i) = self.tiles.tile_of(gone.position) {
                 let objects = &self.objects;
                 self.tiles.take_off(i, id, |o| Self::is_tall(objects, o));
@@ -1029,11 +1047,11 @@ impl Spatial {
             return true;
         };
         self.tile_records_meet(&test, ignore)
-            || self.objects.iter().any(|(id, p)| {
+            || self.records_in(test.query).any(|(id, p)| {
                 // kind 10 is filed as 2
                 let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
                 matches!(kind, Some(2 | 11 | 13))
-                    && !ignore.contains(id)
+                    && !ignore.contains(&id)
                     && test.meets(p.bounds())
                     && self.visits(p, kind.unwrap_or(0), test.query)
             })
@@ -1167,11 +1185,88 @@ impl Spatial {
     /// Whether a query whose grown rectangle is `rect` visits cell (`cx`, `cy`) of `level`
     /// ([`Spatial::visits`]).
     fn visits_cell(&self, level: i32, cx: i32, cy: i32, rect: [f32; 4]) -> bool {
+        let [x0, y0, x1, y1] = self.visited_cells(level, rect);
+        x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1
+    }
+
+    /// The cells of `level` a query whose grown rectangle is `rect` visits
+    /// ([`Spatial::visits_cell`]): x and y from, then x and y to, each inclusive.
+    fn visited_cells(&self, level: i32, rect: [f32; 4]) -> [i32; 4] {
         let shift = self.grid.shift(level);
         let [w, h] = self.map;
         let (qx0, qy0) = ((rect[0] as i32).max(0), (rect[1] as i32).max(0));
         let (qx1, qy1) = ((rect[2] as i32).min(w), (rect[3] as i32).min(h));
-        qx0 >> shift <= cx && cx <= qx1 >> shift && qy0 >> shift <= cy && cy <= qy1 >> shift
+        [qx0 >> shift, qy0 >> shift, qx1 >> shift, qy1 >> shift]
+    }
+
+    /// The object's record is filed again ([`RecordCells`]): in the cell [`Spatial::filed`] gives
+    /// it now, in none without a record or out of the world. Every change of an object's place,
+    /// radii or record runs it.
+    fn refile(&mut self, id: i32) {
+        let cell = self
+            .objects
+            .get(&id)
+            .and_then(|p| p.obstruction.map(|o| self.filed(p, o.kind)));
+        let records = &mut self.records;
+        let old = records.filed.get(&id).copied();
+        if old == cell {
+            return;
+        }
+        if let Some(old) = old
+            && let Some(ids) = records.cells.get_mut(&old)
+        {
+            let _ = ids.remove(&id);
+            if ids.is_empty() {
+                let _ = records.cells.remove(&old);
+            }
+        }
+        match cell {
+            Some(c) => {
+                let _ = records.filed.insert(id, c);
+                let _ = records.cells.entry(c).or_default().insert(id);
+            }
+            None => {
+                let _ = records.filed.remove(&id);
+            }
+        }
+    }
+
+    /// The objects whose record is filed in a cell a query whose grown rectangle is `rect`
+    /// visits, in id order: those [`Spatial::visits`] passes, read from the cells it visits on
+    /// each level ([`RecordCells`]) instead of tested one by one.
+    fn visited_records(&self, rect: [f32; 4]) -> Vec<i32> {
+        let mut ids = Vec::new();
+        for level in -1..self.grid.levels {
+            let [x0, y0, x1, y1] = self.visited_cells(level, rect);
+            let span = (i64::from(x1) - i64::from(x0) + 1) * (i64::from(y1) - i64::from(y0) + 1);
+            if span <= 0 {
+                continue;
+            }
+            if span as usize <= self.records.cells.len() {
+                for cy in y0..=y1 {
+                    for cx in x0..=x1 {
+                        if let Some(c) = self.records.cells.get(&(level, cx, cy)) {
+                            ids.extend(c);
+                        }
+                    }
+                }
+            } else {
+                for (&(l, cx, cy), c) in &self.records.cells {
+                    if l == level && x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1 {
+                        ids.extend(c);
+                    }
+                }
+            }
+        }
+        ids.sort_unstable();
+        ids
+    }
+
+    /// [`Spatial::visited_records`] with each object's place.
+    fn records_in(&self, rect: [f32; 4]) -> impl Iterator<Item = (i32, &Placed)> + '_ {
+        self.visited_records(rect)
+            .into_iter()
+            .filter_map(|id| self.objects.get(&id).map(|p| (id, p)))
     }
 
     /// The object moved: its record moves with it, and it changes tiles when its centre crosses
@@ -1387,7 +1482,7 @@ impl Spatial {
                 && rect[1] <= reach + y1
                 && y0 - reach <= rect[3])
         };
-        for (&id, p) in &self.objects {
+        for (id, p) in self.records_in(query) {
             let Some(o) = p.obstruction else {
                 continue;
             };
@@ -1523,7 +1618,7 @@ impl Spatial {
                 }
             }
         }
-        for (&id, p) in &self.objects {
+        for (id, p) in self.records_in(query) {
             let Some(o) = p.obstruction else {
                 continue;
             };
@@ -1603,7 +1698,7 @@ impl Spatial {
         if tile {
             return Ok(true);
         }
-        Ok(self.objects.iter().any(|(&id, p)| {
+        Ok(self.records_in(query).any(|(id, p)| {
             let Some(o) = p.obstruction else {
                 return false;
             };
@@ -1632,6 +1727,7 @@ impl Spatial {
                     self.tiles.append(i, id, |o| Self::is_tall(objects, o));
                 }
             }
+            self.refile(id);
             let Some(p) = self.objects.get(&id) else {
                 return;
             };
@@ -1649,7 +1745,7 @@ impl Spatial {
         let Some(v) = self.sight.as_ref() else {
             return Ok(());
         };
-        let near = self.objects.iter().any(|(&id, p)| {
+        let near = self.frozen().any(|(id, p)| {
             let Some(u) = p.unknown.filter(|&u| 0.0 < u && p.player == player) else {
                 return false;
             };
@@ -2806,11 +2902,11 @@ impl Spatial {
         let [x, y] = point;
         let rect = [x - grow, y - grow, grow + x, grow + y];
         self.check_known_records(rect)?;
-        Ok(self.objects.iter().any(|(id, p)| {
-            let Some(o) = p.obstruction.filter(|_| !ignore.contains(id)) else {
+        Ok(self.records_in(rect).any(|(id, p)| {
+            let Some(o) = p.obstruction.filter(|_| !ignore.contains(&id)) else {
                 return false;
             };
-            if still && self.gaits.get(id).is_some_and(|g| g.moving) {
+            if still && self.gaits.get(&id).is_some_and(|g| g.moving) {
                 return false;
             }
             if !self.visits(p, o.kind, rect) {
@@ -2845,8 +2941,7 @@ impl Spatial {
             grow + rect[2],
             grow + rect[3],
         ];
-        self.objects
-            .iter()
+        self.records_in(query)
             .filter(|(id, p)| {
                 p.obstruction.is_some_and(|o| {
                     TESTED_KINDS.contains(&o.kind) && self.visits(p, o.kind, query)
@@ -2857,7 +2952,7 @@ impl Spatial {
                 let (x0, y0, x1, y1) = (x0 - grow, y0 - grow, grow + x1, grow + y1);
                 rect[0] <= x1 && x0 <= rect[2] && rect[1] <= y1 && y0 <= rect[3]
             })
-            .map(|(&id, _)| id)
+            .map(|(id, _)| id)
             .collect()
     }
 }
@@ -2946,7 +3041,7 @@ impl Spatial {
                 }
             }
         }
-        for (&id, p) in &self.objects {
+        for (id, p) in self.records_in(grown) {
             let Some(o) = p.obstruction else {
                 continue;
             };
@@ -3250,6 +3345,73 @@ fn segment_meets_box(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The record cells (FD-030-D03) give every query the objects whose record is filed in a
+    /// cell it visits, as the full scan's cell test does, in id order: on and off the map, on
+    /// every level, while objects come, move, change masters, get and drop records and go.
+    #[test]
+    fn the_record_cells_answer_as_the_full_scan_does() {
+        let mut s = Spatial::new([120, 96]);
+        let mut seed = 0x2545_f491_u32;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            seed
+        };
+        let kinds = [1u8, 2, 3, 5, 10, 11, 13];
+        let placed = |position: [f32; 2], r: f32, kind: Option<u8>| Placed {
+            position: [position[0], position[1], 0.0],
+            radius: [r, r * 0.5],
+            class: 0,
+            player: 1,
+            master: 4,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: false,
+            speed: 0.0,
+            unknown: None,
+            obstruction: kind.map(|kind| Obstruction { kind, class: 0 }),
+        };
+        let scan = |s: &Spatial, rect: [f32; 4]| -> Vec<i32> {
+            s.objects
+                .iter()
+                .filter(|(_, p)| p.obstruction.is_some_and(|o| s.visits(p, o.kind, rect)))
+                .map(|(&id, _)| id)
+                .collect()
+        };
+        let at = |next: &mut dyn FnMut() -> u32| (next() % 560) as f32 * 0.25 - 8.0;
+        for step in 0..6000 {
+            let id = (next() % 300) as i32;
+            let position = [at(&mut next), at(&mut next)];
+            let r = (next() % 48) as f32 * 0.25;
+            let kind = (next() % 8 != 0).then(|| kinds[(next() % 7) as usize]);
+            match next() % 7 {
+                0 | 1 => s.insert(id, placed(position, r, kind)),
+                2 | 3 => s.set_position(id, [position[0], position[1], 0.0]),
+                4 => {
+                    let here = s
+                        .objects
+                        .get(&id)
+                        .map_or(position, |p| [p.position[0], p.position[1]]);
+                    s.change_master(id, placed(here, r, kind));
+                }
+                5 => match kind {
+                    Some(kind) => s.add_record(id, Obstruction { kind, class: 0 }),
+                    None => s.drop_record(id),
+                },
+                _ => s.remove(id),
+            }
+            let (x, y) = (at(&mut next), at(&mut next));
+            let (w, h) = ((next() % 160) as f32 * 0.5, (next() % 160) as f32 * 0.5);
+            let rect = [x, y, x + w, y + h];
+            assert_eq!(
+                s.visited_records(rect),
+                scan(&s, rect),
+                "step {step}, {rect:?}"
+            );
+        }
+    }
 
     #[test]
     fn a_query_takes_its_kinds_of_players_from_the_save() {
