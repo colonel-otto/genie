@@ -246,6 +246,17 @@ impl Turns {
     /// every annex but a gate's go (`TRIBE_Building_Object::rehook`). A building's mask is empty
     /// at a load.
     pub fn build_watched(&mut self) -> Result<(), GenieError> {
+        // each id's object as [`Turns::object`] finds it (the first player in order, its live list
+        // before its sleeping list), looked up once: the loop changes only the watched lists
+        let mut first: std::collections::HashMap<i32, (usize, bool, usize)> =
+            std::collections::HashMap::new();
+        for (q, player) in self.players.iter().enumerate() {
+            for (sleeping, list) in [(false, &player.objects), (true, &player.sleeping)] {
+                for (k, u) in list.iter().enumerate() {
+                    let _ = first.entry(u.id).or_insert((q, sleeping, k));
+                }
+            }
+        }
         for p in 0..self.players.len() {
             self.players[p].watched.clear();
             let ids: Vec<i32> = self.players[p]
@@ -255,8 +266,13 @@ impl Turns {
                 .map(|u| u.id)
                 .collect();
             for id in ids {
-                let Some((_, u)) = self.object(id) else {
+                let Some(&(q, sleeping, k)) = first.get(&id) else {
                     continue;
+                };
+                let u = if sleeping {
+                    &self.players[q].sleeping[k]
+                } else {
+                    &self.players[q].objects[k]
                 };
                 let Some(m) = self.masters.get(p).and_then(|m| m.get(u.life.master_id)) else {
                     continue;
