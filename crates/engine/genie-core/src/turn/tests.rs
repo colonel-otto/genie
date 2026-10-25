@@ -1220,8 +1220,9 @@ fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
     }
 }
 
-#[test]
-fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
+/// Player 1's two idle villagers (9175 at the house's place, 9181 away), its resources and
+/// the builders' masters, the house placeable: the BUILD tests' world.
+fn build_world() -> Turns {
     let villager = |id, master, x, y| Unit {
         id,
         position: [x, y, 0.0],
@@ -1263,6 +1264,12 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     t.next_object_id = 10028;
     t.masters = vec![Masters::default(), builder_masters()];
     placeable(&mut t);
+    t
+}
+
+#[test]
+fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
+    let mut t = build_world();
     t.tick_with(
         50,
         &[Command::Build {
@@ -1316,7 +1323,9 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
 /// loop (`FUN_140e7a400`) takes the packet's units the world holds whatever their player: a
 /// queued BUILD puts the build order into another player's villager's queue, issued by its
 /// own player and naming the BUILD's player as the target's; a unit of a master that does
-/// not move is passed over unless the BUILD is queued.
+/// not move is passed over unless the BUILD is queued. Another player's unit reaches the
+/// handler only while players may order each other's (`do_command`'s check, the setting
+/// `+0x1074`).
 #[test]
 fn a_queued_build_queues_its_order_for_another_player_s_villager() {
     let villager = |id, master, x, y| Unit {
@@ -1361,6 +1370,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
     t.next_object_id = 10028;
     t.masters = vec![Masters::default(), builder_masters(), builder_masters()];
     placeable(&mut t);
+    t.settings.cheats_enabled = true;
     // the command phase alone (the units' updates would run the orders)
     t.run(&Command::Build {
         player: 1,
@@ -7697,4 +7707,41 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     assert_eq!((v.artifact, v.top_action_kind()), (None, None));
     assert_eq!(t.players[1].freezes, vec![]);
     assert!(before.is_some());
+}
+
+/// `TRIBE_Command::do_command`'s case 0x66 checks BUILD's builders before its handler
+/// ([`Turns::command_check`]): another player's becomes −1, and a human's BUILD left without one
+/// is refused, placing and paying nothing (429712917's player 8 in update 96, its BUILD naming
+/// player 5's villagers 9618 and 9620). With one of its own the foundation goes down, and only
+/// that one builds.
+#[test]
+fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
+    let mut t = build_world();
+    t.masters[0] = builder_masters();
+    let theirs = t.players[1].objects.remove(1);
+    t.players[0].objects.push(theirs);
+    let build = |builders: Vec<i32>| Command::Build {
+        player: 1,
+        master: 70,
+        unit_ai: Ok(None),
+        position: [30.0, 88.0, 0.0],
+        builders,
+        queued: false,
+        commits: false,
+        frame: 0,
+    };
+    t.tick_with(50, &[build(vec![9181])]);
+    let p = &t.players[1];
+    assert_eq!(
+        (p.resources, p.objects.len()),
+        ([200.0, 100.0, 200.0, 100.0], 1)
+    );
+    assert_eq!(t.next_object_id, 10028);
+    assert_eq!(p.freezes, vec![]);
+    t.tick_with(50, &[build(vec![9181, 9175])]);
+    let p = &t.players[1];
+    assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
+    assert_eq!(p.objects.last().map(|f| f.id), Some(10028));
+    assert_eq!(p.objects[0].build.map(|b| b.target), Some(10028));
+    assert_eq!(t.players[0].objects[0].build, None);
 }

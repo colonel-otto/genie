@@ -427,6 +427,12 @@ impl Turns {
                 commits,
                 frame,
             } => {
+                // TRIBE_Command::do_command's case 0x66 checks the builders first: another
+                // player's becomes -1, and a human's BUILD left without one is refused
+                let Some(builders) = self.command_check(player, builders) else {
+                    return;
+                };
+                let builders = &builders;
                 let master = self.farm_on_rice_terrain(master, position);
                 // the pending debit first (FUN_141630d10 with 0), then the builders' test, the
                 // placement test and the payment's: a refused BUILD places nothing
@@ -546,7 +552,15 @@ impl Turns {
                 }
             }
             Command::BuildWall(ref w) => {
-                if let Err(e) = self.build_wall(w) {
+                // do_command's case 0x69 checks the builders as BUILD's
+                let Some(builders) = self.command_check(w.player, &w.builders) else {
+                    return;
+                };
+                let w = crate::wall::Wall {
+                    builders,
+                    ..w.clone()
+                };
+                if let Err(e) = self.build_wall(&w) {
                     self.stop_player(w.player, e);
                 }
             }
