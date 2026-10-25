@@ -7756,6 +7756,28 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     assert!(before.is_some());
 }
 
+/// `RGE_Action_Object::update` with an empty list makes the default task and does no inside
+/// update in the same update: livestock inside another object gets its Artifact in one update
+/// and loses it in the next, by turns (431108946's sheep 11628 in the transport 11638 from update
+/// 61: 107 in state 6 after 63, 65, …, none after 62, 64, …).
+#[test]
+fn livestock_inside_gets_its_default_artifact_and_loses_it_by_turns() {
+    let mut t = livestock_enter_world();
+    let v = &mut t.players[1].objects[0];
+    v.default_artifact = true;
+    v.artifact = None;
+    v.life.inside = Some(10028);
+    t.spatial.go_inside(9175, [30.0, 88.0, 0.0]);
+    let mut kinds = Vec::new();
+    for _ in 0..4 {
+        t.tick(50);
+        let v = &t.players[1].objects[0];
+        kinds.push(v.artifact.map(|a| a.state));
+    }
+    assert_eq!(kinds, [Some(6), None, Some(6), None]);
+    assert_eq!(t.players[1].freezes, vec![]);
+}
+
 /// `TRIBE_Command::do_command`'s case 0x66 checks BUILD's builders before its handler
 /// ([`Turns::command_check`]): another player's becomes −1, and a human's BUILD left without one
 /// is refused, placing and paying nothing (429712917's player 8 in update 96, its BUILD naming

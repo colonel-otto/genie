@@ -5592,8 +5592,11 @@ impl Unit {
         // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
         // targets go, slot 0x180, and a MoveTo's stops the unit, slot 0x5d0); the actions below
         // it (FUN_140a78470) and the next one's slot 0x28 need a second action, which the slice
-        // never holds; a unit its actions got in this update waits for the next
-        if inside_at_start {
+        // never holds; a unit its actions got in this update waits for the next. An empty list
+        // takes the default task instead (its branch of the three): livestock inside makes its
+        // Artifact in one update and loses it in the next
+        let default_made = flies_from_now || makes_from_now || artifact_from_now;
+        if inside_at_start && !default_made {
             if let Some(e) = self.enter.take() {
                 if e.move_to.is_some()
                     && let Some(m) = self.mover.as_mut()
