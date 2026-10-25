@@ -1319,6 +1319,46 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     assert_eq!(p.unsupported, Some((1, 1, WALKER_UNMOVING)));
 }
 
+/// BUILD's direct path is the builder's slot 0x128 with 1 (`FUN_141211b80`, a combat object's
+/// and a building's): its unit AI's order queue empties (`FUN_140c5e010`) before the work goes
+/// on. 430020666's villager 6676 drops the move it queued in update 40 when BUILD sends it to
+/// another house in update 119.
+#[test]
+fn a_direct_build_empties_its_builder_s_order_queue() {
+    let mut t = build_world();
+    let queued_move = crate::unit_ai::QueuedOrder {
+        issuer: 1,
+        order: crate::unit_ai::MOVE_ORDER,
+        priority: 100,
+        target: -1,
+        target_owner: -1,
+        point: [19.760_416, 101.677_086, 0.0],
+        range: 0.0,
+        shown: [19.760_416, 102.177_086],
+        ready: true,
+        target_type: -1,
+    };
+    for u in &mut t.players[1].objects {
+        u.ai.as_mut().unwrap().orders.push(queued_move);
+    }
+    // the command phase alone (the units' updates would run the orders)
+    t.run(&Command::Build {
+        player: 1,
+        master: 70,
+        unit_ai: Ok(None),
+        position: [30.0, 88.0, 0.0],
+        builders: vec![9175],
+        queued: false,
+        commits: false,
+        frame: 0,
+    });
+    let unit = |id: i32| t.object(id).map(|(_, u)| u).unwrap();
+    let orders = |id: i32| unit(id).ai.as_ref().map_or(0, |ai| ai.orders.len());
+    assert!(unit(9175).build.is_some());
+    // the builder's queue empties; the villager BUILD did not name keeps its own
+    assert_eq!((orders(9175), orders(9181)), (0, 1));
+}
+
 /// census v5's 257 stops "a builder of another player or a sleeping one": BUILD's last
 /// loop (`FUN_140e7a400`) takes the packet's units the world holds whatever their player: a
 /// queued BUILD puts the build order into another player's villager's queue, issued by its

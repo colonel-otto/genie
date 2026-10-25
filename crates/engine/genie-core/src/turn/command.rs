@@ -1695,7 +1695,8 @@ impl Turns {
     /// a queued BUILD, or one that `commits` while the AI holds an order not ready
     /// (`FUN_140c4dfa0`), goes into its queue as the build order (slot 0x30 into slot 0x28:
     /// [`Turns::queue_build`], issued by the unit's own player); else its slot 0x128 on the
-    /// foundation: a static object's (types below 40, `FUN_141071bd0`) does nothing, a unit's
+    /// foundation with 1: a static object's (types below 40, `FUN_141071bd0`) does nothing; a
+    /// combat object's empties its unit AI's queue first ([`Turns::empty_queue_for_work`]); a unit's
     /// takes the Build ([`Turns::build_task`], [`Turns::build_directly`]), another player's
     /// whatever task its slot 0x7e8 finds on the foundation ([`Turns::order_work`]). A unit the world no
     /// longer holds is passed over. A committing BUILD's queue then takes the readiness pass with
@@ -1740,8 +1741,10 @@ impl Turns {
                 }
             } else if STATIC_TYPES_END <= kind && q == player {
                 let task = self.build_task(q, id, site, position)?;
+                self.empty_queue_for_work(q, idx, kind);
                 self.build_directly(q, idx, task, site, position)?;
             } else if STATIC_TYPES_END <= kind {
+                self.empty_queue_for_work(q, idx, kind);
                 // another player's unit: slot 0x128's slot 0x7e8 finds whatever task it has on
                 // the foundation (a Build on an ally's), the work command's general path
                 let work = crate::order::Work {
@@ -1757,6 +1760,18 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// Slot 0x128's start with 1 on the unit at `idx` of player `q`, of master type `kind`: a
+    /// combat object's and a building's (`FUN_141211b80`, types 70 and 80) set `+0xa14` and
+    /// empty their unit AI's order queue (`FUN_140c5e010`); the action object's
+    /// (`FUN_14106c590`, types 40 to 60) goes straight to the work.
+    fn empty_queue_for_work(&mut self, q: usize, idx: usize, kind: u8) {
+        if crate::masters::master_type::COMBAT <= kind
+            && let Some(ai) = self.players[q].objects[idx].ai.as_mut()
+        {
+            ai.orders.clear();
+        }
     }
 
     /// What slot 0x128 on `foundation` (of `master`, player `fp`'s, at `position`) takes for the
