@@ -1033,6 +1033,15 @@ impl Visibility {
         let _ = self.sight_on(id, position, new_radius, false, false);
     }
 
+    /// The master and line of sight of seer `id` without its sight (a master change inside
+    /// another, whose unit has no tile, `+0x2e8` 0: its sight comes with them on its way out).
+    pub fn seer_master(&mut self, id: i32, master: i16, los: f32) {
+        if let Some(s) = self.seers.get_mut(&id) {
+            s.master = master;
+            s.los = los;
+        }
+    }
+
     /// The unified map's word at tile (`x`, `y`) of a position, masked ([`MASK`]).
     fn word_at(&self, x: f32, y: f32) -> u64 {
         self.unified[self.index(x as i32, y as i32)] & MASK

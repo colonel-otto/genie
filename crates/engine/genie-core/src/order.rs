@@ -5283,8 +5283,8 @@ pub(crate) struct Switched {
 ///
 /// # Errors
 ///
-/// An object inside another, a change of its damage sprites, a moving unit's new master that does
-/// not move and a standing sprite the data file lacks.
+/// A change of its damage sprites, a moving unit's new master that does not move and a standing
+/// sprite the data file lacks.
 pub(crate) fn switch_master(
     unit: &mut Unit,
     old: &Master,
@@ -5294,11 +5294,6 @@ pub(crate) fn switch_master(
     let mut switched = Switched::default();
     let new = next.id;
     if unit.life.state < 3 {
-        if unit.life.inside.is_some() {
-            return Err(GenieError::unsupported(
-                "a master change of an object inside another",
-            ));
-        }
         for &(kind, amount, flag) in &old.storage {
             if kind >= 0 && matches!(flag, 2 | 16 | 32) {
                 switched.leaving.push((kind, -amount));
@@ -5344,16 +5339,26 @@ pub(crate) fn switch_master(
             placed.buildable_on = next.buildable_on;
             placed.tall = next.tall;
             placed.speed = next.moving.as_ref().map_or(0.0, |m| m.speed);
-            if let Some(o) = placed.obstruction.as_mut() {
-                o.kind = next.obstruction_type;
-                o.class = next.obstruction_class;
+            if unit.life.inside.is_some() {
+                // inside another (`+0x2f0`) the unit has no tile (`+0x2e8` 0: no sight slots) and
+                // is in no list nor the obstruction manager: its record takes the new master's
+                // values for its way out
+                world.spatial.set_inside_record(id, placed);
+                if let Some(v) = world.spatial.sight.as_mut() {
+                    v.seer_master(id, new, next.line_of_sight);
+                }
+            } else {
+                if let Some(o) = placed.obstruction.as_mut() {
+                    o.kind = next.obstruction_type;
+                    o.class = next.obstruction_class;
+                }
+                world.pathing.removed(id);
+                world
+                    .spatial
+                    .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
+                world.spatial.change_master(id, placed);
+                world.pathing.moved(id, &placed, moving);
             }
-            world.pathing.removed(id);
-            world
-                .spatial
-                .sight_master(id, next.radius, next.class, new, next.line_of_sight)?;
-            world.spatial.change_master(id, placed);
-            world.pathing.moved(id, &placed, moving);
         }
         // slot 0x68 with the new master's standing sprite (`+0x470`, FUN_141217000): a new
         // instance unless the unit shows it already. The slice holds sprites from an attack
@@ -6872,6 +6877,75 @@ mod tests {
         assert_eq!(stance(&t, 2), 0);
         t.unit_ai_state(1, &[30], 3).unwrap();
         assert_eq!(stance(&t, 2), 3);
+    }
+
+    /// `FUN_1411a6a70` on a unit inside a building (`+0x2f0` set, `+0x2e8` 0): no sight slots and
+    /// no tile, list or record change; its record (for its way out) takes the new master's values,
+    /// its hit points their share, its storage leaves and comes as anyone's.
+    #[test]
+    fn a_master_change_inside_a_building_keeps_to_its_record() {
+        let old = Master {
+            id: 4,
+            kind: 70,
+            class: 6,
+            hit_points: 40,
+            radius: [0.2, 0.2],
+            standing_sprite: -1,
+            ..Master::default()
+        };
+        let next = Master {
+            id: 5,
+            kind: 70,
+            class: 6,
+            hit_points: 60,
+            radius: [0.3, 0.3],
+            standing_sprite: -1,
+            ..Master::default()
+        };
+        let mut spatial = crate::spatial::Spatial::new([10, 10]);
+        spatial.insert(
+            7,
+            crate::spatial::Placed {
+                position: [3.5, 3.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 6,
+                player: 1,
+                master: 4,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: false,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        spatial.go_inside(7, [5.0, 5.0, 0.0]);
+        let mut unit = Unit {
+            id: 7,
+            position: [5.0, 5.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                hp: 20.0,
+                master_id: 4,
+                inside: Some(100),
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        };
+        let mut pathing = crate::pathing::Pathing::default();
+        let graphics = std::collections::BTreeMap::new();
+        let mut rng = crate::rng::Well512::default();
+        let world = SwitchWorld {
+            spatial: &mut spatial,
+            pathing: &mut pathing,
+            graphics: &graphics,
+            sprite: &mut rng,
+        };
+        let switched = switch_master(&mut unit, &old, &next, world).unwrap();
+        assert!(switched.promoted);
+        assert_eq!((unit.life.master_id, unit.life.hp), (5, 30.0));
+        let record = spatial.get(7).copied().unwrap();
+        assert_eq!((record.master, record.radius), (5, [0.3, 0.3]));
+        assert!(!spatial.tile_list(5, 5).contains(&7));
     }
 
     /// `FUN_1412066b0`: the attack, reload, work rate, most hit points and armor powerups go, the

@@ -959,6 +959,14 @@ impl Spatial {
         let _ = self.inside.insert(id, p);
     }
 
+    /// The record of object `id` inside another ([`Spatial::go_inside`]) becomes `placed` (a master
+    /// change inside, which touches no tile, list nor record); nothing for an object not inside.
+    pub fn set_inside_record(&mut self, id: i32, placed: Placed) {
+        if let Some(p) = self.inside.get_mut(&id) {
+            *p = placed;
+        }
+    }
+
     /// The object `id` comes out of the object it was inside ([`Spatial::go_inside`]): its record,
     /// which the caller puts on the map again.
     pub fn come_out(&mut self, id: i32) -> Option<Placed> {
