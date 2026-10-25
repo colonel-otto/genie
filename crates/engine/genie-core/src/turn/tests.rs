@@ -3296,6 +3296,50 @@ fn a_research_at_several_buildings_takes_the_least_loaded() {
     assert_eq!(t.least_loaded(0, &at(77, 1, vec![])), -1);
 }
 
+/// RESEARCH (`0x140e7e270`) of Castle Age (0x66) at the town centre: queued as any technology;
+/// only in game mode 16 does it mark the world's treaty monitor (`+0x820`'s `+0x17`), which the
+/// slice does not hold.
+#[test]
+fn a_research_of_castle_age_queues_it_but_in_game_mode_16() {
+    use crate::tech::{Location, TechDef, TechState};
+    let castle = |mode| {
+        let mut t = one_player(vec![centre(9)], [1000.0; 4]);
+        t.settings.game_mode = mode;
+        t.techs = vec![TechDef::default(); 0x67];
+        let mut techs = vec![TechState::default(); 0x67];
+        techs[0x66] = TechState {
+            state: 1,
+            research_cap: -1,
+            building_master: -1,
+            locations: vec![Location {
+                building: 109,
+                time: 160,
+                button: 1,
+                adjustment: 0.0,
+            }],
+            ..TechState::default()
+        };
+        t.players[0].techs = techs;
+        let at = ResearchAt {
+            building: 9,
+            count: 1,
+            buildings: vec![],
+            tech: 0x66,
+            target: -1,
+            shift: false,
+        };
+        let r = t.research(0, &at);
+        let queued = t.players[0].objects[0]
+            .production
+            .as_ref()
+            .map_or(0, |p| p.queue.total);
+        (r, queued)
+    };
+    let (r, queued) = castle(0);
+    assert_eq!((r.is_ok(), queued), (true, 1));
+    assert!(castle(16).0.is_err());
+}
+
 /// `FUN_1411cbc40`: a queue adds its units' population to attribute 80 (the queued units),
 /// which keeps it until the unit spawns; the make action's start counts the one it makes in
 /// 81.

@@ -407,6 +407,11 @@ pub(crate) const FOUNDATION_GONE: GenieError =
 pub(crate) const NO_BUILD_TASK: GenieError =
     GenieError::unsupported("a build order with no task for its foundation");
 
+/// Castle Age (`0x66`), whose RESEARCH marks the treaty monitor in [`CASTLE_AGE_MODE`].
+const CASTLE_AGE: i16 = 0x66;
+/// The game mode (`0x10`) in which a Castle Age queued marks the world's treaty monitor.
+const CASTLE_AGE_MODE: i32 = 0x10;
+
 impl Turns {
     /// Run a command in the command phase. Where the slice does not model what the command does to
     /// the issuing player's units, that player's lane stops.
@@ -2153,7 +2158,8 @@ impl Turns {
     /// the game settings' table `FUN_140f39f40` looks up) is not modelled (`FUN_140f3a0f0`,
     /// `FUN_140f39e80`). Not held: the interface's view and selection (`FUN_140e6de20`), the
     /// local player's statistics flag. Not modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
-    /// `+0x648` (0 for every player probed), Castle Age's flag (tech 0x66, game type 0x10).
+    /// `+0x648` (0 for every player probed), Castle Age queued in game mode 16 (the world's treaty
+    /// monitor's `+0x17`; no other game mode marks it).
     pub(in crate::turn) fn research(
         &mut self,
         player: usize,
@@ -2236,12 +2242,14 @@ impl Turns {
         if BLOCKS_RESEARCH.contains(&top) {
             return Ok(());
         }
-        if r.tech == 0x66 {
-            return Err(GenieError::unsupported(
-                "RESEARCH of Castle Age (the game's +0x820 flag)",
-            ));
-        }
         if self.queue_research(player, i, r.tech, r.shift)? {
+            // Castle Age queued in game mode 16 marks the world's treaty monitor (`+0x820`, its
+            // `+0x17`), which the slice does not hold; any other game mode leaves it
+            if r.tech == CASTLE_AGE && self.settings.game_mode == CASTLE_AGE_MODE {
+                return Err(GenieError::unsupported(
+                    "RESEARCH of Castle Age in game mode 16 (the treaty monitor's +0x17)",
+                ));
+            }
             let building = &mut self.players[player].objects[i];
             if let Some(ai) = building.ai.as_mut() {
                 ai.set_action(RESEARCH_ACTION);
