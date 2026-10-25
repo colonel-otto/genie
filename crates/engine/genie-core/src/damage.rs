@@ -177,6 +177,9 @@ pub struct Building {
     /// A hit got past its hit point test: the write-back gives its annexes its hit points and
     /// its `damaged_lately`.
     pub struck: bool,
+    /// `relic_count` and `specific_relic_count` (`+0xc20`, `+0xc24`), which its elevation factor
+    /// reads as the shooter and as the target ([`building_elevation_factor`]).
+    pub relics: [i32; 2],
     /// What each hit that left it below 1 hit point counted, in order, for the write-back.
     pub razed: Vec<Razed>,
 }

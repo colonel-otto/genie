@@ -4048,9 +4048,9 @@ impl Unit {
     /// origin as the hit's, whose height the elevation factor reads): [`crate::attack::strike`] on
     /// the target, the executed action posted to the shooter's unit AI, the shooter's own part
     /// written back; its result. A shooterless missile hits on its own ([`Unit::own_strike`]). A
-    /// charge projectile's own hit, a shooter with an area effect (its trample or blast), a
-    /// building shooter (its elevation factor, `FUN_1411cc890`, reads its `+0xc20` and `+0xc24`)
-    /// and a retaliation killing the shooter are not modelled.
+    /// charge projectile's own hit, a shooter with an area effect (its trample or blast) and a
+    /// retaliation killing the shooter are not modelled; a building shooter's elevation factor
+    /// is its own (`FUN_1411cc890`, its relics: [`crate::attack::strike`]).
     pub(in crate::turn) fn missile_strike(
         &mut self,
         action: &crate::missile::MissileAction,
@@ -4079,11 +4079,6 @@ impl Unit {
         if 0.0 < master.area_effect {
             return Err(GenieError::unsupported(
                 "a missile of a shooter with an area effect",
-            ));
-        }
-        if master.kind == crate::order::BUILDING {
-            return Err(GenieError::unsupported(
-                "a building's missile hit (its elevation factor, FUN_1411cc890)",
             ));
         }
         let terrain = c.spatial.terrain.as_ref();

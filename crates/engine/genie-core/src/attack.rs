@@ -2001,8 +2001,14 @@ pub(crate) fn strike(
     if i64::from(hit.chance) < r && a.missile < 0 {
         return Ok(struck);
     }
+    // a building's slot 0x1f0 (FUN_1411cc890) scales the factor by its relics and a building
+    // target's
     let factor = hit.from_z.map_or(1.0, |z| {
-        damage::elevation_factor(z, own.attack_elevation, victim)
+        let f = damage::elevation_factor(z, own.attack_elevation, victim);
+        own.building.as_ref().map_or(f, |b| {
+            let theirs = victim.building.as_ref().map_or([0; 2], |t| t.relics);
+            damage::building_elevation_factor(f, b.relics, victim.kind, theirs)
+        })
     });
     let weapons = own.weapons.clone();
     let mut others: Vec<&mut Victim> = blasted.iter_mut().collect();
@@ -2702,6 +2708,55 @@ pub(crate) mod tests {
         assert_eq!(struck.result, 1);
         assert_eq!((blasted[0].hp, annex.hp), (96.0, 96.0));
         assert!(blasted[0].building.as_ref().is_some_and(|b| b.struck));
+    }
+
+    /// A building shooter's missile (429184426's watch tower 25663): its elevation factor is the
+    /// building's (`FUN_1411cc890`), the combat object's times 1.2 while it holds a specific relic
+    /// (`+0xc24`), so its hit on a lower target does more than a tower's without one.
+    #[test]
+    fn a_building_s_relic_raises_its_missile_s_hit() {
+        let hit_by = |relics: [i32; 2]| {
+            let mut target = struck_building(21, [10.5, 10.0, 0.0], damage::Building::default());
+            let mut own = Victim {
+                id: 1,
+                kind: BUILDING,
+                class: 52,
+                player: 1,
+                position: [8.0, 10.0, 2.0],
+                source: damage::Attacker {
+                    id: 1,
+                    kind: BUILDING,
+                    class: 52,
+                    missile: 50,
+                    player: 1,
+                    ..damage::Attacker::default()
+                },
+                weapons: vec![(4, 40)],
+                building: Some(damage::Building {
+                    relics,
+                    ..damage::Building::default()
+                }),
+                ..Victim::default()
+            };
+            let hit = Hit {
+                at: target.position,
+                from_z: Some(2.0),
+                missile: true,
+                chance: 100,
+            };
+            let _ = strike(
+                &mut own,
+                &mut target,
+                &mut Vec::new(),
+                hit,
+                &mut Well512::default(),
+            )
+            .unwrap();
+            target.hp
+        };
+        assert!(hit_by([0, 1]) < hit_by([0, 0]));
+        assert!(hit_by([1, 0]) < hit_by([0, 0]));
+        assert!(hit_by([0, 1]) < hit_by([1, 0]));
     }
 
     /// `FUN_1412115e0`'s trample: its blast about the unit passes its target but reaches the

@@ -1900,6 +1900,7 @@ pub(crate) fn victim_of(
             cost: paid_cost(master),
             damaged_lately: u.damaged_lately,
             struck: false,
+            relics: u.relics,
             razed: Vec::new(),
         }),
     }
