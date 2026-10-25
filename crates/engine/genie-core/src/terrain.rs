@@ -389,10 +389,10 @@ impl Terrain {
     /// tile's layer goes to the snow layer (or none, `FUN_140f640f0`), then its terrain to the
     /// foundation's (`FUN_140f64170`), or with no snow layer and setting `+0x680` at 1 its layer
     /// (a farm's terrain and a building of class 14 always take the terrain). The town centre
-    /// (109) passes over the four tiles of its gap, which keep their terrain to restore. The
-    /// deferred covering of farm terrains under `DAT_143f69454` (0 when probed) and masters 357
-    /// and 1188 are not modelled; the local player's own farm's view (`FUN_140f640a0`) is not
-    /// held.
+    /// (109) passes over the four tiles of its gap, which keep their terrain to restore. Masters
+    /// 357 and 1188 go into the terrain as a farm's terrain does. The deferred covering of farm
+    /// terrains under `DAT_143f69454` (0 when probed) is not modelled; the local player's own
+    /// farm's view (`FUN_140f640a0`) is not held.
     ///
     /// # Panics
     ///
@@ -400,11 +400,6 @@ impl Terrain {
     pub fn cover(&mut self, f: &Foundation) -> Result<(), GenieError> {
         /// `DAT_142eb1e9c`.
         const INSIDE: f32 = crate::image::terrain::INSIDE;
-        if matches!(f.master, 357 | 1188) {
-            return Err(GenieError::unsupported(
-                "a foundation terrain of master 357 or 1188",
-            ));
-        }
         let [x, y, _] = f.position;
         let [cx, cy] = f.clearance;
         let (mut x0, mut y0) = ((x - cx) as i32, (y - cy) as i32);
@@ -438,8 +433,10 @@ impl Terrain {
             })
             .transpose()?
             .cloned();
-        // a farm's terrain, or a building of class 14, always goes into the terrain
-        let into_terrain = is_farm_terrain(wanted) || f.class == CLASS_14;
+        // a farm's terrain, masters 357 and 1188 (taken as farms, `DAT_143f69454` 0 leaving
+        // nothing deferred), or a building of class 14 always goes into the terrain
+        let into_terrain =
+            is_farm_terrain(wanted) || matches!(f.master, 357 | 1188) || f.class == CLASS_14;
         for ty in y0..=y1 {
             for tx in x0..=x1 {
                 let i = self.index(tx, ty).expect("clamped to the map");
@@ -669,5 +666,34 @@ mod tests {
         })
         .unwrap();
         assert_eq!(t.kinds, [30, 30, 30, 47]);
+    }
+
+    /// Masters 357 and 1188 (428408213's 19365 in update 1069) go into the terrain as a farm's
+    /// terrain does, though their foundation is not a farm's and setting `+0x680` is 1; any other
+    /// building of the same foundation goes into the layer there.
+    #[test]
+    fn masters_357_and_1188_lay_their_terrain_into_the_terrain() {
+        let site = |master| Foundation {
+            position: [1.0, 1.0, 0.0],
+            clearance: [1.0, 1.0],
+            terrain: 14,
+            snow: false,
+            master,
+            class: 3,
+            terrain_bonus: -1,
+            mode_680: 1,
+        };
+        for master in [357, 1188] {
+            let mut t = map(vec![0, 3, 29, 47], vec![-1, -1, -1, -1]);
+            t.cover(&site(master)).unwrap();
+            assert_eq!(
+                (t.kinds.clone(), t.layers.clone()),
+                (vec![14, 14, 14, 47], vec![-1; 4])
+            );
+        }
+        let mut t = map(vec![0, 3, 29, 47], vec![-1, -1, -1, -1]);
+        t.cover(&site(70)).unwrap();
+        assert_eq!(t.kinds, [0, 3, 29, 47]);
+        assert_eq!(t.layers, [14, 14, 14, -1]);
     }
 }
