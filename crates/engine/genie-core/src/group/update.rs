@@ -1414,7 +1414,12 @@ impl Turns {
     /// # Errors
     ///
     /// A player whose masters the slice does not have.
-    fn has_task(&self, player: usize, master: i16, action: i16) -> Result<bool, GenieError> {
+    pub(crate) fn has_task(
+        &self,
+        player: usize,
+        master: i16,
+        action: i16,
+    ) -> Result<bool, GenieError> {
         let Some(masters) = self.masters.get(player) else {
             return self.master_of(player, master).map(|_| false);
         };

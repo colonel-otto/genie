@@ -1293,17 +1293,11 @@ impl Turns {
 
     /// A mule cart's completion (`FUN_1411c6bd0`'s tail, a building whose master has a task of
     /// action type 0x99, [`crate::build::Built::cart`]) with a unit AI: with no current target a
-    /// human player's runs its AI's slot 0x1e8 (`FUN_140c16240`; its world test `FUN_141533b60`
-    /// and the game mode's, `FUN_140c87f20` not 4, hold in every recording probed): per task of
-    /// its master in order, the target class of the last of type 0x99 so far names a gather group
-    /// (`FUN_140fdd5c0` with 1: 1 for 7, 3 for 8, 0 for 15, 4 for 32 and 63), each searched by
-    /// `ClosestResourceObject` (slot 0x80) from the cart as the drop site, any workers, from
-    /// state 0 on; of those found, the nearest by the squared footprint gap (`FUN_14118f8c0`,
-    /// below 99999, `DAT_142ef9008`); then slot 0x140 (`FUN_141070c90`): the work command toward
-    /// it at its place, else at the cart's own (slot 0x7e8: no carried-resource test, any task;
-    /// `+0x888`'s count is not held). A cart with a target moves to it (slot 0x138): not modelled.
+    /// human player's runs its AI's slot 0x1e8 ([`Turns::cart_work_search`]; the game mode's
+    /// test, `FUN_140c87f20` not 4, holds in every recording probed), all of it inside the
+    /// completion's `set_state(state)`; then a cart with a target moves to it (slot 0x138 at the
+    /// target's place).
     pub(crate) fn cart_search(&mut self, p: usize, id: i32, state: u8) -> Result<(), GenieError> {
-        const CART_REACH: f32 = crate::image::turn::CART_REACH;
         let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
             return Ok(());
         };
@@ -1315,98 +1309,15 @@ impl Turns {
             return Ok(());
         };
         let found = if current == -1 && !self.players[p].computer {
-            if self.players[p].objects[idx].mover.is_none() {
-                return Err(GenieError::unsupported(
-                    "a mule cart's search without its movement state (a moving building's setup)",
-                ));
-            }
-            let master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
-            let mut kinds = Vec::new();
-            let mut class = -1;
-            for t in &master.tasks {
-                if t.action_type == crate::build::CART_TASK {
-                    class = t.object_group;
-                }
-                let kind = match class {
-                    7 => 1,
-                    8 => 3,
-                    15 => 0,
-                    32 | 63 => 4,
-                    _ => continue,
-                };
-                kinds.push(kind);
-            }
-            let cart = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
-            let result = (|| {
-                let (before, rest) = self.players.split_at_mut(p);
-                let (player, after) = rest.split_first_mut().expect("p is a player");
-                let mut w = ResourceWorld {
-                    player: p,
-                    spatial: &self.spatial,
-                    zones: &mut self.zones,
-                    foreign: Foreign {
-                        before: &*before,
-                        after: &*after,
-                        left: None,
-                    },
-                    every: &self.masters,
-                    masters: self.masters.get(p),
-                    plan: Planning {
-                        pathing: &mut self.pathing,
-                        now: self.world_time,
-                        computer: player.computer,
-                        object: self.streams.get(Stream::Object),
-                        construction_rate: player.construction_rate,
-                        groups: &self.groups,
-                    },
-                };
-                let mut found = Vec::new();
-                for kind in kinds {
-                    let (f, _) = closest_resource_of(
-                        &cart,
-                        &mut w,
-                        &player.objects,
-                        (kind, -1, id),
-                        (current, 0, crate::unit_ai::NO_POINT),
-                    )?;
-                    if f != -1 {
-                        found.push(f);
-                    }
-                }
-                Ok::<_, GenieError>(found)
-            })();
-            self.players[p].objects[idx] = cart;
-            let found = result?;
-            let cart_master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
-            let at = self.players[p].objects[idx].position;
-            let mut best: Option<(i32, [f32; 3])> = None;
-            let mut best_d = CART_REACH;
-            for f in found {
-                let Some(o) = self.spatial.get(f) else {
-                    continue;
-                };
-                let d = footprint_gap_squared(at, cart_master.radius, o.position, o.radius);
-                if d < best_d {
-                    best = Some((f, o.position));
-                    best_d = d;
-                }
-            }
-            Some(best.unwrap_or((-1, at)))
+            Some(self.cart_find(p, idx)?)
         } else {
             None
         };
         // all of it runs inside the completion's set_state(2), before the cart is in state 2
         let built = std::mem::replace(&mut self.players[p].objects[idx].life.state, state);
         let result = (|| {
-            if let Some((target, point)) = found {
-                let work = crate::order::Work {
-                    target,
-                    point,
-                    carry_test: false,
-                    filter: -1,
-                    notified: true,
-                };
-                self.order_work(p, idx, &work)?;
+            if let Some(found) = found {
+                self.cart_work(p, idx, found)?;
             }
             // with a target (the one the work command gave the unit AI) the cart moves to it
             // (slot 0x138 at its place)
@@ -1423,6 +1334,130 @@ impl Turns {
         })();
         self.players[p].objects[idx].life.state = built;
         result
+    }
+
+    /// The mule cart's own search for resources, its unit AI's slot 0x1e8 (`FUN_140c16240`) for
+    /// the cart at `idx` of player `p`: [`Turns::cart_find`], then [`Turns::cart_work`]. The
+    /// completion runs it ([`Turns::cart_search`]), and so does the Empire Wars start
+    /// ([`crate::start_work`]).
+    pub(crate) fn cart_work_search(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+        let found = self.cart_find(p, idx)?;
+        self.cart_work(p, idx, found)
+    }
+
+    /// Slot 0x1e8's search (`FUN_140c16240`, its world test `FUN_141533b60` held): per task of
+    /// the cart's master in order, the target class of the last of type 0x99 so far names a
+    /// gather group (`FUN_140fdd5c0` with 1: 1 for 7, 3 for 8, 0 for 15, 4 for 32 and 63), each
+    /// searched by `ClosestResourceObject` (slot 0x80) from the cart as the drop site, any
+    /// workers, from state 0 on; of those found, the nearest by the squared footprint gap
+    /// (`FUN_14118f8c0`, below 99999, `DAT_142ef9008`), with its place; none at the cart's own.
+    pub(crate) fn cart_find(
+        &mut self,
+        p: usize,
+        idx: usize,
+    ) -> Result<(i32, [f32; 3]), GenieError> {
+        const CART_REACH: f32 = crate::image::turn::CART_REACH;
+        let id = self.players[p].objects[idx].id;
+        let current = self.players[p].objects[idx]
+            .ai
+            .as_ref()
+            .map_or(-1, |ai| ai.current_target);
+        if self.players[p].objects[idx].mover.is_none() {
+            return Err(GenieError::unsupported(
+                "a mule cart's search without its movement state (a moving building's setup)",
+            ));
+        }
+        let master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
+        let mut kinds = Vec::new();
+        let mut class = -1;
+        for t in &master.tasks {
+            if t.action_type == crate::build::CART_TASK {
+                class = t.object_group;
+            }
+            let kind = match class {
+                7 => 1,
+                8 => 3,
+                15 => 0,
+                32 | 63 => 4,
+                _ => continue,
+            };
+            kinds.push(kind);
+        }
+        let cart = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
+        let result = (|| {
+            let (before, rest) = self.players.split_at_mut(p);
+            let (player, after) = rest.split_first_mut().expect("p is a player");
+            let mut w = ResourceWorld {
+                player: p,
+                spatial: &self.spatial,
+                zones: &mut self.zones,
+                foreign: Foreign {
+                    before: &*before,
+                    after: &*after,
+                    left: None,
+                },
+                every: &self.masters,
+                masters: self.masters.get(p),
+                plan: Planning {
+                    pathing: &mut self.pathing,
+                    now: self.world_time,
+                    computer: player.computer,
+                    object: self.streams.get(Stream::Object),
+                    construction_rate: player.construction_rate,
+                    groups: &self.groups,
+                },
+            };
+            let mut found = Vec::new();
+            for kind in kinds {
+                let (f, _) = closest_resource_of(
+                    &cart,
+                    &mut w,
+                    &player.objects,
+                    (kind, -1, id),
+                    (current, 0, crate::unit_ai::NO_POINT),
+                )?;
+                if f != -1 {
+                    found.push(f);
+                }
+            }
+            Ok::<_, GenieError>(found)
+        })();
+        self.players[p].objects[idx] = cart;
+        let found = result?;
+        let cart_master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
+        let at = self.players[p].objects[idx].position;
+        let mut best: Option<(i32, [f32; 3])> = None;
+        let mut best_d = CART_REACH;
+        for f in found {
+            let Some(o) = self.spatial.get(f) else {
+                continue;
+            };
+            let d = footprint_gap_squared(at, cart_master.radius, o.position, o.radius);
+            if d < best_d {
+                best = Some((f, o.position));
+                best_d = d;
+            }
+        }
+        Ok(best.unwrap_or((-1, at)))
+    }
+
+    /// Slot 0x1e8's end: slot 0x140 (`FUN_141070c90`), the work command toward the found
+    /// target at its place, else at the cart's own (slot 0x7e8: no carried-resource test, any
+    /// task; `+0x888`'s count is not held).
+    pub(crate) fn cart_work(
+        &mut self,
+        p: usize,
+        idx: usize,
+        (target, point): (i32, [f32; 3]),
+    ) -> Result<(), GenieError> {
+        let work = crate::order::Work {
+            target,
+            point,
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        };
+        self.order_work(p, idx, &work)
     }
 }
 

@@ -11,7 +11,10 @@
 //! `ClosestResourceObject` (slot 0x80, [`crate::gather_search::closest_resource_at`]: no drop
 //! site, any workers, the least distance wins, the first group at a tie). Slot 0x140
 //! (`FUN_141070c90`) then gives the unit its work on the target at the target's place
-//! ([`Turns::order_work`], slot 0x7e8; `+0x888`, the work's count, is not held).
+//! ([`Turns::order_work`], slot 0x7e8; `+0x888`, the work's count, is not held). Any other
+//! object that is a building (master type 80) whose master has a task of action type 0x99 (a
+//! mule cart), may be interrupted as above and has a unit AI runs that AI's slot 0x1e8, the
+//! cart's own search for resources ([`Turns::cart_work_search`]).
 
 use crate::GenieError;
 use crate::gather_search::{self, Candidate};
@@ -34,6 +37,29 @@ const GROUPS: u8 = 5;
 /// The distance a group's answer must be below (the pass's 99).
 const NO_DISTANCE: i32 = 99;
 
+/// What the pass gives an object.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Start {
+    /// A villager's or fishing ship's work on its farm or its closest resource.
+    Work,
+    /// A mule cart's own search for resources (its unit AI's slot 0x1e8).
+    CartSearch,
+}
+
+/// The pass's choice for an object of the decoded `class`: a villager or fishing ship works,
+/// else a `building` (master type 80) whose master has a task of action type 0x99 (`cart_task`,
+/// `FUN_1415c60b0`) searches. The caller then tests that it is ready (slot 0x2d0 with 1: its
+/// top action may be interrupted and its unit AI holds no order) and has a unit AI.
+const fn start_of(class: i16, building: bool, cart_task: bool) -> Option<Start> {
+    if matches!(class, VILLAGER | FISHING_SHIP) {
+        return Some(Start::Work);
+    }
+    if building && cart_task {
+        return Some(Start::CartSearch);
+    }
+    None
+}
+
 impl Turns {
     /// The pass for player `p` ([`crate::start_work`]).
     ///
@@ -45,9 +71,22 @@ impl Turns {
         let mut i = 0;
         while i < self.players[p].objects.len() {
             let unit = &self.players[p].objects[i];
-            let class = self.master_of(p, unit.life.master_id)?.class;
+            let master = self.master_of(p, unit.life.master_id)?;
+            let class = master.class;
+            let building = master.kind == crate::masters::master_type::BUILDING;
+            let cart_task =
+                building && self.has_task(p, unit.life.master_id, crate::build::CART_TASK)?;
+            let Some(start) = start_of(class, building, cart_task) else {
+                i += 1;
+                continue;
+            };
             let idle = unit.ai.as_ref().is_some_and(|ai| ai.orders.is_empty());
-            if !matches!(class, VILLAGER | FISHING_SHIP) || !idle || !unit.interruptible()? {
+            if !idle || !unit.interruptible()? {
+                i += 1;
+                continue;
+            }
+            if start == Start::CartSearch {
+                self.cart_work_search(p, i)?;
                 i += 1;
                 continue;
             }
@@ -213,5 +252,23 @@ impl Turns {
             &objects,
             &mut |id| mover.reaches_object(&me_walk, spatial, &mut plan, id, 0.0, master_id),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `BaseWorld::update`'s first update per object: a villager (4) or a fishing ship (21)
+    /// works; else a building whose master has a task of action type 0x99 (a mule cart,
+    /// 431096717's four carts of player 2) searches; anything else takes nothing.
+    #[test]
+    fn the_start_pass_works_villagers_and_lets_mule_carts_search() {
+        assert_eq!(start_of(VILLAGER, false, false), Some(Start::Work));
+        assert_eq!(start_of(FISHING_SHIP, false, false), Some(Start::Work));
+        assert_eq!(start_of(99, true, true), Some(Start::CartSearch));
+        assert_eq!(start_of(99, true, false), None);
+        assert_eq!(start_of(99, false, true), None);
+        assert_eq!(start_of(99, false, false), None);
     }
 }

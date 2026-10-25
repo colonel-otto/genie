@@ -1579,7 +1579,8 @@ impl Turns {
     /// kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target and
     /// `point` (a Hunt's, [`Turns::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
     /// modelled; a `MoveTo`'s or an Explore's never); else a `MoveTo` to the target
-    /// (`FUN_140aa0df0`: range 0 from slot 0x268, the walking sprite) takes the target it holds
+    /// (`FUN_140aa0df0`: no range, so slot 0x268's, [`crate::move_to::object_range`]; the
+    /// walking sprite) takes the target it holds
     /// (slot 0x178, [`crate::move_to::holds_object`]) and replaces its actions (slot 0x808, the
     /// old ones' teardowns let their targets go, [`Turns::clear_actions`]; then its start,
     /// [`MoveToAction::to_object`]). Its `command_flag` (`+0x888`) is not held.
@@ -1639,6 +1640,8 @@ impl Turns {
             self.take(target, self.releaser(player, idx));
         }
         self.clear_actions(player, idx)?;
+        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let range = crate::move_to::object_range(0.0, Some(master));
         let unit = &mut self.players[player].objects[idx];
         let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
             "a moved unit without movement state",
@@ -1648,7 +1651,7 @@ impl Turns {
             unit.position,
             mover,
             (target, t_state),
-            0.0,
+            range,
             (false, livestock),
         )?;
         if move_to.shows_standing() {

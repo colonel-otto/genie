@@ -345,6 +345,30 @@ pub struct MoveStep {
     pub failed: bool,
 }
 
+/// The range a `MoveTo` to an object (`FUN_140aa0df0`) takes for `range`: one made with none
+/// (0.0; `UCOMISS`, so −0.0 too and never a NaN) takes the unit's slot 0x268. A building's
+/// (`FUN_1411c5d80`, master type 80) is `image::order::CART_MOVE_RANGE` (0.75) when its slot
+/// 0x4f0 holds (`FUN_1411d4980` -> `FUN_1415c60b0`: its master has a task of action type 0x99, a
+/// mule cart's); any other's (`FUN_14106a6d0`) is 0. A `MoveTo` to a point (`FUN_140aa0d30`)
+/// keeps its range.
+#[must_use]
+pub fn object_range(range: f32, master: Option<&crate::masters::Master>) -> f32 {
+    if range != 0.0 {
+        return range;
+    }
+    let cart = master.is_some_and(|m| {
+        m.kind == crate::masters::master_type::BUILDING
+            && m.tasks
+                .iter()
+                .any(|t| t.action_type == crate::build::CART_TASK)
+    });
+    if cart {
+        crate::image::order::CART_MOVE_RANGE
+    } else {
+        0.0
+    }
+}
+
 impl MoveToAction {
     /// A new `MoveTo` of its own to the object `target` within `range` (`FUN_140aa0df0`; its point
     /// `+0x38` the target's place, [`Mover::move_to_point`], which a path request renews), showing
@@ -570,6 +594,40 @@ impl MoveToAction {
 mod tests {
     use super::*;
     use crate::spatial::Placed;
+
+    /// `FUN_140aa0df0` with no range takes the unit's slot 0x268: 0.75 for a building whose
+    /// master has a task of action type 0x99 (431096717's mule carts of player 2 at update 1),
+    /// 0 for a building without one, for a unit with one, and without a master; a range given
+    /// stays.
+    #[test]
+    fn a_move_to_an_object_without_a_range_takes_a_mule_cart_s() {
+        use crate::masters::{Master, Task, master_type::BUILDING};
+        let cart_task = Task {
+            action_type: crate::build::CART_TASK,
+            ..Task::default()
+        };
+        let cart = Master {
+            kind: BUILDING,
+            tasks: vec![Task::default(), cart_task],
+            ..Master::default()
+        };
+        let building = Master {
+            kind: BUILDING,
+            tasks: vec![Task::default()],
+            ..Master::default()
+        };
+        let unit = Master {
+            kind: 70,
+            ..cart.clone()
+        };
+        assert_eq!(object_range(0.0, Some(&cart)), 0.75);
+        assert_eq!(object_range(-0.0, Some(&cart)), 0.75);
+        assert_eq!(object_range(0.0, Some(&building)), 0.0);
+        assert_eq!(object_range(0.0, Some(&unit)), 0.0);
+        assert_eq!(object_range(0.0, None), 0.0);
+        assert_eq!(object_range(0.5, Some(&cart)), 0.5);
+        assert!(object_range(f32::NAN, Some(&cart)).is_nan());
+    }
 
     /// The 4v4's woodcutter 31101 (a human player's villager, stance 0) whose Attack's `MoveTo`
     /// the motion step gave up on in update 5101: it waits a second, `+0x6c` 1; once it waited it

@@ -642,6 +642,8 @@ pub mod movement {
 pub mod order {
     /// 10000.0
     pub const BOX_START: f32 = f32::from_bits(0x461c_4000);
+    /// 0.75
+    pub const CART_MOVE_RANGE: f32 = f32::from_bits(0x3f40_0000);
     /// 100.0
     pub const DAMAGE_WHOLE: f32 = f32::from_bits(0x42c8_0000);
     /// 1.0
