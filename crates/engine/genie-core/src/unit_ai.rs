@@ -1358,8 +1358,9 @@ pub fn attacks_neutral(me: &Attacker, class: i16) -> bool {
 /// attacks a neutral object of `class`, its unit's master of `attack_priority`: the civilian's
 /// (`FUN_140c1acf0`) and the building's (`FUN_140c1ace0`) never; the predator's
 /// (`FUN_140c1ad60`) and the lion's (`FUN_140c1ad00`) not classes 13, 22, 52, 54 and 55; the
-/// priest's ([`priest_attacks_neutral`]), the soldier's and the tower's (`FUN_140c1aeb0`, the
-/// soldier's mask: [`soldier_attacks_neutral`]) and the siege unit's ([`siege_attacks_neutral`]);
+/// priest's ([`priest_attacks_neutral`]), the soldier's (`FUN_140c1ae60`) and the tower's
+/// (`FUN_140c1aeb0`, the same body: [`soldier_attacks_neutral`]) and the siege unit's
+/// ([`siege_attacks_neutral`]);
 /// the others' the base's (`FUN_140c48410`): always. The predator's and the lion's also take
 /// attack priority 3 to [`PRIORITY_3_CLASSES`].
 #[must_use]
@@ -2348,14 +2349,15 @@ pub struct TopTarget {
     pub radius: [f32; 2],
 }
 
-/// Slot 400 within the unit's range (slot 0x1e8, `FUN_141086330`): its top action's target when
-/// the footprints' squared gap (`FUN_14118f8c0`) is at most the weapon range squared and at
-/// least the least range squared (`COMISS`/`JC` each: a NaN is not in range).
-fn top_target_in_range(at: &Surroundings) -> Option<i32> {
-    let t = at.top_target?;
-    let gap = crate::movement::footprint_gap_squared(at.position, at.size, t.position, t.radius);
-    let in_range = gap <= at.weapon_range * at.weapon_range && at.min_range * at.min_range <= gap;
-    in_range.then_some(t.id)
+/// The target of the unit's top action as the full update stands ([`UnitAi::top_target_live`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LiveTop {
+    /// `+8`.
+    id: i32,
+    /// Its type (`+0xf`).
+    kind: u8,
+    /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
+    gap_squared: f32,
 }
 
 /// The idle part's group test (`0x140c67e8f`): no group, or one that is idle (`FUN_141017ad0`) of
@@ -2500,26 +2502,47 @@ const fn changes_actions(e: &Effect) -> bool {
 /// hunt, gather and build, slots 0x360, 0x368, 0x380); without one the unit's now
 /// ([`UnitSide::top_target_now`]).
 fn top_target_after(fx: &[Effect], side: &mut dyn UnitSide) -> Result<Option<i32>, GenieError> {
-    for e in fx.iter().rev() {
-        match *e {
-            Effect::Stop
-            | Effect::Move(_)
-            | Effect::MoveAside(_)
-            | Effect::Explore(_)
-            | Effect::RestorePatrol => return Ok(None),
-            Effect::MoveToObject { target, .. }
-            | Effect::HuntObject(target)
-            | Effect::GatherObject(target)
-            | Effect::BuildObject(target)
-            | Effect::DropElsewhere { site: target, .. }
-            | Effect::WorkOn { target, .. } => return Ok(Some(target)),
-            Effect::CapHumanOrder(_)
-            | Effect::OrderOnTarget(_)
-            | Effect::AfterOrder(_)
-            | Effect::ChangeOwner(_) => {}
-        }
+    match PendingTop::of(fx) {
+        PendingTop::Replaced(target) => Ok(target),
+        PendingTop::Unchanged => side.top_target_now(),
     }
-    side.top_target_now()
+}
+
+/// What the [`Effect`]s pending in an update leave of the unit's top action
+/// ([`top_target_after`]'s rule).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PendingTop {
+    /// None of them replaces its actions.
+    Unchanged,
+    /// The last that replaces them leaves this target (None: no action, or one without an
+    /// object).
+    Replaced(Option<i32>),
+}
+
+impl PendingTop {
+    /// The top action's target the effects `fx` leave.
+    fn of(fx: &[Effect]) -> Self {
+        for e in fx.iter().rev() {
+            match *e {
+                Effect::Stop
+                | Effect::Move(_)
+                | Effect::MoveAside(_)
+                | Effect::Explore(_)
+                | Effect::RestorePatrol => return Self::Replaced(None),
+                Effect::MoveToObject { target, .. }
+                | Effect::HuntObject(target)
+                | Effect::GatherObject(target)
+                | Effect::BuildObject(target)
+                | Effect::DropElsewhere { site: target, .. }
+                | Effect::WorkOn { target, .. } => return Self::Replaced(Some(target)),
+                Effect::CapHumanOrder(_)
+                | Effect::OrderOnTarget(_)
+                | Effect::AfterOrder(_)
+                | Effect::ChangeOwner(_) => {}
+            }
+        }
+        Self::Unchanged
+    }
 }
 
 /// A building on its make action without a missile and with at most this firepower forgets its
@@ -3973,7 +3996,7 @@ impl UnitAi {
             }
             return Ok(false);
         }
-        let mut target = top_target_in_range(at).unwrap_or(-1);
+        let mut target = self.top_target_in_range(at, fx, side)?.unwrap_or(-1);
         if self.retarget_disabled != 0 && at.target.is_some() {
             // slot 0x3d0 with the top target (−1 answers 0) and the weapon range
             if target != -1 && side.reaches(target, at.weapon_range)? {
@@ -4069,7 +4092,10 @@ impl UnitAi {
         // action's
         let held =
             (self.retarget_disabled != 0 && at.target.is_some()).then_some(self.current_target);
-        let target = held.or_else(|| top_target_in_range(at));
+        let target = match held {
+            Some(t) => Some(t),
+            None => self.top_target_in_range(at, fx, side)?,
+        };
         if computer {
             computer_idle_check()?;
         }
@@ -5047,7 +5073,7 @@ impl UnitAi {
         // it does not run; a computer player's first lets the units inside it go
         // (FUN_141225c40 with −1, −1)
         if self.ai_type == SIEGE_AI {
-            if at.top_target.is_some() || at.class == 54 {
+            if at.class == 54 || self.top_target_live(at, fx, side)?.is_some() {
                 return Ok(false);
             }
             if computer {
@@ -7663,6 +7689,75 @@ impl UnitAi {
         1
     }
 
+    /// Slot 400 as the full update stands: the target of the unit's top action, its type and the
+    /// footprints' squared gap (`FUN_14118f8c0`). The game's stop (slot 0x3c0) empties the
+    /// action list at once and a command fills it, so a read later in the same update sees
+    /// either: an [`Effect`] pending in `fx` that replaces the actions decides
+    /// ([`top_target_after`]), else a command the update gave ([`UnitAi::commanded`],
+    /// [`UnitSide::top_target_now`]), its object as the world holds it
+    /// ([`UnitAi::world_object`]); with neither, what the update read at its start
+    /// ([`Surroundings::top_target`]).
+    ///
+    /// # Errors
+    ///
+    /// An object the side does not hold.
+    fn top_target_live(
+        &self,
+        at: &Surroundings,
+        fx: &[Effect],
+        side: &mut dyn UnitSide,
+    ) -> Result<Option<LiveTop>, GenieError> {
+        let start = at.top_target.map(|t| LiveTop {
+            id: t.id,
+            kind: t.kind,
+            gap_squared: crate::movement::footprint_gap_squared(
+                at.position,
+                at.size,
+                t.position,
+                t.radius,
+            ),
+        });
+        let id = match PendingTop::of(fx) {
+            PendingTop::Replaced(id) => id,
+            PendingTop::Unchanged if self.commanded => side.top_target_now()?,
+            PendingTop::Unchanged => return Ok(start),
+        };
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        if let Some(t) = start.filter(|t| t.id == id) {
+            return Ok(Some(t));
+        }
+        Ok(Self::world_object(id, at, side)?.map(|s| LiveTop {
+            id,
+            kind: s.kind,
+            gap_squared: s.gap_squared,
+        }))
+    }
+
+    /// Slot 400 within the unit's range (slot 0x1e8, `FUN_141086330`): its top action's target
+    /// as the update stands ([`UnitAi::top_target_live`]) when the footprints' squared gap is at
+    /// most the weapon range squared and at least the least range squared (`COMISS`/`JC` each:
+    /// a NaN is not in range).
+    ///
+    /// # Errors
+    ///
+    /// An object the side does not hold.
+    fn top_target_in_range(
+        &self,
+        at: &Surroundings,
+        fx: &[Effect],
+        side: &mut dyn UnitSide,
+    ) -> Result<Option<i32>, GenieError> {
+        let Some(t) = self.top_target_live(at, fx, side)? else {
+            return Ok(None);
+        };
+        let gap = t.gap_squared;
+        let in_range =
+            gap <= at.weapon_range * at.weapon_range && at.min_range * at.min_range <= gap;
+        Ok(in_range.then_some(t.id))
+    }
+
     /// The object `id` as the world holds it (`FUN_1415417a0`): the unit itself (`at`, its own
     /// target of no one), among the objects the update names ([`Surroundings::unit`]), else as
     /// the unit's side finds it ([`UnitSide::seen_unit`]); None when the world does not hold it.
@@ -8286,7 +8381,10 @@ impl UnitAi {
         if self.adjusted_idle_timeout == 750 {
             self.update_adjusted_idle_timeout(ai);
         }
-        if at.top_target.is_some_and(|t| t.kind == BUILDING_KIND) {
+        if self
+            .top_target_live(at, fx, side)?
+            .is_some_and(|t| t.kind == BUILDING_KIND)
+        {
             return Ok(());
         }
         let _ = self.process_idle(at, computer, ai, side, fx)?;
@@ -8691,7 +8789,7 @@ impl UnitAi {
             defended = held;
         }
         let toward_it = self.current_action == MOVE_ACTION
-            && at.top_target.map_or(-1, |t| t.id) == self.defend_target;
+            && self.top_target_live(at, fx, side)?.map_or(-1, |t| t.id) == self.defend_target;
         if matches!(self.current_action, ATTACK_ACTION | MOVE_ASIDE_ACTION) || toward_it {
             return Ok(false);
         }
@@ -15517,15 +15615,15 @@ mod tests {
             radius: [0.2, 0.2],
         };
         at.top_target = Some(near);
-        assert_eq!(top_target_in_range(&at), Some(50));
-        at.min_range = 1.0;
-        assert_eq!(top_target_in_range(&at), None);
-        at.min_range = 0.0;
         let mut side = SoldierSide {
             found: 77,
             attacks: Vec::new(),
             patrol: None,
         };
+        assert_eq!(u.top_target_in_range(&at, &[], &mut side), Ok(Some(50)));
+        at.min_range = 1.0;
+        assert_eq!(u.top_target_in_range(&at, &[], &mut side), Ok(None));
+        at.min_range = 0.0;
         let mut fx = Vec::new();
         assert_eq!(
             u.soldier_idle(&at, false, &mut rng(), &mut side, &mut fx),
@@ -15545,6 +15643,32 @@ mod tests {
             Ok(true)
         );
         assert_eq!(side.attacks, vec![(77, true)]);
+    }
+
+    /// A stop earlier in the update (a failed Enter's notify, slot 0xb0) emptied the action list
+    /// at once: the soldier's idle check finds no top action's target, in range as it was at
+    /// the update's start, and searches (426750657's scout inside its transport, update 467);
+    /// an effect that leaves the actions does not change it.
+    #[test]
+    fn a_soldier_stopped_in_the_update_finds_no_top_action_s_target() {
+        let (mut u, mut at) = patroller(0);
+        u.current_order = -1;
+        at.top_target = Some(TopTarget {
+            id: 50,
+            kind: 70,
+            position: [21.0, 20.0, 0.0],
+            radius: [0.2, 0.2],
+        });
+        let mut side = SoldierSide {
+            found: 77,
+            attacks: Vec::new(),
+            patrol: None,
+        };
+        let mut read = |fx: &[Effect]| u.top_target_in_range(&at, fx, &mut side);
+        assert_eq!(read(&[]), Ok(Some(50)));
+        assert_eq!(read(&[Effect::CapHumanOrder(5000)]), Ok(Some(50)));
+        assert_eq!(read(&[Effect::Stop]), Ok(None));
+        assert_eq!(read(&[Effect::Stop, Effect::CapHumanOrder(5000)]), Ok(None));
     }
 
     /// The soldier's idle check with nothing to attack and a saved patrol, in no group:
