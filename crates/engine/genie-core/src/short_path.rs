@@ -2886,6 +2886,119 @@ mod tests {
         ));
     }
 
+    /// A search on a 32-tile mesh holding `walls` (tiles, `[x0, y0, x1, y1]`) from `from` to `to`
+    /// (tiles) with a radius of a quarter tile; the path's points in tiles. With `ignored`, every
+    /// wall is ignored.
+    fn around(
+        walls: &[[f32; 4]],
+        from: [f32; 2],
+        to: [f32; 2],
+        ignored: bool,
+    ) -> (u8, Vec<[f32; 2]>) {
+        let fixed = |v: f32| (v * ONE as f32) as i32;
+        let mut mesh = Mesh::new(32);
+        let ids: Vec<u32> = walls
+            .iter()
+            .map(|w| mesh.add([fixed(w[0]), fixed(w[1]), fixed(w[2]), fixed(w[3])]))
+            .collect();
+        let q = Query {
+            from: [fixed(from[0]), fixed(from[1])],
+            to: [fixed(to[0]), fixed(to[1])],
+            radius: 0.25,
+            target_size: [0.0, 0.0],
+            range: 0.0,
+            blocked: 0,
+        };
+        let ignore = if ignored { ids } else { Vec::new() };
+        let found = Pather::default()
+            .search(&mut mesh, &|_, _| 0, &q, &ignore)
+            .unwrap();
+        let tiles = |v: i32| v as f32 / ONE as f32;
+        let points = found
+            .points
+            .iter()
+            .map(|p| [tiles(p[0]), tiles(p[1])])
+            .collect();
+        (found.result, points)
+    }
+
+    /// A shape keeps the unit's centre `d` (half a tile less the radius) inside its rectangle: the
+    /// search walks round a wall (10.25..10.75 by 4.25..11.75 for the centre) at its nearer end
+    /// (3.25 tiles down against 4.25 up), over its two corners; ignored, the wall leaves the path
+    /// direct (the start, the start node's own point, the goal).
+    #[test]
+    fn a_path_bends_round_a_wall_at_its_nearer_end() {
+        let wall = [[10.0, 4.0, 11.0, 12.0]];
+        assert_eq!(
+            around(&wall, [6.5, 8.5], [14.5, 8.5], false),
+            (
+                1,
+                vec![[6.5, 8.5], [10.25, 11.75], [10.75, 11.75], [14.5, 8.5]]
+            )
+        );
+        assert_eq!(
+            around(&wall, [6.5, 8.5], [14.5, 8.5], true),
+            (1, vec![[6.5, 8.5], [6.5, 8.5], [14.5, 8.5]])
+        );
+    }
+
+    /// A start inside a U open away from the goal: the path leaves by the open side round the
+    /// nearer arm's end (the lower, 2.75 tiles down against 3.75 up) and runs along it to the
+    /// corner it shares with the U's back.
+    #[test]
+    fn a_path_leaves_a_u_by_its_open_side() {
+        let u = [
+            [8.0, 4.0, 9.0, 12.0],
+            [4.0, 4.0, 9.0, 5.0],
+            [4.0, 11.0, 9.0, 12.0],
+        ];
+        assert_eq!(
+            around(&u, [6.5, 8.5], [14.5, 8.5], false),
+            (
+                1,
+                vec![
+                    [6.5, 8.5],
+                    [4.25, 11.25],
+                    [4.25, 11.75],
+                    [8.75, 11.75],
+                    [14.5, 8.5]
+                ]
+            )
+        );
+    }
+
+    /// A goal shut inside a box: the path is partial (result 2) and ends at the point nearest the
+    /// goal the unit's centre reaches, on the box's outer side.
+    #[test]
+    fn a_goal_shut_in_a_box_gives_a_partial_path_to_its_nearest_point() {
+        let walls = [
+            [10.0, 6.0, 15.0, 7.0],
+            [10.0, 10.0, 15.0, 11.0],
+            [10.0, 6.0, 11.0, 11.0],
+            [14.0, 6.0, 15.0, 11.0],
+        ];
+        assert_eq!(
+            around(&walls, [6.5, 8.5], [12.5, 8.5], false),
+            (2, vec![[6.5, 8.5], [10.25, 8.5]])
+        );
+        assert_eq!(around(&walls, [6.5, 8.5], [12.5, 8.5], true).0, 1);
+    }
+
+    /// Two staggered walls: the path reaches the goal over one corner of the second wall (a
+    /// shortest path bends only at corners); the first wall's lower end lies off it.
+    #[test]
+    fn a_path_past_staggered_walls_bends_only_at_their_corners() {
+        let walls = [[10.0, 4.0, 11.0, 9.0], [12.0, 8.0, 13.0, 14.0]];
+        let (result, points) = around(&walls, [6.5, 6.5], [16.5, 12.5], false);
+        assert_eq!(result, 1);
+        assert_eq!(points.first(), Some(&[6.5, 6.5]));
+        assert_eq!(points.last(), Some(&[16.5, 12.5]));
+        let corners = [[12.25, 8.25], [12.75, 8.25], [12.25, 13.75], [12.75, 13.75]];
+        let between = &points[1..points.len() - 1];
+        assert!(2 < points.len(), "{points:?}");
+        assert!(between.iter().all(|p| corners.contains(p)), "{points:?}");
+    }
+
     /// A query from (5, 5) to (7, 5) with a radius of a quarter tile and range `range`.
     fn range_query(range: f32) -> Query {
         Query {

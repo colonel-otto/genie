@@ -1737,6 +1737,101 @@ mod tests {
         assert_eq!(p.last_open_point([2.5, 4.5], [16.5, 4.5]), None);
     }
 
+    /// The scan along a boundary for the tile nearest `at` with the edge: the first upward, then
+    /// downward while strictly nearer; neither: none.
+    #[test]
+    fn the_nearest_tile_with_the_edge_is_found_up_then_nearer_down() {
+        let p = Planner::new([8, 8], vec![0; 64], vec![1.0], &open_map);
+        let edges = |bits: [u8; 8]| move |s: i16| [bits[s as usize], 0];
+        // above at 7 (2 off), below at 4 (1 off): the nearer below
+        assert_eq!(
+            p.nearest_on_boundary(5, 0, 7, N, edges([0, 0, 0, 0, N, 0, 0, N])),
+            Some(4)
+        );
+        // one off either way: a tie goes up
+        assert_eq!(
+            p.nearest_on_boundary(5, 0, 7, N, edges([0, 0, 0, 0, N, 0, N, 0])),
+            Some(6)
+        );
+        // above at 6 only
+        assert_eq!(
+            p.nearest_on_boundary(5, 0, 7, N, edges([0, 0, 0, 0, 0, 0, N, 0])),
+            Some(6)
+        );
+        // below at 1 only, beyond nothing found above
+        assert_eq!(
+            p.nearest_on_boundary(5, 0, 7, N, edges([0, N, 0, 0, 0, 0, 0, 0])),
+            Some(1)
+        );
+        // another edge only: none
+        assert_eq!(p.nearest_on_boundary(5, 0, 7, N, edges([S; 8])), None);
+    }
+
+    /// `FUN_140f78ba0` on an open map: the tiles' A* (`FUN_140f79250`, its neighbours by
+    /// `FUN_140f76840`) reaches the goal, and the path runs from the start to the goal point.
+    #[test]
+    fn the_tile_search_reaches_a_goal_on_an_open_map() {
+        let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+        let req = Request {
+            from: [1.5, 2.5],
+            to: [6.5, 5.5],
+            radii: 0.2,
+            range: 0.0,
+            closed: Vec::new(),
+            full: true,
+        };
+        let mut out = Path::default();
+        assert_eq!(p.search_on_tiles(&req, &mut out), Found::Goal);
+        assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
+        assert_eq!(out.points.last(), Some(&[6.5, 0.0, 5.5]));
+        // the search leaves its marks behind: the same search again finds the same path
+        let mut again = Path::default();
+        assert_eq!(p.search_on_tiles(&req, &mut again), Found::Goal);
+        assert_eq!(again.points, out.points);
+    }
+
+    /// A wall across the map: the tile search ends at the tile nearest the goal (its centre),
+    /// on the start's side.
+    #[test]
+    fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
+        let wall = |x: i32, _: i32| x == 3;
+        let mut p = Planner::new([8, 8], vec![0; 64], vec![1.0], &wall);
+        let req = Request {
+            from: [1.5, 2.5],
+            to: [6.5, 2.5],
+            radii: 0.2,
+            range: 0.0,
+            closed: Vec::new(),
+            full: true,
+        };
+        let mut out = Path::default();
+        assert_eq!(p.search_on_tiles(&req, &mut out), Found::Nearest);
+        assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
+        assert_eq!(out.points.last(), Some(&[2.5, 0.0, 2.5]));
+    }
+
+    /// `FUN_140f7c530` for a human player's search (`full`): a short path over the levels is
+    /// searched again on the tiles; a long one has its start shortened over the tiles
+    /// (`shorter_start`); either way the path runs from the start to the goal.
+    #[test]
+    fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
+        let mut p = Planner::new([64, 8], vec![0; 512], vec![1.0], &open_map);
+        for to in [[6.5, 5.5], [60.5, 5.5]] {
+            let req = Request {
+                from: [1.5, 2.5],
+                to,
+                radii: 0.2,
+                range: 0.0,
+                closed: Vec::new(),
+                full: true,
+            };
+            let mut out = Path::default();
+            assert_eq!(p.plan::<()>(&req, false, &mut out, None), Ok(Found::Goal));
+            assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
+            assert_eq!(out.points.last(), Some(&[to[0], 0.0, to[1]]));
+        }
+    }
+
     #[test]
     fn an_open_map_is_one_node_cell_per_eight_tiles() {
         let p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
