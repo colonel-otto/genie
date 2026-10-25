@@ -54,7 +54,13 @@ llvm_tools() {
 if [ "${CRAP_COVERAGE:-}" != keep ] || [ ! -f "$lcov" ]; then
     llvm_tools
     mkdir -p coverage
-    cargo llvm-cov nextest --workspace --lcov --output-path "$lcov" >&2
+    # the run's output goes to a log, shown only when it fails
+    if ! cargo llvm-cov nextest --workspace --lcov --output-path "$lcov" \
+        > coverage/tests.log 2>&1; then
+        tail -n 60 coverage/tests.log >&2
+        echo "crap: the tests under coverage failed (coverage/tests.log)" >&2
+        exit 1
+    fi
 fi
 
 case $mode in
