@@ -1068,6 +1068,38 @@ impl Turns {
         self.sweep_order(ids, waypoints, sweep)
     }
 
+    /// [`Turns::sweep_order`]'s first step of an attack move: each listed unit's AI, sleeping
+    /// or not, resets as for an order.
+    fn reset_for_attack_move(&mut self, ids: &[i32]) {
+        for &id in ids {
+            let unit = match self.place(id) {
+                Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
+                Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
+                None => continue,
+            };
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.reset_for_order(self.streams.get(Stream::Ai));
+            }
+        }
+    }
+
+    /// [`Turns::sweep_order`]'s timers: each listed unit's AI idles from 0 to its place's patrol
+    /// timeout ([`patrol_timeout`]), its patrol zeroed with `reset`.
+    fn start_patrol_timers(&mut self, ids: &[i32], reset: bool) {
+        let dt = self.dt;
+        for (i, &id) in ids.iter().enumerate() {
+            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
+                ai.idle_timer = 0;
+                let timeout = patrol_timeout(i, dt);
+                ai.adjusted_idle_timeout = timeout;
+                ai.secondary_timer = timeout;
+                if reset {
+                    ai.zero_patrol();
+                }
+            }
+        }
+    }
+
     /// `FUN_14161b970` without a target for PATROL ([`Turns::patrol_order`]) and `ATTACK_MOVE`: an
     /// attack move first resets each listed unit's AI as for an order (`FUN_141631040`,
     /// [`crate::unit_ai::UnitAi::reset_for_order`]); then as PATROL's, but that a group's move
@@ -1087,29 +1119,9 @@ impl Turns {
         const LISTED: usize = 60;
         let Sweep { patrol, reset, .. } = sweep;
         if !patrol {
-            for &id in ids {
-                let unit = match self.place(id) {
-                    Some(Place::Live(p, i)) => &mut self.players[p].objects[i],
-                    Some(Place::Sleeping(p, i)) => &mut self.players[p].sleeping[i],
-                    None => continue,
-                };
-                if let Some(ai) = unit.ai.as_mut() {
-                    ai.reset_for_order(self.streams.get(Stream::Ai));
-                }
-            }
+            self.reset_for_attack_move(ids);
         }
-        let dt = self.dt;
-        for (i, &id) in ids.iter().enumerate() {
-            if let Some(ai) = self.object_mut(id).and_then(|(_, u)| u.ai.as_mut()) {
-                ai.idle_timer = 0;
-                let timeout = patrol_timeout(i, dt);
-                ai.adjusted_idle_timeout = timeout;
-                ai.secondary_timer = timeout;
-                if reset {
-                    ai.zero_patrol();
-                }
-            }
-        }
+        self.start_patrol_timers(ids, reset);
         let mut split = self.split(ids, &|_| true, false)?;
         let mut listed: Vec<i32> = Vec::new();
         for units in split.groups.clone() {

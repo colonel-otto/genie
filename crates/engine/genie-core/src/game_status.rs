@@ -10,7 +10,7 @@
 
 use crate::production::{Making, refund, refund_research};
 use crate::rng::Stream;
-use crate::turn::Turns;
+use crate::turn::{Releaser, Turns};
 use crate::unit_ai::{Effect, GenieError};
 
 /// The player still plays.
@@ -451,54 +451,9 @@ impl Turns {
         let master_id = self.players[p].objects[idx].life.master_id;
         let standing = self.master_of(p, master_id)?.standing_sprite;
         match kind {
-            crate::gather::GATHER => {
-                let unit = &mut self.players[p].objects[idx];
-                let gather = unit.gather.as_mut().expect("its top action");
-                let stand = crate::hunt::stand_sprite(
-                    &gather.task,
-                    standing,
-                    unit.life.attribute_type,
-                    unit.life.amount,
-                    &self.graphics,
-                );
-                let released = gather.halt(
-                    unit.mover.as_mut(),
-                    stand,
-                    &mut unit.sprite,
-                    self.streams.get(Stream::Sprite),
-                )?;
-                for t in released {
-                    if t != -1 {
-                        self.release(t, by)?;
-                    }
-                }
-            }
-            crate::build::BUILD => {
-                let unit = &mut self.players[p].objects[idx];
-                let build = unit.build.as_mut().expect("its top action");
-                let foundation = build.target;
-                let (counted, targets) = build.halt(unit.mover.as_mut())?;
-                if counted {
-                    self.leave_builders(foundation)?;
-                }
-                self.standing_sprite(p, idx)?;
-                for t in targets {
-                    if t != -1 {
-                        self.release(t, by)?;
-                    }
-                }
-            }
-            // FUN_140adaa00: set_state(2), a counted repairer out of its target's repairers, the
-            // standing sprite; the target stays
-            crate::repair::REPAIR => {
-                let unit = &mut self.players[p].objects[idx];
-                let repair = unit.repair.as_mut().expect("its top action");
-                let target = repair.target;
-                if repair.halt(unit.mover.as_mut())? {
-                    self.leave_builders(target)?;
-                }
-                self.standing_sprite(p, idx)?;
-            }
+            crate::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
+            crate::build::BUILD => self.halt_build(p, idx, by)?,
+            crate::repair::REPAIR => self.halt_repair(p, idx)?,
             crate::attack::ATTACK => {
                 let unit = &mut self.players[p].objects[idx];
                 let attack = unit.attack.as_mut().expect("its top action");
@@ -509,23 +464,7 @@ impl Turns {
                     self.streams.get(Stream::Sprite),
                 )?;
             }
-            crate::artifact::ARTIFACT_TYPE => {
-                let unit = &mut self.players[p].objects[idx];
-                let artifact = unit.artifact.as_mut().expect("its top action");
-                let (gone, released) = artifact.stop();
-                if gone.stops {
-                    unit.mover
-                        .as_mut()
-                        .ok_or(GenieError::unsupported(
-                            "a walking animal without movement state",
-                        ))?
-                        .stop()?;
-                }
-                for t in [gone.released, released].into_iter().flatten() {
-                    self.release(t, by)?;
-                }
-                self.standing_sprite(p, idx)?;
-            }
+            crate::artifact::ARTIFACT_TYPE => self.halt_artifact(p, idx, by)?,
             _ => {
                 return Err(GenieError::unsupported(
                     "a stop of an action whose slot 0x38 is not modelled",
@@ -533,6 +472,90 @@ impl Turns {
             }
         }
         Ok(true)
+    }
+
+    /// [`Turns::halt_other`] of a Gather: it halts with `standing` (the task's
+    /// carrying one while it carries at least 1 of the task's resource); its target and second
+    /// target go, released by `by`. `standing` is the master's standing sprite.
+    fn halt_gather(
+        &mut self,
+        p: usize,
+        idx: usize,
+        standing: i16,
+        by: Releaser,
+    ) -> Result<(), GenieError> {
+        let unit = &mut self.players[p].objects[idx];
+        let gather = unit.gather.as_mut().expect("its top action");
+        let stand = crate::hunt::stand_sprite(
+            &gather.task,
+            standing,
+            unit.life.attribute_type,
+            unit.life.amount,
+            &self.graphics,
+        );
+        let released = gather.halt(
+            unit.mover.as_mut(),
+            stand,
+            &mut unit.sprite,
+            self.streams.get(Stream::Sprite),
+        )?;
+        for t in released {
+            if t != -1 {
+                self.release(t, by)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// [`Turns::halt_other`] of a Build: a counted builder leaves its foundation's builders, the
+    /// unit stands, and the foundation and the second target go, released by `by`.
+    fn halt_build(&mut self, p: usize, idx: usize, by: Releaser) -> Result<(), GenieError> {
+        let unit = &mut self.players[p].objects[idx];
+        let build = unit.build.as_mut().expect("its top action");
+        let foundation = build.target;
+        let (counted, targets) = build.halt(unit.mover.as_mut())?;
+        if counted {
+            self.leave_builders(foundation)?;
+        }
+        self.standing_sprite(p, idx)?;
+        for t in targets {
+            if t != -1 {
+                self.release(t, by)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// [`Turns::halt_other`] of a Repair (`FUN_140adaa00`): `set_state(2)`, a counted repairer
+    /// out of its target's repairers, the standing sprite; the target stays.
+    fn halt_repair(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
+        let unit = &mut self.players[p].objects[idx];
+        let repair = unit.repair.as_mut().expect("its top action");
+        let target = repair.target;
+        if repair.halt(unit.mover.as_mut())? {
+            self.leave_builders(target)?;
+        }
+        self.standing_sprite(p, idx)
+    }
+
+    /// [`Turns::halt_other`] of an Artifact: its sub-actions and its target go (released by
+    /// `by`, the Enter's first), a walking animal stops, and it stands.
+    fn halt_artifact(&mut self, p: usize, idx: usize, by: Releaser) -> Result<(), GenieError> {
+        let unit = &mut self.players[p].objects[idx];
+        let artifact = unit.artifact.as_mut().expect("its top action");
+        let (gone, released) = artifact.stop();
+        if gone.stops {
+            unit.mover
+                .as_mut()
+                .ok_or(GenieError::unsupported(
+                    "a walking animal without movement state",
+                ))?
+                .stop()?;
+        }
+        for t in [gone.released, released].into_iter().flatten() {
+            self.release(t, by)?;
+        }
+        self.standing_sprite(p, idx)
     }
 
     /// `FUN_1411cff00`, the cancel of the whole queue of the building at `idx` of player `p`,
@@ -1042,6 +1065,118 @@ mod tests {
         t.players[2].history.entries = vec![[1, 0]];
         t.defeat_event(2);
         assert_eq!(t.players[2].history.events, []);
+    }
+
+    /// Slot 0x38 of the actions with their own ([`Turns::halt_other`]), each true: the Gather
+    /// idles (state 2), the Build and the Repair halt (state 2), the Attack ends (state 1, its
+    /// animation at speed 1, standing) and the Artifact checks again (state 6); a kind it does
+    /// not model is refused.
+    #[test]
+    fn each_action_with_its_own_stop_halts_and_answers_true() {
+        let mut t = game();
+        let mut add = |unit: Unit| {
+            let mut unit = unit;
+            unit.life.master_id = 109;
+            t.players[1].objects.push(unit);
+            t.players[1].objects.len() - 1
+        };
+        let task = crate::hunt::HuntTask {
+            id: 0,
+            range: 0.25,
+            resource: 17,
+            sprites: [-1; 4],
+            work_value: 1.0,
+            productivity: -1,
+            kind4: -1,
+        };
+        let bush = crate::gather::Resource {
+            id: -1,
+            position: [3.5, 3.5, 0.0],
+            class: 7,
+            master: 59,
+            player: 0,
+            workers: 0,
+            drop_site: false,
+            gap: 1.2,
+            radius: [0.5, 0.5],
+        };
+        let rate = crate::gather::StopRate {
+            work_rate: 1.0,
+            capacity: 10.0,
+            productivity: 1.0,
+        };
+        let gather = add(Unit {
+            id: 30,
+            gather: Some(crate::gather::GatherAction::new(task, &bush, false, rate).unwrap()),
+            ..Unit::default()
+        });
+        let build_task = crate::build::BuildTask {
+            range: 0.0,
+            work_value: 1.0,
+            work_rate: 1.0,
+            resource: -1,
+            id: -1,
+        };
+        let build = add(Unit {
+            id: 31,
+            build: Some(crate::build::BuildAction::start(
+                -1,
+                [3.5, 3.5, 0.0],
+                1.0,
+                build_task,
+            )),
+            ..Unit::default()
+        });
+        let repair_task = crate::repair::RepairTask {
+            id: 0,
+            work_value: 1.0,
+        };
+        let repair = add(Unit {
+            id: 32,
+            repair: Some(crate::repair::RepairAction::start(
+                -1,
+                [3.5, 3.5, 0.0],
+                repair_task,
+                0.0,
+            )),
+            ..Unit::default()
+        });
+        let mut attack = crate::attack::tests::own_attack(-1, crate::attack::DONE, 1.0);
+        attack.arms.idle_sprite = Some(crate::sprite::Graphic {
+            id: 1,
+            frames: 10,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 0,
+        });
+        let attack = add(Unit {
+            id: 33,
+            attack: Some(attack),
+            ..Unit::default()
+        });
+        let artifact = add(Unit {
+            id: 34,
+            artifact: Some(crate::artifact::Artifact::new(false)),
+            ..Unit::default()
+        });
+        assert_eq!(t.halt_other(1, gather, crate::gather::GATHER), Ok(true));
+        assert_eq!(t.halt_other(1, build, crate::build::BUILD), Ok(true));
+        assert_eq!(t.halt_other(1, repair, crate::repair::REPAIR), Ok(true));
+        assert_eq!(t.halt_other(1, attack, crate::attack::ATTACK), Ok(true));
+        let kind = crate::artifact::ARTIFACT_TYPE;
+        assert_eq!(t.halt_other(1, artifact, kind), Ok(true));
+        let objects = &t.players[1].objects;
+        assert_eq!(objects[gather].gather.map(|g| g.state), Some(2));
+        assert_eq!(objects[build].build.map(|b| b.state), Some(2));
+        assert_eq!(objects[repair].repair.map(|r| r.state), Some(2));
+        let a = &objects[attack];
+        assert_eq!(a.attack.map(|a| a.state), Some(crate::attack::DONE));
+        assert_eq!(a.anim_speed, Some(1.0));
+        assert!(a.sprite.is_some());
+        assert_eq!(objects[artifact].artifact.map(|a| a.state), Some(6));
+        assert!(t.halt_other(1, gather, 99).is_err());
     }
 
     #[test]

@@ -97,11 +97,26 @@ impl Settings {
     ///
     /// Modes 15 and −15 (the root's `+0x560` entry, not held).
     pub fn tech_mode_allows(&self, mode: i16) -> Result<bool, crate::GenieError> {
-        let (m, flags) = (self.game_mode, self.sub_game_mode_flag);
-        let age = self.starting_age;
-        let below = |n: u32| (age as u32) < n;
-        let default_in = |modes: &[i32]| age == 0 && modes.contains(&m);
         let positive = match mode.unsigned_abs() {
+            n @ 2..=18 => self.rule_mode(n)?,
+            n @ 19..=25 => self.resource_level == i32::from(n) - 19,
+            26 => self.antiquity,
+            32 if mode < 0 => return Ok(true),
+            n @ 27..=34 => self.age_mode(n),
+            _ => return Ok(true),
+        };
+        Ok(if mode < 0 { !positive } else { positive })
+    }
+
+    /// [`Settings::tech_mode_allows`]'s modes 2 to 18 (`n`), by the game mode, the sub mode
+    /// flag's bits and the options.
+    ///
+    /// # Errors
+    ///
+    /// Mode 15 (the root's `+0x560` entry, not held).
+    fn rule_mode(&self, n: u16) -> Result<bool, crate::GenieError> {
+        let (m, flags) = (self.game_mode, self.sub_game_mode_flag);
+        Ok(match n {
             2 => m == 0,
             3 => m == 2,
             4 => self.empire_wars(),
@@ -119,20 +134,27 @@ impl Settings {
             16 => m == 16,
             17 => !self.walkable_farms,
             18 => self.shared_exploration,
-            n @ 19..=25 => self.resource_level == i32::from(n) - 19,
-            26 => self.antiquity,
+            _ => unreachable!("the rule modes are 2 to 18"),
+        })
+    }
+
+    /// [`Settings::tech_mode_allows`]'s modes 27 to 34 (`n`), by the starting age, its default 0
+    /// by the game mode.
+    fn age_mode(&self, n: u16) -> bool {
+        let (m, age) = (self.game_mode, self.starting_age);
+        let below = |n: u32| (age as u32) < n;
+        let default_in = |modes: &[i32]| age == 0 && modes.contains(&m);
+        match n {
             27 => age == 2 || (age == 0 && !matches!(m, 13 | 2 | 12)),
             28 => age == 3 || default_in(&[13]),
             29 => age == 4,
             30 => age == 5,
             31 => age == 6 || default_in(&[2, 12]),
-            32 if mode < 0 => return Ok(true),
             32 => !below(3) || default_in(&[13, 2, 12]),
             33 => !below(4) || default_in(&[2, 12]),
             34 => !below(5) || default_in(&[2, 12]),
-            _ => return Ok(true),
-        };
-        Ok(if mode < 0 { !positive } else { positive })
+            _ => unreachable!("the age modes are 27 to 34"),
+        }
     }
 
     /// `FUN_141302150`: with the villagers' force drop on, a game mode other than King of the
@@ -292,6 +314,105 @@ mod tests {
         for mode in [0, 2, 3] {
             assert!(!with(mode).predator_hunts_end());
         }
+    }
+
+    /// `FUN_1413cf2f0`, each mode with a game it allows (and its negative not) and a game of
+    /// mode 9 at the default age, which none of these allows.
+    #[test]
+    fn each_technology_mode_takes_its_game_mode_flag_option_or_age() {
+        let mode = |game_mode| Settings {
+            game_mode,
+            ..Settings::default()
+        };
+        let flag = |sub_game_mode_flag| Settings {
+            sub_game_mode_flag,
+            ..mode(9)
+        };
+        let age = |starting_age| Settings {
+            starting_age,
+            ..mode(9)
+        };
+        let cases = [
+            (2, mode(0)),
+            (3, mode(2)),
+            (4, mode(13)),
+            (4, flag(1)),
+            (5, mode(7)),
+            (6, mode(8)),
+            (7, mode(11)),
+            (7, flag(2)),
+            (8, mode(6)),
+            (8, flag(8)),
+            (9, mode(10)),
+            (10, mode(12)),
+            (11, mode(1)),
+            (
+                12,
+                Settings {
+                    turbo: true,
+                    ..mode(9)
+                },
+            ),
+            (13, mode(4)),
+            (13, mode(3)),
+            (13, mode(5)),
+            (13, mode(15)),
+            (14, flag(4)),
+            (16, mode(16)),
+            (
+                18,
+                Settings {
+                    shared_exploration: true,
+                    ..mode(9)
+                },
+            ),
+            (28, age(3)),
+            (28, mode(13)),
+            (29, age(4)),
+            (30, age(5)),
+            (31, age(6)),
+            (31, mode(12)),
+            (32, age(3)),
+            (33, age(4)),
+            (33, mode(2)),
+            (34, age(5)),
+        ];
+        for (m, allows) in cases {
+            assert_eq!(allows.tech_mode_allows(m), Ok(true), "{m}");
+            assert_eq!(allows.tech_mode_allows(-m), Ok(m == 32), "-{m}");
+            assert_eq!(mode(9).tech_mode_allows(m), Ok(false), "{m} in mode 9");
+        }
+        let walkable = Settings {
+            walkable_farms: true,
+            ..mode(9)
+        };
+        assert_eq!(walkable.tech_mode_allows(17), Ok(false));
+        assert_eq!(mode(9).tech_mode_allows(-32), Ok(true));
+        assert_eq!(mode(9).tech_mode_allows(15), Err(ROOT_MODE));
+        assert_eq!(mode(9).tech_mode_allows(27), Ok(true));
+        assert_eq!(mode(13).tech_mode_allows(27), Ok(false));
+        assert_eq!(age(2).tech_mode_allows(27), Ok(true));
+        let level = |resource_level| Settings {
+            resource_level,
+            ..mode(9)
+        };
+        for n in 19..=25 {
+            assert_eq!(
+                level(i32::from(n) - 19).tech_mode_allows(n),
+                Ok(true),
+                "{n}"
+            );
+            assert_eq!(level(7).tech_mode_allows(n), Ok(false), "{n}");
+        }
+        let antiquity = Settings {
+            antiquity: true,
+            ..mode(9)
+        };
+        assert_eq!(antiquity.tech_mode_allows(26), Ok(true));
+        assert_eq!(mode(9).tech_mode_allows(26), Ok(false));
+        assert_eq!(mode(9).tech_mode_allows(1), Ok(true));
+        assert_eq!(mode(9).tech_mode_allows(35), Ok(true));
+        assert_eq!(mode(9).tech_mode_allows(17), Ok(!mode(9).walkable_farms));
     }
 
     /// `FUN_1413cf2f0` by mode: the game mode's (2, 3, 13), the sub mode flag's (4), the

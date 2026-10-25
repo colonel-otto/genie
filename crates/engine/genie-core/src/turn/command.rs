@@ -2485,20 +2485,7 @@ impl Turns {
         let mut pick: Option<usize> = None;
         while 0 < amount {
             amount -= 1;
-            let mut best = pick;
-            for k in 0..found.len() {
-                if 0 < rooms[k] && best.is_none_or(|b| loads[b] > loads[k]) {
-                    best = Some(k);
-                }
-            }
-            if best.is_none() {
-                for k in 0..found.len() {
-                    if 0 < rooms[k] && best.is_none_or(|b| rooms[b] < rooms[k]) {
-                        best = Some(k);
-                    }
-                }
-            }
-            let Some(k) = best else {
+            let Some(k) = least_loaded(&rooms, &loads, pick) else {
                 return Ok(());
             };
             rooms[k] -= 1;
@@ -2888,4 +2875,29 @@ impl Turns {
             }
         }
     }
+}
+
+/// [`Turns::queue`]'s building for its next unit, an index into `rooms` and `loads`: the last
+/// one's `pick` first (none: the first with room), replaced by each with room and a load below
+/// its (`COMISS`, `JBE`: a comparison with a NaN replaces nothing); with none, the one with the
+/// most room, the first of equals; none without room.
+pub(in crate::turn) fn least_loaded(
+    rooms: &[i32],
+    loads: &[f32],
+    pick: Option<usize>,
+) -> Option<usize> {
+    let mut best = pick;
+    for k in 0..rooms.len() {
+        if 0 < rooms[k] && best.is_none_or(|b| loads[b] > loads[k]) {
+            best = Some(k);
+        }
+    }
+    if best.is_none() {
+        for k in 0..rooms.len() {
+            if 0 < rooms[k] && best.is_none_or(|b| rooms[b] < rooms[k]) {
+                best = Some(k);
+            }
+        }
+    }
+    best
 }

@@ -793,23 +793,7 @@ impl Turns {
             if let Some((c, kind)) = container
                 && BUILDING <= kind
             {
-                let Some(crate::order::Place::Live(cp, ci)) = self.place(c) else {
-                    return Err(GenieError::unreachable(
-                        "a building that holds units outside the live lists",
-                    ));
-                };
-                let _ = self.let_out(cp, ci, id, point, (None, true))?;
-                let (up, ui) = self.live_inside(id)?;
-                let kind = self
-                    .master_of(up, self.players[up].objects[ui].life.master_id)?
-                    .kind;
-                let u = &mut self.players[up].objects[ui];
-                if COMBAT_KIND <= kind {
-                    u.town_bell.flag = false;
-                }
-                if let Some(ai) = u.ai.as_mut() {
-                    ai.orders.clear();
-                }
+                self.leave_building(c, id, point)?;
                 continue;
             }
             let unit = &self.players[player].objects[idx];
@@ -827,42 +811,91 @@ impl Turns {
                 }
                 continue;
             }
-            let unit = &self.players[player].objects[idx];
-            if unit
-                .ai
-                .as_ref()
-                .is_some_and(|ai| !ai.building_orders.is_empty())
-            {
-                return Err(GenieError::unsupported(
-                    "an unload toward a building's command queue location",
-                ));
+            self.unload_building(player, idx, point, (flag, unit_type), sound)?;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::unload`] of unit `id` inside building `c`: it leaves toward `point`
+    /// (`FUN_1411e7220` with no work and its sound); a combat unit is no longer under the town
+    /// bell (`+0x9dc`), and its unit AI's orders go (`FUN_140c5e010`).
+    ///
+    /// # Errors
+    ///
+    /// A building outside the live lists, and what [`Turns::let_out`] does not model.
+    fn leave_building(&mut self, c: i32, id: i32, point: [f32; 2]) -> Result<(), GenieError> {
+        let Some(crate::order::Place::Live(cp, ci)) = self.place(c) else {
+            return Err(GenieError::unreachable(
+                "a building that holds units outside the live lists",
+            ));
+        };
+        let _ = self.let_out(cp, ci, id, point, (None, true))?;
+        let (up, ui) = self.live_inside(id)?;
+        let kind = self
+            .master_of(up, self.players[up].objects[ui].life.master_id)?
+            .kind;
+        let u = &mut self.players[up].objects[ui];
+        if COMBAT_KIND <= kind {
+            u.town_bell.flag = false;
+        }
+        if let Some(ai) = u.ai.as_mut() {
+            ai.orders.clear();
+        }
+        Ok(())
+    }
+
+    /// [`Turns::unload`] of player `player`'s building `idx`: the units inside it come out from
+    /// the last to come in, those `flag` and `unit_type` pick ([`unload_picks`]), each through
+    /// [`Turns::let_out`] toward `point` (with `sound`), its order queue emptied
+    /// (`FUN_140c5e010`) and, a unit (type 70), no longer under the town bell (`+0x9dc`).
+    ///
+    /// # Errors
+    ///
+    /// An unload toward the building's command queue location, and what [`Turns::let_out`] does
+    /// not model.
+    fn unload_building(
+        &mut self,
+        player: usize,
+        idx: usize,
+        point: [f32; 2],
+        (flag, unit_type): (u8, i32),
+        sound: bool,
+    ) -> Result<(), GenieError> {
+        let unit = &self.players[player].objects[idx];
+        if unit
+            .ai
+            .as_ref()
+            .is_some_and(|ai| !ai.building_orders.is_empty())
+        {
+            return Err(GenieError::unsupported(
+                "an unload toward a building's command queue location",
+            ));
+        }
+        let mut i = unit.garrison.len();
+        while 0 < i {
+            i -= 1;
+            let Some(&inside) = self.players[player].objects[idx].garrison.get(i) else {
+                continue;
+            };
+            // the game skips a null entry; an id the world no longer holds is one
+            let Some((up, u)) = self.object(inside) else {
+                continue;
+            };
+            if !self.unload_picks(up, u, flag, unit_type)? {
+                continue;
             }
-            let mut i = unit.garrison.len();
-            while 0 < i {
-                i -= 1;
-                let Some(&inside) = self.players[player].objects[idx].garrison.get(i) else {
-                    continue;
-                };
-                // the game skips a null entry; an id the world no longer holds is one
-                let Some((up, u)) = self.object(inside) else {
-                    continue;
-                };
-                if !self.unload_picks(up, u, flag, unit_type)? {
-                    continue;
-                }
-                let _ = self.let_out(player, idx, inside, point, (None, sound))?;
-                let (up, ui) = self.live_inside(inside)?;
-                let kind = self
-                    .master_of(up, self.players[up].objects[ui].life.master_id)?
-                    .kind;
-                let u = &mut self.players[up].objects[ui];
-                // a unit (type 70) is no longer under the town bell (`+0x9dc`)
-                if 70 <= kind {
-                    u.town_bell.flag = false;
-                }
-                if let Some(ai) = u.ai.as_mut() {
-                    ai.orders.clear();
-                }
+            let _ = self.let_out(player, idx, inside, point, (None, sound))?;
+            let (up, ui) = self.live_inside(inside)?;
+            let kind = self
+                .master_of(up, self.players[up].objects[ui].life.master_id)?
+                .kind;
+            let u = &mut self.players[up].objects[ui];
+            // a unit (type 70) is no longer under the town bell (`+0x9dc`)
+            if 70 <= kind {
+                u.town_bell.flag = false;
+            }
+            if let Some(ai) = u.ai.as_mut() {
+                ai.orders.clear();
             }
         }
         Ok(())
@@ -4698,6 +4731,41 @@ pub(crate) mod tests {
         walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
         t.seek_shelter(1, &[1000]).unwrap();
         assert_eq!(enter(&t, 1000), None);
+    }
+
+    /// UNLOAD of a building (`FUN_14161f410`'s last branch): each unit inside comes out toward
+    /// the point, its orders gone and, a unit (type 70), no longer under the town bell; an id the
+    /// world no longer holds is passed over. A building with orders of its own to hand on is not
+    /// modelled.
+    #[test]
+    fn unload_of_a_building_lets_every_unit_inside_out() {
+        let mut t = let_out_world();
+        inside_tc(&mut t, 1, 1000, VILLAGER);
+        inside_tc(&mut t, 1, 1001, VILLAGER);
+        t.players[1].objects[0].garrison.insert(0, 1500);
+        for id in [1000, 1001] {
+            let v = t.object_mut(id).unwrap().1;
+            v.town_bell.flag = true;
+            v.ai = Some(crate::unit_ai::UnitAi {
+                orders: vec![crate::unit_ai::QueuedOrder::default()],
+                ..crate::unit_ai::UnitAi::default()
+            });
+        }
+        t.unload(1, &[100], [4.5, 4.5], 0, -1, false).unwrap();
+        assert_eq!(t.players[1].objects[0].garrison, [1500]);
+        for id in [1000, 1001] {
+            let v = t.object(id).unwrap().1;
+            assert_eq!(v.life.inside, None, "{id}");
+            assert!(!v.town_bell.flag, "{id}");
+            assert!(v.ai.as_ref().unwrap().orders.is_empty(), "{id}");
+        }
+        let mut t = let_out_world();
+        inside_tc(&mut t, 1, 1000, VILLAGER);
+        t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi {
+            building_orders: vec![crate::unit_ai::QueuedOrder::default()],
+            ..crate::unit_ai::UnitAi::default()
+        });
+        assert!(t.unload(1, &[100], [4.5, 4.5], 0, -1, false).is_err());
     }
 
     #[test]

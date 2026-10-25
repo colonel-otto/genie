@@ -3829,24 +3829,19 @@ impl Unit {
         flown
     }
 
-    pub(in crate::turn) fn fly_missile(
-        &mut self,
-        missile: &mut crate::missile::Missile,
+    /// [`Unit::fly`]'s first step: the missile's target and the object it was fired from, one
+    /// gone from the world's table dropped, a dead target (above state 2 but 6) let go.
+    ///
+    /// # Errors
+    ///
+    /// A target or a shooter in the world the slice cannot read, and a dead shooter (its
+    /// weapons going to the missile, `FUN_14113e170`).
+    fn missile_ends(
+        &self,
+        action: &mut crate::missile::MissileAction,
         c: &mut Context<'_>,
-        others: &mut [Self],
+        others: &[Self],
     ) -> Result<(), GenieError> {
-        let master =
-            c.masters
-                .and_then(|m| m.get(self.life.master_id))
-                .ok_or(GenieError::unsupported(
-                    "a missile of a master the slice does not have",
-                ))?;
-        let stats = master.missile_stats.ok_or(GenieError::unsupported(
-            "a missile whose master has no flight",
-        ))?;
-        let Some(action) = missile.action.as_mut() else {
-            return Ok(());
-        };
         let dead = |state: u8| 2 < state && state != 6;
         let target_state = match c.victim.as_deref() {
             Some(v) if v.id == action.target => Some(v.state),
@@ -3881,6 +3876,28 @@ impl Unit {
                 "a missile whose shooter died (its weapons, FUN_14113e170)",
             ));
         }
+        Ok(())
+    }
+
+    pub(in crate::turn) fn fly_missile(
+        &mut self,
+        missile: &mut crate::missile::Missile,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+    ) -> Result<(), GenieError> {
+        let master =
+            c.masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a missile of a master the slice does not have",
+                ))?;
+        let stats = master.missile_stats.ok_or(GenieError::unsupported(
+            "a missile whose master has no flight",
+        ))?;
+        let Some(action) = missile.action.as_mut() else {
+            return Ok(());
+        };
+        self.missile_ends(action, c, others)?;
         match action.state {
             crate::missile::FLYING => {}
             crate::missile::DONE => {
@@ -6501,6 +6518,20 @@ impl Unit {
         self.ai_part(c, others, resume)
     }
 
+    /// [`Unit::ai_part`]'s first step: the pathing grid takes a unit of a master of kind 40 or
+    /// more where it stands, moving or not.
+    fn refresh_pathing(&self, c: &mut Context<'_>) {
+        if let Some(m) = c
+            .masters
+            .and_then(|ms| ms.get(self.life.master_id))
+            .filter(|m| 40 <= m.kind)
+            && let Some(p) = c.spatial.get(self.id).copied()
+        {
+            let moving = self.mover.as_ref().is_some_and(Mover::is_moving);
+            c.pathing.refresh(self.id, &p, moving, m.outline);
+        }
+    }
+
     /// The end of [`Unit::update`] after the actions: `RGE_Action_Object::update`'s end
     /// (`FUN_141163080`: the action object's shape), `RGE_Combat_Object::update`'s sight mask,
     /// then the unit AI's full update on its owner's turn, else its check between turns, and the
@@ -6517,15 +6548,8 @@ impl Unit {
             after,
         } = resume;
         // the rest of a full update after its order on a target ran its part before that already
-        if after.is_none()
-            && let Some(m) = c
-                .masters
-                .and_then(|ms| ms.get(self.life.master_id))
-                .filter(|m| 40 <= m.kind)
-            && let Some(p) = c.spatial.get(self.id).copied()
-        {
-            let moving = self.mover.as_ref().is_some_and(Mover::is_moving);
-            c.pathing.refresh(self.id, &p, moving, m.outline);
+        if after.is_none() {
+            self.refresh_pathing(c);
         }
         // RGE_Combat_Object::update after the actions: the object's sight mask; a changed mask of
         // an object others take over by seeing it (`+0x924` 1) gives it to the first player that

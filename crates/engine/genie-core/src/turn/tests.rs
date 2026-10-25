@@ -8440,3 +8440,22 @@ fn a_missile_whose_target_died_flies_on_without_it_and_lands() {
     assert_eq!(t.recycling.missiles, vec![(-1, false)]);
     assert_eq!(deer_hp(&t), 5.0);
 }
+
+/// QUEUE's pick (`FUN_141614450`): the building with room and the least load, the last pick holding
+/// against an equal load; a comparison with a NaN load replaces nothing; with none with room, none.
+#[test]
+fn a_queued_unit_goes_to_the_least_loaded_building_with_room() {
+    use crate::turn::command::least_loaded;
+    assert_eq!(least_loaded(&[2, 2, 2], &[5.0, 3.0, 4.0], None), Some(1));
+    assert_eq!(least_loaded(&[2, 0, 2], &[5.0, 3.0, 4.0], None), Some(2));
+    assert_eq!(least_loaded(&[2, 2], &[3.0, 3.0], Some(1)), Some(1));
+    assert_eq!(least_loaded(&[2, 2], &[f32::NAN, 3.0], None), Some(0));
+    assert_eq!(
+        least_loaded(&[2, 2, 2], &[4.0, f32::NAN, 3.0], None),
+        Some(2)
+    );
+    assert_eq!(least_loaded(&[2, 2], &[3.0, f32::NAN], None), Some(0));
+    assert_eq!(least_loaded(&[0, 2], &[1.0, 3.0], Some(0)), Some(0));
+    assert_eq!(least_loaded(&[0, 0], &[3.0, 1.0], None), None);
+    assert_eq!(least_loaded(&[], &[], None), None);
+}

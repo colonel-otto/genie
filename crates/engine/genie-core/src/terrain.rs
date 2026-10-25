@@ -380,6 +380,14 @@ impl Terrain {
         Ok(self.snowy(kind) || self.snowy(layer))
     }
 
+    /// [`Terrain::cover`]'s test for the foundation terrain: tile `i` of terrain `t` takes it
+    /// over a plain or farm terrain whose layer is empty, plain or a farm too.
+    fn foundation_covers(&self, i: usize, t: u8) -> bool {
+        let l = self.layers[i];
+        (plain(i16::from(t)) || (t < 200 && is_farm_terrain(t)))
+            && (l < 0 || plain(l) || (l < 200 && is_farm_terrain(l as u8)))
+    }
+
     /// A completed building's foundation terrain (`FUN_1411ddd90`) over its position plus and
     /// minus its clearance (clamped to the map, `FUN_1409a47d0`). A tile of a terrain its
     /// `defense_terrain_bonus` scales (neither 0 nor 1) keeps it to restore; then, but on 47 and
@@ -451,9 +459,7 @@ impl Terrain {
                     continue;
                 }
                 let covered = if wanted == FOUNDATION {
-                    let l = self.layers[i];
-                    (plain(i16::from(t)) || (t < 200 && is_farm_terrain(t)))
-                        && (l < 0 || plain(l) || (l < 200 && is_farm_terrain(l as u8)))
+                    self.foundation_covers(i, t)
                 } else {
                     wanted != t
                 };

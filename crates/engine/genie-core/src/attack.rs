@@ -2226,7 +2226,7 @@ pub(crate) mod tests {
     }
 
     /// A unit's own Attack on `target` in `state` with range `range`.
-    fn own_attack(target: i32, state: u8, range: f32) -> Attack {
+    pub(crate) fn own_attack(target: i32, state: u8, range: f32) -> Attack {
         Attack {
             target,
             target2: -1,
