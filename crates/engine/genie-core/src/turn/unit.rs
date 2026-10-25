@@ -1152,12 +1152,17 @@ impl Unit {
         self.wait_solidify = None;
         self.make = None;
         if let Some(mut a) = self.artifact.take() {
-            let (walked, released) = a.tear_down();
-            if walked && let Some(m) = self.mover.as_mut() {
-                m.stop()?;
-            }
+            let (released, gone) = a.tear_down();
             if let Some(t) = released {
                 release(t);
+            }
+            if let Some(t) = gone.released {
+                release(t);
+            }
+            if gone.stops
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
             }
         }
         if let Some(f) = self.fly.take() {
@@ -5141,17 +5146,15 @@ impl Unit {
             })?;
             // the check's sub-actions went: an Enter's teardown lets its building go, and a
             // walking MoveTo's, the Artifact's own or the Enter's, stops the unit
-            let mut enter_walked = false;
-            if let Some(Handover::Taken { .. }) = new
-                && let Some(e) = artifact.enter.take()
-            {
-                c.releases.push((e.target, by));
-                enter_walked = e.move_to.is_some();
-            }
-            if (enter_walked || matches!(new, Some(Handover::Taken { walked: true, .. })))
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
+            if let Some(Handover::Taken { gone, .. }) = new {
+                if let Some(t) = gone.released {
+                    c.releases.push((t, by));
+                }
+                if gone.stops
+                    && let Some(m) = self.mover.as_mut()
+                {
+                    m.stop()?;
+                }
             }
             if let Some(kind) = ended.and_then(|e| e.notify) {
                 self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
@@ -5605,15 +5608,19 @@ impl Unit {
                 }
                 c.releases.push((e.target, self.releaser(c)));
             } else if self.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE) {
-                // the Artifact goes: its sub-actions end (an Enter's teardown lets its building
-                // go), then its own teardown lets its target go
-                let art = self.artifact.take().expect("its top action");
+                // the Artifact goes (FUN_140a73fc0): its target is let go, then its sub-actions
+                // go (an Enter's teardown lets its building go; a walking MoveTo's stops the
+                // unit)
+                let mut art = self.artifact.take().expect("its top action");
                 let by = self.releaser(c);
-                if let Some(e) = art.enter {
-                    c.releases.push((e.target, by));
+                let (released, gone) = art.tear_down();
+                for t in [released, gone.released].into_iter().flatten() {
+                    c.releases.push((t, by));
                 }
-                if art.target != -1 {
-                    c.releases.push((art.target, by));
+                if gone.stops
+                    && let Some(m) = self.mover.as_mut()
+                {
+                    m.stop()?;
                 }
             } else if self.unmodelled_action.is_some() {
                 return Err(GenieError::unsupported(
@@ -7242,8 +7249,8 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         if let Some(artifact) = self.artifact.as_mut() {
-            let (walked, released) = artifact.stop();
-            if walked {
+            let (gone, released) = artifact.stop();
+            if gone.stops {
                 self.mover
                     .as_mut()
                     .ok_or(GenieError::unsupported(
@@ -7251,7 +7258,7 @@ impl Unit {
                     ))?
                     .stop()?;
             }
-            if let Some(t) = released {
+            for t in [gone.released, released].into_iter().flatten() {
                 c.releases.push((t, by));
             }
             self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
@@ -7483,14 +7490,19 @@ impl Unit {
                 | crate::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(PointMove::Declined),
             Some(crate::artifact::ARTIFACT_TYPE) => {
-                let walked = self.artifact.as_mut().is_some_and(|a| a.take_point(point));
-                if walked {
+                let gone = self
+                    .artifact
+                    .as_mut()
+                    .map(|a| a.take_point(point))
+                    .unwrap_or_default();
+                if gone.stops {
                     self.mover
                         .as_mut()
                         .ok_or(crate::turn::WALKER_UNMOVING)?
                         .stop()?;
                 }
-                Ok(PointMove::Taken(None))
+                // the Enter it held lets its building or transport go
+                Ok(PointMove::Taken(gone.released))
             }
             Some(crate::hunt::HUNT) => {
                 let (held, my_pasture) = (self.life.amount, self.my_pasture);

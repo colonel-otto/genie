@@ -470,13 +470,15 @@ impl Turns {
             let art = unit.artifact.as_mut().ok_or(GenieError::unreachable(
                 "an Artifact on top without its action",
             ))?;
-            let (stops, released) = art.hold_enter(action);
+            let gone = art.hold_enter(action);
             // the old Enter's teardown lets its target go before its MoveTo's stops the unit
-            if let Some(t) = released {
+            if let Some(t) = gone.released {
                 self.release(t, by)?;
             }
             let unit = &mut self.players[player].objects[idx];
-            if stops && let Some(m) = unit.mover.as_mut() {
+            if gone.stops
+                && let Some(m) = unit.mover.as_mut()
+            {
                 m.stop()?;
             }
         } else {

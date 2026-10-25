@@ -1778,17 +1778,22 @@ impl Turns {
                 "an Artifact's move to an object without a place",
             ))?;
         let unit = &mut self.players[player].objects[idx];
-        let (walked, targets) = unit.artifact.as_mut().map_or_else(
-            || (false, crate::artifact::Targets::default()),
-            |a| a.take_object((target, alive), at, to_building, to_town_centre),
-        );
+        let (targets, gone) = unit
+            .artifact
+            .as_mut()
+            .map(|a| a.take_object((target, alive), at, to_building, to_town_centre))
+            .unwrap_or_default();
         if let Some(t) = targets.released {
             self.release(t, by)?;
         }
         if let Some(t) = targets.taken {
             self.take(t, by);
         }
-        if walked {
+        // set_state(5)'s sub-actions went: the Enter it held lets its building or transport go
+        if let Some(t) = gone.released {
+            self.release(t, by)?;
+        }
+        if gone.stops {
             self.players[player].objects[idx]
                 .mover
                 .as_mut()

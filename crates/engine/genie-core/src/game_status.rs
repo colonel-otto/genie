@@ -512,8 +512,8 @@ impl Turns {
             crate::artifact::ARTIFACT_TYPE => {
                 let unit = &mut self.players[p].objects[idx];
                 let artifact = unit.artifact.as_mut().expect("its top action");
-                let (walked, released) = artifact.stop();
-                if walked {
+                let (gone, released) = artifact.stop();
+                if gone.stops {
                     unit.mover
                         .as_mut()
                         .ok_or(GenieError::unsupported(
@@ -521,7 +521,7 @@ impl Turns {
                         ))?
                         .stop()?;
                 }
-                if let Some(t) = released {
+                for t in [gone.released, released].into_iter().flatten() {
                     self.release(t, by)?;
                 }
                 self.standing_sprite(p, idx)?;

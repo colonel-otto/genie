@@ -37,17 +37,27 @@ pub struct Ended {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Handover {
     /// The check found player `new` to take the animal over (the caller's conversion,
-    /// `FUN_140aab570`), its sub-actions gone (`FUN_140a98620`: `walked`, a `MoveTo` whose
-    /// teardown stops the unit).
+    /// `FUN_140aab570`), its sub-actions gone ([`Artifact::drop_sub_actions`]).
     Taken {
         /// The player that takes it.
         new: usize,
-        /// A `MoveTo` went.
-        walked: bool,
+        /// The sub-actions that went.
+        gone: SubActionsGone,
     },
     /// State 100: the unit's stop (slot 0x148), then its ownership change to Gaia (slot 0x70),
     /// the caller's; the action checks again (`set_state(6)`).
     ToGaia,
+}
+
+/// What the deletion of the Artifact's sub-actions (`FUN_140a98620`) leaves to the caller
+/// ([`Artifact::drop_sub_actions`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SubActionsGone {
+    /// A walking `MoveTo` went, the Artifact's own or the Enter's: its teardown (`0x140aa1f30`)
+    /// stops the unit (slot 0x5d0).
+    pub stops: bool,
+    /// The building or transport the Enter's teardown let go (slot 0x180).
+    pub released: Option<i32>,
 }
 
 /// One animal's Artifact action, as the checkpoint sees it.
@@ -106,18 +116,27 @@ impl Artifact {
         self.set_target(-1, false).released
     }
 
-    /// The enter command's Enter as the sub-action (`FUN_1410847e0` with an Artifact on top:
-    /// `FUN_140a98e20` pops the sub-action it held, then `FUN_140a977e0` takes the Enter). A
-    /// `MoveTo` sub-action goes with its goal; an Enter goes with its teardown (`FUN_140a85bf0`
-    /// -> `FUN_140a73fc0`): its target is let go (slot 0x180) and its own `MoveTo`, if it walks,
-    /// goes too. Whether a `MoveTo` went (its teardown stops the unit) and the target let go,
-    /// both the caller's.
-    pub fn hold_enter(&mut self, enter: crate::garrison::EnterAction) -> (bool, Option<i32>) {
+    /// `FUN_140a98620` on the sub-actions (one at most): a `MoveTo` goes with its goal, whose
+    /// teardown stops a walking unit; an Enter goes with its teardown (`FUN_140a85bf0` ->
+    /// `FUN_140a73fc0`): its building or transport is let go (slot 0x180), and its own `MoveTo`,
+    /// if it walks, goes too. The stop and the release are the caller's.
+    pub fn drop_sub_actions(&mut self) -> SubActionsGone {
         let walked = self.move_to.take().is_some();
         self.walk_to = None;
-        let old = self.enter.replace(enter);
-        let stops = walked || old.is_some_and(|e| e.move_to.is_some());
-        (stops, old.map(|e| e.target))
+        let enter = self.enter.take();
+        SubActionsGone {
+            stops: walked || enter.is_some_and(|e| e.move_to.is_some()),
+            released: enter.map(|e| e.target),
+        }
+    }
+
+    /// The enter command's Enter as the sub-action (`FUN_1410847e0` with an Artifact on top:
+    /// `FUN_140a98e20` pops the sub-action it held, [`Artifact::drop_sub_actions`], then
+    /// `FUN_140a977e0` takes the Enter). What went, the caller's.
+    pub fn hold_enter(&mut self, enter: crate::garrison::EnterAction) -> SubActionsGone {
+        let gone = self.drop_sub_actions();
+        self.enter = Some(enter);
+        gone
     }
 
     /// Slot 0x190 and slot 0x288 on the animal with this as its top action (`FUN_14106d090`,
@@ -151,22 +170,23 @@ impl Artifact {
     /// Slot 8 (`FUN_140aaca30`) on a move to the object `target` at `at`, in a state below 7
     /// (`alive`; the commands give no other): the old target goes, then the new one comes
     /// ([`Artifact::set_target`] with none, then with it), then `set_state(5)` (`0x140aace30`):
-    /// its sub-actions go (`FUN_140a98620`: a walked `MoveTo`'s teardown stops the unit, the
-    /// caller's), the point takes the target's place, and a quiet `MoveTo` (`FUN_140aa0df0`
+    /// its sub-actions go ([`Artifact::drop_sub_actions`]), the point takes the target's place,
+    /// and a quiet `MoveTo` (`FUN_140aa0df0`
     /// with `+0x60` 1) to the target starts, within 1 for livestock going to a building
     /// (`to_building`), else 0 (the unit's slot 0x268, 0); one of livestock to a town centre
     /// (master 109, `to_town_centre`) walks to the point 0.2 below the centre's on both axes
-    /// instead, without the target. Then the action checks again (`set_state(6)`). Returns
-    /// whether a `MoveTo` went and the targets let go and taken.
+    /// instead, without the target. Then the action checks again (`set_state(6)`). Returns the
+    /// targets let go and taken, then the sub-actions that went.
     pub fn take_object(
         &mut self,
         (target, alive): (i32, bool),
         at: [f32; 3],
         to_building: bool,
         to_town_centre: bool,
-    ) -> (bool, Targets) {
+    ) -> (Targets, SubActionsGone) {
         let released = self.set_target(-1, false).released;
         let taken = self.set_target(target, alive).taken;
+        let gone = self.drop_sub_actions();
         self.goal = Some(at);
         let range = if to_building { 1.0 } else { 0.0 };
         let goal = if to_town_centre {
@@ -179,54 +199,51 @@ impl Artifact {
             Goal::Target(target)
         };
         self.walk_to = Some((goal, range));
-        let walked = self.move_to.replace(MoveTo::Start).is_some();
+        self.move_to = Some(MoveTo::Start);
         self.state = CHECK;
-        (walked, Targets { released, taken })
+        (Targets { released, taken }, gone)
     }
 
     /// Slot 8 (`FUN_140aaca30`) on a move to a point, which the action takes: the point, then
-    /// `set_state(4)` (`0x140aace30`): its sub-actions go (`FUN_140a98620`), a `MoveTo` to the point
-    /// within 0 (`FUN_140aa0d30` with its task's sprite, walking; the sprite is not held) is added
-    /// and starts (state 3 for an animal away from the point), and the action checks again
-    /// (`set_state` 6). A move to an object (`set_state` 5) is not modelled. Returns whether a `MoveTo`
-    /// went, whose teardown (`0x140aa1f30`) stops the unit (slot 0x5d0, the caller's).
-    pub const fn take_point(&mut self, point: [f32; 3]) -> bool {
+    /// `set_state(4)` (`0x140aace30`): its sub-actions go ([`Artifact::drop_sub_actions`]), a
+    /// `MoveTo` to the point within 0 (`FUN_140aa0d30` with its task's sprite, walking; the
+    /// sprite is not held) is added and starts (state 3 for an animal away from the point), and
+    /// the action checks again (`set_state` 6). Returns the sub-actions that went.
+    pub fn take_point(&mut self, point: [f32; 3]) -> SubActionsGone {
         self.goal = Some(point);
-        self.walk_to = None;
-        let walked = self.move_to.replace(MoveTo::Start).is_some();
+        let gone = self.drop_sub_actions();
+        self.move_to = Some(MoveTo::Start);
         self.state = CHECK;
-        walked
+        gone
     }
 
     /// Slot 0x38 (`FUN_140aad1a0`), as the unit's stop (`FUN_14106fa60`) calls it (also before a
-    /// new owner takes the animal): with a sub-action (`FUN_140a98730`) its sub-actions go, with
-    /// the point (−1) and the target (slot 0x68 with none: let go); without one both stay. Then
-    /// it checks again (`set_state` 6, which sets nothing else). Returns whether a `MoveTo` went,
-    /// whose teardown (`0x140aa1f30`) stops the unit (slot 0x5d0, the caller's), and the target
-    /// let go (the caller's release); the unit's standing sprite (slot 0x68 with the master's
-    /// `+0x470`) is the caller's too.
-    pub fn stop(&mut self) -> (bool, Option<i32>) {
-        let walked = self.move_to.take().is_some();
+    /// new owner takes the animal): with a sub-action (`FUN_140a98730`) its sub-actions go
+    /// ([`Artifact::drop_sub_actions`]), with the point (−1) and the target (slot 0x68 with none:
+    /// let go); without one both stay. Then it checks again (`set_state` 6, which sets nothing
+    /// else). Returns the sub-actions that went, then the target let go (the caller's release,
+    /// after the Enter's); the unit's standing sprite (slot 0x68 with the master's `+0x470`) is
+    /// the caller's too.
+    pub fn stop(&mut self) -> (SubActionsGone, Option<i32>) {
+        let mut gone = SubActionsGone::default();
         let mut released = None;
-        if walked {
-            self.walk_to = None;
+        if self.move_to.is_some() || self.enter.is_some() {
+            gone = self.drop_sub_actions();
             self.goal = None;
             released = self.set_target(-1, false).released;
         }
         self.state = CHECK;
-        (walked, released)
+        (gone, released)
     }
 
     /// The action's teardown (its destructor `FUN_140aab0d0` -> `FUN_140a73fc0`, as the action
     /// list's clearing or a dead object's runs it): the target goes (let go, `+0x60` 0); it holds
-    /// no second target (`+0x28`); its sub-actions go, whose `MoveTo` teardown stops the unit.
-    /// Returns whether a `MoveTo` went and the target let go, the caller's.
-    pub fn tear_down(&mut self) -> (bool, Option<i32>) {
+    /// no second target (`+0x28`); its sub-actions go ([`Artifact::drop_sub_actions`]). Returns
+    /// the target let go, then the sub-actions that went, the caller's.
+    pub fn tear_down(&mut self) -> (Option<i32>, SubActionsGone) {
         let released = (self.target != -1).then_some(self.target);
         self.target = -1;
-        let walked = self.move_to.take().is_some();
-        self.walk_to = None;
-        (walked, released)
+        (released, self.drop_sub_actions())
     }
 
     /// One update (`0x140aad250`) with the tick's `dt_ms`. Its `MoveTo` goes first: it starts its
@@ -324,9 +341,8 @@ impl Artifact {
                     // its sub-actions go (FUN_140a98620) before the caller's conversion: the
                     // point and the target stay, so the conversion's stop ([`Artifact::stop`])
                     // finds no sub-action
-                    let walked = self.move_to.take().is_some();
-                    self.walk_to = None;
-                    return Ok(Some(Handover::Taken { new, walked }));
+                    let gone = self.drop_sub_actions();
+                    return Ok(Some(Handover::Taken { new, gone }));
                 }
                 self.state = WAIT;
                 self.timer = if self.gaia { 0.5 } else { 1.0 };
@@ -369,7 +385,7 @@ mod tests {
             timer: 0.4,
             ..Artifact::new(false)
         };
-        assert!(!a.take_point([28.5, 93.5, 0.0]));
+        assert_eq!(a.take_point([28.5, 93.5, 0.0]), SubActionsGone::default());
         assert_eq!(
             (a.state, a.timer, a.move_to, a.goal),
             (6, 0.4, Some(MoveTo::Start), Some([28.5, 93.5, 0.0]))
@@ -380,7 +396,13 @@ mod tests {
             move_to: Some(MoveTo::Moving),
             ..a
         };
-        assert!(walking.take_point([28.5, 94.5, 0.0]));
+        assert_eq!(
+            walking.take_point([28.5, 94.5, 0.0]),
+            SubActionsGone {
+                stops: true,
+                released: None
+            }
+        );
         assert_eq!(walking.move_to, Some(MoveTo::Start));
         // its walk needs the animal's movement state
         assert!(a.update(None, 50, true, &mut || Ok(None)).is_err());
@@ -388,6 +410,94 @@ mod tests {
         a.move_to = Some(MoveTo::Arrived);
         let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer, a.move_to, a.goal), (10, 1.0, None, None));
+    }
+
+    /// `set_state(4)` and `set_state(5)` (`0x140aace30`) delete every sub-action
+    /// (`FUN_140a98620`), the Enter too: its transport is let go and its walking `MoveTo` stops
+    /// the unit (429750109's livestock 11962 walking into the transport 11970, then MOVE to
+    /// (32.854168, 120.729164) in update 44: the new `MoveTo` alone holds it).
+    #[test]
+    fn a_move_deletes_the_held_enter_letting_its_transport_go() {
+        let walking_enter = || {
+            let mut e = crate::garrison::EnterAction::new(11970, [34.125, 123.333, 0.0], 0.0, 20);
+            e.move_to = Some(MoveTo::Moving);
+            e
+        };
+        let by_enter = SubActionsGone {
+            stops: true,
+            released: Some(11970),
+        };
+        let mut a = Artifact::new(false);
+        a.enter = Some(walking_enter());
+        assert_eq!(a.take_point([32.854_168, 120.729_164, 0.0]), by_enter);
+        assert_eq!(
+            (a.enter, a.move_to, a.goal),
+            (
+                None,
+                Some(MoveTo::Start),
+                Some([32.854_168, 120.729_164, 0.0])
+            )
+        );
+        // to an object: the old target goes and the new one comes first, then the Enter
+        let mut b = Artifact::new(false);
+        b.enter = Some(walking_enter());
+        let (targets, gone) = b.take_object((9149, true), [5.0, 6.0, 0.0], true, false);
+        assert_eq!(
+            (targets.released, targets.taken, gone),
+            (None, Some(9149), by_enter)
+        );
+        assert_eq!((b.enter, b.move_to), (None, Some(MoveTo::Start)));
+        // an Enter that does not walk stops nothing
+        let mut c = Artifact::new(false);
+        c.enter = Some(crate::garrison::EnterAction::new(
+            11970,
+            [1.0, 2.0, 0.0],
+            0.0,
+            20,
+        ));
+        assert_eq!(
+            c.take_point([3.0, 4.0, 0.0]),
+            SubActionsGone {
+                stops: false,
+                released: Some(11970)
+            }
+        );
+    }
+
+    /// Slot 0x38 (`FUN_140aad1a0`) with an Enter as the sub-action (`FUN_140a98730` true): the
+    /// Enter goes (its transport let go, its walk stopped), then the point and the target; the
+    /// teardown (`FUN_140a73fc0`) lets the target go before the Enter's.
+    #[test]
+    fn the_stop_and_the_teardown_delete_the_held_enter() {
+        let mut e = crate::garrison::EnterAction::new(11970, [1.0, 2.0, 0.0], 0.0, 20);
+        e.move_to = Some(MoveTo::Moving);
+        let by_enter = SubActionsGone {
+            stops: true,
+            released: Some(11970),
+        };
+        let mut a = Artifact::new(false);
+        (a.enter, a.goal, a.target, a.state) = (Some(e), Some([1.0, 2.0, 0.0]), 77, WAIT);
+        assert_eq!(a.stop(), (by_enter, Some(77)));
+        assert_eq!(
+            (a.enter, a.goal, a.target, a.state),
+            (None, None, -1, CHECK)
+        );
+        let mut b = Artifact::new(false);
+        (b.enter, b.target) = (Some(e), 77);
+        assert_eq!(b.tear_down(), (Some(77), by_enter));
+        assert_eq!((b.enter, b.target), (None, -1));
+        // the check that finds an owner deletes it too
+        let mut c = Artifact::new(false);
+        c.enter = Some(e);
+        let found = c.step(50, true, &mut || Ok(Some(2))).unwrap();
+        assert_eq!(
+            found,
+            Some(Handover::Taken {
+                new: 2,
+                gone: by_enter
+            })
+        );
+        assert_eq!(c.enter, None);
     }
 
     /// `FUN_1410847e0` under an Artifact: `FUN_140a98e20` pops the sub-action the enter command
@@ -398,20 +508,21 @@ mod tests {
     #[test]
     fn an_enter_command_replaces_the_held_enter_letting_its_target_go_and_stopping_its_walk() {
         let enter = |target| crate::garrison::EnterAction::new(target, [1.0, 2.0, 0.0], 0.0, 20);
+        let gone = |stops, released| SubActionsGone { stops, released };
         let mut a = Artifact::new(false);
         // nothing held: nothing to let go, nothing walking
-        assert_eq!(a.hold_enter(enter(7934)), (false, None));
+        assert_eq!(a.hold_enter(enter(7934)), gone(false, None));
         // the held Enter walks: its MoveTo's teardown stops the unit
         a.enter.as_mut().unwrap().move_to = Some(MoveTo::Moving);
-        assert_eq!(a.hold_enter(enter(7934)), (true, Some(7934)));
+        assert_eq!(a.hold_enter(enter(7934)), gone(true, Some(7934)));
         assert_eq!(a.enter.map(|e| (e.target, e.move_to)), Some((7934, None)));
         // an Enter not walking only lets its target go
-        assert_eq!(a.hold_enter(enter(7935)), (false, Some(7934)));
+        assert_eq!(a.hold_enter(enter(7935)), gone(false, Some(7934)));
         // the Artifact's own MoveTo goes with its goal and stops the unit
         a.enter = None;
         a.move_to = Some(MoveTo::Moving);
         a.walk_to = Some((Goal::Point([3.0, 4.0, 0.0]), 0.0));
-        assert_eq!(a.hold_enter(enter(7934)), (true, None));
+        assert_eq!(a.hold_enter(enter(7934)), gone(true, None));
         assert_eq!((a.move_to, a.walk_to), (None, None));
     }
 
@@ -452,7 +563,7 @@ mod tests {
             (
                 Some(Handover::Taken {
                     new: 2,
-                    walked: false
+                    gone: SubActionsGone::default()
                 }),
                 6,
                 1
@@ -463,13 +574,22 @@ mod tests {
         let found = b.update(None, 50, false, &mut || Ok(Some(2))).unwrap();
         assert_eq!((found, b.state), (None, 10));
         // the conversion's stop: the check again, no MoveTo went
-        assert_eq!(b.stop(), (false, None));
+        assert_eq!(b.stop(), (SubActionsGone::default(), None));
         assert_eq!(b.state, 6);
         // a walking animal's MoveTo goes (its teardown stops the unit), and its target is let go
         let mut walking = Artifact::new(false);
         let _ = walking.take_point([28.5, 94.5, 0.0]);
         walking.target = 9149;
-        assert_eq!(walking.stop(), (true, Some(9149)));
+        assert_eq!(
+            walking.stop(),
+            (
+                SubActionsGone {
+                    stops: true,
+                    released: None
+                },
+                Some(9149)
+            )
+        );
         assert_eq!(
             (walking.move_to, walking.goal, walking.target),
             (None, None, -1)
@@ -477,7 +597,7 @@ mod tests {
         // without a sub-action the point and the target stay (FUN_140a98730 false)
         let mut kept = Artifact::new(false);
         (kept.goal, kept.target, kept.state) = (Some([3.0, 4.0, 0.0]), 77, WAIT);
-        assert_eq!(kept.stop(), (false, None));
+        assert_eq!(kept.stop(), (SubActionsGone::default(), None));
         assert_eq!(
             (kept.goal, kept.target, kept.state),
             (Some([3.0, 4.0, 0.0]), 77, CHECK)
@@ -499,14 +619,17 @@ mod tests {
             found,
             Some(Handover::Taken {
                 new: 1,
-                walked: true
+                gone: SubActionsGone {
+                    stops: true,
+                    released: None
+                }
             })
         );
         assert_eq!(
             (a.move_to, a.walk_to, a.goal, a.target),
             (None, None, Some([5.0, 6.0, 0.0]), 9149)
         );
-        assert_eq!(a.stop(), (false, None));
+        assert_eq!(a.stop(), (SubActionsGone::default(), None));
         assert_eq!(a.target, 9149);
     }
 
@@ -530,20 +653,20 @@ mod tests {
     #[test]
     fn a_move_to_an_object_lets_the_old_target_go_and_takes_the_new() {
         let mut a = Artifact::new(false);
-        let (walked, t) = a.take_object((9149, true), [10.0, 12.0, 0.0], true, false);
+        let (t, gone) = a.take_object((9149, true), [10.0, 12.0, 0.0], true, false);
         assert_eq!(
-            (walked, t),
+            (t, gone),
             (
-                false,
                 Targets {
                     released: None,
                     taken: Some(9149)
-                }
+                },
+                SubActionsGone::default()
             )
         );
         assert_eq!((a.target, a.move_to), (9149, Some(MoveTo::Start)));
-        let (walked, t) = a.take_object((9149, true), [10.0, 12.0, 0.0], true, false);
-        assert!(walked);
+        let (t, gone) = a.take_object((9149, true), [10.0, 12.0, 0.0], true, false);
+        assert!(gone.stops);
         assert_eq!(
             t,
             Targets {
@@ -551,7 +674,7 @@ mod tests {
                 taken: Some(9149)
             }
         );
-        let (_, t) = a.take_object((300, false), [1.0, 2.0, 0.0], false, false);
+        let (t, _) = a.take_object((300, false), [1.0, 2.0, 0.0], false, false);
         assert_eq!(
             t,
             Targets {
@@ -561,9 +684,18 @@ mod tests {
         );
         assert_eq!(a.target, -1);
         a.target = 9149;
-        assert_eq!(a.tear_down(), (true, Some(9149)));
+        assert_eq!(
+            a.tear_down(),
+            (
+                Some(9149),
+                SubActionsGone {
+                    stops: true,
+                    released: None
+                }
+            )
+        );
         assert_eq!((a.target, a.move_to, a.walk_to), (-1, None, None));
-        assert_eq!(a.tear_down(), (false, None));
+        assert_eq!(a.tear_down(), (None, SubActionsGone::default()));
     }
 
     /// The motion step gives up in the update the start's `set_state(4)` runs (426321525's
