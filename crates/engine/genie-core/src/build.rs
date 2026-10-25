@@ -1574,7 +1574,7 @@ impl BuildAction {
         let world = &*walk.world;
         let obstructs = !matches!(site.obstruction_type, 0 | 12);
         let occupants: Vec<i32> = world
-            .footprint_occupants(self.target, site, obstructs)?
+            .footprint_occupants(self.target, site, obstructs, look.0)?
             .into_iter()
             .filter(|&id| !cleared.iter().any(|cl| cl.id == id))
             .collect();

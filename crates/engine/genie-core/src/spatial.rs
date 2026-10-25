@@ -2589,30 +2589,48 @@ impl Spatial {
     }
 
     /// The objects whose centre is on `site`'s footprint, edges included, and that the game counts
-    /// as occupying it (`FUN_14123bb20`): objects with all three radii, other than the site,
-    /// unless the site may be built over them (`can_be_built_on` 1); for a site whose master
-    /// does not obstruct (`FUN_1411205c0`: obstruction type 0 or 12, `obstructs` false) only
-    /// those that do not move (speed 0, slot 0xe8).
+    /// as occupying it (`FUN_14123bb20`): objects other than the site below state 3, or of a
+    /// type other than a building's below state 7 (their state and type `look`'s); for a site
+    /// whose master does not obstruct (`FUN_1411205c0`: obstruction type 0 or 12, `obstructs`
+    /// false) only those that do not move (speed 0, slot 0xe8); a desolid building foundation
+    /// (`+0xc60`) only of a player that and the site's count each other allied
+    /// (`FUN_141663d90` with the ally flag, both ways); not those the site may be built over
+    /// (`can_be_built_on` 1); with all three radii. An object `look` does not give (the owner's
+    /// sleeping objects, which the unit's view does not hold: of types below 30, alive, in
+    /// state 2 or 6) passes the state and foundation tests.
     pub fn footprint_occupants(
         &self,
         site_id: i32,
         site: &Placed,
         obstructs: bool,
+        look: &dyn Fn(i32) -> Option<crate::build::ClearLook>,
     ) -> Result<Vec<i32>, GenieError> {
+        use crate::masters::master_type::BUILDING;
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
+        let counts = |id: i32, o: &Placed| {
+            look(id).is_none_or(|l| {
+                let alive = l.state < 3 || (l.kind != BUILDING && l.state < 7);
+                let foundation = l.kind == BUILDING && l.desolid;
+                alive
+                    && (!foundation
+                        || (self.allied(site.player, o.player)
+                            && self.allied(o.player, site.player)))
+            })
+        };
         Ok(self
             .objects
             .iter()
             .filter(|&(&id, o)| {
                 id != site_id
-                    && o.buildable_on != 1
                     && (obstructs || o.speed <= 0.0)
+                    && o.buildable_on != 1
                     && o.tall
                     && o.radius.iter().all(|&r| 0.0 < r)
                     && (o.position[0] - sx).abs() <= rx
                     && (o.position[1] - sy).abs() <= ry
+                    && counts(id, o)
             })
             .map(|(&id, _)| id)
             .collect())
@@ -4007,15 +4025,71 @@ mod tests {
     #[test]
     fn the_footprint_s_occupants_are_the_objects_whose_centre_is_on_it() {
         let (mut s, house) = site();
-        assert_eq!(s.footprint_occupants(10028, &house, true), Ok(vec![9175]));
+        assert_eq!(
+            s.footprint_occupants(10028, &house, true, &|_| None),
+            Ok(vec![9175])
+        );
         s.insert(9177, villager(28.0, 89.0));
-        assert_eq!(s.footprint_occupants(10028, &house, true), Ok(vec![9175]));
+        assert_eq!(
+            s.footprint_occupants(10028, &house, true, &|_| None),
+            Ok(vec![9175])
+        );
         assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![]));
         let mut flower = villager(30.5, 87.5);
         flower.buildable_on = 1;
         s.insert(77, flower);
         assert_eq!(s.footprint_clearing(10028, &house), Ok(vec![77]));
         assert!(!s.foreign_marks(&house));
+    }
+
+    /// `FUN_14123bb20` passes over an object in state 7 or later, a building from state 3 on, and
+    /// a desolid building foundation unless its player and the site's count each other allied
+    /// (`FUN_141663d90` with the ally flag, both ways): 428016030's palisade foundation 33965
+    /// (player 3) shares its tile with player 8's foundation 33990, and its builder 31368 starts
+    /// at once in update 1305. An object the view does not look at (the owner's sleeping
+    /// objects: types below 30, alive) counts.
+    #[test]
+    fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
+        use crate::build::ClearLook;
+        let (mut s, house) = site();
+        // player 2 counts player 3 allied, player 3 counts player 2 neutral
+        s.relations = vec![vec![0; 4], vec![0; 4], vec![0, 3, 1, 0], vec![0, 3, 3, 1]];
+        let mut wall = villager(30.5, 88.5);
+        wall.player = 3;
+        wall.radius = [0.5, 0.5];
+        s.insert(33990, wall);
+        let look = |state: u8, kind: u8, desolid: bool| ClearLook {
+            hp: 1.0,
+            height: 1.0,
+            roo_called: false,
+            kind,
+            state,
+            desolid,
+        };
+        let looks = |wall: ClearLook| {
+            move |id: i32| match id {
+                9175 => Some(look(2, 70, false)),
+                33990 => Some(wall),
+                _ => None,
+            }
+        };
+        let occupants =
+            |s: &Spatial, wall| s.footprint_occupants(10028, &house, true, &looks(wall));
+        assert_eq!(occupants(&s, look(0, 80, true)), Ok(vec![9175]));
+        // allied both ways, the foundation occupies it; built (not desolid) too
+        s.relations[3][2] = 0;
+        assert_eq!(occupants(&s, look(0, 80, true)), Ok(vec![9175, 33990]));
+        s.relations[3][2] = 3;
+        assert_eq!(occupants(&s, look(2, 80, false)), Ok(vec![9175, 33990]));
+        // a building from state 3 on, any object from state 7 on, passes
+        assert_eq!(occupants(&s, look(3, 80, false)), Ok(vec![9175]));
+        assert_eq!(occupants(&s, look(6, 70, false)), Ok(vec![9175, 33990]));
+        assert_eq!(occupants(&s, look(7, 70, false)), Ok(vec![9175]));
+        // the view does not look at it: it counts
+        assert_eq!(
+            s.footprint_occupants(10028, &house, true, &|_| None),
+            Ok(vec![9175, 33990])
+        );
     }
 
     /// `FUN_1411d4b80` reads a tile's players as the low 32 bits of `word >> 23` and casts the
@@ -4137,13 +4211,21 @@ mod tests {
         s.insert(9656, deer);
         s.freeze(9656);
         // frozen at once, the deer is where the save has it
-        assert!(s.footprint_occupants(10028, &house, true).is_ok());
+        assert!(
+            s.footprint_occupants(10028, &house, true, &|_| None)
+                .is_ok()
+        );
         assert!(s.get_known(9656).is_ok());
         // its box reaches x 33.8; 3 s later it may stand on the footprint, which ends at 31
         s.grow_unknown(2.5);
-        assert!(s.footprint_occupants(10028, &house, true).is_ok());
+        assert!(
+            s.footprint_occupants(10028, &house, true, &|_| None)
+                .is_ok()
+        );
         s.grow_unknown(0.5);
-        let e = s.footprint_occupants(10028, &house, true).unwrap_err();
+        let e = s
+            .footprint_occupants(10028, &house, true, &|_| None)
+            .unwrap_err();
         assert_eq!(e.context().next(), Some(("object", "9656")));
         let e = s.get_known(9656).unwrap_err();
         // the error names the object and its player
