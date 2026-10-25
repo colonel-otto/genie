@@ -3062,11 +3062,19 @@ fn work_masters(
                 )
             })
             .collect();
-        // the save holds the foundation terrain of its own building masters
+        // the save holds the foundation terrain of its own building masters, its garrison's
+        // kinds (`garrison_units`, read into `+0x9bc`: a civilisation's bonus, as the Gurjaras'
+        // herdables in mills, changes them at the start) and rates, and its facet
+        if let Some(saved) = m.tribe_master_building_object.as_deref() {
+            work.building_facet = saved.building_facet.cast_signed();
+        }
         if let (Some(b), Some(saved)) = (
             work.building.as_mut(),
             m.tribe_master_building_object.as_deref(),
         ) {
+            b.garrison_type = saved.garrison_units;
+            b.garrison_heal_rate = saved.garrison_heal_rate;
+            b.garrison_repair_rate = saved.garrison_repair_rate;
             b.foundation_terrain = saved.on_build_make_tile;
             // `+0x960`, the third of its sprites (`tempId`)
             b.destruction_sprite = saved.temp_id_3.cast_signed();
