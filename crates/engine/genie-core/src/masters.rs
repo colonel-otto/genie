@@ -1302,7 +1302,7 @@ impl Master {
 
     /// `FUN_141126400`, the static master's slot 0x18.
     fn set_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::checkpoint::{cvttss2si, cvttss2si_64};
+        use crate::checkpoint::cvttss2si_64;
         use crate::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = low16(v),
@@ -1328,14 +1328,9 @@ impl Master {
             }
             a::DEAD_UNIT_ID => self.death_spawns[0] = low16(v),
             a::BLOOD_UNIT => self.death_spawns[1] = low16(v),
-            a::STANDING_GRAPHIC => set_sprite(&mut self.standing_sprite, cvttss2si(v), world),
-            a::STANDING_GRAPHIC_2 => {
-                let mut s = self.standing_sprite_2.unwrap_or(-1);
-                set_sprite(&mut s, cvttss2si(v), world);
-                self.standing_sprite_2 = (0 <= s).then_some(s);
+            a::STANDING_GRAPHIC | a::STANDING_GRAPHIC_2 | a::DYING_GRAPHIC | a::UNDEAD_GRAPHIC => {
+                self.set_static_sprite(attribute, v, world);
             }
-            a::DYING_GRAPHIC => set_sprite(&mut self.death_sprite, cvttss2si(v), world),
-            a::UNDEAD_GRAPHIC => set_sprite(&mut self.undead_sprite, cvttss2si(v), world),
             a::OBSTRUCTION_TYPE => {
                 // FUN_141125ae0: its table holds 14 types; a byte past them reads the routine's
                 // stack (the game's undefined read, which no .dat effect reaches): kept
@@ -1347,11 +1342,28 @@ impl Master {
             }
             a::BLOCKAGE_CLASS => self.obstruction_class = low8(v),
             a::SELECTION_EFFECT => self.selection_effect = low8(v),
-            a::DAMAGE_GRAPHIC => {
-                if let Some(g) = self.damage_graphic_mut() {
-                    set_sprite(&mut g.sprite, cvttss2si(v), world);
-                }
-            }
+            a::DAMAGE_GRAPHIC
+            | a::DAMAGE_GRAPHICS_ENTRY_MOD
+            | a::DAMAGE_GRAPHICS_TOTAL_NUM
+            | a::DAMAGE_GRAPHIC_PERCENT
+            | a::DAMAGE_GRAPHIC_APPLY_MODE => self.set_damage_graphic(attribute, v, world),
+            a::AVAILABLE_UNIT_FLAG
+            | a::DISABLED_UNIT_FLAG
+            | a::INTERFACE_KIND
+            | a::COMBAT_LEVEL
+            | a::INTERACTION_MODE
+            | a::MINIMAP_MODE => self.set_static_level(attribute, v),
+            // the icon (25), the name and description (50, 51) and the sounds (92 to 99) are the
+            // interface's
+            _ => {}
+        }
+    }
+
+    /// [`Master::set_static`]'s flags and levels (`FUN_141126400`): available, disabled, the
+    /// interface kind, the combat level, the interaction and minimap modes.
+    fn set_static_level(&mut self, attribute: u8, v: f32) {
+        use crate::masters::attribute as a;
+        match attribute {
             // the save's byte, which the slice holds as its test against 0
             a::AVAILABLE_UNIT_FLAG => self.available = low8(v) != 0,
             a::DISABLED_UNIT_FLAG => self.disabled = low8(v) != 0,
@@ -1359,6 +1371,39 @@ impl Master {
             a::COMBAT_LEVEL => self.combat_level = low8(v),
             a::INTERACTION_MODE => self.select_level = low8(v),
             a::MINIMAP_MODE => self.map_draw_level = low8(v),
+            _ => {}
+        }
+    }
+
+    /// [`Master::set_static`]'s sprites (`FUN_141126400`): standing, second standing, dying and
+    /// undead, each a sprite the world's table holds.
+    fn set_static_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::checkpoint::cvttss2si;
+        use crate::masters::attribute as a;
+        match attribute {
+            a::STANDING_GRAPHIC => set_sprite(&mut self.standing_sprite, cvttss2si(v), world),
+            a::STANDING_GRAPHIC_2 => {
+                let mut s = self.standing_sprite_2.unwrap_or(-1);
+                set_sprite(&mut s, cvttss2si(v), world);
+                self.standing_sprite_2 = (0 <= s).then_some(s);
+            }
+            a::DYING_GRAPHIC => set_sprite(&mut self.death_sprite, cvttss2si(v), world),
+            a::UNDEAD_GRAPHIC => set_sprite(&mut self.undead_sprite, cvttss2si(v), world),
+            _ => {}
+        }
+    }
+
+    /// [`Master::set_static`]'s damage sprites (`FUN_141126400`): the selected entry's sprite,
+    /// percent and apply mode, the selection (at most the last) and the count.
+    fn set_damage_graphic(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::checkpoint::cvttss2si;
+        use crate::masters::attribute as a;
+        match attribute {
+            a::DAMAGE_GRAPHIC => {
+                if let Some(g) = self.damage_graphic_mut() {
+                    set_sprite(&mut g.sprite, cvttss2si(v), world);
+                }
+            }
             a::DAMAGE_GRAPHICS_ENTRY_MOD => {
                 if let Some(n) = select_entry(self.damage_graphics.len(), cvttss2si(v)) {
                     self.damage_graphic_entry = n as u8;
@@ -1381,15 +1426,13 @@ impl Master {
                     g.apply_mode = low8(v);
                 }
             }
-            // the icon (25), the name and description (50, 51) and the sounds (92 to 99) are the
-            // interface's
             _ => {}
         }
     }
 
     /// `FUN_141126af0`, the static master's slot 0x20.
     fn add_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::checkpoint::{cvttss2si, cvttss2si_64};
+        use crate::checkpoint::cvttss2si_64;
         use crate::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = add_short(self.hit_points, v, world.capped),
@@ -1411,19 +1454,14 @@ impl Master {
             a::UNIT_TRAIT => {
                 self.object_flags = self.object_flags.wrapping_add(cvttss2si_64(v) as u32);
             }
-            a::STANDING_GRAPHIC => add_sprite(&mut self.standing_sprite, v, world),
-            a::STANDING_GRAPHIC_2 => {
-                let mut s = self.standing_sprite_2.unwrap_or(-1);
-                add_sprite(&mut s, v, world);
-                self.standing_sprite_2 = (0 <= s).then_some(s);
+            a::STANDING_GRAPHIC | a::STANDING_GRAPHIC_2 | a::DYING_GRAPHIC | a::UNDEAD_GRAPHIC => {
+                self.add_static_sprite(attribute, v, world);
             }
-            a::DYING_GRAPHIC => add_sprite(&mut self.death_sprite, v, world),
-            a::UNDEAD_GRAPHIC => add_sprite(&mut self.undead_sprite, v, world),
-            a::DAMAGE_GRAPHIC => {
-                if let Some(g) = self.damage_graphic_mut() {
-                    add_sprite(&mut g.sprite, v, world);
-                }
-            }
+            a::DAMAGE_GRAPHIC
+            | a::DAMAGE_GRAPHICS_ENTRY_MOD
+            | a::DAMAGE_GRAPHICS_TOTAL_NUM
+            | a::DAMAGE_GRAPHIC_PERCENT
+            | a::DAMAGE_GRAPHIC_APPLY_MODE => self.add_damage_graphic(attribute, v, world),
             a::AVAILABLE_UNIT_FLAG => {
                 self.available = u8::from(self.available).wrapping_add(low8(v)) != 0;
             }
@@ -1434,6 +1472,39 @@ impl Master {
             a::COMBAT_LEVEL => self.combat_level = self.combat_level.wrapping_add(low8(v)),
             a::INTERACTION_MODE => self.select_level = self.select_level.wrapping_add(low8(v)),
             a::MINIMAP_MODE => self.map_draw_level = self.map_draw_level.wrapping_add(low8(v)),
+            // the sounds (92, 94, 96, 98, through slot 0x18) are the interface's
+            _ => {}
+        }
+    }
+
+    /// [`Master::add_static`]'s sprites (`FUN_141126af0`): standing, second standing, dying and
+    /// undead, each its id plus the amount ([`add_sprite`]).
+    fn add_static_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::masters::attribute as a;
+        match attribute {
+            a::STANDING_GRAPHIC => add_sprite(&mut self.standing_sprite, v, world),
+            a::STANDING_GRAPHIC_2 => {
+                let mut s = self.standing_sprite_2.unwrap_or(-1);
+                add_sprite(&mut s, v, world);
+                self.standing_sprite_2 = (0 <= s).then_some(s);
+            }
+            a::DYING_GRAPHIC => add_sprite(&mut self.death_sprite, v, world),
+            a::UNDEAD_GRAPHIC => add_sprite(&mut self.undead_sprite, v, world),
+            _ => {}
+        }
+    }
+
+    /// [`Master::add_static`]'s damage sprites (`FUN_141126af0`): the selected entry's sprite,
+    /// percent and apply mode, the selection and the count, each from the selected entry.
+    fn add_damage_graphic(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::checkpoint::cvttss2si;
+        use crate::masters::attribute as a;
+        match attribute {
+            a::DAMAGE_GRAPHIC => {
+                if let Some(g) = self.damage_graphic_mut() {
+                    add_sprite(&mut g.sprite, v, world);
+                }
+            }
             a::DAMAGE_GRAPHICS_ENTRY_MOD => {
                 let n = cvttss2si(f32::from(self.damage_graphic_entry) + v);
                 if let Some(n) = select_entry(self.damage_graphics.len(), n) {
@@ -1459,7 +1530,6 @@ impl Master {
                     g.apply_mode = g.apply_mode.wrapping_add(low8(v));
                 }
             }
-            // the sounds (92, 94, 96, 98, through slot 0x18) are the interface's
             _ => {}
         }
     }
@@ -1625,21 +1695,7 @@ impl Master {
         use crate::checkpoint::cvttss2si;
         use crate::masters::attribute as a;
         match attribute {
-            a::ARMOR => {
-                let (class, amount) = class_amount(v);
-                if let Some(e) = Self::class_entry(&mut self.armors, class) {
-                    *e = amount;
-                }
-            }
-            a::ATTACK => {
-                let (class, amount) = class_amount(v);
-                if let Some(e) = Self::class_entry(&mut self.weapons, class) {
-                    *e = match handicapped(world.handicap, class) {
-                        Some(f) if *e == 0 => low16(f32::from(amount) * f),
-                        _ => amount,
-                    };
-                }
-            }
+            a::ARMOR | a::ATTACK => self.set_class_amount(attribute, v, world),
             a::ATTACK_RELOAD_TIME => self.reload = v,
             a::ACCURACY_PERCENT => self.hit_chance = low16(v),
             a::MAXIMUM_RANGE => self.weapon_range = v,
@@ -1668,16 +1724,16 @@ impl Master {
         }
     }
 
-    /// `FUN_1410c16e0`, the RGE combat master's slot 0x20: an armor or attack amount adds to its
-    /// class's (an attack class at 0 the handicap raises takes the amount times the factor).
-    fn add_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+    /// [`Master::set_combat`]'s armor and attack amounts (`FUN_1410c12b0`): the amount
+    /// ([`class_amount`]) replaces its class's; an attack class at 0 the handicap raises takes the
+    /// amount times the factor.
+    fn set_class_amount(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::masters::attribute as a;
         match attribute {
-            a::ROTATION_SPEED => self.turn_speed += v,
             a::ARMOR => {
                 let (class, amount) = class_amount(v);
                 if let Some(e) = Self::class_entry(&mut self.armors, class) {
-                    *e = e.wrapping_add(amount);
+                    *e = amount;
                 }
             }
             a::ATTACK => {
@@ -1685,10 +1741,21 @@ impl Master {
                 if let Some(e) = Self::class_entry(&mut self.weapons, class) {
                     *e = match handicapped(world.handicap, class) {
                         Some(f) if *e == 0 => low16(f32::from(amount) * f),
-                        _ => e.wrapping_add(amount),
+                        _ => amount,
                     };
                 }
             }
+            _ => {}
+        }
+    }
+
+    /// `FUN_1410c16e0`, the RGE combat master's slot 0x20: an armor or attack amount adds to its
+    /// class's (an attack class at 0 the handicap raises takes the amount times the factor).
+    fn add_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::masters::attribute as a;
+        match attribute {
+            a::ROTATION_SPEED => self.turn_speed += v,
+            a::ARMOR | a::ATTACK => self.add_class_amount(attribute, v, world),
             a::ATTACK_RELOAD_TIME => self.reload += v,
             a::ACCURACY_PERCENT => self.hit_chance = self.hit_chance.wrapping_add(low16(v)),
             a::MAXIMUM_RANGE => self.weapon_range += v,
@@ -1724,6 +1791,31 @@ impl Master {
         }
     }
 
+    /// [`Master::add_combat`]'s armor and attack amounts (`FUN_1410c16e0`): the amount
+    /// ([`class_amount`]) adds to its class's; an attack class at 0 the handicap raises takes the
+    /// amount times the factor.
+    fn add_class_amount(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::masters::attribute as a;
+        match attribute {
+            a::ARMOR => {
+                let (class, amount) = class_amount(v);
+                if let Some(e) = Self::class_entry(&mut self.armors, class) {
+                    *e = e.wrapping_add(amount);
+                }
+            }
+            a::ATTACK => {
+                let (class, amount) = class_amount(v);
+                if let Some(e) = Self::class_entry(&mut self.weapons, class) {
+                    *e = match handicapped(world.handicap, class) {
+                        Some(f) if *e == 0 => low16(f32::from(amount) * f),
+                        _ => e.wrapping_add(amount),
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// `FUN_1410c1bf0`, the RGE combat master's slot 0x28: an armor or attack amount is a
     /// percentage of its class's (`amount / 100 × value + 0.5`, truncated; an attack class at 0
     /// the handicap raises scales the amount by the factor first).
@@ -1731,22 +1823,7 @@ impl Master {
         use crate::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed *= v,
-            a::ARMOR => {
-                let (class, amount) = class_amount(v);
-                if let Some(e) = Self::class_entry(&mut self.armors, class) {
-                    *e = low16(f32::from(amount) / PERCENT * f32::from(*e) + ROUND);
-                }
-            }
-            a::ATTACK => {
-                let (class, amount) = class_amount(v);
-                if let Some(e) = Self::class_entry(&mut self.weapons, class) {
-                    let share = match handicapped(world.handicap, class) {
-                        Some(f) if *e == 0 => f32::from(amount) * f,
-                        _ => f32::from(amount),
-                    };
-                    *e = low16(f32::from(*e) * (share / PERCENT) + ROUND);
-                }
-            }
+            a::ARMOR | a::ATTACK => self.multiply_class_amount(attribute, v, world),
             a::ATTACK_RELOAD_TIME => self.reload *= v,
             a::ACCURACY_PERCENT => self.hit_chance = low16(f32::from(self.hit_chance) * v + ROUND),
             a::MAXIMUM_RANGE => self.weapon_range *= v,
@@ -1776,6 +1853,32 @@ impl Master {
                 *o *= v;
             }
             _ => self.multiply_action(attribute, v, world),
+        }
+    }
+
+    /// [`Master::multiply_combat`]'s armor and attack amounts (`FUN_1410c1bf0`): the amount is a
+    /// percentage of its class's (`amount / 100 × value + 0.5`, truncated; an attack class at 0
+    /// the handicap raises scales the amount by the factor first).
+    fn multiply_class_amount(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::masters::attribute as a;
+        match attribute {
+            a::ARMOR => {
+                let (class, amount) = class_amount(v);
+                if let Some(e) = Self::class_entry(&mut self.armors, class) {
+                    *e = low16(f32::from(amount) / PERCENT * f32::from(*e) + ROUND);
+                }
+            }
+            a::ATTACK => {
+                let (class, amount) = class_amount(v);
+                if let Some(e) = Self::class_entry(&mut self.weapons, class) {
+                    let share = match handicapped(world.handicap, class) {
+                        Some(f) if *e == 0 => f32::from(amount) * f,
+                        _ => f32::from(amount),
+                    };
+                    *e = low16(f32::from(*e) * (share / PERCENT) + ROUND);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1842,42 +1945,28 @@ impl Master {
         use crate::masters::attribute as a;
         match attribute {
             a::HERO_STATUS => self.hero_flag = low8(v),
-            a::TRAIN_LOCATION => {
-                if let Some(t) = self.train_location_mut() {
-                    t.location = low16(v);
-                }
-            }
-            a::TRAIN_BUTTON => {
-                if let Some(t) = self.train_location_mut() {
-                    t.button = low8(v);
-                }
-            }
+            a::TRAIN_LOCATION
+            | a::TRAIN_BUTTON
+            | a::HOTKEY_ID
+            | a::TRAIN_TIME
+            | a::TRAIN_LOCATIONS_ENTRY_MOD
+            | a::TRAIN_LOCATIONS_TOTAL_NUM => self.set_train_attribute(attribute, v),
             a::SHOWN_PIERCE_ARMOR => self.shown.pierce_armor = low16(v),
-            a::HOTKEY_ID => {
-                if let Some(t) = self.train_location_mut() {
-                    t.hotkey = cvttss2si(v);
-                }
-            }
-            a::MAXIMUM_CHARGE => self.max_charge = v,
-            a::RECHARGE_RATE => self.recharge_rate = v,
-            a::CHARGE_EVENT => self.charge_event = low16(v),
-            a::CHARGE_TYPE => self.charge_type = low16(v),
+            a::MAXIMUM_CHARGE
+            | a::RECHARGE_RATE
+            | a::CHARGE_EVENT
+            | a::CHARGE_TYPE
+            | a::CHARGE_PROJECTILE_UNIT => self.set_charge(attribute, v),
             a::SECONDARY_PROJECTILE_UNIT => self.volley_missile = id_of(cvttss2si(v)),
-            a::SPECIAL_GRAPHIC => set_sprite(&mut self.special_sprite, cvttss2si(v), world),
+            a::SPECIAL_GRAPHIC
+            | a::IDLE_ATTACK_GRAPHIC
+            | a::HERO_GLOW_GRAPHIC
+            | a::GARRISON_GRAPHIC
+            | a::ATTACK_GRAPHIC_2 => self.set_tribe_sprite(attribute, v, world),
             a::SPECIAL_ABILITY => self.special_attack = low8(v),
-            a::IDLE_ATTACK_GRAPHIC => {
-                set_sprite(&mut self.idle_attack_sprite, cvttss2si(v), world);
-            }
-            a::HERO_GLOW_GRAPHIC => set_sprite(&mut self.hero_glow_sprite, cvttss2si(v), world),
-            a::GARRISON_GRAPHIC => set_sprite(&mut self.garrison_sprite, cvttss2si(v), world),
             a::RESOURCE_COSTS | a::FOOD_COSTS..=a::STONE_COSTS => {
                 for c in self.costs_of(attribute) {
                     *c = low16(v);
-                }
-            }
-            a::TRAIN_TIME => {
-                if let Some(t) = self.train_location_mut() {
-                    t.time = low16(v);
                 }
             }
             a::TOTAL_MISSILES => self.volley_fire = v,
@@ -1903,12 +1992,74 @@ impl Master {
             }
             a::FORMATION_CATEGORY => self.formation_category = low8(v),
             a::REGENERATION_HP_PERCENT => self.regeneration = f32::from(self.hit_points) * v,
-            a::CHARGE_PROJECTILE_UNIT => self.charge_projectile = id_of(cvttss2si(v)),
             a::ATTACK_PRIORITY => self.attack_priority = low8(v),
             a::INVULNERABILITY_LEVEL => self.invulnerability = v,
-            a::ATTACK_GRAPHIC_2 => set_sprite(&mut self.attack_sprite2, cvttss2si(v), world),
             a::SPAWNING_AREA_WIDTH..=a::SPAWNING_AREA_RANDOMNESS => {
                 self.volley_spread[usize::from(attribute - a::SPAWNING_AREA_WIDTH)] = v;
+            }
+            // the ability's button, tooltips and hotkey action are the interface's
+            a::ABILITY_BUTTON_ICON_ID..=a::ABILITY_HOTKEY_ACTION => {}
+            _ => self.set_combat(attribute, v, world),
+        }
+    }
+
+    /// [`Master::set_tribe_combat`]'s charge (`FUN_1412661d0`): its most, its recharge rate, its
+    /// event, its type and its projectile.
+    fn set_charge(&mut self, attribute: u8, v: f32) {
+        use crate::checkpoint::cvttss2si;
+        use crate::masters::attribute as a;
+        match attribute {
+            a::MAXIMUM_CHARGE => self.max_charge = v,
+            a::RECHARGE_RATE => self.recharge_rate = v,
+            a::CHARGE_EVENT => self.charge_event = low16(v),
+            a::CHARGE_TYPE => self.charge_type = low16(v),
+            a::CHARGE_PROJECTILE_UNIT => self.charge_projectile = id_of(cvttss2si(v)),
+            _ => {}
+        }
+    }
+
+    /// [`Master::set_tribe_combat`]'s sprites (`FUN_1412661d0`): special, idle attack, hero glow,
+    /// garrison and second attack, each a sprite the world's table holds.
+    fn set_tribe_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::checkpoint::cvttss2si;
+        use crate::masters::attribute as a;
+        match attribute {
+            a::SPECIAL_GRAPHIC => set_sprite(&mut self.special_sprite, cvttss2si(v), world),
+            a::IDLE_ATTACK_GRAPHIC => {
+                set_sprite(&mut self.idle_attack_sprite, cvttss2si(v), world);
+            }
+            a::HERO_GLOW_GRAPHIC => set_sprite(&mut self.hero_glow_sprite, cvttss2si(v), world),
+            a::GARRISON_GRAPHIC => set_sprite(&mut self.garrison_sprite, cvttss2si(v), world),
+            a::ATTACK_GRAPHIC_2 => set_sprite(&mut self.attack_sprite2, cvttss2si(v), world),
+            _ => {}
+        }
+    }
+
+    /// [`Master::set_tribe_combat`]'s train locations (`FUN_1412661d0`): the selected entry's
+    /// location, button, hotkey and time, the selection (at most the last) and the count.
+    fn set_train_attribute(&mut self, attribute: u8, v: f32) {
+        use crate::checkpoint::cvttss2si;
+        use crate::masters::attribute as a;
+        match attribute {
+            a::TRAIN_LOCATION => {
+                if let Some(t) = self.train_location_mut() {
+                    t.location = low16(v);
+                }
+            }
+            a::TRAIN_BUTTON => {
+                if let Some(t) = self.train_location_mut() {
+                    t.button = low8(v);
+                }
+            }
+            a::HOTKEY_ID => {
+                if let Some(t) = self.train_location_mut() {
+                    t.hotkey = cvttss2si(v);
+                }
+            }
+            a::TRAIN_TIME => {
+                if let Some(t) = self.train_location_mut() {
+                    t.time = low16(v);
+                }
             }
             a::TRAIN_LOCATIONS_ENTRY_MOD => {
                 if let Some(n) = select_entry(self.train_locations.len(), cvttss2si(v)) {
@@ -1922,9 +2073,7 @@ impl Master {
                     v,
                 );
             }
-            // the ability's button, tooltips and hotkey action are the interface's
-            a::ABILITY_BUTTON_ICON_ID..=a::ABILITY_HOTKEY_ACTION => {}
-            _ => self.set_combat(attribute, v, world),
+            _ => {}
         }
     }
 
@@ -2357,6 +2506,465 @@ mod tests {
             kind,
             ..Master::default()
         }
+    }
+
+    /// A field of a master, read as an `f32`.
+    type Read = fn(&Master) -> f32;
+
+    /// A master of `kind` with three storage entries, a paid food cost, 10 hit points, two damage
+    /// sprites and two train locations (the second of each selected).
+    fn stocked(kind: u8) -> Master {
+        Master {
+            kind,
+            hit_points: 10,
+            storage: vec![(0, 1.0, 1), (1, 1.0, 1), (2, 1.0, 1)],
+            cost: vec![(0, 1, true)],
+            damage_graphics: vec![DamageGraphic::default(); 2],
+            damage_graphic_entry: 1,
+            train_locations: vec![TrainLocation::default(); 2],
+            train_location_entry: 1,
+            ..Master::default()
+        }
+    }
+
+    /// Each row (attribute, its field, the field after a set of 3, then after an add of 2, then
+    /// after a multiply by 2) on a fresh [`stocked`] master of `kind`.
+    fn sets_adds_multiplies(kind: u8, rows: &[(u8, Read, [f32; 3])]) {
+        let w = world(false);
+        for &(a, read, [set, add, multiply]) in rows {
+            let mut m = stocked(kind);
+            m.set_attribute(a, 3.0, &w);
+            assert_eq!(read(&m), set, "set {a}");
+            m.add_attribute(a, 2.0, &w);
+            assert_eq!(read(&m), add, "add {a}");
+            m.multiply_attribute(a, 2.0, &w);
+            assert_eq!(read(&m), multiply, "multiply {a}");
+        }
+    }
+
+    /// `FUN_141126400`, `FUN_141126af0` and `FUN_1411271e0`: each static attribute's field takes
+    /// the set, the add and the multiply its arm has (a multiply rounds the shorts and bytes by
+    /// 0.5, the blast defence not); the others leave it.
+    #[test]
+    fn each_static_attribute_sets_adds_and_multiplies_its_field() {
+        use attribute as a;
+        let rows: &[(u8, Read, [f32; 3])] = &[
+            (a::HIT_POINTS, |m| f32::from(m.hit_points), [3.0, 5.0, 10.0]),
+            (a::LINE_OF_SIGHT, |m| m.line_of_sight, [3.0, 5.0, 10.0]),
+            (
+                a::GARRISON_CAPACITY,
+                |m| f32::from(m.garrison),
+                [3.0, 5.0, 10.0],
+            ),
+            (a::SIZE_X, |m| m.radius[0], [3.0, 5.0, 10.0]),
+            (a::SIZE_Y, |m| m.radius[1], [3.0, 5.0, 10.0]),
+            (
+                a::CARRY_CAPACITY,
+                |m| f32::from(m.capacity),
+                [3.0, 5.0, 10.0],
+            ),
+            (a::STORAGE_1, |m| m.storage[0].1, [3.0, 5.0, 10.0]),
+            (a::STORAGE_2, |m| m.storage[1].1, [3.0, 5.0, 10.0]),
+            (a::STORAGE_3, |m| m.storage[2].1, [3.0, 5.0, 10.0]),
+            (
+                a::FOG_VISIBILITY,
+                |m| f32::from(m.fog_visibility),
+                [3.0, 3.0, 3.0],
+            ),
+            (
+                a::OCCLUSION_MODE,
+                |m| f32::from(m.occlusion),
+                [3.0, 5.0, 5.0],
+            ),
+            (a::SIZE_Z, |m| m.height, [3.0, 5.0, 10.0]),
+            (
+                a::CAN_BE_BUILT_ON,
+                |m| f32::from(m.blast_defense),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::BLAST_DEFENSE_LEVEL,
+                |m| f32::from(m.blast_defense),
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::TERRAIN_RESTRICTION_ID,
+                |m| f32::from(m.terrain_restriction),
+                [3.0, 3.0, 3.0],
+            ),
+            (a::UNIT_TRAIT, |m| m.object_flags as f32, [3.0, 5.0, 5.0]),
+            (
+                a::TRAIT_PIECE,
+                |m| (m.object_flags >> 16) as f32,
+                [3.0, 3.0, 3.0],
+            ),
+            (
+                a::DEAD_UNIT_ID,
+                |m| f32::from(m.death_spawns[0]),
+                [3.0, 3.0, 3.0],
+            ),
+            (
+                a::BLOOD_UNIT,
+                |m| f32::from(m.death_spawns[1]),
+                [3.0, 3.0, 3.0],
+            ),
+            (
+                a::STANDING_GRAPHIC,
+                |m| f32::from(m.standing_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::STANDING_GRAPHIC_2,
+                |m| f32::from(m.standing_sprite_2.unwrap_or(-1)),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::DYING_GRAPHIC,
+                |m| f32::from(m.death_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::UNDEAD_GRAPHIC,
+                |m| f32::from(m.undead_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::OBSTRUCTION_TYPE,
+                |m| f32::from(m.obstruction_type),
+                [3.0, 3.0, 3.0],
+            ),
+            (
+                a::BLOCKAGE_CLASS,
+                |m| f32::from(m.obstruction_class),
+                [3.0, 3.0, 3.0],
+            ),
+            (
+                a::SELECTION_EFFECT,
+                |m| f32::from(m.selection_effect),
+                [3.0, 3.0, 3.0],
+            ),
+            (
+                a::DAMAGE_GRAPHIC,
+                |m| f32::from(m.damage_graphics[1].sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::AVAILABLE_UNIT_FLAG,
+                |m| f32::from(u8::from(m.available)),
+                [1.0; 3],
+            ),
+            (
+                a::DISABLED_UNIT_FLAG,
+                |m| f32::from(u8::from(m.disabled)),
+                [1.0; 3],
+            ),
+            (
+                a::INTERFACE_KIND,
+                |m| f32::from(m.unit_level),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::COMBAT_LEVEL,
+                |m| f32::from(m.combat_level),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::INTERACTION_MODE,
+                |m| f32::from(m.select_level),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::MINIMAP_MODE,
+                |m| f32::from(m.map_draw_level),
+                [3.0, 5.0, 5.0],
+            ),
+            // the selected entry plus ten times the count: the set and the add select at most
+            // the last, the multiply inserts at 2 and selects it
+            (
+                a::DAMAGE_GRAPHICS_ENTRY_MOD,
+                |m| f32::from(m.damage_graphic_entry) + 10.0 * m.damage_graphics.len() as f32,
+                [21.0, 21.0, 32.0],
+            ),
+            // the add's count is the selected entry (1) plus 2
+            (
+                a::DAMAGE_GRAPHICS_TOTAL_NUM,
+                |m| m.damage_graphics.len() as f32,
+                [3.0, 3.0, 6.0],
+            ),
+            (
+                a::DAMAGE_GRAPHIC_PERCENT,
+                |m| f32::from(m.damage_graphics[1].percent),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::DAMAGE_GRAPHIC_APPLY_MODE,
+                |m| f32::from(m.damage_graphics[1].apply_mode),
+                [3.0, 5.0, 5.0],
+            ),
+        ];
+        sets_adds_multiplies(master_type::STATIC, rows);
+        // an obstruction type the table does not hold is 0; the trait piece keeps the low half;
+        // a flag of 0 is off
+        let mut m = stocked(master_type::STATIC);
+        m.object_flags = 0x1234;
+        m.set_attribute(a::TRAIT_PIECE, 2.0, &world(false));
+        m.set_attribute(a::OBSTRUCTION_TYPE, 4.0, &world(false));
+        m.set_attribute(a::AVAILABLE_UNIT_FLAG, 0.0, &world(false));
+        assert_eq!((m.object_flags, m.obstruction_type), (0x2_1234, 0));
+        assert!(!m.available);
+    }
+
+    /// `FUN_1410c1bf0` on the armor and attack amounts: a percentage of the class's entry plus
+    /// 0.5, truncated; a class the master lacks changes nothing; an attack class at 0 the handicap
+    /// raises scales the percentage by the factor (which a product of 0 keeps at 0).
+    #[test]
+    fn a_combat_multiply_takes_a_percentage_of_the_class_s_amount() {
+        let mut m = of_type(master_type::RGE_COMBAT);
+        m.armors = vec![(4, 3), (3, 5)];
+        m.weapons = vec![(4, 7), (21, 0)];
+        // class 3 at 150%: 5 x 1.5 + 0.5 = 8; class 4 at 50%: 7 x 0.5 + 0.5 = 4
+        m.multiply_attribute(attribute::ARMOR, f32::from(0x396_i16), &world(false));
+        m.multiply_attribute(attribute::ATTACK, f32::from(0x432_i16), &world(false));
+        assert_eq!(
+            (m.armors.clone(), m.weapons[0]),
+            (vec![(4, 3), (3, 8)], (4, 4))
+        );
+        m.multiply_attribute(attribute::ARMOR, f32::from(0x996_i16), &world(false));
+        assert_eq!(m.armors, vec![(4, 3), (3, 8)]);
+        let raised = AttributeWorld {
+            handicap: Some(1.5),
+            ..world(false)
+        };
+        m.multiply_attribute(attribute::ATTACK, f32::from(0x15c8_i16), &raised);
+        assert_eq!(m.weapons[1], (21, 0));
+    }
+
+    /// `FUN_1410c12b0`, `FUN_1410c16e0` and `FUN_1410c1bf0`: each RGE combat attribute's field
+    /// takes the set, the add and the multiply (the frame delay, the blast level and the shown
+    /// values by the truncated amount); the rotation speed comes from the moving master's set.
+    #[test]
+    fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
+        use attribute as a;
+        let rows: &[(u8, Read, [f32; 3])] = &[
+            (a::ROTATION_SPEED, |m| m.turn_speed, [3.0, 5.0, 10.0]),
+            (a::ATTACK_RELOAD_TIME, |m| m.reload, [3.0, 5.0, 10.0]),
+            (
+                a::ACCURACY_PERCENT,
+                |m| f32::from(m.hit_chance),
+                [3.0, 5.0, 10.0],
+            ),
+            (a::MAXIMUM_RANGE, |m| m.weapon_range, [3.0, 5.0, 10.0]),
+            (a::BASE_ARMOR, |m| f32::from(m.base_armor), [3.0, 5.0, 10.0]),
+            (
+                a::PROJECTILE_UNIT,
+                |m| f32::from(m.missile),
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::TERRAIN_DEFENSE_BONUS,
+                |m| f32::from(m.terrain_bonus),
+                [3.0, 5.0, 10.0],
+            ),
+            (a::MINIMUM_RANGE, |m| m.min_range, [3.0, 5.0, 10.0]),
+            (a::BLAST_WIDTH, |m| m.area_effect, [3.0, 5.0, 10.0]),
+            (
+                a::BONUS_DAMAGE_RESISTANCE,
+                |m| m.resistance,
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::FRAME_DELAY,
+                |m| f32::from(m.fire_frame),
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::BLAST_ATTACK_LEVEL,
+                |m| f32::from(m.blast_level),
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::SHOWN_ATTACK,
+                |m| f32::from(m.shown.attack),
+                [3.0, 5.0, 10.0],
+            ),
+            (a::SHOWN_RANGE, |m| m.shown.range, [3.0, 5.0, 10.0]),
+            (
+                a::SHOWN_MELEE_ARMOR,
+                |m| f32::from(m.shown.melee_armor),
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::COMBAT_ABILITY,
+                |m| f32::from(m.combat_ability),
+                [3.0, 5.0, 5.0],
+            ),
+            (a::ATTACK_DISPERSION, |m| m.missed_spread, [3.0, 5.0, 10.0]),
+            (
+                a::ATTACK_GRAPHIC,
+                |m| f32::from(m.attack_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (a::AREA_DAMAGE, |m| m.area_damage, [3.0, 5.0, 10.0]),
+            (a::DAMAGE_REFLECTION, |m| m.reflection, [3.0, 5.0, 10.0]),
+            (
+                a::FRIENDLY_FIRE_DAMAGE,
+                |m| m.friendly_fire,
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::GARRISON_FIREPOWER,
+                |m| m.garrison_firepower,
+                [3.0, 5.0, 10.0],
+            ),
+            (a::DISPLACEMENT_X, |m| m.weapon_offset[0], [3.0, 5.0, 10.0]),
+            (a::DISPLACEMENT_Z, |m| m.weapon_offset[2], [3.0, 5.0, 10.0]),
+        ];
+        sets_adds_multiplies(master_type::RGE_COMBAT, rows);
+    }
+
+    /// `FUN_1412661d0`, `FUN_141266a60` and `FUN_141267040`: each combat (TRIBE) attribute's
+    /// field takes the set, the add and the multiply its arm has; the selected train location
+    /// takes the train values.
+    #[test]
+    fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
+        use attribute as a;
+        let rows: &[(u8, Read, [f32; 3])] = &[
+            (a::HERO_STATUS, |m| f32::from(m.hero_flag), [3.0, 5.0, 5.0]),
+            (
+                a::TRAIN_LOCATION,
+                |m| f32::from(m.train_locations[1].location),
+                [3.0; 3],
+            ),
+            (
+                a::TRAIN_BUTTON,
+                |m| f32::from(m.train_locations[1].button),
+                [3.0; 3],
+            ),
+            (
+                a::SHOWN_PIERCE_ARMOR,
+                |m| f32::from(m.shown.pierce_armor),
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::HOTKEY_ID,
+                |m| m.train_locations[1].hotkey as f32,
+                [3.0; 3],
+            ),
+            (a::MAXIMUM_CHARGE, |m| m.max_charge, [3.0, 5.0, 10.0]),
+            (a::RECHARGE_RATE, |m| m.recharge_rate, [3.0, 5.0, 10.0]),
+            (
+                a::CHARGE_EVENT,
+                |m| f32::from(m.charge_event),
+                [3.0, 5.0, 5.0],
+            ),
+            (a::CHARGE_TYPE, |m| f32::from(m.charge_type), [3.0; 3]),
+            (
+                a::SECONDARY_PROJECTILE_UNIT,
+                |m| f32::from(m.volley_missile.unwrap_or(-1)),
+                [3.0; 3],
+            ),
+            (
+                a::SPECIAL_GRAPHIC,
+                |m| f32::from(m.special_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::SPECIAL_ABILITY,
+                |m| f32::from(m.special_attack),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::IDLE_ATTACK_GRAPHIC,
+                |m| f32::from(m.idle_attack_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::HERO_GLOW_GRAPHIC,
+                |m| f32::from(m.hero_glow_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::GARRISON_GRAPHIC,
+                |m| f32::from(m.garrison_sprite),
+                [3.0, 5.0, 5.0],
+            ),
+            (a::FOOD_COSTS, |m| f32::from(m.cost[0].1), [3.0, 5.0, 10.0]),
+            (
+                a::TRAIN_TIME,
+                |m| f32::from(m.train_locations[1].time),
+                [3.0, 5.0, 10.0],
+            ),
+            (a::TOTAL_MISSILES, |m| m.volley_fire, [3.0, 5.0, 10.0]),
+            (
+                a::MAXIMUM_TOTAL_MISSILES,
+                |m| f32::from(m.max_volley),
+                [3.0, 5.0, 10.0],
+            ),
+            (a::REGENERATION_RATE, |m| m.regeneration, [3.0, 5.0, 10.0]),
+            (
+                a::MIN_CONVERSION_TIME_MODIFIER,
+                |m| m.conversion[0],
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::CONVERSION_CHANCE_MODIFIER,
+                |m| m.conversion[2],
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::FORMATION_CATEGORY,
+                |m| f32::from(m.formation_category),
+                [3.0; 3],
+            ),
+            // 10 hit points times the amount, set then added
+            (
+                a::REGENERATION_HP_PERCENT,
+                |m| m.regeneration,
+                [30.0, 50.0, 50.0],
+            ),
+            (
+                a::CHARGE_PROJECTILE_UNIT,
+                |m| f32::from(m.charge_projectile.unwrap_or(-1)),
+                [3.0; 3],
+            ),
+            (
+                a::ATTACK_PRIORITY,
+                |m| f32::from(m.attack_priority),
+                [3.0; 3],
+            ),
+            (
+                a::INVULNERABILITY_LEVEL,
+                |m| m.invulnerability,
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::ATTACK_GRAPHIC_2,
+                |m| f32::from(m.attack_sprite2),
+                [3.0, 5.0, 5.0],
+            ),
+            (
+                a::SPAWNING_AREA_WIDTH,
+                |m| m.volley_spread[0],
+                [3.0, 5.0, 10.0],
+            ),
+            (
+                a::SPAWNING_AREA_RANDOMNESS,
+                |m| m.volley_spread[2],
+                [3.0, 5.0, 10.0],
+            ),
+            // the selected entry plus ten times the count, as the damage sprites'
+            (
+                a::TRAIN_LOCATIONS_ENTRY_MOD,
+                |m| f32::from(m.train_location_entry) + 10.0 * m.train_locations.len() as f32,
+                [21.0, 21.0, 32.0],
+            ),
+            (
+                a::TRAIN_LOCATIONS_TOTAL_NUM,
+                |m| m.train_locations.len() as f32,
+                [3.0, 3.0, 6.0],
+            ),
+        ];
+        sets_adds_multiplies(master_type::COMBAT, rows);
     }
 
     /// `FUN_141126400`, `FUN_141126af0` and `FUN_1411271e0` on the hit points: a set truncates, an

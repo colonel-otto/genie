@@ -324,6 +324,43 @@ mod tests {
         }
     }
 
+    /// GAME's diplomacy (0) and allied victory (5) run only with `allianceLocked` 0; Treason
+    /// (0xa) lowers the pending gold by 400 only for a player with a castle in its tracker's done
+    /// list.
+    #[test]
+    fn diplomacy_allied_victory_and_treason_for_the_command_s_player() {
+        use crate::masters::{Master, Masters};
+        let mut t = world();
+        t.alliance_locked = 1;
+        t.game(&game(1, sub::DIPLOMACY, 1, 2, 0)).unwrap();
+        t.game(&game(1, sub::ALLIED_VICTORY, 1, 1, 0)).unwrap();
+        assert_eq!(
+            (t.players[1].diplomacy[2], t.players[1].allied_victory),
+            (0, 0)
+        );
+        t.alliance_locked = 0;
+        // relation 0: the ally's stance (4)
+        t.game(&game(1, sub::DIPLOMACY, 1, 2, 0)).unwrap();
+        t.game(&game(1, sub::ALLIED_VICTORY, 1, 1, 0)).unwrap();
+        assert_eq!(
+            (t.players[1].diplomacy[2], t.players[1].allied_victory),
+            (4, 1)
+        );
+        // no castle: no treason
+        t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
+        assert_eq!(t.players[1].pending_debit[GOLD], 0.0);
+        let castle = Master {
+            id: crate::turn::CASTLE,
+            class: 52,
+            ..Master::default()
+        };
+        t.masters = vec![Masters::new([]), Masters::new([castle])];
+        t.track_add(1, 500, crate::turn::CASTLE);
+        t.track_complete(1, 500, crate::turn::CASTLE);
+        t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
+        assert_eq!(t.players[1].pending_debit[GOLD], -TREASON_COST);
+    }
+
     /// GAME's queue cases for the command's player: 0xd and 0x15 buy farms and pastures for the
     /// mill's queue, 0xe and 0x16 give them back (refunded), 0x11 and 0x12 the dock's fish traps;
     /// a player outside the world changes nothing.

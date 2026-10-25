@@ -462,87 +462,6 @@
     },
     {
       "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::add_combat",
-      "line": 1673,
-      "cyclomatic": 31.0,
-      "coverage": 32.608695652173914,
-      "crap": 325.1270547382264,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::add_static",
-      "line": 1391,
-      "cyclomatic": 33.0,
-      "coverage": 20.0,
-      "crap": 590.5680000000001,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::add_tribe_combat",
-      "line": 1934,
-      "cyclomatic": 28.0,
-      "coverage": 45.28301886792453,
-      "crap": 156.43472127998274,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::multiply_combat",
-      "line": 1730,
-      "cyclomatic": 29.0,
-      "coverage": 30.23255813953488,
-      "crap": 314.5974945602274,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::multiply_static",
-      "line": 1468,
-      "cyclomatic": 15.0,
-      "coverage": 44.827586206896555,
-      "crap": 52.78752716388536,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::multiply_tribe_combat",
-      "line": 1999,
-      "cyclomatic": 17.0,
-      "coverage": 40.476190476190474,
-      "crap": 77.94947899794838,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::set_combat",
-      "line": 1624,
-      "cyclomatic": 30.0,
-      "coverage": 44.73684210526316,
-      "crap": 181.89714244058896,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::set_static",
-      "line": 1304,
-      "cyclomatic": 43.0,
-      "coverage": 58.730158730158735,
-      "crap": 172.96766207952905,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Master::set_tribe_combat",
-      "line": 1840,
-      "cyclomatic": 45.0,
-      "coverage": 59.42028985507246,
-      "crap": 180.3168406345032,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/masters.rs",
       "function": "Masters::work_master",
       "line": 579,
       "cyclomatic": 23.0,
@@ -571,7 +490,7 @@
     {
       "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::close_in",
-      "line": 1516,
+      "line": 1537,
       "cyclomatic": 8.0,
       "coverage": 0.0,
       "crap": 72.0,
@@ -580,7 +499,7 @@
     {
       "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::ignore_list",
-      "line": 2321,
+      "line": 2342,
       "cyclomatic": 17.0,
       "coverage": 41.935483870967744,
       "crap": 73.57574435232115,
@@ -589,7 +508,7 @@
     {
       "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::long_plan",
-      "line": 2061,
+      "line": 2082,
       "cyclomatic": 8.0,
       "coverage": 0.0,
       "crap": 72.0,
@@ -597,17 +516,8 @@
     },
     {
       "file": "crates/engine/genie-core/src/movement.rs",
-      "function": "Mover::motion_passes",
-      "line": 1041,
-      "cyclomatic": 28.0,
-      "coverage": 81.15942028985508,
-      "crap": 33.24322925703709,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::no_path",
-      "line": 2201,
+      "line": 2222,
       "cyclomatic": 14.0,
       "coverage": 0.0,
       "crap": 210.0,
@@ -616,7 +526,7 @@
     {
       "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::request",
-      "line": 1699,
+      "line": 1720,
       "cyclomatic": 94.0,
       "coverage": 36.97749196141479,
       "crap": 2305.784214556064,
@@ -625,7 +535,7 @@
     {
       "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::walk",
-      "line": 1139,
+      "line": 1160,
       "cyclomatic": 25.0,
       "coverage": 79.20792079207921,
       "crap": 30.617897099973696,
@@ -634,7 +544,7 @@
     {
       "file": "crates/engine/genie-core/src/movement.rs",
       "function": "Mover::walled_off",
-      "line": 2117,
+      "line": 2138,
       "cyclomatic": 7.0,
       "coverage": 0.0,
       "crap": 56.0,
@@ -1073,15 +983,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/turn/game.rs",
-      "function": "Turns::game",
-      "line": 134,
-      "cyclomatic": 25.0,
-      "coverage": 66.66666666666666,
-      "crap": 48.14814814814818,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/turn/mod.rs",
       "function": "Turns::build_mesh",
       "line": 952,
@@ -1353,17 +1254,8 @@
     },
     {
       "file": "crates/engine/genie-core/src/turn/world.rs",
-      "function": "Turns::building_changes_hands",
-      "line": 921,
-      "cyclomatic": 29.0,
-      "coverage": 82.27848101265823,
-      "crap": 33.680570908183725,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/world.rs",
       "function": "Turns::cart_find",
-      "line": 1405,
+      "line": 1423,
       "cyclomatic": 14.0,
       "coverage": 0.0,
       "crap": 210.0,
@@ -1399,7 +1291,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/world.rs",
       "function": "storage_leaves",
-      "line": 1684,
+      "line": 1702,
       "cyclomatic": 11.0,
       "coverage": 38.095238095238095,
       "crap": 39.704999460101504,

@@ -948,10 +948,8 @@ impl Turns {
         if state == 2 {
             lose_built_storage(&mut self.players[old], &master, held, amount)?;
         }
-        if state == 0
-            && let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut())
-        {
-            v.sight_off(id, p.position, p.radius, true, false);
+        if state == 0 {
+            self.foundation_sight_off(id, placed);
         }
         self.clear_actions(old, idx)?;
         self.end_production_action(old, idx)?;
@@ -971,10 +969,8 @@ impl Turns {
                 crate::checkpoint::cvttss2si(p.position[1]),
             )?;
         }
-        if state == 0
-            && let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut())
-        {
-            let _ = v.sight_on(id, p.position, p.radius, true, false);
+        if state == 0 {
+            self.foundation_sight_on(id, placed);
         }
         if state == 2 {
             self.built_with_new_owner(owner, id, &master, rice)?;
@@ -982,22 +978,44 @@ impl Turns {
         }
         self.garrison_leaves(owner, id)?;
         if state < 3 {
-            let record = crate::spatial::Obstruction {
-                kind: master.obstruction_type,
-                class: master.obstruction_class,
-            };
-            if record.recorded() {
-                self.spatial.add_record(id, record);
-                if let Some(p) = self.spatial.get(id).copied() {
-                    self.pathing.place_shape(id, &p);
-                }
-                self.pathing.tiles_changed(self.spatial.take_changes());
-            }
+            self.record_again(id, &master);
         }
         if let Some((_, u)) = self.object_mut(id) {
             u.gather_point = None;
         }
         Ok(())
+    }
+
+    /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` leaving its old owner's
+    /// map (slot 0x1d8).
+    fn foundation_sight_off(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
+        if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
+            v.sight_off(id, p.position, p.radius, true, false);
+        }
+    }
+
+    /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` coming on its new
+    /// owner's map (slot 0x1d0).
+    fn foundation_sight_on(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
+        if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
+            let _ = v.sight_on(id, p.position, p.radius, true, false);
+        }
+    }
+
+    /// [`Turns::building_changes_hands`] below state 3: the building's record and mesh shape of
+    /// `master`'s obstruction come again (`FUN_141056460`).
+    fn record_again(&mut self, id: i32, master: &Master) {
+        let record = crate::spatial::Obstruction {
+            kind: master.obstruction_type,
+            class: master.obstruction_class,
+        };
+        if record.recorded() {
+            self.spatial.add_record(id, record);
+            if let Some(p) = self.spatial.get(id).copied() {
+                self.pathing.place_shape(id, &p);
+            }
+            self.pathing.tiles_changed(self.spatial.take_changes());
+        }
     }
 
     /// [`Turns::building_changes_hands`]'s annexes of `id` of a building type first, each leaving

@@ -1037,6 +1037,41 @@ impl Mover {
         Ok((target, gap, to_end))
     }
 
+    /// [`Mover::motion_passes`]'s dispatch on the level's state toward `goal`: an arrived level (4,
+    /// 5) hands over ([`Mover::arrived`]), a level that wants a path (2) gets one
+    /// ([`Mover::request`]: again, on to the walk, a pause that keeps the unit moving, or a
+    /// request given up); any other goes on to the walk.
+    ///
+    /// # Errors
+    ///
+    /// A path request without the world's planners, and what the hand-over and the request do not
+    /// model.
+    fn level_state(
+        &mut self,
+        me: &Me,
+        world: &Spatial,
+        plan: Option<&mut Planning<'_>>,
+        goal: Goal<'_>,
+        plans: &mut u32,
+        include: &[i32],
+    ) -> Result<Next, GenieError> {
+        match self.paths[0].state {
+            4 | 5 => self.arrived(goal),
+            2 => {
+                let plan = plan.ok_or(GenieError::unsupported(
+                    "a path request without the world's planners",
+                ))?;
+                Ok(match self.request(me, world, plan, goal, plans, include)? {
+                    Step::Again => Next::Again,
+                    Step::Walk => Next::Dispatch,
+                    Step::Paused => Next::Done(Motion::Moving),
+                    Step::GaveUp => Next::Done(Motion::Done),
+                })
+            }
+            _ => Ok(Next::Dispatch),
+        }
+    }
+
     /// [`Mover::motion`]'s passes.
     fn motion_passes(
         &mut self,
@@ -1087,26 +1122,12 @@ impl Mover {
                     Next::LoopEnd => return self.loop_end(dt, walked, heading),
                 }
             }
-            match self.paths[0].state {
-                4 | 5 => match self.arrived(goal)? {
-                    Next::Done(m) => return Ok(m),
-                    Next::Again => continue,
-                    // a link of another type: on past the request (state 4 or 5) to the walk
-                    Next::Dispatch => {}
-                    Next::LoopEnd => unreachable!("only a reached waypoint ends a loop's step"),
-                },
-                2 => {
-                    let plan = plan.as_deref_mut().ok_or(GenieError::unsupported(
-                        "a path request without the world's planners",
-                    ))?;
-                    match self.request(me, world, plan, goal, &mut plans, &include)? {
-                        Step::Again => continue,
-                        Step::Walk => {}
-                        Step::Paused => return Ok(Motion::Moving),
-                        Step::GaveUp => return Ok(Motion::Done),
-                    }
-                }
-                _ => {}
+            match self.level_state(me, world, plan.as_deref_mut(), goal, &mut plans, &include)? {
+                Next::Done(m) => return Ok(m),
+                Next::Again => continue,
+                // a link of another type: on past the request (state 4 or 5) to the walk
+                Next::Dispatch => {}
+                Next::LoopEnd => unreachable!("only a reached waypoint ends a loop's step"),
             }
             let (now, computer) = plan.as_deref().map_or((0, false), |p| (p.now, p.computer));
             let groups = plan.as_deref().map(|p| p.groups);
