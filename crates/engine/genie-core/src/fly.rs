@@ -352,6 +352,59 @@ mod tests {
         assert_eq!(r.draws, 1);
     }
 
+    /// State 3's choice (`FUN_140b03a00` case 3): no time left (no distance) or no point on the
+    /// map in 12 tries rests; a task without sprites draws none and flies; a task's terrain,
+    /// a class to keep away from, a distance factor (the animation speed) and only a carrying
+    /// sprite are not modelled.
+    #[test]
+    fn a_choice_without_a_distance_or_a_point_rests() {
+        let choose = |fly: &mut Fly, map: [i32; 2]| {
+            let mut r = Well512::default();
+            r.set_seed(7);
+            let got = fly.choose(Sky { map, ..sky(&mut r) });
+            (got, r.draws)
+        };
+        let mut fly = hawk(CHOOSING, 0.0);
+        let _ = choose(&mut fly, [120, 120]).0.unwrap();
+        assert_eq!(fly.state, RESTING);
+        let mut fly = hawk(CHOOSING, 10.0);
+        let _ = choose(&mut fly, [1, 1]).0.unwrap();
+        assert_eq!((fly.state, fly.goal), (RESTING, None));
+        let plain = |task: Task| Fly {
+            task,
+            ..hawk(CHOOSING, 10.0)
+        };
+        let unsprited = Task {
+            sprites: [-1; 4],
+            ..hawk(CHOOSING, 10.0).task
+        };
+        let mut fly = plain(unsprited);
+        let (got, draws) = choose(&mut fly, [120, 120]);
+        assert_eq!((got, draws), (Ok(false), 1));
+        assert_eq!(fly.state, FLYING);
+        for task in [
+            Task {
+                terrain: 2,
+                ..unsprited
+            },
+            Task {
+                work_val2: 4.0,
+                work_range: 3.0,
+                ..unsprited
+            },
+            Task {
+                work_val1: 2.0,
+                ..unsprited
+            },
+            Task {
+                sprites: [-1, -1, -1, 5],
+                ..unsprited
+            },
+        ] {
+            assert!(choose(&mut plain(task), [120, 120]).0.is_err());
+        }
+    }
+
     #[test]
     fn a_choice_flies_speed_times_time_along_a_drawn_angle() {
         // update 718: 10 s left less dt, 1.32 a second: 13.17 tiles at the drawn angle, then

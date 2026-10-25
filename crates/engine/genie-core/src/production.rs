@@ -873,6 +873,63 @@ mod tests {
         }
     }
 
+    /// `FUN_1413ccc00` with `param_3` 1: a technology in state 2 or 4 gives back each paid cost
+    /// entry's amount plus its adjustment, scaled by the research cost modifier (attribute 85)
+    /// above 0 and truncated to 16 bits (not an age's), and is in state 1 with no work done; in
+    /// another state nothing happens.
+    #[test]
+    fn a_cancelled_research_gives_back_its_paid_costs() {
+        use crate::tech::{Cost, TechDef, TechState};
+        let def = TechDef {
+            costs: [
+                Cost {
+                    attribute: 0,
+                    amount: 100,
+                    paid: 1,
+                },
+                Cost {
+                    attribute: 1,
+                    amount: 50,
+                    paid: 0,
+                },
+                Cost {
+                    attribute: -1,
+                    amount: 5,
+                    paid: 1,
+                },
+            ],
+            ..TechDef::default()
+        };
+        let state = |state| TechState {
+            state,
+            research_done: 7.5,
+            cost_adj: [-10, 0, 0],
+            ..TechState::default()
+        };
+        let refunded = |state: &mut TechState, tech, modifier| {
+            let mut held = Held(vec![0.0; 90]);
+            held.0[usize::try_from(RESEARCH_COST_MODIFIER).unwrap()] = modifier;
+            let r = refund_tech(state, &def, tech, &mut held);
+            (r, held.0[0], held.0[1])
+        };
+        let mut s = state(2);
+        assert_eq!(refunded(&mut s, 22, 0.0), (Ok(true), 90.0, 0.0));
+        assert_eq!((s.state, s.research_done), (1, 0.0));
+        let mut s = state(4);
+        assert_eq!(refunded(&mut s, 22, 0.75), (Ok(true), 67.0, 0.0));
+        let mut s = state(4);
+        assert_eq!(refunded(&mut s, 101, 0.75), (Ok(true), 90.0, 0.0));
+        // the scaled amount wraps at 16 bits: 40000 is -25536
+        let mut s = TechState {
+            cost_adj: [19_900, 0, 0],
+            ..state(2)
+        };
+        assert_eq!(refunded(&mut s, 22, 2.0), (Ok(true), -25_536.0, 0.0));
+        let mut s = state(3);
+        assert_eq!(refunded(&mut s, 22, 0.0), (Ok(false), 0.0, 0.0));
+        assert_eq!((s.state, s.research_done), (3, 7.5));
+    }
+
     /// `FUN_141630530` gives back what the entry paid of each paid cost (the last pair naming
     /// it), not what the master costs now; an unpaid cost and a master below type 70 give
     /// nothing.

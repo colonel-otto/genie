@@ -1537,6 +1537,37 @@ mod tests {
         assert_eq!(v.extents[2].offsets, vec![[-1, 0]]);
         assert_eq!(v.extent_entry(30, 95, 28, 93, 31, 96), 1, "found again");
         assert_eq!(v.extents_capacity, 8);
+        // 5 × 5 about its centre: the corners, then a step of 2 along the rows and the columns
+        assert_eq!(v.extent_entry(10, 10, 8, 8, 12, 12), 4);
+        assert_eq!(v.extents[3].guid, 0x0202_0202);
+        assert_eq!(
+            v.extents[3].offsets,
+            vec![
+                [-2, -2],
+                [2, -2],
+                [-2, 2],
+                [2, 2],
+                [0, -2],
+                [0, 2],
+                [-2, 0],
+                [2, 0]
+            ]
+        );
+        assert_eq!(v.extents[3].capacity, 9);
+        // one tile wide and three high
+        assert_eq!(v.extent_entry(10, 10, 10, 9, 10, 11), 5);
+        assert_eq!(v.extents[4].offsets, vec![[0, -1], [0, 1]]);
+        // off the map, or one tile: none
+        assert_eq!(v.extent_entry(200, 10, 200, 10, 201, 11), 0);
+        assert_eq!(v.extent_entry(10, 200, 10, 200, 11, 201), 0);
+        assert_eq!(v.extent_entry(-5, 10, -5, 10, -4, 11), 0);
+        assert_eq!(v.extent_entry(10, -5, 10, -5, 11, -4), 0);
+        assert_eq!(v.extent_entry(10, 10, 10, 10, 10, 10), 0);
+        // the list grows by 8 once full
+        for w in 1..5 {
+            let _ = v.extent_entry(60, 60, 60, 60, 60 + w, 61);
+        }
+        assert_eq!((v.extents.len(), v.extents_capacity), (9, 16));
     }
 
     #[test]

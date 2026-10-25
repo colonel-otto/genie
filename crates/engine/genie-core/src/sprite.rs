@@ -450,6 +450,54 @@ mod tests {
         assert_eq!((s.frame, s.changed, s.looped), (0, true, false));
     }
 
+    /// `FUN_1413b5070` on four frames of 0.25 s: a frame outside the sprite starts from its
+    /// nearer end; past its end a sprite with a replay delay waits it out (state 2, the interval
+    /// the delay less the frames beyond the end) from its first frame, a backwards one from its
+    /// last; without one it loops by the frame count (a backwards one from below 0 too); a
+    /// sprite played once stops on its end; the frame it left is never shown again at once, so
+    /// a one-frame loop ends looped.
+    #[test]
+    fn a_sprite_past_its_end_waits_its_delay_loops_or_stops() {
+        let four = |flags, replay_delay| Graphic {
+            id: 1,
+            frames: 4,
+            facets: 1,
+            speed_multiplier: 0.0,
+            frame_duration: 0.25,
+            replay_delay,
+            flags,
+        };
+        let after = |g: Graphic, frame: Option<i16>, dt: f32| {
+            let mut s = ActiveSprite::start(g, &mut Well512::default());
+            if let Some(f) = frame {
+                s.frame = f;
+            }
+            s.update(dt, 1.0);
+            s
+        };
+        assert_eq!(after(four(1, 0.0), Some(9), 0.1).frame, 3);
+        assert_eq!(after(four(1, 0.0), Some(-2), 0.1).frame, 0);
+        let s = after(four(1, 0.5), None, 1.0);
+        assert_eq!(
+            (s.frame, s.animate, s.interval, s.looped),
+            (1, 2, 0.5, false)
+        );
+        let s = after(four(0x11, 0.5), None, 1.0);
+        assert_eq!((s.frame, s.animate, s.interval), (2, 2, 0.5));
+        let s = after(four(0x11, 0.0), None, 1.25);
+        assert_eq!((s.frame, s.animate, s.looped), (2, 1, true));
+        let s = after(four(9, 0.0), None, 1.0);
+        assert_eq!((s.frame, s.animate), (3, 0));
+        let s = after(four(0x19, 0.0), None, 1.0);
+        assert_eq!((s.frame, s.animate), (0, 0));
+        let one = Graphic {
+            frames: 1,
+            ..four(1, 0.0)
+        };
+        let s = after(one, None, 0.25);
+        assert_eq!((s.frame, s.looped, s.animate), (0, true, 1));
+    }
+
     /// The replay delay's test is COMISS/JBE (0x1413b521f): a NaN delay loops at once.
     #[test]
     fn a_nan_replay_delay_loops_at_once() {

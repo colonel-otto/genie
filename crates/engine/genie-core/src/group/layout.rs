@@ -1009,6 +1009,41 @@ mod tests {
                 (2.0, -1.0),
             ]
         );
+        // the fixed places of 1 and of 4 to 8 units on a box 2 by 2: its corners at max x and
+        // min x, the middles of those sides, then the middles of the sides at min z and max z
+        let (hi, lo, mid) = (1.0, -1.0, 0.0);
+        let fixed: [&[(f32, f32)]; 6] = [
+            &[(hi, mid)],
+            &[(hi, lo), (hi, hi), (lo, lo), (lo, hi)],
+            &[(hi, lo), (hi, mid), (hi, hi), (lo, lo), (lo, hi)],
+            &[(hi, lo), (hi, mid), (hi, hi), (lo, lo), (lo, mid), (lo, hi)],
+            &[
+                (hi, lo),
+                (hi, mid),
+                (hi, hi),
+                (mid, lo),
+                (mid, hi),
+                (lo, lo),
+                (lo, hi),
+            ],
+            &[
+                (hi, lo),
+                (hi, mid),
+                (hi, hi),
+                (mid, lo),
+                (mid, hi),
+                (lo, lo),
+                (lo, mid),
+                (lo, hi),
+            ],
+        ];
+        for places in fixed {
+            let n = places.len();
+            let (mut min, mut max) = ([lo, 0.0, lo], [hi, 0.0, hi]);
+            assert!(place_box_perimeter(n, &mut out, &mut min, &mut max, 0.1));
+            let got: Vec<(f32, f32)> = out[..n].iter().map(|p| (p[0], p[2])).collect();
+            assert_eq!(got, places, "{n}");
+        }
         // none, or more than the buffer holds, writes nothing
         assert!(!place_box_perimeter(0, &mut out, &mut min, &mut max, 1.0));
         assert!(!place_box_perimeter(61, &mut out, &mut min, &mut max, 1.0));

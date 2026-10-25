@@ -584,6 +584,37 @@ mod tests {
         assert_eq!(slope_share(13, 0.75, 0.5), 0.5);
         assert_eq!(slope_share(16, 0.25, 0.5), 0.75);
         assert_eq!(slope_share(0, 0.25, 0.5), 0.0);
+        // every case's arms: the point below and above the tile's diagonal, or left and right
+        // of its other one
+        let (low, high, left) = ((0.25, 0.25), (0.75, 0.5), (0.25, 0.5));
+        let right = (0.75, 0.25);
+        let cases = [
+            (1, high, 0.25),
+            (1, left, 0.5),
+            (7, left, 0.5),
+            (2, high, 0.5),
+            (2, left, 0.25),
+            (8, left, 0.25),
+            (3, left, 0.5),
+            (3, right, 0.25),
+            (4, left, 0.25),
+            (4, high, 0.5),
+            (10, right, 0.5),
+            (10, left, 0.0),
+            (11, high, 0.0),
+            (12, high, 0.25),
+            (12, low, 0.0),
+            (13, low, 0.75),
+            (14, low, 0.75),
+            (14, high, 0.75),
+            (15, left, 0.5),
+            (15, high, 0.75),
+            (16, high, 0.5),
+            (17, low, 0.0),
+        ];
+        for (shape, (fx, fy), share) in cases {
+            assert_eq!(slope_share(shape, fx, fy), share, "{shape} {fx} {fy}");
+        }
     }
 
     /// MarvinBlue/426048731's house 10026 at (104, 38): its tiles 103..104 x 37..38 were snow (32)

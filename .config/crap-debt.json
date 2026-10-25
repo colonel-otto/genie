@@ -191,15 +191,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/fly.rs",
-      "function": "Fly::choose",
-      "line": 197,
-      "cyclomatic": 21.0,
-      "coverage": 68.33333333333333,
-      "crap": 35.00379166666668,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/garrison.rs",
       "function": "EnterAction::update",
       "line": 2213,
@@ -242,15 +233,6 @@
       "cyclomatic": 46.0,
       "coverage": 78.46153846153847,
       "crap": 67.14266363222573,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/group/layout.rs",
-      "function": "place_box_perimeter",
-      "line": 258,
-      "cyclomatic": 24.0,
-      "coverage": 63.39285714285714,
-      "crap": 52.25660532069972,
       "crate": "genie-core"
     },
     {
@@ -362,30 +344,12 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/masters.rs",
-      "function": "Masters::work_master",
-      "line": 579,
-      "cyclomatic": 23.0,
-      "coverage": 69.84126984126983,
-      "crap": 37.51091594780182,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/move_to.rs",
       "function": "MoveToAction::update",
       "line": 511,
       "cyclomatic": 31.0,
       "coverage": 14.545454545454545,
       "crap": 630.6928805409465,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/movement.rs",
-      "function": "Mover::close_in",
-      "line": 1537,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
       "crate": "genie-core"
     },
     {
@@ -614,15 +578,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/production.rs",
-      "function": "refund_tech",
-      "line": 493,
-      "cyclomatic": 10.0,
-      "coverage": 0.0,
-      "crap": 110.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/repair.rs",
       "function": "RepairAction::step_walk",
       "line": 365,
@@ -740,15 +695,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/sprite.rs",
-      "function": "ActiveSprite::update",
-      "line": 213,
-      "cyclomatic": 26.0,
-      "coverage": 76.38888888888889,
-      "crap": 34.89807313100138,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/start_work.rs",
       "function": "Turns::farm_under",
       "line": 130,
@@ -768,29 +714,11 @@
     },
     {
       "file": "crates/engine/genie-core/src/tasks.rs",
-      "function": "applies",
-      "line": 266,
-      "cyclomatic": 28.0,
-      "coverage": 41.935483870967744,
-      "crap": 181.47883589003385,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/tasks.rs",
       "function": "find_task",
       "line": 395,
       "cyclomatic": 91.0,
       "coverage": 81.67539267015707,
       "crap": 141.9550011761125,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/terrain.rs",
-      "function": "slope_share",
-      "line": 118,
-      "cyclomatic": 24.0,
-      "coverage": 44.44444444444444,
-      "crap": 122.76543209876544,
       "crate": "genie-core"
     },
     {
@@ -1250,15 +1178,6 @@
       "cyclomatic": 53.0,
       "coverage": 74.50980392156863,
       "crap": 99.52338090176477,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/visibility.rs",
-      "function": "Visibility::extent_entry",
-      "line": 637,
-      "cyclomatic": 27.0,
-      "coverage": 76.25,
-      "crap": 36.766037109375006,
       "crate": "genie-core"
     },
     {

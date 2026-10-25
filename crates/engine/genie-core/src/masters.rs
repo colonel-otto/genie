@@ -3473,6 +3473,69 @@ mod tests {
         assert_eq!(militia.task_by_group, 2);
     }
 
+    /// The work command's choice for a gather (0x6a) on a farm (master 50, one of the objects
+    /// the work command lists): the first master of the swap group with a task for the farm's
+    /// class and a work value wins over the first with a task for any target, though later; a
+    /// task naming the farm's master is taken at once; a master whose task has the own task's
+    /// type is passed over. A unit of a master the player lacks is not modelled.
+    #[test]
+    fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
+        let farm = Master {
+            id: 50,
+            kind: 80,
+            class: 49,
+            ..Master::default()
+        };
+        let gather = |group, id, work| task(0x6a, group, id, work);
+        let with = |own: Vec<Task>, others: Vec<Master>| {
+            let mut all = vec![master(83, 1, own), farm.clone()];
+            all.extend(others);
+            Masters::new(all)
+        };
+        let pick = |m: &Masters, own: &Master| {
+            let site = TaskTarget {
+                id: 12557,
+                master: m.get(50).unwrap(),
+                player: 2,
+                state: 2,
+                held: (-1, 0.0),
+                hp: 1.0,
+                max_hp: 480.0,
+                attackable: true,
+                pasture: -1,
+                top_action: None,
+            };
+            let actor = Actor {
+                id: 9181,
+                master: own,
+                player: 2,
+                held: (-1, 0.0),
+                attribute_95: 0.0,
+                civ: 1,
+            };
+            m.work_master(&actor, &site, &site, -1, &Alone)
+                .map(|w| w.map(|(id, t)| (id, t.object_group, t.object_id)))
+        };
+        let own = |m: &Masters| m.get(83).unwrap().clone();
+        let generic = master(120, 1, vec![gather(-1, -1, 1.0)]);
+        let by_class = master(122, 1, vec![gather(49, -1, 0.5)]);
+        let m = with(vec![], vec![generic.clone(), by_class.clone()]);
+        assert_eq!(pick(&m, &own(&m)), Ok(Some((122, 49, -1))));
+        let m = with(vec![], vec![generic]);
+        assert_eq!(pick(&m, &own(&m)), Ok(Some((120, -1, -1))));
+        let idle = master(122, 1, vec![gather(49, -1, 0.0)]);
+        let m = with(vec![], vec![idle]);
+        assert_eq!(pick(&m, &own(&m)), Ok(None));
+        let named = master(120, 1, vec![gather(-1, 50, 0.0)]);
+        let m = with(vec![], vec![named, by_class.clone()]);
+        assert_eq!(pick(&m, &own(&m)), Ok(Some((120, -1, 50))));
+        let attacker = master(120, 1, vec![task(7, -1, -1, 0.0)]);
+        let m = with(vec![task(7, -1, -1, 0.0)], vec![attacker, by_class]);
+        assert_eq!(pick(&m, &own(&m)), Ok(Some((122, 49, -1))));
+        let stranger = master(999, 1, vec![]);
+        assert!(pick(&m, &stranger).is_err());
+    }
+
     #[test]
     fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_foundation() {
         let m = villagers();

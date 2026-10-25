@@ -707,6 +707,120 @@ mod tests {
         }
     }
 
+    /// Players 1 and 3 are allies both ways; player 1 counts 4 an ally, 4 does not count 1.
+    struct Teams;
+
+    impl Diplomacy for Teams {
+        fn allied(&self, from: usize, to: usize, _: bool) -> bool {
+            from == to || matches!((from, to), (1 | 3, 3 | 1) | (1, 4))
+        }
+
+        fn drops_at(&self, _: i16, _: &Actor<'_>) -> bool {
+            false
+        }
+    }
+
+    /// `FUN_1411a8620`, a task's own test on a target: a holder's task wants the target to hold
+    /// some of its resource (either of its two, or any for a task of neither); types 3 and 106
+    /// never apply, attacks (7, 9) want an attackable target; then the owner type says whose
+    /// target, and the unit itself is never its own target but for type 4.
+    #[test]
+    fn a_task_applies_by_what_the_target_holds_and_whose_it_is() {
+        let own = Master {
+            combat_level: 0,
+            ..Master::default()
+        };
+        let fighter = Master {
+            combat_level: 1,
+            ..Master::default()
+        };
+        let me = |master| Actor {
+            id: 9181,
+            player: 1,
+            ..actor(master, (-1, 0.0))
+        };
+        let of = |owner_type| Task {
+            owner_type,
+            ..Task::default()
+        };
+        let at = |player, held| TaskTarget {
+            held,
+            ..building(&own, player, 2)
+        };
+        let applies_to = |task: &Task, master, target: &TaskTarget<'_>| {
+            applies(task, &me(master), target, &Teams)
+        };
+        // the holder's test
+        let holder = |attribute_type, attribute_type3| Task {
+            holding_attr: 1,
+            attribute_type,
+            attribute_type3,
+            ..of(0)
+        };
+        for (task, held, takes) in [
+            (holder(5, -1), (-1, 3.0), false),
+            (holder(5, -1), (5, 0.0), false),
+            (holder(5, -1), (6, 3.0), false),
+            (holder(5, -1), (5, 3.0), true),
+            (holder(5, 6), (6, 3.0), true),
+            (holder(-1, -1), (9, 3.0), true),
+        ] {
+            assert_eq!(applies_to(&task, &own, &at(1, held)), takes, "{held:?}");
+        }
+        // the types that never apply, and the attacks on what cannot be attacked
+        for (action_type, attackable, takes) in [
+            (3, true, false),
+            (106, true, false),
+            (7, false, false),
+            (9, false, false),
+            (9, true, true),
+        ] {
+            let task = Task {
+                action_type,
+                ..of(0)
+            };
+            let target = TaskTarget {
+                attackable,
+                ..at(1, (-1, 0.0))
+            };
+            assert_eq!(applies_to(&task, &own, &target), takes, "{action_type}");
+        }
+        // the owner types, by the target's player
+        for (owner_type, player, master, takes) in [
+            (1, 1, &own, true),
+            (1, 2, &own, false),
+            (2, 2, &own, true),
+            (2, 0, &own, false),
+            (2, 3, &own, false),
+            (2, 1, &own, false),
+            (3, 0, &own, true),
+            (3, 2, &own, false),
+            (4, 0, &own, true),
+            (4, 3, &own, true),
+            (4, 4, &own, false),
+            (4, 2, &own, false),
+            (5, 1, &own, false),
+            (5, 3, &own, false),
+            (5, 2, &own, true),
+            (5, 0, &own, false),
+            (5, 0, &fighter, true),
+            (6, 2, &own, true),
+            (6, 1, &own, false),
+            (0, 1, &own, true),
+        ] {
+            let target = at(player, (-1, 0.0));
+            let got = applies_to(&of(owner_type), master, &target);
+            assert_eq!(got, takes, "type {owner_type} on player {player}");
+        }
+        // the unit itself: only type 4 takes it
+        let itself = TaskTarget {
+            id: 9181,
+            ..at(1, (-1, 0.0))
+        };
+        assert!(applies_to(&of(4), &own, &itself));
+        assert!(!applies_to(&of(1), &own, &itself));
+    }
+
     fn find<'m>(
         list: &'m Master,
         held: (i16, f32),

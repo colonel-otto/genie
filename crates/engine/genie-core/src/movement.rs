@@ -4880,6 +4880,33 @@ pub(crate) mod tests {
         s
     }
 
+    /// `FUN_14114cc60` from where the unit last moved (`+0x824`) to `p` (x, height, y): a clear
+    /// line closes in; a point off the map, a line through terrain the unit's mask lacks, or one
+    /// through another unit (9175 at (30, 89)) does not, but for the target, which the query
+    /// ignores.
+    #[test]
+    fn a_unit_closes_in_along_a_clear_straight_line() {
+        let m = builder_9177();
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let open = tiled_world(vec![4; 120 * 120]);
+        assert_eq!(m.close_in(&me, [28.0, 0.0, 87.0], -1, &open), Ok(true));
+        assert_eq!(m.close_in(&me, [32.0, 0.0, 89.0], -1, &open), Ok(false));
+        assert_eq!(m.close_in(&me, [32.0, 0.0, 89.0], 9175, &open), Ok(true));
+        assert_eq!(m.close_in(&me, [-1.0, 0.0, 89.0], -1, &open), Ok(false));
+        assert_eq!(m.close_in(&me, [28.0, 0.0, 200.0], -1, &open), Ok(false));
+        let mut classes = vec![4; 120 * 120];
+        for x in 26..31 {
+            classes[88 * 120 + x] = 1;
+        }
+        let walled = tiled_world(classes);
+        assert_eq!(m.close_in(&me, [28.0, 0.0, 87.0], -1, &walled), Ok(false));
+    }
+
     /// A unit's walk for the actions' tests: MarvinBlue/426048731's builder 9177 on its first
     /// path toward house 10028 ([`builder_9177`]), its `MoveTo`'s point the house's, on open
     /// tiles ([`tiled_world`]) with the pather's mesh, a fresh Object stream and no unit groups.
