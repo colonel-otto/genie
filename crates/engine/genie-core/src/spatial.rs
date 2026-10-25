@@ -476,6 +476,11 @@ pub struct Spatial {
     /// word), as (y, x): [`Spatial::put_tile_records`] puts them, and they stay for every query
     /// until [`Spatial::clear_tile_records`] removes them all.
     tile_records: std::cell::RefCell<std::collections::BTreeSet<(i32, i32)>>,
+    /// The obstruction manager's buffer (`+0x57` set, `+0x58` the radius its queries grow the
+    /// records by) as the last `FUN_1410562d0` left it, None when not set: the routines that
+    /// set it reset it at their end but `FindShortPath`'s quick-only exit, and the queries that
+    /// set none read what is left ([`Spatial::manager_grow`]).
+    manager_buffer: std::cell::Cell<Option<f32>>,
     objects: BTreeMap<i32, Placed>,
     /// The objects inside others (`+0x2f0`): off the tiles' lists and the obstruction manager,
     /// without a record, at their container's x and y; a lookup by id still finds them.
@@ -568,6 +573,7 @@ impl Spatial {
             map,
             manager_ignore: std::cell::RefCell::new(Vec::new()),
             tile_records: std::cell::RefCell::default(),
+            manager_buffer: std::cell::Cell::new(None),
             objects: BTreeMap::new(),
             inside: BTreeMap::new(),
             tiles,
@@ -1293,6 +1299,28 @@ impl Spatial {
         self.manager_ignore.borrow().clone()
     }
 
+    /// `FUN_1410562d0` on the obstruction manager: its buffer becomes `buffer` (None: not set),
+    /// until the next call.
+    pub fn set_manager_buffer(&self, buffer: Option<f32>) {
+        self.manager_buffer.set(buffer);
+    }
+
+    /// The obstruction manager's buffer as the last `FUN_1410562d0` left it
+    /// ([`Spatial::set_manager_buffer`]).
+    #[must_use]
+    pub const fn manager_buffer(&self) -> Option<f32> {
+        self.manager_buffer.get()
+    }
+
+    /// What the queries that set no buffer grow the records by: the buffer the last
+    /// `FUN_1410562d0` left, 0 when not set (the `MoveTo`'s target check `FUN_140aa2a70`, the
+    /// motion step's waypoint query, the formation's lines `FUN_14103a1f0`, the group's clear
+    /// spot `FUN_141007630`).
+    #[must_use]
+    pub fn manager_grow(&self) -> f32 {
+        self.manager_buffer.get().unwrap_or(0.0)
+    }
+
     /// The walk's obstruction query (`FUN_14114cc60` -> `FUN_141051900` with flags `0x90`, each
     /// cell's records by `FUN_141051e00`): the records of a tested kind (kind 10 filed as 2),
     /// except the `ignore`d objects', in the cells the query visits ([`Spatial::visits`], `rect`
@@ -1317,6 +1345,8 @@ impl Spatial {
         ignore: &[i32],
     ) -> Result<Vec<i32>, GenieError> {
         self.set_manager_ignore(ignore);
+        // its callers reset the buffer after the query (FUN_1410562d0 with 0)
+        self.set_manager_buffer(None);
         let [w, h] = self.map;
         let walk = [from[0], from[1], to[0], to[1]];
         let query = [
@@ -1383,13 +1413,41 @@ impl Spatial {
         Ok(hits)
     }
 
-    /// `FUN_1411570c0`'s query (`FUN_141051900` with flags 0x10, any player; the caller holds the
-    /// ends inside the map): the records the line `from` -> `to` meets, each box grown by `grow`
-    /// (the manager's buffer, `FUN_1410562d0`), but the `ignore`d objects' (`FUN_1410562e0`), at
-    /// most 25 (the query stops there). First the map edge's records when the grown rectangle
-    /// leaves the map ([`Spatial::edge_records`]); with `mask` the temporary records
-    /// (`FUN_141052b90`, kind 3, the tile's box; `FUN_1410561f0` removes them after) of the tiles
-    /// of the grown rectangle whose terrain class the mask lacks (`mask & 0x7f | 0x80`), in the
+    /// `FUN_1411570c0` (the caller holds the ends inside the map): the manager's ignore list
+    /// becomes `ignore` (`FUN_1410562e0`), with `mask` the temporary records of the tiles of the
+    /// line's box grown by `grow` that the mask lacks go in ([`Spatial::put_tile_records`]), the
+    /// records the line meets ([`Spatial::line_hits`]), then the buffer the routine set is reset
+    /// (`FUN_1410562d0` with 0) and, with `mask`, the tile records go (`FUN_1410561f0`).
+    ///
+    /// # Errors
+    ///
+    /// As [`Spatial::line_hits`] (the records go all the same).
+    pub fn line_query(
+        &self,
+        from: [f32; 2],
+        to: [f32; 2],
+        grow: f32,
+        mask: Option<u8>,
+        ignore: &[i32],
+    ) -> Result<Vec<i32>, GenieError> {
+        self.set_manager_ignore(ignore);
+        if let Some(mask) = mask {
+            self.put_tile_records(from, to, grow, mask);
+        }
+        let hits = self.line_hits(from, to, grow, true, ignore);
+        self.set_manager_buffer(None);
+        if mask.is_some() {
+            self.clear_tile_records();
+        }
+        hits
+    }
+
+    /// `FUN_1411570c0`'s query (`FUN_141051900` with flags 0x10, any player): the records the
+    /// line `from` -> `to` meets, each box grown by `grow` (the manager's buffer,
+    /// `FUN_1410562d0`), but the `ignore`d objects' (`FUN_1410562e0`), at most 25 (the query
+    /// stops there). First the map edge's records when the grown rectangle leaves the map
+    /// ([`Spatial::edge_records`]); with `tiles` the temporary tile records still put in the
+    /// cells the query visits ([`Spatial::put_tile_records`], kind 3, the tile's box), in the
     /// tiles' row order; then the objects' records of a tested kind (kind 10 filed as 2) in the
     /// cells the query visits whose grown box meets the line's rectangle and the line
     /// (`FUN_1410512f0`; a circle's alike), in id order. Ids: an object's, a tile record's
@@ -1403,7 +1461,7 @@ impl Spatial {
         from: [f32; 2],
         to: [f32; 2],
         grow: f32,
-        mask: Option<u8>,
+        tiles: bool,
         ignore: &[i32],
     ) -> Result<Vec<i32>, GenieError> {
         const MOST_HITS: usize = 25;
@@ -1438,30 +1496,19 @@ impl Spatial {
                 && grown[1] <= rect[3]
                 && record_meets_segment(kind, bx, grow, walk)
         };
-        if let Some(mask) = mask {
-            let impassable = u64::from(mask & 0x7f | 0x80);
-            let tx1 = if (query[2] as i32) < w {
-                query[2] as i32
-            } else {
-                w - 1
-            };
-            let ty1 = if (query[3] as i32) < h {
-                query[3] as i32
-            } else {
-                h - 1
-            };
-            for y in (query[1] as i32).max(0)..=ty1 {
-                for x in (query[0] as i32).max(0)..=tx1 {
-                    let Some(word) = self.tiles.word(x, y) else {
-                        continue;
-                    };
-                    let id = tile_record_id(x, y);
-                    let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                    if word & impassable == 0 && !ignore.contains(&id) && meets(3, bx) {
-                        hits.push(id);
-                        if MOST_HITS <= hits.len() {
-                            return Ok(hits);
-                        }
+        if tiles {
+            let level = self.grid.level(0);
+            let shift = self.grid.shift(level);
+            for &(y, x) in self.tile_records.borrow().iter() {
+                let id = tile_record_id(x, y);
+                let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+                if self.visits_cell(level, x >> shift, y >> shift, query)
+                    && !ignore.contains(&id)
+                    && meets(3, bx)
+                {
+                    hits.push(id);
+                    if MOST_HITS <= hits.len() {
+                        return Ok(hits);
                     }
                 }
             }
@@ -1486,16 +1533,17 @@ impl Spatial {
         Ok(hits)
     }
 
-    /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, no grow:
-    /// the segment test `FUN_141051e00`): whether the line `from` -> `to` meets a record, the
+    /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, the
+    /// segment test `FUN_141051e00`) with the buffer `grow` the formation finds
+    /// ([`Spatial::manager_grow`]): whether the line `from` -> `to` meets a record, the
     /// `ignore`d objects' and the moving objects' (flag 0x40, [`Gait::moving`]; the game's list
     /// of moving objects still tested holds only ignored ones here) left out. The records: the
-    /// map edge's where the line's rectangle leaves the map ([`Spatial::edge_records`]), the
-    /// temporary ones `FUN_141052b90` put over `temporary`'s rectangle (`x0, y0, x1, y1`) on the
-    /// tiles whose terrain class its mask lacks (`mask & 0x7f | 0x80`, kind 3, the tile's box;
-    /// removed after the transform), and the objects' of a tested kind (kind 10 filed as 2) in
-    /// the cells the query visits; a record counts when its box meets the line's rectangle and
-    /// the line (`FUN_1410512f0`; a circle's alike).
+    /// map edge's where the line's rectangle, grown by `grow`, leaves the map
+    /// ([`Spatial::edge_records`]), the temporary tile records still put
+    /// ([`Spatial::put_tile_records`]: the formation's over its box, kind 3, the tile's box) and
+    /// the objects' of a tested kind (kind 10 filed as 2), in the cells the query visits; a
+    /// record counts when its box, grown by `grow`, meets the line's rectangle and the line
+    /// (`FUN_1410512f0`; a circle's alike).
     ///
     /// # Errors
     ///
@@ -1504,7 +1552,7 @@ impl Spatial {
         &self,
         from: [f32; 2],
         to: [f32; 2],
-        temporary: ([f32; 4], u8),
+        grow: f32,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
         let rect = [
@@ -1513,35 +1561,37 @@ impl Spatial {
             if from[0] <= to[0] { to[0] } else { from[0] },
             if from[1] <= to[1] { to[1] } else { from[1] },
         ];
+        let query = [
+            rect[0] - grow,
+            rect[1] - grow,
+            grow + rect[2],
+            grow + rect[3],
+        ];
         let [w, h] = self.map;
-        if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
-            && !self.edge_records(rect, QUERY_HITS).is_empty()
+        if (query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3])
+            && !self.edge_records(query, QUERY_HITS).is_empty()
         {
             return Ok(true);
         }
-        self.check_known_records(rect)?;
+        self.check_known_records(query)?;
         let walk = [from[0], from[1], to[0], to[1]];
         let meets = |kind: u8, bx: [f32; 4]| {
-            rect[0] <= bx[2]
-                && bx[0] <= rect[2]
-                && rect[1] <= bx[3]
-                && bx[1] <= rect[3]
-                && record_meets_segment(kind, bx, 0.0, walk)
+            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
+            rect[0] <= grown[2]
+                && grown[0] <= rect[2]
+                && rect[1] <= grown[3]
+                && grown[1] <= rect[3]
+                && record_meets_segment(kind, bx, grow, walk)
         };
-        let ([x0, y0, x1, y1], mask) = temporary;
-        let impassable = u64::from(mask & 0x7f | 0x80);
-        let tx1 = if (x1 as i32) < w { x1 as i32 } else { w - 1 };
-        let ty1 = if (y1 as i32) < h { y1 as i32 } else { h - 1 };
-        for y in (y0 as i32).max(0)..=ty1 {
-            for x in (x0 as i32).max(0)..=tx1 {
-                let Some(word) = self.tiles.word(x, y) else {
-                    continue;
-                };
-                let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                if word & impassable == 0 && meets(3, bx) {
-                    return Ok(true);
-                }
-            }
+        let level = self.grid.level(0);
+        let shift = self.grid.shift(level);
+        let tile = self.tile_records.borrow().iter().any(|&(y, x)| {
+            self.visits_cell(level, x >> shift, y >> shift, query)
+                && !ignore.contains(&tile_record_id(x, y))
+                && meets(3, [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
+        });
+        if tile {
+            return Ok(true);
         }
         Ok(self.objects.iter().any(|(&id, p)| {
             let Some(o) = p.obstruction else {
@@ -1551,7 +1601,7 @@ impl Spatial {
             TESTED_KINDS.contains(&kind)
                 && !ignore.contains(&id)
                 && !self.gaits.get(&id).is_some_and(|g| g.moving)
-                && self.visits(p, kind, rect)
+                && self.visits(p, kind, query)
                 && meets(kind, p.bounds())
         }))
     }
@@ -2617,8 +2667,10 @@ impl Spatial {
         if word & u64::from(mask ^ 0xff) != 0 {
             return Ok(false);
         }
-        // the unit alone the manager's ignore list (FUN_1410562e0 with DAT_143f49fc8)
+        // the unit alone the manager's ignore list (FUN_1410562e0 with DAT_143f49fc8); the
+        // buffer it set for the query it resets after (FUN_1410562d0 with 0)
         self.set_manager_ignore(&[me]);
+        self.set_manager_buffer(None);
         Ok(!self.point_hit(point, grow, &[me], false)?)
     }
 
@@ -2650,6 +2702,8 @@ impl Spatial {
         }
         let ignore = if ignore.is_empty() { &[me][..] } else { ignore };
         self.set_manager_ignore(ignore);
+        // the buffer it set for the query it resets after (FUN_1410562d0 with 0)
+        self.set_manager_buffer(None);
         Ok(!self.point_hit(point, grow, ignore, false)?)
     }
 
@@ -2657,7 +2711,8 @@ impl Spatial {
     /// point test `FUN_141052160`) at `point` with the manager's buffer `grow` (`+0x57`, `+0x58`)
     /// and ignore list `ignore` (`+0x2c`, `FUN_1410562e0`): whether a record holds the point
     /// within its box grown by `grow`, edges included, of the records of every kind in the cells
-    /// the query visits ([`Spatial::visits`]); with `still` (flag 0x40) an object that moves (the
+    /// the query visits ([`Spatial::visits`]), the temporary tile records still put among them
+    /// ([`Spatial::put_tile_records`]); with `still` (flag 0x40) an object that moves (the
     /// record's `+3` bit 0x10, [`Gait::moving`]) is left out. A grown point beyond the map's edge
     /// meets the edge's records ([`Spatial::edge_records`]).
     ///
@@ -2677,6 +2732,20 @@ impl Spatial {
         if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
             && !self.edge_records(rect, QUERY_HITS).is_empty()
         {
+            return Ok(true);
+        }
+        let level = self.grid.level(0);
+        let shift = self.grid.shift(level);
+        let tile = self.tile_records.borrow().iter().any(|&(ty, tx)| {
+            let [x0, y0, x1, y1] = [tx as f32, ty as f32, tx as f32 + 1.0, ty as f32 + 1.0];
+            self.visits_cell(level, tx >> shift, ty >> shift, rect)
+                && !ignore.contains(&tile_record_id(tx, ty))
+                && x <= x1 + grow
+                && x0 - grow <= x
+                && y <= grow + y1
+                && y0 - grow <= y
+        });
+        if tile {
             return Ok(true);
         }
         self.object_holds(point, grow, ignore, still)
@@ -3013,11 +3082,14 @@ impl<'a> SmoothingWalls<'a> {
 impl<E> crate::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
     fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, E> {
         self.ran = true;
+        // the pass's buffer, the unit's radius (FUN_1410562d0 with 1)
+        self.world.set_manager_buffer(Some(self.radius));
         self.world.put_tile_records(a, b, self.radius, self.mask);
         Ok(self.world.segment_meets(a, b, self.radius, self.ignore))
     }
 
     fn pass_ends(&mut self) {
+        self.world.set_manager_buffer(None);
         self.world.clear_tile_records();
     }
 }
@@ -3294,21 +3366,21 @@ mod tests {
     }
 
     /// `FormationTransform`'s line query: a standing villager on the line is hit, but not when
-    /// ignored or moving; a tile the mask lacks inside the temporary rectangle is hit, outside it
-    /// not; a line leaving the map meets the edge.
+    /// ignored or moving; a tile the mask lacks is hit once the formation put its record (its
+    /// box, [`Spatial::put_tile_records`]); a line leaving the map meets the edge; the buffer
+    /// the formation finds grows the records.
     #[test]
     fn a_still_line_meets_standing_records_and_the_temporary_tiles() {
         let mut classes = vec![1u8; 100];
         classes[2 * 10 + 7] = 2;
         let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
         s.insert(7, villager(4.0, 5.0));
-        let none = ([0.0, 0.0, 0.0, 0.0], 1);
-        let line = |s: &Spatial, ignore: &[i32], temporary| {
-            s.still_line_hit([1.0, 5.0], [8.0, 5.0], temporary, ignore)
+        let line = |s: &Spatial, ignore: &[i32]| {
+            s.still_line_hit([1.0, 5.0], [8.0, 5.0], 0.0, ignore)
                 .unwrap()
         };
-        assert!(line(&s, &[], none));
-        assert!(!line(&s, &[7], none));
+        assert!(line(&s, &[]));
+        assert!(!line(&s, &[7]));
         s.set_gait(
             7,
             Some(Gait {
@@ -3316,19 +3388,22 @@ mod tests {
                 ..Gait::default()
             }),
         );
-        assert!(!line(&s, &[], none));
-        // the class-2 tile (7, 2) only inside the temporary rectangle
-        let across = |temporary| {
-            s.still_line_hit([7.5, 1.0], [7.5, 4.0], temporary, &[])
-                .unwrap()
-        };
-        assert!(!across(none));
-        assert!(across(([6.0, 1.0, 8.0, 3.0], 1)));
-        assert!(!across(([6.0, 1.0, 8.0, 3.0], 3)));
-        assert!(
-            s.still_line_hit([1.0, 5.0], [10.5, 5.0], none, &[])
-                .unwrap()
-        );
+        assert!(!line(&s, &[]));
+        // the class-2 tile (7, 2) once its record is put, for a mask that lacks its class
+        let across = || s.still_line_hit([7.5, 1.0], [7.5, 4.0], 0.0, &[]).unwrap();
+        assert!(!across());
+        s.put_tile_records([6.0, 1.0], [8.0, 3.0], 0.0, 3);
+        assert!(!across());
+        s.put_tile_records([6.0, 1.0], [8.0, 3.0], 0.0, 1);
+        assert!(across());
+        s.clear_tile_records();
+        assert!(!across());
+        assert!(s.still_line_hit([1.0, 5.0], [10.5, 5.0], 0.0, &[]).unwrap());
+        // a line 0.3 beside the standing villager (radius 0.2): met only with a buffer of 0.2
+        let mut t = Spatial::with_tiles([10, 10], Tiles::new(10, 10, vec![1; 100]));
+        t.insert(8, villager(4.0, 5.0));
+        assert!(!t.still_line_hit([1.0, 5.3], [8.0, 5.3], 0.0, &[]).unwrap());
+        assert!(t.still_line_hit([1.0, 5.3], [8.0, 5.3], 0.2, &[]).unwrap());
     }
 
     /// `FUN_141158940`: a villager's record holds (4, 5.5) for anyone but the ignored, and an
@@ -3366,19 +3441,77 @@ mod tests {
         classes[5 * 10 + 5] = 2;
         let mut s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
         s.insert(7, villager(4.0, 5.5));
+        s.set_manager_buffer(Some(0.2));
         let hits = s
-            .line_hits([2.0, 5.5], [8.0, 5.5], 0.2, Some(1), &[])
+            .line_query([2.0, 5.5], [8.0, 5.5], 0.2, Some(1), &[])
             .unwrap();
         assert_eq!(hits, [tile_record_id(5, 5), 7]);
+        // the routine sets the ignore list, resets the buffer and removes its records
+        assert_eq!(s.manager_ignore(), Vec::<i32>::new());
+        assert_eq!(s.manager_buffer(), None);
+        assert_eq!(s.tile_records(), Vec::<[i32; 2]>::new());
         let none = s
-            .line_hits([2.0, 5.5], [8.0, 5.5], 0.2, None, &[7])
+            .line_query([2.0, 5.5], [8.0, 5.5], 0.2, None, &[7])
             .unwrap();
         assert_eq!(none, Vec::<i32>::new());
+        assert_eq!(s.manager_ignore(), [7]);
+        // a record still put counts without the routine's own; the pather's test leaves them out
+        s.put_tile_records([5.5, 5.5], [5.5, 5.5], 0.0, 1);
+        let kept = s
+            .line_query([2.0, 5.5], [8.0, 5.5], 0.2, None, &[7])
+            .unwrap();
+        assert_eq!(kept, [tile_record_id(5, 5)]);
+        let movers = s
+            .line_hits([2.0, 5.5], [8.0, 5.5], 0.2, false, &[7])
+            .unwrap();
+        assert_eq!(movers, Vec::<i32>::new());
+        s.clear_tile_records();
         let edge = s
-            .line_hits([0.1, 5.5], [3.0, 5.5], 0.2, None, &[7])
+            .line_query([0.1, 5.5], [3.0, 5.5], 0.2, None, &[7])
             .unwrap();
         assert_eq!(edge.len(), 1);
         assert_eq!(edge[0] as u32 & 0xff00_0000, 0xff00_0000);
+    }
+
+    /// `FUN_1410562d0`'s buffer stays with the obstruction manager until the next call: the
+    /// stand tests and the walk's query set one and reset it after; a point query counts the
+    /// temporary tile records still put (the group's clear spot leaves one, `FUN_141007630`).
+    #[test]
+    fn the_manager_keeps_its_buffer_and_point_queries_meet_tile_records() {
+        let mut classes = vec![1u8; 100];
+        classes[5 * 10 + 4] = 2;
+        let s = Spatial::with_tiles([10, 10], Tiles::new(10, 10, classes));
+        assert_eq!((s.manager_buffer(), s.manager_grow()), (None, 0.0));
+        s.set_manager_buffer(Some(0.1));
+        assert_eq!(s.manager_grow(), 0.1);
+        assert!(s.point_clear(1, [6.5, 6.5], 0.2, 1).unwrap());
+        assert_eq!(s.manager_buffer(), None);
+        s.set_manager_buffer(Some(0.1));
+        let _ = s
+            .walk_hits(
+                [2.0, 2.0],
+                [3.0, 2.0],
+                [2.0, 2.0, 3.0, 2.0],
+                0.2,
+                1.0,
+                None,
+                &[],
+            )
+            .unwrap();
+        assert_eq!(s.manager_buffer(), None);
+        // a point query near tile (4, 5) meets its record once it is put, within the grow
+        assert!(!s.point_hit([3.95, 5.5], 0.1, &[], true).unwrap());
+        s.put_tile_records([4.5, 5.5], [4.5, 5.5], 0.0, 1);
+        assert!(s.point_hit([3.95, 5.5], 0.1, &[], true).unwrap());
+        assert!(!s.point_hit([3.85, 5.5], 0.1, &[], true).unwrap());
+        assert!(
+            !s.point_hit([3.95, 5.5], 0.1, &[tile_record_id(4, 5)], true)
+                .unwrap()
+        );
+        // a stand test counts it too
+        assert!(!s.point_clear_among(1, [3.95, 5.5], 0.1, 1, &[]).unwrap());
+        s.clear_tile_records();
+        assert!(s.point_clear_among(1, [3.95, 5.5], 0.1, 1, &[]).unwrap());
     }
 
     /// The walk's query beyond the map's edge meets the edge's record first (`FUN_141057290`),

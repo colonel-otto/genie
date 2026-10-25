@@ -241,8 +241,8 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Genie
 /// target ([`Mover::follow_path_end`], its point the target's place) when the unit walks to that
 /// end ([`Mover::walks_to_path_end`]) and the straight line from the unit to the target is clear
 /// (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`, [`Spatial::segment_blocked`]: the
-/// obstruction manager's buffer radius, which its setters clear, none, and its ignore list as the
-/// last `FUN_1410562e0` left it, [`Spatial::manager_ignore`]), and walks on;
+/// obstruction manager's buffer and ignore list as the last `FUN_1410562d0` and `FUN_1410562e0`
+/// left them, [`Spatial::manager_grow`], [`Spatial::manager_ignore`]), and walks on;
 /// else it tells the unit (notify 0x1fc), turns to state 3 and the motion step runs on. True when
 /// the `MoveTo` turns to state 3.
 pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow, GenieError> {
@@ -272,16 +272,17 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
             .get(walk.me.id)
             .map_or(walk.me.position, |p| p.position);
         let (a, b) = ([me[0], me[1]], [t.position[0], t.position[1]]);
+        let grow = walk.world.manager_grow();
         walk.world.check_known_records([
-            a[0].min(b[0]),
-            a[1].min(b[1]),
-            a[0].max(b[0]),
-            a[1].max(b[1]),
+            a[0].min(b[0]) - grow,
+            a[1].min(b[1]) - grow,
+            a[0].max(b[0]) + grow,
+            a[1].max(b[1]) + grow,
         ])?;
         let ignore = walk.world.manager_ignore();
         if !walk
             .world
-            .segment_blocked(a, b, 0.0, mover.stats.restriction_mask, &ignore)
+            .segment_blocked(a, b, grow, mover.stats.restriction_mask, &ignore)
         {
             return Ok(Follow::PathEnd(t.position));
         }

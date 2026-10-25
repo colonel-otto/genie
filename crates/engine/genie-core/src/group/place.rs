@@ -123,8 +123,11 @@ impl Turns {
     /// `FUN_141007630`: the first point of a spiral from `centroid` that no obstruction record
     /// holds. The obstruction manager's queries take the terrain mask of the first member's
     /// master's restriction (`+0x606`, `FUN_141054630`) and ignore the members (`FUN_1410562e0`,
-    /// left set after); each point, kept on the map ([`on_map`]), is a point query that leaves out
-    /// the objects that move (flags 0x60, [`crate::spatial::Spatial::point_hit`]). From the
+    /// left set after). The centroid's tile, when the mask lacks it, takes a temporary record
+    /// (`FUN_141052b90` with the buffer the last `FUN_1410562d0` left), which the routine never
+    /// removes (no `FUN_1410561f0`): it stays for the queries after. Each point, kept on the map
+    /// ([`on_map`]), is a point query with that buffer that leaves out the objects that move
+    /// (flags 0x60, [`crate::spatial::Spatial::point_hit`]). From the
     /// centroid the spiral steps by [`SPIRAL`]'s directions in turn, a turn after each step that
     /// its count (from 1) divides by the leg's length, which grows on the turns to y; after
     /// [`SPIRAL_POINTS`] points, or for a group without members, the centroid. The point keeps the
@@ -133,9 +136,8 @@ impl Turns {
     /// # Errors
     ///
     /// A first member the world does not hold (the game reads a null object) or of no terrain
-    /// restriction, a map without its terrain, a centroid whose tile the first member's terrain
-    /// lacks (`FUN_141052b90` puts a temporary record there that the routine never removes,
-    /// `FUN_1410561f0`), and a point query near a record whose place the slice does not know.
+    /// restriction, a map without its terrain, and a point query near a record whose place the
+    /// slice does not know.
     ///
     /// # Panics
     ///
@@ -150,15 +152,11 @@ impl Turns {
             "a group's clear spot without its first member (a null object)",
         ))?;
         let mask = self.master_mask(p, u.life.master_id)?;
-        if self
-            .spatial
-            .makes_tile_record([centroid[0], centroid[2]], mask)
-        {
-            return Err(GenieError::unsupported(
-                "a group's clear spot on a tile its first member's terrain lacks (the tile record \
-                 FUN_141007630 leaves)",
-            ));
-        }
+        // the centroid's temporary tile records, with the buffer the last FUN_1410562d0 left,
+        // which no one removes here: they stay for the queries after (FUN_141052b90)
+        let grow = self.spatial.manager_grow();
+        let at = [centroid[0], centroid[2]];
+        self.spatial.put_tile_records(at, at, grow, mask);
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
         // the manager's ignore list (FUN_1410562e0 with the group's +0xf0, +0xe4)
         self.spatial.set_manager_ignore(&members);
@@ -167,7 +165,7 @@ impl Turns {
             let at = on_map([spiral.at[0], centroid[1], spiral.at[1]], self.spatial.map);
             if !self
                 .spatial
-                .point_hit([at[0], at[2]], 0.0, &members, true)?
+                .point_hit([at[0], at[2]], grow, &members, true)?
             {
                 return Ok(at);
             }

@@ -1043,7 +1043,7 @@ impl<'w> HullPather<'w> {
         let grow = self.buffer.unwrap_or(0.0);
         let mut skip = self.ignore.clone();
         loop {
-            let hits = self.world.line_hits(a, b, grow, None, &skip)?;
+            let hits = self.world.line_hits(a, b, grow, false, &skip)?;
             let full = LINE_HITS <= hits.len();
             for id in hits {
                 if movers.contains(&id) && !met.contains(&id) {
@@ -1989,14 +1989,16 @@ impl<'w> HullPather<'w> {
             self.find_unclear(from, to, target_id, range, keep, quick_only)?;
         if clears {
             self.world.clear_tile_records();
+            self.world.set_manager_buffer(None);
         }
         Ok((result, path))
     }
 
     /// [`HullPather::find_with`]'s search, and whether its exit removes the manager's temporary
-    /// tile records (`FUN_1410561f0`): every exit after the quick path's start does but the
-    /// quick-only one (its caller, `FUN_1411506e0`, removes them); the off-map and already-there
-    /// exits come before the start removed them.
+    /// tile records (`FUN_1410561f0`) and resets its buffer (`FUN_1410562d0` with 0): every exit
+    /// after the quick path's start does but the quick-only one (its caller, `FUN_1411506e0`,
+    /// removes the records and leaves the buffer); the off-map and already-there exits come
+    /// before the start set the buffer.
     #[allow(clippy::too_many_lines)]
     fn find_unclear(
         &mut self,
@@ -2053,8 +2055,10 @@ impl<'w> HullPather<'w> {
             return Ok((0, path, false));
         }
         self.buffer = (0.0 < r).then_some(r * HALF);
-        // the manager's temporary tile records go (FUN_1410561f0), and the pather's ignore list
-        // becomes the manager's (FUN_1410562e0 with +0xc0..+0xd0)
+        // the pather's buffer becomes the manager's (FUN_1410562d0), its temporary tile records
+        // go (FUN_1410561f0), and the pather's ignore list becomes the manager's
+        // (FUN_1410562e0 with +0xc0..+0xd0)
+        self.world.set_manager_buffer(self.buffer);
         self.world.clear_tile_records();
         self.world.set_manager_ignore(&self.ignore);
         // the quick path, to the goal moved by the range or short of the target

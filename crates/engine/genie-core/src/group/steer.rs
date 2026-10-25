@@ -222,9 +222,8 @@ impl Turns {
         let own = [u.id];
         let ignore = if ignore.is_empty() { &own[..] } else { ignore };
         // FUN_1411570c0 sets the manager's ignore list to it (FUN_1410562e0)
-        self.spatial.set_manager_ignore(ignore);
         let map = self.spatial.map;
-        let hits = self.spatial.line_hits(
+        let hits = self.spatial.line_query(
             hold(from, map),
             hold(to, map),
             grow * mover.stats.radius[0],

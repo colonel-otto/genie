@@ -1465,7 +1465,11 @@ impl Turns {
             s.transform_position[0] = position[0];
             s.transform_position[2] = position[2];
         }
-        let temporary = ([min_x, min_z, max_x, max_z], mask);
+        // the box's temporary tile records (FUN_141052b90 at 0x14103b8fa) with the buffer the
+        // last FUN_1410562d0 left, which the lines grow by too
+        let grow = self.spatial.manager_grow();
+        self.spatial
+            .put_tile_records([min_x, min_z], [max_x, max_z], grow, mask);
         let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
         // the members are the manager's ignore list while the passability runs
         // (FUN_1410562e0, 0x14103b916), which every way out of it clears (0x14103ce93,
@@ -1481,7 +1485,7 @@ impl Turns {
             if self.spatial.still_line_hit(
                 [position[0], position[2]],
                 [p[0], p[2]],
-                temporary,
+                grow,
                 &members,
             )? {
                 unreachable.push(j);
@@ -1500,6 +1504,8 @@ impl Turns {
         let w = cvttss2si((max_x - min_x) + PASS_MARGIN + PASS_ONE);
         let h = cvttss2si((max_z - min_z) + PASS_MARGIN + PASS_ONE);
         if PASS_CELLS < w || PASS_CELLS < h {
+            // the records go (FUN_1410561f0 at 0x14103cf9f)
+            self.spatial.clear_tile_records();
             return Ok(());
         }
         let ox = cvttss2si(min_x - PASS_HALF_MARGIN);
@@ -1595,7 +1601,7 @@ impl Turns {
                     && !self.spatial.still_line_hit(
                         [unit_at[0], unit_at[1]],
                         [(ddx + fx) as f32 + PASS_HALF, (fy + ddy) as f32 + PASS_HALF],
-                        temporary,
+                        grow,
                         &members,
                     )?
                 {
@@ -1614,6 +1620,8 @@ impl Turns {
                 s.transform_position[2] = y as f32 + PASS_HALF;
             }
         }
+        // the records go (FUN_1410561f0 at 0x14103ce9f)
+        self.spatial.clear_tile_records();
         Ok(())
     }
 }

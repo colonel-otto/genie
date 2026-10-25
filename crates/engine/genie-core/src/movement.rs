@@ -1257,14 +1257,13 @@ impl Mover {
         if level.level != 0 && next < level.points.len() as i32 {
             let d = fmath::sub(vector(me.position), level.points[next as usize]);
             if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
-                // the manager's point query at the waypoint (FUN_141051900 with flags 0x20, no
-                // grow: its setters clear their buffers): its ignore list as the last
-                // FUN_1410562e0 left it; a gate the owner may pass has no record during its
-                // owner's update ([`crate::turn::Turns::open_gates`]), so slot 0x678 passes
-                // none of those found
+                // the manager's point query at the waypoint (FUN_141051900 with flags 0x20): its
+                // buffer and ignore list as the last FUN_1410562d0 and FUN_1410562e0 left them;
+                // a gate the owner may pass has no record during its owner's update
+                // ([`crate::turn::Turns::open_gates`]), so slot 0x678 passes none of those found
                 let [x, _, y] = level.points[level.waypoint as usize];
                 let ignore = world.manager_ignore();
-                if world.object_holds([x, y], 0.0, &ignore, false)? {
+                if world.object_holds([x, y], world.manager_grow(), &ignore, false)? {
                     let level = &mut self.paths[0];
                     let removed = remove_point(&mut level.points, level.waypoint);
                     debug_assert!(removed, "the waypoint lies within the path");
@@ -1404,7 +1403,10 @@ impl Mover {
             from[0].max(to[0]) + grow,
             from[1].max(to[1]) + grow,
         ])?;
-        Ok(!world.segment_blocked(from, to, grow, self.stats.restriction_mask, &ignore))
+        let blocked = world.segment_blocked(from, to, grow, self.stats.restriction_mask, &ignore);
+        // FUN_14114cc60 resets the buffer it set for the query (FUN_1410562d0 with 0)
+        world.set_manager_buffer(None);
+        Ok(!blocked)
     }
 
     /// `FUN_141142750` with its last argument 0, the close-in path to a waypoint or target nearer
@@ -1431,6 +1433,8 @@ impl Mover {
         ];
         world.check_known_records([rect[0] - rx, rect[1] - rx, rect[2] + rx, rect[3] + rx])?;
         if world.tiles_block(from, to, rx, self.stats.restriction_mask) {
+            // FUN_14114cc60 resets the buffer it set for the query (FUN_1410562d0 with 0)
+            world.set_manager_buffer(None);
             return Ok(false);
         }
         let player = world.get(me.id).map(|q| q.player);
