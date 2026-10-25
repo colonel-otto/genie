@@ -827,6 +827,55 @@ impl Turns {
         Ok(made)
     }
 
+    /// [`Turns::make_building`]'s combat setup (`FUN_14121df60`): its class counters
+    /// (`FUN_141226060`), its powerup offset (`+0xa54`, the Object stream's "setup" draw) and,
+    /// for a building with a train location (an entry of `+0x898` other than −1), its paid cost
+    /// in attribute 247 (slot 0xf8).
+    fn building_combat_setup(&mut self, player: usize, master: i16) -> Result<(), GenieError> {
+        if let Some(m) = self.masters.get(player).and_then(|m| m.get(master)) {
+            count_class(&mut self.players[player].attributes, m, 1.0);
+        }
+        let _ = self.streams.get(Stream::Object).rand15();
+        if let Some(m) = self
+            .masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .filter(|m| m.kind == BUILDING_KIND && m.trained_at.iter().any(|&t| t != -1))
+        {
+            let paid: i32 = m
+                .cost
+                .iter()
+                .filter(|&&(resource, _, paid)| 0 <= resource && paid)
+                .map(|&(_, amount, _)| i32::from(amount))
+                .sum();
+            self.players[player].add_attribute(BUILDING_COST, paid as f32)?;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::make_building`]'s static init (`FUN_1411a45a0`): the storage entries of flags 1, 2
+    /// and 32 go to the owner (`FUN_141193860`); returns the last entry of flag 0, which the
+    /// building holds (`FUN_141193710`; none: −1 and 0).
+    fn building_storage(&mut self, player: usize, master: i16) -> Result<(i16, f32), GenieError> {
+        let storage = self
+            .masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .map(|m| m.storage.clone())
+            .unwrap_or_default();
+        let mut held = (-1, 0.0);
+        let owner = &mut self.players[player];
+        for &(kind, amount, flag) in &storage {
+            if flag == 0 && kind != -1 {
+                held = (kind, amount);
+            }
+            if 0 <= kind && matches!(flag, 1 | 2 | 32) {
+                owner.add_attribute(kind, amount)?;
+            }
+        }
+        Ok(held)
+    }
+
     /// A new building (the master's slot 0x40 or 0x108, `FUN_1411ac5c0` / `FUN_1411aca00` with
     /// their init: the static, animated, moving and combat setups, then the constructor
     /// `FUN_1411de5f0`) of `master` for `player` at `position`, the ground's height: its id
@@ -900,41 +949,8 @@ impl Turns {
             let (s, _, angle) = self.setup_draws(g);
             (Some(s), angle)
         });
-        // the combat setup (FUN_14121df60): its class counters (FUN_141226060), its powerup
-        // offset (`+0xa54`, the "setup" draw) and, for a building with a train location (an
-        // entry of `+0x898` other than -1), its paid cost in attribute 247 (slot 0xf8)
-        if let Some(m) = self.masters.get(player).and_then(|m| m.get(master)) {
-            count_class(&mut self.players[player].attributes, m, 1.0);
-        }
-        let _ = self.streams.get(Stream::Object).rand15();
-        if let Some(m) = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
-            .filter(|m| m.kind == BUILDING_KIND && m.trained_at.iter().any(|&t| t != -1))
-        {
-            let paid: i32 = m
-                .cost
-                .iter()
-                .filter(|&&(resource, _, paid)| 0 <= resource && paid)
-                .map(|&(_, amount, _)| i32::from(amount))
-                .sum();
-            self.players[player].add_attribute(BUILDING_COST, paid as f32)?;
-        }
-        // the static init (FUN_1411a45a0): the last storage entry of flag 0 is held
-        // (FUN_141193710), those of flags 1, 2 and 32 go to the owner (FUN_141193860)
-        let storage = self
-            .masters
-            .get(player)
-            .and_then(|m| m.get(master))
-            .map(|m| m.storage.clone())
-            .unwrap_or_default();
-        let mut held = (-1, 0.0);
-        for &(kind, amount, flag) in &storage {
-            if flag == 0 && kind != -1 {
-                held = (kind, amount);
-            }
-        }
+        self.building_combat_setup(player, master)?;
+        let held = self.building_storage(player, master)?;
         // what its death reads of the master: its dying sprite, death spawns and decay
         let death = self.masters.get(player).and_then(|m| m.get(master)).map_or(
             (None, false, -1, None),
@@ -947,12 +963,6 @@ impl Turns {
                 )
             },
         );
-        let owner = &mut self.players[player];
-        for &(kind, amount, flag) in &storage {
-            if 0 <= kind && matches!(flag, 1 | 2 | 32) {
-                owner.add_attribute(kind, amount)?;
-            }
-        }
         // the moving setup (FUN_1411580a0) of every building, a moving object though it never
         // moves (a mule cart does): the walk reads its last move time
         let mover = self

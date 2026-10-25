@@ -310,7 +310,6 @@ fn rem_pio2_large(x: &[f64], e0: i32, prec: usize) -> (i32, [f64; 3]) {
     let mut q = [0.0; 20];
     let mut fq = [0.0; 20];
     let mut iq = [0_i32; 20];
-    let mut y = [0.0; 3];
 
     // f[0..=jx + jk]: 2/π's chunks from jv − jx on, 0 before the table
     for (i, f) in f.iter_mut().enumerate().take(jx + jk + 1) {
@@ -362,20 +361,7 @@ fn rem_pio2_large(x: &[f64], e0: i32, prec: usize) -> (i32, [f64; 3]) {
         if ih > 0 {
             // the fraction above 1/2: take 1 − q
             n += 1;
-            let mut carry = false;
-            for chunk in &mut iq[..jz] {
-                if carry {
-                    *chunk = 0xff_ffff - *chunk;
-                } else if *chunk != 0 {
-                    carry = true;
-                    *chunk = 0x100_0000 - *chunk;
-                }
-            }
-            match q0 {
-                1 => iq[jz - 1] &= 0x7f_ffff,
-                2 => iq[jz - 1] &= 0x3f_ffff,
-                _ => {}
-            }
+            let carry = complement_chunks(&mut iq[..jz], q0);
             if ih == 2 {
                 z = ONE_F64 - z;
                 if carry {
@@ -442,8 +428,39 @@ fn rem_pio2_large(x: &[f64], e0: i32, prec: usize) -> (i32, [f64; 3]) {
         fq[jz - i] = fw;
     }
 
-    // fq[] into y[]
-    let sign = |v: f64| if ih == 0 { v } else { -v };
+    (n & 7, remainder_pieces(&mut fq, jz, prec, ih != 0))
+}
+
+/// [`rem_pio2_large`]'s `1 − q` once the fraction lies above 1/2: from the lowest chunk on, each
+/// 0 stays until the first other one becomes 2^24 less it, and every later one 2^24 − 1 less it;
+/// with `q0` 1 or 2 the highest chunk keeps only its bits below the quadrant's. Returns whether
+/// a chunk was other than 0 (the borrow).
+fn complement_chunks(iq: &mut [i32], q0: i32) -> bool {
+    let mut carry = false;
+    for chunk in iq.iter_mut() {
+        if carry {
+            *chunk = 0xff_ffff - *chunk;
+        } else if *chunk != 0 {
+            carry = true;
+            *chunk = 0x100_0000 - *chunk;
+        }
+    }
+    if let Some(top) = iq.last_mut() {
+        match q0 {
+            1 => *top &= 0x7f_ffff,
+            2 => *top &= 0x3f_ffff,
+            _ => {}
+        }
+    }
+    carry
+}
+
+/// [`rem_pio2_large`]'s last step, `fq[0..=jz]` into the remainder's pieces by `prec`: 0 one
+/// sum, 1 and 2 the sum and its rounding error, 3 three pieces after two compensated passes;
+/// each negated when the fraction was complemented (`negative`). The unused pieces are 0.
+fn remainder_pieces(fq: &mut [f64; 20], jz: usize, prec: usize, negative: bool) -> [f64; 3] {
+    let sign = |v: f64| if negative { -v } else { v };
+    let mut y = [0.0; 3];
     match prec {
         0 => {
             let mut fw = 0.0;
@@ -482,7 +499,7 @@ fn rem_pio2_large(x: &[f64], e0: i32, prec: usize) -> (i32, [f64; 3]) {
             y = [sign(fq[0]), sign(fq[1]), sign(fw)];
         }
     }
-    (n & 7, y)
+    y
 }
 
 /// 2/π (`DAT_142ec8968`).

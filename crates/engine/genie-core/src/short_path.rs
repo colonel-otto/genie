@@ -873,6 +873,22 @@ const fn in_box(p: Point, b: [i32; 4]) -> bool {
     b[0] <= p[0] && b[1] <= p[1] && p[0] <= b[2] && p[1] <= b[3]
 }
 
+/// `p` held in the box `b` on each axis (`[x0, y0, x1, y1]`).
+const fn clamp_to_box(p: Point, b: [i32; 4]) -> Point {
+    [
+        if b[0] <= p[0] {
+            if b[2] < p[0] { b[2] } else { p[0] }
+        } else {
+            b[0]
+        },
+        if b[1] <= p[1] {
+            if b[3] < p[1] { b[3] } else { p[1] }
+        } else {
+            b[1]
+        },
+    ]
+}
+
 /// Chebyshev distance (`max(|dx|, |dy|)`), the polygon walks' cost.
 const fn cheb(a: Point, b: Point) -> i32 {
     let dy = (a[1].wrapping_sub(b[1])).wrapping_abs();
@@ -1124,39 +1140,7 @@ impl Search<'_> {
         'segment: loop {
             let contacts = &mesh.sides[shape as usize][side as usize];
             let next_side;
-            let mut chosen = None;
-            if !contacts.is_empty() {
-                let mut best_key = 0x7fc0_0000_i32;
-                for (k, c) in contacts.iter().enumerate() {
-                    if (d >= c.half) || self.ctx.ignored(c.other) {
-                        continue;
-                    }
-                    let q = contact_point(c.at, c.side, d, c.flag);
-                    if !in_box(q, b) {
-                        continue;
-                    }
-                    let forward = side == 0 || side == 1 || (side != 2 && side != 3);
-                    let off = if side == c.side {
-                        if c.flag != 0 { d.wrapping_neg() } else { d }
-                    } else {
-                        d
-                    };
-                    let mut key = if forward {
-                        c.along.wrapping_add(off)
-                    } else {
-                        c.along.wrapping_sub(off)
-                    };
-                    key = key.wrapping_sub(u);
-                    if side.wrapping_sub(2) < 2 {
-                        key = key.wrapping_neg();
-                    }
-                    if -1 < key && key < best_key {
-                        best_key = key;
-                        chosen = Some(k);
-                    }
-                }
-            }
-            if let Some(k) = chosen {
+            if let Some(k) = self.nearest_contact(contacts, side, u) {
                 let c = contacts[k];
                 let q = contact_point(c.at, c.side, d, c.flag);
                 pos = q;
@@ -1194,18 +1178,7 @@ impl Search<'_> {
                 let out = !in_box(pos, b);
                 if out {
                     side = side.wrapping_sub(2) & 3;
-                    let clamped = [
-                        if b[0] <= pos[0] {
-                            if b[2] < pos[0] { b[2] } else { pos[0] }
-                        } else {
-                            b[0]
-                        },
-                        if b[1] <= pos[1] {
-                            if b[3] < pos[1] { b[3] } else { pos[1] }
-                        } else {
-                            b[1]
-                        },
-                    ];
+                    let clamped = clamp_to_box(pos, b);
                     if pos == first {
                         first = clamped;
                     }
@@ -1235,6 +1208,50 @@ impl Search<'_> {
                 winding = wp - 2;
             }
         }
+    }
+
+    /// [`Search::trace`]'s next contact on a side: of the side's contacts (`contacts`), those
+    /// wider than twice `d`, not ignored and whose contact point lies in the bounds, the one
+    /// nearest ahead of `u` along `side` (each one's run start moved by `d`, back for a flagged
+    /// contact on the same side; the sides 2 and 3 measure backwards); ties to the first.
+    fn nearest_contact(
+        &self,
+        contacts: &[crate::mesh::Contact],
+        side: u32,
+        u: i32,
+    ) -> Option<usize> {
+        let d = self.ctx.d;
+        let mut chosen = None;
+        let mut best_key = 0x7fc0_0000_i32;
+        for (k, c) in contacts.iter().enumerate() {
+            if (d >= c.half) || self.ctx.ignored(c.other) {
+                continue;
+            }
+            let q = contact_point(c.at, c.side, d, c.flag);
+            if !in_box(q, self.bounds) {
+                continue;
+            }
+            let forward = side == 0 || side == 1 || (side != 2 && side != 3);
+            let off = if side == c.side {
+                if c.flag != 0 { d.wrapping_neg() } else { d }
+            } else {
+                d
+            };
+            let mut key = if forward {
+                c.along.wrapping_add(off)
+            } else {
+                c.along.wrapping_sub(off)
+            };
+            key = key.wrapping_sub(u);
+            if side.wrapping_sub(2) < 2 {
+                key = key.wrapping_neg();
+            }
+            if -1 < key && key < best_key {
+                best_key = key;
+                chosen = Some(k);
+            }
+        }
+        chosen
     }
 
     /// `FUN_140fa77b0`: the polygon's edge that holds `p` going along `side` (the start of the

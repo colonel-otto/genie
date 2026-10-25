@@ -2014,28 +2014,14 @@ pub(crate) fn footprint_clearing(
     site: &ClearingSite,
     look: &dyn Fn(i32) -> Option<ClearLook>,
 ) -> Result<Vec<Cleared>, GenieError> {
-    use crate::checkpoint::cvttss2si;
     use crate::fmath::below_or_unordered;
     let [rx, ry] = site.radius;
     if !below_or_unordered(0.0, rx) && !below_or_unordered(0.0, ry) {
         return Ok(Vec::new());
     }
-    let [w, h] = world.map;
-    let range = |v: f32, size: i32| {
-        let low = cvttss2si(v - CLEARING_REACH) as i16;
-        let high = cvttss2si(v + CLEARING_REACH) as i16;
-        let high = if size <= i32::from(high) {
-            (size - 1) as i16
-        } else {
-            high
-        };
-        (low.max(0), high)
-    };
-    let (x0, x1) = range(site.at[0], w);
-    let (y0, y1) = range(site.at[1], h);
-    if x1 < x0 || y1 < y0 {
+    let Some(([x0, x1], [y0, y1])) = clearing_tiles(site.at, world.map) else {
         return Ok(Vec::new());
-    }
+    };
     // a stopped player's units may have felled a tree there since they froze: the builder's
     // choice, which reads the trees' hit points, wants the tiles known; the constructor's reads
     // only masters and owners, which they do not change
@@ -2047,55 +2033,93 @@ pub(crate) fn footprint_clearing(
             f32::from(y1) + 1.0,
         ])?;
     }
-    let under_gate = matches!(site.class, GATE | CLASS_52);
     let mut cleared = Vec::new();
     for y in y0..=y1 {
         for x in x0..=x1 {
             for (id, o) in world.objects_on(i32::from(x), i32::from(y)) {
-                if o.master == site.master {
-                    continue;
+                if let Some(c) = clearing_takes(site, id, o, look)? {
+                    cleared.push(c);
                 }
-                let own_wall = o.player == site.player && under_gate && o.class == WALL;
-                let tree = site.trees && o.class == TREE;
-                if o.buildable_on == 0 && !own_wall && !tree {
-                    continue;
-                }
-                let seen = look(id).ok_or(GenieError::unsupported(
-                    "a footprint clearing of an object the slice does not hold",
-                ))?;
-                // the tree's test: COMISS 1.0 against its hit points, JC passes it over (a NaN
-                // too)
-                if o.buildable_on == 0 && !own_wall && below_or_unordered(STUMP_HP, seen.hp) {
-                    continue;
-                }
-                let dx = (o.position[0] - site.at[0]).abs();
-                let dy = (o.position[1] - site.at[1]).abs();
-                if !(dx < o.radius[0] + rx && dy < o.radius[1] + ry) {
-                    continue;
-                }
-                // COMISS 0 against the height, JNC: a flag master of height 0 or less stays
-                if FLAG_MASTERS.contains(&o.master) && !below_or_unordered(0.0, seen.height) {
-                    continue;
-                }
-                // the destroy's death part (FUN_14121cc40 below state 3) drops the record and sets
-                // +0x686 first; then FUN_141189670: COMISS 0 against the height, JC drops the
-                // record (a NaN too), else the record held (`+0x658`) does
-                let dies = 70 <= seen.kind && seen.state < 3 && !seen.roo_called;
-                let destroy_drops =
-                    dies && (seen.kind < 80 || (!seen.desolid && 0.0 < seen.height));
-                let roo_drops = site.trees
-                    && !seen.roo_called
-                    && !dies
-                    && (below_or_unordered(0.0, seen.height) || o.obstruction.is_some());
-                cleared.push(Cleared {
-                    id,
-                    wall: o.class == WALL,
-                    record_goes: destroy_drops || roo_drops,
-                });
             }
         }
     }
     Ok(cleared)
+}
+
+/// [`footprint_clearing`]'s tiles: from 4 before the place to 4 past it on each axis
+/// (CVTTSS2SI to 16 bits), held on the map; none when a range is empty.
+fn clearing_tiles(at: [f32; 2], [w, h]: [i32; 2]) -> Option<([i16; 2], [i16; 2])> {
+    use crate::checkpoint::cvttss2si;
+    let range = |v: f32, size: i32| {
+        let low = cvttss2si(v - CLEARING_REACH) as i16;
+        let high = cvttss2si(v + CLEARING_REACH) as i16;
+        let high = if size <= i32::from(high) {
+            (size - 1) as i16
+        } else {
+            high
+        };
+        (low.max(0), high)
+    };
+    let (x0, x1) = range(at[0], w);
+    let (y0, y1) = range(at[1], h);
+    (x0 <= x1 && y0 <= y1).then_some(([x0, x1], [y0, y1]))
+}
+
+/// [`footprint_clearing`]'s test of one object `id` on its tiles: of another master than the
+/// building's, that may be built on, or the owner's wall under a gate or class 52, or a tree of
+/// at most 1 hit point when the clearing takes trees; its box meeting the building's; not a
+/// flag master of height 0 or less. Then what goes of it ([`Cleared`]).
+///
+/// # Errors
+///
+/// An object the caller does not hold (`look` gives none).
+fn clearing_takes(
+    site: &ClearingSite,
+    id: i32,
+    o: &crate::spatial::Placed,
+    look: &dyn Fn(i32) -> Option<ClearLook>,
+) -> Result<Option<Cleared>, GenieError> {
+    use crate::fmath::below_or_unordered;
+    if o.master == site.master {
+        return Ok(None);
+    }
+    let under_gate = matches!(site.class, GATE | CLASS_52);
+    let own_wall = o.player == site.player && under_gate && o.class == WALL;
+    let tree = site.trees && o.class == TREE;
+    if o.buildable_on == 0 && !own_wall && !tree {
+        return Ok(None);
+    }
+    let seen = look(id).ok_or(GenieError::unsupported(
+        "a footprint clearing of an object the slice does not hold",
+    ))?;
+    // the tree's test: COMISS 1.0 against its hit points, JC passes it over (a NaN too)
+    if o.buildable_on == 0 && !own_wall && below_or_unordered(STUMP_HP, seen.hp) {
+        return Ok(None);
+    }
+    let [rx, ry] = site.radius;
+    let dx = (o.position[0] - site.at[0]).abs();
+    let dy = (o.position[1] - site.at[1]).abs();
+    if !(dx < o.radius[0] + rx && dy < o.radius[1] + ry) {
+        return Ok(None);
+    }
+    // COMISS 0 against the height, JNC: a flag master of height 0 or less stays
+    if FLAG_MASTERS.contains(&o.master) && !below_or_unordered(0.0, seen.height) {
+        return Ok(None);
+    }
+    // the destroy's death part (FUN_14121cc40 below state 3) drops the record and sets +0x686
+    // first; then FUN_141189670: COMISS 0 against the height, JC drops the record (a NaN too),
+    // else the record held (`+0x658`) does
+    let dies = 70 <= seen.kind && seen.state < 3 && !seen.roo_called;
+    let destroy_drops = dies && (seen.kind < 80 || (!seen.desolid && 0.0 < seen.height));
+    let roo_drops = site.trees
+        && !seen.roo_called
+        && !dies
+        && (below_or_unordered(0.0, seen.height) || o.obstruction.is_some());
+    Ok(Some(Cleared {
+        id,
+        wall: o.class == WALL,
+        record_goes: destroy_drops || roo_drops,
+    }))
 }
 
 impl crate::turn::Turns {
