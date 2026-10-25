@@ -2776,9 +2776,10 @@ pub const fn tile_record_id(x: i32, y: i32) -> i32 {
 
 impl Spatial {
     /// The old short pather's line queries (flags 0x40: moving objects left out, every kind
-    /// tested), after `FUN_141052b90` put a temporary record (kind 3, the tile's box) on each
-    /// tile of the walk's box, grown by `buffer` and held on the map, whose terrain class the
-    /// unit's `mask` lacks (`mask & 0x7f | 0x80`): the records whose box, grown by `buffer`, meets
+    /// tested), after `FUN_141052b90` put the temporary records (kind 3, the tile's box) of the
+    /// walk's box, grown by `buffer`, that the unit's `mask` lacks ([`Spatial::put_tile_records`];
+    /// they stay with those of the pather's earlier walks until `FindShortPath` removes them,
+    /// [`Spatial::clear_tile_records`]): the records whose box, grown by `buffer`, meets
     /// the walk `a` -> `b` (`FUN_1410512f0`, a circle's `FUN_141051630` alike), whose cell the
     /// query visits ([`Spatial::visits`]) and whose id is not in `ignore` (the manager's list
     /// `+0x2c`, the pather's). An object that moves (its record's
@@ -2804,6 +2805,7 @@ impl Spatial {
         let lo_y = if b[1] <= a[1] { b[1] } else { a[1] };
         let hi_y = if a[1] <= b[1] { b[1] } else { a[1] };
         let g = buffer.unwrap_or(0.0);
+        self.put_tile_records(a, b, g, mask);
         let [w, h] = self.map;
         let grown = [lo_x - g, lo_y - g, g + hi_x, g + hi_y];
         let mut hits = Vec::new();
@@ -2823,29 +2825,18 @@ impl Spatial {
                 && r[1] <= hi_y
                 && record_meets_segment(kind, bx, g, walk)
         };
-        let impassable = u64::from(mask & 0x7f | 0x80);
-        let tx1 = if (grown[2] as i32) < w {
-            grown[2] as i32
-        } else {
-            w - 1
-        };
-        let ty1 = if (grown[3] as i32) < h {
-            grown[3] as i32
-        } else {
-            h - 1
-        };
-        for y in (grown[1] as i32).max(0)..=ty1 {
-            for x in (grown[0] as i32).max(0)..=tx1 {
-                let Some(word) = self.tiles.word(x, y) else {
-                    continue;
-                };
-                let id = tile_record_id(x, y);
-                let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
-                if word & impassable == 0 && !ignore.contains(&id) && meets(3, bx) {
-                    hits.push(Hit { id, bounds: bx });
-                    if first || MOST_HITS <= hits.len() {
-                        return Ok(hits);
-                    }
+        let level = self.grid.level(0);
+        let shift = self.grid.shift(level);
+        for &(y, x) in self.tile_records.borrow().iter() {
+            let id = tile_record_id(x, y);
+            let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+            if self.visits_cell(level, x >> shift, y >> shift, grown)
+                && !ignore.contains(&id)
+                && meets(3, bx)
+            {
+                hits.push(Hit { id, bounds: bx });
+                if first || MOST_HITS <= hits.len() {
+                    return Ok(hits);
                 }
             }
         }
@@ -3901,6 +3892,39 @@ mod tests {
         assert!(!s.segment_blocked([2.0, 5.5], [14.0, 5.5], 0.2, 3, &[]));
         // a walk whose grown box leaves the map
         assert!(s.segment_blocked([0.1, 5.5], [14.0, 5.5], 0.2, 3, &[]));
+    }
+
+    /// The old short pather's walks within one `FindShortPath` meet the tile records of its
+    /// earlier walks: the walk from (6.5, 6.5) with a buffer of 0.5 puts no record on tile
+    /// (5, 5), but touches the record an earlier walk put there, until the records are cleared.
+    #[test]
+    fn a_pather_walk_meets_the_tile_records_of_earlier_walks() {
+        let mut classes = vec![1; 64 * 64];
+        classes[5 * 64 + 5] = 0;
+        let s = Spatial::with_tiles([64, 64], Tiles::new(64, 64, classes));
+        let (a, b) = ([6.5, 6.5], [7.5, 7.5]);
+        assert!(!s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
+        s.clear_tile_records();
+        assert!(
+            s.pather_blocked([5.5, 4.0], [5.5, 7.0], Some(0.5), 1, &[])
+                .unwrap()
+        );
+        assert_eq!(s.tile_records(), vec![[5, 5]]);
+        let hits = s.pather_hits(a, b, Some(0.5), 1, &[]).unwrap();
+        assert_eq!(
+            hits,
+            [Hit {
+                id: tile_record_id(5, 5),
+                bounds: [5.0, 5.0, 6.0, 6.0]
+            }]
+        );
+        // the pather's ignore list holds tiles by their record's id
+        assert!(
+            !s.pather_blocked(a, b, Some(0.5), 1, &[tile_record_id(5, 5)])
+                .unwrap()
+        );
+        s.clear_tile_records();
+        assert!(!s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
     }
 
     /// 426327574's transport at update 309: the smoothing's walk (77.5, 90.5) -> (76.5, 91.5)

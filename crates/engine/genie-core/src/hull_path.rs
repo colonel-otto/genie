@@ -660,7 +660,8 @@ pub fn quick_reach(
 /// ([`HullPather::find_quick`], `me`'s player, no include list) from `from` to the target's
 /// place, ignoring both, finds it there or reaches it (a result below 2). Returns the path's
 /// length then (`FUN_140f95a60`, which the slot writes to its `param_4` when given), else None;
-/// None for a target the world does not hold.
+/// None for a target the world does not hold. The manager's temporary tile records go after
+/// ([`Spatial::clear_tile_records`]).
 ///
 /// # Errors
 ///
@@ -680,6 +681,9 @@ pub fn quick_reach_from(
     let mut pather = HullPather::new(world, me, target, mask, radius);
     let to = [t.position[0], t.position[1]];
     let (result, path) = pather.find_quick(from, to, target, range)?;
+    // the slot removes the manager's temporary tile records after (FUN_1410561f0), which the
+    // quick path's exit leaves
+    world.clear_tile_records();
     Ok((result < 2).then(|| path.length()))
 }
 
@@ -1972,8 +1976,29 @@ impl<'w> HullPather<'w> {
     /// for 1). Its callers pass 0 (slot 0x3e8, `FUN_140f9e540`) or 1 (slot 0x3e0) there, never 2
     /// or more, which would skip the quick path. Its arguments 12 to 14 are the pather's player
     /// and include list; its path is the one returned.
-    #[allow(clippy::too_many_lines)]
     fn find_with(
+        &mut self,
+        from: Point,
+        to: Point,
+        target_id: i32,
+        range: f32,
+        keep: bool,
+        quick_only: bool,
+    ) -> Result<(u8, Waypoints), GenieError> {
+        let (result, path, clears) =
+            self.find_unclear(from, to, target_id, range, keep, quick_only)?;
+        if clears {
+            self.world.clear_tile_records();
+        }
+        Ok((result, path))
+    }
+
+    /// [`HullPather::find_with`]'s search, and whether its exit removes the manager's temporary
+    /// tile records (`FUN_1410561f0`): every exit after the quick path's start does but the
+    /// quick-only one (its caller, `FUN_1411506e0`, removes them); the off-map and already-there
+    /// exits come before the start removed them.
+    #[allow(clippy::too_many_lines)]
+    fn find_unclear(
         &mut self,
         from: Point,
         to: Point,
@@ -1981,7 +2006,7 @@ impl<'w> HullPather<'w> {
         range: f32,
         mut keep: bool,
         quick_only: bool,
-    ) -> Result<(u8, Waypoints), GenieError> {
+    ) -> Result<(u8, Waypoints, bool), GenieError> {
         let r = self.radius;
         let [w, h] = self.world.map;
         let mut path = Waypoints::default();
@@ -1992,12 +2017,12 @@ impl<'w> HullPather<'w> {
         let [_, _, bx1, by1] = self.bounds;
         // each bound by `COMISS`/`JA` (0x140f8569f..0x140f85701): an unordered coordinate passes
         if from[0] < r || bx1 < from[0] || from[1] < r || by1 < from[1] {
-            return Ok((4, path));
+            return Ok((4, path, false));
         }
         if (to[0] < r || bx1 < to[0] || to[1] < r || by1 < to[1])
             && !self.edge_goal(to, target_id)?
         {
-            return Ok((4, path));
+            return Ok((4, path, false));
         }
         self.start = from;
         self.goal = to;
@@ -2025,10 +2050,12 @@ impl<'w> HullPather<'w> {
             .as_ref()
             .map_or(straight - r, |t| self.target_gap(t, from));
         if (from[0] == to[0] && from[1] == to[1]) || gap <= range {
-            return Ok((0, path));
+            return Ok((0, path, false));
         }
         self.buffer = (0.0 < r).then_some(r * HALF);
-        // the pather's ignore list into the manager's (FUN_1410562e0 with +0xc0..+0xd0)
+        // the manager's temporary tile records go (FUN_1410561f0), and the pather's ignore list
+        // becomes the manager's (FUN_1410562e0 with +0xc0..+0xd0)
+        self.world.clear_tile_records();
         self.world.set_manager_ignore(&self.ignore);
         // the quick path, to the goal moved by the range or short of the target
         let quick = if range == 0.0
@@ -2060,10 +2087,10 @@ impl<'w> HullPather<'w> {
         };
         let quick_target = (target_id != -1).then_some(target_id);
         if self.quick_path(from, quick, quick_target, &mut path)? {
-            return Ok((1, path));
+            return Ok((1, path, true));
         }
         if quick_only {
-            return Ok((3, path));
+            return Ok((3, path, false));
         }
         // the area, unless kept: the walk's tiles and two more each way, on the map (`MINSS`,
         // `MAXSS` of the start's and the goal's, `CVTTSS2SI`, 0x140f85f61..0x140f85ff5)
@@ -2137,10 +2164,10 @@ impl<'w> HullPather<'w> {
                     if walk.result == 0 {
                         // 2 for a target whose id is below 1, the goal query's among them
                         let partial = target.is_some() && target_id < 1;
-                        return Ok((if partial { 2 } else { 1 }, path));
+                        return Ok((if partial { 2 } else { 1 }, path, true));
                     }
                     if walk.result == 3 || !walk.left_boxes {
-                        return Ok((3, path));
+                        return Ok((3, path, true));
                     }
                     within = walk.result == 1;
                 }
@@ -2156,7 +2183,7 @@ impl<'w> HullPather<'w> {
                 // the walk's result is not read: its paths are
                 let _ = walk?;
                 if count < 1 {
-                    return Ok((3, path));
+                    return Ok((3, path, true));
                 }
                 self.close(0, root);
                 for k in 0..count {
@@ -2379,9 +2406,9 @@ impl<'w> HullPather<'w> {
         // the end: the path to the node found, or to the one nearest the goal
         let Some(end) = best_node else {
             if !within {
-                return Ok((3, path));
+                return Ok((3, path, true));
             }
-            return Ok((self.partway(&mut path, from, to, range), path));
+            return Ok((self.partway(&mut path, from, to, range), path, true));
         };
         if !found && within {
             let last = *path.points.last().unwrap_or(&[f32::NAN, f32::NAN]);
@@ -2392,30 +2419,30 @@ impl<'w> HullPather<'w> {
             // a node nearer the goal than the walk's end is the end (`COMISS`/`JNC` to the
             // partway end, 0x140f86cb6: an unordered distance takes the node)
             if !below_or_unordered(d_node, d_path) {
-                return Ok((self.partway(&mut path, from, to, range), path));
+                return Ok((self.partway(&mut path, from, to, range), path, true));
             }
         }
         path.points.clear();
         self.build_path(&mut path, end)?;
         if found {
             if entrance < 0 {
-                return Ok((1, path));
+                return Ok((1, path, true));
             }
             let e = self.entrances[entrance as usize].points.clone();
             for j in (0..e.len().saturating_sub(1)).rev() {
                 path.push(e[j]);
             }
             if !entered_box {
-                return Ok((1, path));
+                return Ok((1, path, true));
             }
             let k = path.points.len() - 1;
             let hits = self.hits(path.points[k], path.points[k - 1])?;
             if hits.len() < 2 && (hits.len() != 1 || hits[0].id == target_id) {
-                return Ok((1, path));
+                return Ok((1, path, true));
             }
             let _ = path.points.remove(k);
         }
-        Ok((self.partway(&mut path, from, to, range), path))
+        Ok((self.partway(&mut path, from, to, range), path, true))
     }
 
     /// `FindShortPath`'s goal query when no target stands on the goal (`FUN_141051900` with
@@ -2801,6 +2828,43 @@ mod tests {
     }
 
     /// An empty 20 × 20 map of terrain 4, and a pather on it with radius 0.2 and mask 6.
+    /// `FindShortPath` removes the manager's temporary tile records at its start and at its
+    /// exits (`FUN_1410561f0`), but the quick-only exit (slot 0x3e0's search) leaves the quick
+    /// path's records to its caller, which removes them ([`quick_reach_from`]).
+    #[test]
+    fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
+        // a wall across the map at x = 8 that the unit's mask lacks
+        let mut classes = vec![4; 400];
+        for y in 0..20 {
+            classes[y * 20 + 8] = 1;
+        }
+        let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
+        w.sight = Some(crate::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        ));
+        let mut quick = HullPather::new(&w, -1, -1, 6, 0.2);
+        let (result, _) = quick.find_quick([2.0, 5.5], [12.5, 5.5], -1, 0.0).unwrap();
+        assert_eq!(result, 3);
+        assert!(w.tile_records().contains(&[8, 5]), "{:?}", w.tile_records());
+        // a search starts without them and leaves none
+        let mut full = HullPather::new(&w, -1, -1, 6, 0.2);
+        let (result, _) = full.find([2.0, 5.5], [12.5, 5.5], -1, 0.0).unwrap();
+        assert_ne!(result, 1);
+        assert_eq!(w.tile_records(), Vec::<[i32; 2]>::new());
+        // slot 0x3e0 removes what its quick path left
+        assert_eq!(
+            quick_reach_from(&w, -1, [2.0, 5.5], -1, 6, 0.2, 0.0).unwrap(),
+            None
+        );
+        assert_eq!(w.tile_records(), Vec::<[i32; 2]>::new());
+    }
+
     fn open_world() -> Spatial {
         Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![4; 400]))
     }

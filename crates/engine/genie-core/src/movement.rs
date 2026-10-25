@@ -2444,7 +2444,8 @@ impl Mover {
     /// within `range`: the obstruction manager's old short pather ([`HullPather::find`], with the
     /// unit's place, radius and terrain mask, ignoring the unit and the target) when it finds a
     /// path within range or none is needed (its result below 2); None for another result or a
-    /// target that is gone.
+    /// target that is gone. The manager's temporary tile records go after
+    /// ([`Spatial::clear_tile_records`]).
     pub fn short_reach(
         &self,
         me: &Me,
@@ -2459,6 +2460,8 @@ impl Mover {
         let mask = self.stats.restriction_mask;
         let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius[0]);
         let (result, path) = pather.find([me.position[0], me.position[1]], to, target, range)?;
+        // the slot removes the manager's temporary tile records after (FUN_1410561f0)
+        world.clear_tile_records();
         Ok((result < 2).then(|| path.length()))
     }
 
