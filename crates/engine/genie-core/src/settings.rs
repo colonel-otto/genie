@@ -12,6 +12,10 @@ const REGICIDE: i32 = 1;
 /// The game mode Sudden Death (11), whose players lose with their last town centre
 /// ([`Settings::sudden_death`]).
 const SUDDEN_DEATH: i32 = 11;
+/// The game mode Empire Wars (13) ([`Settings::empire_wars`]).
+const EMPIRE_WARS: i32 = crate::start_work::EMPIRE_WARS;
+/// `mSubGameModeFlag`'s bit of the Empire Wars rule (`FUN_141324b60(options + 0x18) & 1`).
+const EMPIRE_WARS_FLAG: i32 = 1;
 /// `mSubGameModeFlag`'s bit of the sudden death rule (`FUN_141324b60(options + 0x18) & 2`).
 const SUDDEN_DEATH_FLAG: i32 = 2;
 /// `mSubGameModeFlag`'s bit of the regicide rule (`FUN_141302520`: `+0x94 & 4`).
@@ -100,7 +104,7 @@ impl Settings {
         let positive = match mode.unsigned_abs() {
             2 => m == 0,
             3 => m == 2,
-            4 => m == 13 || flags & 1 != 0,
+            4 => self.empire_wars(),
             5 => m == 7,
             6 => m == 8,
             7 => m == 11 || flags & 2 != 0,
@@ -165,6 +169,14 @@ impl Settings {
     #[must_use]
     pub const fn regicide(&self) -> bool {
         self.game_mode == REGICIDE || self.sub_game_mode_flag & REGICIDE_FLAG != 0
+    }
+
+    /// The Empire Wars rule holds (`BaseWorld::update` at `0x141550c1c`, `FUN_1413cf2f0`'s mode
+    /// 4): the game mode Empire Wars (13) or the sub-mode's bit 0. Its first update puts the
+    /// villagers to work ([`crate::start_work`]).
+    #[must_use]
+    pub const fn empire_wars(&self) -> bool {
+        self.game_mode == EMPIRE_WARS || self.sub_game_mode_flag & EMPIRE_WARS_FLAG != 0
     }
 
     /// The sudden death rule holds (`WorldPlayer::update` at `0x14163b92a`): the game mode Sudden
@@ -236,6 +248,23 @@ mod tests {
         assert!(with(13, 6).regicide() && with(13, 6).sudden_death());
         for mode in [0, 2, 3, 12, 13] {
             assert!(!with(mode, 1).regicide() && !with(mode, 1).sudden_death());
+        }
+    }
+
+    /// Empire Wars: the mode 13 or the sub-mode's bit 0 (426422314: a random map game with the
+    /// bit, whose villagers start at work), alone or with the other bits.
+    #[test]
+    fn empire_wars_comes_from_the_mode_or_the_sub_mode_s_bit_0() {
+        let with = |game_mode, sub_game_mode_flag| Settings {
+            game_mode,
+            sub_game_mode_flag,
+            ..Settings::default()
+        };
+        assert!(with(13, 0).empire_wars());
+        assert!(with(0, 1).empire_wars());
+        assert!(with(1, 7).empire_wars());
+        for (mode, flag) in [(0, 0), (0, 2), (0, 4), (11, 6), (12, 8), (14, 0)] {
+            assert!(!with(mode, flag).empire_wars(), "{mode} {flag}");
         }
     }
 

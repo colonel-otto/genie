@@ -1,9 +1,9 @@
 //! The Empire Wars start: in the game's first update every idle villager is put to work
 //! (`BaseWorld::update`, `0x14154fc70`, its per-player part before the player's objects update).
 //!
-//! The pass runs once (the world's `+0x6c6`) when the game mode is 13, Empire Wars (in another
-//! mode a lobby setting would ask for it, `FUN_141324b60` bit 0, which no recording seen so far
-//! sets): each object of the player's live list, in its order, that is a villager (class 4) or a
+//! The pass runs once (the world's `+0x6c6`) under the Empire Wars rule, the game mode 13 or in
+//! another mode the sub-mode's bit 0 (`FUN_141324b60`, [`crate::settings::Settings::empire_wars`];
+//! 426422314's random map game): each object of the player's live list, in its order, that is a villager (class 4) or a
 //! fishing ship (class 21), may be interrupted with an empty order queue (slot 0x2d0 with 1) and
 //! has a unit AI takes work. Under the game's farm setting a farm on its tile comes first (the
 //! map tile's objects in their order: the first of class 49; a fishing ship's must be a fish

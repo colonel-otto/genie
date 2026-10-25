@@ -2555,9 +2555,9 @@ fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         })
         .collect();
     turns.settings = settings(&header.file_header.game_options_read.game_options);
-    // the Empire Wars start's pass, once in the game's first update (the world's +0x6c6)
-    turns.start_work_due =
-        turns.settings.game_mode == genie_core::start_work::EMPIRE_WARS && turns.world_time == 0;
+    // the Empire Wars start's pass, once in the game's first update (the world's +0x6c6): the
+    // mode 13 or the sub-mode's bit 0
+    turns.start_work_due = turns.settings.empire_wars() && turns.world_time == 0;
     turns.game_state = u32::from(world.temp_game_state);
     turns.victory_conquest = world.tribe_scenario.base_scenario.victory_conquest != 0;
     match groups::unit_groups(world) {
