@@ -4907,6 +4907,174 @@ pub(crate) mod tests {
         assert_eq!(m.close_in(&me, [28.0, 0.0, 87.0], -1, &walled), Ok(false));
     }
 
+    /// The long path's stretches (`0x141150f00` after `FUN_140f9eb70`): one whose query meets a
+    /// wall, a gate, a tower or a building that does not move ends the path before it, or, the
+    /// first, empties it (false); a moving building and a clear path leave it; a villager's path
+    /// is never cut.
+    #[test]
+    fn a_long_path_ends_before_its_first_walled_stretch() {
+        let m = builder_9177();
+        let me = Me {
+            id: 9177,
+            position: [28.0, 89.0, 0.0],
+            group: -1,
+            action_state: 0,
+        };
+        let path = || Path {
+            points: vec![[28.0, 0.0, 89.0], [28.0, 0.0, 85.0], [28.0, 0.0, 80.0]],
+            length: 9.0,
+        };
+        let obstacle = |class, speed, y| Placed {
+            position: [28.0, y, 0.0],
+            radius: [0.5, 0.5],
+            class,
+            player: 1,
+            master: 72,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed,
+            unknown: None,
+            obstruction: Some(Obstruction { kind: 5, class: 2 }),
+        };
+        let walled = |soldier: bool, block: Option<Placed>| {
+            let mut world = tiled_world(vec![4; 120 * 120]);
+            if soldier {
+                let mut me = *world.get(9177).unwrap();
+                me.class = 6;
+                world.insert(9177, me);
+            }
+            if let Some(b) = block {
+                world.insert(500, b);
+            }
+            let mut p = path();
+            let r = m.walled_off(&me, &world, -1, &mut p);
+            (r, p.points.len())
+        };
+        assert_eq!(walled(true, None), (Ok(true), 3));
+        assert_eq!(
+            walled(true, Some(obstacle(WALL_CLASS, 0.0, 82.0))),
+            (Ok(true), 2)
+        );
+        assert_eq!(
+            walled(true, Some(obstacle(GATE, 0.0, 87.0))),
+            (Ok(false), 0)
+        );
+        assert_eq!(
+            walled(true, Some(obstacle(TOWER_CLASS, 0.0, 82.0))),
+            (Ok(true), 2)
+        );
+        let still = obstacle(BUILDING_CLASS, 0.0, 82.0);
+        assert_eq!(walled(true, Some(still)), (Ok(true), 2));
+        let moving = obstacle(BUILDING_CLASS, 1.0, 82.0);
+        assert_eq!(walled(true, Some(moving)), (Ok(true), 3));
+        let wall = obstacle(WALL_CLASS, 0.0, 87.0);
+        assert_eq!(walled(false, Some(wall)), (Ok(true), 3));
+    }
+
+    /// The long pather's plan for a far waypoint (`0x141150f00` at `LAB_141152f9c`) from 9177's
+    /// tile: on open tiles it reaches the waypoint's tile (true); a waypoint on its own tile
+    /// gives no path, which stops the unit (None); a waypoint in a band its mask lacks (rows 70
+    /// to 74) ends at the band's edge (false), and farther from the waypoint than `way` allows the
+    /// path empties and the gap of its end comes back (3.54 here).
+    #[test]
+    fn a_long_plan_reaches_its_waypoint_stops_short_or_ends_at_a_band() {
+        let mut band = vec![4; 120 * 120];
+        for y in 70..75 {
+            for x in 20..40 {
+                band[y * 120 + x] = 1;
+            }
+        }
+        let plan = |classes: &[u8], waypoint: Vec3, way: f32| {
+            let world = tiled_world(classes.to_vec());
+            let mut pathing = Pathing::default();
+            pathing.start_mesh(120);
+            let mut object = Well512::default();
+            let groups = crate::group::UnitGroups::default();
+            let plan = Planning {
+                pathing: &mut pathing,
+                now: 0,
+                computer: false,
+                object: &mut object,
+                construction_rate: 1.0,
+                groups: &groups,
+            };
+            let me = Me {
+                id: 9177,
+                position: [28.0, 89.0, 0.0],
+                group: -1,
+                action_state: 0,
+            };
+            let mut m = builder_9177();
+            let mut path = Path::default();
+            let r = m.long_plan(&me, &world, &plan, waypoint, way, 0.0, None, &mut path);
+            (r, path.points, path.length)
+        };
+        let open = vec![4; 120 * 120];
+        assert_eq!(
+            plan(&open, [28.0, 0.0, 60.0], 100.0),
+            (
+                Ok(Some((true, None))),
+                vec![[28.5, 0.0, 89.5], [28.5, 0.0, 60.5]],
+                29.0
+            )
+        );
+        assert_eq!(plan(&open, [28.0, 0.0, 89.0], 100.0).0, Ok(None));
+        assert_eq!(
+            plan(&band, [28.0, 0.0, 72.0], 100.0),
+            (
+                Ok(Some((false, None))),
+                vec![[28.5, 0.0, 89.5], [28.5, 0.0, 75.5]],
+                14.0
+            )
+        );
+        let short = plan(&band, [28.0, 0.0, 72.0], 0.5);
+        assert_eq!(short.0, Ok(Some((false, Some(12.5f32.sqrt())))));
+        assert_eq!((short.1.len(), short.2), (0, 0.0));
+    }
+
+    /// The new level's path is no path (`0x141150f00` after the plans), on 9177's walked level:
+    /// a found path in range of its end has its waypoint marked reached on a looping level (else
+    /// it is not modelled); not found, or out of range, off its last waypoint the waypoint is
+    /// marked too; at its last waypoint while its continue counter runs the unit pauses for
+    /// `STUCK_PAUSE` and stops; with the counter out a level 0 under a top path with more waits
+    /// at its end (state 5); a looping level, an attack move, a level above 1 and a top path
+    /// without more are not modelled. With a target, bit 2 moves from the level to its parents.
+    #[test]
+    fn a_level_without_a_path_marks_its_waypoint_pauses_or_waits() {
+        let target = *world().get(10028).unwrap();
+        let mut m = builder_9177();
+        m.paths[0].flags = 4;
+        assert!(matches!(
+            m.no_path(false, Some(&target), 0.5),
+            Ok(Step::Paused)
+        ));
+        assert_eq!(m.paths[0].pause_time, STUCK_PAUSE);
+        assert_eq!((m.paths[0].flags, m.paths[1].flags), (0, 4));
+        let out = |edit: &dyn Fn(&mut Mover)| {
+            let mut m = builder_9177();
+            m.paths[0].continue_counter = 0;
+            edit(&mut m);
+            let r = m.no_path(false, None, 0.5);
+            (r, m)
+        };
+        let (r, m) = out(&|m| m.paths[1].waypoint = 0);
+        assert!(matches!(r, Ok(Step::Again)));
+        assert_eq!(m.paths[0].state, 5);
+        assert!(out(&|_| {}).0.is_err());
+        assert!(out(&|m| m.paths[0].path_flags |= 1).0.is_err());
+        assert!(out(&|m| m.attack_moving = true).0.is_err());
+        assert!(out(&|m| m.paths[0].level = 2).0.is_err());
+        let (r, m) = out(&|m| m.paths[0].waypoint = 0);
+        assert!(matches!(r, Ok(Step::Again)));
+        assert_eq!(m.paths[0].flags, 1);
+        let mut m = builder_9177();
+        assert!(m.no_path(true, None, 0.05).is_err());
+        m.paths[0].path_flags |= 1;
+        assert!(matches!(m.no_path(true, None, 0.05), Ok(Step::Again)));
+        assert_eq!(m.paths[0].flags, 1);
+    }
+
     /// A unit's walk for the actions' tests: MarvinBlue/426048731's builder 9177 on its first
     /// path toward house 10028 ([`builder_9177`]), its `MoveTo`'s point the house's, on open
     /// tiles ([`tiled_world`]) with the pather's mesh, a fresh Object stream and no unit groups.

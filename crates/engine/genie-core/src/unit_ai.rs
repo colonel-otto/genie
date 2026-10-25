@@ -12510,6 +12510,115 @@ mod tests {
         }
     }
 
+    /// A scout's world: the points its two searches find, and whether it made the scout map.
+    #[derive(Default)]
+    struct ScoutSide {
+        unexplored: Option<[i32; 2]>,
+        beyond: Option<[i32; 2]>,
+        mapped: bool,
+    }
+
+    impl UnitSide for ScoutSide {
+        fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+            None
+        }
+        fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
+            Err(GenieError::unsupported("no search here"))
+        }
+        fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
+            Err(GenieError::unsupported("no attack here"))
+        }
+        fn set_under_attack(&mut self, _: bool) {}
+        fn stop(&mut self) -> Result<(), GenieError> {
+            Ok(())
+        }
+        fn may_attack(
+            &mut self,
+            _: i32,
+            _: &Seeker,
+        ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+            Err(GenieError::unsupported("no world here"))
+        }
+        fn seek_unexplored(
+            &mut self,
+            _: &UnitAi,
+            _: &mut Well512,
+        ) -> Result<Option<[i32; 2]>, GenieError> {
+            Ok(self.unexplored)
+        }
+        fn seek_beyond_sight(&mut self, _: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+            Ok(self.beyond)
+        }
+        fn make_scout_map(&mut self) -> Result<(), GenieError> {
+            self.mapped = true;
+            Ok(())
+        }
+    }
+
+    /// The base handler's case 0x202 for the auto scout ([`UnitAi::seek_unexplored`]): a point
+    /// its search finds it explores (the explore's action value the last, its own back) and
+    /// processing breaks; finding none, on the auto scout order the last search's point is
+    /// explored the same way, and with none left the scout map is made; on another order the
+    /// target goes and the unit stops. Another explorer's search, a scout order's that finds
+    /// none and a computer player's AI told of it are not modelled.
+    #[test]
+    fn an_auto_scout_explores_what_its_searches_find_or_maps_what_it_saw() {
+        let at = Surroundings {
+            id: 20,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let scout = |order| UnitAi {
+            current_order: order,
+            current_action: AUTO_SCOUT_ACTION,
+            current_target: 30,
+            ..idle(2)
+        };
+        let seek = |u: &mut UnitAi, side: &mut ScoutSide, computer| {
+            let mut fx = Vec::new();
+            let r = u.seek_unexplored(&at, computer, &mut rng(), side, &mut fx);
+            (r, fx)
+        };
+        let mut u = scout(AUTO_SCOUT_ORDER);
+        let mut side = ScoutSide {
+            unexplored: Some([5, 6]),
+            ..ScoutSide::default()
+        };
+        let (r, fx) = seek(&mut u, &mut side, false);
+        assert_eq!((r, fx), (Ok(BREAK), vec![Effect::Explore([5.0, 6.0])]));
+        assert_eq!(
+            (u.current_action, u.last_action),
+            (AUTO_SCOUT_ACTION, EXPLORE_ACTION)
+        );
+        let mut u = scout(AUTO_SCOUT_ORDER);
+        let mut side = ScoutSide {
+            beyond: Some([7, 8]),
+            ..ScoutSide::default()
+        };
+        let (r, fx) = seek(&mut u, &mut side, false);
+        assert_eq!((r, fx), (Ok(BREAK), vec![Effect::Explore([7.0, 8.0])]));
+        assert_eq!(
+            (u.current_action, u.last_action),
+            (AUTO_SCOUT_ACTION, AUTO_SCOUT_ACTION)
+        );
+        let mut u = scout(AUTO_SCOUT_ORDER);
+        let mut side = ScoutSide::default();
+        assert_eq!(seek(&mut u, &mut side, false), (Ok(BREAK), vec![]));
+        assert!(side.mapped);
+        let mut u = scout(AUTO_SCOUT_ORDER);
+        assert!(seek(&mut u, &mut ScoutSide::default(), true).0.is_err());
+        let mut u = scout(-1);
+        assert_eq!(seek(&mut u, &mut ScoutSide::default(), false).0, Ok(GO_ON));
+        assert_eq!((u.current_target, u.current_action), (-1, -1));
+        let mut u = scout(crate::ai_kinds::ORDER_SCOUT);
+        assert!(seek(&mut u, &mut ScoutSide::default(), false).0.is_err());
+        let mut u = UnitAi {
+            current_action: EXPLORE_ACTION,
+            ..scout(-1)
+        };
+        assert!(seek(&mut u, &mut ScoutSide::default(), false).0.is_err());
+    }
+
     /// A Gaia rock church (MarvinBlue/426048706's 7108: line of sight 5, no speed) and what it
     /// stands on.
     fn rock_church() -> (UnitAi, Surroundings) {

@@ -2965,6 +2965,49 @@ pub(crate) mod tests {
     /// readyToAttack on a player's target out of sight: a unit of stance 0 with speed that may
     /// move waits (`set_state` 5: a `MoveTo` to where it saw the target); any other fails
     /// (`set_state` 13).
+    /// The update's answer to a target out of sight ([`Attack::out_of_sight`]): the target goes,
+    /// the attack fails (state 13) and the unit AI forgets it; a predator's boar is sent home, a
+    /// lion's or one without a unit AI not; a unit's own Attack whose queue is empty posts 0x1f9
+    /// with 600, a sub-action and a queue with orders not. Another predator's unit AI is not
+    /// modelled.
+    #[test]
+    fn an_attack_on_a_target_out_of_sight_fails() {
+        use crate::movement::tests::WalkRig;
+        let run = |a: &mut Attack, class, ai_type, queue_empty| {
+            let mut walker = WalkRig::on_the_path();
+            let mut rig = Rig::new(Victim::default());
+            let mut s = rig.strike();
+            (s.own.class, s.ai_type, s.queue_empty) = (class, ai_type, queue_empty);
+            let r = a.out_of_sight(&mut walker.walk(4), &mut s);
+            (r, s.let_go, s.forgets, s.sends_home, s.posted.clone())
+        };
+        let failed = vec![(crate::unit_ai::ACTION_FAILED, [600, 0, 0])];
+        let own_attack = |target, state, range| {
+            let mut a = own_attack(target, state, range);
+            a.arms.idle_sprite = Some(STANDING);
+            a
+        };
+        let mut a = own_attack(77, MOVE, 1.0);
+        let got = run(&mut a, 6, Some(13), true);
+        assert_eq!(got, (Ok(3), Some(77), true, false, failed));
+        assert_eq!((a.target, a.state), (-1, FAILED));
+        let mut a = own_attack(77, MOVE, 1.0);
+        assert!(run(&mut a, PREDATOR, Some(BOAR_AI), false).3);
+        let mut a = own_attack(77, MOVE, 1.0);
+        let lion = run(&mut a, PREDATOR, Some(LION_AI), false);
+        assert_eq!((lion.2, lion.3, lion.4), (true, false, vec![]));
+        let mut a = own_attack(77, MOVE, 1.0);
+        let alone = run(&mut a, PREDATOR, None, true);
+        assert_eq!((alone.0, alone.3), (Ok(3), false));
+        let mut a = Attack {
+            sub_action: true,
+            ..own_attack(77, MOVE, 1.0)
+        };
+        assert_eq!(run(&mut a, 6, Some(13), true).4, vec![]);
+        let mut a = own_attack(77, MOVE, 1.0);
+        assert!(run(&mut a, PREDATOR, Some(13), true).0.is_err());
+    }
+
     #[test]
     fn ready_to_attack_on_a_target_out_of_sight_fails_or_waits() {
         let at = [11.0, 10.0, 0.0];
