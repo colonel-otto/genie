@@ -229,6 +229,8 @@ const RESTORED_FOUNDATION: i16 = 28;
 pub(in crate::turn) struct PlayerFrame {
     /// Each player's attribute 97.
     attribute_97: Vec<f32>,
+    /// Each player's game status (`+0x89`).
+    game_status: Vec<u8>,
     /// Each player's computer flag.
     computers: Vec<bool>,
     /// Each player's `chance_to_dodge_missiles`.
@@ -1046,15 +1048,16 @@ impl Turns {
         }
     }
 
-    /// What every object of player-loop reads of all players (`attribute_97`, the computer
-    /// flags, the dodge and keep-distance chances, the sight takers, attribute 204), as the
-    /// players stand when the loop starts.
+    /// What every object of player-loop reads of all players (`attribute_97`, the game status,
+    /// the computer flags, the dodge and keep-distance chances, the sight takers, attribute 204),
+    /// as the players stand when the loop starts.
     fn player_frame(&self) -> PlayerFrame {
         let attribute_97: Vec<f32> = self
             .players
             .iter()
             .map(|q| q.attributes.get(97).copied().unwrap_or(0.0))
             .collect();
+        let game_status: Vec<u8> = self.players.iter().map(|q| q.game_status).collect();
         let computers: Vec<bool> = self.players.iter().map(|q| q.computer).collect();
         let dodge_chances: Vec<u8> = self.players.iter().map(|q| q.dodge_chance).collect();
         let keep_distance_chances: Vec<u8> = self
@@ -1077,6 +1080,7 @@ impl Turns {
             .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
         PlayerFrame {
             attribute_97,
+            game_status,
             computers,
             dodge_chances,
             keep_distance_chances,
@@ -1176,6 +1180,7 @@ impl Turns {
             drop_sites: &self.drop_sites,
             every_masters: &self.masters,
             attribute_97: &frame.attribute_97,
+            game_status: &frame.game_status,
             player_turn: self.player_turn,
             player_time: &self.player_time,
             computers: &frame.computers,

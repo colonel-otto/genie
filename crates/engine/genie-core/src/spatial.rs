@@ -2013,18 +2013,19 @@ impl Spatial {
 
     /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects
     /// whose centre is on a tile within the animal's radius (whole) plus 3 tiles of its own tile,
-    /// combat units (type 70) in state 2 of a player that is not out (`+0x89`, 0 for every player
-    /// probed), Gaia's only with `+0x924` 0, of no class of 1, 60, 42, 11, 14, 30, 58, 3, 52, 27,
-    /// 39, 49, 37, 9, 10 or 38, counted per player with the nearest footprint gap (squared). A
-    /// unit of its own owner keeps it, unless that owner's attribute 97 (`attribute_97`, by
-    /// player) is above 0 and it is livestock (class 58), which then takes it from nobody; a
-    /// player whose attribute 97 is above 0 counts 100 more (the most units then win). One other
-    /// player takes it; of several, the nearest (Gaia never). A frozen unit that counts and may
-    /// have moved onto the tiles fails it.
+    /// combat units (type 70) in state 2 of a player that is not out (its game status, `+0x89`,
+    /// by player in `game_status`, is 0), Gaia's only with `+0x924` 0, of no class of 1, 60, 42,
+    /// 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10 or 38, counted per player with the nearest
+    /// footprint gap (squared). A unit of its own owner keeps it, unless that owner's attribute
+    /// 97 (`attribute_97`, by player) is above 0 and it is livestock (class 58), which then takes
+    /// it from nobody; a player whose attribute 97 is above 0 counts 100 more (the most units then
+    /// win). One other player takes it; of several, the nearest (Gaia never); a player out of the
+    /// game takes it never. A frozen unit that counts and may have moved onto the tiles fails it.
     pub fn artifact_owner(
         &self,
         me: i32,
         attribute_97: &[f32],
+        game_status: &[u8],
     ) -> Result<Option<usize>, GenieError> {
         const KEPT: [i16; 16] = [1, 60, 42, 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10, 38];
         // a world without the players' sight (the unit tests') holds nobody near
@@ -2053,12 +2054,19 @@ impl Spatial {
         let (x0, y0) = (i32::from(x0.max(0)), i32::from(y0.max(0)));
         let x1 = i32::from(x1).min(self.map[0] - 1);
         let y1 = i32::from(y1).min(self.map[1] - 1);
+        let out = |o: usize| {
+            game_status
+                .get(o)
+                .is_some_and(|&s| s != crate::game_status::PLAYING)
+        };
         // a frozen unit that could count (of the combat type and a class that counts) may have
         // moved onto the tiles
         let area = [x0 as f32, y0 as f32, (x1 + 1) as f32, (y1 + 1) as f32];
         let unsure = self.objects.iter().any(|(&id, q)| {
             q.unknown.is_some_and(|u| {
-                let counts = v.seer(id).is_some_and(|s| s.kind == 70) && !KEPT.contains(&q.class);
+                let counts = v.seer(id).is_some_and(|s| s.kind == 70)
+                    && !out(q.player)
+                    && !KEPT.contains(&q.class);
                 let [bx0, by0, bx1, by1] = q.bounds();
                 counts
                     && 0.0 < u
@@ -2088,7 +2096,7 @@ impl Spatial {
             if s.kind != 70 || s.state != 2 || KEPT.contains(&q.class) {
                 continue;
             }
-            if q.player == 0 && s.capture != 0 {
+            if (q.player == 0 && s.capture != 0) || out(q.player) {
                 continue;
             }
             let o = q.player;
@@ -2120,14 +2128,14 @@ impl Spatial {
         if own_seen && !taker {
             return Ok(None);
         }
-        let takers: Vec<usize> = (0..players).filter(|&o| 0 < counts[o]).collect();
+        let takers: Vec<usize> = (0..players).filter(|&o| 0 < counts[o] && !out(o)).collect();
         match takers[..] {
             [] => Ok(None),
             [one] => Ok(Some(one)),
             _ if !taker => {
                 let mut best = (999.0f32, None);
                 for (o, &d) in nearest.iter().enumerate() {
-                    if d < best.0 {
+                    if d < best.0 && !out(o) {
                         best = (d, Some(o));
                     }
                 }
@@ -2136,7 +2144,7 @@ impl Spatial {
             _ => {
                 let mut best = (0, None);
                 for (o, &n) in counts.iter().enumerate() {
-                    if best.0 < n {
+                    if best.0 < n && !out(o) {
                         best = (n, Some(o));
                     }
                 }

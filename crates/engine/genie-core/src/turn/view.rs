@@ -184,6 +184,8 @@ pub(in crate::turn) struct Context<'a> {
     /// Every player's masters and attribute 97 (by player), for a capture.
     pub(in crate::turn) every_masters: &'a [Masters],
     pub(in crate::turn) attribute_97: &'a [f32],
+    /// Every player's game status (`+0x89`), which the Artifact's owner search reads.
+    pub(in crate::turn) game_status: &'a [u8],
     /// The player whose turn this tick is (`world+0x188`), every player's accumulated time
     /// (`world+0x18c`, as it stands when the object updates) and computer flag.
     pub(in crate::turn) player_turn: usize,

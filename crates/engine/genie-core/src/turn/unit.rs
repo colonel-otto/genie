@@ -5139,10 +5139,10 @@ impl Unit {
                 .map(|s| s.capture);
             let searches = !(self.combat && capture == Some(0));
             let spatial: &Spatial = c.spatial;
-            let attribute_97 = c.attribute_97;
+            let (attribute_97, game_status) = (c.attribute_97, c.game_status);
             let id = self.id;
             let new = artifact.step(dt, searches, &mut || {
-                spatial.artifact_owner(id, attribute_97)
+                spatial.artifact_owner(id, attribute_97, game_status)
             })?;
             // the check's sub-actions went: an Enter's teardown lets its building go, and a
             // walking MoveTo's, the Artifact's own or the Enter's, stops the unit
