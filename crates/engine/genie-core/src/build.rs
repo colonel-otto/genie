@@ -634,6 +634,8 @@ const CLEAR: u8 = 223;
 const FINISHED: u8 = 224;
 /// 1: the action is done.
 const DONE: u8 = 1;
+/// The last object state an action takes as its target (`FUN_140a7a230`: one above is refused).
+const LAST_TAKEN: u8 = 6;
 /// 3: the action waits without a target.
 const IDLE: u8 = 3;
 /// `set_state(2)`: the unit's stop halted the Build (slot 0x38); its next update fails it.
@@ -794,9 +796,10 @@ impl BuildAction {
                 if (special || state < 3) && !(special && 2 < state && unbuilt) {
                     step.dropped = self.finish(&mut walk, Some(site.builders()), load)?;
                 } else {
-                    // set_state(4) toward it, then slot 0x68 with none: the caller releases it
-                    walked_from = Some(self.target);
-                    self.restart(&mut walk, Some(site.builders()))?;
+                    // set_state(4) toward it, then slot 0x68 with none: the caller releases it;
+                    // the MoveTo walks to it unless it refused it
+                    self.restart(&mut walk, Some(site.builders()), Some(state))?;
+                    walked_from = (self.walk_target != -1).then_some(self.target);
                     self.target = -1;
                     step.released = true;
                 }
@@ -848,9 +851,12 @@ impl BuildAction {
                 self.asked_again();
                 self.move_to = Some(MoveTo::Moving);
                 let range = self.task.range;
-                // a MoveTo without a target (set_state(4) without a foundation) to its point
+                // a MoveTo without a target (set_state(4) without a foundation, or one that
+                // refused it) to its point
                 let to = match (walked_from, self.goal) {
-                    (None, Some(p)) if self.target == -1 => Goal::Point(p),
+                    (None, Some(p)) if self.target == -1 || self.walk_target == -1 => {
+                        Goal::Point(p)
+                    }
                     _ => Goal::Target(walked_from.unwrap_or(self.target)),
                 };
                 self.move_to = Some(match start_walk_or_give_up(walk, to, range, false)? {
@@ -1084,7 +1090,8 @@ impl BuildAction {
     /// (`+0x38`..`+0x40`, the foundation's place) is not held. Without a foundation the point
     /// stays and the `MoveTo` has no target: it walks to its zeroed point ([`NO_TARGET_POINT`]),
     /// far from it (`FUN_14118f680` without a target: `FLT_MAX`), in state 13 for a unit without
-    /// speed (`FUN_140aa2100`).
+    /// speed (`FUN_140aa2100`). A foundation whose `state` is above 6 the `MoveTo` refuses
+    /// ([`BuildAction::refuse_walk_target`]); None when the caller does not hold its state.
     ///
     /// # Errors
     ///
@@ -1093,11 +1100,12 @@ impl BuildAction {
         &mut self,
         walk: &mut Walk<'_>,
         builders: Option<&mut u8>,
+        state: Option<u8>,
     ) -> Result<(), GenieError> {
         self.leave(walk, builders)?;
         let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
+        let moves = mover.stats.speed != 0.0;
         if self.target == -1 {
-            let moves = mover.stats.speed != 0.0;
             let mut new = self.restarted(-1, self.point, f32::MAX);
             new.goal = Some(NO_TARGET_POINT);
             new.walk_target = -1;
@@ -1109,7 +1117,20 @@ impl BuildAction {
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, at.position, at.radius);
         *self = self.restarted(self.target, at.position, gap);
+        if state.is_some_and(|s| LAST_TAKEN < s) {
+            self.refuse_walk_target(moves);
+        }
         Ok(())
+    }
+
+    /// `FUN_140a7a230` on the new `MoveTo`'s target: a foundation in a state above
+    /// [`LAST_TAKEN`] is refused (no pointer, the id −1). The `MoveTo` keeps the point its
+    /// constructor took from the foundation (`FUN_140aa0df0`) and, without a target, starts far
+    /// from it (`FUN_140aa2100`: state 3, 13 for a unit without speed).
+    const fn refuse_walk_target(&mut self, moves: bool) {
+        self.walk_target = -1;
+        self.goal = Some(self.point);
+        self.move_to = Some(if moves { MoveTo::Start } else { MoveTo::Failed });
     }
 
     /// `set_state(8)` (`0x140aae200` case 8) with what the caller's search found (`search`): the
@@ -1141,7 +1162,7 @@ impl BuildAction {
         };
         let found = match search {
             DropSearch::Empty => {
-                self.restart(walk, None)?;
+                self.restart(walk, None, None)?;
                 return Ok(out);
             }
             DropSearch::Nothing => None,
@@ -1155,7 +1176,7 @@ impl BuildAction {
         }
         let Some((id, range)) = found else {
             out.notified = true;
-            self.restart(walk, None)?;
+            self.restart(walk, None, None)?;
             return Ok(out);
         };
         let mover = walk.mover.as_deref().ok_or(BUILDER_UNMOVING)?;
@@ -1293,7 +1314,8 @@ impl BuildAction {
         step.dropped = Some((kind, builder.held));
         if self.target != -1 {
             step.site_let_go = Some(std::mem::replace(&mut self.site, -1));
-            return self.restart(&mut walk, site.map(Site::into_builders));
+            let state = site.as_ref().map(|s| s.life.state);
+            return self.restart(&mut walk, site.map(Site::into_builders), state);
         }
         if let Some(ai) = builder.ai.as_deref_mut() {
             let gone = builder.gone_orders;
@@ -1777,7 +1799,8 @@ impl BuildAction {
             let gap = crate::movement::footprint_gap_squared(at, ground, t.position, t.radius);
             let range = self.task.range;
             if !(gap <= range * range || gap <= REACH) {
-                return self.restart(walk, site.map(Site::into_builders));
+                let state = site.as_ref().map(|s| s.life.state);
+                return self.restart(walk, site.map(Site::into_builders), state);
             }
         }
         self.leave(walk, None)?;
@@ -1851,7 +1874,8 @@ impl BuildAction {
                 .code();
         }
         if code < 2 {
-            self.restart(walk, site.map(Site::into_builders))
+            let state = site.as_ref().map(|s| s.life.state);
+            self.restart(walk, site.map(Site::into_builders), state)
         } else {
             self.idle(walk, site, builder, step)
         }
@@ -3593,6 +3617,139 @@ mod tests {
             assert_eq!((w.state, w.move_to), (IDLE, None));
             assert!(step.notified && step.stands);
         }
+    }
+
+    /// 428857364's builder 8676 (player 4) waiting for foundation 10645's footprint (state 222)
+    /// when its owner deletes the foundation in update 367 (state 8, still in the world): the
+    /// Build walks back to it (`set_state(4)`, then slot 0x68 with none), but the new `MoveTo`
+    /// refuses a target above state 6 (`FUN_140a7a230`) and walks to the foundation's place in
+    /// the same update, with the task's range and no target (the game's builder, 2.3 tiles off,
+    /// plans its path there).
+    #[test]
+    fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
+        use crate::spatial::Placed;
+        let mut world = Spatial::default();
+        world.insert(
+            10645,
+            Placed {
+                position: [67.0, 112.0, 0.0],
+                radius: [1.5, 1.5],
+                class: 3,
+                player: 4,
+                master: 621,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+        let mut mover = crate::hunt::tests::walker();
+        let mut c = Construction {
+            progress: 0.0,
+            desolid: false,
+            builders: 0,
+            hit_points: 0,
+            build_time: 25,
+            record: Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        };
+        let mut life = Lifecycle {
+            state: 8,
+            ..Lifecycle::default()
+        };
+        let mut b = BuildAction {
+            state: WAIT,
+            move_to: None,
+            timer: 0.916,
+            ..BuildAction::start(10645, [67.0, 112.0, 0.0], 0.8, TASK)
+        };
+        let site = Site {
+            id: 10645,
+            life: &mut life,
+            construction: &mut c,
+            mover: None,
+            firepower: None,
+            roo_called: None,
+            store: None,
+            completion: Completion {
+                master: None,
+                annexed: false,
+                attribute_204: false,
+                mode_680: 0,
+                farm_bonus: [0.0, -1.0, -1.0],
+                masters: None,
+                computer: false,
+                ai: false,
+                main: false,
+                now: 0,
+                rice: false,
+            },
+            chain: WorkChain::default(),
+            main_builders: None,
+        };
+        // within the task's range of the place, so the walk ends without a path
+        let me = Me {
+            id: 8676,
+            position: [67.05, 112.0, 0.0],
+            group: -1,
+            action_state: WAIT,
+        };
+        let mut waits = 0;
+        let step = b
+            .update(
+                Walk {
+                    mover: Some(&mut mover),
+                    me,
+                    dt: 0.02,
+                    world: &mut world,
+                    plan: None,
+                },
+                Some(site),
+                Builder {
+                    class: VILLAGER,
+                    master: 118,
+                    held: 0.0,
+                    held_kind: -1,
+                    drop_site: false,
+                    ai: None,
+                    waits: &mut waits,
+                    build_targets: &[],
+                    look: Looks(&|_| None),
+                    walk_target_state: None,
+                    deposit: None,
+                    attributes: 4,
+                    gone_orders: &[],
+                    stack_made: None,
+                },
+            )
+            .unwrap();
+        assert!(step.released);
+        assert_eq!(
+            (b.state, b.target, b.walk_target, b.goal),
+            (MOVE, -1, -1, Some([67.0, 112.0, 0.0]))
+        );
+        // the MoveTo ran in the same update
+        assert_eq!(b.move_to, Some(MoveTo::Arrived));
+        // a foundation the MoveTo takes (state 0) stays its target
+        let mut taken = BuildAction::start(10645, [67.0, 112.0, 0.0], 0.8, TASK);
+        let mut walk = Walk {
+            mover: Some(&mut mover),
+            me,
+            dt: 0.02,
+            world: &mut world,
+            plan: None,
+        };
+        taken.restart(&mut walk, None, Some(0)).unwrap();
+        assert_eq!((taken.walk_target, taken.goal), (10645, None));
+        taken.restart(&mut walk, None, Some(7)).unwrap();
+        assert_eq!(
+            (taken.walk_target, taken.goal, taken.move_to),
+            (-1, Some([67.0, 112.0, 0.0]), Some(MoveTo::Start))
+        );
     }
 
     #[test]
