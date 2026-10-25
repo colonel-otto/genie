@@ -2932,6 +2932,17 @@ impl Construction {
 mod tests {
     use super::*;
 
+    /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments), by
+    /// the quarter its step points into: up-left, down-left, and the rest.
+    #[test]
+    fn the_tiles_beside_a_diagonal_follow_its_quarter() {
+        assert_eq!(beside_diagonal(5, 5, -1, -1), ([6, 5], [5, 6]));
+        assert_eq!(beside_diagonal(5, 5, -1, 1), ([5, 4], [6, 5]));
+        assert_eq!(beside_diagonal(5, 5, 0, 1), ([4, 5], [5, 6]));
+        assert_eq!(beside_diagonal(5, 5, 1, -1), ([4, 5], [5, 6]));
+        assert_eq!(beside_diagonal(5, 5, 1, 1), ([5, 4], [4, 5]));
+    }
+
     /// An object of `master` (class `class`, radius `r`, `buildable` on) of player 1 at `x`, `y`.
     fn on_map(
         x: f32,

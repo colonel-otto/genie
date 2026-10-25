@@ -500,6 +500,23 @@ mod tests {
         }
     }
 
+    /// `FUN_141082530`: the defense of the restriction's value for the tile's terrain to restore,
+    /// else its terrain; 0 counts as 1, a tile off the map has 1, and a restriction or terrain
+    /// the data lacks has none.
+    #[test]
+    fn a_tile_s_defense_is_its_restriction_s_value_for_its_terrain() {
+        let mut t = map(vec![0, 1, 2, 3], vec![0; 4]);
+        t.restrictions[2][1] = 1.25;
+        t.restrictions[2][3] = 0.75;
+        t.restore[3] = 1;
+        assert_eq!(t.defense(2, 1, 0), Some(1.25));
+        assert_eq!(t.defense(2, 0, 0), Some(1.0));
+        assert_eq!(t.defense(2, 1, 1), Some(1.25));
+        assert_eq!(t.defense(2, 5, 5), Some(1.0));
+        assert_eq!(t.defense(9, 1, 0), None);
+        assert_eq!(t.defense(-1, 1, 0), None);
+    }
+
     #[test]
     fn the_ground_is_the_tile_s_elevation_plus_its_slope_s_share() {
         // two columns, four rows: (0, 3) is one up, so (0, 2) slopes up to the south (shape 7)

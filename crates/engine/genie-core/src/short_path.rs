@@ -2641,6 +2641,134 @@ fn range_point(range: i32, p: Point, goal: Point) -> Result<Point, GenieError> {
 mod tests {
     use super::*;
 
+    /// A search on an empty mesh toward a point target at `at` within `range` (fixed point), its
+    /// start node at the origin with cost 0.
+    fn search_toward(mesh: &Mesh, at: Point, range: i32) -> Search<'_> {
+        let goal = Goal {
+            at,
+            r: 0,
+            rx: 0,
+            ry: 0,
+            rrx: 0,
+            rry: 0,
+            range,
+            range2: (i64::from(range) * i64::from(range)) >> 22,
+        };
+        let mut s = Search {
+            ctx: Ctx {
+                mesh,
+                ignore: &[],
+                d: 0,
+            },
+            goal,
+            bounds: [0, 0, 64 * ONE, 64 * ONE],
+            open: Vec::new(),
+            arena: Vec::new(),
+            polys: Vec::new(),
+            goal_node: NONE,
+            best: 0,
+            token: 0,
+        };
+        let _ = s.add(0, NONE, [0, 0], Kind::Start);
+        s
+    }
+
+    /// `FUN_140fa3860`: a node within range becomes the goal while it is cheaper than the goal so
+    /// far; any other node becomes the best when it lies nearer than the best's estimate, and a
+    /// node no nearer adds nothing.
+    #[test]
+    fn a_goal_candidate_in_range_and_cheaper_becomes_the_goal_else_maybe_the_best() {
+        let mesh = Mesh::new(64);
+        let mut s = search_toward(&mesh, [10 * ONE, 10 * ONE], 2 * ONE);
+        assert!(s.goal_test(5 * ONE, 0, 0, 0, 0, 0, [11 * ONE, 10 * ONE]));
+        assert_eq!(s.goal_node, 1);
+        // in range but dearer: the best instead, as it lies nearer than the start's estimate
+        assert!(!s.goal_test(6 * ONE, 0, 0, 0, 0, 0, [11 * ONE, 10 * ONE]));
+        assert_eq!((s.goal_node, s.best), (1, 2));
+        // out of range and farther than the best's estimate (one tile): nothing
+        assert!(!s.goal_test(ONE, 0, 0, 0, 0, 0, [30 * ONE, 30 * ONE]));
+        assert_eq!((s.arena.len(), s.best), (3, 2));
+    }
+
+    /// `FUN_140fa8210`: the goal's foot on an axis edge that spans it, reached at the edge's
+    /// start cost plus the walk along the edge, is a goal candidate; an edge that does not span
+    /// the goal gives none.
+    #[test]
+    fn the_goal_s_foot_on_a_spanning_edge_is_a_goal_candidate() {
+        let mesh = Mesh::new(64);
+        let mut s = search_toward(&mesh, [10 * ONE, 10 * ONE], 2 * ONE);
+        s.foot_test(
+            0,
+            [9 * ONE, 12 * ONE],
+            [9 * ONE, 20 * ONE],
+            0,
+            0,
+            0,
+            0,
+            ONE,
+            0,
+        );
+        assert_eq!(s.arena.len(), 1);
+        s.foot_test(
+            0,
+            [15 * ONE, 9 * ONE],
+            [5 * ONE, 9 * ONE],
+            1,
+            0,
+            0,
+            0,
+            ONE,
+            0,
+        );
+        let goal = s.arena[s.goal_node as usize];
+        assert_eq!((goal.at, goal.g), ([10 * ONE, 9 * ONE], 6 * ONE));
+    }
+
+    /// `FUN_140fa8350`: a junction moved `d` into the free space beside each side, the flag
+    /// turning it along the side; side 0 and any side past 3 take the same path.
+    #[test]
+    fn a_contact_point_moves_off_its_side() {
+        let p = [100, 200];
+        let moved: Vec<Point> = (0..5)
+            .flat_map(|side| [0, 1].map(|flag| contact_point(p, side, 3, flag)))
+            .collect();
+        assert_eq!(
+            moved,
+            [
+                [97, 203],
+                [103, 203],
+                [97, 197],
+                [97, 203],
+                [103, 197],
+                [97, 197],
+                [103, 203],
+                [103, 197],
+                [97, 203],
+                [103, 203],
+            ]
+        );
+    }
+
+    /// `FUN_140fa39f0`: a point goes onto a side of the rectangle shrunk by `d` (the side's
+    /// coordinate set, the other held between the shrunk corners); a side past 3 leaves it.
+    #[test]
+    fn a_point_snaps_onto_a_side_within_its_corners() {
+        let r = [0, 0, 100, 50];
+        let snap = |p: Point, side| {
+            let mut q = p;
+            snap_to_side(&mut q, r, side, 5);
+            q
+        };
+        assert_eq!(snap([-20, 30], 0), [5, 5]);
+        assert_eq!(snap([200, 30], 0), [95, 5]);
+        assert_eq!(snap([40, 30], 0), [40, 5]);
+        assert_eq!(snap([40, -9], 1), [95, 5]);
+        assert_eq!(snap([40, 99], 1), [95, 45]);
+        assert_eq!(snap([40, 20], 2), [40, 45]);
+        assert_eq!(snap([40, 20], 3), [5, 20]);
+        assert_eq!(snap([40, 20], 4), [40, 20]);
+    }
+
     #[test]
     fn the_integer_square_root_is_exact_below_and_truncates_between_squares() {
         assert_eq!(isqrt(0), 0);

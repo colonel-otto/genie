@@ -2221,6 +2221,216 @@ mod tests {
     use crate::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
 
+    /// A combat unit's charge after its master's maximum charge changes (`FUN_1412163c0`'s
+    /// `;`): a set and an add keep the charge's share of the maximum, without a maximum a set
+    /// takes the value and an add adds it, a multiply scales the charge.
+    #[test]
+    fn a_charge_keeps_its_share_of_a_changed_maximum() {
+        assert_eq!(charge_after(10.0, 20.0, Change::Set, 40.0), 20.0);
+        assert_eq!(charge_after(10.0, 0.0, Change::Set, 40.0), 40.0);
+        assert_eq!(charge_after(10.0, 20.0, Change::Add, 20.0), 20.0);
+        assert_eq!(charge_after(10.0, 0.0, Change::Add, 5.0), 15.0);
+        assert_eq!(charge_after(10.0, 20.0, Change::Multiply, 1.5), 15.0);
+    }
+
+    /// An object has actions while it holds a top action or its production list holds one (a
+    /// building's Make); an empty queue or none at all is no action.
+    #[test]
+    fn an_object_has_actions_while_it_holds_one() {
+        let mut u = Unit::default();
+        assert!(!has_actions(&u));
+        u.production = Some(crate::production::Production::default());
+        assert!(!has_actions(&u));
+        u.production.as_mut().unwrap().action = Some(crate::production::Making::Research(
+            crate::production::MakeTech {
+                state: 6,
+                paid: false,
+                tech: 22,
+                master: -1,
+                progress: 0.0,
+            },
+        ));
+        assert!(has_actions(&u));
+    }
+
+    /// An Attack's slot 0x50 (`FUN_140a7f800`): its sprites take the master's unless they are
+    /// its task's (the walking sprite the task's moving one, the attack and standing sprites the
+    /// task's proceeding or working one), a sprite it lacks stays lacking, and only a combat
+    /// master's idle attack and second attack sprites replace its own.
+    #[test]
+    fn an_attack_takes_its_master_s_sprites_but_its_task_s() {
+        let g = |id| crate::sprite::Graphic {
+            id,
+            frames: 10,
+            facets: 1,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 0,
+        };
+        let arms = crate::attack::Arms {
+            move_sprite: Some(g(1)),
+            sprite: Some(g(2)),
+            second_sprite: Some(g(3)),
+            idle_sprite: Some(g(4)),
+            idle_attack_sprite: None,
+            missile: -1,
+            fire_frame: 0,
+            interrupt_frame: -1,
+        };
+        let sprites = MasterSprites {
+            moving: Some(g(11)),
+            attack: Some(g(12)),
+            standing: Some(g(14)),
+            idle_attack: Some(g(15)),
+            second: Some(g(13)),
+            combat: false,
+        };
+        let mut a = arms;
+        follow_master(&mut a, None, &sprites);
+        assert_eq!(
+            [
+                a.move_sprite,
+                a.sprite,
+                a.idle_sprite,
+                a.second_sprite,
+                a.idle_attack_sprite
+            ],
+            [Some(g(11)), Some(g(12)), Some(g(14)), Some(g(3)), None]
+        );
+        // the task's moving (1) and working (4, the standing sprite's) sprites stay
+        let mut a = arms;
+        follow_master(&mut a, Some([1, 9, 4, 9]), &sprites);
+        assert_eq!(
+            [a.move_sprite, a.sprite, a.idle_sprite],
+            [Some(g(1)), Some(g(12)), Some(g(4))]
+        );
+        // a sprite it lacks stays lacking; a combat master's last two replace its own
+        let mut a = crate::attack::Arms {
+            move_sprite: None,
+            ..arms
+        };
+        follow_master(
+            &mut a,
+            None,
+            &MasterSprites {
+                combat: true,
+                ..sprites
+            },
+        );
+        assert_eq!(
+            [a.move_sprite, a.second_sprite, a.idle_attack_sprite],
+            [None, Some(g(13)), Some(g(15))]
+        );
+    }
+
+    /// `FUN_1412163c0`'s population set (110) over the master's first three storage entries: the
+    /// headroom (4) takes back the old amount's magnitude and adds the value, the population (11)
+    /// and resource 19 take back the old amount and add the value's magnitude; other kinds and a
+    /// fourth entry change nothing.
+    #[test]
+    fn a_population_set_moves_each_storage_entry_to_the_new_value() {
+        let mut t = Turns::new(
+            0,
+            0,
+            0,
+            vec![0],
+            vec![Player {
+                attributes: vec![0.0; 40],
+                ..Player::default()
+            }],
+        );
+        let master = Master {
+            id: 70,
+            storage: vec![
+                (HEADROOM, -5.0, 0),
+                (POPULATION, 3.0, 0),
+                (7, 1.0, 0),
+                (RESOURCE_19, 2.0, 0),
+            ],
+            ..Master::default()
+        };
+        t.population_storage(0, &master, -8.0).unwrap();
+        let at = |i: i16| t.players[0].attributes[i as usize];
+        assert_eq!(
+            [at(HEADROOM), at(POPULATION), at(7), at(RESOURCE_19)],
+            [-3.0, 5.0, 0.0, 0.0]
+        );
+    }
+
+    /// `FUN_14118c540`: an object below state 7, not inside another, of a master with a height
+    /// takes its master's record again (kind and class not 0); one dying, inside or of a flat
+    /// master keeps none.
+    #[test]
+    fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
+        let unit = |id, state: u8, inside: Option<i32>| {
+            let mut u = Unit {
+                id,
+                position: [5.5, 5.5, 0.0],
+                ..Unit::default()
+            };
+            u.life.master_id = 70;
+            u.life.state = state;
+            u.life.inside = inside;
+            u
+        };
+        let mut t = Turns::new(
+            0,
+            0,
+            0,
+            vec![0],
+            vec![Player {
+                objects: vec![unit(1, 2, None), unit(2, 7, None), unit(3, 2, Some(9))],
+                ..Player::default()
+            }],
+        );
+        t.spatial = crate::spatial::Spatial::new([10, 10]);
+        for id in 1..=3 {
+            t.spatial.insert(
+                id,
+                crate::spatial::Placed {
+                    position: [5.5, 5.5, 0.0],
+                    radius: [0.5, 0.5],
+                    class: 0,
+                    player: 0,
+                    master: 70,
+                    obstruction_type: 2,
+                    buildable_on: 0,
+                    tall: true,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        let master = Master {
+            id: 70,
+            height: 2.0,
+            obstruction_type: 2,
+            obstruction_class: 2,
+            ..Master::default()
+        };
+        for id in 1..=3 {
+            t.give_record(id, &master);
+        }
+        let record = |t: &Turns, id| t.spatial.get(id).and_then(|p| p.obstruction);
+        let wall = Some(crate::spatial::Obstruction { kind: 2, class: 2 });
+        assert_eq!(
+            [record(&t, 1), record(&t, 2), record(&t, 3)],
+            [wall, None, None]
+        );
+        // a flat master gives none
+        t.spatial.drop_record(1);
+        t.give_record(
+            1,
+            &Master {
+                height: 0.0,
+                ..master
+            },
+        );
+        assert_eq!(record(&t, 1), None);
+    }
+
     /// `FUN_1416136f0` (slot 0x1a8) of villagers (0x53) at player 1's town centre: each draws
     /// its sex from the Player stream (above 49 a female, 0x125), the owner's slot 0x1c0 makes it
     /// at the centre's place, it goes inside (the centre has room) and, attribute 283 at 0, comes

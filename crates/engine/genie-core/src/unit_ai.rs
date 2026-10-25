@@ -16523,6 +16523,40 @@ mod tests {
         ..TC
     };
 
+    /// `FUN_14120e4e0` for a type-70 attacker: priority 3 spares every class but its six; a
+    /// ranged attacker with a blast whose level has neither bit 2 nor bit 3 would scan the blast
+    /// for friends (not modelled); a melee attacker, one without a blast, or a blast level with
+    /// either bit spares nobody.
+    #[test]
+    fn an_attacker_spares_by_its_priority_and_its_blast() {
+        let villager = Target { class: 4, ..BOAR };
+        let tower = Target { class: 52, ..BOAR };
+        let priority_3 = Attacker {
+            attack_priority: 3,
+            ..MANGONEL
+        };
+        assert_eq!(spares_friends(&priority_3, &villager), Ok(false));
+        assert_eq!(spares_friends(&priority_3, &tower), Ok(true));
+        let blast = Attacker {
+            area_effect: 1.0,
+            ..MANGONEL
+        };
+        assert!(spares_friends(&blast, &villager).is_err());
+        for level in [4, 8] {
+            let a = Attacker {
+                blast_level: level,
+                ..blast
+            };
+            assert_eq!(spares_friends(&a, &villager), Ok(true));
+        }
+        let melee = Attacker {
+            range: 1.0,
+            ..blast
+        };
+        assert_eq!(spares_friends(&melee, &villager), Ok(true));
+        assert_eq!(spares_friends(&MANGONEL, &villager), Ok(true));
+    }
+
     /// The siege unit's attack check (`FUN_140c19190`): never classes 1 and 42 nor in
     /// `NoAttack`; standing its ground within its range of its state position less its own
     /// diagonal (`powf`, `sqrtf`), a Gaia target's range 1.5 longer; defending within the range
