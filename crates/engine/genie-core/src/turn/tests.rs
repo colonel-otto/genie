@@ -3337,6 +3337,53 @@ fn a_research_at_several_buildings_takes_the_least_loaded() {
     assert_eq!(t.least_loaded(0, &at(77, 1, vec![])), -1);
 }
 
+/// `do_command`'s case 0x65 (`FUN_140e6f470`), RESEARCH's check before its handler: listing
+/// none is refused; the packet's building, when the world holds it, must be the player's own
+/// (any while players may order each other's), and one listed alone must be held; of more
+/// listed, another player's or one the world lacks becomes −1, and a human's left without one
+/// is refused.
+#[test]
+fn a_research_s_check_refuses_another_player_s_buildings() {
+    let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
+    t.players.push(Player::default());
+    let at = |building, count, buildings: Vec<i32>| ResearchAt {
+        building,
+        count,
+        buildings,
+        tech: 0,
+        target: -1,
+        shift: false,
+    };
+    // its own: listed alone, or with the others checked
+    assert_eq!(t.research_check(0, &at(9, 1, vec![])), Some(vec![]));
+    assert_eq!(
+        t.research_check(0, &at(9, 3, vec![9, 77, 10])),
+        Some(vec![9, -1, 10])
+    );
+    assert_eq!(t.research_check(0, &at(9, 0, vec![])), None);
+    assert_eq!(t.research_check(0, &at(9, -2, vec![])), None);
+    // player 1's: another's building, one alone the world lacks, a list of none of its own
+    assert_eq!(t.research_check(1, &at(9, 1, vec![])), None);
+    assert_eq!(t.research_check(1, &at(9, 2, vec![9, 10])), None);
+    assert_eq!(t.research_check(1, &at(77, 1, vec![])), None);
+    assert_eq!(t.research_check(1, &at(77, 2, vec![9, 10])), None);
+    // a building the world lacks with a list skips the packet's own test
+    assert_eq!(
+        t.research_check(0, &at(77, 2, vec![77, 10])),
+        Some(vec![-1, 10])
+    );
+    // a computer's list left without one still runs
+    t.players[1].computer = true;
+    assert_eq!(
+        t.research_check(1, &at(77, 2, vec![9, 10])),
+        Some(vec![-1, -1])
+    );
+    // while players may order each other's
+    t.settings.cheats_enabled = true;
+    t.players[1].computer = false;
+    assert_eq!(t.research_check(1, &at(9, 1, vec![])), Some(vec![]));
+}
+
 /// RESEARCH (`0x140e7e270`) of Castle Age (0x66) at the town centre: queued as any technology;
 /// only in game mode 16 does it mark the world's treaty monitor (`+0x820`'s `+0x17`), which the
 /// slice does not hold.

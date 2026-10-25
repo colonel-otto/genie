@@ -510,6 +510,11 @@ impl Turns {
                     target,
                     shift,
                 };
+                // do_command's case 0x65 checks the buildings first
+                let Some(buildings) = self.research_check(player, &r) else {
+                    return;
+                };
+                let r = ResearchAt { buildings, ..r };
                 if let Err(e) = self.research(player, &r) {
                     self.stop_player(player, e);
                 }
@@ -2159,6 +2164,39 @@ impl Turns {
             }
         }
         Ok(())
+    }
+
+    /// `do_command`'s case 0x65 (`FUN_140e6f470`), RESEARCH's check before its handler: the
+    /// count of buildings it lists (`+0x8` as a short) below 1 is refused; the packet's building
+    /// (`+4`), when the world holds it, must be the player's own, or any while players may order
+    /// each other's (the setting `+0x1074`), and listed alone it must be held; with more listed,
+    /// the listed ones (`+0x11..`) as the unit commands' ([`Turns::command_check`]). None for a
+    /// refused one, else the list with −1 for the ones left out. The packet's size tests are the
+    /// decoder's, and the world's `+0xb12` cheat is not held.
+    pub(in crate::turn) fn research_check(
+        &self,
+        player: usize,
+        r: &ResearchAt,
+    ) -> Option<Vec<i32>> {
+        let listed = usize::try_from(r.count).unwrap_or(0);
+        if listed == 0 {
+            return None;
+        }
+        let own = self
+            .object(r.building)
+            .map(|(p, _)| p == player || self.settings.cheats_enabled);
+        match own {
+            Some(false) => return None,
+            None if listed == 1 => return None,
+            _ => {}
+        }
+        if listed == 1 {
+            return Some(r.buildings.clone());
+        }
+        let n = listed.min(r.buildings.len());
+        let mut checked = self.command_check(player, &r.buildings[..n])?;
+        checked.extend_from_slice(&r.buildings[n..]);
+        Some(checked)
     }
 
     /// RESEARCH (`0x140e7e270`) for `player`: a target other than −1, or a technology the tree
