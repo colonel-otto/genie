@@ -6148,6 +6148,29 @@ mod stack_tests {
         assert_eq!(t.spatial.get(8759).unwrap().obstruction, None);
     }
 
+    /// A new building's record (`FUN_14118c540` from its place): a master without a height (a
+    /// pasture's post, master 1888: collision height 0) gets none, though its obstruction kind
+    /// and class would give one; with a height it does (431153923's builder, update 412).
+    #[test]
+    fn a_new_building_without_a_height_gets_no_record() {
+        for (height, record) in [(0.0, None), (1.0, Some((5, 2)))] {
+            let mut t = world();
+            for ms in &mut t.masters {
+                let m = ms.get_mut(109).unwrap();
+                m.build_time = 0;
+                m.obstruction_type = 5;
+                m.obstruction_class = 2;
+                m.height = height;
+                m.building.as_mut().unwrap().annexes = [-1; 4];
+            }
+            let (id, _) = t
+                .make_building(1, 109, Ok(None), [80.0, 80.0, 0.0])
+                .unwrap();
+            let placed = t.spatial.get(id).unwrap().obstruction;
+            assert_eq!(placed.map(|o| (o.kind, o.class)), record, "height {height}");
+        }
+    }
+
     /// A gate foundation's stack gate takes the foundation's lock (`FUN_1411dbb70`: the new
     /// gate's slot 0x670 with the old one's `+0xc7c`): locked, the new gate's last move time is
     /// the world time plus 1; unlocked it stays unlocked and keeps its last move time.

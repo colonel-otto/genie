@@ -1625,8 +1625,10 @@ impl Turns {
         Ok(())
     }
 
-    /// A new building's place (its static init's `new_position`): it takes its place on the map,
-    /// with its obstruction record unless it is desolid (`FUN_1411cf770` drops the one its place
+    /// A new building's place (its static init's `new_position`, `0x1411a58b0`): it takes its
+    /// place on the map, with its obstruction record when its master has a height
+    /// (`FUN_14118c540`: `+0xb5f` above 0; a new building is in state 0 and inside nothing; a
+    /// pasture's posts have none) unless it is desolid (`FUN_1411cf770` drops the one its place
     /// gave it; its first builder brings it back), and its sight, which waits for its
     /// construction to start (its place links its tiles to its anchor, `FUN_1411e6780`, and its
     /// desolid flag unlinks them).
@@ -1653,7 +1655,10 @@ impl Turns {
             tall: made.tall,
             speed: 0.0,
             unknown: None,
-            obstruction: (!desolid && record.recorded()).then_some(record),
+            obstruction: (!desolid
+                && !crate::fmath::at_most_or_unordered(made.height, 0.0)
+                && record.recorded())
+            .then_some(record),
         };
         self.spatial.insert(id, placed);
         if placed.obstruction.is_some() {
