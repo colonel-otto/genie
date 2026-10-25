@@ -251,42 +251,10 @@ impl RepairAction {
         match self.state {
             DONE => step.done = true,
             MOVE => self.walking(&mut walk, &mut view, &mut step)?,
-            FACE => {
-                let t = view.target.ok_or(GenieError::unreachable(
-                    "a Repair facing its target without one",
-                ))?;
-                let at = walk
-                    .world
-                    .get(walk.me.id)
-                    .map_or(walk.me.position, |p| p.position);
-                let mover = walk.mover.as_deref_mut().ok_or(GenieError::unreachable(
-                    "a repairer without movement state (an action object always has one)",
-                ))?;
-                if crate::attack::face_target(mover, at, t.position, view.now)? {
-                    self.set_state(&mut walk, WORK, &view, &mut step)?;
-                }
-            }
+            FACE => self.facing(&mut walk, &view, &mut step)?,
             WORK => self.work(&mut walk, view, &mut step)?,
-            WAIT => {
-                self.timer -= walk.dt;
-                if crate::fmath::below_or_unordered(0.0, self.timer) {
-                    return Ok(step);
-                }
-                if self.reaches(&walk, &view) {
-                    self.set_state(&mut walk, FACE, &view, &mut step)?;
-                } else {
-                    self.timer = ONE;
-                }
-            }
-            WALK_POINT => {
-                let goal = self.goal.ok_or(GenieError::unreachable(
-                    "a Repair's walk to its point without the point",
-                ))?;
-                // at the point (1), failed (3) or gone (the list empty, 1): the end
-                if self.step_walk(&mut walk, &view, Goal::Point(goal), (0.0, true))? != 0 {
-                    self.set_state(&mut walk, DONE, &view, &mut step)?;
-                }
-            }
+            WAIT => self.waiting(&mut walk, &view, &mut step)?,
+            WALK_POINT => self.walking_to_point(&mut walk, &view, &mut step)?,
             FAILED => {
                 step.notifies.push(crate::unit_ai::ACTION_FAILED);
                 self.set_state(&mut walk, HALTED, &view, &mut step)?;
@@ -296,6 +264,70 @@ impl RepairAction {
             _ => {}
         }
         Ok(step)
+    }
+
+    /// State 6 (`0x140adaa20` case 5): the unit turns toward the target ([`face_target`] with its
+    /// sprites' facets), then works (7).
+    ///
+    /// [`face_target`]: crate::attack::face_target
+    fn facing(
+        &mut self,
+        walk: &mut Walk<'_>,
+        view: &RepairView<'_>,
+        step: &mut RepairStep,
+    ) -> Result<(), GenieError> {
+        let t = view.target.ok_or(GenieError::unreachable(
+            "a Repair facing its target without one",
+        ))?;
+        let at = walk
+            .world
+            .get(walk.me.id)
+            .map_or(walk.me.position, |p| p.position);
+        let mover = walk.mover.as_deref_mut().ok_or(GenieError::unreachable(
+            "a repairer without movement state (an action object always has one)",
+        ))?;
+        if crate::attack::face_target(mover, at, t.position, view.now)? {
+            self.set_state(walk, WORK, view, step)?;
+        }
+        Ok(())
+    }
+
+    /// State 10 (`0x140adaa20` case 9): the timer counts down by the update's seconds; once it
+    /// is out (`COMISS` 0 with `JC`: a NaN is out) a unit within reach faces the target (6), any
+    /// other waits a second more.
+    fn waiting(
+        &mut self,
+        walk: &mut Walk<'_>,
+        view: &RepairView<'_>,
+        step: &mut RepairStep,
+    ) -> Result<(), GenieError> {
+        self.timer -= walk.dt;
+        if crate::fmath::below_or_unordered(0.0, self.timer) {
+            return Ok(());
+        }
+        if self.reaches(walk, view) {
+            self.set_state(walk, FACE, view, step)?;
+        } else {
+            self.timer = ONE;
+        }
+        Ok(())
+    }
+
+    /// State 11 (`0x140adaa20` case 10): the walk to the Repair's point; at it (1), failed (3)
+    /// or gone (the list empty, 1) the Repair ends.
+    fn walking_to_point(
+        &mut self,
+        walk: &mut Walk<'_>,
+        view: &RepairView<'_>,
+        step: &mut RepairStep,
+    ) -> Result<(), GenieError> {
+        let goal = self.goal.ok_or(GenieError::unreachable(
+            "a Repair's walk to its point without the point",
+        ))?;
+        if self.step_walk(walk, view, Goal::Point(goal), (0.0, true))? != 0 {
+            self.set_state(walk, DONE, view, step)?;
+        }
+        Ok(())
     }
 
     /// State 4 (`0x140adaa20` case 3): the `MoveTo` toward the target walks (its start in its

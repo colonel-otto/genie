@@ -486,6 +486,48 @@ const fn looping_next(level: &mut PathData, index: i32) -> i32 {
     }
 }
 
+/// [`Mover::avoid`]'s rank for the pause of a walker (`me` of `player`, a `computer`'s or not)
+/// over the hit `id` (`other` its record): a human walker ranks another player's unit, or one of
+/// its own ordered at another time, by their last human order times (`+0x650`: the older order
+/// pauses); else two members of one unit group by their places in it (None for a group the world
+/// does not hold: neither pauses), any other two by id (slot 0x5f8).
+fn pause_rank(
+    me: &Me,
+    (player, computer): (usize, bool),
+    (id, other): (i32, &Placed),
+    world: &Spatial,
+    groups: Option<&crate::group::UnitGroups>,
+) -> Option<bool> {
+    let mine = world.gait(me.id).map_or(0, |g| g.human_order);
+    let theirs = world.gait(id).map_or(0, |g| g.human_order);
+    Some(if !computer && (other.player != player || theirs != mine) {
+        theirs < mine
+    } else if me.group != -1 && world.gait(id).and_then(|g| g.group) == Some(me.group) {
+        let g = groups.and_then(|gs| gs.get(me.group))?;
+        g.index_of(me.id) < g.index_of(id)
+    } else {
+        me.id < id
+    })
+}
+
+/// [`Mover::reached`]'s waypoints too near the map's edge for the unit (`FUN_140f98d50`): from
+/// the level's waypoint on, each whose x or y lies within the unit's radius (`radius`) of an
+/// edge of the map (`map`) goes, until one lies inside.
+fn drop_edge_waypoints(level: &mut PathData, radius: [f32; 3], map: [i32; 2]) {
+    let [rx, ry, _] = radius;
+    let [w, h] = map;
+    while level.waypoint < level.points.len() as i32 {
+        let [x, _, y] = level.point(level.waypoint);
+        if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {
+            break;
+        }
+        // the index is the waypoint just incremented, and no writer sets one below -1: it is
+        // never negative, so the point goes (the game's loop would spin on a failed removal)
+        let removed = remove_point(&mut level.points, level.waypoint);
+        debug_assert!(removed, "a waypoint below -1");
+    }
+}
+
 /// `FUN_140f98d50`: a path's point `i` goes, the later ones move down (true); an index outside
 /// the path (below 0 or past its last point) changes nothing (false).
 fn remove_point(points: &mut Vec<Vec3>, i: i32) -> bool {
@@ -1218,31 +1260,13 @@ impl Mover {
         now: u32,
     ) -> Result<Next, GenieError> {
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
-        let level = &mut self.paths[0];
-        if level.flags & 2 != 0 {
-            if level.waypoint < level.points.len() as i32 {
-                let p = level.point(level.waypoint);
-                let at = self.set_position(map_position(p), world.map);
-                let at = self.grounded(at, world.terrain.as_ref());
-                self.moved_to(me, at, world, pathing, now);
-            }
-            self.paths[0].flags &= !2;
+        if self.paths[0].flags & 2 != 0 {
+            self.take_waypoint_place(me, world, pathing, now);
         }
         let level = &mut self.paths[0];
         level.flags &= !1;
         level.waypoint += 1;
-        let [rx, ry, _] = self.stats.radius;
-        let [w, h] = world.map;
-        while level.waypoint < level.points.len() as i32 {
-            let [x, _, y] = level.point(level.waypoint);
-            if rx <= x && ry <= y && x <= w as f32 - rx && y <= h as f32 - ry {
-                break;
-            }
-            // the index is the waypoint just incremented, and no writer sets one below -1: it is
-            // never negative, so the point goes (the game's loop would spin on a failed removal)
-            let removed = remove_point(&mut level.points, level.waypoint);
-            debug_assert!(removed, "a waypoint below -1");
-        }
+        drop_edge_waypoints(level, self.stats.radius, world.map);
         if level.path_flags & 1 != 0 {
             let reached = level.waypoint - 1;
             level.waypoint = looping_next(level, reached);
@@ -1253,23 +1277,7 @@ impl Mover {
                 Next::Dispatch
             });
         }
-        let next = level.waypoint + 1;
-        if level.level != 0 && next < level.points.len() as i32 {
-            let d = fmath::sub(vector(me.position), level.points[next as usize]);
-            if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
-                // the manager's point query at the waypoint (FUN_141051900 with flags 0x20): its
-                // buffer and ignore list as the last FUN_1410562d0 and FUN_1410562e0 left them;
-                // a gate the owner may pass has no record during its owner's update
-                // ([`crate::turn::Turns::open_gates`]), so slot 0x678 passes none of those found
-                let [x, _, y] = level.points[level.waypoint as usize];
-                let ignore = world.manager_ignore();
-                if world.object_holds([x, y], world.manager_grow(), &ignore, false)? {
-                    let level = &mut self.paths[0];
-                    let removed = remove_point(&mut level.points, level.waypoint);
-                    debug_assert!(removed, "the waypoint lies within the path");
-                }
-            }
-        }
+        self.drop_held_waypoint(me, world)?;
         let parent_is_level_1 = self
             .paths
             .get(1)
@@ -1316,34 +1324,96 @@ impl Mover {
                 return Ok(Next::Dispatch);
             }
             if level.level == 2 {
-                // 0x141154f8a: a walker without a weapon range (slot 0x230; UCOMISS, a NaN has
-                // one) beside a target that moved since the level's path was made (slot 0x5e8,
-                // 0 for an object that never moves, against the path's +8; on a tie the target
-                // of a higher player number or a higher id) lets its path go and stops: it
-                // arrived (FUN_140f98e80, slot 0x5d0; the step returns 2). Else the level takes
-                // state 6 and the unit stops (1). The step's temporary shapes go either way.
-                let created = level.created;
-                let target = level.target;
-                let own = world.get(me.id).map(|p| p.player);
-                let yields = self.stats.weapon_range == 0.0
-                    && goal.target.is_some_and(|t| {
-                        let moved = world.gait(target).map_or(0, |g| g.last_move);
-                        moved > created
-                            || (moved == created
-                                && (own.is_some_and(|o| o < t.player) || me.id < target))
-                    });
-                if yields {
-                    self.reset_level();
-                    self.stop()?;
-                    return Ok(Next::Done(Motion::Arrived));
-                }
-                self.paths[0].state = 6;
-                self.stop()?;
-                return Ok(Next::Done(Motion::Done));
+                return self.level_2_short(me, world, goal);
             }
         }
         level.state = 4;
         Ok(Next::Dispatch)
+    }
+
+    /// [`Mover::reached`]'s bit 1: the unit takes the waypoint's place (slot 0x58, the position
+    /// setter, on the ground), and the bit goes.
+    fn take_waypoint_place(
+        &mut self,
+        me: &mut Me,
+        world: &mut Spatial,
+        pathing: Option<&mut Pathing>,
+        now: u32,
+    ) {
+        let level = &self.paths[0];
+        if level.waypoint < level.points.len() as i32 {
+            let p = level.point(level.waypoint);
+            let at = self.set_position(map_position(p), world.map);
+            let at = self.grounded(at, world.terrain.as_ref());
+            self.moved_to(me, at, world, pathing, now);
+        }
+        self.paths[0].flags &= !2;
+    }
+
+    /// [`Mover::reached`]'s next waypoint on a level but 0: when the unit lies within
+    /// [`TARGET_SHORT_REACH`] (squared) of the one after it, the manager's point query at it
+    /// (`FUN_141051900` with flags 0x20; its buffer and ignore list as the last
+    /// `FUN_1410562d0` and `FUN_1410562e0` left them; a gate the owner may pass has no record
+    /// during its owner's update, [`crate::turn::Turns::open_gates`], so slot 0x678 passes none
+    /// of those found) drops it when an object holds it.
+    ///
+    /// # Errors
+    ///
+    /// A frozen object the query may meet.
+    fn drop_held_waypoint(&mut self, me: &Me, world: &Spatial) -> Result<(), GenieError> {
+        let level = &self.paths[0];
+        let next = level.waypoint + 1;
+        if level.level == 0 || level.points.len() as i32 <= next {
+            return Ok(());
+        }
+        let d = fmath::sub(vector(me.position), level.points[next as usize]);
+        // a NaN distance is not within
+        if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < TARGET_SHORT_REACH {
+            let [x, _, y] = level.points[level.waypoint as usize];
+            let ignore = world.manager_ignore();
+            if world.object_holds([x, y], world.manager_grow(), &ignore, false)? {
+                let level = &mut self.paths[0];
+                let removed = remove_point(&mut level.points, level.waypoint);
+                debug_assert!(removed, "the waypoint lies within the path");
+            }
+        }
+        Ok(())
+    }
+
+    /// [`Mover::reached`] at level 2's last waypoint short of its goal (`0x141154f8a`): a walker
+    /// without a weapon range (slot 0x230; `UCOMISS`, a NaN has one) beside a target that moved
+    /// since the level's path was made (slot 0x5e8, 0 for an object that never moves, against
+    /// the path's `+8`; on a tie the target of a higher player number or a higher id) lets its
+    /// path go and stops: it arrived (`FUN_140f98e80`, slot 0x5d0; the step returns 2). Else the
+    /// level takes state 6 and the unit stops (1). The step's temporary shapes go either way.
+    ///
+    /// # Errors
+    ///
+    /// What the stop does not model.
+    fn level_2_short(
+        &mut self,
+        me: &Me,
+        world: &Spatial,
+        goal: Goal<'_>,
+    ) -> Result<Next, GenieError> {
+        let level = &self.paths[0];
+        let created = level.created;
+        let target = level.target;
+        let own = world.get(me.id).map(|p| p.player);
+        let yields = self.stats.weapon_range == 0.0
+            && goal.target.is_some_and(|t| {
+                let moved = world.gait(target).map_or(0, |g| g.last_move);
+                moved > created
+                    || (moved == created && (own.is_some_and(|o| o < t.player) || me.id < target))
+            });
+        if yields {
+            self.reset_level();
+            self.stop()?;
+            return Ok(Next::Done(Motion::Arrived));
+        }
+        self.paths[0].state = 6;
+        self.stop()?;
+        Ok(Next::Done(Motion::Done))
     }
 
     /// Level 0's look ahead on its level 1 parent, at a waypoint it reached (`LAB_14115136c`):
@@ -2850,6 +2920,42 @@ impl Mover {
         fmath::add(position, fmath::scale(dt * next[2], direction))
     }
 
+    /// [`Mover::avoid`]'s first loop's test of the hit `id` (`other` its record): kept unless
+    /// the step shrinks its overlap with the unit's box (`FUN_1411615a0`); then when the walked
+    /// path ignores it and it moved before the top path was made (or the top path is this
+    /// update's and the step overlaps it more than [`PUSHED`] of the radius), or it moved after
+    /// the walked path was made (or at the same time and outranks the unit: a higher player, or
+    /// the same and a higher id).
+    fn keeps_hit(
+        &self,
+        me: &Me,
+        player: usize,
+        (id, other): (i32, &Placed),
+        projected: Vec3,
+        world: &Spatial,
+        now: u32,
+    ) -> bool {
+        let level = &self.paths[0];
+        let top = self.paths.last().filter(|l| !l.points.is_empty());
+        let [rx, ry, _] = self.stats.radius;
+        let o = vector(other.position);
+        let now_overlap = overlap(vector(me.position), [rx, ry], o, other.radius);
+        let next_overlap = overlap(projected, [rx, ry], o, other.radius);
+        let last_move = world.gait(id).map_or(0, |g| g.last_move);
+        let mut pushed = false;
+        if let Some(top) = top.filter(|_| now_overlap <= next_overlap) {
+            if top.created == now && rx * PUSHED < next_overlap && level.ignored.contains(&id) {
+                pushed = true;
+            }
+            if top.created < now && level.ignored.contains(&id) {
+                pushed = last_move < top.created;
+            }
+        }
+        let outranks = player < other.player || (player == other.player && me.id < id);
+        let outranks = level.created < last_move || (outranks && level.created == last_move);
+        !(next_overlap < now_overlap || (!pushed && !outranks))
+    }
+
     /// The walk's avoidance of what its step hits (`0x141150f00`, after `FUN_14114cc60`). The first
     /// loop keeps a hit the unit must go round: none whose overlap with the unit's box the step
     /// shrinks (`FUN_1411615a0`); else one in the walked path's ignore units (`FUN_140f98d20`)
@@ -2878,13 +2984,10 @@ impl Mover {
         (now, computer): (u32, bool),
     ) -> Result<Avoided, GenieError> {
         let level = &self.paths[0];
-        let top = self.paths.last().filter(|l| !l.points.is_empty());
         let player = world
             .get(me.id)
             .ok_or(GenieError::unsupported("a walker without a place"))?
             .player;
-        let [rx, ry, _] = self.stats.radius;
-        let at = vector(me.position);
         // a hit the world holds no object of (a map edge's record) is passed over
         let met = |id: i32| -> Result<Option<(i32, &Placed)>, GenieError> {
             let id = world.annex_of(id).unwrap_or(id);
@@ -2899,26 +3002,9 @@ impl Mover {
             if 0 <= level.target && id == level.target {
                 target_hit = true;
             }
-            let o = vector(other.position);
-            let now_overlap = overlap(at, [rx, ry], o, other.radius);
-            let next_overlap = overlap(projected, [rx, ry], o, other.radius);
-            let gait = world.gait(id);
-            let last_move = gait.map_or(0, |g| g.last_move);
-            let mut pushed = false;
-            if let Some(top) = top.filter(|_| now_overlap <= next_overlap) {
-                if top.created == now && rx * PUSHED < next_overlap && level.ignored.contains(&id) {
-                    pushed = true;
-                }
-                if top.created < now && level.ignored.contains(&id) {
-                    pushed = last_move < top.created;
-                }
+            if self.keeps_hit(me, player, (id, other), projected, world, now) {
+                kept.push(id);
             }
-            let outranks = player < other.player || (player == other.player && me.id < id);
-            let outranks = level.created < last_move || (outranks && level.created == last_move);
-            if next_overlap < now_overlap || (!pushed && !outranks) {
-                continue;
-            }
-            kept.push(id);
         }
         // FUN_141159220 slides the projected step out of the hits of no speed of classes 3, 27,
         // 39 and 52 (buildings, walls, gates): only the kept hits' re-plan reads the slid point,
@@ -2946,28 +3032,10 @@ impl Mover {
                 if 0 <= level.target && id == level.target {
                     continue;
                 }
-                if player == 0 || other.player != 0 {
-                    // a human walker ranks another player's unit, or one of its own ordered at
-                    // another time, by their last human order times (+0x650): the older order
-                    // pauses; else two members of one group by their places in it, any other two
-                    // by id (slot 0x5f8)
-                    let mine = world.gait(me.id).map_or(0, |g| g.human_order);
-                    let theirs = world.gait(id).map_or(0, |g| g.human_order);
-                    let outranks = if !computer && (other.player != player || theirs != mine) {
-                        theirs < mine
-                    } else if me.group != -1
-                        && world.gait(id).and_then(|g| g.group) == Some(me.group)
-                    {
-                        let Some(g) = groups.and_then(|gs| gs.get(me.group)) else {
-                            continue;
-                        };
-                        g.index_of(me.id) < g.index_of(id)
-                    } else {
-                        me.id < id
-                    };
-                    if !outranks {
-                        continue;
-                    }
+                if (player == 0 || other.player != 0)
+                    && pause_rank(me, (player, computer), (id, other), world, groups) != Some(true)
+                {
+                    continue;
                 }
                 // slot 0x528's walked level, paused for dt more when its pause is shorter
                 if let Some(p) = self.pause_of(world, id).filter(|&p| p < dt) {

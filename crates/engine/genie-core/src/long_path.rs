@@ -295,49 +295,156 @@ fn trace(
     path.insert(0, centre(at)).then_some(path)
 }
 
+/// [`search`]'s answers before the search: an end off the pather's width (`+0x8`, the far edge
+/// included) is refused; a target within range, or without a target a goal within a range
+/// above [`REACHED`] (`gap2` the ends' squared gap), is in range; a unit that does not move is
+/// refused. None: the search runs.
+fn search_refused(map: [i32; 2], req: &LongRequest, gap2: i32) -> Option<Searched> {
+    let [w, _] = map;
+    let held = |v: i32| 0 <= v && v <= w;
+    let [x0, y0] = req.from;
+    let [x1, y1] = req.to;
+    if !(held(x0) && held(y0) && held(x1) && held(y1)) {
+        return Some(Searched::Refused);
+    }
+    if req
+        .target
+        .is_some_and(|t| t.gap_squared <= req.range * req.range)
+    {
+        return Some(Searched::InRange);
+    }
+    if REACHED < req.range && req.target.is_none() && (gap2 as f32) < req.range * req.range {
+        return Some(Searched::InRange);
+    }
+    (!req.moves).then_some(Searched::Refused)
+}
+
+/// The tiles beside a diagonal step (directions 0, 2, 4, 6) onto `n`, which the step needs as
+/// clear as the tile.
+const fn beside_diagonal(dir: u8, [nx, ny]: [i32; 2]) -> Option<[[i32; 2]; 2]> {
+    match dir {
+        0 => Some([[nx + 1, ny], [nx, ny + 1]]),
+        2 => Some([[nx, ny + 1], [nx - 1, ny]]),
+        4 => Some([[nx - 1, ny], [nx, ny - 1]]),
+        6 => Some([[nx, ny - 1], [nx + 1, ny]]),
+        _ => None,
+    }
+}
+
+/// What [`search`] reads of the tiles: the obstruction words, the tall objects less those the
+/// request lowers (`lowered`, one each), and the unit's blocked terrain classes with and
+/// without [`BLOCKED`].
+struct Grid<'a> {
+    tiles: &'a Tiles,
+    width: i32,
+    lowered: Vec<u8>,
+    blocked_terrain: u64,
+    blocked: u64,
+}
+
+impl<'a> Grid<'a> {
+    fn new(tiles: &'a Tiles, [w, h]: [i32; 2], req: &LongRequest) -> Self {
+        let blocked_terrain = u64::from(req.mask ^ 0xff);
+        let mut lowered = vec![0u8; (w.max(0) * h.max(0)) as usize];
+        for &[x, y] in &req.lowered {
+            if 0 <= x && x < w && 0 <= y && y < h {
+                let i = (y * w + x) as usize;
+                lowered[i] = lowered[i].wrapping_add(1);
+            }
+        }
+        Self {
+            tiles,
+            width: w,
+            lowered,
+            blocked_terrain,
+            blocked: blocked_terrain | BLOCKED,
+        }
+    }
+
+    fn word(&self, x: i32, y: i32) -> u64 {
+        self.tiles.word(x, y).unwrap_or(0)
+    }
+
+    fn tall(&self, x: i32, y: i32) -> u8 {
+        let Some(t) = self.tiles.tall(x, y) else {
+            return 0;
+        };
+        t.wrapping_sub(self.lowered[(y * self.width + x) as usize])
+    }
+
+    /// The step onto `n` (with the tiles `beside` a diagonal): its terrain and the beside tiles'
+    /// passable, else it is skipped; then open when the tile, the beside tiles and their tall
+    /// objects are clear, or, at the goal (`at_goal`) of a target, the target's own static
+    /// record; another's gate is closed.
+    ///
+    /// # Errors
+    ///
+    /// An allied gate's tile (slot 0x678) and a closed tile beside a player's objects
+    /// (`FUN_14152f790`).
+    fn step_open(
+        &self,
+        [nx, ny]: [i32; 2],
+        beside: Option<[[i32; 2]; 2]>,
+        at_goal: bool,
+        req: &LongRequest,
+    ) -> Result<bool, GenieError> {
+        let corners = |test: &dyn Fn(i32, i32) -> bool| {
+            beside.is_none_or(|b| b.iter().all(|&[x, y]| test(x, y)))
+        };
+        let clear = |test: &dyn Fn(i32, i32) -> bool| test(nx, ny) && corners(test);
+        if !clear(&|x, y| self.word(x, y) & self.blocked_terrain == 0) {
+            return Ok(false);
+        }
+        let passes = || {
+            corners(&|x, y| self.word(x, y) & self.blocked == 0)
+                && self.tall(nx, ny) == 0
+                && corners(&|x, y| self.tall(x, y) == 0)
+        };
+        let word = self.word(nx, ny);
+        let open = if word & self.blocked == 0 {
+            passes()
+        } else if word & 0x3f00 == GATE_CLASS_BITS {
+            // a gate's record: its owner (bits 16 to 22) an ally of the unit's player
+            // (`FUN_141663dc0` with the ally flag) asks the gate on the tile's anchor (slot
+            // 0x678); another's gate is closed
+            let owner = (word >> 16) & 0x7f;
+            if req.allies & (1 << owner) != 0 {
+                return Err(GenieError::unsupported(
+                    "the long pather at an allied gate's tile (slot 0x678)",
+                ));
+            }
+            false
+        } else {
+            // the target's own tiles pass their static record
+            at_goal && req.target.is_some() && passes()
+        };
+        if !open && req.near_player {
+            return Err(GenieError::unsupported(
+                "the long pather beside a player's objects (FUN_14152f790)",
+            ));
+        }
+        Ok(open)
+    }
+}
+
 /// The search of `FUN_140f9eb70` ([`reaches`], [`path`]).
 fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, GenieError> {
     let [w, h] = map;
     let [x0, y0] = req.from;
     let [x1, y1] = req.to;
-    // every end is held to the pather's width (`+0x8`), the far edge included
-    let held = |v: i32| 0 <= v && v <= w;
-    if !(held(x0) && held(y0) && held(x1) && held(y1)) {
-        return Ok(Searched::Refused);
-    }
     let (dx, dy) = (x1 - x0, y1 - y0);
     let gap2 = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
-    if let Some(t) = req.target
-        && t.gap_squared <= req.range * req.range
-    {
-        return Ok(Searched::InRange);
+    if let Some(early) = search_refused(map, req, gap2) {
+        return Ok(early);
     }
     // the goal: the target's tile and footprint, else the goal tile
     let (goal, rect) = req
         .target
         .map_or(([x1, y1], [x1, y1, x1, y1]), |t| (t.tile, t.rect));
     let in_rect = |x: i32, y: i32| rect[0] <= x && x <= rect[2] && rect[1] <= y && y <= rect[3];
-    if REACHED < req.range && req.target.is_none() && (gap2 as f32) < req.range * req.range {
-        return Ok(Searched::InRange);
-    }
-    if !req.moves {
-        return Ok(Searched::Refused);
-    }
-    let blocked_terrain = u64::from(req.mask ^ 0xff);
-    let blocked = blocked_terrain | BLOCKED;
     let n = (w.max(0) * h.max(0)) as usize;
     let index = |x: i32, y: i32| (y * w + x) as usize;
-    let word = |x: i32, y: i32| tiles.word(x, y).unwrap_or(0);
-    let mut lowered = vec![0u8; n];
-    for &[x, y] in &req.lowered {
-        if 0 <= x && x < w && 0 <= y && y < h {
-            lowered[index(x, y)] = lowered[index(x, y)].wrapping_add(1);
-        }
-    }
-    let tall = |x: i32, y: i32| {
-        let Some(t) = tiles.tall(x, y) else { return 0 };
-        t.wrapping_sub(lowered[index(x, y)])
-    };
+    let grid = Grid::new(tiles, map, req);
     let quad = |a: i32| (a * 4).wrapping_mul(a * 4);
     // a tile's cost (`+0x38420`) and, entered this search, the direction it was entered by
     // (`+0x20`, under the search's generation `+0x2db430`: an older one reads as never entered)
@@ -407,52 +514,8 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
             if seen.is_some() && new_cost >= cost[index(nx, ny)] {
                 continue;
             }
-            // the tiles beside a diagonal step, which it needs as clear as the tile
-            let beside: Option<[[i32; 2]; 2]> = match dir {
-                0 => Some([[nx + 1, ny], [nx, ny + 1]]),
-                2 => Some([[nx, ny + 1], [nx - 1, ny]]),
-                4 => Some([[nx - 1, ny], [nx, ny - 1]]),
-                6 => Some([[nx, ny - 1], [nx + 1, ny]]),
-                _ => None,
-            };
-            let clear = |test: &dyn Fn(i32, i32) -> bool| {
-                test(nx, ny) && beside.is_none_or(|b| b.iter().all(|&[x, y]| test(x, y)))
-            };
-            if !clear(&|x, y| word(x, y) & blocked_terrain == 0) {
-                continue;
-            }
             let at_goal = (nx == goal[0] && ny == goal[1]) || in_rect(nx, ny);
-            let corners = |test: &dyn Fn(i32, i32) -> bool| {
-                beside.is_none_or(|b| b.iter().all(|&[x, y]| test(x, y)))
-            };
-            let passes = || {
-                corners(&|x, y| word(x, y) & blocked == 0)
-                    && tall(nx, ny) == 0
-                    && corners(&|x, y| tall(x, y) == 0)
-            };
-            let open = if word(nx, ny) & blocked == 0 {
-                passes()
-            } else if word(nx, ny) & 0x3f00 == GATE_CLASS_BITS {
-                // a gate's record: its owner (bits 16 to 22) an ally of the unit's player
-                // (`FUN_141663dc0` with the ally flag) asks the gate on the tile's anchor (slot
-                // 0x678); another's gate is closed
-                let owner = (word(nx, ny) >> 16) & 0x7f;
-                if req.allies & (1 << owner) != 0 {
-                    return Err(GenieError::unsupported(
-                        "the long pather at an allied gate's tile (slot 0x678)",
-                    ));
-                }
-                false
-            } else {
-                // the target's own tiles pass their static record
-                at_goal && req.target.is_some() && passes()
-            };
-            if !open {
-                if req.near_player {
-                    return Err(GenieError::unsupported(
-                        "the long pather beside a player's objects (FUN_14152f790)",
-                    ));
-                }
+            if !grid.step_open([nx, ny], beside_diagonal(dir, [nx, ny]), at_goal, req)? {
                 continue;
             }
             let cur_dir = came.unwrap_or(0xff);
