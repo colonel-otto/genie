@@ -7656,3 +7656,45 @@ fn a_unit_s_human_order_count_down_is_the_walk_s_view_at_once() {
     assert_eq!(counted(20), (0, Some(0)));
     assert_eq!(counted(5001), (5001, Some(5001)));
 }
+
+/// `RGE_Action_Object::update` runs the actions of a unit not inside another, else its inside
+/// update (`FUN_140a98790`), never both: livestock whose Artifact's Enter got it in keeps the
+/// Artifact to its next update, whose inside update deletes it (429705045's sheep 10555 and
+/// 10556 entering the transport 10579 in update 137, the Artifact gone after 138); an animal
+/// inside at the update's start runs no Artifact step.
+#[test]
+fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_update() {
+    let mut t = livestock_enter_world();
+    // the sheep out of reach of the house, standing, so that its Enter walks
+    let place = |t: &mut Turns, at: [f32; 3]| {
+        let v = &mut t.players[1].objects[0];
+        v.position = at;
+        let m = v.mover.as_mut().unwrap();
+        m.moved_at = at;
+        m.velocity = Some(crate::movement::Velocity {
+            velocity: [0.0; 3],
+            acceleration: [0.0; 3],
+        });
+        t.spatial.set_position(9175, at);
+    };
+    place(&mut t, [30.0, 91.0, 0.0]);
+    assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
+    assert_eq!(t.players[1].objects[0].life.inside, None);
+    // the first update runs no Artifact (its first update is in the second)
+    t.tick(50);
+    // its walk arrived at the house's edge: the next update of the Enter gets it in
+    place(&mut t, [30.0, 89.1, 0.0]);
+    let art = t.players[1].objects[0].artifact.as_mut().unwrap();
+    art.enter.as_mut().unwrap().move_to = Some(MoveTo::Arrived);
+    t.tick(50);
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.inside, Some(10028));
+    assert_eq!(v.top_action_kind(), Some(crate::artifact::ARTIFACT_TYPE));
+    // inside at the next update's start: no Artifact step, the inside update deletes it
+    let before = v.artifact.map(|a| (a.state, a.timer));
+    t.tick(50);
+    let v = &t.players[1].objects[0];
+    assert_eq!((v.artifact, v.top_action_kind()), (None, None));
+    assert_eq!(t.players[1].freezes, vec![]);
+    assert!(before.is_some());
+}

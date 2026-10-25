@@ -5081,12 +5081,16 @@ impl Unit {
         };
         let mut captured = None;
         let by = self.releaser(c);
+        // RGE_Action_Object::update runs the actions of an object not inside another (`+0x2f0`
+        // none as it reaches them), else the inside update, never both
+        let inside_at_start = self.life.inside.is_some();
         // the Artifact's Enter sub-action (an enter command's, FUN_1410847e0) updates first
         // (FUN_140a992b0) as the unit's own Enter does (taken as the unit's meanwhile); once it
         // ended (1 to 5: the failed one's 3, the list removing it) the sub-actions go, the point
         // is -1 and the target goes (slot 0x68 with none); an Enter that got the unit in stays,
-        // and the inside update deletes the Artifact next
+        // and the inside update of the next update deletes the Artifact
         if c.tick > 1
+            && !inside_at_start
             && let Some(e) = self.artifact.as_mut().and_then(|a| a.enter.take())
         {
             let own = self.enter.replace(e);
@@ -5107,7 +5111,7 @@ impl Unit {
         if let Some(artifact) = self
             .artifact
             .as_mut()
-            .filter(|_| c.tick > 1 && !artifact_from_now)
+            .filter(|_| c.tick > 1 && !artifact_from_now && !inside_at_start)
         {
             let dt = c.dt;
             let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
@@ -5588,8 +5592,8 @@ impl Unit {
         // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
         // targets go, slot 0x180, and a MoveTo's stops the unit, slot 0x5d0); the actions below
         // it (FUN_140a78470) and the next one's slot 0x28 need a second action, which the slice
-        // never holds
-        if self.life.inside.is_some() {
+        // never holds; a unit its actions got in this update waits for the next
+        if inside_at_start {
             if let Some(e) = self.enter.take() {
                 if e.move_to.is_some()
                     && let Some(m) = self.mover.as_mut()
@@ -6562,9 +6566,6 @@ impl Unit {
             .filter(|_| self.life.is_alive() && runs)
             .map(|ai| !ai.orders.is_empty())
         {
-            if turn.is_some() && busy && self.life.inside.is_some() && self.enter.is_none() {
-                return Err(GenieError::unsupported("a busy unit inside another"));
-            }
             // slot 0x2d0 matters only to a queue with orders
             let interruptible = match self.interruptible() {
                 Ok(i) => i,
