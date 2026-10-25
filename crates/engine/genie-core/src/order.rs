@@ -261,6 +261,20 @@ impl Turns {
         })
     }
 
+    /// The live slot of object `id` when its own update knows it, `(p, i)`: that slot while it
+    /// still holds the object (the game's update works on the object itself, not its id), else
+    /// the live slot [`Turns::place`] finds.
+    pub(crate) fn live_slot(&self, (p, i, id): (usize, usize, i32)) -> Option<(usize, usize)> {
+        let held = self.players.get(p).and_then(|player| player.objects.get(i));
+        if held.is_some_and(|u| u.id == id) {
+            return Some((p, i));
+        }
+        match self.place(id)? {
+            Place::Live(p, i) => Some((p, i)),
+            Place::Sleeping(..) => None,
+        }
+    }
+
     pub(crate) fn object(&self, id: i32) -> Option<(usize, &Unit)> {
         match self.place(id)? {
             Place::Live(p, i) => Some((p, &self.players[p].objects[i])),
@@ -5753,6 +5767,39 @@ pub(crate) fn nearest_table_site(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The object's own update knows its slot: it is taken while it still holds the object, and
+    /// the object is found by its id once the list moved or the slot is out of the lists; an
+    /// object asleep or gone has no live slot.
+    #[test]
+    fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
+        let unit = |id| Unit {
+            id,
+            ..Unit::default()
+        };
+        let t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0, 0],
+            vec![
+                crate::turn::Player {
+                    objects: vec![unit(1), unit(2)],
+                    ..crate::turn::Player::default()
+                },
+                crate::turn::Player {
+                    objects: vec![unit(3)],
+                    sleeping: vec![unit(4)],
+                    ..crate::turn::Player::default()
+                },
+            ],
+        );
+        assert_eq!(t.live_slot((1, 0, 3)), Some((1, 0)));
+        assert_eq!(t.live_slot((0, 0, 2)), Some((0, 1)));
+        assert_eq!(t.live_slot((5, 9, 3)), Some((1, 0)));
+        assert_eq!(t.live_slot((1, 0, 4)), None);
+        assert_eq!(t.live_slot((0, 0, 7)), None);
+    }
 
     /// records/425906646's gate 27745 (masters 88 and 91, 1650 hit points each, three damage
     /// sprites): unhurt, its share is 0 under either master; a resource's share is not modelled.

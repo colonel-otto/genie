@@ -475,10 +475,15 @@ impl Turns {
         left
     }
 
-    /// `TRIBE_Combat_Object::update`'s regeneration ([`Unit::regenerate`]) of the object `id`, a
-    /// combat object or building (types 70 and 80) by its own master, else its player's.
-    pub(in crate::turn) fn regenerate_object(&mut self, id: i32, dt_seconds: f32) {
-        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+    /// `TRIBE_Combat_Object::update`'s regeneration ([`Unit::regenerate`]) of the object in
+    /// `slot` ([`Turns::live_slot`]), a combat object or building (types 70 and 80) by its own
+    /// master, else its player's.
+    pub(in crate::turn) fn regenerate_object(
+        &mut self,
+        slot: (usize, usize, i32),
+        dt_seconds: f32,
+    ) {
+        let Some((p, i)) = self.live_slot(slot) else {
             return;
         };
         let unit = &self.players[p].objects[i];
@@ -495,9 +500,9 @@ impl Turns {
     }
 
     /// `TRIBE_Combat_Object::update`'s hit point powerup check ([`Unit::clamp_hp_powerup`]) of the
-    /// object `id`, a combat object or building (types 70 and 80).
-    pub(in crate::turn) fn clamp_object_powerup(&mut self, id: i32) {
-        let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+    /// object in `slot` ([`Turns::live_slot`]), a combat object or building (types 70 and 80).
+    pub(in crate::turn) fn clamp_object_powerup(&mut self, slot: (usize, usize, i32)) {
+        let Some((p, i)) = self.live_slot(slot) else {
             return;
         };
         let unit = &self.players[p].objects[i];

@@ -1493,7 +1493,7 @@ impl Turns {
         // TRIBE_Combat_Object::update's regeneration after RGE_Combat_Object::update
         // (once, with the update's unit AI part)
         if full && ai_resume.is_none() && result.is_ok() {
-            self.regenerate_object(id, seconds(dt));
+            self.regenerate_object((p, i, id), seconds(dt));
         }
         // TRIBE_Combat_Object::update's passive abilities (FUN_1412072f0, once, with the
         // update's unit AI part) as the object's owner after its update; a removal
@@ -1515,7 +1515,7 @@ impl Turns {
                 result = Err(e);
             }
             // then its hit point powerup check
-            self.clamp_object_powerup(id);
+            self.clamp_object_powerup((p, i, id));
         }
         // TRIBE_Building_Object::update: the production after the combat update (once,
         // with the update's unit AI part)
