@@ -450,9 +450,10 @@ impl Turns {
     }
 
     /// [`Turns::install_enter`], or with `sub` the Enter as the sub-action of the Artifact on top
-    /// (`FUN_1410847e0`): the Artifact's sub-actions go (`FUN_140a98e20`: a `MoveTo`'s teardown
-    /// stops the unit, [`crate::artifact::Artifact::hold_enter`]) and the Enter starts in its
-    /// list (`FUN_140a977e0`), the Artifact's update running it from then on.
+    /// (`FUN_1410847e0`): the Artifact's sub-action goes (`FUN_140a98e20`,
+    /// [`crate::artifact::Artifact::hold_enter`]: an Enter lets its target go, slot 0x180
+    /// ([`Turns::release`]), and a walking `MoveTo`'s teardown stops the unit) and the Enter
+    /// starts in its list (`FUN_140a977e0`), the Artifact's update running it from then on.
     fn install_enter_as(
         &mut self,
         player: usize,
@@ -464,13 +465,18 @@ impl Turns {
     ) -> Result<(), GenieError> {
         let id = self.players[player].objects[idx].id;
         if sub {
+            let by = self.releaser(player, idx);
             let unit = &mut self.players[player].objects[idx];
             let art = unit.artifact.as_mut().ok_or(GenieError::unreachable(
                 "an Artifact on top without its action",
             ))?;
-            if art.hold_enter(action)
-                && let Some(m) = unit.mover.as_mut()
-            {
+            let (stops, released) = art.hold_enter(action);
+            // the old Enter's teardown lets its target go before its MoveTo's stops the unit
+            if let Some(t) = released {
+                self.release(t, by)?;
+            }
+            let unit = &mut self.players[player].objects[idx];
+            if stops && let Some(m) = unit.mover.as_mut() {
                 m.stop()?;
             }
         } else {
@@ -626,7 +632,10 @@ impl Turns {
         let Some(crate::order::Place::Live(tp, ti)) = self.place(target) else {
             return Err(ENTER_SLEEPING);
         };
-        let mut unit = std::mem::take(&mut self.players[player].objects[idx]);
+        let mut unit = std::mem::replace(
+            &mut self.players[player].objects[idx],
+            crate::turn::Unit::taken_out(),
+        );
         let mut adds = Vec::new();
         let result = (|| {
             let building = &self.players[tp].objects[ti];
@@ -690,7 +699,10 @@ impl Turns {
         let bm = self
             .master_of(tp, self.players[tp].objects[ti].life.master_id)?
             .clone();
-        let mut unit = std::mem::take(&mut self.players[player].objects[idx]);
+        let mut unit = std::mem::replace(
+            &mut self.players[player].objects[idx],
+            crate::turn::Unit::taken_out(),
+        );
         let mut adds = Vec::new();
         let result: Result<_, GenieError> = (|| {
             let building = &self.players[tp].objects[ti];

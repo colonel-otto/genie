@@ -1922,11 +1922,8 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
     );
 }
 
-/// The enter command of livestock under its Artifact (`FUN_1410847e0`): the Enter becomes the
-/// Artifact's sub-action (its list emptied, `FUN_140a98e20`, then `FUN_140a977e0`), the Artifact
-/// staying the top action; the next update runs it through the Artifact's.
-#[test]
-fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
+/// [`enter_world`] whose villager is a sheep under its Artifact, the house taking herdables in.
+fn livestock_enter_world() -> Turns {
     let mut t = enter_world(vec![], 5);
     let sheep = Master {
         id: 594,
@@ -1956,6 +1953,15 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
     let v = &mut t.players[1].objects[0];
     v.life.master_id = 594;
     v.artifact = Some(Artifact::new(false));
+    t
+}
+
+/// The enter command of livestock under its Artifact (`FUN_1410847e0`): the Enter becomes the
+/// Artifact's sub-action (its list emptied, `FUN_140a98e20`, then `FUN_140a977e0`), the Artifact
+/// staying the top action; the next update runs it through the Artifact's.
+#[test]
+fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
+    let mut t = livestock_enter_world();
     assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
     let v = &t.players[1].objects[0];
     assert_eq!(v.enter, None);
@@ -1965,6 +1971,31 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
         sub.is_some_and(|e| e.target == 10028) || v.life.inside == Some(10028),
         "{v:?}"
     );
+}
+
+/// A second enter command of livestock walking under its Artifact (430061417's pig 7920 in
+/// update 32, INTERACT on the transport again): the new Enter takes the house (slot 0x178), then
+/// `FUN_140a98e20` pops the old one, whose teardown lets the house go (slot 0x180) and whose
+/// `MoveTo`'s stops the unit: its speed and acceleration 0, so the update's velocity step does
+/// not move it.
+#[test]
+fn livestock_s_second_enter_command_stops_the_walk_and_lets_the_old_enter_s_target_go() {
+    let mut t = livestock_enter_world();
+    let mut walking = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 0.0, 3);
+    walking.move_to = Some(MoveTo::Moving);
+    let v = &mut t.players[1].objects[0];
+    v.artifact.as_mut().unwrap().enter = Some(walking);
+    v.mover.as_mut().unwrap().velocity = Some(crate::movement::Velocity {
+        velocity: [0.0, 0.0, 0.7],
+        acceleration: [0.0, 0.0, f32::MAX],
+    });
+    // the old Enter took the house
+    t.players[1].objects[1].workers = 1;
+    assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
+    let v = &t.players[1].objects[0];
+    let velocity = v.mover.as_ref().unwrap().velocity.unwrap();
+    assert_eq!((velocity.velocity[2], velocity.acceleration[2]), (0.0, 0.0));
+    assert_eq!(t.players[1].objects[1].workers, 1);
 }
 
 /// The inside update (`FUN_140a98790`) of a villager inside the house deletes its top action
@@ -5640,6 +5671,18 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
     t.spatial.insert(7948, placed(101.5, 35, 0, 706));
     t.spatial.insert(7231, placed(102.5, 27, 1, 117));
     t.spatial.insert(8858, placed(100.5, 15, 0, 1250));
+    // a sleeping tree of id 0 out of the blast's reach but among the objects about it
+    // (428491175's oak 0 at (107.5, 0.5), 9 tiles from the petard 5342): the updating petard's
+    // place in its list holds no object of that id, so the tree is read as itself and sleeps on
+    let far = unit(0, 1250, 500.0, [95.5, 158.5, 0.0]);
+    t.players[0].sleeping.push(Unit {
+        life: Lifecycle {
+            class: Class::Static,
+            ..far.life
+        },
+        ..far
+    });
+    t.spatial.insert(0, placed(95.5, 15, 0, 1250));
     t.tick(100);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(t.players[1].objects[0].life.hp, 980.0);
@@ -5651,7 +5694,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
             .iter()
             .map(|u| (u.id, u.life.hp))
             .collect::<Vec<_>>(),
-        [(8858, 500.0)]
+        [(8858, 500.0), (0, 500.0)]
     );
     assert!(3 <= t.players[0].objects[0].life.state);
 }

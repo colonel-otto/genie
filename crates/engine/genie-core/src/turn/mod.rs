@@ -651,6 +651,16 @@ pub struct Recycling {
 }
 
 impl Turns {
+    /// The world's next object id (`FUN_14152fd70`) for a new object of `master` for `player`: it
+    /// counts on, and the id goes to the trace ([`crate::trace::new_object`]).
+    #[track_caller]
+    pub(crate) fn take_object_id(&mut self, player: usize, master: i16) -> i32 {
+        let id = self.next_object_id;
+        self.next_object_id += 1;
+        crate::trace::new_object(self.ticks, player, id, master);
+        id
+    }
+
     /// The world as the header save holds it: its time, frame seed, turn order and players.
     #[must_use]
     pub fn new(
@@ -1097,7 +1107,7 @@ impl Turns {
             .map(|ai| ai.current_target)
             .filter(|&t| t != -1)
             .map_or(Ok(None), |t| self.seen(t, p));
-        let mut unit = std::mem::take(&mut self.players[p].objects[i]);
+        let mut unit = std::mem::replace(&mut self.players[p].objects[i], Unit::taken_out());
         let watch = crate::trace::Watch::of(&unit);
         let mut victim = unit.attack_target().and_then(|t| self.victim(t, p));
         // the objects a hit's blast may reach about its target, or about the unit for

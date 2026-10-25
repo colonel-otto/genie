@@ -106,14 +106,18 @@ impl Artifact {
         self.set_target(-1, false).released
     }
 
-    /// The enter command's Enter as the sub-action (`FUN_1410847e0` with an Artifact on top: its
-    /// sub-action list empties, `FUN_140a98e20`, then takes the Enter, `FUN_140a977e0`): a
-    /// `MoveTo` sub-action goes with its goal (true: its teardown stops the unit, the caller's).
-    pub const fn hold_enter(&mut self, enter: crate::garrison::EnterAction) -> bool {
+    /// The enter command's Enter as the sub-action (`FUN_1410847e0` with an Artifact on top:
+    /// `FUN_140a98e20` pops the sub-action it held, then `FUN_140a977e0` takes the Enter). A
+    /// `MoveTo` sub-action goes with its goal; an Enter goes with its teardown (`FUN_140a85bf0`
+    /// -> `FUN_140a73fc0`): its target is let go (slot 0x180) and its own `MoveTo`, if it walks,
+    /// goes too. Whether a `MoveTo` went (its teardown stops the unit) and the target let go,
+    /// both the caller's.
+    pub fn hold_enter(&mut self, enter: crate::garrison::EnterAction) -> (bool, Option<i32>) {
         let walked = self.move_to.take().is_some();
         self.walk_to = None;
-        self.enter = Some(enter);
-        walked
+        let old = self.enter.replace(enter);
+        let stops = walked || old.is_some_and(|e| e.move_to.is_some());
+        (stops, old.map(|e| e.target))
     }
 
     /// Slot 0x190 and slot 0x288 on the animal with this as its top action (`FUN_14106d090`,
@@ -384,6 +388,31 @@ mod tests {
         a.move_to = Some(MoveTo::Arrived);
         let _ = a.update(None, 50, true, &mut || Ok(None)).unwrap();
         assert_eq!((a.state, a.timer, a.move_to, a.goal), (10, 1.0, None, None));
+    }
+
+    /// `FUN_1410847e0` under an Artifact: `FUN_140a98e20` pops the sub-action the enter command
+    /// replaces. An Enter goes with its teardown (`FUN_140a85bf0` -> `FUN_140a73fc0`): its
+    /// building or transport is let go (slot 0x180), and its walking `MoveTo`'s teardown stops
+    /// the unit (430061417's pig 7920 in update 32: INTERACT on the transport 7934 again, the
+    /// unit's speed and acceleration 0, so the next velocity step does not move it).
+    #[test]
+    fn an_enter_command_replaces_the_held_enter_letting_its_target_go_and_stopping_its_walk() {
+        let enter = |target| crate::garrison::EnterAction::new(target, [1.0, 2.0, 0.0], 0.0, 20);
+        let mut a = Artifact::new(false);
+        // nothing held: nothing to let go, nothing walking
+        assert_eq!(a.hold_enter(enter(7934)), (false, None));
+        // the held Enter walks: its MoveTo's teardown stops the unit
+        a.enter.as_mut().unwrap().move_to = Some(MoveTo::Moving);
+        assert_eq!(a.hold_enter(enter(7934)), (true, Some(7934)));
+        assert_eq!(a.enter.map(|e| (e.target, e.move_to)), Some((7934, None)));
+        // an Enter not walking only lets its target go
+        assert_eq!(a.hold_enter(enter(7935)), (false, Some(7934)));
+        // the Artifact's own MoveTo goes with its goal and stops the unit
+        a.enter = None;
+        a.move_to = Some(MoveTo::Moving);
+        a.walk_to = Some((Goal::Point([3.0, 4.0, 0.0]), 0.0));
+        assert_eq!(a.hold_enter(enter(7934)), (true, None));
+        assert_eq!((a.move_to, a.walk_to), (None, None));
     }
 
     #[test]

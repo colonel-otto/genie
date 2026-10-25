@@ -836,6 +836,7 @@ impl Turns {
     ///
     /// A master the player has not got or without its building part, an annex of another type,
     /// and what the clearing and the attributes do not model.
+    #[track_caller]
     pub(crate) fn make_building(
         &mut self,
         player: usize,
@@ -850,8 +851,7 @@ impl Turns {
         let given_z = position[2];
         // the new object's new_position: the ground's height (slot 0x60)
         let position = self.on_ground(player, master, position);
-        let id = self.next_object_id;
-        self.next_object_id += 1;
+        let id = self.take_object_id(player, master);
         // what its first update as a built building starts (slot 0x7f0)
         let (default_make, default_task) = self
             .masters

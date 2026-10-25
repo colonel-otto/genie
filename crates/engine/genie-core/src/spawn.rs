@@ -1850,8 +1850,7 @@ impl Turns {
             .ok_or(GenieError::unsupported(
                 "a new unit's standing sprite the data file does not have",
             ))?;
-        let id = self.next_object_id;
-        self.next_object_id += 1;
+        let id = self.take_object_id(p, master);
         let (sprite, facets, angle) = self.setup_draws(standing);
         let ai = UnitAi::constructed(ai_type, &new_object, self.streams.get(Stream::Ai));
         let _ = self.streams.get(Stream::Object).rand15();
@@ -2115,8 +2114,7 @@ impl Turns {
         // its place (slot 0x58, the static new_position): the ground's height by its master's
         // fly mode (slot 0x60, FUN_141193a10)
         let at = self.on_ground(p, master, at);
-        let id = self.next_object_id;
-        self.next_object_id += 1;
+        let id = self.take_object_id(p, master);
         let standing = (0 <= made.standing_sprite)
             .then(|| self.graphics.get(&made.standing_sprite).copied())
             .flatten();

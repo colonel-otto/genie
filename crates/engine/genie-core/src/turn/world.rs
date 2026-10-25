@@ -843,7 +843,7 @@ impl Turns {
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
     pub(in crate::turn) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
-        let mut unit = std::mem::take(&mut self.players[q].objects[j]);
+        let mut unit = std::mem::replace(&mut self.players[q].objects[j], Unit::taken_out());
         let changed = change_hands(
             &mut unit,
             (q, 0),
@@ -973,7 +973,7 @@ impl Turns {
         if watched {
             self.unwatch(old, id);
         }
-        let mut unit = std::mem::take(&mut self.players[old].objects[idx]);
+        let mut unit = std::mem::replace(&mut self.players[old].objects[idx], Unit::taken_out());
         let changed = change_hands(
             &mut unit,
             (old, new),
@@ -1336,7 +1336,7 @@ impl Turns {
                 };
                 kinds.push(kind);
             }
-            let cart = std::mem::take(&mut self.players[p].objects[idx]);
+            let cart = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
             let result = (|| {
                 let (before, rest) = self.players.split_at_mut(p);
                 let (player, after) = rest.split_first_mut().expect("p is a player");

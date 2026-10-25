@@ -317,7 +317,22 @@ pub(in crate::turn) const fn loses_actions(life: &Lifecycle) -> bool {
     last < life.state
 }
 
+/// The id of the stand-in a unit leaves in its list while it is taken out for its update or an
+/// order ([`Unit::taken_out`]): no object has it, so a lookup by id during that time finds the
+/// object itself, never the stand-in (the default unit's id 0 is a real object's, 428491175's
+/// oak 0, which a petard's blast then read as an empty victim and felled).
+pub(crate) const TAKEN_OUT: i32 = i32::MIN;
+
 impl Unit {
+    /// The stand-in left in a list for a unit taken out of it ([`TAKEN_OUT`]).
+    #[must_use]
+    pub(crate) fn taken_out() -> Self {
+        Self {
+            id: TAKEN_OUT,
+            ..Self::default()
+        }
+    }
+
     /// Whether a building's slot 0x178 or 0x180 (`FUN_1411dba70`, `FUN_1411d6020`) lists its taker
     /// among the attacking units (`+0xce0`, [`Unit::attacking_units`]): this object of `master` is a
     /// building (type 80) below state 2 whose master has a stack unit (`+0x986`), and the taker's
@@ -5109,14 +5124,16 @@ impl Unit {
             let new = artifact.step(dt, searches, &mut || {
                 spatial.artifact_owner(id, attribute_97)
             })?;
-            // the check's sub-actions went: a walking MoveTo's teardown stops the unit, an
-            // Enter's lets its building go
+            // the check's sub-actions went: an Enter's teardown lets its building go, and a
+            // walking MoveTo's, the Artifact's own or the Enter's, stops the unit
+            let mut enter_walked = false;
             if let Some(Handover::Taken { .. }) = new
                 && let Some(e) = artifact.enter.take()
             {
                 c.releases.push((e.target, by));
+                enter_walked = e.move_to.is_some();
             }
-            if let Some(Handover::Taken { walked: true, .. }) = new
+            if (enter_walked || matches!(new, Some(Handover::Taken { walked: true, .. })))
                 && let Some(m) = self.mover.as_mut()
             {
                 m.stop()?;

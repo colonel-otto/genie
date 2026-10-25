@@ -379,11 +379,7 @@ impl Turns {
                 self.recycling.next_id -= 1;
                 id
             }
-            None => {
-                let id = self.next_object_id;
-                self.next_object_id += 1;
-                id
-            }
+            None => self.take_object_id(viewer, GHOST_MASTER),
         };
         let gone = 6 < original.state;
         let mut ghost = Ghost {

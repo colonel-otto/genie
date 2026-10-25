@@ -15,7 +15,8 @@
 //!   freezes (`object`) or a whole player stops, with the update (`tick`), the player and the
 //!   case: `why`, the reason of its [`GenieError`]; `at`, where it was raised; `context`, what
 //!   its site attached, when it did.
-//! - `genie_core::state` (DEBUG): an object's update changed its state (the event `object_state`,
+//! - `genie_core::state` (DEBUG): a new object took the world's next object id (the event
+//!   `new_object`: `object`, `player`, `master`, `tick`), an object's update changed its state (the event `object_state`,
 //!   `from` and `to`), its top action (`action`: the type `from` and `to`, the state `from_state`
 //!   and `to_state`) or its unit AI (`unit_ai`: `from_order`, `to_order`, `from_ai_action`,
 //!   `to_ai_action`, `from_target`, `to_target`); −1 stands for none. Each carries `tick`,
@@ -47,6 +48,21 @@ pub(crate) fn draw(stream: u8, draw: u32, value: u32) {
         draw,
         value,
         at = %std::panic::Location::caller()
+    );
+}
+
+/// A new object of `master` for `player` took the world's next object id `object` in update
+/// `tick` ([`STATE`]); `at` is the line of the engine that made it.
+#[track_caller]
+pub(crate) fn new_object(tick: u32, player: usize, object: i32, master: i16) {
+    tracing::debug!(
+        target: STATE,
+        tick,
+        player,
+        object,
+        master,
+        at = %std::panic::Location::caller(),
+        "new_object"
     );
 }
 

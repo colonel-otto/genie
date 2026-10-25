@@ -1977,7 +1977,8 @@ impl Turns {
                     }
                     continue;
                 }
-                let mut unit = std::mem::take(&mut self.players[p].objects[idx]);
+                let mut unit =
+                    std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
                 let player = &self.players[p];
                 let world = crate::turn::DropWorld {
                     masters: self.masters.get(p),
@@ -2056,7 +2057,7 @@ impl Turns {
                 }
                 continue;
             }
-            let mut unit = std::mem::take(&mut self.players[p].objects[idx]);
+            let mut unit = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
             let player = &self.players[p];
             let world = crate::turn::DropWorld {
                 masters: self.masters.get(p),
