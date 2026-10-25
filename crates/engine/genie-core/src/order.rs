@@ -71,6 +71,17 @@ pub(crate) struct Work {
 const VILLAGER: i16 = 4;
 const CLASS_51: i16 = 51;
 const CLASS_54: i16 = 54;
+
+/// [`Turns::order_work`]'s Pack or Unpack (each through slot 0x808): against a target out of
+/// the unit's `reach` ([`work_reach`]) class 54 packs (`FUN_140ad4ff0`), within it class 51
+/// unpacks (`FUN_140ae58a0`); without a reach, a computer's class 54 packs when the order has
+/// no target the world holds (`targetless`).
+const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, computer: bool) -> bool {
+    match reach {
+        None => targetless && class == CLASS_54 && computer,
+        Some((within, _)) => (class == CLASS_54 && !within) || (class == CLASS_51 && within),
+    }
+}
 const LIVESTOCK: i16 = 58;
 /// The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
 /// (`FUN_140aa0df0`).
@@ -3011,10 +3022,12 @@ impl Turns {
         let class = master.class;
         let target = self.object(order.target).map(|(tp, _)| tp);
         let reach = self.order_reach(player, unit.id, order, target, master)?;
-        let packs = match reach {
-            None => target.is_none() && class == CLASS_54 && self.players[player].computer,
-            Some((within, _)) => (class == CLASS_54 && !within) || (class == CLASS_51 && within),
-        };
+        let packs = packs(
+            class,
+            reach,
+            target.is_none(),
+            self.players[player].computer,
+        );
         // a class 54 under an action the slice does not hold may be under its Pack or Unpack
         if packs || (class == CLASS_54 && unit.unmodelled_action.is_some()) {
             return Err(GenieError::unsupported(

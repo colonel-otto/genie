@@ -323,6 +323,25 @@ pub(in crate::turn) const fn loses_actions(life: &Lifecycle) -> bool {
 /// oak 0, which a petard's blast then read as an empty victim and felled).
 pub(crate) const TAKEN_OUT: i32 = i32::MIN;
 
+/// [`Unit::missile_hits`]'s hit mode 1 (a missed missile): true when it passes the object it
+/// meets (its id, `player`, master type `kind` and blast defence `level`): one of the missile's
+/// own player or a missile, an ally's, and, when it is not the `target`, Gaia's of a type above
+/// 15 or one of a blast defence below the missile's (`blast_level`).
+fn missed_passes(
+    c: &Context<'_>,
+    (id, player, kind, level): (i32, usize, u8, u8),
+    target: i32,
+    blast_level: u8,
+) -> bool {
+    if player == c.player || kind == 60 {
+        return true;
+    }
+    let other = id != target;
+    c.spatial.allied_with(c.player, player)
+        || (other && player == 0 && 15 < kind)
+        || (other && level < blast_level)
+}
+
 impl Unit {
     /// The stand-in left in a list for a unit taken out of it ([`TAKEN_OUT`]).
     #[must_use]
@@ -1159,44 +1178,25 @@ impl Unit {
             if let Some(t) = gone.released {
                 release(t);
             }
-            if gone.stops
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
+            self.stop_if_moving(gone.stops)?;
         }
         if let Some(f) = self.fly.take() {
             self.anim_speed = Some(self.mover.as_ref().map_or(0.0, |m| m.stats.speed));
-            if f.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
+            self.stop_if_moving(f.move_to.is_some())?;
         }
         if let Some(e) = self.enter.take() {
-            if e.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
+            self.stop_if_moving(e.move_to.is_some())?;
             release(e.target);
         }
         // the Transport's teardown: its MoveTo's stops the unit; it holds no target
-        if self.transport.take().is_some_and(|t| t.move_to.is_some())
-            && let Some(m) = self.mover.as_mut()
-        {
-            m.stop()?;
-        }
+        let moves = self.transport.take().is_some_and(|t| t.move_to.is_some());
+        self.stop_if_moving(moves)?;
         if let Some(b) = self.build.take() {
             if b.added {
                 builder_leaves.push(b.target);
             }
             release(b.target);
-            if b.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
+            self.stop_if_moving(b.move_to.is_some())?;
         }
         // the Repair's destructor (FUN_140ad8fd0): a counted repairer leaves its target's
         // repairers, then the base teardown's sub-actions and target
@@ -1205,17 +1205,10 @@ impl Unit {
                 builder_leaves.push(r.target);
             }
             release(r.target);
-            if r.move_to.is_some()
-                && let Some(m) = self.mover.as_mut()
-            {
-                m.stop()?;
-            }
+            self.stop_if_moving(r.move_to.is_some())?;
         }
-        if self.explore.take().is_some_and(|e| e.move_to.is_some())
-            && let Some(m) = self.mover.as_mut()
-        {
-            m.stop()?;
-        }
+        let moves = self.explore.take().is_some_and(|e| e.move_to.is_some());
+        self.stop_if_moving(moves)?;
         if let Some(mut h) = self.hunt.take() {
             h.tear_down(self.mover.as_mut())?;
             release(h.target);
@@ -1232,14 +1225,25 @@ impl Unit {
             release(a.target2);
         }
         if let Some(old) = self.move_to.take() {
-            if let Some(m) = self.mover.as_mut() {
-                m.stop()?;
-            }
+            self.stop_if_moving(true)?;
             release(old.target);
         }
         if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
             release(a.target);
             release(a.fired_from);
+        }
+        Ok(())
+    }
+
+    /// [`Unit::clear_own_actions`]'s stop (slot 0x5d0) for a torn-down action's `MoveTo`, when
+    /// it had one (`moves`) and the unit moves at all.
+    ///
+    /// # Errors
+    ///
+    /// The unit's stop that the motion step does not model.
+    fn stop_if_moving(&mut self, moves: bool) -> Result<(), GenieError> {
+        if moves && let Some(m) = self.mover.as_mut() {
+            m.stop()?;
         }
         Ok(())
     }
@@ -3977,17 +3981,10 @@ impl Unit {
                     }
                 }
                 1 => {
-                    if player == c.player || kind == 60 {
+                    if missed_passes(c, (id, player, kind, level), action.target, blast_level) {
                         continue;
                     }
-                    let other = id != action.target;
-                    if c.spatial.allied_with(c.player, player)
-                        || (other && player == 0 && 15 < kind)
-                        || (other && level < blast_level)
-                    {
-                        continue;
-                    }
-                    if other {
+                    if id != action.target {
                         return Err(GenieError::unsupported(
                             "a missed missile meeting another object than its target",
                         ));

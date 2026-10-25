@@ -435,6 +435,19 @@ fn far_waypoint(way: f32, target: Option<(f32, i16)>) -> bool {
     })
 }
 
+/// [`Mover::motion_passes`]'s pause of the `level` walked: a paused walk's pause runs down by
+/// `dt`; true while some is left, else it ends at 0.
+fn pause_holds(level: &mut PathData, dt: f32) -> bool {
+    if 0.0 < level.pause_time {
+        level.pause_time -= dt;
+        if 0.0 < level.pause_time {
+            return true;
+        }
+        level.pause_time = 0.0;
+    }
+    false
+}
+
 /// A gap to the walked level's target `target` (its id and place): for a gate (class 39), the
 /// least (`MINSS`) of `own` and its first two annexes' (slot 0x680) gaps from the unit (`near`:
 /// its place and radii) through `annex`; for anything else `own`.
@@ -982,6 +995,48 @@ impl Mover {
         result
     }
 
+    /// [`Mover::motion_passes`]'s measure of the level walked toward `target_id`: the target's
+    /// place (`FUN_1415417a0`: none for -1 and for an object that is gone, which then measures as
+    /// a walk to a point, `LAB_1411512df`), the gap to it, and the gap to it, else to where the
+    /// top level's path ends.
+    ///
+    /// # Errors
+    ///
+    /// A target whose place the slice does not know.
+    fn level_gaps(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        target_id: i32,
+        ground_radius: [f32; 2],
+    ) -> Result<(Option<Placed>, f32, f32), GenieError> {
+        // FUN_1415417a0 on the level's target: none for -1 and for an object that is gone,
+        // which then measures as a walk to a point (LAB_1411512df)
+        let target = match target_id {
+            -1 => None,
+            id => world.get_known(id)?.copied(),
+        };
+        // the gap to the target, else to where the top level's path ends; a gate's is the
+        // least over it and its first two annexes (slot 0x680), each annex's less 0.1
+        // (`MINSS`, 0x1411512b8)
+        let gap = target.as_ref().map_or(FAR, |t| {
+            let own = footprint_gap(me.position, ground_radius, t.position, t.radius);
+            let near = (me.position, ground_radius);
+            gate_gap(world, near, (target_id, t), own, |g| g - ANNEX_GAP)
+        });
+        let to_end = match (&target, self.paths.len()) {
+            (Some(_), _) => gap,
+            (None, 1) => FAR,
+            (None, _) => self
+                .top_path()
+                .and_then(|p| p.last())
+                .map_or(FAR, |&[x, _, y]| {
+                    footprint_gap(me.position, ground_radius, [x, y, 0.0], [0.0, 0.0])
+                }),
+        };
+        Ok((target, gap, to_end))
+    }
+
     /// [`Mover::motion`]'s passes.
     fn motion_passes(
         &mut self,
@@ -997,13 +1052,9 @@ impl Mover {
             return Ok(Motion::Done);
         };
         // a paused walk stands (slot 0x5d0) until its pause ran out
-        if 0.0 < level.pause_time {
-            level.pause_time -= dt;
-            if 0.0 < level.pause_time {
-                self.stop()?;
-                return Ok(Motion::Moving);
-            }
-            level.pause_time = 0.0;
+        if pause_holds(level, dt) {
+            self.stop()?;
+            return Ok(Motion::Moving);
         }
         let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let mut plans = 0;
@@ -1020,30 +1071,7 @@ impl Mover {
             let Some(level) = self.paths.first().filter(|l| l.has_path) else {
                 return Ok(Motion::Done);
             };
-            // FUN_1415417a0 on the level's target: none for -1 and for an object that is gone,
-            // which then measures as a walk to a point (LAB_1411512df)
-            let target = match level.target {
-                -1 => None,
-                id => world.get_known(id)?.copied(),
-            };
-            // the gap to the target, else to where the top level's path ends; a gate's is the
-            // least over it and its first two annexes (slot 0x680), each annex's less 0.1
-            // (`MINSS`, 0x1411512b8)
-            let gap = target.as_ref().map_or(FAR, |t| {
-                let own = footprint_gap(me.position, ground_radius, t.position, t.radius);
-                let near = (me.position, ground_radius);
-                gate_gap(world, near, (level.target, t), own, |g| g - ANNEX_GAP)
-            });
-            let to_end = match (&target, self.paths.len()) {
-                (Some(_), _) => gap,
-                (None, 1) => FAR,
-                (None, _) => self
-                    .top_path()
-                    .and_then(|p| p.last())
-                    .map_or(FAR, |&[x, _, y]| {
-                        footprint_gap(me.position, ground_radius, [x, y, 0.0], [0.0, 0.0])
-                    }),
-            };
+            let (target, gap, to_end) = self.level_gaps(me, world, level.target, ground_radius)?;
             let goal = Goal {
                 target: target.as_ref(),
                 gap,

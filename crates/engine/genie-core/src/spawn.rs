@@ -555,45 +555,93 @@ pub fn placement_terrains(
     b: [i32; 4],
 ) -> Result<bool, GenieError> {
     let [side1, side2, t1, t2] = placement;
-    let flags = |t: i16| {
-        usize::try_from(t)
-            .ok()
-            .and_then(|t| map.terrain_flags(t))
-            .ok_or(GenieError::unsupported(
-                "placement terrains with one of -1 or beyond the terrains",
-            ))
-    };
     let mut b = b;
     if 0 <= t1 || 0 <= t2 {
         let (x, y) = (p[0] as i32, p[1] as i32);
-        let tile = i16::from(map.terrain(x, y)?);
-        if tile != t1 && tile != t2 {
-            let (f1, f2, ft) = (flags(t1)?, flags(t2)?, flags(tile)?);
-            let water = (f1 & 4 != 0 || f2 & 4 != 0) && ft & 4 != 0;
-            let shallow = (f1 & 8 != 0 || f2 & 8 != 0) && ft & 8 != 0;
-            if !water && !shallow {
-                return Ok(false);
-            }
+        if !point_terrain_allows(map, [t1, t2], x, y)? {
+            return Ok(false);
         }
         b = [x, y, x, y];
     }
     if side1 < 0 && side2 < 0 {
         return Ok(true);
     }
-    let (f1, f2) = (flags(side1)?, flags(side2)?);
+    let sides = side_terrains(map, [side1, side2])?;
+    for (x, y) in tiles_beside(b, map.size()) {
+        if sides.contains(&i16::from(map.terrain(x, y)?)) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// [`placement_terrains`]'s flags of terrain `t` (the `.dat`'s, [`PlaceMap::terrain_flags`]).
+///
+/// # Errors
+///
+/// A terrain of −1 or beyond the terrains (its flags read past the table), not modelled.
+fn placement_flags(map: &dyn PlaceMap, t: i16) -> Result<u8, GenieError> {
+    usize::try_from(t)
+        .ok()
+        .and_then(|t| map.terrain_flags(t))
+        .ok_or(GenieError::unsupported(
+            "placement terrains with one of -1 or beyond the terrains",
+        ))
+}
+
+/// [`placement_terrains`]'s test of the point's tile (`x`, `y`) against the master's terrains
+/// `terrains`: of one of the two, or sharing the flag 4 or 8 with them.
+///
+/// # Errors
+///
+/// Where the map cannot tell, and a terrain whose flags it does not hold.
+fn point_terrain_allows(
+    map: &dyn PlaceMap,
+    [t1, t2]: [i16; 2],
+    x: i32,
+    y: i32,
+) -> Result<bool, GenieError> {
+    let tile = i16::from(map.terrain(x, y)?);
+    if tile == t1 || tile == t2 {
+        return Ok(true);
+    }
+    let (f1, f2, ft) = (
+        placement_flags(map, t1)?,
+        placement_flags(map, t2)?,
+        placement_flags(map, tile)?,
+    );
+    let water = (f1 & 4 != 0 || f2 & 4 != 0) && ft & 4 != 0;
+    let shallow = (f1 & 8 != 0 || f2 & 8 != 0) && ft & 8 != 0;
+    Ok(water || shallow)
+}
+
+/// [`placement_terrains`]'s side terrains: the master's own (those of 0 or more), then for the
+/// flag 0x40 and then 0x10, when a side terrain has it, every other terrain with it in the
+/// terrains' order.
+///
+/// # Errors
+///
+/// A terrain whose flags the map does not hold.
+fn side_terrains(map: &dyn PlaceMap, [side1, side2]: [i16; 2]) -> Result<Vec<i16>, GenieError> {
+    let (f1, f2) = (placement_flags(map, side1)?, placement_flags(map, side2)?);
     let mut sides: Vec<i16> = [side1, side2].into_iter().filter(|&t| 0 <= t).collect();
     for bit in [0x40, 0x10] {
         if f1 & bit != 0 || f2 & bit != 0 {
             for t in 0..map.terrain_count() {
                 let t = i16::try_from(t).unwrap_or(i16::MAX);
-                if flags(t)? & bit != 0 && t != side1 && t != side2 {
+                if placement_flags(map, t)? & bit != 0 && t != side1 && t != side2 {
                     sides.push(t);
                 }
             }
         }
     }
-    let [x0, y0, x1, y1] = b;
-    let [w, h] = map.size();
+    Ok(sides)
+}
+
+/// [`placement_terrains`]'s tiles beside the box `b` (x0, y0, x1, y1) on a map of `size`: the
+/// row below, the column right, the row above (right to left) and the column left (top to
+/// bottom), each where the map holds it.
+fn tiles_beside([x0, y0, x1, y1]: [i32; 4], [w, h]: [i32; 2]) -> Vec<(i32, i32)> {
     let mut beside = Vec::new();
     if 0 < y0 {
         beside.extend((x0..=x1).map(|x| (x, y0 - 1)));
@@ -607,12 +655,7 @@ pub fn placement_terrains(
     if 0 < x0 {
         beside.extend((y0..=y1).rev().map(|y| (x0 - 1, y)));
     }
-    for (x, y) in beside {
-        if sides.contains(&i16::from(map.terrain(x, y)?)) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    beside
 }
 
 /// BUILD's placement test (`FUN_140e7a400`'s call of the master's slot 0x50, the building

@@ -1451,24 +1451,8 @@ impl Turns {
         // (FUN_1410562e0, 0x14103b916), which every way out of it clears (0x14103ce93,
         // 0x14103cf93): none after it
         self.spatial.set_manager_ignore(&[]);
-        let mut reachable = Vec::new();
-        let mut unreachable = Vec::new();
-        for (j, t) in formation.slots.iter().enumerate() {
-            if t.active == 0 {
-                continue;
-            }
-            let p = t.transform_position;
-            if self.spatial.still_line_hit(
-                [position[0], position[2]],
-                [p[0], p[2]],
-                grow,
-                &members,
-            )? {
-                unreachable.push(j);
-            } else {
-                reachable.push(j);
-            }
-        }
+        let (mut reachable, mut unreachable) =
+            self.slot_reach(formation, position, grow, &members)?;
         if (reachable.len() as f32) / (formation.slot_capacity() as f32) < PASS_SHARE {
             unreachable.append(&mut reachable);
             reachable.push(k);
@@ -1486,7 +1470,13 @@ impl Turns {
         }
         let ox = cvttss2si(min_x - PASS_HALF_MARGIN);
         let oz = cvttss2si(min_z - PASS_HALF_MARGIN);
-        let mut grid = vec![0u8; GRID_BYTES];
+        let mut grid = PassGrid {
+            cells: vec![0u8; GRID_BYTES],
+            w,
+            h,
+            ox,
+            oz,
+        };
         let near = formation.slots[k].transform_position;
         for &r in &reachable {
             let p = formation.slots[r].transform_position;
@@ -1496,7 +1486,7 @@ impl Turns {
                 continue;
             }
             let cell = (gz * w + gx) as usize;
-            grid[cell] = cell_mark(grid[cell], near[0] - p[0], near[2] - p[2]);
+            grid.cells[cell] = cell_mark(grid.cells[cell], near[0] - p[0], near[2] - p[2]);
         }
         let mut visited = vec![0u8; (w * h).max(0) as usize];
         for &u in &unreachable {
@@ -1508,84 +1498,27 @@ impl Turns {
             let unit_at = unit.position();
             let gx = cvttss2si(unit_at[0] - ox as f32);
             let gy = cvttss2si(unit_at[1] - oz as f32);
-            let mut found: Option<(i32, i32, usize)> = None;
-            if 0 <= gx && 0 <= gy && gx < w && gy < h {
-                let mut queue = vec![(gx, gy)];
-                visited[(gy * w + gx) as usize] = 1;
-                let mut qi = 0;
-                'search: while qi < queue.len() {
-                    let (cx, cy) = queue[qi];
-                    qi += 1;
-                    if !(0 <= cx
-                        && cx < w
-                        && 0 <= cy
-                        && cy < h
-                        && self.spatial.standable(ox + cx, oz + cy, unit_mask))
-                    {
-                        continue;
-                    }
-                    let steps = [
-                        (cx + 1, cy, cx + 1 < w, 0x43u8),
-                        (cx - 1, cy, 0 < cx, 0xc3),
-                        (cx, cy + 1, cy + 1 < h, 3),
-                        (cx, cy - 1, 0 < cy, 0x83),
-                    ];
-                    for (nx, ny, inside, mark) in steps {
-                        if !inside {
-                            continue;
-                        }
-                        let cell = (w * ny + nx) as usize;
-                        if visited[cell] != 0 {
-                            continue;
-                        }
-                        visited[cell] = 1;
-                        let b = grid[cell];
-                        if b & 1 != 0 {
-                            if b & 0x3e < 10 {
-                                found = Some((ox + nx, oz + ny, usize::from(b >> 1 & 0x1f)));
-                                grid[cell] = count_up(b);
-                            } else {
-                                found = Some((ox + cx, oz + cy, 0));
-                                grid[(w * cy + cx) as usize] = mark;
-                            }
-                            break 'search;
-                        }
-                        queue.push((nx, ny));
-                    }
-                }
-            }
-            let Some((fx, fy, nudge)) = found else {
+            let Some((fx, fy, nudge)) =
+                self.search_cell(&mut grid, &mut visited, (gx, gy), unit_mask)
+            else {
                 continue;
             };
-            let (mut x, mut y) = (fx, fy);
             // CVTTSS2SI at 0x14103cb6a and 0x14103cb70
-            if slot_tile(formation.slots[k].transform_position) != (fx, fy) {
-                let (rx, ry) = (fx - ox, fy - oz);
-                let (ddx, ddy) = match grid[(w * ry + rx) as usize] >> 6 {
-                    0 => (0, 1),
-                    1 => (1, 0),
-                    2 => (0, -1),
-                    _ => (-1, 0),
-                };
-                let (nx, ny) = (ddx + rx, ddy + ry);
-                if ny < 0 || h <= ny || nx < 0 || w <= nx {
+            let (x, y) = if slot_tile(formation.slots[k].transform_position) == (fx, fy) {
+                (fx, fy)
+            } else {
+                let Some(at) = self.step_once_more(
+                    &mut grid,
+                    (fx, fy),
+                    [unit_at[0], unit_at[1]],
+                    grow,
+                    &members,
+                )?
+                else {
                     continue;
-                }
-                let cell = (w * ny + nx) as usize;
-                let b = grid[cell];
-                if b & 0x3e < 0xb
-                    && !self.spatial.still_line_hit(
-                        [unit_at[0], unit_at[1]],
-                        [(ddx + fx) as f32 + PASS_HALF, (fy + ddy) as f32 + PASS_HALF],
-                        grow,
-                        &members,
-                    )?
-                {
-                    grid[cell] = count_up(b);
-                    y = fy + ddy;
-                    x = ddx + fx;
-                }
-            }
+                };
+                at
+            };
             let s = &mut formation.slots[u];
             // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
             if crate::fmath::below_or_unordered(g.desired_spacing, PASS_ONE) {
@@ -1600,6 +1533,158 @@ impl Turns {
         self.spatial.clear_tile_records();
         Ok(())
     }
+
+    /// [`Turns::passable_slots`]'s reach of the active slots from the group's `position`: a
+    /// slot the line to which hits a record (the members ignored) is unreachable; the reachable
+    /// and the unreachable slots' indices, in the slots' order.
+    ///
+    /// # Errors
+    ///
+    /// A line query near a record whose place the slice does not know.
+    fn slot_reach(
+        &self,
+        formation: &Formation,
+        position: Vec3,
+        grow: f32,
+        members: &[i32],
+    ) -> Result<(Vec<usize>, Vec<usize>), GenieError> {
+        let mut reachable = Vec::new();
+        let mut unreachable = Vec::new();
+        for (j, t) in formation.slots.iter().enumerate() {
+            if t.active == 0 {
+                continue;
+            }
+            let p = t.transform_position;
+            if self.spatial.still_line_hit(
+                [position[0], position[2]],
+                [p[0], p[2]],
+                grow,
+                members,
+            )? {
+                unreachable.push(j);
+            } else {
+                reachable.push(j);
+            }
+        }
+        Ok((reachable, unreachable))
+    }
+
+    /// [`Turns::passable_slots`]'s breadth-first search of an unreachable slot's unit from its
+    /// cell `start` through the cells it can stand on (`unit_mask`), x+1, x-1, y+1, y-1 in turn,
+    /// for a reachable cell: one holding fewer than five slots takes it (counted: its tile and
+    /// its count before), a fuller one has the searching cell take its place (one slot, pointing
+    /// to it: the searching cell's tile and 0). None from a start off the grid or without a
+    /// reachable cell.
+    fn search_cell(
+        &self,
+        grid: &mut PassGrid,
+        visited: &mut [u8],
+        (gx, gy): (i32, i32),
+        unit_mask: u8,
+    ) -> Option<(i32, i32, usize)> {
+        let (w, h, ox, oz) = (grid.w, grid.h, grid.ox, grid.oz);
+        if !(0 <= gx && 0 <= gy && gx < w && gy < h) {
+            return None;
+        }
+        let mut queue = vec![(gx, gy)];
+        visited[(gy * w + gx) as usize] = 1;
+        let mut qi = 0;
+        while qi < queue.len() {
+            let (cx, cy) = queue[qi];
+            qi += 1;
+            if !(0 <= cx
+                && cx < w
+                && 0 <= cy
+                && cy < h
+                && self.spatial.standable(ox + cx, oz + cy, unit_mask))
+            {
+                continue;
+            }
+            let steps = [
+                (cx + 1, cy, cx + 1 < w, 0x43u8),
+                (cx - 1, cy, 0 < cx, 0xc3),
+                (cx, cy + 1, cy + 1 < h, 3),
+                (cx, cy - 1, 0 < cy, 0x83),
+            ];
+            for (nx, ny, inside, mark) in steps {
+                if !inside {
+                    continue;
+                }
+                let cell = (w * ny + nx) as usize;
+                if visited[cell] != 0 {
+                    continue;
+                }
+                visited[cell] = 1;
+                let b = grid.cells[cell];
+                if b & 1 != 0 {
+                    if b & 0x3e < 10 {
+                        grid.cells[cell] = count_up(b);
+                        return Some((ox + nx, oz + ny, usize::from(b >> 1 & 0x1f)));
+                    }
+                    grid.cells[(w * cy + cx) as usize] = mark;
+                    return Some((ox + cx, oz + cy, 0));
+                }
+                queue.push((nx, ny));
+            }
+        }
+        None
+    }
+
+    /// [`Turns::passable_slots`]'s step once more of a found cell (tile `found`) that is not the
+    /// nearest slot's: the way its cell points, when that cell lies on the grid, holds at most
+    /// five and the line from the unit (`unit_at`) to its middle is clear (the members ignored),
+    /// the slot takes it (counted); the tile the slot takes, or none when the cell pointed to is
+    /// off the grid (the slot stays where it is).
+    ///
+    /// # Errors
+    ///
+    /// A line query near a record whose place the slice does not know.
+    fn step_once_more(
+        &self,
+        grid: &mut PassGrid,
+        (fx, fy): (i32, i32),
+        unit_at: [f32; 2],
+        grow: f32,
+        members: &[i32],
+    ) -> Result<Option<(i32, i32)>, GenieError> {
+        let (w, h) = (grid.w, grid.h);
+        let (rx, ry) = (fx - grid.ox, fy - grid.oz);
+        let (ddx, ddy) = match grid.cells[(w * ry + rx) as usize] >> 6 {
+            0 => (0, 1),
+            1 => (1, 0),
+            2 => (0, -1),
+            _ => (-1, 0),
+        };
+        let (nx, ny) = (ddx + rx, ddy + ry);
+        if ny < 0 || h <= ny || nx < 0 || w <= nx {
+            return Ok(None);
+        }
+        let cell = (w * ny + nx) as usize;
+        let b = grid.cells[cell];
+        if b & 0x3e < 0xb
+            && !self.spatial.still_line_hit(
+                unit_at,
+                [(ddx + fx) as f32 + PASS_HALF, (fy + ddy) as f32 + PASS_HALF],
+                grow,
+                members,
+            )?
+        {
+            grid.cells[cell] = count_up(b);
+            return Ok(Some((ddx + fx, fy + ddy)));
+        }
+        Ok(Some((fx, fy)))
+    }
+}
+
+/// [`Turns::passable_slots`]'s grid over the box, a byte per tile (`w` by `h` from the tile
+/// (`ox`, `oz`)): bit 0 a reachable slot's cell, bits 1 to 5 the slots it holds, bits 6 and 7
+/// the way to the nearest slot.
+struct PassGrid {
+    cells: Vec<u8>,
+    w: i32,
+    h: i32,
+    ox: i32,
+    oz: i32,
 }
 
 /// `FUN_14103a1f0`'s grid cell count up: bits 1 to 5 (the slots a cell holds) count on (mod 32),

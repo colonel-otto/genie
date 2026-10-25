@@ -355,15 +355,6 @@ pub fn closest_resource_at(
     let [ux, uy, _] = seeker.position;
     let los = seeker.line_of_sight as i32;
     let unit_tile = (ux as i32, uy as i32);
-    let single = |at: (i32, i32)| Pass {
-        origin: at,
-        max_steps: los + 5,
-        seeds: vec![Cell {
-            x: at.0,
-            y: at.1,
-            steps: 0,
-        }],
-    };
     // the sort's point, and the box's side (fixed for both passes)
     let (sort_at, side) = sort_point_and_side([ux, uy], los, site);
     let half = side / 2;
@@ -375,21 +366,7 @@ pub fn closest_resource_at(
         };
         d(a) < d(b)
     };
-    let mut passes = Vec::with_capacity(2);
-    match site {
-        Some(s) if s.footprint => {
-            let mut seeds = footprint_seeds(s, map, passable);
-            msvc::sort(&mut seeds, &nearer);
-            passes.push(Pass {
-                origin: (s.position[0] as i32, s.position[1] as i32),
-                max_steps: s.line_of_sight as i32 + 10,
-                seeds,
-            });
-            passes.push(single(unit_tile));
-        }
-        Some(s) => passes.push(single((s.position[0] as i32, s.position[1] as i32))),
-        None => passes.push(single(unit_tile)),
-    }
+    let passes = search_passes(site, map, passable, unit_tile, los, &nearer);
     let cap = if max_workers == -1 {
         i32::MAX
     } else {
@@ -416,19 +393,7 @@ pub fn closest_resource_at(
                 continue;
             }
             if passable(x, y) {
-                for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
-                    let c = at(nx, ny);
-                    if !seen[c] {
-                        seen[c] = true;
-                        if 0 <= nx && nx < map[0] && 0 <= ny && ny < map[1] {
-                            queue.push(Cell {
-                                x: nx,
-                                y: ny,
-                                steps: steps + 1,
-                            });
-                        }
-                    }
-                }
+                push_neighbours(&mut queue, &mut seen, &at, Cell { x, y, steps }, map);
                 msvc::sort(&mut queue[i..], &nearer);
             }
             let on_tile = objects(x, y)?;
@@ -458,6 +423,70 @@ pub fn closest_resource_at(
         }
     }
     Ok((-1, None))
+}
+
+/// [`closest_resource_at`]'s passes: from a footprint site its footprint's tiles the unit can
+/// stand on ([`footprint_seeds`], sorted by `nearer`, within the site's line of sight plus 10 of
+/// its tile), then the unit's tile alone; from another site its tile alone; without one the
+/// unit's tile alone (a single tile's pass within the line of sight `los` plus 5).
+fn search_passes(
+    site: Option<&SearchSite>,
+    map: [i32; 2],
+    passable: &dyn Fn(i32, i32) -> bool,
+    unit_tile: (i32, i32),
+    los: i32,
+    nearer: &impl Fn(Cell, Cell) -> bool,
+) -> Vec<Pass> {
+    let single = |at: (i32, i32)| Pass {
+        origin: at,
+        max_steps: los + 5,
+        seeds: vec![Cell {
+            x: at.0,
+            y: at.1,
+            steps: 0,
+        }],
+    };
+    let mut passes = Vec::with_capacity(2);
+    match site {
+        Some(s) if s.footprint => {
+            let mut seeds = footprint_seeds(s, map, passable);
+            msvc::sort(&mut seeds, nearer);
+            passes.push(Pass {
+                origin: (s.position[0] as i32, s.position[1] as i32),
+                max_steps: s.line_of_sight as i32 + 10,
+                seeds,
+            });
+            passes.push(single(unit_tile));
+        }
+        Some(s) => passes.push(single((s.position[0] as i32, s.position[1] as i32))),
+        None => passes.push(single(unit_tile)),
+    }
+    passes
+}
+
+/// [`closest_resource_at`]'s spread from a passable `cell`: its neighbours x−1, x+1, y−1, y+1
+/// not seen yet become seen (`at` gives a tile's index in `seen`), and those on the map join the
+/// `queue` a step farther.
+fn push_neighbours(
+    queue: &mut Vec<Cell>,
+    seen: &mut [bool],
+    at: &impl Fn(i32, i32) -> usize,
+    Cell { x, y, steps }: Cell,
+    map: [i32; 2],
+) {
+    for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+        let c = at(nx, ny);
+        if !seen[c] {
+            seen[c] = true;
+            if 0 <= nx && nx < map[0] && 0 <= ny && ny < map[1] {
+                queue.push(Cell {
+                    x: nx,
+                    y: ny,
+                    steps: steps + 1,
+                });
+            }
+        }
+    }
 }
 
 /// [`closest_resource_at`]'s sort point and box side: without a site the unit's place and
@@ -844,6 +873,126 @@ mod tests {
             ..site
         };
         assert_eq!(search(&[tree(3, 2.5, 11.5)], Some(&blind)), (3, Some(9)));
+    }
+
+    /// The searching unit of `closest_resource_at`'s tests: at (10.2, 10.7), line of sight 4
+    /// (its distance at most 9), in state 2.
+    const SEEKER: Seeker = Seeker {
+        player: 1,
+        position: [10.2, 10.7, 0.0],
+        line_of_sight: 4.0,
+        state: 2,
+        current_target: -1,
+        my_pasture: -1,
+        min_state: 2,
+    };
+
+    /// `closest_resource_at` from [`SEEKER`] over a 40-tile map without a site: the tiles
+    /// `explored` gives, every tile passable, `trees` on their tiles, and `reach` true for the
+    /// ids it lists.
+    fn search_trees(
+        seeker: &Seeker,
+        trees: &[Candidate],
+        max_workers: i32,
+        explored: &dyn Fn(i32, i32) -> Result<bool, GenieError>,
+        reach: &[i32],
+    ) -> Result<(i32, Option<i32>), GenieError> {
+        let objects = |x: i32, y: i32| {
+            Ok(trees
+                .iter()
+                .filter(|t| t.position[0] as i32 == x && t.position[1] as i32 == y)
+                .copied()
+                .collect())
+        };
+        closest_resource_at(
+            seeker,
+            None,
+            0,
+            max_workers,
+            [40, 40],
+            explored,
+            &|_, _| true,
+            &objects,
+            &mut |id| Ok(reach.contains(&id)),
+        )
+    }
+
+    #[test]
+    fn a_unit_below_its_least_state_finds_nothing_and_one_with_a_pasture_stops() {
+        let trees = [tree(1, 12.5, 10.5)];
+        let low = Seeker { state: 1, ..SEEKER };
+        assert_eq!(
+            search_trees(&low, &trees, 2, &|_, _| Ok(true), &[1]),
+            Ok((-1, None))
+        );
+        let tending = Seeker {
+            my_pasture: 50,
+            ..SEEKER
+        };
+        assert_eq!(
+            search_trees(&tending, &trees, 2, &|_, _| Ok(true), &[1]),
+            Err(GenieError::unsupported(
+                "a resource search by a unit with a pasture of its own"
+            ))
+        );
+    }
+
+    #[test]
+    fn a_full_resource_is_the_fallback_and_minus_1_workers_has_no_cap() {
+        // a full tree (3 workers) 2 east, a free one 5 east
+        let full = Candidate {
+            workers: 3,
+            ..tree(1, 12.5, 10.5)
+        };
+        let both = [full, tree(2, 15.5, 10.5)];
+        let all = |_, _| Ok(true);
+        // at most 2 workers: past the full one to the free one
+        assert_eq!(
+            search_trees(&SEEKER, &both, 2, &all, &[1, 2]),
+            Ok((2, Some(5)))
+        );
+        // no cap: the full one first
+        assert_eq!(
+            search_trees(&SEEKER, &both, -1, &all, &[1, 2]),
+            Ok((1, Some(2)))
+        );
+        // only the full one: the pass ends with it as the fallback
+        assert_eq!(
+            search_trees(&SEEKER, &[full], 2, &all, &[1]),
+            Ok((1, Some(2)))
+        );
+        // a fallback must be reachable
+        assert_eq!(search_trees(&SEEKER, &[full], 2, &all, &[]), Ok((-1, None)));
+    }
+
+    #[test]
+    fn an_unexplored_tile_s_resource_is_not_tested() {
+        let both = [tree(1, 12.5, 10.5), tree(2, 15.5, 10.5)];
+        let dark = |x, y| Ok((x, y) != (12, 10));
+        assert_eq!(
+            search_trees(&SEEKER, &both, 2, &dark, &[1, 2]),
+            Ok((2, Some(5)))
+        );
+    }
+
+    #[test]
+    fn the_search_settles_after_30_resources_tested() {
+        // unreachable trees on the tiles nearest the unit, a reachable one 8 north of it
+        let near: Vec<Candidate> = (7..=13)
+            .flat_map(|x| (8..=12).map(move |y| (x, y)))
+            .enumerate()
+            .map(|(i, (x, y))| tree(i as i32 + 1, x as f32 + 0.5, y as f32 + 0.5))
+            .collect();
+        let far = tree(99, 10.5, 18.5);
+        let with = |n: usize| {
+            let mut trees: Vec<Candidate> = near[..n].to_vec();
+            trees.push(far);
+            search_trees(&SEEKER, &trees, 2, &|_, _| Ok(true), &[99])
+        };
+        // 30 tested: the 31st is the far one, taken
+        assert_eq!(with(30), Ok((99, Some(8))));
+        // 31 tested: the pass ends without one
+        assert_eq!(with(31), Ok((-1, None)));
     }
 
     #[test]

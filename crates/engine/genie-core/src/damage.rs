@@ -1222,14 +1222,8 @@ fn take_unit(
         "a combat object without its combat values",
     ))?;
     let mut factor = factor;
-    let facing_to = |at: [f32; 3], src: &Victim| -> Result<f32, GenieError> {
-        let facing = a.facing.ok_or(GenieError::unsupported(
-            "the facing of a target with a special attack or a retaliation (+0x7e8)",
-        ))?;
-        Ok(facing_offset(at, facing, src.position))
-    };
     if a.special_attack == 1 && !a.busy {
-        let off = facing_to(t.position, src)?;
+        let off = facing_to(&a, t.position, src)?;
         if MINUS_FACING < off && off < FACING {
             factor *= SPECIAL;
             if a.special_graphic {
@@ -1239,32 +1233,77 @@ fn take_unit(
             }
         }
     }
+    if retaliates(t, src, others, &a)? {
+        factor = 0.0;
+    }
+    damage(t, src, weapons, factor, blast_taken)?;
+    after_hit(t, src, &a, before)
+}
+
+/// [`take_unit`]'s facing of a target (`a`, at `at`) to its attacker `src`
+/// ([`facing_offset`]).
+///
+/// # Errors
+///
+/// A target without its facing (`+0x7e8`).
+fn facing_to(a: &Armored, at: [f32; 3], src: &Victim) -> Result<f32, GenieError> {
+    let facing = a.facing.ok_or(GenieError::unsupported(
+        "the facing of a target with a special attack or a retaliation (+0x7e8)",
+    ))?;
+    Ok(facing_offset(at, facing, src.position))
+}
+
+/// [`take_unit`]'s retaliation (`special_attack_flag` 2): an idle target with a unit AI facing
+/// an attacker of weapon range below 0.2 strikes it first with its own weapons (four times over a
+/// unit whose charge is ready, [`special_charge_ready`]); true when the attacker is left with at
+/// most 1 hit point, which takes the hit to nothing.
+///
+/// # Errors
+///
+/// A retaliating target without its unit AI's alert mode, and what the strike does not model.
+fn retaliates(
+    t: &mut Victim,
+    src: &mut Victim,
+    others: &mut [&mut Victim],
+    a: &Armored,
+) -> Result<bool, GenieError> {
     let reach = src.source.weapon_range;
     let melee = reach <= RETALIATION_RANGE && RETALIATION_RANGE != reach;
     // the conditions are pure: the ones the slice holds decide first
-    if a.special_attack == 2 && a.unit_ai && !a.busy && melee {
-        let idle = a.alert_idle.ok_or(GenieError::unsupported(
-            "the alert mode and attackers of a retaliating target's unit AI (FUN_140c42b30)",
-        ))?;
-        if idle {
-            let off = facing_to(t.position, src)?;
-            if MINUS_FACING < off && off < FACING {
-                let mut f = elevation_factor(t.position[2], t.attack_elevation, src);
-                if src.kind == 70 && special_charge_ready(&src.source)? {
-                    f *= RETALIATION_SCALE;
-                }
-                let w = t.weapons.clone();
-                take(src, t, others, &w, f, 0.0)?;
-                if src.hp <= 1.0 {
-                    factor = 0.0;
-                }
-            }
-        }
+    if !(a.special_attack == 2 && a.unit_ai && !a.busy && melee) {
+        return Ok(false);
     }
-    damage(t, src, weapons, factor, blast_taken)?;
+    let idle = a.alert_idle.ok_or(GenieError::unsupported(
+        "the alert mode and attackers of a retaliating target's unit AI (FUN_140c42b30)",
+    ))?;
+    if !idle {
+        return Ok(false);
+    }
+    let off = facing_to(a, t.position, src)?;
+    if !(MINUS_FACING < off && off < FACING) {
+        return Ok(false);
+    }
+    let mut f = elevation_factor(t.position[2], t.attack_elevation, src);
+    if src.kind == 70 && special_charge_ready(&src.source)? {
+        f *= RETALIATION_SCALE;
+    }
+    let w = t.weapons.clone();
+    take(src, t, others, &w, f, 0.0)?;
+    Ok(src.hp <= 1.0)
+}
+
+/// [`take_unit`]'s end after the damage: a hit takes at least one hit point of the `before`
+/// effective ones (but past the hit point floor); a target with `damage_reflection` gives its
+/// attacker that share of the loss, at least 1; below 1 hit point the attacker's kill bonus,
+/// else its combat ability's effects.
+///
+/// # Errors
+///
+/// A kill bonus task and the combat ability's effects, which are not modelled.
+fn after_hit(t: &mut Victim, src: &mut Victim, a: &Armored, before: f32) -> Result<(), GenieError> {
     // a hit takes at least one hit point
     let mut lost = before - effective(t);
-    let floor = hp_floor(&a, t.master_hp);
+    let floor = hp_floor(a, t.master_hp);
     if lost < 1.0 && (floor == 0.0 || floor + 1.0 <= before) {
         t.hp = before - 1.0;
         lost = 1.0;

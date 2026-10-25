@@ -1038,12 +1038,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
             "a computer player's soldier's attack check",
         ));
     }
-    if me.class == 51 || me.master == SOLDIER_NEVER {
-        return Ok(false);
-    }
-    if (me.class == PACKED_CLASS || me.master == PACKED_MASTER)
-        && matches!(me.top_action, Some(124 | 125))
-    {
+    if never_attacks(me) {
         return Ok(false);
     }
     if me.held == HELD_NO_ATTACK || matches!(t.class, 1 | 42 | 60) {
@@ -1055,6 +1050,31 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
     if s.stance == 3 {
         return Ok(false);
     }
+    if !stance_reaches(me, s, t)? {
+        return Ok(false);
+    }
+    Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
+}
+
+/// [`soldier_can_attack`]'s soldiers that never attack: class 51, master 444, and a packed class
+/// 54 or master 109 under its Pack or Unpack (top action 124 or 125).
+const fn never_attacks(me: &Attacker) -> bool {
+    if me.class == 51 || me.master == SOLDIER_NEVER {
+        return true;
+    }
+    (me.class == PACKED_CLASS || me.master == PACKED_MASTER)
+        && matches!(me.top_action, Some(124 | 125))
+}
+
+/// [`soldier_can_attack`]'s stance: in `StandGround` (stance 2) only within its range against
+/// the target plus 0.5 of its state position (by the squared footprint gap, `FUN_140a847c0`),
+/// but on order `0x2bd`; in Defend (1) within 5 more, the patrol orders' and a patrol path's
+/// tests not modelled; any other stance reaches.
+///
+/// # Errors
+///
+/// A range the slice does not model, and a defending patrol's range.
+fn stance_reaches(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool, GenieError> {
     let d2 = point_gap_squared(s.state_position, t.position, t.radius);
     let reach = me.range_against()? + STANCE_RANGE_GROWTH;
     match s.stance {
@@ -1070,7 +1090,7 @@ pub fn soldier_can_attack(me: &Attacker, s: &Seeker, t: &Target) -> Result<bool,
         }
         _ => {}
     }
-    Ok(me.attack_priority != 3 || PRIORITY_3_CLASSES.contains(&t.class))
+    Ok(true)
 }
 
 /// `FUN_14120e4e0` for an attacker of type 70: one of attack priority 3 attacks only
@@ -4015,18 +4035,7 @@ impl UnitAi {
             return Ok(false);
         }
         if self.stance == 3 {
-            let found = side.closest(&Search {
-                at: [at.position[0], at.position[1]],
-                radius: attack_search_radius(at),
-                classes: &SIEGE_CARED,
-                size: at.size,
-                pick: Pick::Look,
-                memory: Memory::default(),
-            })?;
-            self.attack_search_alert(found, computer)?;
-            if !matches!(self.current_order, PATROL | ATTACK_MOVE) {
-                let _ = self.walk_back(at, fx);
-            }
+            self.siege_no_attack(at, computer, side, fx)?;
             return Ok(false);
         }
         let mut target = self.top_target_in_range(at, fx, side)?.unwrap_or(-1);
@@ -4041,21 +4050,7 @@ impl UnitAi {
             computer_idle_check()?;
         }
         if target == -1 {
-            let found = side.closest(&Search {
-                at: [at.position[0], at.position[1]],
-                radius: attack_search_radius(at),
-                classes: &SIEGE_CARED,
-                size: at.size,
-                pick: Pick::Attack {
-                    lowest: if at.scenario { 2 } else { 0 },
-                    seeker: self.seeker(at),
-                    ask: AttackAsk::IDLE,
-                },
-                memory: self.memory(),
-            })?;
-            self.add_retries(&found);
-            self.attack_search_alert(found, computer)?;
-            target = found.id;
+            target = self.siege_best(at, computer, side)?;
         }
         if target != -1 {
             if matches!(self.current_order, PATROL | ATTACK_MOVE) {
@@ -4071,18 +4066,89 @@ impl UnitAi {
                 self.zero_patrol();
             }
         }
+        Ok(self.siege_idle_end(at, computer, ai, fx))
+    }
+
+    /// [`UnitAi::siege_idle`] in `NoAttack` (stance 3): it searches alone (slot 0x50 with mode 1
+    /// from its place, [`Pick::Look`] over [`SIEGE_CARED`], [`UnitAi::attack_search_alert`]) and
+    /// but on the patrol orders walks back to its state position ([`UnitAi::walk_back`]).
+    ///
+    /// # Errors
+    ///
+    /// What the search and its alert do not model.
+    fn siege_no_attack(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        let found = side.closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius: attack_search_radius(at),
+            classes: &SIEGE_CARED,
+            size: at.size,
+            pick: Pick::Look,
+            memory: Memory::default(),
+        })?;
+        self.attack_search_alert(found, computer)?;
+        if !matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            let _ = self.walk_back(at, fx);
+        }
+        Ok(())
+    }
+
+    /// [`UnitAi::siege_idle`]'s `bestUnitToAttack` without a target, from its place
+    /// ([`Pick::Attack`] over [`SIEGE_CARED`]): the object found, or −1.
+    ///
+    /// # Errors
+    ///
+    /// What the search and its alert do not model.
+    fn siege_best(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+    ) -> Result<i32, GenieError> {
+        let found = side.closest(&Search {
+            at: [at.position[0], at.position[1]],
+            radius: attack_search_radius(at),
+            classes: &SIEGE_CARED,
+            size: at.size,
+            pick: Pick::Attack {
+                lowest: if at.scenario { 2 } else { 0 },
+                seeker: self.seeker(at),
+                ask: AttackAsk::IDLE,
+            },
+            memory: self.memory(),
+        })?;
+        self.add_retries(&found);
+        self.attack_search_alert(found, computer)?;
+        Ok(found.id)
+    }
+
+    /// [`UnitAi::siege_idle`]'s end without an attack: on a patrol order 5; a human player's unit
+    /// in a group 5 ("I'm in a formation"), one in Defend or `StandGround` walks back; last the
+    /// saved patrol, if any, goes on ([`UnitAi::restore_patrol`]: 6). Else 5.
+    fn siege_idle_end(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> bool {
         if matches!(self.current_order, PATROL | ATTACK_MOVE) {
-            return Ok(false);
+            return false;
         }
         if !computer {
             if at.group.is_some() {
-                return Ok(false);
+                return false;
             }
             if matches!(self.stance, 1 | 2) {
                 let _ = self.walk_back(at, fx);
             }
         }
-        Ok(self.restore_patrol(at, ai, fx))
+        self.restore_patrol(at, ai, fx)
     }
 
     /// The soldier's idle check (slot 72, `FUN_140c20db0`, factory type 13). Before its cap
@@ -5432,27 +5498,7 @@ impl UnitAi {
             self.ask_for_help(n.caller, at, computer, side)?;
         }
         side.set_under_attack(true);
-        let order = self.current_order;
-        let state = held_action_state(at.action_state)?;
-        let gathers = matches!(
-            order,
-            crate::ai_kinds::ORDER_HUNT
-                | crate::ai_kinds::ORDER_GATHER
-                | crate::ai_kinds::ORDER_AUTO_BOAR_LURING
-        );
-        let moves = matches!(
-            order,
-            crate::ai_kinds::ORDER_MOVEMENT | crate::ai_kinds::ORDER_ENTER
-        ) && 0.0 < at.anim_speed.ok_or(NO_ANIM_SPEED)?;
-        let ignores = moves
-            || order == crate::ai_kinds::ORDER_ATTACK
-            || (gathers
-                && state == 12
-                && at.target.is_some_and(|t| t.class == CLASS_10)
-                && attacker.owner == 0)
-            || order == crate::ai_kinds::ORDER_REPAIR
-            || (fierce && gathers && state < 16 && (0x9110u32 >> state) & 1 != 0);
-        if ignores {
+        if self.villager_ignores(at, &attacker, fierce)? {
             return Ok(GO_ON);
         }
         if attacker.owner != 0 && !side.harmless(n.caller)? {
@@ -5480,6 +5526,44 @@ impl UnitAi {
         let _ = self.civilian_attack(n.caller, at, side, fx)?;
         self.stop_after_kill = true;
         Ok(BREAK)
+    }
+
+    /// [`UnitAi::villager_damaged`]'s orders that ignore the damage from `attacker` ("I have an
+    /// attack/hunt/repair order"): a move or enter order while it animates (slot 0x1f8 above 0),
+    /// the attack or the repair order; the hunt, gather and boar luring orders with its top
+    /// action in state 12 (slot 0x2b0), a target of class 10 the world holds and a Gaia
+    /// attacker; or those orders from a `fierce` attacker (class 10 of combat level 1) with its
+    /// top action in state 4, 8, 12 or 15 (`0x9110`).
+    ///
+    /// # Errors
+    ///
+    /// A top action state or an animation speed the slice does not hold.
+    fn villager_ignores(
+        &self,
+        at: &Surroundings,
+        attacker: &UnitSeen,
+        fierce: bool,
+    ) -> Result<bool, GenieError> {
+        let order = self.current_order;
+        let state = held_action_state(at.action_state)?;
+        let gathers = matches!(
+            order,
+            crate::ai_kinds::ORDER_HUNT
+                | crate::ai_kinds::ORDER_GATHER
+                | crate::ai_kinds::ORDER_AUTO_BOAR_LURING
+        );
+        let moves = matches!(
+            order,
+            crate::ai_kinds::ORDER_MOVEMENT | crate::ai_kinds::ORDER_ENTER
+        ) && 0.0 < at.anim_speed.ok_or(NO_ANIM_SPEED)?;
+        Ok(moves
+            || order == crate::ai_kinds::ORDER_ATTACK
+            || (gathers
+                && state == 12
+                && at.target.is_some_and(|t| t.class == CLASS_10)
+                && attacker.owner == 0)
+            || order == crate::ai_kinds::ORDER_REPAIR
+            || (fierce && gathers && state < 16 && (0x9110u32 >> state) & 1 != 0))
     }
 
     /// The transport ship's damage notify (`FUN_140c2a580`, cases 500 and a missile's warning

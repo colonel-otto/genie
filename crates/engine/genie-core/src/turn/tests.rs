@@ -862,6 +862,47 @@ fn a_villager_ordered_on_a_pasture_works_its_livestock() {
     );
 }
 
+/// Slot 0x7e8 of a unit in state 3 or later ignores the order: nothing of the pasture's or the
+/// unit's changes.
+#[test]
+fn a_unit_past_state_2_ignores_a_work_order() {
+    let order = crate::order::Work {
+        target: 50,
+        point: [20.0, 20.0, 0.0],
+        carry_test: true,
+        filter: -1,
+        notified: false,
+    };
+    let mut t = tended_pasture([18.0, 18.0, 0.0], 2.0);
+    let v = t.players[1].objects.len() - 1;
+    t.players[1].objects[v].life.state = 3;
+    let before = t.players[1].objects.clone();
+    t.order_work(1, v, &order).unwrap();
+    assert_eq!(t.players[1].objects, before);
+}
+
+/// Slot 0x7e8 of a villager on a pasture with room but no livestock: `FUN_1411c7670` gives
+/// none and the order ends there, before `FUN_141189ca0`: the pasture the villager tended stays
+/// its own.
+#[test]
+fn a_villager_ordered_on_a_pasture_without_livestock_tends_on() {
+    let order = crate::order::Work {
+        target: 50,
+        point: [20.0, 20.0, 0.0],
+        carry_test: true,
+        filter: -1,
+        notified: false,
+    };
+    let mut t = tended_pasture([18.0, 18.0, 0.0], 2.0);
+    let v = t.players[1].objects.len() - 1;
+    t.players[1].objects[0].livestock.clear();
+    t.players[1].objects[v].my_pasture = 50;
+    t.players[1].objects[0].pasture_workers = vec![60];
+    t.order_work(1, v, &order).unwrap();
+    assert_eq!(t.players[1].objects[v].my_pasture, 50);
+    assert_eq!(t.players[1].objects[0].pasture_workers, [60]);
+}
+
 /// `FUN_141189ca0`: a unit tending a pasture joins its workers once; tending none drops it
 /// from the pasture it tended (`FUN_1411cafa0`); an object that is no building keeps no list.
 #[test]
