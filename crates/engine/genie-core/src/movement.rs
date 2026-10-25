@@ -3408,13 +3408,9 @@ pub(crate) fn tile_plan_for(
     let Some(planner) = plan.pathing.planner(walker.restriction, world.tiles()) else {
         return Ok(None);
     };
-    let smoothed = std::cell::Cell::new(false);
-    let mut blocked = |a: [f32; 2], b: [f32; 2]| -> Result<bool, GenieError> {
-        smoothed.set(true);
-        Ok(world.segment_blocked(a, b, radius, mask, &ignore))
-    };
-    let found = planner.plan(&req, target_box, out, Some(&mut blocked))?;
-    if smoothed.get() {
+    let mut walls = crate::spatial::SmoothingWalls::new(world, radius, mask, &ignore);
+    let found = planner.plan::<GenieError>(&req, target_box, out, Some(&mut walls))?;
+    if walls.ran {
         plan.pathing.smoothing_ran(slots);
         // FUN_140f7dbb0 sets the manager's ignore list to it (FUN_1410562e0)
         world.set_manager_ignore(&ignore);

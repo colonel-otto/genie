@@ -144,9 +144,20 @@ const TILE_SEARCH_LENGTH: f32 = crate::image::tile_path::TILE_SEARCH_LENGTH;
 /// stretch (`DAT_14330ebcc`).
 const SHORTCUT_REACH: f32 = crate::image::tile_path::SHORTCUT_REACH;
 
-/// The obstruction manager's segment test the smoothing asks for a unit: whether its straight
-/// walk from one point to another (x, y) meets an obstruction.
-pub type SegmentTest<'a, E> = &'a mut dyn FnMut([f32; 2], [f32; 2]) -> Result<bool, E>;
+/// The obstruction manager as the smoothing asks it for a unit (`FUN_140f7dbb0`).
+pub trait SegmentTest<E> {
+    /// Whether the unit's straight walk from `a` to `b` (x, y) meets an obstruction
+    /// (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`).
+    ///
+    /// # Errors
+    ///
+    /// What the test cannot answer.
+    fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, E>;
+
+    /// A pass that tested walks ends (`FUN_1410561f0`): the temporary tile records its walks put
+    /// go.
+    fn pass_ends(&mut self);
+}
 
 /// The point at `index`, or the zero point outside the path (`FUN_140f9bcd0`).
 fn point_at(path: &Path, index: i32) -> Vec3 {
@@ -197,22 +208,31 @@ fn straighten(path: &mut Path, first: i32, last: i32) -> i32 {
 }
 
 /// `FUN_140f7dbb0`: straighten a found path wherever the unit can walk straight: from each
-/// kept point, the line to two points on is tested (`blocked`, the obstruction manager's segment
+/// kept point, the line to two points on is tested (`walls`, the obstruction manager's segment
 /// test); where it is blocked, the stretch up to the point before becomes straight, and the last
-/// stretch is straightened at the end.
-pub fn smooth<E>(
-    path: &mut Path,
-    blocked: &mut impl FnMut([f32; 2], [f32; 2]) -> Result<bool, E>,
-) -> Result<(), E> {
+/// stretch is straightened at the end. A path of more than two points ends the pass
+/// ([`SegmentTest::pass_ends`]), as the game does after its last test.
+///
+/// # Errors
+///
+/// What the segment test cannot answer (the pass ends all the same).
+pub fn smooth<E>(path: &mut Path, walls: &mut dyn SegmentTest<E>) -> Result<(), E> {
     if path.points.len() <= 2 {
         return Ok(());
     }
+    let smoothed = smooth_pass(path, walls);
+    walls.pass_ends();
+    smoothed
+}
+
+/// [`smooth`]'s tests and straight stretches over a path of more than two points.
+fn smooth_pass<E>(path: &mut Path, walls: &mut dyn SegmentTest<E>) -> Result<(), E> {
     let mut first: i32 = 0;
     let mut probe: i32 = 2;
     while (probe as usize) < path.points.len() {
         let (a, b) = (point_at(path, first), point_at(path, probe));
         let next;
-        if blocked([a[0], a[2]], [b[0], b[2]])? {
+        if walls.blocked([a[0], a[2]], [b[0], b[2]])? {
             let between = (probe - first) - 2;
             if between < 1 {
                 first = probe - 1;
@@ -1499,7 +1519,7 @@ impl Planner {
         req: &Request,
         target_box: bool,
         out: &mut Path,
-        mut blocked: Option<SegmentTest<'_, E>>,
+        walls: Option<&mut dyn SegmentTest<E>>,
     ) -> Result<Found, E> {
         let (w, h) = (f32::from(self.size[0]), f32::from(self.size[1]));
         if req.to[0] < 0.0 || w <= req.to[0] || req.to[1] < 0.0 || h <= req.to[1] {
@@ -1526,13 +1546,13 @@ impl Planner {
         if req.full && second != Some(Found::Goal) && !levels.points.is_empty() {
             self.shorter_start(req, &mut levels);
         }
-        if let Some(blocked) = blocked.as_mut() {
+        if let Some(walls) = walls {
             let smoothed = |r: Found| !matches!(r, Found::OffMap | Found::Nothing);
             if smoothed(first) {
-                smooth(&mut levels, blocked)?;
+                smooth(&mut levels, walls)?;
             }
             if second.is_some_and(smoothed) {
-                smooth(&mut tiles, blocked)?;
+                smooth(&mut tiles, walls)?;
             }
         }
         levels.measure();
@@ -1798,13 +1818,40 @@ mod tests {
             length: 0.0,
         };
         // blocked: any walk from the start that ends beyond y = 44.5
-        let mut blocked = |a: [f32; 2], b: [f32; 2]| Ok::<_, ()>(a == [109.5, 42.5] && 44.5 < b[1]);
-        smooth(&mut path, &mut blocked).unwrap();
+        let mut walls = Walls::default();
+        smooth(&mut path, &mut walls).unwrap();
         let ends: Vec<[f32; 2]> = path.points.iter().map(|p| [p[0], p[2]]).collect();
         assert_eq!(
             ends,
             [[109.5, 42.5], [103.5, 44.5], [103.604_164, 46.854_168]]
         );
+        assert_eq!(walls.passes, 1);
+        // a path of two points tests nothing and ends no pass
+        let mut short = Path {
+            points: vec![[0.0, 0.0, 0.0], [5.0, 0.0, 5.0]],
+            length: 0.0,
+        };
+        smooth(&mut short, &mut walls).unwrap();
+        assert_eq!((walls.tests, walls.passes), (10, 1));
+    }
+
+    /// The smoothing test's stand-in: any walk from (109.5, 42.5) that ends beyond y = 44.5 is
+    /// blocked; it counts the tests and the passes that ended.
+    #[derive(Default)]
+    struct Walls {
+        tests: usize,
+        passes: usize,
+    }
+
+    impl SegmentTest<()> for Walls {
+        fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, ()> {
+            self.tests += 1;
+            Ok(a == [109.5, 42.5] && 44.5 < b[1])
+        }
+
+        fn pass_ends(&mut self) {
+            self.passes += 1;
+        }
     }
 
     /// `FUN_140f7be80` orders each pair of corners, holds the rectangle on the map (its low

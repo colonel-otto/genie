@@ -471,6 +471,11 @@ pub struct Spatial {
     /// query of a level's waypoint). The game keeps a pointer to the caller's list; the slice
     /// keeps the ids it held then.
     manager_ignore: std::cell::RefCell<Vec<i32>>,
+    /// The obstruction manager's temporary tile records (`FUN_1410510c0`: kind 3, the tile's box,
+    /// id [`tile_record_id`], on the list `+0x70` with the count `+0x78`, bit 0x80 in the tile's
+    /// word), as (y, x): [`Spatial::put_tile_records`] puts them, and they stay for every query
+    /// until [`Spatial::clear_tile_records`] removes them all.
+    tile_records: std::cell::RefCell<std::collections::BTreeSet<(i32, i32)>>,
     objects: BTreeMap<i32, Placed>,
     /// The objects inside others (`+0x2f0`): off the tiles' lists and the obstruction manager,
     /// without a record, at their container's x and y; a lookup by id still finds them.
@@ -562,6 +567,7 @@ impl Spatial {
         Self {
             map,
             manager_ignore: std::cell::RefCell::new(Vec::new()),
+            tile_records: std::cell::RefCell::default(),
             objects: BTreeMap::new(),
             inside: BTreeMap::new(),
             tiles,
@@ -988,11 +994,9 @@ impl Spatial {
     }
 
     /// Whether the straight walk from `a` to `b` (x, y) of a unit `grow` wide meets an obstruction,
-    /// as the path smoothing asks (`FUN_141052b90`, then `FUN_141052350` with flags `0x100`): the
-    /// tiles its terrain mask lacks ([`Spatial::tiles_block`]) and the static records (kinds 2, 11
-    /// and 13) of objects not in `ignore` that the query visits ([`Spatial::visits`], the walk's
-    /// box grown by `grow`), each box grown by `grow`, against the walk's segment
-    /// (`FUN_141052e10`).
+    /// as the routines that test one walk ask (`FUN_141052b90`, `FUN_141052350` with flags `0x100`,
+    /// then `FUN_1410561f0`): the temporary records of the tiles its terrain mask lacks
+    /// ([`Spatial::put_tile_records`]), tested ([`Spatial::segment_meets`]) and removed again.
     pub fn segment_blocked(
         &self,
         a: [f32; 2],
@@ -1001,42 +1005,66 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
     ) -> bool {
-        if self.tiles_block(a, b, grow, mask) {
+        self.put_tile_records(a, b, grow, mask);
+        let blocked = self.segment_meets(a, b, grow, ignore);
+        self.clear_tile_records();
+        blocked
+    }
+
+    /// `FUN_141052350` with flags `0x100`: whether the straight walk from `a` to `b` (x, y) of a
+    /// unit `grow` wide (the manager's buffer) meets a record. A walk whose grown box leaves the
+    /// map does. Else the records of the cells the query visits ([`Spatial::visits`], the walk's
+    /// box grown by `grow`) whose id is not in `ignore` count when their box, grown by `grow`,
+    /// meets the walk's box and segment (`FUN_141052e10`): the temporary tile records
+    /// ([`Spatial::put_tile_records`], kind 3) and the objects' static records (kinds 2, 11 and
+    /// 13; flag `0x100` passes the kinds of the mask `0x2804` and the records of no object).
+    pub fn segment_meets(&self, a: [f32; 2], b: [f32; 2], grow: f32, ignore: &[i32]) -> bool {
+        let Some(test) = WalkTest::new(a, b, grow, self.map) else {
             return true;
-        }
-        let walk = [a[0], a[1], b[0], b[1]];
-        let [lo_x, lo_y, hi_x, hi_y] = [
-            a[0].min(b[0]),
-            a[1].min(b[1]),
-            a[0].max(b[0]),
-            a[1].max(b[1]),
-        ];
-        let query = [lo_x - grow, lo_y - grow, grow + hi_x, grow + hi_y];
-        self.objects.iter().any(|(id, p)| {
-            // kind 10 is filed as 2
-            let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
-            let bx = p.bounds();
-            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
-            matches!(kind, Some(2 | 11 | 13))
-                && !ignore.contains(id)
-                && lo_x <= grown[2]
-                && grown[0] <= hi_x
-                && lo_y <= grown[3]
-                && grown[1] <= hi_y
-                && box_meets_segment(bx, grow, walk)
-                && self.visits(p, kind.unwrap_or(0), query)
+        };
+        self.tile_records_meet(&test, ignore)
+            || self.objects.iter().any(|(id, p)| {
+                // kind 10 is filed as 2
+                let kind = p.obstruction.map(|o| if o.kind == 10 { 2 } else { o.kind });
+                matches!(kind, Some(2 | 11 | 13))
+                    && !ignore.contains(id)
+                    && test.meets(p.bounds())
+                    && self.visits(p, kind.unwrap_or(0), test.query)
+            })
+    }
+
+    /// Whether a temporary tile record ([`Spatial::put_tile_records`]) of a cell the walk's
+    /// query visits, not in `ignore`, meets the walk ([`WalkTest::meets`]). The records are filed
+    /// on the level of the table's first entry (`+0x1bc`), in the cell of their tile.
+    fn tile_records_meet(&self, test: &WalkTest, ignore: &[i32]) -> bool {
+        let level = self.grid.level(0);
+        let shift = self.grid.shift(level);
+        self.tile_records.borrow().iter().any(|&(y, x)| {
+            self.visits_cell(level, x >> shift, y >> shift, test.query)
+                && !ignore.contains(&tile_record_id(x, y))
+                && test.meets([x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
         })
     }
 
-    /// The tiles of a straight walk from `a` to `b` of a unit `grow` wide (`FUN_141052b90`, the
-    /// temporary tile records of `FUN_1410510c0`): whether a tile of the walk's box whose terrain
-    /// class the unit's `mask` lacks, grown by `grow`, meets the walk's segment. A walk whose grown
-    /// box leaves the map counts as blocked.
-    ///
-    /// # Panics
-    ///
-    /// Never: the rectangle's tiles are held on the map.
+    /// Whether a tile its terrain `mask` lacks lies in the way of a straight walk from `a` to
+    /// `b` of a unit `grow` wide, as the walk's query asks (`FUN_14114cc60`: `FUN_141052b90`,
+    /// its query, then `FUN_1410561f0`): its temporary tile records
+    /// ([`Spatial::put_tile_records`]) tested as [`Spatial::segment_meets`] tests them, and
+    /// removed again. A walk whose grown box leaves the map counts as blocked.
     pub fn tiles_block(&self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) -> bool {
+        self.put_tile_records(a, b, grow, mask);
+        let blocked =
+            WalkTest::new(a, b, grow, self.map).is_none_or(|t| self.tile_records_meet(&t, &[]));
+        self.clear_tile_records();
+        blocked
+    }
+
+    /// `FUN_141052b90`: a temporary record (`FUN_1410510c0`) on each tile of the rectangle of
+    /// `a` and `b` (x, y), grown by `grow` (the manager's buffer) and held on the map, whose word
+    /// holds neither a terrain class of `mask` nor a temporary record (`mask & 0x7f | 0x80`), row
+    /// by row. The records stay until [`Spatial::clear_tile_records`].
+    pub fn put_tile_records(&self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) {
+        use crate::checkpoint::cvttss2si;
         let (lo_x, hi_x) = (
             if b[0] <= a[0] { b[0] } else { a[0] },
             if a[0] <= b[0] { b[0] } else { a[0] },
@@ -1046,46 +1074,42 @@ impl Spatial {
             if a[1] <= b[1] { b[1] } else { a[1] },
         );
         let [w, h] = self.map;
-        let tx0 = ((lo_x - grow) as i32).max(0);
-        let ty0 = ((lo_y - grow) as i32).max(0);
-        let tx1 = if ((hi_x + grow) as i32) < w {
-            (hi_x + grow) as i32
-        } else {
-            w - 1
-        };
-        let ty1 = if ((hi_y + grow) as i32) < h {
-            (hi_y + grow) as i32
-        } else {
-            h - 1
-        };
-        if lo_x - grow < 0.0
-            || lo_y - grow < 0.0
-            || (w as f32) < grow + hi_x
-            || (h as f32) < grow + hi_y
-        {
-            return true;
-        }
-        let walk = [a[0], a[1], b[0], b[1]];
-        let meets = |bx: [f32; 4]| {
-            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
-            lo_x <= grown[2]
-                && grown[0] <= hi_x
-                && lo_y <= grown[3]
-                && grown[1] <= hi_y
-                && box_meets_segment(bx, grow, walk)
-        };
-        let impassable = u64::from(mask & 0x7f | 0x80);
-        for y in ty0..=ty1 {
-            for x in tx0..=tx1 {
-                let word = self.tiles.word(x, y).expect("a tile on the map");
-                if word & impassable == 0
-                    && meets([x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0])
-                {
-                    return true;
+        let (lo_x, lo_y, hi_x, hi_y) = (
+            cvttss2si(lo_x - grow),
+            cvttss2si(lo_y - grow),
+            cvttss2si(hi_x + grow),
+            cvttss2si(hi_y + grow),
+        );
+        let (x0, y0) = (lo_x.max(0), lo_y.max(0));
+        let x1 = if hi_x < w { hi_x } else { w - 1 };
+        let y1 = if hi_y < h { hi_y } else { h - 1 };
+        let impassable = u64::from(mask & 0x7f);
+        let mut records = self.tile_records.borrow_mut();
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let Some(word) = self.tiles.word(x, y) else {
+                    continue;
+                };
+                if word & (impassable | 0x80) == 0 {
+                    let _ = records.insert((y, x));
                 }
             }
         }
-        false
+    }
+
+    /// `FUN_1410561f0`: every temporary tile record ([`Spatial::put_tile_records`]) goes.
+    pub fn clear_tile_records(&self) {
+        self.tile_records.borrow_mut().clear();
+    }
+
+    /// The temporary tile records ([`Spatial::put_tile_records`]) as (x, y), row by row.
+    #[must_use]
+    pub fn tile_records(&self) -> Vec<[i32; 2]> {
+        self.tile_records
+            .borrow()
+            .iter()
+            .map(|&(y, x)| [x, y])
+            .collect()
     }
 
     /// Each obstruction record: the object's id, the record's kind and box.
@@ -1131,6 +1155,12 @@ impl Spatial {
     /// map's size), and on each level it visits the cells they cover.
     fn visits(&self, p: &Placed, kind: u8, rect: [f32; 4]) -> bool {
         let (level, cx, cy) = self.filed(p, kind);
+        self.visits_cell(level, cx, cy, rect)
+    }
+
+    /// Whether a query whose grown rectangle is `rect` visits cell (`cx`, `cy`) of `level`
+    /// ([`Spatial::visits`]).
+    fn visits_cell(&self, level: i32, cx: i32, cy: i32, rect: [f32; 4]) -> bool {
         let shift = self.grid.shift(level);
         let [w, h] = self.map;
         let (qx0, qy0) = ((rect[0] as i32).max(0), (rect[1] as i32).max(0));
@@ -2690,9 +2720,11 @@ impl Spatial {
     /// `mask` nor a temporary record's bit 0x80 (`mask & 0x7f | 0x80`).
     #[must_use]
     pub fn makes_tile_record(&self, point: [f32; 2], mask: u8) -> bool {
+        let (x, y) = (point[0] as i32, point[1] as i32);
         self.tiles
-            .word(point[0] as i32, point[1] as i32)
+            .word(x, y)
             .is_some_and(|w| w & u64::from(mask & 0x7f | 0x80) == 0)
+            && !self.tile_records.borrow().contains(&(y, x))
     }
 
     /// The records a move query could report (`FUN_14114cc60` -> `FUN_141051900`): those of a
@@ -2956,6 +2988,95 @@ fn ccw(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2]) -> i32 {
         return 1;
     }
     0
+}
+
+/// The smoothing's segment test for a unit (`FUN_140f7dbb0`, [`crate::tile_path::SegmentTest`]):
+/// each walk puts its temporary tile records ([`Spatial::put_tile_records`]) and is tested
+/// ([`Spatial::segment_meets`]) against them and those of the pass's earlier walks; the pass's
+/// end removes them ([`Spatial::clear_tile_records`]).
+#[derive(Debug)]
+pub struct SmoothingWalls<'a> {
+    world: &'a Spatial,
+    radius: f32,
+    mask: u8,
+    ignore: &'a [i32],
+    /// Whether a walk was tested.
+    pub ran: bool,
+}
+
+impl<'a> SmoothingWalls<'a> {
+    /// The test of a unit `radius` wide (the manager's buffer) whose terrain mask is `mask`,
+    /// with the manager's ignore list `ignore`.
+    #[must_use]
+    pub const fn new(world: &'a Spatial, radius: f32, mask: u8, ignore: &'a [i32]) -> Self {
+        Self {
+            world,
+            radius,
+            mask,
+            ignore,
+            ran: false,
+        }
+    }
+}
+
+impl<E> crate::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
+    fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, E> {
+        self.ran = true;
+        self.world.put_tile_records(a, b, self.radius, self.mask);
+        Ok(self.world.segment_meets(a, b, self.radius, self.ignore))
+    }
+
+    fn pass_ends(&mut self) {
+        self.world.clear_tile_records();
+    }
+}
+
+/// A straight walk's test against records (`FUN_141052350`, `FUN_141052800`): the walk's box
+/// (its ends' lower and upper x and y) and the query's box, grown by the manager's buffer.
+struct WalkTest {
+    walk: [f32; 4],
+    lo: [f32; 2],
+    hi: [f32; 2],
+    grow: f32,
+    query: [f32; 4],
+}
+
+impl WalkTest {
+    /// The walk from `a` to `b` of a unit `grow` wide; None when its grown box leaves a map of
+    /// `map` tiles (the query then counts as met).
+    fn new(a: [f32; 2], b: [f32; 2], grow: f32, [w, h]: [i32; 2]) -> Option<Self> {
+        let lo = [
+            if b[0] <= a[0] { b[0] } else { a[0] },
+            if b[1] <= a[1] { b[1] } else { a[1] },
+        ];
+        let hi = [
+            if a[0] <= b[0] { b[0] } else { a[0] },
+            if a[1] <= b[1] { b[1] } else { a[1] },
+        ];
+        let query = [lo[0] - grow, lo[1] - grow, grow + hi[0], grow + hi[1]];
+        if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
+            return None;
+        }
+        Some(Self {
+            walk: [a[0], a[1], b[0], b[1]],
+            lo,
+            hi,
+            grow,
+            query,
+        })
+    }
+
+    /// Whether a record's box `bx`, grown by the buffer, meets the walk's box (edges included)
+    /// and segment (`FUN_141052e10`).
+    fn meets(&self, bx: [f32; 4]) -> bool {
+        let g = self.grow;
+        let grown = [bx[0] - g, bx[1] - g, g + bx[2], g + bx[3]];
+        self.lo[0] <= grown[2]
+            && grown[0] <= self.hi[0]
+            && self.lo[1] <= grown[3]
+            && grown[1] <= self.hi[1]
+            && box_meets_segment(bx, g, self.walk)
+    }
 }
 
 /// `FUN_141054ec0`: whether segments `p1`–`p2` and `p3`–`p4` meet.
@@ -3780,6 +3901,38 @@ mod tests {
         assert!(!s.segment_blocked([2.0, 5.5], [14.0, 5.5], 0.2, 3, &[]));
         // a walk whose grown box leaves the map
         assert!(s.segment_blocked([0.1, 5.5], [14.0, 5.5], 0.2, 3, &[]));
+    }
+
+    /// 426327574's transport at update 309: the smoothing's walk (77.5, 90.5) -> (76.5, 91.5)
+    /// puts tile (78, 90)'s record, and the next walk from (77.5, 91.5) touches its grown box.
+    #[test]
+    fn a_tile_record_blocks_later_walks_until_the_records_are_cleared() {
+        let mut classes = vec![1; 128 * 128];
+        classes[90 * 128 + 78] = 0;
+        classes[87 * 128 + 78] = 0;
+        let s = Spatial::with_tiles([128, 128], Tiles::new(128, 128, classes));
+        let (first, second) = (([77.5, 90.5], [76.5, 91.5]), ([77.5, 91.5], [76.5, 92.5]));
+        // alone, the second walk's tiles stop at y = 91 and its test removes its records
+        assert!(!s.segment_blocked(second.0, second.1, 0.5, 1, &[]));
+        assert_eq!(s.tile_records(), Vec::<[i32; 2]>::new());
+        s.put_tile_records(first.0, first.1, 0.5, 1);
+        assert_eq!(s.tile_records(), vec![[78, 90]]);
+        assert!(s.segment_meets(second.0, second.1, 0.5, &[]));
+        // the record's id in the ignore list leaves it out
+        assert!(!s.segment_meets(second.0, second.1, 0.5, &[tile_record_id(78, 90)]));
+        // a tile that holds a record takes no second
+        s.put_tile_records(second.0, [79.0, 89.0], 0.5, 1);
+        assert_eq!(s.tile_records(), vec![[78, 90]]);
+        s.clear_tile_records();
+        assert!(!s.segment_meets(second.0, second.1, 0.5, &[]));
+        // tile (78, 87)'s grown box touches (77.5, 88.5), but its cell (y 80..87) is not one the
+        // walk from y 88.5 visits (y from 88)
+        s.put_tile_records([78.5, 86.5], [78.5, 87.5], 0.0, 1);
+        assert_eq!(s.tile_records(), vec![[78, 87]]);
+        assert!(!s.segment_meets([77.5, 88.5], [76.5, 89.5], 0.5, &[]));
+        assert!(s.segment_meets([77.5, 88.0], [76.5, 89.5], 0.5, &[]));
+        s.clear_tile_records();
+        assert_eq!(s.tile_records(), Vec::<[i32; 2]>::new());
     }
 
     #[test]
