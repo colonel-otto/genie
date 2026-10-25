@@ -1166,10 +1166,10 @@ impl GatherAction {
                     .mover
                     .as_deref_mut()
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
+                // turning over time it faces next update (the switch breaks, the update
+                // returns 0)
                 if !crate::attack::face_target(mover, at, target.position, g.world_time)? {
-                    return Err(GenieError::unsupported(
-                        "a gatherer that turns over time to face its target",
-                    ));
+                    return Ok(Next::Stay);
                 }
                 if 0.0 < target.amount || REGATHERED.contains(&target.master_id) {
                     self.set_work(walk.me.position, g);
@@ -1980,6 +1980,75 @@ mod tests {
             anim_stopped: false,
         };
         g.update(walk, target, &mut gatherer, dt)
+    }
+
+    /// Case 5 (`FUN_141162db0`): a gatherer with a turn time turns a facet a turn time; not yet
+    /// facing its target, the switch breaks and it stays in state 6 for the next update.
+    #[test]
+    fn a_gatherer_turning_over_time_faces_its_target_later() {
+        let mut g = GatherAction {
+            state: FACE,
+            target: 28222,
+            ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
+        };
+        let mut mover = crate::hunt::tests::walker();
+        mover.stats.turn_time = 1.0;
+        mover.stats.facets = Some(crate::facing::SpriteFacets {
+            count: 16,
+            flag_1: true,
+        });
+        mover.angle = 0.0;
+        let before = mover.angle;
+        let mut world = crate::spatial::Spatial::default();
+        let walk = Walk {
+            mover: Some(&mut mover),
+            me: crate::movement::Me {
+                id: 1,
+                position: [30.0, 40.0, 0.0],
+                group: -1,
+                action_state: FACE,
+            },
+            dt: 0.1,
+            world: &mut world,
+            plan: None,
+        };
+        let (mut kind, mut held) = (-1i16, 0.0f32);
+        let mut sprite = None;
+        let (mut rng, mut action) = (Well512::default(), Well512::default());
+        let mut gatherer = Gatherer {
+            held_kind: &mut kind,
+            held: &mut held,
+            work_rate: 0.31,
+            capacity: 10.0,
+            productivity: 1.0,
+            sprites: HuntSprites::default(),
+            sprite: &mut sprite,
+            sprite_rng: &mut rng,
+            class: 4,
+            master: 259,
+            stance: 0,
+            world_time: 5000,
+            farm_stops: false,
+            posted: Vec::new(),
+            action_rng: &mut action,
+            player: 7,
+            computer: false,
+            stop_productivity: 1.0,
+            food_sold: 0.0,
+            sold: 0.0,
+            anim_stopped: false,
+        };
+        // the bush straight behind the unit (the angle 0 faces +x)
+        let mut bush = Victim {
+            position: [20.0, 40.0, 0.0],
+            ..target(10.0)
+        };
+        assert_eq!(
+            g.update(walk, Some(&mut bush), &mut gatherer, 0.1),
+            Ok(Next::Stay)
+        );
+        assert_eq!(g.state, FACE);
+        assert_ne!(mover.angle, before);
     }
 
     /// A farmer waiting for another farm (state 0xf3), its farm gone.
