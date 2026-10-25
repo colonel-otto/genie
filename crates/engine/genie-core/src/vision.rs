@@ -197,4 +197,50 @@ mod tests {
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
         assert!(!t.players[2].tc_flared.iter().any(|&f| f));
     }
+
+    /// `World::update` ends with the world's slot 0x78 (`FUN_1415e92b0`, at `0x1415e9266`) after
+    /// every update: a town centre that comes up later is flared in the update it is there, once
+    /// (430876787's flare 12577 in update 2630, whose id the game's later objects count on).
+    #[test]
+    fn every_update_ends_with_the_masks_rebuilt_and_new_town_centres_flared() {
+        let mut t = teams();
+        t.players[2].attributes[REVEAL_CENTRES] = 5.0;
+        let flare = crate::masters::Master {
+            id: FLARE4,
+            kind: crate::masters::master_type::ANIMATED,
+            standing_sprite: -1,
+            ..crate::masters::Master::default()
+        };
+        t.masters = (0..t.players.len())
+            .map(|_| crate::masters::Masters::new([flare.clone()]))
+            .collect();
+        t.next_object_id = 100;
+        let flares = |t: &Turns| -> Vec<(i32, [f32; 3])> {
+            t.players[2]
+                .objects
+                .iter()
+                .filter(|u| u.life.master_id == FLARE4)
+                .map(|u| (u.id, u.position))
+                .collect()
+        };
+        t.tick_with(50, &[]);
+        assert_eq!(flares(&t), []);
+        // the masks are the rebuilt ones even where they were not
+        assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
+        t.players[1].objects.push(crate::turn::Unit {
+            id: 50,
+            position: [7.0, 8.0, 0.0],
+            life: crate::lifecycle::Lifecycle {
+                master_id: TOWN_CENTRE,
+                state: 2,
+                ..crate::lifecycle::Lifecycle::default()
+            },
+            ..crate::turn::Unit::default()
+        });
+        t.tick_with(50, &[]);
+        assert_eq!(flares(&t), [(100, [7.0, 8.0, 0.0])]);
+        assert_eq!(t.players[2].tc_flared.get(1), Some(&true));
+        t.tick_with(50, &[]);
+        assert_eq!(flares(&t).len(), 1);
+    }
 }

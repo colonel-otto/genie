@@ -1942,6 +1942,15 @@ impl Turns {
         self.frame_seed = self.streams.get(Stream::World).rand15();
         // setLastRandoms (0x140d3ce20): the multiplayer sync's draws
         let _ = self.streams.set_last_randoms();
+        // World::update's last step (0x1415e9266), whatever dt: the world's slot 0x78 with 1
+        // (FUN_1415e92b0): the players' masks again and the town centres' flares
+        // (FUN_141552df0, [`Turns::rebuild_vision`]); its UI refresh is not simulation. Masks the
+        // slice cannot rebuild leave every player's sight in doubt, as after the load
+        if let Err(e) = self.rebuild_vision() {
+            for p in 0..self.players.len() {
+                self.stop_player(p, e.clone());
+            }
+        }
     }
 }
 
