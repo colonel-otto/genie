@@ -2011,8 +2011,9 @@ impl Spatial {
         crate::best_target::best_unit_to_attack(&me, &ask.ask(), &lists, &mut field)
     }
 
-    /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects
-    /// whose centre is on a tile within the animal's radius (whole) plus 3 tiles of its own tile,
+    /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects on
+    /// the lists of the tiles within the animal's radius (whole) plus 3 tiles of its own tile
+    /// (row by row, each list in its order; a full tile's list lacks the objects it did not file),
     /// combat units (type 70) in state 2 of a player that is not out (its game status, `+0x89`,
     /// by player in `game_status`, is 0), Gaia's only with `+0x924` 0, of no class of 1, 60, 42,
     /// 11, 14, 30, 58, 3, 52, 27, 39, 49, 37, 9, 10 or 38, counted per player with the nearest
@@ -2062,7 +2063,7 @@ impl Spatial {
         // a frozen unit that could count (of the combat type and a class that counts) may have
         // moved onto the tiles
         let area = [x0 as f32, y0 as f32, (x1 + 1) as f32, (y1 + 1) as f32];
-        let unsure = self.objects.iter().any(|(&id, q)| {
+        let unsure = self.frozen().any(|(id, q)| {
             q.unknown.is_some_and(|u| {
                 let counts = v.seer(id).is_some_and(|s| s.kind == 70)
                     && !out(q.player)
@@ -2087,11 +2088,11 @@ impl Spatial {
         let mut own_seen = false;
         let mut taker = false;
         let livestock = p.class == 58;
-        for (&id, q) in &self.objects {
-            let (tx, ty) = (q.position[0] as i32, q.position[1] as i32);
-            if !(x0 <= tx && tx <= x1 && y0 <= ty && ty <= y1) {
-                continue;
-            }
+        // the tiles' lists row by row, each in its order: an object a full tile did not file is
+        // not met
+        let on_tiles =
+            (y0..=y1).flat_map(|ty| (x0..=x1).flat_map(move |tx| self.objects_on(tx, ty)));
+        for (id, q) in on_tiles {
             let Some(s) = v.seer(id) else { continue };
             if s.kind != 70 || s.state != 2 || KEPT.contains(&q.class) {
                 continue;

@@ -3797,43 +3797,47 @@ fn a_taken_sheep_sees_with_its_new_owner_s_line_of_sight() {
     assert_eq!(a.own_master.as_deref().map(|m| m.hit_points), Some(35));
 }
 
+/// A unit of player `p` at (`x`, 10.5) for the owner search of [`hands_world`]'s object: a
+/// combat-type seer in state 2 on its tile's list.
+fn owner_search_unit(s: &mut Spatial, id: i32, p: usize, x: f32) {
+    s.sight.as_mut().unwrap().add_seer(
+        id,
+        Seer {
+            player: p,
+            master: 4,
+            los: 6.0,
+            state: 2,
+            explored: true,
+            building: None,
+            umv: 0,
+            capture: capture_kind(p, 0, 4),
+            kind: 70,
+        },
+    );
+    s.insert(
+        id,
+        Placed {
+            position: [x, 10.5, 0.0],
+            radius: [0.2, 0.2],
+            class: 0,
+            player: p,
+            master: 4,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+}
+
 /// The Artifact action's owner search (`FUN_140aabc40`) passes over the units of a player that
 /// is out (`+0x89` not 0) and over such a player as a taker: 428265662's Gaia sheep 27530 in
 /// update 642 stays Gaia's next to the units of player 7, who resigned in update 428.
 #[test]
 fn an_owner_search_passes_over_a_player_out_of_the_game() {
-    let unit = |s: &mut Spatial, id: i32, p: usize, x: f32| {
-        s.sight.as_mut().unwrap().add_seer(
-            id,
-            Seer {
-                player: p,
-                master: 4,
-                los: 6.0,
-                state: 2,
-                explored: true,
-                building: None,
-                umv: 0,
-                capture: capture_kind(p, 0, 4),
-                kind: 70,
-            },
-        );
-        s.insert(
-            id,
-            Placed {
-                position: [x, 10.5, 0.0],
-                radius: [0.2, 0.2],
-                class: 0,
-                player: p,
-                master: 4,
-                obstruction_type: 0,
-                buildable_on: 0,
-                tall: true,
-                speed: 0.0,
-                unknown: None,
-                obstruction: None,
-            },
-        );
-    };
+    let unit = owner_search_unit;
     let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
     unit(&mut s, 1, 1, 11.5);
     let none = [0.0; 3];
@@ -3844,6 +3848,37 @@ fn an_owner_search_passes_over_a_player_out_of_the_game() {
     assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
     assert_eq!(s.artifact_owner(27530, &none, &[0, 2, 0]), Ok(Some(2)));
     assert_eq!(s.artifact_owner(27530, &none, &[0, 2, 1]), Ok(None));
+}
+
+/// The owner search walks the tiles' lists (`+0x28`, `FUN_140aabc40`), as the game does: a unit
+/// on a full tile (`0xfa` objects: `FUN_140f5f0a0` files no more) is not on its list and does not
+/// count, one on the next tile does.
+#[test]
+fn an_owner_search_counts_only_the_units_on_the_tiles_lists() {
+    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    for id in 1000..1250 {
+        s.insert(
+            id,
+            Placed {
+                position: [11.5, 10.5, 0.0],
+                radius: [0.2, 0.2],
+                class: 0,
+                player: 0,
+                master: 4,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: false,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+    }
+    owner_search_unit(&mut s, 1, 1, 11.5);
+    let none = [0.0; 3];
+    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(None));
+    owner_search_unit(&mut s, 2, 1, 12.5);
+    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
 }
 
 /// `FUN_14120f800` for a new owner whose table lacks the master writes the new owner into
