@@ -9944,14 +9944,34 @@ mod tests {
 
     /// What [`UnitSide::closest_resource`] answers, and the searches asked (group, workers cap,
     /// drop site, current target).
-    struct ResourceSide(Option<Gatherable>, Vec<(u8, i32, i32, i32)>);
+    #[derive(Default)]
+    struct ResourceSide {
+        /// What `ClosestResourceObject` finds.
+        resource: Option<Gatherable>,
+        /// The resource searches asked: kind, cap, drop site, current target.
+        searches: Vec<(u8, i32, i32, i32)>,
+        /// What `ClosestObject` finds (none: no search here).
+        closest: Option<Found>,
+        /// The foundation the builder's search finds and whether the unit reaches it (none: no
+        /// search here).
+        foundation: Option<(i32, bool)>,
+    }
 
     impl UnitSide for ResourceSide {
         fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
             None
         }
         fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
-            Err(GenieError::unsupported("no search here"))
+            self.closest
+                .ok_or(GenieError::unsupported("no search here"))
+        }
+        fn foundation_search(&mut self) -> Result<i32, GenieError> {
+            self.foundation
+                .map(|(id, _)| id)
+                .ok_or(GenieError::unsupported("no search here"))
+        }
+        fn reaches(&mut self, _: i32, _: f32) -> Result<bool, GenieError> {
+            Ok(self.foundation.is_some_and(|(_, reaches)| reaches))
         }
         fn attack(&mut self, _: i32, _: bool, _: &UnitAi) -> Result<Attacked, GenieError> {
             Err(GenieError::unsupported("no attack here"))
@@ -9985,9 +10005,217 @@ mod tests {
             search: ResourceSearch,
         ) -> Result<Option<Gatherable>, GenieError> {
             assert_eq!((search.point, search.min_state), (NO_POINT, 2));
-            self.1
+            self.searches
                 .push((search.kind, search.cap, search.site, search.current));
-            Ok(self.0)
+            Ok(self.resource)
+        }
+    }
+
+    /// What `ClosestObject` finds for the searches' tests: `id` at (5, 6), or none.
+    fn found_at(id: i32) -> Found {
+        Found {
+            id,
+            enemies: false,
+            position: (id != -1).then_some([5.0, 6.0, 0.0]),
+            fresh: true,
+            players: 0,
+            distance: -1,
+            retries: [None; 3],
+        }
+    }
+
+    /// The villager's case 0x202 on its hunt ([`UnitAi::hunter_search`]): the class is the
+    /// notify's, else the AI's target class, else its last; with none the target goes and the
+    /// action stops. A class without a gather group (a deer, 9) takes `ClosestObject`: what it
+    /// finds it hunts and the processing breaks; finding nothing a human player's villager does
+    /// nothing more. A group's class searches by kind (a boar's 0x21: food, any workers). A
+    /// computer player's villager finding nothing, a found object without its place and a farm
+    /// found are not modelled.
+    #[test]
+    fn a_hunter_asked_for_another_target_hunts_what_its_search_finds() {
+        let hunter = |target_type, last_target_type| UnitAi {
+            ai_type: CIVILIAN,
+            current_order: crate::ai_kinds::ORDER_GATHER,
+            current_action: HUNT_ACTION,
+            current_target: 28202,
+            target_type,
+            last_target_type,
+            ..UnitAi::default()
+        };
+        let at = Surroundings::default();
+        let n = |class| Notify::own(31237, REQUIRES_SEARCH, [HUNT_ACTION, class, 31247]);
+        let search = |u: &mut UnitAi, side: &mut ResourceSide, class, computer| {
+            let mut fx = Vec::new();
+            let r = u.hunter_search(n(class), &at, computer, side, &mut fx);
+            (r, fx)
+        };
+        let deer = || ResourceSide {
+            closest: Some(found_at(40)),
+            ..ResourceSide::default()
+        };
+        let mut u = hunter(-1, -1);
+        assert_eq!(search(&mut u, &mut deer(), 9, false).0, Ok(BREAK));
+        assert_eq!((u.current_target, u.target_type), (40, 9));
+        let mut u = hunter(9, -1);
+        assert_eq!(search(&mut u, &mut deer(), -1, false).0, Ok(BREAK));
+        let mut u = hunter(-1, 9);
+        assert_eq!(search(&mut u, &mut deer(), -1, false).0, Ok(BREAK));
+        let mut u = hunter(-1, -1);
+        assert_eq!(search(&mut u, &mut deer(), -1, false).0, Ok(GO_ON));
+        assert_eq!((u.current_target, u.current_action), (-1, -1));
+        let mut none = ResourceSide {
+            closest: Some(found_at(-1)),
+            ..ResourceSide::default()
+        };
+        let mut u = hunter(-1, -1);
+        assert_eq!(search(&mut u, &mut none, 9, false), (Ok(GO_ON), vec![]));
+        assert!(search(&mut hunter(-1, -1), &mut none, 9, true).0.is_err());
+        let mut placeless = ResourceSide {
+            closest: Some(Found {
+                position: None,
+                ..found_at(40)
+            }),
+            ..ResourceSide::default()
+        };
+        assert!(
+            search(&mut hunter(-1, -1), &mut placeless, 9, false)
+                .0
+                .is_err()
+        );
+        assert!(
+            search(&mut hunter(-1, -1), &mut deer(), 49, false)
+                .0
+                .is_err()
+        );
+        let mut boar = ResourceSide::default();
+        assert_eq!(
+            search(&mut hunter(-1, -1), &mut boar, 0x21, false).0,
+            Ok(GO_ON)
+        );
+        assert_eq!(boar.searches, vec![(2, -1, 31247, 28202)]);
+    }
+
+    /// The villager's case 0x202 on its gather ([`UnitAi::gatherer_search`]) beyond the bush:
+    /// the class is the AI's target class, else its last, else the notify's; with none the
+    /// target goes and the action stops. Stone (8) is searched below 4 workers. A farm (49, no
+    /// gather group) takes `ClosestObject`, what it finds gathered; finding nothing a human
+    /// player's villager does nothing more, a computer player's stops. A found object without
+    /// its place is not modelled.
+    #[test]
+    fn a_gatherer_without_a_class_stops_and_one_on_a_farm_searches_for_another() {
+        let gatherer = |target_type, last_target_type| UnitAi {
+            ai_type: CIVILIAN,
+            current_order: crate::ai_kinds::ORDER_GATHER,
+            current_action: GATHER_ACTION,
+            current_target: 28202,
+            target_type,
+            last_target_type,
+            ..UnitAi::default()
+        };
+        let at = Surroundings::default();
+        let n = |class| Notify::own(31237, REQUIRES_SEARCH, [GATHER_ACTION, class, 31247]);
+        let search = |u: &mut UnitAi, side: &mut ResourceSide, class, computer| {
+            let mut fx = Vec::new();
+            let r = u.gatherer_search(n(class), &at, computer, side, &mut fx);
+            (r, fx)
+        };
+        let mut u = gatherer(-1, -1);
+        assert_eq!(
+            search(&mut u, &mut ResourceSide::default(), -1, false).0,
+            Ok(GO_ON)
+        );
+        assert_eq!((u.current_target, u.current_action), (-1, -1));
+        let mut stone = ResourceSide::default();
+        let _ = search(&mut gatherer(-1, 8), &mut stone, -1, false);
+        assert_eq!(stone.searches, vec![(3, 4, 31247, 28202)]);
+        let mut farm = ResourceSide {
+            closest: Some(found_at(12557)),
+            ..ResourceSide::default()
+        };
+        let mut u = gatherer(-1, -1);
+        let (r, fx) = search(&mut u, &mut farm, 49, false);
+        assert_eq!((r, fx), (Ok(BREAK), vec![Effect::GatherObject(12557)]));
+        let mut none = ResourceSide {
+            closest: Some(found_at(-1)),
+            ..ResourceSide::default()
+        };
+        let mut u = gatherer(-1, -1);
+        assert_eq!(search(&mut u, &mut none, 49, false), (Ok(GO_ON), vec![]));
+        assert_eq!(u.current_target, 28202);
+        let mut u = gatherer(-1, -1);
+        assert_eq!(search(&mut u, &mut none, 49, true).0, Ok(GO_ON));
+        assert_eq!(u.current_target, -1);
+        let mut placeless = ResourceSide {
+            closest: Some(Found {
+                position: None,
+                ..found_at(40)
+            }),
+            ..ResourceSide::default()
+        };
+        assert!(
+            search(&mut gatherer(-1, -1), &mut placeless, 49, false)
+                .0
+                .is_err()
+        );
+    }
+
+    /// The villager's cases 0x1fb, 0x1fc and 0x202 by its action ([`UnitAi::villager_search`]):
+    /// the hunt and the gather search as theirs; the builder takes the foundation its search
+    /// finds and reaches (the processing breaks), finding none or not reaching it a human
+    /// player's stops; the shepherd's search, a computer builder without a foundation and the
+    /// explorer's search are not modelled.
+    #[test]
+    fn a_villager_searches_by_its_action() {
+        let villager = |current_action| UnitAi {
+            ai_type: CIVILIAN,
+            current_action,
+            current_target: 28202,
+            target_type: 9,
+            ..UnitAi::default()
+        };
+        let at = Surroundings {
+            units: vec![UnitSeen {
+                id: 10028,
+                class: 3,
+                position: [7.0, 8.0, 0.0],
+                ..UnitSeen::default()
+            }],
+            ..Surroundings::default()
+        };
+        let n = Notify::own(31237, REQUIRES_SEARCH, [0, -1, -1]);
+        let run = |u: &mut UnitAi, side: &mut ResourceSide, computer| {
+            let mut fx = Vec::new();
+            let r = u.villager_search(n, &at, computer, side, &mut fx);
+            (r, fx)
+        };
+        let mut deer = ResourceSide {
+            closest: Some(found_at(40)),
+            ..ResourceSide::default()
+        };
+        assert_eq!(
+            run(&mut villager(HUNT_ACTION), &mut deer, false).0,
+            Ok(BREAK)
+        );
+        let mut u = villager(GATHER_ACTION);
+        assert_eq!(run(&mut u, &mut deer, false).0, Ok(BREAK));
+        let building = |foundation| ResourceSide {
+            foundation: Some(foundation),
+            ..ResourceSide::default()
+        };
+        let mut u = villager(BUILD_ACTION);
+        let (r, fx) = run(&mut u, &mut building((10028, true)), false);
+        assert_eq!((r, fx), (Ok(BREAK), vec![Effect::BuildObject(10028)]));
+        assert_eq!((u.current_target, u.target_type), (10028, 3));
+        for foundation in [(10028, false), (-1, false)] {
+            let mut u = villager(BUILD_ACTION);
+            let got = run(&mut u, &mut building(foundation), false);
+            assert_eq!(got, (Ok(BREAK), vec![Effect::Stop]), "{foundation:?}");
+        }
+        let mut u = villager(BUILD_ACTION);
+        assert!(run(&mut u, &mut building((-1, false)), true).0.is_err());
+        for action in [SHEPHERD_ACTION, EXPLORE_ACTION] {
+            let mut u = villager(action);
+            assert!(run(&mut u, &mut ResourceSide::default(), false).0.is_err());
         }
     }
 
@@ -10009,7 +10237,10 @@ mod tests {
             target_type: 7,
             ..UnitAi::default()
         };
-        let mut side = ResourceSide(Some(bush), Vec::new());
+        let mut side = ResourceSide {
+            resource: Some(bush),
+            ..ResourceSide::default()
+        };
         let mut fx = Vec::new();
         let at = Surroundings::default();
         let n = Notify::own(31237, REQUIRES_SEARCH, [GATHER_ACTION, 7, 31247]);
@@ -10017,7 +10248,7 @@ mod tests {
             ai.gatherer_search(n, &at, false, &mut side, &mut fx),
             Ok(BREAK)
         );
-        assert_eq!(side.1, vec![(1, -1, 31247, 28202)]);
+        assert_eq!(side.searches, vec![(1, -1, 31247, 28202)]);
         assert_eq!(fx, vec![Effect::GatherObject(28200)]);
         assert_eq!(
             (ai.current_target, ai.last_target, ai.target_point),
@@ -10030,14 +10261,17 @@ mod tests {
             target_type: 32,
             ..UnitAi::default()
         };
-        let mut side = ResourceSide(None, Vec::new());
+        let mut side = ResourceSide {
+            resource: None,
+            ..ResourceSide::default()
+        };
         let mut fx = Vec::new();
         let n = Notify::own(31237, REQUIRES_SEARCH, [GATHER_ACTION, 32, 0]);
         assert_eq!(
             ai.gatherer_search(n, &at, false, &mut side, &mut fx),
             Ok(GO_ON)
         );
-        assert_eq!((side.1[0].0, side.1[0].1), (4, 4));
+        assert_eq!((side.searches[0].0, side.searches[0].1), (4, 4));
         assert_eq!(fx, Vec::new());
         assert_eq!(ai.current_action, GATHER_ACTION);
     }
@@ -10060,7 +10294,10 @@ mod tests {
             target_type: 15,
             ..UnitAi::default()
         };
-        let mut side = ResourceSide(Some(tree), Vec::new());
+        let mut side = ResourceSide {
+            resource: Some(tree),
+            ..ResourceSide::default()
+        };
         let mut fx = Vec::new();
         let at = Surroundings::default();
         let n = Notify::own(31237, REQUIRES_SEARCH, [0x265, 15, 31247]);
@@ -10068,7 +10305,7 @@ mod tests {
             ai.hunter_search(n, &at, false, &mut side, &mut fx),
             Ok(BREAK)
         );
-        assert_eq!(side.1, vec![(0, 2, 31247, 28301)]);
+        assert_eq!(side.searches, vec![(0, 2, 31247, 28301)]);
         assert_eq!(fx, vec![Effect::HuntObject(28300)]);
         assert_eq!(ai.current_target, 28300);
         let mut ai = UnitAi {
@@ -10077,14 +10314,17 @@ mod tests {
             current_target: -1,
             ..UnitAi::default()
         };
-        let mut side = ResourceSide(None, Vec::new());
+        let mut side = ResourceSide {
+            resource: None,
+            ..ResourceSide::default()
+        };
         let mut fx = Vec::new();
         let n = Notify::own(31237, REQUIRES_SEARCH, [0x265, 32, -1]);
         assert_eq!(
             ai.hunter_search(n, &at, false, &mut side, &mut fx),
             Ok(GO_ON)
         );
-        assert_eq!(side.1, vec![(4, -1, -1, -1)]);
+        assert_eq!(side.searches, vec![(4, -1, -1, -1)]);
         assert_eq!(fx, Vec::new());
     }
 
@@ -10387,6 +10627,8 @@ mod tests {
         found: i32,
         attacks: Vec<(i32, bool)>,
         patrol: Option<(PatrolPath, i32)>,
+        /// Slot 0xa0 refuses every target.
+        refuses: bool,
     }
 
     impl UnitSide for SoldierSide {
@@ -10420,7 +10662,7 @@ mod tests {
             _: i32,
             _: &Seeker,
         ) -> Result<Option<(i16, [f32; 3])>, GenieError> {
-            Ok(Some((58, [10.0, 11.0, 0.0])))
+            Ok((!self.refuses).then_some((58, [10.0, 11.0, 0.0])))
         }
         fn seek_unexplored(
             &mut self,
@@ -10658,6 +10900,201 @@ mod tests {
             Ok(GO_ON)
         );
         assert_eq!(fx, vec![Effect::Stop]);
+    }
+
+    /// The base handler's case `0x1fb` ([`UnitAi::action_invalidated`]): an attack invalidated on
+    /// the attack order, or on a search (`0x202`), runs processIdle, and with nothing produced a
+    /// human player's unit forgets its target and stops (a computer player's tests and
+    /// retargeting off are not modelled); without an order the current action's invalidation
+    /// forgets the target and stops, with one the order's own action's (action + 100) and any
+    /// attack's; orders `0x2d4` and `0x2bd` on action `0x262` are not modelled; the rest go on.
+    #[test]
+    fn an_invalidated_action_of_the_order_or_an_attack_stops_the_unit() {
+        let at = Surroundings {
+            id: 20,
+            player: 1,
+            kind: 70,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let unit = |order, action| UnitAi {
+            current_order: order,
+            current_action: action,
+            current_target: 30,
+            ..idle(SOLDIER_AI)
+        };
+        let invalid = |p0, p2| Notify::own(20, ACTION_INVALIDATED, [p0, 0, p2]);
+        let run = |u: &mut UnitAi, n, computer| {
+            let mut side = DamageSide {
+                found: -1,
+                ..DamageSide::default()
+            };
+            let r = u.action_invalidated(n, &at, computer, &mut rng(), &mut side, &mut Vec::new());
+            (r, u.current_target)
+        };
+        let gone = (Ok(GO_ON), -1);
+        let kept = (Ok(GO_ON), 30);
+        let mut u = unit(ATTACK_ORDER, ATTACK_ACTION);
+        assert_eq!(run(&mut u, invalid(ATTACK_ACTION, 0), false), gone);
+        assert_eq!(u.current_order, -1);
+        let mut u = unit(-1, -1);
+        assert_eq!(run(&mut u, invalid(ATTACK_ACTION, 0x202), false), gone);
+        let mut u = unit(ATTACK_ORDER, ATTACK_ACTION);
+        assert!(run(&mut u, invalid(ATTACK_ACTION, 0), true).0.is_err());
+        let mut u = UnitAi {
+            retarget_disabled: 1,
+            ..unit(ATTACK_ORDER, ATTACK_ACTION)
+        };
+        assert!(run(&mut u, invalid(ATTACK_ACTION, 0), false).0.is_err());
+        let mut u = unit(-1, MOVE_ACTION);
+        assert_eq!(run(&mut u, invalid(MOVE_ACTION, 0), false), gone);
+        let mut u = unit(-1, MOVE_ACTION);
+        assert_eq!(run(&mut u, invalid(GATHER_ACTION, 0), false), kept);
+        let mut u = unit(MOVE_ACTION + 100, MOVE_ACTION);
+        assert_eq!(run(&mut u, invalid(MOVE_ACTION, 0), false), gone);
+        let mut u = unit(0x2c8, MOVE_ACTION);
+        assert_eq!(run(&mut u, invalid(MOVE_ACTION, 0), false), kept);
+        let mut u = unit(0x2c8, MOVE_ACTION);
+        assert_eq!(run(&mut u, invalid(ATTACK_ACTION, 0), false), gone);
+        for order in [0x2d4, 0x2bd] {
+            let mut u = unit(order, MOVE_ACTION);
+            assert!(run(&mut u, invalid(MOVE_ACTION, 0), false).0.is_err());
+        }
+    }
+
+    /// The base handler's case `0x1fa` ([`UnitAi::action_completed`]): with an order the state
+    /// position takes the unit's place; without one the current action's completion, or an
+    /// attack's, forgets the target and stops; on the attack order an attack's completion runs
+    /// processIdle, and with nothing produced the target goes and the order ends; with another
+    /// order its own action's completion stops, order 724 on a move forgets the target and ends,
+    /// 701 on a move and 712 on a move of action `0x2bf` only drop the action, and an attack's
+    /// completion stops; the rest go on.
+    #[test]
+    fn a_completed_action_of_the_order_or_an_attack_stops_the_unit() {
+        let at = Surroundings {
+            id: 20,
+            position: [12.0, 13.0, 0.0],
+            player: 1,
+            kind: 70,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let unit = |order, action| UnitAi {
+            current_order: order,
+            current_action: action,
+            current_target: 30,
+            ..idle(SOLDIER_AI)
+        };
+        let done = |p0| Notify::own(20, ACTION_COMPLETED, [p0, 0, 0]);
+        let run = |u: &mut UnitAi, p0| {
+            let mut side = DamageSide {
+                found: -1,
+                ..DamageSide::default()
+            };
+            let r =
+                u.action_completed(done(p0), &at, false, &mut rng(), &mut side, &mut Vec::new());
+            (r, u.current_target, u.current_action)
+        };
+        assert_eq!(
+            run(&mut unit(-1, MOVE_ACTION), MOVE_ACTION),
+            (Ok(GO_ON), -1, -1)
+        );
+        assert_eq!(
+            run(&mut unit(-1, MOVE_ACTION), ATTACK_ACTION),
+            (Ok(GO_ON), -1, -1)
+        );
+        let mut u = unit(-1, MOVE_ACTION);
+        assert_eq!(run(&mut u, GATHER_ACTION), (Ok(GO_ON), 30, MOVE_ACTION));
+        assert_eq!(u.state_position, [0.0; 2]);
+        let mut u = unit(ATTACK_ORDER, ATTACK_ACTION);
+        assert_eq!(run(&mut u, ATTACK_ACTION), (Ok(GO_ON), -1, -1));
+        assert_eq!((u.current_order, u.state_position), (-1, [12.0, 13.0]));
+        let mut u = unit(MOVE_ACTION + 100, MOVE_ACTION);
+        assert_eq!(run(&mut u, MOVE_ACTION), (Ok(GO_ON), -1, -1));
+        let mut u = unit(0x2d4, MOVE_ACTION);
+        assert_eq!(run(&mut u, MOVE_ACTION), (Ok(GO_ON), -1, -1));
+        assert_eq!(u.current_order, -1);
+        let mut u = unit(0x2bd, MOVE_ACTION);
+        assert_eq!(run(&mut u, MOVE_ACTION), (Ok(GO_ON), 30, -1));
+        assert_eq!(u.current_order, 0x2bd);
+        let mut u = unit(0x2c8, 0x2bf);
+        assert_eq!(run(&mut u, MOVE_ACTION), (Ok(GO_ON), 30, -1));
+        let mut u = unit(0x2c8, MOVE_ACTION);
+        assert_eq!(run(&mut u, MOVE_ACTION), (Ok(GO_ON), 30, MOVE_ACTION));
+        let mut u = unit(0x2c8, MOVE_ACTION);
+        assert_eq!(run(&mut u, ATTACK_ACTION), (Ok(GO_ON), -1, -1));
+    }
+
+    /// The base handler's kinds (`FUN_140c589c0`, [`UnitAi::base_notify`]): an ownership change
+    /// stops the unit (its stopAction first), forgets its target and empties its order queue;
+    /// a moved target without a saved patrol, "I'm ignoring that." and the action values change
+    /// nothing; readyToAttack's target out of reach gives the attack order up for a unit that
+    /// cannot move; a unit of a group sent off a footprint takes action value `0x2c0`; an
+    /// attacker no longer on the unit leaves its set; another kind is not modelled.
+    #[test]
+    fn the_base_handler_takes_each_kind_it_models() {
+        let at = Surroundings {
+            id: 20,
+            player: 1,
+            kind: 70,
+            speed: 1.0,
+            state: 2,
+            ..Surroundings::default()
+        };
+        let unit = || UnitAi {
+            current_order: ATTACK_ORDER,
+            current_action: ATTACK_ACTION,
+            current_target: 30,
+            attackers: vec![30, 31],
+            orders: vec![QueuedOrder::default()],
+            ..idle(SOLDIER_AI)
+        };
+        let run = |u: &mut UnitAi, kind, caller, at: &Surroundings| {
+            let mut side = DamageSide {
+                found: -1,
+                ..DamageSide::default()
+            };
+            let mut fx = Vec::new();
+            let n = Notify::own(caller, kind, [0, 0, 0]);
+            let r = u.base_notify(n, 0, at, false, &mut rng(), &mut side, &mut fx);
+            (r, fx)
+        };
+        let mut u = unit();
+        let (r, fx) = run(&mut u, OWNER_CHANGED, 20, &at);
+        assert_eq!((r, fx.first()), (Ok(GO_ON), Some(&Effect::Stop)));
+        assert_eq!((u.current_target, u.orders.len()), (-1, 0));
+        for kind in [
+            TARGET_MOVED,
+            0x1f6,
+            0x1ff,
+            ACTION_EXECUTED,
+            0x203,
+            0x25a,
+            0x266,
+            0x2be,
+        ] {
+            let mut u = unit();
+            assert_eq!(run(&mut u, kind, 20, &at), (Ok(GO_ON), vec![]), "{kind:#x}");
+            assert_eq!(u, unit(), "{kind:#x}");
+        }
+        let mut u = unit();
+        assert_eq!(run(&mut u, 0x1fd, 20, &at).0, Ok(GO_ON));
+        assert_eq!(u.current_order, ATTACK_ORDER);
+        let fixed = Surroundings {
+            kind: 20,
+            ..at.clone()
+        };
+        assert_eq!(run(&mut u, 0x1fd, 20, &fixed).0, Ok(GO_ON));
+        assert_eq!(u.current_order, -1);
+        let mut u = unit();
+        assert_eq!(run(&mut u, SENT_OFF_GROUP, 20, &at).0, Ok(GO_ON));
+        assert_eq!(u.current_action, GROUP_ASIDE_ACTION);
+        let mut u = unit();
+        assert_eq!(run(&mut u, NO_LONGER_ON_ME, 30, &at).0, Ok(GO_ON));
+        assert_eq!(u.attackers, vec![31]);
+        assert_eq!(run(&mut u, NO_LONGER_ON_ME, 77, &at).0, Ok(GO_ON));
+        assert_eq!(u.attackers, vec![31]);
+        assert!(run(&mut unit(), 0x999, 20, &at).0.is_err());
     }
 
     /// A villager dodges a missile's warning by its owner's chance (one AI draw); one it does
@@ -11317,6 +11754,7 @@ mod tests {
                 found,
                 attacks: Vec::new(),
                 patrol: None,
+                refuses: false,
             };
             let mut fx = Vec::new();
             scout
@@ -11368,6 +11806,7 @@ mod tests {
             found: -1,
             attacks: Vec::new(),
             patrol: None,
+            refuses: false,
         };
         scout
             .next_after_kill(&at, false, &mut rng(), &mut side, &mut Vec::new())
@@ -14821,6 +15260,7 @@ mod tests {
             found: 9731,
             attacks: Vec::new(),
             patrol: None,
+            refuses: false,
         };
         let fx = u.update(28, 0, false, &at, &mut rng(), &mut side).unwrap();
         assert_eq!(fx, vec![Effect::CapHumanOrder(HUMAN_ORDER_CAP)]);
@@ -15595,6 +16035,109 @@ mod tests {
         assert!(r.is_err());
     }
 
+    /// `runAwayFromAttackers` (`FUN_140c5e900`) beyond the king's run: stand ground and no
+    /// attack stay (Gaia's run all the same), and so does a unit with an action value unless
+    /// unconditionally; an attacker the world does not hold is left out; attackers that cancel
+    /// out send it a random way (two draws of the AI stream); a defensive unit (stance 1) runs at
+    /// most 5 tiles from its state position. A computer player's siege unit, a computer's unit
+    /// attacked by class 22 and a computer's transport ship are not modelled.
+    #[test]
+    fn a_unit_runs_from_its_attackers_within_its_leash() {
+        let seen = |id, class, x| UnitSeen {
+            id,
+            class,
+            owner: 2,
+            state: 2,
+            target: Some(500),
+            position: [x, 30.0, 0.0],
+            ..UnitSeen::default()
+        };
+        let at = Surroundings {
+            id: 500,
+            position: [20.0, 30.0, 0.0],
+            speed: 1.0,
+            map: [64, 64],
+            player: 1,
+            class: 6,
+            state: 2,
+            units: vec![
+                seen(77, 6, 22.0),
+                seen(78, 6, 18.0),
+                seen(79, CLASS_22, 22.0),
+            ],
+            ..Surroundings::default()
+        };
+        let run = |u: &mut UnitAi, at: &Surroundings, uncon, computer| {
+            let mut side = StandSide {
+                refusals: 0,
+                tested: Vec::new(),
+            };
+            let mut fx = Vec::new();
+            let got = u.run_away(uncon, at, computer, &mut rng(), &mut side, &mut fx);
+            (got, fx)
+        };
+        let to = |point| {
+            vec![Effect::Move(AiMove {
+                point,
+                range: 0.0,
+                force: true,
+                walk: false,
+            })]
+        };
+        let runner = |attackers: Vec<i32>| UnitAi {
+            attackers,
+            ..idle(2)
+        };
+        for stance in [2, 3] {
+            let mut u = UnitAi {
+                stance,
+                ..runner(vec![77])
+            };
+            assert_eq!(run(&mut u, &at, true, false), (Ok(false), vec![]));
+            let gaia = Surroundings {
+                player: 0,
+                ..at.clone()
+            };
+            let mut u = UnitAi {
+                stance,
+                ..runner(vec![77])
+            };
+            assert_eq!(run(&mut u, &gaia, true, false).1, to([18.0, 30.0, 0.0]));
+        }
+        let mut u = UnitAi {
+            current_action: 0x258,
+            ..runner(vec![77])
+        };
+        assert_eq!(run(&mut u, &at, false, false), (Ok(false), vec![]));
+        let mut u = runner(vec![77, 4242]);
+        assert_eq!(run(&mut u, &at, true, false).1, to([18.0, 30.0, 0.0]));
+        // 77 and 78 on either side: the way two draws give
+        let mut e = rng();
+        let mut part = || {
+            let r = e.rand15() as i32 as f32;
+            (r + r) / RUN_DRAW_SCALE - RUN_ONE
+        };
+        let (vx, vy) = (part(), part());
+        let d = crate::fmath::sqrt(vy * vy + vx * vx);
+        let away = [20.0 - (vx / d) * 2.0, 30.0 - (vy / d) * 2.0, 0.0];
+        let mut u = runner(vec![77, 78]);
+        assert_eq!(run(&mut u, &at, true, false).1, to(away));
+        // a defensive unit with its state position 5 tiles east runs no farther than that
+        let mut u = UnitAi {
+            stance: 1,
+            state_position: [25.0, 30.0],
+            ..runner(vec![77])
+        };
+        assert_eq!(run(&mut u, &at, true, false).1, to([20.0, 30.0, 0.0]));
+        assert!(run(&mut runner(vec![79]), &at, true, true).0.is_err());
+        let ship = Surroundings {
+            class: 20,
+            ..at.clone()
+        };
+        assert!(run(&mut runner(vec![77]), &ship, true, true).0.is_err());
+        assert!(run(&mut idle(SIEGE_AI), &at, true, true).0.is_err());
+    }
+
     /// `FUN_140c64c10`: the target and its class become the last ones, the id and the point are
     /// taken, and the class only when the world holds the object (else it stays).
     #[test]
@@ -15759,6 +16302,7 @@ mod tests {
             found: 77,
             attacks: Vec::new(),
             patrol: None,
+            refuses: false,
         };
         let fx = u.update(28, 0, false, &at, &mut rng(), &mut side).unwrap();
         assert_eq!(fx, vec![]);
@@ -15782,6 +16326,7 @@ mod tests {
             found: 77,
             attacks: Vec::new(),
             patrol: Some((saved.clone(), 2)),
+            refuses: false,
         };
         let mut r = rng();
         let _ = u.update(28, 0, false, &at, &mut r, &mut side).unwrap();
@@ -15808,6 +16353,7 @@ mod tests {
             found: 77,
             attacks: Vec::new(),
             patrol: None,
+            refuses: false,
         };
         let _ = u.update(28, 0, false, &at, &mut rng(), &mut side).unwrap();
         assert_eq!(side.attacks, Vec::<(i32, bool)>::new());
@@ -15832,6 +16378,7 @@ mod tests {
             found: 77,
             attacks: Vec::new(),
             patrol: None,
+            refuses: false,
         };
         assert_eq!(u.top_target_in_range(&at, &[], &mut side), Ok(Some(50)));
         at.min_range = 1.0;
@@ -15858,6 +16405,49 @@ mod tests {
         assert_eq!(side.attacks, vec![(77, true)]);
     }
 
+    /// The soldier's idle check's other ways (`FUN_140c20db0`): master 706 checks nothing; with
+    /// retargeting off a current target the world holds is attacked without a search, the
+    /// order kept; a failed attack on a patrol drops the saved patrol and stops on the order (an
+    /// attack on its own current target with an action takes nothing); a computer player's
+    /// check and a healer's ally search are not modelled.
+    #[test]
+    fn a_soldier_s_idle_check_holds_its_target_with_retargeting_off() {
+        let side = |found| SoldierSide {
+            found,
+            attacks: Vec::new(),
+            patrol: None,
+            refuses: false,
+        };
+        let idle = |u: &mut UnitAi, at: &Surroundings, side: &mut SoldierSide, computer| {
+            u.soldier_idle(at, computer, &mut rng(), side, &mut Vec::new())
+        };
+        let (mut u, mut at) = patroller(0);
+        at.master = SOLDIER_IDLE_MASTER;
+        let mut s = side(77);
+        assert_eq!(idle(&mut u, &at, &mut s, false), Ok(false));
+        assert_eq!(s.attacks, []);
+        let (mut u, mut at) = patroller(0);
+        (u.current_order, u.retarget_disabled, u.current_target) = (-1, 1, 60);
+        at.target = Some(Seen::default());
+        let mut s = side(77);
+        assert_eq!(idle(&mut u, &at, &mut s, false), Ok(true));
+        assert_eq!((s.attacks, u.current_order), (vec![(60, true)], -1));
+        let (mut u, at) = patroller(0);
+        assert!(idle(&mut u, &at, &mut side(77), true).is_err());
+        let (mut u, at) = patroller(0);
+        let mut s = SoldierSide {
+            refuses: true,
+            patrol: Some((PatrolPath::default(), 3)),
+            ..side(77)
+        };
+        assert_eq!(idle(&mut u, &at, &mut s, false), Ok(false));
+        assert_eq!((&u.patrol_path, u.patrol_waypoint), (&None, 0));
+        let (mut u, mut at) = patroller(0);
+        u.current_order = -1;
+        at.task_0x69 = true;
+        assert!(idle(&mut u, &at, &mut side(-1), false).is_err());
+    }
+
     /// A stop earlier in the update (a failed Enter's notify, slot 0xb0) emptied the action list
     /// at once: the soldier's idle check finds no top action's target, in range as it was at
     /// the update's start, and searches (426750657's scout inside its transport, update 467);
@@ -15876,6 +16466,7 @@ mod tests {
             found: 77,
             attacks: Vec::new(),
             patrol: None,
+            refuses: false,
         };
         let mut read = |fx: &[Effect]| u.top_target_in_range(&at, fx, &mut side);
         assert_eq!(read(&[]), Ok(Some(50)));
@@ -15898,6 +16489,7 @@ mod tests {
             found: -1,
             attacks: Vec::new(),
             patrol: None,
+            refuses: false,
         };
         let mut fx = Vec::new();
         assert_eq!(

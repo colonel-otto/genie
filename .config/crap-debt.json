@@ -1065,56 +1065,11 @@
     },
     {
       "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::action_completed",
-      "line": 7258,
-      "cyclomatic": 22.0,
-      "coverage": 66.66666666666666,
-      "crap": 39.92592592592595,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::action_invalidated",
-      "line": 7203,
-      "cyclomatic": 15.0,
-      "coverage": 51.162790697674424,
-      "crap": 41.20806972970934,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::base_notify",
-      "line": 6603,
-      "cyclomatic": 22.0,
-      "coverage": 48.93617021276596,
-      "crap": 86.44444872523432,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::gatherer_search",
-      "line": 4843,
-      "cyclomatic": 15.0,
-      "coverage": 47.82608695652174,
-      "crap": 46.95528889619462,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
       "function": "UnitAi::handle",
       "line": 6175,
       "cyclomatic": 108.0,
       "coverage": 65.11627906976744,
       "crap": 603.1262153017972,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::hunter_search",
-      "line": 4756,
-      "cyclomatic": 16.0,
-      "coverage": 51.66666666666667,
-      "crap": 44.90548148148147,
       "crate": "genie-core"
     },
     {
@@ -1128,38 +1083,11 @@
     },
     {
       "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::run_away",
-      "line": 5162,
-      "cyclomatic": 20.0,
-      "coverage": 69.23076923076923,
-      "crap": 31.652253072371415,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
       "function": "UnitAi::seek_unexplored",
       "line": 7068,
       "cyclomatic": 14.0,
       "coverage": 0.0,
       "crap": 210.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::soldier_idle",
-      "line": 4170,
-      "cyclomatic": 28.0,
-      "coverage": 84.50704225352112,
-      "crap": 30.915540455588122,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::villager_search",
-      "line": 5409,
-      "cyclomatic": 19.0,
-      "coverage": 54.285714285714285,
-      "crap": 53.487603498542285,
       "crate": "genie-core"
     },
     {
