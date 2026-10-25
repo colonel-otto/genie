@@ -986,11 +986,7 @@ impl Attack {
             .ok_or(crate::turn::ATTACKER_UNMOVING)?
             .stats
             .speed;
-        let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
-        if 0 < t.player
-            && !walk.world.sees_tile(s.own.player, tx, ty)
-            && !(s.victim.fog_visibility != 0 && walk.world.explored(s.own.player, tx, ty)?)
-        {
+        if target_unseen(walk.world, s, &t)? {
             if s.stance == 0 && 0.0 < speed && s.can_move {
                 self.wait_at_seen(walk, s)?;
                 return Ok(Readiness::Waiting);
@@ -1012,17 +1008,8 @@ impl Attack {
         } else {
             gap
         };
-        let moved = t.position != self.point;
-        let far = (0..3)
-            .any(|i| crate::fmath::below_or_unordered(HALF, (t.position[i] - self.point[i]).abs()));
         let mobile = 30 <= s.own.kind && 0.0 < speed;
-        if !skip_ready
-            && (!moved
-                || (!far
-                    && (mobile
-                        || in_range(near, self.range, self.min_range)
-                        || s.volley_under_way)))
-        {
+        if !skip_ready && self.ready_at_once(t.position, near, mobile || s.volley_under_way) {
             return self.face(mover, at, t.position, s);
         }
         if gap < self.min_range {
@@ -1051,6 +1038,17 @@ impl Attack {
         }
         self.point = t.position;
         self.face(mover, at, t.position, s)
+    }
+
+    /// readyToAttack's ready-at-once test: the target stands on the attack's point
+    /// (`FUN_140a7bbf0`), or within half a tile of it on each axis (`FUN_140a7bd10`: a NaN
+    /// difference is not within) and either `moves_or_volleys` (a unit that moves, or a volley
+    /// under way, `FUN_1412161a0`) or the target's gap `near` is in range ([`in_range`]).
+    fn ready_at_once(&self, to: [f32; 3], near: f32, moves_or_volleys: bool) -> bool {
+        let moved = to != self.point;
+        let far =
+            (0..3).any(|i| crate::fmath::below_or_unordered(HALF, (to[i] - self.point[i]).abs()));
+        !moved || (!far && (moves_or_volleys || in_range(near, self.range, self.min_range)))
     }
 
     /// readyToAttack's `set_state(13)` (as [`Attack::finish_in`]); it answers 0.
@@ -2155,6 +2153,24 @@ fn in_range(near: f32, range: f32, min_range: f32) -> bool {
     use crate::fmath::at_most_or_unordered;
     at_most_or_unordered(near, range)
         && (at_most_or_unordered(min_range, NO_RANGE) || at_most_or_unordered(min_range, near))
+}
+
+/// readyToAttack's sight test: a target of a player (not Gaia) whose tile the unit's player does
+/// not see (its slot 0x1e0 neither 0xf) nor has explored while the target's master shows in the
+/// fog (0x80 with its fog flag).
+///
+/// # Errors
+///
+/// A tile the map's sight does not hold.
+fn target_unseen(
+    world: &crate::spatial::Spatial,
+    s: &Strike<'_>,
+    t: &crate::spatial::Placed,
+) -> Result<bool, GenieError> {
+    let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
+    Ok(0 < t.player
+        && !world.sees_tile(s.own.player, tx, ty)
+        && !(s.victim.fog_visibility != 0 && world.explored(s.own.player, tx, ty)?))
 }
 
 /// The squared reach of an attack of `range` (`FUN_140a82ae0` at `0x140a83950`): the range squared,

@@ -202,6 +202,53 @@ impl Turns {
         Ok(moved)
     }
 
+    /// [`Turns::command_move_to`]'s queue: a queued move joins the group's command queue (direct
+    /// as its flag; a group without a command that is told directly hibernates) and is not taken
+    /// (`Some(false)`); an indirect move while commands are queued joins the queue too, which is
+    /// approved and run ([`Turns::check_queued_orders`], `Some(true)`). None: the move runs now.
+    ///
+    /// # Errors
+    ///
+    /// A queued command the queue cannot run.
+    ///
+    /// # Panics
+    ///
+    /// When the world does not hold `group`.
+    fn queue_move(
+        &mut self,
+        group: i32,
+        point: [f32; 2],
+        how: &MoveTo,
+    ) -> Result<Option<bool>, GenieError> {
+        let g = self
+            .groups
+            .get_mut(group)
+            .expect("the caller holds the group");
+        let at = [point[0], 0.0, point[1]];
+        if how.queued {
+            g.queue_command(
+                MOVE_COMMAND,
+                -1,
+                at,
+                how.range,
+                u8::from(how.direct),
+                0,
+                0xffff,
+            );
+            if g.current_command == -1 && how.direct && g.hibernating != 1 {
+                g.hibernating = 1;
+            }
+            return Ok(Some(false));
+        }
+        if !how.direct && !g.command_queue.is_empty() {
+            g.queue_command(MOVE_COMMAND, -1, at, how.range, 0, 0, 0xffff);
+            g.approve_queued();
+            self.check_queued_orders(group)?;
+            return Ok(Some(true));
+        }
+        Ok(None)
+    }
+
     /// `commandMoveTo` (`FUN_141010a80`) of group `group` to `point` (`target` -1 for none): flags
     /// bits 5 and 12 clear; a changed target resets the attack plan's entries (`FUN_140fd76a0`
     /// on `+0x3b0`, `mCurrentAttackPlan`, which no save holds, every load empties and only a
@@ -262,28 +309,10 @@ impl Turns {
         } else {
             target != g.current_target.target
         };
-        let at = [point[0], 0.0, point[1]];
-        if how.queued {
-            g.queue_command(
-                MOVE_COMMAND,
-                -1,
-                at,
-                how.range,
-                u8::from(how.direct),
-                0,
-                0xffff,
-            );
-            if g.current_command == -1 && how.direct && g.hibernating != 1 {
-                g.hibernating = 1;
-            }
-            return Ok(false);
+        if let Some(done) = self.queue_move(group, point, &how)? {
+            return Ok(done);
         }
-        if !how.direct && !g.command_queue.is_empty() {
-            g.queue_command(MOVE_COMMAND, -1, at, how.range, 0, 0, 0xffff);
-            g.approve_queued();
-            self.check_queued_orders(group)?;
-            return Ok(true);
-        }
+        let g = self.groups.get_mut(group).expect("the group found above");
         if g.replaces_queue != 0 {
             g.clear_command_queue();
         }
@@ -324,18 +353,7 @@ impl Turns {
         g.waypoints.clear();
         let at = [point[0], g.desired_height, point[1]];
         let _ = path.push(at);
-        let mut path_flags = if how.leg {
-            let mut d = crate::fmath::sub(g.motion.position[0], at);
-            d[1] = 0.0;
-            let length = crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
-            if crate::fmath::at_most_or_unordered(PATROL_LEG_REACH, length) {
-                NEW_PATH_FLAGS | 1 | 2
-            } else {
-                (NEW_PATH_FLAGS | 1) & !2
-            }
-        } else {
-            NEW_PATH_FLAGS & !1 | 2
-        };
+        let mut path_flags = move_path_flags(g.motion.position[0], at, how.leg);
         // `keep_flag` sets bit 11 (0x141010dc1) off a leg, which the hold's test then decides
         // again
         if how.hold {
@@ -354,25 +372,8 @@ impl Turns {
         // FUN_140f98e80: the level and its parents go, its repath time stays
         let repath_time = g.motion.paths.first().map_or(0.0, |l| l.repath_time);
         g.motion.paths.truncate(1);
-        let mut level = PathData {
-            repath_time,
-            ..PathData::without_path()
-        };
         let length = path.as_ref().map(|p| p.length);
-        if let Some(p) = path {
-            // FUN_140f9b800
-            level.points = p.points;
-            level.has_path = true;
-            level.path_flags = path_flags;
-            level.length = p.length;
-            level.created = world_time;
-            level.range = how.range;
-            level.target = target;
-            level.waypoint = 1;
-            level.state = 2;
-            level.continue_counter = CONTINUE;
-        }
-        level.level = 2;
+        let level = move_level(path, path_flags, repath_time, world_time, how.range, target);
         if g.motion.paths.is_empty() {
             g.motion.paths.push(level);
         } else {
@@ -587,6 +588,55 @@ impl Turns {
     }
 }
 
+/// [`Turns::command_move_to`]'s path flags: a patrol leg sets bit 0 and, when the group's place
+/// `from` lies at least [`PATROL_LEG_REACH`] from `to` on the ground (`COMISS`/`JBE`: a NaN
+/// too), bit 1; any other move clears bit 0 and sets bit 1.
+fn move_path_flags(from: [f32; 3], to: [f32; 3], leg: bool) -> u32 {
+    if leg {
+        let mut d = crate::fmath::sub(from, to);
+        d[1] = 0.0;
+        let length = crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+        if crate::fmath::at_most_or_unordered(PATROL_LEG_REACH, length) {
+            NEW_PATH_FLAGS | 1 | 2
+        } else {
+            (NEW_PATH_FLAGS | 1) & !2
+        }
+    } else {
+        NEW_PATH_FLAGS & !1 | 2
+    }
+}
+
+/// [`Turns::command_move_to`]'s new path level (`FUN_140f98e80`'s reset keeping the repath time,
+/// then `FUN_140f9b800`): with a path its points, flags, length, creation time, range, target,
+/// waypoint 1 and state 2; waypoint level 2 either way.
+fn move_level(
+    path: Option<Path>,
+    path_flags: u32,
+    repath_time: f32,
+    world_time: u32,
+    range: f32,
+    target: i32,
+) -> PathData {
+    let mut level = PathData {
+        repath_time,
+        ..PathData::without_path()
+    };
+    if let Some(p) = path {
+        // FUN_140f9b800
+        level.points = p.points;
+        level.has_path = true;
+        level.path_flags = path_flags;
+        level.length = p.length;
+        level.created = world_time;
+        level.range = range;
+        level.target = target;
+        level.waypoint = 1;
+        level.state = 2;
+        level.continue_counter = CONTINUE;
+    }
+    level.level = 2;
+    level
+}
 #[cfg(test)]
 mod tests {
     use super::*;

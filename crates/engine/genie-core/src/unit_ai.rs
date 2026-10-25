@@ -8557,6 +8557,41 @@ impl UnitAi {
         if order == FOLLOW_ORDER && self.follow(at, fx)? {
             return Ok(false);
         }
+        if self.leash_ends(at, ai, fx)? {
+            return Ok(false);
+        }
+        if self.retarget_disabled != 0 {
+            return Ok(false);
+        }
+        if world_time.wrapping_sub(self.last_retarget_time) < self.retarget_timer {
+            return Ok(false);
+        }
+        self.last_retarget_time = world_time;
+        self.retarget_timer = 750 + ai.rand15() % 500;
+        let target = at.target.map(|t| (t.owner, t.class));
+        let listed = at.action_state.map(|_| at.attack_listed);
+        if let Some(search) =
+            self.retarget_outcome(target, at.weapon_range, computer, at.action_state, listed)?
+        {
+            let _ = self.retarget_search(search, computer, at, side, fx)?;
+        }
+        Ok(true)
+    }
+
+    /// [`UnitAi::retarget_check`]'s leashes (not on the orders 0x2c7, 0x2dd and 0x323, nor in a
+    /// group that patrols), measured from the unit's footprint (`FUN_140a847c0`): with patrol
+    /// information, the patrol leashes; else the defend stance's and stand ground's. True when
+    /// slot 73 ends there (its 9 and 10).
+    ///
+    /// # Errors
+    ///
+    /// What the stop and the patrol's distance do not model.
+    fn leash_ends(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, GenieError> {
         // the leashes (unless on orders 0x2c7, 0x2dd and 0x323, or in a group that patrols:
         // FUN_141017c30, FUN_141017c40), measured from the unit's footprint (FUN_140a847c0)
         let leashed = matches!(self.stance, 1 | 2)
@@ -8577,10 +8612,10 @@ impl UnitAi {
                 self.stop_current(true, at, fx)?;
                 self.remove_target();
                 let _ = self.restore_patrol(at, ai, fx);
-                return Ok(false);
+                return Ok(true);
             }
             if self.stance == 1 {
-                return Ok(false);
+                return Ok(true);
             }
         }
         if leashed && self.stance == 1 && self.patrol_path.is_none() {
@@ -8607,25 +8642,10 @@ impl UnitAi {
                 self.stop_current(true, at, fx)?;
                 self.remove_target();
                 let _ = self.walk_back(at, fx);
-                return Ok(false);
+                return Ok(true);
             }
         }
-        if self.retarget_disabled != 0 {
-            return Ok(false);
-        }
-        if world_time.wrapping_sub(self.last_retarget_time) < self.retarget_timer {
-            return Ok(false);
-        }
-        self.last_retarget_time = world_time;
-        self.retarget_timer = 750 + ai.rand15() % 500;
-        let target = at.target.map(|t| (t.owner, t.class));
-        let listed = at.action_state.map(|_| at.attack_listed);
-        if let Some(search) =
-            self.retarget_outcome(target, at.weapon_range, computer, at.action_state, listed)?
-        {
-            let _ = self.retarget_search(search, computer, at, side, fx)?;
-        }
-        Ok(true)
+        Ok(false)
     }
 
     /// The retarget's search for a better target (`0x140c567c0` past its checks):

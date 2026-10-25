@@ -838,6 +838,52 @@ fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> i16 {
     }
 }
 
+/// [`armor_damage`]'s armor against weapon class `class`: the base armor, else the last entry
+/// of that class; an attacker of type 60 and up with `combat_ability` bit 1 against a melee or
+/// pierce entry (3, 4) of a victim without bit 2 meets 0; a combat victim's (type 70 and up)
+/// melee or pierce armor reads its class's ([`class_armor`]).
+fn weapon_armor(
+    a: &Armored,
+    class: i16,
+    attacker: &Attacker,
+    kind: u8,
+    own_class: i16,
+    state: u8,
+) -> i16 {
+    let mut armor = a.base_armor;
+    for &(k, n) in &a.armors {
+        if k != class {
+            continue;
+        }
+        if 60 <= attacker.kind
+            && matches!(k, 3 | 4)
+            && attacker.ability & 1 != 0
+            && a.ability & 2 == 0
+        {
+            armor = 0;
+            continue;
+        }
+        armor = n;
+        if 70 <= kind && matches!(k, 3 | 4) {
+            armor = class_armor(a, k, own_class, state);
+        }
+    }
+    armor
+}
+
+/// [`armor_damage`]'s charge test of the attacker's weapon against the victim (its class
+/// `own_class`, type `kind`): the charge works on it ([`charge_works`]), its type is 1 or 3 and
+/// it is full.
+fn charges(attacker: &Attacker, own_class: i16, kind: u8) -> bool {
+    charge_works(
+        attacker.charge_target,
+        attacker.charge_type,
+        own_class,
+        kind,
+    ) && matches!(attacker.charge_type, 1 | 3)
+        && attacker.max_charge <= attacker.charge
+}
+
 /// Slot 0xf0 of a combat object (`FUN_141082530`): per weapon (class, amount) the armor of its
 /// class (the last armor entry of the class wins: its amount, or for a type of 70 and up the
 /// melee or pierce armor, [`class_armor`]; an attacker of type 60 and up whose combat ability
@@ -875,40 +921,13 @@ pub fn armor_damage(
     let mut charged = false;
     let mut bonused = false;
     for &(class, amount) in weapons {
-        let mut armor = a.base_armor;
-        for &(k, n) in &a.armors {
-            if k != class {
-                continue;
-            }
-            if 60 <= attacker.kind
-                && matches!(k, 3 | 4)
-                && attacker.ability & 1 != 0
-                && a.ability & 2 == 0
-            {
-                armor = 0;
-                continue;
-            }
-            armor = n;
-            if 70 <= kind && matches!(k, 3 | 4) {
-                armor = class_armor(a, k, own_class, state);
-            }
-        }
-        let armor_f = f32::from(armor);
+        let armor_f = f32::from(weapon_armor(a, class, attacker, kind, own_class, state));
         let mut attack = f32::from(amount);
         let pierce_or_melee = matches!(class, 3 | 4 | 31);
         let mut resist = 1.0f32;
         if 70 <= attacker.kind {
-            let charge = !charged
-                && 0.0 < attack
-                && charge_works(
-                    attacker.charge_target,
-                    attacker.charge_type,
-                    own_class,
-                    kind,
-                )
-                && matches!(attacker.charge_type, 1 | 3)
-                && attacker.max_charge <= attacker.charge
-                && pierce_or_melee;
+            let charge =
+                !charged && 0.0 < attack && pierce_or_melee && charges(attacker, own_class, kind);
             let c = if charge {
                 charge_damage(attacker)?
             } else {

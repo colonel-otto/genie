@@ -21,17 +21,8 @@
     },
     {
       "file": "crates/engine/genie-core/src/attack.rs",
-      "function": "Attack::ready_to_attack",
-      "line": 973,
-      "cyclomatic": 32.0,
-      "coverage": 95.94594594594594,
-      "crap": 32.068228930171955,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/attack.rs",
       "function": "Attack::swing",
-      "line": 1702,
+      "line": 1700,
       "cyclomatic": 39.0,
       "coverage": 68.42105263157895,
       "crap": 86.89852748214025,
@@ -40,7 +31,7 @@
     {
       "file": "crates/engine/genie-core/src/attack.rs",
       "function": "Attack::update",
-      "line": 1288,
+      "line": 1286,
       "cyclomatic": 61.0,
       "coverage": 64.91228070175438,
       "crap": 221.74041675441293,
@@ -49,7 +40,7 @@
     {
       "file": "crates/engine/genie-core/src/attack.rs",
       "function": "Attack::walk",
-      "line": 1541,
+      "line": 1539,
       "cyclomatic": 43.0,
       "coverage": 13.91304347826087,
       "crap": 1222.6385968603602,
@@ -111,17 +102,8 @@
     },
     {
       "file": "crates/engine/genie-core/src/damage.rs",
-      "function": "armor_damage",
-      "line": 856,
-      "cyclomatic": 36.0,
-      "coverage": 91.66666666666666,
-      "crap": 36.75000000000001,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/damage.rs",
       "function": "blast",
-      "line": 1368,
+      "line": 1387,
       "cyclomatic": 60.0,
       "coverage": 73.41772151898735,
       "crap": 127.62061419076379,
@@ -130,7 +112,7 @@
     {
       "file": "crates/engine/genie-core/src/damage.rs",
       "function": "take_unit",
-      "line": 1190,
+      "line": 1209,
       "cyclomatic": 35.0,
       "coverage": 85.71428571428571,
       "crap": 38.57142857142858,
@@ -165,17 +147,8 @@
     },
     {
       "file": "crates/engine/genie-core/src/effect.rs",
-      "function": "Turns::base_effect",
-      "line": 509,
-      "cyclomatic": 50.0,
-      "coverage": 91.30434782608695,
-      "crap": 51.643790581079976,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/effect.rs",
       "function": "Turns::change_master_attribute",
-      "line": 1256,
+      "line": 1306,
       "cyclomatic": 23.0,
       "coverage": 53.06122448979592,
       "crap": 77.7080128177885,
@@ -184,7 +157,7 @@
     {
       "file": "crates/engine/genie-core/src/effect.rs",
       "function": "Turns::change_static",
-      "line": 771,
+      "line": 821,
       "cyclomatic": 21.0,
       "coverage": 72.09302325581395,
       "crap": 30.584665501150848,
@@ -193,7 +166,7 @@
     {
       "file": "crates/engine/genie-core/src/effect.rs",
       "function": "Turns::master_followers",
-      "line": 1393,
+      "line": 1443,
       "cyclomatic": 17.0,
       "coverage": 57.14285714285714,
       "crap": 39.74927113702624,
@@ -202,7 +175,7 @@
     {
       "file": "crates/engine/genie-core/src/effect.rs",
       "function": "Turns::modify_tech",
-      "line": 1739,
+      "line": 1789,
       "cyclomatic": 24.0,
       "coverage": 76.62337662337663,
       "crap": 31.35813621359244,
@@ -211,7 +184,7 @@
     {
       "file": "crates/engine/genie-core/src/effect.rs",
       "function": "Turns::show_changed_sprite",
-      "line": 1113,
+      "line": 1163,
       "cyclomatic": 13.0,
       "coverage": 0.0,
       "crap": 182.0,
@@ -220,7 +193,7 @@
     {
       "file": "crates/engine/genie-core/src/effect.rs",
       "function": "Turns::upgrade_objects",
-      "line": 1968,
+      "line": 2018,
       "cyclomatic": 29.0,
       "coverage": 61.97183098591549,
       "crap": 75.2500537843207,
@@ -344,27 +317,9 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/command.rs",
-      "function": "Turns::command_move_to",
-      "line": 247,
-      "cyclomatic": 36.0,
-      "coverage": 91.55844155844156,
-      "crap": 36.77960191267663,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/group/formation.rs",
-      "function": "Turns::assign_slots_by_variance",
-      "line": 1008,
-      "cyclomatic": 32.0,
-      "coverage": 95.0,
-      "crap": 32.128,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/group/formation.rs",
       "function": "Turns::passable_slots",
-      "line": 1429,
+      "line": 1405,
       "cyclomatic": 46.0,
       "coverage": 85.71428571428571,
       "crap": 52.16909620991254,
@@ -1659,17 +1614,8 @@
     },
     {
       "file": "crates/engine/genie-core/src/unit_ai.rs",
-      "function": "UnitAi::retarget_check",
-      "line": 8540,
-      "cyclomatic": 35.0,
-      "coverage": 93.05555555555556,
-      "crap": 35.41025002143347,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai.rs",
       "function": "UnitAi::retarget_search",
-      "line": 8643,
+      "line": 8663,
       "cyclomatic": 29.0,
       "coverage": 0.0,
       "crap": 870.0,

@@ -1041,23 +1041,8 @@ impl Turns {
                 };
             }
         }
-        let mut preferences = vec![-1i32; ASSIGNMENT_CELLS];
+        let preferences = slot_preferences(costs, n, s);
         let mut taken = [false; ASSIGNMENT_MARKS];
-        for i in 0..n {
-            let row = i * n;
-            taken[..s].fill(false);
-            for k in 0..s {
-                let first = taken[..s].iter().position(|&t| !t).unwrap_or(s);
-                let mut best = first;
-                for j in first + 1..s {
-                    if !taken[j] && costs[row + j] < costs[row + best] {
-                        best = j;
-                    }
-                }
-                preferences[row + k] = best as i32;
-                taken[best] = true;
-            }
-        }
         let mut kept = ([-1i32; ASSIGNMENT_SIDE], [-1i32; ASSIGNMENT_SIDE]);
         let mut best_variance = FARTHEST;
         for start in 0..n {
@@ -1092,16 +1077,7 @@ impl Turns {
             if placed == 0 {
                 continue;
             }
-            let mean = sum / n as f32;
-            let (mut variance, mut count) = (0.0f32, 0i32);
-            for (&r, &c) in pairs.0[..s].iter().zip(&pairs.1[..s]) {
-                if r != -1 && c != -1 {
-                    count += 1;
-                    let d = costs[r as usize * n + c as usize] - mean;
-                    variance += d * d;
-                }
-            }
-            variance /= count as f32;
+            let variance = pairs_variance(&pairs.0[..s], &pairs.1[..s], costs, n, sum / n as f32);
             if variance < best_variance {
                 best_variance = variance;
                 kept.0[..s].copy_from_slice(&pairs.0[..s]);
@@ -1695,6 +1671,43 @@ fn cell_mark(b: u8, dx: f32, dz: f32) -> u8 {
     }
 }
 
+/// [`Turns::assign_slots_by_variance`]'s preferences: for each of the `n` members (rows of `n`
+/// cells in `costs`) its `s` slots from the cheapest on, the first untaken one winning a tie.
+fn slot_preferences(costs: &[f32], n: usize, s: usize) -> Vec<i32> {
+    let mut preferences = vec![-1i32; ASSIGNMENT_CELLS];
+    let mut taken = [false; ASSIGNMENT_MARKS];
+    for i in 0..n {
+        let row = i * n;
+        taken[..s].fill(false);
+        for k in 0..s {
+            let first = taken[..s].iter().position(|&t| !t).unwrap_or(s);
+            let mut best = first;
+            for j in first + 1..s {
+                if !taken[j] && costs[row + j] < costs[row + best] {
+                    best = j;
+                }
+            }
+            preferences[row + k] = best as i32;
+            taken[best] = true;
+        }
+    }
+    preferences
+}
+
+/// [`Turns::assign_slots_by_variance`]'s variance of one pairing: of the pairs (`members`,
+/// `slots`) with neither −1, the mean squared gap of their costs to `mean` (the sum over the
+/// group's size).
+fn pairs_variance(members: &[i32], slots: &[i32], costs: &[f32], n: usize, mean: f32) -> f32 {
+    let (mut variance, mut count) = (0.0f32, 0i32);
+    for (&r, &c) in members.iter().zip(slots) {
+        if r != -1 && c != -1 {
+            count += 1;
+            let d = costs[r as usize * n + c as usize] - mean;
+            variance += d * d;
+        }
+    }
+    variance / count as f32
+}
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

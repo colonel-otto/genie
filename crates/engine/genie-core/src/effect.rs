@@ -447,6 +447,20 @@ enum Party {
     Gaia,
 }
 
+impl Party {
+    /// The party of a command kind's block (its tens: 0 the player, 1 its allies, 2 its enemies,
+    /// 3 its neutrals, 4 Gaia).
+    const fn of_block(block: u8) -> Self {
+        match block {
+            0 => Self::Own,
+            1 => Self::Allies,
+            2 => Self::Enemies,
+            3 => Self::Neutrals,
+            _ => Self::Gaia,
+        }
+    }
+}
+
 impl Turns {
     /// The players party `party` reaches from player `p`: for a relation, each player past Gaia
     /// (`FUN_14152fdd0`, from 1, the player itself when it counts itself so) whose and to whom
@@ -521,87 +535,14 @@ impl Turns {
             if 4 < c.kind / 10 || 8 < c.kind % 10 {
                 continue;
             }
-            let party = match c.kind / 10 {
-                0 => Party::Own,
-                1 => Party::Allies,
-                2 => Party::Enemies,
-                3 => Party::Neutrals,
-                _ => Party::Gaia,
-            };
-            let own = party == Party::Own;
-            let attribute = (c.c & 0xff) as u8;
+            let party = Party::of_block(c.kind / 10);
             match c.kind % 10 {
-                kind::SET | kind::ADD => {
-                    let change = if c.kind % 10 == kind::SET {
-                        Change::Set
-                    } else {
-                        Change::Add
-                    };
-                    for q in self.party(p, party) {
-                        self.modify_attribute(q, change, c.a, c.b, c.d, attribute)?;
-                    }
+                kind::SET | kind::ADD | kind::MULTIPLY => self.attribute_command(p, party, c)?,
+                kind::RESOURCE | kind::RESOURCE_MULTIPLY => {
+                    self.resource_command(p, party, c, &mut farms)?;
                 }
-                kind::MULTIPLY => {
-                    // a cost attribute by a negative amount (COMISS 0, d; JBE: not a NaN) is a
-                    // cost entry's change, but in Gaia's block (FUN_141666ee0)
-                    let cost = COST_ATTRIBUTES.contains(&c.c) && 0.0 > c.d && party != Party::Gaia;
-                    for q in self.party(p, party) {
-                        if cost {
-                            let unit = if c.b < 0 { c.a } else { c.b };
-                            self.cost_entries(q, unit, c.c, crate::checkpoint::cvttss2si(c.d));
-                        } else {
-                            self.modify_attribute(q, Change::Multiply, c.a, c.b, c.d, attribute)?;
-                        }
-                    }
-                }
-                kind::RESOURCE => {
-                    // the effect's player's attribute `c` scales the amount
-                    let amount = self.scaled_amount(p, c);
-                    if own && c.a == FARM_FOOD {
-                        farms = Some((self.attribute_of(p, FARM_FOOD), amount));
-                    } else if c.a < 0 {
-                        continue;
-                    }
-                    let mode = (c.b & 0xff) as u8;
-                    for q in self.party(p, party) {
-                        self.modify_resource(q, c.a, amount, mode)?;
-                    }
-                }
-                kind::ENABLE => {
-                    if 0 <= c.a {
-                        let enable = (c.b & 0xff) as u8;
-                        for q in self.party(p, party) {
-                            let (one, object) = if own {
-                                (c.c == 1, object)
-                            } else {
-                                (false, None)
-                            };
-                            self.enable_master(q, c.a, enable, one, object)?;
-                        }
-                    }
-                }
-                kind::UPGRADE => {
-                    for q in self.party(p, party) {
-                        let object = object.filter(|_| own);
-                        self.upgrade_master(q, c.a, c.b, c.c, object)?;
-                    }
-                }
-                kind::RESOURCE_MULTIPLY => {
-                    if 0 <= c.a {
-                        for q in self.party(p, party) {
-                            self.multiply_resource(q, c.a, c.d)?;
-                        }
-                    }
-                }
-                kind::SPAWN => {
-                    for q in self.party(p, party) {
-                        self.spawn_at(q, c.a, c.b, c.c)?;
-                    }
-                }
-                kind::TECH => {
-                    for q in self.party(p, party) {
-                        self.modify_tech(q, c.a, c.b, c.d, c.c)?;
-                    }
+                kind::ENABLE | kind::UPGRADE | kind::SPAWN | kind::TECH => {
+                    self.master_command(p, party, c, object)?;
                 }
                 // 9, 19, 29, 39 are no kind
                 _ => {}
@@ -609,6 +550,115 @@ impl Turns {
         }
         if let Some((before, amount)) = farms {
             self.farm_food(p, before, amount)?;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::base_effect`]'s attribute changes (kinds 0, 4 and 5 of a block): set and add by
+    /// slot 0x148 ([`Turns::modify_attribute`]) for each player of the block; multiply too, but
+    /// a cost attribute by a negative amount (`COMISS` 0, d; `JBE`: not a NaN) changes the cost
+    /// entries instead, except in Gaia's block (`FUN_141666ee0`).
+    fn attribute_command(
+        &mut self,
+        p: usize,
+        party: Party,
+        c: &EffectCommand,
+    ) -> Result<(), GenieError> {
+        let attribute = (c.c & 0xff) as u8;
+        let change = match c.kind % 10 {
+            kind::SET => Change::Set,
+            kind::ADD => Change::Add,
+            _ => Change::Multiply,
+        };
+        let cost = change == Change::Multiply
+            && COST_ATTRIBUTES.contains(&c.c)
+            && 0.0 > c.d
+            && party != Party::Gaia;
+        for q in self.party(p, party) {
+            if cost {
+                let unit = if c.b < 0 { c.a } else { c.b };
+                self.cost_entries(q, unit, c.c, crate::checkpoint::cvttss2si(c.d));
+            } else {
+                self.modify_attribute(q, change, c.a, c.b, c.d, attribute)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// [`Turns::base_effect`]'s resource changes: kind 1 by the amount the effect's player's
+    /// attribute `c` scales ([`Turns::scaled_amount`]; the own block's farm food is noted in
+    /// `farms`, its value before and the amount, else a resource below 0 is skipped), kind 6 a
+    /// multiply of a resource 0 or above; each for the block's players.
+    fn resource_command(
+        &mut self,
+        p: usize,
+        party: Party,
+        c: &EffectCommand,
+        farms: &mut Option<(f32, f32)>,
+    ) -> Result<(), GenieError> {
+        if c.kind % 10 == kind::RESOURCE_MULTIPLY {
+            if 0 <= c.a {
+                for q in self.party(p, party) {
+                    self.multiply_resource(q, c.a, c.d)?;
+                }
+            }
+            return Ok(());
+        }
+        // the effect's player's attribute `c` scales the amount
+        let amount = self.scaled_amount(p, c);
+        if party == Party::Own && c.a == FARM_FOOD {
+            *farms = Some((self.attribute_of(p, FARM_FOOD), amount));
+        } else if c.a < 0 {
+            return Ok(());
+        }
+        let mode = (c.b & 0xff) as u8;
+        for q in self.party(p, party) {
+            self.modify_resource(q, c.a, amount, mode)?;
+        }
+        Ok(())
+    }
+
+    /// [`Turns::base_effect`]'s master commands for the block's players: the enable (a master 0
+    /// or above; the own block's with its one-object flag and the effect's object), the upgrade
+    /// (the own block's with the effect's object), the spawn and the technology change.
+    fn master_command(
+        &mut self,
+        p: usize,
+        party: Party,
+        c: &EffectCommand,
+        object: Option<i32>,
+    ) -> Result<(), GenieError> {
+        let own = party == Party::Own;
+        match c.kind % 10 {
+            kind::ENABLE => {
+                if 0 <= c.a {
+                    let enable = (c.b & 0xff) as u8;
+                    for q in self.party(p, party) {
+                        let (one, object) = if own {
+                            (c.c == 1, object)
+                        } else {
+                            (false, None)
+                        };
+                        self.enable_master(q, c.a, enable, one, object)?;
+                    }
+                }
+            }
+            kind::UPGRADE => {
+                for q in self.party(p, party) {
+                    let object = object.filter(|_| own);
+                    self.upgrade_master(q, c.a, c.b, c.c, object)?;
+                }
+            }
+            kind::SPAWN => {
+                for q in self.party(p, party) {
+                    self.spawn_at(q, c.a, c.b, c.c)?;
+                }
+            }
+            _ => {
+                for q in self.party(p, party) {
+                    self.modify_tech(q, c.a, c.b, c.d, c.c)?;
+                }
+            }
         }
         Ok(())
     }
