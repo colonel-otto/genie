@@ -548,7 +548,7 @@ fn the_upgradable_count_follows_the_tech_tree() {
     ]);
     t.masters = vec![masters; 4];
     t.players[1].civ = 0;
-    t.players[1].techs = vec![crate::tech::TechState::default(); 200];
+    t.players[1].techs = vec![crate::technology::TechState::default(); 200];
     t.tech_tree = TechTree {
         civs: vec![vec![TreeBuilding {
             id: 12,

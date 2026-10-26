@@ -137,7 +137,7 @@ pub(super) fn tech_differences(
     let Some(theirs) = game.techs.get(p) else {
         return out;
     };
-    let key = |t: &genie_core::tech::TechState| {
+    let key = |t: &genie_core::technology::TechState| {
         (
             t.state,
             t.pending,

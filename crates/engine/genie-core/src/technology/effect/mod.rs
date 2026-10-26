@@ -24,7 +24,7 @@ use self::object_slots::{HEADROOM, POPULATION, RESOURCE_19, charge_after};
 #[cfg(test)]
 use crate::math::rng::Stream;
 #[cfg(test)]
-use crate::tech::EffectCommand;
+use crate::technology::EffectCommand;
 #[cfg(test)]
 use crate::turn::Turns;
 

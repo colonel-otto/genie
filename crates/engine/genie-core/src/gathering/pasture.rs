@@ -7,7 +7,7 @@ use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::masters::master_type::BUILDING;
 use crate::math::rng::Stream;
-use crate::tech::Attributes;
+use crate::technology::Attributes;
 use crate::turn::Turns;
 
 /// The livestock a pasture holds (`DAT_143f51db0`, which the static constructor `FUN_140174900`

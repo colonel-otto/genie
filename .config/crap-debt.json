@@ -155,33 +155,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/effect/attribute_modifier.rs",
-      "function": "Turns::change_master_attribute",
-      "line": 274,
-      "cyclomatic": 23.0,
-      "coverage": 53.06122448979592,
-      "crap": 77.7080128177885,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/effect/attribute_modifier.rs",
-      "function": "Turns::show_changed_sprite",
-      "line": 126,
-      "cyclomatic": 13.0,
-      "coverage": 0.0,
-      "crap": 182.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/effect/upgrade.rs",
-      "function": "Turns::upgrade_objects",
-      "line": 43,
-      "cyclomatic": 29.0,
-      "coverage": 61.97183098591549,
-      "crap": 75.2500537843207,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/garrison/let_out.rs",
       "function": "Turns::came_out",
       "line": 211,
@@ -731,6 +704,51 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/technology/effect/attribute_modifier.rs",
+      "function": "Turns::change_master_attribute",
+      "line": 274,
+      "cyclomatic": 23.0,
+      "coverage": 53.06122448979592,
+      "crap": 77.7080128177885,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/technology/effect/attribute_modifier.rs",
+      "function": "Turns::show_changed_sprite",
+      "line": 126,
+      "cyclomatic": 13.0,
+      "coverage": 0.0,
+      "crap": 182.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/technology/effect/upgrade.rs",
+      "function": "Turns::upgrade_objects",
+      "line": 43,
+      "cyclomatic": 29.0,
+      "coverage": 61.97183098591549,
+      "crap": 75.2500537843207,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/technology/upgrade.rs",
+      "function": "Turns::actions_take_master",
+      "line": 461,
+      "cyclomatic": 19.0,
+      "coverage": 43.24324324324324,
+      "crap": 85.00242828657728,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/technology/upgrade.rs",
+      "function": "Turns::upgrade_object",
+      "line": 226,
+      "cyclomatic": 53.0,
+      "coverage": 74.50980392156863,
+      "crap": 99.52338090176477,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/turn/command/building_commands.rs",
       "function": "Turns::research",
       "line": 193,
@@ -944,24 +962,6 @@
       "cyclomatic": 29.0,
       "coverage": 0.0,
       "crap": 870.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/upgrade.rs",
-      "function": "Turns::actions_take_master",
-      "line": 461,
-      "cyclomatic": 19.0,
-      "coverage": 43.24324324324324,
-      "crap": 85.00242828657728,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/upgrade.rs",
-      "function": "Turns::upgrade_object",
-      "line": 226,
-      "cyclomatic": 53.0,
-      "coverage": 74.50980392156863,
-      "crap": 99.52338090176477,
       "crate": "genie-core"
     },
     {
@@ -1939,7 +1939,7 @@
     {
       "file": "crates/tools/genie-oracle/src/masters.rs",
       "function": "MasterTable::read",
-      "line": 494,
+      "line": 497,
       "cyclomatic": 9.0,
       "coverage": 0.0,
       "crap": 90.0,

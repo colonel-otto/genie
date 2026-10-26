@@ -457,7 +457,7 @@ impl Turns {
     /// `old` gives way to `new`: an action with a task takes the last of `new`'s tasks of the same
     /// action type, target class and target master (none: it keeps its task and changes nothing
     /// else); then its slot 0x50 with the tasks: an Attack's sprites follow `new`'s
-    /// ([`crate::effect::follow_master`]), its sub-actions alike (`FUN_140a979b0`).
+    /// ([`crate::technology::effect::follow_master`]), its sub-actions alike (`FUN_140a979b0`).
     pub(crate) fn actions_take_master(&mut self, place: Place, old: &Master, new: &Master) {
         let find = |task: &Task| {
             new.tasks
@@ -473,7 +473,7 @@ impl Turns {
         let old_task = |id: i16| old.tasks.iter().find(|t| t.id == id).copied();
         let graphics = &self.graphics;
         let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
-        let sprites = crate::effect::MasterSprites {
+        let sprites = crate::technology::effect::MasterSprites {
             moving: g(new.move_sprite),
             attack: g(new.attack_sprite),
             standing: g(new.standing_sprite),
@@ -486,7 +486,7 @@ impl Turns {
             Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
         };
         if let Some(attack) = u.attack.as_mut() {
-            crate::effect::follow_master(&mut attack.arms, None, &sprites);
+            crate::technology::effect::follow_master(&mut attack.arms, None, &sprites);
         }
         if let Some(hunt) = u.hunt.as_mut()
             && let Some(t) = old_task(hunt.task.id).as_ref().and_then(find)
@@ -494,7 +494,7 @@ impl Turns {
             hunt.task = crate::gathering::hunt::HuntTask::of(&t);
             let task = hunt.task.sprites;
             if let Some(attack) = hunt.attack.as_mut() {
-                crate::effect::follow_master(&mut attack.arms, Some(task), &sprites);
+                crate::technology::effect::follow_master(&mut attack.arms, Some(task), &sprites);
             }
         }
         if let Some(gather) = u.gather.as_mut()

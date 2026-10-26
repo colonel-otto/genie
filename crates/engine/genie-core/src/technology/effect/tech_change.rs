@@ -1,7 +1,7 @@
 //! A technology's change (kind 8): its state, a forced research and its research time.
 
 use crate::GenieError;
-use crate::effect::{ONE, RESEARCH_SPENT, RESEARCHED, ROUND, TECHS_RESEARCHED};
+use crate::technology::effect::{ONE, RESEARCH_SPENT, RESEARCHED, ROUND, TECHS_RESEARCHED};
 use crate::turn::Turns;
 
 /// The modes of `FUN_1415c3f20`'s technology change (kind 8) that change a cost, with the
@@ -75,7 +75,7 @@ impl Turns {
                     return Ok(());
                 };
                 at = Some(state.locations.len());
-                state.locations.push(crate::tech::Location {
+                state.locations.push(crate::technology::Location {
                     building: -1,
                     ..last
                 });
@@ -154,8 +154,8 @@ impl Turns {
         self.research_effect_known(p, t)?;
         self.do_effect(p, &def.effect, None)?;
         let owner = &self.players[p];
-        let get = |k: i16| crate::tech::Attributes::get(owner, k);
-        let factors = crate::tech::factors(t as i16, &get)?;
+        let get = |k: i16| crate::technology::Attributes::get(owner, k);
+        let factors = crate::technology::factors(t as i16, &get)?;
         let listed = owner.techs[t].listed_costs(&def, factors);
         let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
         let owner = &mut self.players[p];

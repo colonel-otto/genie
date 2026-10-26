@@ -47,7 +47,7 @@ pub struct Payer<'a> {
     /// The repairer's player's masters.
     pub masters: &'a crate::masters::Masters,
     /// The repairer's player's attributes.
-    pub attributes: &'a mut dyn crate::tech::Attributes,
+    pub attributes: &'a mut dyn crate::technology::Attributes,
 }
 
 impl std::fmt::Debug for Payer<'_> {

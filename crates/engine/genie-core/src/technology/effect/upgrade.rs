@@ -2,10 +2,10 @@
 //! kinds and a negative cost's entries.
 
 use crate::GenieError;
-use crate::effect::kind;
 use crate::masters::{Master, master_type};
 use crate::math::rng::Stream;
-use crate::tech::EffectCommand;
+use crate::technology::EffectCommand;
+use crate::technology::effect::kind;
 use crate::turn::{Turns, Unit};
 
 impl Turns {
@@ -28,7 +28,7 @@ impl Turns {
     /// `FUN_141657d10`, the upgrade's own part: of two masters `from` and `to` of player `p`'s
     /// table, mode 2 with the effect's `object` gives that object a master of its own
     /// (`FUN_141186d10`, a copy of the one it reads) where slot 0xa8 lets it
-    /// ([`crate::upgrade::upgradable`]), runs its slot 0x98 to `to` keeping its master
+    /// ([`crate::technology::upgrade::upgradable`]), runs its slot 0x98 to `to` keeping its master
     /// ([`Turns::upgrade_object`]) and copies `to` into its own master (slot 8). Any other mode
     /// goes through the live objects in order: one reading `from` takes its slot 0x98 (its master
     /// kept in modes −1 and 3), or past its use a master of its own and its old death spawn's
@@ -49,7 +49,7 @@ impl Turns {
         object: Option<i32>,
     ) -> Result<(), GenieError> {
         use crate::order::Place;
-        use crate::upgrade::upgradable;
+        use crate::technology::upgrade::upgradable;
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
         };

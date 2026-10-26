@@ -420,7 +420,7 @@ pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
 pub fn refund(
     master: &Master,
     costs: &[(i32, f32); 3],
-    attributes: &mut dyn crate::tech::Attributes,
+    attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<(), GenieError> {
     if master.kind < COMBAT_MASTER {
         return Ok(());
@@ -446,7 +446,7 @@ pub fn refund(
 pub fn refund_research(
     costs: &[(i32, f32); 3],
     count: i16,
-    attributes: &mut dyn crate::tech::Attributes,
+    attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<(), GenieError> {
     for &(attribute, amount) in costs {
         // the entry's attributes are the costs' i16 attributes (FUN_1411c3190, the load)
@@ -468,7 +468,7 @@ pub fn refund_research(
 pub fn refund_master(
     master: &Master,
     n: i32,
-    attributes: &mut dyn crate::tech::Attributes,
+    attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<(), GenieError> {
     if master.kind < COMBAT_MASTER {
         return Ok(());
@@ -493,16 +493,16 @@ const RESEARCH_COST_MODIFIER: i16 = 85;
 /// scales truncated to 16 bits), straight into the attributes, and is in state 1 with no work
 /// done. True when it was; in another state nothing happens.
 pub fn refund_tech(
-    state: &mut crate::tech::TechState,
-    def: &crate::tech::TechDef,
+    state: &mut crate::technology::TechState,
+    def: &crate::technology::TechDef,
     tech: i16,
-    attributes: &mut dyn crate::tech::Attributes,
+    attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
     use crate::checkpoint::cvttss2si;
     if !matches!(state.state, 2 | 4) {
         return Ok(false);
     }
-    let modifier = if crate::tech::is_age(tech) {
+    let modifier = if crate::technology::is_age(tech) {
         0.0
     } else {
         attributes.get(RESEARCH_COST_MODIFIER)?
@@ -571,7 +571,7 @@ pub fn cost_test(
     master: i16,
     count: f32,
     population: bool,
-    attributes: &dyn crate::tech::Attributes,
+    attributes: &dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
     let Some(m) = masters.get(master).filter(|m| COMBAT_MASTER <= m.kind) else {
         return Ok(false);
@@ -617,7 +617,7 @@ pub fn pay(
     masters: &Masters,
     master: i16,
     count: f32,
-    attributes: &mut dyn crate::tech::Attributes,
+    attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
     if !cost_test(masters, master, count, false, &*attributes)? {
         return Ok(false);
@@ -646,7 +646,7 @@ pub fn pay(
 pub fn master_costs(
     masters: &Masters,
     master: i16,
-    attributes: &dyn crate::tech::Attributes,
+    attributes: &dyn crate::technology::Attributes,
 ) -> Result<[(i16, i16); 3], GenieError> {
     use crate::checkpoint::cvttss2si;
     let mut out = [(-1i16, 0i16); 3];
@@ -865,7 +865,7 @@ mod tests {
 
     struct Held(Vec<f32>);
 
-    impl crate::tech::Attributes for Held {
+    impl crate::technology::Attributes for Held {
         fn get(&self, i: i16) -> Result<f32, GenieError> {
             Ok(self.0[i as usize])
         }
@@ -881,7 +881,7 @@ mod tests {
     /// another state nothing happens.
     #[test]
     fn a_cancelled_research_gives_back_its_paid_costs() {
-        use crate::tech::{Cost, TechDef, TechState};
+        use crate::technology::{Cost, TechDef, TechState};
         let def = TechDef {
             costs: [
                 Cost {

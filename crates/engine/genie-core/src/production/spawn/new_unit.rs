@@ -184,7 +184,7 @@ impl Turns {
         Ok(NewObject {
             computer: owner.computer,
             posture: owner.posture,
-            age: crate::tech::Attributes::get(owner, CURRENT_AGE)?,
+            age: crate::technology::Attributes::get(owner, CURRENT_AGE)?,
             ..NewObject::of(position, master, made)
         })
     }

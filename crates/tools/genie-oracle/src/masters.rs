@@ -402,14 +402,14 @@ pub struct MasterTable {
     pub drop_sites: Vec<genie_core::tasks::DropSite>,
     /// The linked technologies (`linkedTechs.json` beside the `.dat`, [`crate::linked_techs`]);
     /// empty when not loaded.
-    pub linked_techs: std::collections::BTreeMap<i16, genie_core::tech::Linked>,
+    pub linked_techs: std::collections::BTreeMap<i16, genie_core::technology::Linked>,
     /// The unit lines (`unitlines.json` beside the `.dat`, [`crate::unit_lines`]) as the file
     /// holds them; empty when not loaded (the game then builds tables of no line).
     pub unit_lines: Vec<genie_core::lines::UnitLine>,
     /// The technologies, by id.
-    pub techs: Vec<genie_core::tech::TechDef>,
+    pub techs: Vec<genie_core::technology::TechDef>,
     /// The effects' commands, by id (the world's effect table).
-    pub effects: Vec<Vec<genie_core::tech::EffectCommand>>,
+    pub effects: Vec<Vec<genie_core::technology::EffectCommand>>,
     /// The history period (the `.dat`'s `time_slice`, which the world keeps at `+0x8b8`); the
     /// world constructor's [`genie_core::turn::HISTORY_PERIOD`] without a `.dat`.
     pub time_slice: i32,
@@ -417,17 +417,20 @@ pub struct MasterTable {
 
 /// A technology of the `.dat` as the tech tree holds it: its costs, its type and its effect's
 /// commands.
-fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef {
+fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::technology::TechDef {
     let effect = usize::try_from(t.effect_id)
         .ok()
         .and_then(|e| dat.effects.get(e))
         .map_or_else(Vec::new, effect_commands);
-    genie_core::tech::TechDef {
-        costs: t.resource_costs.each_ref().map(|c| genie_core::tech::Cost {
-            attribute: c.kind,
-            amount: c.amount,
-            paid: c.flag,
-        }),
+    genie_core::technology::TechDef {
+        costs: t
+            .resource_costs
+            .each_ref()
+            .map(|c| genie_core::technology::Cost {
+                attribute: c.kind,
+                amount: c.amount,
+                paid: c.flag,
+            }),
         kind: t.kind,
         effect_id: t.effect_id,
         effect,
@@ -444,10 +447,10 @@ fn tech_def(dat: &DatFile, t: &genie_dat::de::Tech) -> genie_core::tech::TechDef
 }
 
 /// An effect's commands as the engine's effect table holds them.
-fn effect_commands(e: &genie_dat::de::Effect) -> Vec<genie_core::tech::EffectCommand> {
+fn effect_commands(e: &genie_dat::de::Effect) -> Vec<genie_core::technology::EffectCommand> {
     e.commands
         .iter()
-        .map(|c| genie_core::tech::EffectCommand {
+        .map(|c| genie_core::technology::EffectCommand {
             kind: c.kind,
             a: c.a,
             b: c.b,
@@ -794,7 +797,7 @@ mod tests {
 
     #[test]
     fn linked_techs_take_their_groups_kind() {
-        use genie_core::tech::Linked;
+        use genie_core::technology::Linked;
         // two groups of the 158041 file, and one of a kind the game does not know
         let json = r#"{"LinkedTechs": [
             {"NameId": 424008, "Comment": "Krypteia/Peloponnesian League",

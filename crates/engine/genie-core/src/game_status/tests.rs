@@ -455,7 +455,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
 /// research running with `progress` done: each paid 50 gold, and the `.dat` lists 20 wood
 /// the building pays (flag 2).
 fn researching(progress: f32) -> Turns {
-    use crate::tech::{Cost, Location, TechDef, TechState};
+    use crate::technology::{Cost, Location, TechDef, TechState};
     let mut t = game();
     let entry = Entry {
         master: -1,
@@ -573,7 +573,7 @@ fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_o
 /// gold; an id the table does not hold does nothing.
 #[test]
 fn a_research_gives_the_effect_attribute_269_names() {
-    use crate::tech::EffectCommand;
+    use crate::technology::EffectCommand;
     let run = |reward: f32| {
         let mut t = researching(25.0);
         t.players[1].attributes.resize(300, 0.0);

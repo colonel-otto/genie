@@ -2,8 +2,10 @@
 //! its kind for every party ([`Party`]).
 
 use crate::GenieError;
-use crate::effect::{COST_ATTRIBUTES, Change, FARM_FOOD, TECH_COST, TECH_DISABLE, TECH_TIME, kind};
-use crate::tech::EffectCommand;
+use crate::technology::EffectCommand;
+use crate::technology::effect::{
+    COST_ATTRIBUTES, Change, FARM_FOOD, TECH_COST, TECH_DISABLE, TECH_TIME, kind,
+};
 use crate::turn::Turns;
 
 /// Which players a block of the base's kinds reaches.

@@ -2,8 +2,8 @@
 //! the combat unit's and the building's.
 
 use crate::GenieError;
-use crate::effect::Change;
 use crate::masters::{Master, Masters, master_type};
+use crate::technology::effect::Change;
 use crate::turn::{Turns, Unit};
 
 /// The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):

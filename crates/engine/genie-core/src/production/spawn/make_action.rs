@@ -101,7 +101,7 @@ impl Turns {
             && self
                 .techs
                 .get(tech as usize)
-                .is_some_and(|d| d.kind == crate::tech::SHARED_KIND)
+                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
             && (tech as usize) < self.players[p].techs.len()
             && let Some(production) = self.players[p].objects[i].production.as_mut()
         {
@@ -135,7 +135,7 @@ impl Turns {
     /// population to attribute 81 and takes state 6; one of a master it lacks stays in state 0
     /// ("Canceling Train #1a"). (The building's update makes it paid, so the payment test of an
     /// unpaid one never runs here.) A research (`0x140ad1d80`): its start test
-    /// ([`crate::tech::TechState::start_test`] against what the first entry paid) puts the
+    /// ([`crate::technology::TechState::start_test`] against what the first entry paid) puts the
     /// technology in state 2 at the building's master and the action in state 6, with no work
     /// done; a failed test (its refund, `FUN_1413d15e0`) is not modelled. A building in state 3
     /// or more deletes the action unstarted (its destructor runs, [`Turns::destroy_action`]).
@@ -145,7 +145,7 @@ impl Turns {
         i: usize,
         making: Making,
     ) -> Result<(), GenieError> {
-        use crate::tech::Attributes;
+        use crate::technology::Attributes;
         if 3 <= self.players[p].objects[i].life.state {
             return self.destroy_action(p, i, making);
         }
@@ -162,7 +162,7 @@ impl Turns {
                 let (t, def) = self.research_tech(p, r.tech)?;
                 let owner = &self.players[p];
                 let get = |k: i16| owner.get(k);
-                let factors = crate::tech::factors(r.tech, &get)?;
+                let factors = crate::technology::factors(r.tech, &get)?;
                 let paid = owner.objects[i]
                     .production
                     .as_ref()

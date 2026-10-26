@@ -23,7 +23,7 @@ fn the_work_counts_half_for_each_repairer_past_the_first() {
 /// The repairer's player's attributes as a list (food, wood, stone, gold at 0 to 3).
 struct Held(Vec<f32>);
 
-impl crate::tech::Attributes for Held {
+impl crate::technology::Attributes for Held {
     fn get(&self, i: i16) -> Result<f32, GenieError> {
         Ok(self.0[i as usize])
     }

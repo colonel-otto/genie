@@ -114,7 +114,7 @@ pub struct Player {
     /// costs, food, wood, stone and gold, taken off (`FUN_141630d10`); nothing modelled reads it.
     pub pending_debit: [f32; 4],
     /// The player's state of each technology (`player+0x760`'s, saved).
-    pub techs: Vec<crate::tech::TechState>,
+    pub techs: Vec<crate::technology::TechState>,
     /// The first update this slice could not model, with the tick (1-based) and object index.
     pub unsupported: Option<(u32, usize, GenieError)>,
     /// Every object the slice stopped updating, with the tick and why.
@@ -193,7 +193,7 @@ pub struct Player {
 pub(crate) const NO_ATTRIBUTE: GenieError =
     GenieError::unsupported("an attribute the player does not have");
 
-impl crate::tech::Attributes for Player {
+impl crate::technology::Attributes for Player {
     /// An attribute's value (the resources' from [`Player::resources`]).
     fn get(&self, i: i16) -> Result<f32, GenieError> {
         match usize::try_from(i) {

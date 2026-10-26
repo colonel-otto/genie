@@ -897,7 +897,7 @@ fn the_resource_commands_side_effects() {
 /// A technology at the barracks (master 12, 30 seconds in the `.dat`) in state 1 with 20
 /// seconds of work done.
 fn barracks_tech() -> Turns {
-    use crate::tech::{Location, TechDef, TechState};
+    use crate::technology::{Location, TechDef, TechState};
     let state = TechState {
         state: 1,
         research_done: 20.0,
@@ -950,7 +950,7 @@ fn the_research_time_modifier_changes_the_adjustment_and_may_complete() {
 /// cap, 12 the state, −1 the research time (with the dependents' update).
 #[test]
 fn a_technology_change_reaches_its_costs_locations_and_state() {
-    use crate::tech::Cost;
+    use crate::technology::Cost;
     let mut t = barracks_tech();
     t.techs[0].costs[0] = Cost {
         attribute: 2,
@@ -1005,7 +1005,7 @@ fn a_technology_change_reaches_its_costs_locations_and_state() {
 /// run from the world's effect table, not modelled).
 #[test]
 fn a_technology_change_s_location_stacking_and_effect_override() {
-    use crate::tech::Location;
+    use crate::technology::Location;
     let mut t = barracks_tech();
     t.players[0].techs[0].locations.push(Location {
         building: 13,
@@ -1168,7 +1168,7 @@ fn the_enable_command_sets_available_unless_disabled() {
 /// callers do not yet) stops before it changes anything; one with an effect override too.
 #[test]
 fn a_research_whose_effect_needs_its_building_stops() {
-    use crate::tech::{TechDef, TechState};
+    use crate::technology::{TechDef, TechState};
     let state = TechState {
         state: 2,
         building_master: -1,
@@ -1202,7 +1202,7 @@ fn a_research_whose_effect_needs_its_building_stops() {
 /// player's history at the world's time (`FUN_1413cdcd0`'s end); another research adds none.
 #[test]
 fn an_age_adds_its_event_to_the_history() {
-    use crate::tech::{TechDef, TechState};
+    use crate::technology::{TechDef, TechState};
     let state = TechState {
         state: 2,
         building_master: -1,
@@ -1243,7 +1243,7 @@ fn an_age_adds_its_event_to_the_history() {
 /// that depend on it in turn; one still missing a requirement stays unavailable.
 #[test]
 fn a_dependent_technology_done_already_completes_with_its_requirement() {
-    use crate::tech::{Location, TechDef, TechState};
+    use crate::technology::{Location, TechDef, TechState};
     let def = |required: i16, count| TechDef {
         required: [required, -1, -1, -1, -1, -1],
         required_count: count,
@@ -1273,7 +1273,7 @@ fn a_dependent_technology_done_already_completes_with_its_requirement() {
 /// every civilisation (civ 0) is available either way.
 #[test]
 fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
-    use crate::tech::{TechDef, TechState};
+    use crate::technology::{TechDef, TechState};
     let def = |required: i16, civ: i16, mode: i16| TechDef {
         required: [required, -1, -1, -1, -1, -1],
         required_count: i16::from(required != -1),
@@ -1313,7 +1313,7 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
 /// modifier (`'e'`) adds to, sets or scales a paid cost entry's adjustment.
 #[test]
 fn the_technology_commands_disable_and_adjust_costs() {
-    use crate::tech::{Cost, TechDef, TechState};
+    use crate::technology::{Cost, TechDef, TechState};
     let state = |s: i16| TechState {
         state: s,
         ..TechState::default()
@@ -1340,7 +1340,12 @@ fn the_technology_commands_disable_and_adjust_costs() {
         ],
         ..TechDef::default()
     };
-    t.techs = vec![kind(0), kind(0), kind(0x21), kind(crate::tech::SHARED_KIND)];
+    t.techs = vec![
+        kind(0),
+        kind(0),
+        kind(0x21),
+        kind(crate::technology::SHARED_KIND),
+    ];
     let command = |kind: u8, a: i16, b: i16, c: i16, d: f32| EffectCommand { kind, a, b, c, d };
     for tech in 0..4 {
         t.do_effect(0, &[command(b'f', -1, -1, -1, tech as f32)], None)
@@ -1368,7 +1373,7 @@ fn the_technology_commands_disable_and_adjust_costs() {
 /// technology 2, 65535 is −1, every technology.
 #[test]
 fn the_disable_command_reads_its_id_s_low_16_bits() {
-    use crate::tech::{TechDef, TechState};
+    use crate::technology::{TechDef, TechState};
     let state = |s: i16| TechState {
         state: s,
         ..TechState::default()
@@ -1398,7 +1403,7 @@ fn the_disable_command_reads_its_id_s_low_16_bits() {
 /// more adds 0 (0x80000000's low word), where a saturating cast would add −1.
 #[test]
 fn a_cost_change_past_the_i32_range_adds_nothing() {
-    use crate::tech::{Cost, TechDef, TechState};
+    use crate::technology::{Cost, TechDef, TechState};
     let player = Player {
         techs: vec![TechState::default()],
         ..Player::default()
@@ -1439,7 +1444,7 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
 /// building of the master stands, and only from a state above 0.
 #[test]
 fn the_last_building_of_a_master_withdraws_its_technology() {
-    use crate::tech::{TechDef, TechState};
+    use crate::technology::{TechDef, TechState};
     let building = |id, state| {
         let mut u = Unit {
             id,

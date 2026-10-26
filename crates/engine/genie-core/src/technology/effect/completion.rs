@@ -2,12 +2,12 @@
 //! it, a built building's technologies, the cost modifier and the disable and enable commands.
 
 use crate::GenieError;
-use crate::effect::{
+use crate::masters::master_type;
+use crate::technology::EffectCommand;
+use crate::technology::effect::{
     ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, RESEARCH_SPENT,
     RESEARCHED, TECH_DISABLE, TECHS_RESEARCHED, kind,
 };
-use crate::masters::master_type;
-use crate::tech::EffectCommand;
 use crate::turn::Turns;
 
 impl Turns {
@@ -29,7 +29,7 @@ impl Turns {
         t: usize,
         building: Option<i16>,
     ) -> Result<bool, GenieError> {
-        use crate::tech::Attributes;
+        use crate::technology::Attributes;
         let def = self.techs[t].clone();
         let state = &self.players[p].techs[t];
         if !(0..=2).contains(&state.state) {
@@ -49,7 +49,7 @@ impl Turns {
         let location = building.map_or_else(|| state.locations.first(), |b| state.location(b));
         if location.is_some_and(|l| 0 <= l.building && l.button != 0) {
             let get = |k: i16| owner.get(k);
-            let factors = crate::tech::factors(t as i16, &get)?;
+            let factors = crate::technology::factors(t as i16, &get)?;
             let listed = state.listed_costs(&def, factors);
             let spent = listed.iter().map(|&(_, a)| i32::from(a)).sum::<i32>() as f32;
             let owner = &mut self.players[p];
@@ -83,7 +83,7 @@ impl Turns {
             usize::try_from(crate::checkpoint::cvttss2si(c.d))
                 .ok()
                 .and_then(|d| self.techs.get(d))
-                .is_some_and(|d| d.kind == crate::tech::SHARED_KIND)
+                .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
         };
         let reaches_object = def.effect.iter().any(|c| match c.kind {
             kind::ENABLE => c.c == 1,
@@ -165,7 +165,7 @@ impl Turns {
         let civ = i16::from(self.players[p].civ);
         for d in 0..self.techs.len() {
             let def = &self.techs[d];
-            if !def.required.contains(&(t as i16)) || def.kind == crate::tech::SHARED_KIND {
+            if !def.required.contains(&(t as i16)) || def.kind == crate::technology::SHARED_KIND {
                 continue;
             }
             let Some(state) = self.players[p].techs.get(d) else {
@@ -214,7 +214,7 @@ impl Turns {
                 }
                 continue;
             }
-            let reached = |l: &crate::tech::Location| {
+            let reached = |l: &crate::technology::Location| {
                 let at = state.location(l.building).copied().unwrap_or(*l);
                 f32::from(l.time as i16) + at.adjustment <= state.research_done
             };
@@ -301,7 +301,7 @@ impl Turns {
     ) -> Result<(), GenieError> {
         let count = self.players[p].techs.len().min(self.techs.len());
         let held = usize::try_from(tech).ok().filter(|&t| t < count);
-        if held.is_some_and(|t| self.techs[t].kind == crate::tech::SHARED_KIND) {
+        if held.is_some_and(|t| self.techs[t].kind == crate::technology::SHARED_KIND) {
             let building = object.and_then(|id| self.object(id)).is_some_and(|(q, u)| {
                 self.master_of(q, u.life.master_id)
                     .is_ok_and(|m| m.kind == master_type::BUILDING)
@@ -313,14 +313,15 @@ impl Turns {
             }
             return Ok(());
         }
-        let disable =
-            |defs: &[crate::tech::TechDef], states: &mut [crate::tech::TechState], t: usize| {
-                if defs[t].kind == REENABLED_KIND {
-                    states[t].state = 1;
-                } else if states[t].state != RESEARCHED {
-                    states[t].state = -1;
-                }
-            };
+        let disable = |defs: &[crate::technology::TechDef],
+                       states: &mut [crate::technology::TechState],
+                       t: usize| {
+            if defs[t].kind == REENABLED_KIND {
+                states[t].state = 1;
+            } else if states[t].state != RESEARCHED {
+                states[t].state = -1;
+            }
+        };
         // FUN_1413cdb00 takes the id's low 16 bits (MOVZX EDX, BX in FUN_14163a500)
         let short = tech as i16;
         let states = &mut self.players[p].techs;

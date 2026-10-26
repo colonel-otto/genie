@@ -636,7 +636,7 @@ impl PaidAttributes {
     }
 }
 
-impl crate::tech::Attributes for PaidAttributes {
+impl crate::technology::Attributes for PaidAttributes {
     fn get(&self, i: i16) -> Result<f32, GenieError> {
         usize::try_from(i)
             .ok()

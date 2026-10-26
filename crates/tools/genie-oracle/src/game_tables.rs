@@ -6,12 +6,12 @@
 /// the ids' range, is left out.
 pub fn linked_techs(
     json: &str,
-) -> Result<std::collections::BTreeMap<i16, genie_core::tech::Linked>, serde_json::Error> {
+) -> Result<std::collections::BTreeMap<i16, genie_core::technology::Linked>, serde_json::Error> {
     let file: genie_json::LinkedTechs = serde_json::from_str(json)?;
     Ok(file
         .linked_techs
         .iter()
-        .filter_map(|g| genie_core::tech::Linked::of(&g.kind).map(|k| (g, k)))
+        .filter_map(|g| genie_core::technology::Linked::of(&g.kind).map(|k| (g, k)))
         .flat_map(|(g, k)| {
             g.techs
                 .iter()

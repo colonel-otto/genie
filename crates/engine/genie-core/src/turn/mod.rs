@@ -289,7 +289,7 @@ pub struct Turns {
     pub lines: crate::lines::UnitLines,
     /// The game's linked technologies (`linkedTechs.json`, the table at the game settings'
     /// `+0x18` that `FUN_140f39f40` looks up), by technology; empty when not loaded.
-    pub linked_techs: std::collections::BTreeMap<i16, crate::tech::Linked>,
+    pub linked_techs: std::collections::BTreeMap<i16, crate::technology::Linked>,
     /// The game options the simulation reads ([`crate::settings::Settings`]), from the header.
     pub settings: crate::settings::Settings,
     /// The game object's tagged value at `+0x680` (`DAT_143f07a58`, read through
@@ -317,10 +317,10 @@ pub struct Turns {
     pub recycling: Recycling,
     pub(crate) streams: Streams,
     /// The `.dat`'s technologies, by id.
-    pub techs: Vec<crate::tech::TechDef>,
+    pub techs: Vec<crate::technology::TechDef>,
     /// The world's effect table (`+0x128`, `TRIBE_Effects`): every effect's commands by id, the
     /// `.dat`'s.
-    pub effects: Vec<Vec<crate::tech::EffectCommand>>,
+    pub effects: Vec<Vec<crate::technology::EffectCommand>>,
     /// The market's prices (`+0x868`.., saved).
     pub market: crate::market::Market,
     /// The world's unit groups ([`crate::group`]).

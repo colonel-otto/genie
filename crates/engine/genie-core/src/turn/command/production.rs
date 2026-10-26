@@ -107,7 +107,7 @@ impl Turns {
                     if attribute < 0 || (annex && !paid) || attribute == POPULATION {
                         continue;
                     }
-                    let held = crate::tech::Attributes::get(owner, attribute)?;
+                    let held = crate::technology::Attributes::get(owner, attribute)?;
                     if held < f32::from(each) * count as f32 {
                         return Ok(true);
                     }
@@ -124,7 +124,7 @@ impl Turns {
         // game mode 16: with attribute 6 at most 1 (COMISS, JC: a NaN is not) a military unit
         // (its key's +9) is queued one at a time, the player's +0x1378 its flag
         if self.settings.game_mode == ONE_UNIT_GAME
-            && crate::tech::Attributes::get(owner, CURRENT_AGE)? <= ONE_UNIT_AGE
+            && crate::technology::Attributes::get(owner, CURRENT_AGE)? <= ONE_UNIT_AGE
             && self.tracker_key(player, q.unit).military
         {
             if owner.one_military_queued {
@@ -354,10 +354,10 @@ impl Turns {
     /// `FUN_1411cbc40`'s technology branch: the count is held to the technology's cap less its
     /// researches queued and done when it stacks (`+0x40`; the cap `+0x56`, 0x100 below 0; the
     /// player's `+0x648` is not held, 0 for every player probed); each research is paid
-    /// (`FUN_14162fd90`: [`crate::tech::TechState::pay`] with the repeat test) until one cannot
+    /// (`FUN_14162fd90`: [`crate::technology::TechState::pay`] with the repeat test) until one cannot
     /// be. The paid ones join the last entry when it is of the same technology and its costs
     /// are the ones it lists now (`FUN_1411c81a0` -> `FUN_1413d4a00`,
-    /// [`crate::tech::TechState::listed_costs`]); else a new entry ([`Turns::new_entry`]); the
+    /// [`crate::technology::TechState::listed_costs`]); else a new entry ([`Turns::new_entry`]); the
     /// technology's researches queued (`+0x58`) grow by them.
     pub(super) fn queue_techs(
         &mut self,
@@ -388,8 +388,8 @@ impl Turns {
         let building = owner.objects[i].life.master_id;
         let mut paid = 0i16;
         while paid < n {
-            let get = |k: i16| crate::tech::Attributes::get(&*owner, k);
-            let factors = crate::tech::factors(tech, &get)?;
+            let get = |k: i16| crate::technology::Attributes::get(&*owner, k);
+            let factors = crate::technology::factors(tech, &get)?;
             let mut state = std::mem::take(&mut owner.techs[t]);
             let ok = state.pay(def, factors, repeat, building, owner);
             owner.techs[t] = state;
@@ -402,8 +402,8 @@ impl Turns {
         if n <= 0 {
             return Ok(false);
         }
-        let get = |k: i16| crate::tech::Attributes::get(&*owner, k);
-        let listed = owner.techs[t].listed_costs(def, crate::tech::factors(tech, &get)?);
+        let get = |k: i16| crate::technology::Attributes::get(&*owner, k);
+        let listed = owner.techs[t].listed_costs(def, crate::technology::factors(tech, &get)?);
         let costs = crate::production::as_entry_costs(listed);
         let production = owner.objects[i]
             .production
@@ -480,7 +480,7 @@ impl Turns {
     /// `FUN_1411c3190`: the costs a queue entry of `master` (for a master other than −1:
     /// [`crate::production::master_costs`]) or of technology `tech` records, from (−1, 0). A
     /// technology the tree has not got (`FUN_1413cc6c0`), or none, records none; one in state 2
-    /// or 4 what [`crate::tech::TechState::entry_costs`] gives.
+    /// or 4 what [`crate::technology::TechState::entry_costs`] gives.
     pub(crate) fn entry_costs(
         &self,
         player: usize,
@@ -503,8 +503,8 @@ impl Turns {
         let Some(def) = self.techs.get(t) else {
             return Ok(NO_COSTS);
         };
-        let get = |k: i16| crate::tech::Attributes::get(owner, k);
-        Ok(owner.techs[t].entry_costs(def, crate::tech::factors(tech, &get)?))
+        let get = |k: i16| crate::technology::Attributes::get(owner, k);
+        Ok(owner.techs[t].entry_costs(def, crate::technology::factors(tech, &get)?))
     }
 }
 

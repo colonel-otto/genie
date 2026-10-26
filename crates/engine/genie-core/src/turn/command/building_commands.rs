@@ -203,8 +203,8 @@ impl Turns {
         let def = self.techs.get(tech).ok_or(GenieError::unsupported(
             "a technology the data file has not got",
         ))?;
-        let get = |i: i16| crate::tech::Attributes::get(owner, i);
-        let factors = crate::tech::factors(r.tech, &get)?;
+        let get = |i: i16| crate::technology::Attributes::get(owner, i);
+        let factors = crate::technology::factors(r.tech, &get)?;
         let listed = owner.techs[tech].listed_costs(def, factors);
         let mut sums = [0i16; 4];
         for (attribute, amount) in listed {
@@ -218,7 +218,7 @@ impl Turns {
         let owner = &self.players[player];
         let state = &owner.techs[tech];
         let repeatable = state.repeatable(def, false);
-        if def.kind == crate::tech::SHARED_KIND {
+        if def.kind == crate::technology::SHARED_KIND {
             return Err(GenieError::unsupported(
                 "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)",
             ));

@@ -337,7 +337,7 @@ impl Turns {
         order: &Work,
     ) -> Result<Option<i32>, GenieError> {
         use crate::gathering::pasture::PASTURE_WORKERS;
-        use crate::tech::Attributes;
+        use crate::technology::Attributes;
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         if order.target == -1 {

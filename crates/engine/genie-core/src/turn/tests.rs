@@ -3476,7 +3476,7 @@ fn a_research_s_check_refuses_another_player_s_buildings() {
 /// slice does not hold.
 #[test]
 fn a_research_of_castle_age_queues_it_but_in_game_mode_16() {
-    use crate::tech::{Location, TechDef, TechState};
+    use crate::technology::{Location, TechDef, TechState};
     let castle = |mode| {
         let mut t = one_player(vec![centre(9)], [1000.0; 4]);
         t.settings.game_mode = mode;

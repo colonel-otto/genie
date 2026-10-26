@@ -30,7 +30,7 @@ impl Turns {
         &self,
         p: usize,
         tech: i16,
-    ) -> Result<(usize, &crate::tech::TechDef), GenieError> {
+    ) -> Result<(usize, &crate::technology::TechDef), GenieError> {
         let t = usize::try_from(tech)
             .ok()
             .filter(|&t| t < self.players[p].techs.len())
@@ -58,7 +58,7 @@ impl Turns {
         i: usize,
         dt_seconds: f32,
     ) -> Result<u8, GenieError> {
-        use crate::tech::Attributes;
+        use crate::technology::Attributes;
         if self.players[p].computer {
             return Err(GenieError::unsupported(
                 "a computer player's research (its handicaps)",
@@ -79,7 +79,7 @@ impl Turns {
         let rate = building.work_rate_powerup + self.master_of(p, master)?.work_rate;
         let state = &owner.techs[t];
         let repeatable = state.repeatable(def, false);
-        let shared = def.kind == crate::tech::SHARED_KIND;
+        let shared = def.kind == crate::technology::SHARED_KIND;
         let time_modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
         let location = state
             .location(master)
@@ -106,7 +106,7 @@ impl Turns {
             r.progress = progress;
         }
         let mut time = f32::from(location.time as i16);
-        if !crate::tech::is_age(r.tech) && 0.0 < time_modifier {
+        if !crate::technology::is_age(r.tech) && 0.0 < time_modifier {
             time *= time_modifier;
         }
         if location.adjustment + time <= progress {
@@ -132,7 +132,7 @@ impl Turns {
     /// world's table ([`Turns::effects`], slot 0x10) the player gets with the building as its
     /// object ([`Turns::do_effect`]).
     ///
-    /// [`TechState::repeatable`]: crate::tech::TechState::repeatable
+    /// [`TechState::repeatable`]: crate::technology::TechState::repeatable
     pub(super) fn research_done(
         &mut self,
         p: usize,
@@ -141,7 +141,7 @@ impl Turns {
         master: i16,
         repeat: bool,
     ) -> Result<(), GenieError> {
-        use crate::tech::Attributes;
+        use crate::technology::Attributes;
         let owner = &self.players[p];
         let state = &owner.techs[t];
         let def = &self.techs[t];
@@ -152,7 +152,7 @@ impl Turns {
                 .find(|l| l.0 == master)
                 .map_or(-1.0, |l| f32::from(l.1));
             let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
-            if !crate::tech::is_age(t as i16) && 0.0 < modifier {
+            if !crate::technology::is_age(t as i16) && 0.0 < modifier {
                 time *= modifier;
             }
             let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
@@ -206,7 +206,7 @@ impl Turns {
         i: usize,
         r: &MakeTech,
     ) -> Result<(), GenieError> {
-        use crate::tech::Attributes;
+        use crate::technology::Attributes;
         let (t, _) = self.research_tech(p, r.tech)?;
         let def = &self.techs[t];
         if r.state != MakeObj::DONE && self.game_state == 0 {
@@ -232,7 +232,7 @@ impl Turns {
         }
         let owner = &self.players[p];
         let state = &owner.techs[t];
-        if def.kind == crate::tech::SHARED_KIND {
+        if def.kind == crate::technology::SHARED_KIND {
             let state = &mut self.players[p].techs[t];
             state.state = 1;
             state.times_researched = 0;
@@ -256,7 +256,7 @@ impl Turns {
             .map_or(-1.0, |l| f32::from(l.1));
         let adjustment = state.location(master).map_or(0.0, |l| l.adjustment);
         let modifier = owner.get(RESEARCH_TIME_MODIFIER)?;
-        if !crate::tech::is_age(r.tech) && 0.0 < modifier {
+        if !crate::technology::is_age(r.tech) && 0.0 < modifier {
             time *= modifier;
         }
         let done = adjustment + time <= r.progress;

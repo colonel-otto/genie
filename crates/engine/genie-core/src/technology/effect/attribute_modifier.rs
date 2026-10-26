@@ -2,9 +2,9 @@
 //! masters' change and what their objects and an Attack follow of it.
 
 use crate::GenieError;
-use crate::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
 use crate::masters::{AttributeWorld, Master, master_type};
 use crate::math::rng::Stream;
+use crate::technology::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
 use crate::turn::Turns;
 
 impl Turns {

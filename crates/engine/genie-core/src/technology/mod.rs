@@ -6,6 +6,9 @@
 
 use crate::GenieError;
 
+pub mod effect;
+pub mod upgrade;
+
 /// The age technologies (`FUN_1413cc3c0`: 101 to 103), whose costs the research cost modifier
 /// leaves alone.
 #[must_use]

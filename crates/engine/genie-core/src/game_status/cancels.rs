@@ -368,7 +368,7 @@ impl Turns {
         if self.settings.game_mode != ONE_UNIT_MODE {
             return Ok(());
         }
-        let attribute = crate::tech::Attributes::get(&self.players[p], CURRENT_AGE)?;
+        let attribute = crate::technology::Attributes::get(&self.players[p], CURRENT_AGE)?;
         if crate::math::fmath::below_or_unordered(ONE_UNIT_AGE, attribute) {
             return Ok(());
         }

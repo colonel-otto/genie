@@ -24,7 +24,7 @@ pub struct GameState {
     /// The players' pending debits and technology states.
     pub pending_debit: Vec<[f32; 4]>,
     /// Every player's technology states.
-    pub techs: Vec<Vec<crate::tech::TechState>>,
+    pub techs: Vec<Vec<crate::technology::TechState>>,
     /// Every player's game status and resignation (`+0x89`, `+0x8b`).
     pub statuses: Vec<(u8, bool)>,
     /// The world's game state (`+0x88`).

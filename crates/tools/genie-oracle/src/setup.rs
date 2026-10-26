@@ -9,7 +9,7 @@ use genie_save::{Header, PlayerSection};
 /// A player's saved state of one technology (`Tech_Player_Tree`).
 pub(super) fn tech_state(
     t: &genie_save::generated::world::TechPlayerTree,
-) -> genie_core::tech::TechState {
+) -> genie_core::technology::TechState {
     let o = |j: usize| {
         t.cost_override.get(j).map_or((-1, -1, -2), |e| {
             (
@@ -19,7 +19,7 @@ pub(super) fn tech_state(
             )
         })
     };
-    genie_core::tech::TechState {
+    genie_core::technology::TechState {
         research_done: t.research_done,
         state: t.state,
         cost_adj: [0, 1, 2].map(|j| t.cost_adj.get(j).copied().unwrap_or(0)),
@@ -36,7 +36,7 @@ pub(super) fn tech_state(
             .location
             .iter()
             .flatten()
-            .map(|l| genie_core::tech::Location {
+            .map(|l| genie_core::technology::Location {
                 building: l.location_research_location_id as i16,
                 time: l.location_research_time,
                 button: l.location_button_location_id,
