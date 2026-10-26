@@ -183,7 +183,7 @@ impl UnitView<'_> {
         let values = terrain
             .restrictions
             .get(mover.stats.restriction)
-            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+            .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let zones = self.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: unit.id,
@@ -242,7 +242,7 @@ pub(in crate::turn) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, G
 /// What the auto scout's search asks of the world for one unit ([`crate::explore::Area`]).
 pub(in crate::turn) struct ScoutArea<'a> {
     pub(in crate::turn) spatial: &'a Spatial,
-    pub(in crate::turn) zones: &'a crate::zones::ZoneMap,
+    pub(in crate::turn) zones: &'a crate::pathing::zones::ZoneMap,
     pub(in crate::turn) plan: Planning<'a>,
     pub(in crate::turn) mover: &'a Mover,
     pub(in crate::turn) me: Me,

@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::group::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::PathData;
 use crate::order::Place;
-use crate::tile_path::Path;
+use crate::pathing::tile_path::Path;
 use crate::turn::Turns;
 
 /// A group whose top speed is below this does not move (`commandMoveTo`, `DAT_142eb0c60`); nor is

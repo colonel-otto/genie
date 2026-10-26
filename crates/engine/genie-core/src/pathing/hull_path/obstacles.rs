@@ -2,8 +2,8 @@
 //! cannot cross, the cliffs; a point's hull and the area's bounds.
 
 use crate::GenieError;
-use crate::hull_path::{HALF, Hull, HullPather, Point, Shape};
 use crate::math::fmath::at_most_or_unordered;
+use crate::pathing::hull_path::{HALF, Hull, HullPather, Point, Shape};
 use crate::spatial::{GATE_CLASS, Placed, tile_record_id};
 
 impl HullPather<'_> {

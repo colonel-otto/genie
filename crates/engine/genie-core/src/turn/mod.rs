@@ -314,7 +314,7 @@ pub struct Turns {
     /// ends when one side is left.
     pub victory_conquest: bool,
     /// The map's zone maps (`map+0x5e28`), made when first asked for.
-    pub zones: crate::zones::Zones,
+    pub zones: crate::pathing::zones::Zones,
     /// The world's ids and pools for the objects of recyclable masters ([`Recycling`]).
     pub recycling: Recycling,
     pub(crate) streams: Streams,

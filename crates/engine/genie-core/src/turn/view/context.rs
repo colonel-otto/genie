@@ -245,7 +245,7 @@ pub(in crate::turn) struct Context<'a> {
     /// update ([`Turns::lead_herd`]).
     pub(in crate::turn) leads: Option<(i32, i32)>,
     /// The map's zone maps, which an auto scout's search reads.
-    pub(in crate::turn) zones: &'a mut crate::zones::Zones,
+    pub(in crate::turn) zones: &'a mut crate::pathing::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
     pub(in crate::turn) foreign: Foreign<'a>,
 }

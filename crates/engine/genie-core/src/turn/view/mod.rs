@@ -38,7 +38,7 @@ const VILLAGER_FEMALE: i16 = 293;
 pub(crate) struct DropWorld<'a> {
     pub masters: Option<&'a Masters>,
     pub spatial: &'a Spatial,
-    pub zones: &'a mut crate::zones::Zones,
+    pub zones: &'a mut crate::pathing::zones::Zones,
     pub pathing: &'a mut Pathing,
     pub object: &'a mut Well512,
     pub world_time: u32,
@@ -274,7 +274,7 @@ pub(in crate::turn) struct UnitView<'u> {
     /// The owner's other objects.
     pub(in crate::turn) others: &'u [Unit],
     /// The map's terrain zones, which an explorer's search reads.
-    pub(in crate::turn) zones: &'u mut crate::zones::Zones,
+    pub(in crate::turn) zones: &'u mut crate::pathing::zones::Zones,
     /// The other players' lists.
     pub(in crate::turn) foreign: Foreign<'u>,
     /// Every player's masters.

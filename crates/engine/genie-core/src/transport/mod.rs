@@ -128,7 +128,7 @@ pub trait Shore {
     /// A map the caller cannot read.
     fn zone(&mut self, x: i32, y: i32) -> Result<u16, GenieError>;
     /// `FUN_1411a7570`: a tile of zone `zone` lies within `reach` of the unit's tile (its place
-    /// cut by `CVTTSS2SI`, [`crate::zones::ZoneMap::near`]); no without a zone map.
+    /// cut by `CVTTSS2SI`, [`crate::pathing::zones::ZoneMap::near`]); no without a zone map.
     ///
     /// # Errors
     ///
@@ -138,7 +138,7 @@ pub trait Shore {
     fn flags(&self, x: i16, y: i16) -> u8;
     /// `FUN_140f7c390` with the planner of the unit's restriction (`FUN_140f7cb30`, none without
     /// a master): the last point of the planner's path from `from` to `to` whose tile has an edge
-    /// ([`crate::tile_path::Planner::last_open_point`]); None without a planner or such a point.
+    /// ([`crate::pathing::tile_path::Planner::last_open_point`]); None without a planner or such a point.
     fn shore_point(&mut self, from: [f32; 2], to: [f32; 2]) -> Option<[f32; 2]>;
 }
 

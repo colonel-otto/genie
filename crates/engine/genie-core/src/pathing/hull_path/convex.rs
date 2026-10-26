@@ -1,11 +1,11 @@
 //! A convex hull ([`Hull`], `MConvexHull`): the point test, the intersection, a box's overlap,
 //! the merge and the rays to a box or out of the hull.
 
-use crate::hull_path::{
+use crate::math::fmath::at_most_or_unordered;
+use crate::pathing::hull_path::{
     EPSILON, FAR, FULL_TURN, HALF, HALF_TURN, Hull, MOST, NO_ANGLE, NUDGE, ONE, Point, QUADRANT,
     T_HIGH, T_LOW, TURN, UNTURN,
 };
-use crate::math::fmath::at_most_or_unordered;
 
 impl Hull {
     /// `MConvexHull::InsideHull` (`FUN_140f87760`): whether `p`, moved a little toward the bounding

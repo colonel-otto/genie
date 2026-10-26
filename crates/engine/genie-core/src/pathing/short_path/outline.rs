@@ -2,8 +2,8 @@
 //! walk of a new polygon.
 
 use crate::GenieError;
-use crate::mesh::Mesh;
-use crate::short_path::{
+use crate::pathing::mesh::Mesh;
+use crate::pathing::short_path::{
     Kind, NONE, Point, Poly, Search, TRACE_STEPS, UNSET, cheb, clamp_to_box, contact_point,
     corner_emits, in_box, inside, shrunk_corner,
 };
@@ -205,7 +205,7 @@ impl Search<'_> {
     /// contact on the same side; the sides 2 and 3 measure backwards); ties to the first.
     pub(super) fn nearest_contact(
         &self,
-        contacts: &[crate::mesh::Contact],
+        contacts: &[crate::pathing::mesh::Contact],
         side: u32,
         u: i32,
     ) -> Option<usize> {

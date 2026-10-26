@@ -12,7 +12,7 @@ pub(crate) struct Seeker<'a, 'b> {
     pub(in crate::turn) mover: &'a Mover,
     pub(in crate::turn) plan: &'a mut Planning<'b>,
     pub(in crate::turn) spatial: &'a Spatial,
-    pub(in crate::turn) zones: &'a crate::zones::ZoneMap,
+    pub(in crate::turn) zones: &'a crate::pathing::zones::ZoneMap,
     /// Its master's class.
     pub(in crate::turn) class: i16,
     /// The nearest is by path (`FUN_1411671e0`'s argument 9: a human player's); else by the

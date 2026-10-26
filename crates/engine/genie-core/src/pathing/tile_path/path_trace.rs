@@ -2,7 +2,7 @@
 //! goal.
 
 use crate::math::fmath::Vec3;
-use crate::tile_path::{E, HALF, N, Planner, S, W};
+use crate::pathing::tile_path::{E, HALF, N, Planner, S, W};
 
 impl Planner {
     /// `FUN_140f7b9e0`: the steps from a child cell to the goal's tile at that level, counted

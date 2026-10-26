@@ -160,7 +160,7 @@ impl crate::turn::Turns {
                 .spatial
                 .terrain
                 .as_ref()
-                .ok_or(crate::zones::NO_TERRAIN)?;
+                .ok_or(crate::pathing::zones::NO_TERRAIN)?;
             let rng = self.streams.get(crate::math::rng::Stream::Action);
             let (point, sails) = retry_point([x, y], ship.map, |tx, ty| terrain.read(tx, ty), rng);
             let mut shore = MapShore::new(
@@ -283,14 +283,14 @@ impl crate::turn::Turns {
             .spatial
             .terrain
             .as_ref()
-            .ok_or(crate::zones::NO_TERRAIN)?;
+            .ok_or(crate::pathing::zones::NO_TERRAIN)?;
         let [w, h] = self.spatial.map;
         let zone_map = match usize::try_from(restriction) {
             Ok(r) if zone != u32::MAX => {
                 let values = terrain
                     .restrictions
                     .get(r)
-                    .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+                    .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
                 Some(self.zones.find(w, h, &terrain.kinds, values, false))
             }
             _ => None,
@@ -300,11 +300,11 @@ impl crate::turn::Turns {
             .spatial
             .terrain
             .as_ref()
-            .ok_or(crate::zones::NO_TERRAIN)?;
+            .ok_or(crate::pathing::zones::NO_TERRAIN)?;
         let values = terrain
             .restrictions
             .get(moving.restriction)
-            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+            .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let placing = crate::spawn::Placing {
             player: p,
             radius: made.radius,

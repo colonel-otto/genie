@@ -14,8 +14,8 @@ use genie_rec::de;
 ///
 /// When a contact line of the dump does not hold numbers (the dump's own format).
 #[must_use]
-pub fn mesh_from_dump(text: &str) -> Option<genie_core::mesh::Mesh> {
-    use genie_core::mesh::{Contact, Mesh};
+pub fn mesh_from_dump(text: &str) -> Option<genie_core::pathing::mesh::Mesh> {
+    use genie_core::pathing::mesh::{Contact, Mesh};
     let mut mesh: Option<Mesh> = None;
     for line in text.lines() {
         let words: Vec<&str> = line.split_whitespace().collect();
@@ -106,7 +106,7 @@ pub fn planner_from_save(
     save: &[u8],
     terrain: &TerrainTable,
     passable: Vec<f32>,
-) -> Result<genie_core::tile_path::Planner, Error> {
+) -> Result<genie_core::pathing::tile_path::Planner, Error> {
     use genie_core::spatial::BLOCKED;
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
@@ -119,7 +119,7 @@ pub fn planner_from_save(
     let spatial = spatial(&header, terrain);
     let tiles = spatial.tiles();
     let blocked = |x: i32, y: i32| tiles.word(x, y).is_some_and(|w| w & BLOCKED != 0);
-    Ok(genie_core::tile_path::Planner::new(
+    Ok(genie_core::pathing::tile_path::Planner::new(
         [map.map_width, map.map_height],
         terrain_ids,
         passable,

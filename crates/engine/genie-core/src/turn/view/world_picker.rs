@@ -428,11 +428,11 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             .spatial
             .terrain
             .as_ref()
-            .ok_or(crate::hull_path::NO_TERRAIN)?;
-        let restriction =
-            usize::try_from(self.restriction).map_err(|_| crate::hull_path::NO_RESTRICTION)?;
+            .ok_or(crate::pathing::hull_path::NO_TERRAIN)?;
+        let restriction = usize::try_from(self.restriction)
+            .map_err(|_| crate::pathing::hull_path::NO_RESTRICTION)?;
         let mask = terrain.restriction_mask(restriction);
-        crate::hull_path::quick_reach(
+        crate::pathing::hull_path::quick_reach(
             self.spatial,
             self.me,
             id,
@@ -444,15 +444,15 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
 }
 
 /// A unit's slot 0x468 (`FUN_141157c50`, `getPatrolInformation`): its top level's path
-/// (`FUN_140f960f0`) copied into a new path ([`crate::tile_path::Path::append`]: its points, its
+/// (`FUN_140f960f0`) copied into a new path ([`crate::pathing::tile_path::Path::append`]: its points, its
 /// length or one measured) with its flags, and that level's waypoint; None without path data or
 /// a path at the top.
 pub(in crate::turn) fn patrol_information(
     mover: Option<&Mover>,
 ) -> Option<(crate::unit_ai::PatrolPath, i32)> {
     let top = mover?.paths.last().filter(|l| l.has_path)?;
-    let mut path = crate::tile_path::Path::default();
-    path.append(&crate::tile_path::Path {
+    let mut path = crate::pathing::tile_path::Path::default();
+    path.append(&crate::pathing::tile_path::Path {
         points: top.points.clone(),
         length: top.length,
     });

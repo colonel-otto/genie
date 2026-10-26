@@ -9085,7 +9085,7 @@ fn a_patrol_s_distance_is_the_least_to_the_lines_through_its_points() {
 #[test]
 fn a_unit_with_patrol_information_leashes_to_its_patrol_s_path() {
     let path = PatrolPath {
-        path: crate::tile_path::Path {
+        path: crate::pathing::tile_path::Path {
             points: vec![[0.0, 0.0, 10.0], [20.0, 0.0, 10.0]],
             length: 20.0,
         },

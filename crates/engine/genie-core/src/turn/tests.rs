@@ -5862,7 +5862,7 @@ fn a_unit_s_patrol_information_is_its_top_path_and_waypoint() {
 #[test]
 fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
     let saved = crate::unit_ai::PatrolPath {
-        path: crate::tile_path::Path {
+        path: crate::pathing::tile_path::Path {
             points: vec![[20.0, 0.5, 20.0], [30.0, 0.5, 20.25]],
             length: 10.0,
         },
@@ -6927,7 +6927,7 @@ fn scout_attack_on(
     };
     let masters = Masters::new([scout]);
     let every = [Masters::new([wolf]), masters.clone()];
-    let (mut pathing, mut zones) = (Pathing::default(), crate::zones::Zones::default());
+    let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::group::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
@@ -7106,7 +7106,7 @@ fn attack_by(
     let _ = scout;
     let masters = Masters::new(std::iter::once(who).chain(also));
     let every = [Masters::new([wolf]), masters.clone()];
-    let (mut pathing, mut zones) = (Pathing::default(), crate::zones::Zones::default());
+    let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::group::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
@@ -7282,7 +7282,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
     };
     let masters = Masters::new([scout.clone()]);
     let every = [Masters::new([wolf]), masters.clone()];
-    let (mut pathing, mut zones) = (Pathing::default(), crate::zones::Zones::default());
+    let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::group::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =

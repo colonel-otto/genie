@@ -59,7 +59,7 @@ impl Turns {
         gap: f32,
         differentiators: &[i32],
     ) -> Result<(), GenieError> {
-        use crate::tile_path::Path;
+        use crate::pathing::tile_path::Path;
         let g = self.groups.get(group).expect("held");
         let id = g.members[index].id;
         let to = g.current_formation.as_ref().expect("a formation").slots[slot].transform_position;
@@ -272,7 +272,7 @@ impl Turns {
         from: [f32; 2],
         to: Vec3,
         ignore: &[i32],
-        record: &mut crate::tile_path::Path,
+        record: &mut crate::pathing::tile_path::Path,
     ) -> Result<u8, GenieError> {
         let mut plan = crate::movement::Planning {
             pathing: &mut self.pathing,
@@ -303,7 +303,7 @@ impl Turns {
         id: i32,
         from: [f32; 2],
         to: Vec3,
-    ) -> Result<(bool, crate::tile_path::Path), GenieError> {
+    ) -> Result<(bool, crate::pathing::tile_path::Path), GenieError> {
         let (p, u) = self.object(id).expect("the member is held");
         let mover = u.mover.as_ref().expect(MOVES);
         let computer = self.players.get(p).is_some_and(|q| q.computer);
@@ -327,14 +327,14 @@ impl Turns {
         restriction: usize,
         from: [f32; 2],
         to: Vec3,
-        record: &mut crate::tile_path::Path,
+        record: &mut crate::pathing::tile_path::Path,
     ) -> Result<Option<u8>, GenieError> {
         let tiles = self.spatial.tiles();
         let Some(planner) = self.pathing.planner(restriction, tiles) else {
             return Ok(None);
         };
         record.points.clear();
-        let req = crate::tile_path::Request {
+        let req = crate::pathing::tile_path::Request {
             from,
             to: [to[0], to[2]],
             radii: 0.0,

@@ -441,7 +441,7 @@ pub fn first_move(effects: &[Effect]) -> Option<AiMove> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PatrolPath {
     /// The points (x, height, y) and the length.
-    pub path: crate::tile_path::Path,
+    pub path: crate::pathing::tile_path::Path,
     /// The path's flags.
     pub flags: u32,
 }

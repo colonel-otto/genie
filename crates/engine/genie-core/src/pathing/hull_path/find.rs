@@ -2,11 +2,11 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::hull_path::{
+use crate::math::fmath::{below_or_unordered, maxss, minss, sqrt};
+use crate::pathing::hull_path::{
     GROWTHS, HALF, HullPather, ITERATION_CAP, MOST, NEAR_TARGET, NUDGE, PATHS, Point, Target,
     Waypoints,
 };
-use crate::math::fmath::{below_or_unordered, maxss, minss, sqrt};
 
 impl HullPather<'_> {
     /// `MShortPather::FindShortPath` (`FUN_140f85580`) as slot 0x3e8 and `FUN_140f9e540` call it

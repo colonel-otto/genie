@@ -16,7 +16,7 @@ use genie_save::Header;
 /// The old short pather's result and path for one call ([`old_pather_paths`]).
 pub type PatherAnswer = (u8, Vec<[f32; 2]>);
 
-/// The old short pather's answers (slot 0x3e8, [`genie_core::hull_path::HullPather::find`]) in
+/// The old short pather's answers (slot 0x3e8, [`genie_core::pathing::hull_path::HullPather::find`]) in
 /// the world of the slice started from the tick oracle's save at tick `start_tick` with `dumps`,
 /// for each call (the unit, its place then, the target, the range): the pather's result and path.
 /// Each unit stands at its place for its call. Dev only: a check of the pather against the game's
@@ -61,8 +61,13 @@ pub fn old_pather_paths(
             )));
             continue;
         };
-        let mut pather =
-            genie_core::hull_path::HullPather::new(&turns.spatial, id, target, mask, radius);
+        let mut pather = genie_core::pathing::hull_path::HullPather::new(
+            &turns.spatial,
+            id,
+            target,
+            mask,
+            radius,
+        );
         out.push(
             pather
                 .find(from, to, target, range)

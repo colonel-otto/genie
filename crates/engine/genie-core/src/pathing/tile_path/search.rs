@@ -1,7 +1,7 @@
 //! The A* searches over the node cells and over the tiles: the nodes, the open list, the
 //! estimates and the expansions.
 
-use crate::tile_path::{
+use crate::pathing::tile_path::{
     CLOSED, E, EARLY_LEFT, EARLY_START, GOAL, LONE, MIXED, N, NO_COST, NODE, OPEN, Planner, S,
     SHORTCUT_COST, W,
 };

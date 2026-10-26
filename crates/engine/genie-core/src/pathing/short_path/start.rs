@@ -1,7 +1,7 @@
 //! The start's node, the hits' points and the two legs of an L.
 
-use crate::mesh::ONE;
-use crate::short_path::{
+use crate::pathing::mesh::ONE;
+use crate::pathing::short_path::{
     Hit, Kind, NONE, Node, Point, Search, TO_FIXED, TO_FLOAT, contact_point, in_box, shrunk_corner,
     snap_to_side, strictly_inside, through_float, tile_of,
 };

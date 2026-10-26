@@ -106,7 +106,7 @@ impl BuildAction {
                 .as_ref()
                 .and_then(|s| s.completion.master)
                 .map_or(t.radius[0], |m| m.radius[0]);
-            let req = crate::tile_path::Request {
+            let req = crate::pathing::tile_path::Request {
                 from: [mx, my],
                 to: [t.position[0], t.position[1]],
                 radii: radius + ground,
@@ -114,7 +114,7 @@ impl BuildAction {
                 closed: Vec::new(),
                 full: false,
             };
-            let mut path = crate::tile_path::Path::default();
+            let mut path = crate::pathing::tile_path::Path::default();
             code = planner
                 .plan::<GenieError>(&req, false, &mut path, None)?
                 .code();

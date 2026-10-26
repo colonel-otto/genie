@@ -1,8 +1,10 @@
 //! The short pather's call ([`Call`], [`Query`]) and its state between searches
 //! ([`Pather`]): the terrain's shapes, the start test and the core.
 
-use crate::mesh::{Mesh, ONE};
-use crate::short_path::{Ctx, Goal, NONE, Point, Search, TO_FIXED, TO_FLOAT, clip, tile_of};
+use crate::pathing::mesh::{Mesh, ONE};
+use crate::pathing::short_path::{
+    Ctx, Goal, NONE, Point, Search, TO_FIXED, TO_FLOAT, clip, tile_of,
+};
 use crate::{GenieError, math::fmath};
 
 /// The short pather's arguments (`FUN_140f9d3a0`'s block, which `FUN_140f9e540` and
@@ -180,8 +182,8 @@ impl Call {
 /// A path's fixed-point points as the game appends them (`{x * 2^-22, 0, y * 2^-22}` through the
 /// path's dedup, `FUN_140f95a10`).
 #[must_use]
-pub fn to_path(points: &[Point]) -> crate::tile_path::Path {
-    let mut path = crate::tile_path::Path::default();
+pub fn to_path(points: &[Point]) -> crate::pathing::tile_path::Path {
+    let mut path = crate::pathing::tile_path::Path::default();
     for &[x, y] in points {
         let _ = path.push([x as f32 * TO_FLOAT, 0.0, y as f32 * TO_FLOAT]);
     }

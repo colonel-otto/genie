@@ -151,9 +151,9 @@ impl Unit {
             let terrain = spatial
                 .terrain
                 .as_ref()
-                .ok_or(crate::hull_path::NO_TERRAIN)?;
-            let r = restriction.ok_or(crate::hull_path::NO_RESTRICTION)?;
-            crate::hull_path::quick_reach(
+                .ok_or(crate::pathing::hull_path::NO_TERRAIN)?;
+            let r = restriction.ok_or(crate::pathing::hull_path::NO_RESTRICTION)?;
+            crate::pathing::hull_path::quick_reach(
                 spatial,
                 my_id,
                 target,

@@ -6,7 +6,7 @@
 //! search, its node types and its ties: `docs/AoE2DE_s_exe_SHORT_PATHER.md`.
 
 use crate::math::fmath;
-use crate::mesh::{Mesh, ONE, Rect};
+use crate::pathing::mesh::{Mesh, ONE, Rect};
 
 mod call;
 mod geometry;

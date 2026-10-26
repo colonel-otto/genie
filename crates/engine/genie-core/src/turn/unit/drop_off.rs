@@ -388,7 +388,7 @@ impl Unit {
         let values = terrain
             .restrictions
             .get(mover.stats.restriction)
-            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+            .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let zones = c.zones.of(w, h, &terrain.kinds, values);
         let me = Me {
             id: self.id,

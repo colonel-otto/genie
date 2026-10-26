@@ -3,7 +3,7 @@
 
 use crate::math::fmath;
 use crate::math::fmath::Vec3;
-use crate::tile_path::Path;
+use crate::pathing::tile_path::Path;
 
 /// The longest step between the points the smoothing puts on a straight stretch
 /// (`DAT_142f430e8`).

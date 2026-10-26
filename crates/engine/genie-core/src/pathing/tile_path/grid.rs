@@ -2,7 +2,7 @@
 //! rebuilt over a changed rectangle.
 
 use crate::math::fmath::Vec3;
-use crate::tile_path::{E, LONE, MIXED, N, NO_COST, NODE, Node, OpenList, S, W};
+use crate::pathing::tile_path::{E, LONE, MIXED, N, NO_COST, NODE, Node, OpenList, S, W};
 
 /// A terrain restriction's planner (`0x4a8` bytes, built by `FUN_140f74f90`).
 #[derive(Clone, Debug, PartialEq)]

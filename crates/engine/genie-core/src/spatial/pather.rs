@@ -230,7 +230,7 @@ pub(super) fn ccw(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2]) -> i32 {
     0
 }
 
-/// The smoothing's segment test for a unit (`FUN_140f7dbb0`, [`crate::tile_path::SegmentTest`]):
+/// The smoothing's segment test for a unit (`FUN_140f7dbb0`, [`crate::pathing::tile_path::SegmentTest`]):
 /// each walk puts its temporary tile records ([`Spatial::put_tile_records`]) and is tested
 /// ([`Spatial::segment_meets`]) against them and those of the pass's earlier walks; the pass's
 /// end removes them ([`Spatial::clear_tile_records`]).
@@ -259,7 +259,7 @@ impl<'a> SmoothingWalls<'a> {
     }
 }
 
-impl<E> crate::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
+impl<E> crate::pathing::tile_path::SegmentTest<E> for SmoothingWalls<'_> {
     fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, E> {
         self.ran = true;
         // the pass's buffer, the unit's radius (FUN_1410562d0 with 1)

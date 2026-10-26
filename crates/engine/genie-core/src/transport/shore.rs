@@ -116,7 +116,7 @@ pub fn find_drop_location(
 /// planners, the unit's terrain restriction (its master's `+0x606`; none below 0) and its tile.
 pub(crate) struct MapShore<'a> {
     pub(super) terrain: &'a crate::terrain::Terrain,
-    pub(super) zones: &'a mut crate::zones::Zones,
+    pub(super) zones: &'a mut crate::pathing::zones::Zones,
     pub(super) pathing: &'a mut crate::pathing::Pathing,
     pub(super) tiles: &'a crate::spatial::Tiles,
     pub(super) map: [i32; 2],
@@ -132,12 +132,15 @@ impl<'a> MapShore<'a> {
     /// A map without its terrain.
     pub(crate) fn new(
         spatial: &'a crate::spatial::Spatial,
-        zones: &'a mut crate::zones::Zones,
+        zones: &'a mut crate::pathing::zones::Zones,
         pathing: &'a mut crate::pathing::Pathing,
         restriction: i16,
         position: [f32; 3],
     ) -> Result<Self, GenieError> {
-        let terrain = spatial.terrain.as_ref().ok_or(crate::zones::NO_TERRAIN)?;
+        let terrain = spatial
+            .terrain
+            .as_ref()
+            .ok_or(crate::pathing::zones::NO_TERRAIN)?;
         Ok(Self {
             terrain,
             zones,
@@ -150,7 +153,9 @@ impl<'a> MapShore<'a> {
     }
 
     /// The unit's zone map (`FUN_1411931c0`: the map's for its restriction, `FUN_1414138d0`).
-    pub(super) fn zone_map(&mut self) -> Result<Option<&crate::zones::ZoneMap>, GenieError> {
+    pub(super) fn zone_map(
+        &mut self,
+    ) -> Result<Option<&crate::pathing::zones::ZoneMap>, GenieError> {
         let Some(r) = self.restriction else {
             return Ok(None);
         };
@@ -158,7 +163,7 @@ impl<'a> MapShore<'a> {
             .terrain
             .restrictions
             .get(r)
-            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+            .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let [w, h] = self.map;
         Ok(Some(self.zones.of(w, h, &self.terrain.kinds, values)))
     }

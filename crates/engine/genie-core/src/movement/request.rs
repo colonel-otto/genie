@@ -10,8 +10,8 @@ use crate::movement::{
     VILLAGER_CLASS, WALL_CLASS, cut_path, far_waypoint, footprint_gap, ground, ground_line,
     long_path_for, may_plan, point_or_zero, short_range, too_short, vector,
 };
+use crate::pathing::tile_path::Path;
 use crate::spatial::{Placed, Spatial};
-use crate::tile_path::Path;
 
 impl Mover {
     /// The motion step's path request for the level it walks, in state 2 (`0x141150f00`, its
@@ -378,7 +378,7 @@ impl Mover {
 
     /// The long pather's plan for a far waypoint (`0x141150f00` at `LAB_141152f9c`): the new path
     /// empties and the long pather writes it (`FUN_140f9eb70` from the unit's tile to the
-    /// waypoint's, the level's range and target; [`crate::long_path::path`]), made now. Its tall
+    /// waypoint's, the level's range and target; [`crate::pathing::long_path::path`]), made now. Its tall
     /// counts leave out the unit, its ignored units that wait to move or move (slots 0x2a8 and
     /// 0x5c8; not the target) and the target (`FUN_140f60440`). A path shorter than `EPSILON`
     /// stops the unit (slot 0x5d0; the new level and its path go, `FUN_14152f540` and

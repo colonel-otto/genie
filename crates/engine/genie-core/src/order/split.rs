@@ -216,7 +216,7 @@ impl Turns {
             let Some(planner) = pathing.planner(restriction, tiles) else {
                 return Ok(None);
             };
-            let req = crate::tile_path::Request {
+            let req = crate::pathing::tile_path::Request {
                 from: [b.position[0], b.position[1]],
                 to: [a.position[0], a.position[1]],
                 radii: a.radius,
@@ -224,7 +224,7 @@ impl Turns {
                 closed: Vec::new(),
                 full: false,
             };
-            let mut p = crate::tile_path::Path::default();
+            let mut p = crate::pathing::tile_path::Path::default();
             let found = planner.plan::<GenieError>(&req, false, &mut p, None)?;
             p.measure();
             Ok(Some((found.code(), p.length)))

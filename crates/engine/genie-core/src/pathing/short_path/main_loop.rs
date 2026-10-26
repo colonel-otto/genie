@@ -1,6 +1,6 @@
 //! The search's run: its main loop and a popped node's expansion by its type.
 
-use crate::short_path::{
+use crate::pathing::short_path::{
     Callback, Ctx, Hit, Kind, NONE, NUDGES, Node, Point, Poly, RECT_HEURISTIC, Search, ShortPath,
     T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits, float_distance, in_box, isqrt,
     through_float,

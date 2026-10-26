@@ -5,8 +5,8 @@ use crate::math::fmath::Vec3;
 use crate::math::rng::Well512;
 use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
 use crate::pathing::Pathing;
+use crate::pathing::tile_path::Path;
 use crate::spatial::Placed;
-use crate::tile_path::Path;
 
 /// `FUN_140f98dd0`: the path ends before its point `i` (the points from `i` on go) and is
 /// measured again (`FUN_140f95a60`, true); an index outside the path, or an empty path, changes

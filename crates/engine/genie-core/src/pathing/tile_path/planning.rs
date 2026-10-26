@@ -2,7 +2,7 @@
 //! start and the search on the tiles.
 
 use crate::math::fmath;
-use crate::tile_path::{
+use crate::pathing::tile_path::{
     Found, GOAL_GAP, NODE, Path, Planner, Request, SHORTCUT_REACH, SegmentTest, TILE_SEARCH_LENGTH,
     smooth, tile,
 };

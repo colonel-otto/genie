@@ -119,7 +119,7 @@ pub(super) fn unit_ai(object: &genie_save::Object) -> Option<genie_core::unit_ai
             .patrol_path
             .as_deref()
             .map(|p| genie_core::unit_ai::PatrolPath {
-                path: genie_core::tile_path::Path {
+                path: genie_core::pathing::tile_path::Path {
                     points: p.m_waypoints.iter().map(vec3).collect(),
                     length: p.path_length_value,
                 },

@@ -12,7 +12,7 @@ use crate::unit_ai::GenieError;
 pub(in crate::turn) struct ResourceWorld<'a, 'b> {
     pub(in crate::turn) player: usize,
     pub(in crate::turn) spatial: &'a Spatial,
-    pub(in crate::turn) zones: &'a mut crate::zones::Zones,
+    pub(in crate::turn) zones: &'a mut crate::pathing::zones::Zones,
     pub(in crate::turn) foreign: Foreign<'a>,
     pub(in crate::turn) every: &'a [Masters],
     pub(in crate::turn) masters: Option<&'a Masters>,
@@ -83,7 +83,7 @@ pub(in crate::turn) fn closest_resource_of(
             let values = terrain
                 .restrictions
                 .get(restriction)
-                .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+                .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
             let zones = c.zones.of(w, h, &terrain.kinds, values);
             let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
             zone(s.position) == zone(unit.position)

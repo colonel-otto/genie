@@ -1,8 +1,8 @@
 //! The searches' walks over the mesh's tiles ([`Ctx`]): a point's holder, the raycast, the
 //! axis sweeps and the sight test.
 
-use crate::mesh::{ONE, Rect};
-use crate::short_path::{
+use crate::pathing::mesh::{ONE, Rect};
+use crate::pathing::short_path::{
     Callback, Ctx, Hit, Point, Sweep, T_START, inside, ray_rect, strictly_inside, tile_of,
 };
 

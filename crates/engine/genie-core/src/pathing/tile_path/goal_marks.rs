@@ -1,6 +1,6 @@
 //! A search's request and goal: its ranges and the marks of the cells and tiles within them.
 
-use crate::tile_path::{CLOSED, FAR_SIDE, GOAL, HALF, LONE, NODE, ONE, Planner};
+use crate::pathing::tile_path::{CLOSED, FAR_SIDE, GOAL, HALF, LONE, NODE, ONE, Planner};
 
 /// A search's request: from a point to a goal with its ranges, as the planner's entry passes
 /// them on (`FUN_140f7c530`'s arguments 3 to 11).

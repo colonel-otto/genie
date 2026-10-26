@@ -1,7 +1,7 @@
 //! The search's nodes: the open list, the goal and foot tests, a polygon corner's test and
 //! the clip to the box.
 
-use crate::short_path::{Kind, NONE, Node, Point, RECT_HEURISTIC, Search};
+use crate::pathing::short_path::{Kind, NONE, Node, Point, RECT_HEURISTIC, Search};
 
 /// `FUN_140fa3bc0`: whether a polygon corner at `v` between sides `prev` and `next` emits a node
 /// toward `g`, and the token its raycast ignores (0xff none).

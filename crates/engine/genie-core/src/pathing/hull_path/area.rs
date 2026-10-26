@@ -2,8 +2,8 @@
 //! the area's growth and the entrances' join.
 
 use crate::GenieError;
-use crate::hull_path::{EPSILON, HullPather, MOST_AREA, PATHS, Point, Target, Waypoints};
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
+use crate::pathing::hull_path::{EPSILON, HullPather, MOST_AREA, PATHS, Point, Target, Waypoints};
 
 impl HullPather<'_> {
     /// `FindShortPath`'s goal query when no target stands on the goal (`FUN_141051900` with

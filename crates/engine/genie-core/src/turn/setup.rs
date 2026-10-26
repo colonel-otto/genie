@@ -49,7 +49,7 @@ impl Turns {
             spawned_relics: 0,
             game_state: 0,
             victory_conquest: false,
-            zones: crate::zones::Zones::default(),
+            zones: crate::pathing::zones::Zones::default(),
             recycling: Recycling::default(),
             streams: Streams::default(),
             techs: Vec::new(),

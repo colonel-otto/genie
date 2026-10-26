@@ -7,8 +7,8 @@ use crate::movement::{
     footprint_gap, footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero,
     point_or_zero_of, vector,
 };
+use crate::pathing::tile_path::{Path, Request};
 use crate::spatial::{Placed, Spatial};
-use crate::tile_path::{Path, Request};
 use crate::{GenieError, math::fmath};
 
 impl Mover {
@@ -22,7 +22,7 @@ impl Mover {
     /// give as 0; the old pather would keep its last area and hulls for 1), whose path to the
     /// goal or into the range (a result below 2) answers yes. Otherwise a goal at least a tile from the unit's
     /// footprint (the squared gap, to the target's footprint for a target, at least 1) is the long
-    /// pather's to answer ([`crate::long_path::reaches`], from the unit's tile to the goal's, the
+    /// pather's to answer ([`crate::pathing::long_path::reaches`], from the unit's tile to the goal's, the
     /// planner's other arguments unset: no path, the reach within a tile, no player's objects); a
     /// nearer one is not reached. `master` is the unit's master's id (42 moves for the long
     /// pather without a speed).
@@ -90,7 +90,7 @@ impl Mover {
                 return Ok(false);
             }
             let gap = footprint_gap(me.position, ground, t.position, t.radius);
-            Some(crate::long_path::LongTarget::new(
+            Some(crate::pathing::long_path::LongTarget::new(
                 t.position, t.radius, gap, gap2,
             ))
         } else {
@@ -123,7 +123,7 @@ impl Mover {
             .filter(|p| p.tall)
             .map(|p| [p.position[0] as i32, p.position[1] as i32])
             .collect();
-        let req = crate::long_path::LongRequest {
+        let req = crate::pathing::long_path::LongRequest {
             from: [
                 crate::checkpoint::cvttss2si(x),
                 crate::checkpoint::cvttss2si(y),
@@ -142,7 +142,7 @@ impl Mover {
             near_player: false,
             allies: world.get(me.id).map_or(0, |p| world.allies_of(p.player)),
         };
-        crate::long_path::reaches(world.tiles(), world.map, &req)
+        crate::pathing::long_path::reaches(world.tiles(), world.map, &req)
     }
 
     /// The test before a non-quiet `MoveTo`'s path end follows its moved target (`0x140aa2a70` in

@@ -29,8 +29,8 @@
 
 use crate::GenieError;
 use crate::math::fmath::Vec3;
+use crate::pathing::tile_path::Path;
 use crate::spatial::{BLOCKED, Tiles};
-use crate::tile_path::Path;
 
 /// The search expands at most this many tiles (`FUN_140f9eb70`: `20000 < n` breaks).
 const MOST_EXPANSIONS: i32 = 20000;

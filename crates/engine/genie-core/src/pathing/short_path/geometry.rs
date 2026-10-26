@@ -1,8 +1,8 @@
 //! The fixed-point geometry: a shrunk rectangle's corners and sides, a contact's point, the
 //! segment and ray hits.
 
-use crate::mesh::Rect;
-use crate::short_path::Point;
+use crate::pathing::mesh::Rect;
+use crate::pathing::short_path::Point;
 
 /// `FUN_140fa8460`: corner `k` of `r` shrunk by `d`.
 pub(super) const fn shrunk_corner(r: Rect, k: u32, d: i32) -> Point {

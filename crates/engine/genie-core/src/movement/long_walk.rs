@@ -1,15 +1,15 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
-use crate::hull_path::HullPather;
 use crate::math::fmath::Vec3;
 use crate::movement::{
     EPSILON, INCLUDED, NEW_PATHER_RADIUS, PLANS, Planning, footprint_gap, footprint_gap_squared,
 };
+use crate::pathing::hull_path::HullPather;
+use crate::pathing::short_path::{Call, Entry, Listed};
+use crate::pathing::tile_path::{Path, Request};
 use crate::pathing::{Pathing, PlanBudget};
-use crate::short_path::{Call, Entry, Listed};
 use crate::spatial::{Placed, Spatial};
-use crate::tile_path::{Path, Request};
-use crate::{GenieError, math::fmath, short_path};
+use crate::{GenieError, math::fmath, pathing::short_path};
 
 /// How a step relates to its waypoint (slot 196, `0x14114f400`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,7 +122,7 @@ pub(crate) fn long_path_for(
     let long_target = target.map(|(_, t)| {
         let gap2 = footprint_gap_squared(walker.position, walker.radius, t.position, t.radius);
         let gap = footprint_gap(walker.position, walker.radius, t.position, t.radius);
-        crate::long_path::LongTarget::new(t.position, t.radius, gap, gap2)
+        crate::pathing::long_path::LongTarget::new(t.position, t.radius, gap, gap2)
     });
     let listed = lowered_units(walker, world, target.map(|(id, _)| id));
     let lowered = listed
@@ -131,7 +131,7 @@ pub(crate) fn long_path_for(
         .filter(|p| p.tall)
         .map(|p| [p.position[0] as i32, p.position[1] as i32])
         .collect();
-    let req = crate::long_path::LongRequest {
+    let req = crate::pathing::long_path::LongRequest {
         from: [from[0] as i32, from[1] as i32],
         to: [to[0] as i32, to[2] as i32],
         range,
@@ -146,7 +146,7 @@ pub(crate) fn long_path_for(
             .get(walker.id)
             .map_or(0, |p| world.allies_of(p.player)),
     };
-    crate::long_path::path(world.tiles(), world.map, &req, walker.position[2])
+    crate::pathing::long_path::path(world.tiles(), world.map, &req, walker.position[2])
 }
 
 /// The tile pathfinder (`FUN_140f7c530`) for `walker` from `from` (x, y on the map) to `to`,

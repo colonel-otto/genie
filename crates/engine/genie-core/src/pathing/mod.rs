@@ -9,11 +9,18 @@
 //! and every change of a static record's tiles rebuilds the planners' cells over them (the
 //! manager's callback `FUN_140f7d4b0` -> `FUN_140f7e4b0`).
 
-use crate::mesh::{Mesh, ONE, Rect};
-use crate::short_path::Pather;
+use crate::pathing::mesh::{Mesh, ONE, Rect};
+use crate::pathing::short_path::Pather;
+use crate::pathing::tile_path::Planner;
 use crate::spatial::{BLOCKED, Placed, Tiles};
-use crate::tile_path::Planner;
 use std::collections::BTreeMap;
+
+pub mod hull_path;
+pub mod long_path;
+pub mod mesh;
+pub mod short_path;
+pub mod tile_path;
+pub mod zones;
 
 /// What a planner is built from and the planners built so far.
 #[derive(Clone, Debug, Default, PartialEq)]

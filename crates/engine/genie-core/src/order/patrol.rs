@@ -240,7 +240,7 @@ impl Turns {
             let restriction = u.mover.as_ref().map(|m| m.stats.restriction);
             let tiles = self.spatial.tiles();
             if let Some(planner) = restriction.and_then(|r| self.pathing.planner(r, tiles)) {
-                let req = crate::tile_path::Request {
+                let req = crate::pathing::tile_path::Request {
                     from,
                     to: [at[0], at[2]],
                     radii: 0.0,
@@ -248,7 +248,7 @@ impl Turns {
                     closed: Vec::new(),
                     full: false,
                 };
-                let mut path = crate::tile_path::Path::default();
+                let mut path = crate::pathing::tile_path::Path::default();
                 if planner
                     .plan::<GenieError>(&req, false, &mut path, None)?
                     .code()

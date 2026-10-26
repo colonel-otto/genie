@@ -194,16 +194,16 @@ pub(crate) fn meeting_point(
     t: &MeetingTarget,
     unit: (i32, [f32; 3], &crate::movement::MoveStats),
     spatial: &crate::spatial::Spatial,
-    zones: &mut crate::zones::Zones,
+    zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
     let (id, [ux, uy, _], stats) = unit;
     let terrain = spatial.terrain.as_ref();
     let landing = || {
-        let terrain = terrain.ok_or(crate::zones::NO_TERRAIN)?;
+        let terrain = terrain.ok_or(crate::pathing::zones::NO_TERRAIN)?;
         let values = terrain
             .restrictions
             .get(stats.restriction)
-            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+            .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
         let [w, h] = spatial.map;
         let map = zones.of(w, h, &terrain.kinds, values);
         let own = map.zone(cvttss2si(ux), cvttss2si(uy));
@@ -279,7 +279,7 @@ pub(crate) fn enter_reach(
 #[allow(clippy::type_complexity)]
 pub(crate) fn enter_view(
     spatial: &crate::spatial::Spatial,
-    zones: &mut crate::zones::Zones,
+    zones: &mut crate::pathing::zones::Zones,
     masters: &[Masters],
     unit: &crate::turn::Unit,
     (t, tm, room): (&crate::turn::Unit, &Master, bool),

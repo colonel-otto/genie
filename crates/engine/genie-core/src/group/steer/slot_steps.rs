@@ -74,7 +74,7 @@ impl Turns {
                 construction_rate: 0.0,
                 groups: &self.groups,
             };
-            let mut path = crate::tile_path::Path::default();
+            let mut path = crate::pathing::tile_path::Path::default();
             let r = crate::movement::short_path_for(
                 walker,
                 [at[0], at[2]],

@@ -228,7 +228,7 @@ impl Unit {
     pub(crate) fn transport_sail(
         &mut self,
         point: [f32; 3],
-        (spatial, zones, pathing): (&Spatial, &mut crate::zones::Zones, &mut Pathing),
+        (spatial, zones, pathing): (&Spatial, &mut crate::pathing::zones::Zones, &mut Pathing),
         (masters, graphics, sprite_rng): (
             Option<&Masters>,
             &std::collections::BTreeMap<i16, Graphic>,

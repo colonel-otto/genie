@@ -40,13 +40,13 @@ pub use self::path_points::{
 #[cfg(test)]
 use crate::GenieError;
 #[cfg(test)]
-use crate::hull_path::HullPather;
-#[cfg(test)]
 use crate::math::rng::Well512;
 #[cfg(test)]
-use crate::pathing::{Pathing, PlanBudget};
+use crate::pathing::hull_path::HullPather;
 #[cfg(test)]
-use crate::tile_path::Path;
+use crate::pathing::tile_path::Path;
+#[cfg(test)]
+use crate::pathing::{Pathing, PlanBudget};
 
 /// The velocity data (`+0x868`): velocity and acceleration in the unit's own frame; component 2 is
 /// along the forward vector.
