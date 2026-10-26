@@ -5,9 +5,9 @@ use crate::math::rng::{Stream, Well512};
 use crate::objects::masters::Masters;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
-use crate::turn::world::Releaser;
 use crate::unit_ai::world_view::{AiWork, Context};
 use crate::unit_ai::{Effect, GenieError};
+use crate::world::lookups::Releaser;
 
 impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
@@ -86,14 +86,14 @@ impl Unit {
     }
 
     /// The action list's deletion (`FUN_140a98620`), the one every caller shares (the unit's
-    /// death, its stops and commands, [`crate::turn::Turns::clear_actions`]): each action's
+    /// death, its stops and commands, [`crate::world::Turns::clear_actions`]): each action's
     /// destructor. A `MoveTo`'s (`FUN_140aa1f30`, an action's sub-action's too) stops the unit
     /// (slot 0x5d0). The base teardown (`FUN_140a73fc0`) lets the target go (slot 0x180) unless
     /// the action is quiet (`+0x60`; the Hunt's Attack is, so only the Hunt lets its target go),
     /// then the second target, into `releases` with the unit as `by`. The Build's
     /// (`FUN_140aadbf0`) first takes a counted builder (`+0x68`) out of its building's builders
     /// (`FUN_140aaddb0`, `+0x9e8`), its foundation into `builder_leaves`
-    /// ([`crate::turn::Turns::leave_builders`]), as the Repair's (`FUN_140ad8fd0`) a counted
+    /// ([`crate::world::Turns::leave_builders`]), as the Repair's (`FUN_140ad8fd0`) a counted
     /// repairer (`+0x6c`) its target's; the Artifact's (`FUN_140aab0d0`) lets its
     /// target go and its `MoveTo`'s stops the unit; the Fly's (`FUN_140a84750`) gives the unit
     /// its top speed as its animation speed (slot 0x208 into `+0x7b8`); the missile's lets its

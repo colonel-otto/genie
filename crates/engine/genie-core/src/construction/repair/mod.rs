@@ -131,7 +131,7 @@ pub struct RepairView<'a> {
     pub target: Option<Repairee>,
     /// The repairer's place and its master's radii.
     pub radius: [f32; 2],
-    /// The game mode is one of `FUN_141302540`'s ([`crate::turn::scenario_mode`]).
+    /// The game mode is one of `FUN_141302540`'s ([`crate::world::scenario_mode`]).
     pub scenario: bool,
     /// The repairer's work rate: its `mWorkRatePowerup` (`+0xa30`, slot 0x6e8) plus its master's
     /// `work_rate` (`+0x798`), in that order.

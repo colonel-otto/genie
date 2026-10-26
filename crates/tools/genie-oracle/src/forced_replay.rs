@@ -9,7 +9,7 @@ use crate::{
     tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit, watch_at_load,
 };
 use genie_core::GenieError;
-use genie_core::turn::Turns;
+use genie_core::world::Turns;
 use genie_rec::de;
 use genie_save::Header;
 
@@ -171,7 +171,7 @@ pub fn command_phase(
 /// The forced replay's continuous mode (FD-008, CONTINUE.md): genie-core from the game's save
 /// after `start` (with its dumps), then `ticks` updates, each compared with the game's save after
 /// it (`save_after(update)`, which may end the run early with None) and then forced to the game's
-/// state where the slice did not model it or got it wrong ([`genie_core::turn::Turns::force`]: the
+/// state where the slice did not model it or got it wrong ([`genie_core::world::Turns::force`]: the
 /// frame seed, the frozen and the differing objects, a stopped player, the sight, and what the
 /// game's dumps after the update hold, `dump_after(update, extension)`: the tiles' object lists
 /// (`tiles`) and the recycled missiles (`pools`), whose differences are Gaia's). The objects the
@@ -428,7 +428,7 @@ pub fn forced_run(
 /// slice, Gaia for the world's list and counter.
 pub(super) fn group_owner(
     turns: &Turns,
-    game: &genie_core::turn::GameState,
+    game: &genie_core::world::GameState,
     difference: &str,
 ) -> u32 {
     let id = difference
@@ -495,13 +495,13 @@ pub struct Times {
     pub force: std::time::Duration,
 }
 
-/// The game's state in a save as the slice's units ([`genie_core::turn::GameState`]).
+/// The game's state in a save as the slice's units ([`genie_core::world::GameState`]).
 pub(super) fn game_state(
     header: &Header,
     masters: Option<&MasterTable>,
-) -> genie_core::turn::GameState {
+) -> genie_core::world::GameState {
     let world = &header.world.base_world;
-    let mut game = genie_core::turn::GameState {
+    let mut game = genie_core::world::GameState {
         frame_seed: world.current_frame_random_seed,
         next_reusable_id: world.next_reusable_object_id,
         game_state: u32::from(world.temp_game_state),

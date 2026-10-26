@@ -5,8 +5,8 @@ use crate::orders::{
     CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
     offset_point, readiness, set_differentiator_groups,
 };
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 impl Turns {
     /// One unit of INTERACT: an object that does not move takes the order at once (slot 0x128,
@@ -37,7 +37,7 @@ impl Turns {
         };
         // the command's check (`FUN_140e55250`, [`Turns::checked_units`]) dropped another
         // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
-        // other's units ([`crate::settings::Settings::cheats_enabled`]); the lookup itself has
+        // other's units ([`crate::world::settings::Settings::cheats_enabled`]); the lookup itself has
         // no owner test (`FUN_140e6b750`): such a unit takes the order as its own player's, the
         // issuer only queuing it
         let issuer = player;

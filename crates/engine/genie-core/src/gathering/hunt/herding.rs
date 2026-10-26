@@ -47,7 +47,7 @@ impl HuntAction {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(crate::turn::HUNTER_UNMOVING)?;
+            .ok_or(crate::world::HUNTER_UNMOVING)?;
         if !crate::combat::attack::face_target(
             mover,
             at,
@@ -101,7 +101,7 @@ impl HuntAction {
             .mover
             .as_deref()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-            .ok_or(crate::turn::HUNTER_UNMOVING)?;
+            .ok_or(crate::world::HUNTER_UNMOVING)?;
         if footprint_gap_squared(at, ground, v, strike.victim.radius) <= LEAD_REACH {
             self.lead.start = [v[0], v[1]];
             self.face_animal(&mut walk, strike)?;

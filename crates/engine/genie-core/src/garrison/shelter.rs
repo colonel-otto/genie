@@ -9,7 +9,7 @@ use crate::garrison::{
 };
 use crate::movement::footprint_gap_squared;
 use crate::orders::{BUILDING, GARRISON, Work};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
 /// (`param_4`), and the count list (`param_5`) its pairs index by their shelter's index, a
@@ -93,7 +93,7 @@ impl Turns {
 
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`), after the command's check (`FUN_140e558b0`): of
     /// the first 60 `ids` (500 for a computer player), an id the world does not hold, and another
-    /// player's unit unless players may order each other's ([`crate::settings::Settings::cheats_enabled`],
+    /// player's unit unless players may order each other's ([`crate::world::settings::Settings::cheats_enabled`],
     /// `+0x1074`), are dropped ([`Turns::checked_units`]); with every id dropped the command does
     /// nothing. Of the others, the villagers (class 4 of type 70) and the units of master 1808
     /// seek shelter (a villager of master 1808 is listed twice) in the player's buildings that
@@ -313,7 +313,7 @@ impl Turns {
     pub(super) fn ai_takes(
         &self,
         bp: usize,
-        b: &crate::turn::Unit,
+        b: &crate::world::Unit,
         player: usize,
         master: i16,
     ) -> Result<bool, GenieError> {

@@ -10,9 +10,9 @@ use crate::production::spawn::{
     BUILDING, Facing, NOT_MOVING, Placing, Site, TRIBE_COMBAT, WALL, WorldMap, corner_tiles,
     placement, spawn_point,
 };
-use crate::turn::{Turns, Unit};
 use crate::unit_ai::{GenieError, factory_type};
 use crate::vision::visibility::{Seer, capture_kind};
+use crate::world::{Turns, Unit};
 
 impl Turns {
     /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`

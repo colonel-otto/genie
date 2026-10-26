@@ -71,7 +71,7 @@ pub(crate) fn show_arrived(
     anim_speed: &mut Option<f32>,
     rng: &mut Well512,
 ) -> Result<(), GenieError> {
-    let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
+    let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
     set_sprite(sprite, g, rng);
     if let Some(a) = anim_speed.as_mut() {
         *a = 0.0;

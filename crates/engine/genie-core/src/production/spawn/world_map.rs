@@ -1,8 +1,8 @@
 //! The map as the placement test reads it from the world ([`WorldMap`]).
 
 use crate::production::spawn::{Near, PlaceMap};
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 /// The map as the spawn's placement test reads it: the terrain, the players' sight and the
 /// objects with what their units and masters say.

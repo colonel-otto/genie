@@ -6,7 +6,7 @@
 use crate::groups::Motion;
 use crate::math::fmath::{self, Vec3};
 use crate::movement::Walker;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 mod levels;
 mod request;
@@ -99,7 +99,7 @@ impl LeadGroup {
 impl Turns {
     /// Slot 0x280 (`FUN_141082d60`): the id of the object the unit's top action targets
     /// (`FUN_140a78450`: an id above -1 that the world holds), else -1.
-    pub(crate) fn top_target_object(&self, u: &crate::turn::Unit) -> i32 {
+    pub(crate) fn top_target_object(&self, u: &crate::world::Unit) -> i32 {
         u.top_target()
             .filter(|&t| -1 < t && self.object(t).is_some())
             .unwrap_or(-1)

@@ -2,8 +2,8 @@
 
 use crate::math::rng::Stream;
 use crate::orders::{AUTO_SCOUT_CLASS, BUILDING, Place, lock_gate, set_stance};
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 impl Turns {
     /// `UNIT_AI_STATE` (`do_command` case 0x12): the check ([`Turns::command_check`]), then
@@ -72,7 +72,7 @@ impl Turns {
 
     /// GATE (`do_command` case 0x72): the command's check refuses an object `id` the world does
     /// not hold, or another player's while players may not order each other's units (the
-    /// setting `+0x1074`, [`crate::settings::Settings::cheats_enabled`]; the world's `+0xb12` cheat is not held).
+    /// setting `+0x1074`, [`crate::world::settings::Settings::cheats_enabled`]; the world's `+0xb12` cheat is not held).
     /// The object, live or sleeping (`FUN_1415417a0`), of a master of type 80 toggles its gate
     /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
     /// and the UI's flag are not held.
@@ -267,7 +267,7 @@ impl Turns {
     /// The check of a command on units (STOP's `FUN_140e55a30` and `UNIT_AI_STATE`'s `FUN_140e55d30`,
     /// twins of `FUN_140e558b0`) of the ids of `player`: of the first 60 (500 for a computer,
     /// `FUN_141659cf0`) an id the world does not hold, or another player's without the setting
-    /// `+0x1074` ([`crate::settings::Settings::cheats_enabled`]), becomes -1; the ids past them stay unchecked. A
+    /// `+0x1074` ([`crate::world::settings::Settings::cheats_enabled`]), becomes -1; the ids past them stay unchecked. A
     /// human's command whose checked ids all went is refused (None).
     /// The packet's own tests (its size, a player the game lacks) are the decoder's, and the
     /// world's `+0xb12` (the cheat that would let either through) is not held.

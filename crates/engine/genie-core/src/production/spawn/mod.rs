@@ -32,9 +32,9 @@ pub(crate) use self::world_map::WorldMap;
 #[cfg(test)]
 use crate::objects::lifecycle::Lifecycle;
 #[cfg(test)]
-use crate::turn::{GatherPoint, Turns, Unit};
-#[cfg(test)]
 use crate::unit_ai::GenieError;
+#[cfg(test)]
+use crate::world::{GatherPoint, Turns, Unit};
 
 /// A unit smaller than this on both axes (`DAT_142f5d120`) steps by twice its radius plus
 /// `GAP` (`DAT_142eb5690`).
@@ -81,7 +81,7 @@ const CURRENT_AGE: i16 = 6;
 
 /// How a new plain object ([`Turns::plain_object`]) that moves faces.
 ///
-/// [`Turns::plain_object`]: crate::turn::Turns::plain_object
+/// [`Turns::plain_object`]: crate::world::Turns::plain_object
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Facing {
     /// Its drawn angle (the moving setup's, `FUN_141141640`).

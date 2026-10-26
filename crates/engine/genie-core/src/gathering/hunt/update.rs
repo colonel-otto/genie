@@ -81,7 +81,7 @@ impl HuntAction {
                         let mover = walk
                             .mover
                             .as_deref_mut()
-                            .ok_or(crate::turn::HUNTER_UNMOVING)?;
+                            .ok_or(crate::world::HUNTER_UNMOVING)?;
                         self.set_point_walk(WALK_SEARCH, mover)
                     }
                 }
@@ -91,7 +91,7 @@ impl HuntAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(crate::turn::HUNTER_UNMOVING)?;
+                    .ok_or(crate::world::HUNTER_UNMOVING)?;
                 self.wait_then_walk(walk.dt, mover)
             }
             WALK => match self.move_to {
@@ -176,7 +176,7 @@ impl HuntAction {
                     self.move_to = None;
                     walk.mover
                         .as_deref_mut()
-                        .ok_or(crate::turn::HUNTER_UNMOVING)?
+                        .ok_or(crate::world::HUNTER_UNMOVING)?
                         .stop()?;
                     self.decay_check(gather.stops_decay, strike.victim);
                     self.set_face(walk, strike, gather, herd)
@@ -196,7 +196,7 @@ impl HuntAction {
                 let mover = walk
                     .mover
                     .as_deref_mut()
-                    .ok_or(crate::turn::HUNTER_UNMOVING)?;
+                    .ok_or(crate::world::HUNTER_UNMOVING)?;
                 if !crate::combat::attack::face_target(
                     mover,
                     at,
@@ -260,7 +260,7 @@ impl HuntAction {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(crate::turn::HUNTER_UNMOVING)?;
+            .ok_or(crate::world::HUNTER_UNMOVING)?;
         self.set_point_walk(WALK_SEARCH, mover)
     }
 
@@ -273,7 +273,7 @@ impl HuntAction {
         strike: &mut Strike<'_>,
         herd: &Herd,
     ) -> Result<(), GenieError> {
-        let mover = walk.mover.ok_or(crate::turn::HUNTER_UNMOVING)?;
+        let mover = walk.mover.ok_or(crate::world::HUNTER_UNMOVING)?;
         self.move_to = None;
         self.state = ATTACK;
         let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;

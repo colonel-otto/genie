@@ -4,7 +4,7 @@
 
 use crate::GenieError;
 use crate::math::fmath::maxss;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count
 /// of the market, 84, or of 1647 above 0).
@@ -112,7 +112,7 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::objects::masters::{Master, Masters};
-    use crate::turn::Player;
+    use crate::world::Player;
 
     fn gift(attribute: u16, amount: f32, fee: f32) -> Gift {
         Gift {

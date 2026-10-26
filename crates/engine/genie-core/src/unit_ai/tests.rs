@@ -2488,7 +2488,7 @@ fn a_computer_s_unit_weighs_its_target_against_its_attacker() {
         (7, duel(false, 5.0, 10.0, 50.0)),
     ];
     let wonder = UnitSeen {
-        master: crate::turn::WONDER,
+        master: crate::world::WONDER,
         ..foe(9, 3)
     };
     assert_eq!(run(&at, foe(7, 6), wonder, fair.clone()).0, GO_ON);

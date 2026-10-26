@@ -4,9 +4,9 @@ use crate::combat::attack::{Arms, Engagement};
 use crate::gathering::hunt::{HuntAction, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
-use crate::turn::{Turns, World};
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER};
+use crate::world::{Turns, World};
 
 impl Turns {
     /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target
@@ -404,11 +404,11 @@ impl Turns {
         let me = self
             .spatial
             .get(unit.id)
-            .ok_or(crate::turn::ATTACKER_UNPLACED)?;
+            .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let them = self
             .spatial
             .get_known(target)?
-            .ok_or(crate::turn::TARGET_UNPLACED)?;
+            .ok_or(crate::world::TARGET_UNPLACED)?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
         crate::combat::attack::engagement(
             unit.ai.as_ref(),
@@ -455,7 +455,7 @@ impl Turns {
         let computer = self.players[player].computer;
         let carry_rule = self.settings.carry_rule();
         let unit = &mut self.players[player].objects[idx];
-        let mover = unit.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
+        let mover = unit.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             task,
@@ -472,7 +472,7 @@ impl Turns {
         // an Attack whose MoveTo started arrived: the unit shows the idle sprite (slot 0x68) and
         // its `+0x7b8` clears (`Attack::arrived_sprite`)
         if arrived {
-            let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
+            let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
             crate::combat::attack::set_sprite(
                 &mut unit.sprite,
                 g,

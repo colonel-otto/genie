@@ -3,8 +3,8 @@
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
-use crate::turn::{Turns, Unit};
 use crate::unit_ai::GenieError;
+use crate::world::{Turns, Unit};
 
 impl Turns {
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
@@ -56,7 +56,7 @@ impl Turns {
             self.players[player].objects[idx]
                 .mover
                 .as_mut()
-                .ok_or(crate::turn::WALKER_UNMOVING)?
+                .ok_or(crate::world::WALKER_UNMOVING)?
                 .stop()?;
         }
         Ok(())
@@ -95,8 +95,8 @@ impl Turns {
         // the animal's own place (+0x3c8, +0x4c8), truncated; send_to_site found it live
         let at = self.object(sheep).expect("sent to the site").1.position;
         let (x, y) = (
-            crate::checkpoint::cvttss2si(at[0]),
-            crate::checkpoint::cvttss2si(at[1]),
+            crate::world::checkpoint::cvttss2si(at[0]),
+            crate::world::checkpoint::cvttss2si(at[1]),
         );
         let [w, h] = self.spatial.map;
         let (x0, x1) = ((x - 3).max(0), if x + 3 < w { x + 3 } else { w - 1 });
@@ -252,7 +252,7 @@ impl Turns {
                 let mut unit =
                     std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
                 let player = &self.players[p];
-                let world = crate::turn::DropWorld {
+                let world = crate::world::DropWorld {
                     masters: self.masters.get(p),
                     spatial: &self.spatial,
                     zones: &mut self.zones,
@@ -329,7 +329,7 @@ impl Turns {
             }
             let mut unit = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
             let player = &self.players[p];
-            let world = crate::turn::DropWorld {
+            let world = crate::world::DropWorld {
                 masters: self.masters.get(p),
                 spatial: &self.spatial,
                 zones: &mut self.zones,

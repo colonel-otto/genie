@@ -229,7 +229,7 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let attacker_id = attacker.id;
-        if target.master == crate::turn::WONDER
+        if target.master == crate::world::WONDER
             || (target.class == 52 && attacker.class == 52)
             || attacker.kind == 60
             || (attacker.class == 52

@@ -26,7 +26,7 @@ pub struct BuildSite<'a> {
     /// The world's zone mode (`+0x820`, `FUN_1415e8e10`).
     pub zones: bool,
     /// The objects the scan passes over (`p12` and, for a building, its annexes, `FUN_14123d090`):
-    /// none for BUILD, a reseeding gatherer's old target ([`crate::turn::Turns::reseed`]).
+    /// none for BUILD, a reseeding gatherer's old target ([`crate::world::Turns::reseed`]).
     pub own: &'a [i32],
 }
 

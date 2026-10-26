@@ -3,10 +3,10 @@
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning};
 use crate::objects::unit::Unit;
-use crate::turn::world::{SideWorld, task_search, task_target_with};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::world_view::{AiStart, EnterOrder, RepairOrder, UnitView};
+use crate::world::lookups::{SideWorld, task_search, task_target_with};
 
 impl UnitView<'_> {
     /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the
@@ -38,10 +38,10 @@ impl UnitView<'_> {
                 .push(AiStart::Repair(RepairOrder::Retake(target)));
             return Ok(true);
         }
-        let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
+        let masters = self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = masters
             .get(unit.life.master_id)
-            .ok_or(crate::turn::UNIT_AI_MASTER)?;
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
         let switch = crate::construction::repair::REPAIRERS
             .iter()
             .find(|&&(group, _)| group == own.task_by_group)
@@ -114,10 +114,10 @@ impl UnitView<'_> {
         };
         let under_artifact =
             unit.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE);
-        let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
+        let masters = self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = masters
             .get(unit.life.master_id)
-            .ok_or(crate::turn::UNIT_AI_MASTER)?;
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
         let (Some(t), Some(general)) = (
             task_target_with(target, 1, &find, self.every)?,
             task_target_with(target, 2, &find, self.every)?,

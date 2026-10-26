@@ -1,14 +1,14 @@
 //! createColumnLine (`FUN_141012280`): the sizes and the slots of its sub-formations.
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
 use crate::groups::formation::{
     CATEGORIES, COLUMN, EPSILON, FLANK_SPACING, FLANKED, LINE, STAGGER_SHARE, STAGGERED, TWO,
 };
 use crate::groups::layout::{clear_line, reset_line};
 use crate::groups::{Formation, Slot, UnitGroup};
 use crate::math::fmath::{Vec3, add, scale, sub};
-use crate::turn::Turns;
+use crate::world::Turns;
+use crate::world::checkpoint::cvttss2si;
 
 /// What createColumnLine reads of one sub-formation's statistic.
 #[derive(Clone, Debug)]
@@ -78,7 +78,7 @@ pub(super) fn sizes(count: i32, by_line: bool) -> (i32, i32) {
 /// The roots and the line counts are the CRT's `ceilf` (the ucrtbase import at 0x142a8e728),
 /// for which `f32::ceil` stands: both are exact (the result is the integer above, a NaN stays
 /// NaN); `CVTTSS2SI` then makes a NaN or an infinity `i32::MIN`
-/// ([`crate::checkpoint::cvttss2si`]), which the clamps to 1 take in.
+/// ([`crate::world::checkpoint::cvttss2si`]), which the clamps to 1 take in.
 ///
 /// # Panics
 ///

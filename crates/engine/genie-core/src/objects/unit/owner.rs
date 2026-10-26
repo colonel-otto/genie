@@ -6,9 +6,9 @@ use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::objects::masters::Masters;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{UNPACKED_TREBUCHET, Unit};
-use crate::turn::world::{Releaser, change_hands};
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{AiMove, GenieError};
+use crate::world::lookups::{Releaser, change_hands};
 
 impl Unit {
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,
@@ -147,7 +147,7 @@ impl Unit {
 
     /// The ownership change (slot 0x70, [`change_hands`]) of the unit, from its owner to `new`:
     /// false when `new` has not its master. A building's (`FUN_1411cd860`) is the caller's after
-    /// the update, whole ([`Captured::building`], [`crate::turn::Turns::building_changes_hands`]),
+    /// the update, whole ([`Captured::building`], [`crate::world::Turns::building_changes_hands`]),
     /// whether or not `new` has its master.
     pub(crate) fn change_owner(
         &mut self,
@@ -202,7 +202,7 @@ impl Unit {
     }
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on a move to `m.point` its unit AI gives it (also
-    /// its move off a footprint, [`crate::turn::Turns::move_aside`]), the unit of `class` of
+    /// its move off a footprint, [`crate::world::Turns::move_aside`]), the unit of `class` of
     /// player `player`. An unpacked trebuchet (class 54) packs instead (its Pack action,
     /// `FUN_140ad4ff0` through slot 0x808), which is not modelled; a packed one (class 51) whose
     /// head action packs or unpacks (types `0x7c`, `0x7d`) does nothing, and the slice holds no such
@@ -320,7 +320,7 @@ impl Unit {
                 if gone.stops {
                     self.mover
                         .as_mut()
-                        .ok_or(crate::turn::WALKER_UNMOVING)?
+                        .ok_or(crate::world::WALKER_UNMOVING)?
                         .stop()?;
                 }
                 // the Enter it held lets its building or transport go
@@ -492,7 +492,7 @@ pub(crate) enum PointMove {
     /// if any, which the caller releases.
     Taken(Option<i32>),
     /// A Repair answered 1 (`FUN_140ad9700`): it walks to the point; the target it let go, and
-    /// the target whose repairers a counted repairer left ([`crate::turn::Turns::leave_builders`]).
+    /// the target whose repairers a counted repairer left ([`crate::world::Turns::leave_builders`]).
     Repairs(Option<i32>, Option<i32>),
     /// The Transport answers 1 (`0x140aa3e40`): it sails to the point, which the caller runs
     /// with the map ([`Unit::transport_sail`]).
@@ -607,7 +607,7 @@ pub(crate) struct Captured {
     pub(crate) main: bool,
     pub(crate) also: Vec<i32>,
     /// The object is a building: its slot 0x70 (`FUN_1411cd860`) is the caller's, whole
-    /// ([`crate::turn::Turns::building_changes_hands`]); `main` says whether the new owner has
+    /// ([`crate::world::Turns::building_changes_hands`]); `main` says whether the new owner has
     /// its master.
     pub(crate) building: bool,
 }
@@ -642,7 +642,7 @@ impl crate::technology::Attributes for PaidAttributes {
             .ok()
             .and_then(|k| self.values.get(k))
             .copied()
-            .ok_or(crate::turn::NO_ATTRIBUTE)
+            .ok_or(crate::world::NO_ATTRIBUTE)
     }
 
     fn set(&mut self, _: i16, _: f32) -> Result<(), GenieError> {
@@ -655,7 +655,7 @@ impl crate::technology::Attributes for PaidAttributes {
         let v = usize::try_from(i)
             .ok()
             .and_then(|k| self.values.get_mut(k))
-            .ok_or(crate::turn::NO_ATTRIBUTE)?;
+            .ok_or(crate::world::NO_ATTRIBUTE)?;
         *v -= amount;
         self.adds.push((i, -amount));
         Ok(())

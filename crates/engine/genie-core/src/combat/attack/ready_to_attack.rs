@@ -86,7 +86,7 @@ impl Attack {
         let speed = walk
             .mover
             .as_deref()
-            .ok_or(crate::turn::ATTACKER_UNMOVING)?
+            .ok_or(crate::world::ATTACKER_UNMOVING)?
             .stats
             .speed;
         if target_unseen(walk.world, s, &t)? {
@@ -103,7 +103,7 @@ impl Attack {
         let mover = walk
             .mover
             .as_deref_mut()
-            .ok_or(crate::turn::ATTACKER_UNMOVING)?;
+            .ok_or(crate::world::ATTACKER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(at, ground, t.position, t.radius);
         let near = if self.range <= NO_RANGE {

@@ -3,10 +3,10 @@
 
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
-use crate::turn::player::Player;
 use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::world_view::Foreign;
+use crate::world::player::Player;
 
 /// The players' relations and the drop sites, as the task finder reads them.
 pub(crate) struct World<'a> {
@@ -100,7 +100,7 @@ pub(crate) fn task_target_with<'a>(
     let master = every
         .get(player)
         .and_then(|m| m.get(u.life.master_id))
-        .ok_or(crate::turn::OBJECT_MASTER)?;
+        .ok_or(crate::world::OBJECT_MASTER)?;
     let [powerup, max_powerup] = u.hp_powerups;
     Ok(Some(TaskTarget {
         id,

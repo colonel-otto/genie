@@ -4,10 +4,10 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::unit::Unit;
-use crate::turn::world::herded;
-use crate::turn::{SEARCH_AGAIN, SEARCH_NEEDED};
 use crate::unit_ai::world_view::{Context, DropWorld};
 use crate::unit_ai::{GenieError, Search};
+use crate::world::lookups::herded;
+use crate::world::{SEARCH_AGAIN, SEARCH_NEEDED};
 
 impl Unit {
     /// The Hunt's `set_state(3)` (`0x140ac60e0` case 3) after its target went empty when it faced
@@ -66,7 +66,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::HUNTER_MASTER)?;
+            .ok_or(crate::world::HUNTER_MASTER)?;
         let stand = crate::gathering::hunt::stand_sprite(
             task,
             master.standing_sprite,
@@ -102,7 +102,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::HUNTER_MASTER)?;
+            .ok_or(crate::world::HUNTER_MASTER)?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_none_or(|&d| d == -1) {
@@ -158,7 +158,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::HUNTER_MASTER)?;
+            .ok_or(crate::world::HUNTER_MASTER)?;
         if hunt.target != -1 {
             // back to the target: the drop site goes (FUN_140a7a190 with none), set_state(4)
             let v = c.victim.as_deref().ok_or(GenieError::unsupported(
@@ -265,7 +265,7 @@ impl Unit {
                     "a hunter tending a pasture (FUN_1411c7670)",
                 ));
             }
-            let mover = self.mover.as_ref().ok_or(crate::turn::HUNTER_UNMOVING)?;
+            let mover = self.mover.as_ref().ok_or(crate::world::HUNTER_UNMOVING)?;
             let radius =
                 crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
             let search = Search {
@@ -352,7 +352,7 @@ impl Unit {
                     "a hunt without a point that found nothing after its drop-off (set_state 2)",
                 ));
             }
-            let mover = self.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
+            let mover = self.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
             return hunt.search_walk(mover);
         }
         let foreign = c.foreign;
@@ -482,7 +482,7 @@ impl Unit {
     /// `MoveTo` to it starts ([`HuntAction::set_drop`]).
     ///
     /// [`HuntAction::set_drop`]: crate::gathering::hunt::HuntAction::set_drop
-    /// [`drop_site_search`]: crate::turn::world::drop_site_search
+    /// [`drop_site_search`]: crate::world::lookups::drop_site_search
     pub(crate) fn hunt_drop_off(
         &mut self,
         c: &mut Context<'_>,

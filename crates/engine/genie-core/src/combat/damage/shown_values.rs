@@ -1,11 +1,11 @@
 //! The bonus damage tasks (`FUN_14107ce60`) and the attack, armor and range a combat object
 //! shows.
 
-use crate::checkpoint::cvttss2si;
 use crate::combat::damage::{
     BUILDING, EPSILON, ONE, Victim, charge_hit, charged, master_melee_armor, melee_armor,
     range_charge_hit,
 };
+use crate::world::checkpoint::cvttss2si;
 use crate::{GenieError, math::fmath};
 
 /// The action type of a bonus damage task (`FUN_14107ce60`).

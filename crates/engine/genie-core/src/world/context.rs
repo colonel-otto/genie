@@ -9,11 +9,11 @@ use crate::objects::masters::Masters;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{AiResume, Unit};
 use crate::pathing::Pathing;
-use crate::turn::world::Releaser;
-use crate::turn::{BuildingDeath, Recycling};
 use crate::unit_ai::task_finder::DropSite;
 use crate::unit_ai::world_view::{AiStart, AiWork, Foreign, RepairWrite};
 use crate::unit_ai::{AiMove, GenieError};
+use crate::world::lookups::Releaser;
+use crate::world::{BuildingDeath, Recycling};
 
 pub(crate) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
@@ -125,7 +125,7 @@ pub(crate) struct Context<'a> {
     pub(crate) attributes: &'a [f32],
     /// The owner's food, wood, stone and gold ([`Player::resources`]), which a repair pays from.
     ///
-    /// [`Player::resources`]: crate::turn::player::Player::resources
+    /// [`Player::resources`]: crate::world::player::Player::resources
     pub(crate) resources: [f32; 4],
     /// The graphics, for the sprites a hunter takes.
     pub(crate) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
@@ -135,12 +135,12 @@ pub(crate) struct Context<'a> {
     pub(crate) player: usize,
     pub(crate) civ: u8,
     /// The owner's AI settings (`+0x608`..), which its unit AIs read.
-    pub(crate) ai_settings: crate::turn::player::AiSettings,
+    pub(crate) ai_settings: crate::world::player::AiSettings,
     /// The player shares its gathered resources with its allies (`+0x1426`).
     pub(crate) sharing: bool,
-    /// The game's farm setting ([`crate::settings::Settings::walkable_farms`]).
+    /// The game's farm setting ([`crate::world::settings::Settings::walkable_farms`]).
     pub(crate) farm_stops: bool,
-    /// The game's setting [`crate::settings::Settings::predator_hunts_end`].
+    /// The game's setting [`crate::world::settings::Settings::predator_hunts_end`].
     pub(crate) predator_hunts_end: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
     pub(crate) every_masters: &'a [Masters],
@@ -152,16 +152,16 @@ pub(crate) struct Context<'a> {
     pub(crate) player_turn: usize,
     pub(crate) player_time: &'a [u32],
     pub(crate) computers: &'a [bool],
-    /// Each player's `chance_to_dodge_missiles` ([`crate::turn::Player::dodge_chance`]).
+    /// Each player's `chance_to_dodge_missiles` ([`crate::world::Player::dodge_chance`]).
     pub(crate) dodge_chances: &'a [u8],
     /// Each player's `chance_for_archers_to_maintain_distance`
-    /// ([`crate::turn::Player::keep_distance_chance`]).
+    /// ([`crate::world::Player::keep_distance_chance`]).
     pub(crate) keep_distance_chances: &'a [u8],
     /// Some player's attribute 204 is not 0, which a building's completion reads.
     pub(crate) attribute_204: bool,
     /// [`Turns::mode_680`].
     pub(crate) mode_680: i32,
-    /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
+    /// The game's carry rule ([`crate::world::settings::Settings::carry_rule`]), which a hunt's start
     /// reads.
     pub(crate) carry_rule: bool,
     /// The game mode is one of `FUN_141302540`'s ([`scenario_mode`]).
@@ -251,103 +251,103 @@ pub(crate) struct Context<'a> {
 }
 
 /// What an object's step gathered in its Context for the world to apply after it
-/// ([`crate::turn::Turns::finish_object`]): the Context's fields of the same meaning; the left
+/// ([`crate::world::Turns::finish_object`]): the Context's fields of the same meaning; the left
 /// group carries the unit's id.
 pub(crate) struct ObjectOutputs {
     /// [`Context`]'s `attribute_adds`.
-    pub(in crate::turn) adds: Vec<(i16, f32)>,
+    pub(in crate::world) adds: Vec<(i16, f32)>,
     /// [`Context`]'s `order_on_target`.
-    pub(in crate::turn) ordered: Option<(
+    pub(in crate::world) ordered: Option<(
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
     /// [`Context`]'s `history_events`.
-    pub(in crate::turn) history_events: Vec<u8>,
+    pub(in crate::world) history_events: Vec<u8>,
     /// [`Context`]'s `works`.
-    pub(in crate::turn) works: Vec<AiWork>,
+    pub(in crate::world) works: Vec<AiWork>,
     /// [`Context`]'s `leads`.
-    pub(in crate::turn) leads: Option<(i32, i32)>,
+    pub(in crate::world) leads: Option<(i32, i32)>,
     /// [`Context`]'s `build_command`.
-    pub(in crate::turn) build_command: Option<i32>,
+    pub(in crate::world) build_command: Option<i32>,
     /// [`Context`]'s `reseed`.
-    pub(in crate::turn) reseed: Option<bool>,
+    pub(in crate::world) reseed: Option<bool>,
     /// [`Context`]'s `move_aside`.
-    pub(in crate::turn) move_aside: Vec<AiMove>,
+    pub(in crate::world) move_aside: Vec<AiMove>,
     /// [`Context`]'s `transport_moves`.
-    pub(in crate::turn) transport_moves: Vec<(i32, [f32; 3])>,
+    pub(in crate::world) transport_moves: Vec<(i32, [f32; 3])>,
     /// [`Context`]'s `entered`.
-    pub(in crate::turn) entered: Option<(i32, f32)>,
+    pub(in crate::world) entered: Option<(i32, f32)>,
     /// [`Context`]'s `starts`.
-    pub(in crate::turn) starts: Vec<AiStart>,
+    pub(in crate::world) starts: Vec<AiStart>,
     /// [`Context`]'s `techs_done`.
-    pub(in crate::turn) techs_done: Vec<i16>,
+    pub(in crate::world) techs_done: Vec<i16>,
     /// [`Context`]'s `pastures`.
-    pub(in crate::turn) pastures: Vec<i32>,
+    pub(in crate::world) pastures: Vec<i32>,
     /// [`Context`]'s `carts`.
-    pub(in crate::turn) carts: Vec<(i32, u8)>,
+    pub(in crate::world) carts: Vec<(i32, u8)>,
     /// [`Context`]'s `completions`.
-    pub(in crate::turn) completions:
+    pub(in crate::world) completions:
         Vec<(i32, Option<crate::construction::build::StackUnit>, bool)>,
     /// [`Context`]'s `work_order`.
-    pub(in crate::turn) work_order: Option<crate::orders::Work>,
+    pub(in crate::world) work_order: Option<crate::orders::Work>,
     /// [`Context`]'s `transport_unload`.
-    pub(in crate::turn) transport_unload: bool,
+    pub(in crate::world) transport_unload: bool,
     /// [`Context`]'s `blasted`.
-    pub(in crate::turn) blasted: Vec<Victim>,
+    pub(in crate::world) blasted: Vec<Victim>,
     /// [`Context`]'s `own_killed`.
-    pub(in crate::turn) own_killed: Option<crate::combat::damage::Kill>,
+    pub(in crate::world) own_killed: Option<crate::combat::damage::Kill>,
     /// [`Context`]'s `remains`.
-    pub(in crate::turn) remains: Option<(i16, [f32; 3], Option<u8>)>,
+    pub(in crate::world) remains: Option<(i16, [f32; 3], Option<u8>)>,
     /// [`Context`]'s `refund`.
-    pub(in crate::turn) refund: Vec<(i16, f32)>,
+    pub(in crate::world) refund: Vec<(i16, f32)>,
     /// [`Context`]'s `annex_states`.
-    pub(in crate::turn) annex_states: Vec<(i32, u8)>,
+    pub(in crate::world) annex_states: Vec<(i32, u8)>,
     /// [`Context`]'s `cleared`.
-    pub(in crate::turn) cleared: Vec<crate::construction::build::Cleared>,
+    pub(in crate::world) cleared: Vec<crate::construction::build::Cleared>,
     /// [`Context`]'s `site_removals`.
-    pub(in crate::turn) site_removals: Vec<i32>,
+    pub(in crate::world) site_removals: Vec<i32>,
     /// [`Context`]'s `flares`.
-    pub(in crate::turn) flares: Vec<(usize, [f32; 3], bool)>,
+    pub(in crate::world) flares: Vec<(usize, [f32; 3], bool)>,
     /// [`Context`]'s `promotions`.
-    pub(in crate::turn) promotions: Vec<(i32, i16, i16)>,
+    pub(in crate::world) promotions: Vec<(i32, i16, i16)>,
     /// [`Context`]'s `released_annexes`.
-    pub(in crate::turn) released_annexes: Vec<(i32, f32)>,
+    pub(in crate::world) released_annexes: Vec<(i32, f32)>,
     /// [`Context`]'s `main_works`.
-    pub(in crate::turn) main_works: Vec<(i32, f32)>,
+    pub(in crate::world) main_works: Vec<(i32, f32)>,
     /// [`Context`]'s `building_death`.
-    pub(in crate::turn) building_death: Option<BuildingDeath>,
+    pub(in crate::world) building_death: Option<BuildingDeath>,
     /// [`Context`]'s `pauses`.
-    pub(in crate::turn) pauses: Vec<(i32, f32)>,
+    pub(in crate::world) pauses: Vec<(i32, f32)>,
     /// [`Context`]'s `gate_toggle`.
-    pub(in crate::turn) gate_toggle: bool,
+    pub(in crate::world) gate_toggle: bool,
     /// [`Context`]'s `ai_resume`.
-    pub(in crate::turn) ai_resume: Option<AiResume>,
+    pub(in crate::world) ai_resume: Option<AiResume>,
     /// [`Context`]'s `releases`.
-    pub(in crate::turn) releases: Vec<(i32, Releaser)>,
+    pub(in crate::world) releases: Vec<(i32, Releaser)>,
     /// [`Context`]'s `builder_leaves`.
-    pub(in crate::turn) builder_leaves: Vec<i32>,
+    pub(in crate::world) builder_leaves: Vec<i32>,
     /// [`Context`]'s `left_group`.
-    pub(in crate::turn) left_group: Option<(i32, i32, i32)>,
+    pub(in crate::world) left_group: Option<(i32, i32, i32)>,
     /// [`Context`]'s `takes`.
-    pub(in crate::turn) takes: Vec<(i32, Releaser)>,
+    pub(in crate::world) takes: Vec<(i32, Releaser)>,
     /// [`Context`]'s `made`.
-    pub(in crate::turn) made: Vec<Unit>,
+    pub(in crate::world) made: Vec<Unit>,
     /// [`Context`]'s `ghost_deaths`.
-    pub(in crate::turn) ghost_deaths: Vec<i32>,
+    pub(in crate::world) ghost_deaths: Vec<i32>,
     /// [`Context`]'s `started`.
-    pub(in crate::turn) started: Vec<i32>,
+    pub(in crate::world) started: Vec<i32>,
     /// [`Context`]'s `unwatched`.
-    pub(in crate::turn) unwatched: Vec<i32>,
+    pub(in crate::world) unwatched: Vec<i32>,
     /// [`Context`]'s `evacuations`.
-    pub(in crate::turn) evacuations: Vec<(i32, Vec<i32>)>,
+    pub(in crate::world) evacuations: Vec<(i32, Vec<i32>)>,
     /// [`Context`]'s `repair_writes`.
-    pub(in crate::turn) repair_writes: Vec<RepairWrite>,
+    pub(in crate::world) repair_writes: Vec<RepairWrite>,
 }
 
 impl Context<'_> {
     /// What the step gathered ([`ObjectOutputs`]), taken out of the Context; `id` is the
     /// unit's.
-    pub(in crate::turn) fn outputs(&mut self, id: i32) -> ObjectOutputs {
+    pub(in crate::world) fn outputs(&mut self, id: i32) -> ObjectOutputs {
         ObjectOutputs {
             adds: std::mem::take(&mut self.attribute_adds),
             ordered: self.order_on_target.take(),

@@ -11,9 +11,9 @@
 //! `FUN_1415e23f0`; the revealed units `FUN_14152bcb0`; the tile list's refill `FUN_141285cb0`.
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
 use crate::objects::masters::master_type;
-use crate::turn::Turns;
+use crate::world::Turns;
+use crate::world::checkpoint::cvttss2si;
 
 /// The reveal of a player's units of a kind to the others (its attribute 204 not 0,
 /// `FUN_14152bcb0`): their per-player marks (`+0x798`, `+0x79c`) and flares are not modelled.
@@ -281,7 +281,7 @@ impl Turns {
     }
 
     /// `FUN_1415e23f0`: the world's teams again, unless the options lock them (`mTeamsLocked`,
-    /// [`crate::settings::Settings::teams_locked`]). Every player's team is 1 (alone); then each
+    /// [`crate::world::settings::Settings::teams_locked`]). Every player's team is 1 (alone); then each
     /// player past Gaia still alone, while teams 2 to 5 are left, takes into the next team every
     /// other player still alone it and who count each other as allies (relation 0 both ways) and
     /// who both have allied victory at 1 (`FUN_1416625a0`); with any taken, it joins that team
@@ -350,7 +350,7 @@ const NO_POINT: f32 = crate::math::image::diplomacy::NO_POINT;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::turn::Player;
+    use crate::world::Player;
 
     /// Gaia and three players, all enemies, with the walk's and the queries' copies.
     fn world() -> Turns {

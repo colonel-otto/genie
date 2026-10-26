@@ -367,7 +367,7 @@ impl HuntAction {
         self.move_to = None;
         walk.mover
             .as_deref_mut()
-            .ok_or(crate::turn::HUNTER_UNMOVING)?
+            .ok_or(crate::world::HUNTER_UNMOVING)?
             .stop()?;
         if self.state == WALK_SEARCH {
             self.state = SEARCH;

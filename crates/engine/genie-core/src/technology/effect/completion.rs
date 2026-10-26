@@ -8,7 +8,7 @@ use crate::technology::effect::{
     ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, RESEARCH_SPENT,
     RESEARCHED, TECH_DISABLE, TECHS_RESEARCHED, kind,
 };
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// `FUN_1413cdcd0` for player `p`'s technology `t` (`param_3` 0) researched at a building of
@@ -80,7 +80,7 @@ impl Turns {
         let state = &self.players[p].techs[t];
         let shared = |c: &EffectCommand| {
             // FUN_1413d1020 tests the whole id
-            usize::try_from(crate::checkpoint::cvttss2si(c.d))
+            usize::try_from(crate::world::checkpoint::cvttss2si(c.d))
                 .ok()
                 .and_then(|d| self.techs.get(d))
                 .is_some_and(|d| d.kind == crate::technology::SHARED_KIND)
@@ -153,7 +153,7 @@ impl Turns {
     /// `FUN_1413cce70` for player `p`'s technology `t`: each technology that requires it, by id
     /// (`+0x38`'s lists), not of the shared kind: one in state 0 or 1 and not held by
     /// `+0x60` turns to −1 when it is another civ's (or its civ's under the full tech tree,
-    /// [`crate::settings::Settings::full_tech_tree`], while not of mode 1) or not for this game
+    /// [`crate::world::settings::Settings::full_tech_tree`], while not of mode 1) or not for this game
     /// mode; else with fewer of
     /// its requirements researched than it needs it turns to 0 (from above 0), with them all to
     /// 1 (from below 1) unless its research is done already (its work done reaching a
@@ -275,11 +275,11 @@ impl Turns {
                 2 => {
                     let half = if amount < 1.0 { -0.5 } else { 0.5 };
                     let delta = (amount - 1.0) * f32::from(cost.amount) + half;
-                    adj.wrapping_add(crate::checkpoint::cvttss2si(delta) as i16)
+                    adj.wrapping_add(crate::world::checkpoint::cvttss2si(delta) as i16)
                 }
                 // CVTTSS2SI's 32 bits, the low word added (0x1413d11a6, 0x1413d11be)
-                0 => (crate::checkpoint::cvttss2si(amount) as i16).wrapping_sub(cost.amount),
-                _ => adj.wrapping_add(crate::checkpoint::cvttss2si(amount) as i16),
+                0 => (crate::world::checkpoint::cvttss2si(amount) as i16).wrapping_sub(cost.amount),
+                _ => adj.wrapping_add(crate::world::checkpoint::cvttss2si(amount) as i16),
             };
             if resource != -1 {
                 return;

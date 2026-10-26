@@ -30,10 +30,10 @@
 //! world player's attribute add (slot 0xf8) `FUN_141616820` and its base's `FUN_14165d040`, the
 //! scout map's set `FUN_140f4d5e0`.
 //!
-//! [`Turns::tick_with`]: crate::turn::Turns::tick_with
-//! [`Turns::update_world_player`]: crate::turn::Turns::update_world_player
-//! [`Turns::world_player_second`]: crate::turn::Turns::world_player_second
-//! [`Turns::world_player_tail`]: crate::turn::Turns::world_player_tail
+//! [`Turns::tick_with`]: crate::world::Turns::tick_with
+//! [`Turns::update_world_player`]: crate::world::Turns::update_world_player
+//! [`Turns::world_player_second`]: crate::world::Turns::world_player_second
+//! [`Turns::world_player_tail`]: crate::world::Turns::world_player_tail
 
 use crate::math::fmath::below_or_unordered;
 
@@ -44,7 +44,7 @@ mod update;
 
 pub use self::tech_tree::{TechTree, TreeBuilding, TreeQuery, TreeUnit, UniqueUnit};
 #[cfg(test)]
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// One second (`DAT_14330eb8c`): the loop's step.
 const SECOND: f32 = crate::math::image::world_player::SECOND;
@@ -96,7 +96,7 @@ const AGES: [i32; 3] = [101, 102, 103];
 /// A technology's state once researched.
 const RESEARCHED: i16 = 3;
 /// `FUN_140c7e6f0`: the civilisation the full tech tree reads, by the game's tagged value at
-/// `+0x680` ([`crate::turn::Turns::mode_680`]): 18 for 1, 59 for 2, else 0.
+/// `+0x680` ([`crate::world::Turns::mode_680`]): 18 for 1, 59 for 2, else 0.
 const fn full_tree_civ(mode_680: i32) -> i32 {
     match mode_680 {
         1 => 0x12,

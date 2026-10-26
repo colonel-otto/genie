@@ -221,7 +221,7 @@ pub struct AnnexStart<'a> {
 /// The main building an annex's work goes to: its construction and hit points as they stand,
 /// from which the work's result follows. The work itself (the annexes' starts on the way, the
 /// main building's start, work and completion) is the caller's after the builder's update
-/// ([`crate::turn::Turns::work_building`] on the annex, [`Worked::Main`]).
+/// ([`crate::world::Turns::work_building`] on the annex, [`Worked::Main`]).
 #[derive(Clone, Copy, Debug)]
 pub struct MainWork {
     /// Its construction.
@@ -239,7 +239,7 @@ pub struct Completion<'a> {
     pub annexed: bool,
     /// Some player's attribute 204 is not 0 (`FUN_14152bcb0`).
     pub attribute_204: bool,
-    /// The game's setting at `+0x680` ([`crate::turn::Turns::mode_680`]).
+    /// The game's setting at `+0x680` ([`crate::world::Turns::mode_680`]).
     pub mode_680: i32,
     /// The owner's attributes 237, 238 and 239 (`player+0x768`..`+0x778`): a farm's bonus when
     /// built, its amount, its resource and a master near which it is given
@@ -268,10 +268,10 @@ pub struct FirstPart {
     /// The attributes its owner gains, in order.
     pub attributes: Vec<(i16, f32)>,
     /// The building's master has a task of action type 0x99 and the building a unit AI: its
-    /// search for resources follows ([`crate::turn::Turns::cart_search`]).
+    /// search for resources follows ([`crate::world::Turns::cart_search`]).
     pub cart: bool,
     /// A pasture (1893, 1897) whose build points reached its build time: its livestock follow
-    /// after the attributes (`FUN_1411c8410`, [`crate::turn::Turns::setup_pasture`]).
+    /// after the attributes (`FUN_1411c8410`, [`crate::world::Turns::setup_pasture`]).
     pub pasture: bool,
 }
 
@@ -293,7 +293,7 @@ impl Completion<'_> {
     ///
     /// What it does not model.
     pub fn first_part(&self, c: &Construction) -> Result<FirstPart, GenieError> {
-        use crate::checkpoint::cvttss2si;
+        use crate::world::checkpoint::cvttss2si;
         let master = self.master.ok_or(GenieError::unsupported(
             "a completion of a master the slice does not have",
         ))?;
@@ -371,7 +371,7 @@ pub struct Built {
     /// state the building had before the completion (`set_state(2)` puts it in 2 after).
     pub cart: Option<u8>,
     /// Its stack unit (`+0x986`), which its owner's slot 0x1c0 makes in its place (the
-    /// caller's, [`crate::turn::Turns::stack_unit`]).
+    /// caller's, [`crate::world::Turns::stack_unit`]).
     pub stack: Option<StackUnit>,
     /// Its master disappears when built (`+0x984`): its destroy (slot 0xd0) ends the
     /// completion, after its technology (the caller's).
@@ -400,7 +400,7 @@ pub struct StackUnit {
 /// The completion's sprite (`FUN_1411dbb70` from state 0 to 2, after its storage): slot 0x68
 /// (`FUN_141217000`) with the master's standing sprite (`+0x470`), then its sprite list's slot
 /// 0x28 (`FUN_1413ba880`) sets that sprite's node to the frame its BUILD command chose
-/// (`+0xc54`, [`crate::turn::Unit::build_frame`]; slot 9 with it, [`ActiveSprite::set_frame`]).
+/// (`+0xc54`, [`crate::world::Unit::build_frame`]; slot 9 with it, [`ActiveSprite::set_frame`]).
 pub(crate) fn show_built(
     sprite: &mut Option<crate::objects::sprite::ActiveSprite>,
     master: &Master,
@@ -493,7 +493,7 @@ pub struct Builder<'a> {
     /// no longer holds or whose seen state is above 5, as the update starts (`FUN_140c5de60`).
     pub gone_orders: &'a [i32],
     /// The foundation's `+0xcb0`: the object its completion's stack unit made
-    /// ([`crate::turn::Unit::stack_made`]).
+    /// ([`crate::world::Unit::stack_made`]).
     pub stack_made: Option<i32>,
 }
 
@@ -559,10 +559,10 @@ pub struct BuildStep {
     /// carries (`FUN_14119d310` with −1 and 0): the caller's.
     pub dropped: Option<(i16, f32)>,
     /// The seconds of work an annex's main building takes ([`Worked::Main`]): the caller's
-    /// after the update ([`crate::turn::Turns::work_building`] on the foundation).
+    /// after the update ([`crate::world::Turns::work_building`] on the foundation).
     pub main_work: Option<f32>,
     /// The foundation another player's marks lie on (`set_state(7)`'s `FUN_1411d4b80`), which
-    /// goes when its owner is human (`FUN_1411ccbb0`, [`crate::turn::Turns::remove_building`]):
+    /// goes when its owner is human (`FUN_1411ccbb0`, [`crate::world::Turns::remove_building`]):
     /// the caller's after the update.
     pub removes: Option<i32>,
     /// The drop-off searches again (`set_state(8)`, [`BuildAction::set_drop`] with the caller's
@@ -664,7 +664,7 @@ mod stack_tests {
     use crate::map::spatial::{Placed, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{BuildingMaster, Masters};
-    use crate::turn::{Player, Turns, Unit};
+    use crate::world::{Player, Turns, Unit};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
     /// time `bt`, hit points `hp`, an annex of `head`, with `annexes` at their offsets.
@@ -989,9 +989,9 @@ mod stack_tests {
                     }
                 }
             }
-            t.players[1].objects[0].gate = Some(crate::turn::Gate {
+            t.players[1].objects[0].gate = Some(crate::world::Gate {
                 locked,
-                ..crate::turn::Gate::default()
+                ..crate::world::Gate::default()
             });
             t.stack_unit(
                 1,

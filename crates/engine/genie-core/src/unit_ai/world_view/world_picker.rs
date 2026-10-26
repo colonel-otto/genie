@@ -4,9 +4,9 @@ use crate::map::spatial::Spatial;
 use crate::movement::Mover;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
-use crate::turn::world::victim_of;
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;
+use crate::world::lookups::victim_of;
 
 /// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0 (`COMISS`), from +0.
 pub(super) fn attacks(m: &crate::objects::masters::Master) -> f32 {
@@ -55,7 +55,7 @@ pub(crate) struct WorldPicker<'a> {
     /// Its owner's diplomacy (`player+0x260`).
     pub(crate) relations: &'a [u8],
     /// Its owner's AI settings.
-    pub(crate) ai_settings: crate::turn::player::AiSettings,
+    pub(crate) ai_settings: crate::world::player::AiSettings,
     /// The world's time.
     pub(crate) now: u32,
     /// The game's setting `+0x680`.

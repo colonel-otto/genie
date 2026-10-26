@@ -5,11 +5,11 @@ use crate::commands::{FOUNDATION_GONE, NO_BUILD_TASK};
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
-use crate::turn::world::{World, task_search, task_target_with};
-use crate::turn::{STATIC_TYPES_END, Turns};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
 use crate::unit_ai::world_view::Wait;
 use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER, GenieError};
+use crate::world::lookups::{World, task_search, task_target_with};
+use crate::world::{STATIC_TYPES_END, Turns};
 
 impl Turns {
     /// BUILD's builders (the cost was paid with the foundation, [`Turns::found`]; the pending
@@ -196,7 +196,7 @@ impl Turns {
     /// `foundation` (of `master`, player `fp`'s) at `position`, issued by `q`, priority 100, the
     /// point shown, ready, as the game's saves hold it ([`Turns::build_order`] runs it).
     ///
-    /// [`Turns::build_order`]: crate::turn::Turns::build_order
+    /// [`Turns::build_order`]: crate::world::Turns::build_order
     pub(crate) fn queue_build(
         &mut self,
         q: usize,

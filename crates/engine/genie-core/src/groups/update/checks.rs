@@ -9,7 +9,7 @@ use crate::groups::update::{
     TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// `FUN_141007ca0`: the units the group keeps apart (`+0x458`, the save's `objId`, size
@@ -98,11 +98,11 @@ impl Turns {
     /// animated or moving object's `FUN_141071d80`); an action object's (`FUN_14106d170`) is
     /// false while its group (`+0x6d0`, by id) is held and not at rest ([`Turns::at_rest`],
     /// `FUN_141007a50`) or its unit AI has queued orders (`+0x18`), else whether its top action
-    /// may be interrupted ([`crate::turn::Unit::interruptible`]).
+    /// may be interrupted ([`crate::world::Unit::interruptible`]).
     ///
     /// # Errors
     ///
-    /// An object of a master the slice does not have, and what [`crate::turn::Unit::interruptible`] does not
+    /// An object of a master the slice does not have, and what [`crate::world::Unit::interruptible`] does not
     /// model.
     pub(super) fn may_interrupt(&self, object: WorldObject<'_>) -> Result<bool, GenieError> {
         let WorldObject::Unit(p, u) = object else {
@@ -319,8 +319,8 @@ impl Turns {
         let master = self.master_of(object.player(), object.master_id())?;
         let [x, y, _] = object.position();
         let (x, y) = (
-            crate::checkpoint::cvttss2si(x),
-            crate::checkpoint::cvttss2si(y),
+            crate::world::checkpoint::cvttss2si(x),
+            crate::world::checkpoint::cvttss2si(y),
         );
         if master.fog_visibility == 0 {
             Ok(self.spatial.sees_tile(player, x, y))

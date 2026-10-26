@@ -7,7 +7,7 @@ use crate::{
     production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
-use genie_core::turn::Unit;
+use genie_core::world::Unit;
 use genie_save::generated::world::{Path, PlayerObjects, RgeStaticObject};
 
 /// The slice's view of one saved object: its lifecycle, its unit AI and its actions. A save from
@@ -267,12 +267,12 @@ pub(super) const fn town_bell(
     }
 }
 
-/// A saved building's gate state ([`genie_core::turn::Gate`]): its lock, first update and close
+/// A saved building's gate state ([`genie_core::world::Gate`]): its lock, first update and close
 /// timer, and whether a saved open or shut master or its original owner's would take part in a
 /// toggle.
-pub(super) fn saved_gate(object: &genie_save::Object) -> Option<genie_core::turn::Gate> {
+pub(super) fn saved_gate(object: &genie_save::Object) -> Option<genie_core::world::Gate> {
     let b = object.tribe_building_object.as_deref()?;
-    Some(genie_core::turn::Gate {
+    Some(genie_core::world::Gate {
         locked: b.gate_locked != 0,
         first_update: b.first_update != 0,
         close_timer: b.close_timer,

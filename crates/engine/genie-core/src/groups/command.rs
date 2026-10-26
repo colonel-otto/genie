@@ -6,7 +6,7 @@ use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::PathData;
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// A group whose top speed is below this does not move (`commandMoveTo`, `DAT_142eb0c60`); nor is
 /// a path shorter than it one.
@@ -642,7 +642,7 @@ mod tests {
     use super::*;
     use crate::groups::{GroupCommand, Member, UnitGroups};
     use crate::objects::masters::{Master, Masters};
-    use crate::turn::{Player, Unit};
+    use crate::world::{Player, Unit};
 
     /// Player 1's unit 7 (master 4: type 70, category 1, no action, no unit AI) in group 1 at
     /// the origin, its top speed 1, its motion flags bit 1 set (no formation follows), at world

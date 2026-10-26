@@ -3,8 +3,8 @@
 
 use crate::production::spawn::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
-use crate::turn::Turns;
 use crate::unit_ai::{ACTION_COMPLETED, GenieError, Notify};
+use crate::world::Turns;
 
 impl Turns {
     /// The research's action (`TRIBE_Action_Make_Tech`, constructor `FUN_140ad0700` with the
@@ -169,14 +169,14 @@ impl Turns {
         }
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
-                Notify::own(id, ACTION_COMPLETED, [crate::turn::RESEARCH_ACTION, 0, 0]),
+                Notify::own(id, ACTION_COMPLETED, [crate::world::RESEARCH_ACTION, 0, 0]),
                 state,
             )?;
         }
         // attribute 269, cut by CVTTSS2SI and its low short above 0, names an effect of the
         // world's table the player gets with the building as its object (its slot 0x10,
         // `TRIBE_Effects::do_effect`, which skips an id the table does not hold)
-        let reward = crate::checkpoint::cvttss2si(self.players[p].get(WORLD_EFFECT)?) as i16;
+        let reward = crate::world::checkpoint::cvttss2si(self.players[p].get(WORLD_EFFECT)?) as i16;
         if 0 < reward
             && let Some(effect) = usize::try_from(reward)
                 .ok()
@@ -224,7 +224,7 @@ impl Turns {
                     Notify::own(
                         id,
                         crate::unit_ai::ACTION_FAILED,
-                        [crate::turn::RESEARCH_ACTION, 0, 0],
+                        [crate::world::RESEARCH_ACTION, 0, 0],
                     ),
                     state,
                 )?;

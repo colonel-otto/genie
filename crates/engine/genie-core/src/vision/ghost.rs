@@ -15,9 +15,9 @@
 //! destroy `FUN_14118f1e0` and its leaving `FUN_141090ad0`.
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
-use crate::turn::Turns;
 use crate::vision::registry::MASK;
+use crate::world::Turns;
+use crate::world::checkpoint::cvttss2si;
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
 pub const GHOST_MASTER: i16 = 243;
@@ -626,8 +626,8 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::objects::masters::{Master, Masters};
-    use crate::turn::{Player, Unit};
     use crate::vision::visibility::{Seer, Visibility};
+    use crate::world::{Player, Unit};
 
     /// A gold mine's master (it leaves ghosts), a house's and the ghosts' own.
     const MINE: i16 = 66;

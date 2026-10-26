@@ -2,7 +2,7 @@
 //! (`BaseWorld::update`, `0x14154fc70`, its per-player part before the player's objects update).
 //!
 //! The pass runs once (the world's `+0x6c6`) under the Empire Wars rule, the game mode 13 or in
-//! another mode the sub-mode's bit 0 (`FUN_141324b60`, [`crate::settings::Settings::empire_wars`];
+//! another mode the sub-mode's bit 0 (`FUN_141324b60`, [`crate::world::settings::Settings::empire_wars`];
 //! 426422314's random map game): each object of the player's live list, in its order, that is a villager (class 4) or a
 //! fishing ship (class 21), may be interrupted with an empty order queue (slot 0x2d0 with 1) and
 //! has a unit AI takes work. Under the game's farm setting a farm on its tile comes first (the
@@ -21,7 +21,7 @@ use crate::gathering::gather_search::{self, Candidate};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::orders::Work;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).
 pub const EMPIRE_WARS: i32 = 13;
@@ -212,7 +212,7 @@ impl Turns {
             let m = masters
                 .get(owner)
                 .and_then(|m| m.get(u.life.master_id))
-                .ok_or(crate::turn::OBJECT_MASTER)?;
+                .ok_or(crate::world::OBJECT_MASTER)?;
             let position = spatial.get(id).map_or(u.position, |o| o.position);
             Ok(Candidate {
                 id,

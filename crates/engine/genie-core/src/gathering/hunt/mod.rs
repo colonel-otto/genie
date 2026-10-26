@@ -236,7 +236,7 @@ pub struct Gatherer<'a> {
     /// The caller ran the search for the next tree a lost target asks ([`HuntAction::update`]'s
     /// `FUN_140ac4670`, `Unit::hunt_tree_search`) and found none.
     pub tree_searched: bool,
-    /// The game's setting [`crate::settings::Settings::predator_hunts_end`].
+    /// The game's setting [`crate::world::settings::Settings::predator_hunts_end`].
     pub predator_hunts_end: bool,
     /// The sprites the hunt shows.
     pub sprites: HuntSprites,

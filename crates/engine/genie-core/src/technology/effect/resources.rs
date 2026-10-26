@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::master_type;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
 /// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
@@ -80,7 +80,7 @@ impl Turns {
     }
 
     /// `FUN_1416674b0`, the attribute's store: within the player's attributes' count it takes `v`
-    /// (the resources are [`crate::turn::Player::resources`]). A computer player's resource
+    /// (the resources are [`crate::world::Player::resources`]). A computer player's resource
     /// peaks (`+0x6dc`) and attribute 262's fields (`+0x628`..`+0x630`) are not held.
     pub(super) fn store_attribute(&mut self, p: usize, attribute: i16, v: f32) {
         let player = &mut self.players[p];
@@ -137,7 +137,7 @@ impl Turns {
     }
 
     /// Slot 0xf8 (`FUN_141616820`) of player `p` with no statistics (`param_4` 0): `v` adds to
-    /// attribute `attribute` ([`crate::turn::Player::add_attribute`]), with the side effects of
+    /// attribute `attribute` ([`crate::world::Player::add_attribute`]), with the side effects of
     /// 0x32 (the allied vision on first), 0xb7 (the masks rebuilt first, with the old value) and
     /// 0xc4 (nothing for a player above 0; the others at most 0 add it too).
     pub(crate) fn add_player_attribute(

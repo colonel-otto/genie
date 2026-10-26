@@ -5,8 +5,8 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::movement::Mover;
 use crate::pathing::Pathing;
-use crate::turn::player::Player;
-use crate::turn::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, Turns};
+use crate::world::player::Player;
+use crate::world::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, Turns};
 
 impl Turns {
     /// The world's next object id (`FUN_14152fd70`) for a new object of `master` for `player`: it
@@ -43,7 +43,7 @@ impl Turns {
             drop_sites: Vec::new(),
             lines: crate::objects::lines::UnitLines::default(),
             linked_techs: std::collections::BTreeMap::new(),
-            settings: crate::settings::Settings::default(),
+            settings: crate::world::settings::Settings::default(),
             start_work_due: false,
             mode_680: 0,
             spawned_relics: 0,

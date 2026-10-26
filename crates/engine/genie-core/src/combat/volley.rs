@@ -8,11 +8,11 @@ use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Master;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
-use crate::turn::ARMED_FIREPOWER;
-use crate::turn::world::Releaser;
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{ACTION_EXECUTED, GenieError, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
+use crate::world::ARMED_FIREPOWER;
+use crate::world::lookups::Releaser;
 
 impl Unit {
     /// The unit's own part of its hit, written back: what a retaliation or reflected damage left
@@ -84,7 +84,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::ATTACKER_MASTER)?;
+            .ok_or(crate::world::ATTACKER_MASTER)?;
         if (matches!(master.id, 527 | 528 | 1104 | 2133..=2135) || matches!(master.class, 35 | 64))
             && self.life.state == 2
         {

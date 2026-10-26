@@ -69,7 +69,7 @@ pub struct TreeQuery<'a> {
     /// The Feudal, Castle and Imperial Ages out of reach.
     pub ages_out: [bool; 3],
     /// The game's options: the full tech tree and the last age.
-    pub settings: &'a crate::settings::Settings,
+    pub settings: &'a crate::world::settings::Settings,
     /// The civilisation the full tech tree falls back to (`FUN_140c7e6f0`).
     pub fallback: i32,
 }

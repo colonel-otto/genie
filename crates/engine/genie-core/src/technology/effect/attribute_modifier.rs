@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::{AttributeWorld, Master, master_type};
 use crate::technology::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// Slot 0x148 (`FUN_1416121b0`) of player `p`: the hooks before (`FUN_141614f40` with 0),
@@ -218,7 +218,7 @@ impl Turns {
                 Some((_, u))
                     if self.master_of(p, u.life.master_id)?.kind == master_type::BUILDING =>
                 {
-                    crate::turn::annexes_of(id, &self.players[p].objects)
+                    crate::world::annexes_of(id, &self.players[p].objects)
                 }
                 _ => continue,
             };
@@ -228,7 +228,7 @@ impl Turns {
                 };
                 let am = self.master_of(p, a.life.master_id)?;
                 let own_annexes = am.kind == master_type::BUILDING
-                    && !crate::turn::annexes_of(annex, &self.players[p].objects).is_empty();
+                    && !crate::world::annexes_of(annex, &self.players[p].objects).is_empty();
                 if !own_annexes && am.class == class {
                     let _ = self.change_object(annex, change, v, attribute)?;
                 }
@@ -291,7 +291,7 @@ impl Turns {
             let unrecorded = match attribute {
                 // a char compare of the new type with the object's master's
                 a::OBSTRUCTION_TYPE => {
-                    crate::checkpoint::cvttss2si(v) as u8 != master.obstruction_type
+                    crate::world::checkpoint::cvttss2si(v) as u8 != master.obstruction_type
                 }
                 a::SIZE_Z => true,
                 _ => false,

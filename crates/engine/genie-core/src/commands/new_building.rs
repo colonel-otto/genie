@@ -7,9 +7,9 @@ use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
-use crate::turn::world::count_class;
-use crate::turn::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, Turns};
 use crate::unit_ai::{GenieError, UnitAi};
+use crate::world::lookups::count_class;
+use crate::world::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, Turns};
 
 impl Turns {
     /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,
@@ -194,8 +194,8 @@ impl Turns {
         // the constructor (FUN_1411de5f0)
         let [x, y, _] = position;
         let (tx, ty) = (
-            crate::checkpoint::cvttss2si(x),
-            crate::checkpoint::cvttss2si(y),
+            crate::world::checkpoint::cvttss2si(x),
+            crate::world::checkpoint::cvttss2si(y),
         );
         let terrain = self.spatial.terrain.as_ref();
         // masters 50 and 1889 on snow keep their snow (+0xc61 2)

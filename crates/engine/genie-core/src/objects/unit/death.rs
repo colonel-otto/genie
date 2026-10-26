@@ -6,9 +6,9 @@ use crate::movement::fly::Fly;
 use crate::objects::lifecycle::Class;
 use crate::objects::masters::Master;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
-use crate::turn::world::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Context;
+use crate::world::lookups::{built_death, combat_dies, farm_bonus, refund_of};
 
 impl Unit {
     /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
@@ -91,7 +91,7 @@ impl Unit {
     pub(crate) fn stop_mover(&mut self) -> Result<(), GenieError> {
         self.mover
             .as_mut()
-            .ok_or(crate::turn::WALKER_UNMOVING)?
+            .ok_or(crate::world::WALKER_UNMOVING)?
             .stop()
     }
 

@@ -3,7 +3,7 @@
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
-use genie_core::turn::{Player, Turns};
+use genie_core::world::{Player, Turns};
 use genie_save::{Header, PlayerSection};
 
 /// A player's saved state of one technology (`Tech_Player_Tree`).
@@ -105,7 +105,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                     .map(|e| e.diplomacy)
                     .collect(),
                 ai_settings: ai_settings(&p.world_player().base),
-                formations: genie_core::turn::Formations {
+                formations: genie_core::world::Formations {
                     auto: p.world_player().base.auto_formations != 0,
                     influence: p.world_player().base.formation_influence_distance,
                     by_speed: p.world_player().base.break_auto_formations_by_speed == 1,
@@ -352,13 +352,13 @@ pub(super) fn wonder_time(p: &PlayerSection<'_>) -> f32 {
 /// players who cannot see it (`CantSeeBits`). Its last bits (`+0x7e8`) and seen flag (`+0x7f7`)
 /// are not saved: a load starts them at 0; its original's link waits for the original's update
 /// (the slice links it by id).
-/// The game options the simulation reads ([`genie_core::settings::Settings`]) from the header's
+/// The game options the simulation reads ([`genie_core::world::settings::Settings`]) from the header's
 /// `GameOptions`, as `FUN_141305310` loads them.
 #[must_use]
 pub const fn settings(
     o: &genie_save::generated::world::GameOptions,
-) -> genie_core::settings::Settings {
-    genie_core::settings::Settings {
+) -> genie_core::world::settings::Settings {
+    genie_core::world::settings::Settings {
         game_mode: o.game_mode,
         ending_age: o.ending_age,
         visibility_type: o.visibility_type,
@@ -382,8 +382,8 @@ pub const fn settings(
 /// sub-command 0xb sets.
 pub(super) const fn ai_settings(
     b: &genie_save::generated::world::WorldPlayerBase,
-) -> genie_core::turn::AiSettings {
-    genie_core::turn::AiSettings {
+) -> genie_core::world::AiSettings {
+    genie_core::world::AiSettings {
         easiest_reaction_percentage: b.easiest_reaction_percentage,
         easier_reaction_percentage: b.easier_reaction_percentage,
         task_ungrouped_soldiers: b.task_ungrouped_soldiers,

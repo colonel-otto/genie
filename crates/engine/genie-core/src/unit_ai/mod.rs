@@ -350,7 +350,7 @@ pub enum Effect {
     /// The AI's move (slot 0x130), which the unit takes (its slot 0x340).
     Move(AiMove),
     /// Slot 0x148 (`FUN_140c4d0d0`) forced: the unit's slot 0x340 to the point, which the caller
-    /// runs after the update ([`crate::turn::Turns::move_aside`]).
+    /// runs after the update ([`crate::world::Turns::move_aside`]).
     MoveAside(AiMove),
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
     CapHumanOrder(u32),

@@ -4,9 +4,9 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
 use crate::objects::unit::Unit;
-use crate::turn::world::{Seeker, drop_site_search};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::{Context, DropWorld};
+use crate::world::lookups::{Seeker, drop_site_search};
 
 impl Unit {
     /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop
@@ -98,7 +98,7 @@ impl Unit {
                 let master = c
                     .masters
                     .and_then(|m| m.get(self.life.master_id))
-                    .ok_or(crate::turn::GATHERER_MASTER)?;
+                    .ok_or(crate::world::GATHERER_MASTER)?;
                 let standing = (0 <= master.standing_sprite)
                     .then(|| c.graphics.get(&master.standing_sprite).copied())
                     .flatten();
@@ -145,7 +145,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::GATHERER_MASTER)?;
+            .ok_or(crate::world::GATHERER_MASTER)?;
         let t_master = c
             .every_masters
             .get(owner)
@@ -308,7 +308,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::GATHERER_MASTER)?;
+            .ok_or(crate::world::GATHERER_MASTER)?;
         let mover = self
             .mover
             .as_ref()
@@ -327,7 +327,7 @@ impl Unit {
                     sites,
                     self.position,
                     None,
-                    (true, crate::turn::world::UNPACK),
+                    (true, crate::world::lookups::UNPACK),
                 )?,
             }
             .unwrap_or(-1);
@@ -362,7 +362,7 @@ impl Unit {
             c,
             others,
             state,
-            (outside, by_path, crate::turn::world::UNPACK),
+            (outside, by_path, crate::world::lookups::UNPACK),
         )
     }
 
@@ -380,7 +380,7 @@ impl Unit {
         ))?;
         let master = masters
             .get(self.life.master_id)
-            .ok_or(crate::turn::GATHERER_MASTER)?;
+            .ok_or(crate::world::GATHERER_MASTER)?;
         let mover = self
             .mover
             .as_ref()

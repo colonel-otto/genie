@@ -49,7 +49,7 @@ pub(super) fn straighten(path: &mut Path, first: i32, last: i32) -> i32 {
     let a = point_at(path, first);
     let d = fmath::sub(point_at(path, last), a);
     let length = fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    let steps = crate::checkpoint::cvttss2si(length / SMOOTH_STEP);
+    let steps = crate::world::checkpoint::cvttss2si(length / SMOOTH_STEP);
     let fewer = between - steps;
     let at = (first + 1) as usize;
     if fewer < 0 {

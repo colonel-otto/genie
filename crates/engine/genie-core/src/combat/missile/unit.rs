@@ -3,9 +3,9 @@
 use crate::combat::volley::Fired;
 use crate::math::rng::Stream;
 use crate::objects::unit::{Unit, missed_passes};
-use crate::turn::world::{forget_resource, victim_of};
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{ACTION_EXECUTED, GenieError};
+use crate::world::lookups::{forget_resource, victim_of};
 
 impl Unit {
     /// The missile action's update (slot 6, `FUN_140a9e6e0`). First its target and the object it

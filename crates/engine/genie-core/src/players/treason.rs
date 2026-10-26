@@ -6,7 +6,7 @@
 //! player's slot 0x1c0 with master 697 ([`Turns::remains`]).
 
 use crate::GenieError;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The castle (`0x52`), and the building of the content mode 1 (`0xd1`) that stands for it
 /// (`FUN_140fe0ec0`).
@@ -42,7 +42,7 @@ impl Turns {
 
     /// `FUN_141620400`: player `p`'s treason. It costs 400 gold, 200 with attribute 197 above 0
     /// (`COMISS`, `JBE`: a NaN costs 400); with less gold (`COMISS`, `JA`: a NaN gold passes)
-    /// or outside the regicide rule ([`crate::settings::Settings::regicide`]) it fails with the
+    /// or outside the regicide rule ([`crate::world::settings::Settings::regicide`]) it fails with the
     /// interface's error. Else the gold goes straight off attribute 3 (the local player's
     /// statistics and the event 0x91 are not simulation); then for each player from 1 not the
     /// player's own or allied (`FUN_141663dc0` without allies, [`crate::unit_ai::task_finder::allied`]) its
@@ -93,7 +93,7 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::objects::lifecycle::Lifecycle;
-    use crate::turn::{Player, Unit};
+    use crate::world::{Player, Unit};
 
     /// Gaia and three players; player 1 holds 500 gold and is allied with 3.
     fn world() -> Turns {

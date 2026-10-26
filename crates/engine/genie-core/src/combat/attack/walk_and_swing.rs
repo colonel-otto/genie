@@ -56,7 +56,7 @@ impl Attack {
                         let g = self
                             .arms
                             .idle_sprite
-                            .ok_or(crate::turn::NO_STANDING_SPRITE)?;
+                            .ok_or(crate::world::NO_STANDING_SPRITE)?;
                         set_sprite(s.sprite, g, s.sprite_rng);
                         if let Some(a) = s.anim_speed.as_mut() {
                             *a = 0.0;
@@ -70,7 +70,7 @@ impl Attack {
                     let g = self
                         .arms
                         .idle_sprite
-                        .ok_or(crate::turn::NO_STANDING_SPRITE)?;
+                        .ok_or(crate::world::NO_STANDING_SPRITE)?;
                     set_sprite(s.sprite, g, s.sprite_rng);
                     if let Some(a) = s.anim_speed.as_mut() {
                         *a = 0.0;
@@ -131,7 +131,7 @@ impl Attack {
                 self.move_to = None;
                 walk.mover
                     .as_deref_mut()
-                    .ok_or(crate::turn::ATTACKER_UNMOVING)?
+                    .ok_or(crate::world::ATTACKER_UNMOVING)?
                     .stop()?;
                 if self.state != MOVE {
                     return self.arrived_at_seen(&mut walk, s, target);
@@ -160,7 +160,7 @@ impl Attack {
             .mover
             .as_ref()
             .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-            .ok_or(crate::turn::ATTACKER_UNMOVING)?;
+            .ok_or(crate::world::ATTACKER_UNMOVING)?;
         let at = walk
             .world
             .get(walk.me.id)

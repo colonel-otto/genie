@@ -5,8 +5,8 @@ use crate::orders::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 impl Turns {
     /// PATROL (0x15): the command's check (`FUN_140e55590`, [`Turns::command_check`]: of the
@@ -76,7 +76,7 @@ impl Turns {
     /// listed group lists them all (`FUN_1410395a0`) and the command count goes on. Each loose
     /// unit last ([`Turns::patrol_unit`]).
     ///
-    /// [`Turns::patrol_unit`]: crate::turn::Turns::patrol_unit
+    /// [`Turns::patrol_unit`]: crate::world::Turns::patrol_unit
     pub(crate) fn patrol_order(
         &mut self,
         ids: &[i32],

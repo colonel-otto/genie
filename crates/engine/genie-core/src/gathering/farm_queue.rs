@@ -10,7 +10,7 @@
 
 use crate::GenieError;
 use crate::production::{cost_test, pay, refund_master};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// A queue takes a purchase only below this count (`0x28`).
 pub const QUEUE_LIMIT: i32 = 40;
@@ -369,7 +369,7 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::objects::masters::{Master, Masters, master_type};
-    use crate::turn::Player;
+    use crate::world::Player;
 
     /// A master of type 70 costing `cost` (attribute, amount, paid).
     fn master(id: i16, cost: Vec<(i16, i16, bool)>) -> Master {

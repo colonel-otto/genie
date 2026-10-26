@@ -119,7 +119,7 @@ impl Attack {
                     .mover
                     .as_ref()
                     .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-                    .ok_or(crate::turn::ATTACKER_UNMOVING)?;
+                    .ok_or(crate::world::ATTACKER_UNMOVING)?;
                 let gap = footprint_gap(at, ground, t.position, t.radius);
                 self.follow(&mut walk, s, gap)?;
                 return Ok(0);
@@ -261,7 +261,7 @@ impl Attack {
         let speed = walk
             .mover
             .as_ref()
-            .ok_or(crate::turn::ATTACKER_UNMOVING)?
+            .ok_or(crate::world::ATTACKER_UNMOVING)?
             .stats
             .speed;
         self.move_to = Some(if speed == 0.0 {

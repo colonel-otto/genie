@@ -1,5 +1,4 @@
 use super::*;
-use crate::checkpoint::TopAction;
 use crate::commands::{Command, GatherPoint, ResearchAt};
 use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::map::spatial::{Placed, Spatial};
@@ -11,15 +10,16 @@ use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::ownership::artifact::Artifact;
-use crate::turn::player::Player;
-use crate::turn::world::{
-    SideWorld, World, change_hands, count_class, search_origin, storage_leaves, task_search,
-    task_target_with, wait_progress,
-};
 use crate::unit_ai::task_finder::{Actor, Diplomacy};
 use crate::unit_ai::world_view::{Foreign, Wait, patrol_information};
 use crate::unit_ai::{BUILD_ORDER, GenieError, Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
+use crate::world::checkpoint::TopAction;
+use crate::world::lookups::{
+    SideWorld, World, change_hands, count_class, search_origin, storage_leaves, task_search,
+    task_target_with, wait_progress,
+};
+use crate::world::player::Player;
 
 fn player(objects: Vec<Option<UnitAi>>) -> Player {
     Player {
@@ -5661,7 +5661,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
 /// paid flag, as floats in their order.
 #[test]
 fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
-    use crate::turn::world::{is_trebuchet, paid_cost};
+    use crate::world::lookups::{is_trebuchet, paid_cost};
     let m = |kind, class, weapons: Vec<(i16, i16)>| Master {
         kind,
         class,
@@ -7972,7 +7972,7 @@ fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
 /// update 5601).
 #[test]
 fn a_fishing_ship_counts_a_near_drop_site_its_path_does_not_reach() {
-    use crate::turn::world::counted;
+    use crate::world::lookups::counted;
     assert!(counted(0, true, false, || false));
     assert!(counted(1, false, false, || false));
     assert!(!counted(2, true, true, || true));

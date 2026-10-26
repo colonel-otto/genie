@@ -6,7 +6,7 @@ use crate::{
     trade,
 };
 use genie_core::GenieError;
-use genie_core::turn::Command;
+use genie_core::world::Command;
 use genie_rec::de;
 use genie_save::PlayerSection;
 
@@ -177,7 +177,7 @@ impl Decoder {
                     human: c.field_0x15 == 1,
                     filter: c.field_0x16 as i16,
                 };
-                let order = genie_core::turn::Order::Interact(order);
+                let order = genie_core::world::Order::Interact(order);
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Work(c) => (c.commp_id, c.num, c.ids, false, None),
@@ -190,18 +190,18 @@ impl Decoder {
                     human: c.field_0x15 == 1,
                     control: c.field_0x12 != 0,
                 };
-                let order = genie_core::turn::Order::Move(order);
+                let order = genie_core::world::Order::Move(order);
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             Packet::Retreat(c) => (c.commp_id, c.num, c.ids, true, None),
             // FOLLOW: its units as MOVE's, the target at +8
             Packet::Follow(c) => {
-                let order = genie_core::turn::Order::Follow(c.target);
+                let order = genie_core::world::Order::Follow(c.target);
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             // GUARD: its units as FOLLOW's, the target at +8
             Packet::Guard(c) => {
-                let order = genie_core::turn::Order::Guard(c.target);
+                let order = genie_core::world::Order::Guard(c.target);
                 (c.commp_id, c.num, c.ids, true, Some(order))
             }
             // RESIGN: the comm player, the world player of the same number in these games
@@ -415,7 +415,7 @@ impl Decoder {
             // GAME: the sub-command at +4, its player at +8 and arguments at +0xa, +0xc, +0x10
             // (do_command's gate and the switch are the core's)
             Packet::Game(g) => {
-                return Some(Command::Game(genie_core::turn::GameCommand {
+                return Some(Command::Game(genie_core::world::GameCommand {
                     issuer: usize::from(g.commp_id),
                     sub: g.field_0x04,
                     player: g.field_0x08,

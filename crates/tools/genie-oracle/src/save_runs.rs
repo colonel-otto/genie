@@ -8,7 +8,7 @@ use crate::{
     recycle_pools_from_dump, registry_from_dump, run, slice, spatial, tile_differences,
     tile_lists_from_dump, visibility_differences, watch_at_load,
 };
-use genie_core::turn::{Command, Player, Turns};
+use genie_core::world::{Command, Player, Turns};
 use genie_rec::de;
 use genie_save::Header;
 
@@ -120,7 +120,7 @@ pub(super) fn compare_players(
 /// researches queued and done, work done and building.
 pub(super) fn tech_differences(
     player: &Player,
-    game: &genie_core::turn::GameState,
+    game: &genie_core::world::GameState,
     p: usize,
 ) -> Vec<String> {
     let mut out = Vec::new();
@@ -195,7 +195,7 @@ pub fn saved_groups(
 }
 
 /// The slice from a save after the command phase of the next update alone
-/// ([`genie_core::turn::Turns::command_phase`]), for a check against the game's save taken
+/// ([`genie_core::world::Turns::command_phase`]), for a check against the game's save taken
 /// there (the tick oracle's `snapshot_at` at `0x141552990`). Dev only.
 ///
 /// # Errors

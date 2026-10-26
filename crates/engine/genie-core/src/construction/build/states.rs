@@ -275,7 +275,7 @@ impl BuildAction {
 
     /// Slot 0x38 (`FUN_140ab0350`) as the unit's stop calls it: `set_state(2)` (`0x140aae200`):
     /// a counted builder leaves its foundation's builders first (the caller's,
-    /// [`crate::turn::Turns::leave_builders`]: true when it counted), the sub-actions go (a
+    /// [`crate::world::Turns::leave_builders`]: true when it counted), the sub-actions go (a
     /// `MoveTo`'s teardown stops the unit), the unit takes its standing sprite (slot 0x68 with the
     /// master's `+0x470`, the caller's), the foundation and the second target go (slot 0x68 and
     /// `FUN_140a7a190` with none: the caller releases both) and the point is −1. The answer is

@@ -7,7 +7,7 @@ use crate::groups::Motion;
 use crate::groups::formation::on_map;
 use crate::groups::motion::moved_vector;
 use crate::math::fmath::{self, Vec3, cross, normalize};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The spiral's steps (`FUN_141007630`'s table from `DAT_142f49460` and `DAT_142f49480`), x and y:
 /// up y, up x, down y, down x.
@@ -402,11 +402,11 @@ mod tests {
     }
 
     /// A unit at `[x, y]` (the unit's order: x, y, height) of master 4.
-    fn unit(id: i32, x: f32, y: f32) -> crate::turn::Unit {
-        let mut u = crate::turn::Unit {
+    fn unit(id: i32, x: f32, y: f32) -> crate::world::Unit {
+        let mut u = crate::world::Unit {
             id,
             position: [x, y, 0.0],
-            ..crate::turn::Unit::default()
+            ..crate::world::Unit::default()
         };
         u.life.master_id = 4;
         u
@@ -414,7 +414,7 @@ mod tests {
 
     /// A 20 by 20 map of terrain class 1, its objects on the obstruction manager, and group 1 of
     /// them at (10, 10) facing x, spacing 2, two stored points.
-    fn front_world(units: Vec<crate::turn::Unit>) -> Turns {
+    fn front_world(units: Vec<crate::world::Unit>) -> Turns {
         use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
         use crate::map::terrain::{Terrain, TerrainKind};
         let mut t = Turns::new(
@@ -422,9 +422,9 @@ mod tests {
             1,
             0,
             vec![0],
-            vec![crate::turn::Player {
+            vec![crate::world::Player {
                 objects: units.clone(),
-                ..crate::turn::Player::default()
+                ..crate::world::Player::default()
             }],
         );
         t.masters = vec![crate::objects::masters::Masters::new([
@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn the_initial_orientation_averages_the_members_forwards() {
         let facing = |forwards: &[Option<Vec3>]| {
-            let units: Vec<crate::turn::Unit> = forwards
+            let units: Vec<crate::world::Unit> = forwards
                 .iter()
                 .enumerate()
                 .map(|(i, f)| {

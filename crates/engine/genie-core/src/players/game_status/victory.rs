@@ -4,8 +4,8 @@
 use crate::players::game_status::{
     BATTLE_ROYALE, Count, DEFEAT_IDS, KILLS_OF, LOST, PLAYING, STOP_AFTER_MS, WON,
 };
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 impl Turns {
     /// The relations of players `a` and `b` each way (`player+0x260`).
@@ -115,7 +115,7 @@ impl Turns {
             }
             let v = other.attributes.get(KILLS_OF + i).copied().unwrap_or(0.0);
             if v > most as f32 {
-                most = crate::checkpoint::cvttss2si(v);
+                most = crate::world::checkpoint::cvttss2si(v);
                 killer = i as u8;
             }
         }

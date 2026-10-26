@@ -2,8 +2,8 @@
 
 use crate::math::rng::Stream;
 use crate::orders::BUILDING;
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 impl Turns {
     /// The work command's Attack (its task of action type 7, the factory `FUN_140a97e00` case 7):
@@ -75,15 +75,15 @@ impl Turns {
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
         let arms =
             crate::combat::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
-        let standing = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
+        let standing = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
         let me_at = *self
             .spatial
             .get(self.players[player].objects[idx].id)
-            .ok_or(crate::turn::ATTACKER_UNPLACED)?;
+            .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let t_at = *self
             .spatial
             .get_known(target)?
-            .ok_or(crate::turn::TARGET_UNPLACED)?;
+            .ok_or(crate::world::TARGET_UNPLACED)?;
         let (tx, ty) = (t_at.position[0] as i32, t_at.position[1] as i32);
         let visible = self.spatial.sees_tile(player, tx, ty)
             || (fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
@@ -108,7 +108,7 @@ impl Turns {
         let own = {
             let u = &self.players[player].objects[idx];
             let terrain = self.spatial.terrain.as_ref();
-            crate::turn::victim_of(
+            crate::world::victim_of(
                 u,
                 master,
                 &self.players[player].attributes,
@@ -143,7 +143,7 @@ impl Turns {
             standing,
             self.streams.get(Stream::Sprite),
         );
-        let mover = unit.mover.as_mut().ok_or(crate::turn::ATTACKER_UNMOVING)?;
+        let mover = unit.mover.as_mut().ok_or(crate::world::ATTACKER_UNMOVING)?;
         let crate::combat::attack::Commanded {
             mut attack,
             arrived,

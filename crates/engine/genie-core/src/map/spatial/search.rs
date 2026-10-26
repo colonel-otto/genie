@@ -299,7 +299,7 @@ impl Spatial {
                     position: self.objects.get(&id).map(|p| p.position),
                     fresh,
                     players: players_seen(found),
-                    distance: crate::checkpoint::cvttss2si(distance),
+                    distance: crate::world::checkpoint::cvttss2si(distance),
                     retries: [None; 3],
                 })
             }

@@ -83,7 +83,7 @@ impl UnitAi {
             .map(|(at, _, _)| ([at.position[0], at.position[1]], at.class))
             .or(place);
         let class = place.map_or(-1, |(_, class)| class);
-        let tile = |v: f32| crate::checkpoint::cvttss2si(v);
+        let tile = |v: f32| crate::world::checkpoint::cvttss2si(v);
         // `bVar2`: the attack move's attack, whose tail makes the order 700
         let mut attack_move = false;
         let taken = match o.order {
@@ -167,7 +167,7 @@ impl UnitAi {
         attack_move: &mut bool,
     ) -> Result<bool, GenieError> {
         let (at, side, computer) = world.ok_or(OUTSIDE_ORDER)?;
-        let tile = |v: f32| crate::checkpoint::cvttss2si(v);
+        let tile = |v: f32| crate::world::checkpoint::cvttss2si(v);
         Ok(match o.order {
             ATTACK_ORDER => self.attack_slot(o.target, true, at, side, fx)?,
             DEFEND_ORDER => {

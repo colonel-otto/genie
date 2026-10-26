@@ -1,8 +1,8 @@
 //! The commands of a building: SET GATHER POINT, the command queue and RESEARCH.
 
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint, ResearchAt};
-use crate::turn::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, Turns};
 use crate::unit_ai::GenieError;
+use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, Turns};
 
 impl Turns {
     /// SET GATHER POINT's handler ([`Command::GatherPoint`]).

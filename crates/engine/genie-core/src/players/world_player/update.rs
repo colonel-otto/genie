@@ -8,7 +8,7 @@ use crate::players::world_player::{
     PERCENT, POPULATION_STORAGE, SECOND, TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS,
     WONDER, attribute, get, set,
 };
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// Player `p`'s slot 0x100 up to `WorldPlayerBase::update`. Gaia (`WorldPlayerGaia::update`)
@@ -41,7 +41,7 @@ impl Turns {
     /// One pass of the world player's loop, `time` its update time before the step:
     /// - the history's update with the `.dat`'s period ([`crate::players::history::History::update`]);
     /// - attribute 22: 100 when every player explored the map from the start
-    ///   ([`crate::settings::Settings::explored_all`]), else the explored share
+    ///   ([`crate::world::settings::Settings::explored_all`]), else the explored share
     ///   ([`Turns::explored_share`]) times 100;
     /// - attribute 44: attribute 20 less (attribute 19 less attribute 11), 0 when that is below 0
     ///   (`COMISS` 0 with it, `JBE`: a NaN stays);
@@ -99,12 +99,12 @@ impl Turns {
     /// The defeat check of player `p` (`0x14163b72b`). The player stays in the game while one of
     /// its victory timers runs ([`VictoryTimes::running`]) or else one of its objects, in its
     /// list's order, keeps it ([`Turns::keeps_alive`]). Under the sudden death rule
-    /// ([`crate::settings::Settings::sudden_death`]), asked only for a player that stays, its
+    /// ([`crate::world::settings::Settings::sudden_death`]), asked only for a player that stays, its
     /// first built town centre ([`Turns::first_town_centre`]) decides once the player had one
     /// (`mSuddenDeathCanBeEliminated`, `+0x1380`, which the first one found sets). A player not
     /// yet lost then loses when it does not stay, or when it stays without a king (master 434 in
     /// its tracker, `FUN_14104eea0`) under the regicide rule
-    /// ([`crate::settings::Settings::regicide`]): the status setter takes 2
+    /// ([`crate::world::settings::Settings::regicide`]): the status setter takes 2
     /// ([`Turns::set_status`]) and attribute 45 is cleared.
     ///
     /// # Errors
@@ -154,13 +154,13 @@ impl Turns {
     /// - any other class keeps it in state 2, and classes 51 and 54 (the packed and unpacked
     ///   siege) in state 0;
     /// - whatever the class, a wonder (master 276) not in state 0 keeps it in the scenario modes
-    ///   ([`crate::turn::scenario_mode`]; the game asks the lobby's settings, `FUN_14152f9c0`,
+    ///   ([`crate::world::scenario_mode`]; the game asks the lobby's settings, `FUN_14152f9c0`,
     ///   which hold the game's options).
     ///
     /// # Errors
     ///
     /// An object of a master the slice does not have.
-    pub fn keeps_alive(&self, p: usize, unit: &crate::turn::Unit) -> Result<bool, GenieError> {
+    pub fn keeps_alive(&self, p: usize, unit: &crate::world::Unit) -> Result<bool, GenieError> {
         let master = self.master_of(p, unit.life.master_id)?;
         let state = unit.life.state;
         if (1..=4).contains(&state)
@@ -190,10 +190,8 @@ impl Turns {
         if (builds || other) && (class == PACKED_CLASS || class == UNPACKED_CLASS) && state == 0 {
             return Ok(true);
         }
-        Ok(
-            master.id == WONDER
-                && state != 0
-                && crate::turn::scenario_mode(self.settings.game_mode),
-        )
+        Ok(master.id == WONDER
+            && state != 0
+            && crate::world::scenario_mode(self.settings.game_mode))
     }
 }

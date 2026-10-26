@@ -7,7 +7,7 @@ use crate::groups::update::{
     ATTACK, CLOSE, FOLLOW, FOLLOW_SHARE, IDLE_LIMIT, IDLE_SPAN, NO_COMMAND, OTHER_COMMANDS,
 };
 use crate::groups::{SpecificMove, UnitGroup};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// The current command's update (`0x14103e5f7`..`0x14103e865`): false deletes the group. No
@@ -383,7 +383,7 @@ impl Turns {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let mover = unit.mover.as_mut().ok_or(crate::turn::WALKER_UNMOVING)?;
+        let mover = unit.mover.as_mut().ok_or(crate::world::WALKER_UNMOVING)?;
         let mut plan = Planning {
             pathing: &mut self.pathing,
             now: self.world_time,
@@ -395,7 +395,7 @@ impl Turns {
         let motion = mover.motion(&mut me, self.dt_seconds, &mut self.spatial, Some(&mut plan))?;
         let pauses = std::mem::take(&mut mover.pauses);
         if !mover.in_the_way.is_empty() {
-            return Err(crate::turn::IN_THE_WAY);
+            return Err(crate::world::IN_THE_WAY);
         }
         if let Some(at) = self.spatial.get(id).map(|o| o.position) {
             self.players[p].objects[idx].position = at;

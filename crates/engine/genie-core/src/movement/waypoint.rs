@@ -125,7 +125,7 @@ impl Mover {
     /// [`TARGET_SHORT_REACH`] (squared) of the one after it, the manager's point query at it
     /// (`FUN_141051900` with flags 0x20; its buffer and ignore list as the last
     /// `FUN_1410562d0` and `FUN_1410562e0` left them; a gate the owner may pass has no record
-    /// during its owner's update, [`crate::turn::Turns::open_gates`], so slot 0x678 passes none
+    /// during its owner's update, [`crate::world::Turns::open_gates`], so slot 0x678 passes none
     /// of those found) drops it when an object holds it.
     ///
     /// # Errors

@@ -7,7 +7,7 @@ use crate::GenieError;
 use crate::groups::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::groups::{Formation, FormationLine, Slot, UnitGroup};
 use crate::math::fmath::{self, Vec3};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// A horde's and a user defined formation's slots lie at most this far from the group's place
 /// (`DAT_14330ebb8`).
@@ -511,7 +511,7 @@ pub(crate) fn box_slots(
     formation.kind = BOX;
     formation.transform_type = 1;
     // CVTTSS2SI at 0x141012147 (a NaN or out of range width is i32::MIN)
-    let width = crate::checkpoint::cvttss2si(max_x - min_x);
+    let width = crate::world::checkpoint::cvttss2si(max_x - min_x);
     formation.maximum_width = width;
     formation.maximum_depth = width;
     create_lines(formation);

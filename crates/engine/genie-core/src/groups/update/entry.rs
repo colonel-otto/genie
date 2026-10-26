@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::groups::WorldObject;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::update::{ATTACK, BUILD, DELIVER_RELIC, NO_COMMAND, PICK_UP_RELIC, REPAIR};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// The groups player `p` owns update before its objects (`BaseWorld::update` calls them at

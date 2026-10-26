@@ -7,14 +7,14 @@ use crate::construction::build::Walk;
 use crate::map::spatial::Placed;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::unit::Unit;
-use crate::turn::world::{
-    Releaser, SideWorld, task_search, task_target_with, victim_in, victim_of,
-};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::world_view::{
     HuntPlan, NOT_HELD, UnitView, VILLAGER_FEMALE, VILLAGER_MALE, WorldPicker,
 };
 use crate::unit_ai::{GenieError, UnitAi};
+use crate::world::lookups::{
+    Releaser, SideWorld, task_search, task_target_with, victim_in, victim_of,
+};
 
 impl UnitView<'_> {
     /// The world as `bestUnitToAttack` and the attack tests read it for the unit
@@ -416,7 +416,7 @@ impl<'u> UnitView<'u> {
             .every
             .get(tp)
             .and_then(|m| m.get(t.life.master_id))
-            .ok_or(crate::turn::OBJECT_MASTER)?;
+            .ok_or(crate::world::OBJECT_MASTER)?;
         let main = if t_master.kind == crate::orders::BUILDING {
             t.annex_of.unwrap_or(target)
         } else {
@@ -427,7 +427,7 @@ impl<'u> UnitView<'u> {
                 self.every
                     .get(mp)
                     .and_then(|ms| ms.get(m.life.master_id))
-                    .ok_or(crate::turn::OBJECT_MASTER)?
+                    .ok_or(crate::world::OBJECT_MASTER)?
                     .id
             }
             None => t_master.id,
@@ -438,10 +438,10 @@ impl<'u> UnitView<'u> {
         ) else {
             return Err(crate::orders::HUNT_TARGET_GONE);
         };
-        let masters = self.masters.ok_or(crate::turn::HUNTER_MASTER)?;
+        let masters = self.masters.ok_or(crate::world::HUNTER_MASTER)?;
         let own = masters
             .get(unit.life.master_id)
-            .ok_or(crate::turn::HUNTER_MASTER)?;
+            .ok_or(crate::world::HUNTER_MASTER)?;
         let actor = Actor {
             id: unit.id,
             master: own,
@@ -474,7 +474,7 @@ impl<'u> UnitView<'u> {
         let them = *self
             .spatial
             .get_known(target)?
-            .ok_or(crate::turn::TARGET_UNPLACED)?;
+            .ok_or(crate::world::TARGET_UNPLACED)?;
         Ok(HuntPlan {
             task,
             switch,

@@ -2,9 +2,9 @@
 //! (`FUN_141213520`).
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, maxss};
 use crate::objects::masters::{Master, Masters};
+use crate::world::checkpoint::cvttss2si;
 
 /// A combat master's attack rate needs a weapon range above this (`FUN_14120dc10`).
 pub(super) const RATE_RANGE: f32 = crate::math::image::garrison::RATE_RANGE;

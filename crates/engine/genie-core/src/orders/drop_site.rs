@@ -4,8 +4,8 @@
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 impl Turns {
     /// `UNIT_ORDER`'s drop-off of a carrying unit without a gather action on top
@@ -82,7 +82,7 @@ impl Turns {
             "a drop-off of a player without masters",
         ))?;
         if !seeks {
-            return crate::turn::drop_site_search(
+            return crate::world::drop_site_search(
                 &self.players[p].objects,
                 masters,
                 &master.drop_sites,
@@ -93,7 +93,7 @@ impl Turns {
         }
         let state = unit.top_action().map_or(0, |a| a.state);
         let player = &self.players[p];
-        let mut world = crate::turn::DropWorld {
+        let mut world = crate::world::DropWorld {
             masters: self.masters.get(p),
             spatial: &self.spatial,
             zones: &mut self.zones,

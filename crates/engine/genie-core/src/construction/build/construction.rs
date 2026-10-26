@@ -8,8 +8,8 @@ use crate::construction::build::{
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
 use crate::pathing::Pathing;
-use crate::turn::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
 use crate::unit_ai::GenieError;
+use crate::world::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
 
 /// [`Construction::complete`]'s storage: its master's entries of modes 4, 8 and 64 go to its
 /// owner (slot 0xf8, into `attributes`), those of mode 16 to its own `store` (`FUN_1411abad0`: an

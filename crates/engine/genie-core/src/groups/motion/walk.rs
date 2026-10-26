@@ -9,7 +9,7 @@ use crate::groups::motion::{
 use crate::map::spatial::Placed;
 use crate::math::fmath::Vec3;
 use crate::movement::{Planning, footprint_gap};
-use crate::turn::Turns;
+use crate::world::Turns;
 use crate::{GenieError, math::fmath};
 
 /// The walk of the walked level (`LAB_14104b6b4`): see [`path_step`].
@@ -242,7 +242,7 @@ impl Turns {
 pub(super) const SHORT_IGNORED: usize = 128;
 
 /// Slot 0x520 of a unit: where it last moved to, as the game's vector (x, height, y).
-pub(in crate::groups) fn moved_vector(u: &crate::turn::Unit) -> Vec3 {
+pub(in crate::groups) fn moved_vector(u: &crate::world::Unit) -> Vec3 {
     u.mover
         .as_ref()
         .map_or([u.position[0], u.position[2], u.position[1]], |m| {

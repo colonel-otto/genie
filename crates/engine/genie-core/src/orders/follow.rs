@@ -6,14 +6,14 @@ use crate::orders::{
     Followed, GUARD_RANGE, LIVESTOCK, MOVING, Place, VILLAGER, follow_axis, follow_spread,
     ignore_unit,
 };
-use crate::turn::Turns;
 use crate::unit_ai::{GenieError, MOVE_ORDER};
+use crate::world::Turns;
 
 impl Turns {
     /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`Turns::command_check`]), then
     /// `FUN_140e66a60`: a target the world does not hold does nothing; the first 60 ids (500 for
     /// a computer player) go, gone ones null (`FUN_140e6b750`), to `FUN_14161c920`. Its unit AI
-    /// resets (`FUN_141631040`) are the caller's ([`crate::turn`]). The splitter
+    /// resets (`FUN_141631040`) are the caller's ([`crate::world`]). The splitter
     /// (`FUN_140fd9ae0`, no Ctrl) parts the units; a group it forms is not modelled (a new
     /// group, `FUN_14152efc0`, follows through `FUN_141007320`; a kept one through
     /// `FUN_140fd9f40`). The command count goes on. Several loose units leave their unit groups
@@ -73,7 +73,7 @@ impl Turns {
         Ok(())
     }
 
-    /// GUARD (0x13) after its check and its unit AI resets (the caller's, [`crate::turn`]):
+    /// GUARD (0x13) after its check and its unit AI resets (the caller's, [`crate::world`]):
     /// `FUN_140e67620`'s first 60 units (500 for a computer player) go, gone ones null
     /// (`FUN_140e6b750`), to `FUN_14161dee0`: each unit the world holds leaves the unit group the
     /// world holds of its link (`FUN_14102c160` with −1 and 0), and its unit AI takes the defend
@@ -382,7 +382,7 @@ impl Turns {
 
     /// The head action's slot 0x40 (`FUN_140a97730`) on a move of the unit at `idx` to `point`,
     /// toward the object `target` if any: true when the action takes the move. Without a target
-    /// it is the unit's own [`crate::turn::Unit::head_takes_point`], whose released target goes
+    /// it is the unit's own [`crate::world::Unit::head_takes_point`], whose released target goes
     /// here ([`Turns::release`]). Toward an object, an empty list takes nothing, nor does the
     /// base slot (`FUN_140a78490`) of a `MoveTo`, an Explore, a Build (0x140aade60), an Attack,
     /// an Enter, a Fly, a missile, a Make or a wait for a foundation. The Artifact's
@@ -437,7 +437,7 @@ impl Turns {
         }
     }
 
-    /// The head action's slot 0x40 on a move to `point` ([`crate::turn::Unit::head_takes_point`]):
+    /// The head action's slot 0x40 on a move to `point` ([`crate::world::Unit::head_takes_point`]):
     /// the targets it let go are released and a counted repairer leaves its target's repairers.
     pub(super) fn point_taken(
         &mut self,
@@ -448,10 +448,10 @@ impl Turns {
         let by = self.releaser(player, idx);
         let (released, left) =
             match self.players[player].objects[idx].head_takes_point(point, player)? {
-                crate::turn::PointMove::Declined => return Ok(false),
-                crate::turn::PointMove::Taken(released) => (released, None),
-                crate::turn::PointMove::Repairs(released, left) => (released, left),
-                crate::turn::PointMove::Sails => {
+                crate::world::PointMove::Declined => return Ok(false),
+                crate::world::PointMove::Taken(released) => (released, None),
+                crate::world::PointMove::Repairs(released, left) => (released, left),
+                crate::world::PointMove::Sails => {
                     self.transport_move(player, idx, point)?;
                     return Ok(true);
                 }

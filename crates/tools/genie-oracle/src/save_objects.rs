@@ -7,8 +7,8 @@ use crate::{
     town_bell,
 };
 use genie_core::GenieError;
-use genie_core::turn::Turns;
 use genie_core::vision::visibility::Visibility;
+use genie_core::world::Turns;
 use genie_rec::de;
 use genie_save::Header;
 use genie_save::generated::world::RgeStaticObject;
@@ -178,7 +178,7 @@ pub fn inside_lists_from_dump(text: &str) -> Result<Vec<(i32, Vec<i32>)>, Error>
 /// The pool of recycled missiles (type 60, `world+0x1d8`) as the tick oracle dumps it
 /// (`state_dumps.recycle_pools_text`: per type a `pool TYPE COUNT` line, then `ID FLYING` per
 /// object from the list's first, the next to come back), in the slice's order
-/// ([`genie_core::turn::Recycling::missiles`]: the next to come back last). The slice recycles no
+/// ([`genie_core::world::Recycling::missiles`]: the next to come back last). The slice recycles no
 /// object of another type; their pools are not read.
 pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(i32, bool)>, Error> {
     let mut missiles = Vec::new();
@@ -201,7 +201,7 @@ pub fn recycle_pools_from_dump(text: &str) -> Result<Vec<(i32, bool)>, Error> {
 
 /// The world's pool of recycled ghosts (type 25) as the tick oracle dumps it
 /// (`state_dumps.recycle_pools_text`): their ids, the last to come back first in the slice's
-/// order ([`genie_core::turn::Recycling::ghosts`]).
+/// order ([`genie_core::world::Recycling::ghosts`]).
 pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<i32>, Error> {
     let mut ghosts = Vec::new();
     let mut kind = None;

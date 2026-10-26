@@ -7,9 +7,9 @@ use crate::orders::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
-use crate::turn::{Turns, World};
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::{GenieError, HUNT_ACTION, MOVE_ORDER};
+use crate::world::{Turns, World};
 
 impl Turns {
     /// One unit of MOVE: an object that does not move ignores an order not queued. The unit's
@@ -38,7 +38,7 @@ impl Turns {
         };
         // the command's check (`FUN_140e553f0`, [`Turns::checked_units`]) dropped another
         // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
-        // other's units ([`crate::settings::Settings::cheats_enabled`]): such a unit takes the
+        // other's units ([`crate::world::settings::Settings::cheats_enabled`]): such a unit takes the
         // move as its own player's, the issuer only queuing it
         let issuer = player;
         let player = p;
@@ -182,7 +182,7 @@ impl Turns {
     }
 
     /// The unit's slot 0x340 from its unit AI's move off a footprint (slot 0x148,
-    /// [`crate::turn::Unit::ai_move_with`]); then what its actions let go: a counted builder
+    /// [`crate::world::Unit::ai_move_with`]); then what its actions let go: a counted builder
     /// leaves its building ([`Turns::leave_builders`]), the targets go ([`Turns::release`]).
     pub(crate) fn move_aside(
         &mut self,

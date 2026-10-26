@@ -43,7 +43,7 @@ impl HuntAction {
             self.task.range
         };
         self.move_wait = MoveWait::default();
-        let mover = walk.mover.as_deref().ok_or(crate::turn::HUNTER_UNMOVING)?;
+        let mover = walk.mover.as_deref().ok_or(crate::world::HUNTER_UNMOVING)?;
         let ground = [mover.stats.radius[0], mover.stats.radius[1]];
         let gap = footprint_gap(walk.me.position, ground, t.position, t.radius);
         self.move_to = Some(if ARRIVED < gap {
@@ -113,7 +113,7 @@ impl HuntAction {
                 .mover
                 .as_deref()
                 .map(|m| [m.stats.radius[0], m.stats.radius[1]])
-                .ok_or(crate::turn::HUNTER_UNMOVING)?;
+                .ok_or(crate::world::HUNTER_UNMOVING)?;
             if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {
                 let mut walk = walk;
                 let player = strike.own.player;

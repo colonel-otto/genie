@@ -5,10 +5,10 @@ use crate::combat::damage::Victim;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
-use crate::turn::world::World;
-use crate::turn::{BUILDING_KIND, Turns};
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::{GenieError, Notify};
+use crate::world::lookups::World;
+use crate::world::{BUILDING_KIND, Turns};
 
 impl Turns {
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): an
@@ -75,8 +75,8 @@ impl Turns {
                         .spatial
                         .tile_sight(
                             viewer,
-                            crate::checkpoint::cvttss2si(x),
-                            crate::checkpoint::cvttss2si(y),
+                            crate::world::checkpoint::cvttss2si(x),
+                            crate::world::checkpoint::cvttss2si(y),
                         )
                         .unwrap_or(0),
                 }));

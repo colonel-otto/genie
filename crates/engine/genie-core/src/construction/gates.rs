@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
-use crate::turn::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, Turns};
+use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, Turns};
 
 /// The units in gate `gate` (`FUN_1411d0570`): the obstruction manager's query from its first
 /// annex to its second (`+0xbc0`, `+0xbc8`) with flags 0x10, the gate and its annexes ignored

@@ -6,7 +6,7 @@ use crate::{
 };
 use genie_core::GenieError;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
-use genie_core::turn::Unit;
+use genie_core::world::Unit;
 use genie_save::generated::world::{PlayerObjects, RgeStaticObject};
 
 /// The top action of a saved object as the slice models it: the Artifact action (107), the

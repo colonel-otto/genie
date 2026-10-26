@@ -3,10 +3,10 @@
 
 use crate::map::spatial::Placed;
 use crate::objects::masters::Master;
-use crate::turn::Turns;
-use crate::turn::world::clear_look_of;
 use crate::unit_ai::{GenieError, Notify};
 use crate::vision::visibility::{BuildingSight, Seer, capture_kind};
+use crate::world::Turns;
+use crate::world::lookups::clear_look_of;
 
 impl Turns {
     /// `FUN_14123bb20`'s sending off (with `DAT_1439e60e2` 1) of the units on `foundation`'s

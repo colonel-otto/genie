@@ -8,7 +8,7 @@ use crate::groups::steer::{
     MOVES,
 };
 use crate::math::fmath::{Vec3, below_or_unordered};
-use crate::turn::Turns;
+use crate::world::Turns;
 use crate::{GenieError, math::fmath};
 
 impl Turns {
@@ -138,7 +138,7 @@ impl Turns {
     pub(super) fn action_list(
         &self,
         p: usize,
-        u: &crate::turn::Unit,
+        u: &crate::world::Unit,
     ) -> Result<(bool, u8), GenieError> {
         if self.master_of(p, u.life.master_id)?.kind < ACTION_KIND {
             return Ok((false, 0));
@@ -166,7 +166,7 @@ impl Turns {
     /// For a unit without movement state: a group's members move ([`MOVES`]).
     pub(super) fn line_clear(
         &self,
-        u: &crate::turn::Unit,
+        u: &crate::world::Unit,
         from: Vec3,
         to: Vec3,
         grow: f32,

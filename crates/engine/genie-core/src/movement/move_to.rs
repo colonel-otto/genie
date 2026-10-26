@@ -147,7 +147,7 @@ pub fn start_walk_asked(
         }
         Goal::Point(p) => (p, -1, [0.0, 0.0]),
     };
-    let mover = walk.mover.ok_or(crate::turn::WALKER_UNMOVING)?;
+    let mover = walk.mover.ok_or(crate::world::WALKER_UNMOVING)?;
     let ground = [mover.stats.radius[0], mover.stats.radius[1]];
     let squared = if target == -1 {
         let gap = footprint_gap(walk.me.position, ground, point, radius);
@@ -178,7 +178,7 @@ pub fn start_walk_asked(
 /// and `FUN_14114d810` its facet; the slice holds neither). A `MoveTo` without its path is not
 /// modelled.
 pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
-    let mover = walk.mover.ok_or(crate::turn::WALKER_UNMOVING)?;
+    let mover = walk.mover.ok_or(crate::world::WALKER_UNMOVING)?;
     if mover.paths.is_empty() {
         return Err(GenieError::unsupported("the path request (FUN_14114e410)"));
     }
@@ -227,7 +227,7 @@ pub fn follow_path_end(walk: &mut Walk<'_>, point: [f32; 3]) -> Result<(), Genie
     let mover = walk
         .mover
         .as_deref_mut()
-        .ok_or(crate::turn::WALKER_UNMOVING)?;
+        .ok_or(crate::world::WALKER_UNMOVING)?;
     mover.follow_path_end(point);
     mover.move_to_point = Some(point);
     Ok(())
@@ -253,7 +253,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
     let point = walk
         .mover
         .as_deref()
-        .ok_or(crate::turn::WALKER_UNMOVING)?
+        .ok_or(crate::world::WALKER_UNMOVING)?
         .move_to_point
         .ok_or(GenieError::unsupported(
             "a MoveTo to a target whose point the slice does not hold",
@@ -265,7 +265,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
     if quiet {
         return Ok(Follow::Again);
     }
-    let mover = walk.mover.as_deref().ok_or(crate::turn::WALKER_UNMOVING)?;
+    let mover = walk.mover.as_deref().ok_or(crate::world::WALKER_UNMOVING)?;
     if mover.walks_to_path_end()? {
         let me = walk
             .world
@@ -482,7 +482,7 @@ impl MoveToAction {
 
     /// Its start ended it (state 1 at its target, or 13 for a unit without speed), whose
     /// `set_state` (`0x140aa29e0`, not quiet) shows the master's standing sprite and clears the
-    /// unit's `+0x7b8`: the caller's ([`crate::turn::Unit::shows_standing_sprite`]).
+    /// unit's `+0x7b8`: the caller's ([`crate::world::Unit::shows_standing_sprite`]).
     #[must_use]
     pub const fn shows_standing(&self) -> bool {
         matches!(self.state, MoveTo::Arrived | MoveTo::Failed)

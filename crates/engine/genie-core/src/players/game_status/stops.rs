@@ -6,8 +6,8 @@ use crate::players::game_status::{
     FISHING_BOAT, KEEPING_TYPES, KEPT_ACTION, LIVESTOCK, TRADE_ACTION, TRADE_CART,
     UNSTOPPED_BUILDINGS, VILLAGER,
 };
-use crate::turn::{Releaser, Turns};
 use crate::unit_ai::{Effect, GenieError};
+use crate::world::{Releaser, Turns};
 
 impl Turns {
     /// `FUN_141613ed0`: a defeated player's objects in its live list's order. A villager, a
@@ -187,7 +187,7 @@ impl Turns {
     /// [`crate::combat::attack::Attack::halt`]) and the Artifact's (`FUN_140aad1a0`,
     /// [`crate::ownership::artifact::Artifact::stop`]). The Gather, the Build and the Artifact show the
     /// master's standing sprite (the Gather the task's carrying one while it carries at least 1 of
-    /// the task's resource, `FUN_140a8b6b0`). [`crate::turn::Unit::top_action`] holds no other
+    /// the task's resource, `FUN_140a8b6b0`). [`crate::world::Unit::top_action`] holds no other
     /// kind.
     pub(super) fn halt_other(
         &mut self,

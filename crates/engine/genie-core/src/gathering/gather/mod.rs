@@ -238,7 +238,7 @@ pub struct Gatherer<'a> {
     /// The player's attribute 96: a farm's food is sold at once.
     pub food_sold: f32,
     /// The food the gathering sold at once, which the caller gives to the player (slot 0xf8 with
-    /// 1, [`crate::turn`]'s `give_load`).
+    /// 1, [`crate::world`]'s `give_load`).
     pub sold: f32,
     /// Out: the unit's animation stops (`FUN_141161850`: its `+0x7b8` 0).
     pub anim_stopped: bool,
@@ -265,7 +265,7 @@ pub enum Next {
     /// sites).
     Search,
     /// State 0xf2's walk ended (`0x140a8e1d0` case 0xf1): the caller reseeds the farm
-    /// ([`crate::turn::Turns::reseed`], `FUN_140a8aa60`, which sends the gatherer to build it);
+    /// ([`crate::world::Turns::reseed`], `FUN_140a8aa60`, which sends the gatherer to build it);
     /// without a reseed (the interface's event 0x7f, 0x9c for a gatherer not a villager, when it
     /// has a farm spot) a walk that arrived leaves a computer player's gatherer done
     /// (`set_state(1)`), a human's idle (`set_state(2)`), and a failed walk idles both

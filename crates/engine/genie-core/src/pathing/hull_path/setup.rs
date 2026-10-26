@@ -1,11 +1,11 @@
 //! The pather's construction ([`HullPather`]) and `canQuickPath` (object slot 0x3e0).
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
 use crate::map::spatial::{Spatial, tile_record_id};
 use crate::pathing::hull_path::{
     GatePass, HALF, HullPather, KeptHulls, Node, ONE, PATHS, Point, Waypoints,
 };
+use crate::world::checkpoint::cvttss2si;
 
 /// A quick path without the map's terrain.
 pub(crate) const NO_TERRAIN: GenieError =

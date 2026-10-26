@@ -8,7 +8,7 @@
 //! - 151 ([`GENERATE`]): the player's attribute named by the task's `attribute_type3` (`+0x24`)
 //!   grows by the world's dt times the task's `work_val1` times the player's attribute named by
 //!   its `attribute_type2` (`+0x22`), through the player's store of what it made and did not give
-//!   yet (`player+0x658`, [`crate::turn::Player::generated`]): once that reaches 1 it is given
+//!   yet (`player+0x658`, [`crate::world::Player::generated`]): once that reaches 1 it is given
 //!   (the player's slot 0xf8) and starts again at 0. A combat unit (or building) with the task's
 //!   `combat_level_flag` bit 1 (bit 2) generates always; else a combat unit whose top action
 //!   works (its state 7) on a target of the task's class, and a built building. The Feitoria,
@@ -36,7 +36,7 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::math::fmath;
 use crate::objects::masters::Task;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 mod generation;
 mod looks_and_rewards;

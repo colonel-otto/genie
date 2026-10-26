@@ -18,9 +18,10 @@
 //!
 //! [`Mover::step_velocity`]: crate::movement::Mover::step_velocity
 
+pub mod checkpoint;
 pub(crate) mod context;
+pub(crate) mod lookups;
 pub(crate) mod player;
-pub(crate) mod world;
 
 use crate::GenieError;
 pub use crate::commands::game::GameCommand;
@@ -33,18 +34,19 @@ pub(crate) use crate::objects::unit::EnterWorld;
 pub use crate::objects::unit::Unit;
 pub(crate) use crate::objects::unit::{PointMove, annexes_of, give_load};
 use crate::pathing::Pathing;
-pub(crate) use crate::turn::player::NO_ATTRIBUTE;
-pub use crate::turn::player::{AiSettings, Formations, Player};
-pub(crate) use crate::turn::world::{
-    DEAD_COPY_TYPES, Releaser, World, built_death, combat_dies, count_class, drop_site_search,
-    farm_bonus, forget_resource, refund_of, released, storage_leaves, victim_of,
-};
 use crate::unit_ai::task_finder::DropSite;
 pub(crate) use crate::unit_ai::world_view::DropWorld;
 pub(crate) use crate::unit_ai::world_view::{EnterOrder, RepairOrder};
+pub(crate) use crate::world::lookups::{
+    DEAD_COPY_TYPES, Releaser, World, built_death, combat_dies, count_class, drop_site_search,
+    farm_bonus, forget_resource, refund_of, released, storage_leaves, victim_of,
+};
+pub(crate) use crate::world::player::NO_ATTRIBUTE;
+pub use crate::world::player::{AiSettings, Formations, Player};
 
 mod forced;
 mod object_step;
+pub mod settings;
 mod setup;
 mod world_update;
 
@@ -165,7 +167,7 @@ pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 
 /// What every object of a player reads of all players while that player's objects update
 /// ([`Turns::player_frame`]).
-pub(in crate::turn) struct PlayerFrame {
+pub(in crate::world) struct PlayerFrame {
     /// Each player's attribute 97.
     attribute_97: Vec<f32>,
     /// Each player's game status (`+0x89`).
@@ -287,8 +289,8 @@ pub struct Turns {
     /// The game's linked technologies (`linkedTechs.json`, the table at the game settings'
     /// `+0x18` that `FUN_140f39f40` looks up), by technology; empty when not loaded.
     pub linked_techs: std::collections::BTreeMap<i16, crate::technology::Linked>,
-    /// The game options the simulation reads ([`crate::settings::Settings`]), from the header.
-    pub settings: crate::settings::Settings,
+    /// The game options the simulation reads ([`crate::world::settings::Settings`]), from the header.
+    pub settings: settings::Settings,
     /// The game object's tagged value at `+0x680` (`DAT_143f07a58`, read through
     /// `FUN_140ec0cd0`; at 1 a boar does not wander and a hit may do no damage). `GamePC::start4`
     /// (`FUN_140f29b60`) compares it with the loaded world's `+0x6b4` and reloads the data when

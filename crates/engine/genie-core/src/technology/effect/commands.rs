@@ -6,7 +6,7 @@ use crate::technology::EffectCommand;
 use crate::technology::effect::{
     COST_ATTRIBUTES, Change, FARM_FOOD, TECH_COST, TECH_DISABLE, TECH_TIME, kind,
 };
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// Which players a block of the base's kinds reaches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,7 +78,7 @@ impl Turns {
             match c.kind {
                 TECH_COST => self.tech_cost(p, c.a, c.b, c.d, mode),
                 TECH_DISABLE => {
-                    let tech = crate::checkpoint::cvttss2si(c.d);
+                    let tech = crate::world::checkpoint::cvttss2si(c.d);
                     if tech != -1 {
                         self.disable_tech(p, tech, object)?;
                     }
@@ -153,7 +153,7 @@ impl Turns {
         for q in self.party(p, party) {
             if cost {
                 let unit = if c.b < 0 { c.a } else { c.b };
-                self.cost_entries(q, unit, c.c, crate::checkpoint::cvttss2si(c.d));
+                self.cost_entries(q, unit, c.c, crate::world::checkpoint::cvttss2si(c.d));
             } else {
                 self.modify_attribute(q, change, c.a, c.b, c.d, attribute)?;
             }
@@ -248,7 +248,7 @@ impl Turns {
             .map_or(c.d, |scale| c.d * scale)
     }
 
-    /// Player `p`'s attribute `i` (the resources are [`crate::turn::Player::resources`]), None
+    /// Player `p`'s attribute `i` (the resources are [`crate::world::Player::resources`]), None
     /// past its count (`+0x90`, the saved attributes').
     pub(super) fn attribute_value(&self, p: usize, i: usize) -> Option<f32> {
         let player = &self.players[p];

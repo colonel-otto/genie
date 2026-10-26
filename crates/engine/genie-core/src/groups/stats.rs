@@ -4,7 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::create::FormationUnit;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// A group whose `mGroupFlags` bit 9 is set moves at its slowest member's speed divided by this
 /// (`FUN_14100bcb0`, `DAT_142ed66b4`).
@@ -684,7 +684,7 @@ mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
-    use crate::turn::{Player, Unit};
+    use crate::world::{Player, Unit};
 
     /// Slot 0x238 (`FUN_14108d9b0`): the weapon range, plus `charge_event` for a ready charge of
     /// type 6 or 7 that works on the target (here every class, −1); without the charge ready, of

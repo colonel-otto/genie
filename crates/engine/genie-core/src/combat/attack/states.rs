@@ -18,7 +18,7 @@ impl Attack {
         let g = self
             .arms
             .idle_sprite
-            .ok_or(crate::turn::NO_STANDING_SPRITE)?;
+            .ok_or(crate::world::NO_STANDING_SPRITE)?;
         set_sprite(s.sprite, g, s.sprite_rng);
         if let Some(a) = s.anim_speed.as_mut() {
             *a = 0.0;
@@ -87,7 +87,7 @@ impl Attack {
         if self.move_to.take().is_some() {
             walk.mover
                 .as_deref_mut()
-                .ok_or(crate::turn::ATTACKER_UNMOVING)?
+                .ok_or(crate::world::ATTACKER_UNMOVING)?
                 .stop()?;
             if let Some(a) = s.anim_speed.as_mut() {
                 *a = 0.0;
@@ -189,7 +189,7 @@ impl Attack {
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
         if self.move_to.take().is_some() {
-            mover.ok_or(crate::turn::ATTACKER_UNMOVING)?.stop()?;
+            mover.ok_or(crate::world::ATTACKER_UNMOVING)?.stop()?;
             if let Some(a) = anim_speed.as_mut() {
                 *a = 0.0;
             }

@@ -92,7 +92,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         unit: &me,
         attributes: &[],
         relations: &[0, 0, 0],
-        ai_settings: crate::turn::player::AiSettings::default(),
+        ai_settings: crate::world::player::AiSettings::default(),
         now: 0,
         mode_680: 0,
     };
@@ -189,7 +189,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         unit: &me,
         attributes: &[],
         relations: &[0, 0, 0],
-        ai_settings: crate::turn::player::AiSettings::default(),
+        ai_settings: crate::world::player::AiSettings::default(),
         now: 0,
         mode_680: 0,
     };

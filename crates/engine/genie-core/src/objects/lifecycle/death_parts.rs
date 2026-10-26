@@ -5,10 +5,10 @@ use crate::map::spatial::Spatial;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
-use crate::turn::{
+use crate::unit_ai::GenieError;
+use crate::world::{
     BuildingDeath, CASTLE, CASTLES, MONASTERIES, MONASTERY, RESTORED_FOUNDATION, WONDER, WONDERS,
 };
-use crate::unit_ai::GenieError;
 
 /// The owner's attributes 237, 238 and 239: a built farm's bonus ([`Completion::farm_bonus`]);
 /// −1 for those the player has not got.
@@ -140,7 +140,7 @@ pub(crate) struct BuiltDeath {
 ///
 /// What it does not model.
 ///
-/// [`Turns::withdraw_tech`]: crate::turn::Turns::withdraw_tech
+/// [`Turns::withdraw_tech`]: crate::world::Turns::withdraw_tech
 pub(crate) fn built_death(
     u: &mut Unit,
     master: &Master,

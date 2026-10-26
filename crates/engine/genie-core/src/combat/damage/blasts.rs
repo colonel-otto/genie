@@ -1,12 +1,12 @@
 //! The damage beyond what a blast has done (`FUN_141082e80`) and the blast itself (slot
 //! 0x848).
 
-use crate::checkpoint::cvttss2si;
 use crate::combat::damage::{
     ARTIFACT, BUILDING, CONE, ELEPHANT_ARCHER, Kill, LIVESTOCK, MINUS_CONE, RAMS, Victim,
     WIDE_CONE, armor_damage, bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus,
     lose, shield, take,
 };
+use crate::world::checkpoint::cvttss2si;
 use crate::{GenieError, math::fmath};
 
 /// `FUN_141082e80`: the damage ([`armor_damage`]) beyond what a blast has done: an attacker of

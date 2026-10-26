@@ -2,7 +2,7 @@
 
 use crate::combat::abilities::{Look, ONE, Reward};
 use crate::objects::masters::Task;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// A terrain look task's terrain mask (`0x141207501`, a `std::bitset<8>`): a terrain below 0
 /// is the mask of its negation's low byte, 1 to 8 sets the bit of that less 1, above 8 none.
@@ -75,7 +75,7 @@ pub fn reward(
     Reward {
         player,
         attribute: out,
-        amount: crate::checkpoint::cvttss2si(amount),
+        amount: crate::world::checkpoint::cvttss2si(amount),
     }
 }
 
@@ -94,8 +94,8 @@ impl Turns {
         let unit = &self.players[p].objects[i];
         let at = unit.mover.as_ref().map_or(unit.position, |m| m.moved_at);
         let (x, y) = (
-            crate::checkpoint::cvttss2si(at[0]),
-            crate::checkpoint::cvttss2si(at[1]),
+            crate::world::checkpoint::cvttss2si(at[0]),
+            crate::world::checkpoint::cvttss2si(at[1]),
         );
         let flags = self.spatial.terrain.as_ref().map_or(0, |t| {
             t.kind(x, y)

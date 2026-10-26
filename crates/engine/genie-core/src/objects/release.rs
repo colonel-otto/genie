@@ -3,9 +3,9 @@
 
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
-use crate::turn::Turns;
-use crate::turn::world::{count_class, forget_resource};
 use crate::unit_ai::{GenieError, Notify};
+use crate::world::Turns;
+use crate::world::lookups::{count_class, forget_resource};
 
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
 /// update ([`released`]; the releaser's own player is allied).

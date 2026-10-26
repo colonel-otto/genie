@@ -1,6 +1,6 @@
 use super::*;
 use crate::objects::masters::BuildingMaster;
-use crate::turn::{Player, Unit};
+use crate::world::{Player, Unit};
 
 pub(crate) const TC: i16 = 109;
 pub(crate) const VILLAGER: i16 = 83;
@@ -1116,7 +1116,7 @@ fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
     walker(&mut t, 1, 1000, VILLAGER, [12.5, 10.0]);
     let idx = t.players[1].objects.len() - 1;
     let state = t.players[1].objects[idx].life.state;
-    let g = crate::turn::GatherPoint {
+    let g = crate::world::GatherPoint {
         point: [10.0, 10.0, 0.0],
         target: 100,
         target_master: TC,

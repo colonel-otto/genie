@@ -2,11 +2,11 @@
 //! the meeting point and the reach.
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
 use crate::garrison::{EnterAction, EnterTarget, SIEGE_CLASS};
 use crate::movement::footprint_gap_squared;
 use crate::objects::masters::{Master, Masters};
 use crate::orders::BUILDING;
+use crate::world::checkpoint::cvttss2si;
 
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
 /// to which an Enter's reach of a target with speed tests the tiles about the two
@@ -150,7 +150,7 @@ pub fn walled_off(
 /// [`crate::movement::Mover::move_to_point`]; a Transport's point. An action the slice does not
 /// hold has neither; another no point the slice keeps.
 pub(crate) fn meeting_target(
-    t: &crate::turn::Unit,
+    t: &crate::world::Unit,
     tm: &Master,
     room: bool,
 ) -> Result<MeetingTarget, GenieError> {
@@ -281,8 +281,8 @@ pub(crate) fn enter_view(
     spatial: &crate::map::spatial::Spatial,
     zones: &mut crate::pathing::zones::Zones,
     masters: &[Masters],
-    unit: &crate::turn::Unit,
-    (t, tm, room): (&crate::turn::Unit, &Master, bool),
+    unit: &crate::world::Unit,
+    (t, tm, room): (&crate::world::Unit, &Master, bool),
     range: f32,
 ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
     let building = tm.kind == BUILDING;
@@ -328,7 +328,7 @@ pub(crate) fn enter_view(
 /// [`ENTER_NEAR`] of the point's tile (the point truncated), [`crate::movement::Mover::reaches`]
 /// from where it last moved to; one without movement state does not.
 pub(crate) fn ship_reaches(
-    ship: &crate::turn::Unit,
+    ship: &crate::world::Unit,
     world: &crate::map::spatial::Spatial,
     plan: &mut crate::movement::Planning<'_>,
     to: [f32; 3],

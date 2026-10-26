@@ -2,15 +2,15 @@
 //! unload and the units put ashore.
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
 use crate::garrison::transport::{
     Around, Changed, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT, TransportAction,
     find_drop_location, retry_point,
 };
+use crate::world::checkpoint::cvttss2si;
 
 /// The transports' parts that reach the world: the unload command's install, the unload and the
 /// units put ashore.
-impl crate::turn::Turns {
+impl crate::world::Turns {
     /// What the Transport of player `p`'s object at `i` reads of it ([`Ship`]): its place, its
     /// master's radii, whether an object is inside it, the map's size and whether it has speed.
     pub(super) fn ship(&self, p: usize, i: usize) -> Result<Ship, GenieError> {
@@ -29,7 +29,7 @@ impl crate::turn::Turns {
     /// `i`, after the unit AI that gave it: a Transport on top (type 12, `FUN_140a7be70`) is told
     /// to work at the unit's own place ("Telling existing action to work": slot 9 with the unit
     /// itself as its object, [`TransportAction::work`]); else the actions go (`FUN_140a98620`,
-    /// [`crate::turn::Turns::clear_actions`]) and a Transport at the unit's place
+    /// [`crate::world::Turns::clear_actions`]) and a Transport at the unit's place
     /// ([`TransportAction::new`]) replaces them (slot 0x808: its slot 0x70, the base's, does
     /// nothing; the list's add starts it, [`TransportAction::start`]), then takes the work order
     /// at `to` from the unit itself.
@@ -75,7 +75,7 @@ impl crate::turn::Turns {
     }
 
     /// The Transport of player `p`'s object at `i` takes a move to `point` (its slot 8,
-    /// [`crate::turn::Unit::transport_sail`]).
+    /// [`crate::world::Unit::transport_sail`]).
     ///
     /// # Errors
     ///
@@ -96,7 +96,7 @@ impl crate::turn::Turns {
 
     /// What a state change of the Transport of player `p`'s object at `i` leaves ([`Changed`]):
     /// the unit stops (its `MoveTo`'s teardown, slot 0x5d0), then takes its standing sprite (slot
-    /// 0x68, [`crate::turn::Unit::show_standing`]).
+    /// 0x68, [`crate::world::Unit::show_standing`]).
     pub(super) fn transport_changed(
         &mut self,
         p: usize,

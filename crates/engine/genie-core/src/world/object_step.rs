@@ -6,10 +6,10 @@ use crate::combat::damage::Victim;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit;
 use crate::objects::unit::{AiResume, Step, Unit};
-use crate::turn::{
+use crate::unit_ai::world_view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
+use crate::world::{
     BuildingDeath, LEAVES_ITS_LIST, PlayerFrame, Turns, scenario_mode, standard_mode,
 };
-use crate::unit_ai::world_view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
 
 impl Turns {
     /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI

@@ -26,7 +26,7 @@ pub struct Candidate {
     pub position: [f32; 3],
     /// `+0x790`, `parent_pasture_id` (−1 for none).
     pub pasture: i32,
-    /// `+0x689` is 0 ([`crate::turn::Unit::untargetable`]).
+    /// `+0x689` is 0 ([`crate::world::Unit::untargetable`]).
     pub untargetable: bool,
     /// `+0x308`, `attribute_type_held`.
     pub attribute: i16,
@@ -148,8 +148,9 @@ pub fn more_work(
                 };
                 let dx = o.position[0] - builder.position[0];
                 let dy = o.position[1] - builder.position[1];
-                let d = crate::checkpoint::cvttss2si(crate::math::fmath::sqrt(dy * dy + dx * dx))
-                    as f32;
+                let d = crate::world::checkpoint::cvttss2si(crate::math::fmath::sqrt(
+                    dy * dy + dx * dx,
+                )) as f32;
                 let workers = (o.workers - 1).max(0);
                 let take = match groups[g] {
                     Some((_, kept)) if least[g] <= d => workers < kept,

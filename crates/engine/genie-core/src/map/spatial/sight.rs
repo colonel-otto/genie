@@ -242,7 +242,7 @@ impl Spatial {
     /// then (0xf), which the world does not hold. Without the players' sight: 0.
     #[must_use]
     pub fn building_sight(&self, id: i32, position: [f32; 3], player: usize) -> Option<u8> {
-        use crate::checkpoint::cvttss2si;
+        use crate::world::checkpoint::cvttss2si;
         let Some(v) = self.sight.as_ref() else {
             return Some(0);
         };

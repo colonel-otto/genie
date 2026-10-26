@@ -6,7 +6,7 @@ use crate::garrison::{
     WHOLE_SHARE_CLASS,
 };
 use crate::orders::BUILDING;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// UNLOAD's point without one (`DAT_14330ec20`).
 pub(super) const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
@@ -301,7 +301,7 @@ impl Turns {
 
     /// `GO_BACK_TO_WORK` (`do_command` 0x80 with one object, 0x86 with several:
     /// `FUN_141625590`) on the player's objects `ids` (another player's only while players may
-    /// order each other's, [`crate::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is not held): a building
+    /// order each other's, [`crate::world::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is not held): a building
     /// lets out, from the last in, each unit inside of type 70 or more that is a villager (class
     /// 4) or of master 1808, back to its work ([`Turns::back_to_work`]).
     pub(crate) fn go_back_to_work(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
@@ -409,7 +409,7 @@ impl Turns {
     pub(super) fn unload_picks(
         &self,
         player: usize,
-        unit: &crate::turn::Unit,
+        unit: &crate::world::Unit,
         flag: u8,
         param: i32,
     ) -> Result<bool, GenieError> {

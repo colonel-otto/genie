@@ -56,7 +56,7 @@ pub struct Cleared {
     pub wall: bool,
     /// Its record goes in the clearing: its destroy's death part drops it (a unit or a tall
     /// building not desolid of type 70 and up below state 3 whose record is still there,
-    /// [`crate::turn::combat_dies`], which sets `+0x686`), or with `param_6` `FUN_141189670`
+    /// [`crate::world::combat_dies`], which sets `+0x686`), or with `param_6` `FUN_141189670`
     /// after the destroy does (`+0x686` still clear, and its master tall, COMISS: a NaN height
     /// too, or the object holding its record).
     pub record_goes: bool,
@@ -132,7 +132,7 @@ pub(crate) fn footprint_clearing(
 /// [`footprint_clearing`]'s tiles: from 4 before the place to 4 past it on each axis
 /// (CVTTSS2SI to 16 bits), held on the map; none when a range is empty.
 pub(super) fn clearing_tiles(at: [f32; 2], [w, h]: [i32; 2]) -> Option<([i16; 2], [i16; 2])> {
-    use crate::checkpoint::cvttss2si;
+    use crate::world::checkpoint::cvttss2si;
     let range = |v: f32, size: i32| {
         let low = cvttss2si(v - CLEARING_REACH) as i16;
         let high = cvttss2si(v + CLEARING_REACH) as i16;

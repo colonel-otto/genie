@@ -4,10 +4,10 @@ use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::unit::{Unit, second_target_checked};
-use crate::turn::world::state_of;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::world_view::{Context, DropWorld};
 use crate::unit_ai::{BUILD_ACTION, GenieError};
+use crate::world::lookups::state_of;
 
 impl Unit {
     /// The Build's `set_state(8)` from its update (case 7 searching again): the drop-site table's
@@ -32,7 +32,7 @@ impl Unit {
             let (masters, own) = c
                 .masters
                 .and_then(|m| Some((m, m.get(self.life.master_id)?)))
-                .ok_or(crate::turn::OBJECT_MASTER)?;
+                .ok_or(crate::world::OBJECT_MASTER)?;
             let at = [self.position[0], self.position[1]];
             let look = |id: i32| {
                 others
@@ -62,11 +62,11 @@ impl Unit {
                     };
                     let every = c.every_masters;
                     let task = match (
-                        crate::turn::world::task_target_with(id, 1, &find, every)?,
-                        crate::turn::world::task_target_with(id, 2, &find, every)?,
+                        crate::world::lookups::task_target_with(id, 1, &find, every)?,
+                        crate::world::lookups::task_target_with(id, 2, &find, every)?,
                     ) {
                         (Some(t), Some(general)) => {
-                            use crate::turn::world::{SideWorld, task_search};
+                            use crate::world::lookups::{SideWorld, task_search};
                             let actor = Actor {
                                 id: self.id,
                                 master: own,
@@ -156,7 +156,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::GATHERER_MASTER)?;
+            .ok_or(crate::world::GATHERER_MASTER)?;
         let g = |id: i16| (0 <= id).then(|| c.graphics.get(&id).copied()).flatten();
         let task = gather.task;
         let sprites = HuntSprites {
@@ -403,7 +403,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::GATHERER_MASTER)?;
+            .ok_or(crate::world::GATHERER_MASTER)?;
         let site = if carry_to != -1 {
             carry_to
         } else if master.drop_sites.first().is_some_and(|&d| d != -1) {

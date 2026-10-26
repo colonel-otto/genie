@@ -5,9 +5,9 @@ use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
-use crate::turn::world::{Releaser, ResourceWorld, closest_resource_of};
 use crate::unit_ai::world_view::{Context, OwnerView};
 use crate::unit_ai::{GenieError, Notify};
+use crate::world::lookups::{Releaser, ResourceWorld, closest_resource_of};
 
 impl Unit {
     /// A notify the unit posts to its own unit AI (slot 0x328).
@@ -67,7 +67,7 @@ impl Unit {
             let m = every
                 .get(owner)
                 .and_then(|m| m.get(u.life.master_id))
-                .ok_or(crate::turn::OBJECT_MASTER)?;
+                .ok_or(crate::world::OBJECT_MASTER)?;
             Ok(Candidate {
                 id,
                 player: owner,
@@ -229,7 +229,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::turn::HUNTER_MASTER)?;
+            .ok_or(crate::world::HUNTER_MASTER)?;
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let at = |id| {
             c.spatial
@@ -252,7 +252,7 @@ impl Unit {
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
         let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
-        let mover = self.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
+        let mover = self.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         if let Some(arrived) = hunt.retarget(
             &quarry,
             c.player,
@@ -393,7 +393,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "a named object of a master the slice does not have",
                 ))?;
-            let me = master.ok_or(crate::turn::UNIT_AI_MASTER)?;
+            let me = master.ok_or(crate::world::UNIT_AI_MASTER)?;
             seen.push(crate::unit_ai::UnitSeen {
                 id,
                 class: m.class,

@@ -3,8 +3,8 @@
 use crate::orders::{
     Interact, MAX_UNGROUPED, MOVING, Split, Splittable, centroid, splits_together,
 };
-use crate::turn::Turns;
 use crate::unit_ai::GenieError;
+use crate::world::Turns;
 
 impl Turns {
     /// INTERACT (`0x140e68b90`) to its units, after their unit AIs reset. The splitter

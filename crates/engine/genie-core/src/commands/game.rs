@@ -7,7 +7,7 @@
 
 use crate::GenieError;
 use crate::gathering::farm_queue::{FARM, PASTURE};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -84,7 +84,7 @@ impl Turns {
     /// `do_command`'s gate of GAME (`0x140e77b00` case 0x67; the packet's length, at least 0x14,
     /// is the decoder's): with the issuing player in the world, a sub-command other than 1, 4
     /// and 0xf for another player runs only with the game's cheats
-    /// ([`crate::settings::Settings::cheats_enabled`]); without the issuing player it does not
+    /// ([`crate::world::settings::Settings::cheats_enabled`]); without the issuing player it does not
     /// run. The world's `+0xb12` (the disable-verification cheat), which would let either
     /// through, is not held.
     pub(crate) fn game_allowed(&self, g: &GameCommand) -> bool {
@@ -295,7 +295,7 @@ const TREASON_COST: f32 = crate::math::image::turn::TREASON_COST;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::turn::Player;
+    use crate::world::Player;
 
     /// Gaia and three players with 300 attributes each.
     fn world() -> Turns {
@@ -350,13 +350,13 @@ mod tests {
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
         assert_eq!(t.players[1].pending_debit[GOLD], 0.0);
         let castle = Master {
-            id: crate::turn::CASTLE,
+            id: crate::world::CASTLE,
             class: 52,
             ..Master::default()
         };
         t.masters = vec![Masters::new([]), Masters::new([castle])];
-        t.track_add(1, 500, crate::turn::CASTLE);
-        t.track_complete(1, 500, crate::turn::CASTLE);
+        t.track_add(1, 500, crate::world::CASTLE);
+        t.track_complete(1, 500, crate::world::CASTLE);
         t.game(&game(1, sub::TREASON, 1, 0, 0)).unwrap();
         assert_eq!(t.players[1].pending_debit[GOLD], -TREASON_COST);
     }

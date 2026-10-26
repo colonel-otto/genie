@@ -3,8 +3,8 @@
 use crate::math::rng::Stream;
 use crate::orders::Work;
 use crate::production::spawn::{BUILDING, VILLAGER};
-use crate::turn::{GatherPoint, Turns, Unit};
 use crate::unit_ai::GenieError;
+use crate::world::{GatherPoint, Turns, Unit};
 
 impl Turns {
     /// `FUN_140ace9c0` with a gather point without a target, and an unloaded unit's move

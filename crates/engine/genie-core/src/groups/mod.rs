@@ -24,7 +24,7 @@ pub use self::objects::sub_formation;
 mod command;
 mod create;
 
-/// What `commandMoveTo` is told besides the target and the point ([`crate::turn::Turns::command_move_to`]).
+/// What `commandMoveTo` is told besides the target and the point ([`crate::world::Turns::command_move_to`]).
 pub use command::MoveTo as CommandMoveTo;
 pub mod formation;
 mod layout;
@@ -384,7 +384,7 @@ pub struct UnitGroup {
     /// keeps apart (`+0x458`, size `+0x468`).
     pub objects: Vec<i32>,
     /// What the members' searches found (`+0x49c`, at most 70, its count `+0x5b4`; not saved):
-    /// the statistics refill it ([`crate::turn::Turns::statistics_only`]), and nothing else in
+    /// the statistics refill it ([`crate::world::Turns::statistics_only`]), and nothing else in
     /// the game reads or writes it.
     pub sighted: Vec<i32>,
     /// `mDifferentiatorID`.

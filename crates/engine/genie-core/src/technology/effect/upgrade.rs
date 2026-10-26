@@ -6,7 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::masters::{Master, master_type};
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
-use crate::turn::{Turns, Unit};
+use crate::world::{Turns, Unit};
 
 impl Turns {
     /// Slot 0x1a0 (`FUN_14160e410`) of player `p`: master `from` upgrades to `to` by `mode`
@@ -149,7 +149,7 @@ impl Turns {
         }
         if u.dead_master.is_none() && 0 <= old.death_spawns[0] {
             u.dead_master = dead
-                .filter(|d| crate::turn::DEAD_COPY_TYPES.contains(&d.kind))
+                .filter(|d| crate::world::DEAD_COPY_TYPES.contains(&d.kind))
                 .map(Box::new);
         }
     }
@@ -188,7 +188,7 @@ impl Turns {
         }
         let owner = if has(p, master) { p } else { 0 };
         let attribute =
-            |q: &crate::turn::Player, i: usize| q.attributes.get(i).copied().unwrap_or(0.0);
+            |q: &crate::world::Player, i: usize| q.attributes.get(i).copied().unwrap_or(0.0);
         let limit = attribute(&self.players[p], 234) as i32;
         let buildings: Vec<i32> = self.players[p]
             .objects

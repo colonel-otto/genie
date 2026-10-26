@@ -14,18 +14,18 @@ use crate::objects::unit::{
     second_target_checked,
 };
 use crate::ownership::artifact::{Artifact, Handover};
-use crate::turn::world::{
-    clear_look_of, farm_bonus, forget_resource, nearest_drop_site, release_own, state_of,
-    victim_of, wait_progress,
-};
-use crate::turn::{
-    BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_AGAIN, SEARCH_NEEDED, SPEED_EPSILON, TREE_NEAR,
-    TREE_SEARCH_WITHIN,
-};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, BUILD_ACTION, BUILD_ORDER, GenieError, TARGET_MOVED, UnitAi,
+};
+use crate::world::lookups::{
+    clear_look_of, farm_bonus, forget_resource, nearest_drop_site, release_own, state_of,
+    victim_of, wait_progress,
+};
+use crate::world::{
+    BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_AGAIN, SEARCH_NEEDED, SPEED_EPSILON, TREE_NEAR,
+    TREE_SEARCH_WITHIN,
 };
 
 impl Unit {
@@ -469,7 +469,7 @@ impl Unit {
                             .ok_or(GenieError::unsupported("a builder without a place"))?;
                         let master = masters
                             .and_then(|m| m.get(self.life.master_id))
-                            .ok_or(crate::turn::OBJECT_MASTER)?;
+                            .ok_or(crate::world::OBJECT_MASTER)?;
                         let actor = Actor {
                             id: self.id,
                             master,
@@ -1147,7 +1147,7 @@ impl Unit {
             let master = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::turn::HUNTER_MASTER)?;
+                .ok_or(crate::world::HUNTER_MASTER)?;
             let me_at = c
                 .spatial
                 .get_known(self.id)?
@@ -1270,7 +1270,7 @@ impl Unit {
             let master = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::turn::HUNTER_MASTER)?;
+                .ok_or(crate::world::HUNTER_MASTER)?;
             let who = crate::gathering::hunt::PointWalker {
                 computer: c.computer,
                 villager: master.class == 4,
@@ -1325,7 +1325,7 @@ impl Unit {
         {
             // case 3 waiting after a given-up MoveTo, its target gone: the timer runs by dt,
             // then the walk to the point (set_state 11)
-            let mover = self.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
+            let mover = self.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
             hunt.wait_then_walk(c.dt_seconds, mover)?;
         } else if self
             .hunt
@@ -1342,11 +1342,11 @@ impl Unit {
             let master = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::turn::HUNTER_MASTER)?;
+                .ok_or(crate::world::HUNTER_MASTER)?;
             let victim = c.victim.take().ok_or(GenieError::unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
-            let own = own.ok_or(crate::turn::HUNTER_MASTER)?;
+            let own = own.ok_or(crate::world::HUNTER_MASTER)?;
             // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
             let productivity = usize::try_from(hunt.task.productivity)
                 .ok()
@@ -1581,7 +1581,7 @@ impl Unit {
             let master = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::turn::ATTACKER_MASTER)?;
+                .ok_or(crate::world::ATTACKER_MASTER)?;
             let armed = armed(master, self.firepower);
             let (code, disarmed) =
                 attack.update_targetless(c.dt_seconds, armed, &mut self.anim_speed)?;
@@ -1604,13 +1604,13 @@ impl Unit {
             let master = c
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
-                .ok_or(crate::turn::ATTACKER_MASTER)?;
+                .ok_or(crate::world::ATTACKER_MASTER)?;
             let armed = armed(master, self.firepower);
             let computer = c.computers.get(c.player).copied().unwrap_or(false);
             let victim = c.victim.take().ok_or(GenieError::unsupported(
                 "an attack's target the slice does not hold live",
             ))?;
-            let own = own.ok_or(crate::turn::ATTACKER_MASTER)?;
+            let own = own.ok_or(crate::world::ATTACKER_MASTER)?;
             let mut blasted = std::mem::take(&mut c.blasted);
             let can_move = self
                 .ai
@@ -1705,7 +1705,7 @@ impl Unit {
         if let Some(m) = self.mover.as_mut() {
             c.pauses.append(&mut m.pauses);
             if !m.in_the_way.is_empty() {
-                return Err(crate::turn::IN_THE_WAY);
+                return Err(crate::world::IN_THE_WAY);
             }
         }
         let resume = AiResume {

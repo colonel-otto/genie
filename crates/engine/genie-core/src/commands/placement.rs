@@ -1,8 +1,8 @@
 //! BUILD's tests before its foundation: a farm on rice terrain, the pending debit, the
 //! builders, the placement test and the payment.
 
-use crate::turn::{FARM, RICE_FARM, Turns};
 use crate::unit_ai::GenieError;
+use crate::world::{FARM, RICE_FARM, Turns};
 
 impl Turns {
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is

@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::objects::unit::Unit;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// A player's settings for the groups an order's splitter forms ([`Player::formations`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -25,7 +25,7 @@ pub struct Formations {
 /// (`FUN_140e7c330`'s inner switch), each saved (`WorldPlayerBase::save`, `FUN_14166b820`) and
 /// read by its unit AIs. The two chances it sets too are [`Player::dodge_chance`] and
 /// [`Player::keep_distance_chance`], and `mAllowCapturingGaiaUnits` is
-/// [`crate::turn::Turns::allow_gaia_capture`].
+/// [`crate::world::Turns::allow_gaia_capture`].
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AiSettings {
     /// `easiest_reaction_percentage` (`+0x608`, setting 3).

@@ -4,8 +4,8 @@
 use crate::GenieError;
 use crate::movement::Mover;
 use crate::objects::unit::{Unit, same_members};
-use crate::turn::Turns;
-use crate::turn::world::forget_resource;
+use crate::world::Turns;
+use crate::world::lookups::forget_resource;
 
 /// The game's state after a tick, for the oracle's forced replay (dev only: the oracle reads it
 /// from the tick oracle's saves, genie-core never reads the game): the frame seed and every
@@ -41,7 +41,7 @@ pub struct GameState {
     /// The pool of recycled missiles ([`Recycling::missiles`]), when the oracle dumped it: no
     /// save holds it.
     ///
-    /// [`Recycling::missiles`]: crate::turn::Recycling::missiles
+    /// [`Recycling::missiles`]: crate::world::Recycling::missiles
     pub missile_pool: Option<Vec<(i32, bool)>>,
     /// The world's pool of recycled ghosts, when the oracle dumped it.
     pub ghost_pool: Option<Vec<i32>>,

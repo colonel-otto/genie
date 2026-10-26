@@ -9,7 +9,7 @@
 //! 158041: the rebuild `FUN_141552df0`; the attribute setter `FUN_141616820` (attributes 50, 183).
 
 use crate::GenieError;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 pub(crate) mod explored;
 pub mod ghost;
@@ -31,7 +31,7 @@ pub const REVEAL_ALLY: usize = 50;
 pub const REVEAL_ALL: usize = 183;
 /// The attribute that reveals the other players' town centres (`FUN_141552df0`): a flare of
 /// master 697 (FLARE4, slot 0x1c0) at each of their town centres (master 109, `FUN_141165d30`),
-/// each player's once, recorded in `mTCFlared` ([`crate::turn::Player::tc_flared`]).
+/// each player's once, recorded in `mTCFlared` ([`crate::world::Player::tc_flared`]).
 const REVEAL_CENTRES: usize = 209;
 /// The town centre the reveal finds (`0x6d`) and the flare it makes there (`0x2b9`).
 const TOWN_CENTRE: i16 = 109;
@@ -132,7 +132,7 @@ impl Turns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::turn::Player;
+    use crate::world::Player;
 
     /// Gaia and two teams of two (players 1 and 3 against 2 and 4), every player's allied
     /// vision on: each sees with its team's bits, as records/425906646's players do after the
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(flares(&t), []);
         // the masks are the rebuilt ones even where they were not
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
-        t.players[1].objects.push(crate::turn::Unit {
+        t.players[1].objects.push(crate::world::Unit {
             id: 50,
             position: [7.0, 8.0, 0.0],
             life: crate::objects::lifecycle::Lifecycle {
@@ -241,7 +241,7 @@ mod tests {
                 state: 2,
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
-            ..crate::turn::Unit::default()
+            ..crate::world::Unit::default()
         });
         t.tick_with(50, &[]);
         assert_eq!(flares(&t), [(100, [7.0, 8.0, 0.0])]);

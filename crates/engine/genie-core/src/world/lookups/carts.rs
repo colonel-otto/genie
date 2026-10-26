@@ -3,10 +3,10 @@
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::unit::Unit;
-use crate::turn::Turns;
-use crate::turn::world::{ResourceWorld, closest_resource_of};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;
+use crate::world::Turns;
+use crate::world::lookups::{ResourceWorld, closest_resource_of};
 
 impl Turns {
     /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,
@@ -33,7 +33,7 @@ impl Turns {
 
     /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
     /// that is the player's own, or any while players may order each other's units
-    /// ([`crate::settings::Settings::cheats_enabled`]); −1 for the others.
+    /// ([`crate::world::settings::Settings::cheats_enabled`]); −1 for the others.
     pub(crate) fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
         units
             .iter()

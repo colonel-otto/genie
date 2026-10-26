@@ -8,7 +8,7 @@ use crate::groups::steer::{
     BUILDING_KIND, CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, MOVES, SLOT_REACH,
 };
 use crate::math::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// `FUN_141025fb0` for a slot whose time is past (`0x1410263e4`..`0x1410267c5`): true when

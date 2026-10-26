@@ -525,7 +525,7 @@ impl Spatial {
     /// holds neither a terrain class of `mask` nor a temporary record (`mask & 0x7f | 0x80`), row
     /// by row. The records stay until [`Spatial::clear_tile_records`].
     pub fn put_tile_records(&self, a: [f32; 2], b: [f32; 2], grow: f32, mask: u8) {
-        use crate::checkpoint::cvttss2si;
+        use crate::world::checkpoint::cvttss2si;
         let (lo_x, hi_x) = (
             if b[0] <= a[0] { b[0] } else { a[0] },
             if a[0] <= b[0] { b[0] } else { a[0] },

@@ -7,7 +7,7 @@ use crate::garrison::{
 };
 use crate::objects::masters::Master;
 use crate::orders::{BUILDING, Work};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// The player and live index of the unit `id` inside a building or a transport, whoever's
@@ -215,7 +215,7 @@ impl Turns {
         class: i16,
         (point, gather, bid, work_on): (
             [f32; 2],
-            Option<crate::turn::GatherPoint>,
+            Option<crate::world::GatherPoint>,
             i32,
             Option<i32>,
         ),
@@ -290,7 +290,12 @@ impl Turns {
         up: usize,
         ui: usize,
         (made, at): (&Master, [f32; 3]),
-        rest: ([f32; 2], Option<crate::turn::GatherPoint>, i32, Option<i32>),
+        rest: (
+            [f32; 2],
+            Option<crate::world::GatherPoint>,
+            i32,
+            Option<i32>,
+        ),
     ) -> Result<bool, GenieError> {
         let id = self.players[up].objects[ui].id;
         let mut placed = *self

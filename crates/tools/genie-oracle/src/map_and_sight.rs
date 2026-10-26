@@ -111,7 +111,7 @@ pub(super) struct SavedStep {
     pub(super) seen: Visibility,
     pub(super) width: usize,
     pub(super) terrain: Vec<(u8, u8, i16)>,
-    pub(super) game: genie_core::turn::GameState,
+    pub(super) game: genie_core::world::GameState,
 }
 
 impl SavedStep {

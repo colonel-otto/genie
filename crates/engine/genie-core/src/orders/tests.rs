@@ -15,14 +15,14 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
         0,
         vec![0, 0],
         vec![
-            crate::turn::Player {
+            crate::world::Player {
                 objects: vec![unit(1), unit(2)],
-                ..crate::turn::Player::default()
+                ..crate::world::Player::default()
             },
-            crate::turn::Player {
+            crate::world::Player {
                 objects: vec![unit(3)],
                 sleeping: vec![unit(4)],
-                ..crate::turn::Player::default()
+                ..crate::world::Player::default()
             },
         ],
     );
@@ -64,9 +64,9 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         1,
         0,
         vec![0],
-        vec![crate::turn::Player {
+        vec![crate::world::Player {
             objects: vec![goose],
-            ..crate::turn::Player::default()
+            ..crate::world::Player::default()
         }],
     );
     t.masters = vec![crate::objects::masters::Masters::new([Master {
@@ -218,9 +218,9 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             1,
             0,
             vec![0],
-            vec![crate::turn::Player {
+            vec![crate::world::Player {
                 objects: vec![villager.clone(), foundation.clone(), mill.clone()],
-                ..crate::turn::Player::default()
+                ..crate::world::Player::default()
             }],
         );
         t.masters = vec![crate::objects::masters::Masters::new([
@@ -457,16 +457,16 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
         0,
         vec![0, 0],
         vec![
-            crate::turn::Player::default(),
-            crate::turn::Player {
+            crate::world::Player::default(),
+            crate::world::Player {
                 objects,
-                formations: crate::turn::Formations {
+                formations: crate::world::Formations {
                     auto: true,
                     influence: 3.0,
                     by_speed: false,
-                    ..crate::turn::Formations::default()
+                    ..crate::world::Formations::default()
                 },
-                ..crate::turn::Player::default()
+                ..crate::world::Player::default()
             },
         ],
     );
@@ -644,7 +644,7 @@ fn a_stop_takes_its_units_out_of_their_group_and_empties_their_orders() {
 fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
     let mut t = soldiers(&[(11, 83, [20.0, 20.0])], &[]);
     t.settings.cheats_enabled = true;
-    t.players.push(crate::turn::Player::default());
+    t.players.push(crate::world::Player::default());
     t.player_time.push(0);
     t.masters.push(crate::objects::masters::Masters::new([]));
     let walker = crate::gathering::hunt::tests::walker();
@@ -777,7 +777,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     let units = [(11, 4, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
     t.world_time = 400;
-    t.players.push(crate::turn::Player::default());
+    t.players.push(crate::world::Player::default());
     t.masters.push(crate::objects::masters::Masters::new([]));
     t.masters[1] = crate::objects::masters::Masters::new([
         Master {
@@ -793,7 +793,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     ]);
     t.players[1].objects.push(Unit {
         id: 50,
-        gate: Some(crate::turn::Gate::default()),
+        gate: Some(crate::world::Gate::default()),
         mover: Some(crate::gathering::hunt::tests::walker()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 79,
@@ -1063,7 +1063,7 @@ fn a_move_inside_a_work_command_with_0_keeps_the_order_queue() {
 fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
     let units = [(11, 4, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
-    t.players.push(crate::turn::Player::default());
+    t.players.push(crate::world::Player::default());
     let scout = Master {
         id: 448,
         kind: 70,
@@ -1144,7 +1144,7 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
 fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
     let units = [(11, 4, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
-    t.players.push(crate::turn::Player::default());
+    t.players.push(crate::world::Player::default());
     t.masters
         .push(crate::objects::masters::Masters::new([Master {
             id: 4,
@@ -1351,7 +1351,7 @@ fn followers() -> Turns {
             ..crate::unit_ai::UnitAi::default()
         });
     }
-    t.players.push(crate::turn::Player::default());
+    t.players.push(crate::world::Player::default());
     t.masters
         .push(crate::objects::masters::Masters::new([Master {
             id: 5,
@@ -1798,7 +1798,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
             ..Master::default()
         },
     ]);
-    t.players.push(crate::turn::Player::default());
+    t.players.push(crate::world::Player::default());
     t.masters
         .push(crate::objects::masters::Masters::new([sheep_master]));
     let sheep = |id, x: f32, y: f32| Unit {
@@ -1905,10 +1905,10 @@ fn soldier_and_enemy(x: f32, class: i16) -> Turns {
         },
         ..Unit::default()
     };
-    let player = |objects, relations| crate::turn::Player {
+    let player = |objects, relations| crate::world::Player {
         objects,
         relations,
-        ..crate::turn::Player::default()
+        ..crate::world::Player::default()
     };
     let mut t = Turns::new(
         0,
@@ -2052,11 +2052,11 @@ fn the_box_of_an_order_moves_only_its_least_value_for_a_lower_one() {
 /// 9529 (formation category 0) stay loose, the scout 9185 has none to join it.
 #[test]
 fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
-    let f = crate::turn::Formations {
+    let f = crate::world::Formations {
         auto: true,
         influence: 3.0,
         by_speed: false,
-        ..crate::turn::Formations::default()
+        ..crate::world::Formations::default()
     };
     let unit = |id, grouped, position: [f32; 3]| Splittable {
         id,
@@ -2098,7 +2098,7 @@ fn the_splitter_joins_units_of_one_kind_within_the_influence_distance() {
     assert!(splits_together(&scout, &nowhere, f, false, &mut short, &mut away).unwrap());
     let far = unit(9187, true, [80.0, 94.0, 0.0]);
     assert!(!splits_together(&scout, &far, f, false, &mut none, &mut away).unwrap());
-    let wide = crate::turn::Formations {
+    let wide = crate::world::Formations {
         influence: 40.0,
         ..f
     };

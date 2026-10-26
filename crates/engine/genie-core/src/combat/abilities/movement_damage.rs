@@ -6,7 +6,7 @@ use crate::combat::abilities::{
 };
 use crate::combat::damage::Victim;
 use crate::objects::masters::Task;
-use crate::turn::Turns;
+use crate::world::Turns;
 use crate::{GenieError, math::fmath};
 
 /// A movement damage task's timer (`+0x9a4`, `0x141207758`): above 0 (not a NaN) it runs down by
@@ -31,13 +31,13 @@ pub fn movement_damage_due(timer: &mut f32, dt: f32) -> bool {
 /// the high corner.
 #[must_use]
 pub fn reach(position: [f32; 3], range: f32, map: [i32; 2]) -> ([i32; 2], [i32; 2]) {
-    let r = crate::checkpoint::cvttss2si(range);
+    let r = crate::world::checkpoint::cvttss2si(range);
     let low = |v: f32| {
-        let d = crate::checkpoint::cvttss2si(v).wrapping_sub(r);
+        let d = crate::world::checkpoint::cvttss2si(v).wrapping_sub(r);
         if d < 0 { 0 } else { d }
     };
     let high = |v: f32, size: i32| {
-        let d = crate::checkpoint::cvttss2si(v).wrapping_add(r);
+        let d = crate::world::checkpoint::cvttss2si(v).wrapping_add(r);
         if size < d { size } else { d }
     };
     (
@@ -288,7 +288,7 @@ impl Turns {
             .as_deref()
             .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
             .ok_or(crate::construction::build::NOT_HELD)?;
-        let mut v = crate::turn::victim_of(
+        let mut v = crate::world::victim_of(
             u,
             m,
             &self.players[q].attributes,

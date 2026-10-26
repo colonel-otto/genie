@@ -5,9 +5,9 @@ use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::masters::Master;
 use crate::objects::unit::{PaidAttributes, Unit};
-use crate::turn::world::release_own;
 use crate::unit_ai::world_view::{Context, RepairWrite};
 use crate::unit_ai::{AiMove, GenieError};
+use crate::world::lookups::release_own;
 
 impl Unit {
     /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it reads of its

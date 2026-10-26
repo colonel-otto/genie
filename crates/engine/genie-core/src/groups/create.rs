@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// A unit's radius in a formation where its master has no full footprint (`FUN_141025920`,
 /// `DAT_142e7f384`).
@@ -409,7 +409,7 @@ impl Turns {
 mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
-    use crate::turn::{Player, Turns, Unit};
+    use crate::world::{Player, Turns, Unit};
 
     /// Group 1 of player 1's units 10, 11 (master 4, category 1) and 12 (master 6, category 3),
     /// their seconds since attacking 1, 2 and 3, 11 the lead and walking.

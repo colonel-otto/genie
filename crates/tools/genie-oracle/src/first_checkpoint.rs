@@ -2,8 +2,8 @@
 //! recording's ([`compare_first_checkpoint`]).
 
 use crate::Error;
-use genie_core::checkpoint::{ObjectState, PlayerState, player_block};
-use genie_core::turn::Unit;
+use genie_core::world::Unit;
+use genie_core::world::checkpoint::{ObjectState, PlayerState, player_block};
 use genie_rec::de;
 use genie_rec::de::Op;
 use genie_save::PlayerSection;

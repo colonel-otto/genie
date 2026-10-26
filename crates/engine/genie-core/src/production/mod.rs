@@ -3,7 +3,7 @@
 //! the first entry off: the make action (`TRIBE_Action_Make_Obj`, update `0x140ad0490`) or the
 //! research's (`TRIBE_Action_Make_Tech`). The building's update makes and runs that action after
 //! its combat update (`FUN_1411e7dc0`, [`crate::production::spawn`]); QUEUE's building part is
-//! `FUN_1411cbc40` ([`crate::turn`]); the cancels are `FUN_1411d66b0`, `FUN_1411d61e0` and
+//! `FUN_1411cbc40` ([`crate::world`]); the cancels are `FUN_1411d66b0`, `FUN_1411d61e0` and
 //! `FUN_1411cff00` ([`crate::players::game_status`]).
 //!
 //! The queue is a buffer of 0x30-byte slots (`+0xbe8`, room for `+0xbf0`), the first `+0xbf2`
@@ -407,7 +407,7 @@ pub const IN_PRODUCTION: i16 = 81;
 /// production and this one stays within the cap (`COMISS`, `JBE`: a NaN passes), and the
 /// headroom covers them. A building that fails it waits (housed).
 pub fn housed(attributes: &[f32], pop: f32) -> Result<bool, GenieError> {
-    let a = |i: usize| attributes.get(i).copied().ok_or(crate::turn::NO_ATTRIBUTE);
+    let a = |i: usize| attributes.get(i).copied().ok_or(crate::world::NO_ATTRIBUTE);
     let in_production = a(IN_PRODUCTION as usize)?;
     Ok(a(POPULATION_CAP)? < a(POPULATION)? + in_production + pop
         || (a(HEADROOM as usize)? - in_production) - pop < 0.0)
@@ -498,7 +498,7 @@ pub fn refund_tech(
     tech: i16,
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
-    use crate::checkpoint::cvttss2si;
+    use crate::world::checkpoint::cvttss2si;
     if !matches!(state.state, 2 | 4) {
         return Ok(false);
     }
@@ -648,7 +648,7 @@ pub fn master_costs(
     master: i16,
     attributes: &dyn crate::technology::Attributes,
 ) -> Result<[(i16, i16); 3], GenieError> {
-    use crate::checkpoint::cvttss2si;
+    use crate::world::checkpoint::cvttss2si;
     let mut out = [(-1i16, 0i16); 3];
     let can = cost_test(masters, master, ONE, true, attributes)?;
     let Some(m) = masters.get(master).filter(|m| COMBAT_MASTER <= m.kind) else {

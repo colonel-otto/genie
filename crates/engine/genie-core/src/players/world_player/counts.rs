@@ -5,7 +5,7 @@ use crate::players::world_player::{
     AGES, BUILDABLE_TOWN_CENTRE, BUILDER, BUILDING_CLASS, RESEARCHED, TOWN_CENTRES, TreeQuery,
     attribute, full_tree_civ, get,
 };
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// `FUN_141658970`: player `p`'s first built town centre (state 2) among the ids its tracker

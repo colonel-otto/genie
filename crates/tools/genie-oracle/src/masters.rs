@@ -411,7 +411,7 @@ pub struct MasterTable {
     /// The effects' commands, by id (the world's effect table).
     pub effects: Vec<Vec<genie_core::technology::EffectCommand>>,
     /// The history period (the `.dat`'s `time_slice`, which the world keeps at `+0x8b8`); the
-    /// world constructor's [`genie_core::turn::HISTORY_PERIOD`] without a `.dat`.
+    /// world constructor's [`genie_core::world::HISTORY_PERIOD`] without a `.dat`.
     pub time_slice: i32,
 }
 
@@ -626,7 +626,7 @@ impl MasterTable {
             unit_lines: Vec::new(),
             techs: Vec::new(),
             effects: Vec::new(),
-            time_slice: genie_core::turn::HISTORY_PERIOD,
+            time_slice: genie_core::world::HISTORY_PERIOD,
         }
     }
 

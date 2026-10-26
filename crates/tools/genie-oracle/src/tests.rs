@@ -273,7 +273,7 @@ fn a_game_packet_decodes_its_fields() {
     .encode();
     assert_eq!(
         Decoder::default().command(&packet, &[]),
-        Some(Command::Game(genie_core::turn::GameCommand {
+        Some(Command::Game(genie_core::world::GameCommand {
             issuer: 8,
             sub: 0,
             player: 8,

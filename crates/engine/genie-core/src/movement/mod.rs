@@ -239,7 +239,7 @@ pub struct Mover {
     /// pause stops a unit whose `MoveTo` goes on); a new `MoveTo` sets it.
     pub move_to_point: Option<[f32; 3]>,
     /// A stop (slot 0x5d0) cleared the object's animation speed (`+0x7b8`), which the unit
-    /// holds: [`crate::turn::Unit`] takes it.
+    /// holds: [`crate::world::Unit`] takes it.
     pub speed_stopped: bool,
     /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
     /// `+0x34`), for the caller to hand on.
@@ -250,7 +250,7 @@ pub struct Mover {
     pub in_the_way: Vec<i32>,
     /// The facets of the unit's current sprite (`+0x140` -> `+0xa`, and its sequence flag bit
     /// 1), which the yaw and the facing read: the sprite the slice holds as the unit's update
-    /// starts ([`crate::turn::Unit`]'s), or a new unit's standing sprite; None for neither (the
+    /// starts ([`crate::world::Unit`]'s), or a new unit's standing sprite; None for neither (the
     /// master's [`MoveStats::facets`] then).
     pub sprite_facets: Option<crate::objects::facing::SpriteFacets>,
 }

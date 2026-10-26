@@ -7,9 +7,9 @@ use crate::objects::masters::Masters;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
-use crate::turn::player::Player;
-use crate::turn::world::Releaser;
 use crate::unit_ai::task_finder::DropSite;
+use crate::world::lookups::Releaser;
+use crate::world::player::Player;
 
 mod commands;
 mod side;
@@ -21,9 +21,9 @@ use self::world_picker::NOT_HELD;
 #[cfg(test)]
 use self::world_picker::attacks;
 pub(crate) use self::world_picker::{WorldPicker, patrol_information};
-pub(crate) use crate::turn::context::{Context, ObjectOutputs};
 #[cfg(test)]
 use crate::unit_ai::UnitAi;
+pub(crate) use crate::world::context::{Context, ObjectOutputs};
 
 /// The villagers a villager's attack command switches to by its task swap group (its player's
 /// master table's entries at `+0x298` and `+0x928`).
@@ -191,7 +191,7 @@ pub(crate) struct OwnerView<'a> {
     pub(crate) attributes: &'a [f32],
     pub(crate) civ: u8,
     pub(crate) construction_rate: f32,
-    pub(crate) ai_settings: crate::turn::player::AiSettings,
+    pub(crate) ai_settings: crate::world::player::AiSettings,
 }
 
 impl<'a> OwnerView<'a> {
@@ -297,13 +297,13 @@ pub(crate) struct UnitView<'u> {
     pub(crate) attributes: &'u [f32],
     pub(crate) civ: u8,
     /// The owner's AI settings.
-    pub(crate) ai_settings: crate::turn::player::AiSettings,
+    pub(crate) ai_settings: crate::world::player::AiSettings,
     pub(crate) drop_sites: &'u [DropSite],
     /// The owner's object tracker, whose done lists the drop-site table's search reads.
     pub(crate) tracker: &'u crate::players::tracker::Tracker,
     /// The game's setting at `+0x680` ([`Turns::mode_680`]), which a hit's source carries.
     pub(crate) mode_680: i32,
-    /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
+    /// The game's carry rule ([`crate::world::settings::Settings::carry_rule`]), which a hunt's start
     /// reads.
     pub(crate) carry_rule: bool,
 }

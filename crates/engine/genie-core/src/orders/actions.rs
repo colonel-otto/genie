@@ -4,9 +4,9 @@
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
-use crate::turn::{Releaser, Turns, Unit, World};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::Diplomacy;
+use crate::world::{Releaser, Turns, Unit, World};
 
 impl Turns {
     /// Slot 0x178 on the object an action of `by` takes as its target: a building's
@@ -44,7 +44,7 @@ impl Turns {
         }
     }
 
-    /// Slot 0x180 on the object an action of `by` lets go ([`crate::turn::released`]): a
+    /// Slot 0x180 on the object an action of `by` lets go ([`crate::world::released`]): a
     /// building's (`FUN_1411d6020`) drops an unallied releaser from the attacking units of a
     /// foundation with a stack unit ([`Unit::lists_taker`]); its worker count falls; a static
     /// object (type below 30, `FUN_141197d00`) that no one works on any more and is alive (state
@@ -74,7 +74,7 @@ impl Turns {
             let master = self.master_of(p, u.life.master_id)?;
             (master.kind, u.lists_taker(master, allied))
         };
-        crate::turn::released(&mut self.players[p].objects[i], kind, listed, by)
+        crate::world::released(&mut self.players[p].objects[i], kind, listed, by)
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.
@@ -196,7 +196,7 @@ impl Turns {
     }
 
     /// The player's gate toggle (`FUN_14162f8c0`, from its slots 0x340 and 0x338): a gate of its
-    /// player's masters, without masters of its own ([`crate::turn::Gate::other_masters`]),
+    /// player's masters, without masters of its own ([`crate::world::Gate::other_masters`]),
     /// changes to its master's `transform_unit` (slot 0x90, [`Turns::transform_building`]). A
     /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8 on
     /// those its count finds, [`Turns::shut_in_gate`]) and takes the world time plus 1 as its
@@ -221,8 +221,8 @@ impl Turns {
         let now = self.world_time;
         if 0.0 < height {
             let id = self.players[player].objects[idx].id;
-            let annexes = crate::turn::annexes_of(id, &self.players[player].objects);
-            let (units, _) = crate::turn::gate_units(&self.spatial, id, &annexes)?;
+            let annexes = crate::world::annexes_of(id, &self.players[player].objects);
+            let (units, _) = crate::world::gate_units(&self.spatial, id, &annexes)?;
             for u in units {
                 self.shut_in_gate(u)?;
             }

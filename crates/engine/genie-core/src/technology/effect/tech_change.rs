@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::technology::effect::{ONE, RESEARCH_SPENT, RESEARCHED, ROUND, TECHS_RESEARCHED};
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The modes of `FUN_1415c3f20`'s technology change (kind 8) that change a cost, with the
 /// resource and the cost modifier's mode (`DAT_142ed71b0`'s map: 0 to 3 set food, wood, stone,
@@ -89,13 +89,13 @@ impl Turns {
             self.research_time(p, tech, v, time_mode, building)?;
             return self.update_dependents(p, t);
         }
-        let short = crate::checkpoint::cvttss2si(v) as i16;
+        let short = crate::world::checkpoint::cvttss2si(v) as i16;
         match mode {
             4 => {
-                let has = self
-                    .masters
-                    .get(p)
-                    .is_some_and(|m| m.get(crate::checkpoint::cvttss2si(v) as i16).is_some());
+                let has = self.masters.get(p).is_some_and(|m| {
+                    m.get(crate::world::checkpoint::cvttss2si(v) as i16)
+                        .is_some()
+                });
                 if has {
                     let state = &mut self.players[p].techs[t];
                     for (i, l) in state.locations.iter_mut().enumerate() {
@@ -109,7 +109,7 @@ impl Turns {
                 let state = &mut self.players[p].techs[t];
                 for (i, l) in state.locations.iter_mut().enumerate() {
                     if at.is_none_or(|a| a == i) {
-                        l.button = crate::checkpoint::cvttss2si(v) as u8;
+                        l.button = crate::world::checkpoint::cvttss2si(v) as u8;
                     }
                 }
             }
@@ -212,7 +212,7 @@ impl Turns {
             let Some(entry) = state.locations.get_mut(i) else {
                 continue;
             };
-            let short = |x: f32| f32::from(crate::checkpoint::cvttss2si(x) as i16);
+            let short = |x: f32| f32::from(crate::world::checkpoint::cvttss2si(x) as i16);
             let adjustment = match mode {
                 2 => {
                     let half = if crate::math::fmath::below_or_unordered(v, ONE) {
@@ -226,7 +226,7 @@ impl Turns {
                     let s = if v == NO_TIME {
                         0
                     } else {
-                        crate::checkpoint::cvttss2si(v) as i16
+                        crate::world::checkpoint::cvttss2si(v) as i16
                     };
                     f32::from(s) - time
                 }

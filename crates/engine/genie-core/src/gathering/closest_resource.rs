@@ -112,7 +112,7 @@ pub(crate) fn closest_resource_of(
         let m = every
             .get(owner)
             .and_then(|m| m.get(u.life.master_id))
-            .ok_or(crate::turn::OBJECT_MASTER)?;
+            .ok_or(crate::world::OBJECT_MASTER)?;
         Ok(Candidate {
             id,
             player: owner,

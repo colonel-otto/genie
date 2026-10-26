@@ -32,7 +32,7 @@ impl Query {
     /// `FUN_140f9d300`'s and `FUN_140f9d3e0`'s casts: each float times 2^22 by `CVTTSS2SI` into
     /// a 64-bit register, its low 32 bits kept (the radius through `uint`, the same bits).
     pub(super) fn fixed(&self) -> Fixed {
-        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
+        let fixed = |f: f32| crate::world::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
         Fixed {
             from: self.from,
             to: self.to,
@@ -153,7 +153,7 @@ impl Call {
             return Entry::Invalid;
         }
         // CVTTSS2SI into a 64-bit register, its low 32 bits kept
-        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
+        let fixed = |f: f32| crate::world::checkpoint::cvttss2si_64(f * TO_FIXED) as i32;
         let to = [fixed(self.to[0]), fixed(self.to[1])];
         let at_target = self
             .target

@@ -4,15 +4,15 @@
 use crate::map::spatial::Placed;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Planning, footprint_gap_squared};
-use crate::turn::PETARD;
-use crate::turn::world::{
-    Releaser, ResourceWorld, SideWorld, closest_resource_of, herded, task_search, task_target_with,
-};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::world_view::{
     AiStart, HuntPlan, RepairOrder, UnitView, Wait, WorldPicker, patrol_information, town_centre,
 };
 use crate::unit_ai::{AiMove, GenieError, Search, UnitAi};
+use crate::world::PETARD;
+use crate::world::lookups::{
+    Releaser, ResourceWorld, SideWorld, closest_resource_of, herded, task_search, task_target_with,
+};
 
 impl crate::unit_ai::UnitSide for UnitView<'_> {
     fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {
@@ -20,7 +20,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .masters
             .and_then(|m| m.get(self.unit.life.master_id))
             .map(|m| m.class)
-            .ok_or(crate::turn::OBJECT_MASTER)?;
+            .ok_or(crate::world::OBJECT_MASTER)?;
         let at = [self.unit.position[0], self.unit.position[1]];
         let look = |id: i32| {
             self.others
@@ -175,7 +175,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .masters
             .and_then(|ms| ms.get(self.unit.life.master_id))
             .map(|m| m.radius)
-            .ok_or(crate::turn::UNIT_AI_MASTER)?;
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
         for r in lists[1].iter().chain(&lists[2]) {
             if r.id == me {
                 continue;
@@ -243,11 +243,11 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .every
             .get(owner)
             .and_then(|ms| ms.get(u.life.master_id))
-            .ok_or(crate::turn::OBJECT_MASTER)?;
+            .ok_or(crate::world::OBJECT_MASTER)?;
         let me = self
             .masters
             .and_then(|ms| ms.get(self.unit.life.master_id))
-            .ok_or(crate::turn::UNIT_AI_MASTER)?;
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
         Ok(Some(crate::unit_ai::UnitSeen {
             id,
             class: m.class,
@@ -482,7 +482,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let master = self
             .masters
             .and_then(|m| m.get(unit.life.master_id))
-            .ok_or(crate::turn::ATTACKER_MASTER)?;
+            .ok_or(crate::world::ATTACKER_MASTER)?;
         if matches!(master.class, 51 | 54) {
             return Err(GenieError::unsupported(
                 "the attack command of a unit of class 51 or 54",
@@ -515,7 +515,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let me_at = *self
             .spatial
             .get(self.unit.id)
-            .ok_or(crate::turn::ATTACKER_UNPLACED)?;
+            .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let t_master = self
             .every
             .get(t.player)
@@ -528,7 +528,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
         let look = unit.abilities.look.as_ref();
         let arms = crate::combat::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);
-        let standing = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
+        let standing = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
         if unit.sprite.is_none() {
             return Err(GenieError::unsupported(
                 "an attack command of a unit whose sprite the slice does not hold",
@@ -545,7 +545,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let speed = unit
             .mover
             .as_ref()
-            .ok_or(crate::turn::ATTACKER_UNMOVING)?
+            .ok_or(crate::world::ATTACKER_UNMOVING)?
             .stats
             .speed;
         let e = crate::combat::attack::engagement(
@@ -742,7 +742,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .every
             .get(fp)
             .and_then(|m| m.get(f.life.master_id))
-            .ok_or(crate::turn::OBJECT_MASTER)?;
+            .ok_or(crate::world::OBJECT_MASTER)?;
         let f_at = f.position;
         let (Some(t), Some(general)) = (
             task_target_with(foundation, 1, &find, self.every)?,
@@ -750,10 +750,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         ) else {
             return Err(crate::commands::FOUNDATION_GONE);
         };
-        let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
+        let masters = self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
         let own = masters
             .get(unit.life.master_id)
-            .ok_or(crate::turn::UNIT_AI_MASTER)?;
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
         let actor = Actor {
             id: unit.id,
             master: own,
@@ -832,7 +832,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let own_class = self
             .masters
             .and_then(|m| m.get(self.unit.life.master_id))
-            .ok_or(crate::turn::HUNTER_MASTER)?
+            .ok_or(crate::world::HUNTER_MASTER)?
             .class;
         let by = Releaser {
             id: self.unit.id,
@@ -874,7 +874,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         };
         self.takes.push((target, by));
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
-        let me = *self.spatial.get(id).ok_or(crate::turn::ATTACKER_UNPLACED)?;
+        let me = *self
+            .spatial
+            .get(id)
+            .ok_or(crate::world::ATTACKER_UNPLACED)?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             Some(ai),
@@ -886,7 +889,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         )?;
         let moving = hunt_task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
         let arms = crate::combat::attack::arms(hunter, self.graphics, hunt_task.sprites, moving);
-        let mover = unit.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
+        let mover = unit.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             hunt_task,
@@ -901,7 +904,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         )?;
         (unit.life.attribute_type, unit.life.amount) = held;
         if arrived {
-            let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
+            let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
             crate::combat::attack::set_sprite(&mut unit.sprite, g, self.sprite);
             if let Some(a) = unit.anim_speed.as_mut() {
                 *a = 0.0;
@@ -926,7 +929,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let class = self
             .masters
             .and_then(|ms| ms.get(self.unit.life.master_id))
-            .ok_or(crate::turn::UNIT_AI_MASTER)?
+            .ok_or(crate::world::UNIT_AI_MASTER)?
             .class;
         let by = Releaser {
             id: self.unit.id,
@@ -971,7 +974,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let (masters, own) = self
             .masters
             .and_then(|m| Some((m, m.get(unit.life.master_id)?)))
-            .ok_or(crate::turn::UNIT_AI_MASTER)?;
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
         let actor = Actor {
             id: unit.id,
             master: own,

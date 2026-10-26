@@ -1,7 +1,7 @@
 //! `Process_New_Tiles` at the end of a player's update and a new object's visible resources.
 
 use crate::GenieError;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// `Process_New_Tiles` (`FUN_1412899a0`, the end of `WorldPlayerBase::update`): on each tile

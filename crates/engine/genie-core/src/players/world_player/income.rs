@@ -6,7 +6,7 @@ use crate::players::world_player::{
     BUILDING_TYPE, COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE,
     SECOND, attribute, get, set,
 };
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// The trickles of player `p`: each of attributes 230 to 233 above 0 (`COMISS` with 0,
@@ -54,7 +54,7 @@ impl Turns {
     /// any `stat` but 0 adds to attribute 49 unchecked, then 1 adds to 169), then the resource
     /// ([`Turns::add_attribute_base`]). The resource panel's event when a resource crosses 100
     /// (`FUN_140c898a0` 0x80) is the interface's. The kinds 50, 183 and 196 and the others are
-    /// not resources: their branches are [`crate::turn::Player::add_attribute`]'s.
+    /// not resources: their branches are [`crate::world::Player::add_attribute`]'s.
     pub fn add_resource(&mut self, p: usize, kind: usize, amount: f32, stat: u8, share: bool) {
         if kind == attribute::GOLD {
             if stat != 0 {
@@ -73,11 +73,11 @@ impl Turns {
 
     /// The base player's attribute add (`FUN_14165d040`) of `amount` to attribute `kind` of
     /// player `p`, for a kind out of 0 to the attribute count nothing: the attribute takes
-    /// `amount` plus its value (the resources are [`crate::turn::Player::resources`]). A
+    /// `amount` plus its value (the resources are [`crate::world::Player::resources`]). A
     /// computer player's resource fills its escrow: an `amount` above 0 with a share above 0
     /// (`COMISS`, `JBE`) adds the share times it; an escrow above the resource (`JBE` skips a
     /// NaN) falls to it, or to 0 when the resource is below 0. With `share`, a player who shares
-    /// its gathered resources (`+0x1426`, [`crate::turn::Player::sharing`]) gives each resource
+    /// its gathered resources (`+0x1426`, [`crate::world::Player::sharing`]) gives each resource
     /// to the players, in order, it counts as allies and who count it as theirs
     /// ([`Turns::shares_with`]): their slot 0xf8 with `stat` and no sharing. Attribute 11's peak
     /// (`+0x6fc`, unsaved) is not held; no resource add reaches it.

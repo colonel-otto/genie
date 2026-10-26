@@ -19,28 +19,28 @@ fn a_larger_slots_array_drops_the_transform_marks() {
 pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usize)]) -> Turns {
     use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
     use crate::map::terrain::{Terrain, TerrainKind};
-    let objects: Vec<crate::turn::Unit> = units
+    let objects: Vec<crate::world::Unit> = units
         .iter()
         .map(|&(id, master, x, y)| {
-            let mut u = crate::turn::Unit {
+            let mut u = crate::world::Unit {
                 id,
                 position: [x, y, 0.0],
-                ..crate::turn::Unit::default()
+                ..crate::world::Unit::default()
             };
             u.life.master_id = master;
             u
         })
         .collect();
-    let player = crate::turn::Player {
+    let player = crate::world::Player {
         objects: objects.clone(),
-        ..crate::turn::Player::default()
+        ..crate::world::Player::default()
     };
     let mut t = Turns::new(
         0,
         0,
         0,
         vec![0, 0],
-        vec![crate::turn::Player::default(), player],
+        vec![crate::world::Player::default(), player],
     );
     let master = |id: i16, category: u8| crate::objects::masters::Master {
         id,
@@ -737,26 +737,26 @@ fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
 /// Player 1 (minimum column distance 10, column-to-line 5) with unit 7 of a soldier master
 /// (type 70, category 1) in group 1 at the origin along `paths` (walked first).
 fn type_world(paths: Vec<PathData>) -> Turns {
-    let mut u = crate::turn::Unit {
+    let mut u = crate::world::Unit {
         id: 7,
-        ..crate::turn::Unit::default()
+        ..crate::world::Unit::default()
     };
     u.life.master_id = 4;
-    let player = crate::turn::Player {
+    let player = crate::world::Player {
         objects: vec![u],
-        formations: crate::turn::Formations {
+        formations: crate::world::Formations {
             min_column_distance: 10,
             column_to_line_distance: 5,
-            ..crate::turn::Formations::default()
+            ..crate::world::Formations::default()
         },
-        ..crate::turn::Player::default()
+        ..crate::world::Player::default()
     };
     let mut t = Turns::new(
         0,
         0,
         0,
         vec![0, 0],
-        vec![crate::turn::Player::default(), player],
+        vec![crate::world::Player::default(), player],
     );
     let masters = crate::objects::masters::Masters::new([crate::objects::masters::Master {
         id: 4,

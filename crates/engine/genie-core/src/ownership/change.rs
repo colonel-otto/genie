@@ -4,10 +4,10 @@
 use crate::map::spatial::Spatial;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::{LIVESTOCK, Unit};
-use crate::turn::player::Player;
-use crate::turn::world::count_class;
-use crate::turn::{BUILDING_KIND, Turns};
 use crate::unit_ai::{GenieError, OWNER_CHANGED};
+use crate::world::lookups::count_class;
+use crate::world::player::Player;
+use crate::world::{BUILDING_KIND, Turns};
 
 impl Turns {
     /// Slot 0x70 ([`change_hands`]) to Gaia of the object at `j` of player `q`, from outside its
@@ -134,8 +134,8 @@ impl Turns {
             let _ = self.watch(
                 new,
                 id,
-                crate::checkpoint::cvttss2si(p.position[0]),
-                crate::checkpoint::cvttss2si(p.position[1]),
+                crate::world::checkpoint::cvttss2si(p.position[0]),
+                crate::world::checkpoint::cvttss2si(p.position[1]),
             )?;
         }
         if state == 0 {

@@ -25,7 +25,7 @@ use crate::math::fmath::Vec3;
 #[cfg(test)]
 use crate::movement::PathData;
 #[cfg(test)]
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The formation types (`mType`; the log names of `FUN_14103fd00`).
 pub const HORDE: i32 = 0;

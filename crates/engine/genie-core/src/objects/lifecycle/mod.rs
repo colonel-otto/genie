@@ -160,7 +160,7 @@ impl Lifecycle {
     /// fog visibility is 2 (`FUN_14118e990`, for players that explored the tile but do not see
     /// it) are the caller's too ([`crate::vision::ghost`]); the statistics and the sounds are not held.
     /// The visible-resource lists (`FUN_1411980b0`) are the caller's
-    /// ([`crate::turn::forget_resource`]).
+    /// ([`crate::world::forget_resource`]).
     fn die(&mut self, object: &mut Well512) -> Result<(), GenieError> {
         if self.inside.is_some() {
             return Err(GenieError::unsupported("an object inside another dies"));

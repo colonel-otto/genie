@@ -4,7 +4,7 @@ use crate::combat::abilities::{
     BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, WORKING, WORKING_ACTIONS,
 };
 use crate::objects::masters::Task;
-use crate::turn::Turns;
+use crate::world::Turns;
 use crate::{GenieError, math::fmath};
 
 /// What a generation task's test reads of the object's top action (`FUN_140a986f0`): its type
@@ -98,14 +98,14 @@ pub fn store(amount: f32, out: i16, stores: &mut [f32]) -> Option<f32> {
 impl Turns {
     /// A generation task of the object at `(p, i)` as `owner`'s ([`generates`], [`generated`],
     /// [`store`]): what reaches the store's threshold goes to the player (slot 0xf8 with 1 and 1,
-    /// as a load's, [`crate::turn::give_load`]); the statistics (`FUN_14097daf0`, the local
+    /// as a load's, [`crate::world::give_load`]); the statistics (`FUN_14097daf0`, the local
     /// player's, and `FUN_140a4c020`'s telemetry) are not held. The top action's target is read
     /// as the world holds it after the update: a pending one as the update left it.
     ///
     /// # Errors
     ///
     /// The top action of a unit whose action the slice does not model, and a give to a player
-    /// who shares with allies ([`crate::turn::give_load`]).
+    /// who shares with allies ([`crate::world::give_load`]).
     pub(super) fn generate(
         &mut self,
         (p, i): (usize, usize),
@@ -163,7 +163,7 @@ impl Turns {
         };
         let sharing = player.sharing;
         let mut adds = Vec::new();
-        crate::turn::give_load(
+        crate::world::give_load(
             (&self.spatial.relations, sharing),
             owner,
             &mut adds,

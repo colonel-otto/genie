@@ -12,7 +12,7 @@ use crate::groups::motion;
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum WorldObject<'a> {
     /// An object of player `.0`'s live or sleeping list.
-    Unit(usize, &'a crate::turn::Unit),
+    Unit(usize, &'a crate::world::Unit),
     /// A ghost of player `.0`'s doppelganger list (type 25, its master `243`).
     Ghost(usize, &'a crate::vision::ghost::Ghost),
 }
@@ -95,7 +95,7 @@ impl WorldObject<'_> {
     }
 }
 
-impl crate::turn::Turns {
+impl crate::world::Turns {
     /// `FUN_1415417a0` of `id`: the object the world's table holds for it ([`WorldObject`]),
     /// none for `i32::MIN` (the routine's own test) and for an id no list holds. Only the
     /// negative half holds ghosts.

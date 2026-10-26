@@ -11,9 +11,9 @@ use crate::objects::masters::Master;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::ownership::artifact::Artifact;
 use crate::production::Production;
-use crate::turn::{Gate, WONDER};
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{GenieError, UnitAi};
+use crate::world::{Gate, WONDER};
 
 mod death;
 mod owner;
@@ -148,10 +148,10 @@ pub struct Unit {
     /// master's `+0x610`, `FUN_1411cb850`), whose food a mill makes ([`crate::players::world_player`]).
     pub livestock_summation: f32,
     /// A pasture's livestock (`+0xb78`, saved as `livestockId`): the objects its completion put
-    /// on its edges ([`crate::turn::Turns::setup_pasture`]), in the order it made them.
+    /// on its edges ([`crate::world::Turns::setup_pasture`]), in the order it made them.
     pub livestock: Vec<i32>,
     /// A pasture's workers (`+0xcb8`, saved as `pastureWorkerId`): the units that tend it
-    /// ([`crate::turn::Turns::tend_pasture`]), in the order they came.
+    /// ([`crate::world::Turns::tend_pasture`]), in the order they came.
     pub pasture_workers: Vec<i32>,
     /// A building's `+0xc54`: the frame its BUILD command chose (`FUN_140e7a400`, the packet's
     /// `+0x1c`), which its standing sprite takes once built; 0 from its constructor and the load.
@@ -236,7 +236,7 @@ pub struct Unit {
     /// (`FUN_141188db0`), which master 1889's completion reads.
     pub rice: bool,
     /// A building's `+0xcb0` (`FUN_1411c5f70`): the id of the object its completion's stack unit
-    /// made ([`crate::turn::Turns::stack_unit`]); None before (the save does not hold it).
+    /// made ([`crate::world::Turns::stack_unit`]); None before (the save does not hold it).
     pub stack_made: Option<i32>,
     /// A building's own store (`+0xae0`, `FUN_1411abad0`'s map by attribute): what its storage
     /// entries of mode 16 put in at its completion and take out at its death
@@ -246,13 +246,13 @@ pub struct Unit {
     /// copy (`FUN_141186d10`, the master's slot 0x48) of the one it read when it took it; None
     /// while it reads its player's. An ownership change gives it one ([`change_hands`]).
     ///
-    /// [`change_hands`]: crate::turn::world::change_hands
+    /// [`change_hands`]: crate::world::lookups::change_hands
     pub own_master: Option<Box<Master>>,
     /// `+0x6b8`: the copy of its old owner's death-spawn master (`+0x5e4`) an ownership change
     /// took ([`change_hands`]), which its death spawn makes its dead object of
     /// (`FUN_1411a5090`); None for none.
     ///
-    /// [`change_hands`]: crate::turn::world::change_hands
+    /// [`change_hands`]: crate::world::lookups::change_hands
     pub dead_master: Option<Box<Master>>,
     /// `+0xce0`, `attackingUnits` (saved): the units of players its owner is not allied with
     /// that took this foundation (a building below state 2 whose master has a stack unit,

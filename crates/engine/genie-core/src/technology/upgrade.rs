@@ -9,7 +9,7 @@ use crate::math::rng::{Stream, Well512};
 use crate::objects::masters::{Master, Task, master_type};
 use crate::objects::sprite::Graphic;
 use crate::orders::Place;
-use crate::turn::{Turns, Unit};
+use crate::world::{Turns, Unit};
 
 /// A master's hit points this near 0 give no share (`ABS(x) <= 1.1920929e-07`).
 const NO_HIT_POINTS: f32 = f32::EPSILON;
@@ -147,7 +147,7 @@ fn share_of(u: &Unit, master: &Master) -> Option<(u8, f32)> {
             .take(3)
             .find(|&&(kind, _, _)| kind == u.life.attribute_type);
         let share = held.map_or(0, |&(_, amount, _)| {
-            crate::checkpoint::cvttss2si(WHOLE - u.life.amount * WHOLE / amount) as u8
+            crate::world::checkpoint::cvttss2si(WHOLE - u.life.amount * WHOLE / amount) as u8
         });
         return Some((share, hp));
     }
@@ -162,7 +162,7 @@ fn share_of(u: &Unit, master: &Master) -> Option<(u8, f32)> {
         hp = 0.0;
     }
     Some((
-        crate::checkpoint::cvttss2si(WHOLE - hp * WHOLE / most) as u8,
+        crate::world::checkpoint::cvttss2si(WHOLE - hp * WHOLE / most) as u8,
         hp,
     ))
 }
@@ -202,7 +202,7 @@ impl Turns {
     /// - a moving object (`FUN_14114cb80`) showing `old`'s walking or running sprite shows
     ///   `new`'s;
     /// - the static object (`FUN_141186580`): without `keep` a combat object leaves its class
-    ///   counters ([`crate::turn::count_class`] with −1) and a villager's load goes to its
+    ///   counters ([`crate::world::count_class`] with −1) and a villager's load goes to its
     ///   player (slot 0xf8 with 1 and 1, the foods as food; the statistics are not
     ///   simulation); on the map in state 2 its sight goes and comes with `new`'s line of sight
     ///   (slots 0x1d8 and 0x1d0); its hit points take their share of `new`'s (`old`'s through
@@ -278,7 +278,7 @@ impl Turns {
         // the static object's part
         if !keep {
             if master_type::COMBAT <= kind {
-                crate::turn::count_class(&mut self.players[p].attributes, old, -1.0);
+                crate::world::count_class(&mut self.players[p].attributes, old, -1.0);
             }
             let u = self.object_at(place);
             if master_type::COMBAT <= kind
@@ -293,7 +293,7 @@ impl Turns {
                 };
                 let amount = u.life.amount;
                 let mut adds = Vec::new();
-                crate::turn::give_load(
+                crate::world::give_load(
                     (&self.spatial.relations, self.players[p].sharing),
                     p,
                     &mut adds,
@@ -322,7 +322,7 @@ impl Turns {
                 placed.position,
                 placed.radius,
                 false,
-                crate::checkpoint::cvttss2si(los),
+                crate::world::checkpoint::cvttss2si(los),
                 false,
             );
             if let Some(s) = sight.seer_mut(id) {
@@ -380,7 +380,7 @@ impl Turns {
         if !keep {
             self.object_at_mut(place).life.master_id = new.id;
             if master_type::COMBAT <= kind {
-                crate::turn::count_class(&mut self.players[p].attributes, new, 1.0);
+                crate::world::count_class(&mut self.players[p].attributes, new, 1.0);
             }
         }
         if class_changed {
@@ -773,9 +773,9 @@ mod tests {
             graphic(1070),
             &mut sprites,
         ));
-        let player = crate::turn::Player {
+        let player = crate::world::Player {
             objects: vec![house, object(11, 70, 4, 0.0), object(12, 1403, 2, 1.0)],
-            ..crate::turn::Player::default()
+            ..crate::world::Player::default()
         };
         let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
         t.masters = vec![Masters::new([
@@ -829,10 +829,10 @@ mod tests {
         let mut v = object(10, 83, 2, 25.0);
         (v.life.attribute_type, v.life.amount) = (17, 10.0);
         v.firepower = 1.0;
-        let player = crate::turn::Player {
+        let player = crate::world::Player {
             objects: vec![v],
             attributes: vec![0.0; 300],
-            ..crate::turn::Player::default()
+            ..crate::world::Player::default()
         };
         let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
         t.masters = vec![Masters::new([old, new])];

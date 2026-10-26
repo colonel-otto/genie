@@ -5,7 +5,7 @@ use crate::commands::Command;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{AiResume, Captured, Step};
-use crate::turn::{PlayerFrame, Turns};
+use crate::world::{PlayerFrame, Turns};
 
 impl Turns {
     /// One world update of `dt` game milliseconds without commands.

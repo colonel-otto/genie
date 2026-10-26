@@ -26,7 +26,7 @@ use crate::math::rng::Stream;
 #[cfg(test)]
 use crate::technology::EffectCommand;
 #[cfg(test)]
-use crate::turn::Turns;
+use crate::world::Turns;
 
 /// The attribute counting the technologies researched (`0x15`) and the one summing their costs
 /// (`0x63`), which a research done at a location with a button adds to.

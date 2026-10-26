@@ -7,7 +7,7 @@ use crate::groups::update::{
     ATTACK, DIFFERENTIATORS, FRONT_AHEAD, NO_COMMAND, OTHER_COMMANDS, RELAYOUT_SPACING, TURN_LIMIT,
 };
 use crate::math::fmath::Vec3;
-use crate::turn::Turns;
+use crate::world::Turns;
 
 impl Turns {
     /// `BUnitGroup::update` from `0x14103dd65` on, for an awake group (or a hibernating one

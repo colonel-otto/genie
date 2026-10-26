@@ -2,8 +2,8 @@ use super::*;
 use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::tracker::Key;
-use crate::turn::{Player, Unit};
 use crate::vision::visibility::{Visibility, VisibleMap};
+use crate::world::{Player, Unit};
 
 /// Attributes 0 to 299, all 0.
 fn attributes() -> Vec<f32> {
@@ -479,7 +479,7 @@ fn the_tech_tree_answers_by_civilisation_building_and_unit() {
         ],
         unique_units: Vec::new(),
     };
-    let settings = crate::settings::Settings::default();
+    let settings = crate::world::settings::Settings::default();
     let q = |civ, building, unit, ages_out| TreeQuery {
         civ,
         building,
@@ -505,9 +505,9 @@ fn the_tech_tree_answers_by_civilisation_building_and_unit() {
     assert!(!tree.has(&q(0, 12, 93, [false, true, false])));
     assert_eq!(tree.tech(&q(0, 12, 93, [false, true, false])), 0);
     // the last age 3: age 3 is out
-    let early = crate::settings::Settings {
+    let early = crate::world::settings::Settings {
         ending_age: 3,
-        ..crate::settings::Settings::default()
+        ..crate::world::settings::Settings::default()
     };
     let late = TreeQuery {
         settings: &early,
@@ -515,9 +515,9 @@ fn the_tech_tree_answers_by_civilisation_building_and_unit() {
     };
     assert!(!tree.has(&late));
     // the full tech tree: civilisation 1 lacks the barracks, the fallback 0 has it
-    let full = crate::settings::Settings {
+    let full = crate::world::settings::Settings {
         full_tech_tree: true,
-        ..crate::settings::Settings::default()
+        ..crate::world::settings::Settings::default()
     };
     let fell = TreeQuery {
         settings: &full,

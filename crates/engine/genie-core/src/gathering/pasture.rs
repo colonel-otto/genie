@@ -4,11 +4,11 @@
 //! pasture's food.
 
 use crate::GenieError;
-use crate::checkpoint::cvttss2si;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
 use crate::technology::Attributes;
-use crate::turn::Turns;
+use crate::world::Turns;
+use crate::world::checkpoint::cvttss2si;
 
 /// The livestock a pasture holds (`DAT_143f51db0`, which the static constructor `FUN_140174900`
 /// fills): the Argali and the Ibex (Pasture).
@@ -74,8 +74,8 @@ impl Turns {
     /// master of this pasture (`+0x790`) goes, and a draw picks another (0x1fb2); none left ends
     /// it. On the point the owner's slot 0x1c0 makes the master at the pasture's height
     /// ([`Turns::make_new_object`], no footprint): the point goes, the pasture lists it
-    /// ([`crate::turn::Unit::livestock`]), its state is 2 (slot 0xa0 with 2: it is already), no
-    /// unit targets it (`+0x689` 0, [`crate::turn::Unit::untargetable`]), it is the pasture's
+    /// ([`crate::world::Unit::livestock`]), its state is 2 (slot 0xa0 with 2: it is already), no
+    /// unit targets it (`+0x689` 0, [`crate::world::Unit::untargetable`]), it is the pasture's
     /// (`+0x790`) and holds its food (`+0x310`); its current sprite with a random first facet
     /// draws a facet below its facets less one (0x1fd2, IDIV). Each attempt counts, a master
     /// the owner has not got too. Not held: its selection flag (`+0x68b` 0, slot 0x6b0) and the
@@ -142,7 +142,7 @@ impl Turns {
     }
 
     /// A pasture's slot 0x780 (`FUN_1411c5dd0`): the workers (`+0x644`) of its livestock
-    /// ([`crate::turn::Unit::livestock`]) the world holds, summed; 0 for an object the world does
+    /// ([`crate::world::Unit::livestock`]) the world holds, summed; 0 for an object the world does
     /// not hold.
     pub(crate) fn livestock_workers(&self, pasture: i32) -> i32 {
         self.object(pasture).map_or(0, |(_, b)| {
@@ -204,8 +204,8 @@ impl Turns {
     /// `FUN_141189ca0`: player `p`'s unit at `idx` tends `pasture`, −1 for none. The building it
     /// names (the one the unit tends, `+0x794`, for −1; none for an object that is no building)
     /// takes the unit last among its workers unless it lists it already, or for −1 drops it
-    /// (`FUN_1411cafa0`, [`crate::turn::Unit::pasture_workers`]); then the unit tends `pasture`
-    /// ([`crate::turn::Unit::my_pasture`]).
+    /// (`FUN_1411cafa0`, [`crate::world::Unit::pasture_workers`]); then the unit tends `pasture`
+    /// ([`crate::world::Unit::my_pasture`]).
     ///
     /// # Errors
     ///

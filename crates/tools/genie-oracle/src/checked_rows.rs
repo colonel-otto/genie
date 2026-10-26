@@ -2,7 +2,7 @@
 //! bit-exact equality ([`Same`]).
 
 use crate::{listed, path_level, top_action, vec3};
-use genie_core::turn::{Turns, Unit};
+use genie_core::world::{Turns, Unit};
 use genie_save::generated::world::Path;
 
 /// The rows the comparison with the game's saves reads of a player's live objects in a slice.
@@ -56,7 +56,7 @@ pub struct ObjectRow {
     /// which its hits and the hits on it change.
     pub combat: Option<(f32, bool, [f32; 2])>,
     /// A building's gate lock.
-    pub gate: Option<genie_core::turn::Gate>,
+    pub gate: Option<genie_core::world::Gate>,
     /// A combat object's town-bell flag and back-to-work records.
     pub town_bell: Option<genie_core::orders::town_bell::TownBell>,
     /// A combat object's `next_volley` (the missiles of its volley under way already fired) and
@@ -213,7 +213,7 @@ same_by_eq!(
     bool,
     &'static str,
     String,
-    genie_core::turn::Gate
+    genie_core::world::Gate
 );
 
 impl Same for f32 {

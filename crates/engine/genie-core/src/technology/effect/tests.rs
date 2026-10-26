@@ -1,6 +1,6 @@
 use super::*;
 use crate::objects::masters::{Master, Masters};
-use crate::turn::{Player, Unit};
+use crate::world::{Player, Unit};
 
 /// A combat unit's charge after its master's maximum charge changes (`FUN_1412163c0`'s
 /// `;`): a set and an add keep the charge's share of the maximum, without a maximum a set
