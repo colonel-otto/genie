@@ -208,7 +208,7 @@ pub(crate) fn storage_leaves(u: &mut Unit, master: &Master) -> Vec<(i16, f32)> {
 
 /// What the footprint clearing reads of the object `u` ([`crate::construction::build::ClearLook`]) with its
 /// owner's `masters`; None without its master.
-pub(in crate::turn) fn clear_look_of(
+pub(crate) fn clear_look_of(
     u: &Unit,
     masters: Option<&Masters>,
 ) -> Option<crate::construction::build::ClearLook> {

@@ -1,14 +1,14 @@
 //! The commands of a building: SET GATHER POINT, the command queue and RESEARCH.
 
-use crate::turn::command::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint, ResearchAt};
+use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint, ResearchAt};
 use crate::turn::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, Turns};
 use crate::unit_ai::GenieError;
 
 impl Turns {
     /// SET GATHER POINT's handler ([`Command::GatherPoint`]).
     ///
-    /// [`Command::GatherPoint`]: crate::turn::command::Command::GatherPoint
-    pub(in crate::turn) fn gather_point(
+    /// [`Command::GatherPoint`]: crate::commands::Command::GatherPoint
+    pub(crate) fn gather_point(
         &mut self,
         player: usize,
         ids: &[i32],
@@ -151,11 +151,7 @@ impl Turns {
     /// the listed ones (`+0x11..`) as the unit commands' ([`Turns::command_check`]). None for a
     /// refused one, else the list with −1 for the ones left out. The packet's size tests are the
     /// decoder's, and the world's `+0xb12` cheat is not held.
-    pub(in crate::turn) fn research_check(
-        &self,
-        player: usize,
-        r: &ResearchAt,
-    ) -> Option<Vec<i32>> {
+    pub(crate) fn research_check(&self, player: usize, r: &ResearchAt) -> Option<Vec<i32>> {
         let listed = usize::try_from(r.count).unwrap_or(0);
         if listed == 0 {
             return None;
@@ -190,11 +186,7 @@ impl Turns {
     /// local player's statistics flag. Not modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
     /// `+0x648` (0 for every player probed), Castle Age queued in game mode 16 (the world's treaty
     /// monitor's `+0x17`; no other game mode marks it).
-    pub(in crate::turn) fn research(
-        &mut self,
-        player: usize,
-        r: &ResearchAt,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn research(&mut self, player: usize, r: &ResearchAt) -> Result<(), GenieError> {
         let owner = &self.players[player];
         if r.target != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
             return Ok(());
@@ -293,7 +285,7 @@ impl Turns {
     /// the building's part with no master and no button ([`Turns::queue_at`]). True when any
     /// was queued. The game settings' instant technologies (`FUN_140f39f40`'s `+0x20`, which
     /// `FUN_1413cdcd0` researches at once) are linked ones, which RESEARCH refuses before.
-    pub(in crate::turn) fn queue_research(
+    pub(crate) fn queue_research(
         &mut self,
         player: usize,
         i: usize,

@@ -1,15 +1,15 @@
 //! A command's run in the command phase ([`Turns::run`]), a human player's order and the
 //! order units' reset.
 
+use crate::commands::{Command, Order, QueueAt, ResearchAt};
 use crate::math::rng::Stream;
 use crate::turn::Turns;
-use crate::turn::command::{Command, Order, QueueAt, ResearchAt};
 use crate::unit_ai::GenieError;
 
 impl Turns {
     /// Run a command in the command phase. Where the slice does not model what the command does to
     /// the issuing player's units, that player's lane stops.
-    pub(in crate::turn) fn run(&mut self, command: &Command) {
+    pub(crate) fn run(&mut self, command: &Command) {
         match *command {
             Command::Build {
                 player,
@@ -155,7 +155,7 @@ impl Turns {
                 let Some(builders) = self.command_check(w.player, &w.builders) else {
                     return;
                 };
-                let w = crate::wall::Wall {
+                let w = crate::commands::wall::Wall {
                     builders,
                     ..w.clone()
                 };
@@ -379,7 +379,7 @@ impl Turns {
 
     /// `FUN_140e5e780`: each unit of `ids` with a unit AI takes the world time as its last human
     /// order time (`+0x650`).
-    pub(in crate::turn) fn human_order(&mut self, ids: &[i32]) {
+    pub(crate) fn human_order(&mut self, ids: &[i32]) {
         for &id in ids {
             let unit = self
                 .players
@@ -401,7 +401,7 @@ impl Turns {
     /// ([`UnitAi::reset_for_order`]), in list order.
     ///
     /// [`UnitAi::reset_for_order`]: crate::unit_ai::UnitAi::reset_for_order
-    pub(in crate::turn) fn reset_order_units(&mut self, units: &[i32]) {
+    pub(crate) fn reset_order_units(&mut self, units: &[i32]) {
         for &id in units {
             let Some(place) = self.place(id) else {
                 continue;

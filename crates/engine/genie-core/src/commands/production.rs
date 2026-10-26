@@ -1,10 +1,10 @@
 //! QUEUE: a building's production queue, its load, its units and technologies, and a new
 //! entry's costs.
 
+use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE, QueueAt, ResearchAt};
 use crate::masters::Masters;
 use crate::math::rng::Stream;
 use crate::production::Production;
-use crate::turn::command::{CURRENT_AGE, ONE_UNIT_AGE, QueueAt, ResearchAt};
 use crate::turn::unit::POPULATION;
 use crate::turn::{
     BUILDING_KIND, COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, Turns, VILLAGER, VILLAGER_ANY,
@@ -39,7 +39,7 @@ impl Turns {
     /// # Errors
     ///
     /// A building of another player (with cheats) or asleep, and what the parts do not model.
-    pub(in crate::turn) fn queue(&mut self, player: usize, q: &QueueAt) -> Result<(), GenieError> {
+    pub(crate) fn queue(&mut self, player: usize, q: &QueueAt) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, &q.buildings) else {
             return Ok(());
         };
@@ -161,7 +161,7 @@ impl Turns {
     /// `FUN_140e6b250`), each listed one the world holds (`+0x11..`, `FUN_140e6bad0`) whose load
     /// ([`Turns::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
     /// takes its place. −1 for none.
-    pub(in crate::turn) fn least_loaded(&self, player: usize, r: &ResearchAt) -> i32 {
+    pub(crate) fn least_loaded(&self, player: usize, r: &ResearchAt) -> i32 {
         let load = |id: i32| match self.place(id) {
             Some(crate::orders::Place::Live(q, i)) => self.production_load(q, i),
             _ => 0.0,
@@ -249,7 +249,7 @@ impl Turns {
     /// (`+0xbf4`) is above 14 refuses (its event 0x84 is the interface's); the count is held
     /// to the room of 15. Units: [`Turns::queue_units`]; researches: [`Turns::queue_techs`].
     /// True when any was queued.
-    pub(in crate::turn) fn queue_at(
+    pub(crate) fn queue_at(
         &mut self,
         player: usize,
         i: usize,
@@ -296,7 +296,7 @@ impl Turns {
     /// [`crate::production::master_costs`]); else a new entry ([`Turns::new_entry`]) records
     /// them, with the master's train time at the building and button
     /// ([`crate::production::train_time`]) for a combat master.
-    pub(in crate::turn) fn queue_units(
+    pub(crate) fn queue_units(
         &mut self,
         player: usize,
         i: usize,
@@ -512,11 +512,7 @@ impl Turns {
 /// one's `pick` first (none: the first with room), replaced by each with room and a load below
 /// its (`COMISS`, `JBE`: a comparison with a NaN replaces nothing); with none, the one with the
 /// most room, the first of equals; none without room.
-pub(in crate::turn) fn least_loaded(
-    rooms: &[i32],
-    loads: &[f32],
-    pick: Option<usize>,
-) -> Option<usize> {
+pub(crate) fn least_loaded(rooms: &[i32], loads: &[f32], pick: Option<usize>) -> Option<usize> {
     let mut best = pick;
     for k in 0..rooms.len() {
         if 0 < rooms[k] && best.is_none_or(|b| loads[b] > loads[k]) {

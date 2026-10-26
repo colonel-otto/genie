@@ -36,8 +36,8 @@ pub use genie_error::{ErrorKind, GenieError, GenieResult};
 
 pub mod checkpoint;
 pub mod combat;
+pub mod commands;
 pub mod construction;
-pub mod delete;
 pub mod facing;
 pub mod garrison;
 pub mod gathering;
@@ -60,4 +60,3 @@ pub mod trace;
 pub mod turn;
 pub mod unit_ai;
 pub mod vision;
-pub mod wall;

@@ -18,21 +18,19 @@
 //!
 //! [`Mover::step_velocity`]: crate::movement::Mover::step_velocity
 
-pub(crate) mod command;
 pub(crate) mod context;
-mod game;
 pub(crate) mod player;
 pub(crate) mod unit;
 pub(crate) mod world;
 
 use crate::GenieError;
+pub use crate::commands::game::GameCommand;
+pub use crate::commands::{Command, GatherPoint, Order};
 use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::math::rng::Streams;
 use crate::pathing::Pathing;
 use crate::sprite::Graphic;
-pub use crate::turn::command::{Command, GatherPoint, Order};
-pub use crate::turn::game::GameCommand;
 pub(crate) use crate::turn::player::NO_ATTRIBUTE;
 pub use crate::turn::player::{AiSettings, Formations, Player};
 pub(crate) use crate::turn::unit::EnterWorld;
@@ -142,15 +140,15 @@ pub const HISTORY_PERIOD: i32 = 25;
 /// The building unit AI's action value a research it queued sets (`FUN_140c64b50` with 0x26c).
 pub(crate) const RESEARCH_ACTION: i32 = 0x26c;
 /// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
-const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
+pub(crate) const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The building master type RESEARCH asks for (`'P'`, 80).
 pub(crate) const BUILDING_KIND: u8 = 80;
 /// The first master type whose slot 0x128 (a work at an object) does something: the action
 /// objects' (`FUN_14106c590`) and up; below it `FUN_141071bd0` returns at once.
-const STATIC_TYPES_END: u8 = 40;
+pub(crate) const STATIC_TYPES_END: u8 = 40;
 /// The buildings' paid costs (attribute 247), which the combat setup adds for a building with a
 /// train location (`FUN_14121df60`).
-const BUILDING_COST: i16 = 247;
+pub(crate) const BUILDING_COST: i16 = 247;
 /// The masters whose restrictions the world's load gives planners (`World::load_world`'s two
 /// calls of `FUN_140f7d310`: Gaia's entries `+0x298` and `+0x10b8`).
 const PLANNED_MASTERS: [i16; 2] = [83, 535];
@@ -198,11 +196,11 @@ pub(crate) struct BuildingDeath {
 
 /// The villager master QUEUE draws a sex for (`0x53`), and the generic villager id that becomes
 /// 0x53 first (`0x712`), both in `FUN_1411cbc40`.
-const VILLAGER: i16 = 0x53;
+pub(crate) const VILLAGER: i16 = 0x53;
 /// The farm, which BUILD places as the rice farm on mangrove or rice farm terrain.
-const FARM: i16 = 50;
-const RICE_FARM: i16 = 1187;
-const VILLAGER_ANY: i16 = 0x712;
+pub(crate) const FARM: i16 = 50;
+pub(crate) const RICE_FARM: i16 = 1187;
+pub(crate) const VILLAGER_ANY: i16 = 0x712;
 /// The female villager master (`0x125`).
 const VILLAGER_FEMALE: i16 = 0x125;
 /// The attribute naming a building master that changes the terrain around its buildings
@@ -220,12 +218,12 @@ pub(crate) const VILLAGER_CLASS: i16 = 4;
 /// 562, 584 and 621 (`0x232` plus the bits of `0x800000000400001`), 68, 1808, 50, 1187 and 199.
 const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
 /// A building's queue holds at most 15 units (`FUN_1411cbc40`).
-const QUEUE_LIMIT: usize = 15;
+pub(crate) const QUEUE_LIMIT: usize = 15;
 /// A computer player's QUEUE fills a building's queue to at most 2 (`FUN_141614450`).
-const COMPUTER_QUEUE_LIMIT: usize = 2;
+pub(crate) const COMPUTER_QUEUE_LIMIT: usize = 2;
 /// The game mode whose QUEUE trains one military unit at a time in the first age
 /// (`FUN_141614450`, the settings' `+0x34`).
-const ONE_UNIT_GAME: i32 = 0x10;
+pub(crate) const ONE_UNIT_GAME: i32 = 0x10;
 /// The Hunt's search timer: it tells its unit AI again every 10 seconds (`0xc1200000`, in
 /// `0x140ac60e0` and `0x140ac7a00`).
 pub(crate) const SEARCH_AGAIN: f32 = -10.0;
@@ -245,12 +243,12 @@ pub(crate) const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWE
 
 /// The pasture master whose foundation keeps its snow and whose stack unit depends on the rice
 /// terrain under it (1889).
-const PASTURE_1889: i16 = 1889;
+pub(crate) const PASTURE_1889: i16 = 1889;
 /// The gate's class (39), whose annexes stay in their owner's watched list.
-const GATE: i16 = 39;
+pub(crate) const GATE: i16 = 39;
 /// A queued villager's master: male when the 64-bit Action draw times 100 (wrapping) is below 50
 /// modulo 100.
-const fn villager(draw: u64) -> i16 {
+pub(crate) const fn villager(draw: u64) -> i16 {
     if draw.wrapping_mul(100) % 100 < 50 {
         VILLAGER
     } else {

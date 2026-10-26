@@ -47,6 +47,51 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/commands/building_commands.rs",
+      "function": "Turns::research",
+      "line": 189,
+      "cyclomatic": 26.0,
+      "coverage": 63.095238095238095,
+      "crap": 59.97769544325667,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/commands/delete.rs",
+      "function": "Turns::built_building_dies",
+      "line": 464,
+      "cyclomatic": 12.0,
+      "coverage": 0.0,
+      "crap": 156.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/commands/ground.rs",
+      "function": "Turns::evacuate",
+      "line": 22,
+      "cyclomatic": 20.0,
+      "coverage": 0.0,
+      "crap": 420.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/commands/ground.rs",
+      "function": "Turns::evacuate_together",
+      "line": 88,
+      "cyclomatic": 13.0,
+      "coverage": 0.0,
+      "crap": 182.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/commands/run.rs",
+      "function": "Turns::run",
+      "line": 12,
+      "cyclomatic": 81.0,
+      "coverage": 35.018050541516246,
+      "crap": 1881.313946599907,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/construction/build/drop_off.rs",
       "function": "BuildAction::update_drop",
       "line": 134,
@@ -116,15 +161,6 @@
       "cyclomatic": 40.0,
       "coverage": 0.0,
       "crap": 1640.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/delete.rs",
-      "function": "Turns::built_building_dies",
-      "line": 464,
-      "cyclomatic": 12.0,
-      "coverage": 0.0,
-      "crap": 156.0,
       "crate": "genie-core"
     },
     {
@@ -719,42 +755,6 @@
       "cyclomatic": 53.0,
       "coverage": 74.50980392156863,
       "crap": 99.52338090176477,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/command/building_commands.rs",
-      "function": "Turns::research",
-      "line": 193,
-      "cyclomatic": 26.0,
-      "coverage": 64.77272727272727,
-      "crap": 55.55178789444028,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/command/ground.rs",
-      "function": "Turns::evacuate",
-      "line": 22,
-      "cyclomatic": 20.0,
-      "coverage": 0.0,
-      "crap": 420.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/command/ground.rs",
-      "function": "Turns::evacuate_together",
-      "line": 92,
-      "cyclomatic": 13.0,
-      "coverage": 0.0,
-      "crap": 182.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/command/run.rs",
-      "function": "Turns::run",
-      "line": 12,
-      "cyclomatic": 81.0,
-      "coverage": 35.018050541516246,
-      "crap": 1881.313946599907,
       "crate": "genie-core"
     },
     {

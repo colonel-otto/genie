@@ -19,11 +19,7 @@ impl Turns {
     /// and more of a formation category (`+0x8bc`) would go together to its farthest free spot
     /// (`FUN_1411566b0` with 1, `FUN_1416123a0`'s group move, then 0x21b each), which is not
     /// modelled.
-    pub(in crate::turn) fn evacuate(
-        &mut self,
-        foundation: i32,
-        units: &[i32],
-    ) -> Result<(), GenieError> {
+    pub(crate) fn evacuate(&mut self, foundation: i32, units: &[i32]) -> Result<(), GenieError> {
         /// The notify's radii are hundredths (`DAT_14330ebcc`).
         const RADIUS_SCALE: f32 = crate::math::image::unit_ai::RADIUS_SCALE;
         let (site_owner, site) = self.object(foundation).ok_or(GenieError::unsupported(
@@ -89,7 +85,7 @@ impl Turns {
     /// the action of moving off a footprint (`0x2bf`) and moves to the spot at its own height
     /// (slot 0x138 without a target); last each of them whose unit AI's action is not `0x2bf` gets
     /// notify `0x21b` ([`crate::unit_ai::SENT_OFF_GROUP`]).
-    pub(in crate::turn) fn evacuate_together(
+    pub(crate) fn evacuate_together(
         &mut self,
         foundation: i32,
         radius: [f32; 2],
@@ -151,7 +147,7 @@ impl Turns {
     /// of class 51 or 54, nor 357 or 1188): a farm (master 50) lays terrain 29 under its
     /// clearance, a rice farm (1187) terrain 65 (`FUN_1411ce250` -> `FUN_1411ddd90`,
     /// [`crate::map::terrain::Terrain::cover`]), before the footprint clearing.
-    pub(in crate::turn) fn construction_terrain(
+    pub(crate) fn construction_terrain(
         &mut self,
         player: usize,
         master: i16,
@@ -282,7 +278,7 @@ impl Turns {
     /// gave it; its first builder brings it back), and its sight, which waits for its
     /// construction to start (its place links its tiles to its anchor, `FUN_1411e6780`, and its
     /// desolid flag unlinks them).
-    pub(in crate::turn) fn building_place(
+    pub(crate) fn building_place(
         &mut self,
         player: usize,
         id: i32,

@@ -1,5 +1,6 @@
 use super::*;
 use crate::checkpoint::TopAction;
+use crate::commands::{Command, GatherPoint, ResearchAt};
 use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::lifecycle::seconds;
 use crate::lifecycle::{Class, Lifecycle, MasterData};
@@ -9,7 +10,6 @@ use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveTo;
 use crate::ownership::artifact::Artifact;
-use crate::turn::command::{Command, GatherPoint, ResearchAt};
 use crate::turn::player::Player;
 use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::turn::world::{
@@ -7898,7 +7898,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     );
     assert_eq!(ai.current_order, crate::unit_ai::MOVE_ORDER);
     // BUILD_WALL's line of one tile the same (0x140e7be4b)
-    wall.run(&Command::BuildWall(crate::wall::Wall {
+    wall.run(&Command::BuildWall(crate::commands::wall::Wall {
         player: 1,
         master: 70,
         unit_ai: Ok(None),
@@ -8588,7 +8588,7 @@ fn a_missile_whose_target_died_flies_on_without_it_and_lands() {
 /// against an equal load; a comparison with a NaN load replaces nothing; with none with room, none.
 #[test]
 fn a_queued_unit_goes_to_the_least_loaded_building_with_room() {
-    use crate::turn::command::least_loaded;
+    use crate::commands::least_loaded;
     assert_eq!(least_loaded(&[2, 2, 2], &[5.0, 3.0, 4.0], None), Some(1));
     assert_eq!(least_loaded(&[2, 0, 2], &[5.0, 3.0, 4.0], None), Some(2));
     assert_eq!(least_loaded(&[2, 2], &[3.0, 3.0], Some(1)), Some(1));

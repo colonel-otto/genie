@@ -1,10 +1,10 @@
 //! BUILD's builders: their task, the queue and the direct path, the wait for the foundation
 //! and the build command.
 
+use crate::commands::{FOUNDATION_GONE, NO_BUILD_TASK};
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
-use crate::turn::command::{FOUNDATION_GONE, NO_BUILD_TASK};
 use crate::turn::world::{World, task_search, task_target_with};
 use crate::turn::{STATIC_TYPES_END, Turns};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
@@ -26,7 +26,7 @@ impl Turns {
     /// whatever task its slot 0x7e8 finds on the foundation ([`Turns::order_work`]). A unit the world no
     /// longer holds is passed over. A committing BUILD's queue then takes the readiness pass with
     /// 0 (`FUN_140c42b60`, [`crate::orders::readiness`]): every queued order is ready.
-    pub(in crate::turn) fn task_builders(
+    pub(crate) fn task_builders(
         &mut self,
         player: usize,
         foundation: i32,

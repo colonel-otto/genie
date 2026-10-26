@@ -8,7 +8,7 @@ impl Turns {
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is
     /// mangrove shallows or forest (terrains 54, 55, `FUN_1413fc100`) or a rice farm's (63 to 67,
     /// `FUN_1413fc220`) is a rice farm (1187); a point off the map keeps the farm.
-    pub(in crate::turn) fn farm_on_rice_terrain(&self, master: i16, position: [f32; 3]) -> i16 {
+    pub(crate) fn farm_on_rice_terrain(&self, master: i16, position: [f32; 3]) -> i16 {
         if master != FARM {
             return master;
         }
@@ -22,11 +22,7 @@ impl Turns {
 
     /// BUILD's pending debit (`FUN_141630d10` with 0, before its placement test): every cost
     /// entry of the master, paid or not, by resource, comes off the player's pending debit.
-    pub(in crate::turn) fn debit_listed(
-        &mut self,
-        player: usize,
-        master: i16,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn debit_listed(&mut self, player: usize, master: i16) -> Result<(), GenieError> {
         let site =
             self.masters
                 .get(player)
@@ -49,7 +45,7 @@ impl Turns {
     /// BUILD's builders' test (`FUN_140e7a400` after the pending debit): a human player's BUILD
     /// needs one unit of the packet that can build the master ([`Turns::builds`]; one the world
     /// holds, `FUN_140e6bad0`, follows from it), else it places nothing; a computer's passes.
-    pub(in crate::turn) fn build_has_builder(
+    pub(crate) fn build_has_builder(
         &self,
         player: usize,
         master: i16,
@@ -72,7 +68,7 @@ impl Turns {
     /// payment's (`FUN_14162fb60` -> `FUN_141618db0`: every cost entry of a resource, paid or
     /// not, at most what the player holds). A refused BUILD places, pays and draws nothing (the
     /// player's slot 0x380 shows why). A cost in population (attribute 4) is not modelled.
-    pub(in crate::turn) fn build_allowed(
+    pub(crate) fn build_allowed(
         &self,
         player: usize,
         master: i16,

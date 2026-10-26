@@ -737,7 +737,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 .map(|u| (player, u))
                 .or_else(|| foreign.find(id))
         };
-        let (fp, f) = find(foundation).ok_or(crate::turn::command::FOUNDATION_GONE)?;
+        let (fp, f) = find(foundation).ok_or(crate::commands::FOUNDATION_GONE)?;
         let site = self
             .every
             .get(fp)
@@ -748,7 +748,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             task_target_with(foundation, 1, &find, self.every)?,
             task_target_with(foundation, 2, &find, self.every)?,
         ) else {
-            return Err(crate::turn::command::FOUNDATION_GONE);
+            return Err(crate::commands::FOUNDATION_GONE);
         };
         let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
         let own = masters
@@ -769,7 +769,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             drop_sites: self.drop_sites,
         };
         let (task, switch) = task_search(masters, &actor, &t, &general, -1, &dip)?
-            .ok_or(crate::turn::command::NO_BUILD_TASK)?;
+            .ok_or(crate::commands::NO_BUILD_TASK)?;
         let builder = switch.unwrap_or(own);
         let gap = crate::movement::footprint_gap(unit.position, builder.radius, f_at, site.radius);
         let build = BuildAction::start(

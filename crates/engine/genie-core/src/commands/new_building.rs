@@ -393,7 +393,7 @@ impl Turns {
     /// master makes it desolid (`FUN_1411cf770`, which an annex's link lets through: its record
     /// and mesh shape go, its own master copy has no height, the watched list lets it go; its
     /// tiles keep their links, as an annex's do).
-    pub(in crate::turn) fn link_annex(
+    pub(crate) fn link_annex(
         &mut self,
         player: usize,
         id: i32,

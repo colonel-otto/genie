@@ -259,7 +259,7 @@ pub(super) fn build_wall_command(
         )),
         |section| new_unit_ai(section.objects(), master),
     );
-    Command::BuildWall(genie_core::wall::Wall {
+    Command::BuildWall(genie_core::commands::wall::Wall {
         player,
         master,
         unit_ai,

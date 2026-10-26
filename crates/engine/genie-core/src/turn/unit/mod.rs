@@ -1,5 +1,6 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
+use crate::commands::GatherPoint;
 use crate::construction::build::{BuildAction, Construction};
 use crate::gathering::hunt::{HuntAction, HuntSprites};
 use crate::lifecycle::Lifecycle;
@@ -10,7 +11,6 @@ use crate::movement::move_to::MoveToAction;
 use crate::ownership::artifact::Artifact;
 use crate::production::Production;
 use crate::sprite::{ActiveSprite, Graphic};
-use crate::turn::command::GatherPoint;
 use crate::turn::{Gate, WONDER};
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{GenieError, UnitAi};

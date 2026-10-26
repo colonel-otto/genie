@@ -5,7 +5,7 @@ mod carts;
 mod deaths;
 mod release;
 
-pub(in crate::turn) use self::deaths::clear_look_of;
+pub(crate) use self::deaths::clear_look_of;
 pub(crate) use self::deaths::{
     built_death, combat_dies, count_class, farm_bonus, forget_resource, refund_of, storage_leaves,
 };

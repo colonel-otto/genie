@@ -8,14 +8,17 @@ use crate::unit_ai::GenieError;
 
 mod builders;
 mod building_commands;
+pub mod delete;
+pub(crate) mod game;
 mod ground;
 mod new_building;
 mod placement;
 mod production;
 mod run;
+pub mod wall;
 
 #[cfg(test)]
-pub(in crate::turn) use self::production::least_loaded;
+pub(crate) use self::production::least_loaded;
 
 /// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
 /// master; the save's `gather_point_*`).
@@ -60,8 +63,8 @@ pub enum Command {
         frame: u8,
     },
     /// `BUILD_WALL` (0x69, `FUN_140e7b2e0`): a line of the player's wall foundations and its
-    /// builders shared out over them ([`crate::wall`]).
-    BuildWall(crate::wall::Wall),
+    /// builders shared out over them ([`crate::commands::wall`]).
+    BuildWall(wall::Wall),
     /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects of `ids` that takes
     /// a gather point (its master garrisons, `+0x5d4`, or its player trains a unit there,
     /// `FUN_141625a20`'s count with no object, [`Turns::trainable_count`]) takes `point` and
@@ -423,21 +426,21 @@ pub enum Order {
 }
 
 /// RESEARCH's fields ([`Command::Research`] but the player).
-pub(in crate::turn) struct ResearchAt {
-    pub(in crate::turn) building: i32,
-    pub(in crate::turn) count: i16,
-    pub(in crate::turn) buildings: Vec<i32>,
-    pub(in crate::turn) tech: i16,
-    pub(in crate::turn) target: i32,
-    pub(in crate::turn) shift: bool,
+pub(crate) struct ResearchAt {
+    pub(crate) building: i32,
+    pub(crate) count: i16,
+    pub(crate) buildings: Vec<i32>,
+    pub(crate) tech: i16,
+    pub(crate) target: i32,
+    pub(crate) shift: bool,
 }
 
 /// QUEUE's fields ([`Command::Queue`] but the player).
-pub(in crate::turn) struct QueueAt {
-    pub(in crate::turn) buildings: Vec<i32>,
-    pub(in crate::turn) unit: i16,
-    pub(in crate::turn) amount: u16,
-    pub(in crate::turn) button: i32,
+pub(crate) struct QueueAt {
+    pub(crate) buildings: Vec<i32>,
+    pub(crate) unit: i16,
+    pub(crate) amount: u16,
+    pub(crate) button: i32,
 }
 
 /// The player's attribute game mode 16's QUEUE reads (6, `+0x30`), and its bound
