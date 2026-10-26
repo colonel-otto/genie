@@ -1046,21 +1046,30 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/world/after_step.rs",
+      "function": "World::apply_ai_orders",
+      "line": 320,
+      "cyclomatic": 25.0,
+      "coverage": 45.33333333333333,
+      "crap": 127.10518518518516,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/world/after_step.rs",
+      "function": "World::apply_object_writes",
+      "line": 99,
+      "cyclomatic": 18.0,
+      "coverage": 43.63636363636363,
+      "crap": 76.0152306536439,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/world/forced.rs",
       "function": "World::force",
       "line": 88,
       "cyclomatic": 34.0,
       "coverage": 64.44444444444444,
       "crap": 85.96132784636492,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/world/object_step.rs",
-      "function": "World::finish_object",
-      "line": 185,
-      "cyclomatic": 128.0,
-      "coverage": 51.91740412979351,
-      "crap": 1949.3091016301337,
       "crate": "genie-core"
     },
     {

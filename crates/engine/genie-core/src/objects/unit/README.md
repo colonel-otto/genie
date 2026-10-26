@@ -8,13 +8,13 @@ field, so an object that does not build has no Build state.
 own steps, the velocity step, the life cycle, the sprite, the actions and the unit AI. Each step
 of an action is a method in the action's system:
 
-- the attack timers and the Attack in `combat/attack/unit.rs`;
-- the velocity step, the `MoveTo`, the Explore and the Fly in `movement/unit.rs`;
-- the Artifact in `ownership/artifact.rs`;
-- the Build and the Repair in `construction/build/unit.rs` and `construction/repair/unit.rs`;
-- the inside update, the Enter and the transport in `garrison/unit.rs`;
-- the Make in `gathering/make.rs`, the Gather in `gathering/gather/unit.rs` and the Hunt in
-  `gathering/hunt/hunter.rs`.
+- `combat/attack/unit.rs`: the attack timers and the Attack.
+- `movement/unit.rs`: the velocity step, the `MoveTo`, the Explore and the Fly.
+- `ownership/artifact.rs`: the Artifact.
+- `construction/build/unit.rs` and `construction/repair/unit.rs`: the Build and the Repair.
+- `garrison/unit.rs`: the inside update, the Enter and the transport.
+- `gathering/make.rs`, `gathering/gather/unit.rs` and `gathering/hunt/hunter.rs`: the Make, the
+  Gather and the Hunt.
 
 The other files of this folder:
 

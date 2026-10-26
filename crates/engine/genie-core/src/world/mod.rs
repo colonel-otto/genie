@@ -36,6 +36,7 @@ use crate::unit_ai::task_finder::DropSite;
 pub(crate) use crate::world::player::NO_ATTRIBUTE;
 pub use crate::world::player::{AiSettings, Formations, Player};
 
+mod after_step;
 mod forced;
 mod object_step;
 pub mod settings;

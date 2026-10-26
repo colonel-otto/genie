@@ -8,8 +8,8 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 - `setup.rs` builds the world from the save in a recording's header.
 - `world_update.rs` is one tick: the command phase, the player loop and the steps after it. Read
   it first: it calls every system in the game's order.
-- `object_step.rs` runs one object's update with its context, and applies what the update
-  collected.
+- `object_step.rs` runs one object's update with its context.
+- `after_step.rs` applies what the update collected, in the order of the game's update.
 - `context.rs` holds the `Context`: what one object's update reads and writes of the world.
 - `player.rs` holds a player: its objects, its attributes and its formations.
 - `settings.rs` holds the game options that the simulation reads.
@@ -29,11 +29,12 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 <!-- files -->
 | File | What it holds |
 | --- | --- |
+| [`after_step.rs`](after_step.rs) | What follows an object's step (`World::finish_object`): what its Context gathered, applied to the world in the order the game's update makes them. |
 | [`checkpoint.rs`](checkpoint.rs) | The per-player 11-word state block that recorded games checkpoint every N syncs. |
 | [`context.rs`](context.rs) | What a tick's update of one object reads and writes (`Context`) and its walks. |
 | [`forced.rs`](forced.rs) | The forced replay (dev only): the game's state after a tick (`GameState`) and the step that forces it on the world. |
 | [`mod.rs`](mod.rs) | The world: its state and its tick. |
-| [`object_step.rs`](object_step.rs) | One object's step with its context (`World::run_object`), what follows it and a unit AI run outside its update. |
+| [`object_step.rs`](object_step.rs) | One object's step with its context (`World::run_object`) and a unit AI run outside its update. |
 | [`player.rs`](player.rs) | A player (`Player`): its objects, attributes and formations, and the stop of its update. |
 | [`settings.rs`](settings.rs) | The game options the simulation reads: the object `FUN_140c87b90` returns (`GameOptions`, 0x1088 bytes), which the header saves and its load `FUN_141305310` fills. |
 | [`setup.rs`](setup.rs) | The world as the header save holds it (`World::new`): the next object id, the planners and the shape mesh the game's load builds. |
