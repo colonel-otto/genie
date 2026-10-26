@@ -245,27 +245,27 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/update.rs",
+      "file": "crates/engine/genie-core/src/group/update/awake.rs",
       "function": "Turns::after_motion",
-      "line": 501,
+      "line": 154,
       "cyclomatic": 18.0,
       "coverage": 0.0,
       "crap": 342.0,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/update.rs",
+      "file": "crates/engine/genie-core/src/group/update/awake.rs",
       "function": "Turns::awake_update",
-      "line": 383,
+      "line": 36,
       "cyclomatic": 17.0,
       "coverage": 38.46153846153847,
       "crap": 84.35002275830675,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/update.rs",
+      "file": "crates/engine/genie-core/src/group/update/awake.rs",
       "function": "Turns::turn_formation",
-      "line": 559,
+      "line": 217,
       "cyclomatic": 10.0,
       "coverage": 0.0,
       "crap": 110.0,

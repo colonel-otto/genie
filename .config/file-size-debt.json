@@ -10,7 +10,6 @@
   "crates/engine/genie-core/src/group/mod.rs": 760,
   "crates/engine/genie-core/src/group/motion.rs": 1090,
   "crates/engine/genie-core/src/group/steer.rs": 1018,
-  "crates/engine/genie-core/src/group/update.rs": 1716,
   "crates/engine/genie-core/src/hunt.rs": 1554,
   "crates/engine/genie-core/src/repair.rs": 775,
   "crates/engine/genie-core/src/tile_path.rs": 1687,
