@@ -17,7 +17,6 @@
   "crates/formats/genie-lang/src/lib.rs": 863,
   "crates/formats/genie-rec/src/ai.rs": 1111,
   "crates/formats/genie-rec/src/player.rs": 898,
-  "crates/formats/genie-rec/src/unit.rs": 1348,
   "crates/formats/genie-scx/src/triggers.rs": 955
  }
 }

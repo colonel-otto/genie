@@ -1,0 +1,149 @@
+//! The sprites drawn for an object: their nodes and animations.
+
+use crate::Result;
+use crate::element::{OptionalReadableElement, ReadableHeaderElement, WritableHeaderElement};
+use crate::reader::RecordingHeaderReader;
+use byteorder::{LE, ReadBytesExt, WriteBytesExt};
+use genie_dat::sprite::SpriteID;
+use std::io::{Read, Write};
+
+/// The animation state of a sprite node.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SpriteNodeAnimation {
+    /// The time between two animation frames.
+    pub animate_interval: u32,
+    /// The time of the last frame change.
+    pub animate_last: u32,
+    /// The frame shown last.
+    pub last_frame: u16,
+    /// Whether the frame changed at the last update.
+    pub frame_changed: u8,
+    /// Whether the animation looped at the last update.
+    pub frame_looped: u8,
+    /// Whether the sprite animates.
+    pub animate_flag: u8,
+    /// The animation speed at the last update.
+    pub last_speed: f32,
+}
+
+impl ReadableHeaderElement for SpriteNodeAnimation {
+    fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
+        Ok(Self {
+            animate_interval: input.read_u32::<LE>()?,
+            animate_last: input.read_u32::<LE>()?,
+            last_frame: input.read_u16::<LE>()?,
+            frame_changed: input.read_u8()?,
+            frame_looped: input.read_u8()?,
+            animate_flag: input.read_u8()?,
+            last_speed: input.read_f32::<LE>()?,
+        })
+    }
+}
+
+impl WritableHeaderElement for SpriteNodeAnimation {
+    fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
+        output.write_u32::<LE>(self.animate_interval)?;
+        output.write_u32::<LE>(self.animate_last)?;
+        output.write_u16::<LE>(self.last_frame)?;
+        output.write_u8(self.frame_changed)?;
+        output.write_u8(self.frame_looped)?;
+        output.write_u8(self.animate_flag)?;
+        output.write_f32::<LE>(self.last_speed)?;
+        Ok(())
+    }
+}
+
+/// One sprite drawn for an object; an object can carry several (a building and its damage
+/// fires, for example).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SpriteNode {
+    /// The sprite.
+    pub id: SpriteID,
+    /// The sprite's horizontal offset.
+    pub x: u32,
+    /// The sprite's vertical offset.
+    pub y: u32,
+    /// The frame shown.
+    pub frame: u16,
+    /// Whether the sprite is hidden.
+    pub invisible: bool,
+    /// The animation state, for an animated node.
+    pub animation: Option<SpriteNodeAnimation>,
+    /// The drawing order among the object's sprites.
+    pub order: u8,
+    /// Not known yet.
+    pub flag: u8,
+    /// Not known yet.
+    pub count: u8,
+}
+
+impl OptionalReadableElement for SpriteNode {
+    fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Option<Self>> {
+        let ty = input.read_u8()?;
+        if ty == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(Self {
+            id: input.read_u16::<LE>()?.into(),
+            x: input.read_u32::<LE>()?,
+            y: input.read_u32::<LE>()?,
+            frame: input.read_u16::<LE>()?,
+            invisible: input.read_u8()? != 0,
+            animation: if ty == 2 {
+                Some(SpriteNodeAnimation::read_from(input)?)
+            } else {
+                None
+            },
+            order: input.read_u8()?,
+            flag: input.read_u8()?,
+            count: input.read_u8()?,
+        }))
+    }
+}
+
+impl WritableHeaderElement for SpriteNode {
+    fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
+        let ty = if self.animation.is_some() { 2 } else { 1 };
+        output.write_u8(ty)?;
+        output.write_u16::<LE>(self.id.into())?;
+        output.write_u32::<LE>(self.x)?;
+        output.write_u32::<LE>(self.y)?;
+        output.write_u16::<LE>(self.frame)?;
+        output.write_u8(u8::from(self.invisible))?;
+        if let Some(animation) = &self.animation {
+            animation.write_to(output)?;
+        }
+        output.write_u8(self.order)?;
+        output.write_u8(self.flag)?;
+        output.write_u8(self.count)?;
+        Ok(())
+    }
+}
+
+/// The sprites drawn for an object.
+#[derive(Debug, Default, Clone)]
+pub struct SpriteList {
+    /// The sprite nodes, in drawing order.
+    pub sprites: Vec<SpriteNode>,
+}
+
+impl ReadableHeaderElement for SpriteList {
+    fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
+        let mut sprites = vec![];
+        while let Some(node) = SpriteNode::read_from(input)? {
+            sprites.push(node);
+        }
+        Ok(Self { sprites })
+    }
+}
+
+impl WritableHeaderElement for SpriteList {
+    fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
+        for sprite in &self.sprites {
+            sprite.write_to(output)?;
+        }
+        output.write_u8(0)?;
+        Ok(())
+    }
+}
