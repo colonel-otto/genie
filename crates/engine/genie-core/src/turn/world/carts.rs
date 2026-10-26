@@ -45,7 +45,7 @@ impl Turns {
     }
 
     /// A mule cart's completion (`FUN_1411c6bd0`'s tail, a building whose master has a task of
-    /// action type 0x99, [`crate::build::Built::cart`]) with a unit AI: with no current target a
+    /// action type 0x99, [`crate::construction::build::Built::cart`]) with a unit AI: with no current target a
     /// human player's runs its AI's slot 0x1e8 ([`Turns::cart_work_search`]; the game mode's
     /// test, `FUN_140c87f20` not 4, holds in every recording probed), all of it inside the
     /// completion's `set_state(state)`; then a cart with a target moves to it (slot 0x138 at the
@@ -124,7 +124,7 @@ impl Turns {
         let mut kinds = Vec::new();
         let mut class = -1;
         for t in &master.tasks {
-            if t.action_type == crate::build::CART_TASK {
+            if t.action_type == crate::construction::build::CART_TASK {
                 class = t.object_group;
             }
             let kind = match class {

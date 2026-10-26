@@ -1,7 +1,7 @@
 //! The placement on a foundation no builder started (state 7), a builder's joining and its
 //! work, the walk off the footprint (state 223) and back.
 
-use crate::build::{
+use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildStep, Built, CLEAR, ClearingSite, Construction, Dropped,
     EXTRA_BUILDER, FOREIGN_SITE, HALTED, Load, Looks, MAX_WAITS, PLACE, SITE_GONE, Site, VILLAGER,
     WAIT, WALL, WONDER, WONDER_RATE, Worked, footprint_clearing,

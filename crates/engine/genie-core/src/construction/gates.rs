@@ -75,7 +75,7 @@ impl Turns {
     /// Player `q`'s gate list (`+0x1360`, `FUN_141616200` adds to its front): its live objects
     /// of class 39 whose master transforms ([`crate::masters::BuildingMaster::transform_unit`]),
     /// newest first.
-    pub(super) fn gate_list(&self, q: usize) -> Vec<usize> {
+    pub(crate) fn gate_list(&self, q: usize) -> Vec<usize> {
         let masters = self.masters.get(q);
         let owner = &self.players[q];
         (0..owner.objects.len())
@@ -95,7 +95,7 @@ impl Turns {
     /// stands (state below 3), its master is of class 39 and transforms (`+0x9ba` not -1), it is
     /// not locked (`mGateLocked`) and its owner and `p` count each other as allies
     /// (`FUN_141663dc0`, `FUN_141663d90`; a player counts itself).
-    pub(super) fn gate_passes(&self, q: usize, i: usize, p: usize) -> bool {
+    pub(crate) fn gate_passes(&self, q: usize, i: usize, p: usize) -> bool {
         let gate = &self.players[q].objects[i];
         let transforming = self
             .masters
@@ -117,7 +117,7 @@ impl Turns {
     /// (`open`, the update's flags), open for `p` (`q`'s slot 0x318, `FUN_14162faf0`): each gate
     /// `p` may pass ([`Turns::gate_passes`]) loses its record, its tiles' marks and its mesh shape
     /// (`FUN_141055b40`), so `p`'s units walk and plan through it.
-    pub(super) fn open_gates(&mut self, p: usize, open: &mut [bool]) -> Result<(), GenieError> {
+    pub(crate) fn open_gates(&mut self, p: usize, open: &mut [bool]) -> Result<(), GenieError> {
         if p == 0 {
             return Ok(());
         }
@@ -156,7 +156,7 @@ impl Turns {
     /// counted one by it (they stay open for it): each gate `p` may pass gets its record, its
     /// tiles' marks and its mesh shape again (`FUN_141056460`), but for a part of obstruction
     /// kind 0 or 12 or of class 0 ([`crate::spatial::Obstruction::recorded`]).
-    pub(super) fn close_gates(&mut self, p: usize, open: &mut [bool]) {
+    pub(crate) fn close_gates(&mut self, p: usize, open: &mut [bool]) {
         if p == 0 {
             return;
         }

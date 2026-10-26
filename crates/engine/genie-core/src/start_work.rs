@@ -74,8 +74,12 @@ impl Turns {
             let master = self.master_of(p, unit.life.master_id)?;
             let class = master.class;
             let building = master.kind == crate::masters::master_type::BUILDING;
-            let cart_task =
-                building && self.has_task(p, unit.life.master_id, crate::build::CART_TASK)?;
+            let cart_task = building
+                && self.has_task(
+                    p,
+                    unit.life.master_id,
+                    crate::construction::build::CART_TASK,
+                )?;
             let Some(start) = start_of(class, building, cart_task) else {
                 i += 1;
                 continue;

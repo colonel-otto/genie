@@ -19,13 +19,13 @@ pub(super) fn saved_actions(
     object: &genie_save::Object,
     s: &RgeStaticObject,
     objects: &PlayerObjects,
-    work: impl Fn(i16) -> Result<genie_core::build::BuildTask, GenieError>,
+    work: impl Fn(i16) -> Result<genie_core::construction::build::BuildTask, GenieError>,
     fly_task: impl Fn(i16) -> Result<genie_core::masters::Task, GenieError>,
     task_at: impl Fn(i16, i16) -> Result<genie_core::masters::Task, GenieError>,
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
-    use genie_core::build::{BUILD, BuildAction, MoveTo};
+    use genie_core::construction::build::{BUILD, BuildAction, MoveTo};
     use genie_core::fly::{FLY, Fly};
     use genie_core::move_to::{MOVE_TO, MoveToAction};
     let move_to_state = |state: u8| match state {
@@ -266,7 +266,7 @@ pub(super) fn saved_actions(
             task.work_rate += unit.work_rate_powerup;
             // the drop-off's MoveTo keeps its range (+0x68)
             let drop_range = match base.sub_actions.entries().next() {
-                Some((MOVE_TO, sub)) if base.state == genie_core::build::DROP => sub
+                Some((MOVE_TO, sub)) if base.state == genie_core::construction::build::DROP => sub
                     .move_to_range()
                     .ok_or(GenieError::unsupported("a saved MoveTo without its range"))?,
                 _ => task.range,
@@ -296,7 +296,7 @@ pub(super) fn saved_actions(
             });
             Ok(())
         }
-        genie_core::repair::REPAIR => {
+        genie_core::construction::repair::REPAIR => {
             let part = action
                 .tribe_action_repair
                 .as_deref()
@@ -313,7 +313,7 @@ pub(super) fn saved_actions(
                 .filter(|b| b.target_id == -1)
                 .map(|b| [b.target_x, b.target_y, b.target_z]);
             let t = task_at(s.master_obj, base.short_val)?;
-            unit.repair = Some(genie_core::repair::RepairAction {
+            unit.repair = Some(genie_core::construction::repair::RepairAction {
                 target: base.target_id,
                 state: base.state,
                 move_to,
@@ -323,7 +323,7 @@ pub(super) fn saved_actions(
                 goal,
                 point: [base.target_x, base.target_y, base.target_z],
                 timer: base.timer,
-                task: genie_core::repair::RepairTask {
+                task: genie_core::construction::repair::RepairTask {
                     id: t.id,
                     work_value: t.work_val1,
                 },
@@ -633,7 +633,7 @@ pub(super) fn saved_actions(
             unit.sprite = graphics.and_then(|g| saved_sprite(s, g));
             Ok(())
         }
-        genie_core::wait_solidify::WAIT_SOLIDIFY => {
+        genie_core::construction::wait_solidify::WAIT_SOLIDIFY => {
             // TRIBE_Action_Wait_Solidify's load (FUN_140ae8220): the base action's state and
             // task, and the foundation it waits for (`mTargetBuildingId`, +0x68); it makes no
             // sub-action
@@ -649,7 +649,7 @@ pub(super) fn saved_actions(
                     "a saved Wait_Solidify without its own part",
                 ))?
                 .target_building_id;
-            let mut wait = genie_core::wait_solidify::WaitSolidify::new(
+            let mut wait = genie_core::construction::wait_solidify::WaitSolidify::new(
                 task_at(s.master_obj, base.short_val)?,
                 target,
             );

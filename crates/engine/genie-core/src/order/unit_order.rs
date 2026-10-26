@@ -273,11 +273,9 @@ impl Turns {
                 }
                 continue;
             }
-            if let Some(build) = unit
-                .build
-                .as_ref()
-                .filter(|_| asks && unit.top_action_kind() == Some(crate::build::BUILD))
-            {
+            if let Some(build) = unit.build.as_ref().filter(|_| {
+                asks && unit.top_action_kind() == Some(crate::construction::build::BUILD)
+            }) {
                 // a Build without a target or a point as the Gather's above
                 let unaimed = way_back
                     && build.target == -1

@@ -291,7 +291,7 @@ pub(super) fn construction(
     object: &genie_save::Object,
     s: &RgeStaticObject,
     objects: &PlayerObjects,
-) -> Option<genie_core::build::Construction> {
+) -> Option<genie_core::construction::build::Construction> {
     let b = object.tribe_building_object.as_deref()?;
     let m = objects.master(s.master_obj)?;
     let ms = m.static_part()?;
@@ -302,7 +302,7 @@ pub(super) fn construction(
         .or(m.tribe_master_combat_object.as_deref())
         .and_then(|c| c.train_location.first())
         .map_or(0, |t| t.train_time);
-    Some(genie_core::build::Construction {
+    Some(genie_core::construction::build::Construction {
         progress: b.build_pts,
         desolid: b.desolid_flag != 0,
         builders: b.tribe_combat_object.num_builders,

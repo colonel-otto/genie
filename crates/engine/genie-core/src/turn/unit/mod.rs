@@ -1,7 +1,7 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
 use crate::artifact::Artifact;
-use crate::build::{BuildAction, Construction};
+use crate::construction::build::{BuildAction, Construction};
 use crate::fly::Fly;
 use crate::gathering::hunt::{HuntAction, HuntSprites};
 use crate::lifecycle::Lifecycle;
@@ -16,25 +16,25 @@ use crate::turn::{Gate, WONDER};
 use crate::unit_ai::{GenieError, UnitAi};
 
 mod ai;
-mod building;
 mod death;
 mod enter;
 mod owner;
-mod repair;
 mod search;
 mod stop;
 mod top;
 mod update;
 
 pub(in crate::turn) use self::ai::AiResume;
-pub(in crate::turn) use self::building::blasts_at_death;
-#[cfg(test)]
-pub(in crate::turn) use self::building::{farm_stage_terrain, regeneration_rate};
 pub(crate) use self::enter::EnterWorld;
-use self::owner::PaidAttributes;
+pub(crate) use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
 pub(in crate::turn) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
 pub(in crate::turn) use crate::combat::volley::{Aimed, armed, same_members};
+pub(in crate::turn) use crate::construction::building_update::blasts_at_death;
+#[cfg(test)]
+pub(in crate::turn) use crate::construction::building_update::{
+    farm_stage_terrain, regeneration_rate,
+};
 pub(crate) use crate::gathering::gather::unit::give_load;
 
 /// A dying sprite the `.dat` does not have.
@@ -66,8 +66,8 @@ pub struct Unit {
     pub gather_point: Option<GatherPoint>,
     /// A builder's Build action, its top action.
     pub build: Option<BuildAction>,
-    /// A repairer's Repair action, its top action ([`crate::repair`]).
-    pub repair: Option<crate::repair::RepairAction>,
+    /// A repairer's Repair action, its top action ([`crate::construction::repair`]).
+    pub repair: Option<crate::construction::repair::RepairAction>,
     /// `+0x9e8` (`num_builders`) of a combat object that is no building: the Repair actions
     /// counted among its repairers. A building's is its construction's
     /// ([`Construction::builders`]).
@@ -111,7 +111,7 @@ pub struct Unit {
     /// `mRegenerationRatePowerup` and `mRegenerationStinger` (`+0xa34`, `+0xb3c`), which the
     /// regeneration rate adds to its master's ([`regeneration_rate`]).
     ///
-    /// [`regeneration_rate`]: crate::turn::unit::building::regeneration_rate
+    /// [`regeneration_rate`]: crate::construction::building_update::regeneration_rate
     pub regen_powerups: [f32; 2],
     /// A villager's Hunt action, its top action.
     pub hunt: Option<HuntAction>,
@@ -227,8 +227,8 @@ pub struct Unit {
     /// A farm's or fish trap's Make action, its top action ([`crate::gathering::make`]).
     pub make: Option<crate::gathering::make::MakeAction>,
     /// A villager's wait for a foundation (`TRIBE_Action_Wait_Solidify`), its only action
-    /// ([`crate::wait_solidify`]).
-    pub wait_solidify: Option<crate::wait_solidify::WaitSolidify>,
+    /// ([`crate::construction::wait_solidify`]).
+    pub wait_solidify: Option<crate::construction::wait_solidify::WaitSolidify>,
     /// The slice could not model one of its updates: it freezes (its place is known only within
     /// its speed since) while the rest of its player's objects go on.
     pub stopped: bool,

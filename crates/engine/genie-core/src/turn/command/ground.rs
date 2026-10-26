@@ -188,7 +188,7 @@ impl Turns {
     /// The footprint clearing (`FUN_1415c3620` with `param_7` 0) of a new building of `master`
     /// of `player` at `at`: the building constructor's (`FUN_1411de5f0`, `trees` false) and a new
     /// object's (`FUN_14162ce00` with its flag, `trees` true). The objects it takes
-    /// ([`crate::build::footprint_clearing`]), each in the tiles' order: [`Turns::clear_object`].
+    /// ([`crate::construction::build::footprint_clearing`]), each in the tiles' order: [`Turns::clear_object`].
     /// Nothing for a master the player has not got.
     ///
     /// # Errors
@@ -204,7 +204,7 @@ impl Turns {
         let Some(m) = self.masters.get(player).and_then(|m| m.get(master)) else {
             return Ok(());
         };
-        let site = crate::build::ClearingSite {
+        let site = crate::construction::build::ClearingSite {
             player,
             master,
             class: m.class,
@@ -213,7 +213,7 @@ impl Turns {
             trees,
         };
         let look = |id: i32| self.clear_look(id);
-        let cleared = crate::build::footprint_clearing(&self.spatial, &site, &look)?;
+        let cleared = crate::construction::build::footprint_clearing(&self.spatial, &site, &look)?;
         for cl in cleared {
             self.clear_object(cl, false)?;
             if !trees {
@@ -242,13 +242,13 @@ impl Turns {
         Ok(())
     }
 
-    /// What the footprint clearing reads of object `id` ([`crate::build::ClearLook`]).
-    pub(crate) fn clear_look(&self, id: i32) -> Option<crate::build::ClearLook> {
+    /// What the footprint clearing reads of object `id` ([`crate::construction::build::ClearLook`]).
+    pub(crate) fn clear_look(&self, id: i32) -> Option<crate::construction::build::ClearLook> {
         let (p, u) = self.object(id)?;
         clear_look_of(u, self.masters.get(p))
     }
 
-    /// An object the footprint clearing deletes ([`crate::build::Cleared`]): a wall first goes
+    /// An object the footprint clearing deletes ([`crate::construction::build::Cleared`]): a wall first goes
     /// through the building's delete core (`FUN_1411ccbb0`, [`Turns::remove_building`]), then
     /// its destroy (slot 0xd0, [`Turns::destroy`]). The builder's clearing (`roo_done`) dropped
     /// its record in the Build's update already (`FUN_141189670`): `+0x686` is set
@@ -259,7 +259,7 @@ impl Turns {
     /// An object the slice does not hold, and what the deletes do not model.
     pub(crate) fn clear_object(
         &mut self,
-        cl: crate::build::Cleared,
+        cl: crate::construction::build::Cleared,
         roo_done: bool,
     ) -> Result<(), GenieError> {
         let (owner, _) = self.object(cl.id).ok_or(GenieError::unsupported(

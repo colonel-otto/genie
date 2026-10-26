@@ -520,7 +520,7 @@ impl Turns {
         if let Some(r) = u.repair.as_mut()
             && let Some(t) = old_task(r.task.id).as_ref().and_then(find)
         {
-            r.task = crate::repair::RepairTask {
+            r.task = crate::construction::repair::RepairTask {
                 id: t.id,
                 work_value: t.work_val1,
             };

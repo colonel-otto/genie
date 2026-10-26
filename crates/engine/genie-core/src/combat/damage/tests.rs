@@ -811,7 +811,7 @@ fn a_hit_on_an_annex_goes_to_its_main_building() {
     let mut alone = annex(11);
     assert_eq!(
         take(&mut alone, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0),
-        Err(crate::build::NOT_HELD)
+        Err(crate::construction::build::NOT_HELD)
     );
 }
 

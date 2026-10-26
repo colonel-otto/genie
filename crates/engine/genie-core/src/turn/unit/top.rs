@@ -1,7 +1,7 @@
 //! What a unit's actions hold: their taker, its top action, target and gait.
 
-use crate::build::BUILD;
 use crate::checkpoint::TopAction;
+use crate::construction::build::BUILD;
 use crate::masters::Master;
 use crate::turn::BUILDING_KIND;
 use crate::turn::unit::{TAKEN_OUT, Unit};
@@ -146,7 +146,10 @@ impl Unit {
                 .map(|a| action(crate::artifact::ARTIFACT_TYPE, a.state))
         })
         .or_else(|| self.build.map(|b| action(BUILD, b.state)))
-        .or_else(|| self.repair.map(|r| action(crate::repair::REPAIR, r.state)))
+        .or_else(|| {
+            self.repair
+                .map(|r| action(crate::construction::repair::REPAIR, r.state))
+        })
         .or_else(|| {
             self.move_to
                 .map(|m| action(crate::move_to::MOVE_TO, m.state.number()))
@@ -185,7 +188,7 @@ impl Unit {
         })
         .or_else(|| {
             self.wait_solidify
-                .map(|w| action(crate::wait_solidify::WAIT_SOLIDIFY, w.state))
+                .map(|w| action(crate::construction::wait_solidify::WAIT_SOLIDIFY, w.state))
         })
     }
 

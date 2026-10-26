@@ -270,8 +270,8 @@ impl Turns {
     ) -> Result<(), GenieError> {
         let building = master.building.as_ref();
         if let Some(stack) = building.map(|b| b.stack_unit).filter(|&s| 0 <= s) {
-            let stack = if master.id == crate::build::MASTER_1889 && rice {
-                crate::build::RICE_PASTURE
+            let stack = if master.id == crate::construction::build::MASTER_1889 && rice {
+                crate::construction::build::RICE_PASTURE
             } else {
                 stack
             };

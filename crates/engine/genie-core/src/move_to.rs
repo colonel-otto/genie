@@ -361,7 +361,7 @@ pub fn object_range(range: f32, master: Option<&crate::masters::Master>) -> f32 
         m.kind == crate::masters::master_type::BUILDING
             && m.tasks
                 .iter()
-                .any(|t| t.action_type == crate::build::CART_TASK)
+                .any(|t| t.action_type == crate::construction::build::CART_TASK)
     });
     if cart {
         crate::math::image::order::CART_MOVE_RANGE
@@ -604,7 +604,7 @@ mod tests {
     fn a_move_to_an_object_without_a_range_takes_a_mule_cart_s() {
         use crate::masters::{Master, Task, master_type::BUILDING};
         let cart_task = Task {
-            action_type: crate::build::CART_TASK,
+            action_type: crate::construction::build::CART_TASK,
             ..Task::default()
         };
         let cart = Master {

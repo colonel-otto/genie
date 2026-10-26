@@ -1,7 +1,7 @@
 use super::*;
 use crate::artifact::Artifact;
-use crate::build::{BuildAction, BuildTask, Construction};
 use crate::checkpoint::TopAction;
+use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::fly::Fly;
 use crate::lifecycle::seconds;
 use crate::lifecycle::{Class, Lifecycle, MasterData};
@@ -1634,7 +1634,10 @@ fn a_wait_for_a_foundation_switches_the_villager_and_holds_the_task() {
     assert_eq!(v.life.master_id, 118);
     assert_eq!(
         v.wait_solidify,
-        Some(crate::wait_solidify::WaitSolidify::new(task(101), 10028))
+        Some(crate::construction::wait_solidify::WaitSolidify::new(
+            task(101),
+            10028
+        ))
     );
     assert_eq!(
         v.top_action(),
@@ -1713,7 +1716,7 @@ fn a_wait_reads_its_foundation_s_build_points_wherever_it_is() {
 }
 
 /// `FUN_1411cc430` on an annex whose main building is in state 0 with a hit point (the
-/// builder's work deferred to the caller, [`crate::build::Worked::Main`]): the main
+/// builder's work deferred to the caller, [`crate::construction::build::Worked::Main`]): the main
 /// building's annexes start first (the annex itself among them, desolid), then the main
 /// building starts and takes the work; the annex takes none.
 #[test]
@@ -1777,7 +1780,7 @@ fn repair_world() -> Turns {
         builder.tasks.push(crate::masters::Task {
             id: 4,
             work_val1: 0.5,
-            ..task(crate::repair::REPAIR)
+            ..task(crate::construction::repair::REPAIR)
         });
     }
     t
@@ -1800,7 +1803,10 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
     };
     t.order_work(1, 0, &work).unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!(v.top_action_kind(), Some(crate::repair::REPAIR));
+    assert_eq!(
+        v.top_action_kind(),
+        Some(crate::construction::repair::REPAIR)
+    );
     let r = v.repair.unwrap();
     assert_eq!(
         (r.target, r.state, r.range, r.task.id, r.task.work_value),
@@ -1811,7 +1817,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
         (ai.current_order, ai.current_action, ai.current_target),
         (
             crate::ai_kinds::ORDER_REPAIR,
-            crate::repair::REPAIR_ACTION,
+            crate::construction::repair::REPAIR_ACTION,
             10028
         )
     );
@@ -1893,7 +1899,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
                 m.tasks.push(crate::masters::Task {
                     id: 4,
                     work_val1: 0.5,
-                    ..task(crate::repair::REPAIR)
+                    ..task(crate::construction::repair::REPAIR)
                 });
                 *masters = Masters::new(masters.iter().cloned().chain([m]));
             }
@@ -1909,7 +1915,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.current_target),
-        (crate::repair::REPAIR_ACTION, 10028)
+        (crate::construction::repair::REPAIR_ACTION, 10028)
     );
     let mut t = world(false);
     t.tick(50);
@@ -4168,7 +4174,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         task_class: 0,
         move_wait: crate::move_to::MoveWait::default(),
     });
-    villager.wait_solidify = Some(crate::wait_solidify::WaitSolidify::new(
+    villager.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify::new(
         crate::masters::Task::default(),
         10028,
     ));
@@ -6747,7 +6753,7 @@ fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
     assert_eq!(ai_move_of(&mut u, forced(false), 51), Ok(vec![]));
     assert_eq!(u.move_to.map(|m| m.goal), Some(Some(AI_POINT)));
     let mut u = mover_unit(7);
-    u.wait_solidify = Some(crate::wait_solidify::WaitSolidify::new(
+    u.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify::new(
         crate::masters::Task::default(),
         10028,
     ));

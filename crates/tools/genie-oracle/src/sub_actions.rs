@@ -172,7 +172,7 @@ pub(super) fn build_task(
     civ: u8,
     masters: Option<&MasterTable>,
     master: i16,
-) -> Result<genie_core::build::BuildTask, GenieError> {
+) -> Result<genie_core::construction::build::BuildTask, GenieError> {
     let m = objects.master(master).ok_or(GenieError::unsupported(
         "a builder whose master is not saved",
     ))?;
@@ -182,7 +182,7 @@ pub(super) fn build_task(
             "a builder master without an action part",
         ))?;
     let (range, work_value, resource, id) = build_range(objects, civ, masters, m, master)?;
-    Ok(genie_core::build::BuildTask {
+    Ok(genie_core::construction::build::BuildTask {
         range,
         work_value,
         work_rate,
@@ -237,7 +237,7 @@ pub(super) fn build_range(
             .tasks
             .as_deref()
     });
-    let build = genie_core::build::BUILD;
+    let build = genie_core::construction::build::BUILD;
     if let Some(tasks) = saved {
         return tasks
             .list

@@ -15,6 +15,7 @@ use crate::unit_ai::GenieError;
 
 mod action;
 mod payment;
+pub(crate) mod unit;
 
 pub use self::action::work_amount;
 pub use self::payment::{

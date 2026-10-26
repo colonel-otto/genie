@@ -655,7 +655,7 @@ fn a_trample_reads_a_building_s_blast_so_far_or_its_main_building_s() {
     assert_eq!(blast_so_far(&building(Some(20), 3.0), &[main]), Ok(5.0));
     assert_eq!(
         blast_so_far(&building(Some(20), 3.0), &[]),
-        Err(crate::build::NOT_HELD)
+        Err(crate::construction::build::NOT_HELD)
     );
     let unit = Victim {
         kind: 70,

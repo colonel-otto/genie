@@ -1,6 +1,6 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
-use crate::build::WALL;
+use crate::construction::build::WALL;
 use crate::spatial::Spatial;
 use crate::unit_ai::GenieError;
 

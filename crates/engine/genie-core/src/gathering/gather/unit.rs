@@ -15,7 +15,7 @@ impl Unit {
     /// its player's objects; the sleeping ones, static only, are never drop sites) and the task
     /// its slot 0x820 finds on it ([`task_search`] with any action type, no switch: its range,
     /// else the Build task's), unless it carries nothing (COMISS: a NaN load neither); then
-    /// [`crate::build::BuildAction::set_drop`], whose second targets the caller releases and
+    /// [`crate::construction::build::BuildAction::set_drop`], whose second targets the caller releases and
     /// takes and whose notify 0x203 goes to the unit AI. A builder of state 8 counts among no
     /// builders (its `set_state(8)` left them).
     pub(crate) fn build_drop_off(
@@ -24,7 +24,7 @@ impl Unit {
         others: &[Self],
         me: Me,
     ) -> Result<(), GenieError> {
-        use crate::build::DropSearch;
+        use crate::construction::build::DropSearch;
         let by = self.releaser(c);
         let build = self.build.as_ref().expect("the caller's Build");
         let task_range = build.task.range;

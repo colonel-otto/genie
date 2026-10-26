@@ -408,13 +408,13 @@ impl Turns {
             | Some(
                 crate::move_to::MOVE_TO
                 | crate::explore::EXPLORE
-                | crate::build::BUILD
+                | crate::construction::build::BUILD
                 | crate::combat::attack::ATTACK
                 | crate::garrison::ENTER
                 | crate::fly::FLY
                 | crate::combat::missile::MISSILE
                 | crate::gathering::make::MAKE
-                | crate::wait_solidify::WAIT_SOLIDIFY,
+                | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(false),
             Some(crate::artifact::ARTIFACT_TYPE) => {
                 self.artifact_take_object(player, idx, target)?;
@@ -426,7 +426,7 @@ impl Turns {
             }
             // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target, and
             // the Transport's (0x140aa3e40) sails there
-            Some(crate::repair::REPAIR | crate::transport::TRANSPORT) => {
+            Some(crate::construction::repair::REPAIR | crate::transport::TRANSPORT) => {
                 self.point_taken(player, idx, point)
             }
             Some(other) => {

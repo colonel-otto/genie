@@ -719,7 +719,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// takes the foundation (slot 0x178) and replaces the actions (slot 0x808). A Build on top
     /// (its slot 0x48) is not modelled here.
     fn build_now(&mut self, foundation: i32) -> Result<(), GenieError> {
-        use crate::build::{BUILD, BuildAction, BuildTask};
+        use crate::construction::build::{BUILD, BuildAction, BuildTask};
         if self.unit.top_action_kind() == Some(BUILD) {
             return Err(crate::unit_ai::PENDING_BEFORE_ATTACK);
         }

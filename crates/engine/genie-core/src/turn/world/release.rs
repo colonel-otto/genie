@@ -9,7 +9,7 @@ use crate::unit_ai::{GenieError, Notify};
 
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
 /// update ([`released`]; the releaser's own player is allied).
-pub(in crate::turn) fn release_own(
+pub(crate) fn release_own(
     others: &mut [Unit],
     masters: Option<&Masters>,
     id: i32,

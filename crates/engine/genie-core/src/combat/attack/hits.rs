@@ -151,5 +151,5 @@ pub(super) fn blast_so_far(victim: &Victim, blasted: &[Victim]) -> Result<f32, G
         .iter()
         .find(|v| v.id == main)
         .map(|m| m.building.as_ref().map_or(0.0, |mb| mb.blast_taken))
-        .ok_or(crate::build::NOT_HELD)
+        .ok_or(crate::construction::build::NOT_HELD)
 }

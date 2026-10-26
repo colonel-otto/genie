@@ -12,7 +12,7 @@ pub(crate) use self::deaths::{
     built_death, combat_dies, count_class, farm_bonus, forget_resource, refund_of, storage_leaves,
 };
 pub(crate) use self::ownership::{DEAD_COPY_TYPES, change_hands};
-pub(in crate::turn) use self::release::release_own;
+pub(crate) use self::release::release_own;
 pub(crate) use self::release::{Releaser, released};
 pub(crate) use self::task_finder::World;
 pub(crate) use self::task_finder::{

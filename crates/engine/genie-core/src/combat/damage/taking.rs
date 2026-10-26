@@ -79,7 +79,7 @@ pub(super) fn take_building(
         let k = others
             .iter()
             .position(|v| v.id == main)
-            .ok_or(crate::build::NOT_HELD)?;
+            .ok_or(crate::construction::build::NOT_HELD)?;
         let mut m = std::mem::replace(&mut *others[k], Victim::placeholder());
         let struck = take_building(&mut m, src, others, weapons, factor, false, blast_taken);
         let annexed = m

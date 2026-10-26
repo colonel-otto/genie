@@ -201,7 +201,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// An object the slice does not hold ([`crate::build::NOT_HELD`]).
+    /// An object the slice does not hold ([`crate::construction::build::NOT_HELD`]).
     pub(super) fn bystander(
         &self,
         id: i32,
@@ -228,7 +228,7 @@ impl Turns {
                 .own_master
                 .as_deref()
                 .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
-                .ok_or(crate::build::NOT_HELD)?;
+                .ok_or(crate::construction::build::NOT_HELD)?;
             return Ok(Some(Bystander {
                 id,
                 player: q,
@@ -257,7 +257,7 @@ impl Turns {
                 }));
             }
         }
-        Err(crate::build::NOT_HELD)
+        Err(crate::construction::build::NOT_HELD)
     }
 
     /// A movement damage's hit of `b` by player `owner`'s hitter: `damage` hit points off (slot
@@ -280,13 +280,13 @@ impl Turns {
             return Ok(());
         }
         let Some((q, u)) = self.object(b.id) else {
-            return Err(crate::build::NOT_HELD);
+            return Err(crate::construction::build::NOT_HELD);
         };
         let m = u
             .own_master
             .as_deref()
             .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
-            .ok_or(crate::build::NOT_HELD)?;
+            .ok_or(crate::construction::build::NOT_HELD)?;
         let mut v = crate::turn::victim_of(
             u,
             m,
@@ -297,7 +297,9 @@ impl Turns {
         );
         crate::combat::damage::lose(&mut v, damage);
         let killed = finish(&mut v);
-        let (_, u) = self.object_mut(b.id).ok_or(crate::build::NOT_HELD)?;
+        let (_, u) = self
+            .object_mut(b.id)
+            .ok_or(crate::construction::build::NOT_HELD)?;
         u.life.hp = v.hp;
         u.life.amount = v.amount;
         if let Some(a) = v.armored.as_ref() {

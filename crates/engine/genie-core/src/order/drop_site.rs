@@ -137,10 +137,10 @@ impl Turns {
     /// not a NaN) searches the drop-site table ([`Turns::table_drop_site`] for what it carries
     /// and its class) and its slot 0x820 the task on the site found (any action type, no switch,
     /// [`Turns::find_work_task`]: its range, else the Build task's); then
-    /// [`crate::build::BuildAction::set_drop`], whose second targets the world releases and
+    /// [`crate::construction::build::BuildAction::set_drop`], whose second targets the world releases and
     /// takes and whose notify 0x203 goes to the unit AI.
     pub(crate) fn build_drop_off_now(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
-        use crate::build::DropSearch;
+        use crate::construction::build::DropSearch;
         let by = self.releaser(p, idx);
         let unit = &self.players[p].objects[idx];
         let build = unit.build.as_ref().expect("the caller's Build");
@@ -172,7 +172,7 @@ impl Turns {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
-            action_state: crate::build::DROP,
+            action_state: crate::construction::build::DROP,
         };
         let build = unit.build.as_mut().expect("the caller's Build");
         build.added = false;

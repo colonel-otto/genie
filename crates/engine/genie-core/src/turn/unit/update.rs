@@ -1,8 +1,8 @@
 //! A unit's update on its owner's turn, action by action.
 
 use crate::artifact::{Artifact, Handover};
-use crate::build::{Builder, Completion, Site};
 use crate::combat::attack::Strike;
+use crate::construction::build::{Builder, Completion, Site};
 use crate::gathering::hunt::{Gatherer, HuntSprites};
 use crate::lifecycle::Class;
 use crate::masters::Master;
@@ -402,7 +402,7 @@ impl Unit {
             .filter(|u| u.construction.is_some_and(|k| k.desolid))
         {
             let [fx, fy, _] = f.position;
-            let reach = crate::build::CLEARING_REACH + 1.0;
+            let reach = crate::construction::build::CLEARING_REACH + 1.0;
             for (id, _) in c
                 .spatial
                 .objects_within(fx - reach, fy - reach, fx + reach, fy + reach)
@@ -460,7 +460,7 @@ impl Unit {
                         .collect()
                 });
             // state 8: what the drop-off reads of its drop site and of its unit AI's orders
-            let (deposit, gone_orders) = if build.state == crate::build::DROP {
+            let (deposit, gone_orders) = if build.state == crate::construction::build::DROP {
                 let deposit = match c.spatial.get(build.site).filter(|_| build.site != -1) {
                     Some(s) => {
                         let me_at = c
@@ -505,7 +505,7 @@ impl Unit {
                 let orders: Vec<i32> = self.ai.as_ref().map_or_else(Vec::new, |ai| {
                     ai.orders
                         .iter()
-                        .filter(|o| crate::build::DROPPED_ORDERS.contains(&o.order))
+                        .filter(|o| crate::construction::build::DROPPED_ORDERS.contains(&o.order))
                         .map(|o| o.target)
                         .filter(|&t| gone(t))
                         .collect()
@@ -530,8 +530,10 @@ impl Unit {
                 })
             {
                 worked = m.id;
-                main_work = Some(crate::build::MainWork {
-                    construction: m.construction.ok_or(crate::build::NO_CONSTRUCTION)?,
+                main_work = Some(crate::construction::build::MainWork {
+                    construction: m
+                        .construction
+                        .ok_or(crate::construction::build::NO_CONSTRUCTION)?,
                     hp: m.life.hp,
                 });
             }
@@ -559,7 +561,7 @@ impl Unit {
                     let k = u
                         .construction
                         .as_mut()
-                        .ok_or(crate::build::NO_CONSTRUCTION)?;
+                        .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
                     main_builders = Some(&mut k.builders);
                     continue;
                 }
@@ -575,8 +577,8 @@ impl Unit {
                 let construction = u
                     .construction
                     .as_mut()
-                    .ok_or(crate::build::NO_CONSTRUCTION)?;
-                starts.push(crate::build::AnnexStart {
+                    .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
+                starts.push(crate::construction::build::AnnexStart {
                     id: u.id,
                     construction,
                     mover: u.mover.as_mut(),
@@ -585,7 +587,7 @@ impl Unit {
                 });
             }
             if counted_main.is_some() && main_builders.is_none() {
-                return Err(crate::build::NOT_HELD);
+                return Err(crate::construction::build::NOT_HELD);
             }
             // the slot order: the constructor made them, and their ids, in it
             starts.sort_by_key(|a| a.id);
@@ -613,7 +615,7 @@ impl Unit {
                         now: world_time,
                         rice,
                     },
-                    chain: crate::build::WorkChain {
+                    chain: crate::construction::build::WorkChain {
                         annexes: starts,
                         main: main_work,
                     },
@@ -644,7 +646,7 @@ impl Unit {
                 ai: self.ai.as_mut(),
                 waits: &mut self.footprint_waits,
                 build_targets: &build_targets,
-                look: crate::build::Looks(&|id| looks.get(&id).copied()),
+                look: crate::construction::build::Looks(&|id| looks.get(&id).copied()),
                 walk_target_state,
                 deposit,
                 attributes: c.attributes.len(),
@@ -682,7 +684,7 @@ impl Unit {
                     c.tracker.complete(target, k);
                     // its set_state(2)'s standing sprite (FUN_1411dbb70)
                     if let Some(m) = c.masters.and_then(|m| m.get(u.life.master_id)) {
-                        crate::build::show_built(
+                        crate::construction::build::show_built(
                             &mut u.sprite,
                             m,
                             u.build_frame,

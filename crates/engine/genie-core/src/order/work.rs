@@ -321,7 +321,9 @@ impl Turns {
                 }
                 true
             }
-            _ if top == Some(task.action_type) && task.action_type == crate::build::BUILD => {
+            _ if top == Some(task.action_type)
+                && task.action_type == crate::construction::build::BUILD =>
+            {
                 if !same_master {
                     return Err(GenieError::unsupported(
                         "a work command on the Build task of the unit's former master",
@@ -330,7 +332,9 @@ impl Turns {
                 self.retake_build(player, idx, target, point, clears)?;
                 true
             }
-            _ if top == Some(task.action_type) && task.action_type == crate::repair::REPAIR => {
+            _ if top == Some(task.action_type)
+                && task.action_type == crate::construction::repair::REPAIR =>
+            {
                 self.retake_repair(player, idx, target, point, clears)?;
                 true
             }
@@ -376,7 +380,7 @@ impl Turns {
                     | crate::combat::missile::MISSILE
                     | crate::fly::FLY
                     | crate::gathering::make::MAKE
-                    | crate::wait_solidify::WAIT_SOLIDIFY,
+                    | crate::construction::wait_solidify::WAIT_SOLIDIFY,
                 ) => false,
                 _ => {
                     return Err(GenieError::unsupported(
@@ -424,10 +428,14 @@ impl Turns {
                 clears,
                 true,
             ),
-            crate::build::BUILD => self.start_build(player, idx, target, &task, point, clears),
-            crate::repair::REPAIR => self.start_repair(player, idx, target, &task, point, clears),
+            crate::construction::build::BUILD => {
+                self.start_build(player, idx, target, &task, point, clears)
+            }
+            crate::construction::repair::REPAIR => {
+                self.start_repair(player, idx, target, &task, point, clears)
+            }
             // the factory makes no action of a mule cart's task: the move without one
-            crate::build::CART_TASK => {
+            crate::construction::build::CART_TASK => {
                 self.work_move(player, idx, target, point, (clears, notified))
             }
             crate::gathering::gather::GATHER => {

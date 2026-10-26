@@ -1,6 +1,6 @@
 //! Captures and ownership changes, the unit AI's moves and a move to an object.
 
-use crate::build::BUILD;
+use crate::construction::build::BUILD;
 use crate::masters::Masters;
 use crate::math::rng::{Stream, Well512};
 use crate::move_to::{MoveTo, MoveToAction};
@@ -309,7 +309,7 @@ impl Unit {
                 | crate::fly::FLY
                 | crate::combat::missile::MISSILE
                 | crate::gathering::make::MAKE
-                | crate::wait_solidify::WAIT_SOLIDIFY,
+                | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(PointMove::Declined),
             Some(crate::artifact::ARTIFACT_TYPE) => {
                 let gone = self
@@ -354,7 +354,7 @@ impl Unit {
             // the Transport's (0x140aa3e40): the caller sails it there
             Some(crate::transport::TRANSPORT) => Ok(PointMove::Sails),
             // the Repair's (FUN_140ad9700): its point, slot 0x68 with none, set_state(11)
-            Some(crate::repair::REPAIR) => {
+            Some(crate::construction::repair::REPAIR) => {
                 let repair = self.repair.as_mut().expect("the unit's top action");
                 let (old, counted) = repair.take_point(point, self.mover.as_mut())?;
                 Ok(PointMove::Repairs(
@@ -612,17 +612,17 @@ pub(in crate::turn) struct Captured {
     pub(in crate::turn) building: bool,
 }
 
-/// A repairer's player's attributes as its repair pays from them ([`crate::repair::Payer`]):
+/// A repairer's player's attributes as its repair pays from them ([`crate::construction::repair::Payer`]):
 /// the resources (`Player::resources`) and the other attributes as the update reads them, each
 /// payment kept as an add for the caller ([`Context::attribute_adds`]: a subtraction, so the
 /// player's value comes out as the repair saw it).
-pub(super) struct PaidAttributes {
+pub(crate) struct PaidAttributes {
     pub(super) values: Vec<f32>,
-    pub(super) adds: Vec<(i16, f32)>,
+    pub(crate) adds: Vec<(i16, f32)>,
 }
 
 impl PaidAttributes {
-    pub(super) fn new(resources: [f32; 4], attributes: &[f32]) -> Self {
+    pub(crate) fn new(resources: [f32; 4], attributes: &[f32]) -> Self {
         let mut values = attributes.to_vec();
         for (i, r) in resources.into_iter().enumerate() {
             if let Some(v) = values.get_mut(i) {

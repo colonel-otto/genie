@@ -164,14 +164,14 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             ..crate::lifecycle::Lifecycle::default()
         },
         mover: Some(crate::gathering::hunt::tests::walker()),
-        build: Some(crate::build::BuildAction {
+        build: Some(crate::construction::build::BuildAction {
             state: 6,
             added: true,
-            ..crate::build::BuildAction::start(
+            ..crate::construction::build::BuildAction::start(
                 600,
                 [5.0, 10.0, 0.0],
                 0.0,
-                crate::build::BuildTask {
+                crate::construction::build::BuildTask {
                     range: 0.1,
                     work_value: 1.0,
                     work_rate: 1.0,
@@ -189,7 +189,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             master_id: 70,
             ..crate::lifecycle::Lifecycle::default()
         },
-        construction: Some(crate::build::Construction {
+        construction: Some(crate::construction::build::Construction {
             progress: 1.0,
             desolid: false,
             builders: 1,
@@ -268,11 +268,11 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let build = t.players[0].objects[0].build.unwrap();
     assert_eq!(
         (build.state, build.site, build.walk_target, build.drop_range),
-        (crate::build::DROP, 503, 503, 0.1)
+        (crate::construction::build::DROP, 503, 503, 0.1)
     );
     assert_eq!(
         (build.move_to, build.added),
-        (Some(crate::build::MoveTo::Start), false)
+        (Some(crate::construction::build::MoveTo::Start), false)
     );
     assert_eq!(
         t.players[0].objects[1].construction.map(|k| k.builders),
@@ -301,7 +301,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     t.unit_order(0, &[10], 7).unwrap();
     assert_eq!(
         t.players[0].objects[0].build.map(|b| (b.state, b.site)),
-        Some((crate::build::DROP, 503))
+        Some((crate::construction::build::DROP, 503))
     );
     let mut t = world();
     t.unit_order(0, &[10], 6).unwrap();
@@ -838,7 +838,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
     let trophy = |state| Unit {
         id: 60,
         firepower: 7.0,
-        construction: Some(crate::build::Construction {
+        construction: Some(crate::construction::build::Construction {
             progress: 10.0,
             desolid: false,
             builders: 0,
@@ -1488,7 +1488,7 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
         kind: BUILDING,
         ..Master::default()
     }]);
-    let construction = crate::build::Construction {
+    let construction = crate::construction::build::Construction {
         progress: 0.0,
         desolid: true,
         builders: 2,
@@ -1600,7 +1600,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     ]);
     let foundation = |id, builders| Unit {
         id,
-        construction: Some(crate::build::Construction {
+        construction: Some(crate::construction::build::Construction {
             progress: 0.0,
             desolid: true,
             builders,
@@ -1620,14 +1620,14 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     };
     t.players[1].objects.push(foundation(60, 1));
     t.players[1].objects.push(foundation(61, 0));
-    t.players[1].objects[0].build = Some(crate::build::BuildAction {
+    t.players[1].objects[0].build = Some(crate::construction::build::BuildAction {
         target: 60,
         state: 6,
         move_to: None,
         goal: None,
         walk_target: -1,
         point: [-1.0; 3],
-        task: crate::build::BuildTask {
+        task: crate::construction::build::BuildTask {
             range: 0.1,
             work_value: 1.0,
             work_rate: 1.0,

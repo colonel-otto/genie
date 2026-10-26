@@ -287,7 +287,7 @@ pub trait UnitSide {
     /// The unit's slot 0x388 (`FUN_141226fc0`) on object `target`: when the world holds it
     /// (`FUN_1415417a0`) and the unit's slot 0x820 finds a task on it (any action type, with the
     /// master switch), a new `TRIBE_Action_Wait_Solidify` on that task
-    /// ([`crate::wait_solidify`]) replaces the unit's actions (`FUN_140a98620`, slot 0x808);
+    /// ([`crate::construction::wait_solidify`]) replaces the unit's actions (`FUN_140a98620`, slot 0x808);
     /// true then.
     ///
     /// # Errors

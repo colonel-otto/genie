@@ -132,7 +132,7 @@ impl Turns {
             | crate::fly::FLY
             | crate::combat::missile::MISSILE
             | crate::gathering::make::MAKE
-            | crate::wait_solidify::WAIT_SOLIDIFY => {
+            | crate::construction::wait_solidify::WAIT_SOLIDIFY => {
                 return Ok(false);
             }
             crate::gathering::hunt::HUNT => {}
@@ -181,7 +181,7 @@ impl Turns {
 
     /// Slot 0x38 of the top actions with their own besides the Hunt's, each true: the Gather's
     /// (`FUN_140a8e1b0`, [`crate::gathering::gather::GatherAction::halt`]: its target and second target go,
-    /// [`Turns::release`]), the Build's (`FUN_140ab0350`, [`crate::build::BuildAction::halt`]:
+    /// [`Turns::release`]), the Build's (`FUN_140ab0350`, [`crate::construction::build::BuildAction::halt`]:
     /// a counted builder leaves its foundation's builders, [`Turns::leave_builders`], before the
     /// rest; the foundation goes), the Attack's (`FUN_140a82ac0`,
     /// [`crate::combat::attack::Attack::halt`]) and the Artifact's (`FUN_140aad1a0`,
@@ -200,8 +200,8 @@ impl Turns {
         let standing = self.master_of(p, master_id)?.standing_sprite;
         match kind {
             crate::gathering::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
-            crate::build::BUILD => self.halt_build(p, idx, by)?,
-            crate::repair::REPAIR => self.halt_repair(p, idx)?,
+            crate::construction::build::BUILD => self.halt_build(p, idx, by)?,
+            crate::construction::repair::REPAIR => self.halt_repair(p, idx)?,
             crate::combat::attack::ATTACK => {
                 let unit = &mut self.players[p].objects[idx];
                 let attack = unit.attack.as_mut().expect("its top action");

@@ -1,0 +1,8 @@
+//! Building and repairing: the Build and Repair actions with each worker's part of its update,
+//! the wait for a foundation, a building's own update and the gates.
+
+pub mod build;
+pub(crate) mod building_update;
+pub(crate) mod gates;
+pub mod repair;
+pub mod wait_solidify;

@@ -1,8 +1,8 @@
 //! A gate's and a farm's update, a building's completion and seconds, the hit points' heal,
 //! regeneration and loss, the idle swap and the death blast.
 
-use crate::build::{Completion, Construction, Site};
 use crate::combat::damage::Victim;
+use crate::construction::build::{Completion, Construction, Site};
 use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
 use crate::math::rng::{Stream, Well512};
@@ -27,7 +27,7 @@ impl Unit {
     /// of at least 1, [`Turns::toggle_gate`]) and its close timer is 0; an open one (a height
     /// below the epsilon) with nothing in it starts its close timer at 0.5 s, or runs it down by
     /// the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height of at most 0).
-    pub(in crate::turn) fn gate_update(
+    pub(crate) fn gate_update(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -76,7 +76,7 @@ impl Unit {
 
     /// [`gate_units`] of this gate, its annexes the units of `others` that are its (in id order,
     /// as made): the units in it and how many of them are of an ally.
-    pub(in crate::turn) fn gate_count(
+    pub(crate) fn gate_count(
         &self,
         c: &Context<'_>,
         others: &[Self],
@@ -94,7 +94,7 @@ impl Unit {
     /// `FUN_1411ce250` maps the terrains 8, 27 and 64 by the local player's view and the tile's
     /// own (`+0x2e8`'s `+10`), which the slice does not hold; the masters' foundations (7, 63,
     /// 117) never give them.
-    pub(in crate::turn) fn farm_stage(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn farm_stage(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let Some(cons) = self
             .construction
             .filter(|k| self.life.state == 0 && 0 < k.build_time)
@@ -145,7 +145,7 @@ impl Unit {
     /// (`FUN_1411cc430`); this one completes a building made without a build time (a death
     /// spawn's). The walls' branch's facet and the other branch's work before it are not modelled
     /// for such a building.
-    pub(in crate::turn) fn complete_on_update(
+    pub(crate) fn complete_on_update(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -188,12 +188,12 @@ impl Unit {
                 now: c.world_time,
                 rice: self.rice,
             },
-            chain: crate::build::WorkChain::default(),
+            chain: crate::construction::build::WorkChain::default(),
             main_builders: None,
         };
         let built = Construction::complete(&mut site, c.spatial, c.pathing)?;
         if let Some(m) = c.masters.and_then(|m| m.get(self.life.master_id)) {
-            crate::build::show_built(
+            crate::construction::build::show_built(
                 &mut self.sprite,
                 m,
                 self.build_frame,
@@ -238,7 +238,7 @@ impl Unit {
     /// master's hit points (slot 0x110, [`Unit::heal`]); with villagers inside, a damaged
     /// building with a `garrison_repair_rate` repairs itself at a cost (`FUN_1411d33e0`, not
     /// modelled). Its `damaged_lately_timer` (`+0x30d`) loses one when whole seconds passed.
-    pub(in crate::turn) fn building_seconds(
+    pub(crate) fn building_seconds(
         &mut self,
         c: &Context<'_>,
         others: &mut [Self],
@@ -325,7 +325,7 @@ impl Unit {
 
     /// Slot 0x110 of a combat object (`FUN_141213b10`): the classes 2, 20, 21, 22 and 53 repair
     /// at a cost (not modelled); any other heals ([`Unit::heal_hp`]).
-    pub(in crate::turn) fn heal(&mut self, master: &Master, amount: f32) -> Result<(), GenieError> {
+    pub(crate) fn heal(&mut self, master: &Master, amount: f32) -> Result<(), GenieError> {
         if matches!(master.class, 2 | 20 | 21 | 22 | 53) {
             return Err(GenieError::unsupported(
                 "a heal at a cost (FUN_141213b10's classes)",
@@ -338,7 +338,7 @@ impl Unit {
     /// `FUN_141193b30`: slot 0xb8 adds `amount` ([`Unit::gain_hp`]); a loss (`amount` below 0)
     /// leaves at least 1 hit point; healed to its full hit points (slot 0xc0 at least slot 200,
     /// `COMISS` with `JC`: a NaN is not), it holds exactly its master's. True then.
-    pub(in crate::turn) fn heal_hp(&mut self, master: &Master, amount: f32) -> bool {
+    pub(crate) fn heal_hp(&mut self, master: &Master, amount: f32) -> bool {
         crate::combat::damage::heal_hp(
             &mut self.life.hp,
             &mut self.hp_powerups,
@@ -350,7 +350,7 @@ impl Unit {
     /// Slot 0xb8 of a combat object (`FUN_141203be0`): `amount` added up to its hit points with
     /// its powerups' room, an overflow taken off the powerup (`+0xa38`, never below 0; the hit
     /// point transforms of `FUN_141204450`, empty in the recordings, are not held).
-    pub(in crate::turn) fn gain_hp(&mut self, master: &Master, amount: f32) {
+    pub(crate) fn gain_hp(&mut self, master: &Master, amount: f32) {
         crate::combat::damage::gain_hp(
             &mut self.life.hp,
             &mut self.hp_powerups,
@@ -365,7 +365,7 @@ impl Unit {
     /// (no update of the recordings fills either list): a dying object's kill credits of its
     /// active stingers (`+0xb58`, `+0x954`) and a surviving one's hit point transforms
     /// (`FUN_141204450`); [`crate::combat::damage::lose`] is the same loss on a hit's victim.
-    pub(in crate::turn) fn lose_hp(&mut self, master: &Master, d: f32) {
+    pub(crate) fn lose_hp(&mut self, master: &Master, d: f32) {
         let mut d = d;
         let [up, room_max] = self.hp_powerups;
         if up < room_max {
@@ -399,7 +399,7 @@ impl Unit {
     /// come off (slot 0xb0, [`Unit::lose_hp`]) at most its hit points with its powerups' room
     /// (slot 0xc0). Then an object at its most (slot 0xc0 at least slot 200) has the armor its
     /// charge's hits took back (`+0x9e4` and `+0x9e6`, one dword, zeroed).
-    pub(in crate::turn) fn regenerate(&mut self, master: &Master, dt_seconds: f32) {
+    pub(crate) fn regenerate(&mut self, master: &Master, dt_seconds: f32) {
         use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
         let rate = regeneration_rate(master, self);
         if below_or_unordered(self.life.hp, REGENERATION_LEAST_HP) || self.life.state != 2 {
@@ -455,7 +455,7 @@ impl Unit {
     /// `TRIBE_Combat_Object::update`'s hit point powerup check (after its abilities): a powerup
     /// (`+0xa38`) above its room (`+0xa3c`; `COMISS`/`JBE`, a NaN is not) comes off the hit points
     /// (`MAXSS` with 1: not below 1, a NaN becomes 1) and the powerup takes the room.
-    pub(in crate::turn) fn clamp_hp_powerup(&mut self) {
+    pub(crate) fn clamp_hp_powerup(&mut self) {
         let [up, room] = self.hp_powerups;
         if crate::math::fmath::at_most_or_unordered(up, room) {
             return;
@@ -476,7 +476,7 @@ impl Unit {
     /// index and 0x7fff: `+0x78c` takes the index, slot 0x68 the master's sprite of that index,
     /// [`crate::combat::attack::set_sprite`], and the list's slot 0x28 puts its node back to its first
     /// frame, [`crate::sprite::ActiveSprite::reset_frame`]).
-    pub(in crate::turn) fn idle_swap(
+    pub(crate) fn idle_swap(
         &mut self,
         master: &Master,
         graphics: &std::collections::BTreeMap<i16, Graphic>,
@@ -527,7 +527,7 @@ impl Unit {
     /// # Errors
     ///
     /// What the blast does not model.
-    pub(super) fn death_blast(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn death_blast(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             return Ok(());
         };
@@ -553,7 +553,7 @@ impl Unit {
     /// counts down by the world's dt (`+0x7c`, in ms), not below 0. The walk reads the field
     /// live, so the world's view follows at once: the unit's own walk later in this update ranks
     /// the units it meets by the counted-down time.
-    pub(in crate::turn) fn count_down_human_order(&mut self, dt: u32, spatial: &mut Spatial) {
+    pub(crate) fn count_down_human_order(&mut self, dt: u32, spatial: &mut Spatial) {
         if self.last_human_order <= crate::unit_ai::HUMAN_ORDER_CAP {
             self.last_human_order = self.last_human_order.saturating_sub(dt);
             spatial.set_human_order(self.id, self.last_human_order);
@@ -566,7 +566,7 @@ impl Unit {
 /// (`0x1d`) for a farm (50), onto 65 (`0x41`) for a rice farm or a pasture (1187, 1889) on
 /// mangrove or rice (`rice`), else onto its `foundation` terrain plus 2 (bytes); None for
 /// another master.
-pub(in crate::turn) fn farm_stage_terrain(
+pub(crate) fn farm_stage_terrain(
     master: i16,
     (rice, foundation): (bool, i16),
     progress: f32,
@@ -590,18 +590,18 @@ pub(in crate::turn) fn farm_stage_terrain(
 /// The masters whose units blast about themselves below 1 hit point
 /// (`TRIBE_Combat_Object::update`, `0x141208440`): the demolition ships 527 and 528, the
 /// demolition raft 1104 and the incendiary raft and ships 2133 to 2135.
-pub(super) const DEATH_BLAST_MASTERS: [i16; 6] = [527, 528, 1104, 2133, 2134, 2135];
+pub(crate) const DEATH_BLAST_MASTERS: [i16; 6] = [527, 528, 1104, 2133, 2134, 2135];
 /// The classes whose units blast so: 35 (petards) and 64.
-pub(super) const DEATH_BLAST_CLASSES: [i16; 2] = [35, 64];
+pub(crate) const DEATH_BLAST_CLASSES: [i16; 2] = [35, 64];
 /// The hit points below which they blast (`DAT_14330eb8c`; `COMISS`, a NaN does not).
-pub(super) const DEATH_BLAST_HP: f32 = crate::math::image::turn::DEATH_BLAST_HP;
+pub(crate) const DEATH_BLAST_HP: f32 = crate::math::image::turn::DEATH_BLAST_HP;
 /// The blast's damage factor (`XMM11`, the same constant).
-pub(super) const DEATH_BLAST_FACTOR: f32 = crate::math::image::turn::DEATH_BLAST_FACTOR;
+pub(crate) const DEATH_BLAST_FACTOR: f32 = crate::math::image::turn::DEATH_BLAST_FACTOR;
 
 /// `TRIBE_Combat_Object::update`'s test for the blast at death: a unit of one of
 /// [`DEATH_BLAST_MASTERS`] or [`DEATH_BLAST_CLASSES`] below [`DEATH_BLAST_HP`] hit points in state
 /// 2. The update runs for the combat objects and buildings (types 70 and 80).
-pub(in crate::turn) fn blasts_at_death(master: &Master, life: &Lifecycle) -> bool {
+pub(crate) fn blasts_at_death(master: &Master, life: &Lifecycle) -> bool {
     70 <= master.kind
         && life.hp < DEATH_BLAST_HP
         && life.state == 2
@@ -609,17 +609,17 @@ pub(in crate::turn) fn blasts_at_death(master: &Master, life: &Lifecycle) -> boo
 }
 
 /// A hero's regeneration (`DAT_142ed06a8`, a minute's hit points).
-pub(super) const HERO_REGENERATION: f32 = crate::math::image::turn::HERO_REGENERATION;
+pub(crate) const HERO_REGENERATION: f32 = crate::math::image::turn::HERO_REGENERATION;
 /// The regeneration's minute (`DAT_14330ebc8`).
-pub(super) const REGENERATION_MINUTE: f32 = crate::math::image::turn::REGENERATION_MINUTE;
+pub(crate) const REGENERATION_MINUTE: f32 = crate::math::image::turn::REGENERATION_MINUTE;
 /// The size below which a rate or a period is none (`DAT_142f49458`).
-pub(super) const REGENERATION_EPSILON: f32 = crate::math::image::turn::REGENERATION_EPSILON;
+pub(crate) const REGENERATION_EPSILON: f32 = crate::math::image::turn::REGENERATION_EPSILON;
 /// The hit points below which nothing regenerates (`DAT_14330eb8c`).
-pub(super) const REGENERATION_LEAST_HP: f32 = crate::math::image::turn::REGENERATION_LEAST_HP;
+pub(crate) const REGENERATION_LEAST_HP: f32 = crate::math::image::turn::REGENERATION_LEAST_HP;
 /// A whole hit point, the `fmodf` divisor (`XMM11`, `DAT_14330eb8c`).
-pub(super) const REGENERATION_POINT: f32 = crate::math::image::turn::REGENERATION_POINT;
+pub(crate) const REGENERATION_POINT: f32 = crate::math::image::turn::REGENERATION_POINT;
 /// The hit points a powerup's check leaves at least (`MAXSS` with `DAT_14330eb8c`).
-pub(super) const HP_POWERUP_FLOOR: f32 = crate::math::image::turn::HP_POWERUP_FLOOR;
+pub(crate) const HP_POWERUP_FLOOR: f32 = crate::math::image::turn::HP_POWERUP_FLOOR;
 
 /// Slot 0x260 of a combat object (`FUN_1412033a0`), its regeneration rate in hit points a
 /// minute: its stinger (`+0xb3c`, slot 0x750) plus (its powerup (`+0xa34`, slot 0x6f0) plus (a
@@ -627,7 +627,7 @@ pub(super) const HP_POWERUP_FLOOR: f32 = crate::math::image::turn::HP_POWERUP_FL
 /// assembly's order. A hero is a master whose `hero_flag` (`+0x8d9`) has bit 0 or 2, unless it
 /// has both bits 7 and 2.
 #[must_use]
-pub(in crate::turn) fn regeneration_rate(master: &Master, unit: &Unit) -> f32 {
+pub(crate) fn regeneration_rate(master: &Master, unit: &Unit) -> f32 {
     let flag = master.hero_flag;
     let hero = flag & 5 != 0 && !(flag & 0x80 != 0 && flag & 4 != 0);
     let bonus = if hero { HERO_REGENERATION } else { 0.0 };

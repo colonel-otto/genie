@@ -321,8 +321,8 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
 /// A unit of `master` with `hp` hit points.
 /// A building's construction whose build points reached its build time: built, so the load
 /// completes it in its player's tracker ([`Turns::load_trackers`]).
-fn built() -> crate::build::Construction {
-    crate::build::Construction {
+fn built() -> crate::construction::build::Construction {
+    crate::construction::build::Construction {
         progress: 1.0,
         desolid: false,
         builders: 0,

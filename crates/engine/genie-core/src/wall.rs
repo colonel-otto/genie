@@ -14,7 +14,7 @@
 //! so never.
 
 use crate::GenieError;
-use crate::build::BuildAction;
+use crate::construction::build::BuildAction;
 use crate::order::Place;
 use crate::turn::Turns;
 

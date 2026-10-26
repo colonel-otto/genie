@@ -288,12 +288,14 @@ impl Turns {
     /// An object the slice does not hold, and an attribute whose change the slice does not
     /// model.
     pub(crate) fn count_kill(&mut self, id: i32, killer: usize) -> Result<(), GenieError> {
-        let (q, u) = self.object(id).ok_or(crate::build::NOT_HELD)?;
+        let (q, u) = self
+            .object(id)
+            .ok_or(crate::construction::build::NOT_HELD)?;
         let master = u
             .own_master
             .as_deref()
             .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
-            .ok_or(crate::build::NOT_HELD)?
+            .ok_or(crate::construction::build::NOT_HELD)?
             .clone();
         self.count_kill_of(q, &master, killer)
     }

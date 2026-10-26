@@ -10,22 +10,22 @@ use crate::turn::world::release_own;
 use crate::unit_ai::{AiMove, GenieError};
 
 impl Unit {
-    /// The Repair's update ([`crate::repair::RepairAction::update`]) with what it reads of its
+    /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it reads of its
     /// target (in the unit's player's list or another player's), the repairers of the object
     /// `FUN_140ad9050` gives (the target, an annex's main building), the unit's work rate and
     /// quick path, and the target's repair over the objects it reaches (the target, an annex's
-    /// main building, a main building's annexes: [`crate::repair::repair_building`],
-    /// [`crate::repair::repair_unit`]) paid from the player's resources. Its changes go to the
+    /// main building, a main building's annexes: [`crate::construction::repair::repair_building`],
+    /// [`crate::construction::repair::repair_unit`]) paid from the player's resources. Its changes go to the
     /// unit's player's objects at once and to another player's after the update
     /// ([`Context::repair_writes`]); the payments join the attribute adds.
     #[allow(clippy::too_many_lines)]
-    pub(super) fn repair_part(
+    pub(crate) fn repair_part(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
         me: Me,
     ) -> Result<(), GenieError> {
-        use crate::repair::{Repaired, Repairee};
+        use crate::construction::repair::{Repaired, Repairee};
         let Some(target) = self.repair.map(|r| r.target) else {
             return Ok(());
         };
@@ -114,8 +114,8 @@ impl Unit {
                     main: if om.kind == 80 { o.annex_of } else { None },
                     annexes,
                     cost_rates: [
-                        rate(crate::repair::UNIT_REPAIR_COST),
-                        rate(crate::repair::BUILDING_REPAIR_COST),
+                        rate(crate::construction::repair::UNIT_REPAIR_COST),
+                        rate(crate::construction::repair::BUILDING_REPAIR_COST),
                     ],
                 });
             }
@@ -132,13 +132,15 @@ impl Unit {
                     "a Repair working on an object the world does not hold",
                 ));
             }
-            let mut payer = crate::repair::Payer {
+            let mut payer = crate::construction::repair::Payer {
                 masters,
                 attributes: &mut paid,
             };
             match target_kind {
-                80 => crate::repair::repair_building(&mut set, 0, amount, true, &mut payer),
-                70 => crate::repair::repair_unit(&mut set, 0, amount, &mut payer),
+                80 => crate::construction::repair::repair_building(
+                    &mut set, 0, amount, true, &mut payer,
+                ),
+                70 => crate::construction::repair::repair_unit(&mut set, 0, amount, &mut payer),
                 // the task finder repairs buildings and combat units of its classes alone
                 _ => Err(GenieError::unreachable(
                     "a repaired object of a type below 70 (slot 0x110)",
@@ -159,10 +161,10 @@ impl Unit {
                 target,
                 terrain.restriction_mask(r),
                 my_radius[0],
-                crate::repair::REACH,
+                crate::construction::repair::REACH,
             )
         };
-        let view = crate::repair::RepairView {
+        let view = crate::construction::repair::RepairView {
             target: repairee,
             radius: own.radius,
             scenario: c.scenario,
@@ -231,7 +233,7 @@ impl Unit {
             }
         }
         for kind in &step.notifies {
-            self.post_own(*kind, [crate::repair::REPAIR_ACTION, 0, 0])?;
+            self.post_own(*kind, [crate::construction::repair::REPAIR_ACTION, 0, 0])?;
         }
         if step.stands {
             self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
@@ -271,7 +273,7 @@ impl Unit {
     /// What the attack tests read of the unit as an attacker ([`crate::unit_ai::Attacker`]) with
     /// a unit AI of type `ai_type`, its master `master`, its owner and the owner's type, the game
     /// mode (a scenario's) and its `+0x924`.
-    pub(in crate::turn) fn attacker_of(
+    pub(crate) fn attacker_of(
         &self,
         ai_type: u32,
         master: Option<&Master>,
@@ -309,7 +311,7 @@ impl Unit {
     /// Slot 400 (`FUN_14106d090`) as the unit AI reads it: its top action's target as the world
     /// holds it (its owner's other objects as they stand, the other players' lists), with its
     /// type, place and its master's radii; None without one.
-    pub(in crate::turn) fn top_target_seen(
+    pub(crate) fn top_target_seen(
         &self,
         c: &Context<'_>,
         others: &[Self],
@@ -334,7 +336,7 @@ impl Unit {
     /// and height), and it moves to the saved waypoint (slot 0x340: range 0, forced, running; a
     /// waypoint outside the path is the game's static zero point): that move, the caller's
     /// ([`Unit::ai_move`]). None without a saved patrol.
-    pub(in crate::turn) fn restore_patrol(&mut self) -> Option<AiMove> {
+    pub(crate) fn restore_patrol(&mut self) -> Option<AiMove> {
         let ai = self.ai.as_ref()?;
         let saved = ai.patrol_path.as_ref()?;
         let points = saved.path.points.clone();

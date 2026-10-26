@@ -1,7 +1,7 @@
 //! A foundation's construction ([`Construction`]): its work, its start and its completion,
 //! with the completion's storage, ground and counts.
 
-use crate::build::{
+use crate::construction::build::{
     Built, CASTLE_WONDER_COST, CASTLES_BUILT, Construction, MASTER_1889, MainWork, RICE_PASTURE,
     SITE_GONE, STARTED, Site, StackUnit, WONDER, WONDERS_BUILT, Worked,
 };
@@ -137,8 +137,8 @@ impl Construction {
     /// without a build time) up to the build time, and the work that reaches it completes the
     /// building ([`Construction::complete`]).
     ///
-    /// [`AnnexStart`]: crate::build::AnnexStart
-    /// [`WorkChain::main`]: crate::build::WorkChain::main
+    /// [`AnnexStart`]: crate::construction::build::AnnexStart
+    /// [`WorkChain::main`]: crate::construction::build::WorkChain::main
     pub fn work(
         site: &mut Site<'_>,
         amount: f32,
@@ -247,7 +247,7 @@ impl Construction {
     ///
     /// What it does not model, and a building without its master or place.
     ///
-    /// [`Completion::first_part`]: crate::build::Completion::first_part
+    /// [`Completion::first_part`]: crate::construction::build::Completion::first_part
     pub fn complete(
         site: &mut Site<'_>,
         world: &mut Spatial,

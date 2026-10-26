@@ -535,7 +535,8 @@ pub fn find_task<'m>(
             let mut any = None;
             let mut by_class = None;
             for task in &list.tasks {
-                if task.action_type != crate::repair::REPAIR || !wanted(filter, task) {
+                if task.action_type != crate::construction::repair::REPAIR || !wanted(filter, task)
+                {
                     continue;
                 }
                 if task.object_group == -1 && task.object_id == -1 {
@@ -553,7 +554,7 @@ pub fn find_task<'m>(
                 Some(task) if 0.0 < task.work_val1 => return Ok(Some(task)),
                 _ => {}
             }
-            if filter == crate::repair::REPAIR {
+            if filter == crate::construction::repair::REPAIR {
                 return Ok(None);
             }
         }

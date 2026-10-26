@@ -1,7 +1,7 @@
 //! BUILD's builders: their task, the queue and the direct path, the wait for the foundation
 //! and the build command.
 
-use crate::build::{BUILD, BuildAction, BuildTask};
+use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
 use crate::tasks::{Actor, TaskTarget};
@@ -292,7 +292,7 @@ impl Turns {
         }
         self.clear_actions(player, idx)?;
         self.players[player].objects[idx].wait_solidify = Some(
-            crate::wait_solidify::WaitSolidify::new(wait.task, wait.target),
+            crate::construction::wait_solidify::WaitSolidify::new(wait.task, wait.target),
         );
         Ok(())
     }

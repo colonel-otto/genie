@@ -54,7 +54,7 @@ impl Diplomacy for SideWorld<'_> {
 }
 
 /// The build points (`+0xc50`) a wait for a foundation reads of object `id`
-/// ([`crate::wait_solidify::WaitSolidify::update`]) among its owner's other objects and the
+/// ([`crate::construction::wait_solidify::WaitSolidify::update`]) among its owner's other objects and the
 /// other players' lists: None when the world does not hold it. Its target is the building that
 /// sent the unit off (the unit AI's notify 0x216), whose build points are its construction's;
 /// the world never gives its id to another object, so an object without a construction is not

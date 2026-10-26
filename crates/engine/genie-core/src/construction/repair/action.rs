@@ -1,13 +1,13 @@
 //! The Repair action's start, update and states ([`RepairAction`]): the walk, the face, the
 //! wait, the work, a new target, a move and the halt.
 
-use crate::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up};
-use crate::movement::footprint_gap;
-use crate::repair::{
+use crate::construction::repair::{
     DONE, EXTRA_REPAIRER, FACE, FAILED, HALTED, IDLE, LEAST_HP, MOVE, MOVING_REACH, ONE, REACH,
     RepairAction, RepairStep, RepairTask, RepairView, Repairee, SHIP_REPAIR, SHIPS, WAIT,
     WALK_POINT, WORK,
 };
+use crate::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::movement::footprint_gap;
 use crate::unit_ai::GenieError;
 
 /// The work of one update (`0x140adaa20` case 6): the work `rate` times the task's

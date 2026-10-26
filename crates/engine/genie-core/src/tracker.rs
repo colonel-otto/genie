@@ -621,7 +621,7 @@ mod tests {
         let unit = |id: i32, master: i16, progress: Option<f32>| {
             let mut u = Unit {
                 id,
-                construction: progress.map(|progress| crate::build::Construction {
+                construction: progress.map(|progress| crate::construction::build::Construction {
                     progress,
                     desolid: false,
                     builders: 0,

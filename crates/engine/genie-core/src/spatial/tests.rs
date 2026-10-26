@@ -867,7 +867,7 @@ fn the_footprint_s_occupants_are_the_objects_whose_centre_is_on_it() {
 /// objects: types below 30, alive) counts.
 #[test]
 fn a_foundation_not_allied_both_ways_or_a_dead_object_occupies_no_footprint() {
-    use crate::build::ClearLook;
+    use crate::construction::build::ClearLook;
     let (mut s, house) = site();
     // player 2 counts player 3 allied, player 3 counts player 2 neutral
     s.relations = vec![vec![0; 4], vec![0; 4], vec![0, 3, 1, 0], vec![0, 3, 3, 1]];

@@ -2,8 +2,8 @@
 //! its victim and readiness, a master switch, its target's visibility, the villager swap and
 //! the hunt plan.
 
-use crate::build::Walk;
 use crate::combat::damage::Victim;
+use crate::construction::build::Walk;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::spatial::Placed;
 use crate::tasks::Actor;

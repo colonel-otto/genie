@@ -173,7 +173,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         ),
         ..Unit::default()
     });
-    let build_task = crate::build::BuildTask {
+    let build_task = crate::construction::build::BuildTask {
         range: 0.0,
         work_value: 1.0,
         work_rate: 1.0,
@@ -182,7 +182,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     };
     let build = add(Unit {
         id: 31,
-        build: Some(crate::build::BuildAction::start(
+        build: Some(crate::construction::build::BuildAction::start(
             -1,
             [3.5, 3.5, 0.0],
             1.0,
@@ -190,13 +190,13 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         )),
         ..Unit::default()
     });
-    let repair_task = crate::repair::RepairTask {
+    let repair_task = crate::construction::repair::RepairTask {
         id: 0,
         work_value: 1.0,
     };
     let repair = add(Unit {
         id: 32,
-        repair: Some(crate::repair::RepairAction::start(
+        repair: Some(crate::construction::repair::RepairAction::start(
             -1,
             [3.5, 3.5, 0.0],
             repair_task,
@@ -228,8 +228,14 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         t.halt_other(1, gather, crate::gathering::gather::GATHER),
         Ok(true)
     );
-    assert_eq!(t.halt_other(1, build, crate::build::BUILD), Ok(true));
-    assert_eq!(t.halt_other(1, repair, crate::repair::REPAIR), Ok(true));
+    assert_eq!(
+        t.halt_other(1, build, crate::construction::build::BUILD),
+        Ok(true)
+    );
+    assert_eq!(
+        t.halt_other(1, repair, crate::construction::repair::REPAIR),
+        Ok(true)
+    );
     assert_eq!(
         t.halt_other(1, attack, crate::combat::attack::ATTACK),
         Ok(true)

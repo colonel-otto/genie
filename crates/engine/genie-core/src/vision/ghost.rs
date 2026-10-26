@@ -987,7 +987,7 @@ mod tests {
             object(13, UNWATCHED_MASTER, 2, [0.5, 1.5, 0.0]),
         ]);
         let mut foundation = object(14, HOUSE, 2, [0.5, 3.5, 0.0]);
-        foundation.construction = Some(crate::build::Construction {
+        foundation.construction = Some(crate::construction::build::Construction {
             progress: 0.0,
             desolid: true,
             builders: 0,

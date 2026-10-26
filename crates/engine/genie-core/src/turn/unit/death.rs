@@ -1,6 +1,6 @@
 //! A unit's explore, its stopped mover, the default task's fly and the deaths.
 
-use crate::build::{Completion, Construction};
+use crate::construction::build::{Completion, Construction};
 use crate::fly::Fly;
 use crate::lifecycle::Class;
 use crate::masters::Master;
@@ -209,7 +209,9 @@ impl Unit {
         // points (its destruction sprite unbuilt), any other combat object's slot 0x7a0's
         let look = self.abilities.look.as_ref();
         let shown = if master.kind == 80 {
-            let built = self.construction.ok_or(crate::build::NO_CONSTRUCTION)?;
+            let built = self
+                .construction
+                .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
             crate::sprite::building_death(master, look, built.progress)
         } else {
             crate::sprite::dying(master, look)
@@ -222,7 +224,7 @@ impl Unit {
     }
 
     /// A foundation's death (`FUN_1411dbb70` to state 3 from state 0), before the combat
-    /// object's: the completion's first part (`FUN_1411c6bd0`, [`crate::build::completion_part`]:
+    /// object's: the completion's first part (`FUN_1411c6bd0`, [`crate::construction::build::completion_part`]:
     /// a farm's bonus once its build points reached its build time, a mule cart's search for
     /// resources, the caller's), then, as the state is still 0 and 3 lies within 1 to 6, its
     /// construction's start (`FUN_1411e5670`, [`Construction::begin`]: a desolid one gets its
@@ -236,7 +238,7 @@ impl Unit {
         let construction = self
             .construction
             .as_mut()
-            .ok_or(crate::build::NO_CONSTRUCTION)?;
+            .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
         let completion = Completion {
             master: Some(master),
             annexed: false,

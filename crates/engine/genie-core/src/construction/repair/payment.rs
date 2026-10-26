@@ -1,7 +1,7 @@
 //! What a repair reaches and pays: a building's and a combat unit's slot 0x8c8 by the
 //! repairer's player.
 
-use crate::repair::ONE;
+use crate::construction::repair::ONE;
 use crate::unit_ai::GenieError;
 
 /// The classes whose repair pays its unit share (`FUN_1412143b0`: the ships 20, 21, 22, 2 and

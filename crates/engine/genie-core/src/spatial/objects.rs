@@ -191,7 +191,7 @@ impl Spatial {
         std::mem::take(&mut self.changed)
     }
 
-    /// A foundation's construction started ([`crate::build::Construction`]'s start).
+    /// A foundation's construction started ([`crate::construction::build::Construction`]'s start).
     pub fn started(&mut self, id: i32) {
         self.started.push(id);
     }

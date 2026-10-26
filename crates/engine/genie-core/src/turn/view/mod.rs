@@ -68,15 +68,15 @@ pub(in crate::turn) enum AiWork {
 /// ([`Context::repair_writes`]): its hit points and powerups, its repairers (`+0x9e8`) and the
 /// armor its charge's hits took, which a full repair gives back (`FUN_1412066a0`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::turn) struct RepairWrite {
+pub(crate) struct RepairWrite {
     /// The object.
-    pub(in crate::turn) id: i32,
+    pub(crate) id: i32,
     /// Its new hit points and hit point powerups (`+0xa38`, `+0xa3c`).
-    pub(in crate::turn) hp: Option<(f32, [f32; 2])>,
+    pub(crate) hp: Option<(f32, [f32; 2])>,
     /// What its repairers change by.
-    pub(in crate::turn) repairers: i8,
+    pub(crate) repairers: i8,
     /// Its armor removed (`+0x9e4`, `+0x9e6`) goes back to 0.
-    pub(in crate::turn) restored: bool,
+    pub(crate) restored: bool,
 }
 
 /// What the unit's slot 0x388 (`FUN_141226fc0`) found while its unit AI ran
@@ -167,7 +167,7 @@ impl<'a> Foreign<'a> {
     }
 
     /// Player `q`, unless it is the one whose list is out.
-    pub(in crate::turn) fn player(&self, q: usize) -> Option<&'a Player> {
+    pub(crate) fn player(&self, q: usize) -> Option<&'a Player> {
         let own = self.before.len();
         match q.cmp(&own) {
             std::cmp::Ordering::Less => self.before.get(q),

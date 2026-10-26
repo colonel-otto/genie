@@ -1,7 +1,7 @@
 //! State 8: a builder that carries something walks to a drop site first ([`DropSearch`],
 //! [`DropStart`]).
 
-use crate::build::{
+use crate::construction::build::{
     ARRIVED, BUILDER_UNMOVING, BuildAction, BuildStep, Builder, DONE, DROP, DROP_REACH, DROP_WAIT,
     DROPPED_ORDERS, NO_TARGET_POINT, Site, VILLAGER,
 };

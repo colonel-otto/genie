@@ -168,7 +168,7 @@ pub fn blast(
                     targets
                         .iter()
                         .position(|v| v.id == m)
-                        .ok_or(crate::build::NOT_HELD)?,
+                        .ok_or(crate::construction::build::NOT_HELD)?,
                 ),
                 None => Some(i),
             }

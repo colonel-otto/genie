@@ -47,14 +47,13 @@ pub(crate) use crate::turn::world::{
 };
 
 mod forced;
-mod gates;
 mod object_step;
 mod setup;
 mod world_update;
 
 pub use self::forced::GameState;
-pub(crate) use self::gates::gate_units;
 pub use self::world_update::{scenario_mode, standard_mode};
+pub(crate) use crate::construction::gates::gate_units;
 
 /// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the
 /// building's last move time, [`Mover::last_move`], slot 0x670, `FUN_1411dba30`), `mFirstUpdate`
@@ -118,19 +117,19 @@ pub(crate) const ATTACKER_MASTER: GenieError =
 
 /// A gate's height (its master's `radius_z`) above this shuts it (`DAT_142eb0c60`); a unit
 /// slower than it counts in a gate only when it is a player's.
-const GATE_EPSILON: f32 = crate::math::image::turn::GATE_EPSILON;
+pub(crate) const GATE_EPSILON: f32 = crate::math::image::turn::GATE_EPSILON;
 /// A gate's query grows its records and its own box by this (`FUN_1410562d0` with
 /// `DAT_142eb3630`).
-const GATE_GROW: f32 = crate::math::image::turn::GATE_GROW;
+pub(crate) const GATE_GROW: f32 = crate::math::image::turn::GATE_GROW;
 /// The least height of a shut gate its player opens (`FUN_14162f7e0`, `DAT_14330eb8c`).
-const GATE_SHUT_HEIGHT: f32 = crate::math::image::turn::GATE_SHUT_HEIGHT;
+pub(crate) const GATE_SHUT_HEIGHT: f32 = crate::math::image::turn::GATE_SHUT_HEIGHT;
 /// The seconds an open gate with nothing in it waits before it shuts (`FUN_1411e7730`'s
 /// immediate `0x3f000000`).
-const GATE_CLOSE_DELAY: f32 = 0.5;
+pub(crate) const GATE_CLOSE_DELAY: f32 = 0.5;
 /// The most records a gate's query lists (`FUN_1411d0570`'s list of 10) and the most units it
 /// counts (25).
-const GATE_QUERY_RECORDS: usize = 10;
-const GATE_COUNT_CAP: usize = 25;
+pub(crate) const GATE_QUERY_RECORDS: usize = 10;
+pub(crate) const GATE_COUNT_CAP: usize = 25;
 /// A unit's build command (a Gather's on its target not built yet, or its reseed) after an
 /// update in which the unit left its list: in the game it ran inside the update, before.
 const LEAVES_ITS_LIST: GenieError =
@@ -208,15 +207,15 @@ const VILLAGER_ANY: i16 = 0x712;
 const VILLAGER_FEMALE: i16 = 0x125;
 /// The attribute naming a building master that changes the terrain around its buildings
 /// (`FUN_1411c39b0`, the player's attribute 255).
-const BUILDING_TERRAIN: usize = 255;
+pub(crate) const BUILDING_TERRAIN: usize = 255;
 /// A building at most this share of its hit points lets its garrison out (`DAT_142eae8d0`).
-const EJECT_SHARE: f32 = crate::math::image::turn::EJECT_SHARE;
+pub(crate) const EJECT_SHARE: f32 = crate::math::image::turn::EJECT_SHARE;
 /// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
 pub(crate) const MONASTERY: i16 = 104;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
 const PETARD: i16 = 440;
 /// The villager's class (4), which a building's repair by its garrison counts.
-const VILLAGER_CLASS: i16 = 4;
+pub(crate) const VILLAGER_CLASS: i16 = 4;
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
 /// 562, 584 and 621 (`0x232` plus the bits of `0x800000000400001`), 68, 1808, 50, 1187 and 199.
 const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];

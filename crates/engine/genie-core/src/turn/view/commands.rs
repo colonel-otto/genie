@@ -12,7 +12,7 @@ impl UnitView<'_> {
     /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the
     /// world (`FUN_1415417a0`) does not hold is 0. A Repair on top takes it (its slot 0x48,
     /// `FUN_140adb480`): 1. Else a unit of task swap group 1 or 2 switches to its player's
-    /// repairer ([`crate::repair::REPAIRERS`], slot 0x90 with 0), and its slot 0x820 with the
+    /// repairer ([`crate::construction::repair::REPAIRERS`], slot 0x90 with 0), and its slot 0x820 with the
     /// repair's action type (`0x6a`) and the switch ([`task_search`] on the target and its main
     /// building, the new master's list first) finds a task: a new Repair on it
     /// (`FUN_140ad7fa0`) replaces the unit's actions (slot 0x808): 1; none: 0. The caller makes
@@ -33,7 +33,7 @@ impl UnitView<'_> {
         if find(target).is_none() {
             return Ok(false);
         }
-        if unit.top_action_kind() == Some(crate::repair::REPAIR) {
+        if unit.top_action_kind() == Some(crate::construction::repair::REPAIR) {
             self.starts
                 .push(AiStart::Repair(RepairOrder::Retake(target)));
             return Ok(true);
@@ -42,7 +42,7 @@ impl UnitView<'_> {
         let own = masters
             .get(unit.life.master_id)
             .ok_or(crate::turn::UNIT_AI_MASTER)?;
-        let switch = crate::repair::REPAIRERS
+        let switch = crate::construction::repair::REPAIRERS
             .iter()
             .find(|&&(group, _)| group == own.task_by_group)
             .and_then(|&(_, id)| masters.get(id));
@@ -68,7 +68,14 @@ impl UnitView<'_> {
             foreign,
             drop_sites: self.drop_sites,
         };
-        let found = task_search(masters, &actor, &t, &general, crate::repair::REPAIR, &dip)?;
+        let found = task_search(
+            masters,
+            &actor,
+            &t,
+            &general,
+            crate::construction::repair::REPAIR,
+            &dip,
+        )?;
         if switch.is_none() && found.is_none() {
             return Ok(false);
         }

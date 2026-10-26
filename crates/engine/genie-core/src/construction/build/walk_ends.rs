@@ -1,7 +1,7 @@
 //! The ends of the builder's walk: at its end, failed, its foundation lost; the walk to a
 //! point (state 11).
 
-use crate::build::{
+use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildStep, Builder, FOREIGN_SITE, REACH, SEEN, SITE_GONE, Site,
     UNSEEN_SITE, VILLAGER, WALK_POINT, WORK,
 };

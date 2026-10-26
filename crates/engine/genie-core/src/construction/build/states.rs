@@ -1,7 +1,7 @@
 //! The states the update and the unit's stop set: the prelude, the work's end and what
 //! follows it, the restart, the idle, a retarget, the halt and the end.
 
-use crate::build::{
+use crate::construction::build::{
     AfterWork, BUILD_ORDER, BUILDER_UNMOVING, BuildAction, BuildStep, Builder, DONE, Dropped, FARM,
     FINISHED, FISH_TRAP, FISHING_SHIPS, HALTED, IDLE, LAST_TAKEN, Load, MOVE, NO_TARGET_POINT,
     SITE_GONE, Site, VILLAGER, WORK, drop_done_orders,

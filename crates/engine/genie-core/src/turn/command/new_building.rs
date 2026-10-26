@@ -1,7 +1,7 @@
 //! A new building: BUILD's foundation and the building constructor, with its combat setup,
 //! its storage and its annexes.
 
-use crate::build::Construction;
+use crate::construction::build::Construction;
 use crate::lifecycle::{Class, Lifecycle};
 use crate::masters::Master;
 use crate::math::rng::Stream;
@@ -401,7 +401,7 @@ impl Turns {
         made: &Master,
         am: &Master,
     ) -> Result<(), GenieError> {
-        let not_held = crate::build::NOT_HELD;
+        let not_held = crate::construction::build::NOT_HELD;
         let (_, a) = self.object_mut(aid).ok_or_else(|| not_held.clone())?;
         a.annex_of = Some(id);
         self.spatial.set_annex(aid, Some(id));
@@ -413,7 +413,7 @@ impl Turns {
             let c = a
                 .construction
                 .as_mut()
-                .ok_or(crate::build::NO_CONSTRUCTION)?;
+                .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
             if !c.desolid {
                 c.desolid = true;
                 self.pathing.removed(aid);

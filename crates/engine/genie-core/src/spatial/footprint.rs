@@ -109,7 +109,7 @@ impl Spatial {
         site_id: i32,
         site: &Placed,
         obstructs: bool,
-        look: &dyn Fn(i32) -> Option<crate::build::ClearLook>,
+        look: &dyn Fn(i32) -> Option<crate::construction::build::ClearLook>,
     ) -> Result<Vec<i32>, GenieError> {
         use crate::masters::master_type::BUILDING;
         let [sx, sy, _] = site.position;

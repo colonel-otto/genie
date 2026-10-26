@@ -78,7 +78,7 @@ pub(crate) fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>,
             build_added: object
                 .actions()
                 .and_then(|a| a.entries().next())
-                .filter(|&(kind, _)| kind == genie_core::build::BUILD)
+                .filter(|&(kind, _)| kind == genie_core::construction::build::BUILD)
                 .and_then(|(_, a)| a.tribe_action_build.as_deref())
                 .map(|b| b.added_to_num_builders != 0),
             ai: object.combat().and_then(|c| {

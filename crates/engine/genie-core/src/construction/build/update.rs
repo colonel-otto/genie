@@ -1,7 +1,7 @@
 //! The Build action's start (state 4 toward the foundation) and its update, which runs the
 //! action's state; the AI's build orders whose foundation is gone.
 
-use crate::build::{
+use crate::construction::build::{
     ARRIVED, AfterWork, BUILD_ORDER, BUILDER_UNMOVING, BuildAction, BuildStep, BuildTask, Builder,
     CLASS_39, CLEAR, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, MASTER_621, MASTER_1889,
     MOVE, PLACE, Site, VILLAGER, WAIT, WALK_POINT, WORK,
