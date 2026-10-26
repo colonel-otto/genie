@@ -1,0 +1,199 @@
+//! The world player's update: the loop's seconds, the explored share, the defeat check and
+//! what keeps a player in the game.
+
+use crate::GenieError;
+use crate::fmath::{at_most_or_unordered, below_or_unordered};
+use crate::turn::Turns;
+use crate::world_player::{
+    ALIVE_STORE_MODE, BUILDING_CLASS, COMPUTER_TYPE, GAIA_TYPE, HUMAN_TYPE, KING, PACKED_CLASS,
+    PERCENT, POPULATION_STORAGE, SECOND, TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS,
+    WONDER, attribute, get, set,
+};
+
+impl Turns {
+    /// Player `p`'s slot 0x100 up to `WorldPlayerBase::update`. Gaia (`WorldPlayerGaia::update`)
+    /// adds the update's seconds to its own update time. A world player adds them to
+    /// `mUpdateTime` (`ADDSS` of `world+0x164` and the time) and, while it is at least a second
+    /// (`COMISS` with 1, `JC` ends the loop, also for a NaN), takes a second off and runs the
+    /// second's work ([`Turns::world_player_second`]) with the time before the step.
+    ///
+    /// # Errors
+    ///
+    /// The second's work met a part of the game the slice does not model.
+    pub fn update_world_player(&mut self, p: usize) -> Result<(), GenieError> {
+        let dt = self.dt_seconds;
+        let player = &mut self.players[p];
+        if player.kind == GAIA_TYPE {
+            player.gaia_update_time += dt;
+            return Ok(());
+        }
+        player.update_time += dt;
+        loop {
+            let time = self.players[p].update_time;
+            if below_or_unordered(time, SECOND) {
+                return Ok(());
+            }
+            self.players[p].update_time = time - SECOND;
+            self.world_player_second(p, time)?;
+        }
+    }
+
+    /// One pass of the world player's loop, `time` its update time before the step:
+    /// - the history's update with the `.dat`'s period ([`crate::history::History::update`]);
+    /// - attribute 22: 100 when every player explored the map from the start
+    ///   ([`crate::settings::Settings::explored_all`]), else the explored share
+    ///   ([`Turns::explored_share`]) times 100;
+    /// - attribute 44: attribute 20 less (attribute 19 less attribute 11), 0 when that is below 0
+    ///   (`COMISS` 0 with it, `JBE`: a NaN stays);
+    /// - for a human or computer player (`FUN_141663f30`: type 1 or 3) the defeat check
+    ///   ([`Turns::defeat_check`]), then, while it plays, the trickles ([`Turns::trickles`]) and
+    ///   the mills' food ([`Turns::mill_food`]).
+    ///
+    /// # Errors
+    ///
+    /// The defeat check's ([`Turns::defeat_check`]).
+    pub(super) fn world_player_second(&mut self, p: usize, time: f32) -> Result<(), GenieError> {
+        let (world_time, period) = (self.world_time, self.history_period);
+        let player = &mut self.players[p];
+        player
+            .history
+            .update(&player.attributes, world_time, period);
+        let explored = if self.settings.explored_all() {
+            Some(PERCENT)
+        } else {
+            self.explored_share(p).map(|share| share * PERCENT)
+        };
+        let player = &mut self.players[p];
+        if let Some(e) = explored {
+            set(&mut player.attributes, attribute::EXPLORED, e);
+        }
+        let a = &player.attributes;
+        let ratio = get(a, attribute::KILLS)
+            - (get(a, attribute::UNITS_OWNED) - get(a, attribute::POPULATION));
+        set(&mut player.attributes, attribute::KILL_RATIO, ratio);
+        if !at_most_or_unordered(0.0, get(&player.attributes, attribute::KILL_RATIO)) {
+            set(&mut player.attributes, attribute::KILL_RATIO, 0.0);
+        }
+        if !matches!(player.kind, HUMAN_TYPE | COMPUTER_TYPE) {
+            return Ok(());
+        }
+        self.defeat_check(p)?;
+        if self.players[p].game_status == crate::game_status::PLAYING {
+            self.trickles(p);
+            self.mill_food(p, time);
+        }
+        Ok(())
+    }
+
+    /// `FUN_141285c50` on player `p`'s visible map (`+0x70`): its explored tiles (`+0x28`) over
+    /// its tiles (`+0x2c`, the width times the height its load sets), each converted
+    /// (`CVTDQ2PS`) before the division. None in a slice without the players' sight, whose
+    /// attribute 22 the update then leaves.
+    #[must_use]
+    pub fn explored_share(&self, p: usize) -> Option<f32> {
+        let sight = self.spatial.sight.as_ref()?;
+        let map = sight.maps.get(p)?;
+        Some(map.explored as f32 / (sight.width * sight.height) as f32)
+    }
+
+    /// The defeat check of player `p` (`0x14163b72b`). The player stays in the game while one of
+    /// its victory timers runs ([`VictoryTimes::running`]) or else one of its objects, in its
+    /// list's order, keeps it ([`Turns::keeps_alive`]). Under the sudden death rule
+    /// ([`crate::settings::Settings::sudden_death`]), asked only for a player that stays, its
+    /// first built town centre ([`Turns::first_town_centre`]) decides once the player had one
+    /// (`mSuddenDeathCanBeEliminated`, `+0x1380`, which the first one found sets). A player not
+    /// yet lost then loses when it does not stay, or when it stays without a king (master 434 in
+    /// its tracker, `FUN_14104eea0`) under the regicide rule
+    /// ([`crate::settings::Settings::regicide`]): the status setter takes 2
+    /// ([`Turns::set_status`]) and attribute 45 is cleared.
+    ///
+    /// # Errors
+    ///
+    /// An object of a master the slice does not have; the status setter's.
+    ///
+    /// [`VictoryTimes::running`]: crate::world_player::VictoryTimes::running
+    pub fn defeat_check(&mut self, p: usize) -> Result<(), GenieError> {
+        let mut stays = self.players[p].victory_times.running();
+        if !stays {
+            for unit in &self.players[p].objects {
+                if self.keeps_alive(p, unit)? {
+                    stays = true;
+                    break;
+                }
+            }
+        }
+        if stays && self.settings.sudden_death() {
+            let centre = self.first_town_centre(p).is_some();
+            let player = &mut self.players[p];
+            if player.sudden_death_eliminable {
+                stays = centre;
+            } else if centre {
+                player.sudden_death_eliminable = true;
+            }
+        }
+        if self.players[p].game_status == crate::game_status::LOST {
+            return Ok(());
+        }
+        let kingless = self.settings.regicide() && self.players[p].tracker.list(KING).is_empty();
+        if !stays || kingless {
+            self.set_status(p, crate::game_status::LOST)?;
+            set(&mut self.players[p].attributes, attribute::SURVIVAL, 0.0);
+        }
+        Ok(())
+    }
+
+    /// Whether object `unit` keeps player `p` in the game (`0x14163b790`), by its master's class
+    /// (`+0x410`, the decoded short, compared unsigned) and its state (`+0x640`):
+    /// - in states 1 to 4, a resource storage of the master holding attribute 11 with the store
+    ///   mode 0x20 keeps it;
+    /// - classes 11, 27 and 30 (other, walls, flags) and 1, 2, 14, 19, 20, 21, 37, 39, 42, 49, 58
+    ///   and 60 do not;
+    /// - classes 3 and 52 (buildings, towers) keep it in state 2 when the player can train or
+    ///   will be able to train there (`FUN_141625a20` and `FUN_141610470`'s counts,
+    ///   [`Turns::trainable_count`], [`Turns::upgradable_count`], summed as shorts);
+    /// - any other class keeps it in state 2, and classes 51 and 54 (the packed and unpacked
+    ///   siege) in state 0;
+    /// - whatever the class, a wonder (master 276) not in state 0 keeps it in the scenario modes
+    ///   ([`crate::turn::scenario_mode`]; the game asks the lobby's settings, `FUN_14152f9c0`,
+    ///   which hold the game's options).
+    ///
+    /// # Errors
+    ///
+    /// An object of a master the slice does not have.
+    pub fn keeps_alive(&self, p: usize, unit: &crate::turn::Unit) -> Result<bool, GenieError> {
+        let master = self.master_of(p, unit.life.master_id)?;
+        let state = unit.life.state;
+        if (1..=4).contains(&state)
+            && master
+                .storage
+                .iter()
+                .any(|&(kind, _, mode)| kind == POPULATION_STORAGE && mode == ALIVE_STORE_MODE)
+        {
+            return Ok(true);
+        }
+        let class = i32::from(master.class) as u32;
+        let none = class <= 30 && (UNKEPT_LOW >> class) & 1 != 0;
+        let builds = class == TOWER_CLASS || class == BUILDING_CLASS;
+        let never = class <= 60 && (UNKEPT_HIGH >> class) & 1 != 0;
+        let other = !(none || builds || never);
+        if other && state == 2 {
+            return Ok(true);
+        }
+        if builds && state == 2 {
+            let count = self
+                .trainable_count(p, master.id)
+                .wrapping_add(self.upgradable_count(p, master.id));
+            if 0 < count {
+                return Ok(true);
+            }
+        }
+        if (builds || other) && (class == PACKED_CLASS || class == UNPACKED_CLASS) && state == 0 {
+            return Ok(true);
+        }
+        Ok(
+            master.id == WONDER
+                && state != 0
+                && crate::turn::scenario_mode(self.settings.game_mode),
+        )
+    }
+}
