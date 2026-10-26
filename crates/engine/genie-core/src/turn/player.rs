@@ -11,7 +11,7 @@ pub struct Formations {
     pub auto: bool,
     /// How near two units join (`+0x6c4`).
     pub influence: f32,
-    /// Units whose speeds differ by more than [`crate::order`]'s gap do not join (`+0x6c8` 1).
+    /// Units whose speeds differ by more than [`crate::orders`]'s gap do not join (`+0x6c8` 1).
     pub by_speed: bool,
     /// `mMinColumnDistance` (`+0x6b8`): a group's move along a longer path forms a column
     /// (`commandMoveTo`).

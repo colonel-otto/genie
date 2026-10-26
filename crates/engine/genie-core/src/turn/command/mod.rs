@@ -3,7 +3,7 @@
 //!
 //! [`Turns::run`]: crate::turn::Turns::run
 
-use crate::order::{Interact, MoveOrder};
+use crate::orders::{Interact, MoveOrder};
 use crate::unit_ai::GenieError;
 
 mod builders;

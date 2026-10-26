@@ -168,7 +168,7 @@ impl Decoder {
                 });
             }
             Packet::Interact(c) => {
-                let order = genie_core::order::Interact {
+                let order = genie_core::orders::Interact {
                     target: c.t_id,
                     point: [c.x, c.y],
                     carry_test: c.field_0x12 != 0,
@@ -182,7 +182,7 @@ impl Decoder {
             }
             Packet::Work(c) => (c.commp_id, c.num, c.ids, false, None),
             Packet::Move(c) => {
-                let order = genie_core::order::MoveOrder {
+                let order = genie_core::orders::MoveOrder {
                     target: c.t_id,
                     point: [c.x, c.y],
                     queued: c.field_0x13 != 0,

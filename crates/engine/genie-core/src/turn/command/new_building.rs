@@ -282,7 +282,7 @@ impl Turns {
             untargetable: false,
             under_attack: false,
             last_human_order: 0,
-            town_bell: crate::town_bell::TownBell::default(),
+            town_bell: crate::orders::town_bell::TownBell::default(),
             pasture: -1,
             my_pasture: -1,
             undeletable: false,

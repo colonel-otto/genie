@@ -28,7 +28,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 .find(|u| u.id == id)
                 .map(|u| (u.life.state, u.position))
         };
-        Ok(crate::order::nearest_table_site(
+        Ok(crate::orders::nearest_table_site(
             (self.drop_sites, self.civ, self.tracker),
             (at, self.unit.life.attribute_type, class),
             look,
@@ -715,7 +715,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// The build command at once ([`Turns::build_command`]'s path without a Build on top, which
     /// a stop before it leaves none): slot 0x820 with any action type and the switch
     /// ([`task_search`] on the foundation and its main building) finds a task; the switch (slot
-    /// 0x90 with 0: the actions go, then the master's unit part, [`crate::order::switch_master`];
+    /// 0x90 with 0: the actions go, then the master's unit part, [`crate::orders::switch_master`];
     /// its owner's part after the update); a Build on the task (`FUN_140aad4e0`, the footprints'
     /// gap, the task's range and work value, the builder's work rate with the unit's powerup)
     /// takes the foundation (slot 0x178) and replaces the actions (slot 0x808). A Build on top
@@ -793,13 +793,13 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 player,
             };
             unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
-            let world = crate::order::SwitchWorld {
+            let world = crate::orders::SwitchWorld {
                 spatial: self.spatial,
                 pathing: self.pathing,
                 graphics: self.graphics,
                 sprite: self.sprite,
             };
-            let switched = crate::order::switch_master(unit, own, next, world)?;
+            let switched = crate::orders::switch_master(unit, own, next, world)?;
             self.attribute_adds.extend(switched.leaving);
             if switched.promoted {
                 self.promotions.push((id, own.id, next.id));
@@ -820,7 +820,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// `HuntObject`'s unit part at once ([`Turns::hunt_command`] in the view): the stopAction
     /// (the actions go, and in state 2 the master's standing sprite, slot 0x68), then the hunt
     /// command: slot 0x820's task with any filter and the switch ([`task_search`]; the switch,
-    /// slot 0x90 with 0, [`crate::order::switch_master`], its owner's part after the update) and a
+    /// slot 0x90 with 0, [`crate::orders::switch_master`], its owner's part after the update) and a
     /// Hunt on it ([`Turns::start_hunt`]'s: the target taken, slot 0x178; the actions cleared;
     /// [`crate::gathering::hunt::HuntAction::start`] with the target as it stands, its master among the
     /// unit's drop sites, the engagement and arms; an Attack that starts arrived shows the idle

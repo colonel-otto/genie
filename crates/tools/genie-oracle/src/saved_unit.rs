@@ -240,8 +240,8 @@ pub(super) fn unit(
 /// A combat object's town-bell flag and back-to-work records.
 pub(super) const fn town_bell(
     c: &genie_save::generated::world::TribeCombatObject,
-) -> genie_core::town_bell::TownBell {
-    use genie_core::town_bell::{BackToWork, TownBell};
+) -> genie_core::orders::town_bell::TownBell {
+    use genie_core::orders::town_bell::{BackToWork, TownBell};
     TownBell {
         flag: c.town_bell_flag != 0,
         work: BackToWork {

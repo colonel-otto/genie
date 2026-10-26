@@ -105,7 +105,7 @@ impl Turns {
             })
         };
         for &id in ids {
-            let Some(crate::order::Place::Live(p, i)) = self.place(id) else {
+            let Some(crate::orders::Place::Live(p, i)) = self.place(id) else {
                 if self.place(id).is_some() {
                     return Err(GenieError::unsupported(
                         "a command queue on a sleeping object",
@@ -117,7 +117,7 @@ impl Turns {
             let Some(ai) = unit.ai.as_ref() else {
                 continue;
             };
-            let building = self.master_of(p, unit.life.master_id)?.kind == crate::order::BUILDING;
+            let building = self.master_of(p, unit.life.master_id)?.kind == crate::orders::BUILDING;
             let mut queued = Vec::new();
             if building
                 && let Some(g) = unit.gather_point

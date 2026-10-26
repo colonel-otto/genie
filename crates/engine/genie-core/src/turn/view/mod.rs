@@ -56,7 +56,7 @@ pub(in crate::turn) enum AiWork {
     /// `GatherObject`'s gather command on the target ([`Turns::gather_command`]).
     Gather(i32),
     /// The unit's slot 0x7e8 on an object at a point ([`Turns::order_work`]).
-    Work(crate::order::Work),
+    Work(crate::orders::Work),
     /// `BuildObject`'s unit part: the build command on the foundation ([`Turns::build_command`]).
     Build(i32),
     /// The villager's case 0x21c: its load to the drop-site table's building

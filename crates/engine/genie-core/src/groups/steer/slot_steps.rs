@@ -262,8 +262,8 @@ impl Turns {
         };
         let kind = self.master_of(p, master_id)?.kind;
         let u = match place {
-            crate::order::Place::Live(p, i) => &mut self.players[p].objects[i],
-            crate::order::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
+            crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
+            crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
         };
         let Some(mover) = u.mover.as_mut() else {
             return Ok(());

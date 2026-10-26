@@ -1221,9 +1221,9 @@ fn back_to_work_lets_an_allys_villager_out_toward_its_record() {
     inside_tc(&mut t, 2, 2000, VILLAGER);
     let v = &mut t.players[2].objects[0];
     v.town_bell.flag = true;
-    v.town_bell.work = crate::town_bell::BackToWork {
+    v.town_bell.work = crate::orders::town_bell::BackToWork {
         point: [4.5, 4.5],
-        ..crate::town_bell::BackToWork::NONE
+        ..crate::orders::town_bell::BackToWork::NONE
     };
     // the building's last unit inside: the volleys go back to the master's volley fire
     t.players[1].objects[0].firepower = 2.0;
@@ -1926,7 +1926,7 @@ fn a_villager_beside_a_ship_enters_it_at_once() {
     assert!(!v.town_bell.flag);
     assert_eq!(
         v.town_bell.work,
-        crate::town_bell::BackToWork {
+        crate::orders::town_bell::BackToWork {
             target: 200,
             target_type: -1,
             action: ENTER_ACTION,

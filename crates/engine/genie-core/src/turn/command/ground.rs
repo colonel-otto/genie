@@ -66,7 +66,7 @@ impl Turns {
                 continue;
             }
             let state = u.life.state;
-            let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
+            let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 return Err(GenieError::unsupported(
                     "a sleeping unit sent off a footprint",
                 ));
@@ -120,7 +120,7 @@ impl Turns {
         };
         let loose = self.loose_units(units)?;
         for id in loose {
-            let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
+            let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
             let z = self.players[q].objects[i].position[2];
@@ -130,7 +130,7 @@ impl Turns {
             self.move_point_order(q, i, [x, y, z])?;
         }
         for &id in units {
-            let Some(crate::order::Place::Live(q, i)) = self.place(id) else {
+            let Some(crate::orders::Place::Live(q, i)) = self.place(id) else {
                 continue;
             };
             let unit = &mut self.players[q].objects[i];

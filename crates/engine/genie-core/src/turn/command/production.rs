@@ -56,7 +56,7 @@ impl Turns {
             .into_iter()
             .flatten()
         {
-            let crate::order::Place::Live(p, i) = place else {
+            let crate::orders::Place::Live(p, i) = place else {
                 return Err(GenieError::unsupported(
                     "QUEUE at a building the slice does not have",
                 ));
@@ -163,7 +163,7 @@ impl Turns {
     /// takes its place. −1 for none.
     pub(in crate::turn) fn least_loaded(&self, player: usize, r: &ResearchAt) -> i32 {
         let load = |id: i32| match self.place(id) {
-            Some(crate::order::Place::Live(q, i)) => self.production_load(q, i),
+            Some(crate::orders::Place::Live(q, i)) => self.production_load(q, i),
             _ => 0.0,
         };
         let is_building = |id: i32| {

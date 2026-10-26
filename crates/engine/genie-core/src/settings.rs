@@ -13,7 +13,7 @@ const REGICIDE: i32 = 1;
 /// ([`Settings::sudden_death`]).
 const SUDDEN_DEATH: i32 = 11;
 /// The game mode Empire Wars (13) ([`Settings::empire_wars`]).
-const EMPIRE_WARS: i32 = crate::start_work::EMPIRE_WARS;
+const EMPIRE_WARS: i32 = crate::orders::start_work::EMPIRE_WARS;
 /// `mSubGameModeFlag`'s bit of the Empire Wars rule (`FUN_141324b60(options + 0x18) & 1`).
 const EMPIRE_WARS_FLAG: i32 = 1;
 /// `mSubGameModeFlag`'s bit of the sudden death rule (`FUN_141324b60(options + 0x18) & 2`).
@@ -195,7 +195,7 @@ impl Settings {
 
     /// The Empire Wars rule holds (`BaseWorld::update` at `0x141550c1c`, `FUN_1413cf2f0`'s mode
     /// 4): the game mode Empire Wars (13) or the sub-mode's bit 0. Its first update puts the
-    /// villagers to work ([`crate::start_work`]).
+    /// villagers to work ([`crate::orders::start_work`]).
     #[must_use]
     pub const fn empire_wars(&self) -> bool {
         self.game_mode == EMPIRE_WARS || self.sub_game_mode_flag & EMPIRE_WARS_FLAG != 0

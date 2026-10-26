@@ -240,7 +240,7 @@ impl Unit {
                 Effect::GatherObject(target) => c.works.push(AiWork::Gather(target)),
                 Effect::WorkOn { target, point } => {
                     // slot 0x7e8 with the carried-resource test, any task, +0xa14 0
-                    c.works.push(AiWork::Work(crate::order::Work {
+                    c.works.push(AiWork::Work(crate::orders::Work {
                         target,
                         point,
                         carry_test: true,

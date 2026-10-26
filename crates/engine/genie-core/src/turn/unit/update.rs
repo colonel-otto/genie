@@ -768,7 +768,7 @@ impl Unit {
                         "a builder's building without a place",
                     ))?
                     .position;
-                c.work_order = Some(crate::order::Work {
+                c.work_order = Some(crate::orders::Work {
                     target,
                     point,
                     carry_test: false,

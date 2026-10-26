@@ -829,7 +829,7 @@ fn a_villager_tends_the_nearest_livestock_with_room() {
 /// tends none.
 #[test]
 fn a_villager_ordered_on_a_pasture_works_its_livestock() {
-    let order = |target| crate::order::Work {
+    let order = |target| crate::orders::Work {
         target,
         point: [20.0, 20.0, 0.0],
         carry_test: true,
@@ -866,7 +866,7 @@ fn a_villager_ordered_on_a_pasture_works_its_livestock() {
 /// unit's changes.
 #[test]
 fn a_unit_past_state_2_ignores_a_work_order() {
-    let order = crate::order::Work {
+    let order = crate::orders::Work {
         target: 50,
         point: [20.0, 20.0, 0.0],
         carry_test: true,
@@ -886,7 +886,7 @@ fn a_unit_past_state_2_ignores_a_work_order() {
 /// its own.
 #[test]
 fn a_villager_ordered_on_a_pasture_without_livestock_tends_on() {
-    let order = crate::order::Work {
+    let order = crate::orders::Work {
         target: 50,
         point: [20.0, 20.0, 0.0],
         carry_test: true,
@@ -1352,9 +1352,9 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     // each idle villager's town-bell record: no work, at its own place
     assert_eq!(
         p.objects[1].town_bell.work,
-        crate::town_bell::BackToWork {
+        crate::orders::town_bell::BackToWork {
             point: [29.0, 99.0],
-            ..crate::town_bell::BackToWork::NONE
+            ..crate::orders::town_bell::BackToWork::NONE
         }
     );
     assert_eq!(p.unsupported, Some((1, 1, WALKER_UNMOVING)));
@@ -1794,7 +1794,7 @@ fn repair_world() -> Turns {
 #[test]
 fn a_work_command_on_a_damaged_building_starts_a_repair() {
     let mut t = repair_world();
-    let work = crate::order::Work {
+    let work = crate::orders::Work {
         target: 10028,
         point: [30.0, 88.0, 0.0],
         carry_test: false,
@@ -1838,7 +1838,7 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
         ..t.players[1].objects[1].clone()
     };
     t.players[1].objects.push(other);
-    let work = |target| crate::order::Work {
+    let work = |target| crate::orders::Work {
         target,
         point: [30.0, 88.0, 0.0],
         carry_test: false,
@@ -2339,7 +2339,7 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
 /// (owner −1, the record's point); issued by the unit's owner, priority 100, ready.
 #[test]
 fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
-    use crate::town_bell::BackToWork;
+    use crate::orders::town_bell::BackToWork;
     let mut t = sent_off_world(vec![]);
     let work = BackToWork {
         target: 10028,

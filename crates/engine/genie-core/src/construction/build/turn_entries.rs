@@ -7,7 +7,7 @@ use crate::construction::build::{
     show_built,
 };
 use crate::masters::Master;
-use crate::order::Place;
+use crate::orders::Place;
 use crate::unit_ai::GenieError;
 
 impl crate::turn::Turns {
@@ -313,7 +313,7 @@ impl crate::turn::Turns {
     /// the old one lacked. Not modelled: the attacking units of the foundation the world still
     /// holds (`+0xce0`, [`crate::turn::Unit::attacking_units`]: slot 0x140 on each with the new
     /// object, a repeat of the last skipped). A gate's stack gate takes the old one's lock (slot
-    /// 0x670 with `+0xc7c`, [`crate::order::lock_gate`]). The old building keeps the new
+    /// 0x670 with `+0xc7c`, [`crate::orders::lock_gate`]). The old building keeps the new
     /// object's id (`+0xcb0`, [`crate::turn::Unit::stack_made`]). Not held: the local player's
     /// tracker (`FUN_14165c2a0`, `FUN_14165c470`).
     ///
@@ -396,7 +396,7 @@ impl crate::turn::Turns {
             let locked = lock.ok_or(GenieError::unreachable(
                 "a building without its gate state (every building holds one)",
             ))?;
-            crate::order::lock_gate(nu, locked, now)?;
+            crate::orders::lock_gate(nu, locked, now)?;
         }
         nu.life.hp -= stack.hp_lost;
         // the walks of this update read the last move time the lock set

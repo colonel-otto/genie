@@ -92,7 +92,7 @@ impl Turns {
     /// The mule cart's own search for resources, its unit AI's slot 0x1e8 (`FUN_140c16240`) for
     /// the cart at `idx` of player `p`: [`Turns::cart_find`], then [`Turns::cart_work`]. The
     /// completion runs it ([`Turns::cart_search`]), and so does the Empire Wars start
-    /// ([`crate::start_work`]).
+    /// ([`crate::orders::start_work`]).
     pub(crate) fn cart_work_search(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let found = self.cart_find(p, idx)?;
         self.cart_work(p, idx, found)
@@ -203,7 +203,7 @@ impl Turns {
         idx: usize,
         (target, point): (i32, [f32; 3]),
     ) -> Result<(), GenieError> {
-        let work = crate::order::Work {
+        let work = crate::orders::Work {
             target,
             point,
             carry_test: false,

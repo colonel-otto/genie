@@ -190,8 +190,8 @@ impl Turns {
         let group_id = g.id;
         if let Some(place) = self.place(id) {
             let u = match place {
-                crate::order::Place::Live(p, i) => &mut self.players[p].objects[i],
-                crate::order::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
+                crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
+                crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
             };
             if u.group.id == group_id {
                 if !keep_moving && let Some(m) = u.mover.as_mut() {
@@ -356,8 +356,8 @@ impl Turns {
         let ai_rng = self.streams.get(crate::math::rng::Stream::Ai);
         // a sleeping unit joins as a live one
         let u = match place {
-            crate::order::Place::Live(q, i) => &mut self.players[q].objects[i],
-            crate::order::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+            crate::orders::Place::Live(q, i) => &mut self.players[q].objects[i],
+            crate::orders::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
         };
         u.group.id = group;
         if let Some(ai) = u.ai.as_mut() {

@@ -389,7 +389,7 @@ impl crate::turn::Turns {
         work_on: Option<i32>,
         point: [f32; 2],
     ) -> Result<bool, GenieError> {
-        let Some(crate::order::Place::Live(up, ui)) = self.place(id) else {
+        let Some(crate::orders::Place::Live(up, ui)) = self.place(id) else {
             return Ok(false);
         };
         if !self.players[up].objects[ui].town_bell.flag {
@@ -413,7 +413,7 @@ impl crate::turn::Turns {
             Some(target) => self.order_work(
                 up,
                 ui,
-                &crate::order::Work {
+                &crate::orders::Work {
                     target,
                     point: [x, y, 0.0],
                     carry_test: true,
@@ -613,9 +613,9 @@ mod tests {
             for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5]), (1002, [2.5, 2.5])] {
                 let v = &mut t.object_mut(id).unwrap().1.town_bell;
                 v.flag = id != 1002;
-                v.work = crate::town_bell::BackToWork {
+                v.work = crate::orders::town_bell::BackToWork {
                     point,
-                    ..crate::town_bell::BackToWork::NONE
+                    ..crate::orders::town_bell::BackToWork::NONE
                 };
             }
             t.object_mut(1003).unwrap().1.town_bell.flag = true;
@@ -655,9 +655,9 @@ mod tests {
                 for (id, point) in [(1000, [4.5, 4.5]), (1001, [3.5, 3.5])] {
                     let v = &mut t.object_mut(id).unwrap().1.town_bell;
                     v.flag = true;
-                    v.work = crate::town_bell::BackToWork {
+                    v.work = crate::orders::town_bell::BackToWork {
                         point,
-                        ..crate::town_bell::BackToWork::NONE
+                        ..crate::orders::town_bell::BackToWork::NONE
                     };
                 }
                 tracked(&mut t, VILLAGER, &[1000, 1001]);

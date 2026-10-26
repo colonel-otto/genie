@@ -371,7 +371,7 @@ impl Turns {
         let Some(place) = self.place(id) else {
             return Ok(true);
         };
-        let crate::order::Place::Live(p, idx) = place else {
+        let crate::orders::Place::Live(p, idx) = place else {
             return Err(GenieError::unsupported("a sleeping member's own move"));
         };
         let computer = self.players[p].computer;

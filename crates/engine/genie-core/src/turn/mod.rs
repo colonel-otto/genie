@@ -299,7 +299,7 @@ pub struct Turns {
     /// `mSelectedContentMode` 2 and the tick oracle reads this as 0. Its writer is not located
     /// and the save does not hold it; genie-oracle leaves it at 0.
     pub mode_680: i32,
-    /// The Empire Wars start's pass is due ([`crate::start_work`]): the world's `+0x6c6` is
+    /// The Empire Wars start's pass is due ([`crate::orders::start_work`]): the world's `+0x6c6` is
     /// clear in game mode 13, which a game's start has.
     pub start_work_due: bool,
     /// The world's `+0x844`: the relics (master 0x11d) an effect's spawn made (`FUN_1416136f0`),

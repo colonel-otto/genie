@@ -1,7 +1,7 @@
 //! PATROL, the attack move and their sweep, and the group the splitter keeps.
 
 use crate::math::rng::Stream;
-use crate::order::{
+use crate::orders::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };

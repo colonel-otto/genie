@@ -3,7 +3,7 @@
 
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
-use crate::order::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
+use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 
@@ -114,7 +114,7 @@ impl Turns {
     /// by the squared distance of the centres (the first of equals; none from
     /// [`TABLE_DROP_FAR`] on).
     ///
-    /// [`TABLE_DROP_FAR`]: crate::order::TABLE_DROP_FAR
+    /// [`TABLE_DROP_FAR`]: crate::orders::TABLE_DROP_FAR
     pub(crate) fn table_drop_site(
         &self,
         p: usize,
@@ -269,7 +269,7 @@ impl Turns {
     }
 
     /// `FUN_141205ac0`: the unit at (`p`, `idx`) queues its way back to work: the work its
-    /// town-bell records keep ([`crate::town_bell::TownBell::back_to_work`]: the object the world
+    /// town-bell records keep ([`crate::orders::town_bell::TownBell::back_to_work`]: the object the world
     /// holds, the second record moved up when it holds the object; else the record as it is)
     /// goes in front of its unit AI's queue (`FUN_140c41ab0` -> `FUN_140c42640`): the order on a
     /// target (`0x325`) issued by its owner on the object (its master the target type, its owner
@@ -277,7 +277,7 @@ impl Turns {
     /// its point); height 0, range 0, priority 100, shown at the point, ready. A unit without a
     /// unit AI only looks the records up.
     pub(crate) fn queue_way_back(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
-        use crate::town_bell::RecordTarget;
+        use crate::orders::town_bell::RecordTarget;
         let mut bell = self.players[p].objects[idx].town_bell;
         let lookup = |t: i32| -> Option<RecordTarget> {
             let (op, o) = self.object(t)?;

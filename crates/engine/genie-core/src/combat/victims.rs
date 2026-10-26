@@ -145,11 +145,11 @@ impl Turns {
     /// in their order).
     pub(crate) fn set_victim(&mut self, v: &Victim) -> Result<(), GenieError> {
         let (q, j) = match self.place(v.id) {
-            Some(crate::order::Place::Live(q, j)) => (q, j),
+            Some(crate::orders::Place::Live(q, j)) => (q, j),
             // an object asleep (a tree a blast reached) holds what the hit left; below 1 hit
             // point (COMISS/JBE: a NaN sleeps on) the hit woke it (FUN_14119deb0 with 0) to the
             // end of its player's live list, where the rest is written back
-            Some(crate::order::Place::Sleeping(q, j)) => {
+            Some(crate::orders::Place::Sleeping(q, j)) => {
                 let u = &mut self.players[q].sleeping[j];
                 u.life.hp = v.hp;
                 u.life.amount = v.amount;

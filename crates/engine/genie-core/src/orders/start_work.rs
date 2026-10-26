@@ -20,7 +20,7 @@ use crate::GenieError;
 use crate::gathering::gather_search::{self, Candidate};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
-use crate::order::Work;
+use crate::orders::Work;
 use crate::turn::Turns;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).
@@ -61,7 +61,7 @@ const fn start_of(class: i16, building: bool, cart_task: bool) -> Option<Start> 
 }
 
 impl Turns {
-    /// The pass for player `p` ([`crate::start_work`]).
+    /// The pass for player `p` ([`crate::orders::start_work`]).
     ///
     /// # Errors
     ///

@@ -1,7 +1,7 @@
 //! An interact order's unit, an order on a target, MOVE and its groups.
 
 use crate::math::rng::Stream;
-use crate::order::{
+use crate::orders::{
     CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
     offset_point, readiness, set_differentiator_groups,
 };
@@ -214,7 +214,7 @@ impl Turns {
     /// box), any others the point itself, in the splitter's order, each listing the others in its
     /// ignore list ([`Turns::move_unit`]).
     ///
-    /// [`centroid`]: crate::order::points::centroid
+    /// [`centroid`]: crate::orders::points::centroid
     pub(crate) fn move_order(
         &mut self,
         player: usize,

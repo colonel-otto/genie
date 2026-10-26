@@ -41,7 +41,7 @@ use crate::masters::{Master, Masters, Task};
 #[cfg(test)]
 use crate::movement::move_to::{MoveTo, Walk};
 #[cfg(test)]
-use crate::order::GARRISON;
+use crate::orders::GARRISON;
 #[cfg(test)]
 use crate::turn::Turns;
 

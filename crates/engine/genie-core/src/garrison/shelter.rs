@@ -8,7 +8,7 @@ use crate::garrison::{
     has_garrison_task,
 };
 use crate::movement::footprint_gap_squared;
-use crate::order::{BUILDING, GARRISON, Work};
+use crate::orders::{BUILDING, GARRISON, Work};
 use crate::turn::Turns;
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
@@ -357,7 +357,7 @@ impl Turns {
         }
         let loose = self.loose_units_kept(going, &|id| kept.contains(&id))?;
         for id in loose {
-            let Some(crate::order::Place::Live(p, idx)) = self.place(id) else {
+            let Some(crate::orders::Place::Live(p, idx)) = self.place(id) else {
                 return Err(GenieError::unsupported(
                     "a garrison of a unit the slice does not hold live",
                 ));

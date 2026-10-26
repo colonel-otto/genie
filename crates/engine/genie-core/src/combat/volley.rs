@@ -545,7 +545,7 @@ pub(crate) struct Aimed {
 /// `FUN_14120ea30` of an attacker of `master` with `firepower` (`+0xa00`): a building can attack
 /// when of class 51 or 54, with a missile, or with a firepower above 1; any other attacker can.
 pub(crate) fn armed(master: &Master, firepower: f32) -> bool {
-    master.kind != crate::order::BUILDING
+    master.kind != crate::orders::BUILDING
         || matches!(master.class, 51 | 54)
         || master.missile != -1
         || ARMED_FIREPOWER < firepower

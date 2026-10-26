@@ -278,7 +278,7 @@ impl Turns {
                 queued,
                 ignore_pending,
             } => {
-                let sweep = crate::order::Sweep {
+                let sweep = crate::orders::Sweep {
                     patrol: false,
                     reset,
                     queued,
@@ -407,12 +407,12 @@ impl Turns {
                 continue;
             };
             let (p, i) = match place {
-                crate::order::Place::Live(p, i) | crate::order::Place::Sleeping(p, i) => (p, i),
+                crate::orders::Place::Live(p, i) | crate::orders::Place::Sleeping(p, i) => (p, i),
             };
             let player = &mut self.players[p];
             let unit = match place {
-                crate::order::Place::Live(..) => &mut player.objects[i],
-                crate::order::Place::Sleeping(..) => &mut player.sleeping[i],
+                crate::orders::Place::Live(..) => &mut player.objects[i],
+                crate::orders::Place::Sleeping(..) => &mut player.sleeping[i],
             };
             if let Some(ai) = unit.ai.as_mut() {
                 ai.reset_for_order(self.streams.get(Stream::Ai));

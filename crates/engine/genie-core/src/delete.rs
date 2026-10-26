@@ -9,7 +9,7 @@
 use crate::GenieError;
 use crate::construction::build::held;
 use crate::masters::Master;
-use crate::order::Place;
+use crate::orders::Place;
 use crate::turn::Turns;
 
 /// The classes no delete takes (`DAT_142f925c0`, and `FUN_14120f620`'s own test): livestock,

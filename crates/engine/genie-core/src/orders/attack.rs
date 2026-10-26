@@ -1,7 +1,7 @@
 //! An attack's start, a hunt's and an action's retarget.
 
 use crate::math::rng::Stream;
-use crate::order::BUILDING;
+use crate::orders::BUILDING;
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 

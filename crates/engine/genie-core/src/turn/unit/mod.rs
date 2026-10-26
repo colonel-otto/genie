@@ -204,8 +204,8 @@ pub struct Unit {
     /// `+0x650`, `mLastHumanOrderTime`: the world time of the last order a human gave it
     /// (`FUN_140e5e780`, for a unit with a unit AI); an animal's idle check lowers it to 5000.
     pub last_human_order: u32,
-    /// A combat object's town-bell flag and back-to-work records ([`crate::town_bell`]).
-    pub town_bell: crate::town_bell::TownBell,
+    /// A combat object's town-bell flag and back-to-work records ([`crate::orders::town_bell`]).
+    pub town_bell: crate::orders::town_bell::TownBell,
     /// The object is a combat object (types 50 and up): its update keeps its sight mask and its
     /// records in the objects-in-sight registry.
     pub combat: bool,

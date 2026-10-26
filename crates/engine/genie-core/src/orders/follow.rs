@@ -2,7 +2,7 @@
 
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
-use crate::order::{
+use crate::orders::{
     Followed, GUARD_RANGE, LIVESTOCK, MOVING, Place, VILLAGER, follow_axis, follow_spread,
     ignore_unit,
 };

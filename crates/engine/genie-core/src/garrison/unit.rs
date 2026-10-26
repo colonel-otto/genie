@@ -351,7 +351,7 @@ impl Unit {
         };
         if crate::tasks::drops_at(w.drop_sites, bm.id, &actor)
             && 0.0 < self.life.amount
-            && bm.kind == crate::order::BUILDING
+            && bm.kind == crate::orders::BUILDING
         {
             let kind = self.life.attribute_type;
             let resource = match kind {
@@ -371,7 +371,7 @@ impl Unit {
                 self.life.amount = 0.0;
             }
         }
-        if bm.kind == crate::order::BUILDING
+        if bm.kind == crate::orders::BUILDING
             && building.life.hp
                 <= f32::from(bm.hit_points) * crate::math::image::garrison::ENTER_HP_SHARE
         {
@@ -469,7 +469,7 @@ impl Unit {
                 r.entries.entry(self.id).or_default().mask = 0;
             }
             // a building's sight takes a circle of 5 (FUN_141212e10, type 80 only)
-            if bm.kind == crate::order::BUILDING {
+            if bm.kind == crate::orders::BUILDING {
                 let _ = v.sight_on_los(target, at, building_radius, false, 5, false);
             }
         }
@@ -486,7 +486,7 @@ impl Unit {
                         .ok_or(GenieError::unsupported(
                             "a town-bell record of a unit without a unit AI",
                         ))?;
-                self.town_bell.record(crate::town_bell::BackToWork {
+                self.town_bell.record(crate::orders::town_bell::BackToWork {
                     target,
                     target_type: -1,
                     action,
@@ -494,7 +494,7 @@ impl Unit {
                     point: [at[0], at[1]],
                 });
             }
-            if bm.kind == crate::order::BUILDING
+            if bm.kind == crate::orders::BUILDING
                 && building.life.state == 2
                 && bm.building.is_some_and(|b| b.garrison_type & 1 != 0)
             {

@@ -389,7 +389,7 @@ impl Turns {
     /// 3, which only a trade's, `FUN_140ae22b0`, answers: the slice holds no trades); a moving
     /// object's (`FUN_14115cf80`) shows its standing sprite (slot 0x798: its master's, `+0x470`;
     /// a trade cart's with goods, `FUN_14106a940`, is its trade task's, and the unit's own
-    /// `+0x8a9` override is not held) when it has one (slot 0x68, as [`crate::order`]'s: the top
+    /// `+0x8a9` override is not held) when it has one (slot 0x68, as [`crate::orders`]'s: the top
     /// speed is the standing sprite's, [`crate::movement::Mover::shows_standing`], and the
     /// sprite itself where the slice holds it).
     ///
@@ -482,8 +482,8 @@ impl Turns {
         let place = self.place(id).expect("found above");
         let rng = self.streams.get(crate::math::rng::Stream::Sprite);
         let u = match place {
-            crate::order::Place::Live(p, i) => &mut self.players[p].objects[i],
-            crate::order::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
+            crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
+            crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
         };
         crate::combat::attack::set_sprite(&mut u.sprite, g, rng);
         Ok(true)

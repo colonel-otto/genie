@@ -11,7 +11,7 @@ use crate::unit_ai::{BUILD_ACTION, GenieError};
 
 impl Unit {
     /// The Build's `set_state(8)` from its update (case 7 searching again): the drop-site table's
-    /// nearest drop site for what the unit carries ([`crate::order::nearest_table_site`] over
+    /// nearest drop site for what the unit carries ([`crate::orders::nearest_table_site`] over
     /// its player's objects; the sleeping ones, static only, are never drop sites) and the task
     /// its slot 0x820 finds on it ([`task_search`] with any action type, no switch: its range,
     /// else the Build task's), unless it carries nothing (COMISS: a NaN load neither); then
@@ -40,7 +40,7 @@ impl Unit {
                     .find(|u| u.id == id)
                     .map(|u| (u.life.state, u.position))
             };
-            let found = crate::order::nearest_table_site(
+            let found = crate::orders::nearest_table_site(
                 (c.drop_sites, c.civ, c.tracker),
                 (at, self.life.attribute_type, own.class),
                 look,

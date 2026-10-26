@@ -502,7 +502,7 @@ pub fn find_task<'m>(
             && (t.master.class == class::TRANSPORT || own.class != class::VILLAGER || filter == 3)
         {
             if let Some(task) = first(list, |task| {
-                task.action_type == crate::order::GARRISON
+                task.action_type == crate::orders::GARRISON
                     && task.object_group == t.master.class
                     && wanted(filter, task)
             }) {

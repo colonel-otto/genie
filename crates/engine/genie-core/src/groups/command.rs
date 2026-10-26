@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::PathData;
-use crate::order::Place;
+use crate::orders::Place;
 use crate::pathing::tile_path::Path;
 use crate::turn::Turns;
 

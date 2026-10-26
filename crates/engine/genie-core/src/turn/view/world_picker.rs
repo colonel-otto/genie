@@ -128,7 +128,7 @@ impl WorldPicker<'_> {
         let unit = victim_of(f, fm, fa, fq, terrain, self.mode_680);
         let mut factor =
             crate::combat::damage::elevation_factor(f.position[2], unit.attack_elevation, &target);
-        if fm.kind == crate::order::BUILDING {
+        if fm.kind == crate::orders::BUILDING {
             factor = crate::combat::damage::building_elevation_factor(
                 factor, f.relics, tm.kind, t.relics,
             );

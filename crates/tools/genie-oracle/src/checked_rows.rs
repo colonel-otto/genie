@@ -58,7 +58,7 @@ pub struct ObjectRow {
     /// A building's gate lock.
     pub gate: Option<genie_core::turn::Gate>,
     /// A combat object's town-bell flag and back-to-work records.
-    pub town_bell: Option<genie_core::town_bell::TownBell>,
+    pub town_bell: Option<genie_core::orders::town_bell::TownBell>,
     /// A combat object's `next_volley` (the missiles of its volley under way already fired) and
     /// `mReloadWorldtime` (when it may attack again).
     pub volley: Option<(u8, u32)>,
@@ -256,7 +256,7 @@ impl<A: Same, B: Same, C: Same> Same for (A, B, C) {
     }
 }
 
-impl Same for genie_core::town_bell::BackToWork {
+impl Same for genie_core::orders::town_bell::BackToWork {
     fn same(&self, other: &Self) -> bool {
         self.target == other.target
             && self.target_type == other.target_type
@@ -266,7 +266,7 @@ impl Same for genie_core::town_bell::BackToWork {
     }
 }
 
-impl Same for genie_core::town_bell::TownBell {
+impl Same for genie_core::orders::town_bell::TownBell {
     fn same(&self, other: &Self) -> bool {
         self.flag == other.flag
             && self.work.same(&other.work)

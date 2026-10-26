@@ -2,7 +2,7 @@
 
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Stream;
-use crate::order::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
+use crate::orders::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 

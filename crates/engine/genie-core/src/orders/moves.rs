@@ -3,7 +3,7 @@
 use crate::combat::attack::gaps;
 use crate::masters::Master;
 use crate::math::rng::Stream;
-use crate::order::{
+use crate::orders::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };

@@ -125,7 +125,7 @@ pub(crate) fn task_target_with<'a>(
 /// routine switches the unit to that master (slot 0x90 with 0), its own too, which is the
 /// caller's. None: no task. The terrain under the target's place, which only a task for a
 /// terrain reads, is not passed (as `Turns::find_work_task`, the same routine's port in
-/// `crate::order`, which this module cannot call).
+/// `crate::orders`, which this module cannot call).
 pub(crate) fn task_search<'m>(
     masters: &'m Masters,
     actor: &Actor<'_>,

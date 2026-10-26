@@ -3,7 +3,7 @@
 
 use crate::masters::Master;
 use crate::math::rng::Stream;
-use crate::order::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
+use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
 use crate::tasks::Diplomacy;
 use crate::turn::{Releaser, Turns, Unit, World};
 use crate::unit_ai::GenieError;

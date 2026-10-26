@@ -5,7 +5,7 @@ use crate::garrison::{
     BUILDING_CLASS, COMBAT_KIND, MASTER_1808, SIEGE_CLASS, SIEGE_UNLOAD, VILLAGER_CLASS,
     WHOLE_SHARE_CLASS,
 };
-use crate::order::BUILDING;
+use crate::orders::BUILDING;
 use crate::turn::Turns;
 
 /// UNLOAD's point without one (`DAT_14330ec20`).
@@ -102,7 +102,7 @@ impl Turns {
         id: i32,
         point: [f32; 2],
     ) -> Result<(), GenieError> {
-        let Some(crate::order::Place::Live(cp, ci)) = self.place(c) else {
+        let Some(crate::orders::Place::Live(cp, ci)) = self.place(c) else {
             return Err(GenieError::unreachable(
                 "a building that holds units outside the live lists",
             ));
@@ -187,7 +187,7 @@ impl Turns {
     /// zone; `last` the command's): it takes the holder's place (`FUN_14119d610`), leaves it
     /// (slot 0x1a8) for the place at the holder's height (slot 0x58,
     /// [`Turns::leave_container`]), takes its own stance again at its place (its unit AI's slot
-    /// 0x1c0 with `+0x1a9`, [`crate::order::set_stance`]) and, of a type above 69, is no longer
+    /// 0x1c0 with `+0x1a9`, [`crate::orders::set_stance`]) and, of a type above 69, is no longer
     /// under the town bell (`+0x9dc`). Without a free place the interface's message 0x85 is all.
     pub(super) fn drop_out(
         &mut self,
@@ -210,7 +210,7 @@ impl Turns {
             return Ok(());
         }
         let made = self.master_of(ip, unit.life.master_id)?.clone();
-        let Some(crate::order::Place::Live(hp, hi)) = self.place(holder) else {
+        let Some(crate::orders::Place::Live(hp, hi)) = self.place(holder) else {
             return Err(GenieError::unreachable(
                 "a transport that holds units outside the live lists",
             ));
@@ -233,7 +233,7 @@ impl Turns {
         if let Some(ai) = unit.ai.as_mut() {
             let mut fx = Vec::new();
             let stance = ai.stance;
-            crate::order::set_stance(ai, stance, place, &mut fx)?;
+            crate::orders::set_stance(ai, stance, place, &mut fx)?;
             for _ in fx.iter().filter(|e| **e == crate::unit_ai::Effect::Stop) {
                 self.command_stop(up, ui)?;
             }
@@ -348,17 +348,17 @@ impl Turns {
     /// ([`Turns::back_outside`]). Once out or back it is no longer under the town bell
     /// (`+0x9dc`; `+0xa14` takes 1, not held). True when it went.
     ///
-    /// [`TownBell::back_to_work`]: crate::town_bell::TownBell::back_to_work
+    /// [`TownBell::back_to_work`]: crate::orders::town_bell::TownBell::back_to_work
     pub(crate) fn back_to_work(
         &mut self,
         from: Option<(usize, usize)>,
         id: i32,
     ) -> Result<bool, GenieError> {
-        use crate::town_bell::RecordTarget;
+        use crate::orders::town_bell::RecordTarget;
         let (up, ui) = match from {
             Some(_) => self.live_inside(id)?,
             None => match self.place(id) {
-                Some(crate::order::Place::Live(p, i)) => (p, i),
+                Some(crate::orders::Place::Live(p, i)) => (p, i),
                 // the callers pass an object of type 70 or more the world holds, which never
                 // sleeps
                 _ => return Ok(false),

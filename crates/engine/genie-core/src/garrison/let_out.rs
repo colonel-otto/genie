@@ -6,7 +6,7 @@ use crate::garrison::{
     COMBAT_KIND, NO_POINT, SIEGE_CLASS, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share,
 };
 use crate::masters::Master;
-use crate::order::{BUILDING, Work};
+use crate::orders::{BUILDING, Work};
 use crate::turn::Turns;
 
 impl Turns {
@@ -14,7 +14,7 @@ impl Turns {
     /// it is.
     pub(crate) fn live_inside(&self, id: i32) -> Result<(usize, usize), GenieError> {
         match self.place(id) {
-            Some(crate::order::Place::Live(p, i)) => Ok((p, i)),
+            Some(crate::orders::Place::Live(p, i)) => Ok((p, i)),
             _ => Err(GenieError::unsupported(
                 "a unit inside a building outside the live lists",
             )),
@@ -261,7 +261,7 @@ impl Turns {
                 ai.stop_with(true, Some(place), &mut fx)?;
                 ai.remove_target();
                 let stance = ai.stance;
-                crate::order::set_stance(ai, stance, place, &mut fx)?;
+                crate::orders::set_stance(ai, stance, place, &mut fx)?;
                 for _ in fx.iter().filter(|e| **e == crate::unit_ai::Effect::Stop) {
                     self.command_stop(up, ui)?;
                 }

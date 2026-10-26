@@ -196,7 +196,7 @@ pub(crate) struct Context<'a> {
     pub(crate) completions: Vec<(i32, Option<crate::construction::build::StackUnit>, bool)>,
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`Turns::order_work`]).
-    pub(in crate::turn) work_order: Option<crate::order::Work>,
+    pub(in crate::turn) work_order: Option<crate::orders::Work>,
     /// The Transport's unload in its state 6 (`FUN_140aa3ba0`), which the caller runs after the
     /// actions and before the unit AI part ([`Turns::transport_unload`]).
     pub(crate) transport_unload: bool,
@@ -289,7 +289,7 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::turn) completions:
         Vec<(i32, Option<crate::construction::build::StackUnit>, bool)>,
     /// [`Context`]'s `work_order`.
-    pub(in crate::turn) work_order: Option<crate::order::Work>,
+    pub(in crate::turn) work_order: Option<crate::orders::Work>,
     /// [`Context`]'s `transport_unload`.
     pub(in crate::turn) transport_unload: bool,
     /// [`Context`]'s `blasted`.

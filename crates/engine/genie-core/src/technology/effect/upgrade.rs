@@ -48,7 +48,7 @@ impl Turns {
         mode: i16,
         object: Option<i32>,
     ) -> Result<(), GenieError> {
-        use crate::order::Place;
+        use crate::orders::Place;
         use crate::technology::upgrade::upgradable;
         let Some(masters) = self.masters.get(p) else {
             return Ok(());
@@ -222,13 +222,13 @@ impl Turns {
                     break;
                 };
                 if self.has_room(bp, bu, None)? {
-                    let Some(crate::order::Place::Live(np, ni)) = self.place(new) else {
+                    let Some(crate::orders::Place::Live(np, ni)) = self.place(new) else {
                         continue;
                     };
                     self.enter_forced(np, ni, b)?;
                 }
                 if attribute(&self.players[p], 283) <= 0.0 {
-                    let Some(crate::order::Place::Live(bp, bi)) = self.place(b) else {
+                    let Some(crate::orders::Place::Live(bp, bi)) = self.place(b) else {
                         break;
                     };
                     let _ = self.let_out(bp, bi, new, [-1.0, -1.0], (None, false))?;

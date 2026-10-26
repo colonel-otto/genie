@@ -1,7 +1,7 @@
 //! A new unit's walk to its building's gather point (`FUN_140ace9c0`).
 
 use crate::math::rng::Stream;
-use crate::order::Work;
+use crate::orders::Work;
 use crate::production::spawn::{BUILDING, VILLAGER};
 use crate::turn::{GatherPoint, Turns, Unit};
 use crate::unit_ai::GenieError;

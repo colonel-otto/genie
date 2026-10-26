@@ -7,7 +7,7 @@ use crate::garrison::{
     UNPLACED, UNREACHED, Walking, enter_view, ship_reaches,
 };
 use crate::masters::Task;
-use crate::order::{BUILDING, GARRISON};
+use crate::orders::{BUILDING, GARRISON};
 use crate::turn::Turns;
 
 impl Turns {
@@ -268,8 +268,8 @@ impl Turns {
         let tm = self.master_of(tp, t.life.master_id)?.clone();
         let room = self.has_room(tp, t, Some(id))?;
         let t = match self.place(target) {
-            Some(crate::order::Place::Live(p, i)) => &self.players[p].objects[i],
-            Some(crate::order::Place::Sleeping(p, i)) => &self.players[p].sleeping[i],
+            Some(crate::orders::Place::Live(p, i)) => &self.players[p].objects[i],
+            Some(crate::orders::Place::Sleeping(p, i)) => &self.players[p].sleeping[i],
             None => return Err(UNPLACED),
         };
         enter_view(
@@ -305,7 +305,7 @@ impl Turns {
         transport: i32,
         to: [f32; 3],
     ) -> Result<(), GenieError> {
-        let Some(crate::order::Place::Live(tp, ti)) = self.place(transport) else {
+        let Some(crate::orders::Place::Live(tp, ti)) = self.place(transport) else {
             return Err(UNREACHED);
         };
         let ship = &self.players[tp].objects[ti];
@@ -326,7 +326,7 @@ impl Turns {
     /// The transport's slot 0x340 (`FUN_141216c50`, [`Turns::move_aside`]: range 0, forced,
     /// running) to `to`, where it meets an entering unit.
     pub(crate) fn ship_move(&mut self, ship: i32, to: [f32; 3]) -> Result<(), GenieError> {
-        let Some(crate::order::Place::Live(p, i)) = self.place(ship) else {
+        let Some(crate::orders::Place::Live(p, i)) = self.place(ship) else {
             return Err(UNREACHED);
         };
         let walk = crate::unit_ai::AiMove {
@@ -353,7 +353,7 @@ impl Turns {
             .flat_map(|p| p.objects.iter().chain(&p.sleeping))
             .filter(|u| u.life.inside == Some(target))
             .count();
-        let Some(crate::order::Place::Live(tp, ti)) = self.place(target) else {
+        let Some(crate::orders::Place::Live(tp, ti)) = self.place(target) else {
             return Err(ENTER_SLEEPING);
         };
         let mut unit = std::mem::replace(
@@ -414,7 +414,7 @@ impl Turns {
         idx: usize,
         target: i32,
     ) -> Result<(), GenieError> {
-        let Some(crate::order::Place::Live(tp, ti)) = self.place(target) else {
+        let Some(crate::orders::Place::Live(tp, ti)) = self.place(target) else {
             return Err(ENTER_SLEEPING);
         };
         let me = self

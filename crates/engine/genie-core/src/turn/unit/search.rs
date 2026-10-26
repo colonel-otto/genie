@@ -27,7 +27,7 @@ impl Unit {
         others: &[Self],
         building: i32,
         built: i16,
-    ) -> Result<Option<crate::order::Work>, GenieError> {
+    ) -> Result<Option<crate::orders::Work>, GenieError> {
         use crate::gathering::gather_search::{self, Candidate};
         use crate::math::image::gather_search::{REACH_CAP, REACH_FLOOR};
         /// The reach a line of sight below the floor takes (the Build's immediate 4.0).
@@ -138,7 +138,7 @@ impl Unit {
                 "a builder's new work without a place",
             ))?
             .position;
-        Ok(Some(crate::order::Work {
+        Ok(Some(crate::orders::Work {
             target,
             point,
             carry_test: false,

@@ -407,7 +407,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/actions.rs",
+      "file": "crates/engine/genie-core/src/orders/actions.rs",
       "function": "Turns::toggle_gate",
       "line": 204,
       "cyclomatic": 11.0,
@@ -416,7 +416,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/actions.rs",
+      "file": "crates/engine/genie-core/src/orders/actions.rs",
       "function": "switch_master",
       "line": 356,
       "cyclomatic": 27.0,
@@ -425,7 +425,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/attack.rs",
+      "file": "crates/engine/genie-core/src/orders/attack.rs",
       "function": "Turns::retarget_hunt",
       "line": 260,
       "cyclomatic": 11.0,
@@ -434,7 +434,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/attack.rs",
+      "file": "crates/engine/genie-core/src/orders/attack.rs",
       "function": "Turns::start_attack",
       "line": 22,
       "cyclomatic": 39.0,
@@ -443,7 +443,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/drop_site.rs",
+      "file": "crates/engine/genie-core/src/orders/drop_site.rs",
       "function": "Turns::ordered_drop_site",
       "line": 71,
       "cyclomatic": 6.0,
@@ -452,7 +452,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/gather.rs",
+      "file": "crates/engine/genie-core/src/orders/gather.rs",
       "function": "Turns::gather_take_move",
       "line": 123,
       "cyclomatic": 11.0,
@@ -461,7 +461,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/gather.rs",
+      "file": "crates/engine/genie-core/src/orders/gather.rs",
       "function": "Turns::hunt_take_move",
       "line": 201,
       "cyclomatic": 13.0,
@@ -470,7 +470,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/gather.rs",
+      "file": "crates/engine/genie-core/src/orders/gather.rs",
       "function": "Turns::retarget_gather",
       "line": 18,
       "cyclomatic": 27.0,
@@ -479,7 +479,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/gather.rs",
+      "file": "crates/engine/genie-core/src/orders/gather.rs",
       "function": "Turns::start_gather",
       "line": 277,
       "cyclomatic": 18.0,
@@ -488,7 +488,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/interact.rs",
+      "file": "crates/engine/genie-core/src/orders/interact.rs",
       "function": "Turns::interact_unit",
       "line": 22,
       "cyclomatic": 22.0,
@@ -497,7 +497,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/interact.rs",
+      "file": "crates/engine/genie-core/src/orders/interact.rs",
       "function": "Turns::order_on_target",
       "line": 170,
       "cyclomatic": 6.0,
@@ -506,7 +506,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/moves.rs",
+      "file": "crates/engine/genie-core/src/orders/moves.rs",
       "function": "Turns::move_unit",
       "line": 22,
       "cyclomatic": 21.0,
@@ -515,7 +515,25 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/tasks.rs",
+      "file": "crates/engine/genie-core/src/orders/start_work.rs",
+      "function": "Turns::farm_under",
+      "line": 134,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/orders/start_work.rs",
+      "function": "Turns::start_work",
+      "line": 70,
+      "cyclomatic": 20.0,
+      "coverage": 0.0,
+      "crap": 420.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/orders/tasks.rs",
       "function": "Turns::build_take",
       "line": 378,
       "cyclomatic": 13.0,
@@ -524,7 +542,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/tasks.rs",
+      "file": "crates/engine/genie-core/src/orders/tasks.rs",
       "function": "Turns::gather_command",
       "line": 63,
       "cyclomatic": 7.0,
@@ -533,7 +551,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/tasks.rs",
+      "file": "crates/engine/genie-core/src/orders/tasks.rs",
       "function": "Turns::start_build",
       "line": 95,
       "cyclomatic": 8.0,
@@ -542,7 +560,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/unit_order.rs",
+      "file": "crates/engine/genie-core/src/orders/unit_order.rs",
       "function": "Turns::unit_order",
       "line": 195,
       "cyclomatic": 47.0,
@@ -551,7 +569,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/work.rs",
+      "file": "crates/engine/genie-core/src/orders/work.rs",
       "function": "Turns::work_command",
       "line": 231,
       "cyclomatic": 63.0,
@@ -560,7 +578,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/order/work.rs",
+      "file": "crates/engine/genie-core/src/orders/work.rs",
       "function": "Turns::work_move",
       "line": 456,
       "cyclomatic": 15.0,
@@ -674,24 +692,6 @@
       "cyclomatic": 78.0,
       "coverage": 53.125,
       "crap": 704.6326904296875,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/start_work.rs",
-      "function": "Turns::farm_under",
-      "line": 134,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/start_work.rs",
-      "function": "Turns::start_work",
-      "line": 70,
-      "cyclomatic": 20.0,
-      "coverage": 0.0,
-      "crap": 420.0,
       "crate": "genie-core"
     },
     {

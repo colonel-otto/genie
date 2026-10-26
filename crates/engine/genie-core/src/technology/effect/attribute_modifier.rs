@@ -150,8 +150,8 @@ impl Turns {
             let place = self.place(id).expect("found above");
             let rng = self.streams.get(Stream::Sprite);
             let u = match place {
-                crate::order::Place::Live(q, i) => &mut self.players[q].objects[i],
-                crate::order::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
+                crate::orders::Place::Live(q, i) => &mut self.players[q].objects[i],
+                crate::orders::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
             };
             if u.sprite.is_some() {
                 crate::combat::attack::set_sprite(&mut u.sprite, graphic, rng);

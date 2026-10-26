@@ -7,7 +7,7 @@
 use crate::GenieError;
 use crate::masters::{Master, Task, master_type};
 use crate::math::rng::{Stream, Well512};
-use crate::order::Place;
+use crate::orders::Place;
 use crate::sprite::Graphic;
 use crate::turn::{Turns, Unit};
 

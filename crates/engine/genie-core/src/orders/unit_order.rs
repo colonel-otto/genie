@@ -2,7 +2,7 @@
 
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
-use crate::order::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
+use crate::orders::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::GenieError;
 

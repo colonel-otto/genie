@@ -95,7 +95,7 @@ impl Turns {
         watched: bool,
     ) -> Result<(), GenieError> {
         self.annexes_change_hands(old, id, new)?;
-        let Some(crate::order::Place::Live(_, idx)) = self.place(id) else {
+        let Some(crate::orders::Place::Live(_, idx)) = self.place(id) else {
             return Err(crate::turn::unit::HANDS_LEFT);
         };
         let u = &self.players[old].objects[idx];
@@ -305,7 +305,7 @@ impl Turns {
             .map_or_else(Vec::new, |(_, u)| u.garrison.clone());
         let mut stayed = Vec::new();
         for &g in inside.iter().rev() {
-            let Some(crate::order::Place::Live(_, bi)) = self.place(id) else {
+            let Some(crate::orders::Place::Live(_, bi)) = self.place(id) else {
                 break;
             };
             if !self.let_out(owner, bi, g, [HANDOVER_NO_POINT; 2], (None, true))? {

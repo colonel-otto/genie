@@ -141,7 +141,7 @@ impl UnitView<'_> {
             drop_sites: self.drop_sites,
         };
         let Some((task, switch)) =
-            task_search(masters, &actor, &t, &general, crate::order::GARRISON, &dip)?
+            task_search(masters, &actor, &t, &general, crate::orders::GARRISON, &dip)?
         else {
             return Ok(false);
         };
@@ -150,7 +150,7 @@ impl UnitView<'_> {
             .every
             .get(tp)
             .and_then(|m| m.get(t_unit.life.master_id))
-            .is_some_and(|m| m.kind == crate::order::BUILDING);
+            .is_some_and(|m| m.kind == crate::orders::BUILDING);
         let entered = if building {
             t_unit.annex_of.unwrap_or(target)
         } else {

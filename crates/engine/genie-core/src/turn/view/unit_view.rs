@@ -90,7 +90,7 @@ impl UnitView<'_> {
             let gap = footprint_gap_squared(u.position, m.radius, t.position, tm.radius);
             let in_range =
                 gap <= m.weapon_range * m.weapon_range && m.min_range * m.min_range <= gap;
-            let spared = patrolling && tm.kind == crate::order::BUILDING && tm.weapons.is_empty();
+            let spared = patrolling && tm.kind == crate::orders::BUILDING && tm.weapons.is_empty();
             if in_range && !spared {
                 return Ok(false);
             }
@@ -318,7 +318,7 @@ impl UnitView<'_> {
 impl<'u> UnitView<'u> {
     /// Slot 0x90 with 0 from `own` to `next` (a task's switch, a villager's swap): the action list
     /// clears (the old actions' teardowns), then the master's unit part
-    /// ([`crate::order::switch_master`]); what it gives and takes of the owner's attributes and
+    /// ([`crate::orders::switch_master`]); what it gives and takes of the owner's attributes and
     /// its promotion are the owner's part after the update.
     ///
     /// # Errors
@@ -336,13 +336,13 @@ impl<'u> UnitView<'u> {
             player: self.player,
         };
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
-        let world = crate::order::SwitchWorld {
+        let world = crate::orders::SwitchWorld {
             spatial: self.spatial,
             pathing: self.pathing,
             graphics: self.graphics,
             sprite: self.sprite,
         };
-        let switched = crate::order::switch_master(unit, own, next, world)?;
+        let switched = crate::orders::switch_master(unit, own, next, world)?;
         self.attribute_adds.extend(switched.leaving);
         if switched.promoted {
             self.promotions.push((unit.id, own.id, next.id));
@@ -411,13 +411,13 @@ impl<'u> UnitView<'u> {
                 .map(|u| (player, u))
                 .or_else(|| foreign.find(id))
         };
-        let (tp, t) = find(target).ok_or(crate::order::HUNT_TARGET_GONE)?;
+        let (tp, t) = find(target).ok_or(crate::orders::HUNT_TARGET_GONE)?;
         let t_master = self
             .every
             .get(tp)
             .and_then(|m| m.get(t.life.master_id))
             .ok_or(crate::turn::OBJECT_MASTER)?;
-        let main = if t_master.kind == crate::order::BUILDING {
+        let main = if t_master.kind == crate::orders::BUILDING {
             t.annex_of.unwrap_or(target)
         } else {
             target
@@ -436,7 +436,7 @@ impl<'u> UnitView<'u> {
             task_target_with(target, 1, &find, self.every)?,
             task_target_with(target, 2, &find, self.every)?,
         ) else {
-            return Err(crate::order::HUNT_TARGET_GONE);
+            return Err(crate::orders::HUNT_TARGET_GONE);
         };
         let masters = self.masters.ok_or(crate::turn::HUNTER_MASTER)?;
         let own = masters
@@ -457,7 +457,7 @@ impl<'u> UnitView<'u> {
             drop_sites: self.drop_sites,
         };
         let (task, switch) = task_search(masters, &actor, &task_t, &general, -1, &dip)?
-            .ok_or(crate::order::NO_HUNT_TASK)?;
+            .ok_or(crate::orders::NO_HUNT_TASK)?;
         let hunter = switch.unwrap_or(own);
         let quarry = Quarry {
             id: target,

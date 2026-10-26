@@ -22,7 +22,9 @@ mod moves;
 mod patrol;
 mod points;
 mod split;
+pub mod start_work;
 mod tasks;
+pub mod town_bell;
 mod unit_order;
 mod work;
 

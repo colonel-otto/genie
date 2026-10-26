@@ -25,7 +25,7 @@ impl Turns {
     /// takes the Build ([`Turns::build_task`], [`Turns::build_directly`]), another player's
     /// whatever task its slot 0x7e8 finds on the foundation ([`Turns::order_work`]). A unit the world no
     /// longer holds is passed over. A committing BUILD's queue then takes the readiness pass with
-    /// 0 (`FUN_140c42b60`, [`crate::order::readiness`]): every queued order is ready.
+    /// 0 (`FUN_140c42b60`, [`crate::orders::readiness`]): every queued order is ready.
     pub(in crate::turn) fn task_builders(
         &mut self,
         player: usize,
@@ -53,7 +53,7 @@ impl Turns {
                 .ai
                 .as_ref()
                 .is_some_and(|ai| queued || (commits && ai.has_unready_order()));
-            let Some(crate::order::Place::Live(q, idx)) = self.place(id) else {
+            let Some(crate::orders::Place::Live(q, idx)) = self.place(id) else {
                 // a sleeping object is a static one without a unit AI: its slot 0x128 does
                 // nothing
                 continue;
@@ -62,7 +62,7 @@ impl Turns {
                 self.queue_build(q, idx, site, position)?;
                 if commits && let Some(ai) = self.players[q].objects[idx].ai.as_mut() {
                     // the readiness pass with 0: every queued order is ready
-                    crate::order::readiness(&mut ai.orders, false);
+                    crate::orders::readiness(&mut ai.orders, false);
                 }
             } else if STATIC_TYPES_END <= kind && q == player {
                 let task = self.build_task(q, id, site, position)?;
@@ -72,7 +72,7 @@ impl Turns {
                 self.empty_queue_for_work(q, idx, kind);
                 // another player's unit: slot 0x128's slot 0x7e8 finds whatever task it has on
                 // the foundation (a Build on an ally's), the work command's general path
-                let work = crate::order::Work {
+                let work = crate::orders::Work {
                     target: foundation,
                     point: [position[0], position[1], 0.0],
                     carry_test: false,

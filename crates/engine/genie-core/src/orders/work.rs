@@ -3,7 +3,7 @@
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::masters::Master;
 use crate::math::rng::Stream;
-use crate::order::{
+use crate::orders::{
     ATTACK_TASK, BUILDING, GARRISON, MASTER_84, MASTER_1808, VILLAGER, Work, own_order_target,
 };
 use crate::tasks::{Actor, Diplomacy, enabled};
@@ -53,14 +53,14 @@ impl Turns {
     }
 
     /// `FUN_141206a20`: the unit's present work as its town-bell record
-    /// ([`crate::town_bell::TownBell::record`]): its top action's target (slot 400), or, for one
+    /// ([`crate::orders::town_bell::TownBell::record`]): its top action's target (slot 400), or, for one
     /// in a pasture the world holds, the pasture; without one the target of its unit AI's first
     /// own queued order (`FUN_140c4da50`: issued by the unit, with a target), else none at its own
     /// place. Then a Gather's or Hunt's target class (`+0x68`), its unit AI's current action
     /// (`+0x44`) and the top action's second target (`FUN_140a78430`). The targets count only
     /// where the world holds them.
     pub(crate) fn record_town_bell(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
-        use crate::town_bell::BackToWork;
+        use crate::orders::town_bell::BackToWork;
         let unit = &self.players[player].objects[idx];
         if unit.town_bell.flag {
             return Ok(());

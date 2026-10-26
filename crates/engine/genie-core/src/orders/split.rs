@@ -1,6 +1,8 @@
 //! INTERACT and the order splitter: which units move loose and which form groups.
 
-use crate::order::{Interact, MAX_UNGROUPED, MOVING, Split, Splittable, centroid, splits_together};
+use crate::orders::{
+    Interact, MAX_UNGROUPED, MOVING, Split, Splittable, centroid, splits_together,
+};
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 
