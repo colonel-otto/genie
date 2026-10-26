@@ -136,8 +136,8 @@ impl World {
             let _ = self.watch(
                 new,
                 id,
-                crate::world::checkpoint::cvttss2si(p.position[0]),
-                crate::world::checkpoint::cvttss2si(p.position[1]),
+                crate::math::conversions::cvttss2si(p.position[0]),
+                crate::math::conversions::cvttss2si(p.position[1]),
             )?;
         }
         if state == 0 {

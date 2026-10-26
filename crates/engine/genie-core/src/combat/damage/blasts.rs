@@ -6,7 +6,7 @@ use crate::combat::damage::{
     WIDE_CONE, armor_damage, bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus,
     lose, shield, take,
 };
-use crate::world::checkpoint::cvttss2si;
+use crate::math::conversions::cvttss2si;
 use crate::{GenieError, math::fmath};
 
 /// `FUN_141082e80`: the damage ([`armor_damage`]) beyond what a blast has done: an attacker of

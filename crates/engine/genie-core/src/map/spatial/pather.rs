@@ -166,7 +166,7 @@ impl Spatial {
     // the game's (w - w) and (h - h) factors: 0, but NaN times an infinite or NaN term
     #[allow(clippy::eq_op)]
     pub fn edge_records(&self, rect: [f32; 4], cap: usize) -> Vec<Hit> {
-        use crate::world::checkpoint::cvttss2si;
+        use crate::math::conversions::cvttss2si;
         let [x0, y0, x1, y1] = rect;
         // the manager's map size as floats (+0xa8, +0xac)
         let (w, h) = (self.map[0] as f32, self.map[1] as f32);

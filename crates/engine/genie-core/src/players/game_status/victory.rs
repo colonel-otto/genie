@@ -115,7 +115,7 @@ impl World {
             }
             let v = other.attributes.get(KILLS_OF + i).copied().unwrap_or(0.0);
             if v > most as f32 {
-                most = crate::world::checkpoint::cvttss2si(v);
+                most = crate::math::conversions::cvttss2si(v);
                 killer = i as u8;
             }
         }

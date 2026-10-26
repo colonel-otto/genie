@@ -292,7 +292,7 @@ impl World {
             let unrecorded = match attribute {
                 // a char compare of the new type with the object's master's
                 a::OBSTRUCTION_TYPE => {
-                    crate::world::checkpoint::cvttss2si(v) as u8 != master.obstruction_type
+                    crate::math::conversions::cvttss2si(v) as u8 != master.obstruction_type
                 }
                 a::SIZE_Z => true,
                 _ => false,

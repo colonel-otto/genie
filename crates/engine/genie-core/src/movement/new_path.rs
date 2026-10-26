@@ -226,7 +226,7 @@ impl Mover {
     ) -> Result<bool, GenieError> {
         // CVTTSS2SI into a 64-bit register, its low 32 bits kept
         let fixed =
-            |f: f32| crate::world::checkpoint::cvttss2si_64(f * short_path::TO_FIXED) as i32;
+            |f: f32| crate::math::conversions::cvttss2si_64(f * short_path::TO_FIXED) as i32;
         let query = short_path::Query {
             from: [fixed(from[0]), fixed(from[1])],
             to: [fixed(to[0]), fixed(to[1])],

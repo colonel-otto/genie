@@ -6,7 +6,7 @@ use crate::garrison::transport::{
     Around, Changed, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT, TransportAction,
     find_drop_location, retry_point,
 };
-use crate::world::checkpoint::cvttss2si;
+use crate::math::conversions::cvttss2si;
 
 /// The transports' parts that reach the world: the unload command's install, the unload and the
 /// units put ashore.

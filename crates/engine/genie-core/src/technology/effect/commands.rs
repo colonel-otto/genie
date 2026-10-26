@@ -78,7 +78,7 @@ impl World {
             match c.kind {
                 TECH_COST => self.tech_cost(p, c.a, c.b, c.d, mode),
                 TECH_DISABLE => {
-                    let tech = crate::world::checkpoint::cvttss2si(c.d);
+                    let tech = crate::math::conversions::cvttss2si(c.d);
                     if tech != -1 {
                         self.disable_tech(p, tech, object)?;
                     }
@@ -153,7 +153,7 @@ impl World {
         for q in self.party(p, party) {
             if cost {
                 let unit = if c.b < 0 { c.a } else { c.b };
-                self.cost_entries(q, unit, c.c, crate::world::checkpoint::cvttss2si(c.d));
+                self.cost_entries(q, unit, c.c, crate::math::conversions::cvttss2si(c.d));
             } else {
                 self.modify_attribute(q, change, c.a, c.b, c.d, attribute)?;
             }

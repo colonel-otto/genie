@@ -55,12 +55,12 @@ impl std::fmt::Debug for AttributeWorld<'_> {
 
 /// `CVTTSS2SI` into a 32-bit register, then its low 16 bits.
 pub(super) fn low16(v: f32) -> i16 {
-    crate::world::checkpoint::cvttss2si(v) as i16
+    crate::math::conversions::cvttss2si(v) as i16
 }
 
 /// `CVTTSS2SI` into a 32-bit register, then its low byte.
 pub(super) fn low8(v: f32) -> u8 {
-    crate::world::checkpoint::cvttss2si(v) as u8
+    crate::math::conversions::cvttss2si(v) as u8
 }
 
 /// A saved id (an `int` field) as the slice holds it: None for one below 0 or beyond a short,
@@ -80,7 +80,7 @@ pub(super) fn set_sprite(field: &mut i16, id: i32, world: &AttributeWorld<'_>) {
 /// An add to a sprite attribute: its id (−1 for none) plus the amount (`CVTTSS2SI`, in 32
 /// bits), then [`set_sprite`].
 pub(super) fn add_sprite(field: &mut i16, v: f32, world: &AttributeWorld<'_>) {
-    let id = i32::from(*field) + crate::world::checkpoint::cvttss2si(v);
+    let id = i32::from(*field) + crate::math::conversions::cvttss2si(v);
     set_sprite(field, id, world);
 }
 
@@ -109,10 +109,10 @@ pub(super) fn multiply_short(value: i16, v: f32, capped: bool) -> i16 {
 /// negative amount; `COMISS` with 0 then `JC`, so a NaN takes the negative branch).
 pub(super) fn class_amount(v: f32) -> (i16, i16) {
     if crate::math::fmath::below_or_unordered(v, 0.0) {
-        let u = crate::world::checkpoint::cvttss2si(-v) as u16;
+        let u = crate::math::conversions::cvttss2si(-v) as u16;
         ((u as i16) >> 8, ((u & 0xff) as i16).wrapping_neg())
     } else {
-        let u = crate::world::checkpoint::cvttss2si(v) as u16;
+        let u = crate::math::conversions::cvttss2si(v) as u16;
         ((u as i16) >> 8, (u & 0xff) as i16)
     }
 }
@@ -144,7 +144,7 @@ pub(super) const fn cost_resource(attribute: u8) -> i16 {
 pub(super) fn resize_count(v: f32) -> u64 {
     let f = crate::math::fmath::maxss(0.0, v);
     // `CVTTSS2SI RBX` plus 2^63 past 2^63: any value from there on is past the most
-    crate::world::checkpoint::cvttss2si_64(f) as u64
+    crate::math::conversions::cvttss2si_64(f) as u64
 }
 
 /// The damage sprites resized to `v` (`FUN_1410e87c0`): new entries are zero, the selected entry
@@ -176,7 +176,7 @@ pub(super) fn resize_train_locations(list: &mut Vec<TrainLocation>, entry: &mut 
 /// (at most the count; none past 0xfe entries). The selected entry is that place, at most the
 /// last (−1, so 0xff, with none left); an empty list or a full one changes nothing.
 pub(super) fn insert_damage_graphic(list: &mut Vec<DamageGraphic>, entry: &mut u8, v: f32) {
-    let mut at = crate::world::checkpoint::cvttss2si(v);
+    let mut at = crate::math::conversions::cvttss2si(v);
     if at < 0 {
         if list.is_empty() {
             return;
@@ -198,7 +198,7 @@ pub(super) fn insert_damage_graphic(list: &mut Vec<DamageGraphic>, entry: &mut u
 /// [`insert_damage_graphic`], up to 0x7ffe entries, the new one a copy of the last (zero for an
 /// empty list).
 pub(super) fn insert_train_location(list: &mut Vec<TrainLocation>, entry: &mut i16, v: f32) {
-    let mut at = crate::world::checkpoint::cvttss2si(v);
+    let mut at = crate::math::conversions::cvttss2si(v);
     if at < 0 {
         if list.is_empty() {
             return;

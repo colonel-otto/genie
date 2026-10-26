@@ -4,11 +4,11 @@
 //! pasture's food.
 
 use crate::GenieError;
+use crate::math::conversions::cvttss2si;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
 use crate::technology::Attributes;
 use crate::world::World;
-use crate::world::checkpoint::cvttss2si;
 
 /// The livestock a pasture holds (`DAT_143f51db0`, which the static constructor `FUN_140174900`
 /// fills): the Argali and the Ibex (Pasture).

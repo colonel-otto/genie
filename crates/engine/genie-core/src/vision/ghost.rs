@@ -15,9 +15,9 @@
 //! destroy `FUN_14118f1e0` and its leaving `FUN_141090ad0`.
 
 use crate::GenieError;
+use crate::math::conversions::cvttss2si;
 use crate::vision::registry::MASK;
 use crate::world::World;
-use crate::world::checkpoint::cvttss2si;
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
 pub const GHOST_MASTER: i16 = 243;

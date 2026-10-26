@@ -195,8 +195,8 @@ impl World {
         // the constructor (FUN_1411de5f0)
         let [x, y, _] = position;
         let (tx, ty) = (
-            crate::world::checkpoint::cvttss2si(x),
-            crate::world::checkpoint::cvttss2si(y),
+            crate::math::conversions::cvttss2si(x),
+            crate::math::conversions::cvttss2si(y),
         );
         let terrain = self.spatial.terrain.as_ref();
         // masters 50 and 1889 on snow keep their snow (+0xc61 2)

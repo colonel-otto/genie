@@ -31,13 +31,13 @@ pub fn movement_damage_due(timer: &mut f32, dt: f32) -> bool {
 /// the high corner.
 #[must_use]
 pub fn reach(position: [f32; 3], range: f32, map: [i32; 2]) -> ([i32; 2], [i32; 2]) {
-    let r = crate::world::checkpoint::cvttss2si(range);
+    let r = crate::math::conversions::cvttss2si(range);
     let low = |v: f32| {
-        let d = crate::world::checkpoint::cvttss2si(v).wrapping_sub(r);
+        let d = crate::math::conversions::cvttss2si(v).wrapping_sub(r);
         if d < 0 { 0 } else { d }
     };
     let high = |v: f32, size: i32| {
-        let d = crate::world::checkpoint::cvttss2si(v).wrapping_add(r);
+        let d = crate::math::conversions::cvttss2si(v).wrapping_add(r);
         if size < d { size } else { d }
     };
     (

@@ -148,7 +148,7 @@ pub fn more_work(
                 };
                 let dx = o.position[0] - builder.position[0];
                 let dy = o.position[1] - builder.position[1];
-                let d = crate::world::checkpoint::cvttss2si(crate::math::fmath::sqrt(
+                let d = crate::math::conversions::cvttss2si(crate::math::fmath::sqrt(
                     dy * dy + dx * dx,
                 )) as f32;
                 let workers = (o.workers - 1).max(0);

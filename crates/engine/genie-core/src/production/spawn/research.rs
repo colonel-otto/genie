@@ -177,7 +177,7 @@ impl World {
         // attribute 269, cut by CVTTSS2SI and its low short above 0, names an effect of the
         // world's table the player gets with the building as its object (its slot 0x10,
         // `TRIBE_Effects::do_effect`, which skips an id the table does not hold)
-        let reward = crate::world::checkpoint::cvttss2si(self.players[p].get(WORLD_EFFECT)?) as i16;
+        let reward = crate::math::conversions::cvttss2si(self.players[p].get(WORLD_EFFECT)?) as i16;
         if 0 < reward
             && let Some(effect) = usize::try_from(reward)
                 .ok()

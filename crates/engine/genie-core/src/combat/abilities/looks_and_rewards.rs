@@ -75,7 +75,7 @@ pub fn reward(
     Reward {
         player,
         attribute: out,
-        amount: crate::world::checkpoint::cvttss2si(amount),
+        amount: crate::math::conversions::cvttss2si(amount),
     }
 }
 
@@ -94,8 +94,8 @@ impl World {
         let unit = &self.players[p].objects[i];
         let at = unit.mover.as_ref().map_or(unit.position, |m| m.moved_at);
         let (x, y) = (
-            crate::world::checkpoint::cvttss2si(at[0]),
-            crate::world::checkpoint::cvttss2si(at[1]),
+            crate::math::conversions::cvttss2si(at[0]),
+            crate::math::conversions::cvttss2si(at[1]),
         );
         let flags = self.spatial.terrain.as_ref().map_or(0, |t| {
             t.kind(x, y)

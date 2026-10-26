@@ -170,7 +170,7 @@ impl Spatial {
     /// not run), the tile's players the low 32 bits of `word >> 23` against `1 << (player &
     /// 0x1f)` in 32 bits.
     pub fn foreign_marks(&self, site: &Placed) -> bool {
-        use crate::world::checkpoint::cvttss2si;
+        use crate::math::conversions::cvttss2si;
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         let (w, h) = (self.tiles.width, self.tiles.height);
@@ -234,7 +234,7 @@ impl Spatial {
         mask: u8,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
-        use crate::world::checkpoint::cvttss2si;
+        use crate::math::conversions::cvttss2si;
         // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
         let Some(word) = self.tiles.word(cvttss2si(point[0]), cvttss2si(point[1])) else {
             return Ok(false);

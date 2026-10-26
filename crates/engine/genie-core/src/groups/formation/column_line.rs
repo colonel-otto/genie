@@ -6,9 +6,9 @@ use crate::groups::formation::{
 };
 use crate::groups::layout::{clear_line, reset_line};
 use crate::groups::{Formation, Slot, UnitGroup};
+use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{Vec3, add, scale, sub};
 use crate::world::World;
-use crate::world::checkpoint::cvttss2si;
 
 /// What createColumnLine reads of one sub-formation's statistic.
 #[derive(Clone, Debug)]
@@ -78,7 +78,7 @@ pub(super) fn sizes(count: i32, by_line: bool) -> (i32, i32) {
 /// The roots and the line counts are the CRT's `ceilf` (the ucrtbase import at 0x142a8e728),
 /// for which `f32::ceil` stands: both are exact (the result is the integer above, a NaN stays
 /// NaN); `CVTTSS2SI` then makes a NaN or an infinity `i32::MIN`
-/// ([`crate::world::checkpoint::cvttss2si`]), which the clamps to 1 take in.
+/// ([`crate::math::conversions::cvttss2si`]), which the clamps to 1 take in.
 ///
 /// # Panics
 ///

@@ -76,8 +76,8 @@ impl World {
                         .spatial
                         .tile_sight(
                             viewer,
-                            crate::world::checkpoint::cvttss2si(x),
-                            crate::world::checkpoint::cvttss2si(y),
+                            crate::math::conversions::cvttss2si(x),
+                            crate::math::conversions::cvttss2si(y),
                         )
                         .unwrap_or(0),
                 }));

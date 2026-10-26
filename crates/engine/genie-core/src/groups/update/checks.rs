@@ -319,8 +319,8 @@ impl World {
         let master = self.master_of(object.player(), object.master_id())?;
         let [x, y, _] = object.position();
         let (x, y) = (
-            crate::world::checkpoint::cvttss2si(x),
-            crate::world::checkpoint::cvttss2si(y),
+            crate::math::conversions::cvttss2si(x),
+            crate::math::conversions::cvttss2si(y),
         );
         if master.fog_visibility == 0 {
             Ok(self.spatial.sees_tile(player, x, y))

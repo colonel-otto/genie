@@ -132,7 +132,7 @@ pub(crate) fn footprint_clearing(
 /// [`footprint_clearing`]'s tiles: from 4 before the place to 4 past it on each axis
 /// (CVTTSS2SI to 16 bits), held on the map; none when a range is empty.
 pub(super) fn clearing_tiles(at: [f32; 2], [w, h]: [i32; 2]) -> Option<([i16; 2], [i16; 2])> {
-    use crate::world::checkpoint::cvttss2si;
+    use crate::math::conversions::cvttss2si;
     let range = |v: f32, size: i32| {
         let low = cvttss2si(v - CLEARING_REACH) as i16;
         let high = cvttss2si(v + CLEARING_REACH) as i16;

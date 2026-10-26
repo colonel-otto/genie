@@ -4,10 +4,10 @@
 use crate::GenieError;
 use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::groups::{Formation, Slot, UnitGroup};
+use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{Vec3, scale, sub};
 use crate::math::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
 use crate::world::World;
-use crate::world::checkpoint::cvttss2si;
 
 /// The passability's box starts at this (`DAT_142eea788`) on its low sides, 0 on its high ones.
 pub(super) const PASS_FAR: f32 = crate::math::image::group::PASS_FAR;

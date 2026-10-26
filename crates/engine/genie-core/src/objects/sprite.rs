@@ -248,7 +248,7 @@ impl ActiveSprite {
         self.changed = true;
         self.last_frame = start;
         // CVTTSS2SI EDX, MOVSX EAX, DX (0x1413b5177)
-        let steps = crate::world::checkpoint::cvttss2si(time / interval) as i16;
+        let steps = crate::math::conversions::cvttss2si(time / interval) as i16;
         self.last = time - f32::from(steps) * interval;
         if 0.0 < speed || g.speed_multiplier == 0.0 {
             let f = start + if forward { steps } else { -steps };
@@ -381,7 +381,7 @@ pub fn undead(master: &Master, look: Option<&Look>) -> Option<i16> {
 /// ([`dying`]).
 #[must_use]
 pub fn building_death(master: &Master, look: Option<&Look>, build_points: f32) -> Option<i16> {
-    let points = crate::world::checkpoint::cvttss2si(build_points).to_le_bytes();
+    let points = crate::math::conversions::cvttss2si(build_points).to_le_bytes();
     if i16::from_le_bytes([points[0], points[1]]) < master.build_time {
         let destruction = master
             .building

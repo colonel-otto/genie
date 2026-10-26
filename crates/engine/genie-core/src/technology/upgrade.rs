@@ -148,7 +148,7 @@ fn share_of(u: &Unit, master: &Master) -> Option<(u8, f32)> {
             .take(3)
             .find(|&&(kind, _, _)| kind == u.life.attribute_type);
         let share = held.map_or(0, |&(_, amount, _)| {
-            crate::world::checkpoint::cvttss2si(WHOLE - u.life.amount * WHOLE / amount) as u8
+            crate::math::conversions::cvttss2si(WHOLE - u.life.amount * WHOLE / amount) as u8
         });
         return Some((share, hp));
     }
@@ -163,7 +163,7 @@ fn share_of(u: &Unit, master: &Master) -> Option<(u8, f32)> {
         hp = 0.0;
     }
     Some((
-        crate::world::checkpoint::cvttss2si(WHOLE - hp * WHOLE / most) as u8,
+        crate::math::conversions::cvttss2si(WHOLE - hp * WHOLE / most) as u8,
         hp,
     ))
 }
@@ -327,7 +327,7 @@ impl World {
                 placed.position,
                 placed.radius,
                 false,
-                crate::world::checkpoint::cvttss2si(los),
+                crate::math::conversions::cvttss2si(los),
                 false,
             );
             if let Some(s) = sight.seer_mut(id) {

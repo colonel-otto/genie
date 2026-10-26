@@ -5,9 +5,9 @@
 //! swing (2 a trade, truncated) in hundredths, and the price resets when the net trades come back
 //! to 0. Nothing else changes the prices.
 
+use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
 use crate::world::World;
-use crate::world::checkpoint::cvttss2si;
 
 /// The commodities: food, wood and stone (the commands' only ones) and the ore (attribute
 /// 0x38), which only the price reads know.

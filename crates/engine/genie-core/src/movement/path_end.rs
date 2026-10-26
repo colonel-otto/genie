@@ -125,12 +125,12 @@ impl Mover {
             .collect();
         let req = crate::pathing::long_path::LongRequest {
             from: [
-                crate::world::checkpoint::cvttss2si(x),
-                crate::world::checkpoint::cvttss2si(y),
+                crate::math::conversions::cvttss2si(x),
+                crate::math::conversions::cvttss2si(y),
             ],
             to: [
-                crate::world::checkpoint::cvttss2si(to[0]),
-                crate::world::checkpoint::cvttss2si(to[1]),
+                crate::math::conversions::cvttss2si(to[0]),
+                crate::math::conversions::cvttss2si(to[1]),
             ],
             range,
             target: long_target,

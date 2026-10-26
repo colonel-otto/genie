@@ -256,7 +256,7 @@ impl ZoneMap {
     /// NaN reach takes every tile of the box).
     #[must_use]
     pub fn near(&self, zone: u16, at: [i32; 2], reach: f32) -> Option<[i32; 2]> {
-        use crate::world::checkpoint::cvttss2si;
+        use crate::math::conversions::cvttss2si;
         let [x, y] = at;
         let r = cvttss2si(reach);
         // CMOVNS and CMOVLE on the wrapped sums

@@ -19,8 +19,8 @@
 //! first event of a kind `FUN_141560e20`, `get_history_event_by_time` `FUN_141560ea0`,
 //! `mark_new_battle` `FUN_141565470`, `update` `FUN_141569450`; the names are the 2016 HD PDB's.
 
+use crate::math::conversions::{cvttss2si, cvttss2si_64};
 use crate::math::image::history::{BATTLE_RECORD, BATTLE_START};
-use crate::world::checkpoint::{cvttss2si, cvttss2si_64};
 
 /// Feudal Age reached (research 101).
 pub const FEUDAL_AGE: u8 = 0;

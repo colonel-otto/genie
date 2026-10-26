@@ -211,8 +211,8 @@ impl Unit {
                 Some(t) if view.player != c.player => {
                     let [x, y, _] = t.position;
                     let (tx, ty) = (
-                        crate::world::checkpoint::cvttss2si(x),
-                        crate::world::checkpoint::cvttss2si(y),
+                        crate::math::conversions::cvttss2si(x),
+                        crate::math::conversions::cvttss2si(y),
                     );
                     Some(crate::unit_ai::Seen {
                         visible: c.spatial.visible(view.player, x as i32, y as i32),

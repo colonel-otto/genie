@@ -501,7 +501,7 @@ pub fn refund_tech(
     tech: i16,
     attributes: &mut dyn crate::technology::Attributes,
 ) -> Result<bool, GenieError> {
-    use crate::world::checkpoint::cvttss2si;
+    use crate::math::conversions::cvttss2si;
     if !matches!(state.state, 2 | 4) {
         return Ok(false);
     }
@@ -651,7 +651,7 @@ pub fn master_costs(
     master: i16,
     attributes: &dyn crate::technology::Attributes,
 ) -> Result<[(i16, i16); 3], GenieError> {
-    use crate::world::checkpoint::cvttss2si;
+    use crate::math::conversions::cvttss2si;
     let mut out = [(-1i16, 0i16); 3];
     let can = cost_test(masters, master, ONE, true, attributes)?;
     let Some(m) = masters.get(master).filter(|m| COMBAT_MASTER <= m.kind) else {

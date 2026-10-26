@@ -123,9 +123,8 @@ A behaviour that needs the whole world is a method of `World`, and it lives in i
 in `world/`. For example, `World::upgrade_object` is in `technology/upgrade.rs`. So `world/`
 holds only the world's state and the tick, and most systems name `crate::world`.
 
-At the bottom, `math` names no other system, and `pathing` names only `map`, `math` and the
-`f32` conversions in `world/checkpoint.rs`. `map/spatial/` answers the queries of many systems, so
-it names their types.
+At the bottom, `math` names no other system, and `pathing` names only `map` and `math`.
+`map/spatial/` answers the queries of many systems, so it names their types.
 
 Each folder's `README.md` lists the systems that its code names and the systems that name it.
 `scripts/readmes.py` generates the lists from the code. Comments and test files do not count.
@@ -150,7 +149,8 @@ code keep it so:
 
 - **The math** (`math/fmath/`). The game's `f32` routines (`sinf`, `atan2f`, `powf`, …) are
   ported from its machine code, with their constants and their operation order. A sum or a
-  product is rounded on its own, never fused.
+  product is rounded on its own, never fused. A float becomes an integer as the x86 instruction
+  does it (`math/conversions.rs`), not as Rust's `as` does.
 - **The random streams** (`math/rng.rs`). The game has eleven `WELL512a` streams. All take the
   frame seed at the start of every tick, so the draws of one tick do not reach the next. A port
   draws from the same stream as the game, in the same order.

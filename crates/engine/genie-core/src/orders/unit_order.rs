@@ -96,8 +96,8 @@ impl World {
         // the animal's own place (+0x3c8, +0x4c8), truncated; send_to_site found it live
         let at = self.object(sheep).expect("sent to the site").1.position;
         let (x, y) = (
-            crate::world::checkpoint::cvttss2si(at[0]),
-            crate::world::checkpoint::cvttss2si(at[1]),
+            crate::math::conversions::cvttss2si(at[0]),
+            crate::math::conversions::cvttss2si(at[1]),
         );
         let [w, h] = self.spatial.map;
         let (x0, x1) = ((x - 3).max(0), if x + 3 < w { x + 3 } else { w - 1 });

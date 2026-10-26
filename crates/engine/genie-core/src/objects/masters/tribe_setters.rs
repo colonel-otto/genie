@@ -20,8 +20,8 @@ impl Master {
 
     /// `FUN_1412661d0`, the combat master's slot 0x18.
     pub(super) fn set_tribe_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
-        use crate::world::checkpoint::cvttss2si;
         match attribute {
             a::HERO_STATUS => self.hero_flag = low8(v),
             a::TRAIN_LOCATION
@@ -85,8 +85,8 @@ impl Master {
     /// [`Master::set_tribe_combat`]'s charge (`FUN_1412661d0`): its most, its recharge rate, its
     /// event, its type and its projectile.
     pub(super) fn set_charge(&mut self, attribute: u8, v: f32) {
+        use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
-        use crate::world::checkpoint::cvttss2si;
         match attribute {
             a::MAXIMUM_CHARGE => self.max_charge = v,
             a::RECHARGE_RATE => self.recharge_rate = v,
@@ -100,8 +100,8 @@ impl Master {
     /// [`Master::set_tribe_combat`]'s sprites (`FUN_1412661d0`): special, idle attack, hero glow,
     /// garrison and second attack, each a sprite the world's table holds.
     pub(super) fn set_tribe_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
-        use crate::world::checkpoint::cvttss2si;
         match attribute {
             a::SPECIAL_GRAPHIC => set_sprite(&mut self.special_sprite, cvttss2si(v), world),
             a::IDLE_ATTACK_GRAPHIC => {
@@ -117,8 +117,8 @@ impl Master {
     /// [`Master::set_tribe_combat`]'s train locations (`FUN_1412661d0`): the selected entry's
     /// location, button, hotkey and time, the selection (at most the last) and the count.
     pub(super) fn set_train_attribute(&mut self, attribute: u8, v: f32) {
+        use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
-        use crate::world::checkpoint::cvttss2si;
         match attribute {
             a::TRAIN_LOCATION => {
                 if let Some(t) = self.train_location_mut() {
@@ -160,8 +160,8 @@ impl Master {
     /// without the others' test for none (a crash on none, which no recording reaches): none
     /// counts as −1.
     pub(super) fn add_tribe_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
-        use crate::world::checkpoint::cvttss2si;
         match attribute {
             a::HERO_STATUS => self.hero_flag = self.hero_flag.wrapping_add(low8(v)),
             a::SHOWN_PIERCE_ARMOR => {

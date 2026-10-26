@@ -3,10 +3,10 @@
 
 use crate::GenieError;
 use crate::garrison::{EnterAction, EnterTarget, SIEGE_CLASS};
+use crate::math::conversions::cvttss2si;
 use crate::movement::footprint_gap_squared;
 use crate::objects::masters::{Master, Masters};
 use crate::orders::BUILDING;
-use crate::world::checkpoint::cvttss2si;
 
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
 /// to which an Enter's reach of a target with speed tests the tiles about the two

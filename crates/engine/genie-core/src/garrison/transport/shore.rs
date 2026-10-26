@@ -6,8 +6,8 @@ use crate::garrison::transport::{
     DEEP_WATER, DRAW_SCALE, DROP_GAP, DROP_TRIES, RETRIES, RETRY_SPREAD, RETRY_STEP, STACK_PLACE,
     Shore, WATER,
 };
+use crate::math::conversions::cvttss2si;
 use crate::math::rng::Well512;
-use crate::world::checkpoint::cvttss2si;
 
 /// `FUN_140aa3ba0`'s new point once no unit went ashore: from the old point (x, y), draws of the
 /// Action stream ("Unload": x, then y), each `r / 0xccc` tiles plus the old coordinate less

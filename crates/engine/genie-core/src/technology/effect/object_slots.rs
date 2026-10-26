@@ -140,7 +140,7 @@ impl World {
                 let (_, u) = self.object_mut(id).expect("found by the caller");
                 let full = f32::from(master.hit_points);
                 let hp = u.life.hp;
-                let short = |x: f32| f32::from(crate::world::checkpoint::cvttss2si(x) as i16);
+                let short = |x: f32| f32::from(crate::math::conversions::cvttss2si(x) as i16);
                 u.life.hp = match change {
                     Change::Set => short(v * hp / full),
                     Change::Add => short((full + v) * hp / full),
@@ -163,7 +163,7 @@ impl World {
                     Change::Add => v + master.line_of_sight,
                     Change::Multiply => v * master.line_of_sight,
                 };
-                self.sight_again(id, crate::world::checkpoint::cvttss2si(los));
+                self.sight_again(id, crate::math::conversions::cvttss2si(los));
             }
             a::STORAGE_1 | a::STORAGE_2 | a::STORAGE_3 if change == Change::Set => {
                 let j = match attribute {
@@ -325,7 +325,7 @@ pub(super) fn build_points_after(points: f32, time: i16, change: Change, v: f32)
         Change::Set => v / t * points,
         Change::Add => (t + v) / t * points,
         Change::Multiply => {
-            let new = f32::from(crate::world::checkpoint::cvttss2si(t * v + ROUND) as i16);
+            let new = f32::from(crate::math::conversions::cvttss2si(t * v + ROUND) as i16);
             if 0.0 < t { points / t * new } else { ONE * new }
         }
     }

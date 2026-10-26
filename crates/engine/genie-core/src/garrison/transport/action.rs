@@ -7,9 +7,9 @@ use crate::garrison::transport::{
     SHORE_MARGIN, Ship, Shore, TransportAction, TransportStep, UNLOAD, UNLOAD_REACH_SQUARED,
     WATER_FLAGS,
 };
+use crate::math::conversions::cvttss2si;
 use crate::movement::PathAsk;
 use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_asked, walk_or_give_up};
-use crate::world::checkpoint::cvttss2si;
 
 impl TransportAction {
     /// The unload command's constructor (`FUN_140aa3ab0` with no task, `+0x48`): its point the

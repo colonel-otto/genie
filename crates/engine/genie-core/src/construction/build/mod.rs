@@ -295,7 +295,7 @@ impl Completion<'_> {
     ///
     /// What it does not model.
     pub fn first_part(&self, c: &Construction) -> Result<FirstPart, GenieError> {
-        use crate::world::checkpoint::cvttss2si;
+        use crate::math::conversions::cvttss2si;
         let master = self.master.ok_or(GenieError::unsupported(
             "a completion of a master the slice does not have",
         ))?;

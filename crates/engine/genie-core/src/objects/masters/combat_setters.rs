@@ -15,8 +15,8 @@ impl Master {
     /// ([`class_amount`]) replaces its class's; an attack class at 0 the handicap raises
     /// ([`handicapped`]) takes the amount times the factor.
     pub(super) fn set_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
+        use crate::math::conversions::cvttss2si;
         use crate::objects::masters::attribute as a;
-        use crate::world::checkpoint::cvttss2si;
         match attribute {
             a::ARMOR | a::ATTACK => self.set_class_amount(attribute, v, world),
             a::ATTACK_RELOAD_TIME => self.reload = v,
