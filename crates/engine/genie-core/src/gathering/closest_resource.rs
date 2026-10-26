@@ -3,10 +3,12 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::{Foreign, UnitView};
+use crate::world::context::Context;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {
@@ -253,5 +255,61 @@ impl UnitView<'_> {
             position: u.position,
             class,
         }))
+    }
+}
+
+impl Unit {
+    /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) with no drop site, no
+    /// point and `param_6` 2 ([`crate::gathering::gather_search::closest_resource`]): the closest object of
+    /// gather group `kind` with fewer than `cap` workers (−1 any) the unit reaches (slot 0x3d0
+    /// with range 0), from the tiles the player explored that the unit's restriction lets it
+    /// stand on; −1 for none.
+    pub(crate) fn resource_search(
+        &self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        kind: u8,
+        cap: i32,
+    ) -> Result<i32, GenieError> {
+        self.resource_search_from(c, others, kind, cap, -1)
+    }
+
+    /// [`Unit::resource_search`] from the drop site `site` (−1 for none;
+    /// [`crate::gathering::gather_search::closest_resource_at`]): the site's place, its master's radii and
+    /// line of sight, and whether the search starts from its footprint (the site's tile in the
+    /// unit's zone of its restriction, or a dock: masters 45 and 2172, `0x140c49d17`).
+    pub(crate) fn resource_search_from(
+        &self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        kind: u8,
+        cap: i32,
+        site: i32,
+    ) -> Result<i32, GenieError> {
+        let current = self
+            .ai
+            .as_ref()
+            .ok_or(GenieError::unsupported(
+                "a resource search without a unit AI",
+            ))?
+            .current_target;
+        let mut w = ResourceWorld {
+            player: c.player,
+            spatial: c.spatial,
+            zones: c.zones,
+            foreign: c.foreign,
+            every: c.every_masters,
+            masters: c.masters,
+            plan: Planning {
+                pathing: c.pathing,
+                now: c.world_time,
+                computer: c.computer,
+                object: c.streams.get(Stream::Object),
+                construction_rate: c.construction_rate,
+                groups: c.groups,
+            },
+        };
+        let search = (current, 2, crate::unit_ai::NO_POINT);
+        closest_resource_of(self, &mut w, others, (kind, cap, site), search).map(|(id, _)| id)
     }
 }

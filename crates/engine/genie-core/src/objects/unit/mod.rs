@@ -18,7 +18,6 @@ use crate::world::context::Context;
 use crate::world::{Gate, WONDER};
 
 mod death;
-mod search;
 mod stop;
 mod top;
 mod update;

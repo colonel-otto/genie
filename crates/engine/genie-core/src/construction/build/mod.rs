@@ -11,6 +11,7 @@
 //! and ends the builder's work (state 224); a builder whose unit AI holds queued orders then lets
 //! the Build end (state 1) and the AI runs its queue.
 
+use self::update::drop_done_orders;
 use crate::GenieError;
 use crate::map::spatial::Obstruction;
 use crate::movement::move_to::{MoveTo, MoveWait};
@@ -21,6 +22,7 @@ use crate::unit_ai::UnitAi;
 mod clearing;
 mod construction;
 mod drop_off;
+pub(crate) mod more_work;
 mod placing;
 mod states;
 mod turn_entries;
@@ -36,7 +38,6 @@ pub use self::drop_off::{DropSearch, DropStart};
 #[cfg(test)]
 use self::placing::beside_diagonal;
 pub(crate) use self::turn_entries::{NO_CONSTRUCTION, NOT_HELD, held};
-use self::update::drop_done_orders;
 #[cfg(test)]
 use crate::map::spatial::Spatial;
 #[cfg(test)]

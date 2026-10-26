@@ -7,6 +7,7 @@ use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::world::Turns;
+use crate::world::context::Context;
 
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
 /// update ([`released`]; the releaser's own player is allied).
@@ -167,6 +168,20 @@ impl Turns {
             level.pause_time = pause;
             let gait = u.gait();
             self.spatial.set_gait(id, gait);
+        }
+    }
+}
+
+impl Unit {
+    /// The unit as the releaser of its actions' targets (slot 0x180's argument).
+    pub(crate) fn releaser(&self, c: &Context<'_>) -> Releaser {
+        Releaser {
+            id: self.id,
+            class: c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map_or(-1, |m| m.class),
+            player: c.player,
         }
     }
 }

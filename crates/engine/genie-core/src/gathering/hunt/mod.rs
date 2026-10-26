@@ -13,6 +13,7 @@ use crate::objects::sprite::Graphic;
 mod drop_off;
 mod gathering;
 mod herding;
+pub(crate) mod next_tree;
 mod sprites;
 mod start;
 pub(crate) mod unit;

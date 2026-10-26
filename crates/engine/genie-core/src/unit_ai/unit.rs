@@ -2,10 +2,11 @@
 
 use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
-use crate::movement::Mover;
+use crate::movement::{Mover, footprint_gap_squared};
 use crate::objects::masters::Master;
 use crate::objects::unit::{Step, Unit};
 use crate::ownership::capture::Captured;
+use crate::unit_ai::Notify;
 use crate::unit_ai::world_view::{OwnerView, UnitView};
 use crate::unit_ai::{Effect, Surroundings, UnitAi};
 use crate::world::context::Context;
@@ -378,4 +379,89 @@ pub(crate) struct AiResume {
     pub(crate) captured: Option<Captured>,
     pub(crate) leaves: Step,
     pub(crate) after: Option<crate::unit_ai::AfterOrder>,
+}
+
+impl Unit {
+    /// The objects its unit AI names besides its target, as the world's table holds them
+    /// ([`crate::unit_ai::Surroundings::units`]): its attackers and the callers of its damage
+    /// notifies, from its own list or another player's, each with its master's class, state, its
+    /// unit AI's target and its footprint's squared gap to the unit's (`FUN_14118f8c0`).
+    pub(crate) fn named_units(
+        &self,
+        c: &Context<'_>,
+        view: &OwnerView<'_>,
+        master: Option<&Master>,
+    ) -> Result<Vec<crate::unit_ai::UnitSeen>, GenieError> {
+        let Some(ai) = self.ai.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let damaged = ai
+            .notifies
+            .iter()
+            .filter(|n| n.kind == crate::unit_ai::DAMAGED)
+            .map(|n| n.caller);
+        let in_the_way = ai
+            .notifies
+            .iter()
+            .filter(|n| n.kind == crate::unit_ai::IN_THE_WAY)
+            .map(|n| n.p[0]);
+        let mut ids: Vec<i32> = ai
+            .attackers
+            .iter()
+            .copied()
+            .chain(damaged)
+            .chain(in_the_way)
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut seen = Vec::new();
+        for id in ids {
+            let found = view
+                .others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (view.player, u))
+                .or_else(|| view.foreign.find(id));
+            let (Some((owner, u)), Some(p)) = (found, c.spatial.get(id)) else {
+                continue;
+            };
+            let m = c
+                .every_masters
+                .get(owner)
+                .and_then(|ms| ms.get(u.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a named object of a master the slice does not have",
+                ))?;
+            let me = master.ok_or(crate::world::UNIT_AI_MASTER)?;
+            seen.push(crate::unit_ai::UnitSeen {
+                id,
+                class: m.class,
+                owner,
+                combat_level: m.combat_level,
+                state: u.life.state,
+                target: u.ai.as_ref().map(|a| a.current_target),
+                gap_squared: footprint_gap_squared(self.position, me.radius, p.position, p.radius),
+                position: p.position,
+                hp: u.life.hp,
+                master: u.life.master_id,
+                kind: m.kind,
+                main: u.annex_of,
+                allied: crate::unit_ai::task_finder::allied(
+                    view.relations,
+                    view.player,
+                    owner,
+                    true,
+                ),
+            });
+        }
+        Ok(seen)
+    }
+
+    /// A notify the unit posts to its own unit AI (slot 0x328).
+    pub(crate) fn post_own(&mut self, kind: i32, p: [i32; 3]) -> Result<(), GenieError> {
+        let (id, state) = (self.id, self.life.state);
+        self.ai
+            .as_mut()
+            .map_or(Ok(()), |ai| ai.post(Notify::own(id, kind, p), state))
+    }
 }
