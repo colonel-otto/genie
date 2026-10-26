@@ -1,0 +1,681 @@
+use super::*;
+use crate::masters::{Master, Masters};
+use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::turn::{Player, Unit};
+use crate::unit_ai::UnitAi;
+
+/// An entry of `count` villagers of master `master` that paid `food` each.
+fn villager(master: i16, count: i16, food: f32) -> Entry {
+    Entry {
+        master,
+        count,
+        tech: -1,
+        costs: [(0, food), (-1, 0.0), (4, 1.0)],
+        serial: 0,
+        button: -1,
+        train_time: 25,
+    }
+}
+
+/// A queue of ten slots holding `entries`.
+fn queue(entries: &[Entry]) -> Queue {
+    let mut slots = vec![Entry::default(); 10];
+    slots[..entries.len()].copy_from_slice(entries);
+    Queue {
+        slots,
+        count: entries.len() as i16,
+        total: entries.iter().map(|e| e.count).sum(),
+        next_serial: 10,
+        ..Queue::default()
+    }
+}
+
+/// Gaia and two players; player 1's town centre (class 3) makes a villager its queue paid
+/// 46 food for, a minute and more into the game.
+fn game() -> Turns {
+    let mut attributes = vec![0.0; 250];
+    (attributes[80], attributes[81]) = (1.0, 1.0);
+    let tc = Unit {
+        id: 9,
+        ai: Some(UnitAi {
+            current_order: -1,
+            current_action: 0x26b,
+            current_target: -1,
+            ..UnitAi::default()
+        }),
+        production: Some(Production {
+            queue: queue(&[villager(83, 1, 46.0)]),
+            action: Some(Making::Unit(MakeObj {
+                state: MakeObj::MAKING,
+                progress: 3.0,
+                ..MakeObj::for_entry(&villager(83, 1, 46.0))
+            })),
+            ..Production::default()
+        }),
+        ..Unit::default()
+    };
+    let player = |objects| Player {
+        objects,
+        attributes: attributes.clone(),
+        relations: vec![0, 0, 3],
+        ..Player::default()
+    };
+    let mut t = Turns::new(
+        61_000,
+        1,
+        0,
+        vec![0; 3],
+        vec![Player::default(), player(vec![tc]), player(vec![])],
+    );
+    let masters = Masters::new([
+        Master {
+            id: 109,
+            class: 3,
+            kind: 80,
+            ..Master::default()
+        },
+        Master {
+            id: 83,
+            class: 4,
+            kind: 70,
+            cost: vec![(0, 46, true), (4, 1, false)],
+            storage: vec![(4, -1.0, 2), (11, 1.0, 2)],
+            ..Master::default()
+        },
+    ]);
+    t.players[1].objects[0].life.master_id = 109;
+    t.masters = vec![masters.clone(), masters.clone(), masters];
+    t.victory_conquest = true;
+    t
+}
+
+/// The action object's stop (`FUN_14106fa60`) keeps the action list when the top action's
+/// slot 0x38 answers true and the unit is no trade cart with goods (`FUN_14106a940`): a
+/// human hunter's Hunt halts (state 2) and stays. A unit AI then stops (slot 0xb0) as the
+/// top action is no trade (0x6f), and its stopAction empties the list.
+/// A defeat (`FUN_141639860`) adds its event to the history: the player with the most of
+/// its own attribute 300 + id, Gaia and the defeated player left out; a resigned player and
+/// a history without entries get none.
+#[test]
+fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
+    let mut t = game();
+    let other = t.players[1].clone();
+    t.players.push(other);
+    t.players[2].attributes.resize(310, 0.0);
+    t.players[3].attributes.resize(310, 0.0);
+    t.players[1].attributes.resize(310, 0.0);
+    t.players[0].attributes = vec![9.0; 310];
+    t.players[2].attributes[302] = 3.0;
+    t.players[3].attributes[303] = 7.9;
+    t.players[1].attributes[301] = 50.0;
+    t.players[1].history.entries = vec![[1, 0]; 4];
+    t.world_time = 5_000;
+    t.defeat_event(1);
+    assert_eq!(
+        t.players[1].history.events,
+        [crate::history::Event {
+            kind: crate::history::DEFEAT,
+            time_slice: 4,
+            world_time: 5_000,
+            data1: 3.0,
+            data2: 7.0,
+            data3: 0.0,
+        }]
+    );
+    t.players[2].resigned = true;
+    t.players[2].history.entries = vec![[1, 0]];
+    t.defeat_event(2);
+    assert_eq!(t.players[2].history.events, []);
+}
+
+/// Slot 0x38 of the actions with their own ([`Turns::halt_other`]), each true: the Gather
+/// idles (state 2), the Build and the Repair halt (state 2), the Attack ends (state 1, its
+/// animation at speed 1, standing) and the Artifact checks again (state 6); a kind it does
+/// not model is refused.
+#[test]
+fn each_action_with_its_own_stop_halts_and_answers_true() {
+    let mut t = game();
+    let mut add = |unit: Unit| {
+        let mut unit = unit;
+        unit.life.master_id = 109;
+        t.players[1].objects.push(unit);
+        t.players[1].objects.len() - 1
+    };
+    let task = crate::hunt::HuntTask {
+        id: 0,
+        range: 0.25,
+        resource: 17,
+        sprites: [-1; 4],
+        work_value: 1.0,
+        productivity: -1,
+        kind4: -1,
+    };
+    let bush = crate::gather::Resource {
+        id: -1,
+        position: [3.5, 3.5, 0.0],
+        class: 7,
+        master: 59,
+        player: 0,
+        workers: 0,
+        drop_site: false,
+        gap: 1.2,
+        radius: [0.5, 0.5],
+    };
+    let rate = crate::gather::StopRate {
+        work_rate: 1.0,
+        capacity: 10.0,
+        productivity: 1.0,
+    };
+    let gather = add(Unit {
+        id: 30,
+        gather: Some(crate::gather::GatherAction::new(task, &bush, false, rate).unwrap()),
+        ..Unit::default()
+    });
+    let build_task = crate::build::BuildTask {
+        range: 0.0,
+        work_value: 1.0,
+        work_rate: 1.0,
+        resource: -1,
+        id: -1,
+    };
+    let build = add(Unit {
+        id: 31,
+        build: Some(crate::build::BuildAction::start(
+            -1,
+            [3.5, 3.5, 0.0],
+            1.0,
+            build_task,
+        )),
+        ..Unit::default()
+    });
+    let repair_task = crate::repair::RepairTask {
+        id: 0,
+        work_value: 1.0,
+    };
+    let repair = add(Unit {
+        id: 32,
+        repair: Some(crate::repair::RepairAction::start(
+            -1,
+            [3.5, 3.5, 0.0],
+            repair_task,
+            0.0,
+        )),
+        ..Unit::default()
+    });
+    let mut attack = crate::attack::tests::own_attack(-1, crate::attack::DONE, 1.0);
+    attack.arms.idle_sprite = Some(crate::sprite::Graphic {
+        id: 1,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 0,
+    });
+    let attack = add(Unit {
+        id: 33,
+        attack: Some(attack),
+        ..Unit::default()
+    });
+    let artifact = add(Unit {
+        id: 34,
+        artifact: Some(crate::artifact::Artifact::new(false)),
+        ..Unit::default()
+    });
+    assert_eq!(t.halt_other(1, gather, crate::gather::GATHER), Ok(true));
+    assert_eq!(t.halt_other(1, build, crate::build::BUILD), Ok(true));
+    assert_eq!(t.halt_other(1, repair, crate::repair::REPAIR), Ok(true));
+    assert_eq!(t.halt_other(1, attack, crate::attack::ATTACK), Ok(true));
+    let kind = crate::artifact::ARTIFACT_TYPE;
+    assert_eq!(t.halt_other(1, artifact, kind), Ok(true));
+    let objects = &t.players[1].objects;
+    assert_eq!(objects[gather].gather.map(|g| g.state), Some(2));
+    assert_eq!(objects[build].build.map(|b| b.state), Some(2));
+    assert_eq!(objects[repair].repair.map(|r| r.state), Some(2));
+    let a = &objects[attack];
+    assert_eq!(a.attack.map(|a| a.state), Some(crate::attack::DONE));
+    assert_eq!(a.anim_speed, Some(1.0));
+    assert!(a.sprite.is_some());
+    assert_eq!(objects[artifact].artifact.map(|a| a.state), Some(6));
+    assert!(t.halt_other(1, gather, 99).is_err());
+}
+
+#[test]
+fn a_stopped_hunter_keeps_its_halted_hunt() {
+    use crate::hunt::{HuntAction, HuntTask, Lead};
+    let hunter = Unit {
+        id: 20,
+        ai: Some(UnitAi {
+            current_order: 0x2c9,
+            current_action: 0x265,
+            current_target: -1,
+            ..UnitAi::default()
+        }),
+        hunt: Some(HuntAction {
+            target: -1,
+            state: 4,
+            point: [-1.0; 3],
+            target_class: -1,
+            task: HuntTask {
+                id: 0,
+                range: 0.0,
+                resource: -1,
+                sprites: [-1; 4],
+                work_value: 0.0,
+                productivity: -1,
+                kind4: -1,
+            },
+            attack: None,
+            move_to: None,
+            walk_range: 0.0,
+            drop_site: -1,
+            carry_to: -1,
+            timer: 0.0,
+            move_wait: crate::move_to::MoveWait::default(),
+            lead: Lead::default(),
+        }),
+        ..Unit::default()
+    };
+    let mut t = game();
+    let mut hunter = hunter;
+    // game()'s villager master
+    hunter.life.master_id = 109;
+    hunter.my_pasture = -1;
+    t.players[1].objects.push(hunter);
+    let idx = t.players[1].objects.len() - 1;
+    let mut without_ai = t.clone();
+    // the unit AI's stopAction (slot 0x3c0) then empties the list
+    t.object_stop(1, idx).unwrap();
+    let u = &t.players[1].objects[idx];
+    assert_eq!(u.hunt, None);
+    assert_eq!(u.ai.as_ref().unwrap().current_action, -1);
+    // without a unit AI the halted Hunt stays
+    without_ai.players[1].objects[idx].ai = None;
+    without_ai.object_stop(1, idx).unwrap();
+    let u = &without_ai.players[1].objects[idx];
+    assert_eq!(u.hunt.map(|h| h.state), Some(crate::hunt::IDLE));
+}
+
+/// records/425906646's player 2 cancels the second villager of its town centre at update
+/// 3699 (`UNIT_ORDER` action 4, index 1): that one's 46 food come back and its population
+/// leaves attribute 80; the first keeps its make action. A cancel of the first drops the make
+/// action too; an index past the queue does nothing.
+#[test]
+fn a_cancel_gives_back_one_queued_unit() {
+    let mut t = game();
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[villager(83, 1, 46.0), villager(83, 1, 45.0)]);
+    t.players[1].attributes[80] = 2.0;
+    t.cancel_order(&[9], 1, false).unwrap();
+    let p = &t.players[1];
+    assert_eq!((p.resources[0], p.attributes[80]), (45.0, 1.0));
+    let production = p.objects[0].production.as_ref().unwrap();
+    let q = &production.queue;
+    assert_eq!((q.count, q.total, q.changes), (1, 1, 1));
+    assert!(production.action.is_some());
+    assert_eq!(p.tracker.queued, -1);
+    t.cancel_order(&[9], 5, false).unwrap();
+    assert_eq!(t.players[1].resources[0], 45.0);
+    t.cancel_order(&[9], 0, false).unwrap();
+    let p = &t.players[1];
+    assert_eq!(
+        (p.resources[0], p.attributes[80], p.attributes[81]),
+        (91.0, 0.0, 0.0)
+    );
+    let production = p.objects[0].production.as_ref().unwrap();
+    assert!(production.queue.entries().is_empty() && production.action.is_none());
+    assert!(t.cancel_order(&[9], 0, true).is_ok());
+}
+
+/// One unit of an entry of three goes: the entry keeps two, and the first unit's cancel
+/// drops the make action though the entry stays (`FUN_1411d66b0`).
+#[test]
+fn a_cancel_of_the_first_unit_drops_the_make_action_of_an_entry_that_stays() {
+    let mut t = game();
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[villager(83, 3, 46.0)]);
+    t.players[1].attributes[80] = 3.0;
+    t.cancel_queued(1, 0, 0, false).unwrap();
+    let p = &t.players[1];
+    let production = p.objects[0].production.as_ref().unwrap();
+    assert_eq!(
+        (production.queue.count, production.queue.slots[0].count),
+        (1, 2)
+    );
+    assert!(production.action.is_none());
+    assert_eq!((p.attributes[80], p.attributes[81]), (2.0, 0.0));
+}
+
+/// `FUN_1411d66b0` with `all` on the first villager of [3 male, 4 female]: the three go
+/// (`FUN_1411d61e0`), the first entry with them, and the make action with it (the cancel
+/// started at unit 0); the female entry moved to the first slot gives two more, five in
+/// all. Each unit gives its 46 food back and leaves attribute 80; the tracker's counter
+/// loses two per unit (the game counts a cancel of several twice).
+#[test]
+fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
+    let mut t = game();
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[villager(83, 3, 46.0), villager(293, 4, 46.0)]);
+    t.players[1].attributes[80] = 7.0;
+    t.masters[1] = Masters::new([
+        t.master_of(1, 109).unwrap().clone(),
+        t.master_of(1, 83).unwrap().clone(),
+        Master {
+            id: 293,
+            ..t.master_of(1, 83).unwrap().clone()
+        },
+    ]);
+    t.cancel_order(&[9], 0, true).unwrap();
+    let p = &t.players[1];
+    assert_eq!((p.resources[0], p.attributes[80]), (5.0 * 46.0, 2.0));
+    let production = p.objects[0].production.as_ref().unwrap();
+    let q = &production.queue;
+    assert_eq!(
+        (q.count, q.total, q.slots[0].master, q.slots[0].count),
+        (1, 2, 293, 2)
+    );
+    assert_eq!(q.changes, 2);
+    assert!(production.action.is_none());
+    assert_eq!(p.tracker.queued, -10);
+    // from the second unit the make action goes on for the other sex
+    let mut t2 = game();
+    t2.masters = t.masters.clone();
+    let tc = t2.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[villager(83, 3, 46.0), villager(293, 4, 46.0)]);
+    t2.players[1].attributes[80] = 7.0;
+    t2.cancel_order(&[9], 1, true).unwrap();
+    let production = t2.players[1].objects[0].production.as_ref().unwrap();
+    assert_eq!(
+        (production.queue.count, production.queue.slots[0].count),
+        (1, 2)
+    );
+    assert!(production.action.is_some());
+}
+
+/// The kind is the first entry's master or a villager's: all of two archers takes the
+/// villagers after them too; a research shifted into the slot ends the loop.
+#[test]
+fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
+    let archer = |count| Entry {
+        master: 4,
+        costs: [(1, 25.0), (3, 45.0), (4, 1.0)],
+        ..villager(4, count, 0.0)
+    };
+    let mut t = game();
+    let ms = &mut t.masters[1];
+    *ms = Masters::new(ms.iter().cloned().chain([Master {
+        id: 4,
+        kind: 70,
+        cost: vec![(1, 25, true), (3, 45, true), (4, 1, false)],
+        storage: vec![(4, -1.0, 2)],
+        ..Master::default()
+    }]));
+    t.players[1].attributes[80] = 4.0;
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[archer(2), villager(83, 2, 46.0)]);
+    t.cancel_queued(1, 0, 0, true).unwrap();
+    let p = &t.players[1];
+    assert_eq!(p.resources, [92.0, 50.0, 0.0, 90.0]);
+    assert_eq!(p.attributes[80], 0.0);
+    assert_eq!(p.objects[0].production.as_ref().unwrap().queue.count, 0);
+    // [2 villagers, a research]: the research moved into the slot ends it
+    let mut t = game();
+    let research = Entry {
+        master: -1,
+        tech: 22,
+        costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
+        ..villager(-1, 1, 0.0)
+    };
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[villager(83, 2, 46.0), research]);
+    t.players[1].attributes[80] = 2.0;
+    t.cancel_queued(1, 0, 0, true).unwrap();
+    let q = &t.players[1].objects[0].production.as_ref().unwrap().queue;
+    assert_eq!(
+        (q.count, q.slots[0].tech, t.players[1].resources[0]),
+        (1, 22, 92.0)
+    );
+}
+
+/// Player 1's town centre researching technology 22 three times over (one entry), the
+/// research running with `progress` done: each paid 50 gold, and the `.dat` lists 20 wood
+/// the building pays (flag 2).
+fn researching(progress: f32) -> Turns {
+    use crate::tech::{Cost, Location, TechDef, TechState};
+    let mut t = game();
+    let entry = Entry {
+        master: -1,
+        tech: 22,
+        costs: [(3, 50.0), (-1, 0.0), (-1, 0.0)],
+        ..villager(-1, 3, 0.0)
+    };
+    let tc = t.players[1].objects[0].production.as_mut().unwrap();
+    tc.queue = queue(&[entry]);
+    tc.action = Some(Making::Research(MakeTech {
+        state: MakeObj::MAKING,
+        paid: true,
+        tech: 22,
+        master: -1,
+        progress,
+    }));
+    tc.disabled_techs = vec![22, 5];
+    let mut techs = vec![TechState::default(); 23];
+    techs[22] = TechState {
+        state: 2,
+        allow_multiple: true,
+        pending: 3,
+        research_done: progress,
+        research_cap: -1,
+        overrides: [(-1, -1, -2); 3],
+        locations: vec![Location {
+            building: 109,
+            time: 25,
+            button: 1,
+            adjustment: 0.0,
+        }],
+        ..TechState::default()
+    };
+    t.players[1].techs = techs;
+    let mut defs = vec![TechDef::default(); 23];
+    let cost = |attribute, amount, paid| Cost {
+        attribute,
+        amount,
+        paid,
+    };
+    defs[22] = TechDef {
+        costs: [cost(3, 50, 1), cost(1, 20, 2), cost(-1, 0, 0)],
+        locations: vec![(109, 25)],
+        ..TechDef::default()
+    };
+    t.techs = defs;
+    t
+}
+
+/// `FUN_1411d66b0` on the first research with `all`: the running research loses its
+/// progress and the technology its work done; `FUN_1411d61e0` with five takes the entry's
+/// three: 150 gold back (`FUN_1413d15e0`), the technology in state 1 with none queued, the
+/// 20 wood the building paid to its store (`FUN_1411c7a00`), 22 off its disabled list
+/// (`FUN_1411c5250`); the emptied first entry drops the research, whose destructor tells
+/// the centre's unit AI it failed.
+#[test]
+fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
+    let mut t = researching(10.0);
+    t.cancel_order(&[9], 0, true).unwrap();
+    let p = &t.players[1];
+    assert_eq!(p.resources[3], 150.0);
+    let s = &p.techs[22];
+    assert_eq!((s.state, s.pending, s.research_done), (1, 0, 0.0));
+    let tc = &p.objects[0];
+    assert_eq!(tc.store, [(1, 20.0)]);
+    let production = tc.production.as_ref().unwrap();
+    assert_eq!(production.disabled_techs, [5]);
+    assert_eq!((production.queue.count, production.queue.total), (0, 0));
+    assert!(production.action.is_none());
+    assert_eq!(tc.ai.as_ref().unwrap().notifies.len(), 1);
+    // one research of the second unit: 50 gold, the technology in state 1 though two stay
+    // queued, the research going on
+    let mut t = researching(10.0);
+    t.cancel_order(&[9], 1, false).unwrap();
+    let p = &t.players[1];
+    assert_eq!(
+        (p.resources[3], p.techs[22].state, p.techs[22].pending),
+        (50.0, 1, 2)
+    );
+    let production = p.objects[0].production.as_ref().unwrap();
+    assert_eq!(production.queue.slots[0].count, 2);
+    assert!(production.action.is_some());
+}
+
+/// `FUN_1411cff00` gives a research entry back as a whole; the research's destructor
+/// (`FUN_140ad0be0`) then counts a stacking technology whose progress reached its time as
+/// researched once more and queued once less, in state 1 below its cap.
+#[test]
+fn a_queue_s_cancel_gives_back_its_researches_and_the_destructor_counts_a_done_one() {
+    let mut t = researching(30.0);
+    let s = &mut t.players[1].techs[22];
+    (s.stack, s.research_cap) = (true, 5);
+    t.cancel_queue(1, 0).unwrap();
+    let p = &t.players[1];
+    assert_eq!(p.resources[3], 150.0);
+    let s = &p.techs[22];
+    assert_eq!(
+        (s.state, s.times_researched, s.pending, s.research_done),
+        (1, 1, -1, 30.0)
+    );
+    let production = p.objects[0].production.as_ref().unwrap();
+    assert_eq!((production.queue.count, production.queue.changes), (0, 1));
+    // not done: state 1, nothing counted
+    let mut t = researching(10.0);
+    let s = &mut t.players[1].techs[22];
+    (s.stack, s.research_cap) = (true, 5);
+    t.cancel_queue(1, 0).unwrap();
+    let s = &t.players[1].techs[22];
+    assert_eq!((s.state, s.times_researched, s.pending), (1, 0, 0));
+}
+
+/// `0x140ad2a20` after a research completes: attribute 269 (the Spanish's 300, cut by
+/// `CVTTSS2SI`, its low short above 0) names the effect of the world's table (`+0x128`, slot
+/// 0x10 `FUN_141462440`) the player gets with the building as its object: effect 300 adds 20
+/// gold; an id the table does not hold does nothing.
+#[test]
+fn a_research_gives_the_effect_attribute_269_names() {
+    use crate::tech::EffectCommand;
+    let run = |reward: f32| {
+        let mut t = researching(25.0);
+        t.players[1].attributes.resize(300, 0.0);
+        t.players[1].attributes[269] = reward;
+        t.effects = vec![Vec::new(); 301];
+        t.effects[300] = vec![EffectCommand {
+            kind: 1,
+            a: 3,
+            b: 1,
+            c: -1,
+            d: 20.0,
+        }];
+        let gold = t.players[1].resources[3];
+        t.produce(1, 0, 1.0).unwrap();
+        t.players[1].resources[3] - gold
+    };
+    assert_eq!(run(300.0), 20.0);
+    assert_eq!(run(300.9), 20.0);
+    assert_eq!(run(0.0), 0.0);
+    assert_eq!(run(301.0), 0.0);
+    // the short of 65836 is 300
+    assert_eq!(run(65_836.0), 20.0);
+}
+
+/// Game mode 16's tail: with attribute 6 at most 1 a cancel whose slot at the unit index
+/// holds a military master clears the player's flag (`+0x1378`); above 1 it stays.
+#[test]
+fn a_cancel_in_game_mode_16_clears_the_military_flag() {
+    let run = |age: f32| {
+        let mut t = game();
+        t.settings.game_mode = 16;
+        t.players[1].attributes[6] = age;
+        t.players[1].one_military_queued = true;
+        let ms = &mut t.masters[1];
+        *ms = Masters::new(ms.iter().cloned().chain([Master {
+            id: 4,
+            class: 6,
+            kind: 70,
+            ..Master::default()
+        }]));
+        let tc = t.players[1].objects[0].production.as_mut().unwrap();
+        tc.queue = queue(&[villager(83, 1, 46.0), villager(4, 1, 0.0)]);
+        t.cancel_order(&[9], 1, false).unwrap();
+        t.players[1].one_military_queued
+    };
+    assert!(!run(1.0));
+    assert!(run(2.0));
+    assert!(run(f32::NAN));
+}
+
+/// MarvinBlue/426048731's player 1 resigns in its last update: its town centre gives back
+/// the villager queued (the queue's 46 food; the make action made with the queue's payment
+/// gives nothing more) and its population leaves attributes 80 and 81; the make action's end
+/// notifies the centre's unit AI, which stops. The victory check then ends the game:
+/// player 2, the one side left, wins.
+#[test]
+fn a_resignation_cancels_the_queues_and_the_last_side_wins() {
+    let mut t = game();
+    t.resign(1, false).unwrap();
+    let p = &t.players[1];
+    assert_eq!((p.game_status, p.resigned, p.dropped), (LOST, true, false));
+    assert_eq!(p.resources[0], 46.0);
+    assert_eq!((p.attributes[80], p.attributes[81]), (0.0, 0.0));
+    let tc = &p.objects[0];
+    let production = tc.production.as_ref().unwrap();
+    assert!(production.queue.entries().is_empty() && production.action.is_none());
+    assert_eq!((production.queue.total, production.queue.changes), (0, 1));
+    let ai = tc.ai.as_ref().unwrap();
+    assert_eq!((ai.current_action, ai.last_action), (-1, 0x26b));
+    assert_eq!(ai.notifies.len(), 1);
+    assert_eq!(t.game_state, 0);
+    t.victory_check();
+    assert_eq!(t.game_state, 1);
+    assert_eq!(
+        (t.players[1].game_status, t.players[2].game_status),
+        (LOST, WON)
+    );
+}
+
+#[test]
+fn a_make_action_the_queue_did_not_pay_for_refunds_its_master_s_costs() {
+    let mut t = game();
+    if let Some(Some(Making::Unit(make))) = t.players[1].objects[0]
+        .production
+        .as_mut()
+        .map(|q| q.action.as_mut())
+    {
+        make.paid = false;
+    }
+    t.resign(1, false).unwrap();
+    assert_eq!(t.players[1].resources[0], 92.0);
+}
+
+#[test]
+fn early_in_the_game_a_resignation_leaves_the_objects_alone() {
+    let mut t = game();
+    t.world_time = 60_000;
+    t.resign(1, true).unwrap();
+    assert_eq!((t.players[1].resigned, t.players[1].dropped), (true, true));
+    assert_eq!(t.players[1].resources[0], 0.0);
+}
+
+#[test]
+fn one_side_left_after_a_resignation_ends_a_conquest_game() {
+    let mut c = Count::default();
+    c.add(1, LOST, 0, (0, 0));
+    c.add(2, PLAYING, 0, (0, 0));
+    assert_eq!((c.playing, c.side, c.lost, c.won), (1, 1, 1, 0));
+    // two players still playing, enemies: two sides
+    let mut c = Count::default();
+    c.add(1, PLAYING, 0, (0, 0));
+    c.add(2, PLAYING, 0, (3, 3));
+    assert_eq!((c.playing, c.side), (2, -1));
+    // allies with the allied victory are one side
+    let mut c = Count::default();
+    c.add(1, PLAYING, 1, (0, 0));
+    c.add(2, PLAYING, 1, (0, 0));
+    assert_eq!((c.playing, c.side), (2, 1));
+}
