@@ -10,9 +10,9 @@
 //! random point on the farm (`set_state(4)`, the Action stream's `"set_state"` draws), gathers
 //! there for the time per stop, then walks to the next.
 //!
-//! Not modelled yet: the searches (`set_state` 3, 0xf3), the walks to a point (11, 15, 0xf2),
-//! the waits after a failed walk or a drop-off out of reach (the Action stream's `"update"`
-//! draws) and a gather left without a target and a load.
+//! The searches (`set_state` 3, 0xf3) and the walks to a point (11, 15, 0xf2) are in
+//! `point_walks.rs`; the face, the work, the drop-off's update and the random waits after a failed
+//! walk or a drop-off out of reach (the Action stream's `"update"` draws) are in `work.rs`.
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::math::rng::Well512;

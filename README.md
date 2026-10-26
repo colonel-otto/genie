@@ -68,6 +68,14 @@ This only holds for as long as the official engine receives updates. Once it no 
 does not need to follow it any more. The community can then continue to develop the engine on its
 own, and fix its long-standing bugs instead of reproducing them.
 
+## Documentation
+
+- [`docs/ENGINE_SYSTEMS.md`](docs/ENGINE_SYSTEMS.md) explains how the simulation core is
+  organised: one tick, one object's update, the engine's systems, and how to find a behaviour.
+  Each folder of the core's source has a `README.md` for its system.
+- [`docs/DEBUGGING.md`](docs/DEBUGGING.md) shows how to play a recording, find where it goes
+  wrong, and report a bug.
+
 ## To the developers of the game
 
 We build genie for the community first, but we also build it with you in mind: Forgotten Empires,

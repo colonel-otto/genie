@@ -1,6 +1,9 @@
-//! The players' technologies (`TRIBE_Player_Tech`, `player+0x760`): the `.dat`'s technology
-//! records ([`TechDef`], the tree's `+0x28`, 0x88 bytes each) and each player's state of each
-//! ([`TechState`], `Tech_Player_Tree`, 0x80 bytes, saved). 158041: the cost list
+//! Technologies and upgrades: the players' technologies, a research's effects and an object's
+//! upgrade to another master.
+//!
+//! This file holds the players' technologies (`TRIBE_Player_Tech`, `player+0x760`): the `.dat`'s
+//! technology records ([`TechDef`], the tree's `+0x28`, 0x88 bytes each) and each player's state of
+//! each ([`TechState`], `Tech_Player_Tree`, 0x80 bytes, saved). 158041: the cost list
 //! `FUN_1413d4a00`, the research test `FUN_1413cd600`, the payment `FUN_1413d4370` (from
 //! `FUN_14162fd90`), the repeat test `FUN_1413d1050`.
 

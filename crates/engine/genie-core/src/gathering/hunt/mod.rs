@@ -1,7 +1,8 @@
 //! The Hunt action (`TRIBE_Action_Hunt`, type 110, vtable `0x142ed70f8`): a villager sent to a
 //! tree (or an animal) with a gather task attacks it first (state 12, an [`Attack`] sub-action);
 //! once it is dead the villager walks to it (state 4, a `MoveTo` sub-action), faces it (6) and
-//! gathers (7). The drop-off (8 on) is not modelled yet.
+//! gathers (7), then carries the load to a drop site (8). A hunter of its own livestock leads the
+//! animal toward the drop site first (state 10).
 //!
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.

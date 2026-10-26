@@ -51,6 +51,16 @@ jobs:
       - run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
       - run: scripts/file_size.py
 
+  readmes:
+    name: Every genie-core folder has a current README
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # scripts/readmes.py (the runner's Python 3, 3.11 or later): each folder's README.md holds
+      # its prose and the generated tables of its files and of the systems it uses, current
+      # with the code (docs/ENGINE_SYSTEMS.md). Its tests run in the file-size job.
+      - run: scripts/readmes.py crates/engine/genie-core/src --check
+
   dependencies:
     name: Format crates do not depend on engine or tool crates
     runs-on: ubuntu-latest

@@ -1,0 +1,104 @@
+"""Tests of the folder READMEs' generator (`readmes.py`):
+
+    python3 -I -m unittest discover -s scripts -p 'test_readmes.py'
+"""
+
+import io
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+
+import readmes as rd
+
+
+def crate(d: Path) -> Path:
+    src = d / "src"
+    (src / "combat" / "attack").mkdir(parents=True)
+    (src / "map").mkdir()
+    (src / "lib.rs").write_text("//! The core.\n\npub mod combat;\npub mod map;\n")
+    (src / "combat" / "mod.rs").write_text("//! Attacks, hits and missiles: the Attack action.\n\npub mod attack;\npub mod volley;\n")
+    (src / "combat" / "volley.rs").write_text("//! A volley's missiles.\n//!\n//! More.\n\nuse crate::map::Spatial;\n")
+    (src / "combat" / "attack" / "mod.rs").write_text("//! The Attack action (type 9).\n\nmod tests;\n")
+    (src / "combat" / "attack" / "tests.rs").write_text("use super::*;\n")
+    (src / "map" / "mod.rs").write_text("//! The map | where objects stand.\n\npub struct Spatial;\n")
+    return src
+
+
+class Sentences(unittest.TestCase):
+    def test_a_module_doc_gives_its_first_sentence_on_one_line(self):
+        text = "//! The forced replay (dev only): the game's state after a tick and the\n//! step. More here.\n//!\n//! Next.\n"
+        self.assertEqual(rd.first_sentence(text), "The forced replay (dev only): the game's state after a tick and the step.")
+        self.assertEqual(rd.first_sentence("use a::B;\n"), "")
+        self.assertEqual(rd.first_sentence("//! The map | where.\n"), "The map \\| where.")
+
+    def test_intra_doc_links_lose_their_brackets(self):
+        text = "//! The pather ([`crate::movement::reaches`]) and [the map](crate::map::Spatial).\n"
+        self.assertEqual(rd.first_sentence(text), "The pather (`crate::movement::reaches`) and the map.")
+
+
+class Files(unittest.TestCase):
+    def test_the_table_lists_files_then_folders_with_their_docs(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = crate(Path(d))
+            self.assertEqual(
+                rd.files_table(src / "combat"),
+                "| File | What it holds |\n| --- | --- |\n"
+                "| [`mod.rs`](mod.rs) | Attacks, hits and missiles: the Attack action. |\n"
+                "| [`volley.rs`](volley.rs) | A volley's missiles. |\n"
+                "| [`attack/`](attack/) | The Attack action (type 9). |",
+            )
+            self.assertIn("| [`tests.rs`](tests.rs) | Tests. |", rd.files_table(src / "combat" / "attack"))
+
+
+class Uses(unittest.TestCase):
+    def test_a_system_names_what_it_uses_and_what_uses_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = crate(Path(d))
+            self.assertEqual(
+                rd.uses_section(src, src / "combat"),
+                "- Uses: [`map`](../map/).\n- Used by: no other system.",
+            )
+            self.assertEqual(
+                rd.uses_section(src, src / "map"),
+                "- Uses: no other system.\n- Used by: [`combat`](../combat/).",
+            )
+            self.assertEqual(rd.uses_section(src, src / "combat" / "attack"), "- Uses: no other system.")
+
+    def test_comments_and_tests_do_not_count_as_uses(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = crate(Path(d))
+            (src / "map" / "mod.rs").write_text("//! The map, [`crate::combat`]'s ground.\n// crate::combat\n")
+            (src / "map" / "tests.rs").write_text("use crate::combat::volley;\n")
+            self.assertEqual(
+                rd.uses_section(src, src / "map"),
+                "- Uses: no other system.\n- Used by: [`combat`](../combat/).",
+            )
+
+
+class Check(unittest.TestCase):
+    def test_a_missing_or_stale_readme_fails_the_check_and_a_run_brings_it_current(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = crate(Path(d))
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(rd.main([str(src), "--check"]), 1)
+            self.assertIn("combat/README.md: missing", out.getvalue())
+            with redirect_stdout(io.StringIO()):
+                rd.main([str(src)])
+            # the skeletons hold TODO prose: still not done
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(rd.main([str(src), "--check"]), 1)
+            self.assertIn("its prose is a TODO", out.getvalue())
+            for f in src.rglob("README.md"):
+                f.write_text(f.read_text().replace("TODO: what this folder holds, for a reader new to it.", "Prose."))
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(rd.main([str(src), "--check"]), 0)
+            # a new file makes the table stale
+            (src / "map" / "terrain.rs").write_text("//! Terrain per tile.\n")
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(rd.main([str(src), "--check"]), 1)
+            self.assertIn("map/README.md: a generated section is not current", out.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

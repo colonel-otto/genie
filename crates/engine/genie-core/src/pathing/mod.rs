@@ -1,6 +1,9 @@
-//! The world's path planning state besides the objects' places: the tile pathfinder's planners
-//! (`world+0x140`, one per terrain restriction), the obstruction manager's shape mesh
-//! (`*(DAT_143f0a088 + 8)`) with each object's shape, and the short pather's own state.
+//! Finding a way: the planners of the paths that units walk, from the tile pathfinder over the
+//! whole map to the short pathers around the obstructions near a unit.
+//!
+//! This file holds the world's path planning state besides the objects' places: the tile
+//! pathfinder's planners (`world+0x140`, one per terrain restriction), the obstruction manager's
+//! shape mesh (`*(DAT_143f0a088 + 8)`) with each object's shape, and the short pather's own state.
 //!
 //! The mesh's ids and orders follow the game's history and are not in a save, so a slice started
 //! from a save gets them from the game ([`Pathing::set_mesh`]); from then on the slice keeps them as

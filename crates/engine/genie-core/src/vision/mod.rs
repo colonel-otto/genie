@@ -1,10 +1,14 @@
-//! The players' vision masks (`player+0x2a8`, visible, and `+0x2a0`, explored): the bits of the
-//! unified map a player's tile tests read (`FUN_141663500`, `FUN_140c68a00`). Each holds the
-//! player's own bit and one no tile has (29; explored 61), bits 30 and 62 once the player won or
-//! lost, and the bits of the players whose sight it shares: its mutual allies while its allied
-//! vision is on (`allied_LOS_Enable`, `+0x2cc`, saved; attribute 50 turns it on) and every player
-//! while its attribute 183 is not 0. The world rebuilds them all (`FUN_141552df0`, from its slot
-//! 0x78 `FUN_1415e92b0`) at a load and when one of those changes.
+//! What each player sees: the visible maps its objects' sight keeps, the vision masks that share
+//! sight among allies, the objects-in-sight registry, the fog's ghosts and the newly explored
+//! tiles.
+//!
+//! This file holds the players' vision masks (`player+0x2a8`, visible, and `+0x2a0`, explored): the
+//! bits of the unified map a player's tile tests read (`FUN_141663500`, `FUN_140c68a00`). Each
+//! holds the player's own bit and one no tile has (29; explored 61), bits 30 and 62 once the player
+//! won or lost, and the bits of the players whose sight it shares: its mutual allies while its
+//! allied vision is on (`allied_LOS_Enable`, `+0x2cc`, saved; attribute 50 turns it on) and every
+//! player while its attribute 183 is not 0. The world rebuilds them all (`FUN_141552df0`, from its
+//! slot 0x78 `FUN_1415e92b0`) at a load and when one of those changes.
 //!
 //! 158041: the rebuild `FUN_141552df0`; the attribute setter `FUN_141616820` (attributes 50, 183).
 

@@ -1,0 +1,45 @@
+# `garrison`: units inside other objects
+
+Units go into buildings and transports, and come out again. This folder holds both directions:
+
+- `shelter.rs` holds the garrison order and `SEEK_SHELTER`: each unit goes to a building that
+  takes it in, the nearest first.
+- `takes_in.rs` tests whether a building takes a unit in, and how much room it has.
+- `enter.rs`, `walk_in.rs` and `meeting.rs` hold the Enter action: the command, the walk to the
+  building or transport, and the point where they meet.
+- `unit.rs` is the unit's part: a unit entering, and a transport's sail.
+- `unload.rs` and `let_out.rs` hold UNLOAD, `GO_BACK_TO_WORK` and a unit's leave.
+- `firepower.rs` holds a unit's attack rate and firepower, and its share of a building's volleys.
+- `transport/` holds the Transport action: a transport's sail and its unload ashore.
+
+## In the game
+
+- `RGE_Action_Enter` (`act_entr.cpp`) and `RGE_Action_Transport` (action type 12,
+  `act_tran.cpp`).
+- `UNIT_ORDER`'s garrison and the building's test whether it takes a unit in.
+
+## Files
+
+<!-- files -->
+| File | What it holds |
+| --- | --- |
+| [`enter.rs`](enter.rs) | The enter command and the Enter's construction, install and start, at once or with the transport's move. |
+| [`firepower.rs`](firepower.rs) | A unit's attack rate and firepower, and its share of a building's volleys (`FUN_141213520`). |
+| [`let_out.rs`](let_out.rs) | A unit's leave of the building or the transport it is inside (`FUN_1411e7220`), or its place on the map. |
+| [`meeting.rs`](meeting.rs) | Where an Enter meets its target (`FUN_140a85f30`): the landing tile, the walled-off test, the meeting point and the reach. |
+| [`mod.rs`](mod.rs) | Units inside other objects: the garrison order, the Enter action, the unloads and the Transport action. |
+| [`shelter.rs`](shelter.rs) | The garrison order and `SEEK_SHELTER`: each unit to a building that takes it in, nearest first (`Shelters`). |
+| [`takes_in.rs`](takes_in.rs) | A building's test whether it takes a unit in (`FUN_14120eb10`), its room and what it holds. |
+| [`tests.rs`](tests.rs) | Tests. |
+| [`unit.rs`](unit.rs) | A unit entering a building or a transport, and the transport's sail. |
+| [`unload.rs`](unload.rs) | UNLOAD and `GO_BACK_TO_WORK`: the units inside a building or a transport come out. |
+| [`walk_in.rs`](walk_in.rs) | The Enter action (`EnterAction`, `RGE_Action_Enter`): its walk to its target, its wait and its update. |
+| [`transport/`](transport/) | The Transport action (`RGE_Action_Transport`, type 12, vtable `0x142ed61e8`): a transport's sail to a point and its unload there. |
+<!-- /files -->
+
+## How it connects
+
+<!-- uses -->
+- Uses: [`commands`](../commands/), [`gathering`](../gathering/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`ownership`](../ownership/), [`pathing`](../pathing/), [`production`](../production/), [`unit_ai`](../unit_ai/), [`world`](../world/).
+- Used by: [`combat`](../combat/), [`construction`](../construction/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`ownership`](../ownership/), [`players`](../players/), [`technology`](../technology/), [`unit_ai`](../unit_ai/).
+<!-- /uses -->

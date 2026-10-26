@@ -1,8 +1,11 @@
-//! Garrisoning: `UNIT_ORDER`'s garrison (action 5 on a building, `FUN_14161e370` ->
+//! Units inside other objects: the garrison order, the Enter action, the unloads and the
+//! Transport action.
+//!
+//! This file holds `UNIT_ORDER`'s garrison (action 5 on a building, `FUN_14161e370` ->
 //! `FUN_141621220`), which sends each unit to a building that takes it in, nearest first, each
-//! building up to its capacity, and gives each building's units, through the order splitter,
-//! the garrison work on it (slot 0x7e8 with task filter 3); and a building's test whether it takes
-//! a unit in (`FUN_14120eb10`).
+//! building up to its capacity, and gives each building's units, through the order splitter, the
+//! garrison work on it (slot 0x7e8 with task filter 3); and a building's test whether it takes a
+//! unit in (`FUN_14120eb10`).
 
 use crate::GenieError;
 

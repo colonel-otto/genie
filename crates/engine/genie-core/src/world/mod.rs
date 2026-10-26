@@ -1,10 +1,13 @@
-//! The per-tick skeleton the unit-AI slice needs: the frame-seed chain and the unit-AI turn.
+//! The world: its state and its tick. [`World`] holds the players with their objects, the map,
+//! the pathing state, the random streams and the masters, and [`World::tick_with`] runs one
+//! update of it.
 //!
 //! 158041 `BaseWorld::update` (`0x14154fc70`), in order: advance the world time by dt,
 //! `SeedAll(frame seed)`, the player loop (each player's time slot `world+0x18c[p]` gains dt; only the
 //! turn player `world+0x188` runs the full unit-AI update), `s1 = World.rand15`, `SeedAll(s1)`, zero
-//! the turn player's slot and pass the turn on, then the next frame seed `= World.rand15`. The slice
-//! assumes no other World draw runs in a tick (no triggers, XS or unit groups).
+//! the turn player's slot and pass the turn on, then the next frame seed `= World.rand15`. Besides
+//! those two, a unit group's idle timer draws from the World stream
+//! ([`World::reset_idle_timer`]); triggers and XS scripts, which draw more, are not run.
 //!
 //! A player's update walks its live list in order (`RGE_Object_List::update`, `0x141166550`). Each
 //! object moves by its velocity ([`Mover::step_velocity`]), runs its static state step

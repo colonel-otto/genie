@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""The README.md of every folder of a crate's `src` (FD-041-D10): each explains the system or
+part in its folder for a human reader. The prose is written by hand; two sections are generated
+between markers and kept current by this script:
+
+    scripts/readmes.py SRC [--check]
+
+- `<!-- files -->` … `<!-- /files -->`: a table of the folder's files and sub-folders, each with
+  the first sentence of its module doc (`//!`), test files marked as such;
+- `<!-- uses -->` … `<!-- /uses -->`: the crate's other systems the folder's code names
+  (`use crate::x::…` and `crate::x::` paths, by their top-level module; comments, documentation
+  and test files do not count), and the systems that name it.
+
+Without `--check` it rewrites the generated sections (and writes a skeleton README where a
+folder has none). With `--check` it fails when a folder lacks its README, a README lacks a
+marker, or a generated section is not current, and names each.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+FILES = ("<!-- files -->", "<!-- /files -->")
+USES = ("<!-- uses -->", "<!-- /uses -->")
+TEST_FILE = re.compile(r"^(tests?|.*_tests)\.rs$")
+
+
+def first_sentence(text: str) -> str:
+    """The first sentence of a file's module doc (`//!` lines), on one line."""
+    lines = []
+    for line in text.split("\n"):
+        if line.startswith("//!"):
+            body = line[3:].strip()
+            if not body:
+                if lines:
+                    break
+                continue
+            lines.append(body)
+        elif lines or line.strip():
+            break
+    doc = " ".join(lines)
+    # rustdoc's intra-doc links read as plain text: [`x`] as `x`, [text](path) as text
+    doc = re.sub(r"\[(`[^`]*`)\](?!\()", r"\1", doc)
+    doc = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", doc)
+    # up to the first full stop outside backticks (`0x140a87e10.` stays whole)
+    m = re.search(r"^((?:[^`]|`[^`]*`)+?\.)(\s|$)", doc)
+    return (m.group(1) if m else doc).replace("|", "\\|")
+
+
+def is_test(path: Path, text: str) -> bool:
+    return bool(TEST_FILE.match(path.name)) or text.lstrip().startswith("#![cfg(test)]")
+
+
+def folder_doc(folder: Path) -> str:
+    """A sub-folder's line: its `mod.rs` doc's first sentence."""
+    m = folder / "mod.rs"
+    return first_sentence(m.read_text()) if m.exists() else ""
+
+
+def files_table(folder: Path) -> str:
+    rows = ["| File | What it holds |", "| --- | --- |"]
+    for f in sorted(folder.glob("*.rs")):
+        text = f.read_text()
+        what = "Tests." if is_test(f, text) and not first_sentence(text) else first_sentence(text)
+        if is_test(f, text) and first_sentence(text):
+            what = f"Tests: {what}"
+        rows.append(f"| [`{f.name}`]({f.name}) | {what} |")
+    for d in sorted(p for p in folder.iterdir() if p.is_dir()):
+        rows.append(f"| [`{d.name}/`]({d.name}/) | {folder_doc(d)} |")
+    return "\n".join(rows)
+
+
+def system_of(src: Path, path: Path) -> str:
+    rel = path.relative_to(src)
+    return rel.parts[0].removesuffix(".rs") if len(rel.parts) > 1 or rel.suffix == ".rs" else ""
+
+
+CRATE_PATH = re.compile(r"\bcrate::([a-z_][a-z0-9_]*)")
+
+
+def imports_of(folder: Path) -> set[str]:
+    """The top-level modules the folder's code (its files and sub-folders) names by
+    `crate::x`: not in comments or documentation, not in its test files."""
+    out = set()
+    for f in folder.rglob("*.rs"):
+        text = f.read_text()
+        if is_test(f, text):
+            continue
+        code = "\n".join(line for line in text.split("\n") if not line.lstrip().startswith("//"))
+        out |= set(CRATE_PATH.findall(code))
+    return out
+
+
+def uses_section(src: Path, folder: Path) -> str:
+    systems = sorted(p.name for p in src.iterdir() if p.is_dir())
+    own = folder.relative_to(src).parts[0] if folder != src else ""
+    if folder == src:
+        return "The crate root declares the systems. Each folder's README names what it uses."
+    mine = sorted(s for s in imports_of(folder) & set(systems) if s != own)
+    users = sorted(s for s in systems if s != own and own in imports_of(src / s))
+    link = lambda s: f"[`{s}`]({'../' * len(folder.relative_to(src).parts)}{s}/)"
+    lines = [
+        f"- Uses: {', '.join(link(s) for s in mine) if mine else 'no other system'}.",
+    ]
+    if folder.parent == src:
+        lines.append(f"- Used by: {', '.join(link(s) for s in users) if users else 'no other system'}.")
+    return "\n".join(lines)
+
+
+def replace_section(text: str, marks: tuple[str, str], body: str) -> str | None:
+    a, b = marks
+    if a not in text or b not in text:
+        return None
+    head, rest = text.split(a, 1)
+    _, tail = rest.split(b, 1)
+    return f"{head}{a}\n{body}\n{b}{tail}"
+
+
+def skeleton(src: Path, folder: Path) -> str:
+    name = folder.relative_to(src).as_posix() if folder != src else src.parent.name
+    return (
+        f"# `{name}`\n\nTODO: what this folder holds, for a reader new to it.\n\n"
+        f"## Files\n\n{FILES[0]}\n{FILES[1]}\n\n## How it connects\n\n{USES[0]}\n{USES[1]}\n"
+    )
+
+
+def folders(src: Path) -> list[Path]:
+    return [src, *sorted(p for p in src.rglob("*") if p.is_dir())]
+
+
+def main(argv: list[str]) -> int:
+    src = Path(argv[0])
+    check = "--check" in argv
+    problems = []
+    for folder in folders(src):
+        readme = folder / "README.md"
+        rel = readme.relative_to(src)
+        if not readme.exists():
+            if check:
+                problems.append(f"{rel}: missing")
+                continue
+            readme.write_text(skeleton(src, folder))
+        text = readme.read_text()
+        new = text
+        for marks, body in ((FILES, files_table(folder)), (USES, uses_section(src, folder))):
+            replaced = replace_section(new, marks, body)
+            if replaced is None:
+                problems.append(f"{rel}: no {marks[0]} … {marks[1]} section")
+                continue
+            new = replaced
+        if "TODO:" in new:
+            problems.append(f"{rel}: its prose is a TODO")
+        if new != text:
+            if check:
+                problems.append(f"{rel}: a generated section is not current (scripts/readmes.py SRC)")
+            else:
+                readme.write_text(new)
+    for p in problems:
+        print(f"readmes: {p}")
+    print(f"readmes: {len(folders(src))} folders, {len(problems)} problems")
+    return 1 if check and problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,9 +1,9 @@
-//! The unit AI of an idle unit on its owner's turn: the timers and the AI-stream draws behind
-//! checkpoint word 9.
+//! The unit AI (`UnitAIModule`): what a unit decides by itself. It takes its orders and the
+//! notifies its actions post, picks its targets, answers damage and runs its type's idle checks,
+//! with the timers and the AI-stream draws behind checkpoint word 9.
 //!
 //! 158041: the full update is `UnitAIModule` slot 4 (`0x140c66b10`); slot 73 (`0x140c567c0`) redraws
-//! the retarget timer, slot 72 is the idle check (`processIdle`). Only an idle unit is modelled: no
-//! order, no action, no target, no actions in its list. Anything else is [`GenieError`]. A boar
+//! the retarget timer, slot 72 is the idle check (`processIdle`). A boar
 //! (factory type 4, `TribeElephantUnitAIModule`, slot 4 `0x140c2c010`) wanders around its origin
 //! ([`Home`]); its moves go to the unit as an [`AiMove`]. A hunted animal (type 2,
 //! `TribeHuntedAnimalUnitAIModule`: deer, foxes) looks for the closest object of the classes it

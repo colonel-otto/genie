@@ -1,0 +1,48 @@
+# `objects`: one object and what every object runs
+
+Every object in the world is a `Unit` (`unit/`): a villager, a building, a tree, a sheep, a
+missile. This folder holds the object itself and the parts that every object has:
+
+- `unit/` holds the `Unit` type and its update, action by action.
+- `lifecycle/` steps an object from alive to dying to dead to gone.
+- `masters/` holds the masters: the definition of each kind of object for each player.
+- `sprite.rs` holds the object's active sprite and the clock that animates it. A hit lands on a
+  frame of the attack sprite.
+- `facing.rs` holds the object's angle and its facet in the sprite.
+- `release.rs` handles an object that leaves the world, and the release of a target by the
+  action that held it.
+- `lines.rs` reads the unit lines from `unitlines.json`: the upgrade chains of the masters.
+
+## How the tick reaches it
+
+The world steps each live object of a player in list order (`world/object_step.rs`). The step
+calls `Unit::update` (`unit/update.rs`), which runs the object's chain of updates.
+
+## In the game
+
+- `RGE_Static_Object` (`stat_obj.cpp`), `RGE_Animated_Object` (`ani_obj.cpp`),
+  `RGE_Moving_Object`, `RGE_Action_Object` (`act_obj.cpp`) and the action list (`act_list.cpp`).
+- The sprites (`sprite.cpp`, `asprite.cpp`) and the masters (`MasterStaticObject.cpp` and the
+  other master classes).
+
+## Files
+
+<!-- files -->
+| File | What it holds |
+| --- | --- |
+| [`facing.rs`](facing.rs) | Where an object faces: its angle (`+0x7e8`, radians on the map, 0 to 2π) and its facet (`+0xe`), counted in its current sprite's facets (`+0x140` -> `+0xa`). |
+| [`lines.rs`](lines.rs) | The unit lines (`resources/_common/dat/unitlines.json`): each line names the masters of one upgrade chain, its first master first. |
+| [`mod.rs`](mod.rs) | One object and what every object has and runs: the object the engine tracks (`unit::Unit`) with its update, its actions' holdings and stops, its life and death, its release, its sprite and facing, and the masters it is made from. |
+| [`release.rs`](release.rs) | An object's leave of the world and its release by the action that held it (slot 0x180); the update's regeneration and hit point check, and a walk's pause. |
+| [`sprite.rs`](sprite.rs) | An object's active sprite: the frame of its sprite (a `.dat` graphic) and, for a graphic that animates, the clock that advances it. |
+| [`lifecycle/`](lifecycle/) | What happens to an object once it is dead: the state steps of `RGE_Static_Object::update` (158041 `0x14118ad50`) and `RGE_Animated_Object::update` (`0x141071880`), up to the update that returns 1 and so takes the object off its player's list (`RGE_Object_List::update`, `0x141166550`). |
+| [`masters/`](masters/) | What the engine reads of a player's masters: the tasks a unit can do and the masters a unit changes into to do them, and how an effect changes a master: the attribute setters (slots 0x18, 0x20 and 0x28 of every master type, `Master::set_attribute`), the master copy of an upgrade (slot 8, `Master::copy_from`) and the values the slice derives from a master (`Master::follow`). |
+| [`unit/`](unit/) | What the slice tracks of one object (`Unit`) and its update, action by action. |
+<!-- /files -->
+
+## How it connects
+
+<!-- uses -->
+- Uses: [`combat`](../combat/), [`commands`](../commands/), [`construction`](../construction/), [`garrison`](../garrison/), [`gathering`](../gathering/), [`groups`](../groups/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`orders`](../orders/), [`ownership`](../ownership/), [`pathing`](../pathing/), [`players`](../players/), [`production`](../production/), [`unit_ai`](../unit_ai/), [`vision`](../vision/), [`world`](../world/).
+- Used by: [`combat`](../combat/), [`commands`](../commands/), [`construction`](../construction/), [`garrison`](../garrison/), [`gathering`](../gathering/), [`groups`](../groups/), [`map`](../map/), [`movement`](../movement/), [`orders`](../orders/), [`ownership`](../ownership/), [`players`](../players/), [`production`](../production/), [`technology`](../technology/), [`unit_ai`](../unit_ai/), [`vision`](../vision/), [`world`](../world/).
+<!-- /uses -->

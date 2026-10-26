@@ -1,10 +1,12 @@
-//! INTERACT's order (`0x140e68b90`) to its units without a group, each at once or through its
-//! unit AI's queue, several of them at their offsets around the order's point, and the work
-//! command it gives (object slot 37, `FUN_14106ff70`, through slot 0x128 `FUN_141211b80` and slot
-//! 0x7e8 `FUN_141227190`): the unit takes the master and the task the task finder picks for the
-//! target ([`crate::unit_ai::task_finder`]), and the task's action replaces its action list. The slice builds
-//! the Hunt action ([`crate::gathering::hunt`]); other actions, orders to points and unit groups are not
-//! modelled yet.
+//! The orders a command gives its units: INTERACT and its splitter into loose units and groups,
+//! the moves, patrols and follows, the work, gather, hunt and build orders, the drop-offs, the
+//! town bell and the Empire Wars start.
+//!
+//! This file holds INTERACT's order (`0x140e68b90`) to its units without a group, each at once or
+//! through its unit AI's queue, several of them at their offsets around the order's point, and the
+//! work command it gives (object slot 37, `FUN_14106ff70`, through slot 0x128 `FUN_141211b80` and
+//! slot 0x7e8 `FUN_141227190`): the unit takes the master and the task the task finder picks for
+//! the target ([`crate::unit_ai::task_finder`]), and the task's action replaces its action list.
 
 use crate::GenieError;
 use crate::objects::masters::Master;
