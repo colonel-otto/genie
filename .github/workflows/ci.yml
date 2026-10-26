@@ -40,6 +40,17 @@ jobs:
       - name: Clippy (whole workspace, warnings are errors)
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
+  file-size:
+    name: No hand-written file above its production lines
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # scripts/file_size.py (the runner's Python 3, 3.11 or later): at most
+      # .config/file-size.toml's threshold of production lines per hand-written file, unless
+      # .config/file-size-debt.json holds the file at that length.
+      - run: python3 -I -m unittest discover -s scripts -p 'test_*.py'
+      - run: scripts/file_size.py
+
   dependencies:
     name: Format crates do not depend on engine or tool crates
     runs-on: ubuntu-latest

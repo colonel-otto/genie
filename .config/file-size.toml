@@ -1,0 +1,5 @@
+# scripts/file_size.py: the production lines of a hand-written Rust file (its lines outside its
+# test code) stay at most the threshold. Above it, split the file into modules along its own
+# structure; the debt list (.config/file-size-debt.json, `--bless`) holds the files above it
+# until they are split.
+threshold = 700

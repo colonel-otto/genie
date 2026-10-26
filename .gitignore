@@ -3,3 +3,4 @@
 .vscode
 /coverage/
 .claude
+__pycache__
