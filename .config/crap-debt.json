@@ -515,21 +515,21 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/spatial.rs",
-      "function": "Spatial::artifact_owner",
-      "line": 2121,
-      "cyclomatic": 28.0,
-      "coverage": 74.10714285714286,
-      "crap": 41.60993303571428,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/spatial.rs",
+      "file": "crates/engine/genie-core/src/spatial/search.rs",
       "function": "Spatial::closest_object",
-      "line": 1969,
+      "line": 348,
       "cyclomatic": 49.0,
       "coverage": 52.0,
       "crap": 314.531392,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/spatial/sight.rs",
+      "function": "Spatial::artifact_owner",
+      "line": 20,
+      "cyclomatic": 28.0,
+      "coverage": 74.10714285714286,
+      "crap": 41.60993303571428,
       "crate": "genie-core"
     },
     {

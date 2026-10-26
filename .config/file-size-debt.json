@@ -21,7 +21,6 @@
   "crates/engine/genie-core/src/masters.rs": 2402,
   "crates/engine/genie-core/src/repair.rs": 775,
   "crates/engine/genie-core/src/short_path.rs": 2665,
-  "crates/engine/genie-core/src/spatial.rs": 3326,
   "crates/engine/genie-core/src/spawn.rs": 2593,
   "crates/engine/genie-core/src/tile_path.rs": 1687,
   "crates/engine/genie-core/src/transport.rs": 980,

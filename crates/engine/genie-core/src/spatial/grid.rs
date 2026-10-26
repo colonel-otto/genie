@@ -1,0 +1,515 @@
+//! The obstruction grid's cells and visits, the scout map, gaits, annexes, alliances and the line
+//! queries.
+
+use crate::spatial::{
+    Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
+};
+use crate::unit_ai::GenieError;
+
+impl Spatial {
+    /// Each obstruction record: the object's id, the record's kind and box.
+    pub fn records(&self) -> impl Iterator<Item = (i32, u8, [f32; 4])> + '_ {
+        self.objects
+            .iter()
+            .filter_map(|(&id, p)| Some((id, p.obstruction?.kind, p.bounds())))
+    }
+
+    /// Each obstruction record's grid cell ([`Spatial::filed`]): the object's id, the level and
+    /// the cell's x and y.
+    pub fn record_cells(&self) -> impl Iterator<Item = (i32, (i32, i32, i32))> + '_ {
+        self.objects
+            .iter()
+            .filter_map(|(&id, p)| Some((id, self.filed(p, p.obstruction?.kind))))
+    }
+
+    /// The grid cell an object's record of kind `kind` is filed in (`FUN_141056460`): level and
+    /// cell x, y. Its box's tiles, held on the map; a box of kind 2 (10), 11 or 13 whose centre
+    /// sits on a half tile ends 0.001 short on both axes. The level is the finest whose cell holds
+    /// both corners' tiles, the cell the one of the low corner's tile.
+    pub(super) fn filed(&self, p: &Placed, kind: u8) -> (i32, i32, i32) {
+        let [x0, y0, mut x1, mut y1] = p.bounds();
+        let [x, y, _] = p.position;
+        if matches!(kind, 2 | 10 | 11 | 13) && x % 0.5 < 0.001 && y % 0.5 < 0.001 {
+            x1 -= 0.001;
+            y1 -= 0.001;
+        }
+        let [w, h] = self.map;
+        let tile = |v: f32, n: i32| (v as i32).clamp(0, n - 1);
+        let (tx0, ty0, tx1, ty1) = (tile(x0, w), tile(y0, h), tile(x1, w), tile(y1, h));
+        let level = self
+            .grid
+            .level((tx1 ^ tx0) >> 3)
+            .min(self.grid.level((ty1 ^ ty0) >> 3));
+        let shift = self.grid.shift(level);
+        (level, tx0 >> shift, ty0 >> shift)
+    }
+
+    /// Whether a query whose rectangle, grown as the query grows it, is `rect` (`x0, y0, x1, y1`)
+    /// visits the cell an object's record of kind `kind` is filed in ([`Spatial::filed`]): the
+    /// query's tiles run from the low corner's (at least 0) to the high corner's (at most the
+    /// map's size), and on each level it visits the cells they cover.
+    pub(super) fn visits(&self, p: &Placed, kind: u8, rect: [f32; 4]) -> bool {
+        let (level, cx, cy) = self.filed(p, kind);
+        self.visits_cell(level, cx, cy, rect)
+    }
+
+    /// Whether a query whose grown rectangle is `rect` visits cell (`cx`, `cy`) of `level`
+    /// ([`Spatial::visits`]).
+    pub(super) fn visits_cell(&self, level: i32, cx: i32, cy: i32, rect: [f32; 4]) -> bool {
+        let [x0, y0, x1, y1] = self.visited_cells(level, rect);
+        x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1
+    }
+
+    /// The cells of `level` a query whose grown rectangle is `rect` visits
+    /// ([`Spatial::visits_cell`]): x and y from, then x and y to, each inclusive.
+    pub(super) fn visited_cells(&self, level: i32, rect: [f32; 4]) -> [i32; 4] {
+        let shift = self.grid.shift(level);
+        let [w, h] = self.map;
+        let (qx0, qy0) = ((rect[0] as i32).max(0), (rect[1] as i32).max(0));
+        let (qx1, qy1) = ((rect[2] as i32).min(w), (rect[3] as i32).min(h));
+        [qx0 >> shift, qy0 >> shift, qx1 >> shift, qy1 >> shift]
+    }
+
+    /// The object's record is filed again ([`RecordCells`]): in the cell [`Spatial::filed`] gives
+    /// it now, in none without a record or out of the world. Every change of an object's place,
+    /// radii or record runs it.
+    ///
+    /// [`RecordCells`]: crate::spatial::RecordCells
+    pub(super) fn refile(&mut self, id: i32) {
+        let cell = self
+            .objects
+            .get(&id)
+            .and_then(|p| p.obstruction.map(|o| self.filed(p, o.kind)));
+        let records = &mut self.records;
+        let old = records.filed.get(&id).copied();
+        if old == cell {
+            return;
+        }
+        if let Some(old) = old
+            && let Some(ids) = records.cells.get_mut(&old)
+        {
+            let _ = ids.remove(&id);
+            if ids.is_empty() {
+                let _ = records.cells.remove(&old);
+            }
+        }
+        match cell {
+            Some(c) => {
+                let _ = records.filed.insert(id, c);
+                let _ = records.cells.entry(c).or_default().insert(id);
+            }
+            None => {
+                let _ = records.filed.remove(&id);
+            }
+        }
+    }
+
+    /// The objects whose record is filed in a cell a query whose grown rectangle is `rect`
+    /// visits, in id order: those [`Spatial::visits`] passes, read from the cells it visits on
+    /// each level ([`RecordCells`]) instead of tested one by one.
+    ///
+    /// [`RecordCells`]: crate::spatial::RecordCells
+    pub(super) fn visited_records(&self, rect: [f32; 4]) -> Vec<i32> {
+        let mut ids = Vec::new();
+        for level in -1..self.grid.levels {
+            let [x0, y0, x1, y1] = self.visited_cells(level, rect);
+            let span = (i64::from(x1) - i64::from(x0) + 1) * (i64::from(y1) - i64::from(y0) + 1);
+            if span <= 0 {
+                continue;
+            }
+            if span as usize <= self.records.cells.len() {
+                for cy in y0..=y1 {
+                    for cx in x0..=x1 {
+                        if let Some(c) = self.records.cells.get(&(level, cx, cy)) {
+                            ids.extend(c);
+                        }
+                    }
+                }
+            } else {
+                for (&(l, cx, cy), c) in &self.records.cells {
+                    if l == level && x0 <= cx && cx <= x1 && y0 <= cy && cy <= y1 {
+                        ids.extend(c);
+                    }
+                }
+            }
+        }
+        ids.sort_unstable();
+        ids
+    }
+
+    /// [`Spatial::visited_records`] with each object's place.
+    pub(super) fn records_in(&self, rect: [f32; 4]) -> impl Iterator<Item = (i32, &Placed)> + '_ {
+        self.visited_records(rect)
+            .into_iter()
+            .filter_map(|id| self.objects.get(&id).map(|p| (id, p)))
+    }
+
+    /// The object moved: its record moves with it, and it changes tiles when its centre crosses
+    /// a tile's edge (`RGE_Static_Object::new_position`, `0x1411a58b0`).
+    /// Player `player`'s scout map, once made (`player+0x1370`).
+    #[must_use]
+    pub fn scout_map(&self, player: usize) -> Option<&crate::explore::InfluenceMap> {
+        self.scout_maps.get(&player)
+    }
+
+    /// Player `player`'s scout map becomes `map` (the old one goes).
+    pub fn set_scout_map(&mut self, player: usize, map: crate::explore::InfluenceMap) {
+        let _ = self.scout_maps.insert(player, map);
+    }
+
+    /// Tile (`x`, `y`) of player `player`'s scout map, if it has one, takes 1 (`FUN_140f4d5e0`).
+    pub fn scout(&mut self, player: usize, x: i32, y: i32) {
+        if let Some(m) = self.scout_maps.get_mut(&player) {
+            m.set(x, y, 1);
+        }
+    }
+
+    /// What the walk reads of a moving object now, None for one without movement state.
+    pub fn set_gait(&mut self, id: i32, gait: Option<Gait>) {
+        match gait {
+            Some(g) => {
+                let _ = self.gaits.insert(id, g);
+            }
+            None => {
+                let _ = self.gaits.remove(&id);
+            }
+        }
+    }
+
+    /// The walk's view of the moving object `id`'s last human order time (`+0x650`) as the field
+    /// changes; nothing for an object without one.
+    pub fn set_human_order(&mut self, id: i32, human_order: u32) {
+        if let Some(g) = self.gaits.get_mut(&id) {
+            g.human_order = human_order;
+        }
+    }
+
+    /// The walk's view of the moving object `id`'s last move time (`+0x870`, slot 0x5e8) as
+    /// the field changes outside its own update (a construction's start, a gate that shuts or
+    /// locks): a later walker of the same update reads it at once; nothing for an object without
+    /// movement state.
+    pub fn set_last_move(&mut self, id: i32, last_move: u32) {
+        if let Some(g) = self.gaits.get_mut(&id) {
+            g.last_move = last_move;
+        }
+    }
+
+    /// What the walk reads of the moving object `id`.
+    pub fn gait(&self, id: i32) -> Option<Gait> {
+        self.gaits.get(&id).copied()
+    }
+
+    /// An annex's main building, or none.
+    pub fn set_annex(&mut self, id: i32, main: Option<i32>) {
+        match main {
+            Some(m) => {
+                let _ = self.annexes.insert(id, m);
+            }
+            None => {
+                let _ = self.annexes.remove(&id);
+            }
+        }
+    }
+
+    /// The obstruction query's ignore list for `ids` (−1 for none), as `FUN_14114e8a0` adds each
+    /// object: its id, then a building's annexes (`+0xbc0`..`+0xbd8`, in id order).
+    #[must_use]
+    pub fn query_ignore(&self, ids: &[i32]) -> Vec<i32> {
+        let mut ignore = Vec::new();
+        for &id in ids.iter().filter(|&&id| id != -1) {
+            ignore.push(id);
+            ignore.extend(self.annexes_of(id));
+        }
+        ignore
+    }
+
+    /// The annexes of the building `main`, in id order.
+    pub fn annexes_of(&self, main: i32) -> Vec<i32> {
+        self.annexes
+            .iter()
+            .filter(|&(_, &m)| m == main)
+            .map(|(&a, _)| a)
+            .collect()
+    }
+
+    /// The main building of the annex `id`, if it is one.
+    pub fn annex_of(&self, id: i32) -> Option<i32> {
+        self.annexes.get(&id).copied()
+    }
+
+    /// `FUN_141663dc0` with the ally flag ([`Spatial::allied`]), for the walk's avoidance.
+    pub fn allied_with(&self, from: usize, to: usize) -> bool {
+        self.allied(from, to)
+    }
+
+    /// The players `from` counts as allies ([`Spatial::allied_with`]), one bit each.
+    pub fn allies_of(&self, from: usize) -> u64 {
+        (0..64usize)
+            .filter(|&to| self.allied(from, to))
+            .fold(0, |bits, to| bits | (1 << to))
+    }
+
+    /// `FUN_141663dc0` with the ally flag: `to` counts for `from` when it is `from`, or `from`
+    /// stands to it in relation 0 or 4; Gaia counts for no one else.
+    pub(super) fn allied(&self, from: usize, to: usize) -> bool {
+        if from == to {
+            return true;
+        }
+        if to == 0 {
+            return false;
+        }
+        matches!(
+            self.relations.get(from).and_then(|r| r.get(to)),
+            Some(0 | 4)
+        )
+    }
+
+    /// `FUN_1410562e0` on the obstruction manager: its ignore list becomes `ids` (none for an
+    /// empty list), until the next call.
+    pub fn set_manager_ignore(&self, ids: &[i32]) {
+        let mut list = self.manager_ignore.borrow_mut();
+        list.clear();
+        list.extend_from_slice(ids);
+    }
+
+    /// The obstruction manager's ignore list as the last `FUN_1410562e0` left it
+    /// ([`Spatial::set_manager_ignore`]).
+    #[must_use]
+    pub fn manager_ignore(&self) -> Vec<i32> {
+        self.manager_ignore.borrow().clone()
+    }
+
+    /// `FUN_1410562d0` on the obstruction manager: its buffer becomes `buffer` (None: not set),
+    /// until the next call.
+    pub fn set_manager_buffer(&self, buffer: Option<f32>) {
+        self.manager_buffer.set(buffer);
+    }
+
+    /// The obstruction manager's buffer as the last `FUN_1410562d0` left it
+    /// ([`Spatial::set_manager_buffer`]).
+    #[must_use]
+    pub const fn manager_buffer(&self) -> Option<f32> {
+        self.manager_buffer.get()
+    }
+
+    /// What the queries that set no buffer grow the records by: the buffer the last
+    /// `FUN_1410562d0` left, 0 when not set (the `MoveTo`'s target check `FUN_140aa2a70`, the
+    /// motion step's waypoint query, the formation's lines `FUN_14103a1f0`, the group's clear
+    /// spot `FUN_141007630`).
+    #[must_use]
+    pub fn manager_grow(&self) -> f32 {
+        self.manager_buffer.get().unwrap_or(0.0)
+    }
+
+    /// The walk's obstruction query (`FUN_14114cc60` -> `FUN_141051900` with flags `0x90`, each
+    /// cell's records by `FUN_141051e00`): the records of a tested kind (kind 10 filed as 2),
+    /// except the `ignore`d objects', in the cells the query visits ([`Spatial::visits`], `rect`
+    /// grown by `grow`), whose box, grown by `grow` (the walker's radius), meets the step's
+    /// rectangle `rect` and whose grown box meets the step `from` -> `to`
+    /// (`FUN_1410512f0`; a circle's, kind 5, `FUN_141051630`, alike). A moving object of
+    /// `player` or an ally grows by `grow × ally_factor` instead (`+0x84`, the walker's master's
+    /// `min_collision_size_multiplier`). The ids hit, in id order; the game's are in its grid's,
+    /// which no caller reads yet. A rectangle that, grown, leaves the map meets the map edge's
+    /// records first ([`Spatial::edge_records`], `FUN_141057290`). Both its callers
+    /// (`FUN_14114cc60`, the gate's `FUN_1411d0570`) set the manager's ignore list to `ignore`
+    /// first ([`Spatial::set_manager_ignore`]).
+    #[allow(clippy::too_many_arguments)]
+    pub fn walk_hits(
+        &self,
+        from: [f32; 2],
+        to: [f32; 2],
+        rect: [f32; 4],
+        grow: f32,
+        ally_factor: f32,
+        player: Option<usize>,
+        ignore: &[i32],
+    ) -> Result<Vec<i32>, GenieError> {
+        self.set_manager_ignore(ignore);
+        // its callers reset the buffer after the query (FUN_1410562d0 with 0)
+        self.set_manager_buffer(None);
+        let [w, h] = self.map;
+        let walk = [from[0], from[1], to[0], to[1]];
+        let query = [
+            rect[0] - grow,
+            rect[1] - grow,
+            grow + rect[2],
+            grow + rect[3],
+        ];
+        // a query beyond the map's edge meets the edge's records first (FUN_141057290)
+        let mut hits: Vec<i32> =
+            if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
+                self.edge_records(query, QUERY_HITS)
+                    .iter()
+                    .map(|e| e.id)
+                    .collect()
+            } else {
+                Vec::new()
+            };
+        // a box that misses the step's rectangle even grown by the larger of the two grows cannot
+        // be hit (a smaller grow's box lies inside it): skip it before the grid's filing test,
+        // which costs the most. Without a player a moving object's test fails, so then all go
+        // through it
+        let reach = grow.max(ally_factor * grow);
+        let skip = |p: &Placed| {
+            let [x0, y0, x1, y1] = p.bounds();
+            !(rect[0] <= reach + x1
+                && x0 - reach <= rect[2]
+                && rect[1] <= reach + y1
+                && y0 - reach <= rect[3])
+        };
+        for (id, p) in self.records_in(query) {
+            let Some(o) = p.obstruction else {
+                continue;
+            };
+            if player.is_some() && skip(p) {
+                continue;
+            }
+            let kind = if o.kind == 10 { 2 } else { o.kind };
+            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) || !self.visits(p, kind, query)
+            {
+                continue;
+            }
+            let g = if self.gaits.get(&id).is_some_and(|g| g.moving) {
+                let player = player.ok_or(GenieError::unsupported("a walker without a place"))?;
+                if self.allied(p.player, player) {
+                    ally_factor * grow
+                } else {
+                    grow
+                }
+            } else {
+                grow
+            };
+            let [x0, y0, x1, y1] = p.bounds();
+            let grown = [x0 - g, y0 - g, g + x1, g + y1];
+            if rect[0] <= grown[2]
+                && grown[0] <= rect[2]
+                && rect[1] <= grown[3]
+                && grown[1] <= rect[3]
+                && record_meets_segment(kind, [x0, y0, x1, y1], g, walk)
+            {
+                hits.push(id);
+            }
+        }
+        Ok(hits)
+    }
+
+    /// `FUN_1411570c0` (the caller holds the ends inside the map): the manager's ignore list
+    /// becomes `ignore` (`FUN_1410562e0`), with `mask` the temporary records of the tiles of the
+    /// line's box grown by `grow` that the mask lacks go in ([`Spatial::put_tile_records`]), the
+    /// records the line meets ([`Spatial::line_hits`]), then the buffer the routine set is reset
+    /// (`FUN_1410562d0` with 0) and, with `mask`, the tile records go (`FUN_1410561f0`).
+    ///
+    /// # Errors
+    ///
+    /// As [`Spatial::line_hits`] (the records go all the same).
+    pub fn line_query(
+        &self,
+        from: [f32; 2],
+        to: [f32; 2],
+        grow: f32,
+        mask: Option<u8>,
+        ignore: &[i32],
+    ) -> Result<Vec<i32>, GenieError> {
+        self.set_manager_ignore(ignore);
+        if let Some(mask) = mask {
+            self.put_tile_records(from, to, grow, mask);
+        }
+        let hits = self.line_hits(from, to, grow, true, ignore);
+        self.set_manager_buffer(None);
+        if mask.is_some() {
+            self.clear_tile_records();
+        }
+        hits
+    }
+
+    /// `FUN_1411570c0`'s query (`FUN_141051900` with flags 0x10, any player): the records the
+    /// line `from` -> `to` meets, each box grown by `grow` (the manager's buffer,
+    /// `FUN_1410562d0`), but the `ignore`d objects' (`FUN_1410562e0`), at most 25 (the query
+    /// stops there). First the map edge's records when the grown rectangle leaves the map
+    /// ([`Spatial::edge_records`]); with `tiles` the temporary tile records still put in the
+    /// cells the query visits ([`Spatial::put_tile_records`], kind 3, the tile's box), in the
+    /// tiles' row order; then the objects' records of a tested kind (kind 10 filed as 2) in the
+    /// cells the query visits whose grown box meets the line's rectangle and the line
+    /// (`FUN_1410512f0`; a circle's alike), in id order. Ids: an object's, a tile record's
+    /// ([`tile_record_id`]) or an edge record's.
+    ///
+    /// # Errors
+    ///
+    /// A record whose place the slice does not know near the line.
+    pub fn line_hits(
+        &self,
+        from: [f32; 2],
+        to: [f32; 2],
+        grow: f32,
+        tiles: bool,
+        ignore: &[i32],
+    ) -> Result<Vec<i32>, GenieError> {
+        const MOST_HITS: usize = 25;
+        let rect = [
+            from[0].min(to[0]),
+            from[1].min(to[1]),
+            from[0].max(to[0]),
+            from[1].max(to[1]),
+        ];
+        let query = [
+            rect[0] - grow,
+            rect[1] - grow,
+            grow + rect[2],
+            grow + rect[3],
+        ];
+        let [w, h] = self.map;
+        let mut hits: Vec<i32> = Vec::new();
+        if query[0] < 0.0 || query[1] < 0.0 || (w as f32) < query[2] || (h as f32) < query[3] {
+            hits.extend(self.edge_records(query, QUERY_HITS).iter().map(|e| e.id));
+            if MOST_HITS <= hits.len() {
+                hits.truncate(MOST_HITS);
+                return Ok(hits);
+            }
+        }
+        self.check_known_records(query)?;
+        let walk = [from[0], from[1], to[0], to[1]];
+        let meets = |kind: u8, bx: [f32; 4]| {
+            let grown = [bx[0] - grow, bx[1] - grow, grow + bx[2], grow + bx[3]];
+            rect[0] <= grown[2]
+                && grown[0] <= rect[2]
+                && rect[1] <= grown[3]
+                && grown[1] <= rect[3]
+                && record_meets_segment(kind, bx, grow, walk)
+        };
+        if tiles {
+            let level = self.grid.level(0);
+            let shift = self.grid.shift(level);
+            for &(y, x) in self.tile_records.borrow().iter() {
+                let id = tile_record_id(x, y);
+                let bx = [x as f32, y as f32, x as f32 + 1.0, y as f32 + 1.0];
+                if self.visits_cell(level, x >> shift, y >> shift, query)
+                    && !ignore.contains(&id)
+                    && meets(3, bx)
+                {
+                    hits.push(id);
+                    if MOST_HITS <= hits.len() {
+                        return Ok(hits);
+                    }
+                }
+            }
+        }
+        for (id, p) in self.records_in(query) {
+            let Some(o) = p.obstruction else {
+                continue;
+            };
+            let kind = if o.kind == 10 { 2 } else { o.kind };
+            if !TESTED_KINDS.contains(&kind) || ignore.contains(&id) || !self.visits(p, kind, query)
+            {
+                continue;
+            }
+            if !meets(kind, p.bounds()) {
+                continue;
+            }
+            hits.push(id);
+            if MOST_HITS <= hits.len() {
+                break;
+            }
+        }
+        Ok(hits)
+    }
+}

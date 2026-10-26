@@ -1,0 +1,369 @@
+//! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
+//! candidates.
+
+use crate::spatial::{Placed, QUERY_HITS, Spatial, TESTED_KINDS, tile_record_id};
+use crate::unit_ai::GenieError;
+
+impl Spatial {
+    /// `FUN_1411566b0`: the tile beside a footprint at `at` of radii `radius` a unit at `from`
+    /// with terrain mask `mask` goes to: a flood over passable tiles from the footprint's own
+    /// (`(int)(x - rx)` to `(int)(x + rx - 0.001)`, columns first), at most `(int)(rx + ry) + 1`
+    /// tiles from its centre; of the tiles found outside the footprint, the first empty one, else
+    /// by the 3D distance of its centre (at the unit's height) from the unit the closest, or with
+    /// `farthest` (`param_7` 1) the farthest, later ones replacing it in the flood's order once
+    /// they beat it (an empty tile found, only empty ones). Returns its centre.
+    ///
+    /// # Errors
+    ///
+    /// A tile whose objects the slice does not know.
+    pub fn spot_off(
+        &self,
+        from: [f32; 3],
+        (me, radius_x): (i32, f32),
+        mask: u8,
+        (at, radius): ([f32; 3], [f32; 2]),
+        farthest: bool,
+    ) -> Result<Option<[f32; 2]>, GenieError> {
+        /// The footprint's last tile stops short of its edge by this (`DAT_142eb1e9c`).
+        const EDGE: f32 = crate::image::spatial::FOOTPRINT_EDGE;
+        /// A tile's centre (`DAT_142e7f384`).
+        const CENTRE: f32 = crate::image::spatial::TILE_CENTRE;
+        /// The closest search's first best (`DAT_14330ebf4`).
+        const NO_SPOT: f32 = crate::image::spatial::NO_SPOT;
+        let [tx, ty, _] = at;
+        let [rx, ry] = radius;
+        let size = (((ry + rx) as i32) + 2).max(1) * 2;
+        let half = size / 2;
+        let (cx, cy) = (tx as i32, ty as i32);
+        let (fx, fy) = ((cx - half) as f32, (cy - half) as f32);
+        self.check_known([fx, fy, fx + size as f32, fy + size as f32])?;
+        let (ox, oy) = (half - cx, half - cy);
+        let (x0, y0) = ((tx - rx) as i32, (ty - ry) as i32);
+        let (x1, y1) = (((rx + tx) - EDGE) as i32, ((ry + ty) - EDGE) as i32);
+        let mut list: Vec<(i32, i32)> = (x0..=x1)
+            .flat_map(|x| (y0..=y1).map(move |y| (x, y)))
+            .collect();
+        let mut visited = vec![false; (size * size) as usize];
+        let reach = half - 1;
+        let mut i = 0;
+        while i < list.len() {
+            let (x, y) = list[i];
+            if (cx - x).abs() < reach && (cy - y).abs() < reach {
+                for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)] {
+                    let at = ((ox + nx) * size + ny + oy) as usize;
+                    if !visited[at] && self.passable(nx, ny, mask, me, radius_x)? {
+                        visited[at] = true;
+                        list.push((nx, ny));
+                    }
+                }
+            }
+            i += 1;
+        }
+        let mut best = if farthest { 0.0 } else { NO_SPOT };
+        let mut spot = None;
+        let mut empty = false;
+        for &(x, y) in &list {
+            if x0 <= x && x <= x1 && y0 <= y && y <= y1 {
+                continue;
+            }
+            let was_empty = empty;
+            let count = self.tiles.objects(x, y);
+            if empty && count.is_some_and(|n| n != 0) {
+                continue;
+            }
+            if count == Some(0) {
+                empty = true;
+            }
+            let centre = [x as f32 + CENTRE, from[2], y as f32 + CENTRE];
+            let d = [
+                from[0] - centre[0],
+                from[2] - centre[1],
+                from[1] - centre[2],
+            ];
+            let distance = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            let beats = if farthest {
+                best < distance
+            } else {
+                distance < best
+            };
+            if (empty && !was_empty) || beats {
+                spot = Some([centre[0], centre[2]]);
+                best = distance;
+            }
+        }
+        Ok(spot)
+    }
+
+    /// The objects whose centre is on `site`'s footprint, edges included, and that the game counts
+    /// as occupying it (`FUN_14123bb20`): objects other than the site below state 3, or of a
+    /// type other than a building's below state 7 (their state and type `look`'s); for a site
+    /// whose master does not obstruct (`FUN_1411205c0`: obstruction type 0 or 12, `obstructs`
+    /// false) only those that do not move (speed 0, slot 0xe8); a desolid building foundation
+    /// (`+0xc60`) only of a player that and the site's count each other allied
+    /// (`FUN_141663d90` with the ally flag, both ways); not those the site may be built over
+    /// (`can_be_built_on` 1); with all three radii. An object `look` does not give (the owner's
+    /// sleeping objects, which the unit's view does not hold: of types below 30, alive, in
+    /// state 2 or 6) passes the state and foundation tests.
+    pub fn footprint_occupants(
+        &self,
+        site_id: i32,
+        site: &Placed,
+        obstructs: bool,
+        look: &dyn Fn(i32) -> Option<crate::build::ClearLook>,
+    ) -> Result<Vec<i32>, GenieError> {
+        use crate::masters::master_type::BUILDING;
+        let [sx, sy, _] = site.position;
+        let [rx, ry] = site.radius;
+        self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
+        let counts = |id: i32, o: &Placed| {
+            look(id).is_none_or(|l| {
+                let alive = l.state < 3 || (l.kind != BUILDING && l.state < 7);
+                let foundation = l.kind == BUILDING && l.desolid;
+                alive
+                    && (!foundation
+                        || (self.allied(site.player, o.player)
+                            && self.allied(o.player, site.player)))
+            })
+        };
+        Ok(self
+            .objects
+            .iter()
+            .filter(|&(&id, o)| {
+                id != site_id
+                    && (obstructs || o.speed <= 0.0)
+                    && o.buildable_on != 1
+                    && o.tall
+                    && o.radius.iter().all(|&r| 0.0 < r)
+                    && (o.position[0] - sx).abs() <= rx
+                    && (o.position[1] - sy).abs() <= ry
+                    && counts(id, o)
+            })
+            .map(|(&id, _)| id)
+            .collect())
+    }
+
+    /// The objects a foundation clears off its footprint when its first builder arrives
+    /// (`FUN_1415c3620`): those whose footprint overlaps the site's, of another master, that may
+    /// be built over (`can_be_built_on`) or are trees (class 15, which it clears when their hit
+    /// points are at most 1).
+    pub fn footprint_clearing(&self, site_id: i32, site: &Placed) -> Result<Vec<i32>, GenieError> {
+        let [sx, sy, _] = site.position;
+        let [rx, ry] = site.radius;
+        self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;
+        Ok(self
+            .objects
+            .iter()
+            .filter(|&(&id, o)| {
+                id != site_id
+                    && o.master != site.master
+                    && (o.buildable_on != 0 || o.class == 15)
+                    && (o.position[0] - sx).abs() < o.radius[0] + rx
+                    && (o.position[1] - sy).abs() < o.radius[1] + ry
+            })
+            .map(|(&id, _)| id)
+            .collect())
+    }
+
+    /// Whether a static record of another player marks a tile of `site`'s footprint
+    /// (`FUN_1411d4b80`).
+    /// The edges cast by `CVTTSS2SI` (a NaN or huge edge gives `i32::MIN`: the loops then do
+    /// not run), the tile's players the low 32 bits of `word >> 23` against `1 << (player &
+    /// 0x1f)` in 32 bits.
+    pub fn foreign_marks(&self, site: &Placed) -> bool {
+        use crate::checkpoint::cvttss2si;
+        let [sx, sy, _] = site.position;
+        let [rx, ry] = site.radius;
+        let (w, h) = (self.tiles.width, self.tiles.height);
+        let (x0, y0) = (cvttss2si(sx - rx).max(0), cvttss2si(sy - ry).max(0));
+        let x1 = cvttss2si((sx + rx) - 0.001).min(w - 1);
+        let y1 = cvttss2si((sy + ry) - 0.001).min(h - 1);
+        let own = 1u32 << (site.player as u32 & 0x1f);
+        (y0..=y1).any(|y| {
+            (x0..=x1).any(|x| {
+                let players = (self.tiles.word(x, y).unwrap_or(0) >> 23) as u32;
+                players != 0 && players != own
+            })
+        })
+    }
+
+    /// Slot 0x278 of unit `me` (`FUN_141158720`): whether it could stand at `point`. The point's
+    /// tile is on the obstruction manager's map and its terrain class in the unit's `mask` (the
+    /// tile's word, `DAT_143f0a088 + 0x98`; a static record's own bits do not count here), and no
+    /// obstruction record but the unit's own holds the point within its box grown by `grow` (the
+    /// unit's radius): `FUN_141051900` with flags 0x20 in the cells it visits
+    /// ([`Spatial::visits`]), whose point test `FUN_141052160` takes records of every kind, edges
+    /// included. A grown point beyond the map's edge meets the edge's
+    /// records ([`Spatial::edge_records`]) and is never clear.
+    pub fn point_clear(
+        &self,
+        me: i32,
+        point: [f32; 2],
+        grow: f32,
+        mask: u8,
+    ) -> Result<bool, GenieError> {
+        let [x, y] = point;
+        let (tx, ty) = (x as i32, y as i32);
+        let Some(word) = self.tiles.word(tx, ty) else {
+            return Ok(false);
+        };
+        if word & u64::from(mask ^ 0xff) != 0 {
+            return Ok(false);
+        }
+        // the unit alone the manager's ignore list (FUN_1410562e0 with DAT_143f49fc8); the
+        // buffer it set for the query it resets after (FUN_1410562d0 with 0)
+        self.set_manager_ignore(&[me]);
+        self.set_manager_buffer(None);
+        Ok(!self.point_hit(point, grow, &[me], false)?)
+    }
+
+    /// Slot 0x270 of unit `me` (`FUN_141158940`): whether it could stand at `point` among the
+    /// objects of `ignore` (`me` itself for an empty list): the point's tile is on the
+    /// obstruction manager's map and its terrain class in the unit's `mask` (its restriction's,
+    /// `FUN_141054630`), and no record but the ignored ones holds the point within its box grown
+    /// by `grow` (the unit's radius times the caller's factor), the query of
+    /// [`Spatial::point_hit`] with 25 hits.
+    ///
+    /// # Errors
+    ///
+    /// As [`Spatial::point_hit`].
+    pub fn point_clear_among(
+        &self,
+        me: i32,
+        point: [f32; 2],
+        grow: f32,
+        mask: u8,
+        ignore: &[i32],
+    ) -> Result<bool, GenieError> {
+        use crate::checkpoint::cvttss2si;
+        // CVTTSS2SI: a NaN or huge coordinate is i32::MIN, off the map
+        let Some(word) = self.tiles.word(cvttss2si(point[0]), cvttss2si(point[1])) else {
+            return Ok(false);
+        };
+        if word & u64::from(mask ^ 0xff) != 0 {
+            return Ok(false);
+        }
+        let ignore = if ignore.is_empty() { &[me][..] } else { ignore };
+        self.set_manager_ignore(ignore);
+        // the buffer it set for the query it resets after (FUN_1410562d0 with 0)
+        self.set_manager_buffer(None);
+        Ok(!self.point_hit(point, grow, ignore, false)?)
+    }
+
+    /// The obstruction manager's point query (`FUN_141051900` with flags 0x20, any player, the
+    /// point test `FUN_141052160`) at `point` with the manager's buffer `grow` (`+0x57`, `+0x58`)
+    /// and ignore list `ignore` (`+0x2c`, `FUN_1410562e0`): whether a record holds the point
+    /// within its box grown by `grow`, edges included, of the records of every kind in the cells
+    /// the query visits ([`Spatial::visits`]), the temporary tile records still put among them
+    /// ([`Spatial::put_tile_records`]); with `still` (flag 0x40) an object that moves (the
+    /// record's `+3` bit 0x10, [`Gait::moving`]) is left out. A grown point beyond the map's edge
+    /// meets the edge's records ([`Spatial::edge_records`]).
+    ///
+    /// # Errors
+    ///
+    /// A record whose place the slice does not know near the point.
+    ///
+    /// [`Gait::moving`]: crate::spatial::Gait::moving
+    pub fn point_hit(
+        &self,
+        point: [f32; 2],
+        grow: f32,
+        ignore: &[i32],
+        still: bool,
+    ) -> Result<bool, GenieError> {
+        let [x, y] = point;
+        let [w, h] = self.map;
+        let rect = [x - grow, y - grow, grow + x, grow + y];
+        if (rect[0] < 0.0 || rect[1] < 0.0 || (w as f32) < rect[2] || (h as f32) < rect[3])
+            && !self.edge_records(rect, QUERY_HITS).is_empty()
+        {
+            return Ok(true);
+        }
+        let level = self.grid.level(0);
+        let shift = self.grid.shift(level);
+        let tile = self.tile_records.borrow().iter().any(|&(ty, tx)| {
+            let [x0, y0, x1, y1] = [tx as f32, ty as f32, tx as f32 + 1.0, ty as f32 + 1.0];
+            self.visits_cell(level, tx >> shift, ty >> shift, rect)
+                && !ignore.contains(&tile_record_id(tx, ty))
+                && x <= x1 + grow
+                && x0 - grow <= x
+                && y <= grow + y1
+                && y0 - grow <= y
+        });
+        if tile {
+            return Ok(true);
+        }
+        self.object_holds(point, grow, ignore, still)
+    }
+
+    /// The objects' records of [`Spatial::point_hit`]'s query (`FUN_141051900` with flags 0x20,
+    /// the point test `FUN_141052160`): whether a record with an object (`+8`), not one of
+    /// `ignore`, holds `point` within its box grown by `grow`, edges included (with `still` a
+    /// moving object's is left out); the edge's and the tiles' records have no object.
+    ///
+    /// # Errors
+    ///
+    /// A record whose place the slice does not know near the point.
+    pub fn object_holds(
+        &self,
+        point: [f32; 2],
+        grow: f32,
+        ignore: &[i32],
+        still: bool,
+    ) -> Result<bool, GenieError> {
+        let [x, y] = point;
+        let rect = [x - grow, y - grow, grow + x, grow + y];
+        self.check_known_records(rect)?;
+        Ok(self.records_in(rect).any(|(id, p)| {
+            let Some(o) = p.obstruction.filter(|_| !ignore.contains(&id)) else {
+                return false;
+            };
+            if still && self.gaits.get(&id).is_some_and(|g| g.moving) {
+                return false;
+            }
+            if !self.visits(p, o.kind, rect) {
+                return false;
+            }
+            let [x0, y0, x1, y1] = p.bounds();
+            x <= x1 + grow && x0 - grow <= x && y <= grow + y1 && y0 - grow <= y
+        }))
+    }
+
+    /// Whether `FUN_141052b90` over the tile under `point` alone puts a temporary record on it
+    /// (`FUN_1410510c0`): the tile is on the map and its word holds neither a terrain class of
+    /// `mask` nor a temporary record's bit 0x80 (`mask & 0x7f | 0x80`).
+    #[must_use]
+    pub fn makes_tile_record(&self, point: [f32; 2], mask: u8) -> bool {
+        let (x, y) = (point[0] as i32, point[1] as i32);
+        self.tiles
+            .word(x, y)
+            .is_some_and(|w| w & u64::from(mask & 0x7f | 0x80) == 0)
+            && !self.tile_records.borrow().contains(&(y, x))
+    }
+
+    /// The records a move query could report (`FUN_14114cc60` -> `FUN_141051900`): those of a
+    /// tested kind in the cells the query visits ([`Spatial::visits`]) whose box, grown by
+    /// `grow`, meets `rect` (`x0, y0, x1, y1`, edges included), except the `ignore`d objects'. The game then tests each candidate against the move's
+    /// segment and shrinks moving allies' boxes (master `+0x780`, at most 1); every hit is a
+    /// candidate, so no candidate means no hit.
+    pub fn obstruction_candidates(&self, rect: [f32; 4], grow: f32, ignore: &[i32]) -> Vec<i32> {
+        let query = [
+            rect[0] - grow,
+            rect[1] - grow,
+            grow + rect[2],
+            grow + rect[3],
+        ];
+        self.records_in(query)
+            .filter(|(id, p)| {
+                p.obstruction.is_some_and(|o| {
+                    TESTED_KINDS.contains(&o.kind) && self.visits(p, o.kind, query)
+                }) && !ignore.contains(id)
+            })
+            .filter(|(_, p)| {
+                let [x0, y0, x1, y1] = p.bounds();
+                let (x0, y0, x1, y1) = (x0 - grow, y0 - grow, grow + x1, grow + y1);
+                rect[0] <= x1 && x0 <= rect[2] && rect[1] <= y1 && y0 <= rect[3]
+            })
+            .map(|(id, _)| id)
+            .collect()
+    }
+}
