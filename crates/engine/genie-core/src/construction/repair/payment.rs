@@ -147,3 +147,55 @@ pub fn repair_unit(
     let full = crate::combat::damage::heal_hp(&mut o.hp, &mut o.hp_powerups, o.master_hp, amount);
     Ok(u8::from(full))
 }
+
+/// A repairer's player's attributes as its repair pays from them ([`crate::construction::repair::Payer`]):
+/// the resources (`Player::resources`) and the other attributes as the update reads them, each
+/// payment kept as an add for the caller ([`Context::attribute_adds`]: a subtraction, so the
+/// player's value comes out as the repair saw it).
+///
+/// [`Context::attribute_adds`]: crate::world::context::Context::attribute_adds
+pub(crate) struct PaidAttributes {
+    pub(super) values: Vec<f32>,
+    pub(crate) adds: Vec<(i16, f32)>,
+}
+
+impl PaidAttributes {
+    pub(crate) fn new(resources: [f32; 4], attributes: &[f32]) -> Self {
+        let mut values = attributes.to_vec();
+        for (i, r) in resources.into_iter().enumerate() {
+            if let Some(v) = values.get_mut(i) {
+                *v = r;
+            }
+        }
+        Self {
+            values,
+            adds: Vec::new(),
+        }
+    }
+}
+
+impl crate::technology::Attributes for PaidAttributes {
+    fn get(&self, i: i16) -> Result<f32, GenieError> {
+        usize::try_from(i)
+            .ok()
+            .and_then(|k| self.values.get(k))
+            .copied()
+            .ok_or(crate::world::NO_ATTRIBUTE)
+    }
+
+    fn set(&mut self, _: i16, _: f32) -> Result<(), GenieError> {
+        Err(GenieError::unreachable(
+            "a repair's payment that sets an attribute",
+        ))
+    }
+
+    fn subtract(&mut self, i: i16, amount: f32) -> Result<(), GenieError> {
+        let v = usize::try_from(i)
+            .ok()
+            .and_then(|k| self.values.get_mut(k))
+            .ok_or(crate::world::NO_ATTRIBUTE)?;
+        *v -= amount;
+        self.adds.push((i, -amount));
+        Ok(())
+    }
+}

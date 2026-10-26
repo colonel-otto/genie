@@ -14,7 +14,7 @@ use crate::GenieError;
 use crate::movement::move_to::{MoveTo, MoveWait};
 
 mod action;
-mod payment;
+pub(crate) mod payment;
 pub(crate) mod unit;
 
 pub use self::action::work_amount;

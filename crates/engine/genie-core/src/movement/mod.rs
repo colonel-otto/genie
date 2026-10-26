@@ -12,6 +12,7 @@
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
 
+pub(crate) mod ai_moves;
 pub mod explore;
 pub mod fly;
 mod long_walk;

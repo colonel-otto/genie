@@ -16,10 +16,9 @@ use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus, forget_resource};
 use crate::objects::masters::Master;
 use crate::objects::release::release_own;
-use crate::objects::unit::{
-    Captured, Step, Unit, hunt_walk_sprite, loses_actions, second_target_checked,
-};
+use crate::objects::unit::{Step, Unit, hunt_walk_sprite, loses_actions, second_target_checked};
 use crate::ownership::artifact::{Artifact, Handover};
+use crate::ownership::capture::Captured;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{state_of, wait_progress};
 use crate::unit_ai::unit::AiResume;

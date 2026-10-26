@@ -68,7 +68,7 @@ pub(crate) struct Context<'a> {
     /// whether it has the unit's master: the update ends with the takeover ([`Step::Captured`]).
     pub(crate) taken_over: Option<(usize, bool)>,
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
-    /// caller's ([`crate::objects::unit::Captured::building`]).
+    /// caller's ([`crate::ownership::capture::Captured::building`]).
     pub(crate) building_handover: bool,
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's

@@ -1,12 +1,13 @@
 //! The repair part of the update and the unit's attackers and seen target.
 
 use crate::GenieError;
+use crate::construction::repair::payment::PaidAttributes;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::masters::Master;
 use crate::objects::release::release_own;
-use crate::objects::unit::{PaidAttributes, Unit};
+use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
 use crate::unit_ai::world_view::RepairWrite;
 use crate::world::context::Context;

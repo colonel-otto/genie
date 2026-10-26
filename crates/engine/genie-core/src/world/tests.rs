@@ -8,14 +8,16 @@ use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::unit::give_load;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::{Stream, Streams, Well512};
+use crate::movement::ai_moves::PointMove;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveTo;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::release::{Releaser, released};
-use crate::objects::unit::{LIVESTOCK, PointMove, Unit, loses_actions};
+use crate::objects::unit::{Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
+use crate::ownership::capture::LIVESTOCK;
 use crate::ownership::change::change_hands;
 use crate::unit_ai::task_finder::world::{
     SideWorld, World, task_search, task_target_with, wait_progress,

@@ -4,7 +4,8 @@
 use crate::commands::Command;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::seconds;
-use crate::objects::unit::{Captured, Step};
+use crate::objects::unit::Step;
+use crate::ownership::capture::Captured;
 use crate::unit_ai::unit::AiResume;
 use crate::world::{PlayerFrame, Turns};
 

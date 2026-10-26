@@ -5,7 +5,8 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::masters::{Master, Masters};
-use crate::objects::unit::{LIVESTOCK, Unit};
+use crate::objects::unit::Unit;
+use crate::ownership::capture::LIVESTOCK;
 use crate::unit_ai::OWNER_CHANGED;
 use crate::world::player::Player;
 use crate::world::{BUILDING_KIND, Turns};
@@ -87,7 +88,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A building asleep ([`crate::objects::unit::HANDS_LEFT`]), and what the parts do not model.
+    /// A building asleep ([`crate::ownership::capture::HANDS_LEFT`]), and what the parts do not model.
     pub(crate) fn building_changes_hands(
         &mut self,
         old: usize,
@@ -97,7 +98,7 @@ impl Turns {
     ) -> Result<(), GenieError> {
         self.annexes_change_hands(old, id, new)?;
         let Some(crate::orders::Place::Live(_, idx)) = self.place(id) else {
-            return Err(crate::objects::unit::HANDS_LEFT);
+            return Err(crate::ownership::capture::HANDS_LEFT);
         };
         let u = &self.players[old].objects[idx];
         let master = match u.own_master.as_deref() {

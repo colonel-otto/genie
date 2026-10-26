@@ -449,10 +449,10 @@ impl Turns {
         let by = self.releaser(player, idx);
         let (released, left) =
             match self.players[player].objects[idx].head_takes_point(point, player)? {
-                crate::objects::unit::PointMove::Declined => return Ok(false),
-                crate::objects::unit::PointMove::Taken(released) => (released, None),
-                crate::objects::unit::PointMove::Repairs(released, left) => (released, left),
-                crate::objects::unit::PointMove::Sails => {
+                crate::movement::ai_moves::PointMove::Declined => return Ok(false),
+                crate::movement::ai_moves::PointMove::Taken(released) => (released, None),
+                crate::movement::ai_moves::PointMove::Repairs(released, left) => (released, left),
+                crate::movement::ai_moves::PointMove::Sails => {
                     self.transport_move(player, idx, point)?;
                     return Ok(true);
                 }

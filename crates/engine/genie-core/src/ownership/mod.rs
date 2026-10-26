@@ -3,4 +3,5 @@
 //! garrison, the attributes it counts).
 
 pub mod artifact;
+pub(crate) mod capture;
 pub(crate) mod change;

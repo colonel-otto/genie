@@ -11,21 +11,17 @@ use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::Master;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::ownership::artifact::Artifact;
+use crate::ownership::capture::Captured;
 use crate::production::Production;
 use crate::unit_ai::UnitAi;
 use crate::world::context::Context;
 use crate::world::{Gate, WONDER};
 
 mod death;
-mod owner;
 mod search;
 mod stop;
 mod top;
 mod update;
-
-pub(crate) use self::owner::PaidAttributes;
-pub(crate) use self::owner::PointMove;
-pub(crate) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
 
 /// A dying sprite the `.dat` does not have.
 const NO_DYING_SPRITE: GenieError =
@@ -340,5 +336,14 @@ pub(crate) fn missed_passes(
         || (other && level < blast_level)
 }
 
-/// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.
-const UNPACKED_TREBUCHET: i16 = 54;
+/// What an object's update leaves of it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Step {
+    Stay,
+    /// It leaves its list for good (`RGE_Object_List::update` deletes it).
+    Leave,
+    /// It moves to its player's sleeping list.
+    Sleep,
+    /// A player took it or other objects of its player over ([`Captured`]).
+    Captured(Captured),
+}

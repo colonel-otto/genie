@@ -166,7 +166,7 @@
     {
       "file": "crates/engine/genie-core/src/construction/repair/unit.rs",
       "function": "Unit::repair_part",
-      "line": 24,
+      "line": 25,
       "cyclomatic": 40.0,
       "coverage": 0.0,
       "crap": 1640.0,
@@ -407,6 +407,15 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/movement/ai_moves.rs",
+      "function": "Unit::move_to_object",
+      "line": 222,
+      "cyclomatic": 10.0,
+      "coverage": 0.0,
+      "crap": 110.0,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/movement/move_to.rs",
       "function": "MoveToAction::update",
       "line": 511,
@@ -452,24 +461,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/objects/unit/owner.rs",
-      "function": "Unit::capture_stop",
-      "line": 64,
-      "cyclomatic": 16.0,
-      "coverage": 50.0,
-      "crap": 48.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/objects/unit/owner.rs",
-      "function": "Unit::move_to_object",
-      "line": 380,
-      "cyclomatic": 10.0,
-      "coverage": 0.0,
-      "crap": 110.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/objects/unit/search.rs",
       "function": "Unit::hunt_tree_search",
       "line": 164,
@@ -499,7 +490,7 @@
     {
       "file": "crates/engine/genie-core/src/objects/unit/update.rs",
       "function": "Unit::update",
-      "line": 36,
+      "line": 35,
       "cyclomatic": 396.0,
       "coverage": 47.40213523131673,
       "crap": 23214.900482076442,
@@ -683,6 +674,15 @@
       "cyclomatic": 15.0,
       "coverage": 30.952380952380953,
       "crap": 89.06766277939747,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/ownership/capture.rs",
+      "function": "Unit::capture_stop",
+      "line": 60,
+      "cyclomatic": 16.0,
+      "coverage": 50.0,
+      "crap": 48.0,
       "crate": "genie-core"
     },
     {
@@ -967,7 +967,7 @@
     {
       "file": "crates/engine/genie-core/src/world/world_update.rs",
       "function": "Turns::tick_with",
-      "line": 132,
+      "line": 133,
       "cyclomatic": 38.0,
       "coverage": 70.93023255813954,
       "crap": 73.47250556554766,
