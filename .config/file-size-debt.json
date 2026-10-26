@@ -7,7 +7,6 @@
   "crates/engine/genie-core/src/fmath.rs": 1356,
   "crates/engine/genie-core/src/game_status.rs": 937,
   "crates/engine/genie-core/src/gather.rs": 1550,
-  "crates/engine/genie-core/src/group/formation.rs": 1795,
   "crates/engine/genie-core/src/group/mod.rs": 760,
   "crates/engine/genie-core/src/group/motion.rs": 1090,
   "crates/engine/genie-core/src/group/steer.rs": 1018,

@@ -182,9 +182,9 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/formation.rs",
+      "file": "crates/engine/genie-core/src/group/formation/column_line.rs",
       "function": "column_line_slots",
-      "line": 199,
+      "line": 89,
       "cyclomatic": 46.0,
       "coverage": 78.46153846153847,
       "crap": 67.14266363222573,
