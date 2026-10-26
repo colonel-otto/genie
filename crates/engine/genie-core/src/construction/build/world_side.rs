@@ -1,6 +1,6 @@
-//! The construction's entries outside a builder's update ([`crate::world::World`]): a
-//! building's work and completion, its storage's leave, the built object's stacking and its
-//! new objects.
+//! The construction's parts that run on the whole world ([`crate::world::World`]), outside a
+//! builder's update: a building's work and completion, its storage's leave, the built object's
+//! stacking and its new objects.
 
 use crate::GenieError;
 use crate::construction::build::{
@@ -115,7 +115,7 @@ impl crate::world::World {
 
 /// The seconds of work a new object's building gets at once from its owner's slot 0x1c0 with its
 /// flag (`FUN_14162ce00`'s `FUN_1411cc430` with `DAT_142eea788`).
-pub(super) const STACK_WORK: f32 = crate::math::image::build::STACK_WORK;
+pub(crate) const STACK_WORK: f32 = crate::math::image::build::STACK_WORK;
 
 /// The guard of an object the routines here reach through the object itself (their callers
 /// hold it): the slice's lists hold every object the world does.

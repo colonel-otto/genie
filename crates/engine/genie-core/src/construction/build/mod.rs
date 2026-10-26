@@ -25,10 +25,10 @@ mod drop_off;
 pub(crate) mod more_work;
 mod placing;
 mod states;
-mod turn_entries;
 mod unit_ai_side;
 mod update;
 mod walk_ends;
+pub(crate) mod world_side;
 
 pub(crate) use self::clearing::{CLEARING_REACH, footprint_clearing};
 pub use self::clearing::{ClearLook, Cleared, ClearingSite};
@@ -37,7 +37,7 @@ use self::clearing::{GATE, TREE};
 pub use self::drop_off::{DropSearch, DropStart};
 #[cfg(test)]
 use self::placing::beside_diagonal;
-pub(crate) use self::turn_entries::{NO_CONSTRUCTION, NOT_HELD, held};
+pub(crate) use crate::construction::build::world_side::{NO_CONSTRUCTION, NOT_HELD, held};
 #[cfg(test)]
 use crate::map::spatial::Spatial;
 #[cfg(test)]

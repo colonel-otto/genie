@@ -16,7 +16,7 @@ build time completes the building.
 - `clearing.rs` removes the objects on a new building's footprint.
 - `drop_off.rs` sends a builder that carries resources to a drop site first.
 - `more_work.rs` finds a resource near the finished building for the builder.
-- `turn_entries.rs` holds the construction's parts that run on the whole world.
+- `world_side.rs` holds the construction's parts that run on the whole world.
 - `unit_ai_side.rs` holds what the unit AI asks of a build.
 
 ## In the game
@@ -36,10 +36,10 @@ build time completes the building.
 | [`placing.rs`](placing.rs) | The placement on a foundation no builder started (state 7), a builder's joining and its work, the walk off the footprint (state 223) and back. |
 | [`states.rs`](states.rs) | The states the update and the unit's stop set: the prelude, the work's end and what follows it, the restart, the idle, a retarget, the halt and the end. |
 | [`tests.rs`](tests.rs) | Tests. |
-| [`turn_entries.rs`](turn_entries.rs) | The construction's entries outside a builder's update (`crate::world::World`): a building's work and completion, its storage's leave, the built object's stacking and its new objects. |
 | [`unit_ai_side.rs`](unit_ai_side.rs) | What the unit AI asks of a build while it runs (through its view, `UnitView`): the build command at once, the builder's search for another foundation, and a unit's spot off a foundation's footprint. |
 | [`update.rs`](update.rs) | The Build action's start (state 4 toward the foundation) and its update, which runs the action's state; the AI's build orders whose foundation is gone. |
 | [`walk_ends.rs`](walk_ends.rs) | The ends of the builder's walk: at its end, failed, its foundation lost; the walk to a point (state 11). |
+| [`world_side.rs`](world_side.rs) | The construction's parts that run on the whole world (`crate::world::World`), outside a builder's update: a building's work and completion, its storage's leave, the built object's stacking and its new objects. |
 <!-- /files -->
 
 ## How it connects
