@@ -13,8 +13,8 @@
 
 use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
-use crate::move_to::MoveWait;
-pub use crate::move_to::{MoveTo, Walk};
+use crate::movement::move_to::MoveWait;
+pub use crate::movement::move_to::{MoveTo, Walk};
 use crate::spatial::Obstruction;
 use crate::unit_ai::{GenieError, UnitAi};
 

@@ -29,7 +29,7 @@ impl Turns {
         clears: bool,
     ) -> Result<(), GenieError> {
         use crate::combat::attack::Strike;
-        use crate::move_to::Walk;
+        use crate::movement::move_to::Walk;
         if task.work_range != 0.0 {
             return Err(GenieError::unsupported(
                 "an attack task with a range of its own",

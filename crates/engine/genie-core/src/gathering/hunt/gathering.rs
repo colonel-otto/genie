@@ -7,8 +7,8 @@ use crate::gathering::hunt::{
     ARRIVED, CLASS_49, FACE, GAP, GATHER, Gatherer, HERD_FAR, HERD_REACH, Herd, HuntAction,
     LAST_BIT, LIVESTOCK, OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
 };
-use crate::move_to::{MoveTo, MoveWait, Walk};
 use crate::movement::footprint_gap;
+use crate::movement::move_to::{MoveTo, MoveWait, Walk};
 
 impl HuntAction {
     /// `set_state(4)` (`0x140ac60e0` case 4) after the target died, or for live livestock of the

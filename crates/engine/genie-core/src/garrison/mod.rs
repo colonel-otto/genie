@@ -39,7 +39,7 @@ use self::walk_in::{WAIT, WALK};
 #[cfg(test)]
 use crate::masters::{Master, Masters, Task};
 #[cfg(test)]
-use crate::move_to::{MoveTo, Walk};
+use crate::movement::move_to::{MoveTo, Walk};
 #[cfg(test)]
 use crate::order::GARRISON;
 #[cfg(test)]

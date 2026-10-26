@@ -10,7 +10,7 @@
 //! master's cost ([`crate::production::pay`]) and heals it (`FUN_141193b30`); the caller runs it
 //! ([`RepairView::repair`]), since it reaches other objects and the player's resources.
 
-use crate::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::unit_ai::GenieError;
 
 mod action;
@@ -22,7 +22,7 @@ pub use self::payment::{
     BUILDING_REPAIR_COST, Payer, Repaired, UNIT_REPAIR_COST, repair_building, repair_unit,
 };
 #[cfg(test)]
-use crate::move_to::Walk;
+use crate::movement::move_to::Walk;
 
 /// The Repair action's type, which word 9 adds, and its tasks' action type.
 pub const REPAIR: i16 = 0x6a;

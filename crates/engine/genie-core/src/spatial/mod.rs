@@ -529,7 +529,7 @@ pub struct Spatial {
     /// What the walk reads of the moving objects it meets ([`Gait`]).
     gaits: BTreeMap<i32, Gait>,
     /// Each player's scout map (`player+0x1370`, `mIsScoutMapEnabled` `+0x1368`), once made.
-    scout_maps: BTreeMap<usize, crate::explore::InfluenceMap>,
+    scout_maps: BTreeMap<usize, crate::movement::explore::InfluenceMap>,
     /// Each annex's main building (`+0xbb8`), which the walk's avoidance takes for the annex.
     annexes: BTreeMap<i32, i32>,
     /// `relation[i]` of each player (`player+0x260`), for the walk's query's allies.

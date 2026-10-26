@@ -8,7 +8,9 @@ use crate::gathering::gather::{
     REGATHERED, REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,
 };
 use crate::gathering::hunt::Dropped;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up};
+use crate::movement::move_to::{
+    Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+};
 
 /// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
 pub(super) const fn food(kind: i16) -> bool {

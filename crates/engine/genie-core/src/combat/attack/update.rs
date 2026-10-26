@@ -7,8 +7,8 @@ use crate::combat::attack::{
     READY, Readiness, SEEN_RANGE, SWING, Strike, TOUCH, TREE, VILLAGER, VILLAGER_CLASS, set_sprite,
 };
 use crate::math::rng::Well512;
-use crate::move_to::{Goal, MoveTo, Walk};
 use crate::movement::footprint_gap;
+use crate::movement::move_to::{Goal, MoveTo, Walk};
 use crate::sprite::ActiveSprite;
 
 impl Attack {
@@ -309,7 +309,7 @@ impl Attack {
 
     /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]).
     ///
-    /// [`MoveWait::give_up`]: crate::move_to::MoveWait::give_up
+    /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
     pub(super) const fn give_up(&mut self, s: &Strike<'_>) {
         let waits = !s.computer && s.own.class == VILLAGER_CLASS;
         self.move_to = Some(self.move_wait.give_up(waits, s.stance));

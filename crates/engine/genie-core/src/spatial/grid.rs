@@ -148,12 +148,12 @@ impl Spatial {
     /// a tile's edge (`RGE_Static_Object::new_position`, `0x1411a58b0`).
     /// Player `player`'s scout map, once made (`player+0x1370`).
     #[must_use]
-    pub fn scout_map(&self, player: usize) -> Option<&crate::explore::InfluenceMap> {
+    pub fn scout_map(&self, player: usize) -> Option<&crate::movement::explore::InfluenceMap> {
         self.scout_maps.get(&player)
     }
 
     /// Player `player`'s scout map becomes `map` (the old one goes).
-    pub fn set_scout_map(&mut self, player: usize, map: crate::explore::InfluenceMap) {
+    pub fn set_scout_map(&mut self, player: usize, map: crate::movement::explore::InfluenceMap) {
         let _ = self.scout_maps.insert(player, map);
     }
 

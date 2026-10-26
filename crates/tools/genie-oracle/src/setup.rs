@@ -206,7 +206,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 .collect();
             turns.spatial.set_scout_map(
                 i,
-                genie_core::explore::InfluenceMap {
+                genie_core::movement::explore::InfluenceMap {
                     size: [m.x_size_value, m.y_size_value],
                     origin: [m.x_reference_point_value, m.y_reference_point_value],
                     limit: m.unchangeable_limit_value,

@@ -9,8 +9,8 @@ use crate::gathering::gather::{
     NO_GATHER_POINT, Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
 };
 use crate::math::rng::Well512;
-use crate::move_to::{MoveTo, MoveWait, Walk};
 use crate::movement::Mover;
+use crate::movement::move_to::{MoveTo, MoveWait, Walk};
 use crate::sprite::ActiveSprite;
 
 /// Whether a gatherer of `master` whose Gather has the target class `target_type` waits for

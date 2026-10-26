@@ -5,8 +5,10 @@ use crate::construction::build::{
     ARRIVED, BUILDER_UNMOVING, BuildAction, BuildStep, Builder, DONE, DROP, DROP_REACH, DROP_WAIT,
     DROPPED_ORDERS, NO_TARGET_POINT, Site, VILLAGER,
 };
-use crate::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up};
 use crate::movement::footprint_gap;
+use crate::movement::move_to::{
+    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
+};
 use crate::unit_ai::GenieError;
 
 /// What the caller's search gives `set_state(8)` ([`BuildAction::set_drop`]).
@@ -175,7 +177,8 @@ impl BuildAction {
             }
             Some(MoveTo::Moving) => {
                 if self.walk_target != -1
-                    && crate::move_to::target_moved(&walk, self.walk_target, true)?.again()
+                    && crate::movement::move_to::target_moved(&walk, self.walk_target, true)?
+                        .again()
                 {
                     self.move_to = Some(MoveTo::Start);
                     return Ok(());

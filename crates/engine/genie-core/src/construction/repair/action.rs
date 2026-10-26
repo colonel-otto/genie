@@ -6,8 +6,10 @@ use crate::construction::repair::{
     RepairAction, RepairStep, RepairTask, RepairView, Repairee, SHIP_REPAIR, SHIPS, WAIT,
     WALK_POINT, WORK,
 };
-use crate::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up};
 use crate::movement::footprint_gap;
+use crate::movement::move_to::{
+    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
+};
 use crate::unit_ai::GenieError;
 
 /// The work of one update (`0x140adaa20` case 6): the work `rate` times the task's

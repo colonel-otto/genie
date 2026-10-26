@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::{ENTER_NEAR, HALF_TILE, UNREACHED};
-use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
 
 /// The Enter action's type (`RGE_Action_Enter`, vtable `0x142ed4db8`), which word 9 adds.
 pub const ENTER: i16 = 3;
@@ -56,7 +56,7 @@ pub struct EnterAction {
     /// `+0x6c`: the task's class (its `+0x10`).
     pub task_class: i16,
     /// Its `MoveTo`'s wait after the motion step gave up (`+0x6c`..`+0x74`).
-    pub move_wait: crate::move_to::MoveWait,
+    pub move_wait: crate::movement::move_to::MoveWait,
 }
 
 /// What an Enter's update reads of its target.
@@ -126,7 +126,7 @@ impl EnterAction {
             timer: 0.0,
             retry: true,
             task_class,
-            move_wait: crate::move_to::MoveWait {
+            move_wait: crate::movement::move_to::MoveWait {
                 state: 0,
                 timer: 0.0,
                 delay: 0.0,

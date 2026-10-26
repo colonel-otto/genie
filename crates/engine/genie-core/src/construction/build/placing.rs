@@ -6,8 +6,8 @@ use crate::construction::build::{
     EXTRA_BUILDER, FOREIGN_SITE, HALTED, Load, Looks, MAX_WAITS, PLACE, SITE_GONE, Site, VILLAGER,
     WAIT, WALL, WONDER, WONDER_RATE, Worked, footprint_clearing,
 };
-use crate::move_to::{MoveTo, Walk};
 use crate::movement::footprint_gap;
+use crate::movement::move_to::{MoveTo, Walk};
 use crate::unit_ai::GenieError;
 
 impl BuildAction {

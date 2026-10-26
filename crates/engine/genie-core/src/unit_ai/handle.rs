@@ -460,7 +460,7 @@ impl UnitAi {
             ACTION_COMPLETED => self.action_completed(n, at, computer, ai_rng, side, fx),
             ACTION_FAILED => self.action_failed(n, at, computer, ai_rng, side, fx),
             ACTION_INVALIDATED => self.action_invalidated(n, at, computer, ai_rng, side, fx),
-            crate::explore::WANTS_POINT if self.explorer() => {
+            crate::movement::explore::WANTS_POINT if self.explorer() => {
                 self.seek_unexplored(at, computer, ai_rng, side, fx)
             }
             OWNER_CHANGED => {

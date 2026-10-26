@@ -7,8 +7,8 @@ use crate::combat::attack::{
     PREDATOR, Strike, VILLAGER, set_sprite,
 };
 use crate::math::rng::Well512;
-use crate::move_to::{MoveTo, Walk};
 use crate::movement::Mover;
+use crate::movement::move_to::{MoveTo, Walk};
 use crate::sprite::ActiveSprite;
 
 impl Attack {

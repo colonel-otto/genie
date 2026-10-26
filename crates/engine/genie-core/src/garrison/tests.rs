@@ -303,7 +303,7 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
     let ship = moved_ship(89.5);
     let mut enter = EnterAction {
         move_to: Some(MoveTo::Waiting),
-        move_wait: crate::move_to::MoveWait {
+        move_wait: crate::movement::move_to::MoveWait {
             state: 1,
             timer: 0.0,
             delay: 1.0,
@@ -1610,13 +1610,13 @@ fn a_villager_meets_a_moving_ship_where_it_goes() {
     // FUN_140a85f30 on a ship under a MoveTo (state 3): its goal, code 0, no order
     let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
     let ship = t.object_mut(200).unwrap().1;
-    ship.move_to = Some(crate::move_to::MoveToAction {
+    ship.move_to = Some(crate::movement::move_to::MoveToAction {
         run: false,
         state: MoveTo::Start,
         goal: Some([9.5, 19.5, 0.0]),
         target: -1,
         range: 0.0,
-        wait: crate::move_to::MoveWait::default(),
+        wait: crate::movement::move_to::MoveWait::default(),
     });
     t.garrison_order(1, &[1000], 200, false, false).unwrap();
     let enter = t.object(1000).unwrap().1.enter.unwrap();

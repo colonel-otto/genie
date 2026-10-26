@@ -375,10 +375,10 @@ impl Turns {
             // wait for a foundation's) answers 0, and the work goes on to the factory
             _ if top == Some(task.action_type) && top != Some(HUNT) => match top {
                 Some(
-                    crate::move_to::MOVE_TO
+                    crate::movement::move_to::MOVE_TO
                     | crate::garrison::ENTER
                     | crate::combat::missile::MISSILE
-                    | crate::fly::FLY
+                    | crate::movement::fly::FLY
                     | crate::gathering::make::MAKE
                     | crate::construction::wait_solidify::WAIT_SOLIDIFY,
                 ) => false,

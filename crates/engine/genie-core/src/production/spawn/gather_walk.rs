@@ -70,13 +70,13 @@ impl Turns {
         if villager {
             unit.town_bell.flag = false;
         }
-        unit.move_to = Some(crate::move_to::MoveToAction {
+        unit.move_to = Some(crate::movement::move_to::MoveToAction {
             run: false,
-            state: crate::move_to::MoveTo::Start,
+            state: crate::movement::move_to::MoveTo::Start,
             goal: Some(point),
             target: -1,
             range: 0.0,
-            wait: crate::move_to::MoveWait::default(),
+            wait: crate::movement::move_to::MoveWait::default(),
         });
         Ok(())
     }

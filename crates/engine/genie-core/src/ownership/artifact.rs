@@ -8,7 +8,7 @@
 //! `107 + state` for it.
 
 use crate::GenieError;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the

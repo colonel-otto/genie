@@ -1,10 +1,10 @@
 //! A unit's explore, its stopped mover, the default task's fly and the deaths.
 
 use crate::construction::build::{Completion, Construction};
-use crate::fly::Fly;
 use crate::lifecycle::Class;
 use crate::masters::Master;
 use crate::math::rng::Stream;
+use crate::movement::fly::Fly;
 use crate::turn::unit::{NO_DYING_SPRITE, Unit};
 use crate::turn::view::Context;
 use crate::turn::world::{built_death, combat_dies, farm_bonus, refund_of};
@@ -36,23 +36,23 @@ impl Unit {
                     "an Explore replacing another action",
                 ));
             }
-            let (e, owner) = crate::explore::ExploreAction::new(at);
+            let (e, owner) = crate::movement::explore::ExploreAction::new(at);
             self.explore = Some(e);
             owner
         };
         self.explore_owner(owner, c)
     }
 
-    /// What an Explore's `set_state` asks of its unit ([`crate::explore::Owner`]): its notify 0x202
+    /// What an Explore's `set_state` asks of its unit ([`crate::movement::explore::Owner`]): its notify 0x202
     /// with the explore's action value to the unit AI, and the standing sprite (slot 0x68 with
     /// the master's `+0x470`) where the slice holds the unit's sprite. `Set_state` 2's slots are
     /// not modelled.
     pub(in crate::turn) fn explore_owner(
         &mut self,
-        owner: crate::explore::Owner,
+        owner: crate::movement::explore::Owner,
         c: &mut Context<'_>,
     ) -> Result<(), GenieError> {
-        use crate::explore::Owner;
+        use crate::movement::explore::Owner;
         match owner {
             Owner::Nothing => return Ok(()),
             Owner::Stopped => {
@@ -61,8 +61,8 @@ impl Unit {
                 ));
             }
             Owner::WantsPoint => self.post_own(
-                crate::explore::WANTS_POINT,
-                [crate::explore::EXPLORE_ACTION, 0, 0],
+                crate::movement::explore::WANTS_POINT,
+                [crate::movement::explore::EXPLORE_ACTION, 0, 0],
             )?,
             Owner::Standing => {}
         }
@@ -105,7 +105,7 @@ impl Unit {
         }
     }
 
-    /// The default task's Fly ([`crate::fly::Fly::start`]): a player's bird (its task's
+    /// The default task's Fly ([`crate::movement::fly::Fly::start`]): a player's bird (its task's
     /// `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the fly
     /// height (slot 0x58, the position setter: its tile stays, so do its counts).
     pub(in crate::turn) fn start_fly(
@@ -131,7 +131,7 @@ impl Unit {
             c.streams.get(Stream::Action),
         ));
         if fly_mode == 1 {
-            self.position[2] = crate::fly::HEIGHT;
+            self.position[2] = crate::movement::fly::HEIGHT;
             c.spatial.set_position(self.id, self.position);
             // the position setter marks the move (`+0x824`, `+0x870`)
             if let Some(m) = self.mover.as_mut() {

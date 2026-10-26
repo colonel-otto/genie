@@ -1,5 +1,5 @@
 use super::*;
-use crate::move_to::Walk;
+use crate::movement::move_to::Walk;
 use crate::spatial::{Gait, Obstruction, Placed};
 
 const DT: f32 = 0.02;

@@ -7,8 +7,10 @@ use crate::gathering::hunt::{
     ARRIVED, ATTACK, BUILDING, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE,
     LIVESTOCK, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, Shown, WALK_POINT, WALK_SEARCH, food,
 };
-use crate::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up};
 use crate::movement::Mover;
+use crate::movement::move_to::{
+    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
+};
 
 /// Who walks to a hunt's point ([`HuntAction::update_point_walk`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

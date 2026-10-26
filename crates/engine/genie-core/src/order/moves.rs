@@ -163,8 +163,12 @@ impl Turns {
             // clears, then the start)
             self.clear_actions(player, idx)?;
             let unit = &mut self.players[player].objects[idx];
-            let move_to =
-                crate::move_to::MoveToAction::to_point(point, 0.0, false, unit.mover.as_mut());
+            let move_to = crate::movement::move_to::MoveToAction::to_point(
+                point,
+                0.0,
+                false,
+                unit.mover.as_mut(),
+            );
             if move_to.shows_standing() {
                 unit.shows_standing_sprite(
                     self.masters.get(player),

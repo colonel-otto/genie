@@ -5,7 +5,7 @@ use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildStep, Builder, FOREIGN_SITE, REACH, SEEN, SITE_GONE, Site,
     UNSEEN_SITE, VILLAGER, WALK_POINT, WORK,
 };
-use crate::move_to::{MoveTo, Walk};
+use crate::movement::move_to::{MoveTo, Walk};
 use crate::unit_ai::GenieError;
 
 impl BuildAction {

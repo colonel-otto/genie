@@ -605,7 +605,7 @@ fn the_scout_map_takes_the_new_tiles() {
     t.spatial.sight = Some(sight);
     t.world_player_tail(1);
     t.spatial
-        .set_scout_map(1, crate::explore::InfluenceMap::new([10, 10], 0));
+        .set_scout_map(1, crate::movement::explore::InfluenceMap::new([10, 10], 0));
     t.world_time = 4999;
     t.world_player_tail(1);
     let m = t.spatial.scout_map(1).unwrap();

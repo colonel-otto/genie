@@ -313,7 +313,7 @@ impl Turns {
     }
 
     /// The unit's explore (slot 0x398) in the command phase: a unit without an Explore takes a
-    /// new one ([`crate::explore::ExploreAction::new`]) at its height; its `set_state`'s notify and
+    /// new one ([`crate::movement::explore::ExploreAction::new`]) at its height; its `set_state`'s notify and
     /// standing sprite follow.
     pub(super) fn command_explore(
         &mut self,
@@ -321,7 +321,7 @@ impl Turns {
         idx: usize,
         point: [f32; 2],
     ) -> Result<(), GenieError> {
-        use crate::explore::{EXPLORE_ACTION, ExploreAction, Owner, WANTS_POINT};
+        use crate::movement::explore::{EXPLORE_ACTION, ExploreAction, Owner, WANTS_POINT};
         let unit = &mut self.players[p].objects[idx];
         if unit.explore.is_some() || unit.top_action().is_some() {
             return Err(GenieError::unsupported(

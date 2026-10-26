@@ -7,7 +7,7 @@
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
 use crate::combat::attack::{Arms, Attack, Engagement};
-use crate::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::sprite::Graphic;
 
 mod drop_off;
@@ -27,9 +27,9 @@ pub use self::start::{PointWalk, PointWalker};
 #[cfg(test)]
 use crate::combat::damage::Victim;
 #[cfg(test)]
-use crate::move_to::Walk;
-#[cfg(test)]
 use crate::movement::Mover;
+#[cfg(test)]
+use crate::movement::move_to::Walk;
 
 /// The Hunt action's type, which word 9 adds.
 pub const HUNT: i16 = 110;

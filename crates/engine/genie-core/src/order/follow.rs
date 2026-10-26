@@ -292,13 +292,13 @@ impl Turns {
     /// kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target and
     /// `point` (a Hunt's, [`Turns::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
     /// modelled; a `MoveTo`'s or an Explore's never); else a `MoveTo` to the target
-    /// (`FUN_140aa0df0`: no range, so slot 0x268's, [`crate::move_to::object_range`]; the
+    /// (`FUN_140aa0df0`: no range, so slot 0x268's, [`crate::movement::move_to::object_range`]; the
     /// walking sprite) takes the target it holds
-    /// (slot 0x178, [`crate::move_to::holds_object`]) and replaces its actions (slot 0x808, the
+    /// (slot 0x178, [`crate::movement::move_to::holds_object`]) and replaces its actions (slot 0x808, the
     /// old ones' teardowns let their targets go, [`Turns::clear_actions`]; then its start,
     /// [`MoveToAction::to_object`]). Its `command_flag` (`+0x888`) is not held.
     ///
-    /// [`MoveToAction::to_object`]: crate::move_to::MoveToAction::to_object
+    /// [`MoveToAction::to_object`]: crate::movement::move_to::MoveToAction::to_object
     pub(crate) fn move_to_object_with(
         &mut self,
         player: usize,
@@ -346,20 +346,22 @@ impl Turns {
         // FUN_140aa0df0 makes the MoveTo first, which takes its target (slot 0x178, quiet 0);
         // slot 0x808 then clears the list (the old actions' teardowns) and starts it
         let livestock = self.master_of(player, unit.life.master_id)?.class == LIVESTOCK;
-        let (tp, t) = self.object(target).ok_or(crate::move_to::TARGET_LACKING)?;
+        let (tp, t) = self
+            .object(target)
+            .ok_or(crate::movement::move_to::TARGET_LACKING)?;
         let t_state = t.life.state;
         let t_master = self.master_of(tp, t.life.master_id)?.id;
-        if crate::move_to::holds_object(livestock, t_master, t_state) {
+        if crate::movement::move_to::holds_object(livestock, t_master, t_state) {
             self.take(target, self.releaser(player, idx));
         }
         self.clear_actions(player, idx)?;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
-        let range = crate::move_to::object_range(0.0, Some(master));
+        let range = crate::movement::move_to::object_range(0.0, Some(master));
         let unit = &mut self.players[player].objects[idx];
         let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
             "a moved unit without movement state",
         ))?;
-        let move_to = crate::move_to::MoveToAction::to_object(
+        let move_to = crate::movement::move_to::MoveToAction::to_object(
             &self.spatial,
             unit.position,
             mover,
@@ -406,12 +408,12 @@ impl Turns {
         match unit.top_action_kind() {
             None
             | Some(
-                crate::move_to::MOVE_TO
-                | crate::explore::EXPLORE
+                crate::movement::move_to::MOVE_TO
+                | crate::movement::explore::EXPLORE
                 | crate::construction::build::BUILD
                 | crate::combat::attack::ATTACK
                 | crate::garrison::ENTER
-                | crate::fly::FLY
+                | crate::movement::fly::FLY
                 | crate::combat::missile::MISSILE
                 | crate::gathering::make::MAKE
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,

@@ -52,12 +52,12 @@ pub(super) fn frames<'a>(chapter: &de::Chapter<'a>, limit: usize) -> Result<Vec<
 /// A saved `MoveTo`'s wait (`+0x6c`, `+0x70`, `+0x74`); none for another sub-action.
 pub(super) fn saved_move_wait(
     sub: &genie_save::generated::world::Action,
-) -> genie_core::move_to::MoveWait {
+) -> genie_core::movement::move_to::MoveWait {
     sub.rge_action_by_type
         .as_deref()
         .and_then(|t| t.rge_action_move_to.as_deref())
-        .map_or_else(genie_core::move_to::MoveWait::default, |m| {
-            genie_core::move_to::MoveWait {
+        .map_or_else(genie_core::movement::move_to::MoveWait::default, |m| {
+            genie_core::movement::move_to::MoveWait {
                 state: m.movement_wait_state,
                 timer: m.timer,
                 delay: f32::from_bits(m.k_default_wait_time),

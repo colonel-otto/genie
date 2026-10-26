@@ -4,8 +4,8 @@
 use crate::combat::attack::{
     Attack, BUILDING, CLASS_60, NO_OBJECT_STREAM, SWING, Strike, reset_sprite, set_sprite,
 };
-use crate::move_to::Walk;
 use crate::movement::footprint_gap;
+use crate::movement::move_to::Walk;
 use crate::{GenieError, combat::damage};
 
 /// An object as the Attack's slot 9 ([`Attack::work`]) and slot 0x68 ([`Attack::set_target`])

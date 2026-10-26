@@ -77,10 +77,10 @@ pub(super) fn saved_sprite(
 pub(super) fn saved_attack(
     sub: &genie_save::generated::world::Action,
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
-    move_to_state: &dyn Fn(u8) -> Result<genie_core::move_to::MoveTo, GenieError>,
+    move_to_state: &dyn Fn(u8) -> Result<genie_core::movement::move_to::MoveTo, GenieError>,
     run_sprite: i16,
 ) -> Result<genie_core::combat::attack::Attack, GenieError> {
-    use genie_core::move_to::MOVE_TO;
+    use genie_core::movement::move_to::MOVE_TO;
     let b = sub
         .base()
         .ok_or(GenieError::unsupported("a saved Attack without its base"))?;
@@ -106,15 +106,15 @@ pub(super) fn saved_attack(
         _ => [-1.0; 3],
     };
     let (move_to, move_wait) = match b.sub_actions.entries().next() {
-        None => (None, genie_core::move_to::MoveWait::default()),
+        None => (None, genie_core::movement::move_to::MoveWait::default()),
         Some((MOVE_TO, s2)) => (
             Some(move_to_state(s2.base().map_or(0, |b| b.state))?),
             // its wait (`+0x6c`, `+0x70`, `+0x74`)
             s2.rge_action_by_type
                 .as_deref()
                 .and_then(|t| t.rge_action_move_to.as_deref())
-                .map_or_else(genie_core::move_to::MoveWait::default, |m| {
-                    genie_core::move_to::MoveWait {
+                .map_or_else(genie_core::movement::move_to::MoveWait::default, |m| {
+                    genie_core::movement::move_to::MoveWait {
                         state: m.movement_wait_state,
                         timer: m.timer,
                         delay: f32::from_bits(m.k_default_wait_time),
@@ -198,7 +198,7 @@ pub(super) fn fly_task(
     masters: Option<&MasterTable>,
     master: i16,
 ) -> Result<genie_core::masters::Task, GenieError> {
-    let fly = genie_core::fly::FLY;
+    let fly = genie_core::movement::fly::FLY;
     let saved = objects
         .master(master)
         .and_then(|m| m.rge_master.as_deref())
@@ -434,7 +434,7 @@ pub(super) fn default_task(
         DefaultAction::Type(ARTIFACT_TYPE) => Ok(Some(DefaultStart::Artifact(
             genie_core::ownership::artifact::Artifact::new(s.owner == 0),
         ))),
-        DefaultAction::Type(genie_core::fly::FLY) => {
+        DefaultAction::Type(genie_core::movement::fly::FLY) => {
             fly_task(objects, civ, masters, s.master_obj).map(|t| Some(DefaultStart::Fly(t)))
         }
         DefaultAction::Type(genie_core::gathering::make::MAKE) => Ok(Some(DefaultStart::Make)),

@@ -6,8 +6,8 @@ use crate::combat::damage::Victim;
 use crate::gathering::hunt::{
     DECAY_TASK, Gatherer, Herd, HuntAction, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH, VILLAGER_CLASS,
 };
-use crate::move_to::Walk;
 use crate::movement::footprint_gap_squared;
+use crate::movement::move_to::Walk;
 
 impl HuntAction {
     /// `set_state(10)` (`0x140ac60e0` case 10): `sheep_still_time` clears, the animal's place
@@ -126,7 +126,7 @@ impl HuntAction {
     /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; a stance below 2
     /// without a unit AI; quiet).
     ///
-    /// [`MoveWait::give_up`]: crate::move_to::MoveWait::give_up
+    /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
     pub(super) const fn give_up(&mut self, strike: &Strike<'_>) {
         let waits = !strike.computer && strike.own.class == VILLAGER_CLASS;
         self.move_to = Some(self.move_wait.give_up(waits, strike.stance));

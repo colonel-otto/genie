@@ -6,8 +6,8 @@ use crate::construction::build::{
     FINISHED, FISH_TRAP, FISHING_SHIPS, HALTED, IDLE, LAST_TAKEN, Load, MOVE, NO_TARGET_POINT,
     SITE_GONE, Site, VILLAGER, WORK, drop_done_orders,
 };
-use crate::move_to::{MoveTo, Walk};
 use crate::movement::footprint_gap;
+use crate::movement::move_to::{MoveTo, Walk};
 use crate::unit_ai::GenieError;
 
 impl BuildAction {

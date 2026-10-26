@@ -26,8 +26,8 @@ pub(super) fn saved_actions(
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
     use genie_core::construction::build::{BUILD, BuildAction, MoveTo};
-    use genie_core::fly::{FLY, Fly};
-    use genie_core::move_to::{MOVE_TO, MoveToAction};
+    use genie_core::movement::fly::{FLY, Fly};
+    use genie_core::movement::move_to::{MOVE_TO, MoveToAction};
     let move_to_state = |state: u8| match state {
         1 => Ok(MoveTo::Arrived),
         2 => Ok(MoveTo::Waiting),
@@ -92,11 +92,11 @@ pub(super) fn saved_actions(
                         .ok_or(GenieError::unsupported("a saved MoveTo without its base"))?;
                     let goal =
                         if b.target_id == -1 {
-                            genie_core::move_to::Goal::Point(point(b).ok_or(
+                            genie_core::movement::move_to::Goal::Point(point(b).ok_or(
                                 GenieError::unsupported("a saved MoveTo without its point"),
                             )?)
                         } else {
-                            genie_core::move_to::Goal::Target(b.target_id)
+                            genie_core::movement::move_to::Goal::Target(b.target_id)
                         };
                     let range = sub
                         .move_to_range()
@@ -144,8 +144,8 @@ pub(super) fn saved_actions(
                     .rge_action_by_type
                     .as_deref()
                     .and_then(|b| b.rge_action_move_to.as_deref())
-                    .map_or_else(genie_core::move_to::MoveWait::default, |m| {
-                        genie_core::move_to::MoveWait {
+                    .map_or_else(genie_core::movement::move_to::MoveWait::default, |m| {
+                        genie_core::movement::move_to::MoveWait {
                             state: m.movement_wait_state,
                             timer: m.timer,
                             delay: f32::from_bits(m.k_default_wait_time),
@@ -284,13 +284,10 @@ pub(super) fn saved_actions(
                     .as_deref()
                     .is_some_and(|b| b.added_to_num_builders != 0),
                 timer: base.timer,
-                move_wait: base
-                    .sub_actions
-                    .entries()
-                    .next()
-                    .map_or_else(genie_core::move_to::MoveWait::default, |(_, sub)| {
-                        saved_move_wait(sub)
-                    }),
+                move_wait: base.sub_actions.entries().next().map_or_else(
+                    genie_core::movement::move_to::MoveWait::default,
+                    |(_, sub)| saved_move_wait(sub),
+                ),
                 site: base.target2_id,
                 drop_range,
             });
@@ -317,9 +314,10 @@ pub(super) fn saved_actions(
                 target: base.target_id,
                 state: base.state,
                 move_to,
-                move_wait: sub.map_or_else(genie_core::move_to::MoveWait::default, |(_, sub)| {
-                    saved_move_wait(sub)
-                }),
+                move_wait: sub.map_or_else(
+                    genie_core::movement::move_to::MoveWait::default,
+                    |(_, sub)| saved_move_wait(sub),
+                ),
                 goal,
                 point: [base.target_x, base.target_y, base.target_z],
                 timer: base.timer,
@@ -383,7 +381,7 @@ pub(super) fn saved_actions(
                 drop_site: part.sheep_drop_site_id as i32,
                 carry_to: base.target2_id,
                 timer: base.timer,
-                move_wait: genie_core::move_to::MoveWait::default(),
+                move_wait: genie_core::movement::move_to::MoveWait::default(),
                 lead: genie_core::gathering::hunt::Lead {
                     moved: part.moved_sheep != 0,
                     still_time: part.sheep_still_time as i16,
@@ -425,7 +423,7 @@ pub(super) fn saved_actions(
                         .as_deref()
                         .and_then(|b| b.rge_action_move_to.as_deref())
                     {
-                        hunt.move_wait = genie_core::move_to::MoveWait {
+                        hunt.move_wait = genie_core::movement::move_to::MoveWait {
                             state: m.movement_wait_state,
                             timer: m.timer,
                             delay: f32::from_bits(m.k_default_wait_time),
@@ -490,7 +488,7 @@ pub(super) fn saved_actions(
                 move_to: None,
                 walk_to: None,
                 walk_range: task.range,
-                move_wait: genie_core::move_to::MoveWait::default(),
+                move_wait: genie_core::movement::move_to::MoveWait::default(),
             };
             match base.sub_actions.entries().next() {
                 None => {}
@@ -509,7 +507,7 @@ pub(super) fn saved_actions(
                         .as_deref()
                         .and_then(|b| b.rge_action_move_to.as_deref())
                     {
-                        gather.move_wait = genie_core::move_to::MoveWait {
+                        gather.move_wait = genie_core::movement::move_to::MoveWait {
                             state: m.movement_wait_state,
                             timer: m.timer,
                             delay: f32::from_bits(m.k_default_wait_time),
@@ -558,13 +556,10 @@ pub(super) fn saved_actions(
                 timer: base.timer,
                 retry: first_time != 0,
                 task_class: task.object_group,
-                move_wait: base
-                    .sub_actions
-                    .entries()
-                    .next()
-                    .map_or_else(genie_core::move_to::MoveWait::default, |(_, sub)| {
-                        saved_move_wait(sub)
-                    }),
+                move_wait: base.sub_actions.entries().next().map_or_else(
+                    genie_core::movement::move_to::MoveWait::default,
+                    |(_, sub)| saved_move_wait(sub),
+                ),
             });
             Ok(())
         }
@@ -589,7 +584,7 @@ pub(super) fn saved_actions(
             });
             Ok(())
         }
-        genie_core::explore::EXPLORE => {
+        genie_core::movement::explore::EXPLORE => {
             let move_to = match base.sub_actions.entries().next() {
                 None => None,
                 Some((MOVE_TO, sub)) => Some(move_to_state(sub.base().map_or(0, |b| b.state))?),
@@ -601,7 +596,7 @@ pub(super) fn saved_actions(
             };
             if !matches!(
                 base.state,
-                genie_core::explore::WAIT | genie_core::explore::WALK
+                genie_core::movement::explore::WAIT | genie_core::movement::explore::WALK
             ) {
                 return Err(GenieError::unsupported(
                     "a saved Explore in a state the slice does not model",
@@ -613,13 +608,13 @@ pub(super) fn saved_actions(
                 .next()
                 .and_then(|(_, sub)| sub.rge_action_by_type.as_deref())
                 .and_then(|b| b.rge_action_move_to.as_deref())
-                .map(|m| genie_core::move_to::MoveWait {
+                .map(|m| genie_core::movement::move_to::MoveWait {
                     state: m.movement_wait_state,
                     timer: m.timer,
                     delay: f32::from_bits(m.k_default_wait_time),
                 })
                 .unwrap_or_default();
-            unit.explore = Some(genie_core::explore::ExploreAction {
+            unit.explore = Some(genie_core::movement::explore::ExploreAction {
                 state: base.state,
                 point: [base.target_x, base.target_y, base.target_z],
                 move_to,

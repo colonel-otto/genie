@@ -126,7 +126,7 @@ impl Unit {
                 Ok(self.artifact.is_some_and(|a| a.idle()))
             }
             // a Make has no target, but its point (`+0x38`) is the base constructor's 0.0
-            Some(crate::move_to::MOVE_TO | crate::gathering::make::MAKE) => Ok(false),
+            Some(crate::movement::move_to::MOVE_TO | crate::gathering::make::MAKE) => Ok(false),
             Some(_) => Err(GenieError::unsupported(
                 "slots 0x190 and 0x288 of an action the slice does not model",
             )),
@@ -154,9 +154,9 @@ impl Unit {
         })
         .or_else(|| {
             self.move_to
-                .map(|m| action(crate::move_to::MOVE_TO, m.state.number()))
+                .map(|m| action(crate::movement::move_to::MOVE_TO, m.state.number()))
         })
-        .or_else(|| self.fly.map(|f| action(crate::fly::FLY, f.state)))
+        .or_else(|| self.fly.map(|f| action(crate::movement::fly::FLY, f.state)))
         .or_else(|| {
             self.hunt
                 .map(|h| action(crate::gathering::hunt::HUNT, h.state))
@@ -171,7 +171,7 @@ impl Unit {
         })
         .or_else(|| {
             self.explore
-                .map(|e| action(crate::explore::EXPLORE, e.state))
+                .map(|e| action(crate::movement::explore::EXPLORE, e.state))
         })
         .or_else(|| self.enter.map(|e| action(crate::garrison::ENTER, e.state)))
         .or_else(|| {

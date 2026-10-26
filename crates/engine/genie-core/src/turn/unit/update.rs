@@ -6,7 +6,7 @@ use crate::gathering::hunt::{Gatherer, HuntSprites};
 use crate::lifecycle::Class;
 use crate::masters::Master;
 use crate::math::rng::Stream;
-use crate::move_to::MoveTo;
+use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, Mover, footprint_gap_squared};
 use crate::ownership::artifact::{Artifact, Handover};
 use crate::spatial::Spatial;
@@ -873,7 +873,7 @@ impl Unit {
                 };
                 move_to.update(c.walk(self.mover.as_mut(), me), ask)?
             }
-            None => crate::move_to::MoveStep::default(),
+            None => crate::movement::move_to::MoveStep::default(),
         };
         if step.gave_up {
             let villager = c
@@ -913,17 +913,17 @@ impl Unit {
             // 0x140a880c0: state 1 is done (the action list removes it, the default task's
             // restart is not modelled), 11 walks, 13 fails; the others wait
             match explore.state {
-                crate::explore::DONE => {
+                crate::movement::explore::DONE => {
                     return Err(GenieError::unsupported(
                         "a done Explore (the action list after it)",
                     ));
                 }
-                crate::explore::FAILED => {
+                crate::movement::explore::FAILED => {
                     return Err(GenieError::unsupported(
                         "a failed Explore (notify 0x1f9, set_state 2)",
                     ));
                 }
-                crate::explore::WALK => {
+                crate::movement::explore::WALK => {
                     // the MoveTo's update code (FUN_140a992b0): 1 once it arrived, 1 without it
                     let quiet = self
                         .ai
@@ -943,11 +943,12 @@ impl Unit {
                                 explore.move_wait.state = 2;
                             }
                             explore.move_to = Some(MoveTo::Moving);
-                            let goal = crate::move_to::Goal::Point(explore.point);
+                            let goal = crate::movement::move_to::Goal::Point(explore.point);
                             let walk = c.walk(self.mover.as_mut(), me);
                             explore.move_to = Some(
-                                match crate::move_to::start_walk_or_give_up(walk, goal, 0.0, quiet)?
-                                {
+                                match crate::movement::move_to::start_walk_or_give_up(
+                                    walk, goal, 0.0, quiet,
+                                )? {
                                     Some(state) => state,
                                     None => explore.move_wait.give_up(waits, stance),
                                 },
@@ -956,10 +957,11 @@ impl Unit {
                         }
                         Some(MoveTo::Moving) => {
                             let walk = c.walk(self.mover.as_mut(), me);
-                            explore.move_to = Some(match crate::move_to::walk_or_give_up(walk)? {
-                                Some(state) => state,
-                                None => explore.move_wait.give_up(waits, stance),
-                            });
+                            explore.move_to =
+                                Some(match crate::movement::move_to::walk_or_give_up(walk)? {
+                                    Some(state) => state,
+                                    None => explore.move_wait.give_up(waits, stance),
+                                });
                             0
                         }
                         // case 2: the wait runs by dt, then the MoveTo asks again (set_state 3)
@@ -996,7 +998,7 @@ impl Unit {
             );
             let map = c.spatial.map;
             let (walk, action) = c.walk_with(Some(&mut *mover), me, Stream::Action);
-            let sky = crate::fly::Sky {
+            let sky = crate::movement::fly::Sky {
                 speed,
                 position: me.position,
                 radius,

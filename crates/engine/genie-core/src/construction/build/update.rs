@@ -6,7 +6,9 @@ use crate::construction::build::{
     CLASS_39, CLEAR, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, MASTER_621, MASTER_1889,
     MOVE, PLACE, Site, VILLAGER, WAIT, WALK_POINT, WORK,
 };
-use crate::move_to::{Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::movement::move_to::{
+    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
+};
 use crate::unit_ai::{GenieError, UnitAi};
 
 impl BuildAction {

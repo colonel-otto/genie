@@ -421,7 +421,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
         (attack.state, attack.move_to, attack.target2),
         (
             crate::combat::attack::MOVE,
-            Some(crate::move_to::MoveTo::Arrived),
+            Some(crate::movement::move_to::MoveTo::Arrived),
             50
         )
     );
@@ -1278,13 +1278,13 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
     let mut t = soldiers(&units, &[]);
     let point = [25.0, 21.0, 0.0];
     assert_eq!(t.head_takes_move(1, 0, None, point), Ok(false));
-    t.players[1].objects[0].move_to = Some(crate::move_to::MoveToAction {
+    t.players[1].objects[0].move_to = Some(crate::movement::move_to::MoveToAction {
         run: false,
-        state: crate::move_to::MoveTo::Start,
+        state: crate::movement::move_to::MoveTo::Start,
         goal: Some([30.0, 30.0, 0.0]),
         target: -1,
         range: 0.0,
-        wait: crate::move_to::MoveWait::default(),
+        wait: crate::movement::move_to::MoveWait::default(),
     });
     assert_eq!(t.head_takes_move(1, 0, Some(11), point), Ok(false));
     t.players[1].objects[0].move_to = None;
@@ -1636,7 +1636,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
         },
         added: true,
         timer: 0.0,
-        move_wait: crate::move_to::MoveWait::default(),
+        move_wait: crate::movement::move_to::MoveWait::default(),
         site: -1,
         drop_range: 0.0,
     });

@@ -6,10 +6,10 @@ use crate::gathering::hunt::{
     ARRIVED, DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, Shown, asked_drop_off,
     resource_kind,
 };
-use crate::move_to::{
+use crate::movement::Mover;
+use crate::movement::move_to::{
     Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
-use crate::movement::Mover;
 
 /// What a drop-off's update did ([`HuntAction::update_drop`],
 /// [`crate::gathering::gather::GatherAction::update_drop`]).

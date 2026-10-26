@@ -354,7 +354,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         seen: [0.0; 3],
         goto: [-1.0; 3],
         move_to: None,
-        move_wait: crate::move_to::MoveWait::default(),
+        move_wait: crate::movement::move_to::MoveWait::default(),
         pending: false,
         swing: 0.0,
         rest: 0.0,

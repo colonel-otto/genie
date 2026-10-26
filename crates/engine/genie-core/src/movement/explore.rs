@@ -8,7 +8,7 @@
 //! is done it goes back to state 3.
 
 use crate::GenieError;
-use crate::move_to::MoveTo;
+use crate::movement::move_to::MoveTo;
 
 /// The Explore action's type.
 pub const EXPLORE: i16 = 4;
@@ -58,7 +58,7 @@ pub struct ExploreAction {
     /// moving sprite `+0x748` as no task names one).
     pub move_to: Option<MoveTo>,
     /// Its `MoveTo`'s wait after the motion step gave up.
-    pub move_wait: crate::move_to::MoveWait,
+    pub move_wait: crate::movement::move_to::MoveWait,
 }
 
 impl ExploreAction {
@@ -70,7 +70,7 @@ impl ExploreAction {
             state: 0,
             point,
             move_to: None,
-            move_wait: crate::move_to::MoveWait::default(),
+            move_wait: crate::movement::move_to::MoveWait::default(),
         };
         let state = if a.point[0] == NO_POINT { WAIT } else { WALK };
         let owner = a.set_state(state);
@@ -93,7 +93,7 @@ impl ExploreAction {
             DONE | FAILED | 14 => Owner::Standing,
             WALK => {
                 self.move_to = Some(MoveTo::Start);
-                self.move_wait = crate::move_to::MoveWait {
+                self.move_wait = crate::movement::move_to::MoveWait {
                     state: 0,
                     timer: 0.0,
                     delay: 0.0,

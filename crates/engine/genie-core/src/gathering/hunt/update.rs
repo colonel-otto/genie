@@ -7,7 +7,9 @@ use crate::gathering::hunt::{
     ATTACK, FACE, GATHER, Gatherer, Herd, HuntAction, LEAD, PREDATOR, SEARCH, Shown, TREE_CLASS,
     WALK, WALK_SEARCH, walk_sprite,
 };
-use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up};
+use crate::movement::move_to::{
+    Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+};
 
 impl HuntAction {
     /// One update (slot 6, `0x140ac7a00`): state 12 updates the Attack (`FUN_140a992b0`); its end

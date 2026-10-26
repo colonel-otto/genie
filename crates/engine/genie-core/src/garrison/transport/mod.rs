@@ -14,7 +14,7 @@
 //! (HD's `next_to_drop_off_terrain`).
 
 use crate::GenieError;
-use crate::move_to::MoveTo;
+use crate::movement::move_to::MoveTo;
 
 mod action;
 mod shore;

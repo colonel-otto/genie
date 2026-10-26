@@ -158,7 +158,7 @@ pub(crate) fn meeting_target(
         return Err(e);
     }
     let action_point = match (t.top_action_kind(), t.move_to) {
-        (Some(crate::move_to::MOVE_TO), Some(m)) => m
+        (Some(crate::movement::move_to::MOVE_TO), Some(m)) => m
             .goal
             .or_else(|| t.mover.as_ref().and_then(|v| v.move_to_point))
             .map(|p| [p[0], p[1]])

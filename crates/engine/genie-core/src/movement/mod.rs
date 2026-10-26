@@ -12,7 +12,10 @@
 use crate::math::fmath::{self, Vec3};
 use crate::spatial::{Placed, Spatial};
 
+pub mod explore;
+pub mod fly;
 mod long_walk;
+pub mod move_to;
 mod new_path;
 mod path_end;
 mod path_points;
@@ -232,7 +235,7 @@ pub struct Mover {
     pub angle: f32,
     /// The point of the `MoveTo` the unit walks with (`+0x38`..`+0x40`), when it walks to a target
     /// object: where the target stood when the `MoveTo` last asked for a path, which its check of
-    /// the target reads ([`crate::move_to::target_moved`]). A stop leaves it (the motion step's
+    /// the target reads ([`crate::movement::move_to::target_moved`]). A stop leaves it (the motion step's
     /// pause stops a unit whose `MoveTo` goes on); a new `MoveTo` sets it.
     pub move_to_point: Option<[f32; 3]>,
     /// A stop (slot 0x5d0) cleared the object's animation speed (`+0x7b8`), which the unit

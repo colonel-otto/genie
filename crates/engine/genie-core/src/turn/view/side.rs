@@ -643,18 +643,20 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         // the search about the town centre only while the player has no scout map
         let scout_map = self.spatial.scout_map(self.player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
-        if !scout_map && let Some(p) = crate::explore::unexplored_area(tc, map, &mut area)? {
+        if !scout_map
+            && let Some(p) = crate::movement::explore::unexplored_area(tc, map, &mut area)?
+        {
             return Ok(Some(p));
         }
         // none about the town centre: the unit AI's own search (slot 0x90)
-        let seeker = crate::explore::Seeker {
+        let seeker = crate::movement::explore::Seeker {
             at,
             line_of_sight,
             order: ai.current_order,
             target_point: [ai.target_point[0], ai.target_point[1]],
             computer,
         };
-        crate::explore::closest_undiscovered(&mut area, seeker, map, rng)
+        crate::movement::explore::closest_undiscovered(&mut area, seeker, map, rng)
     }
 
     fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
@@ -662,7 +664,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let scouted = self.spatial.scout_map(player).is_some();
         let (mut area, map, line_of_sight) = self.scout_area()?;
         area.scouted = scouted;
-        let found = crate::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)?;
+        let found = crate::movement::explore::beyond_sight(&mut area, at, line_of_sight, map, rng)?;
         // the point found is marked in the scout map (FUN_140f4d5e0 with 1)
         if let Some([x, y]) = found {
             self.spatial.scout(player, x, y);
@@ -674,8 +676,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// a new `InfluenceMap` of 480 by 480 (`FUN_140f4a240`, the old one goes, `+0x1368` 1) marks
     /// every tile the player sees now (its visible map's `FUN_141285350` 0xf) with 1.
     fn make_scout_map(&mut self) -> Result<(), GenieError> {
-        let size = crate::explore::SCOUT_MAP_SIZE;
-        let mut m = crate::explore::InfluenceMap::new([size, size], 0);
+        let size = crate::movement::explore::SCOUT_MAP_SIZE;
+        let mut m = crate::movement::explore::InfluenceMap::new([size, size], 0);
         let [w, h] = self.spatial.map;
         for y in 0..h {
             for x in 0..w {

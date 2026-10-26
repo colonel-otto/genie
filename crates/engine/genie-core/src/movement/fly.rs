@@ -7,7 +7,7 @@ use crate::GenieError;
 use crate::masters::Task;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::Well512;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
 
 /// The Fly action's type, which word 9 adds.
 pub const FLY: i16 = 10;

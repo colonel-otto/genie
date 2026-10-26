@@ -3,7 +3,7 @@
 
 use crate::combat::attack::set_sprite;
 use crate::gathering::hunt::HuntTask;
-use crate::move_to::MoveTo;
+use crate::movement::move_to::MoveTo;
 use crate::sprite::Graphic;
 
 /// `FUN_140ac5210`, the sprite a hunter stands with: the task's carrying sprite while it holds a

@@ -127,7 +127,7 @@ pub trait UnitSide {
         rng: &mut Well512,
     ) -> Result<Option<[i32; 2]>, GenieError>;
 
-    /// The auto scout's last search (`FUN_140c4b130`, [`crate::explore::beyond_sight`]), drawing
+    /// The auto scout's last search (`FUN_140c4b130`, [`crate::movement::explore::beyond_sight`]), drawing
     /// from the AI stream (`rng`); None when it finds no point.
     ///
     /// # Errors

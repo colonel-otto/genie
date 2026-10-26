@@ -247,7 +247,7 @@ pub(in crate::turn) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, G
     Ok(None)
 }
 
-/// What the auto scout's search asks of the world for one unit ([`crate::explore::Area`]).
+/// What the auto scout's search asks of the world for one unit ([`crate::movement::explore::Area`]).
 pub(in crate::turn) struct ScoutArea<'a> {
     pub(in crate::turn) spatial: &'a Spatial,
     pub(in crate::turn) zones: &'a crate::pathing::zones::ZoneMap,
@@ -263,7 +263,7 @@ pub(in crate::turn) struct ScoutArea<'a> {
     pub(in crate::turn) scouted: bool,
 }
 
-impl crate::explore::Area for ScoutArea<'_> {
+impl crate::movement::explore::Area for ScoutArea<'_> {
     fn explored(&self, x: i32, y: i32) -> Result<bool, GenieError> {
         if self.scouted {
             return self

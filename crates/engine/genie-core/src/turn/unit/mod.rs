@@ -1,12 +1,12 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
 use crate::construction::build::{BuildAction, Construction};
-use crate::fly::Fly;
 use crate::gathering::hunt::{HuntAction, HuntSprites};
 use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
-use crate::move_to::MoveToAction;
 use crate::movement::Mover;
+use crate::movement::fly::Fly;
+use crate::movement::move_to::MoveToAction;
 use crate::ownership::artifact::Artifact;
 use crate::production::Production;
 use crate::sprite::{ActiveSprite, Graphic};
@@ -119,7 +119,7 @@ pub struct Unit {
     /// Its own Attack (type 9, not a Hunt's), its top action: a boar's on its attacker.
     pub attack: Option<crate::combat::attack::Attack>,
     /// An auto scout's Explore action, its top action.
-    pub explore: Option<crate::explore::ExploreAction>,
+    pub explore: Option<crate::movement::explore::ExploreAction>,
     /// A unit's Enter action (a garrison), its top action.
     pub enter: Option<crate::garrison::EnterAction>,
     /// A unit's Transport action (an unload command's), its top action.

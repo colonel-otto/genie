@@ -7,7 +7,7 @@ use crate::combat::attack::{
     MASTER_1706, NONE, Strike, face_target, set_sprite,
 };
 use crate::math::rng::Well512;
-use crate::move_to::{MoveTo, MoveWait, Walk};
+use crate::movement::move_to::{MoveTo, MoveWait, Walk};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
 use crate::sprite::{ActiveSprite, Graphic};
 

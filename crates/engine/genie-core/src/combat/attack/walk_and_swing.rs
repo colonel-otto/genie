@@ -7,10 +7,10 @@ use crate::combat::attack::{
 };
 use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
-use crate::move_to::{
+use crate::movement::footprint_gap_squared;
+use crate::movement::move_to::{
     Follow, MoveTo, Walk, follow_path_end, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
-use crate::movement::footprint_gap_squared;
 use crate::{GenieError, combat::damage};
 
 impl Attack {

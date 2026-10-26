@@ -16,7 +16,7 @@
 
 use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::math::rng::Well512;
-use crate::move_to::{MoveTo, MoveWait};
+use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::sprite::ActiveSprite;
 
 mod point_walks;
@@ -35,7 +35,7 @@ use crate::combat::damage::Victim;
 #[cfg(test)]
 use crate::gathering::hunt::Dropped;
 #[cfg(test)]
-use crate::move_to::Walk;
+use crate::movement::move_to::Walk;
 
 /// The Gather action's type, which word 9 adds.
 pub const GATHER: i16 = 5;

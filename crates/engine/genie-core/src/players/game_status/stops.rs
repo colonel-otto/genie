@@ -18,7 +18,7 @@ impl Turns {
     /// back its queue ([`Turns::cancel_queue`]); every unit AI's orders go (`FUN_140c5e010`). The
     /// slice holds no unit groups (`+0x6d0`).
     pub(super) fn stop_everything(&mut self, p: usize) -> Result<(), GenieError> {
-        use crate::explore::EXPLORE_ACTION;
+        use crate::movement::explore::EXPLORE_ACTION;
         use crate::unit_ai::AUTO_SCOUT_ACTION;
         for idx in 0..self.players[p].objects.len() {
             let unit = &self.players[p].objects[idx];
@@ -126,10 +126,10 @@ impl Turns {
             return Ok(false);
         };
         match kind {
-            crate::move_to::MOVE_TO
-            | crate::explore::EXPLORE
+            crate::movement::move_to::MOVE_TO
+            | crate::movement::explore::EXPLORE
             | crate::garrison::ENTER
-            | crate::fly::FLY
+            | crate::movement::fly::FLY
             | crate::combat::missile::MISSILE
             | crate::gathering::make::MAKE
             | crate::construction::wait_solidify::WAIT_SOLIDIFY => {

@@ -80,7 +80,7 @@ pub const STOP_ORDER: i32 = 0x2c2;
 /// `0x2bd`: the auto scout's action value, which the order's case sets after the explore's.
 pub const AUTO_SCOUT_ACTION: i32 = 0x2bd;
 /// `0x25d`: the explore's action value (slot 0x100).
-pub const EXPLORE_ACTION: i32 = crate::explore::EXPLORE_ACTION;
+pub const EXPLORE_ACTION: i32 = crate::movement::explore::EXPLORE_ACTION;
 /// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
 pub(super) const EXPLORE_Z: f32 = crate::math::image::unit_ai::EXPLORE_Z;
 /// The villager's reach test of the foundation its search found (slot 0x3d0 in

@@ -3,7 +3,7 @@
 use crate::construction::build::BUILD;
 use crate::masters::Masters;
 use crate::math::rng::{Stream, Well512};
-use crate::move_to::{MoveTo, MoveToAction};
+use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::sprite::Graphic;
 use crate::turn::unit::{UNPACKED_TREBUCHET, Unit};
 use crate::turn::view::Context;
@@ -236,7 +236,7 @@ impl Unit {
             ));
         }
         if !m.force
-            && self.top_action_kind() == Some(crate::move_to::MOVE_TO)
+            && self.top_action_kind() == Some(crate::movement::move_to::MOVE_TO)
             && self
                 .move_to
                 .and_then(|mt| mt.point(self.mover.as_ref()))
@@ -301,12 +301,12 @@ impl Unit {
         match self.top_action_kind() {
             None
             | Some(
-                crate::move_to::MOVE_TO
-                | crate::explore::EXPLORE
+                crate::movement::move_to::MOVE_TO
+                | crate::movement::explore::EXPLORE
                 | BUILD
                 | crate::combat::attack::ATTACK
                 | crate::garrison::ENTER
-                | crate::fly::FLY
+                | crate::movement::fly::FLY
                 | crate::combat::missile::MISSILE
                 | crate::gathering::make::MAKE
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,
@@ -370,9 +370,9 @@ impl Unit {
 
     /// The unit's slot 0x348 (`FUN_141086440`), forced, on its unit AI's move to an object (in
     /// `state`): a `MoveTo` to the target within `range` (none: slot 0x268's,
-    /// [`crate::move_to::object_range`]), showing the master's running sprite (the
+    /// [`crate::movement::move_to::object_range`]), showing the master's running sprite (the
     /// walking one without it), takes the target it holds (`FUN_140aa0df0`, quiet 0: slot 0x178,
-    /// [`crate::move_to::holds_object`]), then replaces its action list (`FUN_140a98620`,
+    /// [`crate::movement::move_to::holds_object`]), then replaces its action list (`FUN_140a98620`,
     /// [`Unit::clear_own_actions`]: the old actions' teardowns let their targets go) and starts
     /// ([`MoveToAction::to_object`]).
     pub(in crate::turn) fn move_to_object(
@@ -398,15 +398,15 @@ impl Unit {
         let master = c
             .spatial
             .get_known(target)?
-            .ok_or(crate::move_to::TARGET_LACKING)?
+            .ok_or(crate::movement::move_to::TARGET_LACKING)?
             .master;
-        if crate::move_to::holds_object(livestock, master, state) {
+        if crate::movement::move_to::holds_object(livestock, master, state) {
             c.takes.push((target, self.releaser(c)));
         }
         let by = self.releaser(c);
         self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         let own = c.masters.and_then(|m| m.get(self.life.master_id));
-        let range = crate::move_to::object_range(range, own);
+        let range = crate::movement::move_to::object_range(range, own);
         let mover = self.mover.as_mut().expect("tested above");
         let move_to = MoveToAction::to_object(
             c.spatial,

@@ -10,8 +10,10 @@ use crate::gathering::gather::{
     WALK, WALK_BACK, WORK, waits_for_a_farm,
 };
 use crate::gathering::hunt::walk_sprite;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up};
 use crate::movement::Mover;
+use crate::movement::move_to::{
+    Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up,
+};
 
 impl GatherAction {
     /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::gathering::hunt::asked_drop_off`] on the
@@ -324,7 +326,7 @@ impl GatherAction {
     /// The `MoveTo`'s answer to the motion step giving up ([`MoveWait::give_up`]; quiet). The
     /// computer player's test is not held: its villagers would fail at once.
     ///
-    /// [`MoveWait::give_up`]: crate::move_to::MoveWait::give_up
+    /// [`MoveWait::give_up`]: crate::movement::move_to::MoveWait::give_up
     pub(super) const fn give_up(&mut self, g: &Gatherer<'_>) {
         let waits = g.class == VILLAGER_CLASS;
         self.move_to = Some(self.move_wait.give_up(waits, g.stance));

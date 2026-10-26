@@ -2,8 +2,8 @@
 
 use crate::masters::{Master, Masters};
 use crate::math::rng::{Stream, Well512};
-use crate::move_to::MoveTo;
 use crate::movement::Me;
+use crate::movement::move_to::MoveTo;
 use crate::pathing::Pathing;
 use crate::spatial::Spatial;
 use crate::sprite::Graphic;

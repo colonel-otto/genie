@@ -375,7 +375,7 @@ pub enum Effect {
         /// The target.
         target: i32,
         /// The target's state as the AI saw it, which decides whether the `MoveTo` holds it
-        /// ([`crate::move_to::holds_object`]).
+        /// ([`crate::movement::move_to::holds_object`]).
         state: u8,
         /// The range within which the `MoveTo` arrives.
         range: f32,

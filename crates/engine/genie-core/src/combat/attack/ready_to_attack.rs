@@ -6,7 +6,7 @@ use crate::combat::attack::{
     Attack, FAILED, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE, READY, Readiness,
     SHORT_RANGE_GAP, Strike, face_target,
 };
-use crate::move_to::Walk;
+use crate::movement::move_to::Walk;
 use crate::movement::{Mover, footprint_gap};
 
 impl Attack {

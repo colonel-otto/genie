@@ -285,7 +285,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             drop_site: -1,
             carry_to: -1,
             timer: 0.0,
-            move_wait: crate::move_to::MoveWait::default(),
+            move_wait: crate::movement::move_to::MoveWait::default(),
             lead: Lead::default(),
         }),
         ..Unit::default()

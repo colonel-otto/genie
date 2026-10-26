@@ -1,12 +1,12 @@
 use super::*;
 use crate::checkpoint::TopAction;
 use crate::construction::build::{BuildAction, BuildTask, Construction};
-use crate::fly::Fly;
 use crate::lifecycle::seconds;
 use crate::lifecycle::{Class, Lifecycle, MasterData};
 use crate::masters::{Master, Masters};
 use crate::math::rng::{Stream, Streams, Well512};
-use crate::move_to::MoveTo;
+use crate::movement::fly::Fly;
+use crate::movement::move_to::MoveTo;
 use crate::ownership::artifact::Artifact;
 use crate::spatial::{Placed, Spatial};
 use crate::tasks::{Actor, Diplomacy};
@@ -2107,7 +2107,7 @@ fn an_inside_unit_s_update_deletes_its_top_action() {
     let mut t = enter_world(vec![], 5);
     t.players[1].objects[0].life.inside = Some(10028);
     t.spatial.go_inside(9175, [30.0, 88.0, 0.0]);
-    t.players[1].objects[0].move_to = Some(crate::move_to::MoveToAction::to_point(
+    t.players[1].objects[0].move_to = Some(crate::movement::move_to::MoveToAction::to_point(
         [40.0, 80.0, 0.0],
         0.0,
         false,
@@ -2794,7 +2794,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
 fn a_built_farm_s_master_starts_a_make_and_another_default_task_is_reported() {
     assert_eq!(farm_master().default_start(), (true, None));
     let mut other = farm_master();
-    other.tasks[0].action_type = crate::fly::FLY;
+    other.tasks[0].action_type = crate::movement::fly::FLY;
     assert!(other.default_start().1.is_some());
     // a type the factories make nothing of starts nothing (a wild animal's Explore, 6)
     other.tasks[0].action_type = 6;
@@ -4142,7 +4142,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     t.players[1].objects[0].artifact = Some(Artifact {
         target: 9149,
         goal: Some([20.0, 20.0, 0.0]),
-        walk_to: Some((crate::move_to::Goal::Target(9149), 1.0)),
+        walk_to: Some((crate::movement::move_to::Goal::Target(9149), 1.0)),
         move_to: Some(MoveTo::Moving),
         ..Artifact::new(false)
     });
@@ -4175,7 +4175,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         timer: 0.0,
         retry: true,
         task_class: 0,
-        move_wait: crate::move_to::MoveWait::default(),
+        move_wait: crate::movement::move_to::MoveWait::default(),
     });
     villager.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify::new(
         crate::masters::Task::default(),
@@ -4202,7 +4202,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         },
         added: true,
         timer: 0.0,
-        move_wait: crate::move_to::MoveWait::default(),
+        move_wait: crate::movement::move_to::MoveWait::default(),
         site: -1,
         drop_range: 0.0,
     });
@@ -4304,7 +4304,7 @@ fn deaths_world() -> Turns {
         },
         added: true,
         timer: 0.0,
-        move_wait: crate::move_to::MoveWait::default(),
+        move_wait: crate::movement::move_to::MoveWait::default(),
         site: -1,
         drop_range: 0.0,
     });
@@ -4532,13 +4532,13 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         id,
         position: [11.5, 10.5, 0.0],
         mover: Some(mover.clone()),
-        move_to: Some(crate::move_to::MoveToAction {
+        move_to: Some(crate::movement::move_to::MoveToAction {
             state: MoveTo::Arrived,
             goal: None,
             target: 50,
             range: 0.0,
             run: false,
-            wait: crate::move_to::MoveWait::default(),
+            wait: crate::movement::move_to::MoveWait::default(),
         }),
         pasture: -1,
         my_pasture: -1,
@@ -5887,13 +5887,13 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             patrol_waypoint: 1,
             ..UnitAi::default()
         }),
-        move_to: Some(crate::move_to::MoveToAction {
+        move_to: Some(crate::movement::move_to::MoveToAction {
             state: MoveTo::Moving,
             goal: None,
             target: 77,
             range: 0.0,
             run: false,
-            wait: crate::move_to::MoveWait::default(),
+            wait: crate::movement::move_to::MoveWait::default(),
         }),
         ..Unit::default()
     };
@@ -6562,7 +6562,7 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::combat::attack::At
         seen: [0.0; 3],
         goto: [-1.0; 3],
         move_to: None,
-        move_wait: crate::move_to::MoveWait::default(),
+        move_wait: crate::movement::move_to::MoveWait::default(),
         pending: false,
         swing: 0.0,
         rest: 0.0,
@@ -6720,12 +6720,12 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
         force: false,
         ..forced(false)
     };
-    let old = crate::move_to::MoveToAction::to_point(AI_POINT, 0.0, false, None);
+    let old = crate::movement::move_to::MoveToAction::to_point(AI_POINT, 0.0, false, None);
     let mut u = mover_unit(5);
     u.move_to = Some(old);
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
     assert_eq!(u.move_to, Some(old));
-    let to_object = crate::move_to::MoveToAction {
+    let to_object = crate::movement::move_to::MoveToAction {
         goal: None,
         target: 9149,
         ..old
@@ -6817,7 +6817,7 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         m.stats.stand_speed = 0.737;
         u.sprite = Some(crate::sprite::ActiveSprite::start(walking, rng));
         u.anim_speed = Some(1.0);
-        u.move_to = Some(crate::move_to::MoveToAction::to_point(
+        u.move_to = Some(crate::movement::move_to::MoveToAction::to_point(
             [119.5, 172.5, 0.0],
             0.0,
             false,

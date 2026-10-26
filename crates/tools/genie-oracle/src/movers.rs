@@ -334,7 +334,7 @@ pub(super) fn loaded_ignored(levels: &mut [genie_core::movement::PathData], unit
 /// that `MoveTo` has a target (its `target_x`..`target_z`).
 pub(super) fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
     let (top_kind, top) = object.actions()?.entries().next()?;
-    if top_kind == genie_core::move_to::MOVE_TO {
+    if top_kind == genie_core::movement::move_to::MOVE_TO {
         let b = top.base()?;
         return (b.target_id != -1).then_some([b.target_x, b.target_y, b.target_z]);
     }
@@ -344,6 +344,6 @@ pub(super) fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3
         (kind, sub) = sub.base()?.sub_actions.entries().next()?;
     }
     let b = sub.base()?;
-    (kind == genie_core::move_to::MOVE_TO && b.target_id != -1)
+    (kind == genie_core::movement::move_to::MOVE_TO && b.target_id != -1)
         .then_some([b.target_x, b.target_y, b.target_z])
 }
