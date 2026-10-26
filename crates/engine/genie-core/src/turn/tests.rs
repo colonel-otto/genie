@@ -15,8 +15,8 @@ use crate::turn::player::Player;
 use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::turn::view::{Foreign, Wait, patrol_information};
 use crate::turn::world::{
-    SideWorld, World, change_hands, count_class, search_origin, task_search, task_target_with,
-    wait_progress,
+    SideWorld, World, change_hands, count_class, search_origin, storage_leaves, task_search,
+    task_target_with, wait_progress,
 };
 use crate::unit_ai::{BUILD_ORDER, GenieError, Notify, OWNER_CHANGED, UnitAi};
 use crate::visibility::{Seer, capture_kind};
@@ -4203,6 +4203,42 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     assert_eq!(foundation.construction.map(|k| k.builders), Some(0));
 }
 
+/// `FUN_1411e63f0` then `FUN_1411e6580` at a built building's death: each storage entry of mode
+/// 4 with an attribute and an amount above 0 leaves its owner (negated), then the population
+/// the object holds itself (attribute 4: it holds nothing after); each entry of mode 16 (a flag
+/// bit 0x10) leaves its own store when the store holds its attribute.
+#[test]
+fn a_built_building_s_storage_leaves_its_owner_and_its_store() {
+    let master = Master {
+        id: 109,
+        kind: 80,
+        storage: vec![
+            (4, 5.0, 4),
+            (-1, 5.0, 4),
+            (7, 0.0, 4),
+            (11, 2.0, 16),
+            (12, 3.0, 0x30),
+            (13, 1.0, 16),
+        ],
+        ..Master::default()
+    };
+    let mut u = Unit {
+        id: 1,
+        store: vec![(11, 6.0), (12, 4.0)],
+        ..Unit::default()
+    };
+    u.life.attribute_type = 4;
+    u.life.amount = 3.0;
+    let adds = storage_leaves(&mut u, &master);
+    assert_eq!(adds, [(4, -5.0), (4, -3.0)]);
+    assert_eq!((u.life.attribute_type, u.life.amount), (-1, 0.0));
+    assert_eq!(u.store, [(11, 4.0), (12, 1.0)]);
+    // holding no population: the master's entries alone
+    let adds = storage_leaves(&mut u, &master);
+    assert_eq!(adds, [(4, -5.0)]);
+    assert_eq!(u.store, [(11, 2.0), (12, -2.0)]);
+}
+
 /// A world for the deaths: Gaia holds the tree 50 (master 349, type 15, one worker) and the boar
 /// 60 (master 48, type 70, one worker, a unit AI that counts the hunter 41 among its attackers);
 /// player 1 holds the villagers 40 (gathering the tree), 41 (hunting the boar) and 42 (a counted
@@ -5349,6 +5385,84 @@ fn an_object_changing_hands_takes_its_storage_and_class_counts_along() {
         [1.0, 1.0]
     );
     assert_eq!(t.players[1].attributes[11], 0.0);
+}
+
+/// `FUN_141082e80` before the kill's counts: a killed villager (class 4) counts for its owner an
+/// animal attacker (class 9 or 10) in attribute 227, and by the attacker's player type a human's
+/// in 229, Gaia's in 226, a computer's in 228 (type 0 none); a computer player's killed object
+/// (its AI is told) is not modelled, nor a villager's attacker the world does not hold.
+#[test]
+fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
+    let unit = |id, master_id| Unit {
+        id,
+        life: Lifecycle {
+            master_id,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let player = |kind, objects| Player {
+        objects,
+        kind,
+        attributes: vec![0.0; 500],
+        ..Player::default()
+    };
+    let world = |attacker_kind| {
+        let mut t = Turns::new(
+            0,
+            1,
+            0,
+            vec![0; 3],
+            vec![
+                player(2, vec![unit(50, 126)]),
+                player(1, vec![unit(40, 83), unit(41, 83)]),
+                player(attacker_kind, vec![unit(60, 4)]),
+            ],
+        );
+        let masters = Masters::new([
+            Master {
+                id: 83,
+                class: 4,
+                ..Master::default()
+            },
+            Master {
+                id: 126,
+                class: 9,
+                ..Master::default()
+            },
+            Master {
+                id: 4,
+                class: 0,
+                ..Master::default()
+            },
+        ]);
+        t.masters = vec![masters; 3];
+        t
+    };
+    let by = |attacker, attacker_player| crate::damage::Kill {
+        attacker,
+        attacker_player,
+        to_gaia: false,
+    };
+    let counts = |t: &Turns| [226, 227, 228, 229].map(|i| t.players[1].attributes[i]);
+    // Gaia's wolf: an animal, Gaia's type
+    let mut t = world(1);
+    t.killed(1, 0, by(50, 0)).unwrap();
+    assert_eq!(counts(&t), [1.0, 1.0, 0.0, 0.0]);
+    // the archers of a human, a computer and the editor's phantom
+    for (kind, seen) in [
+        (1, [0.0, 0.0, 0.0, 1.0]),
+        (3, [0.0, 0.0, 1.0, 0.0]),
+        (0, [0.0; 4]),
+    ] {
+        let mut t = world(kind);
+        t.killed(1, 1, by(60, 2)).unwrap();
+        assert_eq!(counts(&t), seen);
+    }
+    let mut t = world(1);
+    assert!(t.killed(1, 0, by(99, 2)).is_err());
+    t.players[1].computer = true;
+    assert!(t.killed(1, 0, by(60, 2)).is_err());
 }
 
 /// MarvinBlue/426048731's update 1250: 10029's second hit kills its sheep 9520 (2 hit points,

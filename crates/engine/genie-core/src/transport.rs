@@ -1275,6 +1275,34 @@ mod tests {
         assert_eq!(run(&mut t, &s, &mut c).unwrap(), TransportStep::default());
     }
 
+    /// `FUN_140a992b0` as a Transport runs it: a start asks for its path to the point (the
+    /// planner gives the walker its two paths), a move walks on; without the walk either is
+    /// an error, and a waiting `MoveTo` (only a villager's waits) is not a ship's.
+    #[test]
+    fn a_sail_s_move_to_asks_for_its_path_then_walks_on() {
+        use crate::movement::tests::WalkRig;
+        let sailing = |move_to| TransportAction {
+            move_to,
+            point: [35.5, 88.5, 0.0],
+            ..TransportAction::new([28.0, 89.0, 0.0])
+        };
+        let ask = PathAsk::default();
+        let mut rig = WalkRig::on_the_path();
+        rig.mover.paths.clear();
+        let mut t = sailing(Some(MoveTo::Start));
+        assert_eq!(t.walk(Some(rig.walk(SAIL)), ask), Ok(0));
+        assert_eq!(t.move_to, Some(MoveTo::Moving));
+        assert_eq!(rig.mover.paths.len(), 2);
+        let mut rig = WalkRig::on_the_path();
+        let mut t = sailing(Some(MoveTo::Moving));
+        assert_eq!(t.walk(Some(rig.walk(SAIL)), ask), Ok(0));
+        assert_eq!(t.move_to, Some(MoveTo::Moving));
+        assert!(sailing(Some(MoveTo::Start)).walk(None, ask).is_err());
+        assert!(sailing(Some(MoveTo::Moving)).walk(None, ask).is_err());
+        let mut t = sailing(Some(MoveTo::Waiting));
+        assert!(t.walk(Some(rig.walk(SAIL)), ask).is_err());
+    }
+
     fn rng() -> Well512 {
         let mut r = Well512::default();
         r.set_seed(7);

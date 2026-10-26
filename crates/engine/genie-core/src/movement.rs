@@ -5146,6 +5146,40 @@ pub(crate) mod tests {
         (at, motion)
     }
 
+    /// `LAB_141153bd1`'s waypoint tests: a unit on its waypoint, or one whose step would lead
+    /// away from it, counts it reached and the motion step starts again (on the path's last
+    /// waypoint the walk ends: arrived, the levels reset); with more than 2 substitutes a short
+    /// step counts it reached too (flags 3) and the walk goes on.
+    #[test]
+    fn a_walk_on_or_past_its_waypoint_counts_it_reached() {
+        let me = |position| Me {
+            id: 9177,
+            position,
+            group: -1,
+            action_state: 0,
+        };
+        let levels = |m: &Mover| {
+            m.paths
+                .iter()
+                .map(|l| (l.waypoint, l.flags, l.state))
+                .collect::<Vec<_>>()
+        };
+        for at in [[30.0, 88.0, 0.0], [31.0, 87.5, 0.0]] {
+            let mut w = world();
+            let mut m = builder_9177();
+            m.moved_at = at;
+            let motion = m.motion(&mut me(at), DT, &mut w, None).unwrap();
+            assert_eq!(motion, Motion::Arrived);
+            assert_eq!(levels(&m), [(0, 0, 0)]);
+        }
+        let mut w = world();
+        let mut m = builder_9177();
+        m.substitute_count = 3;
+        let (_, motion) = tick(&mut m, [28.0, 89.0, 0.0], &mut w);
+        assert_eq!(motion, Motion::Moving);
+        assert_eq!(levels(&m), [(1, 3, 3), (1, 0, 0)]);
+    }
+
     #[test]
     fn the_first_step_reaches_top_speed_and_moves_along_the_saved_forward_vector() {
         let mut m = builder_9177();

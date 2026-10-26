@@ -4334,6 +4334,53 @@ mod tests {
         assert!(!s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
     }
 
+    /// The old short pather's query on a walk whose grown box leaves the map: the first hit is
+    /// the map's edge record (`FUN_141052350`), the hits list it before the records; a box the
+    /// walk passes by is no hit, and a record of kind 11 or a gate's meeting the walk is not
+    /// modelled.
+    #[test]
+    fn a_pather_walk_off_the_map_meets_its_edge_first() {
+        let mut s = Spatial::with_tiles([16, 16], Tiles::new(16, 16, vec![1; 256]));
+        let mut house = villager(4.0, 8.0);
+        house.radius = [1.0, 1.0];
+        house.obstruction = Some(Obstruction { kind: 2, class: 3 });
+        s.insert(7, house);
+        let mut beside = villager(12.0, 2.0);
+        beside.obstruction = Some(Obstruction { kind: 2, class: 3 });
+        s.insert(8, beside);
+        let (a, b) = ([0.2, 8.0], [6.0, 8.0]);
+        let edge = s.edge_records([-0.3, 7.5, 6.5, 8.5], QUERY_HITS);
+        assert_ne!(edge.len(), 0);
+        assert!(s.pather_blocked(a, b, Some(0.5), 1, &[]).unwrap());
+        s.clear_tile_records();
+        let hits = s.pather_hits(a, b, Some(0.5), 1, &[]).unwrap();
+        assert_eq!(hits.len(), edge.len() + 1);
+        assert_eq!(hits[..edge.len()], edge[..]);
+        assert_eq!(hits[edge.len()].id, 7);
+        s.clear_tile_records();
+        // within the map, the house alone; the box at (12, 2) is passed by
+        let hits = s
+            .pather_hits([1.0, 8.0], [6.0, 8.0], Some(0.5), 1, &[])
+            .unwrap();
+        assert_eq!(hits.iter().map(|h| h.id).collect::<Vec<_>>(), [7]);
+        s.clear_tile_records();
+        let mut own = villager(4.0, 8.0);
+        own.obstruction = Some(Obstruction { kind: 11, class: 3 });
+        s.insert(7, own);
+        assert!(
+            s.pather_hits([1.0, 8.0], [6.0, 8.0], Some(0.5), 1, &[])
+                .is_err()
+        );
+        let mut gate = villager(4.0, 8.0);
+        gate.class = GATE_CLASS;
+        gate.obstruction = Some(Obstruction { kind: 2, class: 3 });
+        s.insert(7, gate);
+        assert!(
+            s.pather_hits([1.0, 8.0], [6.0, 8.0], Some(0.5), 1, &[])
+                .is_err()
+        );
+    }
+
     /// 426327574's transport at update 309: the smoothing's walk (77.5, 90.5) -> (76.5, 91.5)
     /// puts tile (78, 90)'s record, and the next walk from (77.5, 91.5) touches its grown box.
     #[test]

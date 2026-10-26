@@ -8227,7 +8227,14 @@ mod tests {
 
     /// [`patrollers`]' two soldiers near each other in a world whose statistics search works.
     fn two_patrollers() -> Turns {
-        let mut t = patrollers(&[(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])], &[]);
+        searchable(patrollers(
+            &[(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])],
+            &[],
+        ))
+    }
+
+    /// `t` on a 60 by 60 map of open land, its sight's registry for the searches.
+    fn searchable(mut t: Turns) -> Turns {
         // the group's statistics search the members' surroundings
         let mut s = crate::spatial::Spatial::with_tiles(
             [60, 60],
@@ -8305,6 +8312,48 @@ mod tests {
             (ai.adjusted_idle_timeout, ai.patrol_path.is_none()),
             (750, true)
         );
+    }
+
+    /// MOVE (`FUN_140e67800`) of three soldiers in no group: the splitter groups them (each has
+    /// two joiners: the first by id leads), and a new group of their owner (`FUN_14152efc0`)
+    /// takes them, its statistics, its place and the command; with Ctrl held each is a group of
+    /// its own (its formation the line's lock) and the three list each other as their
+    /// differentiator groups.
+    #[test]
+    fn a_move_of_soldiers_in_no_group_forms_new_groups() {
+        let units = [
+            (11, 4, [20.0, 20.0]),
+            (12, 4, [21.0, 20.0]),
+            (13, 4, [22.0, 20.0]),
+        ];
+        let order = MoveOrder {
+            target: -1,
+            point: [40.0, 40.0],
+            queued: false,
+            direct: false,
+            human: false,
+            control: false,
+        };
+        let world = || searchable(patrollers(&units, &[]));
+        let mut t = world();
+        t.move_order(1, &[11, 12, 13], &order).unwrap();
+        let g = &t.groups.groups;
+        assert_eq!(g.len(), 1);
+        let ids: Vec<i32> = g[0].members.iter().map(|m| m.id).collect();
+        assert_eq!(ids, [11, 12, 13]);
+        assert_eq!(t.groups.commands, 1);
+        let mut t = world();
+        let ctrl = MoveOrder {
+            control: true,
+            ..order
+        };
+        t.move_order(1, &[11, 12, 13], &ctrl).unwrap();
+        let g = &t.groups.groups;
+        assert_eq!(g.len(), 3);
+        for g in g {
+            assert_eq!(g.members.len(), 1);
+            assert_eq!(g.differentiator_groups, [0, 1, 2]);
+        }
     }
 
     /// MOVE (`FUN_140e67800`) of the whole of group 5 and a loose soldier beside it: the

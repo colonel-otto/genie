@@ -1497,8 +1497,6 @@ impl Turns {
     }
 }
 
-impl Turns {}
-
 /// A master's sprites an Attack's slot 0x50 (`FUN_140a7f800`) takes ([`follow_master`]), as
 /// graphics: the walking, attack, standing, idle attack and second attack sprites, and whether
 /// the master is of a combat type (70 and up).
@@ -2814,6 +2812,214 @@ mod tests {
         assert_eq!(t.masters[0].get(70).unwrap().storage[0].1, 15.0);
     }
 
+    /// `FUN_141195a50`'s line of sight on a static object (kind 10) on the map: its old circle
+    /// (the seer's own, 2) goes and the new one is explored (a set: the value; an add: the
+    /// master's plus it; a multiply: the master's times it, truncated); off the map (state 0)
+    /// nothing. A set of the second storage (26) moves its attribute as the first does.
+    #[test]
+    fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
+        let (w, h) = (20, 20);
+        let n = (w * h) as usize;
+        let sight = |t: &Turns| {
+            let map = &t.spatial.sight.as_ref().unwrap().maps[0];
+            map.counts.iter().filter(|&&c| c > 0).count()
+        };
+        let world = || {
+            let player = Player {
+                objects: vec![unit_of(1, 50, 10.0)],
+                attributes: vec![0.0; 40],
+                ..Player::default()
+            };
+            let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+            let stone = Master {
+                id: 50,
+                kind: 10,
+                class: 11,
+                hit_points: 10,
+                line_of_sight: 2.0,
+                storage: vec![(-1, 0.0, 0), (4, 5.0, 0), (-1, 0.0, 0)],
+                ..Master::default()
+            };
+            t.masters = vec![Masters::new([stone])];
+            t.load_trackers();
+            let mut v = crate::visibility::Visibility::new(
+                w,
+                h,
+                vec![crate::visibility::VisibleMap {
+                    counts: vec![0; n],
+                    explored: 0,
+                }],
+                vec![0; n],
+                Vec::new(),
+                0,
+                vec![false],
+            );
+            let seer = crate::visibility::Seer {
+                player: 0,
+                master: 50,
+                los: 2.0,
+                state: 2,
+                explored: true,
+                building: None,
+                umv: 0,
+                capture: 0,
+                kind: 10,
+            };
+            v.add_seer(1, seer);
+            let position = [10.5, 10.5, 0.0];
+            let radius = [0.5, 0.5];
+            let _ = v.sight_on(1, position, radius, false, false);
+            t.spatial.sight = Some(v);
+            t.spatial.insert(
+                1,
+                crate::spatial::Placed {
+                    position,
+                    radius,
+                    class: 11,
+                    player: 0,
+                    master: 50,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: false,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+            t
+        };
+        // the tiles a circle of `los` explores, on a map of its own
+        let circle = |los| {
+            let mut t = world();
+            let v = t.spatial.sight.as_mut().unwrap();
+            v.sight_off(1, [10.5, 10.5, 0.0], [0.5, 0.5], false, false);
+            let _ = v.sight_on_los(1, [10.5, 10.5, 0.0], [0.5, 0.5], false, los, false);
+            sight(&t)
+        };
+        let (two, four, five, six) = (circle(2), circle(4), circle(5), circle(6));
+        assert!(two < four && four < five && five < six);
+        let mut t = world();
+        assert_eq!(sight(&t), two);
+        // a set to 4.9: truncated to 4
+        t.do_effect(0, &[attribute(0, -1, 11, 1, 4.9)], None)
+            .unwrap();
+        assert_eq!(sight(&t), four);
+        // an add of 3: the master's 2 (the clone before its own change) plus 3
+        let mut t = world();
+        t.do_effect(0, &[attribute(4, -1, 11, 1, 3.0)], None)
+            .unwrap();
+        assert_eq!(sight(&t), five);
+        // a multiply by 3: the master's 2 times 3
+        let mut t = world();
+        t.do_effect(0, &[attribute(5, -1, 11, 1, 3.0)], None)
+            .unwrap();
+        assert_eq!(sight(&t), six);
+        // off the map: the circle stays
+        let mut t = world();
+        t.players[0].objects[0].life.state = 0;
+        t.do_effect(0, &[attribute(0, -1, 11, 1, 6.0)], None)
+            .unwrap();
+        assert_eq!(sight(&t), two);
+        // the second storage: its attribute 4 loses the old 5 and takes the new 8
+        let mut t = world();
+        t.players[0].attributes[4] = 10.0;
+        t.do_effect(0, &[attribute(0, -1, 11, 26, 8.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].attributes[4], 13.0);
+    }
+
+    /// What the slice keeps beside a master follows its change: its objects' (live and asleep)
+    /// dying sprite (none below 0), death spawn (a first spawn of 0 or more) and remains (the
+    /// second), a foundation's build time and record, a placed object's height test and a
+    /// seer's line of sight; another master's objects and a master the player lacks keep theirs.
+    #[test]
+    fn an_object_s_copies_of_its_master_follow_its_change() {
+        use crate::masters::attribute as a;
+        let mut site = unit_of(1, 4, 30.0);
+        site.construction = Some(built());
+        let player = Player {
+            objects: vec![site, unit_of(3, 5, 30.0)],
+            sleeping: vec![unit_of(2, 4, 30.0)],
+            ..Player::default()
+        };
+        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let mut m = combat(4, 6, 60);
+        (m.death_sprite, m.death_spawns) = (7, [0, 9]);
+        (m.build_time, m.obstruction_type, m.obstruction_class) = (33, 5, 2);
+        (m.line_of_sight, m.tall) = (6.0, true);
+        t.masters = vec![Masters::new([m, combat(5, 6, 60)])];
+        for id in [1, 3] {
+            t.spatial.insert(
+                id,
+                crate::spatial::Placed {
+                    position: [5.5, 5.5, 0.0],
+                    radius: [0.5, 0.5],
+                    class: 6,
+                    player: 0,
+                    master: 4,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: false,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+        let mut v = crate::visibility::Visibility::new(
+            10,
+            10,
+            Vec::new(),
+            vec![0; 100],
+            Vec::new(),
+            0,
+            Vec::new(),
+        );
+        let seer = crate::visibility::Seer {
+            player: 0,
+            master: 4,
+            los: 2.0,
+            state: 2,
+            explored: true,
+            building: None,
+            umv: 0,
+            capture: 0,
+            kind: 70,
+        };
+        v.add_seer(1, seer);
+        v.add_seer(3, seer);
+        t.spatial.sight = Some(v);
+        let all = [
+            a::DYING_GRAPHIC,
+            a::DEAD_UNIT_ID,
+            a::BLOOD_UNIT,
+            a::TRAIN_TIME,
+            a::OBSTRUCTION_TYPE,
+            a::SIZE_Z,
+            a::LINE_OF_SIGHT,
+        ];
+        for attribute in all {
+            t.master_followers(0, 4, attribute);
+            t.master_followers(0, 99, attribute);
+        }
+        let follows = |u: &Unit| (u.life.dying_sprite, u.life.death_spawn, u.life.remains);
+        let p = &t.players[0];
+        assert_eq!(follows(&p.objects[0]), (Some(7), true, 9));
+        assert_eq!(follows(&p.sleeping[0]), (Some(7), true, 9));
+        assert_eq!(follows(&p.objects[1]), (None, false, -1));
+        let c = p.objects[0].construction.unwrap();
+        assert_eq!(c.build_time, 33);
+        assert_eq!(c.record, crate::spatial::Obstruction { kind: 5, class: 2 });
+        let tall = |id| t.spatial.get(id).unwrap().tall;
+        assert_eq!((tall(1), tall(3)), (true, false));
+        let los = |id| t.spatial.sight.as_ref().unwrap().seer(id).unwrap().los;
+        assert_eq!((los(1), los(3)), (6.0, 2.0));
+        // a dying sprite below 0 is none
+        t.masters[0].get_mut(4).unwrap().death_sprite = -1;
+        t.master_followers(0, 4, a::DYING_GRAPHIC);
+        assert_eq!(t.players[0].objects[0].life.dying_sprite, None);
+    }
+
     /// A speed's change reaches what a unit of the master moves with (the game reads its master).
     #[test]
     fn a_speed_change_reaches_the_units_movement() {
@@ -3057,6 +3263,51 @@ mod tests {
         t.do_effect(0, &[attribute(8, 0, 12, -1, 3.0)], None)
             .unwrap();
         assert_eq!(t.players[0].attributes[0x15], 2.0);
+    }
+
+    /// Kind 8's other modes: a technology past the player's tree changes nothing; a location
+    /// within the list changes it alone (−2, a research time's add: at its building); one past
+    /// the list of a technology without locations changes nothing; 9 the stacking, 12 with 1
+    /// makes it unavailable; 18 the effect override (a researched technology's new effect would
+    /// run from the world's effect table, not modelled).
+    #[test]
+    fn a_technology_change_s_location_stacking_and_effect_override() {
+        use crate::tech::Location;
+        let mut t = barracks_tech();
+        t.players[0].techs[0].locations.push(Location {
+            building: 13,
+            time: 40,
+            button: 4,
+            adjustment: 0.0,
+        });
+        t.do_effect(0, &[attribute(8, 5, 9, -1, 1.0)], None)
+            .unwrap();
+        assert!(!t.players[0].techs[0].stack);
+        t.do_effect(0, &[attribute(8, 0, 9, -1, 1.0)], None)
+            .unwrap();
+        assert!(t.players[0].techs[0].stack);
+        t.do_effect(0, &[attribute(8, 0, 5, 1, 9.0)], None).unwrap();
+        t.do_effect(0, &[attribute(8, 0, -2, 1, 5.9)], None)
+            .unwrap();
+        let s = &t.players[0].techs[0];
+        let at = |i: usize| (s.locations[i].button, s.locations[i].adjustment);
+        assert_eq!([at(0), at(1)], [(3, 0.0), (9, 5.0)]);
+        t.do_effect(0, &[attribute(8, 0, 12, -1, 1.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].techs[0].state, 0);
+        t.do_effect(0, &[attribute(8, 0, 18, -1, 7.0)], None)
+            .unwrap();
+        assert_eq!(t.players[0].techs[0].effect_override, 7);
+        t.players[0].techs[0].state = 3;
+        assert!(
+            t.do_effect(0, &[attribute(8, 0, 18, -1, 8.0)], None)
+                .is_err()
+        );
+        // no locations: a location past the list changes nothing
+        let mut t = barracks_tech();
+        t.players[0].techs[0].locations.clear();
+        t.do_effect(0, &[attribute(8, 0, 5, 2, 9.0)], None).unwrap();
+        assert_eq!(t.players[0].techs[0].locations.len(), 0);
     }
 
     /// Kind 3 (`FUN_14160e410`, mode −1): the old master takes the new one's values but keeps its

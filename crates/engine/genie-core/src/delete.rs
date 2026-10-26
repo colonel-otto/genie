@@ -893,6 +893,47 @@ mod clearing_tests {
         assert_eq!((u.life.state, u.life.hp, u.roo_called), (7, 0.0, true));
     }
 
+    /// The base `set_state` (`FUN_14119d710`) of a decoration (type 10): the same or a lower
+    /// state changes nothing; from below 3 its storage of flags 2 and 16 leaves its owner (that
+    /// of flag 32 only at 7, a kind below 0 never); a sleeping object wakes to the end of the
+    /// live list unless the state is 6; an object the world does not hold is not modelled.
+    #[test]
+    fn the_base_set_state_lets_its_storage_go_and_wakes_a_sleeper() {
+        let mut t = world(
+            vec![object(1, 1351, 3.5, 3.5)],
+            vec![object(2, 1358, 5.5, 5.5), object(3, 1358, 7.5, 7.5)],
+            vec![],
+        );
+        for m in [1351, 1358] {
+            t.masters[0].get_mut(m).unwrap().storage =
+                vec![(4, 2.0, 2), (5, 3.0, 16), (7, 1.0, 32), (-1, 9.0, 2)];
+        }
+        let at = |t: &Turns| [4, 5, 7].map(|i| t.players[0].attributes[i]);
+        t.players[0].attributes[4..8].copy_from_slice(&[10.0, 10.0, 10.0, 10.0]);
+        t.players[0].objects[0].life.state = 2;
+        // the same state, then a lower one: nothing
+        t.set_state(0, 1, 2).unwrap();
+        t.players[0].objects[0].life.state = 5;
+        t.set_state(0, 1, 3).unwrap();
+        assert_eq!(t.players[0].objects[0].life.state, 5);
+        assert_eq!(at(&t), [10.0; 3]);
+        // from 2 to 5: flags 2 and 16 leave, flag 32 stays; then to 7, flag 32 leaves
+        t.players[0].objects[0].life.state = 2;
+        t.set_state(0, 1, 5).unwrap();
+        assert_eq!(at(&t), [8.0, 7.0, 10.0]);
+        t.set_state(0, 1, 7).unwrap();
+        assert_eq!(at(&t), [8.0, 7.0, 9.0]);
+        assert_eq!(t.players[0].objects[0].life.state, 7);
+        // a sleeper set to 6 sleeps on, one set to 7 wakes
+        t.players[0].sleeping[0].life.state = 5;
+        t.set_state(0, 2, 6).unwrap();
+        assert_eq!(t.players[0].sleeping.len(), 2);
+        t.set_state(0, 3, 7).unwrap();
+        let ids: Vec<i32> = t.players[0].objects.iter().map(|u| u.id).collect();
+        assert_eq!((ids, t.players[0].sleeping.len()), (vec![1, 3], 1));
+        assert!(t.set_state(0, 99, 7).is_err());
+    }
+
     /// `FUN_14121cc40`'s refund at a death from state 2: a unit's paid cost leaves attributes 98
     /// and 164, a building's 98 and 165, the castle's and the wonder's 98 alone, an annex's none.
     #[test]
