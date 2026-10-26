@@ -1,0 +1,568 @@
+//! INTERACT's order (`0x140e68b90`) to its units without a group, each at once or through its
+//! unit AI's queue, several of them at their offsets around the order's point, and the work
+//! command it gives (object slot 37, `FUN_14106ff70`, through slot 0x128 `FUN_141211b80` and slot
+//! 0x7e8 `FUN_141227190`): the unit takes the master and the task the task finder picks for the
+//! target ([`crate::tasks`]), and the task's action replaces its action list. The slice builds
+//! the Hunt action ([`crate::hunt`]); other actions, orders to points and unit groups are not
+//! modelled yet.
+
+use crate::masters::Master;
+use crate::tasks::TaskTarget;
+use crate::turn::{Turns, Unit};
+use crate::unit_ai::GenieError;
+
+mod actions;
+mod attack;
+mod commands;
+mod drop_site;
+mod follow;
+mod gather;
+mod interact;
+mod moves;
+mod patrol;
+mod points;
+mod split;
+mod tasks;
+mod unit_order;
+mod work;
+
+pub(crate) use self::actions::{SwitchWorld, switch_master};
+use self::points::{centroid, follow_axis, follow_spread, grid_point, offset_point};
+#[cfg(test)]
+use crate::hunt::HUNT;
+#[cfg(test)]
+use crate::unit_ai::MOVE_ORDER;
+
+/// INTERACT's fields past its units (`+0x4`..`+0x16`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Interact {
+    /// `t_id` (`+0x4`): the target object, -1 for a point.
+    pub target: i32,
+    /// `x`, `y` (`+0x8`, `+0xc`).
+    pub point: [f32; 2],
+    /// `+0x12`: the work command's carried-resource test.
+    pub carry_test: bool,
+    /// `+0x13`: the order is queued.
+    pub queued: bool,
+    /// `+0x14`: a unit with a unit AI takes the order at once.
+    pub direct: bool,
+    /// `+0x15`: each unit's last human order time is set (`FUN_140e5e780`).
+    pub human: bool,
+    /// `+0x16`: the work command's task filter, -1 for any.
+    pub filter: i16,
+}
+
+/// MOVE's fields past its units (`+0x4`..`+0x15`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MoveOrder {
+    /// `t_id` (`+0x4`): an object to follow, -1 for the point.
+    pub target: i32,
+    /// `x`, `y` (`+0x8`, `+0xc`).
+    pub point: [f32; 2],
+    /// `+0x13`: queued; `+0x14`: a unit with a unit AI takes it at once; `+0x15`: the last human
+    /// order time is set.
+    pub queued: bool,
+    /// `+0x14`: a unit with a unit AI takes it at once.
+    pub direct: bool,
+    /// `+0x15`: the last human order time is set.
+    pub human: bool,
+    /// `+0x12` (`cade_api`'s `controlHeld`): the splitter makes each unit it may group a group of
+    /// its own ([`Turns::split`]).
+    pub control: bool,
+}
+
+/// What a unit's slot 0x7e8 (`FUN_141227190`) is given through slot 0x128: the target, the point
+/// (x, y, z), the work command's carried-resource test and task filter, and the unit's `+0xa14`
+/// while it runs (`notified`: INTERACT passes 1, the unit AI's queued order on a target 0): only
+/// with it does the new action's notify clear the unit AI's notifies (`FUN_140c64e50`, for a unit
+/// of a type above 69).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Work {
+    pub target: i32,
+    pub point: [f32; 3],
+    pub carry_test: bool,
+    pub filter: i16,
+    pub notified: bool,
+}
+
+/// Masters and classes the order handler and slot 0x7e8 treat apart (decoded; the game stores a
+/// class as its value − 0xeac, a master id as its id + 0x609c).
+const VILLAGER: i16 = 4;
+const CLASS_51: i16 = 51;
+const CLASS_54: i16 = 54;
+
+/// [`Turns::order_work`]'s Pack or Unpack (each through slot 0x808): against a target out of
+/// the unit's `reach` ([`work_reach`]) class 54 packs (`FUN_140ad4ff0`), within it class 51
+/// unpacks (`FUN_140ae58a0`); without a reach, a computer's class 54 packs when the order has
+/// no target the world holds (`targetless`).
+const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, computer: bool) -> bool {
+    match reach {
+        None => targetless && class == CLASS_54 && computer,
+        Some((within, _)) => (class == CLASS_54 && !within) || (class == CLASS_51 && within),
+    }
+}
+const LIVESTOCK: i16 = 58;
+/// The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
+/// (`FUN_140aa0df0`).
+const TOWN_CENTRE: i16 = 109;
+/// A hunt sends at most this many animals of a herd to its drop site (`FUN_140ac4c60`'s list,
+/// `DAT_143e55e20`).
+const HERD_MOST: usize = 16;
+const MASTER_84: i16 = 84;
+const MASTER_1808: i16 = 1808;
+const MASTER_1893: i16 = 1893;
+/// The class of the farms and a pasture's livestock (`0x31`), which a full pasture's search
+/// names.
+const PASTURE_CLASS: i16 = 49;
+const MASTER_1897: i16 = 1897;
+/// The range of GUARD's defend order (`DAT_142eb3634`, [`Turns::guard`]).
+const GUARD_RANGE: f32 = crate::image::order::GUARD_RANGE;
+/// A building's master type (`'P'`); types below 30 do not move.
+pub(crate) const BUILDING: u8 = 80;
+const MOVING: u8 = 30;
+/// The task filter of garrisoning (3).
+pub(crate) const GARRISON: i16 = 3;
+/// The action type of a building packing or unpacking (0x7d), whose target a gather drops
+/// (`FUN_140a903a0`).
+const PACK_ACTION: i16 = 0x7d;
+/// A master's object flag 0x20: a building a gather takes as its target as any other.
+const GATHERED_BUILDING: u32 = 0x20;
+/// A task's action type of attacking (7), whose factory makes an Attack (type 9).
+const ATTACK_TASK: i16 = 7;
+
+/// Where an object is: its player and its index in the live or the sleeping list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Place {
+    Live(usize, usize),
+    Sleeping(usize, usize),
+}
+
+/// What the order splitter reads of a unit: its master's type, formation category (not 0),
+/// object flags' bit 1, its top speed (slot 0x208), its place and where it last moved to (slot
+/// 0x520's ground part), its state, and for the path between two units its master's radius on
+/// x (`+0x5d8`) and its terrain restriction.
+#[derive(Clone, Copy, Debug)]
+struct Splittable {
+    id: i32,
+    group: i32,
+    kind: u8,
+    grouped: bool,
+    flag_1: bool,
+    speed: f32,
+    position: [f32; 3],
+    moved_at: [f32; 2],
+    state: u8,
+    radius: f32,
+    restriction: Option<usize>,
+}
+
+/// What the order splitter makes of an order's units (`FUN_140fd76d0`'s result at
+/// `DAT_143f11960`): the units that move alone, in the order the splitter leaves them, its
+/// groups, each its first unit first, and the units a path did not join.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Split {
+    /// The owner of the list's first unit (`DAT_143f11960`), whose groups a new group of the
+    /// split joins; None for a list whose first unit is gone (the game's −1).
+    pub(crate) owner: Option<usize>,
+    pub(crate) loose: Vec<i32>,
+    pub(crate) groups: Vec<Vec<i32>>,
+    /// The units a path from them did not join (`+0x3a48`, a `std::unordered_set` the splitter
+    /// fills through `FUN_140a3e380` and the kept-group order `FUN_140fd9f40` reads), as a set:
+    /// its bucket order is not held.
+    pub(crate) far: std::collections::BTreeSet<i32>,
+}
+
+impl Split {
+    /// The splitter keeps a group while it holds fewer than 60 and the group has at most 60
+    /// units (`+0x20` below `0x3c`, the count below `0x3d`); else the group and its units are
+    /// dropped.
+    fn keep(&mut self, units: Vec<i32>) {
+        if self.groups.len() < 60 && units.len() <= 60 {
+            self.groups.push(units);
+        }
+    }
+}
+
+/// What FOLLOW reads of its target (`FUN_14161c920`'s `param_3`): its id, its place on the
+/// ground and, for a master with a footprint (`+0x5d8` or `+0x5dc` above 0), its class.
+#[derive(Clone, Copy, Debug)]
+struct Followed {
+    id: i32,
+    place: [f32; 2],
+    class: Option<i32>,
+}
+
+/// The splitter's path from one unit to another (`FUN_140f7cb30` -> `FUN_140f7c530`): the
+/// planner's result code and the path's length; None without a planner for the restriction.
+type SplitPath<'a> =
+    dyn FnMut(&Splittable, &Splittable) -> Result<Option<(u8, f32)>, GenieError> + 'a;
+
+/// The drop-site table's search starts beyond this squared distance (`FUN_141658e20`,
+/// `DAT_142f89ac4`).
+const TABLE_DROP_FAR: f32 = crate::image::order::TABLE_DROP_FAR;
+/// The loads whose drop-off works with the hunt's task filter (`FUN_14161e370`'s list: meat 15,
+/// wood 1, food 0).
+const HUNTED_LOADS: [i16; 3] = [15, 1, 0];
+/// The action's point on neither axis (`DAT_14330ec20`).
+const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+
+/// A hunt command on an object the world does not hold.
+pub(crate) const HUNT_TARGET_GONE: GenieError =
+    GenieError::unsupported("a hunt command on an object the world does not hold");
+/// A hunt command whose unit has no task for its target.
+pub(crate) const NO_HUNT_TASK: GenieError =
+    GenieError::unsupported("a hunt command without a task");
+
+/// The splitter groups units of a type above this (`0x45`).
+const MAX_UNGROUPED: u8 = 69;
+/// Units whose speeds differ by more than this do not join where the player breaks formations by
+/// speed (`FUN_140fd76d0`, `DAT_143cc2918`).
+const SPLIT_SPEED_GAP: f32 = crate::image::order::SPLIT_SPEED_GAP;
+/// Units nearer than this are measured by a path (`FUN_140fd76d0`, `DAT_142e7f38c`) while
+/// `DAT_1439e60e3` (1 at run time) holds.
+const SPLIT_PATH_REACH: f32 = crate::image::order::SPLIT_PATH_REACH;
+const SPLIT_BY_PATH: bool = true;
+
+/// `FUN_140fd76d0`'s test whether `b` joins `a`: both above type 69, both of formation category
+/// 0 or neither, the same object flags' bit 1, speeds within [`SPLIT_SPEED_GAP`] where the player
+/// breaks formations by speed (`COMISS`, `JA`: a NaN gap is within), then (`member`: for the
+/// chosen unit's group, also `b` in a state of 2 or more) within the player's influence distance
+/// on the ground (between where each last moved to, slot 0x520: `FUN_14087e560` with the height
+/// zeroed; `COMISS`, `JA`: a NaN distance is within). Below [`SPLIT_PATH_REACH`] (`COMISS`, `JBE`:
+/// a NaN distance is not) the game measures a path instead, when the planner of `b`'s
+/// restriction exists: from `b`'s place to `a`'s (`FUN_140f7c530` with `a`'s radius on x as the
+/// radii and `b`'s as the range, no tile search), which joins `b` when it reaches the goal
+/// (result 1) no longer than the influence distance (a NaN length is not longer); else `b` joins
+/// the splitter's far units (`FUN_140a3e380`).
+fn splits_together(
+    a: &Splittable,
+    b: &Splittable,
+    f: crate::turn::Formations,
+    member: bool,
+    path: &mut SplitPath<'_>,
+    far: &mut std::collections::BTreeSet<i32>,
+) -> Result<bool, GenieError> {
+    if a.kind <= MAX_UNGROUPED || b.kind <= MAX_UNGROUPED {
+        return Ok(false);
+    }
+    if a.grouped != b.grouped || a.flag_1 != b.flag_1 {
+        return Ok(false);
+    }
+    if f.by_speed && SPLIT_SPEED_GAP < (a.speed - b.speed).abs() {
+        return Ok(false);
+    }
+    if member && b.state < 2 {
+        return Ok(false);
+    }
+    let (dx, dy) = (a.moved_at[0] - b.moved_at[0], a.moved_at[1] - b.moved_at[1]);
+    let d = crate::fmath::sqrt(dx * dx + 0.0 + dy * dy);
+    if SPLIT_BY_PATH
+        && d < SPLIT_PATH_REACH
+        && let Some((code, length)) = path(a, b)?
+    {
+        let joins = code == 1 && crate::fmath::at_most_or_unordered(length, f.influence);
+        if !joins {
+            let _ = far.insert(b.id);
+        }
+        return Ok(joins);
+    }
+    Ok(crate::fmath::at_most_or_unordered(d, f.influence))
+}
+
+/// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
+/// (raw `0x3a`).
+const AUTO_SCOUT_CLASS: i16 = 58;
+/// The trophy master `TRANSFORM_OBJECT` changes ("Trophy None") and the trophies it may take.
+const TROPHY: i16 = 1649;
+const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
+/// A patrol's waypoint counts when it is this far from the last one on x or y
+/// (`FUN_14161b970`, `DAT_14330eb8c`), or this far the other way (`DAT_14330ec20`).
+const WAYPOINT_APART: f32 = crate::image::order::WAYPOINT_APART;
+const WAYPOINT_APART_LOW: f32 = crate::image::order::WAYPOINT_APART_LOW;
+
+impl Turns {
+    pub(crate) fn place(&self, id: i32) -> Option<Place> {
+        self.players.iter().enumerate().find_map(|(p, player)| {
+            if let Some(i) = player.objects.iter().position(|u| u.id == id) {
+                return Some(Place::Live(p, i));
+            }
+            let i = player.sleeping.iter().position(|u| u.id == id)?;
+            Some(Place::Sleeping(p, i))
+        })
+    }
+
+    /// The live slot of object `id` when its own update knows it, `(p, i)`: that slot while it
+    /// still holds the object (the game's update works on the object itself, not its id), else
+    /// the live slot [`Turns::place`] finds.
+    pub(crate) fn live_slot(&self, (p, i, id): (usize, usize, i32)) -> Option<(usize, usize)> {
+        let held = self.players.get(p).and_then(|player| player.objects.get(i));
+        if held.is_some_and(|u| u.id == id) {
+            return Some((p, i));
+        }
+        match self.place(id)? {
+            Place::Live(p, i) => Some((p, i)),
+            Place::Sleeping(..) => None,
+        }
+    }
+
+    pub(crate) fn object(&self, id: i32) -> Option<(usize, &Unit)> {
+        match self.place(id)? {
+            Place::Live(p, i) => Some((p, &self.players[p].objects[i])),
+            Place::Sleeping(p, i) => Some((p, &self.players[p].sleeping[i])),
+        }
+    }
+
+    /// The object `id`, live or sleeping, to change (`FUN_1415417a0`'s object).
+    pub(crate) fn object_mut(&mut self, id: i32) -> Option<(usize, &mut Unit)> {
+        match self.place(id)? {
+            Place::Live(p, i) => Some((p, &mut self.players[p].objects[i])),
+            Place::Sleeping(p, i) => Some((p, &mut self.players[p].sleeping[i])),
+        }
+    }
+
+    pub(crate) fn master_of(&self, player: usize, master: i16) -> Result<&Master, GenieError> {
+        self.masters
+            .get(player)
+            .and_then(|m| m.get(master))
+            .ok_or(crate::turn::OBJECT_MASTER)
+    }
+
+    /// What the task finder reads of object `id`; an annex stands for its main building (`+0xbb8`),
+    /// `steps` times.
+    fn task_target(&self, id: i32, steps: usize) -> Result<TaskTarget<'_>, GenieError> {
+        let mut id = id;
+        for _ in 0..steps {
+            match self.object(id).and_then(|(_, u)| u.annex_of) {
+                Some(main) => id = main,
+                None => break,
+            }
+        }
+        let (player, u) = self
+            .object(id)
+            .ok_or(GenieError::unsupported("a target the slice does not hold"))?;
+        let master = self.master_of(player, u.life.master_id)?;
+        let [powerup, max_powerup] = u.hp_powerups;
+        Ok(TaskTarget {
+            id,
+            master,
+            player,
+            state: u.life.state,
+            held: (u.life.attribute_type, u.life.amount),
+            hp: u.life.hp + (max_powerup - powerup),
+            max_hp: f32::from(master.hit_points) + max_powerup,
+            attackable: u.attackable,
+            pasture: u.pasture,
+            top_action: u.top_action_kind(),
+        })
+    }
+}
+
+/// `FUN_140c42b60`, the readiness pass of a unit AI's queue: from the last queued order to the
+/// first, one not ready becomes ready, and with `drop_ready` one already ready leaves the queue
+/// (the orders after it move up). With `drop_ready` (1: after MOVE's and INTERACT's order that
+/// is neither queued nor direct) the pass ends in the unit's stop (its slot 0x148, a tail jump at
+/// 0x140c42cd4), which the caller runs ([`Turns::object_stop`]); with 0 (BUILD's and
+/// `BUILD_WALL`'s) every order is ready after it.
+pub(crate) fn readiness(orders: &mut Vec<crate::unit_ai::QueuedOrder>, drop_ready: bool) {
+    let mut i = orders.len();
+    while 0 < i {
+        i -= 1;
+        if !orders[i].ready {
+            orders[i].ready = true;
+        } else if drop_ready {
+            let _ = orders.remove(i);
+        }
+    }
+}
+
+/// `FUN_1412066b0`, a master change's powerups: the attack (`+0xa24`), reload (`+0xa28`), work
+/// rate (`+0xa30`), most hit points (`+0xa3c`), max range (`+0xa40`) and melee and pierce armor
+/// (`+0xa48`, `+0xa4c`) powerups go; the hit points powerup (`+0xa38`) stays. The routine also
+/// zeroes `+0xa34`, `+0xa50` and `+0x9f8`, empties the powerup map (`+0xa98`, count `+0xaa0`),
+/// sets `+0xa2c` to slot 0x1b8 × 0.05 and takes a sight powerup (`+0xad4`) off (slots 0x1d8,
+/// 0x1d0): none of them is held.
+const fn clear_powerups(unit: &mut Unit) {
+    unit.attack_powerup = 0.0;
+    unit.range_powerup = 0.0;
+    unit.reload_powerup = 0.0;
+    unit.work_rate_powerup = 0.0;
+    unit.hp_powerups[1] = 0.0;
+    unit.armor_powerups = [0; 2];
+}
+
+/// `FUN_140c4da50`: the target of the first order in unit AI `ai`'s queue (`+0x20`, count
+/// `+0x18`) that has one (not negative) and that its own unit `id` issued; −1 for none.
+/// The adjusted idle timeout and secondary timer `FUN_14161b970` gives the unit AI of the
+/// order's `i`th entry: 750 ms and the world's dt (`world+0x7c`) more for each six before it
+/// (`(i / 6) as f64 * dt as f64`, `CVTTSD2SI` to 64 bits, the low 32 plus 750; the product
+/// stays below 2^42, so the conversion never sees a value it cannot hold).
+fn patrol_timeout(i: usize, dt: u32) -> u32 {
+    let stagger = ((i / 6) as f64 * f64::from(dt)) as i64;
+    (stagger as u32).wrapping_add(750)
+}
+
+/// What `FUN_14161b970` is told besides its units, its waypoints and its target (none here):
+/// its patrol flag (`param_2`), `param_6` (the command's `+0x8`: the unit AIs' saved patrols
+/// go), `param_7` (`+0x9`) and `param_8` (`+0xa`). PATROL passes 0 and 1 for the last two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Sweep {
+    pub(crate) patrol: bool,
+    pub(crate) reset: bool,
+    pub(crate) queued: bool,
+    pub(crate) ignore_pending: bool,
+}
+
+/// An attack move through a unit AI's queue (`FUN_14161b970`'s slot 0x30): the call writes only
+/// the low byte of the record's shown x and leaves its shown y and ready flag to the stack, which
+/// is not modelled.
+const ATTACK_MOVE_QUEUED: GenieError =
+    GenieError::unsupported("an attack move through a unit AI's queue (slot 0x30)");
+
+/// The waypoints a walker from `from` passes on its way (`FUN_14161b970`'s two filters): each
+/// one at least [`WAYPOINT_APART`] from the last one kept on x or on y, either way
+/// (`COMISS`/`JNC` on each of the four: a NaN difference is not), the first measured from
+/// `from`.
+fn waypoints_from(from: [f32; 2], waypoints: &[[f32; 2]]) -> Vec<[f32; 2]> {
+    let mut last = from;
+    let mut kept = Vec::with_capacity(waypoints.len());
+    for &w in waypoints {
+        let (dx, dy) = (w[0] - last[0], w[1] - last[1]);
+        if WAYPOINT_APART <= dx
+            || dx <= WAYPOINT_APART_LOW
+            || WAYPOINT_APART <= dy
+            || dy <= WAYPOINT_APART_LOW
+        {
+            kept.push(w);
+            last = w;
+        }
+    }
+    kept
+}
+
+fn own_order_target(ai: &crate::unit_ai::UnitAi, id: i32) -> i32 {
+    ai.orders
+        .iter()
+        .find(|o| 0 <= o.target && o.issuer == id)
+        .map_or(-1, |o| o.target)
+}
+
+/// A unit AI's slot 0x1c0 (`FUN_140c64d50`): the stance (`+0x1a9`) takes `state` and the stance's
+/// place (`+0x1ac`, `+0x1b0`) the unit's (`place`, with its master's class); `NoAttack` (3) on a
+/// unit AI that attacks (its order 700 or its action 600) stops the action (slot 0xb0 with 1,
+/// [`crate::unit_ai::UnitAi::stop_with`], whose stopAction the caller runs) and forgets the
+/// target (`FUN_140c5e1e0`).
+pub(crate) fn set_stance(
+    ai: &mut crate::unit_ai::UnitAi,
+    state: u8,
+    place: ([f32; 2], i16),
+    fx: &mut Vec<crate::unit_ai::Effect>,
+) -> Result<(), GenieError> {
+    ai.stance = state;
+    ai.state_position = place.0;
+    if state == 3 && (ai.current_order == 700 || ai.current_action == 600) {
+        ai.stop_with(true, Some(place), fx)?;
+        ai.remove_target();
+    }
+    Ok(())
+}
+
+/// A building's slot 0x670 (`FUN_1411dba30`): its gate lock (`mGateLocked`, `+0xc7c`, an int its
+/// callers set to 0 or 1) takes `locked`; a lock also sets its last move time (`+0x870`,
+/// [`crate::movement::Mover::last_move`]) to the world time (`FUN_1415300d0`) plus 1.
+pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), GenieError> {
+    let gate = unit.gate.as_mut().ok_or(GenieError::unsupported(
+        "a GATE of a building without its gate state",
+    ))?;
+    gate.locked = locked;
+    if locked {
+        unit.mover
+            .as_mut()
+            .ok_or(GenieError::unsupported(
+                "a locked gate without its moving part",
+            ))?
+            .last_move = now.wrapping_add(1);
+    }
+    Ok(())
+}
+
+/// `setDifferentiatorGroups` (`FUN_1410395a0`): group `g`'s differentiator groups (`+0x108`,
+/// count `+0x110`) are `list` instead. The routine's false for an allocation that failed cannot
+/// come: `operator new` (`FUN_142a8bd2c`) throws rather than return none.
+fn set_differentiator_groups(g: &mut crate::group::UnitGroup, list: &[u32]) {
+    g.differentiator_groups.clear();
+    g.differentiator_groups.extend_from_slice(list);
+}
+
+/// `FUN_14118c790`: unit `id` joins the end of a unit's ignore list (`+0x670`, count `+0x678`);
+/// the list's capacity (`+0x67c`: 24 at first, then twice the count, the new slots −1) is the
+/// `Vec`'s, which no reader sees.
+fn ignore_unit(ignore: &mut Vec<i32>, id: i32) {
+    ignore.push(id);
+}
+
+/// `FUN_1410862c0`: the footprint gap (`FUN_14118f680`) against the unit's ranges: whether it
+/// is within the weapon range (slot 0x230; `COMISS`, `JC`: NaN out) and not too close, and
+/// whether it is too close, below the least range (slot 0x240; `COMISS`, `SETA`: NaN not).
+fn work_reach(gap: f32, weapon_range: f32, min_range: f32) -> (bool, bool) {
+    let too_close = gap < min_range;
+    let within = !crate::fmath::below_or_unordered(weapon_range, gap) && !too_close;
+    (within, too_close)
+}
+
+/// Notify `0x1fe`: slot 0x7e8's target is below the unit's least range (the unit's own id twice,
+/// the target, −1, −1).
+const TOO_CLOSE: i32 = 0x1fe;
+
+/// A whole share (`DAT_14330ebcc`), which `FUN_1411859a0` takes hit points against.
+const DAMAGE_WHOLE: f32 = crate::image::order::DAMAGE_WHOLE;
+
+/// The damage share `FUN_1411859a0` picks damage sprites by: `100 − hp × 100 / hit points`,
+/// whole, of hit points at most the master's. An object whose share is its resource's (the
+/// classes `FUN_141193590` names; its master's `+0x681` would add any) is not modelled.
+fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, GenieError> {
+    if matches!(
+        class,
+        5 | 7 | 8 | 9 | 10 | 15 | 29 | 31 | 32 | 33 | 38 | 40 | 41 | 48 | 58 | 61 | 63
+    ) {
+        return Err(GenieError::unsupported(
+            "the damage share of a resource object (FUN_141193590)",
+        ));
+    }
+    let most = f32::from(hit_points);
+    let hp = hp.min(most);
+    Ok((DAMAGE_WHOLE - hp * DAMAGE_WHOLE / most) as i32 as u8)
+}
+
+/// `FUN_141658e20` over a player's drop-site table (`table`), civ and object tracker at `at` for
+/// a load of `held` from a worker of `class`: of the buildings the table gives
+/// ([`crate::tasks::table_drop_buildings`]), the objects of each master's done list in the
+/// tracker in turn (`FUN_14104f600`, the master itself the key) that `look` holds (their state
+/// and place) in state 2, the nearest by the squared distance of the centres (the first of
+/// equals; none from [`TABLE_DROP_FAR`] on).
+pub(crate) fn nearest_table_site(
+    (table, civ, tracker): (&[crate::tasks::DropSite], u8, &crate::tracker::Tracker),
+    (at, held, class): ([f32; 2], i16, i16),
+    look: impl Fn(i32) -> Option<(u8, [f32; 3])>,
+) -> Option<i32> {
+    let buildings = crate::tasks::table_drop_buildings(table, held, class, civ);
+    let mut best = (None, TABLE_DROP_FAR);
+    for m in buildings {
+        for &id in tracker.list(i32::from(m)) {
+            let Some((state, position)) = look(id) else {
+                continue;
+            };
+            if state != 2 {
+                continue;
+            }
+            let (dx, dy) = (at[0] - position[0], at[1] - position[1]);
+            let d = dy * dy + dx * dx;
+            if d < best.1 {
+                best = (Some(id), d);
+            }
+        }
+    }
+    best.0
+}
+
+#[cfg(test)]
+mod tests;

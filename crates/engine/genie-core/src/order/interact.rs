@@ -1,0 +1,361 @@
+//! An interact order's unit, an order on a target, MOVE and its groups.
+
+use crate::order::{
+    CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
+    offset_point, readiness, set_differentiator_groups,
+};
+use crate::rng::Stream;
+use crate::turn::Turns;
+use crate::unit_ai::GenieError;
+
+impl Turns {
+    /// One unit of INTERACT: an object that does not move takes the order at once (slot 0x128,
+    /// [`Turns::order_at_once`]) and, the order queued, goes on as a mover does. Its ignore list empties
+    /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the order's other units
+    /// (`FUN_14118c790`). With a centroid its point is its offset from it added to the order's,
+    /// kept `EDGE` inside the map. A unit without a unit AI, or of an order that is not queued and
+    /// either direct (`+0x14`) or to a unit AI with every queued order ready (`FUN_140c4dfa0`),
+    /// takes the order itself (slot 0x128); any other unit AI queues order `0x2db` on the target at
+    /// the unit's point (slot 0x28, or without a centroid slot 0x30, which shows the point it
+    /// queues: priority 100, the order's point shown, ready when direct); after an order neither
+    /// queued nor direct the readiness pass with 1 and the unit's stop ([`readiness`]).
+    pub(super) fn interact_unit(
+        &mut self,
+        player: usize,
+        id: i32,
+        others: &[i32],
+        centroid: Option<[f32; 2]>,
+        order: &Interact,
+    ) -> Result<(), GenieError> {
+        let Some(place) = self.place(id) else {
+            return Ok(());
+        };
+        let Place::Live(p, idx) = place else {
+            return Err(GenieError::unsupported(
+                "an order to a unit the slice does not hold live",
+            ));
+        };
+        // the command's check (`FUN_140e55250`, [`Turns::checked_units`]) dropped another
+        // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
+        // other's units ([`crate::settings::Settings::cheats_enabled`]); the lookup itself has
+        // no owner test (`FUN_140e6b750`): such a unit takes the order as its own player's, the
+        // issuer only queuing it
+        let issuer = player;
+        let player = p;
+        let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
+        let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
+        let still = master.kind < MOVING || (master.class != CLASS_54 && speed <= 0.0);
+        if still {
+            // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
+            // test, any task) at the order's point, z 0; a queued order then goes on as a mover's
+            self.order_at_once(player, idx, order.target, order.point)?;
+            if !order.queued {
+                return Ok(());
+            }
+        }
+        let target = self
+            .object(order.target)
+            .map(|(tp, t)| (t.life.master_id, tp));
+        let map = self.spatial.map;
+        let unit = &mut self.players[player].objects[idx];
+        // its ignore list empties, it waits to move and lists the others; an object that does
+        // not move holds no movement state, which only a walk reads
+        match unit.mover.as_mut() {
+            Some(mover) => {
+                mover.ignore_units.clear();
+                mover.waiting = 1;
+                for &other in others {
+                    ignore_unit(&mut mover.ignore_units, other);
+                }
+            }
+            None if still => {}
+            None => {
+                return Err(GenieError::unsupported(
+                    "an ordered unit without movement state",
+                ));
+            }
+        }
+        let point = match centroid {
+            None => order.point,
+            Some(c) => offset_point([unit.position[0], unit.position[1]], c, order.point, map),
+        };
+        let takes_it = unit
+            .ai
+            .as_ref()
+            .is_none_or(|ai| !order.queued && (order.direct || !ai.has_unready_order()));
+        if takes_it {
+            // slot 0x128 with 1 (FUN_141211b80): `+0xa14` is 1 and a unit AI's order queue
+            // empties (FUN_140c5e010); FUN_14106c590 passes the order on unless the target is the
+            // unit itself (and counts `+0x888`, not held)
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.orders.clear();
+            }
+            if order.target == id {
+                return Ok(());
+            }
+            let at = [point[0], point[1], 0.0];
+            let work = Work {
+                target: order.target,
+                point: at,
+                carry_test: order.carry_test,
+                filter: order.filter,
+                notified: true,
+            };
+            return self.order_work(player, idx, &work);
+        }
+        let (target_type, target_owner) =
+            target.map_or((-1, -1), |(m, o)| (i32::from(m), o as i32));
+        let queued = crate::unit_ai::QueuedOrder {
+            issuer: issuer as i32,
+            order: crate::unit_ai::ORDER_ON_TARGET,
+            priority: 100,
+            target: if target.is_some() { order.target } else { -1 },
+            target_owner,
+            point: [point[0], point[1], 0.0],
+            range: 0.0,
+            shown: order.point,
+            ready: order.direct,
+            target_type,
+        };
+        let state = unit.life.state;
+        let ai = unit
+            .ai
+            .as_mut()
+            .ok_or(GenieError::unreachable("unreachable: no unit AI"))?;
+        let _ = ai.queue_order(state, queued, false, false)?;
+        if !order.queued && !order.direct {
+            readiness(&mut ai.orders, true);
+            // the pass's tail: the unit's stop (its slot 0x148)
+            self.object_stop(player, idx)?;
+        }
+        Ok(())
+    }
+
+    /// Slot 0x128 with 1 (`FUN_141211b80`) on `target` at `point` (z 0), no carried-resource test
+    /// and any task: `+0xa14` is 1 and a unit AI's order queue empties (`FUN_140c5e010`);
+    /// `FUN_14106c590` passes the order on to slot 0x7e8 unless the target is the unit itself
+    /// (its `+0x888` count is not held).
+    pub(super) fn order_at_once(
+        &mut self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        point: [f32; 2],
+    ) -> Result<(), GenieError> {
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.orders.clear();
+        }
+        if target == unit.id {
+            return Ok(());
+        }
+        let work = Work {
+            target,
+            point: [point[0], point[1], 0.0],
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        };
+        self.order_work(player, idx, &work)
+    }
+
+    /// The unit AI's order on a target (`FUN_140c5c170` case `0x2db`, from its queue): the unit's
+    /// slot 0x128 on the target at its place with 0 — its `+0xa14` clear while the work command
+    /// runs, so the new action's notify leaves the AI's notifies, and its order queue stays —
+    /// with no carried-resource test and no filter; `FUN_14106c590` passes it on unless the target
+    /// is the unit itself (its `+0x888` count is not held). Then the tail at `LAB_140c5d432` with
+    /// the order the work gave the AI ([`crate::unit_ai::UnitAi::order_tail`]: the order's
+    /// priority; a stop order ends, a class-18 unit's attack order forgets its target and ends).
+    /// The unit AI runs the case on a target that is gone itself.
+    pub(crate) fn order_on_target(
+        &mut self,
+        player: usize,
+        idx: usize,
+        order: crate::unit_ai::QueuedOrder,
+    ) -> Result<(), GenieError> {
+        let (_, t) = self.object(order.target).ok_or(GenieError::unsupported(
+            "a queued order on a target that is gone",
+        ))?;
+        let point = t.position;
+        if order.target != self.players[player].objects[idx].id {
+            let work = Work {
+                target: order.target,
+                point,
+                carry_test: false,
+                filter: -1,
+                notified: false,
+            };
+            self.order_work(player, idx, &work)?;
+        }
+        let class = self
+            .master_of(player, self.players[player].objects[idx].life.master_id)?
+            .class;
+        let ai = self.players[player].objects[idx]
+            .ai
+            .as_mut()
+            .ok_or(GenieError::unsupported(
+                "an order on a target without a unit AI",
+            ))?;
+        // the tail (`LAB_140c5d432`) with the order the work left the AI
+        let _ = ai.order_tail(
+            ai.current_order,
+            order.priority,
+            class,
+            false,
+            self.streams.get(Stream::Ai),
+        );
+        Ok(())
+    }
+
+    /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset. One unit takes the order
+    /// at the point (the loop of `LAB_140e6838c`). Several go through the splitter
+    /// ([`Turns::loose_units`]); those of a human player whose box ([`centroid`]'s) is narrow
+    /// enough each take a cell of a grid around the point ([`grid_point`], the loop after the
+    /// box), any others the point itself, in the splitter's order, each listing the others in its
+    /// ignore list ([`Turns::move_unit`]).
+    ///
+    /// [`centroid`]: crate::order::points::centroid
+    pub(crate) fn move_order(
+        &mut self,
+        player: usize,
+        units: &[i32],
+        order: &MoveOrder,
+    ) -> Result<(), GenieError> {
+        // the groups take the command count, which then counts up whatever the units do
+        let loose = match units {
+            [] => {
+                self.groups.count_command();
+                return Ok(());
+            }
+            &[id] if !order.control => {
+                self.groups.count_command();
+                self.leave_groups(player, &[id], order.target)?;
+                return self.move_unit(player, id, &[], None, order);
+            }
+            _ => {
+                let loose = self
+                    .split(units, &|_| true, order.control)
+                    .and_then(|mut s| self.move_groups(&mut s, order).map(|()| s.loose));
+                self.groups.count_command();
+                let loose = loose?;
+                self.leave_groups(player, &loose, order.target)?;
+                loose
+            }
+        };
+        // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
+        if 1 < loose.len() && self.players[player].computer {
+            return Err(GenieError::unsupported(
+                "a move of several units of a computer player (FUN_140d61870)",
+            ));
+        }
+        let narrow = 1 < loose.len() && self.order_spread(&loose, order.queued)?.is_some();
+        let map = self.spatial.map;
+        for (i, &id) in loose.iter().enumerate() {
+            let others: Vec<i32> = loose
+                .iter()
+                .enumerate()
+                .filter(|&(j, _)| j != i)
+                .map(|(_, &u)| u)
+                .collect();
+            let cell = narrow.then(|| grid_point(i, loose.len(), order.point, map));
+            self.move_unit(player, id, &others, cell, order)?;
+        }
+        Ok(())
+    }
+
+    /// MOVE's groups (`FUN_140e67800`'s loop over the splitter's groups): the group all of a
+    /// split group's units are in (`FUN_14152ece0`, [`crate::group::common_group`]) takes the
+    /// order when it holds just them, the splitter keeping it ([`Turns::keep_group`]; with a
+    /// target the world holds, `FUN_140fd9f40`'s range test, not modelled); one the world does not
+    /// hold takes nothing; else a new group of the split's owner (`FUN_14152efc0`) takes them
+    /// ([`Turns::add_to_group`]), its statistics ([`Turns::group_statistics`]) and its place
+    /// ([`Turns::set_initial_position`]). Each listed group (60 at most) takes the command count
+    /// as its differentiator, with Ctrl held locks its formation to a line
+    /// ([`Turns::lock_formation`] with 2) and takes the command ([`Turns::group_command`]); a new
+    /// group of a queued MOVE first takes a command on its first unit's target
+    /// ([`Turns::first_unit_target`]), not queued and direct. Then every
+    /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
+    /// `FUN_1410395a0`).
+    pub(super) fn move_groups(
+        &mut self,
+        split: &mut Split,
+        order: &MoveOrder,
+    ) -> Result<(), GenieError> {
+        /// The groups one command lists (`DAT_143f152b8`, below `0x3c`).
+        const LISTED: usize = 60;
+        let mut listed: Vec<i32> = Vec::new();
+        for units in split.groups.clone() {
+            let units = &units[..];
+            let common =
+                crate::group::common_group(units, |id| self.object(id).map(|(_, u)| u.group.id));
+            let new = if common == -1 {
+                true
+            } else {
+                match self.groups.get(common) {
+                    None => continue,
+                    Some(g) => g.members.len() != units.len(),
+                }
+            };
+            let id = if new {
+                let owner = split.owner.map_or(u32::MAX, |p| p as u32);
+                let id = self.groups.create(owner).id;
+                for &unit in units {
+                    let _ = self.add_to_group(id, unit)?;
+                }
+                self.group_statistics(id, false)?;
+                self.set_initial_position(id)?;
+                id
+            } else {
+                // FUN_140e6b820's target: the order's object while the world holds it
+                if self.world_object(order.target).is_some() {
+                    return Err(GenieError::unsupported(
+                        "a MOVE of a group the splitter keeps (FUN_140fd9f40)",
+                    ));
+                }
+                self.keep_group(split, common)?;
+                common
+            };
+            if listed.len() < LISTED {
+                listed.push(id);
+            }
+            let commands = self.groups.commands;
+            if let Some(g) = self.groups.get_mut(id) {
+                g.differentiator_id = commands;
+            }
+            if order.control {
+                self.lock_formation(id, crate::group::formation::LINE)?;
+            }
+            // a queued MOVE's new group first takes its first unit's target, not queued and
+            // direct (0x140e67b5d..0x140e67cb1)
+            if new
+                && order.queued
+                && let Some((target, at)) = self.first_unit_target(units)
+            {
+                let _ = self.group_command(id, target, at, (false, true))?;
+            }
+            let _ =
+                self.group_command(id, order.target, order.point, (order.queued, order.direct))?;
+        }
+        let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
+        for &id in &listed {
+            if let Some(g) = self.groups.get_mut(id) {
+                set_differentiator_groups(g, &list);
+            }
+        }
+        Ok(())
+    }
+
+    /// The target a queued MOVE's new group takes first (`FUN_140e67800` at
+    /// `0x140e67b5d`..`0x140e67cb1`): the first of `units` the world holds, when it has a unit
+    /// AI, names its target (`+0x48`, `FUN_140c4cc40`); the object the world holds for it
+    /// (`FUN_1415417a0`) gives its id and its place (x, y). The unit AI's retarget flag
+    /// (`FUN_140c4ee90`, `+0x1d6` 0), the command's seventh argument, is read only by a command
+    /// on a target ([`Turns::group_command`] does not take one).
+    pub(super) fn first_unit_target(&self, units: &[i32]) -> Option<(i32, [f32; 2])> {
+        let (_, first) = units.iter().find_map(|&id| self.object(id))?;
+        let ai = first.ai.as_ref()?;
+        let t = self.world_object(ai.current_target)?;
+        let [x, y, _] = t.position();
+        Some((t.id(), [x, y]))
+    }
+}
