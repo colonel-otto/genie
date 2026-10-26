@@ -3,8 +3,9 @@
 An object can change its owner. A unit of another player takes over livestock, a monk converts a
 unit, a player loses a building with its garrison.
 
-- `artifact.rs` holds the Artifact action. It is the default task of livestock: it checks whether
-  a unit of another player is close enough to take the animal over.
+- `artifact.rs` holds the Artifact action and its part in the animal's update. It is the default
+  task of livestock: it checks whether a unit of another player is close enough to take the
+  animal over.
 - `capture.rs` holds captures and takeovers: by sight, by the unit AI, and the search for more
   livestock after a capture.
 - `change.rs` holds the ownership change itself, with what it moves along: a building's

@@ -29,6 +29,7 @@ mod path_end;
 mod path_points;
 mod request;
 mod step;
+mod unit;
 mod walk;
 mod waypoint;
 

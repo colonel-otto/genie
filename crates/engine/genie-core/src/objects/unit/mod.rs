@@ -18,6 +18,8 @@ use crate::world::context::Context;
 use crate::world::{Gate, WONDER};
 
 mod death;
+mod default_task;
+mod life_step;
 mod stop;
 mod top;
 mod update;

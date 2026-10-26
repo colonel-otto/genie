@@ -5,16 +5,25 @@ cycle, its movement, its actions, its unit AI and its sprite. Each kind of actio
 field, so an object that does not build has no Build state.
 
 `update.rs` is the object's update. It follows the game's chain of classes in order: a building's
-own steps, the velocity step, the life cycle, the sprite, the actions and the unit AI. The
-update's long action branches call into the actions' systems: `combat/attack/`,
-`gathering/hunt/`, `construction/build/` and the others.
+own steps, the velocity step, the life cycle, the sprite, the actions and the unit AI. Each step
+of an action is a method in the action's system:
 
+- the attack timers and the Attack in `combat/attack/unit.rs`;
+- the velocity step, the `MoveTo`, the Explore and the Fly in `movement/unit.rs`;
+- the Artifact in `ownership/artifact.rs`;
+- the Build and the Repair in `construction/build/unit.rs` and `construction/repair/unit.rs`;
+- the inside update, the Enter and the transport in `garrison/unit.rs`;
+- the Make in `gathering/make.rs`, the Gather in `gathering/gather/unit.rs` and the Hunt in
+  `gathering/hunt/hunter.rs`.
+
+The other files of this folder:
+
+- `life_step.rs` holds the life cycle's step in the update: the hit points, the states and what
+  each new state sets off.
+- `default_task.rs` holds the master's default task, which an idle unit starts.
 - `top.rs` answers what the object's actions hold: the top action, its target and its gait.
 - `stop.rs` tears down an object's actions and shows its standing sprite.
 - `death.rs` holds an object's death and a foundation's death.
-
-`update.rs` is longer than the 700-line limit. It stays on the file-length debt list until it is
-split.
 
 ## In the game
 
@@ -28,6 +37,8 @@ split.
 | File | What it holds |
 | --- | --- |
 | [`death.rs`](death.rs) | An object's death (`set_state(3)` and the static part of it) and a foundation's death. |
+| [`default_task.rs`](default_task.rs) | The master's default task, which an idle unit starts in its update: a bird's Fly, a farm's Make or the Artifact of livestock. |
+| [`life_step.rs`](life_step.rs) | The life cycle's step in a unit's update: the hit points, the states, and what each new state sets off. |
 | [`mod.rs`](mod.rs) | What the slice tracks of one object (`Unit`) and its update, action by action. |
 | [`stop.rs`](stop.rs) | A unit's stops: its actions torn down or cleared, its standing sprite, an action's effects applied. |
 | [`top.rs`](top.rs) | What a unit's actions hold: their taker, its top action, target and gait. |

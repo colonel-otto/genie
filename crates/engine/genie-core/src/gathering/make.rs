@@ -9,7 +9,10 @@
 //! still to make starts at the player's farm food (attribute 36) or fish trap food (88); once it
 //! is made and the farmers took the last of it, the farm's slot 0xd8 sets its hit points to 0.
 
+use crate::GenieError;
 use crate::objects::masters::Task;
+use crate::objects::unit::Unit;
+use crate::world::context::Context;
 
 /// The action type (`+0x8`, 0x15).
 pub const MAKE: i16 = 21;
@@ -171,6 +174,51 @@ impl MakeAction {
             _ => {}
         }
         step
+    }
+}
+
+impl Unit {
+    /// A farm's Make in its update: the food it makes, the player's share, the farm that runs
+    /// out, and the end. A Make that this update started (`makes_from_now`) waits for the next
+    /// update.
+    pub(crate) fn make_part(
+        &mut self,
+        c: &mut Context<'_>,
+        makes_from_now: bool,
+    ) -> Result<(), GenieError> {
+        if let Some(make) = self.make.as_mut().filter(|_| !makes_from_now) {
+            let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
+                GenieError::unsupported("a Make of a master the slice does not have"),
+            )?;
+            let farm = Farm {
+                master_id: master.id,
+                kind: master.kind,
+                class: master.class,
+                work_rate: master.work_rate + self.work_rate_powerup,
+                capacity: master.capacity,
+                dt: c.dt_seconds,
+            };
+            let step = make.update(
+                &mut Held {
+                    attribute_type: &mut self.life.attribute_type,
+                    amount: &mut self.life.amount,
+                },
+                farm,
+            );
+            if let Some(add) = step.to_player {
+                c.attribute_adds.push(add);
+            }
+            // slot 0xd8 (FUN_14118f580): no hit points left; the object is in its list, so not
+            // asleep, and the special-object list (+0x30c bit 0) is not held
+            if step.exhausted {
+                self.life.hp = 0.0;
+            }
+            // the action list's result 1 removes it (FUN_140a98e20)
+            if step.done {
+                self.make = None;
+            }
+        }
+        Ok(())
     }
 }
 

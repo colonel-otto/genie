@@ -64,19 +64,23 @@ classes: the static object, the animated object, the moving object, the action o
 object and the building.
 
 1. A building's gate, its completion and its seconds (`construction/building_update.rs`).
-2. The attack timer and the volley under way run down (`combat/`).
+2. The attack timer and the volley under way run down (`combat/attack/unit.rs`).
 3. A moving object takes its velocity step: it moves along its forward vector by its speed
-   (`movement/`).
+   (`movement/unit.rs`).
 4. The life cycle steps: a dead object plays its dying sprite, leaves its remains and goes
-   (`objects/lifecycle/`).
+   (`objects/unit/life_step.rs`, `objects/lifecycle/`).
 5. The sprite's clock goes on (`objects/sprite.rs`).
-6. The action list runs its first action (the Attack in `combat/attack/`, the Gather in
-   `gathering/gather/`, the Build in `construction/build/`, the `MoveTo` in `movement/move_to.rs`,
-   and so on). A walking action calls the motion step, which plans the path (`pathing/`) and
-   steers the unit along it (`movement/`).
-7. A combat object's passive abilities run (`combat/abilities/`), and a building's production
+6. An idle unit starts its master's default task (`objects/unit/default_task.rs`).
+7. The action list runs its first action. Each action's part of the update is a method in the
+   action's system: the Artifact in `ownership/artifact.rs`, the Build and the Repair in
+   `construction/build/unit.rs` and `construction/repair/unit.rs`, the inside update and the Enter
+   in `garrison/unit.rs`, the `MoveTo`, the Explore and the Fly in `movement/unit.rs`, the Make in
+   `gathering/make.rs`, the Gather in `gathering/gather/unit.rs`, the Hunt in
+   `gathering/hunt/hunter.rs` and the Attack in `combat/attack/unit.rs`. A walking action calls the motion step, which plans the path
+   (`pathing/`) and steers the unit along it (`movement/`).
+8. A combat object's passive abilities run (`combat/abilities/`), and a building's production
    (`production/`).
-8. The unit AI runs (`unit_ai/`).
+9. The unit AI runs (`unit_ai/`).
 
 The update does not change the world directly. It reads and writes through a `Context`
 (`world/context.rs`), and `World::finish_object` applies what it collected: new objects, kills,

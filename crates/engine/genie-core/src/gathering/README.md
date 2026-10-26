@@ -6,7 +6,8 @@ folder holds every part of that work:
 - `gather/` holds the Gather action: walk to the resource, gather, carry the load to a drop site,
   and walk back.
 - `hunt/` holds the Hunt action: kill the animal or fell the tree first, then gather it.
-- `make.rs` holds a farm's food: the Make action that farms, fish traps and pastures run.
+- `make.rs` holds a farm's food: the Make action that farms, fish traps and pastures run, and
+  its part in the farm's update.
 - `gather_search.rs` and `closest_resource.rs` search for a resource to gather.
 - `drop_sites.rs` and `drop_off.rs` find the drop site and walk the gatherer there.
 - `farm_queue.rs` holds the farms and fish traps that a player paid for in advance.

@@ -13,7 +13,7 @@
     {
       "file": "crates/engine/genie-core/src/combat/attack/unit.rs",
       "function": "Unit::attack_part",
-      "line": 19,
+      "line": 20,
       "cyclomatic": 29.0,
       "coverage": 89.25619834710744,
       "crap": 30.04296549765997,
@@ -551,6 +551,42 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/movement/unit.rs",
+      "function": "Unit::explore_part",
+      "line": 110,
+      "cyclomatic": 25.0,
+      "coverage": 9.090909090909092,
+      "crap": 494.57175056348603,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/movement/unit.rs",
+      "function": "Unit::fly_part",
+      "line": 194,
+      "cyclomatic": 8.0,
+      "coverage": 27.77777777777778,
+      "crap": 32.10973936899863,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/movement/unit.rs",
+      "function": "Unit::move_to_part",
+      "line": 51,
+      "cyclomatic": 20.0,
+      "coverage": 61.904761904761905,
+      "crap": 42.11424252240578,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/objects/unit/life_step.rs",
+      "function": "Unit::life_step",
+      "line": 15,
+      "cyclomatic": 36.0,
+      "coverage": 61.627906976744185,
+      "crap": 109.22366584074359,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/objects/unit/stop.rs",
       "function": "Unit::apply",
       "line": 202,
@@ -562,10 +598,10 @@
     {
       "file": "crates/engine/genie-core/src/objects/unit/update.rs",
       "function": "Unit::update",
-      "line": 22,
-      "cyclomatic": 205.0,
-      "coverage": 65.39923954372624,
-      "crap": 1945.8632350686555,
+      "line": 13,
+      "cyclomatic": 43.0,
+      "coverage": 87.12871287128714,
+      "crap": 46.94278274018951,
       "crate": "genie-core"
     },
     {
@@ -746,6 +782,15 @@
       "cyclomatic": 15.0,
       "coverage": 30.952380952380953,
       "crap": 89.06766277939747,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/ownership/artifact.rs",
+      "function": "Unit::artifact_part",
+      "line": 379,
+      "cyclomatic": 32.0,
+      "coverage": 73.33333333333333,
+      "crap": 51.418074074074084,
       "crate": "genie-core"
     },
     {

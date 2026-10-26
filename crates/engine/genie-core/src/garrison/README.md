@@ -7,7 +7,8 @@ Units go into buildings and transports, and come out again. This folder holds bo
 - `takes_in.rs` tests whether a building takes a unit in, and how much room it has.
 - `enter.rs`, `walk_in.rs` and `meeting.rs` hold the Enter action: the command, the walk to the
   building or transport, and the point where they meet.
-- `unit.rs` is the unit's part: a unit entering, and a transport's sail.
+- `unit.rs` is the unit's part: a unit entering, its update while it is inside another object,
+  and a transport's sail.
 - `unload.rs` and `let_out.rs` hold UNLOAD, `GO_BACK_TO_WORK` and a unit's leave.
 - `firepower.rs` holds a unit's attack rate and firepower, and its share of a building's volleys.
 - `transport/` holds the Transport action: a transport's sail and its unload ashore.

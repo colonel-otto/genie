@@ -22,6 +22,9 @@ This folder also holds the actions that are walks:
 - Explore (`explore.rs`): the auto scout's walk to the next unexplored area.
 - Fly (`fly.rs`): a bird's flights and rests.
 
+`unit.rs` is the unit's part: the velocity step in the unit's update, and the update of its
+own `MoveTo`, its Explore and its Fly.
+
 `ai_moves.rs` holds the moves that a unit AI asks of its unit.
 
 ## How the tick reaches it
@@ -54,6 +57,7 @@ If the object's action walks, the action runs the motion step. The planners that
 | [`request.rs`](request.rs) | The motion step's path request: the long pather's plan, the walled-off stretches and the goal's reach. |
 | [`step.rs`](step.rs) | The velocity step, a new object's setup, the position setter and the motion step's loop. |
 | [`tests.rs`](tests.rs) | Tests. |
+| [`unit.rs`](unit.rs) | The movement actions in a unit's update: the velocity step, the unit's own `MoveTo`, its Explore and a bird's Fly. |
 | [`walk.rs`](walk.rs) | The walk: its kept hits, the obstruction query's ends, the facets, the steering and the speed control. |
 | [`waypoint.rs`](waypoint.rs) | A reached waypoint and what follows it: the next waypoint, a level's end and the moving state. |
 <!-- /files -->

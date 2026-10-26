@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::Strike;
 use crate::combat::damage::Victim;
+use crate::combat::victims::victim_of;
 use crate::combat::volley::{Aimed, armed};
 use crate::math::rng::Stream;
 use crate::movement::Me;
@@ -145,5 +146,44 @@ impl Unit {
             }
         }
         Ok(())
+    }
+}
+
+impl Unit {
+    /// `RGE_Combat_Object::update`'s timers (`0x14107dfb0`, before the actions): the attack timer
+    /// runs down, and a reload world time that passed ends the volley under way.
+    pub(crate) fn run_down_attack_timers(&mut self, c: &Context<'_>) {
+        // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
+        // `+0x87c` (a terrain look's rate, [`crate::combat::abilities`])
+        if 0.0 < self.attack_timer {
+            self.attack_timer -= c.dt_seconds * self.abilities.attack_rate;
+            if self.attack_timer < 0.0 {
+                self.attack_timer = 0.0;
+            }
+        }
+        // then a reload world time past ends the volley under way (`+0xa04`) and is none
+        if self.reload_worldtime != 0 && self.reload_worldtime < c.world_time {
+            self.next_volley = 0;
+            self.reload_worldtime = 0;
+        }
+    }
+
+    /// The hunter or the attacker as a combat object, which its hits read and change: none for a
+    /// unit without a Hunt or an Attack, or without its master.
+    pub(crate) fn own_victim(&self, c: &Context<'_>) -> Option<Victim> {
+        (self.hunt.is_some() || self.attack.is_some())
+            .then_some(())
+            .and_then(|()| {
+                let master = c.masters?.get(self.life.master_id)?;
+                let terrain = c.spatial.terrain.as_ref();
+                Some(victim_of(
+                    self,
+                    master,
+                    c.attributes,
+                    c.player,
+                    terrain,
+                    c.mode_680,
+                ))
+            })
     }
 }

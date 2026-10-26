@@ -8,7 +8,12 @@
 //! `107 + state` for it.
 
 use crate::GenieError;
+use crate::map::spatial::Spatial;
+use crate::movement::Me;
 use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::objects::unit::Unit;
+use crate::ownership::capture::Captured;
+use crate::world::context::Context;
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the
@@ -366,6 +371,123 @@ impl Artifact {
     }
 }
 
+impl Unit {
+    /// The Artifact's part of the update (`0x140aad250`): its Enter sub-action first, then its
+    /// walk and the check for a new owner, with the handover it makes. A unit that started the
+    /// update inside another (`inside_at_start`) and an Artifact that this update started
+    /// (`artifact_from_now`) wait.
+    pub(crate) fn artifact_part(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+        me: Me,
+        inside_at_start: bool,
+        artifact_from_now: bool,
+    ) -> Result<Option<Captured>, GenieError> {
+        let mut captured = None;
+        let by = self.releaser(c);
+        // the Artifact's Enter sub-action (an enter command's, FUN_1410847e0) updates first
+        // (FUN_140a992b0) as the unit's own Enter does (taken as the unit's meanwhile); once it
+        // ended (1 to 5: the failed one's 3, the list removing it) the sub-actions go, the point
+        // is -1 and the target goes (slot 0x68 with none); an Enter that got the unit in stays,
+        // and the inside update of the next update deletes the Artifact
+        if c.tick > 1
+            && !inside_at_start
+            && let Some(e) = self.artifact.as_mut().and_then(|a| a.enter.take())
+        {
+            let own = self.enter.replace(e);
+            let updated = self.enter_update(c, others, me);
+            let after = std::mem::replace(&mut self.enter, own);
+            updated?;
+            if let Some(art) = self.artifact.as_mut() {
+                if let Some(e) = after {
+                    art.enter = Some(e);
+                } else {
+                    art.goal = None;
+                    if let Some(t) = art.drop_target() {
+                        c.releases.push((t, by));
+                    }
+                }
+            }
+        }
+        if let Some(artifact) = self
+            .artifact
+            .as_mut()
+            .filter(|_| c.tick > 1 && !artifact_from_now && !inside_at_start)
+        {
+            let dt = c.dt;
+            let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
+            // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit,
+            // quiet or not; the action lets its target go
+            if ended.is_some()
+                && let Some(m) = self.mover.as_mut()
+            {
+                m.stop()?;
+            }
+            if let Some(t) = ended.and_then(|e| e.released) {
+                c.releases.push((t, by));
+            }
+            // FUN_14107cc90: an object of the combat types whose +0x924 is 0 never changes hands
+            let capture = c
+                .spatial
+                .sight
+                .as_ref()
+                .and_then(|v| v.seer(self.id))
+                .map(|s| s.capture);
+            let searches = !(self.combat && capture == Some(0));
+            let spatial: &Spatial = c.spatial;
+            let (attribute_97, game_status) = (c.attribute_97, c.game_status);
+            let id = self.id;
+            let new = artifact.step(dt, searches, &mut || {
+                spatial.artifact_owner(id, attribute_97, game_status)
+            })?;
+            // the check's sub-actions went: an Enter's teardown lets its building go, and a
+            // walking MoveTo's, the Artifact's own or the Enter's, stops the unit
+            if let Some(Handover::Taken { gone, .. }) = new {
+                if let Some(t) = gone.released {
+                    c.releases.push((t, by));
+                }
+                if gone.stops
+                    && let Some(m) = self.mover.as_mut()
+                {
+                    m.stop()?;
+                }
+            }
+            if let Some(kind) = ended.and_then(|e| e.notify) {
+                self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
+            }
+            match new {
+                Some(Handover::Taken { new, .. }) => {
+                    let (main, also) = self.capture(c, others, new)?;
+                    captured = Some(Captured {
+                        new,
+                        main,
+                        also,
+                        building: std::mem::take(&mut c.building_handover),
+                    });
+                }
+                // state 100: the unit's stop (slot 0x148), then slot 0x70 to Gaia
+                Some(Handover::ToGaia) => {
+                    let class = self.placed_class(c)?;
+                    self.capture_stop(c, class)?;
+                    let main = self.change_owner(c, 0)?;
+                    let building = std::mem::take(&mut c.building_handover);
+                    if main || building {
+                        captured = Some(Captured {
+                            new: 0,
+                            main,
+                            also: Vec::new(),
+                            building,
+                        });
+                    }
+                }
+                None => {}
+            }
+        }
+        Ok(captured)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,10 +829,10 @@ mod tests {
         let _ = a.take_point([28.5, 93.5, 0.0]);
         let mut mover = crate::gathering::hunt::tests::walker();
         mover.stats.speed = 0.0;
-        let mut world = crate::map::spatial::Spatial::new([120, 120]);
+        let mut world = Spatial::new([120, 120]);
         let walk = Walk {
             mover: Some(&mut mover),
-            me: crate::movement::Me {
+            me: Me {
                 id: 9517,
                 position: [20.5, 90.5, 0.0],
                 group: -1,
