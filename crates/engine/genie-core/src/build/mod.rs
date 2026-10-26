@@ -483,9 +483,9 @@ pub struct Builder<'a> {
     /// None when the world does not hold it.
     pub walk_target_state: Option<u8>,
     /// In state 8, what the drop-off reads of its second target ([`BuildAction::site`]) as the
-    /// update starts: its state and [`crate::hunt::DropOff`]; None when the world does not
+    /// update starts: its state and [`crate::gathering::hunt::DropOff`]; None when the world does not
     /// hold it.
-    pub deposit: Option<(u8, crate::hunt::DropOff)>,
+    pub deposit: Option<(u8, crate::gathering::hunt::DropOff)>,
     /// The number of its player's attributes, beyond which the resource of a load is food
     /// (`FUN_140efe5b0`).
     pub attributes: usize,
@@ -545,7 +545,7 @@ pub struct BuildStep {
     /// the caller's.
     pub stands: bool,
     /// The work ended and the builder looks for more work around the building (`FUN_1415cc4e0`,
-    /// [`crate::gather_search::more_work`]): the caller's, which works what it finds, else lets
+    /// [`crate::gathering::gather_search::more_work`]): the caller's, which works what it finds, else lets
     /// the foundation go ([`BuildAction::no_more_work`], then as [`BuildStep::released`]).
     pub search: bool,
     /// The units on the foundation's footprint besides the builder, which its test

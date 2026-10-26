@@ -3,7 +3,7 @@
 use crate::GenieError;
 use crate::combat::attack::{Strike, set_sprite};
 use crate::combat::damage::Victim;
-use crate::hunt::{
+use crate::gathering::hunt::{
     DECAY_TASK, Gatherer, Herd, HuntAction, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH, VILLAGER_CLASS,
 };
 use crate::move_to::Walk;

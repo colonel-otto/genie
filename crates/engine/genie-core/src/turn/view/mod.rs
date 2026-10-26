@@ -137,7 +137,7 @@ pub(crate) enum AiStart {
 /// The players but the owner of the unit that updates, read-only: the players before it and
 /// after it.
 #[derive(Clone, Copy)]
-pub(in crate::turn) struct Foreign<'a> {
+pub(crate) struct Foreign<'a> {
     pub(in crate::turn) before: &'a [Player],
     pub(in crate::turn) after: &'a [Player],
     /// The live list of the player whose list is out, once its object changed hands: that
@@ -147,7 +147,7 @@ pub(in crate::turn) struct Foreign<'a> {
 
 impl<'a> Foreign<'a> {
     /// The object `id` in another player's live or sleeping list, with that player.
-    pub(in crate::turn) fn find(&self, id: i32) -> Option<(usize, &'a Unit)> {
+    pub(crate) fn find(&self, id: i32) -> Option<(usize, &'a Unit)> {
         let skip = self.before.len() + 1;
         let before = self.before.iter().enumerate();
         let after = self.after.iter().enumerate().map(|(q, p)| (q + skip, p));
@@ -242,7 +242,7 @@ struct HuntPlan<'u> {
     task: crate::masters::Task,
     switch: Option<&'u crate::masters::Master>,
     own: &'u crate::masters::Master,
-    quarry: crate::hunt::Quarry,
+    quarry: crate::gathering::hunt::Quarry,
     them: Placed,
 }
 

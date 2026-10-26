@@ -3,7 +3,7 @@
 use crate::artifact::{Artifact, Handover};
 use crate::build::{Builder, Completion, Site};
 use crate::combat::attack::Strike;
-use crate::hunt::{Gatherer, HuntSprites};
+use crate::gathering::hunt::{Gatherer, HuntSprites};
 use crate::lifecycle::Class;
 use crate::masters::Master;
 use crate::math::rng::Stream;
@@ -255,10 +255,10 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "a Make whose master the slice does not have",
                 ))?;
-            self.make = Some(crate::make::MakeAction::start(
+            self.make = Some(crate::gathering::make::MakeAction::start(
                 task,
                 c.attributes,
-                &mut crate::make::Held {
+                &mut crate::gathering::make::Held {
                     attribute_type: &mut self.life.attribute_type,
                     amount: &mut self.life.amount,
                 },
@@ -479,7 +479,7 @@ impl Unit {
                             civ: c.civ,
                         };
                         state_of(build.site, others, c.foreign).map(|state| {
-                            let drop = crate::hunt::DropOff {
+                            let drop = crate::gathering::hunt::DropOff {
                                 takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
                                 gap_squared: footprint_gap_squared(
                                     me_at.position,
@@ -1017,7 +1017,7 @@ impl Unit {
             let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
                 GenieError::unsupported("a Make of a master the slice does not have"),
             )?;
-            let farm = crate::make::Farm {
+            let farm = crate::gathering::make::Farm {
                 master_id: master.id,
                 kind: master.kind,
                 class: master.class,
@@ -1026,7 +1026,7 @@ impl Unit {
                 dt: c.dt_seconds,
             };
             let step = make.update(
-                &mut crate::make::Held {
+                &mut crate::gathering::make::Held {
                     attribute_type: &mut self.life.attribute_type,
                     amount: &mut self.life.amount,
                 },
@@ -1105,7 +1105,7 @@ impl Unit {
         // whose MoveTo failed (code 3), and whose class is a tree's searches for the next tree
         // (FUN_140ac4670 with 8 and -1 both times)
         let tree_lost = self.hunt.as_ref().is_some_and(|h| {
-            h.state == crate::hunt::WALK
+            h.state == crate::gathering::hunt::WALK
                 && 0.0 <= h.timer
                 && ((h.target == -1 && h.move_to.is_some()) || h.move_to == Some(MoveTo::Failed))
         }) && self.ai.as_ref().is_some_and(|ai| {
@@ -1114,12 +1114,12 @@ impl Unit {
             } else {
                 ai.target_type
             };
-            class == crate::hunt::TREE_CLASS
+            class == crate::gathering::hunt::TREE_CLASS
         });
         if let Some(hunt) = self
             .hunt
             .as_mut()
-            .filter(|h| h.state == crate::hunt::DROP && h.timer < 0.0)
+            .filter(|h| h.state == crate::gathering::hunt::DROP && h.timer < 0.0)
         {
             // case 7 waiting to try again: the timer runs by dt; at its end the drop site goes
             // (FUN_140a7a190 with none: slot 0x180) and set_state(8) searches again
@@ -1130,7 +1130,11 @@ impl Unit {
                 self.hunt_release(c, [site]);
                 self.hunt_drop_off(c, others)?;
             }
-        } else if let Some(hunt) = self.hunt.as_mut().filter(|h| h.state == crate::hunt::DROP) {
+        } else if let Some(hunt) = self
+            .hunt
+            .as_mut()
+            .filter(|h| h.state == crate::gathering::hunt::DROP)
+        {
             // state 8 has no target: its drop site (the second target) is what it walks to
             let master = c
                 .masters
@@ -1151,7 +1155,7 @@ impl Unit {
                         attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
                         civ: c.civ,
                     };
-                    Some(crate::hunt::DropOff {
+                    Some(crate::gathering::hunt::DropOff {
                         takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
                         gap_squared: footprint_gap_squared(
                             me_position,
@@ -1165,13 +1169,13 @@ impl Unit {
             };
             let attributes = c.attributes.len();
             let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
-            let who = crate::hunt::PointWalker {
+            let who = crate::gathering::hunt::PointWalker {
                 computer: c.computer,
                 villager: master.class == 4,
                 stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             };
             let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
-            let shown = crate::hunt::Shown {
+            let shown = crate::gathering::hunt::Shown {
                 sprite: &mut self.sprite,
                 rng,
                 graphic: shows,
@@ -1186,8 +1190,8 @@ impl Unit {
                 who,
                 &mut self.anim_speed,
             )? {
-                crate::hunt::Dropped::Going => {}
-                crate::hunt::Dropped::Load(kind, amount) => {
+                crate::gathering::hunt::Dropped::Going => {}
+                crate::gathering::hunt::Dropped::Load(kind, amount) => {
                     // the player's slot 0xf8 (FUN_141616820) with 1 and 1: the resource, and its
                     // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8)
                     // and the local player's tracker (FUN_14097daf0) are not held; a sharing
@@ -1201,14 +1205,14 @@ impl Unit {
                     )?;
                     self.hunt_after_drop(c, others)?;
                 }
-                crate::hunt::Dropped::Again => {
+                crate::gathering::hunt::Dropped::Again => {
                     // the drop site goes (FUN_140a7a190 with none), then set_state(8)
                     let hunt = self.hunt.as_mut().expect("above");
                     let site = std::mem::replace(&mut hunt.carry_to, -1);
                     self.hunt_release(c, [site]);
                     self.hunt_drop_off(c, others)?;
                 }
-                crate::hunt::Dropped::Idle => {
+                crate::gathering::hunt::Dropped::Idle => {
                     return Err(GenieError::unsupported(
                         "a hunt's drop-off idling (set_state 2)",
                     ));
@@ -1217,7 +1221,7 @@ impl Unit {
         } else if let Some(hunt) = self
             .hunt
             .as_mut()
-            .filter(|h| h.state == crate::hunt::FAILED)
+            .filter(|h| h.state == crate::gathering::hunt::FAILED)
         {
             // state 13 (0x140ac7a00 case 0xc): notify 0x1f9 with the hunt's action value, and the
             // update returns 3: the action list removes the hunt (FUN_140a98e20), whose teardown
@@ -1242,11 +1246,12 @@ impl Unit {
                 }
             }
             self.hunt_release(c, [site]);
-        } else if let Some(hunt) = self
-            .hunt
-            .as_mut()
-            .filter(|h| matches!(h.state, crate::hunt::WALK_POINT | crate::hunt::WALK_SEARCH))
-        {
+        } else if let Some(hunt) = self.hunt.as_mut().filter(|h| {
+            matches!(
+                h.state,
+                crate::gathering::hunt::WALK_POINT | crate::gathering::hunt::WALK_SEARCH
+            )
+        }) {
             // states 15 and 11: the walk to a point; state 15's end is set_state(2): the unit
             // takes the hunt's sprite to stand with (slot 0x68 with FUN_140ac5210's), the target
             // and the second target go; state 11's is set_state(3), the search
@@ -1254,22 +1259,22 @@ impl Unit {
                 .masters
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(crate::turn::HUNTER_MASTER)?;
-            let who = crate::hunt::PointWalker {
+            let who = crate::gathering::hunt::PointWalker {
                 computer: c.computer,
                 villager: master.class == 4,
                 stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
             };
             let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
             let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
-            let shown = crate::hunt::Shown {
+            let shown = crate::gathering::hunt::Shown {
                 sprite: &mut self.sprite,
                 rng,
                 graphic: shows,
             };
             match hunt.update_point_walk(walk, who, shown)? {
-                crate::hunt::PointWalk::Walking => {}
-                crate::hunt::PointWalk::Search => self.hunt_search_state(c, others)?,
-                crate::hunt::PointWalk::Done { target, second } => {
+                crate::gathering::hunt::PointWalk::Walking => {}
+                crate::gathering::hunt::PointWalk::Search => self.hunt_search_state(c, others)?,
+                crate::gathering::hunt::PointWalk::Done { target, second } => {
                     let task = hunt.task;
                     self.hunt_stand(c, &task)?;
                     self.hunt_release(c, [target, second]);
@@ -1278,7 +1283,7 @@ impl Unit {
         } else if let Some(hunt) = self
             .hunt
             .as_mut()
-            .filter(|h| h.state == crate::hunt::SEARCH)
+            .filter(|h| h.state == crate::gathering::hunt::SEARCH)
         {
             // state 3 (case 2): the timer runs by dt; at its end it starts again at −10 s and the
             // unit AI is told again (notify 0x202)
@@ -1292,7 +1297,7 @@ impl Unit {
         } else if self
             .hunt
             .as_ref()
-            .is_some_and(|h| h.state == crate::hunt::IDLE)
+            .is_some_and(|h| h.state == crate::gathering::hunt::IDLE)
         {
             // state 2 (case 1): a done hunt waits; one of a tree's target class would search
             // again (set_state 3)
@@ -1304,7 +1309,7 @@ impl Unit {
         } else if let Some(hunt) = self
             .hunt
             .as_mut()
-            .filter(|h| h.target == -1 && h.state == crate::hunt::WALK && h.timer < 0.0)
+            .filter(|h| h.target == -1 && h.state == crate::gathering::hunt::WALK && h.timer < 0.0)
         {
             // case 3 waiting after a given-up MoveTo, its target gone: the timer runs by dt,
             // then the walk to the point (set_state 11)
@@ -1313,10 +1318,10 @@ impl Unit {
         } else if self
             .hunt
             .as_ref()
-            .is_some_and(|h| h.state == crate::hunt::LEAD && h.target == -1)
+            .is_some_and(|h| h.state == crate::gathering::hunt::LEAD && h.target == -1)
         {
             // state 10 without its target (0x140ac7a00 case 9): set_state(3), the search
-            self.hunt.as_mut().expect("above").state = crate::hunt::SEARCH;
+            self.hunt.as_mut().expect("above").state = crate::gathering::hunt::SEARCH;
             self.hunt_set_search(c, others)?;
         } else if tree_lost && self.hunt_tree_search(c, others, Some(TREE_SEARCH_WITHIN), None)? {
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
@@ -1364,9 +1369,12 @@ impl Unit {
             };
             // what set_state(6) on live livestock reads (0x140ac60e0 case 6), and the lead's
             // update (state 10, 0x140ac7a00 case 9: whatever the target, a dead one too)
-            let faces = hunt.state == crate::hunt::WALK && hunt.move_to == Some(MoveTo::Arrived);
-            let herd = if (faces && victim.class == crate::hunt::LIVESTOCK && victim.state <= 2)
-                || hunt.state == crate::hunt::LEAD
+            let faces =
+                hunt.state == crate::gathering::hunt::WALK && hunt.move_to == Some(MoveTo::Arrived);
+            let herd = if (faces
+                && victim.class == crate::gathering::hunt::LIVESTOCK
+                && victim.state <= 2)
+                || hunt.state == crate::gathering::hunt::LEAD
             {
                 let at = |id| {
                     c.spatial
@@ -1432,7 +1440,7 @@ impl Unit {
                     Some(u) => u.top_action_idle()?,
                     None => false,
                 };
-                Some(crate::hunt::Herd {
+                Some(crate::gathering::hunt::Herd {
                     own,
                     drop_site,
                     engagement,
@@ -1546,12 +1554,12 @@ impl Unit {
                     } else {
                         ai.target_type
                     };
-                    class == crate::hunt::TREE_CLASS
+                    class == crate::gathering::hunt::TREE_CLASS
                 });
                 if !(tree && self.hunt_tree_search(c, others, None, Some(TREE_NEAR))?) {
                     let hunt = self.hunt.as_mut().expect("above");
                     hunt.tear_down(self.mover.as_mut())?;
-                    hunt.state = crate::hunt::SEARCH;
+                    hunt.state = crate::gathering::hunt::SEARCH;
                     self.hunt_search_state(c, others)?;
                 }
             }

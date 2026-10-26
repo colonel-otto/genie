@@ -483,7 +483,7 @@ fn a_builder_drops_its_load_at_a_drop_site_it_completes() {
 /// unit, the foundation goes (the caller releases it) and the point; state 2.
 #[test]
 fn a_stop_halts_the_build_and_lets_its_foundation_go() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut b = BuildAction {
         state: MOVE,
         move_to: Some(MoveTo::Moving),
@@ -572,7 +572,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
             obstruction: None,
         },
     );
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut c = Construction {
         progress: 3.0,
         desolid: false,
@@ -663,7 +663,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
     assert_eq!(gone.walk_target, -1);
     assert_ne!(gone.state, WALK_POINT);
     // a unit without speed: its MoveTo fails at the start (13)
-    let mut still = crate::hunt::tests::walker();
+    let mut still = crate::gathering::hunt::tests::walker();
     still.stats.speed = 0.0;
     let mut held = BuildAction {
         target: -1,
@@ -725,7 +725,7 @@ fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
             obstruction: None,
         },
     );
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut c = Construction {
         progress: 0.0,
         desolid: false,
@@ -1327,7 +1327,7 @@ fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
         sprite_override: false,
         started: false,
     };
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let started = Construction::begin(
         33439,
         &mut c,
@@ -1647,7 +1647,7 @@ fn walk_update(
         chain: WorkChain::default(),
         main_builders: None,
     };
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = at;
     let step = build
         .update(
@@ -2627,7 +2627,7 @@ fn drop_world() -> Spatial {
 #[test]
 fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
     let mut world = drop_world();
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let me = Me {
         id: 5,
         position: [2.5, 2.5, 0.0],
@@ -2718,12 +2718,12 @@ fn a_builder_s_drop_off_walks_to_the_drop_site_its_search_found() {
 /// [`drop_world`].
 fn drop_update(
     build: &mut BuildAction,
-    (held, deposit): (f32, Option<(u8, crate::hunt::DropOff)>),
+    (held, deposit): (f32, Option<(u8, crate::gathering::hunt::DropOff)>),
     ai: Option<&mut UnitAi>,
     gone: &[i32],
 ) -> BuildStep {
     let mut world = drop_world();
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     build
         .update(
             Walk {
@@ -2773,10 +2773,10 @@ fn at_the_mill() -> BuildAction {
 
 /// The drop site as the drop-off reads it: in state `state`, taking the load or not, `gap`
 /// squared away.
-const fn mill(state: u8, takes: bool, gap: f32) -> (u8, crate::hunt::DropOff) {
+const fn mill(state: u8, takes: bool, gap: f32) -> (u8, crate::gathering::hunt::DropOff) {
     (
         state,
-        crate::hunt::DropOff {
+        crate::gathering::hunt::DropOff {
             takes,
             gap_squared: gap,
         },
@@ -2914,7 +2914,7 @@ fn a_drop_off_whose_site_went_past_state_6_searches_again() {
         ..at_the_mill()
     };
     let mut world = drop_world();
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let step = b
         .update(
             Walk {

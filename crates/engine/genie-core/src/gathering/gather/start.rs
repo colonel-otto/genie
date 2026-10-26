@@ -3,11 +3,11 @@
 
 use crate::GenieError;
 use crate::combat::attack::set_sprite;
-use crate::gather::{
+use crate::gathering::gather::{
     ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_CLASS, FARM_STOPS, GatherAction, Gatherer,
     IDLE, MOVED, Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,
 };
-use crate::hunt::HuntTask;
+use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, MoveWait};
 use crate::movement::Mover;

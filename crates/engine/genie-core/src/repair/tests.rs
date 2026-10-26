@@ -196,7 +196,7 @@ fn update(
     amounts: &mut Vec<f32>,
 ) -> RepairStep {
     let mut world = Spatial::default();
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut can_path = |_: &Spatial| Ok(paths);
     let mut repair = |a: f32| {
         amounts.push(a);
@@ -348,7 +348,7 @@ fn a_waiting_repairer_looks_again_each_second() {
 /// repairers), the walk there; its end ends the Repair.
 #[test]
 fn a_move_sends_the_repairer_to_its_point() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut r = RepairAction {
         state: WORK,
         move_to: None,
@@ -376,7 +376,7 @@ fn a_move_sends_the_repairer_to_its_point() {
 /// caller's to leave the repairers), the `MoveTo` goes, the target stays.
 #[test]
 fn a_halt_stops_the_repair_and_answers_whether_it_counted() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut r = RepairAction {
         state: WORK,
         counted: true,
@@ -393,7 +393,7 @@ fn a_halt_stops_the_repair_and_answers_whether_it_counted() {
 /// `set_state(4)` from a new target: the old `MoveTo` and point go, a new walk starts.
 #[test]
 fn walking_again_starts_a_new_move_to_the_target() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut r = RepairAction {
         state: WALK_POINT,
         goal: Some([3.0, 4.0, 0.0]),

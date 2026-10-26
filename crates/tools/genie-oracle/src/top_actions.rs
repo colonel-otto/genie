@@ -58,8 +58,8 @@ pub(super) fn saved_actions(
     if base.target2_id != -1
         && !matches!(
             kind,
-            genie_core::hunt::HUNT
-                | genie_core::gather::GATHER
+            genie_core::gathering::hunt::HUNT
+                | genie_core::gathering::gather::GATHER
                 | genie_core::combat::missile::MISSILE
                 | genie_core::combat::attack::ATTACK
                 | BUILD
@@ -203,7 +203,7 @@ pub(super) fn saved_actions(
             });
             Ok(())
         }
-        genie_core::make::MAKE => {
+        genie_core::gathering::make::MAKE => {
             let make = action
                 .rge_action_by_type
                 .as_deref()
@@ -212,7 +212,7 @@ pub(super) fn saved_actions(
             if base.sub_actions.entries().next().is_some() {
                 return Err(GenieError::unsupported("a saved Make with a sub-action"));
             }
-            unit.make = Some(genie_core::make::MakeAction {
+            unit.make = Some(genie_core::gathering::make::MakeAction {
                 state: base.state,
                 remaining: base.timer,
                 total: make.work_timer,
@@ -336,8 +336,8 @@ pub(super) fn saved_actions(
             });
             Ok(())
         }
-        genie_core::hunt::HUNT => {
-            use genie_core::hunt::{
+        genie_core::gathering::hunt::HUNT => {
+            use genie_core::gathering::hunt::{
                 ATTACK, DROP, FACE, GATHER, HuntAction, HuntTask, IDLE, LEAD, SEARCH, WALK,
                 WALK_POINT, WALK_SEARCH,
             };
@@ -384,7 +384,7 @@ pub(super) fn saved_actions(
                 carry_to: base.target2_id,
                 timer: base.timer,
                 move_wait: genie_core::move_to::MoveWait::default(),
-                lead: genie_core::hunt::Lead {
+                lead: genie_core::gathering::hunt::Lead {
                     moved: part.moved_sheep != 0,
                     still_time: part.sheep_still_time as i16,
                     start: [
@@ -441,8 +441,8 @@ pub(super) fn saved_actions(
             unit.hunt = Some(hunt);
             Ok(())
         }
-        genie_core::gather::GATHER => {
-            use genie_core::gather::{
+        genie_core::gathering::gather::GATHER => {
+            use genie_core::gathering::gather::{
                 DONE, DROP, FACE, GatherAction, IDLE, MOVED, SEARCH, WALK, WALK_BACK, WORK,
             };
             let part = action
@@ -461,7 +461,7 @@ pub(super) fn saved_actions(
                 ));
             }
             let t = task_at(s.master_obj, base.short_val)?;
-            let task = genie_core::hunt::HuntTask {
+            let task = genie_core::gathering::hunt::HuntTask {
                 id: t.id,
                 range: t.work_range,
                 resource: t.attribute_type,

@@ -88,7 +88,7 @@ fn a_stop_ends_the_attack_and_the_unit_stands() {
     let mut a = own_attack(77, MOVE, 1.0);
     a.move_to = Some(MoveTo::Moving);
     a.arms.idle_sprite = Some(stand);
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let (mut speed, mut sprite, mut rng) = (Some(0.5), None, Well512::default());
     a.halt(Some(&mut mover), &mut speed, &mut sprite, &mut rng)
         .unwrap();

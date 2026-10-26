@@ -3,7 +3,7 @@
 use crate::artifact::Artifact;
 use crate::build::{BuildAction, Construction};
 use crate::fly::Fly;
-use crate::hunt::{HuntAction, HuntSprites};
+use crate::gathering::hunt::{HuntAction, HuntSprites};
 use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
 use crate::move_to::MoveToAction;
@@ -18,10 +18,7 @@ use crate::unit_ai::{GenieError, UnitAi};
 mod ai;
 mod building;
 mod death;
-mod drop_off;
 mod enter;
-mod gather;
-mod hunt;
 mod owner;
 mod repair;
 mod search;
@@ -34,11 +31,11 @@ pub(in crate::turn) use self::building::blasts_at_death;
 #[cfg(test)]
 pub(in crate::turn) use self::building::{farm_stage_terrain, regeneration_rate};
 pub(crate) use self::enter::EnterWorld;
-pub(crate) use self::gather::give_load;
 use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
 pub(in crate::turn) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
 pub(in crate::turn) use crate::combat::volley::{Aimed, armed, same_members};
+pub(crate) use crate::gathering::gather::unit::give_load;
 
 /// A dying sprite the `.dat` does not have.
 const NO_DYING_SPRITE: GenieError =
@@ -119,7 +116,7 @@ pub struct Unit {
     /// A villager's Hunt action, its top action.
     pub hunt: Option<HuntAction>,
     /// A forager's Gather action, its top action.
-    pub gather: Option<crate::gather::GatherAction>,
+    pub gather: Option<crate::gathering::gather::GatherAction>,
     /// Its own Attack (type 9, not a Hunt's), its top action: a boar's on its attacker.
     pub attack: Option<crate::combat::attack::Attack>,
     /// An auto scout's Explore action, its top action.
@@ -227,8 +224,8 @@ pub struct Unit {
     /// action list is empty in state 2 (an animal out of a building whose Artifact went), its
     /// first update in the next tick, as a Fly's.
     pub default_artifact: bool,
-    /// A farm's or fish trap's Make action, its top action ([`crate::make`]).
-    pub make: Option<crate::make::MakeAction>,
+    /// A farm's or fish trap's Make action, its top action ([`crate::gathering::make`]).
+    pub make: Option<crate::gathering::make::MakeAction>,
     /// A villager's wait for a foundation (`TRIBE_Action_Wait_Solidify`), its only action
     /// ([`crate::wait_solidify`]).
     pub wait_solidify: Option<crate::wait_solidify::WaitSolidify>,
@@ -268,7 +265,7 @@ pub struct Unit {
     pub attacking_units: Vec<i32>,
 }
 
-/// The sprite a hunt's walk shows ([`crate::hunt::walk_sprite`]) from its task's sprites.
+/// The sprite a hunt's walk shows ([`crate::gathering::hunt::walk_sprite`]) from its task's sprites.
 pub(in crate::turn) fn hunt_walk_sprite(
     hunt: &HuntAction,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
@@ -281,7 +278,7 @@ pub(in crate::turn) fn hunt_walk_sprite(
         carrying: g(hunt.task.sprites[3]),
         standing: None,
     };
-    crate::hunt::walk_sprite(
+    crate::gathering::hunt::walk_sprite(
         hunt.task.resource,
         life.attribute_type,
         life.amount,
@@ -307,7 +304,7 @@ pub(crate) fn annexes_of(id: i32, objects: &[Unit]) -> Vec<i32> {
 /// to let go); one past state 6 is let go (slot 0x180) and goes. The game checks the second
 /// target's absence before the first target's state; the two touch different objects. Returns
 /// the second target after them and the object let go.
-pub(in crate::turn) const fn second_target_checked(
+pub(crate) const fn second_target_checked(
     site: i32,
     held: bool,
     state: Option<u8>,

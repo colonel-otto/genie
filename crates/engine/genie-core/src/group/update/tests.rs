@@ -121,7 +121,7 @@ fn lost_members_leave_the_group_and_stop() {
     mute.group.id = 1;
     t.players[1].objects.push(mute);
     for u in &mut t.players[1].objects {
-        u.mover = Some(crate::hunt::tests::walker());
+        u.mover = Some(crate::gathering::hunt::tests::walker());
     }
     let g = t.groups.get_mut(1).unwrap();
     for id in [13, 99] {
@@ -394,7 +394,7 @@ fn a_group_rests_without_command_motion_or_moving_member() {
     let mut t = world();
     t.groups.get_mut(1).unwrap().current_command = -1;
     assert!(t.at_rest(1));
-    t.players[1].objects[1].mover = Some(crate::hunt::tests::walker());
+    t.players[1].objects[1].mover = Some(crate::gathering::hunt::tests::walker());
     assert!(!t.at_rest(1));
     t.players[1].objects[1].mover = None;
     t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
@@ -412,10 +412,10 @@ fn a_group_rests_without_command_motion_or_moving_member() {
 fn kept_apart_units_leave_unless_busy() {
     let mut t = world();
     let mut apart = soldier(15, 6.0, 6.0);
-    apart.mover = Some(crate::hunt::tests::walker());
+    apart.mover = Some(crate::gathering::hunt::tests::walker());
     apart.ai.as_mut().unwrap().orders = vec![crate::unit_ai::QueuedOrder::default()];
     let mut free = soldier(16, 6.0, 6.0);
-    free.mover = Some(crate::hunt::tests::walker());
+    free.mover = Some(crate::gathering::hunt::tests::walker());
     let mut attacker = soldier(17, 7.0, 7.0);
     attacker.ai.as_mut().unwrap().current_action = 600;
     t.players[1].objects.extend([apart, free, attacker]);
@@ -457,7 +457,7 @@ fn kept_apart_units_leave_unless_busy() {
 fn a_deleted_group_lets_its_members_go() {
     let mut t = world();
     for u in &mut t.players[1].objects {
-        u.mover = Some(crate::hunt::tests::walker());
+        u.mover = Some(crate::gathering::hunt::tests::walker());
     }
     t.players[1].objects[1].ai.as_mut().unwrap().current_action = 0x2c6;
     t.players[1].objects[2].group.id = 7;
@@ -483,7 +483,7 @@ fn a_deleted_group_lets_its_members_go() {
 #[test]
 fn a_unit_shows_its_standing_walking_or_running_sprite() {
     let mut t = world();
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.walk_speed = 0.9;
     walker.stats.run_speed = 1.5;
     walker.stats.stand_speed = 0.1;
@@ -885,7 +885,7 @@ fn a_member_moved_aside_waits_out_its_timer() {
     let mut t = world();
     t.dt_seconds = 0.5;
     for u in &mut t.players[1].objects {
-        u.mover = Some(crate::hunt::tests::walker());
+        u.mover = Some(crate::gathering::hunt::tests::walker());
     }
     let aside = crate::group::SpecificMove {
         active: 1,
@@ -953,7 +953,7 @@ fn a_member_moved_aside_waits_out_its_timer() {
 fn a_member_s_own_move_walks_its_path() {
     let mut t = world();
     t.dt_seconds = 0.5;
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.moved_at = [1.0, 1.0, 0.0];
     walker.take_record_path(vec![[1.0, 0.0, 1.0], [5.0, 0.0, 1.0]], 4.0, 0, false);
     t.players[1].objects[0].mover = Some(walker);
@@ -1068,7 +1068,7 @@ fn an_idle_group_goes() {
 #[test]
 fn a_player_s_groups_update_before_its_objects() {
     let mut t = world();
-    let walker = crate::hunt::tests::walker();
+    let walker = crate::gathering::hunt::tests::walker();
     for u in &mut t.players[1].objects {
         u.mover = Some(walker.clone());
         u.mover.as_mut().unwrap().moved_at = u.position;

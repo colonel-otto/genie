@@ -1,6 +1,6 @@
 //! An artifact's and a herd's take, an order's cancel and a unit's order.
 
-use crate::hunt::HUNT;
+use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::order::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
 use crate::turn::{Turns, Unit};
@@ -191,7 +191,7 @@ impl Turns {
     /// 6, and a unit without one of these actions: [`Turns::drop_off_unasked`] (the way back for
     /// 8 alone).
     ///
-    /// [`HuntAction::drop_off_asked`]: crate::hunt::HuntAction::drop_off_asked
+    /// [`HuntAction::drop_off_asked`]: crate::gathering::hunt::HuntAction::drop_off_asked
     pub(crate) fn unit_order(
         &mut self,
         _player: usize,
@@ -226,11 +226,9 @@ impl Turns {
                     "a UNIT_ORDER drop-off of an action not held",
                 ));
             }
-            if let Some(gather) = unit
-                .gather
-                .as_ref()
-                .filter(|_| asks && unit.top_action_kind() == Some(crate::gather::GATHER))
-            {
+            if let Some(gather) = unit.gather.as_ref().filter(|_| {
+                asks && unit.top_action_kind() == Some(crate::gathering::gather::GATHER)
+            }) {
                 // without a target or a point the work goes into the town-bell records first
                 // (FUN_141206a20) and the way back after the drop-off (FUN_141205ac0)
                 let unaimed = way_back
@@ -286,7 +284,7 @@ impl Turns {
                     && build.point[0] == NO_POINT
                     && build.point[1] == NO_POINT;
                 let attributes = self.players[p].attributes.len();
-                let asked = crate::hunt::asked_drop_off(
+                let asked = crate::gathering::hunt::asked_drop_off(
                     build.task.resource,
                     unit.life.attribute_type,
                     attributes,

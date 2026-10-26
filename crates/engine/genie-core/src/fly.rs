@@ -456,7 +456,7 @@ mod tests {
             goal: Some([60.5, 104.5, 9.0]),
             ..hawk(FLYING, 5.0)
         };
-        let mut mover = crate::hunt::tests::walker();
+        let mut mover = crate::gathering::hunt::tests::walker();
         mover.stats.speed = 0.0;
         let mut r = Well512::default();
         let walking = Walk {

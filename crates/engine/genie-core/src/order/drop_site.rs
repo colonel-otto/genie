@@ -1,7 +1,7 @@
 //! The drop-offs: an unasked one, the ordered drop site, the table's, one now and elsewhere,
 //! and the way back.
 
-use crate::hunt::HUNT;
+use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::order::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
 use crate::turn::Turns;
@@ -47,7 +47,7 @@ impl Turns {
         let filter = if HUNTED_LOADS.contains(&held) {
             HUNT
         } else {
-            crate::gather::GATHER
+            crate::gathering::gather::GATHER
         };
         let work = Work {
             target: site,

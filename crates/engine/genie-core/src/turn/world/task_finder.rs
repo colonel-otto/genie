@@ -28,11 +28,11 @@ impl Diplomacy for World<'_> {
 
 /// The players' relations and the drop sites as the task finder reads them while a unit's
 /// owner's list is out for its update ([`UnitView`]): the owner's relations, the others'.
-pub(in crate::turn) struct SideWorld<'a> {
-    pub(in crate::turn) player: usize,
-    pub(in crate::turn) relations: &'a [u8],
-    pub(in crate::turn) foreign: Foreign<'a>,
-    pub(in crate::turn) drop_sites: &'a [DropSite],
+pub(crate) struct SideWorld<'a> {
+    pub(crate) player: usize,
+    pub(crate) relations: &'a [u8],
+    pub(crate) foreign: Foreign<'a>,
+    pub(crate) drop_sites: &'a [DropSite],
 }
 
 impl Diplomacy for SideWorld<'_> {
@@ -59,11 +59,7 @@ impl Diplomacy for SideWorld<'_> {
 /// sent the unit off (the unit AI's notify 0x216), whose build points are its construction's;
 /// the world never gives its id to another object, so an object without a construction is not
 /// met.
-pub(in crate::turn) fn wait_progress(
-    id: i32,
-    others: &[Unit],
-    foreign: Foreign<'_>,
-) -> Option<f32> {
+pub(crate) fn wait_progress(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<f32> {
     others
         .iter()
         .find(|u| u.id == id)
@@ -74,7 +70,7 @@ pub(in crate::turn) fn wait_progress(
 /// The state (`+0x640`) of object `id` among its owner's other objects and the other players'
 /// lists: None when they do not hold it (the unit itself, or one of its owner's sleeping objects:
 /// static objects only, never a drop site, which the callers ask for).
-pub(in crate::turn) fn state_of(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<u8> {
+pub(crate) fn state_of(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option<u8> {
     others
         .iter()
         .find(|u| u.id == id)
@@ -85,7 +81,7 @@ pub(in crate::turn) fn state_of(id: i32, others: &[Unit], foreign: Foreign<'_>) 
 /// What the task finder reads of object `id`, as `find` holds the objects (with their owners)
 /// and `every` the players' masters; an annex stands for its main building (`+0xbb8`), `steps`
 /// times (`Turns::task_target`'s reading). None when `find` does not hold it.
-pub(in crate::turn) fn task_target_with<'a>(
+pub(crate) fn task_target_with<'a>(
     id: i32,
     steps: usize,
     find: &impl Fn(i32) -> Option<(usize, &'a Unit)>,
@@ -130,7 +126,7 @@ pub(in crate::turn) fn task_target_with<'a>(
 /// caller's. None: no task. The terrain under the target's place, which only a task for a
 /// terrain reads, is not passed (as `Turns::find_work_task`, the same routine's port in
 /// `crate::order`, which this module cannot call).
-pub(in crate::turn) fn task_search<'m>(
+pub(crate) fn task_search<'m>(
     masters: &'m Masters,
     actor: &Actor<'_>,
     t: &TaskTarget<'_>,

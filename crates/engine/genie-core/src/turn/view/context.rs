@@ -24,16 +24,16 @@ pub(crate) struct Context<'a> {
     /// The owner's accumulated time when it has the turn: the full unit-AI update runs.
     pub(in crate::turn) turn: Option<u32>,
     pub(crate) world_time: u32,
-    pub(in crate::turn) computer: bool,
+    pub(crate) computer: bool,
     pub(crate) streams: &'a mut Streams,
     /// Every object's place, which a walker reads and its moves update.
     pub(crate) spatial: &'a mut Spatial,
     /// The planners and the mesh, which a walker's path request uses.
     pub(crate) pathing: &'a mut Pathing,
     /// The world's unit groups, which a walker's long path reads.
-    pub(in crate::turn) groups: &'a crate::group::UnitGroups,
+    pub(crate) groups: &'a crate::group::UnitGroups,
     /// The owner's construction rate (attribute 195).
-    pub(in crate::turn) construction_rate: f32,
+    pub(crate) construction_rate: f32,
     /// The owner's masters, which an attack reads.
     pub(crate) masters: Option<&'a Masters>,
     /// The target of the unit's attack, read before its update and written back after it, and
@@ -130,16 +130,16 @@ pub(crate) struct Context<'a> {
     /// The graphics, for the sprites a hunter takes.
     pub(crate) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The drop-site table, whose livestock entries a hunt leads its livestock to.
-    pub(in crate::turn) drop_sites: &'a [DropSite],
+    pub(crate) drop_sites: &'a [DropSite],
     /// The owner's id and civ (`player+0x738`).
     pub(crate) player: usize,
-    pub(in crate::turn) civ: u8,
+    pub(crate) civ: u8,
     /// The owner's AI settings (`+0x608`..), which its unit AIs read.
     pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
     /// The player shares its gathered resources with its allies (`+0x1426`).
-    pub(in crate::turn) sharing: bool,
+    pub(crate) sharing: bool,
     /// The game's farm setting ([`crate::settings::Settings::walkable_farms`]).
-    pub(in crate::turn) farm_stops: bool,
+    pub(crate) farm_stops: bool,
     /// The game's setting [`crate::settings::Settings::predator_hunts_end`].
     pub(in crate::turn) predator_hunts_end: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
@@ -173,7 +173,7 @@ pub(crate) struct Context<'a> {
     pub(in crate::turn) sight_takers: &'a [(bool, bool)],
     /// The owner's object tracker, which a completion's first part (`FUN_1411c6bd0`) moves a
     /// building in, and the unit lines its keys read ([`crate::tracker`]).
-    pub(in crate::turn) tracker: &'a mut crate::tracker::Tracker,
+    pub(crate) tracker: &'a mut crate::tracker::Tracker,
     pub(in crate::turn) lines: &'a crate::lines::UnitLines,
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
@@ -216,10 +216,10 @@ pub(crate) struct Context<'a> {
 
     /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
     /// a target not built yet), which the caller runs after the update ([`Turns::build_command`]).
-    pub(in crate::turn) build_command: Option<i32>,
+    pub(crate) build_command: Option<i32>,
     /// A Gather's walk back to reseed ended (state 0xf2, whether it arrived), which the caller
     /// reseeds after the update ([`Turns::reseed_after_walk`]).
-    pub(in crate::turn) reseed: Option<bool>,
+    pub(crate) reseed: Option<bool>,
     /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
     /// runs after the update ([`Turns::move_aside`]).
     pub(in crate::turn) move_aside: Vec<AiMove>,
@@ -240,14 +240,14 @@ pub(crate) struct Context<'a> {
     /// writes after the update.
     pub(in crate::turn) repair_writes: Vec<RepairWrite>,
     /// The owner's diplomacy (`player+0x260`), which the unit's task search reads.
-    pub(in crate::turn) relations: &'a [u8],
+    pub(crate) relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
     /// update ([`Turns::lead_herd`]).
     pub(in crate::turn) leads: Option<(i32, i32)>,
     /// The map's zone maps, which an auto scout's search reads.
-    pub(in crate::turn) zones: &'a mut crate::pathing::zones::Zones,
+    pub(crate) zones: &'a mut crate::pathing::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
-    pub(in crate::turn) foreign: Foreign<'a>,
+    pub(crate) foreign: Foreign<'a>,
 }
 
 /// What an object's step gathered in its Context for the world to apply after it
@@ -422,7 +422,7 @@ impl Context<'_> {
     }
 
     /// A walk with the Sprite and the Action streams (a farmer's stops draw from the second).
-    pub(in crate::turn) fn walk_sprites_action<'b>(
+    pub(crate) fn walk_sprites_action<'b>(
         &'b mut self,
         mover: Option<&'b mut Mover>,
         me: Me,
@@ -478,11 +478,7 @@ impl Context<'_> {
     }
 
     /// What an object's walking action needs from the tick.
-    pub(in crate::turn) const fn walk<'b>(
-        &'b mut self,
-        mover: Option<&'b mut Mover>,
-        me: Me,
-    ) -> Walk<'b> {
+    pub(crate) const fn walk<'b>(&'b mut self, mover: Option<&'b mut Mover>, me: Me) -> Walk<'b> {
         Walk {
             mover,
             me,

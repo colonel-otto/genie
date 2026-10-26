@@ -229,7 +229,7 @@ const COMPUTER_QUEUE_LIMIT: usize = 2;
 const ONE_UNIT_GAME: i32 = 0x10;
 /// The Hunt's search timer: it tells its unit AI again every 10 seconds (`0xc1200000`, in
 /// `0x140ac60e0` and `0x140ac7a00`).
-const SEARCH_AGAIN: f32 = -10.0;
+pub(crate) const SEARCH_AGAIN: f32 = -10.0;
 /// `FUN_140ac4670`'s first argument when a hunt's target went on the walk to it, or its `MoveTo`
 /// failed (`DAT_142eb9430`): the hunt searches within this of its point.
 const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH_WITHIN;
@@ -238,7 +238,7 @@ const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH_WITHIN;
 const TREE_NEAR: f32 = crate::math::image::hunt::TREE_NEAR;
 /// The notify "Action %d has been invalidated or requires a search." (0x202) with the action's
 /// value: a Build waiting without work posts it ([`BUILD_ACTION`]), a searching Hunt too.
-const SEARCH_NEEDED: i32 = 0x202;
+pub(crate) const SEARCH_NEEDED: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
 const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).

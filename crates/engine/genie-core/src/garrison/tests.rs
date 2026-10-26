@@ -1141,7 +1141,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     let mut t = let_out_world();
     let mut v = unit(400, VILLAGER, 25.0);
     v.position = [12.5, 10.0, 0.0];
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
     v.mover = Some(walker);
     v.group.id = 7;
@@ -1560,7 +1560,7 @@ fn shore_world(at: [f32; 2], ship: [f32; 2]) -> Turns {
     terrain.set_elevations(vec![0; 40 * 40]);
     t.spatial.terrain = Some(terrain);
     ship_at(&mut t, ship);
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     mover.stats = crate::movement::MoveStats {
         speed: 1.1,
         ..standing()
@@ -1704,7 +1704,7 @@ fn coast_world(ship: [f32; 2]) -> Turns {
     t.pathing = crate::pathing::Pathing::new([30, 20], kinds, restrictions, 0);
     t.streams.seed_all(7);
     ship_at(&mut t, ship);
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     mover.stats = sails;
     mover.moved_at = [ship[0], ship[1], 0.0];
     let s = t.object_mut(200).unwrap().1;

@@ -1,6 +1,6 @@
 //! FOLLOW and GUARD, a move to an object and the head action's move.
 
-use crate::hunt::HUNT;
+use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::order::{
     Followed, GUARD_RANGE, LIVESTOCK, MOVING, Place, VILLAGER, follow_axis, follow_spread,
@@ -413,7 +413,7 @@ impl Turns {
                 | crate::garrison::ENTER
                 | crate::fly::FLY
                 | crate::combat::missile::MISSILE
-                | crate::make::MAKE
+                | crate::gathering::make::MAKE
                 | crate::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(false),
             Some(crate::artifact::ARTIFACT_TYPE) => {
@@ -421,7 +421,9 @@ impl Turns {
                 Ok(true)
             }
             Some(HUNT) => self.hunt_take_move(player, idx, target, point),
-            Some(crate::gather::GATHER) => self.gather_take_move(player, idx, target, point),
+            Some(crate::gathering::gather::GATHER) => {
+                self.gather_take_move(player, idx, target, point)
+            }
             // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target, and
             // the Transport's (0x140aa3e40) sails there
             Some(crate::repair::REPAIR | crate::transport::TRANSPORT) => {

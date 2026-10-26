@@ -141,7 +141,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         t.players[1].objects.push(unit);
         t.players[1].objects.len() - 1
     };
-    let task = crate::hunt::HuntTask {
+    let task = crate::gathering::hunt::HuntTask {
         id: 0,
         range: 0.25,
         resource: 17,
@@ -150,7 +150,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         productivity: -1,
         kind4: -1,
     };
-    let bush = crate::gather::Resource {
+    let bush = crate::gathering::gather::Resource {
         id: -1,
         position: [3.5, 3.5, 0.0],
         class: 7,
@@ -161,14 +161,16 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         gap: 1.2,
         radius: [0.5, 0.5],
     };
-    let rate = crate::gather::StopRate {
+    let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
         capacity: 10.0,
         productivity: 1.0,
     };
     let gather = add(Unit {
         id: 30,
-        gather: Some(crate::gather::GatherAction::new(task, &bush, false, rate).unwrap()),
+        gather: Some(
+            crate::gathering::gather::GatherAction::new(task, &bush, false, rate).unwrap(),
+        ),
         ..Unit::default()
     });
     let build_task = crate::build::BuildTask {
@@ -222,7 +224,10 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         artifact: Some(crate::artifact::Artifact::new(false)),
         ..Unit::default()
     });
-    assert_eq!(t.halt_other(1, gather, crate::gather::GATHER), Ok(true));
+    assert_eq!(
+        t.halt_other(1, gather, crate::gathering::gather::GATHER),
+        Ok(true)
+    );
     assert_eq!(t.halt_other(1, build, crate::build::BUILD), Ok(true));
     assert_eq!(t.halt_other(1, repair, crate::repair::REPAIR), Ok(true));
     assert_eq!(
@@ -245,7 +250,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
 
 #[test]
 fn a_stopped_hunter_keeps_its_halted_hunt() {
-    use crate::hunt::{HuntAction, HuntTask, Lead};
+    use crate::gathering::hunt::{HuntAction, HuntTask, Lead};
     let hunter = Unit {
         id: 20,
         ai: Some(UnitAi {
@@ -296,7 +301,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     without_ai.players[1].objects[idx].ai = None;
     without_ai.object_stop(1, idx).unwrap();
     let u = &without_ai.players[1].objects[idx];
-    assert_eq!(u.hunt.map(|h| h.state), Some(crate::hunt::IDLE));
+    assert_eq!(u.hunt.map(|h| h.state), Some(crate::gathering::hunt::IDLE));
 }
 
 /// records/425906646's player 2 cancels the second villager of its town centre at update

@@ -163,7 +163,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             amount: 5.0,
             ..crate::lifecycle::Lifecycle::default()
         },
-        mover: Some(crate::hunt::tests::walker()),
+        mover: Some(crate::gathering::hunt::tests::walker()),
         build: Some(crate::build::BuildAction {
             state: 6,
             added: true,
@@ -346,7 +346,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
             },
         ),
     ]);
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.speed = 1.2;
     walker.stats.walk_speed = 1.2;
     walker.stats.stand_speed = 0.0;
@@ -647,7 +647,7 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
     t.players.push(crate::turn::Player::default());
     t.player_time.push(0);
     t.masters.push(crate::masters::Masters::new([]));
-    let walker = crate::hunt::tests::walker();
+    let walker = crate::gathering::hunt::tests::walker();
     if let Some(m) = t.masters[1].get_mut(83) {
         m.moving = Some(walker.stats);
     }
@@ -794,7 +794,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     t.players[1].objects.push(Unit {
         id: 50,
         gate: Some(crate::turn::Gate::default()),
-        mover: Some(crate::hunt::tests::walker()),
+        mover: Some(crate::gathering::hunt::tests::walker()),
         life: crate::lifecycle::Lifecycle {
             master_id: 79,
             state: 2,
@@ -908,7 +908,7 @@ fn a_queued_interact_to_an_object_that_does_not_move_also_queues_it() {
 #[test]
 fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
     let mut t = soldiers(&[(11, 83, [20.0, 20.0])], &[]);
-    let walker = crate::hunt::tests::walker();
+    let walker = crate::gathering::hunt::tests::walker();
     if let Some(m) = t.masters[1].get_mut(83) {
         m.moving = Some(walker.stats);
     }
@@ -1010,14 +1010,14 @@ fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retarg
     };
     // wood held, a gather of gold: none held, of gold
     assert_eq!(
-        run(83, (1, 10.0), task(crate::gather::GATHER, 3)),
+        run(83, (1, 10.0), task(crate::gathering::gather::GATHER, 3)),
         (3, 0.0, 0)
     );
     // meat (17) held, a hunt of food (0): both food, kept
     assert_eq!(run(83, (17, 10.0), task(HUNT, 0)), (17, 10.0, 0));
     // the same resource: kept
     assert_eq!(
-        run(83, (3, 4.0), task(crate::gather::GATHER, 3)),
+        run(83, (3, 4.0), task(crate::gathering::gather::GATHER, 3)),
         (3, 4.0, 0)
     );
     // an attack task: a soldier's retargeting goes off, a villager's stays on
@@ -1334,7 +1334,7 @@ fn followers() -> Turns {
     let mut t = soldiers(&units, &[]);
     t.players[1].formations.auto = false;
     t.spatial.map = [120, 120];
-    let walker = crate::hunt::tests::walker();
+    let walker = crate::gathering::hunt::tests::walker();
     t.masters[1] = crate::masters::Masters::new([Master {
         id: 4,
         kind: 70,
@@ -1778,7 +1778,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         vec![],
     );
     t.spatial.sight = Some(sight);
-    let walker = crate::hunt::tests::walker();
+    let walker = crate::gathering::hunt::tests::walker();
     let sheep_master = Master {
         id: 594,
         kind: 70,
@@ -2153,7 +2153,7 @@ fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
     let mut t = soldiers(units, members);
     t.dt = 100;
     for u in &mut t.players[1].objects {
-        u.mover = Some(crate::hunt::tests::walker());
+        u.mover = Some(crate::gathering::hunt::tests::walker());
         u.ai = Some(crate::unit_ai::UnitAi {
             ai_type: 13,
             current_order: -1,
@@ -2371,7 +2371,7 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
     ];
     let mut t = soldiers(&units, &[11, 12]);
     for u in &mut t.players[1].objects {
-        let mut m = crate::hunt::tests::walker();
+        let mut m = crate::gathering::hunt::tests::walker();
         m.moved_at = u.position;
         u.mover = Some(m);
     }

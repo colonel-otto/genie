@@ -491,7 +491,7 @@ impl Turns {
         if let Some(hunt) = u.hunt.as_mut()
             && let Some(t) = old_task(hunt.task.id).as_ref().and_then(find)
         {
-            hunt.task = crate::hunt::HuntTask::of(&t);
+            hunt.task = crate::gathering::hunt::HuntTask::of(&t);
             let task = hunt.task.sprites;
             if let Some(attack) = hunt.attack.as_mut() {
                 crate::effect::follow_master(&mut attack.arms, Some(task), &sprites);
@@ -500,7 +500,7 @@ impl Turns {
         if let Some(gather) = u.gather.as_mut()
             && let Some(t) = old_task(gather.task.id).as_ref().and_then(find)
         {
-            gather.task = crate::hunt::HuntTask::of(&t);
+            gather.task = crate::gathering::hunt::HuntTask::of(&t);
         }
         if let Some(make) = u.make.as_mut()
             && let Some(t) = find(&make.task)

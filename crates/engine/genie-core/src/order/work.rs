@@ -1,6 +1,6 @@
 //! The town bell, a kept attack, the garrison task and the work command and its task.
 
-use crate::hunt::{HUNT, HuntTask};
+use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::order::{
@@ -89,7 +89,7 @@ impl Turns {
         });
         let target_type = match unit.top_action_kind() {
             Some(HUNT) => unit.hunt.map_or(-1, |h| i32::from(h.target_class)),
-            Some(crate::gather::GATHER) => unit.gather.map_or(-1, |g| g.target_type),
+            Some(crate::gathering::gather::GATHER) => unit.gather.map_or(-1, |g| g.target_type),
             _ => -1,
         };
         let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
@@ -206,7 +206,7 @@ impl Turns {
             .master_of(player, self.players[player].objects[idx].life.master_id)?
             .class;
         let unit = &mut self.players[player].objects[idx];
-        if matches!(task.action_type, crate::gather::GATHER | HUNT) {
+        if matches!(task.action_type, crate::gathering::gather::GATHER | HUNT) {
             let (kind, held) = (task.attribute_type, unit.life.attribute_type);
             if held != kind && !(food(kind) && food(held)) {
                 unit.life.attribute_type = kind;
@@ -334,8 +334,8 @@ impl Turns {
                 self.retake_repair(player, idx, target, point, clears)?;
                 true
             }
-            _ if top == Some(crate::gather::GATHER)
-                && task.action_type == crate::gather::GATHER
+            _ if top == Some(crate::gathering::gather::GATHER)
+                && task.action_type == crate::gathering::gather::GATHER
                 && unit.gather.is_some_and(|g| g.task.id == task.id) =>
             {
                 let t = self.task_target(target, 0)?;
@@ -375,7 +375,7 @@ impl Turns {
                     | crate::garrison::ENTER
                     | crate::combat::missile::MISSILE
                     | crate::fly::FLY
-                    | crate::make::MAKE
+                    | crate::gathering::make::MAKE
                     | crate::wait_solidify::WAIT_SOLIDIFY,
                 ) => false,
                 _ => {
@@ -430,7 +430,7 @@ impl Turns {
             crate::build::CART_TASK => {
                 self.work_move(player, idx, target, point, (clears, notified))
             }
-            crate::gather::GATHER => {
+            crate::gathering::gather::GATHER => {
                 self.start_gather(player, idx, target, &task, Some((point, clears)))
             }
             _ => Err(GenieError::unsupported(

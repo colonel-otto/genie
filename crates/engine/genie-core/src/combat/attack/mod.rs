@@ -1,5 +1,5 @@
 //! The Attack action (`RGE_Action_Attack`, type 9, vtable `0x142ed47a8`) of a melee unit: a
-//! hunting villager's sub-action on a tree or on its livestock ([`crate::hunt`]).
+//! hunting villager's sub-action on a tree or on its livestock ([`crate::gathering::hunt`]).
 //! Built away from its target, it walks there with a `MoveTo` sub-action ([`crate::move_to`]); in
 //! reach it swings (state 7): the hit lands on the attack sprite's frame ([`crate::sprite`]), and
 //! the unit waits out its reload between swings (state 6). A target that dies ends the swing

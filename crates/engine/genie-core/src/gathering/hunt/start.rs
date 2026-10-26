@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::attack::{Arms, Attack, Engagement};
-use crate::hunt::{
+use crate::gathering::hunt::{
     ARRIVED, ATTACK, BUILDING, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE,
     LIVESTOCK, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, Shown, WALK_POINT, WALK_SEARCH, food,
 };
@@ -262,7 +262,7 @@ impl HuntAction {
     /// quiet `MoveTo` to the point within the task's range starts (`FUN_140aa0d30`, showing the
     /// walking sprite of [`walk_sprite`]).
     ///
-    /// [`walk_sprite`]: crate::hunt::sprites::walk_sprite
+    /// [`walk_sprite`]: crate::gathering::hunt::sprites::walk_sprite
     pub(super) fn set_point_walk(
         &mut self,
         state: u8,

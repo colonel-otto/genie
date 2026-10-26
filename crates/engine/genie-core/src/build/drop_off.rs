@@ -217,7 +217,7 @@ impl BuildAction {
             step.anim_stopped = true;
             return Ok(());
         }
-        let kind = crate::hunt::resource_kind(builder.held_kind, builder.attributes);
+        let kind = crate::gathering::hunt::resource_kind(builder.held_kind, builder.attributes);
         step.dropped = Some((kind, builder.held));
         if self.target != -1 {
             step.site_let_go = Some(std::mem::replace(&mut self.site, -1));

@@ -222,7 +222,7 @@ impl Turns {
     /// and a computer's class 54 packs instead. Neither action is held. A villager drops its
     /// town-bell flag (`FUN_1412067f0`); then the work command. A villager on a pasture (1893,
     /// 1897) whose livestock's workers (slot 0x780, [`Turns::livestock_workers`]) are below its
-    /// owner's [`crate::pasture::PASTURE_WORKERS`] (COMISS, JBE) works the livestock
+    /// owner's [`crate::gathering::pasture::PASTURE_WORKERS`] (COMISS, JBE) works the livestock
     /// [`Turns::pasture_pick`] gives at its place with the order's flags (slot 0x7e8 again) and
     /// then tends the pasture; none given ends the order there; a full pasture has its unit AI
     /// take a search (slot 0x38: 0x202 with the hunt action, class 49 and −1). Any other unit
@@ -336,7 +336,7 @@ impl Turns {
         idx: usize,
         order: &Work,
     ) -> Result<Option<i32>, GenieError> {
-        use crate::pasture::PASTURE_WORKERS;
+        use crate::gathering::pasture::PASTURE_WORKERS;
         use crate::tech::Attributes;
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;

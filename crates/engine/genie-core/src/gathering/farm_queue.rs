@@ -311,10 +311,10 @@ impl Turns {
         Ok(true)
     }
 
-    /// State 0xf2's end (`0x140a8e1d0` case 0xf1, [`crate::gather::Next::Reseed`]) of player
+    /// State 0xf2's end (`0x140a8e1d0` case 0xf1, [`crate::gathering::gather::Next::Reseed`]) of player
     /// `p`'s gatherer at `idx`, its walk `arrived` or failed: the reseed ([`Turns::reseed`]);
     /// without one (the interface's event 0x7f, 0x9c for a gatherer not a villager, aside) the
-    /// Gather is done or idles ([`crate::gather::GatherAction::after_reseed`]: standing with
+    /// Gather is done or idles ([`crate::gathering::gather::GatherAction::after_reseed`]: standing with
     /// `FUN_140a8b6b0`'s sprite, the targets it lets go released).
     pub(crate) fn reseed_after_walk(
         &mut self,
@@ -333,7 +333,7 @@ impl Turns {
         let Some(gather) = unit.gather.as_mut() else {
             return Ok(());
         };
-        let stand = crate::hunt::stand_sprite(
+        let stand = crate::gathering::hunt::stand_sprite(
             &gather.task,
             standing,
             unit.life.attribute_type,

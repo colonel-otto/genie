@@ -8,7 +8,7 @@
 //! has a unit AI takes work. Under the game's farm setting a farm on its tile comes first (the
 //! map tile's objects in their order: the first of class 49; a fishing ship's must be a fish
 //! trap, master 199); else the closest resource of the five gather groups by the unit AI's
-//! `ClosestResourceObject` (slot 0x80, [`crate::gather_search::closest_resource_at`]: no drop
+//! `ClosestResourceObject` (slot 0x80, [`crate::gathering::gather_search::closest_resource_at`]: no drop
 //! site, any workers, the least distance wins, the first group at a tie). Slot 0x140
 //! (`FUN_141070c90`) then gives the unit its work on the target at the target's place
 //! ([`Turns::order_work`], slot 0x7e8; `+0x888`, the work's count, is not held). Any other
@@ -17,7 +17,7 @@
 //! cart's own search for resources ([`Turns::cart_work_search`]).
 
 use crate::GenieError;
-use crate::gather_search::{self, Candidate};
+use crate::gathering::gather_search::{self, Candidate};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::order::Work;

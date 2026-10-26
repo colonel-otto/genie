@@ -131,11 +131,11 @@ impl Turns {
             | crate::garrison::ENTER
             | crate::fly::FLY
             | crate::combat::missile::MISSILE
-            | crate::make::MAKE
+            | crate::gathering::make::MAKE
             | crate::wait_solidify::WAIT_SOLIDIFY => {
                 return Ok(false);
             }
-            crate::hunt::HUNT => {}
+            crate::gathering::hunt::HUNT => {}
             _ => return self.halt_other(p, idx, kind),
         }
         if computer {
@@ -145,8 +145,8 @@ impl Turns {
         }
         let hunt = unit.hunt.as_mut().expect("its top action");
         hunt.tear_down(unit.mover.as_mut())?;
-        hunt.state = crate::hunt::IDLE;
-        let sprite = crate::hunt::stand_sprite(
+        hunt.state = crate::gathering::hunt::IDLE;
+        let sprite = crate::gathering::hunt::stand_sprite(
             &hunt.task,
             standing,
             unit.life.attribute_type,
@@ -180,7 +180,7 @@ impl Turns {
     }
 
     /// Slot 0x38 of the top actions with their own besides the Hunt's, each true: the Gather's
-    /// (`FUN_140a8e1b0`, [`crate::gather::GatherAction::halt`]: its target and second target go,
+    /// (`FUN_140a8e1b0`, [`crate::gathering::gather::GatherAction::halt`]: its target and second target go,
     /// [`Turns::release`]), the Build's (`FUN_140ab0350`, [`crate::build::BuildAction::halt`]:
     /// a counted builder leaves its foundation's builders, [`Turns::leave_builders`], before the
     /// rest; the foundation goes), the Attack's (`FUN_140a82ac0`,
@@ -199,7 +199,7 @@ impl Turns {
         let master_id = self.players[p].objects[idx].life.master_id;
         let standing = self.master_of(p, master_id)?.standing_sprite;
         match kind {
-            crate::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
+            crate::gathering::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
             crate::build::BUILD => self.halt_build(p, idx, by)?,
             crate::repair::REPAIR => self.halt_repair(p, idx)?,
             crate::combat::attack::ATTACK => {
@@ -234,7 +234,7 @@ impl Turns {
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
         let gather = unit.gather.as_mut().expect("its top action");
-        let stand = crate::hunt::stand_sprite(
+        let stand = crate::gathering::hunt::stand_sprite(
             &gather.task,
             standing,
             unit.life.attribute_type,

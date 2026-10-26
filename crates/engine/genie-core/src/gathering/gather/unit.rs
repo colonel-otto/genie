@@ -1,6 +1,6 @@
 //! A builder's and a gatherer's drop-off and a gatherer's update and search.
 
-use crate::hunt::HuntSprites;
+use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::tasks::Actor;
@@ -18,7 +18,7 @@ impl Unit {
     /// [`crate::build::BuildAction::set_drop`], whose second targets the caller releases and
     /// takes and whose notify 0x203 goes to the unit AI. A builder of state 8 counts among no
     /// builders (its `set_state(8)` left them).
-    pub(in crate::turn) fn build_drop_off(
+    pub(crate) fn build_drop_off(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -111,12 +111,12 @@ impl Unit {
     /// from the world's table goes (slot 0x68 with none), one past state 6 is let go (slot 0x180)
     /// and goes; a second target gone goes (`FUN_140a7a190` with none), one past state 6 is let
     /// go and goes. Then state 8 walks the
-    /// load to its drop site ([`crate::gather::GatherAction::update_drop`]): the load goes to the
+    /// load to its drop site ([`crate::gathering::gather::GatherAction::update_drop`]): the load goes to the
     /// player, the drop site goes (`FUN_140a7a190` with none) and the gather walks back to its
     /// target (`set_state(4)`); without a target the unit AI's search is not modelled. The other
-    /// states ([`crate::gather::GatherAction::update`]) may ask for the drop-off
+    /// states ([`crate::gathering::gather::GatherAction::update`]) may ask for the drop-off
     /// ([`Unit::gather_drop_off`]).
-    pub(in crate::turn) fn gather_update(
+    pub(crate) fn gather_update(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -179,14 +179,15 @@ impl Unit {
         );
         let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
         let (world_time, farm_stops, dt) = (c.world_time, c.farm_stops, c.dt_seconds);
-        let stop_productivity = crate::gather::productivity_of(task.productivity, c.attributes);
+        let stop_productivity =
+            crate::gathering::gather::productivity_of(task.productivity, c.attributes);
         let food_sold = c
             .attributes
-            .get(crate::gather::FARM_FOOD_SOLD)
+            .get(crate::gathering::gather::FARM_FOOD_SOLD)
             .copied()
             .unwrap_or(0.0);
         let (player, computer) = (c.player, c.computer);
-        if gather.state == crate::gather::DROP {
+        if gather.state == crate::gathering::gather::DROP {
             let me_at = c
                 .spatial
                 .get_known(self.id)?
@@ -202,7 +203,7 @@ impl Unit {
                         attribute_95: c.attributes.get(95).copied().unwrap_or(0.0),
                         civ: c.civ,
                     };
-                    Some(crate::hunt::DropOff {
+                    Some(crate::gathering::hunt::DropOff {
                         takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
                         gap_squared: footprint_gap_squared(
                             me_position,
@@ -216,7 +217,7 @@ impl Unit {
             };
             let attributes = c.attributes.len();
             let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.mover.as_mut(), me);
-            let mut work = crate::gather::Gatherer {
+            let mut work = crate::gathering::gather::Gatherer {
                 held_kind: &mut self.life.attribute_type,
                 held: &mut self.life.amount,
                 work_rate,
@@ -249,12 +250,12 @@ impl Unit {
                 *a = 0.0;
             }
             let (kind, amount) = match dropped {
-                crate::hunt::Dropped::Going => return Ok(()),
-                crate::hunt::Dropped::Load(kind, amount) => (kind, amount),
+                crate::gathering::hunt::Dropped::Going => return Ok(()),
+                crate::gathering::hunt::Dropped::Load(kind, amount) => (kind, amount),
                 // set_state(8) again: the drop site kept or searched
-                crate::hunt::Dropped::Again => return self.gather_drop_off(c, others),
+                crate::gathering::hunt::Dropped::Again => return self.gather_drop_off(c, others),
                 // set_state(2): the target, then the drop site go (slot 0x68, FUN_140a7a190)
-                crate::hunt::Dropped::Idle => {
+                crate::gathering::hunt::Dropped::Idle => {
                     for id in before.into_iter().filter(|&id| id != -1) {
                         c.releases.push((id, by));
                     }
@@ -298,7 +299,7 @@ impl Unit {
         let (old_target, old_second) = (gather.target, gather.carry_to);
         let (next, posted, sold) = {
             let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.mover.as_mut(), me);
-            let mut work = crate::gather::Gatherer {
+            let mut work = crate::gathering::gather::Gatherer {
                 held_kind: &mut self.life.attribute_type,
                 held: &mut self.life.amount,
                 work_rate,
@@ -351,7 +352,7 @@ impl Unit {
         }
         // the targets an end or an idle let go (slot 0x68, FUN_140a7a190 with none); state 1's
         // update returns 1: the action list removes the Gather, whose teardown lets its targets go
-        if next == crate::gather::Next::Done {
+        if next == crate::gathering::gather::Next::Done {
             let g = self.gather.take().expect("the caller's gather");
             for t in [g.target, g.carry_to] {
                 if t != -1 {
@@ -368,17 +369,17 @@ impl Unit {
             }
         }
         match next {
-            crate::gather::Next::Drop => self.gather_drop_off(c, others)?,
-            crate::gather::Next::Search => self.gather_search(c, others)?,
-            crate::gather::Next::Build => {
+            crate::gathering::gather::Next::Drop => self.gather_drop_off(c, others)?,
+            crate::gathering::gather::Next::Search => self.gather_search(c, others)?,
+            crate::gathering::gather::Next::Build => {
                 let target = self.gather.as_ref().map_or(-1, |g| g.target);
                 if c.build_command.replace(target).is_some() {
                     return Err(GenieError::unsupported("two build commands in one update"));
                 }
             }
             // state 0xf2's walk ended: the caller reseeds after the update
-            crate::gather::Next::Reseed { arrived } => c.reseed = Some(arrived),
-            crate::gather::Next::Stay | crate::gather::Next::Done => {}
+            crate::gathering::gather::Next::Reseed { arrived } => c.reseed = Some(arrived),
+            crate::gathering::gather::Next::Stay | crate::gathering::gather::Next::Done => {}
         }
         Ok(())
     }
@@ -388,7 +389,7 @@ impl Unit {
     /// the Gather's target type (`+0x68`) and a drop site: the second target's, else for a master
     /// with drop sites (`+0x7a0`) the one `FUN_1411671e0` finds from the unit (inside others too:
     /// [`Unit::drop_site_from`]), 0 when it finds none; −1 for a master without.
-    pub(in crate::turn) fn gather_search(
+    pub(crate) fn gather_search(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],

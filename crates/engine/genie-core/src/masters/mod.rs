@@ -69,7 +69,7 @@ pub struct Task {
     /// `+0x30`: how near the target the work is done.
     pub work_range: f32,
     /// `+0x34`, `work_flag` (the `.dat`'s `gather_type`): a Make adds to its player's attribute,
-    /// not to its object's holding ([`crate::make`]).
+    /// not to its object's holding ([`crate::gathering::make`]).
     pub work_flag: i16,
     /// `+0x38`, `enablement_resource_id` (`enabled`): the resource that enables the task, -1 none.
     pub enablement: i16,
@@ -128,13 +128,13 @@ impl Master {
     }
 
     /// What a new object of this master starts once its action list is empty in state 2
-    /// (`RGE_Action_Object::update`, slot 0x7f0): a Make ([`crate::make`]: true), or the
+    /// (`RGE_Action_Object::update`, slot 0x7f0): a Make ([`crate::gathering::make`]: true), or the
     /// default task's action the slice does not model; nothing for a type the factory makes no
     /// action of.
     #[must_use]
     pub fn default_start(&self) -> (bool, Option<GenieError>) {
         match self.default_task() {
-            Some(t) if t.action_type == crate::make::MAKE => (true, None),
+            Some(t) if t.action_type == crate::gathering::make::MAKE => (true, None),
             Some(t) if ACTION_FACTORY_TYPES.contains(&t.action_type) => (
                 false,
                 Some(GenieError::unsupported(

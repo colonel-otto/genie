@@ -109,7 +109,7 @@ fn under_the_farm_setting_a_farm_s_gather_goes_in_four_timed_stops() {
 /// caller's release) and the point is −1.
 #[test]
 fn a_stop_idles_the_gather_and_lets_its_targets_go() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut g = GatherAction {
         state: WALK,
         target: 31,
@@ -146,7 +146,7 @@ fn a_stop_idles_the_gather_and_lets_its_targets_go() {
 
 #[test]
 fn past_its_time_per_stop_a_farmer_walks_to_the_next_stop() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut g = GatherAction {
         state: WORK,
         time_per_stop: 1.0,
@@ -209,7 +209,7 @@ fn a_farm_s_food_sold_at_once_goes_to_the_player_and_the_gathering_goes_on() {
 
 #[test]
 fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let gatherer = || GatherAction {
         state: WORK,
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
@@ -256,7 +256,7 @@ fn a_gatherer_moved_walks_to_the_point_or_carries_its_load_to_the_drop_site() {
 #[test]
 fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
     let run = |computer: bool| {
-        let mut mover = crate::hunt::tests::walker();
+        let mut mover = crate::gathering::hunt::tests::walker();
         let mut g = GatherAction {
             state: MOVED,
             target: -1,
@@ -314,7 +314,7 @@ fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
 fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
     // the 4v4's forager 31237 at update 10820: its bush went while it walked there
     let run = |master: i16, g: &mut GatherAction, dt: f32| {
-        let mut mover = crate::hunt::tests::walker();
+        let mut mover = crate::gathering::hunt::tests::walker();
         let mut world = crate::spatial::Spatial::default();
         let walk = Walk {
             mover: Some(&mut mover),
@@ -387,7 +387,7 @@ fn farm_update(
     dt: f32,
     computer: bool,
 ) -> Result<Next, GenieError> {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut world = crate::spatial::Spatial::default();
     let walk = Walk {
         mover: Some(&mut mover),
@@ -439,7 +439,7 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
         target: 28222,
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
     };
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     mover.stats.turn_time = 1.0;
     mover.stats.facets = Some(crate::facing::SpriteFacets {
         count: 16,
@@ -567,7 +567,7 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
         timer,
         ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
     };
-    let site = |takes, gap_squared| Some(crate::hunt::DropOff { takes, gap_squared });
+    let site = |takes, gap_squared| Some(crate::gathering::hunt::DropOff { takes, gap_squared });
     let drop = |g: &mut GatherAction, rig: &mut Rig, site| {
         rig.run(DROP, |walk, gatherer| {
             g.update_drop(walk, gatherer, 4, site)
@@ -602,7 +602,10 @@ fn a_gatherer_s_drop_off_waits_walks_and_drops_its_load_at_the_site() {
     let mut g = dropping(Some(MoveTo::Arrived), 0.0);
     assert_eq!(
         drop(&mut g, &mut rig, site(true, 0.0)),
-        Ok(Dropped::Load(crate::hunt::resource_kind(17, 4), 3.0))
+        Ok(Dropped::Load(
+            crate::gathering::hunt::resource_kind(17, 4),
+            3.0
+        ))
     );
     assert_eq!(rig.load, (-1, 0.0));
     let mut g = dropping(None, 0.0);
@@ -862,7 +865,7 @@ fn without_a_reseed_the_farmer_idles_or_a_computer_s_is_done() {
             move_to: Some(MoveTo::Failed),
             ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
         };
-        let mut mover = crate::hunt::tests::walker();
+        let mut mover = crate::gathering::hunt::tests::walker();
         let (mut sprite, mut rng) = (None, Well512::default());
         let released = g
             .after_reseed(
@@ -883,7 +886,7 @@ fn without_a_reseed_the_farmer_idles_or_a_computer_s_is_done() {
 
 #[test]
 fn a_forager_walks_to_its_bush() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let mut g = GatherAction::new(task(), &bush(), true, rate()).unwrap();
     assert_eq!((g.stops, g.gather_at, g.target_type), (1, [-1.0; 2], 7));
     let mut held = (2, 0.0);
@@ -923,7 +926,7 @@ fn a_forager_walks_to_its_bush() {
 /// player's drop site takes its load there (`set_state(8)`, the site its second target).
 #[test]
 fn a_gatherer_sent_again_to_its_bush_walks_to_it_anew() {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     let walking = |state| GatherAction {
         state,
         move_to: Some(MoveTo::Moving),

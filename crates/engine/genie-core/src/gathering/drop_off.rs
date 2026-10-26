@@ -16,11 +16,11 @@ impl Unit {
     /// removes it). Else the gather group of its target class (the AI's `+0x58`, else the
     /// Gather's `mTargetType`; slot 0x1b0, the civilian's) names the unit AI's
     /// `ClosestResourceObject` (slot 0x80: no drop site, any workers, state 2, no point), and the
-    /// Gather takes what it finds (slot 0x48, [`crate::gather::GatherAction::retarget`]). Without
+    /// Gather takes what it finds (slot 0x48, [`crate::gathering::gather::GatherAction::retarget`]). Without
     /// one a Gather with its point would walk there to search again (`set_state(11)`, not
     /// modelled, or 0xf3 for a farmer); without a point a computer player's Gather is done, a
     /// human's idles (`set_state(2)`).
-    pub(in crate::turn) fn gather_after_drop(
+    pub(crate) fn gather_after_drop(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -71,7 +71,7 @@ impl Unit {
             None => -1,
         };
         if found == -1 {
-            let farm_waits = crate::gather::waits_for_a_farm(
+            let farm_waits = crate::gathering::gather::waits_for_a_farm(
                 self.life.master_id,
                 self.gather.as_ref().map_or(-1, |g| g.target_type),
             );
@@ -116,7 +116,7 @@ impl Unit {
                     _ => standing,
                 };
                 gather.tear_down(self.mover.as_mut())?;
-                gather.state = crate::gather::IDLE;
+                gather.state = crate::gathering::gather::IDLE;
                 gather.timer = 0.0;
                 gather.target = -1;
                 gather.carry_to = -1;
@@ -153,7 +153,7 @@ impl Unit {
             .ok_or(GenieError::unsupported(
                 "a gather's target of a master the slice does not have",
             ))?;
-        let resource = crate::gather::Resource {
+        let resource = crate::gathering::gather::Resource {
             id: found,
             position: t.position,
             class: t_master.class,
@@ -165,10 +165,10 @@ impl Unit {
             radius: t_master.radius,
         };
         let (computer, farm_stops, held) = (c.computer, c.farm_stops, self.life.amount);
-        let rate = crate::gather::StopRate {
+        let rate = crate::gathering::gather::StopRate {
             work_rate: self.work_rate_powerup + master.work_rate,
             capacity: f32::from(master.capacity),
-            productivity: crate::gather::productivity_of(
+            productivity: crate::gathering::gather::productivity_of(
                 self.gather.map_or(-1, |g| g.task.productivity),
                 c.attributes,
             ),
@@ -215,9 +215,9 @@ impl Unit {
     /// The Gather's `set_state(8)` (`0x140a8cd40` case 8): the current stop clears; a gatherer
     /// carrying nothing would search (`set_state` 3, not modelled); else its drop site
     /// ([`Unit::drop_site`]) becomes its second target (`FUN_140a7a190`: slot 0x178) and a quiet
-    /// `MoveTo` walks there ([`crate::gather::GatherAction::set_drop`]). Without one the unit AI's
+    /// `MoveTo` walks there ([`crate::gathering::gather::GatherAction::set_drop`]). Without one the unit AI's
     /// part (notify 0x203) is not modelled.
-    pub(in crate::turn) fn gather_drop_off(
+    pub(crate) fn gather_drop_off(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -298,7 +298,7 @@ impl Unit {
     /// none and a master with drop sites (`+0x7a0`), the closest of them (`FUN_1411671e0`: first
     /// one it reaches, [`Unit::drop_site_from`] outside other objects, then any); −1 for none.
     /// With the footprint gap to it (`FUN_14118f680`).
-    pub(in crate::turn) fn drop_site(
+    pub(crate) fn drop_site(
         &self,
         c: &mut DropWorld<'_>,
         others: &[Self],
@@ -350,7 +350,7 @@ impl Unit {
     /// master's drop sites (`+0x7a0`): [`drop_site_search`] with the unit as the seeker, by path
     /// for a human player (its argument 9, `FUN_141659cf0` false), skipping objects inside others
     /// when `outside` (its argument 10) and those at work on `0x7d` or `0x7c` (its argument 8).
-    pub(in crate::turn) fn drop_site_from(
+    pub(crate) fn drop_site_from(
         &self,
         c: &mut DropWorld<'_>,
         others: &[Self],

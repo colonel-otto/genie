@@ -1,6 +1,6 @@
 //! The hunt and gather commands, a build's and a repair's start, retake and target.
 
-use crate::hunt::HuntTask;
+use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Stream;
 use crate::order::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
 use crate::turn::Turns;
@@ -75,7 +75,7 @@ impl Turns {
             .find_work_task(player, idx, target, -1, true)?
             .ok_or(GenieError::unsupported("a gather command without a task"))?;
         let unit = &self.players[player].objects[idx];
-        if unit.top_action_kind() == Some(crate::gather::GATHER)
+        if unit.top_action_kind() == Some(crate::gathering::gather::GATHER)
             && unit.gather.is_some_and(|g| g.task.id == task.id)
         {
             let _ = self.retarget_gather(player, idx, target)?;

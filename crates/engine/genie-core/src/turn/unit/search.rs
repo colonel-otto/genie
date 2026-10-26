@@ -13,12 +13,12 @@ impl Unit {
     /// A notify the unit posts to its own unit AI (slot 0x328).
     /// The Build's case 0xdf once its work ended without queued orders (`0x140ab0b43`): the
     /// builder looks for more work around building `building` of master `built`
-    /// ([`crate::gather_search::more_work`] with the drop site's entry for the building, the
+    /// ([`crate::gathering::gather_search::more_work`] with the drop site's entry for the building, the
     /// builder's class and civ, the reach the building's line of sight held to 4 to 20, and the
     /// planner of the builder's restriction). Nothing found: None, the caller lets the foundation
     /// go. A farm found is not modelled; else the unit AI's `ClosestResourceObject` for the found
-    /// object's gather group and workers cap ([`crate::gather_search::gather_group`],
-    /// [`crate::gather_search::closest_resource`]) names the target, the found object when it
+    /// object's gather group and workers cap ([`crate::gathering::gather_search::gather_group`],
+    /// [`crate::gathering::gather_search::closest_resource`]) names the target, the found object when it
     /// names none, and slot 0x7e8 works it at its place (the work flag 1 only logged, any task,
     /// no carried-resource test, `+0xa14` as it stands outside slot 0x128: 1; the caller's).
     pub(in crate::turn) fn more_work(
@@ -28,7 +28,7 @@ impl Unit {
         building: i32,
         built: i16,
     ) -> Result<Option<crate::order::Work>, GenieError> {
-        use crate::gather_search::{self, Candidate};
+        use crate::gathering::gather_search::{self, Candidate};
         use crate::math::image::gather_search::{REACH_CAP, REACH_FLOOR};
         /// The reach a line of sight below the floor takes (the Build's immediate 4.0).
         const REACH_LOW: f32 = 4.0;
@@ -155,7 +155,7 @@ impl Unit {
     /// target as the drop site, at most 2 workers ([`Unit::resource_search_from`]) names the next
     /// tree; with `near` (its second argument above 0; 5 when the Attack's `MoveTo` failed) a tree
     /// farther than it from the unit (the same 3D distance) does not count. The hunt takes it
-    /// (slot 0x48: [`crate::hunt::HuntAction::retarget`], the new target taken). True when it
+    /// (slot 0x48: [`crate::gathering::hunt::HuntAction::retarget`], the new target taken). True when it
     /// found one.
     pub(in crate::turn) fn hunt_tree_search(
         &mut self,
@@ -213,7 +213,7 @@ impl Unit {
             .ok_or(GenieError::unsupported(
                 "a hunter's player without relations",
             ))?;
-        let quarry = crate::hunt::Quarry {
+        let quarry = crate::gathering::hunt::Quarry {
             id: found,
             position: t.position,
             class: t_master.class,
@@ -277,11 +277,11 @@ impl Unit {
     }
 
     /// The unit AI's `ClosestResourceObject` (slot 0x80, `FUN_140c49760`) with no drop site, no
-    /// point and `param_6` 2 ([`crate::gather_search::closest_resource`]): the closest object of
+    /// point and `param_6` 2 ([`crate::gathering::gather_search::closest_resource`]): the closest object of
     /// gather group `kind` with fewer than `cap` workers (−1 any) the unit reaches (slot 0x3d0
     /// with range 0), from the tiles the player explored that the unit's restriction lets it
     /// stand on; −1 for none.
-    pub(in crate::turn) fn resource_search(
+    pub(crate) fn resource_search(
         &self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -292,7 +292,7 @@ impl Unit {
     }
 
     /// [`Unit::resource_search`] from the drop site `site` (−1 for none;
-    /// [`crate::gather_search::closest_resource_at`]): the site's place, its master's radii and
+    /// [`crate::gathering::gather_search::closest_resource_at`]): the site's place, its master's radii and
     /// line of sight, and whether the search starts from its footprint (the site's tile in the
     /// unit's zone of its restriction, or a dock: masters 45 and 2172, `0x140c49d17`).
     pub(in crate::turn) fn resource_search_from(

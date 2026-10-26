@@ -3,7 +3,7 @@
 use crate::GenieError;
 use crate::combat::attack::{Strike, set_sprite};
 use crate::combat::damage::Victim;
-use crate::hunt::{
+use crate::gathering::hunt::{
     ARRIVED, CLASS_49, FACE, GAP, GATHER, Gatherer, HERD_FAR, HERD_REACH, Herd, HuntAction,
     LAST_BIT, LIVESTOCK, OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
 };

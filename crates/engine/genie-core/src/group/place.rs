@@ -566,7 +566,7 @@ mod tests {
     fn a_flanked_group_stays_where_its_lead_could_stand() {
         // the lead moves (slot 0x270 is `FUN_141158940`), where it last moved to its place
         let mut lead = unit(10, 15.0, 10.5);
-        let mut mover = crate::hunt::tests::walker();
+        let mut mover = crate::gathering::hunt::tests::walker();
         mover.moved_at = lead.position;
         lead.mover = Some(mover);
         let units = vec![lead, unit(11, 10.2, 10.1)];
@@ -598,7 +598,7 @@ mod tests {
             t.groups.groups[0].members.truncate(2);
         };
         let mut missile = unit(-1, 3.0, 3.0);
-        missile.mover = Some(crate::hunt::tests::walker());
+        missile.mover = Some(crate::gathering::hunt::tests::walker());
         let mut t = front_world(vec![units[0].clone(), units[1].clone(), missile]);
         flanked(&mut t);
         t.move_position_to_front(1, 100.0).unwrap();
@@ -622,7 +622,7 @@ mod tests {
                 .map(|(i, f)| {
                     let mut u = unit(10 + i as i32, 5.0, 5.0);
                     if let Some(f) = f {
-                        let mut mover = crate::hunt::tests::walker();
+                        let mut mover = crate::gathering::hunt::tests::walker();
                         mover.forward = *f;
                         u.mover = Some(mover);
                     }

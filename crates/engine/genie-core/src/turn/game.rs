@@ -6,7 +6,7 @@
 //! handlers are named at each.
 
 use crate::GenieError;
-use crate::farm_queue::{FARM, PASTURE};
+use crate::gathering::farm_queue::{FARM, PASTURE};
 use crate::turn::Turns;
 
 /// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
@@ -366,7 +366,7 @@ mod tests {
     /// a player outside the world changes nothing.
     #[test]
     fn the_queue_sub_commands_buy_and_give_back_for_their_player() {
-        use crate::farm_queue::FISH_TRAP;
+        use crate::gathering::farm_queue::FISH_TRAP;
         use crate::masters::{Master, Masters, master_type};
         let costing = |id, wood| Master {
             id,

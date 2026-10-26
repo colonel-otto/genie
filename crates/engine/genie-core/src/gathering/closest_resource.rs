@@ -9,28 +9,28 @@ use crate::turn::view::Foreign;
 use crate::unit_ai::GenieError;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
-pub(in crate::turn) struct ResourceWorld<'a, 'b> {
-    pub(in crate::turn) player: usize,
-    pub(in crate::turn) spatial: &'a Spatial,
-    pub(in crate::turn) zones: &'a mut crate::pathing::zones::Zones,
-    pub(in crate::turn) foreign: Foreign<'a>,
-    pub(in crate::turn) every: &'a [Masters],
-    pub(in crate::turn) masters: Option<&'a Masters>,
-    pub(in crate::turn) plan: Planning<'b>,
+pub(crate) struct ResourceWorld<'a, 'b> {
+    pub(crate) player: usize,
+    pub(crate) spatial: &'a Spatial,
+    pub(crate) zones: &'a mut crate::pathing::zones::Zones,
+    pub(crate) foreign: Foreign<'a>,
+    pub(crate) every: &'a [Masters],
+    pub(crate) masters: Option<&'a Masters>,
+    pub(crate) plan: Planning<'b>,
 }
 
 /// Where `ClosestResourceObject` (`FUN_140c49760`) searches from, the unit at `unit`: without a
 /// site from `point` (at the unit's height), unless both its parts are exactly −1
 /// (`DAT_14330ec20`, `UCOMISS`/`JP`/`JNZ`: a part that is not a number differs); with a site
 /// (`has_site`, which replaces the point) and for (−1, −1) from the unit's place.
-pub(in crate::turn) fn search_origin(point: [f32; 2], has_site: bool, unit: [f32; 3]) -> [f32; 3] {
+pub(crate) fn search_origin(point: [f32; 2], has_site: bool, unit: [f32; 3]) -> [f32; 3] {
     match point {
         [x, y] if !has_site && (x != -1.0 || y != -1.0) => [x, y, unit[2]],
         _ => unit,
     }
 }
 
-/// [`crate::gather_search::closest_resource_at`] for `unit` of gather group `kind` with fewer
+/// [`crate::gathering::gather_search::closest_resource_at`] for `unit` of gather group `kind` with fewer
 /// than `cap` workers (−1 any) from the drop site `site` (−1 for none; one the world does not hold
 /// counts as none, `FUN_1415417a0`), its unit AI's current target `current` passed over, below
 /// state `min_state` nothing found, and without a site from `point` unless that is (−1, −1)
@@ -38,14 +38,14 @@ pub(in crate::turn) fn search_origin(point: [f32; 2], has_site: bool, unit: [f32
 /// site's place, its master's radii and line of sight, and whether the search starts from its
 /// footprint (the site's tile in the unit's zone of its restriction, or a dock: masters 45 and
 /// 2172, `0x140c49d17`); the answer and the out argument's steps.
-pub(in crate::turn) fn closest_resource_of(
+pub(crate) fn closest_resource_of(
     unit: &Unit,
     c: &mut ResourceWorld<'_, '_>,
     others: &[Unit],
     (kind, cap, site): (u8, i32, i32),
     (current, min_state, point): (i32, u8, [f32; 2]),
 ) -> Result<(i32, Option<i32>), GenieError> {
-    use crate::gather_search::{self, Candidate};
+    use crate::gathering::gather_search::{self, Candidate};
     /// The site masters whose search starts from their footprint in any zone.
     const DOCKS: [i16; 2] = [45, 2172];
     let site = if site == -1 || c.spatial.get(site).is_none() {
@@ -184,7 +184,7 @@ pub(in crate::turn) fn closest_resource_of(
 
 /// `ClosestObject`'s "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
 /// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
-pub(in crate::turn) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
+pub(crate) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
     let foreign = || foreign.find(id).map(|(_, u)| u);
     others
         .iter()

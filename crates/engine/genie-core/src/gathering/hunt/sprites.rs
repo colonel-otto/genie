@@ -2,7 +2,7 @@
 //! what a unit carries.
 
 use crate::combat::attack::set_sprite;
-use crate::hunt::HuntTask;
+use crate::gathering::hunt::HuntTask;
 use crate::move_to::MoveTo;
 use crate::sprite::Graphic;
 

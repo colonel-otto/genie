@@ -15,7 +15,7 @@ impl Unit {
     /// ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with (slot 0x68 with
     /// `FUN_140ac5210`'s) and the timer starts at −10 s. A hunt of class 10 would end its search
     /// (`set_state` 2), not modelled.
-    pub(in crate::turn) fn hunt_set_search(
+    pub(crate) fn hunt_set_search(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -32,7 +32,7 @@ impl Unit {
     /// told ([`Unit::hunt_search_notify`]), the unit takes the sprite it stands with and the timer
     /// starts at −10 s. A human player's hunt of class 10 is done instead (`set_state` 2: the
     /// target and the second target go), a computer player's would end (1), not modelled.
-    pub(in crate::turn) fn hunt_search_state(
+    pub(crate) fn hunt_search_state(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -57,17 +57,17 @@ impl Unit {
     }
 
     /// The hunter takes the sprite its hunt stands with (slot 0x68 with `FUN_140ac5210`'s, by the
-    /// task and what the unit carries; [`crate::hunt::stand_sprite`]).
-    pub(in crate::turn) fn hunt_stand(
+    /// task and what the unit carries; [`crate::gathering::hunt::stand_sprite`]).
+    pub(crate) fn hunt_stand(
         &mut self,
         c: &mut Context<'_>,
-        task: &crate::hunt::HuntTask,
+        task: &crate::gathering::hunt::HuntTask,
     ) -> Result<(), GenieError> {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::turn::HUNTER_MASTER)?;
-        let stand = crate::hunt::stand_sprite(
+        let stand = crate::gathering::hunt::stand_sprite(
             task,
             master.standing_sprite,
             self.life.attribute_type,
@@ -81,7 +81,7 @@ impl Unit {
     }
 
     /// The objects a hunt let go (−1 for none), released in order after the update.
-    pub(in crate::turn) fn hunt_release<const N: usize>(&self, c: &mut Context<'_>, ids: [i32; N]) {
+    pub(crate) fn hunt_release<const N: usize>(&self, c: &mut Context<'_>, ids: [i32; N]) {
         for id in ids.into_iter().filter(|&id| id != -1) {
             c.releases.push((id, self.releaser(c)));
         }
@@ -92,7 +92,7 @@ impl Unit {
     /// and its drop site: the second target; −1 for a master without drop sites (`+0x7a0`); else
     /// the closest (`FUN_1411671e0` as `set_state(8)` searches, [`Unit::drop_site`]), with none
     /// found 0, and the hunt's class goes (−1).
-    pub(in crate::turn) fn hunt_search_notify(
+    pub(crate) fn hunt_search_notify(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -119,7 +119,7 @@ impl Unit {
                 construction_rate: c.construction_rate,
                 groups: c.groups,
             };
-            let (site, _) = self.drop_site(&mut w, others, -1, crate::hunt::SEARCH)?;
+            let (site, _) = self.drop_site(&mut w, others, -1, crate::gathering::hunt::SEARCH)?;
             if site == -1 {
                 self.hunt.as_mut().expect("the caller's hunt").target_class = -1;
                 0
@@ -147,9 +147,9 @@ impl Unit {
     /// [`HuntAction::search_walk`]). A hunt that fails at once takes the standing sprite (slot
     /// 0x68 with `FUN_140ac5210`'s: the unit carries nothing now).
     ///
-    /// [`HuntAction::retarget`]: crate::hunt::HuntAction::retarget
-    /// [`HuntAction::search_walk`]: crate::hunt::HuntAction::search_walk
-    pub(in crate::turn) fn hunt_after_drop(
+    /// [`HuntAction::retarget`]: crate::gathering::hunt::HuntAction::retarget
+    /// [`HuntAction::search_walk`]: crate::gathering::hunt::HuntAction::search_walk
+    pub(crate) fn hunt_after_drop(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -164,7 +164,7 @@ impl Unit {
             let v = c.victim.as_deref().ok_or(GenieError::unsupported(
                 "a hunt's target the slice does not hold live",
             ))?;
-            let quarry = crate::hunt::Quarry {
+            let quarry = crate::gathering::hunt::Quarry {
                 id: v.id,
                 position: v.position,
                 class: v.class,
@@ -213,7 +213,7 @@ impl Unit {
                     "a hunt's Attack whose MoveTo starts arrived after its drop-off",
                 ));
             }
-            if hunt.state == crate::hunt::FAILED {
+            if hunt.state == crate::gathering::hunt::FAILED {
                 return Err(GenieError::unsupported(
                     "a hunt failing on its target after its drop-off",
                 ));
@@ -379,7 +379,7 @@ impl Unit {
                 "a hunt finding a farm (FUN_1411c7670)",
             ));
         }
-        let quarry = crate::hunt::Quarry {
+        let quarry = crate::gathering::hunt::Quarry {
             id: found,
             position: t.position,
             class: t_master.class,
@@ -451,12 +451,12 @@ impl Unit {
                 c.takes.push((found, by));
             }
         }
-        if hunt.state == crate::hunt::FAILED
+        if hunt.state == crate::gathering::hunt::FAILED
             && let Some(m) = self.mover.as_mut()
         {
             m.shows_standing();
         }
-        if hunt.state == crate::hunt::FAILED && self.sprite.is_some() {
+        if hunt.state == crate::gathering::hunt::FAILED && self.sprite.is_some() {
             let standing =
                 c.graphics
                     .get(&master.standing_sprite)
@@ -481,9 +481,9 @@ impl Unit {
     /// second target (`FUN_140a7a190`, which takes it: slot 0x178 after the update) and a quiet
     /// `MoveTo` to it starts ([`HuntAction::set_drop`]).
     ///
-    /// [`HuntAction::set_drop`]: crate::hunt::HuntAction::set_drop
+    /// [`HuntAction::set_drop`]: crate::gathering::hunt::HuntAction::set_drop
     /// [`drop_site_search`]: crate::turn::world::drop_site_search
-    pub(in crate::turn) fn hunt_drop_off(
+    pub(crate) fn hunt_drop_off(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],

@@ -14,13 +14,14 @@
 //! the waits after a failed walk or a drop-off out of reach (the Action stream's `"update"`
 //! draws) and a gather left without a target and a load.
 
-use crate::hunt::{HuntSprites, HuntTask};
+use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, MoveWait};
 use crate::sprite::ActiveSprite;
 
 mod point_walks;
 mod start;
+pub(crate) mod unit;
 mod update;
 mod work;
 
@@ -32,7 +33,7 @@ use crate::GenieError;
 #[cfg(test)]
 use crate::combat::damage::Victim;
 #[cfg(test)]
-use crate::hunt::Dropped;
+use crate::gathering::hunt::Dropped;
 #[cfg(test)]
 use crate::move_to::Walk;
 

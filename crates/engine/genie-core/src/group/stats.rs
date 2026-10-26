@@ -939,7 +939,7 @@ mod tests {
             let mut stray = t.players[1].objects[0].clone();
             stray.id = 11;
             stray.position = [6.0, 6.0, 0.0];
-            stray.mover = Some(crate::hunt::tests::walker());
+            stray.mover = Some(crate::gathering::hunt::tests::walker());
             stray.mover.as_mut().unwrap().moved_at = [6.0, 6.0, 0.0];
             stray.group.id = 1;
             t.players[1].objects[0].group.id = 1;

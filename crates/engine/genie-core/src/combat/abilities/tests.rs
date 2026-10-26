@@ -659,7 +659,7 @@ fn trampler(t: &mut Turns) {
     };
     give_master(t, 9, 70, 12, vec![trample]);
     put(t, 1, 10, 9, 100.0, [5.5, 5.5]);
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     mover.velocity = Some(crate::movement::Velocity {
         velocity: [1.0, 0.0, 0.0],
         acceleration: [0.0; 3],
@@ -777,7 +777,7 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
     waters(&mut t);
     give_master(&mut t, 250, 70, 22, vec![longboat_look()]);
     put(&mut t, 1, 70, 250, 100.0, [5.5, 6.5]);
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = [5.5, 6.5, 0.0];
     t.players[1].objects[0].mover = Some(mover);
     run(&mut t, 1, 70);

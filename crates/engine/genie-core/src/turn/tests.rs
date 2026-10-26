@@ -552,7 +552,7 @@ fn pasture_game(at: [f32; 3], livestock: f32, livestock_masters: &[i16]) -> Turn
         radius: [0.2, 0.2],
         standing_sprite,
         storage: vec![(0, 100.0, 0)],
-        moving: Some(crate::hunt::tests::walker().stats),
+        moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
     };
     let mut masters = vec![pasture];
@@ -582,7 +582,7 @@ fn pasture_game(at: [f32; 3], livestock: f32, livestock_masters: &[i16]) -> Turn
 /// of the food, no unit targets it, and the pasture lists it.
 #[test]
 fn a_completed_pasture_puts_its_livestock_on_its_edges() {
-    use crate::pasture::{LIVESTOCK, edge_points};
+    use crate::gathering::pasture::{LIVESTOCK, edge_points};
     let mut t = pasture_game([20.0, 20.0, 0.0], 3.0, &[1899, 1900]);
     t.streams.get(Stream::Object).set_seed(1385);
     let mut e = t.streams.get(Stream::Object).clone();
@@ -658,7 +658,7 @@ fn a_pasture_puts_one_animal_a_tile_on_the_map() {
 /// livestock asked draws nothing; the food is the pasture's over the count (DIVSS).
 #[test]
 fn a_pasture_counts_each_attempt_and_shares_its_food() {
-    use crate::pasture::{LIVESTOCK, edge_points};
+    use crate::gathering::pasture::{LIVESTOCK, edge_points};
     let mut t = pasture_game([20.0, 20.0, 0.0], 3.0, &[1899]);
     t.streams.get(Stream::Object).set_seed(7);
     let mut e = t.streams.get(Stream::Object).clone();
@@ -743,7 +743,7 @@ fn a_dying_livestock_shows_its_dying_sprite() {
 }
 
 /// [`pasture_game`] with its three livestock made and player 1's villager 60 (class 4, radius
-/// 0.2) at `at`, the owner's [`crate::pasture::PASTURE_WORKERS`] `room`.
+/// 0.2) at `at`, the owner's [`crate::gathering::pasture::PASTURE_WORKERS`] `room`.
 fn tended_pasture(at: [f32; 3], room: f32) -> Turns {
     let mut t = pasture_game([20.0, 20.0, 0.0], 3.0, &[1899, 1900]);
     t.setup_pasture(1, 50).unwrap();
@@ -1932,7 +1932,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> Turns {
         // it takes villagers in (bit 0)
         house.building.as_mut().unwrap().garrison_type = 1;
     }
-    t.players[1].objects[0].mover = Some(crate::hunt::tests::walker());
+    t.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
     t.spatial = Spatial::with_tiles(
         [120, 120],
         crate::spatial::Tiles::new(120, 120, vec![4; 14400]),
@@ -2027,7 +2027,7 @@ fn livestock_enter_world() -> Turns {
             object_group: 3,
             ..crate::masters::Task::default()
         }],
-        moving: Some(crate::hunt::tests::walker().stats),
+        moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
     };
     for masters in &mut t.masters {
@@ -2395,7 +2395,7 @@ fn a_unit_order_drop_off_takes_any_player_s_unit() {
 #[test]
 fn the_ai_move_at_once_matches_the_one_after_the_update() {
     let mut later = sent_off_world(vec![]);
-    later.players[1].objects[0].mover = Some(crate::hunt::tests::walker());
+    later.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
     let mut now = later.clone();
     let m = crate::unit_ai::AiMove {
         point: [35.0, 80.0, 0.0],
@@ -2471,7 +2471,7 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
     };
     later.spatial.insert(9175, placed(29.5, 4, 1, 83));
     later.spatial.insert(500, placed(32.5, 9, 0, 65));
-    later.players[1].objects[0].mover = Some(crate::hunt::tests::walker());
+    later.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
     let mut now = later.clone();
     later.hunt_command(1, 0, 500).unwrap();
     let ai = now.players[1].objects[0].ai.clone().unwrap();
@@ -2667,13 +2667,13 @@ fn farm_master() -> Master {
     Master {
         id: 50,
         kind: 80,
-        class: crate::gather::FARM_CLASS,
+        class: crate::gathering::gather::FARM_CLASS,
         work_rate: 0.4,
         capacity: 15,
         default_task: Some(0),
         tasks: vec![crate::masters::Task {
-            action_type: crate::make::MAKE,
-            attribute_type: crate::make::FARM_FOOD_KIND,
+            action_type: crate::gathering::make::MAKE,
+            attribute_type: crate::gathering::make::FARM_FOOD_KIND,
             attribute_type2: 0,
             work_val1: 1.0,
             ..crate::masters::Task::default()
@@ -2746,7 +2746,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
         ..Unit::default()
     };
     let mut attributes = vec![0.0; 100];
-    attributes[crate::make::FARM_FOOD] = 175.0;
+    attributes[crate::gathering::make::FARM_FOOD] = 175.0;
     let mut t = Turns::new(
         0,
         1,
@@ -2767,7 +2767,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     assert_eq!(
         f.top_action(),
         Some(TopAction {
-            kind: crate::make::MAKE,
+            kind: crate::gathering::make::MAKE,
             state: 6
         })
     );
@@ -4035,7 +4035,7 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
 /// the villager 40 (83) and town centres 9149 and 9150 (109, one worker each); player 2 (an
 /// ally) holds the foundation 10028 (70) with one builder.
 fn teardown_world() -> Turns {
-    let walker = crate::hunt::tests::walker();
+    let walker = crate::gathering::hunt::tests::walker();
     let unit = |id, master| Unit {
         id,
         position: [10.5, 10.5, 0.0],
@@ -4258,8 +4258,8 @@ fn deaths_world() -> Turns {
         my_pasture: -1,
         ..Unit::default()
     };
-    let chop = crate::hunt::tests::hunting(50).task;
-    let tree = crate::gather::Resource {
+    let chop = crate::gathering::hunt::tests::hunting(50).task;
+    let tree = crate::gathering::gather::Resource {
         id: 50,
         position: [12.5, 10.5, 0.0],
         class: 15,
@@ -4270,15 +4270,15 @@ fn deaths_world() -> Turns {
         gap: 1.0,
         radius: [0.5, 0.5],
     };
-    let rate = crate::gather::StopRate {
+    let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
         capacity: 10.0,
         productivity: 1.0,
     };
-    let gather = crate::gather::GatherAction::new(chop, &tree, false, rate).unwrap();
+    let gather = crate::gathering::gather::GatherAction::new(chop, &tree, false, rate).unwrap();
     let mut villagers = vec![dead(40), dead(41), dead(42)];
-    villagers[0].gather = Some(crate::gather::GatherAction { state: 7, ..gather });
-    villagers[1].hunt = Some(crate::hunt::tests::hunting(60));
+    villagers[0].gather = Some(crate::gathering::gather::GatherAction { state: 7, ..gather });
+    villagers[1].hunt = Some(crate::gathering::hunt::tests::hunting(60));
     villagers[2].build = Some(BuildAction {
         target: 10028,
         state: 7,
@@ -4518,7 +4518,7 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
 fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
     let mut t = deaths_world();
     t.players[0].objects[0].workers = 2;
-    let mover = crate::hunt::tests::walker();
+    let mover = crate::gathering::hunt::tests::walker();
     let walker = |id| Unit {
         id,
         position: [11.5, 10.5, 0.0],
@@ -4593,13 +4593,13 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         vec![Player::default(), Player::default()],
     );
     placeable(&mut t);
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.restriction = 0;
     let mut hunter = Unit {
         id: 40,
         position: [10.5, 10.5, 0.0],
         mover: Some(walker),
-        hunt: Some(crate::hunt::tests::hunting(-1)),
+        hunt: Some(crate::gathering::hunt::tests::hunting(-1)),
         life: Lifecycle {
             master_id: 83,
             attribute_type: 0,
@@ -4666,7 +4666,10 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     };
     assert_eq!(drop_off(&mut hunter, &mut t), Ok(Some(9149)));
     let hunt = hunter.hunt.unwrap();
-    assert_eq!((hunt.state, hunt.carry_to), (crate::hunt::DROP, 9149));
+    assert_eq!(
+        (hunt.state, hunt.carry_to),
+        (crate::gathering::hunt::DROP, 9149)
+    );
     assert_eq!(drop_off(&mut hunter, &mut t), Ok(None));
 }
 
@@ -4730,11 +4733,11 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     );
     let hunter = &mut t.players[1].objects[1];
     hunter.life.hp = 1.0;
-    hunter.hunt = Some(crate::hunt::HuntAction {
-        state: crate::hunt::SEARCH,
+    hunter.hunt = Some(crate::gathering::hunt::HuntAction {
+        state: crate::gathering::hunt::SEARCH,
         target: -1,
         carry_to: 9149,
-        ..crate::hunt::tests::hunting(-1)
+        ..crate::gathering::hunt::tests::hunting(-1)
     });
     let mut gone = t.clone();
     gone.spatial = Spatial::default();
@@ -4760,11 +4763,11 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     failed.spatial = t.spatial.clone();
     let hunter = &mut failed.players[1].objects[1];
     hunter.life.hp = 1.0;
-    hunter.hunt = Some(crate::hunt::HuntAction {
-        state: crate::hunt::FAILED,
+    hunter.hunt = Some(crate::gathering::hunt::HuntAction {
+        state: crate::gathering::hunt::FAILED,
         target: -1,
         carry_to: 9149,
-        ..crate::hunt::tests::hunting(-1)
+        ..crate::gathering::hunt::tests::hunting(-1)
     });
     failed.tick(100);
     assert_eq!(failed.players[1].unsupported, None);
@@ -5242,7 +5245,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
 /// flag 1 to the new owner).
 #[test]
 fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.velocity = None;
     walker.stats.speed = 0.8;
     walker.stats.stand_speed = 0.5;
@@ -5836,7 +5839,7 @@ fn a_unit_due_to_spawn_stops_the_player() {
 /// that level's waypoint; nothing without a path at the top or without movement state.
 #[test]
 fn a_unit_s_patrol_information_is_its_top_path_and_waypoint() {
-    let mut m = crate::hunt::tests::walker();
+    let mut m = crate::gathering::hunt::tests::walker();
     let mut walked = crate::movement::PathData::without_path();
     walked.has_path = true;
     walked.points = vec![[1.0, 0.0, 1.0], [2.0, 0.0, 1.0]];
@@ -5869,7 +5872,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         flags: 7,
     };
     let mut u = Unit {
-        mover: Some(crate::hunt::tests::walker()),
+        mover: Some(crate::gathering::hunt::tests::walker()),
         ai: Some(UnitAi {
             patrol_path: Some(saved),
             patrol_waypoint: 1,
@@ -6527,7 +6530,7 @@ fn mover_unit(id: i32) -> Unit {
     Unit {
         id,
         position: [10.5, 10.5, 0.0],
-        mover: Some(crate::hunt::tests::walker()),
+        mover: Some(crate::gathering::hunt::tests::walker()),
         my_pasture: -1,
         life: Lifecycle {
             master_id: 83,
@@ -6629,7 +6632,7 @@ fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
 /// unit's list keeps the Gather (425780724's villager in update 5526, its Gather idle).
 #[test]
 fn an_ai_move_hands_the_point_to_the_gather() {
-    let task = crate::hunt::HuntTask {
+    let task = crate::gathering::hunt::HuntTask {
         id: 2,
         range: 0.25,
         resource: 17,
@@ -6638,7 +6641,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
         productivity: -1,
         kind4: -1,
     };
-    let bush = crate::gather::Resource {
+    let bush = crate::gathering::gather::Resource {
         id: 28222,
         position: [23.5, 93.5, 0.0],
         class: 7,
@@ -6649,20 +6652,25 @@ fn an_ai_move_hands_the_point_to_the_gather() {
         gap: 1.2,
         radius: [0.5, 0.5],
     };
-    let rate = crate::gather::StopRate {
+    let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
         capacity: 10.0,
         productivity: 1.0,
     };
-    let mut gather = crate::gather::GatherAction::new(task, &bush, false, rate).unwrap();
-    gather.state = crate::gather::IDLE;
+    let mut gather = crate::gathering::gather::GatherAction::new(task, &bush, false, rate).unwrap();
+    gather.state = crate::gathering::gather::IDLE;
     let mut u = mover_unit(31139);
     u.gather = Some(gather);
     assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![28222]));
     let g = u.gather.expect("the Gather stays");
     assert_eq!(
         (g.state, g.target, g.point, g.walk_to),
-        (crate::gather::MOVED, -1, AI_POINT, Some(AI_POINT))
+        (
+            crate::gathering::gather::MOVED,
+            -1,
+            AI_POINT,
+            Some(AI_POINT)
+        )
     );
     assert_eq!(g.move_to, Some(MoveTo::Start));
     assert_eq!(u.move_to, None);
@@ -6675,15 +6683,15 @@ fn an_ai_move_hands_the_point_to_the_gather() {
 #[test]
 fn an_ai_move_hands_the_point_to_a_hunt_without_a_work_range() {
     let mut u = mover_unit(47);
-    let mut hunt = crate::hunt::tests::hunting(9149);
-    hunt.state = crate::hunt::IDLE;
+    let mut hunt = crate::gathering::hunt::tests::hunting(9149);
+    hunt.state = crate::gathering::hunt::IDLE;
     hunt.carry_to = 9150;
     u.hunt = Some(hunt);
     assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![9149]));
     let h = u.hunt.expect("the Hunt stays");
     assert_eq!(
         (h.state, h.target, h.carry_to, h.point, h.target_class),
-        (crate::hunt::WALK_POINT, -1, 9150, AI_POINT, -1)
+        (crate::gathering::hunt::WALK_POINT, -1, 9150, AI_POINT, -1)
     );
     assert_eq!(u.move_to, None);
     let mut u = mover_unit(47);
@@ -6903,7 +6911,7 @@ fn scout_attack_on(
     };
     let players = [gaia];
     let mut rng = Well512::default();
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.speed = 1.2;
     let mut unit = Unit {
         id: 123,
@@ -7081,7 +7089,7 @@ fn attack_by(
     };
     let players = [gaia];
     let mut rng = Well512::default();
-    let mut walker = crate::hunt::tests::walker();
+    let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.speed = 1.2;
     let mut unit = Unit {
         id: 123,
@@ -7196,7 +7204,7 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
         weapon_range: 0.5,
         reload: 2.0,
         storage,
-        moving: Some(crate::hunt::tests::walker().stats),
+        moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
     };
     let (unit, attacked, adds, promotions) = attack_by(
@@ -7669,7 +7677,7 @@ fn farm_masters() -> Masters {
 /// Player 1's farmer 9175 back at its farm spot (30.5, 88.5), its walk back (state 0xf2)
 /// ended; the player holds 100 wood.
 fn reseed_world() -> Turns {
-    let task = crate::hunt::HuntTask {
+    let task = crate::gathering::hunt::HuntTask {
         id: 2,
         range: 0.25,
         resource: 15,
@@ -7678,7 +7686,7 @@ fn reseed_world() -> Turns {
         productivity: -1,
         kind4: -1,
     };
-    let farm = crate::gather::Resource {
+    let farm = crate::gathering::gather::Resource {
         id: 12557,
         position: [30.5, 88.5, 0.0],
         class: 49,
@@ -7689,16 +7697,16 @@ fn reseed_world() -> Turns {
         gap: 0.0,
         radius: [1.5, 1.5],
     };
-    let rate = crate::gather::StopRate {
+    let rate = crate::gathering::gather::StopRate {
         work_rate: 1.0,
         capacity: 10.0,
         productivity: 1.0,
     };
-    let gather = crate::gather::GatherAction {
-        state: crate::gather::RESEED_WALK,
+    let gather = crate::gathering::gather::GatherAction {
+        state: crate::gathering::gather::RESEED_WALK,
         target: -1,
         worked: true,
-        ..crate::gather::GatherAction::new(task, &farm, false, rate).unwrap()
+        ..crate::gathering::gather::GatherAction::new(task, &farm, false, rate).unwrap()
     };
     let farmer = Unit {
         id: 9175,
@@ -7792,7 +7800,7 @@ fn without_a_farm_to_make_the_farmer_idles() {
     assert_eq!(p.objects.len(), 1);
     assert_eq!(
         p.objects[0].gather.map(|g| g.state),
-        Some(crate::gather::IDLE)
+        Some(crate::gathering::gather::IDLE)
     );
     let mut t = reseed_world();
     t.players[1].auto_farm_queue = true;
@@ -7803,7 +7811,7 @@ fn without_a_farm_to_make_the_farmer_idles() {
     assert_eq!((p.objects.len(), p.resources[1]), (1, 59.0));
     assert_eq!(
         p.objects[0].gather.map(|g| g.state),
-        Some(crate::gather::DONE)
+        Some(crate::gathering::gather::DONE)
     );
 }
 
@@ -8115,7 +8123,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         hit_chance,
         max_volley,
         volley_spread: [spread, spread, 0.0],
-        moving: Some(crate::hunt::tests::walker().stats),
+        moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
     };
     let arrow = Master {
@@ -8131,7 +8139,7 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
         recyclable: true,
         moving: Some(crate::movement::MoveStats {
             speed: 7.0,
-            ..crate::hunt::tests::walker().stats
+            ..crate::gathering::hunt::tests::walker().stats
         }),
         missile_stats: Some(crate::combat::missile::MissileStats {
             speed: 7.0,

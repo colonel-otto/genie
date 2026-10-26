@@ -277,7 +277,7 @@ impl Unit {
     /// wait for a foundation. The Artifact's (`FUN_140aaca30`) takes it
     /// ([`Artifact::take_point`]; a `MoveTo` it walked goes and stops the unit); the Hunt's
     /// (`FUN_140ac52c0`, [`HuntAction::take_move`]) unless its task has a work range; the
-    /// Gather's (`0x140a8b740`, [`crate::gather::GatherAction::take_move`]) always. The Hunt and
+    /// Gather's (`0x140a8b740`, [`crate::gathering::gather::GatherAction::take_move`]) always. The Hunt and
     /// the Gather let their target go (slot 0x68 with none), which [`PointMove::Taken`] names
     /// for the caller to release; their second target stays.
     ///
@@ -287,7 +287,7 @@ impl Unit {
     /// model.
     ///
     /// [`Artifact::take_point`]: crate::artifact::Artifact::take_point
-    /// [`HuntAction::take_move`]: crate::hunt::HuntAction::take_move
+    /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
     pub(crate) fn head_takes_point(
         &mut self,
         point: [f32; 3],
@@ -308,7 +308,7 @@ impl Unit {
                 | crate::garrison::ENTER
                 | crate::fly::FLY
                 | crate::combat::missile::MISSILE
-                | crate::make::MAKE
+                | crate::gathering::make::MAKE
                 | crate::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(PointMove::Declined),
             Some(crate::artifact::ARTIFACT_TYPE) => {
@@ -326,7 +326,7 @@ impl Unit {
                 // the Enter it held lets its building or transport go
                 Ok(PointMove::Taken(gone.released))
             }
-            Some(crate::hunt::HUNT) => {
+            Some(crate::gathering::hunt::HUNT) => {
                 let (held, my_pasture) = (self.life.amount, self.my_pasture);
                 let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
                     return Err(GenieError::unsupported(
@@ -339,7 +339,7 @@ impl Unit {
                 }
                 Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
             }
-            Some(crate::gather::GATHER) => {
+            Some(crate::gathering::gather::GATHER) => {
                 let held = self.life.amount;
                 let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut())
                 else {

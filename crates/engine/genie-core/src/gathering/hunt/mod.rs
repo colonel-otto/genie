@@ -15,6 +15,7 @@ mod gathering;
 mod herding;
 mod sprites;
 mod start;
+pub(crate) mod unit;
 mod update;
 
 #[cfg(test)]

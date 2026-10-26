@@ -397,7 +397,7 @@ impl<'u> UnitView<'u> {
     ///
     /// [`UnitView::hunt_now`]: crate::turn::view::UnitView::hunt_now
     pub(super) fn hunt_plan(&self, target: i32) -> Result<HuntPlan<'u>, GenieError> {
-        use crate::hunt::Quarry;
+        use crate::gathering::hunt::Quarry;
         use crate::tasks::Diplomacy;
         let (player, others, foreign) = (self.player, self.others, self.foreign);
         let unit = &*self.unit;

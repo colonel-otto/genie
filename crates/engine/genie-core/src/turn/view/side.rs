@@ -820,12 +820,12 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// command: slot 0x820's task with any filter and the switch ([`task_search`]; the switch,
     /// slot 0x90 with 0, [`crate::order::switch_master`], its owner's part after the update) and a
     /// Hunt on it ([`Turns::start_hunt`]'s: the target taken, slot 0x178; the actions cleared;
-    /// [`crate::hunt::HuntAction::start`] with the target as it stands, its master among the
+    /// [`crate::gathering::hunt::HuntAction::start`] with the target as it stands, its master among the
     /// unit's drop sites, the engagement and arms; an Attack that starts arrived shows the idle
     /// sprite; a load to its own drop site takes the target as the second and lets it go as the
     /// first).
     fn hunt_now(&mut self, target: i32, ai: &UnitAi) -> Result<(), GenieError> {
-        use crate::hunt::{HuntAction, HuntTask};
+        use crate::gathering::hunt::{HuntAction, HuntTask};
         let player = self.player;
         let own_class = self
             .masters

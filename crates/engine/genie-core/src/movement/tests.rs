@@ -960,7 +960,7 @@ fn a_nan_waypoint_distance_is_short() {
 /// direction is NaN, not the forward vector.
 #[test]
 fn a_direction_of_a_nan_length_is_nan() {
-    let m = crate::hunt::tests::walker();
+    let m = crate::gathering::hunt::tests::walker();
     let d = m.direction_to([f32::NAN, 0.0, 0.0], [1.0, 0.0, 1.0]);
     assert!(d[0].is_nan() && d[2].is_nan());
     let d = m.direction_to([0.0, 0.0, 0.0], [3.0, 0.0, 4.0]);

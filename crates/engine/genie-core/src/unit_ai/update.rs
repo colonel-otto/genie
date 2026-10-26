@@ -473,7 +473,7 @@ impl UnitAi {
         let kind = civilian_kind(class);
         let found = if kind == -1 {
             // "Calling closest object for a farm that's alive": the friends' pass over
-            let spared = if n.p[1] == i32::from(crate::gather::FARM_CLASS) {
+            let spared = if n.p[1] == i32::from(crate::gathering::gather::FARM_CLASS) {
                 0
             } else {
                 -1

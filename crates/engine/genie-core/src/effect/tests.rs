@@ -757,7 +757,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
 #[test]
 fn a_speed_change_reaches_the_units_movement() {
     let mut walker = unit_of(1, 4, 25.0);
-    let mover = crate::hunt::tests::walker();
+    let mover = crate::gathering::hunt::tests::walker();
     let stats = mover.stats;
     walker.mover = Some(mover);
     let player = Player {
@@ -824,7 +824,7 @@ fn a_farm_food_change_grows_the_farms_food() {
     let mut farm = unit_of(5, 50, 480.0);
     farm.life.amount = 75.0;
     farm.construction = Some(built());
-    farm.make = Some(crate::make::MakeAction {
+    farm.make = Some(crate::gathering::make::MakeAction {
         state: 1,
         remaining: 100.0,
         total: 175.0,

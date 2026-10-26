@@ -2,7 +2,7 @@
 //! without a target.
 
 use crate::GenieError;
-use crate::hunt::{
+use crate::gathering::hunt::{
     ARRIVED, DROP, DropOff, HuntAction, Lead, PointWalker, SEARCH, Shown, asked_drop_off,
     resource_kind,
 };
@@ -12,7 +12,7 @@ use crate::move_to::{
 use crate::movement::Mover;
 
 /// What a drop-off's update did ([`HuntAction::update_drop`],
-/// [`crate::gather::GatherAction::update_drop`]).
+/// [`crate::gathering::gather::GatherAction::update_drop`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Dropped {
     /// It walks or waits.

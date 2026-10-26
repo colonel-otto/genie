@@ -425,7 +425,7 @@ mod tests {
             u
         };
         let mut walking = unit(11, 4, 2.0);
-        let mut mover = crate::hunt::tests::walker();
+        let mut mover = crate::gathering::hunt::tests::walker();
         mover.paths = vec![
             mover
                 .paths

@@ -4,22 +4,22 @@
 use crate::GenieError;
 use crate::combat::attack::set_sprite;
 use crate::combat::damage::Victim;
-use crate::gather::{
+use crate::gathering::gather::{
     DONE, FACE, FARM_CLASS, FARM_WAIT, GatherAction, Gatherer, IDLE, MOVED, Next, REGATHERED,
     RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, StopRate, VILLAGER_CLASS, WAIT_GAP, WAIT_WORKERS,
     WALK, WALK_BACK, WORK, waits_for_a_farm,
 };
-use crate::hunt::walk_sprite;
+use crate::gathering::hunt::walk_sprite;
 use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up};
 use crate::movement::Mover;
 
 impl GatherAction {
-    /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::hunt::asked_drop_off`] on the
+    /// Slot 0x78 (`FUN_140a78060`, the base action's, [`crate::gathering::hunt::asked_drop_off`] on the
     /// task's resource): true when the unit's load asks for `set_state(8)`; false for a load of
     /// another resource (the unit AI takes notify 0x21c, the caller's).
     #[must_use]
     pub fn drop_off_asked(&self, held_kind: i16, attributes: usize) -> bool {
-        crate::hunt::asked_drop_off(self.task.resource, held_kind, attributes)
+        crate::gathering::hunt::asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
     /// The teardown (`FUN_140a73fc0`) and `set_state`'s first step (`FUN_140a98620`): the

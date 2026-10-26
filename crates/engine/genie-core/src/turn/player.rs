@@ -95,7 +95,7 @@ pub struct Player {
     /// `autoFishTrapQueue` (`+0x1425`, saved), which GAME 0x13 flips (`FUN_141618270`).
     pub auto_fishtrap_queue: bool,
     /// `farm_queue_count` (`+0x141c`, saved): the farms and pastures the mill's queue paid for
-    /// (GAME 0xd and 0x15 buy, 0xe and 0x16 take back, [`crate::farm_queue`]).
+    /// (GAME 0xd and 0x15 buy, 0xe and 0x16 take back, [`crate::gathering::farm_queue`]).
     pub farm_queue: i32,
     /// `fishTrapQueueCount` (`+0x1420`, saved): the fish traps the dock's queue paid for (GAME
     /// 0x11 buys, 0x12 takes back).

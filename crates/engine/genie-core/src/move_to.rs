@@ -709,7 +709,7 @@ mod tests {
         let mut world = Spatial::new([120, 120]);
         world.insert(9185, sheep(30.4, 40.0));
         world.insert(9186, sheep(35.0, 40.0));
-        let mut walker = crate::hunt::tests::walker();
+        let mut walker = crate::gathering::hunt::tests::walker();
         walker.stats.stand_speed = 0.5;
         // footprints 0 apart: within ARRIVED, state 1 with the standing sprite's speed
         let me = [30.0, 40.0, 0.0];
@@ -717,7 +717,7 @@ mod tests {
         assert!(at_hand.arrived());
         assert_eq!(walker.stats.speed, 0.5);
         // 4.6 tiles on it starts walking (state 3)
-        let mut walker = crate::hunt::tests::walker();
+        let mut walker = crate::gathering::hunt::tests::walker();
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, false).unwrap();
         assert!(!far.arrived());
         assert_eq!(walker.stats.speed, 0.8);
@@ -741,7 +741,7 @@ mod tests {
         );
         let me = [30.0, 40.0, 0.0];
         let to = |target, livestock, speed: f32| {
-            let mut walker = crate::hunt::tests::walker();
+            let mut walker = crate::gathering::hunt::tests::walker();
             walker.stats.speed = speed;
             MoveToAction::to_object(&world, me, &mut walker, target, 0.0, (false, livestock))
                 .unwrap()
@@ -774,7 +774,7 @@ mod tests {
     fn a_move_to_a_point_starts_unless_its_unit_has_no_speed() {
         let point = [12.0, 34.0, 1.0];
         let start = |speed: f32| {
-            let mut walker = crate::hunt::tests::walker();
+            let mut walker = crate::gathering::hunt::tests::walker();
             walker.stats.speed = speed;
             walker.stats.stand_speed = 0.25;
             let m = MoveToAction::to_point(point, 0.5, true, Some(&mut walker));
@@ -811,7 +811,7 @@ mod tests {
         let mut world = Spatial::new([120, 120]);
         world.insert(9186, sheep(35.0, 40.0));
         let me = [30.0, 40.0, 0.0];
-        let mut walker = crate::hunt::tests::walker();
+        let mut walker = crate::gathering::hunt::tests::walker();
         walker.stats.stand_speed = 0.5;
         let far = MoveToAction::to_target(&world, me, &mut walker, 9186, 0.0, false).unwrap();
         assert_eq!(walker.move_to_point, Some([35.0, 40.0, 0.0]));

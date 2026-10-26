@@ -124,7 +124,7 @@ impl Unit {
             None => Ok(true),
             Some(crate::artifact::ARTIFACT_TYPE) => Ok(self.artifact.is_some_and(|a| a.idle())),
             // a Make has no target, but its point (`+0x38`) is the base constructor's 0.0
-            Some(crate::move_to::MOVE_TO | crate::make::MAKE) => Ok(false),
+            Some(crate::move_to::MOVE_TO | crate::gathering::make::MAKE) => Ok(false),
             Some(_) => Err(GenieError::unsupported(
                 "slots 0x190 and 0x288 of an action the slice does not model",
             )),
@@ -152,8 +152,14 @@ impl Unit {
                 .map(|m| action(crate::move_to::MOVE_TO, m.state.number()))
         })
         .or_else(|| self.fly.map(|f| action(crate::fly::FLY, f.state)))
-        .or_else(|| self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
-        .or_else(|| self.gather.map(|g| action(crate::gather::GATHER, g.state)))
+        .or_else(|| {
+            self.hunt
+                .map(|h| action(crate::gathering::hunt::HUNT, h.state))
+        })
+        .or_else(|| {
+            self.gather
+                .map(|g| action(crate::gathering::gather::GATHER, g.state))
+        })
         .or_else(|| {
             self.attack
                 .map(|a| action(crate::combat::attack::ATTACK, a.state))
@@ -173,7 +179,10 @@ impl Unit {
                 .and_then(|m| m.action.as_ref())
                 .map(|a| action(crate::combat::missile::MISSILE, a.state))
         })
-        .or_else(|| self.make.map(|m| action(crate::make::MAKE, m.state)))
+        .or_else(|| {
+            self.make
+                .map(|m| action(crate::gathering::make::MAKE, m.state))
+        })
         .or_else(|| {
             self.wait_solidify
                 .map(|w| action(crate::wait_solidify::WAIT_SOLIDIFY, w.state))
@@ -214,8 +223,8 @@ impl Unit {
     #[must_use]
     pub fn top_second_target(&self) -> Option<i32> {
         match self.top_action_kind()? {
-            crate::hunt::HUNT => self.hunt.map(|h| h.carry_to),
-            crate::gather::GATHER => self.gather.map(|g| g.carry_to),
+            crate::gathering::hunt::HUNT => self.hunt.map(|h| h.carry_to),
+            crate::gathering::gather::GATHER => self.gather.map(|g| g.carry_to),
             crate::combat::missile::MISSILE => self
                 .missile
                 .as_ref()

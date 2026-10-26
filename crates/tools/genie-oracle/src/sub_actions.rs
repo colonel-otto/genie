@@ -437,7 +437,7 @@ pub(super) fn default_task(
         DefaultAction::Type(genie_core::fly::FLY) => {
             fly_task(objects, civ, masters, s.master_obj).map(|t| Some(DefaultStart::Fly(t)))
         }
-        DefaultAction::Type(genie_core::make::MAKE) => Ok(Some(DefaultStart::Make)),
+        DefaultAction::Type(genie_core::gathering::make::MAKE) => Ok(Some(DefaultStart::Make)),
         // the action list's factory (`FUN_140aca4b0`, then the RGE one `FUN_140a97e00`) makes
         // no action of the other types: the default task starts nothing (wild animals' Explore,
         // type 6)

@@ -3,11 +3,11 @@
 use crate::GenieError;
 use crate::combat::attack::set_sprite;
 use crate::combat::damage::Victim;
-use crate::gather::{
+use crate::gathering::gather::{
     DROP_REACH, FACE, FARM_CLASS, FARM_FOOD_KIND, GatherAction, Gatherer, LAST_BIT, Next,
     REGATHERED, REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,
 };
-use crate::hunt::Dropped;
+use crate::gathering::hunt::Dropped;
 use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, target_moved, walk_or_give_up};
 
 /// Food and the food kinds (0, 15 to 17): a gatherer keeps a load of one for another.
@@ -124,7 +124,7 @@ impl GatherAction {
     /// State 8's update (case 7): the `MoveTo` to the drop site walks; once it ended (its update
     /// in state 1 returns 1: the list deletes it and its destructor stops the unit) the load goes
     /// to the player at a drop site that takes it (`site`) within `DROP_REACH` (squared): the
-    /// resource of what the unit carries ([`crate::hunt::resource_kind`]), which the caller adds;
+    /// resource of what the unit carries ([`crate::gathering::hunt::resource_kind`]), which the caller adds;
     /// the unit carries nothing after (`FUN_14119d310` with −1). Returns the resource and the
     /// amount; the caller lets the drop site go and walks back to the target (`set_state(4)`).
     /// Not modelled: the timer's wait, a `MoveTo` that waits or failed (codes 3 to 5), a site that
@@ -138,7 +138,7 @@ impl GatherAction {
         mut walk: Walk<'_>,
         g: &mut Gatherer<'_>,
         attributes: usize,
-        site: Option<crate::hunt::DropOff>,
+        site: Option<crate::gathering::hunt::DropOff>,
     ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
             self.timer += walk.dt;
@@ -223,7 +223,7 @@ impl GatherAction {
             self.random_wait(g);
             return Ok(Dropped::Going);
         }
-        let kind = crate::hunt::resource_kind(*g.held_kind, attributes);
+        let kind = crate::gathering::hunt::resource_kind(*g.held_kind, attributes);
         let amount = *g.held;
         *g.held_kind = -1;
         *g.held = 0.0;

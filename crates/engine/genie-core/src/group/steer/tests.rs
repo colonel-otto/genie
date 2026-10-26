@@ -12,7 +12,7 @@ const DT: f32 = 0.069;
 /// hunt tests' walker (top speed 0.8, radius 0.2, turn rate the largest), whose walking,
 /// running and standing speeds are 0.9, 1.5 and 0.
 fn member(id: i32, x: f32, y: f32) -> Unit {
-    let mut mover = crate::hunt::tests::walker();
+    let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = [x, y, 0.0];
     mover.stats.walk_speed = 0.9;
     mover.stats.run_speed = 1.5;

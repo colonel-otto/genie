@@ -1,7 +1,7 @@
 //! A gather's retarget and take, the quarry, a gather's and a hunt's start.
 
 use crate::combat::attack::{Arms, Engagement};
-use crate::hunt::{HuntAction, HuntTask, Quarry};
+use crate::gathering::hunt::{HuntAction, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::order::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
 use crate::tasks::Diplomacy;
@@ -10,7 +10,7 @@ use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER};
 
 impl Turns {
     /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target
-    /// ([`crate::gather::GatherAction::retarget`]): false when it does not take it, for a building
+    /// ([`crate::gathering::gather::GatherAction::retarget`]): false when it does not take it, for a building
     /// (type 80 without object flag 0x20) other than a farm, so the work command makes a new
     /// action. The targets that changed are let go (slot 0x180) and taken (slot 0x178). Not
     /// modelled: a building packing or unpacking (its top action 0x7d), a foundation or master
@@ -46,7 +46,7 @@ impl Turns {
                         "a gather retargeted to its player's foundation (its build)",
                     ));
                 }
-                if tm.class != crate::gather::FARM_CLASS {
+                if tm.class != crate::gathering::gather::FARM_CLASS {
                     return Ok(false);
                 }
             }
@@ -54,7 +54,7 @@ impl Turns {
         let (t_at, t_radius) = (t.position, tm.radius);
         let unit = &self.players[player].objects[idx];
         let me = self.master_of(player, unit.life.master_id)?;
-        let resource = crate::gather::Resource {
+        let resource = crate::gathering::gather::Resource {
             id: target,
             position: t_at,
             class: tm.class,
@@ -71,10 +71,10 @@ impl Turns {
         // a stop farm's time per stop: the gatherer's work rate (its master's plus its powerup),
         // capacity and the task's productivity attribute (none: 1.0)
         let productivity = unit.gather.map_or(-1, |g| g.task.productivity);
-        let rate = crate::gather::StopRate {
+        let rate = crate::gathering::gather::StopRate {
             work_rate: unit.work_rate_powerup + me.work_rate,
             capacity: f32::from(me.capacity),
-            productivity: crate::gather::productivity_of(
+            productivity: crate::gathering::gather::productivity_of(
                 productivity,
                 &self.players[player].attributes,
             ),
@@ -99,7 +99,7 @@ impl Turns {
         )?;
         let (new_target, new_second) = (gather.target, gather.carry_to);
         // a farm another farmer works: taken (slot 0x68) and let go again (set_state 11)
-        let waits = gather.state == crate::gather::WALK_BACK && new_target == -1;
+        let waits = gather.state == crate::gathering::gather::WALK_BACK && new_target == -1;
         for (old, new) in [(old_target, new_target), (old_second, new_second)] {
             if old != new {
                 if old != -1 {
@@ -117,7 +117,7 @@ impl Turns {
         Ok(took)
     }
 
-    /// The Gather's slot 0x40 (`0x140a8b740`, [`crate::gather::GatherAction::take_move`]) on a
+    /// The Gather's slot 0x40 (`0x140a8b740`, [`crate::gathering::gather::GatherAction::take_move`]) on a
     /// move of the gatherer at `idx` to `point` toward the object `target`: always taken; the
     /// targets that changed are let go and taken.
     pub(crate) fn gather_take_move(
@@ -134,7 +134,7 @@ impl Turns {
         let (at, radius) = (o.position, tm.radius);
         let unit = &self.players[player].objects[idx];
         let me = self.master_of(player, unit.life.master_id)?;
-        let moved_to = Some(crate::gather::MoveTarget {
+        let moved_to = Some(crate::gathering::gather::MoveTarget {
             id: target,
             player: tp,
             drop_site: self.drops_at_main(player, idx, target)?,
@@ -197,7 +197,7 @@ impl Turns {
     /// [`Turns::release`]), and a drop site it carries its load to becomes its second target
     /// (`FUN_140a7a190`: [`Turns::take`]).
     ///
-    /// [`HuntAction::take_move`]: crate::hunt::HuntAction::take_move
+    /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
     pub(crate) fn hunt_take_move(
         &mut self,
         player: usize,
@@ -268,11 +268,11 @@ impl Turns {
     }
 
     /// The work command's Gather (its task of action type 5, the base factory `FUN_140a97e00`
-    /// case 5 with a target): the constructor ([`crate::gather::GatherAction::new`]) takes its
+    /// case 5 with a target): the constructor ([`crate::gathering::gather::GatherAction::new`]) takes its
     /// target (slot 0x178); the unit AI's notify (slot 0x828: the gather order and action, the
     /// target with its class, the work's point; `notify`'s point and clearing, None for the gather
     /// command's, which has none); the install (slot 0x808) clears the action list and starts the
-    /// Gather ([`crate::gather::GatherAction::start`]). A load to its own drop site takes the
+    /// Gather ([`crate::gathering::gather::GatherAction::start`]). A load to its own drop site takes the
     /// target as the second target, then lets it go as the first.
     pub(super) fn start_gather(
         &mut self,
@@ -289,7 +289,7 @@ impl Turns {
         let (t_at, t_radius) = (t.position, tm.radius);
         let unit = &self.players[player].objects[idx];
         let me = self.master_of(player, unit.life.master_id)?;
-        let resource = crate::gather::Resource {
+        let resource = crate::gathering::gather::Resource {
             id: target,
             position: t_at,
             class: tm.class,
@@ -311,16 +311,20 @@ impl Turns {
         };
         // the constructor's time per stop: the gatherer's work rate (its master's plus its
         // powerup, slot 0x6e8), capacity and productivity attribute (none: 1.0)
-        let rate = crate::gather::StopRate {
+        let rate = crate::gathering::gather::StopRate {
             work_rate: unit.work_rate_powerup + me.work_rate,
             capacity: f32::from(me.capacity),
-            productivity: crate::gather::productivity_of(
+            productivity: crate::gathering::gather::productivity_of(
                 task.productivity,
                 &self.players[player].attributes,
             ),
         };
-        let mut gather =
-            crate::gather::GatherAction::new(task, &resource, self.settings.walkable_farms, rate)?;
+        let mut gather = crate::gathering::gather::GatherAction::new(
+            task,
+            &resource,
+            self.settings.walkable_farms,
+            rate,
+        )?;
         self.take(target, self.releaser(player, idx));
         let unit = &mut self.players[player].objects[idx];
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {

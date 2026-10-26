@@ -7,7 +7,7 @@ fn a_top_target_below_minus_one_is_none() {
     use crate::turn::{Player, Unit};
     let hunter = |target: i32| Unit {
         id: 5,
-        hunt: Some(crate::hunt::tests::hunting(target)),
+        hunt: Some(crate::gathering::hunt::tests::hunting(target)),
         ..Unit::default()
     };
     let held = |id: i32| Unit {

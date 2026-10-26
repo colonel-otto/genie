@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::set_sprite;
 use crate::combat::damage::Victim;
-use crate::gather::{
+use crate::gathering::gather::{
     DONE, FARM_CLASS, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, Gatherer, IDLE,
     NO_GATHER_POINT, Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,
 };

@@ -705,7 +705,7 @@ mod tests {
     fn a_walk_the_motion_step_gives_up_at_its_start_fails() {
         let mut a = Artifact::new(false);
         let _ = a.take_point([28.5, 93.5, 0.0]);
-        let mut mover = crate::hunt::tests::walker();
+        let mut mover = crate::gathering::hunt::tests::walker();
         mover.stats.speed = 0.0;
         let mut world = crate::spatial::Spatial::new([120, 120]);
         let walk = Walk {

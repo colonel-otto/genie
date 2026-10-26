@@ -8,23 +8,23 @@ use crate::unit_ai::GenieError;
 
 /// The unit a drop-site search goes from ([`drop_site_search`]).
 pub(crate) struct Seeker<'a, 'b> {
-    pub(in crate::turn) me: Me,
-    pub(in crate::turn) mover: &'a Mover,
-    pub(in crate::turn) plan: &'a mut Planning<'b>,
-    pub(in crate::turn) spatial: &'a Spatial,
-    pub(in crate::turn) zones: &'a crate::pathing::zones::ZoneMap,
+    pub(crate) me: Me,
+    pub(crate) mover: &'a Mover,
+    pub(crate) plan: &'a mut Planning<'b>,
+    pub(crate) spatial: &'a Spatial,
+    pub(crate) zones: &'a crate::pathing::zones::ZoneMap,
     /// Its master's class.
-    pub(in crate::turn) class: i16,
+    pub(crate) class: i16,
     /// The nearest is by path (`FUN_1411671e0`'s argument 9: a human player's); else by the
     /// squared distance of the centres, of the objects the planner reaches.
-    pub(in crate::turn) by_path: bool,
+    pub(crate) by_path: bool,
 }
 
 /// The fishing ship's class (21), whose drop-site search passes over the zones.
-pub(super) const FISHING_SHIP: i16 = 21;
+pub(crate) const FISHING_SHIP: i16 = 21;
 /// The squared footprint gap within which a fishing ship counts a drop site its path does not
 /// reach (`DAT_14330ebcc`).
-pub(super) const FISHING_REACH: f32 = crate::math::image::turn::FISHING_REACH;
+pub(crate) const FISHING_REACH: f32 = crate::math::image::turn::FISHING_REACH;
 
 /// A search for drop sites (`FUN_1411671e0`: in state 2, not at work on the action type `at_work`
 /// (its argument 8: an object of type 40 up whose top action is of that type, or `0x7c` too for
@@ -44,12 +44,7 @@ pub(super) const FISHING_REACH: f32 = crate::math::image::turn::FISHING_REACH;
 /// Whether the planner's result `code` lets a drop site count in [`drop_site_search`]: a path
 /// to it or into its range (below 2), or for a fishing ship seeking by path one the planner
 /// does not reach (3 and up) whose footprint lies `near` ([`FISHING_REACH`]).
-pub(in crate::turn) fn counted(
-    code: u8,
-    by_path: bool,
-    fishing: bool,
-    near: impl FnOnce() -> bool,
-) -> bool {
+pub(crate) fn counted(code: u8, by_path: bool, fishing: bool, near: impl FnOnce() -> bool) -> bool {
     code < 2 || (by_path && fishing && 3 <= code && near())
 }
 
@@ -135,21 +130,21 @@ pub(crate) fn drop_site_search(
 
 /// The action types the Gather's drop-site searches pass over (`FUN_1411671e0`'s argument 8
 /// `0x7d`, which takes `0x7c` with it).
-pub(in crate::turn) const UNPACK: i16 = 0x7d;
-pub(super) const PACK: i16 = 0x7c;
+pub(crate) const UNPACK: i16 = 0x7d;
+pub(crate) const PACK: i16 = 0x7c;
 
 /// A drop site within this path length is measured by the short path too (`FUN_1411671e0`,
 /// `DAT_142eb0f4c`).
-pub(in crate::turn) const SHORT_DROP_REACH: f32 = crate::math::image::turn::SHORT_DROP_REACH;
+pub(crate) const SHORT_DROP_REACH: f32 = crate::math::image::turn::SHORT_DROP_REACH;
 /// The range the short path measures a drop site within (`DAT_142eb5690`).
-pub(in crate::turn) const DROP_REACH: f32 = crate::math::image::turn::DROP_REACH;
+pub(crate) const DROP_REACH: f32 = crate::math::image::turn::DROP_REACH;
 /// The distance a drop-site search starts from (`DAT_14330ebf4`, the largest float).
-pub(in crate::turn) const NO_DROP_DISTANCE: f32 = crate::math::image::turn::NO_DROP_DISTANCE;
+pub(crate) const NO_DROP_DISTANCE: f32 = crate::math::image::turn::NO_DROP_DISTANCE;
 
 /// `FUN_1411671e0` with a point and no unit: of the player's live objects (`others`, in list
 /// order) of a master in `sites` and in state 2, the one nearest `at` (its centre's squared
 /// distance, the first of equals), with that distance.
-pub(in crate::turn) fn nearest_drop_site(
+pub(crate) fn nearest_drop_site(
     others: &[Unit],
     sites: &[i16],
     at: [f32; 3],

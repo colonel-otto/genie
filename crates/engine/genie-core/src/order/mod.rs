@@ -3,7 +3,7 @@
 //! command it gives (object slot 37, `FUN_14106ff70`, through slot 0x128 `FUN_141211b80` and slot
 //! 0x7e8 `FUN_141227190`): the unit takes the master and the task the task finder picks for the
 //! target ([`crate::tasks`]), and the task's action replaces its action list. The slice builds
-//! the Hunt action ([`crate::hunt`]); other actions, orders to points and unit groups are not
+//! the Hunt action ([`crate::gathering::hunt`]); other actions, orders to points and unit groups are not
 //! modelled yet.
 
 use crate::masters::Master;
@@ -29,7 +29,7 @@ mod work;
 pub(crate) use self::actions::{SwitchWorld, switch_master};
 use self::points::{centroid, follow_axis, follow_spread, grid_point, offset_point};
 #[cfg(test)]
-use crate::hunt::HUNT;
+use crate::gathering::hunt::HUNT;
 #[cfg(test)]
 use crate::unit_ai::MOVE_ORDER;
 
