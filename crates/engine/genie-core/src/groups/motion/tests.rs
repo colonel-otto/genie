@@ -4,7 +4,8 @@ use super::*;
 /// recycled object's negative id gives -1 like none.
 #[test]
 fn a_top_target_below_minus_one_is_none() {
-    use crate::world::{Player, Unit};
+    use crate::objects::unit::Unit;
+    use crate::world::Player;
     let hunter = |target: i32| Unit {
         id: 5,
         hunt: Some(crate::gathering::hunt::tests::hunting(target)),

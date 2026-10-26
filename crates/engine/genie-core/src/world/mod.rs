@@ -24,23 +24,12 @@ pub(crate) mod lookups;
 pub(crate) mod player;
 
 use crate::GenieError;
-pub use crate::commands::game::GameCommand;
-pub use crate::commands::{Command, GatherPoint, Order};
 use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::objects::masters::Masters;
 use crate::objects::sprite::Graphic;
-pub(crate) use crate::objects::unit::EnterWorld;
-pub use crate::objects::unit::Unit;
-pub(crate) use crate::objects::unit::{PointMove, annexes_of, give_load};
 use crate::pathing::Pathing;
 use crate::unit_ai::task_finder::DropSite;
-pub(crate) use crate::unit_ai::world_view::DropWorld;
-pub(crate) use crate::unit_ai::world_view::{EnterOrder, RepairOrder};
-pub(crate) use crate::world::lookups::{
-    DEAD_COPY_TYPES, Releaser, World, built_death, combat_dies, count_class, drop_site_search,
-    farm_bonus, forget_resource, refund_of, released, storage_leaves, victim_of,
-};
 pub(crate) use crate::world::player::NO_ATTRIBUTE;
 pub use crate::world::player::{AiSettings, Formations, Player};
 
@@ -52,13 +41,13 @@ mod world_update;
 
 pub use self::forced::GameState;
 pub use self::world_update::{scenario_mode, standard_mode};
-pub(crate) use crate::construction::gates::gate_units;
 
 /// What every building holds of a gate: `mGateLocked` (`+0xc7c`; a lock also sets the
 /// building's last move time, [`Mover::last_move`], slot 0x670, `FUN_1411dba30`), `mFirstUpdate`
 /// (`+0xc80`) and `mCloseTimer` (`+0xc84`) ([`Unit::gate_update`]).
 ///
 /// [`Mover::last_move`]: crate::movement::Mover::last_move
+/// [`Unit::gate_update`]: crate::objects::unit::Unit::gate_update
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Gate {
     /// `mGateLocked`: the gate is locked.

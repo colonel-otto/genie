@@ -1,12 +1,12 @@
 //! A new object on the ground, the command check's units and the mule cart's searches.
 
+use crate::GenieError;
+use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::unit::Unit;
-use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::Turns;
-use crate::world::lookups::{ResourceWorld, closest_resource_of};
 
 impl Turns {
     /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,

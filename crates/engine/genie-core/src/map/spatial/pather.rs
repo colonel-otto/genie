@@ -1,7 +1,7 @@
 //! The old short pather's queries, the map's edge records and the segment tests.
 
+use crate::GenieError;
 use crate::map::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
-use crate::unit_ai::GenieError;
 
 /// A record a pather query met (an entry of `FUN_141051900`'s list): an object's (its id) or a
 /// temporary tile record's (`x << 12 | y | 0xf0000000`, `FUN_1410510c0`), with its box

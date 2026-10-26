@@ -1,4 +1,6 @@
 use super::*;
+use crate::commands::GatherPoint;
+use crate::objects::unit::Unit;
 
 /// records/425906646's update 1883: a TC's gather point on a tree that is gone; its new
 /// villager takes the closest tree of Gaia's (by centre) within its sight of the point,

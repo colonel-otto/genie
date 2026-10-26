@@ -98,11 +98,11 @@ impl Turns {
     /// animated or moving object's `FUN_141071d80`); an action object's (`FUN_14106d170`) is
     /// false while its group (`+0x6d0`, by id) is held and not at rest ([`Turns::at_rest`],
     /// `FUN_141007a50`) or its unit AI has queued orders (`+0x18`), else whether its top action
-    /// may be interrupted ([`crate::world::Unit::interruptible`]).
+    /// may be interrupted ([`crate::objects::unit::Unit::interruptible`]).
     ///
     /// # Errors
     ///
-    /// An object of a master the slice does not have, and what [`crate::world::Unit::interruptible`] does not
+    /// An object of a master the slice does not have, and what [`crate::objects::unit::Unit::interruptible`] does not
     /// model.
     pub(super) fn may_interrupt(&self, object: WorldObject<'_>) -> Result<bool, GenieError> {
         let WorldObject::Unit(p, u) = object else {

@@ -1,13 +1,12 @@
 //! `ClosestResourceObject` (`FUN_140c49760`): where it searches from and what it finds; a
 //! herded sheep.
 
+use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
-use crate::unit_ai::GenieError;
-use crate::unit_ai::world_view::Foreign;
-use crate::unit_ai::world_view::UnitView;
+use crate::unit_ai::world_view::{Foreign, UnitView};
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {

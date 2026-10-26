@@ -1,10 +1,10 @@
 //! The game's end and the players' status: RESIGN, the status setter with its defeat event
 //! and the world's victory check.
 
+use crate::GenieError;
 use crate::players::game_status::{
     BATTLE_ROYALE, Count, DEFEAT_IDS, KILLS_OF, LOST, PLAYING, STOP_AFTER_MS, WON,
 };
-use crate::unit_ai::GenieError;
 use crate::world::Turns;
 
 impl Turns {

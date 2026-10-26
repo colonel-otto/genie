@@ -626,8 +626,9 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::objects::masters::{Master, Masters};
+    use crate::objects::unit::Unit;
     use crate::vision::visibility::{Seer, Visibility};
-    use crate::world::{Player, Unit};
+    use crate::world::Player;
 
     /// A gold mine's master (it leaves ghosts), a house's and the ghosts' own.
     const MINE: i16 = 66;

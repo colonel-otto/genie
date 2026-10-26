@@ -1,12 +1,14 @@
 //! A hunter's search, its walk after a drop and its drop-off.
 
+use crate::GenieError;
+use crate::gathering::closest_resource::herded;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::unit::Unit;
-use crate::unit_ai::world_view::{Context, DropWorld};
-use crate::unit_ai::{GenieError, Search};
-use crate::world::lookups::herded;
+use crate::unit_ai::Search;
+use crate::unit_ai::world_view::DropWorld;
+use crate::world::context::Context;
 use crate::world::{SEARCH_AGAIN, SEARCH_NEEDED};
 
 impl Unit {
@@ -482,7 +484,7 @@ impl Unit {
     /// `MoveTo` to it starts ([`HuntAction::set_drop`]).
     ///
     /// [`HuntAction::set_drop`]: crate::gathering::hunt::HuntAction::set_drop
-    /// [`drop_site_search`]: crate::world::lookups::drop_site_search
+    /// [`drop_site_search`]: crate::gathering::drop_sites::drop_site_search
     pub(crate) fn hunt_drop_off(
         &mut self,
         c: &mut Context<'_>,

@@ -1,14 +1,15 @@
 //! A new building: BUILD's foundation and the building constructor, with its combat setup,
 //! its storage and its annexes.
 
+use crate::GenieError;
 use crate::construction::build::Construction;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
-use crate::unit_ai::{GenieError, UnitAi};
-use crate::world::lookups::count_class;
+use crate::unit_ai::UnitAi;
 use crate::world::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, Turns};
 
 impl Turns {

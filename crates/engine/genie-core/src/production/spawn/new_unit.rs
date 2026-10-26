@@ -1,16 +1,18 @@
 //! A made unit's spawn, the command queue it takes, its unit AI and the combat unit's
 //! constructor.
 
+use crate::GenieError;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::sprite::{ActiveSprite, Graphic};
+use crate::objects::unit::Unit;
 use crate::production::IN_PRODUCTION;
 use crate::production::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
-use crate::unit_ai::{ACTION_COMPLETED, GenieError, NewObject, Notify, UnitAi, factory_type};
+use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi, factory_type};
 use crate::vision::visibility::{Seer, capture_kind};
-use crate::world::{Turns, Unit};
+use crate::world::Turns;
 
 impl Turns {
     /// `FUN_140ad0240`: the unit of `master` spawns beside the building at `i`. The spawn point
@@ -202,7 +204,7 @@ impl Turns {
     /// match runs: `FUN_140982ff0()`'s `+0x921`, which every game's start sets, `FUN_140f1fb20`
     /// with `FUN_140980ac0`, and only its teardown `FUN_140c85fb0` clears, `FUN_140980de0`) and
     /// a villager's (class 4) attribute 248 by one, and its class counts
-    /// ([`crate::world::count_class`]). It joins its player's list last; its
+    /// ([`crate::objects::lifecycle::death_parts::count_class`]). It joins its player's list last; its
     /// index there.
     /// The static, animated and moving setups' draws (`FUN_1411a45a0`, `FUN_141072690`,
     /// `FUN_141161450`) of a new object whose current sprite is `standing` (slot 0x798: its
@@ -347,7 +349,7 @@ impl Turns {
             owner.add_attribute(248, 1.0)?;
         }
         // the combat setup's class counters (FUN_141226060)
-        crate::world::count_class(&mut owner.attributes, made, 1.0);
+        crate::objects::lifecycle::death_parts::count_class(&mut owner.attributes, made, 1.0);
         owner.objects.push(Unit {
             id,
             position,

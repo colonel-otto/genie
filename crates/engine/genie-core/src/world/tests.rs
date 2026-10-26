@@ -1,24 +1,30 @@
 use super::*;
+use crate::GenieError;
+use crate::commands::game::GameCommand;
 use crate::commands::{Command, GatherPoint, ResearchAt};
 use crate::construction::build::{BuildAction, BuildTask, Construction};
+use crate::construction::gates::gate_units;
+use crate::gathering::closest_resource::search_origin;
+use crate::gathering::gather::unit::give_load;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveTo;
-use crate::objects::lifecycle::seconds;
-use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
+use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
+use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::{Master, Masters};
-use crate::objects::unit::{LIVESTOCK, Unit, give_load, loses_actions};
+use crate::objects::release::{Releaser, released};
+use crate::objects::unit::{LIVESTOCK, PointMove, Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
+use crate::ownership::change::change_hands;
+use crate::unit_ai::task_finder::world::{
+    SideWorld, World, task_search, task_target_with, wait_progress,
+};
 use crate::unit_ai::task_finder::{Actor, Diplomacy};
-use crate::unit_ai::world_view::{Foreign, Wait, patrol_information};
-use crate::unit_ai::{BUILD_ORDER, GenieError, Notify, OWNER_CHANGED, UnitAi};
+use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
+use crate::unit_ai::{BUILD_ORDER, Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::checkpoint::TopAction;
-use crate::world::lookups::{
-    SideWorld, World, change_hands, count_class, search_origin, storage_leaves, task_search,
-    task_target_with, wait_progress,
-};
 use crate::world::player::Player;
 
 fn player(objects: Vec<Option<UnitAi>>) -> Player {
@@ -5661,7 +5667,8 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
 /// paid flag, as floats in their order.
 #[test]
 fn a_trebuchet_is_a_master_of_class_51_or_54_with_a_weapon() {
-    use crate::world::lookups::{is_trebuchet, paid_cost};
+    use crate::combat::victims::is_trebuchet;
+    use crate::combat::victims::paid_cost;
     let m = |kind, class, weapons: Vec<(i16, i16)>| Master {
         kind,
         class,
@@ -6319,7 +6326,7 @@ fn a_unit_regenerated_to_its_most_has_its_armor_back() {
 /// 2 or below 1.2e-7 in size nothing changes.
 #[test]
 fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
-    use crate::objects::unit::regeneration_rate;
+    use crate::construction::building_update::regeneration_rate;
     let berserk = Master {
         id: 692,
         kind: 70,
@@ -7972,7 +7979,7 @@ fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
 /// update 5601).
 #[test]
 fn a_fishing_ship_counts_a_near_drop_site_its_path_does_not_reach() {
-    use crate::world::lookups::counted;
+    use crate::gathering::drop_sites::counted;
     assert!(counted(0, true, false, || false));
     assert!(counted(1, false, false, || false));
     assert!(!counted(2, true, true, || true));
@@ -7989,7 +7996,7 @@ fn a_fishing_ship_counts_a_near_drop_site_its_path_does_not_reach() {
 /// master none (427445417's p4 in update 16981, 427557935's p4 in 22813).
 #[test]
 fn a_farm_foundation_lays_its_stage_terrain() {
-    use crate::objects::unit::farm_stage_terrain;
+    use crate::construction::building_update::farm_stage_terrain;
     assert_eq!(farm_stage_terrain(50, (false, 7), 0.0, 15), Some(29));
     assert_eq!(farm_stage_terrain(50, (false, 7), 7.5, 15), Some(30));
     assert_eq!(farm_stage_terrain(50, (false, 7), 15.0, 15), Some(31));

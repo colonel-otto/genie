@@ -1,11 +1,12 @@
 //! An object's leave of the world and its release by the action that held it (slot 0x180); the
 //! update's regeneration and hit point check, and a walk's pause.
 
+use crate::GenieError;
+use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
-use crate::unit_ai::{GenieError, Notify};
+use crate::unit_ai::Notify;
 use crate::world::Turns;
-use crate::world::lookups::{count_class, forget_resource};
 
 /// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
 /// update ([`released`]; the releaser's own player is allied).

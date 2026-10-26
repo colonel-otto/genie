@@ -8,4 +8,4 @@ pub mod lines;
 pub mod masters;
 pub(crate) mod release;
 pub mod sprite;
-pub(crate) mod unit;
+pub mod unit;

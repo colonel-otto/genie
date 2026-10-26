@@ -1,11 +1,13 @@
 //! The unit AI's part of the update: its surroundings, its side and its run.
 
+use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
 use crate::objects::masters::Master;
 use crate::objects::unit::{Captured, Step, Unit};
-use crate::unit_ai::world_view::{Context, OwnerView, UnitView};
-use crate::unit_ai::{Effect, GenieError, Surroundings, UnitAi};
+use crate::unit_ai::world_view::{OwnerView, UnitView};
+use crate::unit_ai::{Effect, Surroundings, UnitAi};
+use crate::world::context::Context;
 
 impl Unit {
     /// The end of [`Unit::update`] after the actions: `RGE_Action_Object::update`'s end

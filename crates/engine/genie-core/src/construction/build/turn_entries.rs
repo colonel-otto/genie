@@ -2,17 +2,17 @@
 //! building's work and completion, its storage's leave, the built object's stacking and its
 //! new objects.
 
+use crate::GenieError;
 use crate::construction::build::{
     BUILDING_TYPE, Built, CLASS_39, Completion, Construction, Site, StackUnit, WorkChain,
     show_built,
 };
 use crate::objects::masters::Master;
 use crate::orders::Place;
-use crate::unit_ai::GenieError;
 
 impl crate::world::Turns {
     /// What a built building's storage gave its owner leaves (`FUN_1411e63f0`, then
-    /// `FUN_1411e6580`, [`crate::world::storage_leaves`]) outside its update.
+    /// `FUN_1411e6580`, [`crate::objects::lifecycle::death_parts::storage_leaves`]) outside its update.
     ///
     /// # Errors
     ///
@@ -24,7 +24,7 @@ impl crate::world::Turns {
         master: &Master,
     ) -> Result<(), GenieError> {
         let (_, u) = self.object_mut(id).ok_or(NOT_HELD)?;
-        for (kind, amount) in crate::world::storage_leaves(u, master) {
+        for (kind, amount) in crate::objects::lifecycle::death_parts::storage_leaves(u, master) {
             self.players[owner].add_attribute(kind, amount)?;
         }
         Ok(())
@@ -51,7 +51,9 @@ impl crate::world::Turns {
             annexed: false,
             attribute_204: false,
             mode_680: self.mode_680,
-            farm_bonus: crate::world::farm_bonus(&self.players[owner].attributes),
+            farm_bonus: crate::objects::lifecycle::death_parts::farm_bonus(
+                &self.players[owner].attributes,
+            ),
             masters: self.masters.get(owner),
             computer: self.players[owner].computer,
             ai: u.ai.is_some(),
@@ -126,7 +128,10 @@ pub(crate) const NO_CONSTRUCTION: GenieError =
 
 /// The object at `place`, in its player's live or sleeping list (the world's table,
 /// `FUN_1415417a0`, holds both).
-pub(crate) fn held(players: &mut [crate::world::Player], place: Place) -> &mut crate::world::Unit {
+pub(crate) fn held(
+    players: &mut [crate::world::Player],
+    place: Place,
+) -> &mut crate::objects::unit::Unit {
     match place {
         Place::Live(p, i) => &mut players[p].objects[i],
         Place::Sleeping(p, i) => &mut players[p].sleeping[i],
@@ -204,7 +209,8 @@ impl crate::world::Turns {
             .any(|q| q.attributes.get(204).is_some_and(|&v| v != 0.0));
         let place = self.place(id).ok_or(NOT_HELD)?;
         let (Place::Live(p, _) | Place::Sleeping(p, _)) = place;
-        let farm_bonus = crate::world::farm_bonus(&self.players[p].attributes);
+        let farm_bonus =
+            crate::objects::lifecycle::death_parts::farm_bonus(&self.players[p].attributes);
         let computer = self.players[p].computer;
         let annexed = !self.spatial.annexes_of(id).is_empty();
         let (mode_680, now) = (self.mode_680, self.world_time);
@@ -311,10 +317,10 @@ impl crate::world::Turns {
     /// target that is the old building names the new one; a target the world no longer holds
     /// keeps the point alone, and with x or y −1 none); then the new object loses the hit points
     /// the old one lacked. Not modelled: the attacking units of the foundation the world still
-    /// holds (`+0xce0`, [`crate::world::Unit::attacking_units`]: slot 0x140 on each with the new
+    /// holds (`+0xce0`, [`crate::objects::unit::Unit::attacking_units`]: slot 0x140 on each with the new
     /// object, a repeat of the last skipped). A gate's stack gate takes the old one's lock (slot
     /// 0x670 with `+0xc7c`, [`crate::orders::lock_gate`]). The old building keeps the new
-    /// object's id (`+0xcb0`, [`crate::world::Unit::stack_made`]). Not held: the local player's
+    /// object's id (`+0xcb0`, [`crate::objects::unit::Unit::stack_made`]). Not held: the local player's
     /// tracker (`FUN_14165c2a0`, `FUN_14165c470`).
     ///
     /// # Errors
@@ -366,13 +372,13 @@ impl crate::world::Turns {
             point = gather.map(|g| {
                 let target = if g.target == building { new } else { g.target };
                 match self.object(target) {
-                    Some((_, t)) => Some(crate::world::GatherPoint {
+                    Some((_, t)) => Some(crate::commands::GatherPoint {
                         point: [t.position[0], t.position[1], 0.0],
                         target,
                         target_master: t.life.master_id,
                     }),
                     None => (g.point[0] != -1.0 && g.point[1] != -1.0).then_some(
-                        crate::world::GatherPoint {
+                        crate::commands::GatherPoint {
                             point: [g.point[0], g.point[1], 0.0],
                             target: -1,
                             target_master: -1,

@@ -1,9 +1,9 @@
 //! What a unit's actions hold: their taker, its top action, target and gait.
 
+use crate::GenieError;
 use crate::construction::build::BUILD;
 use crate::objects::masters::Master;
 use crate::objects::unit::{TAKEN_OUT, Unit};
-use crate::unit_ai::GenieError;
 use crate::world::BUILDING_KIND;
 use crate::world::checkpoint::TopAction;
 

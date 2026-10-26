@@ -30,11 +30,11 @@ use self::terrains::hill_fails;
 pub use self::terrains::{BuildSite, placement_terrains};
 pub(crate) use self::world_map::WorldMap;
 #[cfg(test)]
+use crate::GenieError;
+#[cfg(test)]
 use crate::objects::lifecycle::Lifecycle;
 #[cfg(test)]
-use crate::unit_ai::GenieError;
-#[cfg(test)]
-use crate::world::{GatherPoint, Turns, Unit};
+use crate::world::Turns;
 
 /// A unit smaller than this on both axes (`DAT_142f5d120`) steps by twice its radius plus
 /// `GAP` (`DAT_142eb5690`).

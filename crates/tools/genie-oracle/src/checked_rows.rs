@@ -2,7 +2,8 @@
 //! bit-exact equality ([`Same`]).
 
 use crate::{listed, path_level, top_action, vec3};
-use genie_core::world::{Turns, Unit};
+use genie_core::objects::unit::Unit;
+use genie_core::world::Turns;
 use genie_save::generated::world::Path;
 
 /// The rows the comparison with the game's saves reads of a player's live objects in a slice.

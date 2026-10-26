@@ -288,7 +288,7 @@ impl Turns {
             .as_deref()
             .or_else(|| self.masters.get(q).and_then(|m| m.get(u.life.master_id)))
             .ok_or(crate::construction::build::NOT_HELD)?;
-        let mut v = crate::world::victim_of(
+        let mut v = crate::combat::victims::victim_of(
             u,
             m,
             &self.players[q].attributes,

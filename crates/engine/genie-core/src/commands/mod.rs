@@ -3,13 +3,13 @@
 //!
 //! [`Turns::run`]: crate::world::Turns::run
 
+use crate::GenieError;
 use crate::orders::{Interact, MoveOrder};
-use crate::unit_ai::GenieError;
 
 mod builders;
 mod building_commands;
 pub mod delete;
-pub(crate) mod game;
+pub mod game;
 mod ground;
 mod new_building;
 mod placement;
@@ -59,7 +59,7 @@ pub enum Command {
         /// too, and the queue's orders become ready after (`FUN_140c42b60`).
         commits: bool,
         /// `+0x1c`: the frame the foundation's standing sprite takes once built (its `+0xc54`,
-        /// [`crate::world::Unit::build_frame`]).
+        /// [`crate::objects::unit::Unit::build_frame`]).
         frame: u8,
     },
     /// `BUILD_WALL` (0x69, `FUN_140e7b2e0`): a line of the player's wall foundations and its
@@ -138,7 +138,7 @@ pub enum Command {
     /// [`Turns::game`]).
     ///
     /// [`Turns::game`]: crate::world::Turns::game
-    Game(crate::world::GameCommand),
+    Game(game::GameCommand),
     /// `BUILDING_COMMAND_QUEUE` (0x2d, `0x140e64310`): the objects `ids` (at most a human
     /// player's 60) queue a step to `target` (−1 for none) or `point` ([`Turns::command_queue`]).
     ///

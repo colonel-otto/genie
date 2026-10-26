@@ -19,13 +19,13 @@ fn a_larger_slots_array_drops_the_transform_marks() {
 pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usize)]) -> Turns {
     use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
     use crate::map::terrain::{Terrain, TerrainKind};
-    let objects: Vec<crate::world::Unit> = units
+    let objects: Vec<crate::objects::unit::Unit> = units
         .iter()
         .map(|&(id, master, x, y)| {
-            let mut u = crate::world::Unit {
+            let mut u = crate::objects::unit::Unit {
                 id,
                 position: [x, y, 0.0],
-                ..crate::world::Unit::default()
+                ..crate::objects::unit::Unit::default()
             };
             u.life.master_id = master;
             u
@@ -737,9 +737,9 @@ fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
 /// Player 1 (minimum column distance 10, column-to-line 5) with unit 7 of a soldier master
 /// (type 70, category 1) in group 1 at the origin along `paths` (walked first).
 fn type_world(paths: Vec<PathData>) -> Turns {
-    let mut u = crate::world::Unit {
+    let mut u = crate::objects::unit::Unit {
         id: 7,
-        ..crate::world::Unit::default()
+        ..crate::objects::unit::Unit::default()
     };
     u.life.master_id = 4;
     let player = crate::world::Player {

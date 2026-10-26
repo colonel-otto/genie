@@ -1,11 +1,12 @@
 //! An ownership change (slot 0x70, `FUN_14120f800`): to Gaia, a building's with its
 //! foundation, annexes and garrison, and the attributes and storage it moves.
 
+use crate::GenieError;
 use crate::map::spatial::Spatial;
+use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::{LIVESTOCK, Unit};
-use crate::unit_ai::{GenieError, OWNER_CHANGED};
-use crate::world::lookups::count_class;
+use crate::unit_ai::OWNER_CHANGED;
 use crate::world::player::Player;
 use crate::world::{BUILDING_KIND, Turns};
 

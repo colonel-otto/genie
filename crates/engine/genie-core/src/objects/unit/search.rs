@@ -1,13 +1,16 @@
 //! The searches for more work and for resources, and the objects its unit AI names.
 
+use crate::GenieError;
+use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::masters::Master;
+use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
-use crate::unit_ai::world_view::{Context, OwnerView};
-use crate::unit_ai::{GenieError, Notify};
-use crate::world::lookups::{Releaser, ResourceWorld, closest_resource_of};
+use crate::unit_ai::Notify;
+use crate::unit_ai::world_view::OwnerView;
+use crate::world::context::Context;
 
 impl Unit {
     /// A notify the unit posts to its own unit AI (slot 0x328).

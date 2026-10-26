@@ -1,6 +1,7 @@
 //! State 8: a builder that carries something walks to a drop site first ([`DropSearch`],
 //! [`DropStart`]).
 
+use crate::GenieError;
 use crate::construction::build::{
     ARRIVED, BUILDER_UNMOVING, BuildAction, BuildStep, Builder, DONE, DROP, DROP_REACH, DROP_WAIT,
     DROPPED_ORDERS, NO_TARGET_POINT, Site, VILLAGER,
@@ -9,7 +10,6 @@ use crate::movement::footprint_gap;
 use crate::movement::move_to::{
     Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
 };
-use crate::unit_ai::GenieError;
 
 /// What the caller's search gives `set_state(8)` ([`BuildAction::set_drop`]).
 #[derive(Clone, Copy, Debug, PartialEq)]

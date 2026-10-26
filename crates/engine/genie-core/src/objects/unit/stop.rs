@@ -1,13 +1,15 @@
 //! A unit's stops: its actions torn down or cleared, its standing sprite, an action's effects
 //! applied.
 
+use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::objects::masters::Masters;
+use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
-use crate::unit_ai::world_view::{AiWork, Context};
-use crate::unit_ai::{Effect, GenieError};
-use crate::world::lookups::Releaser;
+use crate::unit_ai::Effect;
+use crate::unit_ai::world_view::AiWork;
+use crate::world::context::Context;
 
 impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])

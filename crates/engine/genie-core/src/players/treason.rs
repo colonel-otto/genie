@@ -93,7 +93,8 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::objects::lifecycle::Lifecycle;
-    use crate::world::{Player, Unit};
+    use crate::objects::unit::Unit;
+    use crate::world::Player;
 
     /// Gaia and three players; player 1 holds 500 gold and is allied with 3.
     fn world() -> Turns {

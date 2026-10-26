@@ -617,7 +617,8 @@ mod tests {
     }
 
     fn world() -> crate::world::Turns {
-        use crate::world::{Player, Turns, Unit};
+        use crate::objects::unit::Unit;
+        use crate::world::{Player, Turns};
         let unit = |id: i32, master: i16, progress: Option<f32>| {
             let mut u = Unit {
                 id,

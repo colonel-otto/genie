@@ -1,12 +1,13 @@
 //! The hunt the unit AI commands while it runs ([`crate::unit_ai::UnitSide::hunt_now`] through
 //! its view, [`UnitView`]): `HuntObject`'s unit part at once and its plan.
 
+use crate::GenieError;
 use crate::map::spatial::Placed;
 use crate::objects::release::Releaser;
+use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
-use crate::unit_ai::{GenieError, UnitAi};
 
 /// What [`UnitView::start_hunt_now`] hunts by ([`UnitView::hunt_plan`]): the task, the master
 /// the unit switches to (none to keep its own), its own master, the quarry and the target's

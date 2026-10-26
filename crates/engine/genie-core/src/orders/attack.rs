@@ -1,8 +1,8 @@
 //! An attack's start, a hunt's and an action's retarget.
 
+use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::orders::BUILDING;
-use crate::unit_ai::GenieError;
 use crate::world::Turns;
 
 impl Turns {
@@ -108,7 +108,7 @@ impl Turns {
         let own = {
             let u = &self.players[player].objects[idx];
             let terrain = self.spatial.terrain.as_ref();
-            crate::world::victim_of(
+            crate::combat::victims::victim_of(
                 u,
                 master,
                 &self.players[player].attributes,

@@ -1,12 +1,12 @@
 //! The repair and enter commands of the unit AI and the auto scout's area.
 
+use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning};
 use crate::objects::unit::Unit;
-use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::Actor;
+use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
 use crate::unit_ai::world_view::{AiStart, EnterOrder, RepairOrder, UnitView};
-use crate::world::lookups::{SideWorld, task_search, task_target_with};
 
 impl UnitView<'_> {
     /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the

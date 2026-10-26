@@ -1,9 +1,9 @@
 //! What the task finder reads of the world: the relations, the drop sites, a wait's progress,
 //! a target's state and the search of slot 0x820.
 
+use crate::GenieError;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
-use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::world_view::Foreign;
 use crate::world::player::Player;

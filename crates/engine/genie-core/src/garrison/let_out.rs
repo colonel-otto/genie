@@ -215,7 +215,7 @@ impl Turns {
         class: i16,
         (point, gather, bid, work_on): (
             [f32; 2],
-            Option<crate::world::GatherPoint>,
+            Option<crate::commands::GatherPoint>,
             i32,
             Option<i32>,
         ),
@@ -292,7 +292,7 @@ impl Turns {
         (made, at): (&Master, [f32; 3]),
         rest: (
             [f32; 2],
-            Option<crate::world::GatherPoint>,
+            Option<crate::commands::GatherPoint>,
             i32,
             Option<i32>,
         ),

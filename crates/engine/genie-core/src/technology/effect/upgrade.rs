@@ -4,9 +4,10 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::{Master, master_type};
+use crate::objects::unit::Unit;
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
-use crate::world::{Turns, Unit};
+use crate::world::Turns;
 
 impl Turns {
     /// Slot 0x1a0 (`FUN_14160e410`) of player `p`: master `from` upgrades to `to` by `mode`
@@ -149,7 +150,7 @@ impl Turns {
         }
         if u.dead_master.is_none() && 0 <= old.death_spawns[0] {
             u.dead_master = dead
-                .filter(|d| crate::world::DEAD_COPY_TYPES.contains(&d.kind))
+                .filter(|d| crate::ownership::change::DEAD_COPY_TYPES.contains(&d.kind))
                 .map(Box::new);
         }
     }

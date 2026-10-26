@@ -4,11 +4,11 @@
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::objects::masters::Masters;
+use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
 use crate::unit_ai::task_finder::DropSite;
-use crate::world::lookups::Releaser;
 use crate::world::player::Player;
 
 mod commands;
@@ -23,7 +23,7 @@ use self::world_picker::attacks;
 pub(crate) use self::world_picker::{WorldPicker, patrol_information};
 #[cfg(test)]
 use crate::unit_ai::UnitAi;
-pub(crate) use crate::world::context::{Context, ObjectOutputs};
+use crate::world::context::Context;
 
 /// What a tick's update of one object needs from the world.
 /// What a hunt's drop-off ([`Unit::drop_off_in`]) reads besides its unit: the owner's masters,

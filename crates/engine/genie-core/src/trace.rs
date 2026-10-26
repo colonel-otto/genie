@@ -28,7 +28,7 @@
 //!   stream's draws part from the game's.
 
 use crate::GenieError;
-use crate::world::Unit;
+use crate::objects::unit::Unit;
 
 /// The target of the update, player and object spans and the command events.
 pub const UPDATE: &str = "genie_core::update";
@@ -228,8 +228,9 @@ impl Watch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::Command;
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
-    use crate::world::{Command, Player, Turns};
+    use crate::world::{Player, Turns};
     use std::fmt::Write;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};

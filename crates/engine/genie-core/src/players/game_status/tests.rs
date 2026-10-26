@@ -1,8 +1,9 @@
 use super::*;
 use crate::objects::masters::{Master, Masters};
+use crate::objects::unit::Unit;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
 use crate::unit_ai::UnitAi;
-use crate::world::{Player, Unit};
+use crate::world::Player;
 
 /// An entry of `count` villagers of master `master` that paid `food` each.
 fn villager(master: i16, count: i16, food: f32) -> Entry {

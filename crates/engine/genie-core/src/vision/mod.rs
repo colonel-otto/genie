@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(flares(&t), []);
         // the masks are the rebuilt ones even where they were not
         assert_eq!(t.spatial.vision[2], [0x2000_0014, 0x2000_0014_0000_0000]);
-        t.players[1].objects.push(crate::world::Unit {
+        t.players[1].objects.push(crate::objects::unit::Unit {
             id: 50,
             position: [7.0, 8.0, 0.0],
             life: crate::objects::lifecycle::Lifecycle {
@@ -241,7 +241,7 @@ mod tests {
                 state: 2,
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
-            ..crate::world::Unit::default()
+            ..crate::objects::unit::Unit::default()
         });
         t.tick_with(50, &[]);
         assert_eq!(flares(&t), [(100, [7.0, 8.0, 0.0])]);

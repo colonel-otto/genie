@@ -26,7 +26,7 @@ pub struct Candidate {
     pub position: [f32; 3],
     /// `+0x790`, `parent_pasture_id` (−1 for none).
     pub pasture: i32,
-    /// `+0x689` is 0 ([`crate::world::Unit::untargetable`]).
+    /// `+0x689` is 0 ([`crate::objects::unit::Unit::untargetable`]).
     pub untargetable: bool,
     /// `+0x308`, `attribute_type_held`.
     pub attribute: i16,

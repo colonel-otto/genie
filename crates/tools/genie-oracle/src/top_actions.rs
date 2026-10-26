@@ -5,8 +5,8 @@ use crate::{
     saved_sprite,
 };
 use genie_core::GenieError;
+use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
-use genie_core::world::Unit;
 use genie_save::generated::world::{PlayerObjects, RgeStaticObject};
 
 /// The top action of a saved object as the slice models it: the Artifact action (107), the
@@ -25,8 +25,9 @@ pub(super) fn saved_actions(
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::objects::sprite::Graphic>>,
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
-    use genie_core::construction::build::{BUILD, BuildAction, MoveTo};
+    use genie_core::construction::build::{BUILD, BuildAction};
     use genie_core::movement::fly::{FLY, Fly};
+    use genie_core::movement::move_to::MoveTo;
     use genie_core::movement::move_to::{MOVE_TO, MoveToAction};
     let move_to_state = |state: u8| match state {
         1 => Ok(MoveTo::Arrived),

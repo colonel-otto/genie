@@ -1,10 +1,11 @@
 //! An artifact's and a herd's take, an order's cancel and a unit's order.
 
+use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
+use crate::objects::unit::Unit;
 use crate::orders::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
-use crate::unit_ai::GenieError;
-use crate::world::{Turns, Unit};
+use crate::world::Turns;
 
 impl Turns {
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
@@ -252,7 +253,7 @@ impl Turns {
                 let mut unit =
                     std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
                 let player = &self.players[p];
-                let world = crate::world::DropWorld {
+                let world = crate::unit_ai::world_view::DropWorld {
                     masters: self.masters.get(p),
                     spatial: &self.spatial,
                     zones: &mut self.zones,
@@ -329,7 +330,7 @@ impl Turns {
             }
             let mut unit = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
             let player = &self.players[p];
-            let world = crate::world::DropWorld {
+            let world = crate::unit_ai::world_view::DropWorld {
                 masters: self.masters.get(p),
                 spatial: &self.spatial,
                 zones: &mut self.zones,

@@ -684,7 +684,8 @@ mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
-    use crate::world::{Player, Unit};
+    use crate::objects::unit::Unit;
+    use crate::world::Player;
 
     /// Slot 0x238 (`FUN_14108d9b0`): the weapon range, plus `charge_event` for a ready charge of
     /// type 6 or 7 that works on the target (here every class, −1); without the charge ready, of

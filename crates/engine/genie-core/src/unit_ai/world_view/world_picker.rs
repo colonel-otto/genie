@@ -1,12 +1,12 @@
 //! The world as `bestUnitToAttack` and the attack tests read it ([`WorldPicker`]).
 
+use crate::GenieError;
+use crate::combat::victims::victim_of;
 use crate::map::spatial::Spatial;
 use crate::movement::Mover;
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
-use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;
-use crate::world::lookups::victim_of;
 
 /// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0 (`COMISS`), from +0.
 pub(super) fn attacks(m: &crate::objects::masters::Master) -> f32 {

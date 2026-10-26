@@ -1,12 +1,14 @@
 //! A gather's retarget and take, the quarry, a gather's and a hunt's start.
 
+use crate::GenieError;
 use crate::combat::attack::{Arms, Engagement};
 use crate::gathering::hunt::{HuntAction, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER};
-use crate::world::{Turns, World};
+use crate::unit_ai::task_finder::world::World;
+use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER};
+use crate::world::Turns;
 
 impl Turns {
     /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target

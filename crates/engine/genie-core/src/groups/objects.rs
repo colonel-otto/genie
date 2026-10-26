@@ -12,7 +12,7 @@ use crate::groups::motion;
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum WorldObject<'a> {
     /// An object of player `.0`'s live or sleeping list.
-    Unit(usize, &'a crate::world::Unit),
+    Unit(usize, &'a crate::objects::unit::Unit),
     /// A ghost of player `.0`'s doppelganger list (type 25, its master `243`).
     Ghost(usize, &'a crate::vision::ghost::Ghost),
 }

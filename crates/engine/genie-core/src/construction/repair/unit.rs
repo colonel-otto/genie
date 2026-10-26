@@ -1,13 +1,15 @@
 //! The repair part of the update and the unit's attackers and seen target.
 
+use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::masters::Master;
+use crate::objects::release::release_own;
 use crate::objects::unit::{PaidAttributes, Unit};
-use crate::unit_ai::world_view::{Context, RepairWrite};
-use crate::unit_ai::{AiMove, GenieError};
-use crate::world::lookups::release_own;
+use crate::unit_ai::AiMove;
+use crate::unit_ai::world_view::RepairWrite;
+use crate::world::context::Context;
 
 impl Unit {
     /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it reads of its

@@ -8,8 +8,9 @@ use crate::GenieError;
 use crate::math::rng::{Stream, Well512};
 use crate::objects::masters::{Master, Task, master_type};
 use crate::objects::sprite::Graphic;
+use crate::objects::unit::Unit;
 use crate::orders::Place;
-use crate::world::{Turns, Unit};
+use crate::world::Turns;
 
 /// A master's hit points this near 0 give no share (`ABS(x) <= 1.1920929e-07`).
 const NO_HIT_POINTS: f32 = f32::EPSILON;
@@ -202,7 +203,7 @@ impl Turns {
     /// - a moving object (`FUN_14114cb80`) showing `old`'s walking or running sprite shows
     ///   `new`'s;
     /// - the static object (`FUN_141186580`): without `keep` a combat object leaves its class
-    ///   counters ([`crate::world::count_class`] with −1) and a villager's load goes to its
+    ///   counters ([`crate::objects::lifecycle::death_parts::count_class`] with −1) and a villager's load goes to its
     ///   player (slot 0xf8 with 1 and 1, the foods as food; the statistics are not
     ///   simulation); on the map in state 2 its sight goes and comes with `new`'s line of sight
     ///   (slots 0x1d8 and 0x1d0); its hit points take their share of `new`'s (`old`'s through
@@ -278,7 +279,11 @@ impl Turns {
         // the static object's part
         if !keep {
             if master_type::COMBAT <= kind {
-                crate::world::count_class(&mut self.players[p].attributes, old, -1.0);
+                crate::objects::lifecycle::death_parts::count_class(
+                    &mut self.players[p].attributes,
+                    old,
+                    -1.0,
+                );
             }
             let u = self.object_at(place);
             if master_type::COMBAT <= kind
@@ -293,7 +298,7 @@ impl Turns {
                 };
                 let amount = u.life.amount;
                 let mut adds = Vec::new();
-                crate::world::give_load(
+                crate::gathering::gather::unit::give_load(
                     (&self.spatial.relations, self.players[p].sharing),
                     p,
                     &mut adds,
@@ -380,7 +385,11 @@ impl Turns {
         if !keep {
             self.object_at_mut(place).life.master_id = new.id;
             if master_type::COMBAT <= kind {
-                crate::world::count_class(&mut self.players[p].attributes, new, 1.0);
+                crate::objects::lifecycle::death_parts::count_class(
+                    &mut self.players[p].attributes,
+                    new,
+                    1.0,
+                );
             }
         }
         if class_changed {

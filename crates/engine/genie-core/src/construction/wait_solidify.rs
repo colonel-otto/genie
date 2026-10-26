@@ -11,8 +11,8 @@
 //! base one (`FUN_140a73fc0`), which lets no target go: the constructor leaves the base's target
 //! (`+0x20`, `+0x30`) unset and keeps the foundation's id at `+0x68` instead.
 
+use crate::GenieError;
 use crate::objects::masters::Task;
-use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
 use crate::unit_ai::world_view::{AiStart, UnitView, Wait};

@@ -272,7 +272,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     );
     assert_eq!(
         (build.move_to, build.added),
-        (Some(crate::construction::build::MoveTo::Start), false)
+        (Some(crate::movement::move_to::MoveTo::Start), false)
     );
     assert_eq!(
         t.players[0].objects[1].construction.map(|k| k.builders),

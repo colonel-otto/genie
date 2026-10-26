@@ -1,12 +1,13 @@
 //! A position's change, the sight check and the unit AI's searches: the closest object and the
 //! best unit to attack.
 
+use crate::GenieError;
 use crate::map::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FARMER_CLASS, FISH_TRAP, FarmLook, Filter,
     LIVESTOCK_CLASS, PASTURE_CLASS, PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED,
     Spatial, TESTED_KINDS, TRAPPERS, players_seen, record_meets_segment, tile_record_id,
 };
-use crate::unit_ai::{Found, GenieError, Pick, Search};
+use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
 

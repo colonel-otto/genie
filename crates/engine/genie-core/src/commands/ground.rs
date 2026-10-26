@@ -1,12 +1,13 @@
 //! A new building's ground: the units on its foundation sent off, its terrain, the footprint
 //! clearing and its place.
 
+use crate::GenieError;
 use crate::map::spatial::Placed;
+use crate::objects::lifecycle::death_parts::clear_look_of;
 use crate::objects::masters::Master;
-use crate::unit_ai::{GenieError, Notify};
+use crate::unit_ai::Notify;
 use crate::vision::visibility::{BuildingSight, Seer, capture_kind};
 use crate::world::Turns;
-use crate::world::lookups::clear_look_of;
 
 impl Turns {
     /// `FUN_14123bb20`'s sending off (with `DAT_1439e60e2` 1) of the units on `foundation`'s

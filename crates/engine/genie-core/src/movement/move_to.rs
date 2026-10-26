@@ -482,7 +482,7 @@ impl MoveToAction {
 
     /// Its start ended it (state 1 at its target, or 13 for a unit without speed), whose
     /// `set_state` (`0x140aa29e0`, not quiet) shows the master's standing sprite and clears the
-    /// unit's `+0x7b8`: the caller's ([`crate::world::Unit::shows_standing_sprite`]).
+    /// unit's `+0x7b8`: the caller's ([`crate::objects::unit::Unit::shows_standing_sprite`]).
     #[must_use]
     pub const fn shows_standing(&self) -> bool {
         matches!(self.state, MoveTo::Arrived | MoveTo::Failed)

@@ -1,8 +1,8 @@
 //! The artifact's owner search, an ownership change, vision and sight, ghosts and the standable
 //! spots.
 
+use crate::GenieError;
 use crate::map::spatial::{BLOCKED, Placed, Spatial};
-use crate::unit_ai::GenieError;
 use crate::vision::visibility::Visibility;
 
 impl Spatial {

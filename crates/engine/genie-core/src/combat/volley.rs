@@ -1,18 +1,19 @@
 //! A unit's strikes back and its volleys: the missiles it fires and launches.
 
+use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Master;
+use crate::objects::release::Releaser;
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
-use crate::unit_ai::world_view::Context;
-use crate::unit_ai::{ACTION_EXECUTED, GenieError, Notify};
+use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
-use crate::world::lookups::Releaser;
+use crate::world::context::Context;
 
 impl Unit {
     /// The unit's own part of its hit, written back: what a retaliation or reflected damage left

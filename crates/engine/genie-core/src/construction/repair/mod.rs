@@ -10,8 +10,8 @@
 //! master's cost ([`crate::production::pay`]) and heals it (`FUN_141193b30`); the caller runs it
 //! ([`RepairView::repair`]), since it reaches other objects and the player's resources.
 
+use crate::GenieError;
 use crate::movement::move_to::{MoveTo, MoveWait};
-use crate::unit_ai::GenieError;
 
 mod action;
 mod payment;

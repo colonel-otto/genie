@@ -376,12 +376,14 @@ pub(super) fn production(
 }
 
 /// A building's gather point, if it has one (`gather_point_exists`).
-pub(super) fn gather_point(object: &genie_save::Object) -> Option<genie_core::world::GatherPoint> {
+pub(super) fn gather_point(
+    object: &genie_save::Object,
+) -> Option<genie_core::commands::GatherPoint> {
     let b = object
         .tribe_building_object
         .as_deref()
         .filter(|b| b.gather_point_exists != 0)?;
-    Some(genie_core::world::GatherPoint {
+    Some(genie_core::commands::GatherPoint {
         point: [b.gather_point_x, b.gather_point_y, b.gather_point_z],
         target: b.gather_point_target,
         target_master: b.gather_point_target_master,

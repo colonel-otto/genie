@@ -1,11 +1,11 @@
 //! PATROL, the attack move and their sweep, and the group the splitter keeps.
 
+use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::orders::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };
-use crate::unit_ai::GenieError;
 use crate::world::Turns;
 
 impl Turns {

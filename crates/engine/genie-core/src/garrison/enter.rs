@@ -71,7 +71,7 @@ impl Turns {
         Ok(true)
     }
 
-    /// The unit's enter command its unit AI gave ([`crate::world::EnterOrder`]), after the
+    /// The unit's enter command its unit AI gave ([`crate::unit_ai::world_view::EnterOrder`]), after the
     /// update: the master switch (slot 0x90 with 0, [`Turns::change_master`]), then the Enter
     /// ([`Turns::enter_with`]).
     ///
@@ -82,7 +82,7 @@ impl Turns {
         &mut self,
         player: usize,
         idx: usize,
-        order: crate::world::EnterOrder,
+        order: crate::unit_ai::world_view::EnterOrder,
     ) -> Result<(), GenieError> {
         if let Some(master) = order.switch {
             self.change_master(player, idx, master)?;
@@ -338,7 +338,7 @@ impl Turns {
         self.move_aside(p, i, walk)
     }
 
-    /// The enter at the Enter's start ([`crate::world::Unit::enter_building`] into its target,
+    /// The enter at the Enter's start ([`crate::objects::unit::Unit::enter_building`] into its target,
     /// any player's live object, then the start's own `set_state(1)`); the load it gives goes to
     /// the owner's attributes at once.
     pub(super) fn enter_now(
@@ -358,13 +358,13 @@ impl Turns {
         };
         let mut unit = std::mem::replace(
             &mut self.players[player].objects[idx],
-            crate::world::Unit::taken_out(),
+            crate::objects::unit::Unit::taken_out(),
         );
         let mut adds = Vec::new();
         let result = (|| {
             let building = &self.players[tp].objects[ti];
             let owner = &self.players[player];
-            let mut w = crate::world::EnterWorld {
+            let mut w = crate::garrison::unit::EnterWorld {
                 spatial: &mut self.spatial,
                 pathing: &mut self.pathing,
                 masters: self.masters.get(player),
@@ -406,7 +406,7 @@ impl Turns {
 
     /// The unit at `idx` of player `player` goes into `target` at once, its slot 0x1a0 forced
     /// (`FUN_141212e10` with 1: `FUN_1411921d0` passes over the room test, slot 0x198;
-    /// [`crate::world::Unit::go_inside`]): no load given, no notify, no state change. The
+    /// [`crate::objects::unit::Unit::go_inside`]): no load given, no notify, no state change. The
     /// building's list takes it and its volleys its share.
     pub(crate) fn enter_forced(
         &mut self,
@@ -425,14 +425,14 @@ impl Turns {
             .clone();
         let mut unit = std::mem::replace(
             &mut self.players[player].objects[idx],
-            crate::world::Unit::taken_out(),
+            crate::objects::unit::Unit::taken_out(),
         );
         let mut adds = Vec::new();
         let result: Result<_, GenieError> = (|| {
             let building = &self.players[tp].objects[ti];
             let owner = &self.players[player];
             let masters = self.masters.get(player).ok_or(NO_MASTERS)?;
-            let mut w = crate::world::EnterWorld {
+            let mut w = crate::garrison::unit::EnterWorld {
                 spatial: &mut self.spatial,
                 pathing: &mut self.pathing,
                 masters: Some(masters),

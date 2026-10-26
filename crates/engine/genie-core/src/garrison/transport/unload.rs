@@ -75,7 +75,7 @@ impl crate::world::Turns {
     }
 
     /// The Transport of player `p`'s object at `i` takes a move to `point` (its slot 8,
-    /// [`crate::world::Unit::transport_sail`]).
+    /// [`crate::objects::unit::Unit::transport_sail`]).
     ///
     /// # Errors
     ///
@@ -96,7 +96,7 @@ impl crate::world::Turns {
 
     /// What a state change of the Transport of player `p`'s object at `i` leaves ([`Changed`]):
     /// the unit stops (its `MoveTo`'s teardown, slot 0x5d0), then takes its standing sprite (slot
-    /// 0x68, [`crate::world::Unit::show_standing`]).
+    /// 0x68, [`crate::objects::unit::Unit::show_standing`]).
     pub(super) fn transport_changed(
         &mut self,
         p: usize,

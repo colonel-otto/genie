@@ -2,10 +2,11 @@
 //! that forces it on the world.
 
 use crate::GenieError;
+use crate::combat::volley::same_members;
 use crate::movement::Mover;
-use crate::objects::unit::{Unit, same_members};
+use crate::objects::lifecycle::death_parts::forget_resource;
+use crate::objects::unit::Unit;
 use crate::world::Turns;
-use crate::world::lookups::forget_resource;
 
 /// The game's state after a tick, for the oracle's forced replay (dev only: the oracle reads it
 /// from the tick oracle's saves, genie-core never reads the game): the frame seed and every

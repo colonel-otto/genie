@@ -150,7 +150,7 @@ pub fn walled_off(
 /// [`crate::movement::Mover::move_to_point`]; a Transport's point. An action the slice does not
 /// hold has neither; another no point the slice keeps.
 pub(crate) fn meeting_target(
-    t: &crate::world::Unit,
+    t: &crate::objects::unit::Unit,
     tm: &Master,
     room: bool,
 ) -> Result<MeetingTarget, GenieError> {
@@ -281,8 +281,8 @@ pub(crate) fn enter_view(
     spatial: &crate::map::spatial::Spatial,
     zones: &mut crate::pathing::zones::Zones,
     masters: &[Masters],
-    unit: &crate::world::Unit,
-    (t, tm, room): (&crate::world::Unit, &Master, bool),
+    unit: &crate::objects::unit::Unit,
+    (t, tm, room): (&crate::objects::unit::Unit, &Master, bool),
     range: f32,
 ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
     let building = tm.kind == BUILDING;
@@ -328,7 +328,7 @@ pub(crate) fn enter_view(
 /// [`ENTER_NEAR`] of the point's tile (the point truncated), [`crate::movement::Mover::reaches`]
 /// from where it last moved to; one without movement state does not.
 pub(crate) fn ship_reaches(
-    ship: &crate::world::Unit,
+    ship: &crate::objects::unit::Unit,
     world: &crate::map::spatial::Spatial,
     plan: &mut crate::movement::Planning<'_>,
     to: [f32; 3],

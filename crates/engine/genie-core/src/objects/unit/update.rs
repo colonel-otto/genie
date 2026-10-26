@@ -1,28 +1,32 @@
 //! A unit's update on its owner's turn, action by action.
 
+use crate::GenieError;
 use crate::combat::attack::Strike;
+use crate::combat::victims::victim_of;
+use crate::combat::volley::{Aimed, armed};
 use crate::construction::build::{Builder, Completion, Site};
+use crate::gathering::drop_sites::nearest_drop_site;
+use crate::gathering::gather::unit::give_load;
 use crate::gathering::hunt::{Gatherer, HuntSprites};
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, Mover, footprint_gap_squared};
 use crate::objects::lifecycle::Class;
+use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus, forget_resource};
 use crate::objects::masters::Master;
+use crate::objects::release::release_own;
 use crate::objects::unit::{
-    AiResume, Aimed, Captured, Step, Unit, armed, give_load, hunt_walk_sprite, loses_actions,
-    second_target_checked,
+    Captured, Step, Unit, hunt_walk_sprite, loses_actions, second_target_checked,
 };
 use crate::ownership::artifact::{Artifact, Handover};
 use crate::unit_ai::task_finder::Actor;
-use crate::unit_ai::world_view::Context;
+use crate::unit_ai::task_finder::world::{state_of, wait_progress};
+use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_EXECUTED, BUILD_ACTION, BUILD_ORDER, GenieError, TARGET_MOVED, UnitAi,
+    ACTION_COMPLETED, ACTION_EXECUTED, BUILD_ACTION, BUILD_ORDER, TARGET_MOVED, UnitAi,
 };
-use crate::world::lookups::{
-    clear_look_of, farm_bonus, forget_resource, nearest_drop_site, release_own, state_of,
-    victim_of, wait_progress,
-};
+use crate::world::context::Context;
 use crate::world::{
     BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_AGAIN, SEARCH_NEEDED, SPEED_EPSILON, TREE_NEAR,
     TREE_SEARCH_WITHIN,

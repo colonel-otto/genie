@@ -1,11 +1,11 @@
 //! The master's placement test (slot 0x50): the objects near a candidate, BUILD's placement
 //! test and the spawn's.
 
+use crate::GenieError;
 use crate::production::spawn::{
     BUILDING, BuildSite, CLASS_51, CLASS_54, FARM, GATE, INSIDE, PASSABLE, REACH, RELIC, TREE,
     Tested, WALL, hill_fails, placement_terrains,
 };
-use crate::unit_ai::GenieError;
 
 /// An object near a candidate, as the placement test and the blocker test read it.
 #[derive(Clone, Copy, Debug, PartialEq)]

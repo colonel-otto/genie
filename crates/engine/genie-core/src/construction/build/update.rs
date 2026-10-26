@@ -1,6 +1,7 @@
 //! The Build action's start (state 4 toward the foundation) and its update, which runs the
 //! action's state; the AI's build orders whose foundation is gone.
 
+use crate::GenieError;
 use crate::construction::build::{
     ARRIVED, AfterWork, BUILD_ORDER, BUILDER_UNMOVING, BuildAction, BuildStep, BuildTask, Builder,
     CLASS_39, CLEAR, DONE, DROP, FAILED, FINISHED, HALTED, IDLE, Load, MASTER_621, MASTER_1889,
@@ -9,7 +10,7 @@ use crate::construction::build::{
 use crate::movement::move_to::{
     Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
 };
-use crate::unit_ai::{GenieError, UnitAi};
+use crate::unit_ai::UnitAi;
 
 impl BuildAction {
     /// The action's start (slot 5, `0x140aadd80`) on the foundation `target` at `at`: state 4

@@ -1,18 +1,20 @@
 //! What a tick's update of one object reads and writes ([`Context`]) and its walks.
 
+use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::construction::build::Walk;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Streams, Well512};
+use crate::movement::move_to::Walk;
 use crate::movement::{Me, Mover, Planning};
 use crate::objects::masters::Masters;
+use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
-use crate::objects::unit::{AiResume, Unit};
+use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
+use crate::unit_ai::AiMove;
 use crate::unit_ai::task_finder::DropSite;
+use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork, Foreign, RepairWrite};
-use crate::unit_ai::{AiMove, GenieError};
-use crate::world::lookups::Releaser;
 use crate::world::{BuildingDeath, Recycling};
 
 pub(crate) struct Context<'a> {

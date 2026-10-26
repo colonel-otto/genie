@@ -1,16 +1,18 @@
 //! A unit entering a building or a transport, and the transport's sail.
 
+use crate::GenieError;
+use crate::gathering::gather::unit::give_load;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::move_to::MoveTo;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
-use crate::objects::unit::{Unit, give_load};
+use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
+use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::{Actor, DropSite};
-use crate::unit_ai::world_view::Context;
-use crate::unit_ai::{GenieError, UnitAi};
+use crate::world::context::Context;
 
 impl Unit {
     /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads of its

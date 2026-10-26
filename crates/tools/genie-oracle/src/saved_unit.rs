@@ -7,7 +7,7 @@ use crate::{
     production, saved_actions, saved_sprite, task_at, unit_ai,
 };
 use genie_core::GenieError;
-use genie_core::world::Unit;
+use genie_core::objects::unit::Unit;
 use genie_save::generated::world::{Path, PlayerObjects, RgeStaticObject};
 
 /// The slice's view of one saved object: its lifecycle, its unit AI and its actions. A save from

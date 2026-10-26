@@ -1,18 +1,20 @@
 //! A spot beside a building, the remains a death leaves, a plain object, the flares and a
 //! building a death makes.
 
+use crate::GenieError;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::sprite::ActiveSprite;
+use crate::objects::unit::Unit;
 use crate::production::spawn::{
     BUILDING, Facing, NOT_MOVING, Placing, Site, TRIBE_COMBAT, WALL, WorldMap, corner_tiles,
     placement, spawn_point,
 };
-use crate::unit_ai::{GenieError, factory_type};
+use crate::unit_ai::factory_type;
 use crate::vision::visibility::{Seer, capture_kind};
-use crate::world::{Turns, Unit};
+use crate::world::Turns;
 
 impl Turns {
     /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`

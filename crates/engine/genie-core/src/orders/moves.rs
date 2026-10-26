@@ -1,5 +1,6 @@
 //! A unit's move, to a point or aside, a work order, its reach and a point's move order.
 
+use crate::GenieError;
 use crate::combat::attack::gaps;
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
@@ -8,8 +9,9 @@ use crate::orders::{
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::{GenieError, HUNT_ACTION, MOVE_ORDER};
-use crate::world::{Turns, World};
+use crate::unit_ai::task_finder::world::World;
+use crate::unit_ai::{HUNT_ACTION, MOVE_ORDER};
+use crate::world::Turns;
 
 impl Turns {
     /// One unit of MOVE: an object that does not move ignores an order not queued. The unit's
@@ -182,7 +184,7 @@ impl Turns {
     }
 
     /// The unit's slot 0x340 from its unit AI's move off a footprint (slot 0x148,
-    /// [`crate::world::Unit::ai_move_with`]); then what its actions let go: a counted builder
+    /// [`crate::objects::unit::Unit::ai_move_with`]); then what its actions let go: a counted builder
     /// leaves its building ([`Turns::leave_builders`]), the targets go ([`Turns::release`]).
     pub(crate) fn move_aside(
         &mut self,

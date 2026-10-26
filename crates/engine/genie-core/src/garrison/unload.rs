@@ -409,7 +409,7 @@ impl Turns {
     pub(super) fn unload_picks(
         &self,
         player: usize,
-        unit: &crate::world::Unit,
+        unit: &crate::objects::unit::Unit,
         flag: u8,
         param: i32,
     ) -> Result<bool, GenieError> {

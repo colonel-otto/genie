@@ -1,10 +1,10 @@
 //! The obstruction grid's cells and visits, the scout map, gaits, annexes, alliances and the line
 //! queries.
 
+use crate::GenieError;
 use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
-use crate::unit_ai::GenieError;
 
 impl Spatial {
     /// Each obstruction record: the object's id, the record's kind and box.

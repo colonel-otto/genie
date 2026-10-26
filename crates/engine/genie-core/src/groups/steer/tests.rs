@@ -2,8 +2,9 @@ use super::*;
 use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::objects::masters::{Master, Masters};
+use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
-use crate::world::{Player, Unit};
+use crate::world::Player;
 
 /// The update's seconds (69 ms).
 const DT: f32 = 0.069;

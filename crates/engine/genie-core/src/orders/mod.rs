@@ -6,10 +6,11 @@
 //! the Hunt action ([`crate::gathering::hunt`]); other actions, orders to points and unit groups are not
 //! modelled yet.
 
+use crate::GenieError;
 use crate::objects::masters::Master;
-use crate::unit_ai::GenieError;
+use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::TaskTarget;
-use crate::world::{Turns, Unit};
+use crate::world::Turns;
 
 mod actions;
 mod attack;

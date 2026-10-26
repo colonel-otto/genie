@@ -1,8 +1,9 @@
 //! A building's production list and its make action (`TRIBE_Action_Make_Obj`).
 
+use crate::GenieError;
 use crate::production::spawn::MAKE_ACTION;
 use crate::production::{IN_PRODUCTION, MakeObj, Making, QUEUED, housed, population};
-use crate::unit_ai::{ACTION_COMPLETED, GenieError, Notify};
+use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::Turns;
 
 /// The make action's type (`+0x8`, 0x66, `TRIBE_Action_Make_Obj`).

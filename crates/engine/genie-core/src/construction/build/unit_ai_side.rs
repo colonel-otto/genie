@@ -2,8 +2,8 @@
 //! command at once, the builder's search for another foundation, and a unit's spot off a
 //! foundation's footprint.
 
+use crate::GenieError;
 use crate::objects::release::Releaser;
-use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;

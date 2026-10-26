@@ -218,7 +218,7 @@ impl Turns {
                 Some((_, u))
                     if self.master_of(p, u.life.master_id)?.kind == master_type::BUILDING =>
                 {
-                    crate::world::annexes_of(id, &self.players[p].objects)
+                    crate::objects::unit::annexes_of(id, &self.players[p].objects)
                 }
                 _ => continue,
             };
@@ -228,7 +228,8 @@ impl Turns {
                 };
                 let am = self.master_of(p, a.life.master_id)?;
                 let own_annexes = am.kind == master_type::BUILDING
-                    && !crate::world::annexes_of(annex, &self.players[p].objects).is_empty();
+                    && !crate::objects::unit::annexes_of(annex, &self.players[p].objects)
+                        .is_empty();
                 if !own_annexes && am.class == class {
                     let _ = self.change_object(annex, change, v, attribute)?;
                 }

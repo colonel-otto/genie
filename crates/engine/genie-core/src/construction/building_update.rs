@@ -1,20 +1,22 @@
 //! A gate's and a farm's update, a building's completion and seconds, the hit points' heal,
 //! regeneration and loss, the idle swap and the death blast.
 
+use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::combat::victims::victim_of;
 use crate::construction::build::{Completion, Construction, Site};
+use crate::construction::gates::gate_units;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Well512};
 use crate::objects::lifecycle::Lifecycle;
+use crate::objects::lifecycle::death_parts::farm_bonus;
 use crate::objects::masters::Master;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{Unit, annexes_of};
-use crate::unit_ai::GenieError;
-use crate::unit_ai::world_view::Context;
-use crate::world::lookups::{farm_bonus, victim_of};
+use crate::world::context::Context;
 use crate::world::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
-    VILLAGER_CLASS, gate_units,
+    VILLAGER_CLASS,
 };
 
 impl Unit {

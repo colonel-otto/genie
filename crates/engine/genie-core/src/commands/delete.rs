@@ -372,8 +372,8 @@ impl Turns {
     }
 
     /// The combat object's `set_state` (`FUN_14121cc40`) to a state of 3 or more: from below 3
-    /// its death's part ([`crate::world::combat_dies`]); to state 3 from 2 its owner's attributes
-    /// lose its paid cost ([`crate::world::refund_of`]: 98 and 164, a building 98 and 165, each at
+    /// its death's part ([`crate::objects::lifecycle::death_parts::combat_dies`]); to state 3 from 2 its owner's attributes
+    /// lose its paid cost ([`crate::objects::lifecycle::death_parts::refund_of`]: 98 and 164, a building 98 and 165, each at
     /// least 0); then the base `set_state` ([`Turns::base_set_state`]).
     fn combat_set_state(
         &mut self,
@@ -389,11 +389,16 @@ impl Turns {
         let u = held(&mut self.players, place);
         let (state, main) = (u.life.state, u.annex_of);
         if 3 <= new && state < 3 {
-            crate::world::combat_dies(u, master, &mut self.spatial, &mut self.pathing)?;
+            crate::objects::lifecycle::death_parts::combat_dies(
+                u,
+                master,
+                &mut self.spatial,
+                &mut self.pathing,
+            )?;
             self.pathing.tiles_changed(self.spatial.take_changes());
         }
         if new == 3 && state == 2 {
-            for (kind, amount) in crate::world::refund_of(master, main) {
+            for (kind, amount) in crate::objects::lifecycle::death_parts::refund_of(master, main) {
                 let player = &mut self.players[owner];
                 player.add_attribute(kind, -amount)?;
                 if player.attributes[kind as usize] < 0.0 {
@@ -409,7 +414,7 @@ impl Turns {
     /// flags 2 and 16 leaves its owner (`FUN_1411a56c0` with 0) and, while the world's game state
     /// is not 2, a master of fog visibility 2 leaves its ghosts (`FUN_14118e990`,
     /// [`Turns::ghosts_at_death`], before the state changes); from below 4 to above 6 it leaves
-    /// the visible-resource lists (`FUN_1411980b0`, [`crate::world::forget_resource`]); its sight
+    /// the visible-resource lists (`FUN_1411980b0`, [`crate::objects::lifecycle::death_parts::forget_resource`]); its sight
     /// follows ([`crate::map::spatial::Spatial::sight_state`]); from below 7 to 7 the storage of flag
     /// 32 leaves its owner; then the state, and a sleeping object wakes unless the state is 2 or
     /// 6. Not held: the statistics and the scenario's events.
@@ -439,7 +444,12 @@ impl Turns {
             }
         }
         if old < 4 && 6 < new {
-            crate::world::forget_resource(&mut self.spatial, Some(master), id, position);
+            crate::objects::lifecycle::death_parts::forget_resource(
+                &mut self.spatial,
+                Some(master),
+                id,
+                position,
+            );
         }
         self.spatial.sight_state(id, new);
         if old < 7 && new == 7 {
@@ -459,7 +469,7 @@ impl Turns {
     }
 
     /// A built building's death (`FUN_1411dbb70` to state 3 from 2) outside its update: its
-    /// part ([`crate::world::built_death`]), then the combat object's `set_state`; the count it
+    /// part ([`crate::objects::lifecycle::death_parts::built_death`]), then the combat object's `set_state`; the count it
     /// lowers and its technology follow (as its own update's caller does them).
     fn built_building_dies(
         &mut self,
@@ -471,7 +481,7 @@ impl Turns {
         let (_, u) = self
             .object_mut(id)
             .ok_or(crate::construction::build::NOT_HELD)?;
-        let death = crate::world::built_death(u, master, computer)?;
+        let death = crate::objects::lifecycle::death_parts::built_death(u, master, computer)?;
         for &(kind, amount) in &death.adds {
             self.players[owner].add_attribute(kind, amount)?;
         }
@@ -520,7 +530,8 @@ mod tests {
     use crate::construction::build::Construction;
     use crate::map::spatial::Obstruction;
     use crate::objects::masters::{Master, Masters};
-    use crate::world::{Player, Unit};
+    use crate::objects::unit::Unit;
+    use crate::world::Player;
 
     /// Gaia and two players: player 1's villager 10, house foundation 11 (build time 25, cost 25
     /// wood paid) and sheep 12, and player 2's villager 20.
@@ -691,7 +702,8 @@ mod clearing_tests {
     use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{Master, Masters};
-    use crate::world::{Player, Unit};
+    use crate::objects::unit::Unit;
+    use crate::world::Player;
 
     /// A live object `id` of `master` at `x`, `y`, outside any pasture.
     fn object(id: i32, master: i16, x: f32, y: f32) -> Unit {
@@ -951,7 +963,7 @@ mod clearing_tests {
             ..Master::default()
         };
         assert_eq!(
-            crate::world::refund_of(&unit, None),
+            crate::objects::lifecycle::death_parts::refund_of(&unit, None),
             [(98, 70.0), (164, 70.0)]
         );
         let house = Master {
@@ -960,11 +972,17 @@ mod clearing_tests {
             ..unit
         };
         assert_eq!(
-            crate::world::refund_of(&house, None),
+            crate::objects::lifecycle::death_parts::refund_of(&house, None),
             [(98, 70.0), (165, 70.0)]
         );
-        assert_eq!(crate::world::refund_of(&house, Some(9)), []);
+        assert_eq!(
+            crate::objects::lifecycle::death_parts::refund_of(&house, Some(9)),
+            []
+        );
         let castle = Master { id: 82, ..house };
-        assert_eq!(crate::world::refund_of(&castle, None), [(98, 70.0)]);
+        assert_eq!(
+            crate::objects::lifecycle::death_parts::refund_of(&castle, None),
+            [(98, 70.0)]
+        );
     }
 }

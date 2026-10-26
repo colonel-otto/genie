@@ -242,7 +242,7 @@ impl Turns {
 pub(super) const SHORT_IGNORED: usize = 128;
 
 /// Slot 0x520 of a unit: where it last moved to, as the game's vector (x, height, y).
-pub(in crate::groups) fn moved_vector(u: &crate::world::Unit) -> Vec3 {
+pub(in crate::groups) fn moved_vector(u: &crate::objects::unit::Unit) -> Vec3 {
     u.mover
         .as_ref()
         .map_or([u.position[0], u.position[2], u.position[1]], |m| {

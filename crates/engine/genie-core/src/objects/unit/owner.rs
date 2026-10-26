@@ -1,14 +1,16 @@
 //! Captures and ownership changes, the unit AI's moves and a move to an object.
 
+use crate::GenieError;
 use crate::construction::build::BUILD;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::objects::masters::Masters;
+use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::{UNPACKED_TREBUCHET, Unit};
-use crate::unit_ai::world_view::Context;
-use crate::unit_ai::{AiMove, GenieError};
-use crate::world::lookups::{Releaser, change_hands};
+use crate::ownership::change::change_hands;
+use crate::unit_ai::AiMove;
+use crate::world::context::Context;
 
 impl Unit {
     /// `FUN_140aab570`: player `new` takes the animal over. Its stop (slot 0x148,

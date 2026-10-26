@@ -5,7 +5,8 @@ use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, COMBAT_KIND, LEAST_HP_SHARE, 
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::world::{Turns, World};
+use crate::unit_ai::task_finder::world::World;
+use crate::world::Turns;
 
 /// `FUN_1411205e0`: whether a master's class (`+0x410`, the short `MOVSX` widens) has one of
 /// `flags` in the class-flags table: a class below 0 or not below the table's count
@@ -78,7 +79,7 @@ impl Turns {
     pub(crate) fn has_room(
         &self,
         bp: usize,
-        b: &crate::world::Unit,
+        b: &crate::objects::unit::Unit,
         unit: Option<i32>,
     ) -> Result<bool, GenieError> {
         let capacity = i32::from(self.master_of(bp, b.life.master_id)?.garrison);

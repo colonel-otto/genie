@@ -2,15 +2,16 @@
 //! its view, [`UnitView`]): the new Attack, a forced attack again on the unit's own target, the
 //! target as a hit reads it, the start's readiness, the target's sight and a villager's swap.
 
+use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::victims::{victim_in, victim_of};
-use crate::construction::build::Walk;
 use crate::map::spatial::Placed;
 use crate::movement::Me;
+use crate::movement::move_to::Walk;
 use crate::objects::release::Releaser;
+use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::world::SideWorld;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView};
-use crate::unit_ai::{GenieError, UnitAi};
 
 /// The villagers a villager's attack command switches to by its task swap group (its player's
 /// master table's entries at `+0x298` and `+0x928`).
@@ -342,7 +343,7 @@ impl<'u> UnitView<'u> {
             ai_order: Some(ai.current_order),
             ai_type: Some(ai.ai_type),
             computer: self.computer,
-            armed: crate::objects::unit::armed(master, unit.firepower),
+            armed: crate::combat::volley::armed(master, unit.firepower),
             volley_under_way: unit.next_volley != 0,
             let_go: None,
             forgets: false,

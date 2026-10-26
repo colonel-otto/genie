@@ -3,10 +3,12 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::construction::building_update::blasts_at_death;
 use crate::objects::lifecycle::seconds;
-use crate::objects::unit;
-use crate::objects::unit::{AiResume, Step, Unit};
-use crate::unit_ai::world_view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
+use crate::objects::unit::{Step, Unit};
+use crate::unit_ai::unit::AiResume;
+use crate::unit_ai::world_view::{AiStart, AiWork, Foreign};
+use crate::world::context::{Context, ObjectOutputs};
 use crate::world::{
     BuildingDeath, LEAVES_ITS_LIST, PlayerFrame, Turns, scenario_mode, standard_mode,
 };
@@ -45,7 +47,7 @@ impl Turns {
                 .masters
                 .get(p)
                 .and_then(|m| m.get(unit.life.master_id))
-                .is_some_and(|m| unit::blasts_at_death(m, &unit.life)) =>
+                .is_some_and(|m| blasts_at_death(m, &unit.life)) =>
             {
                 self.blasted(&unit, p, -1)
             }

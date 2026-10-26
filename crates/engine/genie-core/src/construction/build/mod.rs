@@ -11,12 +11,12 @@
 //! and ends the builder's work (state 224); a builder whose unit AI holds queued orders then lets
 //! the Build end (state 1) and the AI runs its queue.
 
+use crate::GenieError;
 use crate::map::spatial::Obstruction;
-use crate::movement::move_to::MoveWait;
-pub use crate::movement::move_to::{MoveTo, Walk};
+use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::Master;
-use crate::unit_ai::{GenieError, UnitAi};
+use crate::unit_ai::UnitAi;
 
 mod clearing;
 mod construction;
@@ -401,7 +401,7 @@ pub struct StackUnit {
 /// The completion's sprite (`FUN_1411dbb70` from state 0 to 2, after its storage): slot 0x68
 /// (`FUN_141217000`) with the master's standing sprite (`+0x470`), then its sprite list's slot
 /// 0x28 (`FUN_1413ba880`) sets that sprite's node to the frame its BUILD command chose
-/// (`+0xc54`, [`crate::world::Unit::build_frame`]; slot 9 with it, [`ActiveSprite::set_frame`]).
+/// (`+0xc54`, [`crate::objects::unit::Unit::build_frame`]; slot 9 with it, [`ActiveSprite::set_frame`]).
 pub(crate) fn show_built(
     sprite: &mut Option<crate::objects::sprite::ActiveSprite>,
     master: &Master,
@@ -494,7 +494,7 @@ pub struct Builder<'a> {
     /// no longer holds or whose seen state is above 5, as the update starts (`FUN_140c5de60`).
     pub gone_orders: &'a [i32],
     /// The foundation's `+0xcb0`: the object its completion's stack unit made
-    /// ([`crate::world::Unit::stack_made`]).
+    /// ([`crate::objects::unit::Unit::stack_made`]).
     pub stack_made: Option<i32>,
 }
 
@@ -665,7 +665,8 @@ mod stack_tests {
     use crate::map::spatial::{Placed, Tiles};
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{BuildingMaster, Masters};
-    use crate::world::{Player, Turns, Unit};
+    use crate::objects::unit::Unit;
+    use crate::world::{Player, Turns};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
     /// time `bt`, hit points `hp`, an annex of `head`, with `annexes` at their offsets.

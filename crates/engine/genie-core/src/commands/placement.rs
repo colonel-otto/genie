@@ -1,7 +1,7 @@
 //! BUILD's tests before its foundation: a farm on rice terrain, the pending debit, the
 //! builders, the placement test and the payment.
 
-use crate::unit_ai::GenieError;
+use crate::GenieError;
 use crate::world::{FARM, RICE_FARM, Turns};
 
 impl Turns {

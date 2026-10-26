@@ -1,12 +1,15 @@
 //! Taking and releasing targets, the order record, actions cleared, transformations, gates
 //! and master switches.
 
+use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
+use crate::objects::release::Releaser;
+use crate::objects::unit::Unit;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
-use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::world::{Releaser, Turns, Unit, World};
+use crate::unit_ai::task_finder::world::World;
+use crate::world::Turns;
 
 impl Turns {
     /// Slot 0x178 on the object an action of `by` takes as its target: a building's
@@ -44,7 +47,7 @@ impl Turns {
         }
     }
 
-    /// Slot 0x180 on the object an action of `by` lets go ([`crate::world::released`]): a
+    /// Slot 0x180 on the object an action of `by` lets go ([`crate::objects::release::released`]): a
     /// building's (`FUN_1411d6020`) drops an unallied releaser from the attacking units of a
     /// foundation with a stack unit ([`Unit::lists_taker`]); its worker count falls; a static
     /// object (type below 30, `FUN_141197d00`) that no one works on any more and is alive (state
@@ -74,7 +77,7 @@ impl Turns {
             let master = self.master_of(p, u.life.master_id)?;
             (master.kind, u.lists_taker(master, allied))
         };
-        crate::world::released(&mut self.players[p].objects[i], kind, listed, by)
+        crate::objects::release::released(&mut self.players[p].objects[i], kind, listed, by)
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.
@@ -221,8 +224,8 @@ impl Turns {
         let now = self.world_time;
         if 0.0 < height {
             let id = self.players[player].objects[idx].id;
-            let annexes = crate::world::annexes_of(id, &self.players[player].objects);
-            let (units, _) = crate::world::gate_units(&self.spatial, id, &annexes)?;
+            let annexes = crate::objects::unit::annexes_of(id, &self.players[player].objects);
+            let (units, _) = crate::construction::gates::gate_units(&self.spatial, id, &annexes)?;
             for u in units {
                 self.shut_in_gate(u)?;
             }

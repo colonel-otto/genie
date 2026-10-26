@@ -1,5 +1,6 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
+use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::construction::build::{BuildAction, Construction};
 use crate::gathering::hunt::{HuntAction, HuntSprites};
@@ -11,8 +12,8 @@ use crate::objects::masters::Master;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::ownership::artifact::Artifact;
 use crate::production::Production;
-use crate::unit_ai::world_view::Context;
-use crate::unit_ai::{GenieError, UnitAi};
+use crate::unit_ai::UnitAi;
+use crate::world::context::Context;
 use crate::world::{Gate, WONDER};
 
 mod death;
@@ -25,13 +26,6 @@ mod update;
 pub(crate) use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
 pub(crate) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
-pub(crate) use crate::combat::volley::{Aimed, armed, same_members};
-pub(crate) use crate::construction::building_update::blasts_at_death;
-#[cfg(test)]
-pub(crate) use crate::construction::building_update::{farm_stage_terrain, regeneration_rate};
-pub(crate) use crate::garrison::unit::EnterWorld;
-pub(crate) use crate::gathering::gather::unit::give_load;
-pub(crate) use crate::unit_ai::unit::AiResume;
 
 /// A dying sprite the `.dat` does not have.
 const NO_DYING_SPRITE: GenieError =
@@ -246,13 +240,13 @@ pub struct Unit {
     /// copy (`FUN_141186d10`, the master's slot 0x48) of the one it read when it took it; None
     /// while it reads its player's. An ownership change gives it one ([`change_hands`]).
     ///
-    /// [`change_hands`]: crate::world::lookups::change_hands
+    /// [`change_hands`]: crate::ownership::change::change_hands
     pub own_master: Option<Box<Master>>,
     /// `+0x6b8`: the copy of its old owner's death-spawn master (`+0x5e4`) an ownership change
     /// took ([`change_hands`]), which its death spawn makes its dead object of
     /// (`FUN_1411a5090`); None for none.
     ///
-    /// [`change_hands`]: crate::world::lookups::change_hands
+    /// [`change_hands`]: crate::ownership::change::change_hands
     pub dead_master: Option<Box<Master>>,
     /// `+0xce0`, `attackingUnits` (saved): the units of players its owner is not allied with
     /// that took this foundation (a building below state 2 whose master has a stack unit,

@@ -1,10 +1,10 @@
 //! The drop-offs: an unasked one, the ordered drop site, the table's, one now and elsewhere,
 //! and the way back.
 
+use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
-use crate::unit_ai::GenieError;
 use crate::world::Turns;
 
 impl Turns {
@@ -82,7 +82,7 @@ impl Turns {
             "a drop-off of a player without masters",
         ))?;
         if !seeks {
-            return crate::world::drop_site_search(
+            return crate::gathering::drop_sites::drop_site_search(
                 &self.players[p].objects,
                 masters,
                 &master.drop_sites,
@@ -93,7 +93,7 @@ impl Turns {
         }
         let state = unit.top_action().map_or(0, |a| a.state);
         let player = &self.players[p];
-        let mut world = crate::world::DropWorld {
+        let mut world = crate::unit_ai::world_view::DropWorld {
             masters: self.masters.get(p),
             spatial: &self.spatial,
             zones: &mut self.zones,

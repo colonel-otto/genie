@@ -160,7 +160,11 @@ impl Turns {
     /// # Errors
     ///
     /// An object of a master the slice does not have.
-    pub fn keeps_alive(&self, p: usize, unit: &crate::world::Unit) -> Result<bool, GenieError> {
+    pub fn keeps_alive(
+        &self,
+        p: usize,
+        unit: &crate::objects::unit::Unit,
+    ) -> Result<bool, GenieError> {
         let master = self.master_of(p, unit.life.master_id)?;
         let state = unit.life.state;
         if (1..=4).contains(&state)

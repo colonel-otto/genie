@@ -1,8 +1,8 @@
 //! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
 //! candidates.
 
+use crate::GenieError;
 use crate::map::spatial::{Placed, QUERY_HITS, Spatial, TESTED_KINDS, tile_record_id};
-use crate::unit_ai::GenieError;
 
 impl Spatial {
     /// `FUN_1411566b0`: the tile beside a footprint at `at` of radii `radius` a unit at `from`

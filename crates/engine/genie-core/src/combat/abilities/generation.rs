@@ -98,14 +98,14 @@ pub fn store(amount: f32, out: i16, stores: &mut [f32]) -> Option<f32> {
 impl Turns {
     /// A generation task of the object at `(p, i)` as `owner`'s ([`generates`], [`generated`],
     /// [`store`]): what reaches the store's threshold goes to the player (slot 0xf8 with 1 and 1,
-    /// as a load's, [`crate::world::give_load`]); the statistics (`FUN_14097daf0`, the local
+    /// as a load's, [`crate::gathering::gather::unit::give_load`]); the statistics (`FUN_14097daf0`, the local
     /// player's, and `FUN_140a4c020`'s telemetry) are not held. The top action's target is read
     /// as the world holds it after the update: a pending one as the update left it.
     ///
     /// # Errors
     ///
     /// The top action of a unit whose action the slice does not model, and a give to a player
-    /// who shares with allies ([`crate::world::give_load`]).
+    /// who shares with allies ([`crate::gathering::gather::unit::give_load`]).
     pub(super) fn generate(
         &mut self,
         (p, i): (usize, usize),
@@ -163,7 +163,7 @@ impl Turns {
         };
         let sharing = player.sharing;
         let mut adds = Vec::new();
-        crate::world::give_load(
+        crate::gathering::gather::unit::give_load(
             (&self.spatial.relations, sharing),
             owner,
             &mut adds,

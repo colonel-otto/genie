@@ -1,12 +1,13 @@
 //! A gatherer's walk after a drop and the drop sites it walks to.
 
+use crate::GenieError;
+use crate::gathering::drop_sites::{Seeker, drop_site_search};
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
 use crate::objects::unit::Unit;
-use crate::unit_ai::GenieError;
-use crate::unit_ai::world_view::{Context, DropWorld};
-use crate::world::lookups::{Seeker, drop_site_search};
+use crate::unit_ai::world_view::DropWorld;
+use crate::world::context::Context;
 
 impl Unit {
     /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop
@@ -327,7 +328,7 @@ impl Unit {
                     sites,
                     self.position,
                     None,
-                    (true, crate::world::lookups::UNPACK),
+                    (true, crate::gathering::drop_sites::UNPACK),
                 )?,
             }
             .unwrap_or(-1);
@@ -362,7 +363,7 @@ impl Unit {
             c,
             others,
             state,
-            (outside, by_path, crate::world::lookups::UNPACK),
+            (outside, by_path, crate::gathering::drop_sites::UNPACK),
         )
     }
 

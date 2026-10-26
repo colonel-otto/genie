@@ -1,14 +1,15 @@
 //! BUILD's builders: their task, the queue and the direct path, the wait for the foundation
 //! and the build command.
 
+use crate::GenieError;
 use crate::commands::{FOUNDATION_GONE, NO_BUILD_TASK};
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
+use crate::unit_ai::task_finder::world::{World, task_search, task_target_with};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
 use crate::unit_ai::world_view::Wait;
-use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER, GenieError};
-use crate::world::lookups::{World, task_search, task_target_with};
+use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER};
 use crate::world::{STATIC_TYPES_END, Turns};
 
 impl Turns {

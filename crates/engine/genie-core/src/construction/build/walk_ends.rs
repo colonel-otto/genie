@@ -1,12 +1,12 @@
 //! The ends of the builder's walk: at its end, failed, its foundation lost; the walk to a
 //! point (state 11).
 
+use crate::GenieError;
 use crate::construction::build::{
     BUILDER_UNMOVING, BuildAction, BuildStep, Builder, FOREIGN_SITE, REACH, SEEN, SITE_GONE, Site,
     UNSEEN_SITE, VILLAGER, WALK_POINT, WORK,
 };
 use crate::movement::move_to::{MoveTo, Walk};
-use crate::unit_ai::GenieError;
 
 impl BuildAction {
     /// The update's case 3 with its `MoveTo` at its end (1), or without one (the list's update

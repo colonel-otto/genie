@@ -1,9 +1,9 @@
 //! The hunt and gather commands, a build's and a repair's start, retake and target.
 
+use crate::GenieError;
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
-use crate::unit_ai::GenieError;
 use crate::world::Turns;
 
 impl Turns {
@@ -213,7 +213,7 @@ impl Turns {
         Ok(())
     }
 
-    /// The unit's repair command its unit AI gave ([`crate::world::RepairOrder`]), after the
+    /// The unit's repair command its unit AI gave ([`crate::unit_ai::world_view::RepairOrder`]), after the
     /// update: the Repair on top takes the target ([`Turns::repair_retarget`]); else the master
     /// switches (slot 0x90 with 0, [`Turns::change_master`]), then a Repair on the task found
     /// ([`Turns::new_repair`]) replaces the unit's actions (`FUN_140a98620`, slot 0x808).
@@ -225,13 +225,13 @@ impl Turns {
         &mut self,
         player: usize,
         idx: usize,
-        order: crate::world::RepairOrder,
+        order: crate::unit_ai::world_view::RepairOrder,
     ) -> Result<(), GenieError> {
         match order {
-            crate::world::RepairOrder::Retake(target) => {
+            crate::unit_ai::world_view::RepairOrder::Retake(target) => {
                 self.repair_retarget(player, idx, target).map(|_class| ())?;
             }
-            crate::world::RepairOrder::Start {
+            crate::unit_ai::world_view::RepairOrder::Start {
                 target,
                 switches,
                 task,

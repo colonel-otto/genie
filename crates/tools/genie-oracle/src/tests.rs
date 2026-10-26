@@ -1,4 +1,5 @@
 use super::*;
+use genie_core::commands::Command;
 
 /// Word 9 reads a building's production action's state over its top action's (records
 /// MarvinBlue/426048706's town centre 7150 after update 7499: its Attack in state 7 and its
@@ -273,7 +274,7 @@ fn a_game_packet_decodes_its_fields() {
     .encode();
     assert_eq!(
         Decoder::default().command(&packet, &[]),
-        Some(Command::Game(genie_core::world::GameCommand {
+        Some(Command::Game(genie_core::commands::game::GameCommand {
             issuer: 8,
             sub: 0,
             player: 8,

@@ -1,13 +1,15 @@
 //! A builder's and a gatherer's drop-off and a gatherer's update and search.
 
+use crate::GenieError;
 use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::unit::{Unit, second_target_checked};
+use crate::unit_ai::BUILD_ACTION;
 use crate::unit_ai::task_finder::Actor;
-use crate::unit_ai::world_view::{Context, DropWorld};
-use crate::unit_ai::{BUILD_ACTION, GenieError};
-use crate::world::lookups::state_of;
+use crate::unit_ai::task_finder::world::state_of;
+use crate::unit_ai::world_view::DropWorld;
+use crate::world::context::Context;
 
 impl Unit {
     /// The Build's `set_state(8)` from its update (case 7 searching again): the drop-site table's
@@ -62,11 +64,12 @@ impl Unit {
                     };
                     let every = c.every_masters;
                     let task = match (
-                        crate::world::lookups::task_target_with(id, 1, &find, every)?,
-                        crate::world::lookups::task_target_with(id, 2, &find, every)?,
+                        crate::unit_ai::task_finder::world::task_target_with(id, 1, &find, every)?,
+                        crate::unit_ai::task_finder::world::task_target_with(id, 2, &find, every)?,
                     ) {
                         (Some(t), Some(general)) => {
-                            use crate::world::lookups::{SideWorld, task_search};
+                            use crate::unit_ai::task_finder::world::SideWorld;
+                            use crate::unit_ai::task_finder::world::task_search;
                             let actor = Actor {
                                 id: self.id,
                                 master: own,

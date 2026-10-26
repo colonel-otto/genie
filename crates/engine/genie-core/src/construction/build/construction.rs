@@ -1,6 +1,7 @@
 //! A foundation's construction ([`Construction`]): its work, its start and its completion,
 //! with the completion's storage, ground and counts.
 
+use crate::GenieError;
 use crate::construction::build::{
     Built, CASTLE_WONDER_COST, CASTLES_BUILT, Construction, MASTER_1889, MainWork, RICE_PASTURE,
     SITE_GONE, STARTED, Site, StackUnit, WONDER, WONDERS_BUILT, Worked,
@@ -8,7 +9,6 @@ use crate::construction::build::{
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
 use crate::pathing::Pathing;
-use crate::unit_ai::GenieError;
 use crate::world::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
 
 /// [`Construction::complete`]'s storage: its master's entries of modes 4, 8 and 64 go to its

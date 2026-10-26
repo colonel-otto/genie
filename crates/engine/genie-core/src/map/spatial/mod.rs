@@ -11,7 +11,7 @@
 //! [`Tiles`] holds what the game keeps per tile: the obstruction manager's word (terrain class,
 //! static records' marks) and the counts of records and objects whose centre is on the tile.
 
-use crate::unit_ai::GenieError;
+use crate::GenieError;
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
 use std::collections::BTreeMap;

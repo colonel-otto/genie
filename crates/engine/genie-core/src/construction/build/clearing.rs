@@ -1,8 +1,8 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
+use crate::GenieError;
 use crate::construction::build::WALL;
 use crate::map::spatial::Spatial;
-use crate::unit_ai::GenieError;
 
 /// What the footprint clearing (`FUN_1415c3620`) reads of the new building: its owner
 /// (`param_2`), its master's id (`param_3`), class and radii, its place (`param_4`,
@@ -56,7 +56,7 @@ pub struct Cleared {
     pub wall: bool,
     /// Its record goes in the clearing: its destroy's death part drops it (a unit or a tall
     /// building not desolid of type 70 and up below state 3 whose record is still there,
-    /// [`crate::world::combat_dies`], which sets `+0x686`), or with `param_6` `FUN_141189670`
+    /// [`crate::objects::lifecycle::death_parts::combat_dies`], which sets `+0x686`), or with `param_6` `FUN_141189670`
     /// after the destroy does (`+0x686` still clear, and its master tall, COMISS: a NaN height
     /// too, or the object holding its record).
     pub record_goes: bool,

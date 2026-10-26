@@ -1,10 +1,10 @@
 //! What the unit AI's view asks of its unit: its picker, a helper's tests and a master switch.
 
+use crate::GenieError;
 use crate::movement::footprint_gap_squared;
+use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
-use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView, WorldPicker};
-use crate::world::lookups::Releaser;
 
 impl UnitView<'_> {
     /// The world as `bestUnitToAttack` and the attack tests read it for the unit

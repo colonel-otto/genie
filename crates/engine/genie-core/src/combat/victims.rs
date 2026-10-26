@@ -1,13 +1,14 @@
 //! A hit's victim: what the hit reads of it, the objects it may reach, the hit written back,
 //! the kill and its counts.
 
+use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
+use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::{GenieError, Notify};
-use crate::world::lookups::World;
+use crate::unit_ai::task_finder::world::World;
 use crate::world::{BUILDING_KIND, Turns};
 
 impl Turns {

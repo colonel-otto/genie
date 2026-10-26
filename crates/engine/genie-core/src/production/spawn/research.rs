@@ -1,9 +1,10 @@
 //! The research action (`TRIBE_Action_Make_Tech`): its technology, its update, its end and
 //! its destructor.
 
+use crate::GenieError;
 use crate::production::spawn::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
-use crate::unit_ai::{ACTION_COMPLETED, GenieError, Notify};
+use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::Turns;
 
 impl Turns {

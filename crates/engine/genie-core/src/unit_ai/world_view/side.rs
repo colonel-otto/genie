@@ -5,15 +5,17 @@
 //! `gathering/hunt/unit_ai_side.rs`, the wait for a foundation in `construction/wait_solidify.rs`
 //! and the resource search in `gathering/closest_resource.rs`.
 
+use crate::GenieError;
+use crate::gathering::closest_resource::herded;
 use crate::map::spatial::Placed;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Planning, footprint_gap_squared};
+use crate::objects::release::Releaser;
 use crate::unit_ai::world_view::{
     AiStart, RepairOrder, UnitView, WorldPicker, patrol_information, town_centre,
 };
-use crate::unit_ai::{AiMove, GenieError, Search, UnitAi};
+use crate::unit_ai::{AiMove, Search, UnitAi};
 use crate::world::PETARD;
-use crate::world::lookups::{Releaser, herded};
 
 impl crate::unit_ai::UnitSide for UnitView<'_> {
     fn table_drop_site(&mut self) -> Result<Option<i32>, GenieError> {

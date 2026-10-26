@@ -406,7 +406,8 @@ fn a_removal_reward_with_its_flag_pays_the_last_paid_cost_of_its_resource_times_
 
 use crate::map::spatial::{Placed, Spatial};
 use crate::objects::masters::{Master, Masters};
-use crate::world::{Player, Unit};
+use crate::objects::unit::Unit;
+use crate::world::Player;
 
 /// Gaia and two enemies, the world's dt half a second, a 20 by 20 map.
 fn world() -> Turns {
@@ -718,7 +719,7 @@ fn a_movement_damage_on_the_pending_target_hits_it_as_the_update_left_it() {
     trampler(&mut t);
     give_master(&mut t, 4, 70, 6, Vec::new());
     put(&mut t, 2, 20, 4, 30.0, [6.5, 5.5]);
-    let mut v = crate::world::victim_of(
+    let mut v = crate::combat::victims::victim_of(
         &t.players[2].objects[0],
         t.masters[2].get(4).unwrap(),
         &t.players[2].attributes,

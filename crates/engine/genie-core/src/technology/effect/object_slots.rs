@@ -3,8 +3,9 @@
 
 use crate::GenieError;
 use crate::objects::masters::{Master, Masters, master_type};
+use crate::objects::unit::Unit;
 use crate::technology::effect::Change;
-use crate::world::{Turns, Unit};
+use crate::world::Turns;
 
 /// The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
 /// headroom (4), and current population (11) and 19, which hold its magnitude.

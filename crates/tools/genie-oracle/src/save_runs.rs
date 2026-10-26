@@ -8,7 +8,8 @@ use crate::{
     recycle_pools_from_dump, registry_from_dump, run, slice, spatial, tile_differences,
     tile_lists_from_dump, visibility_differences, watch_at_load,
 };
-use genie_core::world::{Command, Player, Turns};
+use genie_core::commands::Command;
+use genie_core::world::{Player, Turns};
 use genie_rec::de;
 use genie_save::Header;
 

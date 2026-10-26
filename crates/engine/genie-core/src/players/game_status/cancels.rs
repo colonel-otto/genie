@@ -1,11 +1,11 @@
 //! A building's queue cancelled: the whole queue, its units and researches refunded, and
 //! `UNIT_ORDER`'s cancel of one, five or some.
 
+use crate::GenieError;
 use crate::players::game_status::{
     CURRENT_AGE, ONE_UNIT_AGE, ONE_UNIT_MODE, VILLAGER_FEMALE, VILLAGER_MALE,
 };
 use crate::production::{Making, refund, refund_research};
-use crate::unit_ai::GenieError;
 use crate::world::Turns;
 
 impl Turns {

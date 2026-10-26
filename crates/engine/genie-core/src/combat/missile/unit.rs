@@ -1,11 +1,13 @@
 //! A missile's flight: where it ends, what it hits and where it lands.
 
+use crate::GenieError;
+use crate::combat::victims::victim_of;
 use crate::combat::volley::Fired;
 use crate::math::rng::Stream;
+use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::{Unit, missed_passes};
-use crate::unit_ai::world_view::Context;
-use crate::unit_ai::{ACTION_EXECUTED, GenieError};
-use crate::world::lookups::{forget_resource, victim_of};
+use crate::unit_ai::ACTION_EXECUTED;
+use crate::world::context::Context;
 
 impl Unit {
     /// The missile action's update (slot 6, `FUN_140a9e6e0`). First its target and the object it

@@ -1,12 +1,13 @@
 //! FOLLOW and GUARD, a move to an object and the head action's move.
 
+use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{
     Followed, GUARD_RANGE, LIVESTOCK, MOVING, Place, VILLAGER, follow_axis, follow_spread,
     ignore_unit,
 };
-use crate::unit_ai::{GenieError, MOVE_ORDER};
+use crate::unit_ai::MOVE_ORDER;
 use crate::world::Turns;
 
 impl Turns {
@@ -382,7 +383,7 @@ impl Turns {
 
     /// The head action's slot 0x40 (`FUN_140a97730`) on a move of the unit at `idx` to `point`,
     /// toward the object `target` if any: true when the action takes the move. Without a target
-    /// it is the unit's own [`crate::world::Unit::head_takes_point`], whose released target goes
+    /// it is the unit's own [`crate::objects::unit::Unit::head_takes_point`], whose released target goes
     /// here ([`Turns::release`]). Toward an object, an empty list takes nothing, nor does the
     /// base slot (`FUN_140a78490`) of a `MoveTo`, an Explore, a Build (0x140aade60), an Attack,
     /// an Enter, a Fly, a missile, a Make or a wait for a foundation. The Artifact's
@@ -437,7 +438,7 @@ impl Turns {
         }
     }
 
-    /// The head action's slot 0x40 on a move to `point` ([`crate::world::Unit::head_takes_point`]):
+    /// The head action's slot 0x40 on a move to `point` ([`crate::objects::unit::Unit::head_takes_point`]):
     /// the targets it let go are released and a counted repairer leaves its target's repairers.
     pub(super) fn point_taken(
         &mut self,
@@ -448,10 +449,10 @@ impl Turns {
         let by = self.releaser(player, idx);
         let (released, left) =
             match self.players[player].objects[idx].head_takes_point(point, player)? {
-                crate::world::PointMove::Declined => return Ok(false),
-                crate::world::PointMove::Taken(released) => (released, None),
-                crate::world::PointMove::Repairs(released, left) => (released, left),
-                crate::world::PointMove::Sails => {
+                crate::objects::unit::PointMove::Declined => return Ok(false),
+                crate::objects::unit::PointMove::Taken(released) => (released, None),
+                crate::objects::unit::PointMove::Repairs(released, left) => (released, left),
+                crate::objects::unit::PointMove::Sails => {
                     self.transport_move(player, idx, point)?;
                     return Ok(true);
                 }

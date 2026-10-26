@@ -642,7 +642,8 @@ mod tests {
     use super::*;
     use crate::groups::{GroupCommand, Member, UnitGroups};
     use crate::objects::masters::{Master, Masters};
-    use crate::world::{Player, Unit};
+    use crate::objects::unit::Unit;
+    use crate::world::Player;
 
     /// Player 1's unit 7 (master 4: type 70, category 1, no action, no unit AI) in group 1 at
     /// the origin, its top speed 1, its motion flags bit 1 set (no formation follows), at world

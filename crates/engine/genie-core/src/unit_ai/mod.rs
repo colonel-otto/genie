@@ -602,7 +602,7 @@ pub struct Hunted {
 }
 
 /// The engine's error ([`genie_error::GenieError`]), here for the modules' imports.
-pub use crate::GenieError;
+use crate::GenieError;
 
 /// The build order (`0x2be`) and the build action value (`0x25a`) of a villager's unit AI.
 pub const BUILD_ORDER: i32 = 702;

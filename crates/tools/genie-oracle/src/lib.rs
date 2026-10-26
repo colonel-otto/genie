@@ -131,11 +131,11 @@ use self::sub_actions::{
 pub use self::task_finder::{FinderObject, FinderWorld, finder_world};
 use self::top_actions::saved_actions;
 #[cfg(test)]
+use genie_core::objects::unit::Unit;
+#[cfg(test)]
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 #[cfg(test)]
 use genie_core::world::checkpoint::TopAction;
-#[cfg(test)]
-use genie_core::world::{Command, Unit};
 
 /// Why a recording could not be compared.
 #[derive(Debug)]

@@ -1,12 +1,12 @@
 //! QUEUE: a building's production queue, its load, its units and technologies, and a new
 //! entry's costs.
 
+use crate::GenieError;
 use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE, QueueAt, ResearchAt};
 use crate::math::rng::Stream;
 use crate::objects::masters::Masters;
 use crate::objects::unit::POPULATION;
 use crate::production::Production;
-use crate::unit_ai::GenieError;
 use crate::world::{
     BUILDING_KIND, COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, Turns, VILLAGER, VILLAGER_ANY,
     villager,

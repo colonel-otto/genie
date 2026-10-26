@@ -1,4 +1,5 @@
 use super::*;
+use crate::movement::move_to::Walk;
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments), by
 /// the quarter its step points into: up-left, down-left, and the rest.

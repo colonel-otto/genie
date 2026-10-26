@@ -313,7 +313,7 @@ impl Turns {
     pub(super) fn ai_takes(
         &self,
         bp: usize,
-        b: &crate::world::Unit,
+        b: &crate::objects::unit::Unit,
         player: usize,
         master: i16,
     ) -> Result<bool, GenieError> {
