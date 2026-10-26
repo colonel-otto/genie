@@ -101,7 +101,7 @@ const fn packs(class: i16, reach: Option<(bool, bool)>, targetless: bool, comput
         Some((within, _)) => (class == CLASS_54 && !within) || (class == CLASS_51 && within),
     }
 }
-const LIVESTOCK: i16 = 58;
+pub(crate) const LIVESTOCK: i16 = 58;
 /// The town centre (master 109, `0x6109` raw), to which livestock's `MoveTo` goes as to a point
 /// (`FUN_140aa0df0`).
 const TOWN_CENTRE: i16 = 109;

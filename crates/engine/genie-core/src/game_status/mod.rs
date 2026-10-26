@@ -35,7 +35,7 @@ const DEFEAT_IDS: usize = 25;
 /// The first of the attributes a defeat's event reads (300 + a player's id).
 const KILLS_OF: usize = 300;
 /// The livestock's class, whose unit AI a stop leaves alone (`FUN_14108c050`: raw `-0xe72`).
-const LIVESTOCK: i16 = 58;
+pub(crate) const LIVESTOCK: i16 = 58;
 /// The trade carts' class, which keep their actions while they carry goods (`FUN_14106a940`).
 const TRADE_CART: i16 = 19;
 /// The unit AI action value a stop leaves alone (`FUN_14108c050`).

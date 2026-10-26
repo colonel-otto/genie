@@ -185,7 +185,7 @@ impl Turns {
     /// a counted builder leaves its foundation's builders, [`Turns::leave_builders`], before the
     /// rest; the foundation goes), the Attack's (`FUN_140a82ac0`,
     /// [`crate::combat::attack::Attack::halt`]) and the Artifact's (`FUN_140aad1a0`,
-    /// [`crate::artifact::Artifact::stop`]). The Gather, the Build and the Artifact show the
+    /// [`crate::ownership::artifact::Artifact::stop`]). The Gather, the Build and the Artifact show the
     /// master's standing sprite (the Gather the task's carrying one while it carries at least 1 of
     /// the task's resource, `FUN_140a8b6b0`). [`crate::turn::Unit::top_action`] holds no other
     /// kind.
@@ -212,7 +212,7 @@ impl Turns {
                     self.streams.get(Stream::Sprite),
                 )?;
             }
-            crate::artifact::ARTIFACT_TYPE => self.halt_artifact(p, idx, by)?,
+            crate::ownership::artifact::ARTIFACT_TYPE => self.halt_artifact(p, idx, by)?,
             _ => {
                 return Err(GenieError::unsupported(
                     "a stop of an action whose slot 0x38 is not modelled",

@@ -1,6 +1,5 @@
 //! A unit's update on its owner's turn, action by action.
 
-use crate::artifact::{Artifact, Handover};
 use crate::combat::attack::Strike;
 use crate::construction::build::{Builder, Completion, Site};
 use crate::gathering::hunt::{Gatherer, HuntSprites};
@@ -9,6 +8,7 @@ use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::move_to::MoveTo;
 use crate::movement::{Me, Mover, footprint_gap_squared};
+use crate::ownership::artifact::{Artifact, Handover};
 use crate::spatial::Spatial;
 use crate::tasks::Actor;
 use crate::turn::unit::{
@@ -816,7 +816,7 @@ impl Unit {
                     m.stop()?;
                 }
                 c.releases.push((e.target, self.releaser(c)));
-            } else if self.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE) {
+            } else if self.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE) {
                 // the Artifact goes (FUN_140a73fc0): its target is let go, then its sub-actions
                 // go (an Enter's teardown lets its building go; a walking MoveTo's stops the
                 // unit)

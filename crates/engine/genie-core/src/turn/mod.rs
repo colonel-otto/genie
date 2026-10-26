@@ -20,7 +20,7 @@
 
 mod command;
 mod game;
-mod player;
+pub(crate) mod player;
 pub(crate) mod unit;
 pub(crate) mod view;
 pub(crate) mod world;

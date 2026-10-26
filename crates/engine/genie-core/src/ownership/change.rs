@@ -87,7 +87,7 @@ impl Turns {
     /// # Errors
     ///
     /// A building asleep ([`crate::turn::unit::HANDS_LEFT`]), and what the parts do not model.
-    pub(in crate::turn) fn building_changes_hands(
+    pub(crate) fn building_changes_hands(
         &mut self,
         old: usize,
         id: i32,
@@ -157,7 +157,7 @@ impl Turns {
 
     /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` leaving its old owner's
     /// map (slot 0x1d8).
-    pub(super) fn foundation_sight_off(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
+    pub(crate) fn foundation_sight_off(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
             v.sight_off(id, p.position, p.radius, true, false);
         }
@@ -165,7 +165,7 @@ impl Turns {
 
     /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` coming on its new
     /// owner's map (slot 0x1d0).
-    pub(super) fn foundation_sight_on(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
+    pub(crate) fn foundation_sight_on(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
             let _ = v.sight_on(id, p.position, p.radius, true, false);
         }
@@ -173,7 +173,7 @@ impl Turns {
 
     /// [`Turns::building_changes_hands`] below state 3: the building's record and mesh shape of
     /// `master`'s obstruction come again (`FUN_141056460`).
-    pub(super) fn record_again(&mut self, id: i32, master: &Master) {
+    pub(crate) fn record_again(&mut self, id: i32, master: &Master) {
         let record = crate::spatial::Obstruction {
             kind: master.obstruction_type,
             class: master.obstruction_class,
@@ -193,7 +193,7 @@ impl Turns {
     /// # Errors
     ///
     /// An annex of a master the slice does not have, and what its change does not model.
-    pub(super) fn annexes_change_hands(
+    pub(crate) fn annexes_change_hands(
         &mut self,
         old: usize,
         id: i32,
@@ -223,7 +223,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the change and the attributes do not model.
-    pub(super) fn hand_building_over(
+    pub(crate) fn hand_building_over(
         &mut self,
         old: usize,
         idx: usize,
@@ -261,7 +261,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the stack unit and the research do not model.
-    pub(super) fn built_with_new_owner(
+    pub(crate) fn built_with_new_owner(
         &mut self,
         owner: usize,
         id: i32,
@@ -291,7 +291,7 @@ impl Turns {
     /// # Errors
     ///
     /// What the leaving and the destruction do not model.
-    pub(super) fn garrison_leaves(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn garrison_leaves(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         let inside = self
             .object(id)
             .map_or_else(Vec::new, |(_, u)| u.garrison.clone());
@@ -318,7 +318,7 @@ impl Turns {
     /// flipped), its class counters ([`count_class`], −1 for the old owner, then 1 for the new)
     /// and the storage the new owner gains (`FUN_141193860`: flags 1, 2 and 32). The lists'
     /// moves come between the first two, which nothing here reads.
-    pub(in crate::turn) fn hand_over_attributes(
+    pub(crate) fn hand_over_attributes(
         &mut self,
         old: usize,
         new: usize,
@@ -421,7 +421,7 @@ pub(crate) fn change_hands(
 /// # Errors
 ///
 /// An attribute the player does not hold.
-pub(super) fn lose_built_storage(
+pub(crate) fn lose_built_storage(
     p: &mut Player,
     master: &Master,
     held: i16,
@@ -444,7 +444,7 @@ pub(super) fn lose_built_storage(
 /// # Errors
 ///
 /// An attribute the player does not hold.
-pub(super) fn gain_built_storage(
+pub(crate) fn gain_built_storage(
     p: &mut Player,
     master: &Master,
     held: i16,
@@ -462,10 +462,10 @@ pub(super) fn gain_built_storage(
 }
 
 /// A building's storage flag that its owner holds while it stands built (slot 0x70's).
-pub(super) const STORAGE_WHILE_BUILT: u8 = 4;
+pub(crate) const STORAGE_WHILE_BUILT: u8 = 4;
 /// The other storage flag a building's new owner gains on an ownership change (slot 0x70's).
-pub(super) const STORAGE_8: u8 = 8;
+pub(crate) const STORAGE_8: u8 = 8;
 /// The population headroom attribute, which a building's held amount gives (`+0x308` 4).
-pub(super) const POPULATION_HEADROOM: i16 = 4;
+pub(crate) const POPULATION_HEADROOM: i16 = 4;
 /// The point a building's units leave toward on an ownership change: none (`DAT_14330ec20`).
-pub(super) const HANDOVER_NO_POINT: f32 = crate::math::image::turn::HANDOVER_NO_POINT;
+pub(crate) const HANDOVER_NO_POINT: f32 = crate::math::image::turn::HANDOVER_NO_POINT;

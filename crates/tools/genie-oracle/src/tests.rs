@@ -5,7 +5,7 @@ use super::*;
 /// make action in state 6 count 9 + 6); its type stays the top action's, −1 without one.
 #[test]
 fn a_building_s_production_state_comes_before_its_top_action_s() {
-    let artifact = genie_core::artifact::Artifact {
+    let artifact = genie_core::ownership::artifact::Artifact {
         state: 10,
         timer: 0.0,
         gaia: false,

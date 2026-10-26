@@ -108,7 +108,7 @@ impl Unit {
 
     /// Its top action's slots 0x190 and 0x288 (`FUN_14106d090`, `FUN_141082dc0`): the action has
     /// neither a target nor a point (`+0x30`, `+0x38` −1), or there is none. An Artifact holds
-    /// them while it walks a move ([`crate::artifact::Artifact::idle`]); a `MoveTo` always holds
+    /// them while it walks a move ([`crate::ownership::artifact::Artifact::idle`]); a `MoveTo` always holds
     /// its point.
     ///
     /// # Errors
@@ -122,7 +122,9 @@ impl Unit {
         }
         match self.top_action_kind() {
             None => Ok(true),
-            Some(crate::artifact::ARTIFACT_TYPE) => Ok(self.artifact.is_some_and(|a| a.idle())),
+            Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
+                Ok(self.artifact.is_some_and(|a| a.idle()))
+            }
             // a Make has no target, but its point (`+0x38`) is the base constructor's 0.0
             Some(crate::move_to::MOVE_TO | crate::gathering::make::MAKE) => Ok(false),
             Some(_) => Err(GenieError::unsupported(
@@ -143,7 +145,7 @@ impl Unit {
         let action = |kind, state| TopAction { kind, state };
         None.or_else(|| {
             self.artifact
-                .map(|a| action(crate::artifact::ARTIFACT_TYPE, a.state))
+                .map(|a| action(crate::ownership::artifact::ARTIFACT_TYPE, a.state))
         })
         .or_else(|| self.build.map(|b| action(BUILD, b.state)))
         .or_else(|| {
@@ -257,7 +259,7 @@ impl Unit {
             (0x6f, 4) => return Err(GenieError::unsupported("slot 0x2d0 of a trade in state 4")),
             (_, 0 | 1 | 3 | 0xd | 0xe) => true,
             (_, 2) => kind != crate::combat::attack::ATTACK,
-            (crate::artifact::ARTIFACT_TYPE, _) => self
+            (crate::ownership::artifact::ARTIFACT_TYPE, _) => self
                 .artifact
                 .is_some_and(|a| a.goal.is_none_or(|g| g[0] == -1.0)),
             _ => false,

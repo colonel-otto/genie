@@ -221,7 +221,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     });
     let artifact = add(Unit {
         id: 34,
-        artifact: Some(crate::artifact::Artifact::new(false)),
+        artifact: Some(crate::ownership::artifact::Artifact::new(false)),
         ..Unit::default()
     });
     assert_eq!(
@@ -240,7 +240,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         t.halt_other(1, attack, crate::combat::attack::ATTACK),
         Ok(true)
     );
-    let kind = crate::artifact::ARTIFACT_TYPE;
+    let kind = crate::ownership::artifact::ARTIFACT_TYPE;
     assert_eq!(t.halt_other(1, artifact, kind), Ok(true));
     let objects = &t.players[1].objects;
     assert_eq!(objects[gather].gather.map(|g| g.state), Some(2));

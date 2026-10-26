@@ -9,7 +9,7 @@ use crate::turn::{Turns, Unit};
 /// The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
 /// headroom (4), and current population (11) and 19, which hold its magnitude.
 pub(super) const HEADROOM: i16 = 4;
-pub(super) const POPULATION: i16 = 11;
+pub(crate) const POPULATION: i16 = 11;
 pub(super) const RESOURCE_19: i16 = 19;
 /// A storage flag of `'@'` (64): the object's storage stays with it (`FUN_141195a50`).
 pub(super) const KEPT_STORAGE: u8 = 64;

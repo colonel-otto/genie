@@ -191,7 +191,7 @@ pub(crate) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
         .find(|u| u.id == id)
         .or_else(foreign)
         .is_some_and(|u| {
-            u.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE)
+            u.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE)
                 && u.artifact
                     .as_ref()
                     .is_some_and(|a| a.goal.is_some_and(|g| g[0] != -1.0))

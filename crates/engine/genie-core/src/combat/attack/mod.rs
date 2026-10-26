@@ -332,7 +332,7 @@ const QUIET_SWINGS: [i16; 2] = [73, 559];
 
 /// The livestock (58, `0x3a`) and farm (49, `0x31`) classes: the ally test spares an Attack on
 /// one that was its unit's player's when the Attack took it ([`Attack::same_owner`]).
-const LIVESTOCK: i16 = 58;
+pub(crate) const LIVESTOCK: i16 = 58;
 const FARM: i16 = 49;
 /// A building's master type (`'P'`), whose main building (`+0xbb8`) an area effect attacks.
 const BUILDING: u8 = 80;

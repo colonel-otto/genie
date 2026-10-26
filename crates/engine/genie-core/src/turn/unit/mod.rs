@@ -1,6 +1,5 @@
 //! What the slice tracks of one object ([`Unit`]) and its update, action by action.
 
-use crate::artifact::Artifact;
 use crate::construction::build::{BuildAction, Construction};
 use crate::fly::Fly;
 use crate::gathering::hunt::{HuntAction, HuntSprites};
@@ -8,6 +7,7 @@ use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
 use crate::move_to::MoveToAction;
 use crate::movement::Mover;
+use crate::ownership::artifact::Artifact;
 use crate::production::Production;
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::command::GatherPoint;
@@ -26,7 +26,7 @@ mod update;
 pub(in crate::turn) use self::ai::AiResume;
 pub(crate) use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
-pub(in crate::turn) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
+pub(crate) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
 pub(in crate::turn) use crate::combat::volley::{Aimed, armed, same_members};
 pub(in crate::turn) use crate::construction::building_update::blasts_at_death;
 #[cfg(test)]

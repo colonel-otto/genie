@@ -1,5 +1,4 @@
 use super::*;
-use crate::artifact::Artifact;
 use crate::checkpoint::TopAction;
 use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::fly::Fly;
@@ -8,6 +7,7 @@ use crate::lifecycle::{Class, Lifecycle, MasterData};
 use crate::masters::{Master, Masters};
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::move_to::MoveTo;
+use crate::ownership::artifact::Artifact;
 use crate::spatial::{Placed, Spatial};
 use crate::tasks::{Actor, Diplomacy};
 use crate::turn::command::{Command, GatherPoint, ResearchAt};
@@ -2062,7 +2062,10 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
     assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
     let v = &t.players[1].objects[0];
     assert_eq!(v.enter, None);
-    assert_eq!(v.top_action_kind(), Some(crate::artifact::ARTIFACT_TYPE));
+    assert_eq!(
+        v.top_action_kind(),
+        Some(crate::ownership::artifact::ARTIFACT_TYPE)
+    );
     let sub = v.artifact.unwrap().enter;
     assert!(
         sub.is_some_and(|e| e.target == 10028) || v.life.inside == Some(10028),
@@ -8042,7 +8045,10 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     t.tick(50);
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.inside, Some(10028));
-    assert_eq!(v.top_action_kind(), Some(crate::artifact::ARTIFACT_TYPE));
+    assert_eq!(
+        v.top_action_kind(),
+        Some(crate::ownership::artifact::ARTIFACT_TYPE)
+    );
     // inside at the next update's start: no Artifact step, the inside update deletes it
     let before = v.artifact.map(|a| (a.state, a.timer));
     t.tick(50);

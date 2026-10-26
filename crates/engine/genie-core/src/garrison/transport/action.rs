@@ -206,7 +206,7 @@ impl TransportAction {
     }
 
     /// The update of its `MoveTo` sub-action (`FUN_140a992b0`) with `walk` and what the unit's
-    /// AI asks of the path (`ask`, `0x140aa2a70` in state 3), as [`crate::artifact::Artifact`]
+    /// AI asks of the path (`ask`, `0x140aa2a70` in state 3), as [`crate::ownership::artifact::Artifact`]
     /// runs its own: state 3 asks for its path to the point within [`MOVE_RANGE`] (quiet), state
     /// 4 moves, a motion step that gives up fails it (`set_state(13)`: only a human player's
     /// villager waits); its code: 1 once it ended at the point, 3 once it failed, 1 without one

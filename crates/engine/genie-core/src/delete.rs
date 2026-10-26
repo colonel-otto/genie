@@ -39,7 +39,7 @@ const BEING_CAPTURED: u8 = 2;
 /// The class a unit's slot 0xd8 (`FUN_141211340`) spares, and the livestock it spares while it
 /// holds some.
 const SPARED_CLASS: i16 = 42;
-const LIVESTOCK: i16 = 58;
+pub(crate) const LIVESTOCK: i16 = 58;
 
 impl Turns {
     /// `CANCEL_BUILD` for `player` on object `id`: the object must exist and be the player's,

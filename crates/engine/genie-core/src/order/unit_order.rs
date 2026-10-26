@@ -8,7 +8,7 @@ use crate::unit_ai::GenieError;
 
 impl Turns {
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
-    /// [`crate::artifact::Artifact::take_object`]): its old target is let go (slot 0x180,
+    /// [`crate::ownership::artifact::Artifact::take_object`]): its old target is let go (slot 0x180,
     /// [`Turns::release`]), then the target, in a state below 7, taken (slot 0x178,
     /// [`Turns::take`]); livestock (class 58) goes to a building within 1, to the town centre
     /// (master 109) at its point; a `MoveTo` it walked goes, whose teardown stops the unit (slot

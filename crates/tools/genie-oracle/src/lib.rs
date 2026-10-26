@@ -131,9 +131,9 @@ use self::sub_actions::{
 pub use self::task_finder::{FinderObject, FinderWorld, finder_world};
 use self::top_actions::saved_actions;
 #[cfg(test)]
-use genie_core::artifact::ARTIFACT_TYPE;
-#[cfg(test)]
 use genie_core::checkpoint::TopAction;
+#[cfg(test)]
+use genie_core::ownership::artifact::ARTIFACT_TYPE;
 #[cfg(test)]
 use genie_core::turn::{Command, Unit};
 

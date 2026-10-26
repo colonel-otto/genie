@@ -416,7 +416,7 @@ impl Turns {
                 | crate::gathering::make::MAKE
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(false),
-            Some(crate::artifact::ARTIFACT_TYPE) => {
+            Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
                 self.artifact_take_object(player, idx, target)?;
                 Ok(true)
             }

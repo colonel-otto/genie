@@ -4,8 +4,8 @@
 use crate::masters::{DefaultAction, MasterTable};
 use crate::{combat_master, core_task};
 use genie_core::GenieError;
-use genie_core::artifact::ARTIFACT_TYPE;
 use genie_core::masters::ACTION_FACTORY_TYPES;
+use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
 /// A saved unit's reload (the Strike's): its `mReloadStinger` plus its master's
@@ -391,7 +391,7 @@ pub(super) fn gather_point(object: &genie_save::Object) -> Option<genie_core::tu
 /// A default task's action the slice models.
 pub(super) enum DefaultStart {
     /// The Artifact action (type 107, livestock's).
-    Artifact(genie_core::artifact::Artifact),
+    Artifact(genie_core::ownership::artifact::Artifact),
     /// A bird's Fly (type 10) with its task.
     Fly(genie_core::masters::Task),
     /// A farm's or fish trap's Make (type 21).
@@ -432,7 +432,7 @@ pub(super) fn default_task(
     match action {
         DefaultAction::None => Ok(None),
         DefaultAction::Type(ARTIFACT_TYPE) => Ok(Some(DefaultStart::Artifact(
-            genie_core::artifact::Artifact::new(s.owner == 0),
+            genie_core::ownership::artifact::Artifact::new(s.owner == 0),
         ))),
         DefaultAction::Type(genie_core::fly::FLY) => {
             fly_task(objects, civ, masters, s.master_obj).map(|t| Some(DefaultStart::Fly(t)))

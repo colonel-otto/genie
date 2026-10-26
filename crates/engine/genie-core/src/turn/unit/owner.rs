@@ -58,7 +58,7 @@ impl Unit {
     /// (slot 0x438) is a trade (0x6f) with a load of a kind (COMISS 0, amount; JNC: an amount
     /// that is not a number keeps it).
     ///
-    /// [`Artifact::stop`]: crate::artifact::Artifact::stop
+    /// [`Artifact::stop`]: crate::ownership::artifact::Artifact::stop
     pub(in crate::turn) fn capture_stop(
         &mut self,
         c: &mut Context<'_>,
@@ -286,7 +286,7 @@ impl Unit {
     /// An action the slice does not hold, and what the Hunt's and the Gather's walks do not
     /// model.
     ///
-    /// [`Artifact::take_point`]: crate::artifact::Artifact::take_point
+    /// [`Artifact::take_point`]: crate::ownership::artifact::Artifact::take_point
     /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
     pub(crate) fn head_takes_point(
         &mut self,
@@ -311,7 +311,7 @@ impl Unit {
                 | crate::gathering::make::MAKE
                 | crate::construction::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(PointMove::Declined),
-            Some(crate::artifact::ARTIFACT_TYPE) => {
+            Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
                 let gone = self
                     .artifact
                     .as_mut()
@@ -501,10 +501,10 @@ pub(crate) enum PointMove {
 
 /// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument
 /// 1).
-pub(in crate::turn) const POPULATION: i16 = 4;
+pub(crate) const POPULATION: i16 = 4;
 
 /// The livestock class (`-0xe72` raw).
-pub(in crate::turn) const LIVESTOCK: i16 = 58;
+pub(crate) const LIVESTOCK: i16 = 58;
 
 /// The siege class (`-0xe9f` raw), whose ownership change drops the units it carries
 /// (`FUN_14120f800`).
@@ -516,7 +516,7 @@ pub(in crate::turn) const SIEGE_CLASS: i16 = 13;
 /// the artifact's ask for one reach, and a siege weapon's with units inside (`FUN_14120f800`'s
 /// class 13 branch: `FUN_141192d10`, each unit's leave, slot 0x1a8, with the siege weapon's slot
 /// 0x1b0, and the rest destroyed, slot 0xd0).
-pub(in crate::turn) const HANDS_LEFT: GenieError = GenieError::unsupported(
+pub(crate) const HANDS_LEFT: GenieError = GenieError::unsupported(
     "an ownership change of a building or of a siege weapon with units inside",
 );
 
@@ -587,7 +587,7 @@ pub(in crate::turn) fn scan_livestock(
 
 /// What an object's update leaves of it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::turn) enum Step {
+pub(crate) enum Step {
     Stay,
     /// It leaves its list for good (`RGE_Object_List::update` deletes it).
     Leave,
@@ -602,7 +602,7 @@ pub(in crate::turn) enum Step {
 /// Those taken move to the end of the new owner's list; their storage and class counters move
 /// with them.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::turn) struct Captured {
+pub(crate) struct Captured {
     pub(in crate::turn) new: usize,
     pub(in crate::turn) main: bool,
     pub(in crate::turn) also: Vec<i32>,

@@ -1288,7 +1288,7 @@ fn the_head_action_takes_a_move_only_where_its_slot_0x40_does() {
     });
     assert_eq!(t.head_takes_move(1, 0, Some(11), point), Ok(false));
     t.players[1].objects[0].move_to = None;
-    t.players[1].objects[0].artifact = Some(crate::artifact::Artifact::new(false));
+    t.players[1].objects[0].artifact = Some(crate::ownership::artifact::Artifact::new(false));
     assert_eq!(t.head_takes_move(1, 0, None, point), Ok(true));
     let artifact = t.players[1].objects[0].artifact.unwrap();
     assert_eq!(artifact.goal, Some(point));

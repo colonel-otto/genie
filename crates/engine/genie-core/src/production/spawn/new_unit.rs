@@ -387,7 +387,7 @@ impl Turns {
             // livestock's default task, the Artifact, starts once its action list is empty
             default_artifact: made
                 .default_task()
-                .is_some_and(|t| t.action_type == crate::artifact::ARTIFACT_TYPE),
+                .is_some_and(|t| t.action_type == crate::ownership::artifact::ARTIFACT_TYPE),
             ..Unit::default()
         });
         let idx = owner.objects.len() - 1;

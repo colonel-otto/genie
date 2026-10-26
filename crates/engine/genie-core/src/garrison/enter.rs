@@ -66,7 +66,7 @@ impl Turns {
         let Some(task) = self.find_work_task(player, idx, target, GARRISON, true)? else {
             return Ok(false);
         };
-        let under_artifact = top == Some(crate::artifact::ARTIFACT_TYPE);
+        let under_artifact = top == Some(crate::ownership::artifact::ARTIFACT_TYPE);
         self.enter_with(player, idx, target, &task, under_artifact)?;
         Ok(true)
     }
@@ -166,7 +166,7 @@ impl Turns {
 
     /// [`Turns::install_enter`], or with `sub` the Enter as the sub-action of the Artifact on top
     /// (`FUN_1410847e0`): the Artifact's sub-action goes (`FUN_140a98e20`,
-    /// [`crate::artifact::Artifact::hold_enter`]: an Enter lets its target go, slot 0x180
+    /// [`crate::ownership::artifact::Artifact::hold_enter`]: an Enter lets its target go, slot 0x180
     /// ([`Turns::release`]), and a walking `MoveTo`'s teardown stops the unit) and the Enter
     /// starts in its list (`FUN_140a977e0`), the Artifact's update running it from then on.
     pub(super) fn install_enter_as(

@@ -112,7 +112,8 @@ impl UnitView<'_> {
         let Some((tp, t_unit)) = find(target) else {
             return Ok(false);
         };
-        let under_artifact = unit.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE);
+        let under_artifact =
+            unit.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE);
         let masters = self.masters.ok_or(crate::turn::UNIT_AI_MASTER)?;
         let own = masters
             .get(unit.life.master_id)

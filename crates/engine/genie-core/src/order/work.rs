@@ -401,7 +401,8 @@ impl Turns {
         }
         // the top action of type 0x7e would hear the target through its slot 0x48: the slice
         // holds no action of that type. An Artifact on top ends a command of an Enter task here.
-        if top == Some(crate::artifact::ARTIFACT_TYPE) && task.action_type == crate::garrison::ENTER
+        if top == Some(crate::ownership::artifact::ARTIFACT_TYPE)
+            && task.action_type == crate::garrison::ENTER
         {
             return Ok(());
         }

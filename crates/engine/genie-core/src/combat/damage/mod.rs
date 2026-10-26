@@ -82,7 +82,7 @@ const VILLAGER: i16 = 4;
 /// gets no notify 500.
 const ELEPHANT_ARCHER: i16 = 64;
 /// The livestock class, which goes to Gaia when killed.
-const LIVESTOCK: i16 = 58;
+pub(crate) const LIVESTOCK: i16 = 58;
 /// The artifact class (1), which no blast reaches.
 const ARTIFACT: i16 = 1;
 /// The rams (masters 35, 422, 548 and 1258): their blast reaches only buildings and their

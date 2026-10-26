@@ -5,7 +5,7 @@ use crate::{
     saved_sprite,
 };
 use genie_core::GenieError;
-use genie_core::artifact::ARTIFACT_TYPE;
+use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_core::turn::Unit;
 use genie_save::generated::world::{PlayerObjects, RgeStaticObject};
 
@@ -105,7 +105,7 @@ pub(super) fn saved_actions(
                 }
                 _ => None,
             };
-            unit.artifact = Some(genie_core::artifact::Artifact {
+            unit.artifact = Some(genie_core::ownership::artifact::Artifact {
                 state: base.state,
                 timer: base.timer,
                 gaia: s.owner == 0,
