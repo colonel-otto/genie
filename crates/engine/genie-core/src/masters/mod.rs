@@ -1,0 +1,558 @@
+//! What the engine reads of a player's masters: the tasks a unit can do and the masters a unit
+//! changes into to do them, and how an effect changes a master: the attribute setters (slots
+//! 0x18, 0x20 and 0x28 of every master type, [`Master::set_attribute`]), the master copy of an
+//! upgrade (slot 8, [`Master::copy_from`]) and the values the slice derives from a master
+//! ([`Master::follow`]). The values are game data: the player's masters in the save, with the
+//! `.dat`'s values for what the save does not carry.
+
+use crate::GenieError;
+use crate::movement::MoveStats;
+
+mod combat_setters;
+mod derived;
+mod dispatch;
+mod lookup;
+mod static_setters;
+mod tribe_setters;
+mod values;
+
+pub use self::values::AttributeWorld;
+use self::values::{
+    MISSILE_SPEED_CAP, PERCENT, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short, add_sprite,
+    class_amount, cost_resource, handicapped, id_of, insert_damage_graphic, insert_train_location,
+    low8, low16, multiply_short, resize_damage_graphics, resize_train_locations, select_entry,
+    set_sprite,
+};
+#[cfg(test)]
+use crate::tasks::{Actor, Diplomacy, TaskTarget};
+
+/// One task of a master's task list (`RGE_Task`), with the memory offsets the task finder reads
+/// (the save's names; the `.dat`'s in brackets where they differ).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Task {
+    /// `+0xa`.
+    pub id: i16,
+    /// `+0xe`.
+    pub action_type: i16,
+    /// `+0x10`: the target class the task is for, -1 for any.
+    pub object_group: i16,
+    /// `+0x12`: the target master, -1 for any.
+    pub object_id: i16,
+    /// `+0x14`, `combat_level` (`enable_targeting`): the task is for a target's combat level.
+    pub combat_level: u8,
+    /// `+0x15`, `combat_level_flag`: a generation task (151, [`crate::abilities`]) of a combat
+    /// unit with bit 1 or of a building with bit 2 works on its own; a removal reward task (161)
+    /// not 0 pays the master's cost of its resource times the rate.
+    pub combat_level_flag: u8,
+    /// `+0x16`: the terrain the task is for, -1 for none.
+    pub terrain: i16,
+    /// `+0x18`, `owner_type` (`target_diplomacy`): whose targets.
+    pub owner_type: u8,
+    /// `+0x19`, `holding_attr` (`carry_check`): 1 wants a target holding the task's resource.
+    pub holding_attr: u8,
+    /// `+0x20` to `+0x26`, `attribute_type` to `attribute_type4` (`resource_in`,
+    /// `resource_multiplier`: the attribute that scales the gathering, `resource_out`,
+    /// `unused_resource`).
+    pub attribute_type: i16,
+    /// `+0x22`, `attribute_type2` (`resource_multiplier`): the attribute that scales the gathering.
+    pub attribute_type2: i16,
+    /// `+0x24`, `attribute_type3` (`resource_out`).
+    pub attribute_type3: i16,
+    /// `+0x26`, `attribute_type4` (`unused_resource`).
+    pub attribute_type4: i16,
+    /// `+0x1c`, `search_wait_time`: a Fly task's rest between flights.
+    pub wait_time: f32,
+    /// `+0x28`, the save's `work_val1`; `+0x2c`, `work_val2`.
+    pub work_val1: f32,
+    /// `+0x2c`, the save's `work_val2`.
+    pub work_val2: f32,
+    /// `+0x30`: how near the target the work is done.
+    pub work_range: f32,
+    /// `+0x34`, `work_flag` (the `.dat`'s `gather_type`): a Make adds to its player's attribute,
+    /// not to its object's holding ([`crate::make`]).
+    pub work_flag: i16,
+    /// `+0x38`, `enablement_resource_id` (`enabled`): the resource that enables the task, -1 none.
+    pub enablement: i16,
+    /// `+0x40`..`+0x58`: the moving, proceeding, working and carrying sprites (graphic ids, -1 for
+    /// none).
+    pub sprites: [i16; 4],
+    /// `+0x60` and `+0x78`: the event ids (`mEventId`) of the gathering and the deposit sound,
+    /// as the task's load (`FUN_141062470`) leaves them; a terrain look task (159) names its
+    /// dying and its undead sprite with them ([`crate::abilities`]).
+    pub sound_events: [i32; 2],
+}
+
+/// A task for any target, with no resource, terrain or requirement.
+impl Default for Task {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            action_type: 0,
+            object_group: -1,
+            object_id: -1,
+            combat_level: 0,
+            combat_level_flag: 0,
+            terrain: -1,
+            owner_type: 0,
+            holding_attr: 0,
+            attribute_type: -1,
+            attribute_type2: -1,
+            attribute_type3: -1,
+            attribute_type4: -1,
+            wait_time: 0.0,
+            work_val1: 0.0,
+            work_val2: 0.0,
+            work_range: 0.0,
+            work_flag: 0,
+            enablement: -1,
+            sprites: [-1; 4],
+            sound_events: [0; 2],
+        }
+    }
+}
+
+/// The task types the action list's factory makes an action of: the TRIBE factory's
+/// (`FUN_140aca4b0`) and the RGE factory's it falls back on (`FUN_140a97e00`). A default task of
+/// any other type starts nothing (wild animals' Explore, type 6).
+pub const ACTION_FACTORY_TYPES: [i16; 28] = [
+    3, 0xc, 0xe, 0x65, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6e, 0x6f, 0x78, 0x79, 0x7a, 0x7b, 0x7d,
+    0x83, 0x84, 0x87, 0x88, 0x95, 0x9a, 4, 5, 7, 10, 0xd, 0x15,
+];
+
+impl Master {
+    /// Its default task (`FUN_14109e0c0`: the task list's entry at the default task's index,
+    /// `+0x788`), if it has one.
+    #[must_use]
+    pub fn default_task(&self) -> Option<&Task> {
+        self.tasks.get(usize::try_from(self.default_task?).ok()?)
+    }
+
+    /// What a new object of this master starts once its action list is empty in state 2
+    /// (`RGE_Action_Object::update`, slot 0x7f0): a Make ([`crate::make`]: true), or the
+    /// default task's action the slice does not model; nothing for a type the factory makes no
+    /// action of.
+    #[must_use]
+    pub fn default_start(&self) -> (bool, Option<GenieError>) {
+        match self.default_task() {
+            Some(t) if t.action_type == crate::make::MAKE => (true, None),
+            Some(t) if ACTION_FACTORY_TYPES.contains(&t.action_type) => (
+                false,
+                Some(GenieError::unsupported(
+                    "a new object's default task other than a Make",
+                )),
+            ),
+            _ => (false, None),
+        }
+    }
+}
+
+/// What a building's completion (`FUN_1411dbb70` with 2) reads of its master, the `.dat`'s type
+/// 80 values.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BuildingMaster {
+    /// `+0x980`, `adjacent_mode`: walls and gates join their neighbours (`FUN_1411ce890`).
+    pub adjacent_mode: u8,
+    /// `+0x984`, `disappears_when_built`.
+    pub disappears_when_built: bool,
+    /// `+0x986`, `stack_unit_id`: the building becomes another (−1 for none).
+    pub stack_unit: i16,
+    /// `+0x988`, `foundation_terrain_id` (the save's `on_build_make_tile`; −1 for none).
+    pub foundation_terrain: i16,
+    /// `+0x98c`, `tech_id`: the technology its completion researches (−1 for none).
+    pub tech: i16,
+    /// `+0x9bc`, `garrison_type`: the kinds of units it takes in (bit 0 villagers, `FUN_14120eb10`).
+    pub garrison_type: u8,
+    /// `+0x9c0`, `garrison_heal_rate`: the hit points a second it gives the units inside.
+    pub garrison_heal_rate: f32,
+    /// `+0x9c4`, `garrison_repair_rate`: its repair a second per villager inside.
+    pub garrison_repair_rate: f32,
+    /// `+0x990`, the masters of its annexes (−1 for none; their places beside it at `+0x998`).
+    pub annexes: [i16; 4],
+    /// `+0x998` (x) and `+0x9a8` (y), each annex slot's place off the building's (the `.dat`'s
+    /// building annexes' `misplacement`), which the building constructor (`FUN_1411de5f0`) makes
+    /// its annexes at.
+    pub annex_offsets: [[f32; 2]; 4],
+    /// `+0x9b8`, `head_unit`: the building it is an annex of (−1 for none).
+    pub head_unit: i16,
+    /// `+0x9ba`, `transform_unit`: the master it transforms into (−1 for none); a gate with one
+    /// is in its player's gate list (`+0x1360`, `FUN_141616200`).
+    pub transform_unit: i16,
+    /// `+0x960`, the `.dat`'s `destruction_graphic_id` (the save's third building sprite): the
+    /// sprite a building that dies before it is built shows (`RGE_Static_Object::update`), −1
+    /// for none.
+    pub destruction_sprite: i16,
+    /// `+0x950`, the `.dat`'s `construction_graphic_id` (the save's first building sprite): the
+    /// sprite a building under construction shows, −1 for none.
+    pub construction_sprite: i16,
+}
+
+/// The master values the task finder and the work command read.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Master {
+    /// The master's id.
+    pub id: i16,
+    /// The master's type (`+0x8`): 70 for a combat unit, 80 (`'P'`) for a building.
+    pub kind: u8,
+    /// `+0x158`, the `.dat`'s `copy_id`: the master a garrison order asks a building about
+    /// (`FUN_141621220`).
+    pub copy_id: i16,
+    /// `+0x260`, the `.dat`'s `base_id` (the master load `FUN_1411319f0` turns 768 into 420 and
+    /// 770 into 691): the master whose availability says whether the player can make this one
+    /// (`FUN_141663f80`, [`crate::turn::Turns::can_make`]); an upgrade's copy keeps it.
+    pub base_id: i16,
+    /// `+0x410`.
+    pub class: i16,
+    /// `+0x7b8`, the `.dat`'s `TaskSwapGroup` (the save does not carry it); 0 for none.
+    pub task_by_group: u8,
+    /// `radius_x`, `radius_y` (`+0x5d8`, `+0x5dc`).
+    pub radius: [f32; 2],
+    /// `radius_z` (`+0x5e0`) is above 0: its objects count as tall on their tiles.
+    pub tall: bool,
+    /// `radius_z` (`+0x5e0`): how high a missile may pass over its objects and hit them
+    /// (`FUN_14113f740`).
+    pub height: f32,
+    /// `line_of_sight` (`+0x5d0`).
+    pub line_of_sight: f32,
+    /// `+0x606`, its terrain restriction (the save's `terrain_restriction_mask_id`; −1 for none),
+    /// which a placement test reads.
+    pub terrain_restriction: i16,
+    /// `obstruction_type` (`+0x651`) and `can_be_built_on` (`+0x5e9`).
+    pub obstruction_type: u8,
+    /// `can_be_built_on` (`+0x5e9`): a new building deletes an object of it off its footprint.
+    pub buildable_on: u8,
+    /// `obstruction_class` (`+0x652`).
+    pub obstruction_class: u8,
+    /// `object_flags` (`+0x654`): bit 0 takes garrisons, bit 4 marks a hunter master.
+    pub object_flags: u32,
+    /// The `.dat`'s `combat_level` (`+0x62c`).
+    pub combat_level: u8,
+    /// Its task list.
+    pub tasks: Vec<Task>,
+    /// `+0x790`, `default_task`: the id of the task its object's empty action list starts in
+    /// state 2 (`RGE_Action_Object::update`, slot 0x7f0); None for the game's −1.
+    pub default_task: Option<i16>,
+    /// The build cost `(resource, amount, paid)`.
+    pub cost: Vec<(i16, i16, bool)>,
+    /// `work_rate` (`+0x798`): what a builder of this master adds to the work per second.
+    pub work_rate: f32,
+    /// `search_radius` (`+0x794`, the object's slot 0x2c8).
+    pub search_radius: f32,
+    /// The `.dat`'s `drop_sites` (`+0x7a0`..`+0x7a8`, `FUN_14109d4f0`): the buildings a unit of
+    /// this master takes its load to.
+    pub drop_sites: Vec<i16>,
+    /// The hit points (`+0x530`) and the build time: the first train location's train time
+    /// (`+0x898`'s first entry), 0 without one.
+    pub hit_points: i16,
+    /// The build time: the first train location's train time, 0 without one.
+    pub build_time: i16,
+    /// The train locations' ids (`+0x898`, each entry's first short): the units that build a
+    /// building, the buildings that train a unit (`FUN_141263610`).
+    pub trained_at: Vec<i16>,
+    /// The combat master's `weapon_range` (`+0x828`, object slot 0x230) and
+    /// `minimum_weapon_range` (`+0x850`, slot 0x240).
+    pub weapon_range: f32,
+    /// `minimum_weapon_range` (`+0x850`, slot 0x240).
+    pub min_range: f32,
+    /// `charge_type` (`+0x922`): 6 and 7 add `charge_event` (`+0x920`) to the range against some
+    /// targets (slot 0x2f8).
+    pub charge_type: i16,
+    /// `+0x61c`, `attribute_max_amount`: how much an object of this master carries.
+    pub capacity: i16,
+    /// `+0x8bc`, `mFormationCategory`: 0 (villagers) keeps a unit out of the groups an order's
+    /// splitter forms (`FUN_140fd76d0`).
+    pub formation_category: u8,
+    /// `+0x8d9`, `hero_flag`: a combat master with bit 0 or 4 set and not both 4 and 7 joins a
+    /// group's fifth sub-formation (`FUN_141011300`).
+    pub hero_flag: u8,
+    /// `+0x8b8`, `mSpacingModifier`: with the radius on x the unit's radius in a group's
+    /// formation (`FUN_141025920`). The player's masters copy it from the data file's.
+    pub spacing_modifier: f32,
+    /// `+0x688`, `+0x68c`: the `.dat`'s `outline_size` (x, y), an obstruction-type-11 object's
+    /// shape radii (`FUN_141054fe0`).
+    pub outline: [f32; 2],
+    /// `+0x5fc`, `clearance_size`: a completed building's foundation terrain covers its position
+    /// plus and minus this.
+    pub clearance: [f32; 2],
+    /// `+0x820`, the `.dat`'s `defense_terrain_bonus` (a terrain restriction): a completed
+    /// building keeps to restore a tile's terrain whose value in it is neither 0 nor 1.
+    pub terrain_bonus: i16,
+    /// What a building's completion reads (type 80), None for other masters.
+    pub building: Option<BuildingMaster>,
+    /// The resource storage (`attribute_type_held`, `attribute_amount_held`, `attribute_flag`:
+    /// `+0x60a`, `+0x610`, `+0x628`): what an object of this master adds to its player's
+    /// attributes, by its flag.
+    pub storage: Vec<(i16, f32, u8)>,
+    /// The master has damage sprites (`+0x638`..`+0x640`): a master change checks them
+    /// (`FUN_1411859a0`).
+    pub damage_sprites: bool,
+    /// The `.dat`'s `fly_mode` (`+0x608`): 1 flies above the ground (a bird's Fly lifts it).
+    pub fly_mode: u8,
+    /// What a hit on an object of this master reads (`FUN_141082530`): its armor classes (class,
+    /// amount; `+0x808`, count `+0x802`), its base armor for a class it does not list (`+0x800`),
+    /// `bonus_damage_resistance` (`+0x824`), `combat_ability` (`+0x840`), `damage_reflection`
+    /// (`+0x864`), `invulnerability_level` (`+0x930`: a hit point floor, `FUN_141202a80`) and
+    /// `special_attack_flag` (`+0x8d8`), `friendly_fire_damage` (`+0x868`), its special graphic
+    /// (`+0x8e8`, the `.dat`'s `special_graphic`) and `area_effect_object_level` (`+0x62b`, the
+    /// blasts that reach it); and what an attacker of it reads: `area_effect_range` (`+0x82c`),
+    /// `area_effect_level` (`+0x830`), `area_damage` (`+0x834`), `max_charge` (`+0x918`) and
+    /// `charge_target` (`+0x924`).
+    pub base_armor: i16,
+    /// Its armor classes (class, amount; `+0x808`, count `+0x802`).
+    pub armors: Vec<(i16, i16)>,
+    /// `bonus_damage_resistance` (`+0x824`).
+    pub resistance: f32,
+    /// `combat_ability` (`+0x840`).
+    pub combat_ability: u8,
+    /// `damage_reflection` (`+0x864`).
+    pub reflection: f32,
+    /// `invulnerability_level` (`+0x930`): a hit point floor.
+    pub invulnerability: f32,
+    /// `attack_priority` (`+0x92c`, `FUN_141202220`): 3 attacks only the classes of
+    /// `FUN_140fddf10`.
+    pub attack_priority: u8,
+    /// `special_attack_flag` (`+0x8d8`).
+    pub special_attack: u8,
+    /// `friendly_fire_damage` (`+0x868`).
+    pub friendly_fire: f32,
+    /// It has a special graphic (`+0x8e8`).
+    pub special_graphic: bool,
+    /// The special graphic's sprite (the `.dat`'s `special_graphic`), −1 for none: a herder
+    /// leading livestock shows it.
+    pub special_sprite: i16,
+    /// `area_effect_object_level` (`+0x62b`): the blasts that reach it.
+    pub blast_defense: u8,
+    /// `area_effect_range` (`+0x82c`): its blast's radius.
+    pub area_effect: f32,
+    /// `area_effect_level` (`+0x830`).
+    pub blast_level: u8,
+    /// `area_damage` (`+0x834`).
+    pub area_damage: f32,
+    /// `max_charge` (`+0x918`).
+    pub max_charge: f32,
+    /// `charge_target` (`+0x924`).
+    pub charge_target: i16,
+    /// `+0x5d4`, `obj_max` (the `.dat`'s `garrison_capacity`): a building that garrisons takes a
+    /// gather point (`FUN_140e7e9a0`).
+    pub garrison: u8,
+    /// `+0x680`, the `.dat`'s `recyclable`: its objects take ids from the negative range
+    /// (`FUN_1415301b0`).
+    pub recyclable: bool,
+    /// `+0x681`, `enable_auto_gather`: an object of it blocking a spawn point stays
+    /// (`FUN_141194170`).
+    pub auto_gather: bool,
+    /// `+0x683`, `resource_gather_group`: the resource kind a gatherer's search
+    /// (`ClosestResourceObject`) takes it for (0 wood, 1 food, 3 stone, 4 gold, 2 the rest).
+    pub gather_group: u8,
+    /// `+0x604`, `hill_mode`: how a placement test checks the elevation.
+    pub hill_mode: u8,
+    /// `+0x605`, `fog_visibility`: an object of it the player only explored stays a target
+    /// (the Attack's update).
+    pub fog_visibility: u8,
+    /// `+0x5f0`, `available`: the player may make it (an effect's enable command, kind 2,
+    /// changes it).
+    pub available: bool,
+    /// `+0x5f1`, `disabled`: an enable command leaves `available` as it is.
+    pub disabled: bool,
+    /// `+0x682`, `create_doppelganger_on_death`: 2 leaves ghosts of an object of it for the
+    /// players who explored its tile but do not see it, at its death and once they lose sight
+    /// of it ([`crate::ghost`]).
+    pub ghost_on_death: u8,
+    /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and
+    /// `placement_terrain`, −1 for none): the two side terrains, then the two terrains
+    /// ([`crate::spawn::placement_terrains`]).
+    pub placement: [i16; 4],
+    /// The death sprite (`+0x480`, −1 for none) and the death spawns (`+0x5e4`, `+0x5e6`, −1 for
+    /// none), and what a dead object's steps read of the master
+    /// ([`crate::lifecycle::MasterData`]), for a new object's [`crate::lifecycle::Lifecycle`].
+    pub death_sprite: i16,
+    /// The death spawns (`+0x5e4`, `+0x5e6`, −1 for none).
+    pub death_spawns: [i16; 2],
+    /// What a dead object's steps read of the master.
+    pub life: Option<crate::lifecycle::MasterData>,
+    /// What a combat master's attack reads: its standing sprite (`+0x470`), its attack sprite
+    /// (`+0x7f8`, `fight_sprite_id`), a second attack sprite
+    /// (`+0x878`, the `.dat`'s `attack_graphic2`), `missile_id`, `fire_missile_at_frame`,
+    /// `interrupt_frame`, `base_hit_chance`, `speed_of_attack` (the reload time) and its weapons
+    /// (class, amount); and the sprite it waits with between swings (`+0x910`, the `.dat`'s
+    /// `idle_attack_graphic`, −1 for none).
+    pub standing_sprite: i16,
+    /// Its second standing sprite (`+0x478`, the `.dat`'s `standing_graphic[1]`), whose idle
+    /// animation the object swaps in (`0x141071880`); None for none.
+    pub standing_sprite_2: Option<i16>,
+    /// The sprite it waits with between swings (`+0x910`, −1 for none).
+    pub idle_attack_sprite: i16,
+    /// Its walking sprite (`+0x748`, `move_sprite_id`; the unit's slot 0x7c8) and its running
+    /// one (`+0x750`, `run_sprite_id`; slot 0x7d0), −1 for none.
+    pub move_sprite: i16,
+    /// Its running sprite (`+0x750`), −1 for none.
+    pub run_sprite: i16,
+    /// Its attack sprite (`+0x7f8`, `fight_sprite_id`).
+    pub attack_sprite: i16,
+    /// A second attack sprite (`+0x878`).
+    pub attack_sprite2: i16,
+    /// `missile_id`, −1 for none.
+    pub missile: i16,
+    /// `fire_missile_at_frame`.
+    pub fire_frame: i16,
+    /// `interrupt_frame`.
+    pub interrupt_frame: i16,
+    /// `base_hit_chance`.
+    pub hit_chance: i16,
+    /// `speed_of_attack`: the reload time.
+    pub reload: f32,
+    /// Its weapons (class, amount).
+    pub weapons: Vec<(i16, i16)>,
+    /// Where its missile starts from its place, turned by its facing (`+0x844`..`+0x84c`,
+    /// `weapon_offset`), and how far a missed missile strays per tile of the way
+    /// (`missed_missile_spread`, `+0x860`).
+    pub weapon_offset: [f32; 3],
+    /// How far a missed missile strays per tile of the way (`missed_missile_spread`, `+0x860`).
+    pub missed_spread: f32,
+    /// `garrison_firepower` (`+0x870`): what a unit adds to the volleys of a building it is
+    /// inside; one at most 0 adds its magnitude.
+    pub garrison_firepower: f32,
+    /// `volley_fire_amount` (`+0x8c0`, the `.dat`'s total projectiles): a new object's missiles
+    /// per volley (`+0xa00`).
+    pub volley_fire: f32,
+    /// `max_attacks_in_volley` (`+0x8c4`, the `.dat`'s max total projectiles).
+    pub max_volley: u8,
+    /// `volley_x_spread`, `volley_y_spread` and `volley_start_spread_adjustment` (`+0x8c8`..
+    /// `+0x8d0`, the `.dat`'s projectile spawning area): how far a volley's missiles scatter.
+    pub volley_spread: [f32; 3],
+    /// `volley_missile_id` (`+0x8d4`, the `.dat`'s secondary projectile), None for −1.
+    pub volley_missile: Option<i16>,
+    /// `mChargeProjectileUnit` (`+0x928`), None for −1.
+    pub charge_projectile: Option<i16>,
+    /// A missile master's flight (type 60, [`crate::missile::MissileStats`]).
+    pub missile_stats: Option<crate::missile::MissileStats>,
+    /// What a unit of this master moves with, its speed with the master's walking sprite (the
+    /// run sprite `+0x750` if it has one, else the move sprite `+0x748`); None for a master that
+    /// does not move.
+    pub moving: Option<MoveStats>,
+    /// `+0x740`, `mMaxSpeed` (the `.dat`'s `speed`): the top speed before a sprite's factor, from
+    /// which [`Master::moving`]'s speeds and [`crate::missile::MissileStats::speed`] follow.
+    pub max_speed: f32,
+    /// `+0x758`, `turn_speed` (the `.dat`'s `rotation_speed`), which [`MoveStats::turn_time`]
+    /// follows.
+    pub turn_speed: f32,
+    /// `+0x488`, the undead sprite (`undeadSpriteId`, −1 for none).
+    pub undead_sprite: i16,
+    /// `+0x650`, `occlusion_flag` (the `.dat`'s `occlusion_mode`).
+    pub occlusion: u8,
+    /// `+0x684`, the `.dat`'s `selection_effect`.
+    pub selection_effect: u8,
+    /// `+0x62f`, `unit_level` (the `.dat`'s `interface_kind`).
+    pub unit_level: u8,
+    /// `+0x62d`, `select_level` (the `.dat`'s `interaction_mode`).
+    pub select_level: u8,
+    /// `+0x62e`, `map_draw_level` (the `.dat`'s `minimap_mode`).
+    pub map_draw_level: u8,
+    /// The damage sprites (`+0x638`, 16 bytes each; the save's `damage_sprite`), which
+    /// [`Master::damage_sprites`] follows.
+    pub damage_graphics: Vec<DamageGraphic>,
+    /// `+0x731`, `mDamageSpriteEntryMod`: the damage sprite the attributes 91, 156 and 157 change.
+    pub damage_graphic_entry: u8,
+    /// A moving master's trail (`+0x75e`..`+0x764`).
+    pub trail: Trail,
+    /// `+0x7b9`, `run_pattern`.
+    pub run_pattern: u8,
+    /// `+0x856`, `+0x858`, `+0x854` and `+0x8b0`: the attack, range, melee and pierce armor a
+    /// combat master shows (`orig_weapon`, `orig_weapon_range`, `orig_armor`,
+    /// `orig_pierce_armor`).
+    pub shown: Shown,
+    /// The train locations (`+0x898`, 12 bytes each; the save's `train_location`), which
+    /// [`Master::trained_at`] and [`Master::build_time`] follow.
+    pub train_locations: Vec<TrainLocation>,
+    /// `+0x940`, `mTrainLocationEntryMod`: the train location the attributes 42, 43, 58 and 101
+    /// change.
+    pub train_location_entry: i16,
+    /// `+0x8b4`, `regeneration_rate`.
+    pub regeneration: f32,
+    /// `+0x91c`, `mRechargeRate`.
+    pub recharge_rate: f32,
+    /// `+0x920`, `mChargeEvent`.
+    pub charge_event: i16,
+    /// `+0x934`, `+0x938`, `+0x93c`: `mMinConversionTimeAdj`, `mMaxConversionTimeAdj`,
+    /// `mConversionChanceAdj`.
+    pub conversion: [f32; 3],
+    /// `+0x908`, the hero glow sprite (−1 for none).
+    pub hero_glow_sprite: i16,
+    /// `+0x8f0`, the garrison sprite (−1 for none).
+    pub garrison_sprite: i16,
+    /// A building master's `+0x982`, `building_facet` (the attribute list's "Building Icon
+    /// Override").
+    pub building_facet: i16,
+}
+
+/// One damage sprite of a master (`+0x638`'s entries; the save's `damage_sprite`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DamageGraphic {
+    /// `+0x0`, the sprite (`tempId`, −1 for none).
+    pub sprite: i16,
+    /// `+0x8`, `damage_percent`.
+    pub percent: u8,
+    /// `+0x9`, the `flag` (the `.dat`'s `apply_mode`).
+    pub apply_mode: u8,
+}
+
+/// A new damage sprite entry: no sprite, zero bytes (the game zeroes its 16 bytes).
+impl Default for DamageGraphic {
+    fn default() -> Self {
+        Self {
+            sprite: -1,
+            percent: 0,
+            apply_mode: 0,
+        }
+    }
+}
+
+/// One train location of a combat master (`+0x898`'s 12-byte entries; the save's
+/// `train_location`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TrainLocation {
+    /// `+0x0`, `trainLocationID`: the master that makes it.
+    pub location: i16,
+    /// `+0x2`, `trainTime`.
+    pub time: i16,
+    /// `+0x4`, `buttonLocationID`.
+    pub button: u8,
+    /// `+0x8`, `hotkeyID`.
+    pub hotkey: i32,
+}
+
+/// A moving master's trail (`obj_trail_id`, `obj_trail_options`, `obj_trail_spacing`; the
+/// `.dat`'s tracking unit, its mode and density).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Trail {
+    /// `+0x75e`: the master it leaves behind.
+    pub unit: i16,
+    /// `+0x760`.
+    pub mode: u8,
+    /// `+0x764`.
+    pub density: f32,
+}
+
+/// What a combat master shows of its values (`+0x856`, `+0x858`, `+0x854`, `+0x8b0`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Shown {
+    /// `+0x856`, `orig_weapon`.
+    pub attack: i16,
+    /// `+0x858`, `orig_weapon_range`.
+    pub range: f32,
+    /// `+0x854`, `orig_armor`.
+    pub melee_armor: i16,
+    /// `+0x8b0`, `orig_pierce_armor`.
+    pub pierce_armor: i16,
+}
+
+/// A player's masters by id.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Masters {
+    by_id: Vec<Option<Master>>,
+}
+
+pub mod attribute;
+pub mod master_type;
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,1165 @@
+use super::*;
+
+fn task(action_type: i16, object_group: i16, object_id: i16, work_val1: f32) -> Task {
+    Task {
+        action_type,
+        object_group,
+        object_id,
+        work_val1,
+        ..Task::default()
+    }
+}
+
+fn master(id: i16, task_by_group: u8, tasks: Vec<Task>) -> Master {
+    Master {
+        id,
+        kind: 70,
+        class: 4,
+        task_by_group,
+        radius: [0.2, 0.2],
+        tall: true,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tasks,
+        cost: vec![],
+        obstruction_class: 0,
+        object_flags: 0,
+        combat_level: 0,
+        work_rate: 1.0,
+        hit_points: 25,
+        build_time: 0,
+        ..Master::default()
+    }
+}
+
+fn house() -> Master {
+    Master {
+        id: 70,
+        kind: 80,
+        class: 3,
+        task_by_group: 0,
+        radius: [1.0, 1.0],
+        tall: true,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tasks: vec![],
+        cost: vec![(1, 25, true)],
+        obstruction_class: 2,
+        object_flags: 0,
+        combat_level: 0,
+        work_rate: 0.0,
+        hit_points: 550,
+        build_time: 25,
+        ..Master::default()
+    }
+}
+
+/// The villagers of build 158041's `.dat`, shortened: the base masters have no Build task, the
+/// builders a generic one; a fisherman (56) of the male group has none either.
+fn villagers() -> Masters {
+    let base = || {
+        vec![
+            task(7, -1, -1, 0.0),
+            task(3, 3, -1, 0.0),
+            task(110, -1, 126, 0.0),
+        ]
+    };
+    let builder = || vec![task(101, -1, -1, 1.0), task(3, 3, -1, 0.0)];
+    Masters::new([
+        master(56, 1, vec![task(5, -1, 53, 1.0)]),
+        master(83, 1, base()),
+        master(118, 1, builder()),
+        master(212, 2, builder()),
+        master(293, 2, base()),
+        house(),
+    ])
+}
+
+/// Every player on its own, no drop sites.
+struct Alone;
+
+impl Diplomacy for Alone {
+    fn allied(&self, from: usize, to: usize, _: bool) -> bool {
+        from == to
+    }
+
+    fn drops_at(&self, _: i16, _: &Actor<'_>) -> bool {
+        false
+    }
+}
+
+/// A world whose sprite table holds the ids 1 to 99, without a handicap.
+fn world(capped: bool) -> AttributeWorld<'static> {
+    AttributeWorld {
+        sprite: &|id| (1..100).contains(&id),
+        handicap: None,
+        capped,
+    }
+}
+
+fn of_type(kind: u8) -> Master {
+    Master {
+        kind,
+        ..Master::default()
+    }
+}
+
+/// A field of a master, read as an `f32`.
+type Read = fn(&Master) -> f32;
+
+/// A master of `kind` with three storage entries, a paid food cost, 10 hit points, two damage
+/// sprites and two train locations (the second of each selected).
+fn stocked(kind: u8) -> Master {
+    Master {
+        kind,
+        hit_points: 10,
+        storage: vec![(0, 1.0, 1), (1, 1.0, 1), (2, 1.0, 1)],
+        cost: vec![(0, 1, true)],
+        damage_graphics: vec![DamageGraphic::default(); 2],
+        damage_graphic_entry: 1,
+        train_locations: vec![TrainLocation::default(); 2],
+        train_location_entry: 1,
+        ..Master::default()
+    }
+}
+
+/// Each row (attribute, its field, the field after a set of 3, then after an add of 2, then
+/// after a multiply by 2) on a fresh [`stocked`] master of `kind`.
+fn sets_adds_multiplies(kind: u8, rows: &[(u8, Read, [f32; 3])]) {
+    let w = world(false);
+    for &(a, read, [set, add, multiply]) in rows {
+        let mut m = stocked(kind);
+        m.set_attribute(a, 3.0, &w);
+        assert_eq!(read(&m), set, "set {a}");
+        m.add_attribute(a, 2.0, &w);
+        assert_eq!(read(&m), add, "add {a}");
+        m.multiply_attribute(a, 2.0, &w);
+        assert_eq!(read(&m), multiply, "multiply {a}");
+    }
+}
+
+/// `FUN_141126400`, `FUN_141126af0` and `FUN_1411271e0`: each static attribute's field takes
+/// the set, the add and the multiply its arm has (a multiply rounds the shorts and bytes by
+/// 0.5, the blast defence not); the others leave it.
+#[test]
+fn each_static_attribute_sets_adds_and_multiplies_its_field() {
+    use attribute as a;
+    let rows: &[(u8, Read, [f32; 3])] = &[
+        (a::HIT_POINTS, |m| f32::from(m.hit_points), [3.0, 5.0, 10.0]),
+        (a::LINE_OF_SIGHT, |m| m.line_of_sight, [3.0, 5.0, 10.0]),
+        (
+            a::GARRISON_CAPACITY,
+            |m| f32::from(m.garrison),
+            [3.0, 5.0, 10.0],
+        ),
+        (a::SIZE_X, |m| m.radius[0], [3.0, 5.0, 10.0]),
+        (a::SIZE_Y, |m| m.radius[1], [3.0, 5.0, 10.0]),
+        (
+            a::CARRY_CAPACITY,
+            |m| f32::from(m.capacity),
+            [3.0, 5.0, 10.0],
+        ),
+        (a::STORAGE_1, |m| m.storage[0].1, [3.0, 5.0, 10.0]),
+        (a::STORAGE_2, |m| m.storage[1].1, [3.0, 5.0, 10.0]),
+        (a::STORAGE_3, |m| m.storage[2].1, [3.0, 5.0, 10.0]),
+        (
+            a::FOG_VISIBILITY,
+            |m| f32::from(m.fog_visibility),
+            [3.0, 3.0, 3.0],
+        ),
+        (
+            a::OCCLUSION_MODE,
+            |m| f32::from(m.occlusion),
+            [3.0, 5.0, 5.0],
+        ),
+        (a::SIZE_Z, |m| m.height, [3.0, 5.0, 10.0]),
+        (
+            a::CAN_BE_BUILT_ON,
+            |m| f32::from(m.blast_defense),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::BLAST_DEFENSE_LEVEL,
+            |m| f32::from(m.blast_defense),
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::TERRAIN_RESTRICTION_ID,
+            |m| f32::from(m.terrain_restriction),
+            [3.0, 3.0, 3.0],
+        ),
+        (a::UNIT_TRAIT, |m| m.object_flags as f32, [3.0, 5.0, 5.0]),
+        (
+            a::TRAIT_PIECE,
+            |m| (m.object_flags >> 16) as f32,
+            [3.0, 3.0, 3.0],
+        ),
+        (
+            a::DEAD_UNIT_ID,
+            |m| f32::from(m.death_spawns[0]),
+            [3.0, 3.0, 3.0],
+        ),
+        (
+            a::BLOOD_UNIT,
+            |m| f32::from(m.death_spawns[1]),
+            [3.0, 3.0, 3.0],
+        ),
+        (
+            a::STANDING_GRAPHIC,
+            |m| f32::from(m.standing_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::STANDING_GRAPHIC_2,
+            |m| f32::from(m.standing_sprite_2.unwrap_or(-1)),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::DYING_GRAPHIC,
+            |m| f32::from(m.death_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::UNDEAD_GRAPHIC,
+            |m| f32::from(m.undead_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::OBSTRUCTION_TYPE,
+            |m| f32::from(m.obstruction_type),
+            [3.0, 3.0, 3.0],
+        ),
+        (
+            a::BLOCKAGE_CLASS,
+            |m| f32::from(m.obstruction_class),
+            [3.0, 3.0, 3.0],
+        ),
+        (
+            a::SELECTION_EFFECT,
+            |m| f32::from(m.selection_effect),
+            [3.0, 3.0, 3.0],
+        ),
+        (
+            a::DAMAGE_GRAPHIC,
+            |m| f32::from(m.damage_graphics[1].sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::AVAILABLE_UNIT_FLAG,
+            |m| f32::from(u8::from(m.available)),
+            [1.0; 3],
+        ),
+        (
+            a::DISABLED_UNIT_FLAG,
+            |m| f32::from(u8::from(m.disabled)),
+            [1.0; 3],
+        ),
+        (
+            a::INTERFACE_KIND,
+            |m| f32::from(m.unit_level),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::COMBAT_LEVEL,
+            |m| f32::from(m.combat_level),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::INTERACTION_MODE,
+            |m| f32::from(m.select_level),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::MINIMAP_MODE,
+            |m| f32::from(m.map_draw_level),
+            [3.0, 5.0, 5.0],
+        ),
+        // the selected entry plus ten times the count: the set and the add select at most
+        // the last, the multiply inserts at 2 and selects it
+        (
+            a::DAMAGE_GRAPHICS_ENTRY_MOD,
+            |m| f32::from(m.damage_graphic_entry) + 10.0 * m.damage_graphics.len() as f32,
+            [21.0, 21.0, 32.0],
+        ),
+        // the add's count is the selected entry (1) plus 2
+        (
+            a::DAMAGE_GRAPHICS_TOTAL_NUM,
+            |m| m.damage_graphics.len() as f32,
+            [3.0, 3.0, 6.0],
+        ),
+        (
+            a::DAMAGE_GRAPHIC_PERCENT,
+            |m| f32::from(m.damage_graphics[1].percent),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::DAMAGE_GRAPHIC_APPLY_MODE,
+            |m| f32::from(m.damage_graphics[1].apply_mode),
+            [3.0, 5.0, 5.0],
+        ),
+    ];
+    sets_adds_multiplies(master_type::STATIC, rows);
+    // an obstruction type the table does not hold is 0; the trait piece keeps the low half;
+    // a flag of 0 is off
+    let mut m = stocked(master_type::STATIC);
+    m.object_flags = 0x1234;
+    m.set_attribute(a::TRAIT_PIECE, 2.0, &world(false));
+    m.set_attribute(a::OBSTRUCTION_TYPE, 4.0, &world(false));
+    m.set_attribute(a::AVAILABLE_UNIT_FLAG, 0.0, &world(false));
+    assert_eq!((m.object_flags, m.obstruction_type), (0x2_1234, 0));
+    assert!(!m.available);
+}
+
+/// `FUN_1410c1bf0` on the armor and attack amounts: a percentage of the class's entry plus
+/// 0.5, truncated; a class the master lacks changes nothing; an attack class at 0 the handicap
+/// raises scales the percentage by the factor (which a product of 0 keeps at 0).
+#[test]
+fn a_combat_multiply_takes_a_percentage_of_the_class_s_amount() {
+    let mut m = of_type(master_type::RGE_COMBAT);
+    m.armors = vec![(4, 3), (3, 5)];
+    m.weapons = vec![(4, 7), (21, 0)];
+    // class 3 at 150%: 5 x 1.5 + 0.5 = 8; class 4 at 50%: 7 x 0.5 + 0.5 = 4
+    m.multiply_attribute(attribute::ARMOR, f32::from(0x396_i16), &world(false));
+    m.multiply_attribute(attribute::ATTACK, f32::from(0x432_i16), &world(false));
+    assert_eq!(
+        (m.armors.clone(), m.weapons[0]),
+        (vec![(4, 3), (3, 8)], (4, 4))
+    );
+    m.multiply_attribute(attribute::ARMOR, f32::from(0x996_i16), &world(false));
+    assert_eq!(m.armors, vec![(4, 3), (3, 8)]);
+    let raised = AttributeWorld {
+        handicap: Some(1.5),
+        ..world(false)
+    };
+    m.multiply_attribute(attribute::ATTACK, f32::from(0x15c8_i16), &raised);
+    assert_eq!(m.weapons[1], (21, 0));
+}
+
+/// `FUN_1410c12b0`, `FUN_1410c16e0` and `FUN_1410c1bf0`: each RGE combat attribute's field
+/// takes the set, the add and the multiply (the frame delay, the blast level and the shown
+/// values by the truncated amount); the rotation speed comes from the moving master's set.
+#[test]
+fn each_combat_attribute_sets_adds_and_multiplies_its_field() {
+    use attribute as a;
+    let rows: &[(u8, Read, [f32; 3])] = &[
+        (a::ROTATION_SPEED, |m| m.turn_speed, [3.0, 5.0, 10.0]),
+        (a::ATTACK_RELOAD_TIME, |m| m.reload, [3.0, 5.0, 10.0]),
+        (
+            a::ACCURACY_PERCENT,
+            |m| f32::from(m.hit_chance),
+            [3.0, 5.0, 10.0],
+        ),
+        (a::MAXIMUM_RANGE, |m| m.weapon_range, [3.0, 5.0, 10.0]),
+        (a::BASE_ARMOR, |m| f32::from(m.base_armor), [3.0, 5.0, 10.0]),
+        (
+            a::PROJECTILE_UNIT,
+            |m| f32::from(m.missile),
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::TERRAIN_DEFENSE_BONUS,
+            |m| f32::from(m.terrain_bonus),
+            [3.0, 5.0, 10.0],
+        ),
+        (a::MINIMUM_RANGE, |m| m.min_range, [3.0, 5.0, 10.0]),
+        (a::BLAST_WIDTH, |m| m.area_effect, [3.0, 5.0, 10.0]),
+        (
+            a::BONUS_DAMAGE_RESISTANCE,
+            |m| m.resistance,
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::FRAME_DELAY,
+            |m| f32::from(m.fire_frame),
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::BLAST_ATTACK_LEVEL,
+            |m| f32::from(m.blast_level),
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::SHOWN_ATTACK,
+            |m| f32::from(m.shown.attack),
+            [3.0, 5.0, 10.0],
+        ),
+        (a::SHOWN_RANGE, |m| m.shown.range, [3.0, 5.0, 10.0]),
+        (
+            a::SHOWN_MELEE_ARMOR,
+            |m| f32::from(m.shown.melee_armor),
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::COMBAT_ABILITY,
+            |m| f32::from(m.combat_ability),
+            [3.0, 5.0, 5.0],
+        ),
+        (a::ATTACK_DISPERSION, |m| m.missed_spread, [3.0, 5.0, 10.0]),
+        (
+            a::ATTACK_GRAPHIC,
+            |m| f32::from(m.attack_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (a::AREA_DAMAGE, |m| m.area_damage, [3.0, 5.0, 10.0]),
+        (a::DAMAGE_REFLECTION, |m| m.reflection, [3.0, 5.0, 10.0]),
+        (
+            a::FRIENDLY_FIRE_DAMAGE,
+            |m| m.friendly_fire,
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::GARRISON_FIREPOWER,
+            |m| m.garrison_firepower,
+            [3.0, 5.0, 10.0],
+        ),
+        (a::DISPLACEMENT_X, |m| m.weapon_offset[0], [3.0, 5.0, 10.0]),
+        (a::DISPLACEMENT_Z, |m| m.weapon_offset[2], [3.0, 5.0, 10.0]),
+    ];
+    sets_adds_multiplies(master_type::RGE_COMBAT, rows);
+}
+
+/// `FUN_1412661d0`, `FUN_141266a60` and `FUN_141267040`: each combat (TRIBE) attribute's
+/// field takes the set, the add and the multiply its arm has; the selected train location
+/// takes the train values.
+#[test]
+fn each_tribe_combat_attribute_sets_adds_and_multiplies_its_field() {
+    use attribute as a;
+    let rows: &[(u8, Read, [f32; 3])] = &[
+        (a::HERO_STATUS, |m| f32::from(m.hero_flag), [3.0, 5.0, 5.0]),
+        (
+            a::TRAIN_LOCATION,
+            |m| f32::from(m.train_locations[1].location),
+            [3.0; 3],
+        ),
+        (
+            a::TRAIN_BUTTON,
+            |m| f32::from(m.train_locations[1].button),
+            [3.0; 3],
+        ),
+        (
+            a::SHOWN_PIERCE_ARMOR,
+            |m| f32::from(m.shown.pierce_armor),
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::HOTKEY_ID,
+            |m| m.train_locations[1].hotkey as f32,
+            [3.0; 3],
+        ),
+        (a::MAXIMUM_CHARGE, |m| m.max_charge, [3.0, 5.0, 10.0]),
+        (a::RECHARGE_RATE, |m| m.recharge_rate, [3.0, 5.0, 10.0]),
+        (
+            a::CHARGE_EVENT,
+            |m| f32::from(m.charge_event),
+            [3.0, 5.0, 5.0],
+        ),
+        (a::CHARGE_TYPE, |m| f32::from(m.charge_type), [3.0; 3]),
+        (
+            a::SECONDARY_PROJECTILE_UNIT,
+            |m| f32::from(m.volley_missile.unwrap_or(-1)),
+            [3.0; 3],
+        ),
+        (
+            a::SPECIAL_GRAPHIC,
+            |m| f32::from(m.special_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::SPECIAL_ABILITY,
+            |m| f32::from(m.special_attack),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::IDLE_ATTACK_GRAPHIC,
+            |m| f32::from(m.idle_attack_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::HERO_GLOW_GRAPHIC,
+            |m| f32::from(m.hero_glow_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::GARRISON_GRAPHIC,
+            |m| f32::from(m.garrison_sprite),
+            [3.0, 5.0, 5.0],
+        ),
+        (a::FOOD_COSTS, |m| f32::from(m.cost[0].1), [3.0, 5.0, 10.0]),
+        (
+            a::TRAIN_TIME,
+            |m| f32::from(m.train_locations[1].time),
+            [3.0, 5.0, 10.0],
+        ),
+        (a::TOTAL_MISSILES, |m| m.volley_fire, [3.0, 5.0, 10.0]),
+        (
+            a::MAXIMUM_TOTAL_MISSILES,
+            |m| f32::from(m.max_volley),
+            [3.0, 5.0, 10.0],
+        ),
+        (a::REGENERATION_RATE, |m| m.regeneration, [3.0, 5.0, 10.0]),
+        (
+            a::MIN_CONVERSION_TIME_MODIFIER,
+            |m| m.conversion[0],
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::CONVERSION_CHANCE_MODIFIER,
+            |m| m.conversion[2],
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::FORMATION_CATEGORY,
+            |m| f32::from(m.formation_category),
+            [3.0; 3],
+        ),
+        // 10 hit points times the amount, set then added
+        (
+            a::REGENERATION_HP_PERCENT,
+            |m| m.regeneration,
+            [30.0, 50.0, 50.0],
+        ),
+        (
+            a::CHARGE_PROJECTILE_UNIT,
+            |m| f32::from(m.charge_projectile.unwrap_or(-1)),
+            [3.0; 3],
+        ),
+        (
+            a::ATTACK_PRIORITY,
+            |m| f32::from(m.attack_priority),
+            [3.0; 3],
+        ),
+        (
+            a::INVULNERABILITY_LEVEL,
+            |m| m.invulnerability,
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::ATTACK_GRAPHIC_2,
+            |m| f32::from(m.attack_sprite2),
+            [3.0, 5.0, 5.0],
+        ),
+        (
+            a::SPAWNING_AREA_WIDTH,
+            |m| m.volley_spread[0],
+            [3.0, 5.0, 10.0],
+        ),
+        (
+            a::SPAWNING_AREA_RANDOMNESS,
+            |m| m.volley_spread[2],
+            [3.0, 5.0, 10.0],
+        ),
+        // the selected entry plus ten times the count, as the damage sprites'
+        (
+            a::TRAIN_LOCATIONS_ENTRY_MOD,
+            |m| f32::from(m.train_location_entry) + 10.0 * m.train_locations.len() as f32,
+            [21.0, 21.0, 32.0],
+        ),
+        (
+            a::TRAIN_LOCATIONS_TOTAL_NUM,
+            |m| m.train_locations.len() as f32,
+            [3.0, 3.0, 6.0],
+        ),
+    ];
+    sets_adds_multiplies(master_type::COMBAT, rows);
+}
+
+/// `FUN_141126400`, `FUN_141126af0` and `FUN_1411271e0` on the hit points: a set truncates, an
+/// add adds the truncated amount (wrapping), a multiply rounds by 0.5; capped (the player's
+/// `+0x648`) both stop at 0x7fff, a NaN too (`COMISS` then `JBE`).
+#[test]
+fn the_hit_points_add_and_multiply_up_to_their_cap_when_capped() {
+    let mut m = of_type(master_type::STATIC);
+    m.set_attribute(attribute::HIT_POINTS, 25.9, &world(false));
+    assert_eq!(m.hit_points, 25);
+    m.add_attribute(attribute::HIT_POINTS, 15.7, &world(false));
+    assert_eq!(m.hit_points, 40);
+    m.multiply_attribute(attribute::HIT_POINTS, 1.2, &world(false));
+    // 40 × 1.2 + 0.5 = 48.5
+    assert_eq!(m.hit_points, 48);
+    m.hit_points = 32760;
+    m.add_attribute(attribute::HIT_POINTS, 10.0, &world(false));
+    assert_eq!(m.hit_points, -32766);
+    m.hit_points = 32760;
+    m.add_attribute(attribute::HIT_POINTS, 10.0, &world(true));
+    assert_eq!(m.hit_points, 0x7fff);
+    m.hit_points = 100;
+    m.add_attribute(attribute::HIT_POINTS, f32::NAN, &world(true));
+    assert_eq!(m.hit_points, 0x7fff);
+    m.hit_points = 20000;
+    m.multiply_attribute(attribute::HIT_POINTS, 2.0, &world(true));
+    assert_eq!(m.hit_points, 0x7fff);
+    m.capacity = 10;
+    m.multiply_attribute(attribute::CARRY_CAPACITY, 1.25, &world(true));
+    // 12.5 + 0.5 = 13
+    assert_eq!(m.capacity, 13);
+}
+
+/// The storage amounts take a short (`(float)(int)(short)(int)v`), the object flags a 64-bit
+/// truncation, the trait piece its high half; an obstruction type the table refuses is 0.
+#[test]
+fn the_static_setters_truncate_as_the_game_does() {
+    let mut m = of_type(master_type::TREE);
+    m.storage = vec![(15, 100.0, 1), (-1, 0.0, 0), (-1, 0.0, 0)];
+    m.set_attribute(attribute::STORAGE_1, 70000.5, &world(false));
+    assert_eq!(m.storage[0].1, 4464.0);
+    m.add_attribute(attribute::STORAGE_1, 5.9, &world(false));
+    assert_eq!(m.storage[0].1, 4469.0);
+    m.multiply_attribute(attribute::STORAGE_1, 0.5, &world(false));
+    // 2234.5 + 0.5 = 2235
+    assert_eq!(m.storage[0].1, 2235.0);
+    m.set_attribute(attribute::UNIT_TRAIT, 5_000_000_000.0, &world(false));
+    assert_eq!(m.object_flags, 5_000_000_000_i64 as u32);
+    m.object_flags = 0x1234_5678;
+    m.set_attribute(attribute::TRAIT_PIECE, 3.0, &world(false));
+    assert_eq!(m.object_flags, 0x0003_5678);
+    m.set_attribute(attribute::OBSTRUCTION_TYPE, 5.0, &world(false));
+    assert_eq!(m.obstruction_type, 5);
+    m.set_attribute(attribute::OBSTRUCTION_TYPE, 4.0, &world(false));
+    assert_eq!(m.obstruction_type, 0);
+    // "Can Be Built On" writes the blast defense level; its multiply does not round
+    m.set_attribute(attribute::CAN_BE_BUILT_ON, 3.0, &world(false));
+    m.multiply_attribute(attribute::BLAST_DEFENSE_LEVEL, 1.9, &world(false));
+    assert_eq!(m.blast_defense, 5);
+    // the available flag holds the byte's test against 0
+    m.set_attribute(attribute::AVAILABLE_UNIT_FLAG, 256.0, &world(false));
+    assert!(!m.available);
+    m.add_attribute(attribute::AVAILABLE_UNIT_FLAG, 1.0, &world(false));
+    assert!(m.available);
+}
+
+/// `FUN_14152e360`: a sprite attribute takes an id only where the world's table holds a
+/// sprite; an add starts from −1 for none.
+#[test]
+fn a_sprite_attribute_takes_only_a_sprite_the_world_has() {
+    let mut m = of_type(master_type::MOVING);
+    m.standing_sprite = 5;
+    m.move_sprite = -1;
+    m.set_attribute(attribute::STANDING_GRAPHIC, 150.0, &world(false));
+    assert_eq!(m.standing_sprite, 5);
+    m.add_attribute(attribute::STANDING_GRAPHIC, 3.0, &world(false));
+    assert_eq!(m.standing_sprite, 8);
+    m.add_attribute(attribute::WALKING_GRAPHIC, 11.0, &world(false));
+    assert_eq!(m.move_sprite, 10);
+    m.set_attribute(attribute::STANDING_GRAPHIC_2, 7.0, &world(false));
+    assert_eq!(m.standing_sprite_2, Some(7));
+}
+
+/// `FUN_1410a8b60`, `FUN_1410a8c00`: a capped add or multiply of the speed stops at 4.5, a
+/// missile master's at 20; a NaN speed passes (`COMISS`, `JBE`).
+#[test]
+fn a_capped_speed_stops_at_its_type_s_cap() {
+    let mut m = of_type(master_type::COMBAT);
+    m.max_speed = 4.0;
+    m.add_attribute(attribute::MOVEMENT_SPEED, 1.0, &world(false));
+    assert_eq!(m.max_speed, 5.0);
+    m.multiply_attribute(attribute::MOVEMENT_SPEED, 1.1, &world(true));
+    assert_eq!(m.max_speed, 4.5);
+    let mut missile = of_type(master_type::MISSILE);
+    missile.max_speed = 7.0;
+    missile.multiply_attribute(attribute::MOVEMENT_SPEED, 4.0, &world(true));
+    assert_eq!(missile.max_speed, 20.0);
+    missile.add_attribute(attribute::MOVEMENT_SPEED, f32::NAN, &world(true));
+    assert!(missile.max_speed.is_nan());
+}
+
+/// `FUN_1410c12b0` and its add and multiply: the amount's high byte names the class, its low
+/// byte the amount (negated for a negative amount); the first entry of the class changes, a
+/// multiply by `amount / 100`.
+#[test]
+fn armor_and_attack_change_the_class_in_the_amount_s_high_byte() {
+    let mut m = of_type(master_type::COMBAT);
+    m.armors = vec![(4, 1), (3, 2), (3, 9)];
+    m.weapons = vec![(4, 6), (3, 0)];
+    // class 3, 1 more (0x301)
+    m.add_attribute(attribute::ARMOR, 769.0, &world(false));
+    assert_eq!(m.armors, vec![(4, 1), (3, 3), (3, 9)]);
+    // −0x402: class 4, 2 less
+    m.add_attribute(attribute::ARMOR, -1026.0, &world(false));
+    assert_eq!(m.armors[0], (4, -1));
+    m.set_attribute(attribute::ARMOR, 1029.0, &world(false));
+    assert_eq!(m.armors[0], (4, 5));
+    // 150 %: 6 × 1.5 + 0.5 = 9.5
+    m.multiply_attribute(attribute::ATTACK, f32::from(0x496_i16), &world(false));
+    assert_eq!(m.weapons[0], (4, 9));
+    // a NaN takes the negative branch: class 0, amount 0, which no entry has
+    m.add_attribute(attribute::ATTACK, f32::NAN, &world(false));
+    assert_eq!(m.weapons, vec![(4, 9), (3, 0)]);
+    // a handicap of 1.5 raises a class at 0 (not 3, 4, 31 or 33)
+    let raised = AttributeWorld {
+        handicap: Some(1.5),
+        ..world(false)
+    };
+    m.weapons = vec![(4, 0), (21, 0)];
+    m.set_attribute(attribute::ATTACK, f32::from(0x406_i16), &raised);
+    m.set_attribute(attribute::ATTACK, f32::from(0x1506_i16), &raised);
+    assert_eq!(m.weapons, vec![(4, 6), (21, 9)]);
+    // once above 0 the add adds
+    m.add_attribute(attribute::ATTACK, f32::from(0x1502_i16), &raised);
+    assert_eq!(m.weapons[1], (21, 11));
+}
+
+/// The RGE combat master's multiply rounds most shorts by 0.5 but multiplies the frame delay
+/// and the shown values by the truncated amount (`IMUL`).
+#[test]
+fn some_combat_shorts_multiply_by_the_truncated_amount() {
+    let mut m = of_type(master_type::RGE_COMBAT);
+    m.base_armor = 3;
+    m.fire_frame = 5;
+    m.shown.attack = 7;
+    m.multiply_attribute(attribute::BASE_ARMOR, 1.5, &world(false));
+    assert_eq!(m.base_armor, 5);
+    m.multiply_attribute(attribute::FRAME_DELAY, 2.9, &world(false));
+    assert_eq!(m.fire_frame, 10);
+    m.multiply_attribute(attribute::SHOWN_ATTACK, 3.5, &world(false));
+    assert_eq!(m.shown.attack, 21);
+    m.add_attribute(attribute::ROTATION_SPEED, 0.25, &world(false));
+    assert_eq!(m.turn_speed, 0.25);
+    m.set_attribute(attribute::DISPLACEMENT_X + 1, 0.75, &world(false));
+    assert_eq!(m.weapon_offset, [0.0, 0.75, 0.0]);
+}
+
+/// `FUN_1410d5b50`: a missile master's smart mode takes the multiply's amount; its arc
+/// multiplies; then the RGE combat master's setter runs.
+#[test]
+fn a_missile_s_smart_mode_multiply_sets_it() {
+    let mut m = of_type(master_type::MISSILE);
+    m.missile_stats = Some(crate::missile::MissileStats {
+        projectile_type: 0,
+        smart_mode: 1,
+        hit_mode: 0,
+        vanish_mode: 0,
+        arc: 0.5,
+        speed: 7.0,
+        radius: [0.0; 3],
+        fly_mode: 0,
+    });
+    m.reload = 2.0;
+    m.multiply_attribute(attribute::PROJECTILE_SMART_MODE, 3.0, &world(false));
+    m.multiply_attribute(attribute::PROJECTILE_ARC, 0.5, &world(false));
+    m.multiply_attribute(attribute::ATTACK_RELOAD_TIME, 0.5, &world(false));
+    let s = m.missile_stats.unwrap();
+    assert_eq!((s.smart_mode, s.arc, m.reload), (3, 0.25, 1.0));
+}
+
+/// `FUN_1412661d0` and its add and multiply on the costs: 100 changes the paid entries, 103
+/// to 106 those of food, wood, gold (3) and stone (2); population (110) sets the unpaid ones
+/// to the negated amount and the population storage to the amount.
+#[test]
+fn the_cost_attributes_change_their_resource_s_entries() {
+    let mut m = of_type(master_type::BUILDING);
+    m.cost = vec![(1, 25, true), (4, 1, false)];
+    m.storage = vec![(4, 5.0, 4), (11, -1.0, 4), (-1, 0.0, 0)];
+    m.add_attribute(attribute::WOOD_COSTS, -5.0, &world(false));
+    assert_eq!(m.cost, vec![(1, 20, true), (4, 1, false)]);
+    m.multiply_attribute(attribute::RESOURCE_COSTS, 0.85, &world(false));
+    // 20 × 0.85 + 0.5 = 17.5
+    assert_eq!(m.cost, vec![(1, 17, true), (4, 1, false)]);
+    m.set_attribute(attribute::GOLD_COSTS, 50.0, &world(false));
+    assert_eq!(m.cost[0], (1, 17, true));
+    m.set_attribute(attribute::POPULATION, 2.0, &world(false));
+    assert_eq!(m.cost, vec![(1, 17, true), (4, -2, false)]);
+    assert_eq!(m.storage[..2], [(4, 2.0, 4), (11, -2.0, 4)]);
+}
+
+/// The train locations: the selected entry (`+0x940`) takes the train time; a resize copies
+/// the last entry, its add counts from the selected entry (the game's); a multiply of the
+/// selected entry inserts a copy of the last or removes one at the amount's complement.
+#[test]
+fn the_train_location_attributes_change_the_selected_entry() {
+    let barracks = |time| TrainLocation {
+        location: 12,
+        time,
+        button: 1,
+        hotkey: 16_000,
+    };
+    let mut m = of_type(master_type::COMBAT);
+    m.train_locations = vec![barracks(21), barracks(30)];
+    m.train_location_entry = 1;
+    m.multiply_attribute(attribute::TRAIN_TIME, 0.9, &world(false));
+    // 30 × 0.9 + 0.5 = 27.5
+    assert_eq!(m.train_locations[1].time, 27);
+    m.set_attribute(attribute::TRAIN_LOCATIONS_ENTRY_MOD, 9.0, &world(false));
+    assert_eq!(m.train_location_entry, 1);
+    // the add's count is the selected entry plus the amount: 1 + 2
+    m.add_attribute(attribute::TRAIN_LOCATIONS_TOTAL_NUM, 2.0, &world(false));
+    assert_eq!(m.train_locations.len(), 3);
+    assert_eq!(m.train_locations[2], m.train_locations[1]);
+    m.set_attribute(attribute::TRAIN_LOCATIONS_TOTAL_NUM, -4.0, &world(false));
+    assert_eq!(m.train_locations, []);
+    assert_eq!(m.train_location_entry, -1);
+    m.train_locations = vec![barracks(21), barracks(30)];
+    m.train_location_entry = 0;
+    // ~(−1) = 0: the first goes, the entry stays at 0
+    m.multiply_attribute(attribute::TRAIN_LOCATIONS_ENTRY_MOD, -1.0, &world(false));
+    assert_eq!(
+        (m.train_locations.len(), m.train_locations[0].time),
+        (1, 30)
+    );
+    m.multiply_attribute(attribute::TRAIN_LOCATIONS_ENTRY_MOD, 5.0, &world(false));
+    assert_eq!((m.train_locations.len(), m.train_location_entry), (2, 1));
+    m.follow(
+        attribute::TRAIN_TIME,
+        &std::collections::BTreeMap::new(),
+        None,
+    );
+    assert_eq!((m.trained_at.clone(), m.build_time), (vec![12, 12], 30));
+}
+
+/// The damage sprites: a resize zeroes new entries (a NaN count is the most, `MAXSS`); with
+/// none left the selected entry stays (an unsigned byte compare); a multiply of the selected
+/// entry removing the last leaves 0xff.
+#[test]
+fn the_damage_sprite_attributes_resize_and_select() {
+    let mut m = of_type(master_type::ANIMATED);
+    m.damage_graphic_entry = 2;
+    m.set_attribute(attribute::DAMAGE_GRAPHICS_TOTAL_NUM, 2.0, &world(false));
+    assert_eq!(m.damage_graphics, vec![DamageGraphic::default(); 2]);
+    assert_eq!(m.damage_graphic_entry, 1);
+    m.set_attribute(attribute::DAMAGE_GRAPHIC, 40.0, &world(false));
+    m.set_attribute(attribute::DAMAGE_GRAPHIC_PERCENT, 75.0, &world(false));
+    assert_eq!(m.damage_graphics[1].sprite, 40);
+    assert_eq!(m.damage_graphics[1].percent, 75);
+    m.set_attribute(
+        attribute::DAMAGE_GRAPHICS_TOTAL_NUM,
+        f32::NAN,
+        &world(false),
+    );
+    assert_eq!(m.damage_graphics.len(), 255);
+    m.set_attribute(attribute::DAMAGE_GRAPHICS_TOTAL_NUM, 0.0, &world(false));
+    assert_eq!(m.damage_graphic_entry, 1);
+    m.damage_graphics = vec![DamageGraphic::default()];
+    m.multiply_attribute(attribute::DAMAGE_GRAPHICS_ENTRY_MOD, -3.0, &world(false));
+    assert_eq!(m.damage_graphics, []);
+    assert_eq!(m.damage_graphic_entry, 0xff);
+    m.follow(
+        attribute::DAMAGE_GRAPHICS_ENTRY_MOD,
+        &std::collections::BTreeMap::new(),
+        None,
+    );
+    assert!(!m.damage_sprites);
+}
+
+/// `FUN_14123d310`: a building master's garrison heal rate, foundation and garrison type are
+/// its own; its six sprites go to a copy (nothing changes); the rest falls to the combat
+/// master's setter (the regeneration from the hit points, 120).
+#[test]
+fn a_building_master_s_setters_fall_back_on_the_combat_master_s() {
+    let mut m = of_type(master_type::BUILDING);
+    m.building = Some(BuildingMaster::default());
+    m.hit_points = 600;
+    m.set_attribute(attribute::GARRISON_HEAL_RATE, 2.0, &world(false));
+    m.multiply_attribute(attribute::GARRISON_HEAL_RATE, 1.5, &world(false));
+    m.set_attribute(attribute::CONSTRUCTION_GRAPHIC, 9.0, &world(false));
+    m.set_attribute(attribute::REGENERATION_HP_PERCENT, 0.5, &world(false));
+    m.add_attribute(attribute::FOUNDATION_TERRAIN, 2.0, &world(false));
+    let b = m.building.unwrap();
+    assert_eq!((b.garrison_heal_rate, b.foundation_terrain), (3.0, 2));
+    assert_eq!(m.regeneration, 300.0);
+    assert_eq!(m, {
+        let mut same = of_type(master_type::BUILDING);
+        same.building = Some(b);
+        same.hit_points = 600;
+        same.regeneration = 300.0;
+        same
+    });
+}
+
+/// What a unit moving with a master reads follows the master's values: its radii, its
+/// speeds by its sprites' factors, its turn time and its facets.
+#[test]
+fn a_moving_master_s_derived_values_follow_its_attributes() {
+    let graphic = |id, speed_multiplier, facets| crate::sprite::Graphic {
+        id,
+        frames: 10,
+        facets,
+        speed_multiplier,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let graphics = [
+        (1, graphic(1, 0.0, 8)),
+        (2, graphic(2, 1.5, 8)),
+        (3, graphic(3, 0.5, 16)),
+    ]
+    .into_iter()
+    .collect();
+    let mut m = of_type(master_type::COMBAT);
+    m.standing_sprite = 1;
+    m.move_sprite = 2;
+    m.run_sprite = -1;
+    m.max_speed = 1.0;
+    m.radius = [0.2, 0.2];
+    m.moving = Some(MoveStats {
+        fly_mode: 0,
+        speed: 1.5,
+        walk_speed: 1.5,
+        run_speed: 1.5,
+        stand_speed: 1.0,
+        turn_rate: 1.0,
+        turn_radius: 0.0,
+        turn_radius_speed: f32::MAX,
+        radius: [0.2, 0.2, 2.0],
+        restriction: 7,
+        restriction_mask: 1,
+        turn_time: 0.0,
+        move_algorithm: 0,
+        min_collision: 0.0,
+        fast_turn: false,
+        facets: None,
+        weapon_range: 0.0,
+    });
+    m.multiply_attribute(attribute::MOVEMENT_SPEED, 1.1, &world(false));
+    m.follow(attribute::MOVEMENT_SPEED, &graphics, None);
+    let s = m.moving.unwrap();
+    assert_eq!(
+        (s.speed, s.walk_speed, s.stand_speed),
+        (1.1 * 1.5, 1.1 * 1.5, 1.1)
+    );
+    m.set_attribute(attribute::SIZE_Z, 1.0, &world(false));
+    m.follow(attribute::SIZE_Z, &graphics, None);
+    assert!(m.tall);
+    assert_eq!(m.moving.unwrap().radius, [0.2, 0.2, 1.0]);
+    m.set_attribute(attribute::RUNNING_GRAPHIC, 3.0, &world(false));
+    m.follow(attribute::RUNNING_GRAPHIC, &graphics, None);
+    let s = m.moving.unwrap();
+    assert_eq!((s.speed, s.run_speed), (1.1 * 0.5, 1.1 * 0.5));
+    // 8 facets and 16: no common count
+    assert_eq!(s.facets, None);
+    m.set_attribute(attribute::RUNNING_GRAPHIC, 2.0, &world(false));
+    m.follow(attribute::RUNNING_GRAPHIC, &graphics, None);
+    assert_eq!(
+        m.moving.unwrap().facets,
+        Some(crate::facing::SpriteFacets {
+            count: 8,
+            flag_1: false
+        })
+    );
+}
+
+/// The action master's (`FUN_14109fbb0` and its add and multiply) work rate, search radius
+/// and run pattern; the moving master's (`FUN_1410e1c00` ...) turn speed and trail; the
+/// interface's sounds change nothing.
+#[test]
+fn the_action_and_moving_setters_change_their_values() {
+    let mut m = of_type(master_type::ACTION);
+    m.set_attribute(attribute::WORK_RATE, 0.5, &world(false));
+    m.add_attribute(attribute::WORK_RATE, 0.25, &world(false));
+    m.multiply_attribute(attribute::WORK_RATE, 2.0, &world(false));
+    m.set_attribute(attribute::SEARCH_RADIUS, 4.0, &world(false));
+    m.multiply_attribute(attribute::SEARCH_RADIUS, 1.5, &world(false));
+    m.set_attribute(attribute::RUN_PATTERN, 2.0, &world(false));
+    m.add_attribute(attribute::RUN_PATTERN, 255.0, &world(false));
+    m.set_attribute(attribute::ROTATION_SPEED, 0.5, &world(false));
+    m.multiply_attribute(attribute::ROTATION_SPEED, 2.0, &world(false));
+    m.set_attribute(attribute::TRAILING_UNIT, 1300.0, &world(false));
+    m.add_attribute(attribute::TRAILING_UNIT, 2.0, &world(false));
+    m.set_attribute(attribute::TRAIL_MODE, 3.0, &world(false));
+    m.set_attribute(attribute::TRAIL_DENSITY, 1.5, &world(false));
+    m.multiply_attribute(attribute::TRAIL_DENSITY, 2.0, &world(false));
+    let before = m.clone();
+    m.set_attribute(attribute::COMMAND_SOUND, 9.0, &world(false));
+    m.add_attribute(attribute::COMMAND_SOUND, 9.0, &world(false));
+    assert_eq!(m, before);
+    assert_eq!((m.work_rate, m.search_radius, m.run_pattern), (1.5, 6.0, 1));
+    assert_eq!(m.turn_speed, 1.0);
+    assert_eq!(
+        m.trail,
+        Trail {
+            unit: 1302,
+            mode: 3,
+            density: 3.0
+        }
+    );
+}
+
+/// The combat master's own values (`FUN_1412661d0` and its add and multiply): hero status,
+/// charge, conversion, regeneration (by the hit points' share for 120), volleys, the second
+/// attack sprite (an add from its id), the spawning area; the ability's interface values
+/// change nothing.
+#[test]
+fn the_combat_master_s_own_values_change() {
+    let mut m = of_type(master_type::COMBAT);
+    m.hit_points = 100;
+    m.attack_sprite2 = 10;
+    m.set_attribute(attribute::HERO_STATUS, 1.0, &world(false));
+    m.add_attribute(attribute::HERO_STATUS, 4.0, &world(false));
+    m.set_attribute(attribute::MAXIMUM_CHARGE, 10.0, &world(false));
+    m.multiply_attribute(attribute::MAXIMUM_CHARGE, 1.5, &world(false));
+    m.set_attribute(attribute::RECHARGE_RATE, 0.5, &world(false));
+    m.set_attribute(attribute::CHARGE_EVENT, 2.0, &world(false));
+    m.set_attribute(attribute::CHARGE_TYPE, 6.0, &world(false));
+    m.set_attribute(attribute::MAX_CONVERSION_TIME_MODIFIER, 3.0, &world(false));
+    m.add_attribute(attribute::MAX_CONVERSION_TIME_MODIFIER, 1.0, &world(false));
+    m.set_attribute(attribute::REGENERATION_HP_PERCENT, 0.25, &world(false));
+    m.add_attribute(attribute::REGENERATION_RATE, 5.0, &world(false));
+    m.set_attribute(attribute::TOTAL_MISSILES, 2.0, &world(false));
+    m.multiply_attribute(attribute::MAXIMUM_TOTAL_MISSILES, 3.0, &world(false));
+    m.add_attribute(attribute::ATTACK_GRAPHIC_2, 2.0, &world(false));
+    m.set_attribute(attribute::SPAWNING_AREA_WIDTH + 2, 0.5, &world(false));
+    m.set_attribute(attribute::SECONDARY_PROJECTILE_UNIT, -1.0, &world(false));
+    m.set_attribute(attribute::CHARGE_PROJECTILE_UNIT, 1500.0, &world(false));
+    let before = m.clone();
+    m.set_attribute(attribute::ABILITY_BUTTON_ICON_ID, 9.0, &world(false));
+    assert_eq!(m, before);
+    assert_eq!((m.hero_flag, m.max_charge, m.recharge_rate), (5, 15.0, 0.5));
+    assert_eq!((m.charge_event, m.charge_type), (2, 6));
+    assert_eq!(m.conversion, [0.0, 4.0, 0.0]);
+    assert_eq!(m.regeneration, 30.0);
+    assert_eq!(
+        (m.volley_fire, m.max_volley, m.attack_sprite2),
+        (2.0, 0, 12)
+    );
+    assert_eq!(m.volley_spread, [0.0, 0.0, 0.5]);
+    assert_eq!((m.volley_missile, m.charge_projectile), (None, Some(1500)));
+}
+
+/// The missile master's add (`FUN_1410d5ab0`) adds to its own bytes and arc, then runs the
+/// RGE combat master's; a building master's add (`FUN_14123d530`) its facet and garrison
+/// type; an animated master's set (`FUN_1410a8b00`) its speed.
+#[test]
+fn the_missile_building_and_animated_setters() {
+    let mut m = of_type(master_type::MISSILE);
+    m.missile_stats = Some(crate::missile::MissileStats {
+        projectile_type: 0,
+        smart_mode: 0,
+        hit_mode: 1,
+        vanish_mode: 0,
+        arc: 0.25,
+        speed: 7.0,
+        radius: [0.0; 3],
+        fly_mode: 0,
+    });
+    m.add_attribute(attribute::PROJECTILE_SMART_MODE, 1.0, &world(false));
+    m.add_attribute(attribute::PROJECTILE_HIT_MODE, 1.0, &world(false));
+    m.add_attribute(attribute::PROJECTILE_ARC, 0.25, &world(false));
+    m.set_attribute(attribute::MAXIMUM_RANGE, 5.0, &world(false));
+    let s = m.missile_stats.unwrap();
+    assert_eq!((s.smart_mode, s.hit_mode, s.arc), (1, 2, 0.5));
+    assert_eq!(m.weapon_range, 5.0);
+    let mut b = of_type(master_type::BUILDING);
+    b.building = Some(BuildingMaster::default());
+    b.add_attribute(attribute::BUILDING_ICON_OVERRIDE, 3.0, &world(false));
+    b.add_attribute(attribute::GARRISON_TYPE, 2.0, &world(false));
+    assert_eq!(
+        (b.building_facet, b.building.unwrap().garrison_type),
+        (3, 2)
+    );
+    let mut a = of_type(master_type::DOPPELGANGER);
+    a.set_attribute(attribute::MOVEMENT_SPEED, 1.2, &world(false));
+    assert_eq!(a.max_speed, 1.2);
+}
+
+/// The master copy (slot 8, `Master::copy_from`): every value but the id, class,
+/// availability, disabling and base id (`+0x260`).
+#[test]
+fn a_master_copy_keeps_its_id_class_and_flags() {
+    let mut militia = master(74, 1, vec![task(7, -1, -1, 0.0)]);
+    militia.class = 6;
+    militia.available = true;
+    militia.base_id = 74;
+    let mut man = master(75, 2, vec![task(7, -1, -1, 0.0), task(3, 3, -1, 0.0)]);
+    man.class = 7;
+    man.hit_points = 45;
+    man.disabled = true;
+    militia.copy_from(&man);
+    assert_eq!((militia.id, militia.class, militia.base_id), (74, 6, 74));
+    assert!(militia.available && !militia.disabled);
+    assert_eq!((militia.hit_points, militia.tasks.len()), (45, 2));
+    assert_eq!(militia.task_by_group, 2);
+}
+
+/// The work command's choice for a gather (0x6a) on a farm (master 50, one of the objects
+/// the work command lists): the first master of the swap group with a task for the farm's
+/// class and a work value wins over the first with a task for any target, though later; a
+/// task naming the farm's master is taken at once; a master whose task has the own task's
+/// type is passed over. A unit of a master the player lacks is not modelled.
+#[test]
+fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
+    let farm = Master {
+        id: 50,
+        kind: 80,
+        class: 49,
+        ..Master::default()
+    };
+    let gather = |group, id, work| task(0x6a, group, id, work);
+    let with = |own: Vec<Task>, others: Vec<Master>| {
+        let mut all = vec![master(83, 1, own), farm.clone()];
+        all.extend(others);
+        Masters::new(all)
+    };
+    let pick = |m: &Masters, own: &Master| {
+        let site = TaskTarget {
+            id: 12557,
+            master: m.get(50).unwrap(),
+            player: 2,
+            state: 2,
+            held: (-1, 0.0),
+            hp: 1.0,
+            max_hp: 480.0,
+            attackable: true,
+            pasture: -1,
+            top_action: None,
+        };
+        let actor = Actor {
+            id: 9181,
+            master: own,
+            player: 2,
+            held: (-1, 0.0),
+            attribute_95: 0.0,
+            civ: 1,
+        };
+        m.work_master(&actor, &site, &site, -1, &Alone)
+            .map(|w| w.map(|(id, t)| (id, t.object_group, t.object_id)))
+    };
+    let own = |m: &Masters| m.get(83).unwrap().clone();
+    let generic = master(120, 1, vec![gather(-1, -1, 1.0)]);
+    let by_class = master(122, 1, vec![gather(49, -1, 0.5)]);
+    let m = with(vec![], vec![generic.clone(), by_class.clone()]);
+    assert_eq!(pick(&m, &own(&m)), Ok(Some((122, 49, -1))));
+    let m = with(vec![], vec![generic]);
+    assert_eq!(pick(&m, &own(&m)), Ok(Some((120, -1, -1))));
+    let idle = master(122, 1, vec![gather(49, -1, 0.0)]);
+    let m = with(vec![], vec![idle]);
+    assert_eq!(pick(&m, &own(&m)), Ok(None));
+    let named = master(120, 1, vec![gather(-1, 50, 0.0)]);
+    let m = with(vec![], vec![named, by_class.clone()]);
+    assert_eq!(pick(&m, &own(&m)), Ok(Some((120, -1, 50))));
+    let attacker = master(120, 1, vec![task(7, -1, -1, 0.0)]);
+    let m = with(vec![task(7, -1, -1, 0.0)], vec![attacker, by_class]);
+    assert_eq!(pick(&m, &own(&m)), Ok(Some((122, 49, -1))));
+    let stranger = master(999, 1, vec![]);
+    assert!(pick(&m, &stranger).is_err());
+}
+
+#[test]
+fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_foundation() {
+    let m = villagers();
+    let site = TaskTarget {
+        id: 10028,
+        master: m.get(70).unwrap(),
+        player: 2,
+        state: 0,
+        held: (-1, 0.0),
+        hp: 1.0,
+        max_hp: 550.0,
+        attackable: true,
+        pasture: -1,
+        top_action: None,
+    };
+    let pick = |own| {
+        let actor = Actor {
+            id: 9181,
+            master: m.get(own).unwrap(),
+            player: 2,
+            held: (-1, 0.0),
+            attribute_95: 0.0,
+            civ: 1,
+        };
+        m.work_master(&actor, &site, &site, -1, &Alone)
+            .map(|w| w.map(|(id, t)| (id, t.action_type)))
+    };
+    assert_eq!(pick(83), Ok(Some((118, 101))));
+    assert_eq!(pick(293), Ok(Some((212, 101))));
+    assert_eq!(pick(118), Ok(Some((118, 101))));
+}
