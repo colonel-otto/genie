@@ -1055,18 +1055,18 @@
       "crate": "genie-dat"
     },
     {
-      "file": "crates/formats/genie-dat/src/unit_type.rs",
+      "file": "crates/formats/genie-dat/src/unit_type/statics.rs",
       "function": "StaticUnitTypeAttributes::read_from",
-      "line": 547,
+      "line": 244,
       "cyclomatic": 76.0,
       "coverage": 100.0,
       "crap": 76.0,
       "crate": "genie-dat"
     },
     {
-      "file": "crates/formats/genie-dat/src/unit_type.rs",
+      "file": "crates/formats/genie-dat/src/unit_type/statics.rs",
       "function": "StaticUnitTypeAttributes::write_to",
-      "line": 658,
+      "line": 355,
       "cyclomatic": 77.0,
       "coverage": 96.55172413793103,
       "crap": 77.2431013981713,
