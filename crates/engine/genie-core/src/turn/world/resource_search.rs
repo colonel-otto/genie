@@ -1,0 +1,199 @@
+//! `ClosestResourceObject` (`FUN_140c49760`): where it searches from and what it finds; a
+//! herded sheep.
+
+use crate::masters::Masters;
+use crate::movement::{Me, Planning};
+use crate::spatial::Spatial;
+use crate::turn::unit::Unit;
+use crate::turn::view::Foreign;
+use crate::unit_ai::GenieError;
+
+/// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
+pub(in crate::turn) struct ResourceWorld<'a, 'b> {
+    pub(in crate::turn) player: usize,
+    pub(in crate::turn) spatial: &'a Spatial,
+    pub(in crate::turn) zones: &'a mut crate::zones::Zones,
+    pub(in crate::turn) foreign: Foreign<'a>,
+    pub(in crate::turn) every: &'a [Masters],
+    pub(in crate::turn) masters: Option<&'a Masters>,
+    pub(in crate::turn) plan: Planning<'b>,
+}
+
+/// Where `ClosestResourceObject` (`FUN_140c49760`) searches from, the unit at `unit`: without a
+/// site from `point` (at the unit's height), unless both its parts are exactly −1
+/// (`DAT_14330ec20`, `UCOMISS`/`JP`/`JNZ`: a part that is not a number differs); with a site
+/// (`has_site`, which replaces the point) and for (−1, −1) from the unit's place.
+pub(in crate::turn) fn search_origin(point: [f32; 2], has_site: bool, unit: [f32; 3]) -> [f32; 3] {
+    match point {
+        [x, y] if !has_site && (x != -1.0 || y != -1.0) => [x, y, unit[2]],
+        _ => unit,
+    }
+}
+
+/// [`crate::gather_search::closest_resource_at`] for `unit` of gather group `kind` with fewer
+/// than `cap` workers (−1 any) from the drop site `site` (−1 for none; one the world does not hold
+/// counts as none, `FUN_1415417a0`), its unit AI's current target `current` passed over, below
+/// state `min_state` nothing found, and without a site from `point` unless that is (−1, −1)
+/// (`param_7`, `param_8`; [`crate::unit_ai::NO_POINT`]: the unit's place, as with a site): the
+/// site's place, its master's radii and line of sight, and whether the search starts from its
+/// footprint (the site's tile in the unit's zone of its restriction, or a dock: masters 45 and
+/// 2172, `0x140c49d17`); the answer and the out argument's steps.
+pub(in crate::turn) fn closest_resource_of(
+    unit: &Unit,
+    c: &mut ResourceWorld<'_, '_>,
+    others: &[Unit],
+    (kind, cap, site): (u8, i32, i32),
+    (current, min_state, point): (i32, u8, [f32; 2]),
+) -> Result<(i32, Option<i32>), GenieError> {
+    use crate::gather_search::{self, Candidate};
+    /// The site masters whose search starts from their footprint in any zone.
+    const DOCKS: [i16; 2] = [45, 2172];
+    let site = if site == -1 || c.spatial.get(site).is_none() {
+        None
+    } else {
+        // the unit itself (a mule cart searches from its own place) or another object
+        let (sp, s) = std::iter::once(unit)
+            .chain(others.iter())
+            .find(|u| u.id == site)
+            .map(|u| (c.player, u))
+            .or_else(|| c.foreign.find(site))
+            .ok_or(GenieError::unsupported(
+                "a resource search's drop site the slice does not hold",
+            ))?;
+        let m = c
+            .every
+            .get(sp)
+            .and_then(|m| m.get(s.life.master_id))
+            .ok_or(GenieError::unsupported(
+                "a resource search's drop site of a master the slice lacks",
+            ))?;
+        let footprint = DOCKS.contains(&m.id) || {
+            let restriction = unit
+                .mover
+                .as_ref()
+                .ok_or(GenieError::unsupported(
+                    "a resource search without movement state",
+                ))?
+                .stats
+                .restriction;
+            let [w, h] = c.spatial.map;
+            let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(
+                "the map's zones without its terrain",
+            ))?;
+            let values = terrain
+                .restrictions
+                .get(restriction)
+                .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+            let zones = c.zones.of(w, h, &terrain.kinds, values);
+            let zone = |p: [f32; 3]| zones.zone(p[0] as i32, p[1] as i32);
+            zone(s.position) == zone(unit.position)
+        };
+        Some(gather_search::SearchSite {
+            position: s.position,
+            radius: m.radius,
+            line_of_sight: m.line_of_sight,
+            footprint,
+        })
+    };
+    let masters = c.masters.ok_or(GenieError::unsupported(
+        "a resource search without its player's masters",
+    ))?;
+    let master = masters
+        .get(unit.life.master_id)
+        .ok_or(GenieError::unsupported(
+            "a searcher of a master the slice does not have",
+        ))?;
+    let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+        "a resource search without movement state",
+    ))?;
+    let mask = mover.stats.restriction_mask;
+    let (player, me_id, foreign, every) = (c.player, unit.id, c.foreign, c.every);
+    let candidate = |id: i32, owner: usize, u: &Unit, position: [f32; 3]| {
+        let m = every
+            .get(owner)
+            .and_then(|m| m.get(u.life.master_id))
+            .ok_or(crate::turn::OBJECT_MASTER)?;
+        Ok(Candidate {
+            id,
+            player: owner,
+            class: m.class,
+            master: m.id,
+            state: u.life.state,
+            workers: u.workers,
+            position,
+            pasture: u.pasture,
+            untargetable: u.untargetable,
+            attribute: u.life.attribute_type,
+            amount: u.life.amount,
+            auto_gather: m.auto_gather,
+            gather_group: m.gather_group,
+        })
+    };
+    let me = candidate(me_id, player, unit, unit.position)?;
+    let spatial: &Spatial = c.spatial;
+    let objects = |x: i32, y: i32| -> Result<Vec<Candidate>, GenieError> {
+        spatial
+            .objects_on(x, y)
+            .map(|(id, p)| {
+                if id == me_id {
+                    return Ok(me);
+                }
+                let (owner, u) = others
+                    .iter()
+                    .find(|u| u.id == id)
+                    .map(|u| (player, u))
+                    .or_else(|| foreign.find(id))
+                    .ok_or(GenieError::unsupported(
+                        "an object on a tile the slice does not hold",
+                    ))?;
+                candidate(id, owner, u, p.position)
+            })
+            .collect()
+    };
+    let position = search_origin(point, site.is_some(), unit.position);
+    let seeker = gather_search::Seeker {
+        player,
+        position,
+        line_of_sight: master.line_of_sight,
+        state: unit.life.state,
+        current_target: current,
+        my_pasture: unit.my_pasture,
+        min_state,
+    };
+    let me_walk = Me {
+        id: unit.id,
+        position: unit.position,
+        group: unit.group.id,
+        action_state: unit.top_action().map_or(0, |a| a.state),
+    };
+    let master_id = unit.life.master_id;
+    let plan = &mut c.plan;
+    let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
+    gather_search::closest_resource_at(
+        &seeker,
+        site.as_ref(),
+        kind,
+        cap,
+        spatial.map,
+        &|x, y| spatial.explored(player, x, y),
+        &|x, y| spatial.tiles().word(x, y).is_some_and(|w| w & blocked == 0),
+        &objects,
+        &mut |id| mover.reaches_object(&me_walk, spatial, plan, id, 0.0, master_id),
+    )
+}
+
+/// `ClosestObject`'s "Sheep is moving" (`FUN_140c488b0`): the object's top action is the Artifact
+/// (slot 0x530 107) with a point (slot 0x288, the action's `+0x38`, not −1).
+pub(in crate::turn) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
+    let foreign = || foreign.find(id).map(|(_, u)| u);
+    others
+        .iter()
+        .find(|u| u.id == id)
+        .or_else(foreign)
+        .is_some_and(|u| {
+            u.top_action_kind() == Some(crate::artifact::ARTIFACT_TYPE)
+                && u.artifact
+                    .as_ref()
+                    .is_some_and(|a| a.goal.is_some_and(|g| g[0] != -1.0))
+        })
+}
