@@ -174,7 +174,7 @@ impl Unit {
         .or_else(|| self.enter.map(|e| action(crate::garrison::ENTER, e.state)))
         .or_else(|| {
             self.transport
-                .map(|t| action(crate::transport::TRANSPORT, t.state))
+                .map(|t| action(crate::garrison::transport::TRANSPORT, t.state))
         })
         .or_else(|| {
             self.missile

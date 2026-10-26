@@ -191,6 +191,24 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/garrison/unit.rs",
+      "function": "Unit::enter_building",
+      "line": 325,
+      "cyclomatic": 19.0,
+      "coverage": 60.56338028169014,
+      "crap": 41.1414597483732,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/garrison/unit.rs",
+      "function": "Unit::transport_update",
+      "line": 171,
+      "cyclomatic": 17.0,
+      "coverage": 0.0,
+      "crap": 306.0,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/garrison/walk_in.rs",
       "function": "EnterAction::update",
       "line": 242,
@@ -791,24 +809,6 @@
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/unit/enter.rs",
-      "function": "Unit::enter_building",
-      "line": 315,
-      "cyclomatic": 19.0,
-      "coverage": 60.56338028169014,
-      "crap": 41.1414597483732,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/unit/enter.rs",
-      "function": "Unit::transport_update",
-      "line": 171,
-      "cyclomatic": 17.0,
-      "coverage": 0.0,
-      "crap": 306.0,
       "crate": "genie-core"
     },
     {

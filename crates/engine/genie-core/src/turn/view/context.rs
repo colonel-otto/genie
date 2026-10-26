@@ -79,7 +79,7 @@ pub(crate) struct Context<'a> {
     pub(in crate::turn) builder_leaves: Vec<i32>,
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
     /// building: the caller runs the group's removeUnit ([`Turns::remove_unit`]).
-    pub(in crate::turn) left_group: Option<(i32, i32)>,
+    pub(crate) left_group: Option<(i32, i32)>,
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
     pub(crate) made: Vec<Unit>,
@@ -199,7 +199,7 @@ pub(crate) struct Context<'a> {
     pub(in crate::turn) work_order: Option<crate::order::Work>,
     /// The Transport's unload in its state 6 (`FUN_140aa3ba0`), which the caller runs after the
     /// actions and before the unit AI part ([`Turns::transport_unload`]).
-    pub(in crate::turn) transport_unload: bool,
+    pub(crate) transport_unload: bool,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
     /// runs after the update ([`Turns::order_on_target`]), and the full update's tail that reads
     /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
@@ -225,10 +225,10 @@ pub(crate) struct Context<'a> {
     pub(in crate::turn) move_aside: Vec<AiMove>,
     /// The transports an Enter's `set_state(4)` sent to where they meet the unit (slot 0x340),
     /// which the caller moves after the update ([`Turns::move_transport`]'s move).
-    pub(in crate::turn) transport_moves: Vec<(i32, [f32; 3])>,
+    pub(crate) transport_moves: Vec<(i32, [f32; 3])>,
     /// Another player's transport or building the unit entered, with what its volleys gain: the
     /// caller adds them and the unit to its list after the update.
-    pub(in crate::turn) entered: Option<(i32, f32)>,
+    pub(crate) entered: Option<(i32, f32)>,
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
     pub(in crate::turn) starts: Vec<AiStart>,

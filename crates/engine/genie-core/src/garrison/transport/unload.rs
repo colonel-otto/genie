@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::transport::{
+use crate::garrison::transport::{
     Around, Changed, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT, TransportAction,
     find_drop_location, retry_point,
 };
@@ -131,7 +131,7 @@ impl crate::turn::Turns {
     /// A map without its terrain, a computer player's AI hearing it, and what the units put
     /// ashore do not model.
     ///
-    /// [`TransportStep::unload`]: crate::transport::TransportStep::unload
+    /// [`TransportStep::unload`]: crate::garrison::transport::TransportStep::unload
     pub(crate) fn transport_unload(&mut self, p: usize, i: usize) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[i];
         let t = unit

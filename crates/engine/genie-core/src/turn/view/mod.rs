@@ -138,8 +138,8 @@ pub(crate) enum AiStart {
 /// after it.
 #[derive(Clone, Copy)]
 pub(crate) struct Foreign<'a> {
-    pub(in crate::turn) before: &'a [Player],
-    pub(in crate::turn) after: &'a [Player],
+    pub(crate) before: &'a [Player],
+    pub(crate) after: &'a [Player],
     /// The live list of the player whose list is out, once its object changed hands: that
     /// object's AI part reads it as another player's ([`OwnerView`]).
     pub(in crate::turn) left: Option<(usize, &'a [Unit])>,

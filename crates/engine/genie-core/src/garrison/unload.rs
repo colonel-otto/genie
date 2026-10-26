@@ -23,7 +23,7 @@ impl Turns {
     /// - A siege unit (class 13) unloads its own way (`FUN_141225c40`, a siege tower's order 800),
     ///   which is not modelled ([`SIEGE_UNLOAD`]).
     /// - Any other unit takes the unload order at the point ([`Turns::unload_order`]): a transport
-    ///   sails there and unloads (its Transport, [`crate::transport`]), any other walks there.
+    ///   sails there and unloads (its Transport, [`crate::garrison::transport`]), any other walks there.
     /// - A building lets the units inside it out, from the last to come in, those `flag` and
     ///   `unit_type` pick ([`unload_picks`]): each through [`Turns::let_out`], toward the point
     ///   (or its unit AI's command queue location, which is not modelled); each one out has its
@@ -218,7 +218,7 @@ impl Turns {
         let h = &self.players[hp].objects[hi];
         let at = h.position;
         let [rx, ry] = self.master_of(hp, h.life.master_id)?.radius;
-        let around = crate::transport::Around {
+        let around = crate::garrison::transport::Around {
             center: [at[0], at[1]],
             radius: [rx + rx, ry + ry],
         };

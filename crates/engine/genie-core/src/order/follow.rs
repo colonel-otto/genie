@@ -426,7 +426,7 @@ impl Turns {
             }
             // the Repair's slot 0x40 (FUN_140ad9700) walks to the point whatever the target, and
             // the Transport's (0x140aa3e40) sails there
-            Some(crate::construction::repair::REPAIR | crate::transport::TRANSPORT) => {
+            Some(crate::construction::repair::REPAIR | crate::garrison::transport::TRANSPORT) => {
                 self.point_taken(player, idx, point)
             }
             Some(other) => {

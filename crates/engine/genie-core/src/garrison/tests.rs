@@ -1642,11 +1642,11 @@ fn a_villager_meets_a_sailing_transport_where_it_sails() {
     // +0x38, +0x3c, FUN_140a7be40 and FUN_140a7be50), code 0
     let mut t = shore_world([5.5, 12.5], [5.5, 30.5]);
     let ship = t.object_mut(200).unwrap().1;
-    ship.transport = Some(crate::transport::TransportAction {
-        state: crate::transport::SAIL,
+    ship.transport = Some(transport::TransportAction {
+        state: transport::SAIL,
         point: [9.5, 19.5, 0.0],
         move_to: Some(MoveTo::Start),
-        ..crate::transport::TransportAction::new([5.5, 30.5, 0.0])
+        ..transport::TransportAction::new([5.5, 30.5, 0.0])
     });
     t.garrison_order(1, &[1000], 200, false, false).unwrap();
     let enter = t.object(1000).unwrap().1.enter.unwrap();
@@ -1761,7 +1761,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     assert_eq!(
         (tr.state, tr.mode, tr.point, tr.move_to, tr.retarget),
         (
-            crate::transport::SAIL_TO_UNLOAD,
+            transport::SAIL_TO_UNLOAD,
             1,
             [14.5, 10.5, 0.0],
             Some(MoveTo::Start),
@@ -1792,7 +1792,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     let tr = t.object(200).unwrap().1.transport.unwrap();
     assert_eq!(
         (tr.state, tr.point, tr.move_to),
-        (crate::transport::UNLOAD, [10.5, 10.5, 0.0], None)
+        (transport::UNLOAD, [10.5, 10.5, 0.0], None)
     );
 }
 
@@ -1808,7 +1808,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
     let tr = t.object(200).unwrap().1.transport.unwrap();
     assert_eq!(
         (tr.state, tr.point, tr.move_to),
-        (crate::transport::UNLOAD, [15.5, 10.5, 0.0], None)
+        (transport::UNLOAD, [15.5, 10.5, 0.0], None)
     );
     let spot = ashore(&mut t, [14.5, 10.5], 0.5);
     let idx = t.players[1]
@@ -1827,10 +1827,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
     );
     let ship = t.object(200).unwrap().1;
     assert_eq!(ship.garrison, [0; 0]);
-    assert_eq!(
-        ship.transport.map(|t| t.state),
-        Some(crate::transport::IDLE)
-    );
+    assert_eq!(ship.transport.map(|t| t.state), Some(transport::IDLE));
     // a move to a point: the idle Transport takes it (its slot 8, 0x140aa3e40) and sails
     // there, its MoveTo starting; no MoveTo of the unit's own
     let taken = t.move_to_point(1, idx, [5.5, 5.5, 0.0]).unwrap();
@@ -1840,7 +1837,7 @@ fn a_transport_beside_the_shore_puts_its_units_ashore() {
     assert_eq!(
         (tr.state, tr.mode, tr.point, tr.move_to, ship.move_to),
         (
-            crate::transport::SAIL,
+            transport::SAIL,
             0,
             [5.5, 5.5, 0.0],
             Some(MoveTo::Start),
@@ -1873,7 +1870,7 @@ fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
     let y = (action.rand15() / 0xccc) as f32 + 10.5 - 5.0;
     let tr = t.object(200).unwrap().1.transport.unwrap();
     assert!(tr.retarget);
-    assert_eq!(tr.state, crate::transport::SAIL_TO_UNLOAD);
+    assert_eq!(tr.state, transport::SAIL_TO_UNLOAD);
     if 15.0 <= x {
         // the first draw is on land: the MoveTo's point is the shore on the way to it
         assert_eq!(tr.move_to, Some(MoveTo::Start));

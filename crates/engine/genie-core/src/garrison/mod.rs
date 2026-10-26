@@ -12,6 +12,8 @@ mod let_out;
 mod meeting;
 mod shelter;
 mod takes_in;
+pub mod transport;
+pub(crate) mod unit;
 mod unload;
 mod walk_in;
 

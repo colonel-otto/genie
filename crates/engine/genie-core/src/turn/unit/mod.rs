@@ -17,7 +17,6 @@ use crate::unit_ai::{GenieError, UnitAi};
 
 mod ai;
 mod death;
-mod enter;
 mod owner;
 mod search;
 mod stop;
@@ -25,7 +24,6 @@ mod top;
 mod update;
 
 pub(in crate::turn) use self::ai::AiResume;
-pub(crate) use self::enter::EnterWorld;
 pub(crate) use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
 pub(in crate::turn) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
@@ -35,6 +33,7 @@ pub(in crate::turn) use crate::construction::building_update::blasts_at_death;
 pub(in crate::turn) use crate::construction::building_update::{
     farm_stage_terrain, regeneration_rate,
 };
+pub(crate) use crate::garrison::unit::EnterWorld;
 pub(crate) use crate::gathering::gather::unit::give_load;
 
 /// A dying sprite the `.dat` does not have.
@@ -124,7 +123,7 @@ pub struct Unit {
     /// A unit's Enter action (a garrison), its top action.
     pub enter: Option<crate::garrison::EnterAction>,
     /// A unit's Transport action (an unload command's), its top action.
-    pub transport: Option<crate::transport::TransportAction>,
+    pub transport: Option<crate::garrison::transport::TransportAction>,
     /// A missile's own part with its action ([`crate::combat::missile`]).
     pub missile: Option<crate::combat::missile::Missile>,
     /// `+0x900`, `attack_count`: the swings that fired a missile (`FUN_141081020`).

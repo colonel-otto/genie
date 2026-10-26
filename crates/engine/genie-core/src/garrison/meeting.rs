@@ -164,7 +164,7 @@ pub(crate) fn meeting_target(
             .map(|p| [p[0], p[1]])
             .ok_or(UNPLACED),
         // the Transport's point (+0x38, +0x3c), where it sails
-        (Some(crate::transport::TRANSPORT), _) => t
+        (Some(crate::garrison::transport::TRANSPORT), _) => t
             .transport
             .map(|tr| [tr.point[0], tr.point[1]])
             .ok_or(UNPLACED),

@@ -352,7 +352,7 @@ impl Unit {
                 Ok(PointMove::Taken(Some(old).filter(|&t| t != -1)))
             }
             // the Transport's (0x140aa3e40): the caller sails it there
-            Some(crate::transport::TRANSPORT) => Ok(PointMove::Sails),
+            Some(crate::garrison::transport::TRANSPORT) => Ok(PointMove::Sails),
             // the Repair's (FUN_140ad9700): its point, slot 0x68 with none, set_state(11)
             Some(crate::construction::repair::REPAIR) => {
                 let repair = self.repair.as_mut().expect("the unit's top action");

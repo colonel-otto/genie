@@ -3,13 +3,13 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::move_to::{Goal, MoveTo, Walk, start_walk_asked, walk_or_give_up};
-use crate::movement::PathAsk;
-use crate::transport::{
+use crate::garrison::transport::{
     Changed, DONE, FAILED, IDLE, LAND_FLAGS, MOVE_RANGE, NEAR, NONE, SAIL, SAIL_TO_UNLOAD,
     SHORE_MARGIN, Ship, Shore, TransportAction, TransportStep, UNLOAD, UNLOAD_REACH_SQUARED,
     WATER_FLAGS,
 };
+use crate::move_to::{Goal, MoveTo, Walk, start_walk_asked, walk_or_give_up};
+use crate::movement::PathAsk;
 
 impl TransportAction {
     /// The unload command's constructor (`FUN_140aa3ab0` with no task, `+0x48`): its point the

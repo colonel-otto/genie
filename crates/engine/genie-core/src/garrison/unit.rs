@@ -21,7 +21,7 @@ impl Unit {
     /// update's `set_state(1)`, with an enter again ([`crate::garrison::EnterStep::again`]); a
     /// wait's standing sprite; the transport's move, the caller's after the update
     /// ([`Context::transport_moves`]).
-    pub(in crate::turn) fn enter_update(
+    pub(crate) fn enter_update(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -159,16 +159,16 @@ impl Unit {
         Ok(())
     }
 
-    /// The Transport's update ([`crate::transport::TransportAction::update`]): its `MoveTo` first
-    /// ([`crate::transport::TransportAction::walk`], by what the unit's AI asks of the path in
+    /// The Transport's update ([`crate::garrison::transport::TransportAction::update`]): its `MoveTo` first
+    /// ([`crate::garrison::transport::TransportAction::walk`], by what the unit's AI asks of the path in
     /// its state 3, `0x140aa2a70`), then its state with the map about the unit where the walk
-    /// left it ([`crate::transport::MapShore`]). Then its step: the unit stops and takes its
+    /// left it ([`crate::garrison::transport::MapShore`]). Then its step: the unit stops and takes its
     /// standing sprite ([`Unit::show_standing`]), a failure notifies its unit AI (0x1f9 with
     /// the transport's action value), the owner hears that it cannot unload
     /// ([`crate::unit_ai::alert_owner`]), the unload is the caller's before the unit AI part
     /// ([`Context::transport_unload`]), and a 1 or 3 removes it from the list (its teardown: no
     /// `MoveTo` is left, no target).
-    pub(in crate::turn) fn transport_update(
+    pub(crate) fn transport_update(
         &mut self,
         c: &mut Context<'_>,
         me: Me,
@@ -176,7 +176,7 @@ impl Unit {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::transport::NO_MASTER)?;
+            .ok_or(crate::garrison::transport::NO_MASTER)?;
         let (radius, restriction) = (master.radius, master.terrain_restriction);
         let t = self.transport.as_mut().expect("checked by the caller");
         let ask = match t.move_to {
@@ -188,15 +188,20 @@ impl Unit {
         };
         let walked = t.walk(Some(c.walk(self.mover.as_mut(), me)), ask)?;
         let position = c.spatial.get(self.id).map_or(self.position, |p| p.position);
-        let ship = crate::transport::Ship {
+        let ship = crate::garrison::transport::Ship {
             position,
             radius,
             loaded: !self.garrison.is_empty(),
             map: c.spatial.map,
             moves: self.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
         };
-        let mut shore =
-            crate::transport::MapShore::new(c.spatial, c.zones, c.pathing, restriction, position)?;
+        let mut shore = crate::garrison::transport::MapShore::new(
+            c.spatial,
+            c.zones,
+            c.pathing,
+            restriction,
+            position,
+        )?;
         let step = t.update(walked, &ship, &mut shore)?;
         if step.changed.stopped
             && let Some(m) = self.mover.as_mut()
@@ -209,7 +214,7 @@ impl Unit {
         if step.failed {
             self.post_own(
                 crate::unit_ai::ACTION_FAILED,
-                [crate::transport::TRANSPORT_ACTION, 0, 0],
+                [crate::garrison::transport::TRANSPORT_ACTION, 0, 0],
             )?;
         }
         if step.cannot_unload {
@@ -222,7 +227,7 @@ impl Unit {
         Ok(())
     }
 
-    /// The Transport's slot 8 on a move to `point` ([`crate::transport::TransportAction::move_to`])
+    /// The Transport's slot 8 on a move to `point` ([`crate::garrison::transport::TransportAction::move_to`])
     /// with the map about the unit, then what its state change leaves: the unit stops (its
     /// `MoveTo`'s teardown) and takes its standing sprite.
     pub(crate) fn transport_sail(
@@ -237,8 +242,8 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let master = masters
             .and_then(|m| m.get(self.life.master_id))
-            .ok_or(crate::transport::NO_MASTER)?;
-        let ship = crate::transport::Ship {
+            .ok_or(crate::garrison::transport::NO_MASTER)?;
+        let ship = crate::garrison::transport::Ship {
             position: self.position,
             radius: master.radius,
             loaded: !self.garrison.is_empty(),
@@ -246,8 +251,13 @@ impl Unit {
             moves: self.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
         };
         let restriction = master.terrain_restriction;
-        let mut shore =
-            crate::transport::MapShore::new(spatial, zones, pathing, restriction, self.position)?;
+        let mut shore = crate::garrison::transport::MapShore::new(
+            spatial,
+            zones,
+            pathing,
+            restriction,
+            self.position,
+        )?;
         let t = self
             .transport
             .as_mut()

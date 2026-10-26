@@ -568,7 +568,7 @@ pub(super) fn saved_actions(
             });
             Ok(())
         }
-        genie_core::transport::TRANSPORT => {
+        genie_core::garrison::transport::TRANSPORT => {
             // the base alone is saved (FUN_140aa3b20): +0x34 is its second target's word, and
             // +0x68 starts clear; set_state makes no sub-action but a MoveTo
             let move_to = match base.sub_actions.entries().next() {
@@ -580,7 +580,7 @@ pub(super) fn saved_actions(
                     ));
                 }
             };
-            unit.transport = Some(genie_core::transport::TransportAction {
+            unit.transport = Some(genie_core::garrison::transport::TransportAction {
                 state: base.state,
                 mode: base.target2_id,
                 point: [base.target_x, base.target_y, base.target_z],
