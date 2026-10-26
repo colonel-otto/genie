@@ -1721,36 +1721,36 @@
       "crate": "genie-scx"
     },
     {
-      "file": "crates/formats/genie-scx/src/format.rs",
+      "file": "crates/formats/genie-scx/src/format/rge.rs",
       "function": "RGEScen::read_from",
-      "line": 164,
+      "line": 51,
       "cyclomatic": 66.0,
       "coverage": 98.49624060150376,
       "crap": 66.014812314862,
       "crate": "genie-scx"
     },
     {
-      "file": "crates/formats/genie-scx/src/format.rs",
+      "file": "crates/formats/genie-scx/src/format/rge.rs",
       "function": "RGEScen::write_to",
-      "line": 356,
+      "line": 243,
       "cyclomatic": 80.0,
       "coverage": 98.1981981981982,
       "crap": 80.03743699872261,
       "crate": "genie-scx"
     },
     {
-      "file": "crates/formats/genie-scx/src/format.rs",
+      "file": "crates/formats/genie-scx/src/format/tribe_read.rs",
       "function": "TribeScen::read_from",
-      "line": 616,
+      "line": 122,
       "cyclomatic": 97.0,
       "coverage": 95.23809523809523,
       "crap": 98.01598099557285,
       "crate": "genie-scx"
     },
     {
-      "file": "crates/formats/genie-scx/src/format.rs",
+      "file": "crates/formats/genie-scx/src/format/tribe_write.rs",
       "function": "TribeScen::write_to",
-      "line": 899,
+      "line": 24,
       "cyclomatic": 113.0,
       "coverage": 84.21052631578947,
       "crap": 163.2643242455169,
