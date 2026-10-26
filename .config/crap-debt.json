@@ -1325,138 +1325,138 @@
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
-      "function": "AttackMemory::read_from",
-      "line": 498,
-      "cyclomatic": 19.0,
-      "coverage": 0.0,
-      "crap": 380.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/build.rs",
       "function": "BuildAI::read_from",
-      "line": 130,
+      "line": 106,
       "cyclomatic": 15.0,
       "coverage": 0.0,
       "crap": 240.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/build.rs",
       "function": "BuildItem::read_from",
-      "line": 69,
+      "line": 45,
       "cyclomatic": 27.0,
       "coverage": 0.0,
       "crap": 756.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
-      "function": "BuildingLot::read_from",
-      "line": 348,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/build.rs",
       "function": "ConstructionAI::read_from",
-      "line": 224,
+      "line": 200,
       "cyclomatic": 13.0,
       "coverage": 0.0,
       "crap": 182.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/build.rs",
       "function": "ConstructionItem::read_from",
-      "line": 185,
+      "line": 161,
       "cyclomatic": 15.0,
       "coverage": 0.0,
       "crap": 240.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
-      "function": "ImportantObjectMemory::read_from",
-      "line": 317,
-      "cyclomatic": 16.0,
-      "coverage": 0.0,
-      "crap": 272.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/ai.rs",
-      "function": "InfluenceMap::read_from",
-      "line": 590,
-      "cyclomatic": 7.0,
-      "coverage": 0.0,
-      "crap": 56.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/information.rs",
       "function": "InformationAI::read_from",
-      "line": 672,
+      "line": 60,
       "cyclomatic": 102.0,
       "coverage": 0.0,
       "crap": 10506.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
-      "function": "PerimeterWall::read_from",
-      "line": 432,
+      "file": "crates/formats/genie-rec/src/ai/memories.rs",
+      "function": "AttackMemory::read_from",
+      "line": 225,
+      "cyclomatic": 19.0,
+      "coverage": 0.0,
+      "crap": 380.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/ai/memories.rs",
+      "function": "BuildingLot::read_from",
+      "line": 75,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/ai/memories.rs",
+      "function": "ImportantObjectMemory::read_from",
+      "line": 44,
       "cyclomatic": 16.0,
       "coverage": 0.0,
       "crap": 272.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
-      "function": "PlayerAI::read_from",
-      "line": 1081,
-      "cyclomatic": 9.0,
+      "file": "crates/formats/genie-rec/src/ai/memories.rs",
+      "function": "InfluenceMap::read_from",
+      "line": 317,
+      "cyclomatic": 7.0,
       "coverage": 0.0,
-      "crap": 90.0,
+      "crap": 56.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/memories.rs",
+      "function": "PerimeterWall::read_from",
+      "line": 159,
+      "cyclomatic": 16.0,
+      "coverage": 0.0,
+      "crap": 272.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/ai/memories.rs",
       "function": "ResourceMemory::read_from",
-      "line": 553,
+      "line": 280,
       "cyclomatic": 13.0,
       "coverage": 0.0,
       "crap": 182.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/memories.rs",
+      "function": "WallLine::read_from",
+      "line": 111,
+      "cyclomatic": 15.0,
+      "coverage": 0.0,
+      "crap": 240.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/ai/mod.rs",
+      "function": "PlayerAI::read_from",
+      "line": 66,
+      "cyclomatic": 9.0,
+      "coverage": 0.0,
+      "crap": 90.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/ai/strategy.rs",
       "function": "StrategyAI::read_from",
-      "line": 958,
+      "line": 105,
       "cyclomatic": 16.0,
       "coverage": 0.0,
       "crap": 272.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/ai.rs",
+      "file": "crates/formats/genie-rec/src/ai/strategy.rs",
       "function": "TacticalAI::read_from",
-      "line": 1033,
+      "line": 180,
       "cyclomatic": 14.0,
       "coverage": 0.0,
       "crap": 210.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/ai.rs",
-      "function": "WallLine::read_from",
-      "line": 384,
-      "cyclomatic": 15.0,
-      "coverage": 0.0,
-      "crap": 240.0,
       "crate": "genie-rec"
     },
     {
