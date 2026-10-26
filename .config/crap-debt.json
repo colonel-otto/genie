@@ -11,6 +11,15 @@
       "crate": "genie-error"
     },
     {
+      "file": "crates/engine/genie-core/src/combat/attack/unit.rs",
+      "function": "Unit::attack_part",
+      "line": 19,
+      "cyclomatic": 29.0,
+      "coverage": 89.25619834710744,
+      "crap": 30.04296549765997,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/combat/attack/update.rs",
       "function": "Attack::update",
       "line": 63,
@@ -308,6 +317,33 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/gathering/hunt/hunter.rs",
+      "function": "Unit::hunt_part",
+      "line": 86,
+      "cyclomatic": 50.0,
+      "coverage": 30.601092896174865,
+      "crap": 885.5989822610377,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/gathering/hunt/hunter_strike.rs",
+      "function": "Unit::herd_for",
+      "line": 185,
+      "cyclomatic": 19.0,
+      "coverage": 0.0,
+      "crap": 380.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/gathering/hunt/hunter_strike.rs",
+      "function": "Unit::hunt_strike",
+      "line": 24,
+      "cyclomatic": 24.0,
+      "coverage": 0.0,
+      "crap": 600.0,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/gathering/hunt/next_tree.rs",
       "function": "Unit::hunt_tree_search",
       "line": 20,
@@ -526,10 +562,10 @@
     {
       "file": "crates/engine/genie-core/src/objects/unit/update.rs",
       "function": "Unit::update",
-      "line": 29,
-      "cyclomatic": 328.0,
-      "coverage": 47.43833017077799,
-      "crap": 15950.666035296596,
+      "line": 22,
+      "cyclomatic": 205.0,
+      "coverage": 65.39923954372624,
+      "crap": 1945.8632350686555,
       "crate": "genie-core"
     },
     {

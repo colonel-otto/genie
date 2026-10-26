@@ -14,6 +14,8 @@ use crate::objects::sprite::Graphic;
 mod drop_off;
 mod gathering;
 mod herding;
+mod hunter;
+mod hunter_strike;
 pub(crate) mod next_tree;
 mod sprites;
 mod start;

@@ -14,6 +14,8 @@ The files follow the action's life:
 - `ready_to_attack.rs` tests the range and the sight, and turns the unit to its target.
 - `hits.rs` holds the hit itself, and `sprites.rs` the swing's sprites and the attack timer.
 - `work_slots.rs` holds the slots that set a target and run the work.
+- `unit.rs` is the unit's part of its update: the Attack's update with the strike and what
+  follows, or the end of an Attack that lost its target.
 - `unit_ai_side.rs` holds the attack that a unit AI commands: a new Attack, a forced attack, and
   the readiness and sight tests that the unit AI asks.
 
@@ -35,6 +37,7 @@ The damage of the hit is in `combat/damage/`.
 | [`sprites.rs`](sprites.rs) | The swing's and the arrival's sprites, the attack timer and the unit's turn to its target. |
 | [`states.rs`](states.rs) | The Attack's `set_state` (`0x140a820c0`): the move, the teardown and prelude, a lost target, one out of sight, the finish and the halt. |
 | [`tests.rs`](tests.rs) | Tests. |
+| [`unit.rs`](unit.rs) | The unit's own Attack in its update: a lost target's end, and the strike with what follows. |
 | [`unit_ai_side.rs`](unit_ai_side.rs) | The attack the unit AI commands while it runs (`crate::unit_ai::UnitSide::attack` through its view, `UnitView`): the new Attack, a forced attack again on the unit's own target, the target as a hit reads it, the start's readiness, the target's sight and a villager's swap. |
 | [`update.rs`](update.rs) | One update (slot 6, `0x140a82ae0`): a target gone, a disarmed building, the walks to where the target was seen. |
 | [`walk_and_swing.rs`](walk_and_swing.rs) | State 4's walk to the target and state 7's swing with its hit and its trample. |
