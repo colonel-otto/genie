@@ -1,0 +1,534 @@
+//! QUEUE: a building's production queue, its load, its units and technologies, and a new
+//! entry's costs.
+
+use crate::masters::Masters;
+use crate::production::Production;
+use crate::rng::Stream;
+use crate::turn::command::{CURRENT_AGE, ONE_UNIT_AGE, QueueAt, ResearchAt};
+use crate::turn::unit::POPULATION;
+use crate::turn::{
+    BUILDING_KIND, COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, Turns, VILLAGER, VILLAGER_ANY,
+    villager,
+};
+use crate::unit_ai::GenieError;
+
+impl Turns {
+    /// QUEUE, the player's part (`FUN_141614450`) after the packet's check of its buildings
+    /// (`do_command`'s case 0x81, [`Turns::command_check`]: an id the world lacks, or another
+    /// player's without cheats, goes; a human's packet left with none is refused). Nothing for
+    /// a master the player lacks (`FUN_141659d20`). Of the first 60 buildings (500 for a computer
+    /// player) those the master is available to (`+0x5f0`) or that list it themselves (`+0xd30`,
+    /// `FUN_1411c8fd0`) take part, at most 60: each has its room (15, a computer player's 2, less
+    /// its queued total `+0xbf4`; the sum of those above 0 holds the amount) and its load
+    /// ([`Turns::production_load`]). The amount is lowered while the player cannot pay that many:
+    /// each cost entry of the costed master ([`crate::production::costed`]; an annex's paid
+    /// ones) but the population's needs its amount times the count (`COMISS`, `JA`: a NaN
+    /// passes); at one still short, or for a master below type 70, nothing is queued. In game
+    /// mode 16, while the player's attribute 6 is at most 1, a military master (its key's `+9`,
+    /// [`crate::tracker::Key::military`]) is queued one at a time: with the player's flag
+    /// (`+0x1378`) set nothing is, else the flag sets and the amount is 1 (even with no room).
+    /// Then unit by unit the building with room and the least load takes it (the last one's
+    /// pick first, replaced by one whose load is below: `COMISS`, `JBE`, a NaN never wins; with
+    /// none at the start, the most room), its room one less and its load the unit's train time
+    /// there ([`crate::production::train_time`]); last, each building's part
+    /// ([`Turns::queue_at`]) with its count, the packet's master and button. Not modelled: a
+    /// building that cannot train the unit (`FUN_141263610`, which reads the local player's
+    /// masters), the limited units (`FUN_1416116c0`, `FUN_141611520`, the master's `+0x5f1`
+    /// bits 2 and 4).
+    ///
+    /// # Errors
+    ///
+    /// A building of another player (with cheats) or asleep, and what the parts do not model.
+    pub(in crate::turn) fn queue(&mut self, player: usize, q: &QueueAt) -> Result<(), GenieError> {
+        let Some(ids) = self.command_check(player, &q.buildings) else {
+            return Ok(());
+        };
+        let owner = &self.players[player];
+        let limit = if owner.computer { 500 } else { 60 };
+        let empty = Masters::default();
+        let masters = self.masters.get(player).unwrap_or(&empty);
+        let Some(unit) = masters.get(q.unit) else {
+            return Ok(());
+        };
+        let mut found = Vec::new();
+        for place in self
+            .lookup(&ids[..ids.len().min(limit)])
+            .into_iter()
+            .flatten()
+        {
+            let crate::order::Place::Live(p, i) = place else {
+                return Err(GenieError::unsupported(
+                    "QUEUE at a building the slice does not have",
+                ));
+            };
+            if p != player {
+                return Err(GenieError::unsupported(
+                    "QUEUE at a building the slice does not have",
+                ));
+            }
+            let listed = owner.objects[i]
+                .production
+                .as_ref()
+                .is_some_and(|p| p.available_units.contains(&q.unit));
+            if unit.available || listed {
+                found.push(i);
+            }
+        }
+        found.truncate(60);
+        if found.is_empty() {
+            return Ok(());
+        }
+        let per = if owner.computer {
+            COMPUTER_QUEUE_LIMIT
+        } else {
+            QUEUE_LIMIT
+        } as i32;
+        let mut rooms = Vec::with_capacity(found.len());
+        let mut loads = Vec::with_capacity(found.len());
+        let mut total_room = 0i32;
+        for &i in &found {
+            let total = owner.objects[i]
+                .production
+                .as_ref()
+                .map_or(0, |p| p.queue.total);
+            let room = per - i32::from(total);
+            total_room += room.max(0);
+            rooms.push(room);
+            loads.push(self.production_load(player, i));
+        }
+        let mut amount = i32::from(q.amount as i16).min(i32::from(total_room as i16));
+        if 0 < amount {
+            if unit.kind < crate::production::COMBAT_MASTER {
+                return Ok(());
+            }
+            let (costed, annex) = crate::production::costed(masters, unit);
+            let short = |count: i32| -> Result<bool, GenieError> {
+                for &(attribute, each, paid) in costed.cost.iter().take(3) {
+                    if attribute < 0 || (annex && !paid) || attribute == POPULATION {
+                        continue;
+                    }
+                    let held = crate::tech::Attributes::get(owner, attribute)?;
+                    if held < f32::from(each) * count as f32 {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            };
+            while short(amount)? {
+                if amount <= 1 {
+                    return Ok(());
+                }
+                amount -= 1;
+            }
+        }
+        // game mode 16: with attribute 6 at most 1 (COMISS, JC: a NaN is not) a military unit
+        // (its key's +9) is queued one at a time, the player's +0x1378 its flag
+        if self.settings.game_mode == ONE_UNIT_GAME
+            && crate::tech::Attributes::get(owner, CURRENT_AGE)? <= ONE_UNIT_AGE
+            && self.tracker_key(player, q.unit).military
+        {
+            if owner.one_military_queued {
+                return Ok(());
+            }
+            self.players[player].one_military_queued = true;
+            amount = 1;
+        }
+        let owner = &self.players[player];
+        let mut counts = vec![0u16; found.len()];
+        let mut pick: Option<usize> = None;
+        while 0 < amount {
+            amount -= 1;
+            let Some(k) = least_loaded(&rooms, &loads, pick) else {
+                return Ok(());
+            };
+            rooms[k] -= 1;
+            counts[k] += 1;
+            let at = owner.objects[found[k]].life.master_id;
+            let time = crate::production::train_time(&unit.train_locations, at, q.button);
+            loads[k] += f32::from(time);
+            pick = Some(k);
+        }
+        for (k, &i) in found.iter().enumerate() {
+            if 0 < counts[k] {
+                let _ = self.queue_at(player, i, q.unit, counts[k], -1, q.button)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// RESEARCH's building (`0x140e7e270`): the packet's (`+4`, a building or none); with more
+    /// than one listed (`+0x8` as a short; at most 60, 500 for a computer player,
+    /// `FUN_140e6b250`), each listed one the world holds (`+0x11..`, `FUN_140e6bad0`) whose load
+    /// ([`Turns::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
+    /// takes its place. −1 for none.
+    pub(in crate::turn) fn least_loaded(&self, player: usize, r: &ResearchAt) -> i32 {
+        let load = |id: i32| match self.place(id) {
+            Some(crate::order::Place::Live(q, i)) => self.production_load(q, i),
+            _ => 0.0,
+        };
+        let is_building = |id: i32| {
+            self.object(id).is_some_and(|(q, u)| {
+                self.masters
+                    .get(q)
+                    .and_then(|m| m.get(u.life.master_id))
+                    .is_some_and(|m| m.kind == BUILDING_KIND)
+            })
+        };
+        let mut chosen = (is_building(r.building)).then_some(r.building);
+        if 1 < r.count {
+            let limit = if self.players[player].computer {
+                500
+            } else {
+                60
+            };
+            let n = usize::from(r.count as u16).min(limit);
+            for &id in r.buildings.iter().take(n) {
+                if id == -1 || self.object(id).is_none() {
+                    continue;
+                }
+                if chosen.is_none_or(|c| load(c) > load(id)) {
+                    chosen = Some(id);
+                }
+            }
+        }
+        chosen.unwrap_or(-1)
+    }
+
+    /// `FUN_1411d0e90`: the seconds of work the building at `i` of player `p` has queued: each
+    /// queue entry's count times its time (a unit's master's first train time, `+0x898`, in
+    /// integers; a research's location at the building, `FUN_1413cbd20`, its time plus its
+    /// adjustment, as floats), less the work done of its production list's action (a make's
+    /// `+0x6c`, a research's `+0x70`).
+    #[must_use]
+    pub(crate) fn production_load(&self, p: usize, i: usize) -> f32 {
+        let owner = &self.players[p];
+        let building = &owner.objects[i];
+        let Some(production) = building.production.as_ref() else {
+            return 0.0;
+        };
+        let queue = &production.queue;
+        let entries = usize::try_from(queue.count)
+            .unwrap_or(0)
+            .min(queue.slots.len());
+        let mut queued = 0.0f32;
+        for e in &queue.slots[..entries] {
+            if e.master != -1 {
+                let time = self
+                    .masters
+                    .get(p)
+                    .and_then(|m| m.get(e.master))
+                    .and_then(|m| m.train_locations.first())
+                    .map_or(0, |l| l.time);
+                queued += (i32::from(e.count) * i32::from(time)) as f32;
+            } else if e.tech != -1 {
+                // a queued research has its locations (the queue checked them)
+                let (time, adjustment) = usize::try_from(e.tech)
+                    .ok()
+                    .and_then(|t| owner.techs.get(t))
+                    .and_then(|t| t.location(building.life.master_id))
+                    .map_or((0, 0.0), |l| (l.time as i16, l.adjustment));
+                queued += (f32::from(time) + adjustment) * f32::from(e.count);
+            }
+        }
+        if queue.slots.is_empty() {
+            return queued;
+        }
+        let done = match production.action {
+            Some(crate::production::Making::Unit(m)) => m.progress,
+            Some(crate::production::Making::Research(r)) => r.progress,
+            None => 0.0,
+        };
+        queued - (0.0 + done)
+    }
+
+    /// `FUN_1411cbc40`, QUEUE's and RESEARCH's building part, at the building at `i` of
+    /// `player`: `count` of master `unit`, or with `tech` other than −1 that technology (`unit`
+    /// −1), with the train button `button`. The generic villager (0x712) is the villager
+    /// (0x53), whose sex the Action stream draws for each: the routine queues the rest first,
+    /// one by one, then this one (the last drawn is queued first). A building whose total
+    /// (`+0xbf4`) is above 14 refuses (its event 0x84 is the interface's); the count is held
+    /// to the room of 15. Units: [`Turns::queue_units`]; researches: [`Turns::queue_techs`].
+    /// True when any was queued.
+    pub(in crate::turn) fn queue_at(
+        &mut self,
+        player: usize,
+        i: usize,
+        unit: i16,
+        count: u16,
+        tech: i16,
+        button: i32,
+    ) -> Result<bool, GenieError> {
+        let mut master = if unit == VILLAGER_ANY { VILLAGER } else { unit };
+        let mut count = count;
+        if master == VILLAGER {
+            master = villager(self.streams.get(Stream::Action).raw64());
+            if 0 < count.wrapping_sub(1) as i16 {
+                let _ = self.queue_at(player, i, VILLAGER, count - 1, -1, button)?;
+            }
+            count = 1;
+        }
+        let total = self.players[player].objects[i]
+            .production
+            .as_ref()
+            .map_or(0, |p| p.queue.total);
+        if 14 < total {
+            return Ok(false);
+        }
+        let n = if i32::from(count as i16) + i32::from(total) < 16 {
+            count as i16
+        } else {
+            crate::production::ROOM - total
+        };
+        if tech == -1 {
+            self.queue_units(player, i, master, n, button)
+        } else {
+            self.queue_techs(player, i, (master, tech), n, button)
+        }
+    }
+
+    /// `FUN_1411cbc40`'s unit branch: `n` of `master` paid at once (`FUN_14162fb60`,
+    /// [`crate::production::pay`]), the count lowered while the player cannot (at one, nothing
+    /// is queued); attribute 80 (the queued units) grows by the master's population times the
+    /// count (slot 0xf8); the player's tracker counts them and places each
+    /// ([`crate::tracker::Tracker::place`]; `FUN_140a4f570` per unit is the local player's
+    /// statistics). They join the last entry when it is of the same master and button and its
+    /// costs are the ones a unit costs now (`FUN_1411c81a0`,
+    /// [`crate::production::master_costs`]); else a new entry ([`Turns::new_entry`]) records
+    /// them, with the master's train time at the building and button
+    /// ([`crate::production::train_time`]) for a combat master.
+    pub(in crate::turn) fn queue_units(
+        &mut self,
+        player: usize,
+        i: usize,
+        master: i16,
+        count: i16,
+        button: i32,
+    ) -> Result<bool, GenieError> {
+        use crate::production::{QUEUED, as_entry_costs, master_costs, pay, population};
+        let empty = Masters::default();
+        let mut n = count;
+        loop {
+            let masters = self.masters.get(player).unwrap_or(&empty);
+            if pay(masters, master, f32::from(n), &mut self.players[player])? {
+                break;
+            }
+            if n < 2 {
+                return Ok(false);
+            }
+            n -= 1;
+        }
+        let class = self.tracker_key(player, master).class;
+        let masters = self.masters.get(player).unwrap_or(&empty);
+        let made = masters.get(master);
+        let pop = made.map_or(0.0, |m| population(&m.storage));
+        let owner = &mut self.players[player];
+        owner.add_attribute(QUEUED, pop * f32::from(n))?;
+        let costs = as_entry_costs(master_costs(masters, master, &*owner)?);
+        owner.tracker.count_queued(n);
+        for _ in 0..n {
+            owner.tracker.place(master, class);
+        }
+        let building = owner.objects[i].life.master_id;
+        let production = owner.objects[i]
+            .production
+            .get_or_insert_with(Production::default);
+        if let Some(last) = production.queue.last()
+            && last.master == master
+            && last.button == button
+            && crate::production::same_costs(&last.costs, &costs)
+        {
+            let queue = &mut production.queue;
+            let k = (queue.count - 1) as usize;
+            queue.slots[k].count = queue.slots[k].count.wrapping_add(n);
+            queue.total = queue.total.wrapping_add(n);
+            queue.changes = queue.changes.wrapping_add(1);
+            return Ok(true);
+        }
+        let time = made
+            .filter(|m| crate::production::COMBAT_MASTER <= m.kind)
+            .map(|m| crate::production::train_time(&m.train_locations, building, button));
+        self.new_entry(player, i, (master, -1), n, button, time)?;
+        Ok(true)
+    }
+
+    /// `FUN_1411cbc40`'s technology branch: the count is held to the technology's cap less its
+    /// researches queued and done when it stacks (`+0x40`; the cap `+0x56`, 0x100 below 0; the
+    /// player's `+0x648` is not held, 0 for every player probed); each research is paid
+    /// (`FUN_14162fd90`: [`crate::tech::TechState::pay`] with the repeat test) until one cannot
+    /// be. The paid ones join the last entry when it is of the same technology and its costs
+    /// are the ones it lists now (`FUN_1411c81a0` -> `FUN_1413d4a00`,
+    /// [`crate::tech::TechState::listed_costs`]); else a new entry ([`Turns::new_entry`]); the
+    /// technology's researches queued (`+0x58`) grow by them.
+    pub(super) fn queue_techs(
+        &mut self,
+        player: usize,
+        i: usize,
+        (master, tech): (i16, i16),
+        count: i16,
+        button: i32,
+    ) -> Result<bool, GenieError> {
+        let t = usize::try_from(tech).expect("RESEARCH queues a technology of the tree");
+        let def = self.techs.get(t).ok_or(GenieError::unsupported(
+            "a technology the data file has not got",
+        ))?;
+        let owner = &mut self.players[player];
+        let state = &owner.techs[t];
+        let done = state.pending.wrapping_add(state.times_researched);
+        let cap = if 0 <= state.research_cap {
+            state.research_cap
+        } else {
+            0x100
+        };
+        let mut n = count;
+        if state.stack && i32::from(cap) - i32::from(done) < i32::from(n) {
+            n = cap.wrapping_sub(done);
+        }
+        // FUN_14162fd90's repeat flag: the player's +0x648 (not held) or FUN_1413d1050
+        let repeat = state.repeatable(def, false);
+        let building = owner.objects[i].life.master_id;
+        let mut paid = 0i16;
+        while paid < n {
+            let get = |k: i16| crate::tech::Attributes::get(&*owner, k);
+            let factors = crate::tech::factors(tech, &get)?;
+            let mut state = std::mem::take(&mut owner.techs[t]);
+            let ok = state.pay(def, factors, repeat, building, owner);
+            owner.techs[t] = state;
+            if !ok? {
+                n = paid;
+                break;
+            }
+            paid += 1;
+        }
+        if n <= 0 {
+            return Ok(false);
+        }
+        let get = |k: i16| crate::tech::Attributes::get(&*owner, k);
+        let listed = owner.techs[t].listed_costs(def, crate::tech::factors(tech, &get)?);
+        let costs = crate::production::as_entry_costs(listed);
+        let production = owner.objects[i]
+            .production
+            .get_or_insert_with(Production::default);
+        if let Some(last) = production.queue.last()
+            && last.tech == tech
+            && crate::production::same_costs(&last.costs, &costs)
+        {
+            let queue = &mut production.queue;
+            let k = (queue.count - 1) as usize;
+            queue.slots[k].count = queue.slots[k].count.wrapping_add(n);
+            queue.total = queue.total.wrapping_add(n);
+            queue.changes = queue.changes.wrapping_add(1);
+            owner.techs[t].pending = owner.techs[t].pending.wrapping_add(n);
+            return Ok(true);
+        }
+        self.new_entry(player, i, (master, tech), n, button, None)?;
+        let pending = &mut self.players[player].techs[t].pending;
+        *pending = pending.wrapping_add(n);
+        Ok(true)
+    }
+
+    /// `FUN_1411cbc40`'s new entry at the building at `i` of `player`: a full buffer grows by
+    /// ten first, each old slot's costs filled anew ([`Turns::entry_costs`]); the slot after
+    /// the last takes the master, the count, the technology, the button and the next serial,
+    /// its costs [`Turns::entry_costs`], and the train time `time` when given (a research and a
+    /// master that is not a combat master leave the slot's); the total, the entries and the
+    /// change counter grow.
+    pub(super) fn new_entry(
+        &mut self,
+        player: usize,
+        i: usize,
+        (master, tech): (i16, i16),
+        n: i16,
+        button: i32,
+        time: Option<i16>,
+    ) -> Result<(), GenieError> {
+        let queue = &self.players[player].objects[i]
+            .production
+            .as_ref()
+            .expect("the caller's production")
+            .queue;
+        let refill = if queue.full() {
+            Some(
+                queue
+                    .slots
+                    .iter()
+                    .map(|s| self.entry_costs(player, s.tech, s.master))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )
+        } else {
+            None
+        };
+        let costs = self.entry_costs(player, tech, master)?;
+        let queue = &mut self.players[player].objects[i]
+            .production
+            .as_mut()
+            .expect("the caller's production")
+            .queue;
+        if let Some(refill) = refill {
+            queue.grow(&refill);
+        }
+        let k = queue.open(master, n, tech, button);
+        queue.slots[k].costs = costs;
+        if let Some(time) = time {
+            queue.slots[k].train_time = time;
+        }
+        queue.total = queue.total.wrapping_add(n);
+        queue.count += 1;
+        queue.changes = queue.changes.wrapping_add(1);
+        Ok(())
+    }
+
+    /// `FUN_1411c3190`: the costs a queue entry of `master` (for a master other than −1:
+    /// [`crate::production::master_costs`]) or of technology `tech` records, from (−1, 0). A
+    /// technology the tree has not got (`FUN_1413cc6c0`), or none, records none; one in state 2
+    /// or 4 what [`crate::tech::TechState::entry_costs`] gives.
+    pub(crate) fn entry_costs(
+        &self,
+        player: usize,
+        tech: i16,
+        master: i16,
+    ) -> Result<[(i32, f32); 3], GenieError> {
+        use crate::production::{NO_COSTS, as_entry_costs, master_costs};
+        let owner = &self.players[player];
+        if master != -1 {
+            let empty = Masters::default();
+            let masters = self.masters.get(player).unwrap_or(&empty);
+            return Ok(as_entry_costs(master_costs(masters, master, owner)?));
+        }
+        let Some(t) = usize::try_from(tech)
+            .ok()
+            .filter(|&t| t < owner.techs.len())
+        else {
+            return Ok(NO_COSTS);
+        };
+        let Some(def) = self.techs.get(t) else {
+            return Ok(NO_COSTS);
+        };
+        let get = |k: i16| crate::tech::Attributes::get(owner, k);
+        Ok(owner.techs[t].entry_costs(def, crate::tech::factors(tech, &get)?))
+    }
+}
+
+/// [`Turns::queue`]'s building for its next unit, an index into `rooms` and `loads`: the last
+/// one's `pick` first (none: the first with room), replaced by each with room and a load below
+/// its (`COMISS`, `JBE`: a comparison with a NaN replaces nothing); with none, the one with the
+/// most room, the first of equals; none without room.
+pub(in crate::turn) fn least_loaded(
+    rooms: &[i32],
+    loads: &[f32],
+    pick: Option<usize>,
+) -> Option<usize> {
+    let mut best = pick;
+    for k in 0..rooms.len() {
+        if 0 < rooms[k] && best.is_none_or(|b| loads[b] > loads[k]) {
+            best = Some(k);
+        }
+    }
+    if best.is_none() {
+        for k in 0..rooms.len() {
+            if 0 < rooms[k] && best.is_none_or(|b| rooms[b] < rooms[k]) {
+                best = Some(k);
+            }
+        }
+    }
+    best
+}
