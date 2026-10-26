@@ -79,7 +79,7 @@ pub(super) fn saved_attack(
     graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
     move_to_state: &dyn Fn(u8) -> Result<genie_core::move_to::MoveTo, GenieError>,
     run_sprite: i16,
-) -> Result<genie_core::attack::Attack, GenieError> {
+) -> Result<genie_core::combat::attack::Attack, GenieError> {
     use genie_core::move_to::MOVE_TO;
     let b = sub
         .base()
@@ -127,7 +127,7 @@ pub(super) fn saved_attack(
             ));
         }
     };
-    Ok(genie_core::attack::Attack {
+    Ok(genie_core::combat::attack::Attack {
         target: b.target_id,
         target2: b.target2_id,
         state: b.state,
@@ -146,7 +146,7 @@ pub(super) fn saved_attack(
         pending: a.need_to_attack != 0,
         swing: 0.0,
         rest: 0.0,
-        arms: genie_core::attack::Arms {
+        arms: genie_core::combat::attack::Arms {
             move_sprite: g(a.short_val),
             sprite: g(a.short_val_2),
             second_sprite: None,

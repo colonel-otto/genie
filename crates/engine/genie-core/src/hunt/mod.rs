@@ -6,7 +6,7 @@
 //! 158041: constructor `FUN_140ac2dd0`, start (slot 5) `0x140ac49b0`, update (slot 6)
 //! `0x140ac7a00`, `set_state` (slot 16) `0x140ac60e0`.
 
-use crate::attack::{Arms, Attack, Engagement};
+use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::move_to::{MoveTo, MoveWait};
 use crate::sprite::Graphic;
 
@@ -24,7 +24,7 @@ pub use self::sprites::{HuntSprites, Shown, walk_sprite};
 pub(crate) use self::sprites::{asked_drop_off, resource_kind, stand_sprite};
 pub use self::start::{PointWalk, PointWalker};
 #[cfg(test)]
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 #[cfg(test)]
 use crate::move_to::Walk;
 #[cfg(test)]
@@ -210,7 +210,7 @@ pub struct HuntTask {
 
 /// What the gathering reads of its unit and changes besides the attack's [`Strike`].
 ///
-/// [`Strike`]: crate::attack::Strike
+/// [`Strike`]: crate::combat::attack::Strike
 #[derive(Debug)]
 pub struct Gatherer<'a> {
     /// `+0x308`, `+0x310`: what the unit carries.

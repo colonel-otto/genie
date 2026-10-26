@@ -304,10 +304,10 @@ impl Unit {
                 crate::move_to::MOVE_TO
                 | crate::explore::EXPLORE
                 | BUILD
-                | crate::attack::ATTACK
+                | crate::combat::attack::ATTACK
                 | crate::garrison::ENTER
                 | crate::fly::FLY
-                | crate::missile::MISSILE
+                | crate::combat::missile::MISSILE
                 | crate::make::MAKE
                 | crate::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(PointMove::Declined),
@@ -473,7 +473,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "an arrived walker without its standing sprite",
                 ))?;
-            crate::attack::set_sprite(&mut self.sprite, standing, sprite_rng);
+            crate::combat::attack::set_sprite(&mut self.sprite, standing, sprite_rng);
         }
         if let Some(a) = self.anim_speed.as_mut() {
             *a = 0.0;

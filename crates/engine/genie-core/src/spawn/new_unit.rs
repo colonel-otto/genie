@@ -263,7 +263,7 @@ impl Turns {
                 [
                     position[0],
                     position[1],
-                    crate::missile::grounded(position[2], g, false, made.fly_mode),
+                    crate::combat::missile::grounded(position[2], g, false, made.fly_mode),
                 ]
             })
         });

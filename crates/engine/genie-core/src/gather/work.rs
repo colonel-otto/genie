@@ -1,8 +1,8 @@
 //! The face (state 6), the work (7), the drop-off's update (8) and a random wait.
 
 use crate::GenieError;
-use crate::attack::set_sprite;
-use crate::damage::Victim;
+use crate::combat::attack::set_sprite;
+use crate::combat::damage::Victim;
 use crate::gather::{
     DROP_REACH, FACE, FARM_CLASS, FARM_FOOD_KIND, GatherAction, Gatherer, LAST_BIT, Next,
     REGATHERED, REMAINDER, SPECIAL_TARGETS, WAIT_SHIFT, WORK,

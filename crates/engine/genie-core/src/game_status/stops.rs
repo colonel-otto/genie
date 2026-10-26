@@ -130,7 +130,7 @@ impl Turns {
             | crate::explore::EXPLORE
             | crate::garrison::ENTER
             | crate::fly::FLY
-            | crate::missile::MISSILE
+            | crate::combat::missile::MISSILE
             | crate::make::MAKE
             | crate::wait_solidify::WAIT_SOLIDIFY => {
                 return Ok(false);
@@ -160,7 +160,11 @@ impl Turns {
         hunt.point = [-1.0; 3];
         hunt.timer = 0.0;
         if let Some(g) = sprite {
-            crate::attack::set_sprite(&mut unit.sprite, g, self.streams.get(Stream::Sprite));
+            crate::combat::attack::set_sprite(
+                &mut unit.sprite,
+                g,
+                self.streams.get(Stream::Sprite),
+            );
         }
         if unit.my_pasture != -1 {
             return Err(GenieError::unsupported(
@@ -180,7 +184,7 @@ impl Turns {
     /// [`Turns::release`]), the Build's (`FUN_140ab0350`, [`crate::build::BuildAction::halt`]:
     /// a counted builder leaves its foundation's builders, [`Turns::leave_builders`], before the
     /// rest; the foundation goes), the Attack's (`FUN_140a82ac0`,
-    /// [`crate::attack::Attack::halt`]) and the Artifact's (`FUN_140aad1a0`,
+    /// [`crate::combat::attack::Attack::halt`]) and the Artifact's (`FUN_140aad1a0`,
     /// [`crate::artifact::Artifact::stop`]). The Gather, the Build and the Artifact show the
     /// master's standing sprite (the Gather the task's carrying one while it carries at least 1 of
     /// the task's resource, `FUN_140a8b6b0`). [`crate::turn::Unit::top_action`] holds no other
@@ -198,7 +202,7 @@ impl Turns {
             crate::gather::GATHER => self.halt_gather(p, idx, standing, by)?,
             crate::build::BUILD => self.halt_build(p, idx, by)?,
             crate::repair::REPAIR => self.halt_repair(p, idx)?,
-            crate::attack::ATTACK => {
+            crate::combat::attack::ATTACK => {
                 let unit = &mut self.players[p].objects[idx];
                 let attack = unit.attack.as_mut().expect("its top action");
                 attack.halt(

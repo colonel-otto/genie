@@ -440,7 +440,7 @@ pub(crate) fn switch_master(
                     "a new master's standing sprite the data file does not have",
                 ))?;
             if unit.sprite.is_some() {
-                crate::attack::set_sprite(&mut unit.sprite, g, world.sprite);
+                crate::combat::attack::set_sprite(&mut unit.sprite, g, world.sprite);
             } else {
                 let _ = crate::sprite::ActiveSprite::start(g, world.sprite);
             }

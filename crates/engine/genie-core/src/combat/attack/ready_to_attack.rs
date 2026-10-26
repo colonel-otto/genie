@@ -2,7 +2,7 @@
 //! and the facing at its end.
 
 use crate::GenieError;
-use crate::attack::{
+use crate::combat::attack::{
     Attack, FAILED, HALF, MASTER_1704, MASTER_1706, MOVE, NO_RANGE, NONE, READY, Readiness,
     SHORT_RANGE_GAP, Strike, face_target,
 };

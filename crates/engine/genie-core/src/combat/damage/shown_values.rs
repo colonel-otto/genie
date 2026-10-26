@@ -2,7 +2,7 @@
 //! shows.
 
 use crate::checkpoint::cvttss2si;
-use crate::damage::{
+use crate::combat::damage::{
     BUILDING, EPSILON, ONE, Victim, charge_hit, charged, master_melee_armor, melee_armor,
     range_charge_hit,
 };

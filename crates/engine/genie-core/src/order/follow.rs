@@ -409,10 +409,10 @@ impl Turns {
                 crate::move_to::MOVE_TO
                 | crate::explore::EXPLORE
                 | crate::build::BUILD
-                | crate::attack::ATTACK
+                | crate::combat::attack::ATTACK
                 | crate::garrison::ENTER
                 | crate::fly::FLY
-                | crate::missile::MISSILE
+                | crate::combat::missile::MISSILE
                 | crate::make::MAKE
                 | crate::wait_solidify::WAIT_SOLIDIFY,
             ) => Ok(false),

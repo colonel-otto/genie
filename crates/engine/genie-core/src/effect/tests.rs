@@ -49,7 +49,7 @@ fn an_attack_takes_its_master_s_sprites_but_its_task_s() {
         replay_delay: 0.0,
         flags: 0,
     };
-    let arms = crate::attack::Arms {
+    let arms = crate::combat::attack::Arms {
         move_sprite: Some(g(1)),
         sprite: Some(g(2)),
         second_sprite: Some(g(3)),
@@ -87,7 +87,7 @@ fn an_attack_takes_its_master_s_sprites_but_its_task_s() {
         [Some(g(1)), Some(g(12)), Some(g(4))]
     );
     // a sprite it lacks stays lacking; a combat master's last two replace its own
-    let mut a = crate::attack::Arms {
+    let mut a = crate::combat::attack::Arms {
         move_sprite: None,
         ..arms
     };

@@ -362,7 +362,7 @@ impl Turns {
                 if master.class == TRADE_CART || master.class == TRADE_BOAT {
                     return Ok(true);
                 }
-                if u.top_action_kind() == Some(crate::attack::ATTACK) {
+                if u.top_action_kind() == Some(crate::combat::attack::ATTACK) {
                     return Ok(false);
                 }
             } else if !matches!(state, 3 | 13 | 14) {
@@ -485,7 +485,7 @@ impl Turns {
             crate::order::Place::Live(p, i) => &mut self.players[p].objects[i],
             crate::order::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
         };
-        crate::attack::set_sprite(&mut u.sprite, g, rng);
+        crate::combat::attack::set_sprite(&mut u.sprite, g, rng);
         Ok(true)
     }
 

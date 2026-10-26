@@ -2,7 +2,7 @@
 //! AI run outside its update.
 
 use crate::GenieError;
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::lifecycle::seconds;
 use crate::turn::unit::{AiResume, Step, Unit};
 use crate::turn::view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
@@ -429,7 +429,7 @@ impl Turns {
                 Step::Leave => (p, true),
                 _ => (p, false),
             };
-            let mut pending = crate::abilities::Pending {
+            let mut pending = crate::combat::abilities::Pending {
                 victim: victim.as_mut(),
                 blasted: &mut blasted,
             };

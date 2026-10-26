@@ -2,7 +2,7 @@
 //! the target was seen.
 
 use crate::GenieError;
-use crate::attack::{
+use crate::combat::attack::{
     Attack, DONE, FAILED, FARM, GOTO_POINT, GOTO_SEEN, KILLED, LIVESTOCK, MOVE, NO_RANGE, NONE,
     READY, Readiness, SEEN_RANGE, SWING, Strike, TOUCH, TREE, VILLAGER, VILLAGER_CLASS, set_sprite,
 };

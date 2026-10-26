@@ -1,10 +1,10 @@
 //! A hit: where it comes from ([`Hit`]), what the swing does after it, the strike
 //! (`FUN_141084230`) and the blast so far.
 
-use crate::attack::{BUILDING, DRAW_SCALE, QUIET_SWINGS};
-use crate::damage::Victim;
+use crate::combat::attack::{BUILDING, DRAW_SCALE, QUIET_SWINGS};
+use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
-use crate::{GenieError, damage};
+use crate::{GenieError, combat::damage};
 
 /// Where a hit comes from: the place it lands (`FUN_141084230`'s x, y, z: the attacker's for a
 /// melee hit, the missile's for a missile's), the height the elevation factor compares with the

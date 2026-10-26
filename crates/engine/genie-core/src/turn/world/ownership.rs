@@ -16,7 +16,7 @@ impl Turns {
     /// attributes ([`Turns::hand_over_attributes`]). Its only callers give livestock, which
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
-    pub(in crate::turn) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
+    pub(crate) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
         let mut unit = std::mem::replace(&mut self.players[q].objects[j], Unit::taken_out());
         let changed = change_hands(
             &mut unit,

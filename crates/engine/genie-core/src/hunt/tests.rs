@@ -507,7 +507,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
 /// not modelled.
 #[test]
 fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
-    use crate::attack::tests::Rig;
+    use crate::combat::attack::tests::Rig;
     const MOVING: Graphic = Graphic {
         id: 1880,
         frames: 10,
@@ -869,7 +869,7 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
     };
     let lead = |h: &mut HuntAction, victim: Victim, herd: Option<Herd>| {
         let mut rig = WalkRig::on_the_path();
-        let mut strike = crate::attack::tests::Rig::new(victim);
+        let mut strike = crate::combat::attack::tests::Rig::new(victim);
         let (mut kind, mut held) = (-1, 0.0);
         let mut gather = herder(&mut kind, &mut held);
         let r = h.update_lead(rig.walk(LEAD), &mut strike.strike(), &mut gather, herd);
@@ -960,7 +960,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
     };
     let face = |h: &mut HuntAction, victim: Victim, herd: Option<Herd>| {
         let mut rig = WalkRig::on_the_path();
-        let mut strike = crate::attack::tests::Rig::new(victim);
+        let mut strike = crate::combat::attack::tests::Rig::new(victim);
         let (mut kind, mut held) = (-1, 0.0);
         let mut gather = herder(&mut kind, &mut held);
         let r = h.set_face(rig.walk(WALK), &mut strike.strike(), &mut gather, herd);

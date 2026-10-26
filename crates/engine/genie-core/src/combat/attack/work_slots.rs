@@ -1,12 +1,12 @@
 //! The swing's state (7), slot 9 (`RGE_Action_Attack::work`) and slot 0x68
 //! (`set_target_obj`).
 
-use crate::attack::{
+use crate::combat::attack::{
     Attack, BUILDING, CLASS_60, NO_OBJECT_STREAM, SWING, Strike, reset_sprite, set_sprite,
 };
 use crate::move_to::Walk;
 use crate::movement::footprint_gap;
-use crate::{GenieError, damage};
+use crate::{GenieError, combat::damage};
 
 /// An object as the Attack's slot 9 ([`Attack::work`]) and slot 0x68 ([`Attack::set_target`])
 /// read it.
@@ -55,7 +55,7 @@ pub struct Worked {
 impl Attack {
     /// `set_state(7)` (case 7): the swing. Its sprite: the terrain look's attack sprite while
     /// the unit shows its look ([`SwingSprites::look`]); else the master's special graphic on a
-    /// charge that hits the target (slot 0x2f0, [`crate::damage::charge_hit`]; slot 0x2f8's
+    /// charge that hits the target (slot 0x2f0, [`crate::combat::damage::charge_hit`]; slot 0x2f8's
     /// charge range is a charge of types 6 and 7, which [`engagement`] does not take); else the
     /// attack sprite (`+0x70`) or, with a second one (`+0x78`), a draw of the Object stream
     /// (`FUN_140810fc0` with 2, [`crate::math::rng::Well512::below_checked`]: 0 the first) for a master
@@ -64,8 +64,8 @@ impl Attack {
     /// sprite) from its first frame (`FUN_1413b9f00`); a hit is pending; a reload shorter than
     /// the sprite speeds the animation up to fit it.
     ///
-    /// [`SwingSprites::look`]: crate::attack::sprites::SwingSprites::look
-    /// [`engagement`]: crate::attack::constructor::engagement
+    /// [`SwingSprites::look`]: crate::combat::attack::sprites::SwingSprites::look
+    /// [`engagement`]: crate::combat::attack::constructor::engagement
     pub(super) fn set_swing(
         &mut self,
         walk: &mut Walk<'_>,

@@ -373,7 +373,7 @@ impl Turns {
                 "a unit without its standing sprite",
             ))?;
         let rng = self.streams.get(Stream::Sprite);
-        crate::attack::set_sprite(&mut self.players[p].objects[idx].sprite, g, rng);
+        crate::combat::attack::set_sprite(&mut self.players[p].objects[idx].sprite, g, rng);
         Ok(())
     }
 }

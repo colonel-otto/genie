@@ -1,8 +1,8 @@
 //! The walk to a dead target (state 4), the face (6) and the gathering (7).
 
 use crate::GenieError;
-use crate::attack::{Strike, set_sprite};
-use crate::damage::Victim;
+use crate::combat::attack::{Strike, set_sprite};
+use crate::combat::damage::Victim;
 use crate::hunt::{
     ARRIVED, CLASS_49, FACE, GAP, GATHER, Gatherer, HERD_FAR, HERD_REACH, Herd, HuntAction,
     LAST_BIT, LIVESTOCK, OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,

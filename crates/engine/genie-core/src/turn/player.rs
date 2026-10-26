@@ -80,7 +80,7 @@ pub struct Player {
     /// task finder reads attribute 95, the work command a task's enabling resource.
     pub attributes: Vec<f32>,
     /// `+0x658` (saved, the save's second attribute array): per attribute what the player's
-    /// generation tasks made and did not give yet ([`crate::abilities::store`]).
+    /// generation tasks made and did not give yet ([`crate::combat::abilities::store`]).
     pub generated: Vec<f32>,
     /// The civ (`player+0x738`), which drop sites read.
     pub civ: u8,

@@ -1,8 +1,8 @@
 //! A unit's update on its owner's turn, action by action.
 
 use crate::artifact::{Artifact, Handover};
-use crate::attack::Strike;
 use crate::build::{Builder, Completion, Site};
+use crate::combat::attack::Strike;
 use crate::hunt::{Gatherer, HuntSprites};
 use crate::lifecycle::Class;
 use crate::masters::Master;
@@ -62,7 +62,7 @@ impl Unit {
         self.building_seconds(c, others)?;
         self.take_stopped_speed();
         // RGE_Combat_Object::update (0x14107dfb0): the attack timer runs down by dt times
-        // `+0x87c` (a terrain look's rate, [`crate::abilities`])
+        // `+0x87c` (a terrain look's rate, [`crate::combat::abilities`])
         if 0.0 < self.attack_timer {
             self.attack_timer -= c.dt_seconds * self.abilities.attack_rate;
             if self.attack_timer < 0.0 {
@@ -1375,7 +1375,7 @@ impl Unit {
                 };
                 let (me_at, them) = (at(self.id)?, at(hunt.target)?);
                 let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-                let engagement = crate::attack::engagement(
+                let engagement = crate::combat::attack::engagement(
                     self.ai.as_ref(),
                     speed,
                     master,
@@ -1384,7 +1384,8 @@ impl Unit {
                     c.world_time,
                 )?;
                 let moving = hunt.task.walk_sprite_id(*gather.held_kind, *gather.held);
-                let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+                let arms =
+                    crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
                 let own = them.player == c.player;
                 let drop_site = if !own {
                     None
@@ -1459,9 +1460,14 @@ impl Unit {
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             let world_time = c.world_time;
             let standing = c.graphics.get(&master.standing_sprite).copied();
-            let volleys = c.masters.is_some_and(|m| crate::attack::volleys(master, m));
-            let swing_sprites =
-                crate::attack::swing_sprites(self.abilities.look.as_ref(), master, c.graphics);
+            let volleys = c
+                .masters
+                .is_some_and(|m| crate::combat::attack::volleys(master, m));
+            let swing_sprites = crate::combat::attack::swing_sprites(
+                self.abilities.look.as_ref(),
+                master,
+                c.graphics,
+            );
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
@@ -1593,9 +1599,14 @@ impl Unit {
             let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
             let world_time = c.world_time;
             let standing = c.graphics.get(&master.standing_sprite).copied();
-            let volleys = c.masters.is_some_and(|m| crate::attack::volleys(master, m));
-            let swing_sprites =
-                crate::attack::swing_sprites(self.abilities.look.as_ref(), master, c.graphics);
+            let volleys = c
+                .masters
+                .is_some_and(|m| crate::combat::attack::volleys(master, m));
+            let swing_sprites = crate::combat::attack::swing_sprites(
+                self.abilities.look.as_ref(),
+                master,
+                c.graphics,
+            );
             let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,

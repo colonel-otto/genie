@@ -154,7 +154,10 @@ impl Unit {
         .or_else(|| self.fly.map(|f| action(crate::fly::FLY, f.state)))
         .or_else(|| self.hunt.map(|h| action(crate::hunt::HUNT, h.state)))
         .or_else(|| self.gather.map(|g| action(crate::gather::GATHER, g.state)))
-        .or_else(|| self.attack.map(|a| action(crate::attack::ATTACK, a.state)))
+        .or_else(|| {
+            self.attack
+                .map(|a| action(crate::combat::attack::ATTACK, a.state))
+        })
         .or_else(|| {
             self.explore
                 .map(|e| action(crate::explore::EXPLORE, e.state))
@@ -168,7 +171,7 @@ impl Unit {
             self.missile
                 .as_ref()
                 .and_then(|m| m.action.as_ref())
-                .map(|a| action(crate::missile::MISSILE, a.state))
+                .map(|a| action(crate::combat::missile::MISSILE, a.state))
         })
         .or_else(|| self.make.map(|m| action(crate::make::MAKE, m.state)))
         .or_else(|| {
@@ -213,12 +216,12 @@ impl Unit {
         match self.top_action_kind()? {
             crate::hunt::HUNT => self.hunt.map(|h| h.carry_to),
             crate::gather::GATHER => self.gather.map(|g| g.carry_to),
-            crate::missile::MISSILE => self
+            crate::combat::missile::MISSILE => self
                 .missile
                 .as_ref()
                 .and_then(|m| m.action.as_ref())
                 .map(|a| a.fired_from),
-            crate::attack::ATTACK => self.attack.map(|a| a.target2),
+            crate::combat::attack::ATTACK => self.attack.map(|a| a.target2),
             _ => Some(-1),
         }
     }
@@ -241,7 +244,7 @@ impl Unit {
             (0x7e, _) => false,
             (0x6f, 4) => return Err(GenieError::unsupported("slot 0x2d0 of a trade in state 4")),
             (_, 0 | 1 | 3 | 0xd | 0xe) => true,
-            (_, 2) => kind != crate::attack::ATTACK,
+            (_, 2) => kind != crate::combat::attack::ATTACK,
             (crate::artifact::ARTIFACT_TYPE, _) => self
                 .artifact
                 .is_some_and(|a| a.goal.is_none_or(|g| g[0] == -1.0)),

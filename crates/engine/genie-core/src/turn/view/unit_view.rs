@@ -3,7 +3,7 @@
 //! the hunt plan.
 
 use crate::build::Walk;
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::spatial::Placed;
 use crate::tasks::Actor;
@@ -126,7 +126,7 @@ impl UnitView<'_> {
     }
 
     /// The forced attack command on the target of the unit's own Attack (`FUN_141081a80`): the
-    /// top Attack's slot 0x48 (`FUN_140a841d0`, [`crate::attack::Attack::work`]) on the target
+    /// top Attack's slot 0x48 (`FUN_140a841d0`, [`crate::combat::attack::Attack::work`]) on the target
     /// and its place, with the main building of an annex for a unit of an area effect, the
     /// unit's top speed and canMoveToAttack ([`crate::unit_ai::Seeker::can_move`]); what it takes
     /// and lets go is the caller's ([`UnitView::takes`], [`UnitView::releases`]), a new target
@@ -138,7 +138,7 @@ impl UnitView<'_> {
         master: &crate::masters::Master,
         ai: &UnitAi,
     ) -> Result<(), GenieError> {
-        let mark = |id: i32, p: &Placed| -> Result<crate::attack::Mark, GenieError> {
+        let mark = |id: i32, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
             let (_, u) = self
                 .foreign
                 .find(id)
@@ -149,7 +149,7 @@ impl UnitView<'_> {
                 .get(p.player)
                 .and_then(|ms| ms.get(p.master))
                 .ok_or(NOT_HELD)?;
-            Ok(crate::attack::Mark {
+            Ok(crate::combat::attack::Mark {
                 id,
                 kind: m.kind,
                 class: m.class,
@@ -178,7 +178,7 @@ impl UnitView<'_> {
             None => None,
         };
         let unit = &mut *self.unit;
-        let wielder = crate::attack::Wielder {
+        let wielder = crate::combat::attack::Wielder {
             area_effect: master.area_effect,
             speed: unit.mover.as_ref().map_or(0.0, |m| m.stats.speed),
             position: unit.position,
@@ -231,14 +231,14 @@ impl UnitView<'_> {
         ))
     }
 
-    /// The start's `set_state(6)` of the unit's new Attack ([`crate::attack::Attack::enter_ready`])
+    /// The start's `set_state(6)` of the unit's new Attack ([`crate::combat::attack::Attack::enter_ready`])
     /// with what its readyToAttack and its swing read: the target as a hit reads it
     /// ([`UnitView::victim_of_target`]), the unit as a combat object, its unit AI's stance, leash
     /// and queue. Returns the notifies it posted. Its swing lands no hit and fires nothing before
     /// its update, nor does readyToAttack let the target go or send the unit home there.
     pub(super) fn ready_at_start(
         &mut self,
-        attack: &mut crate::attack::Attack,
+        attack: &mut crate::combat::attack::Attack,
         master: &crate::masters::Master,
         ai: &UnitAi,
     ) -> Result<Vec<(i32, [i32; 3])>, GenieError> {
@@ -260,7 +260,7 @@ impl UnitView<'_> {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
-            action_state: crate::attack::READY,
+            action_state: crate::combat::attack::READY,
         };
         let walk = Walk {
             mover: unit.mover.as_mut(),
@@ -270,13 +270,13 @@ impl UnitView<'_> {
             plan: None,
         };
         let mut blasted = Vec::new();
-        let mut strike = crate::attack::Strike {
+        let mut strike = crate::combat::attack::Strike {
             sprite: &mut unit.sprite,
             anim_speed: &mut unit.anim_speed,
             standing: self.graphics.get(&master.standing_sprite).copied(),
             volleys: self
                 .masters
-                .is_some_and(|m| crate::attack::volleys(master, m)),
+                .is_some_and(|m| crate::combat::attack::volleys(master, m)),
             attack_timer: &mut unit.attack_timer,
             reload_worldtime: &mut unit.reload_worldtime,
             reload: unit.reload_stinger + (master.reload - unit.reload_powerup),
@@ -301,7 +301,7 @@ impl UnitView<'_> {
             let_go: None,
             forgets: false,
             sends_home: false,
-            swing_sprites: crate::attack::swing_sprites(
+            swing_sprites: crate::combat::attack::swing_sprites(
                 unit.abilities.look.as_ref(),
                 master,
                 self.graphics,

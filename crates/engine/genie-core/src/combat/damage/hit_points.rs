@@ -1,7 +1,7 @@
 //! The shield, the invulnerability floor, and the hit points' loss (slot 0xb0) and gain
 //! (slot 0xb8).
 
-use crate::damage::{Armored, Victim};
+use crate::combat::damage::{Armored, Victim};
 use crate::math::fmath;
 
 /// `FUN_14108d8a0`: a shield blocks the hit: a target whose master's charge type is 5 against a

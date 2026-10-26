@@ -115,7 +115,7 @@ impl Turns {
     /// does, and the unit AI hears of it as of a new one (slot 0x828: the attack order and
     /// action, the target, the retarget time). True when kept.
     ///
-    /// [`Attack::keeps`]: crate::attack::Attack::keeps
+    /// [`Attack::keeps`]: crate::combat::attack::Attack::keeps
     pub(super) fn keep_attack(
         &mut self,
         player: usize,
@@ -129,7 +129,7 @@ impl Turns {
         let top = unit.top_action_kind();
         let attacking = unit
             .attack
-            .filter(|a| top == Some(crate::attack::ATTACK) && a.target == target);
+            .filter(|a| top == Some(crate::combat::attack::ATTACK) && a.target == target);
         let Some(a) = attacking.filter(|_| matches!(filter, -1 | 9)) else {
             return Ok(false);
         };
@@ -213,8 +213,10 @@ impl Turns {
                 unit.life.amount = 0.0;
             }
         }
-        if matches!(task.action_type, ATTACK_TASK | crate::attack::ATTACK)
-            && class != VILLAGER
+        if matches!(
+            task.action_type,
+            ATTACK_TASK | crate::combat::attack::ATTACK
+        ) && class != VILLAGER
             && let Some(ai) = unit.ai.as_mut()
         {
             ai.retarget_disabled = 1;
@@ -371,7 +373,7 @@ impl Turns {
                 Some(
                     crate::move_to::MOVE_TO
                     | crate::garrison::ENTER
-                    | crate::missile::MISSILE
+                    | crate::combat::missile::MISSILE
                     | crate::fly::FLY
                     | crate::make::MAKE
                     | crate::wait_solidify::WAIT_SOLIDIFY,

@@ -420,7 +420,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     assert_eq!(
         (attack.state, attack.move_to, attack.target2),
         (
-            crate::attack::MOVE,
+            crate::combat::attack::MOVE,
             Some(crate::move_to::MoveTo::Arrived),
             50
         )

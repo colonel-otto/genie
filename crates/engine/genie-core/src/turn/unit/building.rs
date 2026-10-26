@@ -2,7 +2,7 @@
 //! regeneration and loss, the idle swap and the death blast.
 
 use crate::build::{Completion, Construction, Site};
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
 use crate::math::rng::{Stream, Well512};
@@ -339,7 +339,7 @@ impl Unit {
     /// leaves at least 1 hit point; healed to its full hit points (slot 0xc0 at least slot 200,
     /// `COMISS` with `JC`: a NaN is not), it holds exactly its master's. True then.
     pub(in crate::turn) fn heal_hp(&mut self, master: &Master, amount: f32) -> bool {
-        crate::damage::heal_hp(
+        crate::combat::damage::heal_hp(
             &mut self.life.hp,
             &mut self.hp_powerups,
             master.hit_points,
@@ -351,7 +351,7 @@ impl Unit {
     /// its powerups' room, an overflow taken off the powerup (`+0xa38`, never below 0; the hit
     /// point transforms of `FUN_141204450`, empty in the recordings, are not held).
     pub(in crate::turn) fn gain_hp(&mut self, master: &Master, amount: f32) {
-        crate::damage::gain_hp(
+        crate::combat::damage::gain_hp(
             &mut self.life.hp,
             &mut self.hp_powerups,
             master.hit_points,
@@ -364,7 +364,7 @@ impl Unit {
     /// which stay above the master's `invulnerability_level` floor (`FUN_141202a80`). Not held
     /// (no update of the recordings fills either list): a dying object's kill credits of its
     /// active stingers (`+0xb58`, `+0x954`) and a surviving one's hit point transforms
-    /// (`FUN_141204450`); [`crate::damage::lose`] is the same loss on a hit's victim.
+    /// (`FUN_141204450`); [`crate::combat::damage::lose`] is the same loss on a hit's victim.
     pub(in crate::turn) fn lose_hp(&mut self, master: &Master, d: f32) {
         let mut d = d;
         let [up, room_max] = self.hp_powerups;
@@ -377,7 +377,8 @@ impl Unit {
             self.hp_powerups[0] = up + room;
             d -= room;
         }
-        let floor = crate::damage::invulnerability_floor(master.invulnerability, master.hit_points);
+        let floor =
+            crate::combat::damage::invulnerability_floor(master.invulnerability, master.hit_points);
         let left = self.life.hp - d;
         self.life.hp = if floor == 0.0 || floor <= left {
             left
@@ -473,7 +474,7 @@ impl Unit {
     /// looped in this update (the sprite list's slot 0x40, the node's slot 12), draws on the
     /// Sprite stream ("Update"); above 0x3fff it shows the other (`FUN_141189760` with the other
     /// index and 0x7fff: `+0x78c` takes the index, slot 0x68 the master's sprite of that index,
-    /// [`crate::attack::set_sprite`], and the list's slot 0x28 puts its node back to its first
+    /// [`crate::combat::attack::set_sprite`], and the list's slot 0x28 puts its node back to its first
     /// frame, [`crate::sprite::ActiveSprite::reset_frame`]).
     pub(in crate::turn) fn idle_swap(
         &mut self,
@@ -508,7 +509,7 @@ impl Unit {
             second
         };
         if let Some(&g) = graphics.get(&next) {
-            crate::attack::set_sprite(&mut self.sprite, g, sprite_rng);
+            crate::combat::attack::set_sprite(&mut self.sprite, g, sprite_rng);
         }
         if let Some(s) = self.sprite.as_mut() {
             s.reset_frame();
@@ -517,7 +518,7 @@ impl Unit {
 
     /// `TRIBE_Combat_Object::update` (`0x141208440`) before `RGE_Combat_Object::update`: a unit
     /// that blasts at its death ([`blasts_at_death`]) blasts about its place (slot 0x848,
-    /// `FUN_14107f690`, [`crate::damage::blast`]: itself left out, no main target, the factor
+    /// `FUN_14107f690`, [`crate::combat::damage::blast`]: itself left out, no main target, the factor
     /// 1, the hit info `FUN_140aa8720` gives) over the objects its caller gathered
     /// ([`Context::blasted`], written back after the update); its death follows in the static
     /// update. Its own part of the blast is written back ([`Unit::hit_back`]); a kill of it
@@ -536,7 +537,7 @@ impl Unit {
         let terrain = c.spatial.terrain.as_ref();
         let mut own = victim_of(self, master, c.attributes, c.player, terrain, c.mode_680);
         let mut targets: Vec<&mut Victim> = c.blasted.iter_mut().collect();
-        let _ = crate::damage::blast(
+        let _ = crate::combat::damage::blast(
             &mut own,
             self.position,
             Some(self.id),

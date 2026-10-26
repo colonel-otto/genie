@@ -482,9 +482,9 @@ impl Turns {
     /// Slot 0x238 of `object` against `target` (the group's, as the world's table gives it): a
     /// combat object's (types 50 to 80, `FUN_14108d9b0`) weapon range (slot 0x230,
     /// [`weapon_range`]) plus its master's `charge_event` (`+0x920`) when slot 0x2f8
-    /// (`FUN_14120f510`, [`crate::damage::range_charge_hit`]) holds against the target, or
+    /// (`FUN_14120f510`, [`crate::combat::damage::range_charge_hit`]) holds against the target, or
     /// without one its top action's target: a charge of type 6 or 7 (slot 0x308) that works on
-    /// it ([`crate::damage::charge_works`]) and is ready (slot 0x300: at least 1); any other
+    /// it ([`crate::combat::damage::charge_works`]) and is ready (slot 0x300: at least 1); any other
     /// object's 0 (`FUN_14106ff60`).
     ///
     /// # Errors
@@ -515,7 +515,7 @@ impl Turns {
             return Ok(range);
         }
         let tm = self.master_of(t.player(), t.master_id())?;
-        let works = crate::damage::charge_works(
+        let works = crate::combat::damage::charge_works(
             master.charge_target,
             master.charge_type,
             tm.class,
@@ -558,7 +558,7 @@ impl Turns {
             if let Some(e) = u.unmodelled_action.clone() {
                 return Err(e);
             }
-            if u.top_action_kind() == Some(crate::attack::ATTACK) {
+            if u.top_action_kind() == Some(crate::combat::attack::ATTACK) {
                 return Ok(false);
             }
         }

@@ -3191,7 +3191,7 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
     let missile = Unit {
         id: 9,
         stopped: true,
-        missile: Some(crate::missile::Missile {
+        missile: Some(crate::combat::missile::Missile {
             max_range: 0.0,
             fired_from: -1,
             charge: false,
@@ -5439,7 +5439,7 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
         t.masters = vec![masters; 3];
         t
     };
-    let by = |attacker, attacker_player| crate::damage::Kill {
+    let by = |attacker, attacker_player| crate::combat::damage::Kill {
         attacker,
         attacker_player,
         to_gaia: false,
@@ -5523,7 +5523,7 @@ fn a_killed_sheep_goes_to_gaia() {
     let mut v = t.victim(9520, 1).unwrap();
     v.hp = 0.0;
     v.damaged = vec![(10029, [10029, -10, 14])];
-    v.killed = Some(crate::damage::Kill {
+    v.killed = Some(crate::combat::damage::Kill {
         attacker: 10029,
         attacker_player: 1,
         to_gaia: true,
@@ -5606,14 +5606,14 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     let a = t.victim(31, 1).unwrap();
     assert_eq!(a.building.and_then(|b| b.main), Some(30));
     v.hp = 0.0;
-    v.killed = Some(crate::damage::Kill {
+    v.killed = Some(crate::combat::damage::Kill {
         attacker: 9,
         attacker_player: 1,
         to_gaia: false,
     });
     let b = v.building.as_mut().unwrap();
     (b.struck, b.damaged_lately) = (true, 60);
-    b.razed.push(crate::damage::Razed {
+    b.razed.push(crate::combat::damage::Razed {
         attacker_player: 1,
         owner: 2,
         event: Some(crate::history::CASTLE_DESTROYED),
@@ -6390,15 +6390,15 @@ fn a_hit_point_powerup_above_its_room_comes_off_the_hit_points() {
 }
 
 /// `RGE_Combat_Object::update`: the attack timer runs down by dt times the object's rate
-/// (`+0x87c`), which a terrain look sets ([`crate::abilities`]).
+/// (`+0x87c`), which a terrain look sets ([`crate::combat::abilities`]).
 #[test]
 fn the_attack_timer_runs_down_at_the_object_s_rate() {
     let unit = Unit {
         id: 1,
         attack_timer: 1.0,
-        abilities: crate::abilities::Abilities {
+        abilities: crate::combat::abilities::Abilities {
             attack_rate: 0.5,
-            ..crate::abilities::Abilities::default()
+            ..crate::combat::abilities::Abilities::default()
         },
         ..Unit::default()
     };
@@ -6538,8 +6538,8 @@ fn mover_unit(id: i32) -> Unit {
 }
 
 /// A unit's own Attack on `target` (second target `target2`) in `state`, without a `MoveTo`.
-fn own_attack(target: i32, target2: i32, state: u8) -> crate::attack::Attack {
-    crate::attack::Attack {
+fn own_attack(target: i32, target2: i32, state: u8) -> crate::combat::attack::Attack {
+    crate::combat::attack::Attack {
         target,
         target2,
         state,
@@ -6554,7 +6554,7 @@ fn own_attack(target: i32, target2: i32, state: u8) -> crate::attack::Attack {
         pending: false,
         swing: 0.0,
         rest: 0.0,
-        arms: crate::attack::Arms {
+        arms: crate::combat::attack::Arms {
             move_sprite: None,
             sprite: None,
             second_sprite: None,
@@ -6610,7 +6610,7 @@ fn forced(walk: bool) -> crate::unit_ai::AiMove {
 #[test]
 fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
     let mut u = mover_unit(123);
-    u.attack = Some(own_attack(9149, 9150, crate::attack::DONE));
+    u.attack = Some(own_attack(9149, 9150, crate::combat::attack::DONE));
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149, 9150]));
     assert_eq!(u.attack, None);
     let mt = u.move_to.expect("the AI's MoveTo");
@@ -6834,7 +6834,7 @@ fn scout_attack(timer: f32, inside: Option<i32>) -> (Unit, crate::unit_ai::Attac
 fn scout_attack_on(
     timer: f32,
     inside: Option<i32>,
-    own: Option<crate::attack::Attack>,
+    own: Option<crate::combat::attack::Attack>,
     force: bool,
 ) -> (Unit, crate::unit_ai::Attacked, Vec<i32>) {
     use crate::unit_ai::UnitSide;
@@ -7212,7 +7212,7 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
 
 /// `AskForHelp`'s tests of the scout 124 (player 1, master 448, at (10.3, 10), its unit AI
 /// `helper`, its own Attack `own`) as a helper against Gaia's wolf 50, asked by the scout 123.
-fn helper_free(helper: UnitAi, own: Option<crate::attack::Attack>) -> bool {
+fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bool {
     let scout = Master {
         id: 448,
         kind: 70,
@@ -7395,7 +7395,7 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
 /// changes either.
 #[test]
 fn an_attack_command_on_its_own_attack_s_target_asks_that_attack_again() {
-    let own = |state: u8| crate::attack::Attack {
+    let own = |state: u8| crate::combat::attack::Attack {
         state,
         seen: [-1.0; 3],
         ..own_attack(50, -1, state)
@@ -7425,19 +7425,22 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     let attack = unit.attack.expect("the scout's Attack");
     assert_eq!(
         (attack.state, attack.pending, attack.point),
-        (crate::attack::SWING, true, [10.5, 10.0, 0.0])
+        (crate::combat::attack::SWING, true, [10.5, 10.0, 0.0])
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(301));
     let (unit, _, _) = scout_attack(0.5, None);
     let attack = unit.attack.expect("the scout's Attack");
     assert_eq!(
         (attack.state, attack.pending),
-        (crate::attack::READY, false)
+        (crate::combat::attack::READY, false)
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
     let (unit, attacked, takes) = scout_attack(0.0, Some(9149));
     assert_eq!((attacked.attacks, takes), (true, vec![50]));
-    assert_eq!(unit.attack.map(|a| a.state), Some(crate::attack::FAILED));
+    assert_eq!(
+        unit.attack.map(|a| a.state),
+        Some(crate::combat::attack::FAILED)
+    );
     assert_eq!(unit.anim_speed, Some(1.0));
 }
 
@@ -8130,10 +8133,10 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
             speed: 7.0,
             ..crate::hunt::tests::walker().stats
         }),
-        missile_stats: Some(crate::missile::MissileStats {
+        missile_stats: Some(crate::combat::missile::MissileStats {
             speed: 7.0,
             radius: [0.1, 0.1, 0.0],
-            ..crate::missile::MissileStats::default()
+            ..crate::combat::missile::MissileStats::default()
         }),
         ..Master::default()
     };
@@ -8194,7 +8197,7 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Turns {
         });
     }
     archer.firepower = f32::from(max_volley);
-    let mut attack = own_attack(50, -1, crate::attack::READY);
+    let mut attack = own_attack(50, -1, crate::combat::attack::READY);
     attack.range = 4.0;
     attack.arms.missile = 363;
     attack.arms.fire_frame = 5;
@@ -8288,7 +8291,7 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
         .as_ref()
         .and_then(|m| m.action.as_ref())
         .map(|a| (a.state, a.result));
-    assert_eq!(action, Some((crate::missile::DONE, 1)));
+    assert_eq!(action, Some((crate::combat::missile::DONE, 1)));
     for _ in 0..3 {
         t.tick(100);
     }

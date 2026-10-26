@@ -94,7 +94,7 @@ pub struct Home {
     /// `+0x1fc`, `furious`: it does not wander.
     pub furious: bool,
     /// `+0x1fd`: its next idle check sends it home; its slot 0x1f0 (`FUN_140c16d50`) sets it
-    /// after a failed Attack ([`crate::attack::Attack::update`]). Not saved; a loaded boar
+    /// after a failed Attack ([`crate::combat::attack::Attack::update`]). Not saved; a loaded boar
     /// starts without it.
     pub go_home: bool,
 }

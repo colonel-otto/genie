@@ -412,7 +412,7 @@ pub(crate) fn show_built(
         .then(|| graphics.get(&master.standing_sprite).copied())
         .flatten();
     if let Some(g) = standing {
-        crate::attack::set_sprite(sprite, g, sprite_rng);
+        crate::combat::attack::set_sprite(sprite, g, sprite_rng);
         if let Some(s) = sprite.as_mut().filter(|s| s.graphic.id == g.id) {
             s.set_frame(i16::from(frame));
         }

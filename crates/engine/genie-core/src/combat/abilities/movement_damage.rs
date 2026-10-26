@@ -1,10 +1,10 @@
 //! The movement damage tasks (action type 152): their timer and reach, the bystanders they
 //! strike and the hit.
 
-use crate::abilities::{
+use crate::combat::abilities::{
     ALWAYS_REACHED, BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, STRUCK_BUILDING_CLASSES,
 };
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::masters::Task;
 use crate::turn::Turns;
 use crate::{GenieError, math::fmath};
@@ -132,13 +132,13 @@ impl Turns {
     /// once due, a combat unit (its master of type 70) that moves (slot 0x5c8, `FUN_1411583d0`:
     /// its velocity's length above 0) hits each object on the tiles of [`reach`], row by row,
     /// each tile's list in order, that it strikes ([`struck`]): the object loses the task's
-    /// `work_val1` (slot 0xb0, [`crate::damage::lose`]), the timer takes the task's `work_val2`,
+    /// `work_val1` (slot 0xb0, [`crate::combat::damage::lose`]), the timer takes the task's `work_val2`,
     /// and one left below 1 hit point ends the hit ([`finish`]): a combat unit (type 70) counts
     /// killed by the owner (`FUN_1412005b0`, [`Turns::count_kill`]). A ghost on a tile is struck
     /// as an object of type 25 of its viewer, of the ghost master, in its state; the hit points
     /// it loses are not held. Not held: the alerts the hit's player hears (its slot 0x2e8 with
     /// 0x201, `FUN_14162dab0`: the human player's alerts and a computer player's AI), as for a
-    /// hit ([`crate::damage`]). A reach past the map's last row or column reads a tile the map
+    /// hit ([`crate::combat::damage`]). A reach past the map's last row or column reads a tile the map
     /// does not have (`FUN_140f5ec30`'s null tile, whose count the routine reads: the game
     /// faults); the scan stops there.
     ///
@@ -273,7 +273,7 @@ impl Turns {
             return Ok(());
         }
         if let Some(v) = pending.get(b.id) {
-            crate::damage::lose(v, damage);
+            crate::combat::damage::lose(v, damage);
             if finish(v) && b.kind == COMBAT_KIND {
                 self.count_kill(b.id, owner)?;
             }
@@ -295,7 +295,7 @@ impl Turns {
             self.spatial.terrain.as_ref(),
             self.mode_680,
         );
-        crate::damage::lose(&mut v, damage);
+        crate::combat::damage::lose(&mut v, damage);
         let killed = finish(&mut v);
         let (_, u) = self.object_mut(b.id).ok_or(crate::build::NOT_HELD)?;
         u.life.hp = v.hp;

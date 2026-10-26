@@ -122,7 +122,11 @@ impl Unit {
                 gather.carry_to = -1;
                 gather.point = [-1.0; 3];
                 if let Some(g) = shows {
-                    crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
+                    crate::combat::attack::set_sprite(
+                        &mut self.sprite,
+                        g,
+                        c.streams.get(Stream::Sprite),
+                    );
                 }
             }
             if carry_to != -1 {

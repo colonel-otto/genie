@@ -119,7 +119,7 @@ pub fn repair_building(
 /// A combat unit's slot 0x8c8 (`FUN_1412143b0`, also a building's last step) by `amount`: a
 /// class of [`COSTED`] first takes at most what its hit points lack of its most (slots 0xc0 and
 /// 200) and pays its owner's unit repair rate times the amount over its most of its master's
-/// costs (unpaid: 2); then it heals (`FUN_141193b30`, [`crate::damage::heal_hp`]): 1 once full,
+/// costs (unpaid: 2); then it heals (`FUN_141193b30`, [`crate::combat::damage::heal_hp`]): 1 once full,
 /// else 0.
 ///
 /// # Errors
@@ -144,6 +144,6 @@ pub fn repair_unit(
             return Ok(2);
         }
     }
-    let full = crate::damage::heal_hp(&mut o.hp, &mut o.hp_powerups, o.master_hp, amount);
+    let full = crate::combat::damage::heal_hp(&mut o.hp, &mut o.hp_powerups, o.master_hp, amount);
     Ok(u8::from(full))
 }

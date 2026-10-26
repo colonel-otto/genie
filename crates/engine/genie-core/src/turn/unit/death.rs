@@ -78,7 +78,11 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "an explorer without its standing sprite",
                 ))?;
-            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
+            crate::combat::attack::set_sprite(
+                &mut self.sprite,
+                standing,
+                c.streams.get(Stream::Sprite),
+            );
         }
         Ok(())
     }
@@ -189,7 +193,11 @@ impl Unit {
                 && let Some(id) = crate::sprite::dying(master, None)
             {
                 let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
-                crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
+                crate::combat::attack::set_sprite(
+                    &mut self.sprite,
+                    g,
+                    c.streams.get(Stream::Sprite),
+                );
             }
             return Ok(());
         }
@@ -208,7 +216,7 @@ impl Unit {
         };
         if let Some(id) = shown {
             let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
-            crate::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
+            crate::combat::attack::set_sprite(&mut self.sprite, g, c.streams.get(Stream::Sprite));
         }
         Ok(())
     }

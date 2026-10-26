@@ -34,14 +34,12 @@
 
 pub use genie_error::{ErrorKind, GenieError, GenieResult};
 
-pub mod abilities;
 pub mod ai_kinds;
 pub mod artifact;
-pub mod attack;
 pub mod best_target;
 pub mod build;
 pub mod checkpoint;
-pub mod damage;
+pub mod combat;
 pub mod delete;
 pub mod diplomacy;
 pub mod effect;
@@ -62,7 +60,6 @@ pub mod make;
 pub mod market;
 pub mod masters;
 pub mod math;
-pub mod missile;
 pub mod move_to;
 pub mod movement;
 pub mod order;

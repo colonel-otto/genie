@@ -60,8 +60,8 @@ pub(super) fn saved_actions(
             kind,
             genie_core::hunt::HUNT
                 | genie_core::gather::GATHER
-                | genie_core::missile::MISSILE
-                | genie_core::attack::ATTACK
+                | genie_core::combat::missile::MISSILE
+                | genie_core::combat::attack::ATTACK
                 | BUILD
         )
     {
@@ -154,7 +154,7 @@ pub(super) fn saved_actions(
             });
             Ok(())
         }
-        genie_core::missile::MISSILE => {
+        genie_core::combat::missile::MISSILE => {
             let ma = action
                 .rge_action_by_type
                 .as_deref()
@@ -178,14 +178,14 @@ pub(super) fn saved_actions(
                 .and_then(|m| m.rge_master.as_deref())
                 .and_then(|r| r.rge_master_missile_object.as_deref())
                 .map_or(0, |m| m.missile_hit_info);
-            unit.missile = Some(genie_core::missile::Missile {
+            unit.missile = Some(genie_core::combat::missile::Missile {
                 max_range: mo.max_range,
                 fired_from: mo.fired_from_id,
                 charge: mo.is_charge_projectile != 0,
-                flying: genie_core::missile::LANDING < ma.distance,
+                flying: genie_core::combat::missile::LANDING < ma.distance,
                 step: [moving.velocity_x, moving.velocity_y, moving.velocity_z],
                 attack_count: mo.rge_combat_object.attack_count,
-                action: Some(genie_core::missile::MissileAction {
+                action: Some(genie_core::combat::missile::MissileAction {
                     state: base.state,
                     target: base.target_id,
                     fired_from: base.target2_id,
@@ -197,7 +197,7 @@ pub(super) fn saved_actions(
                     distance: ma.distance,
                     hit_mode,
                     result: ma.interacted_with_agility,
-                    origin: genie_core::missile::Origin::from_bytes(&ma.projectile_data),
+                    origin: genie_core::combat::missile::Origin::from_bytes(&ma.projectile_data),
                     met: Vec::new(),
                 }),
             });
@@ -395,11 +395,11 @@ pub(super) fn saved_actions(
             };
             match base.sub_actions.entries().next() {
                 None => {}
-                Some((genie_core::attack::ATTACK, sub)) => {
+                Some((genie_core::combat::attack::ATTACK, sub)) => {
                     let mut attack = saved_attack(sub, graphics, &move_to_state, run_sprite)?;
                     // a swing past its hit: the swing's times (`+0xb0`, `+0xb4`, unsaved) are what
                     // the hit left, the reload less the attack sprite's length
-                    if attack.state == genie_core::attack::SWING && !attack.pending {
+                    if attack.state == genie_core::combat::attack::SWING && !attack.pending {
                         let reload = saved_reload(object, s, objects).ok_or(
                             GenieError::unsupported("a saved swing without its unit's reload"),
                         )?;
@@ -627,7 +627,7 @@ pub(super) fn saved_actions(
             });
             Ok(())
         }
-        genie_core::attack::ATTACK => {
+        genie_core::combat::attack::ATTACK => {
             unit.attack = Some(saved_attack(action, graphics, &move_to_state, run_sprite)?);
             // the attack reads and changes the unit's sprite from here on
             unit.sprite = graphics.and_then(|g| saved_sprite(s, g));

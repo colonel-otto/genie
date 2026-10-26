@@ -104,7 +104,7 @@ impl RepairAction {
     /// State 6 (`0x140adaa20` case 5): the unit turns toward the target ([`face_target`] with its
     /// sprites' facets), then works (7).
     ///
-    /// [`face_target`]: crate::attack::face_target
+    /// [`face_target`]: crate::combat::attack::face_target
     pub(super) fn facing(
         &mut self,
         walk: &mut Walk<'_>,
@@ -121,7 +121,7 @@ impl RepairAction {
         let mover = walk.mover.as_deref_mut().ok_or(GenieError::unreachable(
             "a repairer without movement state (an action object always has one)",
         ))?;
-        if crate::attack::face_target(mover, at, t.position, view.now)? {
+        if crate::combat::attack::face_target(mover, at, t.position, view.now)? {
             self.set_state(walk, WORK, view, step)?;
         }
         Ok(())

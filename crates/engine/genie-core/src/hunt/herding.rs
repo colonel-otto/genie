@@ -1,8 +1,8 @@
 //! Leading own livestock to its drop site (state 10), facing an animal and the decay check.
 
 use crate::GenieError;
-use crate::attack::{Strike, set_sprite};
-use crate::damage::Victim;
+use crate::combat::attack::{Strike, set_sprite};
+use crate::combat::damage::Victim;
 use crate::hunt::{
     DECAY_TASK, Gatherer, Herd, HuntAction, LEAD, LEAD_REACH, LEAD_WAIT, SEARCH, VILLAGER_CLASS,
 };
@@ -48,7 +48,12 @@ impl HuntAction {
             .mover
             .as_deref_mut()
             .ok_or(crate::turn::HUNTER_UNMOVING)?;
-        if !crate::attack::face_target(mover, at, strike.victim.position, strike.world_time)? {
+        if !crate::combat::attack::face_target(
+            mover,
+            at,
+            strike.victim.position,
+            strike.world_time,
+        )? {
             return Err(GenieError::unsupported(
                 "a hunter that turns over time to face its target",
             ));

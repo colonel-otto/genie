@@ -21,9 +21,9 @@
 mod command;
 mod game;
 mod player;
-mod unit;
-mod view;
-mod world;
+pub(crate) mod unit;
+pub(crate) mod view;
+pub(crate) mod world;
 
 use crate::GenieError;
 use crate::masters::Masters;
@@ -145,7 +145,7 @@ pub(crate) const RESEARCH_ACTION: i32 = 0x26c;
 /// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
 const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The building master type RESEARCH asks for (`'P'`, 80).
-const BUILDING_KIND: u8 = 80;
+pub(crate) const BUILDING_KIND: u8 = 80;
 /// The first master type whose slot 0x128 (a work at an object) does something: the action
 /// objects' (`FUN_14106c590`) and up; below it `FUN_141071bd0` returns at once.
 const STATIC_TYPES_END: u8 = 40;
@@ -242,7 +242,7 @@ const SEARCH_NEEDED: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
 const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).
-const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWER;
+pub(crate) const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWER;
 
 /// The pasture master whose foundation keeps its snow and whose stack unit depends on the rice
 /// terrain under it (1889).

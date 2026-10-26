@@ -75,7 +75,7 @@ impl Unit {
             c.graphics,
         );
         if let Some(s) = stand {
-            crate::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
+            crate::combat::attack::set_sprite(&mut self.sprite, s, c.streams.get(Stream::Sprite));
         }
         Ok(())
     }
@@ -185,7 +185,7 @@ impl Unit {
                     .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
             );
             let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-            let engagement = crate::attack::engagement(
+            let engagement = crate::combat::attack::engagement(
                 self.ai.as_ref(),
                 speed,
                 master,
@@ -196,7 +196,7 @@ impl Unit {
             let moving = hunt
                 .task
                 .walk_sprite_id(self.life.attribute_type, self.life.amount);
-            let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+            let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
             let hunt = self.hunt.as_mut().expect("the caller's hunt");
             let site = std::mem::replace(&mut hunt.carry_to, -1);
             let by = self.releaser(c);
@@ -400,15 +400,21 @@ impl Unit {
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
         let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-        let engagement =
-            crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them, c.world_time)?;
+        let engagement = crate::combat::attack::engagement(
+            self.ai.as_ref(),
+            speed,
+            master,
+            me_at,
+            them,
+            c.world_time,
+        )?;
         let (sprites, moving) = self.hunt.as_ref().map_or(([-1; 4], -1), |h| {
             let moving = h
                 .task
                 .walk_sprite_id(self.life.attribute_type, self.life.amount);
             (h.task.sprites, moving)
         });
-        let arms = crate::attack::arms(master, c.graphics, sprites, moving);
+        let arms = crate::combat::attack::arms(master, c.graphics, sprites, moving);
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let held = self.life.amount;
         let by = self.releaser(c);
@@ -427,7 +433,7 @@ impl Unit {
             mover,
         )? {
             if arrived {
-                crate::attack::show_arrived(
+                crate::combat::attack::show_arrived(
                     &arms,
                     &mut self.sprite,
                     &mut self.anim_speed,
@@ -458,7 +464,11 @@ impl Unit {
                     .ok_or(GenieError::unsupported(
                         "a hunter without its standing sprite",
                     ))?;
-            crate::attack::set_sprite(&mut self.sprite, standing, c.streams.get(Stream::Sprite));
+            crate::combat::attack::set_sprite(
+                &mut self.sprite,
+                standing,
+                c.streams.get(Stream::Sprite),
+            );
         }
         Ok(())
     }

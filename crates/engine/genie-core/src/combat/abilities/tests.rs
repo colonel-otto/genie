@@ -566,7 +566,7 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
 fn keshik(t: &mut Turns) {
     give_master(t, 1228, 70, 12, vec![keshik_gold()]);
     put(t, 1, 60, 1228, 100.0, [5.5, 5.5]);
-    let attack = crate::attack::Attack {
+    let attack = crate::combat::attack::Attack {
         target: 77,
         target2: -1,
         state: 7,
@@ -581,7 +581,7 @@ fn keshik(t: &mut Turns) {
         pending: false,
         swing: 0.0,
         rest: 0.0,
-        arms: crate::attack::Arms {
+        arms: crate::combat::attack::Arms {
             move_sprite: None,
             sprite: None,
             second_sprite: None,

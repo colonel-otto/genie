@@ -2,7 +2,7 @@
 //! target, one out of sight, the finish and the halt.
 
 use crate::GenieError;
-use crate::attack::{
+use crate::combat::attack::{
     ARRIVED, Attack, BOAR_AI, DONE, Engagement, FAILED, HALF, LION_AI, MOVE, NO_RANGE, NONE,
     PREDATOR, Strike, VILLAGER, set_sprite,
 };

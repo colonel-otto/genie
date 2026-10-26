@@ -117,8 +117,8 @@ impl WorldPicker<'_> {
 
     /// What object `from` deals object `to` per hit (`to`'s slot 0x220 with `from`,
     /// `FUN_141083f20`): `from`'s elevation factor against it (slot 0x1f0: a combat object's
-    /// [`crate::damage::elevation_factor`], a building's [`crate::damage::building_elevation_factor`]
-    /// over it), then `to`'s armor (slot 0xf0, [`crate::damage::armor_damage`]) against `from`'s
+    /// [`crate::combat::damage::elevation_factor`], a building's [`crate::combat::damage::building_elevation_factor`]
+    /// over it), then `to`'s armor (slot 0xf0, [`crate::combat::damage::armor_damage`]) against `from`'s
     /// attacks.
     pub(super) fn damage(&self, from: i32, to: i32) -> Result<f32, GenieError> {
         let (fq, f, fa, fm) = self.held(from).ok_or(NOT_HELD)?;
@@ -127,12 +127,14 @@ impl WorldPicker<'_> {
         let target = victim_of(t, tm, ta, tq, terrain, self.mode_680);
         let unit = victim_of(f, fm, fa, fq, terrain, self.mode_680);
         let mut factor =
-            crate::damage::elevation_factor(f.position[2], unit.attack_elevation, &target);
+            crate::combat::damage::elevation_factor(f.position[2], unit.attack_elevation, &target);
         if fm.kind == crate::order::BUILDING {
-            factor = crate::damage::building_elevation_factor(factor, f.relics, tm.kind, t.relics);
+            factor = crate::combat::damage::building_elevation_factor(
+                factor, f.relics, tm.kind, t.relics,
+            );
         }
-        let bonus = crate::damage::bonus_damage(&unit, &target);
-        crate::damage::armor_damage(&target, &unit.weapons, factor, &unit.source, bonus)
+        let bonus = crate::combat::damage::bonus_damage(&unit, &target);
+        crate::combat::damage::armor_damage(&target, &unit.weapons, factor, &unit.source, bonus)
     }
 
     /// What a computer player's unit weighs of object `other` on a damage notify
@@ -150,7 +152,7 @@ impl WorldPicker<'_> {
 
     /// The villager's test of its attacker `other` (`FUN_140c22bf0` case 500): one of a master
     /// with object flag 0x10 (`+0x654`) that is its own copy (`+0x158` equal to `+0x58`), which
-    /// shows an attack below 5 (slot 0x878, [`crate::damage::shown_attack`]; below 4, or with
+    /// shows an attack below 5 (slot 0x878, [`crate::combat::damage::shown_attack`]; below 4, or with
     /// its master's hit points below [`HARMLESS_HP`]), a melee armor below 1 (slot 0x868) and a
     /// range of at most [`HARMLESS_RANGE`] (slot 0x880, `COMISS` with `JNC`: not a NaN), is
     /// fought back as Gaia's attackers are. Its attack's target (an Attack's, `FUN_14107cc30`)
@@ -162,12 +164,12 @@ impl WorldPicker<'_> {
         }
         let terrain = self.spatial.terrain.as_ref();
         let v = victim_of(o, om, attributes, q, terrain, self.mode_680);
-        let target = (o.top_action_kind() == Some(crate::attack::ATTACK))
+        let target = (o.top_action_kind() == Some(crate::combat::attack::ATTACK))
             .then(|| o.top_target())
             .flatten()
             .and_then(|t| self.held(t))
             .map(|(tq, t, ta, tm)| victim_of(t, tm, ta, tq, terrain, self.mode_680));
-        let shown = crate::damage::Shown {
+        let shown = crate::combat::damage::Shown {
             target: target.as_ref(),
             projectile: om
                 .charge_projectile
@@ -176,14 +178,14 @@ impl WorldPicker<'_> {
             charge_event: om.charge_event,
             range_powerup: o.range_powerup,
         };
-        let attack = crate::damage::shown_attack(&v, &shown);
+        let attack = crate::combat::damage::shown_attack(&v, &shown);
         if 4 < attack || (3 < attack && HARMLESS_HP <= f32::from(om.hit_points)) {
             return Ok(false);
         }
-        if 0 < crate::damage::shown_melee_armor(&v)? {
+        if 0 < crate::combat::damage::shown_melee_armor(&v)? {
             return Ok(false);
         }
-        Ok(crate::damage::shown_range(&v, &shown) <= HARMLESS_RANGE)
+        Ok(crate::combat::damage::shown_range(&v, &shown) <= HARMLESS_RANGE)
     }
 
     /// Slot 0x78 of object `target`'s unit AI (`FUN_140c48610`): of its attackers in their order,
@@ -364,7 +366,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     /// What the statistics read of object `id`: its class and speed, whether it is armed (its
     /// attacks' sum, slot 0x228, above 0, or its priest's conversion test on the unit), the
     /// unit's range against it, the unit's damage per hit to it (slot 0x220: the unit's
-    /// elevation factor, slot 0x1f0, and its armor, slot 0xf0, [`crate::damage::armor_damage`]),
+    /// elevation factor, slot 0x1f0, and its armor, slot 0xf0, [`crate::combat::damage::armor_damage`]),
     /// its hit points, the unit's reload time (slot 0x218) and the unit's own conversion test on
     /// it.
     fn candidate(

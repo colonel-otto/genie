@@ -1,7 +1,7 @@
 //! What a tick's update of one object reads and writes ([`Context`]) and its walks.
 
 use crate::build::Walk;
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::masters::Masters;
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::{Me, Mover, Planning};
@@ -15,35 +15,35 @@ use crate::turn::world::Releaser;
 use crate::turn::{BuildingDeath, Recycling};
 use crate::unit_ai::{AiMove, GenieError};
 
-pub(in crate::turn) struct Context<'a> {
+pub(crate) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
     pub(in crate::turn) dt: u32,
-    pub(in crate::turn) dt_seconds: f32,
+    pub(crate) dt_seconds: f32,
     /// The ticks so far, this one included.
     pub(in crate::turn) tick: u32,
     /// The owner's accumulated time when it has the turn: the full unit-AI update runs.
     pub(in crate::turn) turn: Option<u32>,
-    pub(in crate::turn) world_time: u32,
+    pub(crate) world_time: u32,
     pub(in crate::turn) computer: bool,
-    pub(in crate::turn) streams: &'a mut Streams,
+    pub(crate) streams: &'a mut Streams,
     /// Every object's place, which a walker reads and its moves update.
-    pub(in crate::turn) spatial: &'a mut Spatial,
+    pub(crate) spatial: &'a mut Spatial,
     /// The planners and the mesh, which a walker's path request uses.
-    pub(in crate::turn) pathing: &'a mut Pathing,
+    pub(crate) pathing: &'a mut Pathing,
     /// The world's unit groups, which a walker's long path reads.
     pub(in crate::turn) groups: &'a crate::group::UnitGroups,
     /// The owner's construction rate (attribute 195).
     pub(in crate::turn) construction_rate: f32,
     /// The owner's masters, which an attack reads.
-    pub(in crate::turn) masters: Option<&'a Masters>,
+    pub(crate) masters: Option<&'a Masters>,
     /// The target of the unit's attack, read before its update and written back after it, and
     /// the objects about a unit with an area effect, which its blast may reach.
-    pub(in crate::turn) victim: Option<&'a mut Victim>,
+    pub(crate) victim: Option<&'a mut Victim>,
     /// The unit AI's current target as its target block reads it ([`Turns::seen`]).
     pub(in crate::turn) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
-    pub(in crate::turn) blasted: Vec<Victim>,
+    pub(crate) blasted: Vec<Victim>,
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
-    pub(in crate::turn) own_killed: Option<crate::damage::Kill>,
+    pub(in crate::turn) own_killed: Option<crate::combat::damage::Kill>,
     /// What the unit's death leaves for the caller: the remains its dying sprite's end makes
     /// (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its
     /// owner takes back (attributes 98 and 164).
@@ -71,8 +71,8 @@ pub(in crate::turn) struct Context<'a> {
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
-    pub(in crate::turn) releases: Vec<(i32, Releaser)>,
-    pub(in crate::turn) takes: Vec<(i32, Releaser)>,
+    pub(crate) releases: Vec<(i32, Releaser)>,
+    pub(crate) takes: Vec<(i32, Releaser)>,
     /// The foundations a counted builder's Build leaves as the unit's action list goes
     /// ([`Unit::clear_own_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
     /// builder less ([`Turns::leave_builders`]), the caller's before the releases.
@@ -82,7 +82,7 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) left_group: Option<(i32, i32)>,
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
-    pub(in crate::turn) made: Vec<Unit>,
+    pub(crate) made: Vec<Unit>,
     /// The objects whose master leaves ghosts that died in this update ([`crate::vision::ghost`]), the
     /// caller's.
     pub(in crate::turn) ghost_deaths: Vec<i32>,
@@ -109,7 +109,7 @@ pub(in crate::turn) struct Context<'a> {
     /// The flares a hit on a player's object has that player make (master 112, its slot 0x1c0)
     /// at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's
     /// after the update ([`Turns::make_flare`]).
-    pub(in crate::turn) flares: Vec<(usize, [f32; 3], bool)>,
+    pub(crate) flares: Vec<(usize, [f32; 3], bool)>,
     /// The foundations another player's marks lie on, which a builder's `set_state(7)` removes
     /// when their owner is human ([`crate::build::BuildStep::removes`]), the caller's after the
     /// update ([`Turns::remove_building`]).
@@ -118,21 +118,21 @@ pub(in crate::turn) struct Context<'a> {
     /// the caller sends off those the test would ([`Turns::evacuate`]).
     pub(in crate::turn) evacuations: Vec<(i32, Vec<i32>)>,
     /// The world's reusable ids and pools.
-    pub(in crate::turn) recycling: &'a mut Recycling,
+    pub(crate) recycling: &'a mut Recycling,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
     pub(in crate::turn) mode_1: bool,
     /// The owner's attributes, which a gatherer's productivity reads.
-    pub(in crate::turn) attributes: &'a [f32],
+    pub(crate) attributes: &'a [f32],
     /// The owner's food, wood, stone and gold ([`Player::resources`]), which a repair pays from.
     ///
     /// [`Player::resources`]: crate::turn::player::Player::resources
     pub(in crate::turn) resources: [f32; 4],
     /// The graphics, for the sprites a hunter takes.
-    pub(in crate::turn) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
+    pub(crate) graphics: &'a std::collections::BTreeMap<i16, Graphic>,
     /// The drop-site table, whose livestock entries a hunt leads its livestock to.
     pub(in crate::turn) drop_sites: &'a [DropSite],
     /// The owner's id and civ (`player+0x738`).
-    pub(in crate::turn) player: usize,
+    pub(crate) player: usize,
     pub(in crate::turn) civ: u8,
     /// The owner's AI settings (`+0x608`..), which its unit AIs read.
     pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
@@ -143,7 +143,7 @@ pub(in crate::turn) struct Context<'a> {
     /// The game's setting [`crate::settings::Settings::predator_hunts_end`].
     pub(in crate::turn) predator_hunts_end: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
-    pub(in crate::turn) every_masters: &'a [Masters],
+    pub(crate) every_masters: &'a [Masters],
     pub(in crate::turn) attribute_97: &'a [f32],
     /// Every player's game status (`+0x89`), which the Artifact's owner search reads.
     pub(in crate::turn) game_status: &'a [u8],
@@ -151,7 +151,7 @@ pub(in crate::turn) struct Context<'a> {
     /// (`world+0x18c`, as it stands when the object updates) and computer flag.
     pub(in crate::turn) player_turn: usize,
     pub(in crate::turn) player_time: &'a [u32],
-    pub(in crate::turn) computers: &'a [bool],
+    pub(crate) computers: &'a [bool],
     /// Each player's `chance_to_dodge_missiles` ([`crate::turn::Player::dodge_chance`]).
     pub(in crate::turn) dodge_chances: &'a [u8],
     /// Each player's `chance_for_archers_to_maintain_distance`
@@ -160,7 +160,7 @@ pub(in crate::turn) struct Context<'a> {
     /// Some player's attribute 204 is not 0, which a building's completion reads.
     pub(in crate::turn) attribute_204: bool,
     /// [`Turns::mode_680`].
-    pub(in crate::turn) mode_680: i32,
+    pub(crate) mode_680: i32,
     /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
     /// reads.
     pub(in crate::turn) carry_rule: bool,
@@ -177,7 +177,7 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) lines: &'a crate::lines::UnitLines,
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
-    pub(in crate::turn) attribute_adds: Vec<(i16, f32)>,
+    pub(crate) attribute_adds: Vec<(i16, f32)>,
     /// The events the owner's history records from the object's update (a castle or a wonder it
     /// completed, [`crate::build::Built::history`]), which the caller adds after it.
     pub(in crate::turn) history_events: Vec<u8>,
@@ -253,7 +253,7 @@ pub(in crate::turn) struct Context<'a> {
 /// What an object's step gathered in its Context for the world to apply after it
 /// ([`crate::turn::Turns::finish_object`]): the Context's fields of the same meaning; the left
 /// group carries the unit's id.
-pub(in crate::turn) struct ObjectOutputs {
+pub(crate) struct ObjectOutputs {
     /// [`Context`]'s `attribute_adds`.
     pub(in crate::turn) adds: Vec<(i16, f32)>,
     /// [`Context`]'s `order_on_target`.
@@ -294,7 +294,7 @@ pub(in crate::turn) struct ObjectOutputs {
     /// [`Context`]'s `blasted`.
     pub(in crate::turn) blasted: Vec<Victim>,
     /// [`Context`]'s `own_killed`.
-    pub(in crate::turn) own_killed: Option<crate::damage::Kill>,
+    pub(in crate::turn) own_killed: Option<crate::combat::damage::Kill>,
     /// [`Context`]'s `remains`.
     pub(in crate::turn) remains: Option<(i16, [f32; 3], Option<u8>)>,
     /// [`Context`]'s `refund`.

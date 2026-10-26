@@ -121,9 +121,9 @@ pub(super) fn unit(
             .map_or(0.0, |c| c.rge_combat_object.attack_timer),
         // the movement damage timer (+0x9a4) is saved; the attack timer's rate and the terrain
         // look are not (the constructor's 1 and none, until the first update's abilities)
-        abilities: genie_core::abilities::Abilities {
+        abilities: genie_core::combat::abilities::Abilities {
             movement_damage_timer: object.combat().map_or(0.0, |c| c.movement_damage_timer),
-            ..genie_core::abilities::Abilities::default()
+            ..genie_core::combat::abilities::Abilities::default()
         },
         reload_stinger: object.combat().map_or(0.0, |c| c.reload_stinger),
         reload_powerup: object.combat().map_or(0.0, |c| c.reload_powerup),
@@ -221,7 +221,7 @@ pub(super) fn unit(
         let step = object
             .moving_part()
             .map_or([0.0; 3], |m| [m.velocity_x, m.velocity_y, m.velocity_z]);
-        unit.missile = Some(genie_core::missile::Missile {
+        unit.missile = Some(genie_core::combat::missile::Missile {
             max_range: mo.max_range,
             fired_from: mo.fired_from_id,
             charge: mo.is_charge_projectile != 0,

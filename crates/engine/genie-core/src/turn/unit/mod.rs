@@ -22,14 +22,12 @@ mod drop_off;
 mod enter;
 mod gather;
 mod hunt;
-mod missile;
 mod owner;
 mod repair;
 mod search;
 mod stop;
 mod top;
 mod update;
-mod volley;
 
 pub(in crate::turn) use self::ai::AiResume;
 pub(in crate::turn) use self::building::blasts_at_death;
@@ -40,7 +38,7 @@ pub(crate) use self::gather::give_load;
 use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
 pub(in crate::turn) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
-pub(in crate::turn) use self::volley::{Aimed, Fired, armed, same_members};
+pub(in crate::turn) use crate::combat::volley::{Aimed, armed, same_members};
 
 /// A dying sprite the `.dat` does not have.
 const NO_DYING_SPRITE: GenieError =
@@ -123,15 +121,15 @@ pub struct Unit {
     /// A forager's Gather action, its top action.
     pub gather: Option<crate::gather::GatherAction>,
     /// Its own Attack (type 9, not a Hunt's), its top action: a boar's on its attacker.
-    pub attack: Option<crate::attack::Attack>,
+    pub attack: Option<crate::combat::attack::Attack>,
     /// An auto scout's Explore action, its top action.
     pub explore: Option<crate::explore::ExploreAction>,
     /// A unit's Enter action (a garrison), its top action.
     pub enter: Option<crate::garrison::EnterAction>,
     /// A unit's Transport action (an unload command's), its top action.
     pub transport: Option<crate::transport::TransportAction>,
-    /// A missile's own part with its action ([`crate::missile`]).
-    pub missile: Option<crate::missile::Missile>,
+    /// A missile's own part with its action ([`crate::combat::missile`]).
+    pub missile: Option<crate::combat::missile::Missile>,
     /// `+0x900`, `attack_count`: the swings that fired a missile (`FUN_141081020`).
     pub attack_count: i32,
     /// `+0xa00` (not saved): a combat object's missiles per volley, its master's volley fire plus
@@ -178,9 +176,9 @@ pub struct Unit {
     /// `+0x91c`, `attack_timer`: the time until it may attack again; `mReloadStinger` and
     /// `mReloadPowerup` (`+0xb40`, `+0xa28`), which change its reload time.
     pub attack_timer: f32,
-    /// What its master's passive abilities keep on it ([`crate::abilities`]): the movement damage
+    /// What its master's passive abilities keep on it ([`crate::combat::abilities`]): the movement damage
     /// timer, the attack timer's rate and its terrain look.
-    pub abilities: crate::abilities::Abilities,
+    pub abilities: crate::combat::abilities::Abilities,
     /// `mReloadStinger` (`+0xb40`), added to its master's reload time.
     pub reload_stinger: f32,
     /// `mReloadPowerup` (`+0xa28`), taken off its master's reload time.
@@ -192,7 +190,7 @@ pub struct Unit {
     /// (`+0x8a8`: its last hit was its charge's).
     pub attack_powerup: f32,
     /// `mMaxRangePowerup` (`+0xa40`, slot 0x700): what its shown range adds
-    /// ([`crate::damage::shown_range`]).
+    /// ([`crate::combat::damage::shown_range`]).
     pub range_powerup: f32,
     /// Its melee and pierce armor powerups (`+0x9e4`, `+0x9e6`).
     pub armor_powerups: [i16; 2],
@@ -340,7 +338,7 @@ pub(crate) const TAKEN_OUT: i32 = i32::MIN;
 /// meets (its id, `player`, master type `kind` and blast defence `level`): one of the missile's
 /// own player or a missile, an ally's, and, when it is not the `target`, Gaia's of a type above
 /// 15 or one of a blast defence below the missile's (`blast_level`).
-fn missed_passes(
+pub(crate) fn missed_passes(
     c: &Context<'_>,
     (id, player, kind, level): (i32, usize, u8, u8),
     target: i32,

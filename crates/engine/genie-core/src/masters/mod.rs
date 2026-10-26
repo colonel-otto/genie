@@ -40,7 +40,7 @@ pub struct Task {
     pub object_id: i16,
     /// `+0x14`, `combat_level` (`enable_targeting`): the task is for a target's combat level.
     pub combat_level: u8,
-    /// `+0x15`, `combat_level_flag`: a generation task (151, [`crate::abilities`]) of a combat
+    /// `+0x15`, `combat_level_flag`: a generation task (151, [`crate::combat::abilities`]) of a combat
     /// unit with bit 1 or of a building with bit 2 works on its own; a removal reward task (161)
     /// not 0 pays the master's cost of its resource times the rate.
     pub combat_level_flag: u8,
@@ -78,7 +78,7 @@ pub struct Task {
     pub sprites: [i16; 4],
     /// `+0x60` and `+0x78`: the event ids (`mEventId`) of the gathering and the deposit sound,
     /// as the task's load (`FUN_141062470`) leaves them; a terrain look task (159) names its
-    /// dying and its undead sprite with them ([`crate::abilities`]).
+    /// dying and its undead sprite with them ([`crate::combat::abilities`]).
     pub sound_events: [i32; 2],
 }
 
@@ -423,14 +423,14 @@ pub struct Master {
     pub volley_missile: Option<i16>,
     /// `mChargeProjectileUnit` (`+0x928`), None for −1.
     pub charge_projectile: Option<i16>,
-    /// A missile master's flight (type 60, [`crate::missile::MissileStats`]).
-    pub missile_stats: Option<crate::missile::MissileStats>,
+    /// A missile master's flight (type 60, [`crate::combat::missile::MissileStats`]).
+    pub missile_stats: Option<crate::combat::missile::MissileStats>,
     /// What a unit of this master moves with, its speed with the master's walking sprite (the
     /// run sprite `+0x750` if it has one, else the move sprite `+0x748`); None for a master that
     /// does not move.
     pub moving: Option<MoveStats>,
     /// `+0x740`, `mMaxSpeed` (the `.dat`'s `speed`): the top speed before a sprite's factor, from
-    /// which [`Master::moving`]'s speeds and [`crate::missile::MissileStats::speed`] follow.
+    /// which [`Master::moving`]'s speeds and [`crate::combat::missile::MissileStats::speed`] follow.
     pub max_speed: f32,
     /// `+0x758`, `turn_speed` (the `.dat`'s `rotation_speed`), which [`MoveStats::turn_time`]
     /// follows.

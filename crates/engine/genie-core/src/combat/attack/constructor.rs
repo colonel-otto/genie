@@ -2,7 +2,7 @@
 //! and what it reads of its unit and its target.
 
 use crate::GenieError;
-use crate::attack::{
+use crate::combat::attack::{
     Arms, Attack, Begun, Commanded, Engagement, FAILED, GATE, GOTO_SEEN, LEASH_SLACK, MASTER_1704,
     MASTER_1706, NONE, Strike, face_target, set_sprite,
 };
@@ -153,7 +153,7 @@ impl Attack {
     /// target's place becomes the point and the unit faces it (`FUN_141162db0`, but masters 1704
     /// and 1706): its ready end.
     ///
-    /// [`NO_RANGE`]: crate::attack::NO_RANGE
+    /// [`NO_RANGE`]: crate::combat::attack::NO_RANGE
     pub(super) fn begin(
         &mut self,
         (e, reach_gap): (&Engagement, f32),
@@ -279,7 +279,7 @@ pub fn arms(
 #[must_use]
 pub fn arms_looking(
     master: &crate::masters::Master,
-    look: Option<&crate::abilities::Look>,
+    look: Option<&crate::combat::abilities::Look>,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
     sprites: [i16; 4],
     moving: i16,

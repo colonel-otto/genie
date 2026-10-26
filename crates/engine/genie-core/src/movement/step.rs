@@ -58,7 +58,7 @@ impl Mover {
         let z = terrain
             .and_then(|t| t.ground(x, y).ok())
             .map_or(z, |ground| {
-                crate::missile::grounded(z, ground, false, self.stats.fly_mode)
+                crate::combat::missile::grounded(z, ground, false, self.stats.fly_mode)
             });
         [x, y, z]
     }

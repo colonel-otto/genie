@@ -2,7 +2,7 @@
 //! 0x848).
 
 use crate::checkpoint::cvttss2si;
-use crate::damage::{
+use crate::combat::damage::{
     ARTIFACT, BUILDING, CONE, ELEPHANT_ARCHER, Kill, LIVESTOCK, MINUS_CONE, RAMS, Victim,
     WIDE_CONE, armor_damage, bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus,
     lose, shield, take,

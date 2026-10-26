@@ -343,7 +343,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     t.players[1].objects[0].ai = None;
     assert!(t.member_idle(10).unwrap());
     // an Attack in state 2 is not free, in states 3 and 13 it is; a state 4 is not
-    let attack = |state| crate::attack::Attack {
+    let attack = |state| crate::combat::attack::Attack {
         target: -1,
         target2: -1,
         state,
@@ -358,7 +358,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         pending: false,
         swing: 0.0,
         rest: 0.0,
-        arms: crate::attack::Arms {
+        arms: crate::combat::attack::Arms {
             move_sprite: None,
             sprite: None,
             second_sprite: None,

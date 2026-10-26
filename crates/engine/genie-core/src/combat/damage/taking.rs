@@ -2,7 +2,7 @@
 //! unit's facing, its retaliation and the hit's end.
 
 use crate::GenieError;
-use crate::damage::{
+use crate::combat::damage::{
     Armored, Attacker, BUILDING, Building, EPSILON, FACING, LEAST_CLASS_HIT, LEAST_HIT_CLASSES,
     MINUS_FACING, ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, VILLAGER, Victim,
     WALL, charge_hit, damage, effective, elevation_factor, facing_offset, hp_floor, lose,

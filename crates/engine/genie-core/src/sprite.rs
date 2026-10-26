@@ -1,6 +1,6 @@
 //! An object's active sprite: the frame of its sprite (a `.dat` graphic) and, for a graphic that
 //! animates, the clock that advances it. The save holds it (the object's active sprite list). An
-//! attack lands on a frame of its sprite ([`crate::attack`]).
+//! attack lands on a frame of its sprite ([`crate::combat::attack`]).
 //!
 //! The list's node factory (`FUN_1408dc940`) makes an animated node
 //! (`RGE_Active_Animated_Sprite`, vtable `0x142f751b0`) for a graphic with sequence bit 0 and a
@@ -13,7 +13,7 @@
 //! `FUN_1413b2d90` (always), frame reset `FUN_1413b5030`, looped (slot 12) `FUN_1413b38e0`
 //! (never).
 
-use crate::abilities::Look;
+use crate::combat::abilities::Look;
 use crate::masters::Master;
 use crate::math::fmath;
 use crate::math::rng::Well512;
@@ -327,7 +327,7 @@ pub const fn loaded_cart(master: &Master, goods: bool) -> bool {
 
 /// Slot 0x798 of a combat object (`FUN_1412029f0`, types 70 and 80): a loaded trade cart's
 /// trade sprite ([`trade_sprite`]), else its terrain look's standing sprite (`+0x8a9`, `+0x960`,
-/// [`crate::abilities::Look`]), else its master's (`+0x470`).
+/// [`crate::combat::abilities::Look`]), else its master's (`+0x470`).
 #[must_use]
 pub fn standing(master: &Master, look: Option<&Look>, goods: bool) -> Option<i16> {
     if loaded_cart(master, goods) {

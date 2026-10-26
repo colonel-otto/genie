@@ -2,7 +2,7 @@
 //! 11 and 15).
 
 use crate::GenieError;
-use crate::attack::{Arms, Attack, Engagement};
+use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::hunt::{
     ARRIVED, ATTACK, BUILDING, CLASS_49, DROP, FAILED, FARM_AT_WORK, HuntAction, HuntTask, IDLE,
     LIVESTOCK, Lead, OWN_LIVESTOCK_RANGE, Quarry, SEARCH, Shown, WALK_POINT, WALK_SEARCH, food,
@@ -165,7 +165,7 @@ impl HuntAction {
     /// becomes the hunt's (slot 0x68, `FUN_140ac7980`; the caller releases the old target and takes
     /// the new) and the hunt starts over at `set_state(4)`. Its own target changes nothing. Some
     /// when it took the target, true when its Attack's `MoveTo` starts arrived (the caller shows
-    /// the idle sprite, [`crate::attack::show_arrived`]).
+    /// the idle sprite, [`crate::combat::attack::show_arrived`]).
     #[allow(clippy::too_many_arguments)]
     pub fn retarget(
         &mut self,

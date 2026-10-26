@@ -461,15 +461,15 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// (not held); the unit's own Attack on the target answers true, forced after its slot 0x48
     /// on it ([`UnitView::attack_again`]); a villager's master switch (slot 0x90) is not modelled.
     /// Then the new
-    /// Attack ([`crate::attack::Attack::command`]): the constructor takes its target (slot 0x178,
+    /// Attack ([`crate::combat::attack::Attack::command`]): the constructor takes its target (slot 0x178,
     /// the caller's) and clears the unit's `+0x900` (its target is new), the action list clears
     /// (the old actions' teardowns), and the install's start (`0x140a7f8c0`) of a unit inside
-    /// another fails it at once (`set_state(13)`, [`crate::attack::Attack::fail_at_start`]); else
+    /// another fails it at once (`set_state(13)`, [`crate::combat::attack::Attack::fail_at_start`]); else
     /// it puts the unit on its standing sprite (slot 0x68 with `+0x80`) and runs the range test
-    /// ([`crate::attack::Attack::begin`]): readyToAttack's failure
+    /// ([`crate::combat::attack::Attack::begin`]): readyToAttack's failure
     /// before a `set_state(4)` leaves the animation at speed 1; a `MoveTo` that starts arrived
     /// shows the standing sprite; a unit that cannot move in reach goes ready (`set_state(6)`,
-    /// [`crate::attack::Attack::enter_ready`]: readyToAttack again, then the swing, `set_state(7)`,
+    /// [`crate::combat::attack::Attack::enter_ready`]: readyToAttack again, then the swing, `set_state(7)`,
     /// when it faces its target and may attack), whose notifies join the start's. A notify posted
     /// while the AI runs (its buffer, `FUN_140c55270`) is not modelled.
     fn attack(
@@ -527,7 +527,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         let unit = &mut *self.unit;
         // the attack command's Attack (`FUN_141081a80`) takes no MoveTo sprite: the unit's
         let look = unit.abilities.look.as_ref();
-        let arms = crate::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);
+        let arms = crate::combat::attack::arms_looking(master, look, self.graphics, [-1; 4], -1);
         let standing = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
         if unit.sprite.is_none() {
             return Err(GenieError::unsupported(
@@ -548,11 +548,18 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             .ok_or(crate::turn::ATTACKER_UNMOVING)?
             .stats
             .speed;
-        let e = crate::attack::engagement(Some(ai), speed, master, &me_at, &t, self.world_time)?;
+        let e = crate::combat::attack::engagement(
+            Some(ai),
+            speed,
+            master,
+            &me_at,
+            &t,
+            self.world_time,
+        )?;
         // the constructor clears +0x900 for a target other than its own (none yet)
         unit.attack_count = 0;
         if unit.life.inside.is_some() {
-            let mut attack = crate::attack::Attack::own(target, &e, arms);
+            let mut attack = crate::combat::attack::Attack::own(target, &e, arms);
             attack.fail_at_start(&mut unit.sprite, &mut unit.anim_speed, self.sprite)?;
             unit.attack = Some(attack);
             self.takes.push((target, by));
@@ -561,16 +568,16 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
                 posted: Vec::new(),
             });
         }
-        crate::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
+        crate::combat::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
         let mover = unit.mover.as_mut().expect("its speed read above");
-        let crate::attack::Commanded {
+        let crate::combat::attack::Commanded {
             mut attack,
             arrived,
             mut posted,
             ready,
             failed,
             failed_first,
-        } = crate::attack::Attack::command(
+        } = crate::combat::attack::Attack::command(
             (target, self.spatial),
             &e,
             arms,
@@ -867,10 +874,16 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
         let me = *self.spatial.get(id).ok_or(crate::turn::ATTACKER_UNPLACED)?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-        let engagement =
-            crate::attack::engagement(Some(ai), speed, hunter, &me, &them, self.world_time)?;
+        let engagement = crate::combat::attack::engagement(
+            Some(ai),
+            speed,
+            hunter,
+            &me,
+            &them,
+            self.world_time,
+        )?;
         let moving = hunt_task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
-        let arms = crate::attack::arms(hunter, self.graphics, hunt_task.sprites, moving);
+        let arms = crate::combat::attack::arms(hunter, self.graphics, hunt_task.sprites, moving);
         let mover = unit.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
@@ -887,7 +900,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         (unit.life.attribute_type, unit.life.amount) = held;
         if arrived {
             let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
-            crate::attack::set_sprite(&mut unit.sprite, g, self.sprite);
+            crate::combat::attack::set_sprite(&mut unit.sprite, g, self.sprite);
             if let Some(a) = unit.anim_speed.as_mut() {
                 *a = 0.0;
             }

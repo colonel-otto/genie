@@ -1,6 +1,6 @@
 //! A gather's retarget and take, the quarry, a gather's and a hunt's start.
 
-use crate::attack::{Arms, Engagement};
+use crate::combat::attack::{Arms, Engagement};
 use crate::hunt::{HuntAction, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::order::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
@@ -366,7 +366,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`crate::attack::arms`] of the unit at `idx` for its hunt's Attack (Hunt's `set_state` 12:
+    /// [`crate::combat::attack::arms`] of the unit at `idx` for its hunt's Attack (Hunt's `set_state` 12:
     /// the `MoveTo` shows the hunt's walking sprite, [`HuntTask::walk_sprite_id`]).
     pub(super) fn arms(
         &self,
@@ -377,7 +377,7 @@ impl Turns {
         let unit = &self.players[player].objects[idx];
         let master = self.master_of(player, unit.life.master_id)?;
         let moving = task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
-        Ok(crate::attack::arms(
+        Ok(crate::combat::attack::arms(
             master,
             &self.graphics,
             task.sprites,
@@ -385,7 +385,7 @@ impl Turns {
         ))
     }
 
-    /// [`crate::attack::engagement`] of the unit at `idx` with `target`.
+    /// [`crate::combat::attack::engagement`] of the unit at `idx` with `target`.
     pub(super) fn engagement(
         &self,
         player: usize,
@@ -403,7 +403,14 @@ impl Turns {
             .get_known(target)?
             .ok_or(crate::turn::TARGET_UNPLACED)?;
         let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-        crate::attack::engagement(unit.ai.as_ref(), speed, master, me, them, self.world_time)
+        crate::combat::attack::engagement(
+            unit.ai.as_ref(),
+            speed,
+            master,
+            me,
+            them,
+            self.world_time,
+        )
     }
 
     /// The Hunt from the factory (`FUN_140aca4b0` case 0x6e): the action takes its target (slot
@@ -459,7 +466,11 @@ impl Turns {
         // its `+0x7b8` clears (`Attack::arrived_sprite`)
         if arrived {
             let g = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
-            crate::attack::set_sprite(&mut unit.sprite, g, self.streams.get(Stream::Sprite));
+            crate::combat::attack::set_sprite(
+                &mut unit.sprite,
+                g,
+                self.streams.get(Stream::Sprite),
+            );
             if let Some(a) = unit.anim_speed.as_mut() {
                 *a = 0.0;
             }

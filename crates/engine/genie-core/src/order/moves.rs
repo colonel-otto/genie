@@ -1,6 +1,6 @@
 //! A unit's move, to a point or aside, a work order, its reach and a point's move order.
 
-use crate::attack::gaps;
+use crate::combat::attack::gaps;
 use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::order::{

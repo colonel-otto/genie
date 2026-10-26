@@ -8,7 +8,6 @@ mod ownership;
 mod release;
 mod resource_search;
 mod task_finder;
-mod victims;
 
 pub(in crate::turn) use self::deaths::clear_look_of;
 pub(crate) use self::deaths::{
@@ -29,5 +28,5 @@ pub(in crate::turn) use self::task_finder::{
     SideWorld, state_of, task_search, task_target_with, wait_progress,
 };
 #[cfg(test)]
-pub(crate) use self::victims::{is_trebuchet, paid_cost};
-pub(crate) use self::victims::{victim_in, victim_of};
+pub(crate) use crate::combat::victims::{is_trebuchet, paid_cost};
+pub(crate) use crate::combat::victims::{victim_in, victim_of};

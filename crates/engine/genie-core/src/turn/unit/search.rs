@@ -237,14 +237,20 @@ impl Unit {
         };
         let (me_at, them) = (at(self.id)?, at(found)?);
         let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-        let engagement =
-            crate::attack::engagement(self.ai.as_ref(), speed, master, me_at, them, c.world_time)?;
+        let engagement = crate::combat::attack::engagement(
+            self.ai.as_ref(),
+            speed,
+            master,
+            me_at,
+            them,
+            c.world_time,
+        )?;
         let hunt = self.hunt.as_mut().expect("the caller's");
         let old = hunt.target;
         let moving = hunt
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
-        let arms = crate::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+        let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
         let mover = self.mover.as_mut().ok_or(crate::turn::HUNTER_UNMOVING)?;
         if let Some(arrived) = hunt.retarget(
             &quarry,
@@ -256,7 +262,7 @@ impl Unit {
             mover,
         )? {
             if arrived {
-                crate::attack::show_arrived(
+                crate::combat::attack::show_arrived(
                     &arms,
                     &mut self.sprite,
                     &mut self.anim_speed,
@@ -325,7 +331,7 @@ impl Unit {
     }
 
     /// The unit as the releaser of its actions' targets (slot 0x180's argument).
-    pub(in crate::turn) fn releaser(&self, c: &Context<'_>) -> Releaser {
+    pub(crate) fn releaser(&self, c: &Context<'_>) -> Releaser {
         Releaser {
             id: self.id,
             class: c

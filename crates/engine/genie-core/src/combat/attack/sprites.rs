@@ -1,7 +1,7 @@
 //! The swing's and the arrival's sprites, the attack timer and the unit's turn to its target.
 
 use crate::GenieError;
-use crate::attack::{Arms, RELOAD_MS, Strike};
+use crate::combat::attack::{Arms, RELOAD_MS, Strike};
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::sprite::{ActiveSprite, Graphic};
@@ -11,7 +11,7 @@ use crate::sprite::{ActiveSprite, Graphic};
 /// master's special graphic.
 #[must_use]
 pub fn swing_sprites(
-    look: Option<&crate::abilities::Look>,
+    look: Option<&crate::combat::abilities::Look>,
     master: &crate::masters::Master,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
 ) -> SwingSprites {
@@ -32,7 +32,7 @@ pub(super) const NO_OBJECT_STREAM: GenieError =
 
 /// The sprites a swing takes before the Attack's own ([`Attack::set_swing`]).
 ///
-/// [`Attack::set_swing`]: crate::attack::Attack::set_swing
+/// [`Attack::set_swing`]: crate::combat::attack::Attack::set_swing
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SwingSprites {
     /// The unit's terrain look's attack sprite (`+0x970`, `FUN_14107cc20`) while it shows its
@@ -61,7 +61,7 @@ pub(crate) fn volleys(master: &crate::masters::Master, masters: &crate::masters:
 /// [`Attack::arrived_sprite`] for a caller that holds the unit's sprite and animation speed: the
 /// idle sprite of `arms` (slot 0x68), the speed `+0x7b8` cleared.
 ///
-/// [`Attack::arrived_sprite`]: crate::attack::Attack::arrived_sprite
+/// [`Attack::arrived_sprite`]: crate::combat::attack::Attack::arrived_sprite
 pub(crate) fn show_arrived(
     arms: &Arms,
     sprite: &mut Option<ActiveSprite>,

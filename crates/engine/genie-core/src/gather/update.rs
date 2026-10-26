@@ -2,8 +2,8 @@
 //! in the way and the teardown.
 
 use crate::GenieError;
-use crate::attack::set_sprite;
-use crate::damage::Victim;
+use crate::combat::attack::set_sprite;
+use crate::combat::damage::Victim;
 use crate::gather::{
     DONE, FACE, FARM_CLASS, FARM_WAIT, GatherAction, Gatherer, IDLE, MOVED, Next, REGATHERED,
     RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, StopRate, VILLAGER_CLASS, WAIT_GAP, WAIT_WORKERS,
@@ -162,7 +162,7 @@ impl GatherAction {
                     .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
                 // turning over time it faces next update (the switch breaks, the update
                 // returns 0)
-                if !crate::attack::face_target(mover, at, target.position, g.world_time)? {
+                if !crate::combat::attack::face_target(mover, at, target.position, g.world_time)? {
                     return Ok(Next::Stay);
                 }
                 if 0.0 < target.amount || REGATHERED.contains(&target.master_id) {

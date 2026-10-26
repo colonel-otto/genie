@@ -6,7 +6,7 @@
 //! counts and history event). The damage is the
 //! armor's (slot 0xf0, `FUN_141082530`), less what a shield blocks (`FUN_14108d8a0`); a charge
 //! (slots 0x2f0, 0x300, 0x318) adds to it, and a blast (slot 0x848, `FUN_14107f690`) spreads it.
-//! When a melee hit lands is [`crate::attack`]'s.
+//! When a melee hit lands is [`crate::combat::attack`]'s.
 //!
 //! Of these, MarvinBlue/426048731 runs only the armor and the damage of a villager's hits on
 //! sheep (update 1170). The charges, shields, blasts, terrain bonuses, special attacks,
@@ -90,7 +90,7 @@ const ARTIFACT: i16 = 1;
 const RAMS: [i16; 4] = [35, 422, 548, 1258];
 /// The building type (`'P'`): its slot 0xe8 is `FUN_1411cea90` ([`take_building`]).
 ///
-/// [`take_building`]: crate::damage::taking::take_building
+/// [`take_building`]: crate::combat::damage::taking::take_building
 const BUILDING: u8 = 80;
 /// The wall class (27): its razing counts nothing.
 const WALL: i16 = 27;

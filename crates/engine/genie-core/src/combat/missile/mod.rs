@@ -11,6 +11,8 @@
 use crate::GenieError;
 use crate::math::fmath;
 
+pub(crate) mod unit;
+
 /// The missile action's type, which word 9 adds when it is the top action.
 pub const MISSILE: i16 = 8;
 

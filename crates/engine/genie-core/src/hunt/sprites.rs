@@ -1,7 +1,7 @@
 //! The hunt's sprites: standing, walking and the task's; an asked drop-off and the kind of
 //! what a unit carries.
 
-use crate::attack::set_sprite;
+use crate::combat::attack::set_sprite;
 use crate::hunt::HuntTask;
 use crate::move_to::MoveTo;
 use crate::sprite::Graphic;

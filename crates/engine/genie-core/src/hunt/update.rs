@@ -2,7 +2,7 @@
 //! livestock (state 12).
 
 use crate::GenieError;
-use crate::attack::{Attack, Strike};
+use crate::combat::attack::{Attack, Strike};
 use crate::hunt::{
     ATTACK, FACE, GATHER, Gatherer, Herd, HuntAction, LEAD, PREDATOR, SEARCH, Shown, TREE_CLASS,
     WALK, WALK_SEARCH, walk_sprite,
@@ -103,7 +103,7 @@ impl HuntAction {
                     walk.me.action_state = self.state;
                     let goal = Goal::Target(self.target);
                     let walked = start_walk_or_give_up(walk.reborrow(), goal, range, true)?;
-                    crate::attack::in_the_way(&mut walk, strike);
+                    crate::combat::attack::in_the_way(&mut walk, strike);
                     // the MoveTo's set_state(4) shows the hunt's walking sprite
                     let shows = walk_sprite(
                         self.task.resource,
@@ -130,7 +130,7 @@ impl HuntAction {
                     }
                     walk.me.action_state = self.state;
                     let walked = walk_or_give_up(walk.reborrow())?;
-                    crate::attack::in_the_way(&mut walk, strike);
+                    crate::combat::attack::in_the_way(&mut walk, strike);
                     match walked {
                         Some(m) => self.move_to = Some(m),
                         None => self.give_up(strike),
@@ -195,7 +195,7 @@ impl HuntAction {
                     .mover
                     .as_deref_mut()
                     .ok_or(crate::turn::HUNTER_UNMOVING)?;
-                if !crate::attack::face_target(
+                if !crate::combat::attack::face_target(
                     mover,
                     at,
                     strike.victim.position,

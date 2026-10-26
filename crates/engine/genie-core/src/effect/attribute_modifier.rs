@@ -154,7 +154,7 @@ impl Turns {
                 crate::order::Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
             };
             if u.sprite.is_some() {
-                crate::attack::set_sprite(&mut u.sprite, graphic, rng);
+                crate::combat::attack::set_sprite(&mut u.sprite, graphic, rng);
             } else {
                 // a sprite the slice does not hold is taken to be another one
                 let _ = crate::sprite::ActiveSprite::start(graphic, rng);
@@ -490,7 +490,7 @@ pub(crate) struct MasterSprites {
 /// carrying sprites; none for a unit's own Attack), and from type 70 on its idle attack and
 /// second attack sprites.
 pub(crate) fn follow_master(
-    arms: &mut crate::attack::Arms,
+    arms: &mut crate::combat::attack::Arms,
     task: Option<[i16; 4]>,
     sprites: &MasterSprites,
 ) {

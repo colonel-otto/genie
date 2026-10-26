@@ -9,9 +9,9 @@
 //! `0x140a82ae0`, `set_state` (slot 16) `0x140a820c0`; the range test `FUN_140a7f9d0`
 //! (`readyToAttack`); the hit (object slot 0x858, `FUN_14120c0a0` -> `FUN_141081020` -> slot 0x860
 //! `FUN_1412115e0` -> `FUN_141084230` -> the target's slot 0xe8, whose damage is
-//! [`crate::damage`]'s).
+//! [`crate::combat::damage`]'s).
 
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, MoveWait, Walk};
 use crate::sprite::{ActiveSprite, Graphic};
@@ -38,7 +38,7 @@ pub use self::work_slots::{Mark, Wielder, Worked};
 #[cfg(test)]
 use crate::movement::Mover;
 #[cfg(test)]
-use crate::{GenieError, damage};
+use crate::{GenieError, combat::damage};
 
 /// The Attack action's type, which word 9 adds.
 pub const ATTACK: i16 = 9;

@@ -1,17 +1,17 @@
 //! State 4's walk to the target and state 7's swing with its hit and its trample.
 
-use crate::attack::{
+use crate::combat::attack::{
     AfterHit, Attack, DRAW_SCALE, EPSILON, FAILED, HALF, Hit, KILLED, MOVE, NO_OBJECT_STREAM,
     Readiness, Strike, after_hit, blast_so_far, in_the_way, reset_sprite, set_attack_timer,
     set_sprite, squared_reach, strike,
 };
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
 use crate::move_to::{
     Follow, MoveTo, Walk, follow_path_end, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
 use crate::movement::footprint_gap_squared;
-use crate::{GenieError, damage};
+use crate::{GenieError, combat::damage};
 
 impl Attack {
     /// State 4 (cases 3, 4, 10): the `MoveTo` walks (`FUN_140a992b0`); a unit still farther than its

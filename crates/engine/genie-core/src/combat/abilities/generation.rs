@@ -1,6 +1,8 @@
 //! The generation tasks (action type 151): their test, what they make and the player's store.
 
-use crate::abilities::{BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, WORKING, WORKING_ACTIONS};
+use crate::combat::abilities::{
+    BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, WORKING, WORKING_ACTIONS,
+};
 use crate::masters::Task;
 use crate::turn::Turns;
 use crate::{GenieError, math::fmath};

@@ -259,7 +259,7 @@ impl BuildAction {
                     .position;
                 let mover = walk.mover.as_deref_mut().ok_or(BUILDER_UNMOVING)?;
                 let now = walk.plan.as_ref().map_or(0, |p| p.now);
-                if !crate::attack::face_target(mover, at, to, now)? {
+                if !crate::combat::attack::face_target(mover, at, to, now)? {
                     return Err(GenieError::unsupported(
                         "a builder that turns over time to face its foundation",
                     ));

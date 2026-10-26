@@ -18,7 +18,7 @@ mod unit_view;
 mod world_picker;
 
 pub(in crate::turn) use self::commands::town_centre;
-pub(in crate::turn) use self::context::{Context, ObjectOutputs};
+pub(crate) use self::context::{Context, ObjectOutputs};
 use self::world_picker::NOT_HELD;
 #[cfg(test)]
 use self::world_picker::attacks;

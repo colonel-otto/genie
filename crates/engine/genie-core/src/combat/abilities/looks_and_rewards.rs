@@ -1,6 +1,6 @@
 //! The terrain look tasks (action type 159) and the removal reward tasks (161).
 
-use crate::abilities::{Look, ONE, Reward};
+use crate::combat::abilities::{Look, ONE, Reward};
 use crate::masters::Task;
 use crate::turn::Turns;
 

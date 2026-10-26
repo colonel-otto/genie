@@ -1,7 +1,9 @@
 //! A hit's factors: the elevation, the facing offset and the charges (`FUN_1412623d0`).
 
 use crate::GenieError;
-use crate::damage::{Attacker, Facing, HIGHER, LOWER, RELIC_BOOST, SPECIFIC_RELIC_BOOST, Victim};
+use crate::combat::damage::{
+    Attacker, Facing, HIGHER, LOWER, RELIC_BOOST, SPECIFIC_RELIC_BOOST, Victim,
+};
 
 /// Slot 0x1f0 of a combat object (`FUN_14120d780`) at height `z` whose player has `up_down` as
 /// attributes 211 and 212: a hit from higher up gains 25% and attributes 211 and the target's

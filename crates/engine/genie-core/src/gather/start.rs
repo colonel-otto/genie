@@ -2,7 +2,7 @@
 //! the idle and the halt; a farm's stops and their productivity.
 
 use crate::GenieError;
-use crate::attack::set_sprite;
+use crate::combat::attack::set_sprite;
 use crate::gather::{
     ARRIVED, DEFAULT_PRODUCTIVITY, DROP, FACE, FARM_CLASS, FARM_STOPS, GatherAction, Gatherer,
     IDLE, MOVED, Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,

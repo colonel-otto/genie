@@ -26,7 +26,7 @@ impl Turns {
                 [
                     at[0],
                     at[1],
-                    crate::missile::grounded(at[2], g, false, fly_mode),
+                    crate::combat::missile::grounded(at[2], g, false, fly_mode),
                 ]
             })
     }

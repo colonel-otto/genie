@@ -2,7 +2,7 @@
 //! (`FUN_141082530`).
 
 use crate::GenieError;
-use crate::damage::{Armored, Attacker, Victim, charge_damage, charge_works};
+use crate::combat::damage::{Armored, Attacker, Victim, charge_damage, charge_works};
 
 /// `FUN_141085450`, a combat object's melee armor as its master holds it: its best armor of
 /// class 4 above −32768, else its best of any, else its base armor.
@@ -127,7 +127,7 @@ pub(super) fn charges(attacker: &Attacker, own_class: i16, kind: u8) -> bool {
 /// bonus damage against `v` ([`bonus_damage`]), which the first such weapon adds with the
 /// powerup.
 ///
-/// [`bonus_damage`]: crate::damage::shown_values::bonus_damage
+/// [`bonus_damage`]: crate::combat::damage::shown_values::bonus_damage
 pub fn armor_damage(
     v: &Victim,
     weapons: &[(i16, i16)],

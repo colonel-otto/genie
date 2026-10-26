@@ -723,7 +723,7 @@ fn some_combat_shorts_multiply_by_the_truncated_amount() {
 #[test]
 fn a_missile_s_smart_mode_multiply_sets_it() {
     let mut m = of_type(master_type::MISSILE);
-    m.missile_stats = Some(crate::missile::MissileStats {
+    m.missile_stats = Some(crate::combat::missile::MissileStats {
         projectile_type: 0,
         smart_mode: 1,
         hit_mode: 0,
@@ -1020,7 +1020,7 @@ fn the_combat_master_s_own_values_change() {
 #[test]
 fn the_missile_building_and_animated_setters() {
     let mut m = of_type(master_type::MISSILE);
-    m.missile_stats = Some(crate::missile::MissileStats {
+    m.missile_stats = Some(crate::combat::missile::MissileStats {
         projectile_type: 0,
         smart_mode: 0,
         hit_mode: 1,

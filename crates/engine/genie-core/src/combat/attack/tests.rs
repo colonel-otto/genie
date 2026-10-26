@@ -1271,7 +1271,7 @@ fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
     };
     let a = arms(&master, &graphics, [-1; 4], -1);
     assert_eq!(a.move_sprite.map(|s| s.id), Some(11));
-    let look = crate::abilities::Look {
+    let look = crate::combat::abilities::Look {
         standing: None,
         walking: Some(20),
         attacking: Some(21),

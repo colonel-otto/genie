@@ -1,7 +1,7 @@
 //! A hit's victim: what the hit reads of it, the objects it may reach, the hit written back,
 //! the kill and its counts.
 
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::masters::Master;
 use crate::spatial::Spatial;
 use crate::tasks::Diplomacy;
@@ -42,7 +42,7 @@ impl Turns {
     /// table (`FUN_1415417a0`, [`crate::unit_ai::Seen`]), `None` when no list holds it. An object
     /// the slice holds as a place alone cannot be read. Without the players' sight its tile
     /// counts as unseen.
-    pub(in crate::turn) fn seen(
+    pub(crate) fn seen(
         &self,
         id: i32,
         viewer: usize,
@@ -96,7 +96,7 @@ impl Turns {
     /// tile's list as the unit's update starts (an object the slice cannot read stands in with
     /// its place alone, as a guess); then the main buildings (`+0xbb8`) of the target and of the
     /// annexes among them, which the hits on those annexes go to.
-    pub(in crate::turn) fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
+    pub(crate) fn blasted(&self, unit: &Unit, p: usize, target: i32) -> Vec<Victim> {
         let reach = self
             .masters
             .get(p)
@@ -141,9 +141,9 @@ impl Turns {
     /// An attack's hit on its target, written back: its hit points, what it holds, its charge
     /// and powerups, its damage notify (500), its kill ([`Turns::killed`]); a struck building's
     /// `damaged_lately_timer` and its annexes' hit points (`+0xbc0`..), then each razing
-    /// ([`crate::damage::Razed`]: the history event of the attacker's player, the attribute adds
+    /// ([`crate::combat::damage::Razed`]: the history event of the attacker's player, the attribute adds
     /// in their order).
-    pub(in crate::turn) fn set_victim(&mut self, v: &Victim) -> Result<(), GenieError> {
+    pub(crate) fn set_victim(&mut self, v: &Victim) -> Result<(), GenieError> {
         let (q, j) = match self.place(v.id) {
             Some(crate::order::Place::Live(q, j)) => (q, j),
             // an object asleep (a tree a blast reached) holds what the hit left; below 1 hit
@@ -234,11 +234,11 @@ impl Turns {
     /// 16 and 32, Gaia gains 1, 2 and 32) and its list (the old owner's last object takes its
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
-    pub(in crate::turn) fn killed(
+    pub(crate) fn killed(
         &mut self,
         q: usize,
         j: usize,
-        kill: crate::damage::Kill,
+        kill: crate::combat::damage::Kill,
     ) -> Result<(), GenieError> {
         if self.players[q].computer {
             return Err(GenieError::unsupported(
@@ -280,7 +280,7 @@ impl Turns {
     }
 
     /// `FUN_1412005b0` on the object `id` killed for player `killer` (a movement damage's,
-    /// [`crate::abilities`]): the counts of [`Turns::killed`] by its master (its own one, else
+    /// [`crate::combat::abilities`]): the counts of [`Turns::killed`] by its master (its own one, else
     /// its player's).
     ///
     /// # Errors
@@ -302,7 +302,7 @@ impl Turns {
     /// unless its class is one of the non-military ones (`FUN_141188b20`) `ap` counts a kill
     /// (attribute 20) and `q` a loss (154); `ap` counts it against `q` (300 + `q`) and `q`
     /// against `ap` (325 + `ap`); both count its paid cost (170 and 152, and 400 + `q`).
-    pub(super) fn count_kill_of(
+    pub(crate) fn count_kill_of(
         &mut self,
         q: usize,
         master: &Master,
@@ -406,7 +406,7 @@ pub(crate) fn victim_of(
         allied: [false; 2],
         uncertain: false,
         inside: u.life.inside.is_some(),
-        source: crate::damage::Attacker {
+        source: crate::combat::damage::Attacker {
             id: u.id,
             kind,
             class: master.class,
@@ -434,11 +434,11 @@ pub(crate) fn victim_of(
         bonus_tasks: master
             .tasks
             .iter()
-            .filter(|t| t.action_type == crate::damage::BONUS_DAMAGE)
+            .filter(|t| t.action_type == crate::combat::damage::BONUS_DAMAGE)
             .copied()
             .collect(),
         // a combat object's slot 0xf0 is FUN_141082530 (types 50 and up)
-        armored: (50 <= kind).then(|| crate::damage::Armored {
+        armored: (50 <= kind).then(|| crate::combat::damage::Armored {
             armors: master.armors.clone(),
             base_armor: master.base_armor,
             terrain_bonus: master.terrain_bonus,
@@ -465,7 +465,7 @@ pub(crate) fn victim_of(
         damaged: Vec::new(),
         killed: None,
         // a building's slot 0xe8 is FUN_1411cea90
-        building: (kind == BUILDING_KIND).then(|| crate::damage::Building {
+        building: (kind == BUILDING_KIND).then(|| crate::combat::damage::Building {
             main: u.annex_of,
             // the caller's, which holds the world's annex links
             annexes: Vec::new(),

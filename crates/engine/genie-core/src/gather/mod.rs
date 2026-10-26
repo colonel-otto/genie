@@ -30,7 +30,7 @@ use self::work::food;
 #[cfg(test)]
 use crate::GenieError;
 #[cfg(test)]
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 #[cfg(test)]
 use crate::hunt::Dropped;
 #[cfg(test)]

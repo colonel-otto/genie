@@ -28,7 +28,7 @@ impl Turns {
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), GenieError> {
-        use crate::attack::Strike;
+        use crate::combat::attack::Strike;
         use crate::move_to::Walk;
         if task.work_range != 0.0 {
             return Err(GenieError::unsupported(
@@ -73,7 +73,8 @@ impl Turns {
         self.clear_actions(player, idx)?;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
-        let arms = crate::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
+        let arms =
+            crate::combat::attack::arms(master, &self.graphics, task.sprites, task.sprites[0]);
         let standing = arms.idle_sprite.ok_or(crate::turn::NO_STANDING_SPRITE)?;
         let me_at = *self
             .spatial
@@ -91,7 +92,7 @@ impl Turns {
             u.reload_stinger + (master.reload - u.reload_powerup)
         };
         let hit_chance = master.hit_chance;
-        let swing_sprites = crate::attack::swing_sprites(
+        let swing_sprites = crate::combat::attack::swing_sprites(
             self.players[player].objects[idx].abilities.look.as_ref(),
             master,
             &self.graphics,
@@ -100,7 +101,7 @@ impl Turns {
         let volleys = self
             .masters
             .get(player)
-            .is_some_and(|m| crate::attack::volleys(master, m));
+            .is_some_and(|m| crate::combat::attack::volleys(master, m));
         let mut victim = self.victim(target, player).ok_or(GenieError::unsupported(
             "an attack's target the slice does not hold live",
         ))?;
@@ -120,7 +121,7 @@ impl Turns {
             .mover
             .as_ref()
             .map_or(0.0, |m| m.stats.speed);
-        let e = crate::attack::engagement(
+        let e = crate::combat::attack::engagement(
             self.players[player].objects[idx].ai.as_ref(),
             speed,
             master,
@@ -137,16 +138,20 @@ impl Turns {
             .with("master", unit.life.master_id));
         }
         unit.attack_count = 0;
-        crate::attack::set_sprite(&mut unit.sprite, standing, self.streams.get(Stream::Sprite));
+        crate::combat::attack::set_sprite(
+            &mut unit.sprite,
+            standing,
+            self.streams.get(Stream::Sprite),
+        );
         let mover = unit.mover.as_mut().ok_or(crate::turn::ATTACKER_UNMOVING)?;
-        let crate::attack::Commanded {
+        let crate::combat::attack::Commanded {
             mut attack,
             arrived,
             posted,
             ready,
             failed,
             failed_first,
-        } = crate::attack::Attack::command(
+        } = crate::combat::attack::Attack::command(
             (target, &self.spatial),
             &e,
             arms,
@@ -175,7 +180,7 @@ impl Turns {
                 id: unit.id,
                 position: unit.position,
                 group: unit.group.id,
-                action_state: crate::attack::READY,
+                action_state: crate::combat::attack::READY,
             };
             let can_move = unit
                 .ai
@@ -293,7 +298,7 @@ impl Turns {
             mover,
         )? {
             if arrived {
-                crate::attack::show_arrived(
+                crate::combat::attack::show_arrived(
                     &arms,
                     &mut unit.sprite,
                     &mut unit.anim_speed,

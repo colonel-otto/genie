@@ -340,7 +340,7 @@ pub(super) fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3
     }
     let (mut kind, mut sub) = top.base()?.sub_actions.entries().next()?;
     // a Hunt's Attack walks with a MoveTo of its own
-    if kind == genie_core::attack::ATTACK {
+    if kind == genie_core::combat::attack::ATTACK {
         (kind, sub) = sub.base()?.sub_actions.entries().next()?;
     }
     let b = sub.base()?;

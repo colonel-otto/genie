@@ -202,7 +202,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         )),
         ..Unit::default()
     });
-    let mut attack = crate::attack::tests::own_attack(-1, crate::attack::DONE, 1.0);
+    let mut attack = crate::combat::attack::tests::own_attack(-1, crate::combat::attack::DONE, 1.0);
     attack.arms.idle_sprite = Some(crate::sprite::Graphic {
         id: 1,
         frames: 10,
@@ -225,7 +225,10 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     assert_eq!(t.halt_other(1, gather, crate::gather::GATHER), Ok(true));
     assert_eq!(t.halt_other(1, build, crate::build::BUILD), Ok(true));
     assert_eq!(t.halt_other(1, repair, crate::repair::REPAIR), Ok(true));
-    assert_eq!(t.halt_other(1, attack, crate::attack::ATTACK), Ok(true));
+    assert_eq!(
+        t.halt_other(1, attack, crate::combat::attack::ATTACK),
+        Ok(true)
+    );
     let kind = crate::artifact::ARTIFACT_TYPE;
     assert_eq!(t.halt_other(1, artifact, kind), Ok(true));
     let objects = &t.players[1].objects;
@@ -233,7 +236,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     assert_eq!(objects[build].build.map(|b| b.state), Some(2));
     assert_eq!(objects[repair].repair.map(|r| r.state), Some(2));
     let a = &objects[attack];
-    assert_eq!(a.attack.map(|a| a.state), Some(crate::attack::DONE));
+    assert_eq!(a.attack.map(|a| a.state), Some(crate::combat::attack::DONE));
     assert_eq!(a.anim_speed, Some(1.0));
     assert!(a.sprite.is_some());
     assert_eq!(objects[artifact].artifact.map(|a| a.state), Some(6));

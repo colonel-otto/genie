@@ -2,8 +2,8 @@
 //! a farm (0xf3), the search (3) and a move's walk (15).
 
 use crate::GenieError;
-use crate::attack::set_sprite;
-use crate::damage::Victim;
+use crate::combat::attack::set_sprite;
+use crate::combat::damage::Victim;
 use crate::gather::{
     DONE, FARM_CLASS, FARM_WAIT, FARM_WAIT_TIME, FARM_WAITERS, GatherAction, Gatherer, IDLE,
     NO_GATHER_POINT, Next, RESEED_WALK, SEARCH, SEARCH_WAIT, STOP_FARMS, TRAP_WAITERS, WALK_BACK,

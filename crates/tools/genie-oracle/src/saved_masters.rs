@@ -269,7 +269,7 @@ pub(super) fn work_masters(
             .as_deref()
             .and_then(|r| r.rge_master_missile_object.as_deref())
         {
-            work.missile_stats = Some(genie_core::missile::MissileStats {
+            work.missile_stats = Some(genie_core::combat::missile::MissileStats {
                 projectile_type: table.projectile_type(civ, s.copy_id()).unwrap_or(0),
                 smart_mode: mm.targetting_type,
                 hit_mode: mm.missile_hit_info,

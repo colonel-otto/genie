@@ -33,7 +33,7 @@
 //! hold.
 
 use crate::GenieError;
-use crate::damage::Victim;
+use crate::combat::damage::Victim;
 use crate::masters::Task;
 use crate::math::fmath;
 use crate::turn::Turns;
