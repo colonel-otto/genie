@@ -659,39 +659,30 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/turn/mod.rs",
-      "function": "Turns::build_mesh",
-      "line": 952,
-      "cyclomatic": 11.0,
-      "coverage": 0.0,
-      "crap": 132.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/mod.rs",
-      "function": "Turns::finish_object",
-      "line": 1259,
-      "cyclomatic": 128.0,
-      "coverage": 51.91740412979351,
-      "crap": 1949.3091016301337,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/mod.rs",
+      "file": "crates/engine/genie-core/src/turn/forced.rs",
       "function": "Turns::force",
-      "line": 392,
+      "line": 87,
       "cyclomatic": 34.0,
       "coverage": 64.44444444444444,
       "crap": 85.96132784636492,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/turn/mod.rs",
-      "function": "Turns::tick_with",
-      "line": 1734,
-      "cyclomatic": 38.0,
-      "coverage": 70.58823529411765,
-      "crap": 74.73926317932015,
+      "file": "crates/engine/genie-core/src/turn/object_step.rs",
+      "function": "Turns::finish_object",
+      "line": 181,
+      "cyclomatic": 128.0,
+      "coverage": 51.91740412979351,
+      "crap": 1949.3091016301337,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/turn/setup.rs",
+      "function": "Turns::build_mesh",
+      "line": 99,
+      "cyclomatic": 11.0,
+      "coverage": 0.0,
+      "crap": 132.0,
       "crate": "genie-core"
     },
     {
@@ -935,6 +926,15 @@
       "cyclomatic": 13.0,
       "coverage": 0.0,
       "crap": 182.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/turn/world_update.rs",
+      "function": "Turns::tick_with",
+      "line": 131,
+      "cyclomatic": 38.0,
+      "coverage": 70.58823529411765,
+      "crap": 74.73926317932015,
       "crate": "genie-core"
     },
     {
