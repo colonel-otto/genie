@@ -1,0 +1,361 @@
+use super::*;
+
+#[test]
+fn a_search_leaves_the_grid_as_it_was() {
+    let terrain = vec![0u8; 64];
+    let open = |_: i32, _: i32| false;
+    let built = Planner::new([8, 8], terrain.clone(), vec![1.0], &open);
+    let mut searched = built.clone();
+    searched.goal = [3, 4];
+    searched.goal_marked = true;
+    assert!(searched != built && searched.same_grid(&built));
+    let other = Planner::new([8, 8], terrain, vec![0.0], &open);
+    assert!(!other.same_grid(&built));
+}
+
+fn open_map(_: i32, _: i32) -> bool {
+    false
+}
+
+/// `FUN_140f7c530` reads the start's cell only after the search over the levels found the
+/// goal: a start off the map ends the search there, without the tile search.
+#[test]
+fn a_plan_from_off_the_map_reads_no_start_cell() {
+    let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+    let req = Request {
+        from: [-3.0, 2.0],
+        to: [5.5, 2.5],
+        radii: 0.2,
+        range: 0.0,
+        closed: Vec::new(),
+        full: true,
+    };
+    let mut out = Path::default();
+    let found = p.plan::<()>(&req, false, &mut out, None).unwrap();
+    assert_eq!(found, Found::OffMap);
+}
+
+#[test]
+fn the_last_open_point_walks_the_path_back_to_a_tile_with_an_edge() {
+    // water (terrain 0) left of x = 10, land (1, impassable) right of it
+    let terrain: Vec<u8> = (0..128).map(|i| u8::from(10 <= i % 16)).collect();
+    let mut p = Planner::new([16, 8], terrain, vec![1.0, 0.0], &open_map);
+    // a goal on the water: the path's end
+    assert_eq!(p.last_open_point([2.5, 4.5], [7.5, 4.5]), Some([7.5, 4.5]));
+    // ashore: the path ends at the node nearest the goal, the last water tile
+    assert_eq!(p.last_open_point([2.5, 4.5], [13.5, 4.5]), Some([9.5, 4.5]));
+    // a goal off the map (result 0): none
+    assert_eq!(p.last_open_point([2.5, 4.5], [16.5, 4.5]), None);
+}
+
+/// The scan along a boundary for the tile nearest `at` with the edge: the first upward, then
+/// downward while strictly nearer; neither: none.
+#[test]
+fn the_nearest_tile_with_the_edge_is_found_up_then_nearer_down() {
+    let p = Planner::new([8, 8], vec![0; 64], vec![1.0], &open_map);
+    let edges = |bits: [u8; 8]| move |s: i16| [bits[s as usize], 0];
+    // above at 7 (2 off), below at 4 (1 off): the nearer below
+    assert_eq!(
+        p.nearest_on_boundary(5, 0, 7, N, edges([0, 0, 0, 0, N, 0, 0, N])),
+        Some(4)
+    );
+    // one off either way: a tie goes up
+    assert_eq!(
+        p.nearest_on_boundary(5, 0, 7, N, edges([0, 0, 0, 0, N, 0, N, 0])),
+        Some(6)
+    );
+    // above at 6 only
+    assert_eq!(
+        p.nearest_on_boundary(5, 0, 7, N, edges([0, 0, 0, 0, 0, 0, N, 0])),
+        Some(6)
+    );
+    // below at 1 only, beyond nothing found above
+    assert_eq!(
+        p.nearest_on_boundary(5, 0, 7, N, edges([0, N, 0, 0, 0, 0, 0, 0])),
+        Some(1)
+    );
+    // another edge only: none
+    assert_eq!(p.nearest_on_boundary(5, 0, 7, N, edges([S; 8])), None);
+}
+
+/// `FUN_140f78ba0` on an open map: the tiles' A* (`FUN_140f79250`, its neighbours by
+/// `FUN_140f76840`) reaches the goal, and the path runs from the start to the goal point.
+#[test]
+fn the_tile_search_reaches_a_goal_on_an_open_map() {
+    let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+    let req = Request {
+        from: [1.5, 2.5],
+        to: [6.5, 5.5],
+        radii: 0.2,
+        range: 0.0,
+        closed: Vec::new(),
+        full: true,
+    };
+    let mut out = Path::default();
+    assert_eq!(p.search_on_tiles(&req, &mut out), Found::Goal);
+    assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
+    assert_eq!(out.points.last(), Some(&[6.5, 0.0, 5.5]));
+    // the search leaves its marks behind: the same search again finds the same path
+    let mut again = Path::default();
+    assert_eq!(p.search_on_tiles(&req, &mut again), Found::Goal);
+    assert_eq!(again.points, out.points);
+}
+
+/// A wall across the map: the tile search ends at the tile nearest the goal (its centre),
+/// on the start's side.
+#[test]
+fn the_tile_search_ends_nearest_the_goal_behind_a_wall() {
+    let wall = |x: i32, _: i32| x == 3;
+    let mut p = Planner::new([8, 8], vec![0; 64], vec![1.0], &wall);
+    let req = Request {
+        from: [1.5, 2.5],
+        to: [6.5, 2.5],
+        radii: 0.2,
+        range: 0.0,
+        closed: Vec::new(),
+        full: true,
+    };
+    let mut out = Path::default();
+    assert_eq!(p.search_on_tiles(&req, &mut out), Found::Nearest);
+    assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
+    assert_eq!(out.points.last(), Some(&[2.5, 0.0, 2.5]));
+}
+
+/// `FUN_140f7c530` for a human player's search (`full`): a short path over the levels is
+/// searched again on the tiles; a long one has its start shortened over the tiles
+/// (`shorter_start`); either way the path runs from the start to the goal.
+#[test]
+fn a_full_plan_searches_the_tiles_near_and_shortens_the_start_far() {
+    let mut p = Planner::new([64, 8], vec![0; 512], vec![1.0], &open_map);
+    for to in [[6.5, 5.5], [60.5, 5.5]] {
+        let req = Request {
+            from: [1.5, 2.5],
+            to,
+            radii: 0.2,
+            range: 0.0,
+            closed: Vec::new(),
+            full: true,
+        };
+        let mut out = Path::default();
+        assert_eq!(p.plan::<()>(&req, false, &mut out, None), Ok(Found::Goal));
+        assert_eq!(out.points.first(), Some(&[1.5, 0.0, 2.5]));
+        assert_eq!(out.points.last(), Some(&[to[0], 0.0, to[1]]));
+    }
+}
+
+#[test]
+fn an_open_map_is_one_node_cell_per_eight_tiles() {
+    let p = Planner::new([16, 8], vec![0; 128], vec![1.0], &open_map);
+    assert_eq!(p.level_sizes(), ([16, 8, 4, 2], [8, 4, 2, 1]));
+    // level 3: two uniform node cells, joined across their shared edge only
+    assert_eq!(p.level(3), &[[E, NODE], [W, NODE]]);
+    // an inner tile has all four edges; a corner tile two
+    let tile = |x: usize, y: usize| p.level(0)[y * 16 + x];
+    assert_eq!(tile(3, 3), [N | W | E | S, 0]);
+    assert_eq!(tile(0, 0), [E | S, 0]);
+}
+
+#[test]
+fn padding_tiles_of_a_map_that_is_not_a_multiple_of_eight_lie_off_the_map() {
+    let p = Planner::new([6, 6], vec![0; 36], vec![1.0], &open_map);
+    assert_eq!(p.level_sizes(), ([8, 4, 2, 1], [8, 4, 2, 1]));
+    let tile = |x: usize, y: usize| p.level(0)[y * 8 + x];
+    assert_eq!(tile(6, 0), [0, 0xf]);
+    assert_eq!(tile(5, 5), [N | W, 0]);
+    // the level-1 cell (3, 0) covers tiles 6 and 7: off the map, both of its children
+    assert_eq!(p.level(1)[3][1] & 0xf, 0b1111);
+}
+
+#[test]
+fn a_wall_splits_its_level_three_cell_into_its_children() {
+    // a blocked column at x = 3 cuts the first 8 × 8 cell in two
+    let wall = |x: i32, _: i32| x == 3;
+    let p = Planner::new([8, 8], vec![0; 64], vec![1.0], &wall);
+    assert_eq!(p.level(3)[0][1] & (NODE | MIXED), MIXED);
+    assert_eq!(p.level(0)[3], [0, 0]);
+    assert_eq!(p.level(0)[2][0], W | S);
+}
+
+#[test]
+fn a_path_skips_a_point_equal_to_its_neighbour() {
+    let mut path = Path::default();
+    assert!(path.push([1.0, 0.0, 2.0]));
+    assert!(!path.push([1.0, 0.0, 2.0]));
+    assert!(path.push([4.0, 0.0, 6.0]));
+    path.measure();
+    assert_eq!(path.length, 5.0);
+}
+
+/// `FUN_140f761b0` with fewer than one point between `first` and `last`: no change, 0 fewer.
+#[test]
+fn a_stretch_without_points_between_is_left_as_it_is() {
+    let mut path = Path {
+        points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [30.0, 0.0, 0.0]],
+        length: 0.0,
+    };
+    let before = path.points.clone();
+    assert_eq!(straighten(&mut path, 0, 1), 0);
+    assert_eq!(straighten(&mut path, 1, 1), 0);
+    assert_eq!(path.points, before);
+    // two apart: one point between, the line 30 long takes four points at 7.5 apart: 3 more
+    assert_eq!(straighten(&mut path, 0, 2), -3);
+}
+
+/// MarvinBlue/426048731's 9520 in update 758 (the probe's log): the search's twelve tile
+/// points become three where the walk is blocked at (103.5, 46.5) and beyond.
+#[test]
+fn the_smoothing_keeps_the_points_before_a_blocked_walk() {
+    let points = [
+        [109.5, 42.5],
+        [108.5, 42.5],
+        [108.5, 43.5],
+        [107.5, 43.5],
+        [107.5, 44.5],
+        [106.5, 44.5],
+        [105.5, 44.5],
+        [104.5, 44.5],
+        [103.5, 44.5],
+        [103.5, 45.5],
+        [103.5, 46.5],
+        [103.604_164, 46.854_168],
+    ];
+    let mut path = Path {
+        points: points.iter().map(|&[x, y]| [x, 0.0, y]).collect(),
+        length: 0.0,
+    };
+    // blocked: any walk from the start that ends beyond y = 44.5
+    let mut walls = Walls::default();
+    smooth(&mut path, &mut walls).unwrap();
+    let ends: Vec<[f32; 2]> = path.points.iter().map(|p| [p[0], p[2]]).collect();
+    assert_eq!(
+        ends,
+        [[109.5, 42.5], [103.5, 44.5], [103.604_164, 46.854_168]]
+    );
+    assert_eq!(walls.passes, 1);
+    // a path of two points tests nothing and ends no pass
+    let mut short = Path {
+        points: vec![[0.0, 0.0, 0.0], [5.0, 0.0, 5.0]],
+        length: 0.0,
+    };
+    smooth(&mut short, &mut walls).unwrap();
+    assert_eq!((walls.tests, walls.passes), (10, 1));
+}
+
+/// The smoothing test's stand-in: any walk from (109.5, 42.5) that ends beyond y = 44.5 is
+/// blocked; it counts the tests and the passes that ended.
+#[derive(Default)]
+struct Walls {
+    tests: usize,
+    passes: usize,
+}
+
+impl SegmentTest<()> for Walls {
+    fn blocked(&mut self, a: [f32; 2], b: [f32; 2]) -> Result<bool, ()> {
+        self.tests += 1;
+        Ok(a == [109.5, 42.5] && 44.5 < b[1])
+    }
+
+    fn pass_ends(&mut self) {
+        self.passes += 1;
+    }
+}
+
+/// `FUN_140f7be80` orders each pair of corners, holds the rectangle on the map (its low
+/// corner at 0, its high one at `+0x404`/`+0x406`, the size less one) and closes, from each
+/// level-3 cell over it, the node cells under it within the rectangle at their level
+/// (`FUN_140f7e070`): a mixed cell's children in the order (2x, 2y), (2x + 1, 2y),
+/// (2x + 1, 2y + 1), (2x, 2y + 1). Closing a closed cell or opening an open one changes nothing.
+/// `FUN_140f95c00` appends each point through `FUN_140f95060` at the end (a point equal to
+/// the last is left out), then takes the source's length or, at most 1e-7, measures anew:
+/// `COMISS` with `JBE` (0x140f95d66), so an unordered (NaN) length measures too.
+#[test]
+fn an_appended_path_takes_the_source_s_length_or_measures_a_short_or_nan_one() {
+    let mut path = Path::default();
+    let _ = path.push([0.0, 0.0, 0.0]);
+    let other = Path {
+        points: vec![[0.0, 0.0, 0.0], [3.0, 0.0, 4.0]],
+        length: 9.0,
+    };
+    path.append(&other);
+    assert_eq!(path.points, [[0.0, 0.0, 0.0], [3.0, 0.0, 4.0]]);
+    assert_eq!(path.length, 9.0);
+    for short in [1e-7, 0.0, f32::NAN] {
+        let mut path = Path::default();
+        path.append(&Path {
+            length: short,
+            ..other.clone()
+        });
+        assert_eq!(path.length, 5.0, "{short}");
+    }
+}
+
+#[test]
+fn a_closed_rectangle_closes_the_node_cells_under_it() {
+    // tile (0, 0) has no passable neighbour: its level-3, 2 and 1 cells are mixed, and the
+    // four tiles of the level-1 cell are nodes
+    let walls = |x: i32, y: i32| (x, y) == (1, 0) || (x, y) == (0, 1);
+    let mut p = Planner::new([16, 8], vec![0; 128], vec![1.0], &walls);
+    let open = p.clone();
+    assert_eq!(p.level(1)[0][1] & (NODE | MIXED), MIXED);
+    assert_eq!(p.level(0)[0][1] & NODE, NODE);
+    // the corners swapped and the low y off the map
+    p.close_rect([5, 3, 1, -2], true);
+    assert_eq!(p.region, [1, 0, 5, 3]);
+    let closed = |p: &Planner, l: usize, x: usize, y: usize| {
+        let w = p.level_sizes().0[l] as usize;
+        p.level(l)[y * w + x][0] & CLOSED != 0
+    };
+    let expected: [(usize, usize, usize, bool); 14] = [
+        (0, 0, 0, false),
+        (0, 1, 0, true),
+        (0, 1, 1, true),
+        (0, 0, 1, false),
+        (1, 0, 0, false),
+        (1, 1, 0, true),
+        (1, 1, 1, true),
+        (1, 0, 1, true),
+        (2, 0, 0, false),
+        (2, 1, 0, true),
+        (2, 1, 1, false),
+        (2, 0, 1, false),
+        (3, 0, 0, false),
+        (3, 1, 0, false),
+    ];
+    for (l, x, y, c) in expected {
+        assert_eq!(closed(&p, l, x, y), c, "level {l} ({x}, {y})");
+    }
+    // the closed bit is added once
+    let once = p.clone();
+    p.close_rect([1, 0, 5, 3], true);
+    assert_eq!(p, once);
+    assert_eq!(p.level(0)[1][0], CLOSED);
+    // the high corner past the map's size holds at its last tile: everything reopens
+    p.close_rect([0, 0, 20, 9], false);
+    assert_eq!(p.region, [0, 0, 15, 7]);
+    p.region = open.region;
+    assert_eq!(p, open);
+}
+
+#[test]
+fn the_open_list_pops_the_cheapest_and_the_older_of_equal_costs_first() {
+    let node = |f: f32| Node {
+        cell: 0,
+        x: 0,
+        y: 0,
+        entry: [0, 0],
+        f,
+        g: 0.0,
+        level: 0,
+        dir: 0,
+        shortcut: false,
+        parent: None,
+    };
+    let nodes = [node(5.5), node(5.25), node(5.25), node(7.0), node(6.5)];
+    let mut open = OpenList::default();
+    for i in 0..nodes.len() {
+        open.push(i, &nodes);
+    }
+    let order: Vec<usize> = std::iter::from_fn(|| open.pop(&nodes)).collect();
+    assert_eq!(order, [1, 2, 0, 4, 3]);
+    assert!(open.is_empty());
+}
