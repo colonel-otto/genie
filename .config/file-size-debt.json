@@ -2,7 +2,6 @@
  "threshold": 700,
  "files": {
   "crates/engine/genie-core/src/abilities.rs": 863,
-  "crates/engine/genie-core/src/best_target.rs": 917,
   "crates/engine/genie-core/src/group/mod.rs": 760,
   "crates/engine/genie-core/src/repair.rs": 775,
   "crates/engine/genie-core/src/turn/unit/update.rs": 1706,

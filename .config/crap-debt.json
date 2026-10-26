@@ -38,18 +38,18 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/best_target.rs",
+      "file": "crates/engine/genie-core/src/best_target/choice.rs",
       "function": "best_unit_to_attack",
-      "line": 721,
+      "line": 139,
       "cyclomatic": 95.0,
       "coverage": 65.0,
       "crap": 481.9468749999999,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/best_target.rs",
+      "file": "crates/engine/genie-core/src/best_target/choice.rs",
       "function": "tested",
-      "line": 629,
+      "line": 47,
       "cyclomatic": 35.0,
       "coverage": 74.4186046511628,
       "crap": 55.50731382142453,
