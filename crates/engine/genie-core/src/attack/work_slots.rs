@@ -1,0 +1,215 @@
+//! The swing's state (7), slot 9 (`RGE_Action_Attack::work`) and slot 0x68
+//! (`set_target_obj`).
+
+use crate::attack::{
+    Attack, BUILDING, CLASS_60, NO_OBJECT_STREAM, SWING, Strike, reset_sprite, set_sprite,
+};
+use crate::move_to::Walk;
+use crate::movement::footprint_gap;
+use crate::{GenieError, damage};
+
+/// An object as the Attack's slot 9 ([`Attack::work`]) and slot 0x68 ([`Attack::set_target`])
+/// read it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Mark {
+    /// The object.
+    pub id: i32,
+    /// Its master's type (80 a building).
+    pub kind: u8,
+    /// Its master's class.
+    pub class: i16,
+    /// Its state (`+0x640`).
+    pub state: u8,
+    /// Its place (decoded `x`, `y`, `z`).
+    pub position: [f32; 3],
+    /// Its master's radii on the ground, which the footprint gap (`FUN_14118f680`) reads.
+    pub radius: [f32; 2],
+}
+
+/// What the Attack's slot 9 ([`Attack::work`]) reads of its unit.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Wielder {
+    /// Its master's `area_effect_range` (`+0x82c`).
+    pub area_effect: f32,
+    /// Its top speed (slot 0x208).
+    pub speed: f32,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's radii on the ground.
+    pub radius: [f32; 2],
+}
+
+/// What the Attack's slot 9 or slot 0x68 leaves to its caller.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Worked {
+    /// Slot 9 took the target (its answer, 1).
+    pub kept: bool,
+    /// Slot 0x68 took another target: the unit's attack count (`+0x900`) clears.
+    pub clears_count: bool,
+    /// The old target, whose slot 0x180 lets the unit go when the world still holds it.
+    pub lets_go: Option<i32>,
+    /// The new target, whose slot 0x178 takes the unit with the action's type (9).
+    pub takes: Option<i32>,
+}
+
+impl Attack {
+    /// `set_state(7)` (case 7): the swing. Its sprite: the terrain look's attack sprite while
+    /// the unit shows its look ([`SwingSprites::look`]); else the master's special graphic on a
+    /// charge that hits the target (slot 0x2f0, [`crate::damage::charge_hit`]; slot 0x2f8's
+    /// charge range is a charge of types 6 and 7, which [`engagement`] does not take); else the
+    /// attack sprite (`+0x70`) or, with a second one (`+0x78`), a draw of the Object stream
+    /// (`FUN_140810fc0` with 2, [`crate::rng::Well512::below_checked`]: 0 the first) for a master
+    /// whose move algorithm lacks bit 0 (slot 0x5d8); one with it takes the second after a stop
+    /// (`+0x958`, not held). The unit takes it (without one slot 0x68 shows its master's standing
+    /// sprite) from its first frame (`FUN_1413b9f00`); a hit is pending; a reload shorter than
+    /// the sprite speeds the animation up to fit it.
+    ///
+    /// [`SwingSprites::look`]: crate::attack::sprites::SwingSprites::look
+    /// [`engagement`]: crate::attack::constructor::engagement
+    pub(super) fn set_swing(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+    ) -> Result<(), GenieError> {
+        self.enter(SWING, walk, s)?;
+        let alternates = walk
+            .mover
+            .as_ref()
+            .is_some_and(|m| m.stats.move_algorithm & 1 != 0);
+        let special = s
+            .swing_sprites
+            .special
+            .filter(|_| 70 <= s.own.kind && damage::charge_hit(&s.own.source, s.victim));
+        let chosen = if let Some(look) = s.swing_sprites.look {
+            Some(look)
+        } else if let Some(special) = special {
+            Some(special)
+        } else if let Some(second) = self.arms.second_sprite {
+            if alternates {
+                return Err(GenieError::unsupported(
+                    "an attacker with a second attack sprite (its draw)",
+                ));
+            }
+            let object = walk
+                .plan
+                .as_mut()
+                .map(|p| &mut *p.object)
+                .ok_or(NO_OBJECT_STREAM)?;
+            if object.below_checked(2) == 0 {
+                self.arms.sprite
+            } else {
+                Some(second)
+            }
+        } else {
+            self.arms.sprite
+        };
+        let g = chosen.or(s.standing).ok_or(GenieError::unsupported(
+            "an attacker without an attack or standing sprite",
+        ))?;
+        set_sprite(s.sprite, g, s.sprite_rng);
+        // FUN_1413b9f00 on the unit's sprite list with its sprite (`+0x140`)
+        if let Some(current) = s.sprite.map(|sp| sp.graphic) {
+            let _ = reset_sprite(s.sprite, current);
+        }
+        self.pending = true;
+        let length = f32::from(g.frames) * g.frame_duration;
+        self.rest = s.reload - length;
+        *s.anim_speed = Some(if self.rest < 0.0 && 0.0 < s.reload {
+            length / s.reload
+        } else {
+            1.0
+        });
+        Ok(())
+    }
+
+    /// Slot 9 (`FUN_140a841d0`) on `target`, the Attack's own target, for a caller that holds no
+    /// more of the unit and the target than the id (the work command's `keep_attack`): one in
+    /// states 4 to 7 or 11 keeps it as it is. The rest of the slot (the main building of an area
+    /// effect's building target, the range test, the new target) is [`Attack::work`]'s, which
+    /// needs the unit's and the target's values.
+    pub const fn keeps(&self, target: i32) -> Result<bool, GenieError> {
+        if target == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+            return Ok(true);
+        }
+        Err(GenieError::unsupported(
+            "an Attack's slot 9 on a target out of its states 4 to 7 and 11",
+        ))
+    }
+
+    /// Slot 9 (`FUN_140a841d0`, `RGE_Action_Attack::work`) on `target`: none answers false. A
+    /// unit whose master has an area effect (`+0x82c` above 0: `COMISS`/`JBE`) takes a building's
+    /// (type 80) main building (`+0xbb8`, `main`) for it. The Attack's own target in states 4 to 7
+    /// or 11 is kept as it is (true). Else a unit without top speed (slot 0x208 equal to 0:
+    /// `UCOMISS`/`JZ`, so a NaN speed asks on) or whose unit AI's canMoveToAttack (slot 0x1d0,
+    /// `FUN_140c48420`, on the target's id: `can_move`) is false keeps it only within its reach:
+    /// the footprint gap (`FUN_14118f680`) at most the range (`+0x90`), half a tile more for a
+    /// range up to 0.1 (`COMISS`/`JA`: a NaN gap is within). Kept, the indirect fire flag
+    /// (`+0xa0`, which genie's Attacks never set) clears, the target becomes the Attack's (slot
+    /// 0x68, [`Attack::set_target`]) and where it was seen its place (`+0xa4`..`+0xac`); true.
+    pub fn work(
+        &mut self,
+        target: Option<Mark>,
+        main: Option<Mark>,
+        unit: &Wielder,
+        can_move: impl FnOnce(i32) -> bool,
+    ) -> Worked {
+        let Some(mut target) = target else {
+            return Worked::default();
+        };
+        if 0.0 < unit.area_effect
+            && target.kind == BUILDING
+            && let Some(m) = main
+        {
+            target = m;
+        }
+        if target.id == self.target && (matches!(self.state, 4..=7) || self.state == 11) {
+            return Worked {
+                kept: true,
+                ..Worked::default()
+            };
+        }
+        if unit.speed == 0.0 || !can_move(target.id) {
+            let gap = footprint_gap(unit.position, unit.radius, target.position, target.radius);
+            if self.reach() < gap {
+                return Worked::default();
+            }
+        }
+        let mut worked = self.set_target(Some(target));
+        self.seen = target.position;
+        worked.kept = true;
+        worked
+    }
+
+    /// Slot 0x68 (`FUN_140a82a10`, `set_target_obj`): a target of class 60 (`-0xe70` raw) changes
+    /// nothing; another target than the Attack's clears the unit's attack count (`+0x900`); then
+    /// the action's own (`FUN_140a7a230`): a new target lets the old one go (its slot 0x180, when
+    /// the world still holds it: the caller's) unless the Attack is a sub-action (`+0x60`), and
+    /// becomes the Attack's (`+0x20`, its id `+0x30`) below state 7, taken (its slot 0x178 with
+    /// the action's type 9, the caller's) unless a sub-action; one in state 7 or more leaves the
+    /// Attack without a target (−1), as does none.
+    pub fn set_target(&mut self, target: Option<Mark>) -> Worked {
+        let mut worked = Worked::default();
+        if target.is_some_and(|t| t.class == CLASS_60) {
+            return worked;
+        }
+        let new = target.map_or(-1, |t| t.id);
+        if new != self.target {
+            worked.clears_count = true;
+        }
+        if self.target != -1 && self.target != new && !self.sub_action {
+            worked.lets_go = Some(self.target);
+        }
+        if self.target != new {
+            self.target = match target {
+                Some(t) if t.state < 7 => {
+                    if !self.sub_action {
+                        worked.takes = Some(t.id);
+                    }
+                    t.id
+                }
+                _ => -1,
+            };
+        }
+        worked
+    }
+}

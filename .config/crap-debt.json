@@ -11,27 +11,27 @@
       "crate": "genie-error"
     },
     {
-      "file": "crates/engine/genie-core/src/attack.rs",
-      "function": "Attack::swing",
-      "line": 1700,
-      "cyclomatic": 39.0,
-      "coverage": 68.42105263157895,
-      "crap": 86.89852748214025,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/attack.rs",
+      "file": "crates/engine/genie-core/src/attack/update.rs",
       "function": "Attack::update",
-      "line": 1286,
+      "line": 63,
       "cyclomatic": 61.0,
       "coverage": 64.91228070175438,
       "crap": 221.74041675441293,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/attack.rs",
+      "file": "crates/engine/genie-core/src/attack/walk_and_swing.rs",
+      "function": "Attack::swing",
+      "line": 182,
+      "cyclomatic": 39.0,
+      "coverage": 69.6969696969697,
+      "crap": 81.32406711745553,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/attack/walk_and_swing.rs",
       "function": "Attack::walk",
-      "line": 1539,
+      "line": 21,
       "cyclomatic": 43.0,
       "coverage": 13.91304347826087,
       "crap": 1222.6385968603602,
