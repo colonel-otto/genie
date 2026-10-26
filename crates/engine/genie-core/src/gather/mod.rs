@@ -1,0 +1,279 @@
+//! The Gather action (`RGE_Action_Gather`, type 5, vtable `0x142ed4f28`): a forager sent to a
+//! resource walks to it (state 4, a quiet `MoveTo`), faces it (6), gathers (7), takes the load to
+//! a drop site (8) and walks back to the resource (4).
+//!
+//! 158041: constructor `FUN_140a88310`, start (slot 5) `0x140a8b3a0`, update (slot 6)
+//! `0x140a8e1d0`, `set_state` (slot 16) `0x140a8cd40`; slot 0x40 `0x140a8b740`, slot 0x48
+//! `0x140a903a0`.
+//!
+//! A farm under the game's farm setting has four stops (`mNumberStops`): the farmer walks to a
+//! random point on the farm (`set_state(4)`, the Action stream's `"set_state"` draws), gathers
+//! there for the time per stop, then walks to the next.
+//!
+//! Not modelled yet: the searches (`set_state` 3, 0xf3), the walks to a point (11, 15, 0xf2),
+//! the waits after a failed walk or a drop-off out of reach (the Action stream's `"update"`
+//! draws) and a gather left without a target and a load.
+
+use crate::hunt::{HuntSprites, HuntTask};
+use crate::move_to::{MoveTo, MoveWait};
+use crate::rng::Well512;
+use crate::sprite::ActiveSprite;
+
+mod point_walks;
+mod start;
+mod update;
+mod work;
+
+pub use self::point_walks::waits_for_a_farm;
+pub use self::start::{MoveTarget, StopRate, productivity_of, stop_point};
+use self::work::food;
+#[cfg(test)]
+use crate::GenieError;
+#[cfg(test)]
+use crate::damage::Victim;
+#[cfg(test)]
+use crate::hunt::Dropped;
+#[cfg(test)]
+use crate::move_to::Walk;
+
+/// The Gather action's type, which word 9 adds.
+pub const GATHER: i16 = 5;
+
+/// State 4: walking to the target.
+pub const WALK: u8 = 4;
+/// State 6: facing it.
+pub const FACE: u8 = 6;
+/// State 7: gathering from it.
+pub const WORK: u8 = 7;
+/// State 8: taking the load to its drop site.
+pub const DROP: u8 = 8;
+/// State 1: done; its update returns 1 and the action list removes it.
+pub const DONE: u8 = 1;
+/// State 2: idle, without a target, a drop site or a point; its update does nothing.
+pub const IDLE: u8 = 2;
+/// State 15: walking to the point the unit was moved to (slot 0x40).
+pub const MOVED: u8 = 15;
+/// State 3: without a target or a load, it asks the unit AI for another (notify 0x202) and asks
+/// again every 10 seconds.
+pub const SEARCH: u8 = 3;
+/// State 11: walking to its point, to search from there (a farm another farmer works).
+pub const WALK_BACK: u8 = 11;
+/// State 0xf2: a farmer walking back to where it gathered (`mGatherX`, `mGatherY`) to reseed
+/// its farm there ([`Next::Reseed`]).
+pub const RESEED_WALK: u8 = 0xf2;
+/// State 0xf3: a farmer without its farm (or at one another farmer works) waits a second, its
+/// unit AI asked for another ([`Next::Search`]).
+pub const FARM_WAIT: u8 = 0xf3;
+
+/// `set_state(3)`'s timer: the search asks again once it counted up to 0 (`0xc1200000`, an
+/// immediate in `0x140a8cd40`).
+const SEARCH_WAIT: f32 = -10.0;
+/// `set_state(0xf3)`'s timer: a second (`0xbf800000`, an immediate in `0x140a8cd40`).
+const FARM_WAIT_TIME: f32 = -1.0;
+/// `mGatherX` of none (`DAT_14330ec20`, −1.0, read at `0x140a8d1c6`).
+const NO_GATHER_POINT: f32 = crate::image::gather::NO_GATHER_POINT;
+/// The gatherers whose gather without a target waits for another farm (`set_state(0xf3)`,
+/// `0x140a8e1d0`'s cases 3, 5 and 6: masters 259, 214, 1891 and 1892).
+const FARM_WAITERS: [i16; 4] = [259, 214, 1891, 1892];
+/// The gatherers that wait so on a target of the farm class (masters 13, 2356 and 2171, the raw
+/// `0x60a9`, `0x69d0`, `0x6917` of the same cases).
+const TRAP_WAITERS: [i16; 3] = [13, 2356, 2171];
+
+/// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
+const ARRIVED: f32 = 0.01;
+/// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
+const REMAINDER: f32 = crate::image::gather::REMAINDER;
+/// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
+const LAST_BIT: f32 = crate::image::gather::LAST_BIT;
+/// A drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
+const DROP_REACH: f32 = crate::image::gather::DROP_REACH;
+/// A random wait's shift (`DAT_142e7f384`).
+const WAIT_SHIFT: f32 = crate::image::gather::WAIT_SHIFT;
+/// A failed walk to a target with at most this many workers waits (`0x140a8e1d0` case 3,
+/// `DAT_142eb1c98`), as one to a target at least `WAIT_GAP` away (the squared footprint gap,
+/// `DAT_142ec9ec0`); else the gatherer searches.
+const WAIT_WORKERS: f32 = crate::image::gather::WAIT_WORKERS;
+const WAIT_GAP: f32 = crate::image::gather::WAIT_GAP;
+/// The farm class, whose gather the slice does not model yet.
+pub const FARM_CLASS: i16 = 49;
+/// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
+const VILLAGER_CLASS: i16 = 4;
+/// The masters a gatherer may gather from while they hold nothing (the combat object's slot
+/// 0x2b8, `FUN_141216390`: the farm, the rice farm and master 45).
+const REGATHERED: [i16; 3] = [50, 1187, 45];
+/// Masters the constructor and `set_state(6)` treat apart (357 and 1188, `FUN_140a8b140`).
+const SPECIAL_TARGETS: [i16; 2] = [357, 1188];
+/// The farms whose gather goes in stops under the game's farm setting, and whose time per stop
+/// each update renews: the farm and the rice farm (the constructor's and the update's masters).
+const STOP_FARMS: [i16; 2] = [50, 1187];
+/// A farm's stops under the game's farm setting (the constructor's `mNumberStops`).
+const FARM_STOPS: u8 = 4;
+/// A stop's point lies this far into its tile (`DAT_142e7f384`).
+const STOP_CENTRE: f32 = crate::image::gather::STOP_CENTRE;
+/// The productivity of a task without a productivity attribute (`DAT_14330eb8c`).
+const DEFAULT_PRODUCTIVITY: f32 = crate::image::gather::DEFAULT_PRODUCTIVITY;
+/// The draws a stop's point takes at most (`set_state(4)`'s loop).
+const STOP_DRAWS: u32 = 10;
+/// The player's attribute that sells a farm's food at once (`player+0x100` at `+0x300`).
+pub(crate) const FARM_FOOD_SOLD: usize = 96;
+/// The food kind a farm holds (`+0x308` 16): the food sold at once.
+const FARM_FOOD_KIND: i16 = 16;
+
+/// The Gather action of a gatherer (`RGE_Action_Gather`, type 5), with the save's fields.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GatherAction {
+    /// The target object (`+0x20`, its id at `+0x30`), −1 for none.
+    pub target: i32,
+    /// `+0x28` (its id at `+0x34`), the second target: the drop site the load goes to in state 8,
+    /// −1 for none.
+    pub carry_to: i32,
+    /// The action state (`+0x18`), which word 9 adds.
+    pub state: u8,
+    /// `+0x38`..`+0x40`: where the target stood.
+    pub point: [f32; 3],
+    /// `+0x44`: the state's timer.
+    pub timer: f32,
+    /// `+0x48`: its task.
+    pub task: HuntTask,
+    /// `+0x68`, `mTargetType`: the target's class.
+    pub target_type: i32,
+    /// `+0x6c`, `mNumberStops`: 1, or a farm's stops.
+    pub stops: u8,
+    /// `+0x6d`, `mCurrentStop`.
+    pub current_stop: u8,
+    /// `+0x70`, `mTimePerStop`.
+    pub time_per_stop: f32,
+    /// `+0x74`, `mTimeAtCurrentStop`.
+    pub time_at_stop: f32,
+    /// `+0x78`, `+0x7c`: `mLastStopX`, `mLastStopY`.
+    pub last_stop: [f32; 2],
+    /// `+0x80`: the gathering started (`set_state(7)`); not saved.
+    pub worked: bool,
+    /// `+0x84`, `+0x88`: `mFarmX`, `mFarmY`, a farm's place.
+    pub farm: [f32; 2],
+    /// `+0x8c`, `+0x90`: `mGatherX`, `mGatherY`, where the gathering started (−1 while the
+    /// game's farm setting holds them, [`Gatherer::farm_stops`]).
+    pub gather_at: [f32; 2],
+    /// The sub-action of states 4 and 8: a `MoveTo` to the target or the drop site within the
+    /// task's range, quiet (its `+0x60` and `+0x61` set).
+    pub move_to: Option<MoveTo>,
+    /// The point that `MoveTo` walks to instead (a farm's stop, the point a move gave,
+    /// `FUN_140aa0d30`), None when it walks to the target or the drop site.
+    pub walk_to: Option<[f32; 3]>,
+    /// That `MoveTo`'s range (`+0x68`): the task's, or for a walk to a point (states 11, 15 and
+    /// 0xf2) the target's radius plus the task's.
+    pub walk_range: f32,
+    /// Its `MoveTo`'s wait after the motion step gave up.
+    pub move_wait: MoveWait,
+}
+
+/// What the gather reads of its target when it takes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Resource {
+    /// The target.
+    pub id: i32,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's class.
+    pub class: i16,
+    /// Its master's id.
+    pub master: i16,
+    /// Its owner.
+    pub player: usize,
+    /// How many actions work on it (`+0x644`).
+    pub workers: i32,
+    /// The gatherer's master has its master (a building annex's main building's, `+0xbb8`) among
+    /// its drop sites (`FUN_14109d4f0`).
+    pub drop_site: bool,
+    /// The footprint gap between the gatherer and it (`FUN_14118f680`), which the `MoveTo`'s start
+    /// reads.
+    pub gap: f32,
+    /// Its master's radii (`+0x5d8`, `+0x5dc`), over which a farm's stops spread.
+    pub radius: [f32; 2],
+}
+
+/// What the gathering reads of its unit and changes.
+#[derive(Debug)]
+pub struct Gatherer<'a> {
+    /// `+0x308`: the resource the unit carries.
+    pub held_kind: &'a mut i16,
+    /// `+0x310`: how much.
+    pub held: &'a mut f32,
+    /// The master's work rate (`+0x798`) plus the unit's powerup (slot 0x6e8, `+0xa30`).
+    pub work_rate: f32,
+    /// The master's `attribute_max_amount` (`+0x61c`): what the unit carries at most.
+    pub capacity: f32,
+    /// The player's attribute the task's `attribute_type2` names, when above 0; else 1.
+    pub productivity: f32,
+    /// The sprites the gather shows.
+    pub sprites: HuntSprites,
+    /// The unit's sprite.
+    pub sprite: &'a mut Option<ActiveSprite>,
+    /// The Sprite stream.
+    pub sprite_rng: &'a mut Well512,
+    /// The unit's master's class: a villager's `MoveTo` waits once when the motion step gives up.
+    pub class: i16,
+    /// The unit's master: a farmer's gather without a target waits for another farm
+    /// (`set_state(0xf3)`, [`FARM_WAITERS`]).
+    pub master: i16,
+    /// The unit AI's stance (`+0x1a9`), 0 without a unit AI.
+    pub stance: u8,
+    /// The world's time.
+    pub world_time: u32,
+    /// The game's setting at `FUN_140c87b90()`'s `+0x69` (farmers walk their farm's stops); with
+    /// it `set_state(7)` leaves `mGatherX`, `mGatherY` as they are.
+    pub farm_stops: bool,
+    /// The notifies the walk posts to the unit AI (the units in its way).
+    pub posted: Vec<(i32, [i32; 3])>,
+    /// The Action stream, which a farm stop's point draws from.
+    pub action_rng: &'a mut Well512,
+    /// The gatherer's player.
+    pub player: usize,
+    /// That player is a computer (`FUN_141659cf0`): its moved gatherer is done at the point.
+    pub computer: bool,
+    /// The player's attribute the task's `attribute_type2` names (none: 1.0), as the time per
+    /// stop reads it.
+    pub stop_productivity: f32,
+    /// The player's attribute 96: a farm's food is sold at once.
+    pub food_sold: f32,
+    /// The food the gathering sold at once, which the caller gives to the player (slot 0xf8 with
+    /// 1, [`crate::turn`]'s `give_load`).
+    pub sold: f32,
+    /// Out: the unit's animation stops (`FUN_141161850`: its `+0x7b8` 0).
+    pub anim_stopped: bool,
+}
+
+/// What an update asks of the caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Next {
+    /// Nothing.
+    Stay,
+    /// `set_state(8)`: the drop site search, then the walk there
+    /// ([`GatherAction::set_drop`]).
+    Drop,
+    /// The update returned 1 (state 1): the action list removes the Gather, whose teardown lets
+    /// its targets go.
+    Done,
+    /// `set_state(6)` on a target not built yet (state below 2): the unit's build command on it
+    /// (slot 0x380 forced, `FUN_14120d410`; the caller's, after the update), which replaces the
+    /// Gather.
+    Build,
+    /// `set_state(3)` or its 10 seconds past, or `set_state(0xf3)`: the caller posts the unit
+    /// AI's notify 0x202 (the gather action `0x261`, the target type, the drop site: the second
+    /// target, else the one `FUN_1411671e0` finds, 0 for none, −1 for a master without drop
+    /// sites).
+    Search,
+    /// State 0xf2's walk ended (`0x140a8e1d0` case 0xf1): the caller reseeds the farm
+    /// ([`crate::turn::Turns::reseed`], `FUN_140a8aa60`, which sends the gatherer to build it);
+    /// without a reseed (the interface's event 0x7f, 0x9c for a gatherer not a villager, when it
+    /// has a farm spot) a walk that arrived leaves a computer player's gatherer done
+    /// (`set_state(1)`), a human's idle (`set_state(2)`), and a failed walk idles both
+    /// ([`GatherAction::after_reseed`]).
+    Reseed {
+        /// The walk arrived (codes 1, 2 and 5), else it failed (code 3).
+        arrived: bool,
+    },
+}
+
+#[cfg(test)]
+mod tests;

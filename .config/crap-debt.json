@@ -164,9 +164,9 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/gather.rs",
+      "file": "crates/engine/genie-core/src/gather/update.rs",
       "function": "GatherAction::update",
-      "line": 1062,
+      "line": 56,
       "cyclomatic": 41.0,
       "coverage": 49.152542372881356,
       "crap": 261.9914353463596,
