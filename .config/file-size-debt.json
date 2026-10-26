@@ -32,7 +32,6 @@
   "crates/engine/genie-core/src/turn/unit.rs": 8084,
   "crates/engine/genie-core/src/turn/view.rs": 3036,
   "crates/engine/genie-core/src/turn/world.rs": 2085,
-  "crates/engine/genie-core/src/unit_ai.rs": 9151,
   "crates/engine/genie-core/src/visibility.rs": 1235,
   "crates/engine/genie-core/src/world_player.rs": 871,
   "crates/formats/genie-dat/src/de.rs": 1903,

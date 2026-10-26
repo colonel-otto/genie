@@ -1,0 +1,491 @@
+//! A unit AI's construction, its order and target, its patrol and its moves.
+
+use crate::GenieError;
+use crate::movement::PathAsk;
+use crate::rng::Well512;
+use crate::unit_ai::{
+    ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, ATTACK_MOVE, AiMove, BOAR_AI, CLASS_KING,
+    COMPUTER_SOLDIER_IDLE_TIMEOUT, DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP,
+    HUNTED_IDLE_TIMEOUT, Home, Hunted, IDLE_TIMEOUT, LION_IDLE_TIMEOUT, MOVE_ACTION, MOVE_ORDER,
+    Memory, NewObject, ORDER_HISTORY, OrderRecord, PATROL, PATROL_TURN_REACH, PRIEST_IDLE_TIMEOUT,
+    SIEGE_IDLE_TIMEOUT, SOLDIER_AI, SOLDIER_IDLE_TIMEOUT, Surroundings, TOWER_AI,
+    TOWER_IDLE_TIMEOUT, UnitAi, UnitSeen, UnitSide, adjusted_idle_timeout, notify_capacity,
+    siege_stance, soldier_stance,
+};
+
+impl UnitAi {
+    /// The unit AI of `ai_type` a new object gets, as `FUN_141215560`'s constructors make it
+    /// (the factory `FUN_141215a90` picks among them; the types 3, 6 and 7 only a load makes);
+    /// None for any other type, which gets none. `UnitAIModule`'s constructor (`0x140c2e080`)
+    /// draws three AI-stream values, in this order: the last retarget time `r % 500`, the
+    /// adjusted idle timeout `r % 1500 + 2250` and the retarget timer `750 + r % 500`; it sets
+    /// the stance (`+0x1a9`) to 3 and the state position to the object's place. Then each
+    /// type's own constructor:
+    ///
+    /// - 2, the hunted animal (`FUN_140c11920`, [`HUNTED_CARED`]): its idle timeout 4000
+    ///   (`FUN_140c41bc0`, whose slot 0x1a8 `FUN_140c17170` makes the adjusted one 5/4 of it
+    ///   without a draw), its origin (the object's place) and leash ([`NewObject::hunt_range`]);
+    ///   the king's (class 59) stance 0, the others' stays 3.
+    /// - 3 (`TribePreditorUnitAIModule`, `FUN_140c11da0`), 0xa (the trade ship's,
+    ///   `FUN_140c12ab0`), 0xb (the transport ship's, `FUN_140c12c30`), 0xc (the fishing ship's,
+    ///   `FUN_140c11860`, the base's `+0x1e8` 7), 0x11 (the building's, `FUN_140c11470`,
+    ///   [`BUILDING_CARED`]), 0x12 (the siege tower's, `FUN_140c11fb0`) and 8 (the civilian's,
+    ///   `FUN_140c115d0`, [`CIVILIAN_CARED`], the base's `+0x1e8` 7): stance 0.
+    /// - 4, the boar (`FUN_140c11720`): stance 0, its origin the object's place, not furious.
+    /// - 5, the lion (`FUN_140c11bd0`, [`LION_CARED`]; the world's `+0x6b4` of 1 adds four
+    ///   classes): stance 0, its idle timeout 6000 and a fourth draw (slot 0x1a8,
+    ///   `0x140c41e00`).
+    /// - 6 and 7 (`TribeRangedUnitAIModule`, `FUN_140c11f80`, `FUN_140c11f50`): the base's.
+    /// - 9, the priest (`FUN_140c11e30`): stance 1, its idle timeout 500 and a fourth draw.
+    /// - 0xd, the soldier (`FUN_140c12300`, [`SOLDIER_CARED`]; a computer player's adds 10): its
+    ///   idle timeout 500 (a computer player's 1500) and a fourth draw, then its stance
+    ///   ([`soldier_stance`]).
+    /// - 0xe, the artifact (`FUN_140c11340`, [`ARTIFACT_CARED`]): stance 0, its idle timeout
+    ///   5000 and a fourth draw.
+    /// - 0xf, the tower (`FUN_140c12960`, [`TOWER_CARED`]): stance 0, its idle timeout 1000 and
+    ///   a fourth draw.
+    /// - 0x10, the siege unit (`FUN_140c12040`): its stance ([`siege_stance`]), its idle timeout
+    ///   1000 and a fourth draw.
+    /// - 0x13, livestock (`FUN_140c11d70`): stance 1.
+    ///
+    /// [`ARTIFACT_CARED`]: crate::unit_ai::ARTIFACT_CARED
+    /// [`BUILDING_CARED`]: crate::unit_ai::BUILDING_CARED
+    /// [`CIVILIAN_CARED`]: crate::unit_ai::CIVILIAN_CARED
+    /// [`HUNTED_CARED`]: crate::unit_ai::HUNTED_CARED
+    /// [`LION_CARED`]: crate::unit_ai::LION_CARED
+    /// [`SOLDIER_CARED`]: crate::unit_ai::SOLDIER_CARED
+    /// [`TOWER_CARED`]: crate::unit_ai::TOWER_CARED
+    #[must_use]
+    pub fn constructed(ai_type: u32, new: &NewObject, ai: &mut Well512) -> Option<Self> {
+        if !matches!(ai_type, 2..=0x13) {
+            return None;
+        }
+        let mut made = Self::base_constructed(ai_type, new.position, ai);
+        match ai_type {
+            2 => {
+                made.set_idle_timeout(HUNTED_IDLE_TIMEOUT, ai);
+                made.hunted = Some(Hunted {
+                    origin: new.position,
+                    leash: new.hunt_range,
+                });
+                if new.class == CLASS_KING {
+                    made.stance = 0;
+                }
+            }
+            BOAR_AI => {
+                made.stance = 0;
+                made.home = Some(Home {
+                    origin: new.position,
+                    furious: false,
+                    go_home: false,
+                });
+            }
+            5 => {
+                made.stance = 0;
+                made.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
+            }
+            // the base's stance 3
+            6 | 7 => {}
+            9 => {
+                made.stance = 1;
+                made.set_idle_timeout(PRIEST_IDLE_TIMEOUT, ai);
+            }
+            SOLDIER_AI => {
+                let timeout = if new.computer {
+                    COMPUTER_SOLDIER_IDLE_TIMEOUT
+                } else {
+                    SOLDIER_IDLE_TIMEOUT
+                };
+                made.set_idle_timeout(timeout, ai);
+                made.stance = soldier_stance(new);
+            }
+            ARTIFACT_AI => {
+                made.stance = 0;
+                made.set_idle_timeout(ARTIFACT_IDLE_TIMEOUT, ai);
+            }
+            TOWER_AI => {
+                made.stance = 0;
+                made.set_idle_timeout(TOWER_IDLE_TIMEOUT, ai);
+            }
+            0x10 => {
+                made.stance = siege_stance(new);
+                made.set_idle_timeout(SIEGE_IDLE_TIMEOUT, ai);
+            }
+            0x13 => made.stance = 1,
+            // 3, 8, 0xa, 0xb, 0xc, 0x11 and 0x12
+            _ => made.stance = 0,
+        }
+        Some(made)
+    }
+
+    /// `UnitAIModule`'s constructor (`0x140c2e080`): its three draws, the base's fields, the
+    /// stance (`+0x1a9`) 3 of the two bytes at `+0x1a8` (0x300) and the state position the
+    /// object's place.
+    pub(super) fn base_constructed(ai_type: u32, position: [f32; 3], ai: &mut Well512) -> Self {
+        let last_retarget_time = ai.rand15() % 500;
+        let adjusted_idle_timeout = adjusted_idle_timeout(IDLE_TIMEOUT, ai);
+        let retarget_timer = 750 + ai.rand15() % 500;
+        Self {
+            ai_type,
+            current_order: -1,
+            order_priority: -1,
+            current_action: -1,
+            current_target: -1,
+            target_type: -1,
+            target_point: [-1.0; 3],
+            desired_distance: DESIRED_DISTANCE,
+            defend_target: -1,
+            last_order: -1,
+            last_action: -1,
+            last_target: -1,
+            last_target_type: -1,
+            idle_timer: 0,
+            adjusted_idle_timeout,
+            idle_timeout: IDLE_TIMEOUT,
+            secondary_timer: 750,
+            look_around_timer: 0,
+            look_around_timeout: 1000,
+            last_retarget_time,
+            retarget_timer,
+            stance: 3,
+            // the constructor's word at +0x1d4 (0x140c2e080)
+            formation_type: 0,
+            // the object's place
+            state_position: [position[0], position[1]],
+            retarget_disabled: 0,
+            alert_mode: false,
+            time_since_enemy: 0.0,
+            patrol_path: None,
+            patrol_waypoint: 0,
+            stop_after_kill: false,
+            home: None,
+            hunted: None,
+            last_update_time: 0,
+            orders: Vec::new(),
+            building_orders: Vec::new(),
+            notifies: Vec::new(),
+            notify_capacity: notify_capacity(ai_type, 0),
+            processing: false,
+            buffered: Vec::new(),
+            commanded: false,
+            attackers: Vec::new(),
+            order_history: Vec::new(),
+            retries: Vec::new(),
+            best_this_update: -1,
+        }
+    }
+
+    /// `FUN_140c42320` for each retarget entry an attack search's `bestUnitToAttack` added
+    /// ([`Found::retries`]): it joins the end of the entries.
+    pub fn add_retries(&mut self, found: &Found) {
+        self.retries.extend(found.retries.iter().flatten());
+    }
+
+    /// The memory `bestUnitToAttack` reads ([`Memory`]).
+    #[must_use]
+    pub fn memory(&self) -> Memory<'_> {
+        Memory {
+            retries: &self.retries,
+            history: &self.order_history,
+        }
+    }
+
+    /// `FUN_140c42080` once the world holds the target (the callers' `FUN_1415417a0`; an order on
+    /// a point records nothing): the order joins the history first, a ninth recycling the
+    /// oldest ([`ORDER_HISTORY`]).
+    pub fn remember_order(&mut self, record: OrderRecord) {
+        self.order_history.insert(0, record);
+        self.order_history.truncate(ORDER_HISTORY);
+    }
+
+    /// The full update's start (`0x140c66b10`): its retarget entries by the world's objects
+    /// (`seen`, [`UnitSide::seen_unit`]): a target the world no longer holds or below 1 hit point
+    /// (`COMISS`, a NaN stays) empties them all; otherwise one whose time (`timeout`) is not past
+    /// `now` stays and the others go, in order.
+    ///
+    /// # Errors
+    ///
+    /// What the world's lookup does not model.
+    pub fn expire_retries(
+        &mut self,
+        now: u32,
+        seen: &mut dyn FnMut(i32) -> Result<Option<UnitSeen>, GenieError>,
+    ) -> Result<(), GenieError> {
+        let mut i = 0;
+        while i < self.retries.len() {
+            let (target, timeout) = self.retries[i];
+            if seen(target)?.is_none_or(|u| u.hp < 1.0) {
+                self.retries.clear();
+                break;
+            }
+            if now < timeout {
+                i += 1;
+            } else {
+                let _ = self.retries.remove(i);
+            }
+        }
+        Ok(())
+    }
+
+    /// `FUN_140c41bc0`: the idle timeout (`+0x168`) is `timeout`, then slot 0x1a8 redraws the
+    /// adjusted one ([`UnitAi::update_adjusted_idle_timeout`]).
+    pub(super) fn set_idle_timeout(&mut self, timeout: u32, ai: &mut Well512) {
+        self.idle_timeout = timeout;
+        self.update_adjusted_idle_timeout(ai);
+    }
+
+    /// What an order (INTERACT, MOVE, RETREAT) does to each of its units' AI before it runs
+    /// (`FUN_140e6cfc0`): the patrol path goes (`FUN_140c68de0`: `+0x1c0`, its waypoint `+0x1c8`
+    /// 0); an adjusted idle timeout of 750 or more is redrawn
+    /// (`UpdateAdjustedIdleTimeout`, unit-AI slot 53, `0x140c41e00`), and the secondary timer is
+    /// capped at 750.
+    pub fn reset_for_order(&mut self, ai: &mut Well512) {
+        self.zero_patrol();
+        if self.adjusted_idle_timeout > 749 {
+            self.update_adjusted_idle_timeout(ai);
+        }
+        self.secondary_timer = self.secondary_timer.min(750);
+    }
+
+    /// `zeroPatrolInformation` (`FUN_140c68de0`): the saved patrol goes and its waypoint is 0.
+    pub fn zero_patrol(&mut self) {
+        self.patrol_path = None;
+        self.patrol_waypoint = 0;
+    }
+
+    /// `savePatrolInformation` (`FUN_140c63d20`): the saved patrol goes; the unit's slot 0x468
+    /// gives the new one and its waypoint (0 without one).
+    pub(super) fn save_patrol(&mut self, side: &dyn UnitSide) {
+        let (path, waypoint) = side.patrol_information().unzip();
+        self.patrol_path = path;
+        self.patrol_waypoint = waypoint.unwrap_or(0);
+    }
+
+    /// `restorePatrolInformation` (`FUN_140c5e5b0`): without a saved patrol, false. Else the unit
+    /// walks it on ([`Effect::RestorePatrol`]); a unit in no group (the world's
+    /// `FUN_14152ff40`) takes the patrol order back, the attack move's (733) when it attack-moves
+    /// (`+0x7fb`), else 711 (leaving the other one redraws an adjusted idle timeout of exactly
+    /// 750, slot 0x1a8); the secondary timer is 750. True.
+    pub(super) fn restore_patrol(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> bool {
+        if self.patrol_path.is_none() {
+            return false;
+        }
+        fx.push(Effect::RestorePatrol);
+        if at.group.is_none() {
+            let (order, other) = if at.attack_moving {
+                (ATTACK_MOVE, PATROL)
+            } else {
+                (PATROL, ATTACK_MOVE)
+            };
+            if self.current_order == other && self.adjusted_idle_timeout == 750 {
+                self.update_adjusted_idle_timeout(ai);
+            }
+            self.current_order = order;
+        }
+        self.secondary_timer = 750;
+        true
+    }
+
+    /// What a `MoveTo`'s update in state 3 (`0x140aa2a70`) reads of its unit's AI for the path
+    /// it asks (`ai`, None for a unit without one), the unit at `at` and the `MoveTo`'s point
+    /// `point` (x, y): without an AI a unit in range asks anyway and the attack move stays
+    /// (`param_10` 2). With one, on a patrol order (711, 733) the path loops; the saved patrol, if
+    /// any, gives the waypoint to walk on from and its back and forth (`getPatrolLinear`) and goes
+    /// (`zeroPatrolInformation`); else the path goes back and forth when the point is at least 3
+    /// from the unit (`COMISS`, `SETBE`: a NaN distance is). The attack move is on order 733, off
+    /// on any other, as it was while a saved patrol is still held.
+    #[must_use]
+    pub fn path_ask(ai: Option<&mut Self>, at: [f32; 2], point: [f32; 2]) -> PathAsk {
+        let Some(ai) = ai else {
+            return PathAsk {
+                ends_in_range: false,
+                ..PathAsk::default()
+            };
+        };
+        let patrolling = matches!(ai.current_order, PATROL | ATTACK_MOVE);
+        let mut ask = PathAsk {
+            ends_in_range: !patrolling,
+            ..PathAsk::default()
+        };
+        if patrolling {
+            ask.patrol = true;
+            if let Some(saved) = ai.patrol_path.as_ref() {
+                ask.resume = ai.patrol_waypoint;
+                ask.back_and_forth = saved.flags & 2 != 0;
+                ai.zero_patrol();
+            } else {
+                let (dx, dy) = (point[0] - at[0], point[1] - at[1]);
+                let d = crate::fmath::sqrt(dy * dy + dx * dx);
+                ask.back_and_forth = crate::fmath::at_most_or_unordered(PATROL_TURN_REACH, d);
+            }
+        }
+        ask.attack_move = ai
+            .patrol_path
+            .is_none()
+            .then_some(ai.current_order == ATTACK_MOVE);
+        ask
+    }
+
+    /// `UpdateAdjustedIdleTimeout` (slot 0x1a8): the base draws around the idle timeout
+    /// (`0x140c41e00`); a deer's or fox's (factory type 2, `FUN_140c17170`) is 5/4 of it.
+    pub(super) fn update_adjusted_idle_timeout(&mut self, ai: &mut Well512) {
+        self.adjusted_idle_timeout = if self.ai_type == 2 {
+            self.idle_timeout.wrapping_mul(5) >> 2
+        } else {
+            adjusted_idle_timeout(self.idle_timeout, ai)
+        };
+    }
+
+    /// The order setter with its history ([`UnitAi::set_order_with`] with 1).
+    pub(crate) fn set_order(&mut self, order: i32, ai: &mut Well512) {
+        self.set_order_with(order, true, ai);
+    }
+
+    /// The order setter (`FUN_140c64b60`): leaving a patrol order (711, 733) redraws an adjusted
+    /// idle timeout of exactly 750 (slot 0x1a8) and caps the secondary timer at 750, the
+    /// compare signed (`0x2ee < (int)+0x16c`); with `history` (its third argument) the order
+    /// before becomes the last (`+0x64`), else the last stays; then the order.
+    pub(crate) fn set_order_with(&mut self, order: i32, history: bool, ai: &mut Well512) {
+        let leaving = |o| self.current_order == o && order != o;
+        if leaving(PATROL) || leaving(ATTACK_MOVE) {
+            if self.adjusted_idle_timeout == 750 {
+                self.update_adjusted_idle_timeout(ai);
+            }
+            if 750 < self.secondary_timer as i32 {
+                self.secondary_timer = 750;
+            }
+        }
+        if history {
+            self.last_order = self.current_order;
+        }
+        self.current_order = order;
+    }
+
+    /// The end of a Build whose AI holds queued orders (`0x140ab0370` case 0xdf): no order and no
+    /// action (`FUN_140c64b60` with −1 and 1, `FUN_140c64b50` with −1); leaving a patrol order
+    /// caps the secondary timer ([`UnitAi::cap_patrol_secondary`]); the redraw of an adjusted
+    /// idle timeout of exactly 750 (slot 0x1a8, the AI stream's) is not modelled here.
+    pub const fn end_order_and_action(&mut self) -> Result<(), GenieError> {
+        if self.patrol_redraws() {
+            return Err(GenieError::unsupported(
+                "the end of a Build on a patrol order",
+            ));
+        }
+        self.cap_patrol_secondary();
+        self.last_order = self.current_order;
+        self.current_order = -1;
+        self.set_action(-1);
+        Ok(())
+    }
+
+    /// `FUN_140c64b50`.
+    pub(crate) const fn set_action(&mut self, action: i32) {
+        self.last_action = self.current_action;
+        self.current_action = action;
+    }
+
+    /// `FUN_140c64c10`: the target and its class become the last ones (`+0x6c`, `+0x70`), the
+    /// target takes `id` and the point (`+0x50`..`+0x58`); the class (`+0x4c`) is the master's
+    /// of the object the world holds under `id` (`FUN_1415417a0`; `class`), else it stays.
+    pub(crate) const fn target_at(&mut self, id: i32, class: Option<i32>, point: [f32; 3]) {
+        self.last_target = self.current_target;
+        self.last_target_type = self.target_type;
+        self.current_target = id;
+        self.target_point = point;
+        if let Some(class) = class {
+            self.target_type = class;
+        }
+    }
+
+    /// `FUN_140c64be0`: the target, its class and its point.
+    pub(crate) const fn set_target(&mut self, target: i32, class: i32, point: [f32; 3]) {
+        self.last_target = self.current_target;
+        self.last_target_type = self.target_type;
+        self.target_type = class;
+        self.target_point = point;
+        self.current_target = target;
+    }
+
+    /// The work command's notify of its new action (`FUN_14106e4e0`, object slot 0x828): the unit
+    /// AI takes the order and action values of the action's type, and the target with its class
+    /// (None for a point) and the order's point (`FUN_140c64b60`, `FUN_140c64b50`,
+    /// `FUN_140c64be0`); then, when `clears`, `FUN_140c64e50` clears the notifies with time 0
+    /// (`FUN_140c5dc10`; for a unit of type 70 or more only with its `+0xa14`, which is 1 but
+    /// inside slot 0x128's work command, where INTERACT passes 1 and the queued order on a target
+    /// 0). The order history (`FUN_140c42080`) is not held.
+    pub fn notify_work(
+        &mut self,
+        order: i32,
+        action: i32,
+        target: Option<(i32, i32)>,
+        point: [f32; 3],
+        clears: bool,
+        ai: &mut Well512,
+    ) -> Result<(), GenieError> {
+        self.set_order(order, ai);
+        self.set_action(action);
+        let (id, class) = target.unwrap_or((-1, -1));
+        self.set_target(id, class, point);
+        if clears {
+            self.clear_notifies(0)?;
+        }
+        Ok(())
+    }
+
+    /// MOVE's notify (`FUN_140e67800`): a unit that took the move as a `MoveTo` (`moved`) gets the
+    /// move order and action and forgets its target (`FUN_140c4dcb0`); every unit then takes the
+    /// target (None for a point) and the order's point on the ground (`FUN_140c64be0`).
+    pub fn notify_move(
+        &mut self,
+        moved: bool,
+        target: Option<(i32, i32)>,
+        point: [f32; 2],
+        ai: &mut Well512,
+    ) {
+        if moved {
+            self.set_order(MOVE_ORDER, ai);
+            self.set_action(MOVE_ACTION);
+            self.forget_targets();
+        }
+        let (id, class) = target.unwrap_or((-1, -1));
+        self.set_target(id, class, [point[0], point[1], 0.0]);
+    }
+
+    /// MOVE's notify to a unit that took its cell of the grid (`FUN_140e67800`): the move order
+    /// (`FUN_140c64b60`) and action (`FUN_140c64b50`), then no target and the cell on the ground
+    /// (`FUN_140c64be0`); the target it had becomes its last as [`UnitAi::set_target`] does.
+    pub fn notify_grid_move(&mut self, cell: [f32; 2], ai: &mut Well512) {
+        self.set_order(MOVE_ORDER, ai);
+        self.set_action(MOVE_ACTION);
+        self.set_target(-1, -1, [cell[0], cell[1], 0.0]);
+    }
+
+    /// The AI's move (slot 0x130, `FUN_140c55620`): with `force` or no action value, the unit takes
+    /// it (its slot 0x340, which the caller runs), and the AI holds the move action and the point
+    /// without a target (`FUN_140c64c10` with −1, which leaves the target class). The game
+    /// changes the AI only on slot 0x340's 1: the caller's slot 0x340 is `FUN_1410866e0`, which
+    /// always gives 1, but for classes 51 and 54 (`FUN_141216c50`, their packing), which it
+    /// does not run.
+    pub(super) const fn move_to(&mut self, m: AiMove) -> Option<AiMove> {
+        if !m.force && self.current_action != -1 {
+            return None;
+        }
+        self.set_action(MOVE_ACTION);
+        // FUN_140c64c10 with -1: the world holds no object -1
+        self.target_at(-1, None, m.point);
+        Some(m)
+    }
+
+    /// `FUN_140c41e50`: the unit's last human order time drops to `FUN_140fe0d10`'s 5000, not on
+    /// orders 701, 711, 712 and 733.
+    pub(super) fn cap_human_order(&self, fx: &mut Vec<Effect>) {
+        if !matches!(self.current_order, 0x2bd | 0x2c7 | 0x2c8 | 0x2dd) {
+            fx.push(Effect::CapHumanOrder(HUMAN_ORDER_CAP));
+        }
+    }
+}

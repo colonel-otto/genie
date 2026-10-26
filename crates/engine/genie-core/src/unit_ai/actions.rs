@@ -1,0 +1,491 @@
+//! The actions' outcomes, the stops and the order queue.
+
+use crate::GenieError;
+use crate::rng::Well512;
+use crate::unit_ai::{
+    ATTACK_MOVE, AiMove, CLASS_18, ENDED_ACTIONS, Effect, GO_ON, MOVE_ACTION, Notify, PATROL,
+    PRODUCED, QueuedOrder, Surroundings, UnitAi, UnitSide, WALK_BACK, point_gap_squared,
+};
+
+impl UnitAi {
+    /// The base handler's case `0x1f9` ("Action %d has failed.", `FUN_140c589c0`): with an order
+    /// the state position takes the unit's place first; on the scout order (`0x2da`) the
+    /// player's slot 0x2e8 with `0x211` is not modelled. A failed attack (600) on the attack order
+    /// (700) or with the attack action current runs processIdle (slot 0x240 with 0,
+    /// [`UnitAi::process_idle`]): an action it produced breaks off (0xd), none makes a human
+    /// player's unit forget its target and stop (slot 0xb0 with 1). Without an
+    /// order, the failure of the current action forgets the target (`FUN_140c5e1e0`) and stops
+    /// it (slot 0xb0 with 1; slot 0x48 hands the notify to the owner, not held); with one, so
+    /// does the failure of the order's own action (action + 100 = order); on order `0x2d4` a
+    /// failed `0x262` forgets the target and ends the order too (slot 0xb0 with 0), on `0x2bd`
+    /// the action value goes (the last action takes it); any other failed attack forgets the
+    /// target and stops; the rest go on.
+    pub(super) fn action_failed(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
+        if order != -1 {
+            self.state_position = [at.position[0], at.position[1]];
+            if order == crate::ai_kinds::ORDER_SCOUT {
+                return Err(GenieError::unsupported(
+                    "a failed action on the scout order (the player's slot 0x2e8 with 0x211)",
+                ));
+            }
+        }
+        if p0 == 600 && (order == 700 || action == 600) {
+            let produced = self.process_idle(at, computer, ai, side, fx)?;
+            if produced {
+                return Ok(PRODUCED);
+            }
+            if computer {
+                return Err(GenieError::unsupported(
+                    "a computer player's failed attack without a new action",
+                ));
+            }
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        let own = if order == -1 {
+            action == p0
+        } else {
+            action + 100 == order
+        };
+        if own {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        match (order, p0) {
+            (0x2d4, 0x262) => {
+                self.remove_target();
+                self.stop_current(false, at, fx)?;
+                return Ok(GO_ON);
+            }
+            (0x2bd, 0x262) => {
+                self.set_action(-1);
+                return Ok(GO_ON);
+            }
+            _ => {}
+        }
+        if p0 == 600 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// The base handler's case `0x1fb` ("Action %d has been invalidated.", `FUN_140c589c0`): an
+    /// attack (600) invalidated on the attack order (700) or with `0x202` retargets: with
+    /// retargeting off (`+0x1d6`) a target still in the world breaks off (not modelled), else
+    /// processIdle (slot 0x240 with 0, [`UnitAi::process_idle`]; the building's handler never
+    /// passes the notify on). Unless it is 5 the notify goes on; with 5 a human player's unit
+    /// forgets its target (`FUN_140c5e1e0`) and stops (slot 0xb0 with 1); a computer player's
+    /// tests (slot 0x130) are not modelled. Without an order, the invalidation of the current
+    /// action forgets the target and stops it (slot 0xb0 with 1; then slot 0x48 hands the notify
+    /// to the owner, not held); with one, so does the invalidation of the order's own action
+    /// (action + 100 = order); order `0x2d4` and `0x2bd` on action `0x262` are not modelled; any
+    /// other invalidated attack forgets the target and stops; the rest go on.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn action_invalidated(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
+        if (order == 700 || n.p[2] == 0x202) && p0 == 600 {
+            if self.retarget_disabled != 0 {
+                return Err(GenieError::unsupported(
+                    "an invalidated attack with retargeting off (+0x1d6)",
+                ));
+            }
+            let produced = self.process_idle(at, computer, ai, side, fx)?;
+            if produced {
+                return Ok(GO_ON);
+            }
+            if computer {
+                return Err(GenieError::unsupported(
+                    "a computer player's invalidated attack (slot 0x130)",
+                ));
+            }
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        let own = if order == -1 {
+            action == p0
+        } else {
+            if matches!(order, 0x2d4 | 0x2bd) && p0 == 0x262 {
+                return Err(GenieError::unsupported(
+                    "an invalidated action 0x262 on order 0x2d4 or 0x2bd",
+                ));
+            }
+            action + 100 == order
+        };
+        if own || p0 == 600 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// The base handler's case `0x1fa` (`FUN_140c589c0`): with an order, or in a group with a
+    /// command (`+0x3a8`), the state position takes the unit's place. Without an order, a
+    /// completion of the current action (or of an attack) stops it. On the attack order 700 an
+    /// attack's completion ("I have an attack order and my attack action has completed.") runs
+    /// processIdle (slot 0x240 with 0): when it produced an action the processing breaks (0xd),
+    /// else the target goes and the action stops, ending the order (slot 0xb0 with 0). With
+    /// another order, the completion of the order's own action (action + 100 = order) stops it,
+    /// and so do an attack's; order 724 and 701 end their move, 712 a heal's.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn action_completed(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let p1 = n.p[0];
+        let order = self.current_order;
+        let action = self.current_action;
+        if order != -1 || at.group.is_some_and(|g| g.commanded) {
+            self.state_position = [at.position[0], at.position[1]];
+        }
+        if order == -1 {
+            if action == p1 || p1 == 600 {
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+            }
+            return Ok(GO_ON);
+        }
+        if order == 700 && p1 == 600 {
+            if self.process_idle(at, computer, ai_rng, side, fx)? {
+                return Ok(PRODUCED);
+            }
+            self.remove_target();
+            self.stop_current(false, at, fx)?;
+            return Ok(GO_ON);
+        }
+        if action == p1 && action + 100 == order {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        match (order, p1) {
+            (0x2d4, MOVE_ACTION) => {
+                self.remove_target();
+                self.stop_current(false, at, fx)?;
+                return Ok(GO_ON);
+            }
+            (0x2bd, MOVE_ACTION) => {
+                self.set_action(-1);
+                return Ok(GO_ON);
+            }
+            (0x2c8, MOVE_ACTION) if action == 0x2bf => {
+                self.set_action(-1);
+                return Ok(GO_ON);
+            }
+            _ => {}
+        }
+        if p1 == 600 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// `FUN_140b43f30` on the attackers (`+0xc0`, count `+0xc8`): a binary search of the sorted
+    /// set; an id not in it goes into its place (the array grows by `capacity * 103 / 64 + 1`,
+    /// Vec's own growth here) and the call answers true, one already in it answers false.
+    pub(crate) fn add_attacker(&mut self, id: i32) -> bool {
+        match self.attackers.binary_search(&id) {
+            Ok(_) => false,
+            Err(i) => {
+                self.attackers.insert(i, id);
+                true
+            }
+        }
+    }
+
+    /// `FUN_140c5e1e0`: the target becomes the last one, and none (its point −1).
+    pub(crate) const fn remove_target(&mut self) {
+        if self.current_target != -1 {
+            self.last_target = self.current_target;
+            self.last_target_type = self.target_type;
+            self.current_target = -1;
+            self.target_type = -1;
+            self.target_point = [-1.0; 3];
+        }
+    }
+
+    /// Slot 0xb0 (`FUN_140c64ed0`), stopping the current action: it becomes the last action; with
+    /// `keep_order` false or an action of the order (action + 100 = order) the order ends too
+    /// (its priority with it), the state position taking the unit's place but for class 18. Then
+    /// the unit's stopAction (slot 0x3c0), no action, and `+0x1a8` cleared. A patrol order (711,
+    /// 733) ends however `keep_order` stands, its secondary timer capped; the redraw of an
+    /// adjusted idle timeout of exactly 750 (the AI stream's) is not modelled here.
+    pub(super) fn stop_current(
+        &mut self,
+        keep_order: bool,
+        at: &Surroundings,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        self.stop_with(
+            keep_order,
+            Some(([at.position[0], at.position[1]], at.class)),
+            fx,
+        )
+    }
+
+    /// [`UnitAi::stop_current`] with the unit's position and master's class (`place`), which only
+    /// an order the stop ends reads (None: the caller knows it does not end one).
+    pub(crate) fn stop_with(
+        &mut self,
+        keep_order: bool,
+        place: Option<([f32; 2], i16)>,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        let action = self.current_action;
+        let order = self.current_order;
+        if self.patrol_redraws() {
+            return Err(GenieError::unsupported("a stop on a patrol order"));
+        }
+        self.last_action = action;
+        if !keep_order || action + 100 == order || matches!(order, PATROL | ATTACK_MOVE) {
+            self.cap_patrol_secondary();
+            self.last_order = order;
+            self.current_order = -1;
+            self.order_priority = -1;
+            let (position, class) = place.ok_or(GenieError::unsupported(
+                "a stop ending an order without the unit's place",
+            ))?;
+            if class != CLASS_18 {
+                self.state_position = position;
+            }
+        }
+        fx.push(Effect::Stop);
+        self.current_action = -1;
+        self.stop_after_kill = false;
+        Ok(())
+    }
+
+    /// `FUN_140c4dcb0` ("Forgetting current target"): the last target (`+0x6c`, `+0x70`) and the
+    /// current one (`+0x48`, `+0x4c`) go, the target point with them. Its only other line is the
+    /// debug log behind `DAT_143f0900d`, which changes no state.
+    pub(crate) const fn forget_targets(&mut self) {
+        self.last_target = -1;
+        self.last_target_type = -1;
+        self.current_target = -1;
+        self.target_type = -1;
+        self.target_point = [-1.0; 3];
+    }
+
+    /// `FUN_140c5e7d0`, the walk back to the state position: a unit more than a tile from it
+    /// (the squared footprint gap, `FUN_140a847c0`, against [`WALK_BACK`]; `COMISS` then `JNC`,
+    /// so a gap that is not a number walks) moves there at its own height within [`WALK_BACK`],
+    /// forced and running (the unit's slot 0x340, which the caller runs: it takes the move but
+    /// for classes 51 and 54, whose slot `FUN_141216c50` the caller does not model). On the
+    /// move the action value becomes the move's (`0x262`, the old one the last); the target
+    /// stays. The move gives the unit its `MoveTo` at once: the update's later checks see it
+    /// busy. True when it walks.
+    pub(super) fn walk_back(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> bool {
+        let gap = point_gap_squared(self.state_position, at.position, at.size);
+        if !crate::fmath::below_or_unordered(WALK_BACK, gap) {
+            return false;
+        }
+        let [x, y] = self.state_position;
+        fx.push(Effect::Move(AiMove {
+            point: [x, y, at.position[2]],
+            range: WALK_BACK,
+            force: true,
+            walk: false,
+        }));
+        self.set_action(MOVE_ACTION);
+        self.commanded = true;
+        true
+    }
+
+    /// The reset at the full update once the unit's actions ended (the unit's slot 0x430 false):
+    /// an action value of [`ENDED_ACTIONS`] goes; `0x2bf` of stance 2 also sets the state
+    /// position.
+    pub(super) fn reset_ended_action(&mut self, at: &Surroundings) {
+        if ENDED_ACTIONS.contains(&self.current_action) {
+            if self.current_action == 0x2bf && self.stance == 2 {
+                self.state_position = [at.position[0], at.position[1]];
+            }
+            self.current_action = -1;
+        }
+    }
+
+    /// The order check of a unit that is not busy: an order of these values the unit can give up
+    /// (`FUN_140c4eea0` with 0) ends, its target removed (`FUN_140c5e1e0`), the patrol order 733
+    /// resetting its timers ([`UnitAi::leave_patrol_timers`]); its priority and the last order
+    /// stay. The patrol order 711 is not among them.
+    pub(super) fn check_order(&mut self, at: &Surroundings, ai: &mut Well512) {
+        let ends = matches!(
+            self.current_order,
+            0x269 | 700 | 0x2c5 | 0x2c6 | 0x2c9 | 0x2cf | 0x2d0 | 0x2dd | 0x322
+        );
+        if ends && self.can_order(at, false) {
+            self.remove_target();
+            self.leave_patrol_timers(ai);
+            self.current_order = -1;
+        }
+    }
+
+    /// On a patrol order (711, 733) with an adjusted idle timeout of exactly 750: leaving the
+    /// order redraws it (slot 0x1a8), which draws from the AI stream.
+    pub(super) const fn patrol_redraws(&self) -> bool {
+        matches!(self.current_order, PATROL | ATTACK_MOVE) && self.adjusted_idle_timeout == 750
+    }
+
+    /// The rest of leaving a patrol order (711, 733) once the redraw is not due
+    /// ([`UnitAi::patrol_redraws`]): the secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
+    pub(super) const fn cap_patrol_secondary(&mut self) {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) && 750 < self.secondary_timer as i32 {
+            self.secondary_timer = 750;
+        }
+    }
+
+    /// What leaving a patrol order (711, 733) does to the timers wherever the game sets the
+    /// order by hand: an adjusted idle timeout of exactly 750 is redrawn (slot 0x1a8) and the
+    /// secondary timer is capped at 750 (`0x2ee < (int)+0x16c`).
+    pub(super) fn leave_patrol_timers(&mut self, ai: &mut Well512) {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            if self.adjusted_idle_timeout == 750 {
+                self.update_adjusted_idle_timeout(ai);
+            }
+            if 750 < self.secondary_timer as i32 {
+                self.secondary_timer = 750;
+            }
+        }
+    }
+
+    /// `FUN_140c4eea0`: a unit takes orders unless its master has a task of action type 0x99
+    /// (`FUN_1415c60b0`) and its target exists in the world (`FUN_1415417a0` on `+0x48`) or it
+    /// has an action value (`+0x44`). With `task_only` (its second argument, which the full
+    /// update and `FUN_140c68980` pass as 0 and only the slot 4 of `FUN_140c2bd20` as 1) a unit
+    /// that passes the test takes orders only with that task.
+    pub(super) const fn can_order(&self, at: &Surroundings, task_only: bool) -> bool {
+        if at.task_0x99 && (at.target.is_some() || self.current_action != -1) {
+            return false;
+        }
+        !task_only || at.task_0x99
+    }
+
+    /// The unit AI between its owner's turns (`FUN_140c68980`, from `RGE_Combat_Object::update`
+    /// for a unit of a type below 70 or not inside another): with no notifies queued, a unit
+    /// without an action value or with an action it may interrupt (slot 0x2d0) runs its order
+    /// queue. Its effects, as the full update's; `side` answers what the orders ask of the unit,
+    /// `computer` is its owner's type and `ai` the AI stream.
+    ///
+    /// # Errors
+    ///
+    /// What an order's slot does not model.
+    pub fn off_turn(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        computer: bool,
+        ai: &mut Well512,
+    ) -> Result<Vec<Effect>, GenieError> {
+        let mut fx = Vec::new();
+        if !self.notifies.is_empty() || self.orders.is_empty() {
+            return Ok(fx);
+        }
+        if (self.current_action != -1 || at.busy) && !at.interruptible {
+            return Ok(fx);
+        }
+        if self.can_order(at, false) {
+            self.run_orders(at, side, computer, ai, &mut fx)?;
+        }
+        Ok(fx)
+    }
+
+    /// Slot 0x28 (`FUN_140c55c90`, every type's; slot 0x30 jumps to it), an order for the
+    /// queue: a unit in a state above 2 takes none (false), an order of kind −1 neither (true);
+    /// an order that is not immediate goes into the queue (`FUN_140c42640`: before the first
+    /// queued order when `in_front`, else after the last). An immediate one, which keeps or drops
+    /// the current order and runs the queue at once, is not modelled.
+    pub fn queue_order(
+        &mut self,
+        unit_state: u8,
+        order: QueuedOrder,
+        immediate: bool,
+        in_front: bool,
+    ) -> Result<bool, GenieError> {
+        if 2 < unit_state {
+            return Ok(false);
+        }
+        if order.order == -1 {
+            return Ok(true);
+        }
+        if immediate {
+            // the immediate branch is [`UnitAi::order_now`], which reads the unit's id and place
+            // and gives effects; [`UnitAi::take_order_now`] is its entry
+            return Err(GenieError::unsupported(
+                "an immediate order for the unit AI's queue",
+            ));
+        }
+        self.insert_order(order, in_front);
+        Ok(true)
+    }
+
+    /// `FUN_140c4dfa0`: an order in the queue is not ready (its `+0x2c` is 0).
+    #[must_use]
+    pub fn has_unready_order(&self) -> bool {
+        self.orders.iter().any(|o| !o.ready)
+    }
+
+    /// The order queue (`FUN_140c5d790`): while the AI has an action, an order below priority
+    /// 100 waits; each order runs through slot 0x230 ([`UnitAi::process_order`] with the unit's
+    /// `at`, `side` and owner's type `computer`, the AI stream `ai`): one that is not ready (0xe)
+    /// stays and the next is tried, any other result removes it, and 1 (taken) ends the queue's
+    /// turn.
+    ///
+    /// # Errors
+    ///
+    /// What an order's slot does not model.
+    pub fn run_orders(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        computer: bool,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        let mut k = 0;
+        while k < self.orders.len() {
+            if self.current_action != -1 && self.orders[k].priority < 100 {
+                return Ok(());
+            }
+            let order = self.orders[k];
+            let r = self.process_order(&order, Some((at, &mut *side, computer)), None, ai, fx)?;
+            if r == 0xe {
+                k += 1;
+                continue;
+            }
+            // the game removes the order only while k is inside the queue: slot 0x230 may have
+            // shrunk it (FUN_140c5de60)
+            if k < self.orders.len() {
+                let _ = self.orders.remove(k);
+            }
+            if r == 1 {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+}

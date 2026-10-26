@@ -1,0 +1,460 @@
+//! A unit's answers to damage and attackers, to a unit in its way and to being sent off;
+//! the explorers' search.
+
+use crate::GenieError;
+use crate::rng::Well512;
+use crate::unit_ai::{
+    ATTACK_ACTION, ATTACK_MOVE, AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, AiMove, AttackAsk, BREAK,
+    DEAD, EXPLORE_ACTION, Effect, FOUNDATION_ORDER, GO_ON, MOVE_ACTION, MOVE_ASIDE_ACTION,
+    NEVER_KILLED, Named, Notify, ORDER_ON_TARGET, PATROL, PREY_CLASS, Pick, QueuedOrder,
+    RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide, VILLAGER_CLASS,
+    alert_owner, closest_undiscovered_tile, top_target_after,
+};
+
+impl UnitAi {
+    /// The base handler's damage case (`FUN_140c589c0`, cases 500 and a missile's warning, 0x20f:
+    /// "I took some damage from Unit #%d"), the attacker `n.caller`:
+    ///
+    /// 1. The retarget entries go (`+0x1d8` 0). An attacker already in the set (`FUN_140bf4cb0`)
+    ///    of a unit whose top action has a target (slot 400) changes nothing (2).
+    /// 2. The owner hears the notify (slot 0x48: slot 0x40, `FUN_140c55b80`, its slot 0x2e8) and
+    ///    the unit's group only logs it (`FUN_141027d60`); the owner's alert 0x201
+    ///    ([`alert_owner`]); the attacker joins the set (`FUN_140b43f30`) and the unit is under
+    ///    attack (`FUN_14119d2d0` with 1). At no hit points left ("I'm dead, I give up.") the
+    ///    owner's alert 0x209, the notifies end (`FUN_140c5dc10`) and it returns 4.
+    /// 3. It ignores (2) an attacker the world no longer holds or of a player its owner counts as
+    ///    its own or an ally. A new attacker that is not its target makes a human player's unit
+    ///    outside a group that is not idle ask for help (`AskForHelp`, [`UnitAi::ask_for_help`]).
+    ///    It ignores (2): its attack on the attacker; a human player's unit's order other than
+    ///    the patrols (711, 733), or its group that is not idle; a computer player's unit on the
+    ///    explore order (0x2c1) attacked by another player than Gaia.
+    /// 4. `bestUnitToAttack` once per update ([`UnitAi::best_this_update`], `+0x1d0`): from the
+    ///    current target's place (slot 0x520) while the world holds it, else its own; no
+    ///    reference distance, no idle check, no path checks, the attacker as its extra object,
+    ///    any class, no attack work state. With none and no target, order or action: a unit that
+    ///    does not move (its top speed below [`STILL`]) ignores it (2), another runs from its
+    ///    attackers (slot 0x160 with 1, [`UnitAi::run_away`]): 3 when it moves, else 2. Anything
+    ///    but the attacker is ignored (2).
+    /// 5. Its reach to the attacker within its weapon range (slot 0x3d0 with slot 0x230). Without
+    ///    a current target the world holds: reached, it attacks back ([`UnitAi::strike_back`]);
+    ///    else off the move action it runs from its attackers; 3 either way. With one: not
+    ///    reached, 2; a human player's unit attacks back from a building, wall or tower target
+    ///    (classes 3, 27, 52; 3), else 2.
+    /// 6. A computer player's unit ignores it (2) on a wonder target (master 276), a tower
+    ///    attacked by a tower (class 52), a missile attacker (type 60), and a tower attacker
+    ///    under its owner's `disableTowerPriority` but for a siege weapon, unpacked trebuchet or
+    ///    warship (classes 13, 54, 22). Then ([`UnitSide::duel`]) a target that cannot convert it
+    ///    (its slot 0x1b8 with 1) but cannot harm it either (its attacks' sum, slot 0x228, or its
+    ///    damage to the unit, the unit's slot 0x220, exactly 0) makes it ask for help and attack
+    ///    back; and then still, as long as the target cannot convert it, an attacker that would
+    ///    die sooner (its hit points over the unit's damage to it, [`NEVER_KILLED`] for none:
+    ///    `COMISS`, `JA`) or could convert it makes it attack back. It returns 2.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn damaged(
+        &mut self,
+        n: Notify,
+        time: u32,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let attacker_id = n.caller;
+        let known = self.attackers.binary_search(&attacker_id).is_ok();
+        self.retries.clear();
+        if known && top_target_after(fx, side)?.is_some() {
+            return Ok(GO_ON);
+        }
+        // slot 0x48's notify and the alert 0x201 reach the same owner
+        alert_owner(computer)?;
+        let _ = self.add_attacker(attacker_id);
+        side.set_under_attack(true);
+        if n.p[1] < 1 {
+            self.end_notifies(time, at, fx)?;
+            return Ok(DEAD);
+        }
+        let Some(attacker) = Self::world_object(attacker_id, at, side)? else {
+            return Ok(GO_ON);
+        };
+        if attacker.allied {
+            return Ok(GO_ON);
+        }
+        // `IsIdle` (FUN_141017ad0) of the unit's group, read at the handler's start
+        let held_by_group = at.group.is_some_and(|g| !g.idle);
+        if !known && !computer && self.current_target != attacker_id && !held_by_group {
+            self.ask_for_help(attacker_id, at, computer, side)?;
+        }
+        if self.ignores_attacker(&attacker, attacker_id, computer, held_by_group) {
+            return Ok(GO_ON);
+        }
+        let current = if self.current_target == -1 {
+            None
+        } else {
+            Self::world_object(self.current_target, at, side)?
+        };
+        if self.best_this_update == -1 {
+            self.best_against(attacker_id, current.as_ref(), at, computer, side)?;
+        }
+        if self.best_this_update == -1
+            && self.current_target == -1
+            && self.current_order == -1
+            && self.current_action == -1
+        {
+            // "BUTA returned -1 and I'm idle without a target": COMISS, JBE (a NaN runs)
+            if at.speed < STILL {
+                return Ok(GO_ON);
+            }
+            let ran = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            return Ok(if ran { BREAK } else { GO_ON });
+        }
+        if self.best_this_update != attacker_id {
+            return Ok(GO_ON);
+        }
+        self.answer_attacker(&attacker, current, at, computer, ai_rng, side, fx)
+    }
+
+    /// [`UnitAi::damaged`]'s step 3 after the call for help: true when the unit ignores
+    /// `attacker` (`attacker_id`): its attack on it already; a human player's unit's order other
+    /// than the patrols (711, 733), or its group that is not idle (`held_by_group`); a computer
+    /// player's unit on the explore order (0x2c1) attacked by another player than Gaia.
+    pub(super) const fn ignores_attacker(
+        &self,
+        attacker: &UnitSeen,
+        attacker_id: i32,
+        computer: bool,
+        held_by_group: bool,
+    ) -> bool {
+        if self.current_action == ATTACK_ACTION && self.current_target == attacker_id {
+            return true;
+        }
+        if !computer && !matches!(self.current_order, -1 | PATROL | ATTACK_MOVE) {
+            return true;
+        }
+        if !computer && held_by_group {
+            return true;
+        }
+        computer && self.current_order == crate::ai_kinds::ORDER_EXPLORE && attacker.owner != 0
+    }
+
+    /// [`UnitAi::damaged`]'s step 4's search, `bestUnitToAttack` into
+    /// [`UnitAi::best_this_update`]: from the `current` target's place while the world holds it,
+    /// else its own; no reference distance, no idle check, no path checks, `attacker_id` as its
+    /// extra object, any class, no attack work state.
+    pub(super) fn best_against(
+        &mut self,
+        attacker_id: i32,
+        current: Option<&UnitSeen>,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+    ) -> Result<(), GenieError> {
+        let from = current.map_or(at.position, |t| t.position);
+        let (classes, radius) = self.search_area(at, computer)?;
+        let found = side.closest(&Search {
+            at: [from[0], from[1]],
+            radius,
+            classes,
+            size: at.size,
+            pick: Pick::Attack {
+                lowest: if at.scenario && !computer { 2 } else { 0 },
+                seeker: self.seeker(at),
+                ask: AttackAsk {
+                    distance: 0.0,
+                    idle: false,
+                    paths: false,
+                    extra: Some(attacker_id),
+                    any_class: true,
+                    work_state: false,
+                },
+            },
+            memory: self.memory(),
+        })?;
+        self.add_retries(&found);
+        self.attack_search_alert(found, computer)?;
+        self.best_this_update = found.id;
+        Ok(())
+    }
+
+    /// [`UnitAi::damaged`]'s step 5, for the `attacker` `bestUnitToAttack` gave: its reach within
+    /// the weapon range. Without a `current` target the world holds: reached, it attacks back;
+    /// else off the move action it runs from its attackers; 3 either way. With one: not reached,
+    /// 2; a human player's unit attacks back from a building, wall or tower target (classes 3,
+    /// 27, 52; 3), else 2; a computer player's unit weighs it ([`UnitAi::computer_weighs`]).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn answer_attacker(
+        &mut self,
+        attacker: &UnitSeen,
+        current: Option<UnitSeen>,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let attacker_id = attacker.id;
+        let reaches = side.reaches(attacker_id, at.weapon_range)?;
+        let Some(target) = current else {
+            if reaches {
+                return self.strike_back(attacker_id, at, ai_rng, side, fx);
+            }
+            if self.current_action != MOVE_ACTION {
+                let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
+            }
+            return Ok(BREAK);
+        };
+        if !reaches {
+            return Ok(GO_ON);
+        }
+        if !computer {
+            if matches!(target.class, 3 | 27 | 52) {
+                return self.strike_back(attacker_id, at, ai_rng, side, fx);
+            }
+            return Ok(GO_ON);
+        }
+        self.computer_weighs(attacker, &target, at, ai_rng, side, fx)
+    }
+
+    /// The damage case's end for a computer player's unit ([`UnitAi::damaged`]'s step 6) that
+    /// reaches `attacker` while the world holds its current `target`.
+    pub(super) fn computer_weighs(
+        &mut self,
+        attacker: &UnitSeen,
+        target: &UnitSeen,
+        at: &Surroundings,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let attacker_id = attacker.id;
+        if target.master == crate::turn::WONDER
+            || (target.class == 52 && attacker.class == 52)
+            || attacker.kind == 60
+            || (attacker.class == 52
+                && !matches!(at.class, 13 | 54 | 22)
+                && at.disable_tower_priority)
+        {
+            return Ok(GO_ON);
+        }
+        let t = side.duel(target.id)?;
+        // "my current target cannot damage me": UCOMISS, JP, JNZ (exactly 0)
+        if (t.attacks == 0.0 || t.harms == 0.0) && !t.converts {
+            if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+                self.save_patrol(side);
+            }
+            self.ask_for_help(attacker_id, at, true, side)?;
+            if self.attack_slot(attacker_id, true, at, side, fx)? {
+                self.leave_patrol_timers(ai_rng);
+                self.current_order = -1;
+            }
+        }
+        let target_time = if 0.0 < t.harmed {
+            t.hp / t.harmed
+        } else {
+            NEVER_KILLED
+        };
+        let a = side.duel(attacker_id)?;
+        let attacker_time = if 0.0 < a.harmed {
+            a.hp / a.harmed
+        } else {
+            NEVER_KILLED
+        };
+        // "my current target will take longer to kill"
+        if !t.converts && (attacker_time < target_time || a.converts) {
+            let _ = self.strike_back(attacker_id, at, ai_rng, side, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// The damage case's attack back on `attacker` (`FUN_140c589c0`): a unit on a patrol order
+    /// (711, 733) saves its patrol first (`savePatrolInformation`, [`UnitAi::save_patrol`]);
+    /// `AttackObject` (slot 0xb8, any: [`UnitAi::attack_slot`]); when it takes, a patrol order
+    /// lets its timers go ([`UnitAi::leave_patrol_timers`]) and the order is −1. It answers 3.
+    pub(super) fn strike_back(
+        &mut self,
+        attacker: i32,
+        at: &Surroundings,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        if matches!(self.current_order, PATROL | ATTACK_MOVE) {
+            self.save_patrol(side);
+        }
+        if self.attack_slot(attacker, true, at, side, fx)? {
+            self.leave_patrol_timers(ai_rng);
+            self.current_order = -1;
+        }
+        Ok(BREAK)
+    }
+
+    /// The base handler's case 0x215 ([`IN_THE_WAY`]): a unit not of a boar's master (class 10
+    /// of combat level 1, `FUN_140fde4f0`) attacks the unit in its way (`AttackObject`, slot
+    /// 0xb8, forced, its slot 0xa0 unforced: [`UnitAi::attack_slot`]) when the world's table
+    /// holds it, retargeting is on (`+0x1d6` 0), its stance (`+0x1a9`) is 0 and it has no order;
+    /// the other unit's group (`+0x6d0`), which would let it attack with one, the slice does not
+    /// hold. Processing goes on.
+    ///
+    /// [`IN_THE_WAY`]: crate::unit_ai::IN_THE_WAY
+    pub(super) fn in_the_way(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let boar = at.class == 10 && at.combat_level == 1;
+        if !boar
+            && at.unit(n.p[0]).is_some()
+            && self.retarget_disabled == 0
+            && self.current_order == -1
+            && self.stance == 0
+        {
+            // slot 0xb8 forced, by the type
+            let _ = self.attack_slot(n.p[0], false, at, side, fx)?;
+        }
+        Ok(GO_ON)
+    }
+
+    /// The base handler's case 0x216 ([`SENT_OFF`]): the closest spot beside the foundation's
+    /// footprint (`FUN_1411566b0` with the notify's radii, 0) takes the unit's move off it (slot
+    /// 0x148 forced, range 0, walking unless it is prey: the unit's slot 0x340, then the action
+    /// value 0x2bf, the old one the last). A human player's villager whose current action has a
+    /// target then queues the foundation's order in front (`FUN_140c42640` with 1: order 0x2de,
+    /// priority 100, ready) and the work on that target behind (0x2db); the orders' points are
+    /// the objects' slot 0x520 vectors' first two parts (x and the height) and 0, as the game
+    /// passes them. Processing goes on.
+    ///
+    /// [`SENT_OFF`]: crate::unit_ai::SENT_OFF
+    pub(super) fn sent_off(
+        &mut self,
+        n: Notify,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let radius = [n.p[0] as f32 / RADIUS_SCALE, n.p[1] as f32 / RADIUS_SCALE];
+        let off = side.off_footprint(n.p[2], radius)?;
+        if let Some([x, y]) = off.spot {
+            let _ = self.move_aside(
+                AiMove {
+                    point: [x, y, off.z],
+                    range: 0.0,
+                    force: true,
+                    walk: off.class != PREY_CLASS,
+                },
+                fx,
+            );
+        }
+        if !off.computer
+            && off.class == VILLAGER_CLASS
+            && let (Some(site), Some(target)) = (off.site, off.action_target)
+        {
+            let order = |o: &Named, order: i32| QueuedOrder {
+                issuer: off.player,
+                order,
+                priority: 100,
+                target: o.id,
+                target_owner: o.owner,
+                point: [o.vector[0], o.vector[1], 0.0],
+                range: 0.0,
+                shown: o.vector,
+                ready: true,
+                target_type: o.master,
+            };
+            self.insert_order(order(&site, FOUNDATION_ORDER), true);
+            self.insert_order(order(&target, ORDER_ON_TARGET), false);
+        }
+        Ok(GO_ON)
+    }
+
+    /// Slot 0x148 (`FUN_140c4d0d0`), the move off a footprint: with its force flag (`m.force`)
+    /// or without an action value, the unit's slot 0x340 takes the move with the same
+    /// arguments ([`Effect::MoveAside`], which the caller runs after the update); on its 1 the
+    /// action value becomes [`MOVE_ASIDE_ACTION`], the old one the last, and the target stays.
+    /// The caller's slot 0x340 is `FUN_1410866e0`, which always gives 1, but for classes 51 and
+    /// 54 (`FUN_141216c50`, their packing), which it does not run. The move gives the unit its
+    /// `MoveTo` at once: the update's later checks see it busy. True when it moves.
+    pub(super) fn move_aside(&mut self, m: AiMove, fx: &mut Vec<Effect>) -> bool {
+        if !m.force && self.current_action != -1 {
+            return false;
+        }
+        fx.push(Effect::MoveAside(m));
+        self.set_action(MOVE_ASIDE_ACTION);
+        self.commanded = true;
+        true
+    }
+
+    /// The action values of an explorer (the base handler's case 0x202): 605, 623 and 630, and
+    /// the auto scout's `0x2bd`.
+    pub(super) const fn explorer(&self) -> bool {
+        let a = self.current_action;
+        let k = a.wrapping_sub(EXPLORE_ACTION) as u32;
+        (k < 0x1a && (0x204_0001u32 >> (k & 0x1f)) & 1 != 0) || a == AUTO_SCOUT_ACTION
+    }
+
+    /// The base handler's case 0x202 for an explorer ("I'm an explorer, looking for the closest
+    /// undiscovered tile."): on the auto scout's action, with the player's scout map never made
+    /// (`player+0x1370`), the search around the town centre (`FUN_140c65490`), else the unit AI's
+    /// slot 0x90 (`FUN_140c4bd40`), both from its unit ([`UnitSide::seek_unexplored`]); then slot
+    /// 0x100 with 1 to the point ([`UnitAi::explore_at`]), the explore's action value becomes the
+    /// last and the action value comes back; processing breaks. "Couldn't find any tiles.": on
+    /// the auto scout order its last search ([`UnitSide::seek_beyond_sight`]) sends the auto scout
+    /// to its point the same way (slot 0x100 with 1; the last action stays) and processing breaks;
+    /// with no point left the player's scout map is made from the tiles it sees and the notify
+    /// posted to the owner (nothing for a human player), [`UnitSide::make_scout_map`]; with the
+    /// map made the search about the town centre is skipped and the last search reads the map.
+    /// On the scout order (`0x2da`) the player's slot 0x2e8
+    /// with `0x211` is not modelled; on any other the unit AI forgets its target
+    /// (`FUN_140c5e1e0`) and stops (slot 0xb0 with 1; slot 0x48 hands the notify to the owner,
+    /// not held; the interface's flag a last auto scout order sets is not the sim's) and
+    /// processing goes on. The other explorers' search is not modelled.
+    pub(super) fn seek_unexplored(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai_rng: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let action = self.current_action;
+        if action != AUTO_SCOUT_ACTION {
+            closest_undiscovered_tile()?;
+        }
+        if let Some([x, y]) = side.seek_unexplored(self, ai_rng)? {
+            let _ = self.explore_at(x, y, true, fx);
+            self.last_action = self.current_action;
+            self.current_action = action;
+            return Ok(BREAK);
+        }
+        match self.current_order {
+            crate::ai_kinds::ORDER_SCOUT => Err(GenieError::unsupported(
+                "a scout that finds no undiscovered tile (the player's slot 0x2e8 with 0x211)",
+            )),
+            AUTO_SCOUT_ORDER => {
+                let Some([x, y]) = side.seek_beyond_sight(ai_rng)? else {
+                    // the player's scout map, from the tiles it sees; on the auto scout's action
+                    // the AI's slot 0x40 hands the notify to the owner (slot 0x2e8 with 0x202,
+                    // FUN_14162dab0: no case for it but the old short pather's hulled area, a
+                    // computer player's AI would hear it); processing breaks
+                    side.make_scout_map()?;
+                    if computer && self.current_action == AUTO_SCOUT_ACTION {
+                        return Err(GenieError::unsupported(
+                            "a computer player's AI told its scout found nothing (0x202)",
+                        ));
+                    }
+                    return Ok(BREAK);
+                };
+                if self.current_action == AUTO_SCOUT_ACTION {
+                    let _ = self.explore_at(x, y, true, fx);
+                }
+                self.current_action = action;
+                Ok(BREAK)
+            }
+            _ => {
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+                Ok(GO_ON)
+            }
+        }
+    }
+}

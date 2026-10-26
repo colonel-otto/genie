@@ -1,0 +1,318 @@
+//! The idle checks of the boar, the hunted animals and the lions.
+
+use crate::GenieError;
+use crate::rng::Well512;
+use crate::unit_ai::{
+    AI_MOVE_RANGE, AiMove, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW, BOAR_OFFSET, BOAR_STEP,
+    BOAR_WANDER, CLASS_KING, EVADE_REACH, Effect, Found, HUNTED_CARED, HUNTED_HOME,
+    HUNTED_SIGHT_GROWTH, HUNTED_STEP, KING_UNLED, LION_CARED, LION_IDLE_TIMEOUT,
+    LION_SIGHT_DIVISOR, LION_SIGHT_SHARE, Memory, Pick, Search, Surroundings, UnitAi, UnitSide,
+    point_gap_squared,
+};
+
+impl UnitAi {
+    /// The boar's idle check (slot 72, `FUN_140c1e630`): `FUN_140c41e50` first
+    /// ([`UnitAi::cap_human_order`]). A furious boar, or any in mode 1, stays. Then one draw of
+    /// `0..81` widens its leash: outside it, a boar not yet heading home goes home; inside, once
+    /// in 7 checks (a second draw) it goes home from more than 2 tiles away, or wanders up to 3
+    /// tiles (two more draws). Its moves keep its height. True when it produced an action (6, not
+    /// 5): every way but staying and the 6 in 7 checks inside the leash that do nothing,
+    /// including the one heading home already.
+    pub(super) fn boar_idle(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        fx: &mut Vec<Effect>,
+    ) -> bool {
+        self.cap_human_order(fx);
+        let (produced, moved) = self.boar_wander(at, ai);
+        fx.extend(moved.map(Effect::Move));
+        produced
+    }
+
+    /// [`UnitAi::boar_idle`] past its cap: whether it produced an action, and its move.
+    pub(super) fn boar_wander(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+    ) -> (bool, Option<AiMove>) {
+        let Some(home) = self.home else {
+            return (false, None);
+        };
+        if home.furious || at.mode_1 {
+            return (false, None);
+        }
+        let [x, y, z] = at.position;
+        let dx = x - home.origin[0];
+        let dy = y - home.origin[1];
+        let d2 = dy * dy + dx * dx;
+        let leash = ai.below(BOAR_LEASH_DRAW) as i32 as f32 + BOAR_LEASH;
+        let go_home = AiMove {
+            point: [home.origin[0], home.origin[1], z],
+            range: AI_MOVE_RANGE,
+            force: true,
+            walk: true,
+        };
+        if home.go_home {
+            let m = self.move_to(go_home);
+            if let Some(h) = self.home.as_mut() {
+                h.go_home = false;
+            }
+            return (true, m);
+        }
+        // comiss; jbe: unordered counts as inside
+        if d2.partial_cmp(&leash) != Some(std::cmp::Ordering::Greater) {
+            if !ai.rand15().is_multiple_of(BOAR_WANDER) {
+                return (false, None);
+            }
+            if d2 > BOAR_HOME {
+                return (true, self.move_to(go_home));
+            }
+            let step = |ai: &mut Well512| (ai.rand15() % BOAR_STEP) as i32 - BOAR_OFFSET;
+            let nx = step(ai) as f32 + x;
+            let ny = step(ai) as f32 + y;
+            return (
+                true,
+                self.move_to(AiMove {
+                    point: [nx, ny, z],
+                    ..go_home
+                }),
+            );
+        }
+        if self.target_point[0] == home.origin[0] || self.target_point[1] == home.origin[1] {
+            return (true, None);
+        }
+        (true, self.move_to(go_home))
+    }
+
+    /// The hunted animal's idle check (slot 72, `FUN_140c1eea0`). `FUN_140c41e50` first
+    /// ([`UnitAi::cap_human_order`]). A king (class 59) does nothing more (5) unless it is a
+    /// computer player's, not of master 704, not inside another and without an order: then its
+    /// unit's slot 0x7e8 on `FUN_140c16930`'s object, which is not modelled. Beyond its leash
+    /// (squared, from the unit's footprint, `FUN_140a847c0`) it goes home. Then its search: with
+    /// nothing found, one draw; once in 7 it goes home from more than 2 tiles away, else once in
+    /// 7 (the same draw) it wanders, two more draws; mode 1's herd is not modelled. A found object
+    /// it evades ([`UnitAi::evade`]). Its moves keep its height and come within 0.5, forced and
+    /// walking. True when it moved (6), false for 5.
+    /// `FUN_140c63e20`'s alert after a search with its argument 4 set (`ClosestObject`'s, 1 at every
+    /// call probed): enemies found set the alert mode and start the time since the last sighting
+    /// again (past 10 seconds it would tell the owner first, slot 0x2e8 with notify 0x210, which
+    /// the slice does not hold); none clear the alert mode. A search that read the last answer
+    /// leaves it.
+    pub(crate) const fn alert(&mut self, found: Found, _dt: f32) {
+        if !found.fresh {
+            return;
+        }
+        self.alert_mode = found.enemies;
+        if found.enemies {
+            self.time_since_enemy = 0.0;
+        }
+    }
+
+    /// The hunted animal's evade of the object its search found (`FUN_140c1eea0`): from its
+    /// place away from the object by three times its speed (slot 0x208; one tile more in mode 1,
+    /// not here), at its height, through `evasiveMoveTo` (slot 0x150, [`UnitAi::evasive_move`])
+    /// with arguments 5 and 6 1 and 0 (`[RSP+0x20]`, `[RSP+0x28]`): an object on its own point
+    /// gives coordinates that are not numbers, which become its own place plus or minus one;
+    /// the point is held on the map and the unit moves there. True (6).
+    pub(super) fn evade(
+        &mut self,
+        at: &Surroundings,
+        other: [f32; 3],
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, GenieError> {
+        let [x, y, z] = at.position;
+        let reach = at.speed * EVADE_REACH;
+        let (dx, dy) = (other[0] - x, other[1] - y);
+        let d = crate::fmath::sqrt(dy * dy + dx * dx);
+        let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
+        let _ = self.evasive_move(point, (true, false), at, ai, side, fx)?;
+        Ok(true)
+    }
+
+    pub(super) fn hunted_idle(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, GenieError> {
+        self.cap_human_order(fx);
+        if at.class == CLASS_KING {
+            let led =
+                at.master != KING_UNLED && !at.garrisoned && self.current_order == -1 && computer;
+            if led {
+                return Err(GenieError::unsupported(
+                    "a computer player's king's idle check (FUN_140c16930, slot 0x7e8)",
+                ));
+            }
+            return Ok(false);
+        }
+        self.hunted_wander(at, ai, side, fx)
+    }
+
+    /// [`UnitAi::hunted_idle`] for an animal that is not a king: its move, if any.
+    pub(super) fn hunted_wander(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, GenieError> {
+        let h = self.hunted.ok_or(GenieError::unsupported(
+            "a hunted animal without its origin",
+        ))?;
+        let [x, y, z] = at.position;
+        let go_home = AiMove {
+            point: [h.origin[0], h.origin[1], z],
+            range: AI_MOVE_RANGE,
+            force: true,
+            walk: true,
+        };
+        let leash = h.leash * h.leash;
+        if 0.0 < leash {
+            let gap = point_gap_squared([h.origin[0], h.origin[1]], at.position, at.size);
+            if leash < gap {
+                fx.extend(self.move_to(go_home).map(Effect::Move));
+                return Ok(true);
+            }
+        }
+        if at.mode_1 {
+            return Err(GenieError::unsupported(
+                "a hunted animal's idle check in mode 1 (its herd)",
+            ));
+        }
+        let sight = at.los + HUNTED_SIGHT_GROWTH;
+        let radius = if sight <= at.search_radius {
+            at.search_radius
+        } else {
+            sight
+        };
+        let found = side.closest(&Search {
+            at: [x, y],
+            radius,
+            classes: &HUNTED_CARED,
+            size: at.size,
+            pick: Pick::Closest {
+                group: -1,
+                relation: -1,
+                state: -1,
+                master: -1,
+                workers: -1,
+                spared: -1,
+                reach: true,
+            },
+            memory: Memory::default(),
+        })?;
+        self.alert(found, at.dt_seconds);
+        if found.id != -1 {
+            let other = found
+                .position
+                .ok_or(GenieError::unsupported("a found object without its place"))?;
+            return self.evade(at, other, ai, side, fx);
+        }
+        let r = ai.rand15();
+        if r.is_multiple_of(BOAR_WANDER) {
+            let dx = x - h.origin[0];
+            let dy = y - h.origin[1];
+            if HUNTED_HOME < dy * dy + dx * dx {
+                fx.extend(self.move_to(go_home).map(Effect::Move));
+                return Ok(true);
+            }
+            let step = |ai: &mut Well512| {
+                let n = (ai.rand15() % (2 * HUNTED_STEP as u32)) as i32;
+                if HUNTED_STEP <= n {
+                    n - 2 * HUNTED_STEP
+                } else {
+                    n + 1
+                }
+            };
+            let sx = step(ai) as f32;
+            let sy = step(ai) as f32;
+            let wander = self.move_to(AiMove {
+                point: [x + sx, sy + y, z],
+                ..go_home
+            });
+            fx.extend(wander.map(Effect::Move));
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// The lion's idle check (slot 72, `FUN_140c1fb70`, factory type 5: wolves, bears).
+    /// `FUN_140c41e50` first ([`UnitAi::cap_human_order`]); its idle timeout becomes 6000,
+    /// redrawn (`FUN_140c41bc0`, slot 0x1a8: one draw). Its search looks for an enemy villager
+    /// (class 4) in state 2, then for any enemy in state 2, from the same place (the second reads
+    /// the first's answer). A found one within its reach (the footprints' squared gap,
+    /// `FUN_14118f8c0`, against the reach squared) it attacks (`AttackObject`, slot 0xb8, not
+    /// forced, [`UnitAi::attack_object`]): the reach is its line of sight, outside mode 1 half
+    /// of it, or a third of it when it found no villager. The scenario modes' reach (a third by
+    /// a setting's `+0x10` of 4) is not modelled. True (6) once it called `AttackObject`,
+    /// whatever that did; false (5) when it found nothing within its reach.
+    pub(super) fn lion_idle(
+        &mut self,
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<bool, GenieError> {
+        self.cap_human_order(fx);
+        self.set_idle_timeout(LION_IDLE_TIMEOUT, ai);
+        let sight = at.los + HUNTED_SIGHT_GROWTH;
+        let radius = if sight <= at.search_radius {
+            at.search_radius
+        } else {
+            sight
+        };
+        let search = |group| Search {
+            at: [at.position[0], at.position[1]],
+            radius,
+            classes: &LION_CARED,
+            size: at.size,
+            pick: Pick::Closest {
+                group,
+                relation: 2,
+                state: 2,
+                master: -1,
+                workers: -1,
+                spared: -1,
+                reach: true,
+            },
+            memory: Memory::default(),
+        };
+        let mut reach = if at.mode_1 {
+            at.los
+        } else {
+            at.los * LION_SIGHT_SHARE
+        };
+        if at.scenario {
+            return Err(GenieError::unsupported(
+                "a lion's reach in the scenario modes",
+            ));
+        }
+        // each search that queries sets the alert mode (`FUN_140c63e20`)
+        let mut found = side.closest(&search(4))?;
+        self.alert(found, at.dt_seconds);
+        if found.id < 0 {
+            found = side.closest(&search(-1))?;
+            self.alert(found, at.dt_seconds);
+            if !at.mode_1 {
+                reach = at.los / LION_SIGHT_DIVISOR;
+            }
+        }
+        if found.id == -1 {
+            return Ok(false);
+        }
+        let Some(t) = side.seen_unit(found.id)? else {
+            return Ok(false);
+        };
+        if 0.0 <= reach && reach * reach < t.gap_squared {
+            return Ok(false);
+        }
+        let _ = self.attack_object(found.id, false, false, at, side, fx)?;
+        Ok(true)
+    }
+}

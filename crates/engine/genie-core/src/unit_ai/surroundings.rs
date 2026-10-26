@@ -1,0 +1,455 @@
+//! What the unit AI knows of its surroundings: the searches' results, its home, its targets
+//! and what it has seen.
+
+use crate::GenieError;
+use crate::fmath::Vec3;
+use crate::unit_ai::{Effect, Search, UnitSide};
+
+/// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
+/// enemies (the fifth relation list), which sets the alert mode when its query ran (`fresh`; a
+/// search that read the last answer leaves the alert mode as it is).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Found {
+    /// The object picked, −1 for none.
+    pub id: i32,
+    /// The lists read hold enemies.
+    pub enemies: bool,
+    /// The object's place (x, y, z), for the caller's use.
+    pub position: Option<[f32; 3]>,
+    /// Its query ran (else it read the last answer).
+    pub fresh: bool,
+    /// `ClosestObject`'s count of the players but Gaia whose objects the lists read hold
+    /// (`DAT_143e6f92c`, `numberDifferentPlayerObjectsVisible`); 0 from the other picks, which
+    /// do not count.
+    pub players: u32,
+    /// What `ClosestObject` writes to its seventh argument: the object's search distance,
+    /// truncated (`CVTTSS2SI`); −1 (`DAT_14330ec20`) without one and from the other picks.
+    pub distance: i32,
+    /// The retarget entries `bestUnitToAttack`'s failed paths add (`FUN_140c42320`: a target and
+    /// the world time until which it is ignored; at most three), the unit AI's.
+    pub retries: [Option<(i32, u32)>; 3],
+}
+
+impl Found {
+    /// Nothing found, no enemies.
+    pub const NONE: Self = Self {
+        id: -1,
+        enemies: false,
+        position: None,
+        fresh: true,
+        players: 0,
+        distance: -1,
+        retries: [None; 3],
+    };
+}
+
+/// The builder's flood of `FUN_140c1c7c0` from tile `at` with reach `r`: the start is tested
+/// first; then each tile it reached, the first queued first, tries its neighbours left, right,
+/// below and above (x − 1, x + 1, y − 1, y + 1) while it lies less than `r − 1` from the start on
+/// both axes, and a neighbour not yet reached is tested and queued. The first tile `test` names
+/// an object on answers it.
+pub fn flood_search(
+    at: (i32, i32),
+    r: i32,
+    mut test: impl FnMut(i32, i32) -> Option<i32>,
+) -> Option<i32> {
+    let (ux, uy) = at;
+    let mut reached = std::collections::HashSet::from([at]);
+    if let Some(id) = test(ux, uy) {
+        return Some(id);
+    }
+    let mut queue = vec![at];
+    let mut next = 0;
+    while let Some(&(qx, qy)) = queue.get(next) {
+        next += 1;
+        if (ux - qx).abs() >= r - 1 || (uy - qy).abs() >= r - 1 {
+            continue;
+        }
+        for (x, y) in [(qx - 1, qy), (qx + 1, qy), (qx, qy - 1), (qx, qy + 1)] {
+            if !reached.insert((x, y)) {
+                continue;
+            }
+            if let Some(id) = test(x, y) {
+                return Some(id);
+            }
+            queue.push((x, y));
+        }
+    }
+    None
+}
+
+/// A search that never runs (units without a search).
+pub const fn no_search(_: &Search<'_>) -> Result<Found, GenieError> {
+    Err(GenieError::unsupported(
+        "a unit AI's search the caller does not answer",
+    ))
+}
+
+/// A boar's part of its unit AI (`TribeElephantUnitAIModule`, factory type 4), which its idle check
+/// reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Home {
+    /// `+0x1f0`..`+0x1f8`, `origin`: the point it wanders around.
+    pub origin: [f32; 3],
+    /// `+0x1fc`, `furious`: it does not wander.
+    pub furious: bool,
+    /// `+0x1fd`: its next idle check sends it home; its slot 0x1f0 (`FUN_140c16d50`) sets it
+    /// after a failed Attack ([`crate::attack::Attack::update`]). Not saved; a loaded boar
+    /// starts without it.
+    pub go_home: bool,
+}
+
+/// What an idle check reads of its unit and the game.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Surroundings {
+    /// The unit's position (`+0x3c8`, `+0x4c8`, `+0x5a8`).
+    pub position: [f32; 3],
+    /// Its hit points (`+0x278`).
+    pub hp: f32,
+    /// Its top speed (slot 0x208, `FUN_141202c70`; 0 for a unit that does not move), the map's
+    /// size in tiles and the world's dt in seconds (`world+0x164`).
+    pub speed: f32,
+    /// The map's size in tiles.
+    pub map: [i32; 2],
+    /// The world's dt in seconds (`world+0x164`).
+    pub dt_seconds: f32,
+    /// The game's setting at `+0x680` (`FUN_140ec0cd0`) is 1: boars stay put.
+    pub mode_1: bool,
+    /// The unit's action list has an action (object slot 0x430, `FUN_14106d0e0`; its slot 0x818,
+    /// `FUN_14106d100`, is 0).
+    pub busy: bool,
+    /// The owner's id (`player+0x718`); Gaia is 0.
+    pub player: usize,
+    /// The unit's master's class (decoded).
+    pub class: i16,
+    /// The master's `combat_level` (`+0x62c`).
+    pub combat_level: u8,
+    /// The master's `attack_priority` (`+0x92c`, `FUN_141202220`).
+    pub attack_priority: u8,
+    /// The master's radii (`+0x5d8`, `+0x5dc`), line of sight (`+0x5d0`) and search radius
+    /// (`+0x794`, the unit's slot 0x2c8).
+    pub size: [f32; 2],
+    /// The master's line of sight (`+0x5d0`).
+    pub los: f32,
+    /// The search radius (`+0x794`, the unit's slot 0x2c8).
+    pub search_radius: f32,
+    /// Slot 0x230 (`FUN_14108d960`): its master's weapon range (`+0x828`).
+    pub weapon_range: f32,
+    /// The unit's slot 0x2d0 with 0 (`FUN_14106d170`): its top action may be interrupted, or it
+    /// has none.
+    pub interruptible: bool,
+    /// The master has a task of action type 0x99 (`FUN_1415c60b0`; the mule cart's): such a
+    /// unit with an action or a target takes no queued order (`FUN_140c4eea0`).
+    pub task_0x99: bool,
+    /// An object of type 70 or more inside another (`+0x2f0`): it runs no queued order.
+    pub garrisoned: bool,
+    /// The unit's state (`+0x640`), type (`+0xf`), `+0x924` and master id.
+    pub state: u8,
+    /// The unit's type (`+0xf`).
+    pub kind: u8,
+    /// Its master has a missile (`+0x83c` 0 or more, `FUN_1410bfca0`).
+    pub ranged: bool,
+    /// Its missiles per volley (`+0xa00`, `FUN_1412136d0`), 0 for a unit without volleys.
+    pub firepower: f32,
+    /// The unit's `+0x924`.
+    pub capture: u8,
+    /// The unit's master.
+    pub master: i16,
+    /// The game mode (the save's `mGameMode`, options `+0x34`) is one of `FUN_141302540`'s:
+    /// Scenario (3), Campaign (4), King of the Hill (5), Co-op Campaign (15).
+    pub scenario: bool,
+    /// The master has a task of action type 0x69 (`FUN_1415c60b0`; the healers'), whose idle
+    /// soldier looks for an ally to heal (`FUN_140c16f00`).
+    pub task_0x69: bool,
+    /// The unit AI's current target as the world's object table holds it (`FUN_1415417a0`),
+    /// `None` when it does not exist or the unit AI has none.
+    pub target: Option<Seen>,
+    /// The unit's `+0x685`, `underAttackValue`.
+    pub under_attack: bool,
+    /// The unit's id (`+8`), which its attackers' unit AIs must target to stay attackers.
+    pub id: i32,
+    /// The unit's slot 0x1f8 (`FUN_14106a6c0`): its animation speed (`+0x7b8`); None while the
+    /// slice does not know it.
+    pub anim_speed: Option<f32>,
+    /// The unit's slot 0x2b0 (`RGE_Action_Object::actionState`): its top action's state, 0
+    /// without one; None for an action the slice does not hold.
+    pub action_state: Option<u8>,
+    /// The unit's slot 0x538 with 9 (`FUN_14106d0c0`): its action list holds an Attack (type
+    /// 9); read with [`Surroundings::action_state`], which tells whether the slice holds the
+    /// list.
+    pub attack_listed: bool,
+    /// The objects the unit AI names besides its target, as the world's object table holds them:
+    /// its attackers ([`UnitAi::attackers`]) and the callers of its queued damage notifies. One
+    /// the table does not hold is absent.
+    ///
+    /// [`UnitAi::attackers`]: crate::unit_ai::UnitAi::attackers
+    pub units: Vec<UnitSeen>,
+    /// The unit's group (`+0x6d0`, the world's `FUN_14152ff40`), when the world holds it: what
+    /// the full update reads of it ([`GroupState`]).
+    pub group: Option<GroupState>,
+    /// Slot 400 (`FUN_14106d090`): its top action's target (`FUN_140a78450`) as the world holds
+    /// it; None without one.
+    pub top_target: Option<TopTarget>,
+    /// Slot 0x240 (`FUN_1410863c0`): its master's least range (`+0x850`).
+    pub min_range: f32,
+    /// The unit's `+0x7fb`, `mAttackMoving`.
+    pub attack_moving: bool,
+    /// Where the unit last moved to (slot 0x520: `+0x824`), as the game's vector (x, height,
+    /// y); an object without movement state, its place.
+    pub moved_at: Vec3,
+    /// Its owner's `chance_to_dodge_missiles` (`player+0xe10`, saved): a ship's handler takes a
+    /// missile's warning (`0x20f`) as damage unless a draw below it dodges.
+    pub dodge_chance: u8,
+    /// Its owner's `chance_for_archers_to_maintain_distance` (`player+0xe11`, saved): a computer
+    /// player's siege unit backs up after a shot on a draw at least this.
+    pub keep_distance_chance: u8,
+    /// Its owner's `disableTowerPriority` (`player+0x620`, GAME 0xb's setting 0xe): a computer
+    /// player's unit but a siege weapon, unpacked trebuchet or warship ignores a tower's damage
+    /// ([`UnitAi::damaged`]).
+    ///
+    /// [`UnitAi::damaged`]: crate::unit_ai::UnitAi::damaged
+    pub disable_tower_priority: bool,
+    /// An object inside it (`+0x2f8`) belongs to another owner that is a computer player: a
+    /// building's or tower's damage alert (0x201) reaches that owner's AI too (its slot 0x2e8,
+    /// then slot 0x3c8, [`alert_owner`]).
+    ///
+    /// [`alert_owner`]: crate::unit_ai::alert_owner
+    pub guest_computer: bool,
+}
+
+/// The target of a unit's top action as its unit AI reads it ([`Surroundings::top_target`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TopTarget {
+    /// `+8`.
+    pub id: i32,
+    /// Its type (`+0xf`).
+    pub kind: u8,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's radii.
+    pub radius: [f32; 2],
+}
+
+/// The target of the unit's top action as the full update stands ([`UnitAi::top_target_live`]).
+///
+/// [`UnitAi::top_target_live`]: crate::unit_ai::UnitAi::top_target_live
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct LiveTop {
+    /// `+8`.
+    pub(super) id: i32,
+    /// Its type (`+0xf`).
+    pub(super) kind: u8,
+    /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
+    pub(super) gap_squared: f32,
+}
+
+/// The idle part's group test (`0x140c67e8f`): no group, or one that is idle (`FUN_141017ad0`) of
+/// a unit that does not move (slot 0x5c8).
+pub(super) fn group_lets_idle(group: Option<GroupState>) -> bool {
+    group.is_none_or(|g| g.idle && !g.member_moving)
+}
+
+/// What the full update (`0x140c66b10`) reads of a unit's group.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GroupState {
+    /// Its current command (`+0x3a8`) is not -1.
+    pub commanded: bool,
+    /// `IsIdle` (`FUN_141017ad0`, [`crate::group::UnitGroup::is_idle`]).
+    pub idle: bool,
+    /// It patrols: its top path's flags bit 0 (`FUN_141017c40`) or its flags bit 11
+    /// (`FUN_141017c30`).
+    pub patrol: bool,
+    /// Its motion moves (`FUN_141046600`).
+    pub moving: bool,
+    /// The unit itself moves (its slot 0x5c8), which the idle part reads with the group.
+    pub member_moving: bool,
+}
+
+impl Surroundings {
+    /// The object `id` among [`Surroundings::units`].
+    #[must_use]
+    pub fn unit(&self, id: i32) -> Option<&UnitSeen> {
+        self.units.iter().find(|u| u.id == id)
+    }
+}
+
+/// An object a unit AI names, as its attackers' upkeep and `ClosestValidAttacker` read it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct UnitSeen {
+    /// `+8`.
+    pub id: i32,
+    /// Its master's class.
+    pub class: i16,
+    /// Its owner's id (`+0x138`, `player+0x718`); Gaia is 0.
+    pub owner: usize,
+    /// Its master's `combat_level` (`+0x62c`).
+    pub combat_level: u8,
+    /// `+0x640`.
+    pub state: u8,
+    /// Its unit AI's current target (`+0x48`); None without a unit AI.
+    pub target: Option<i32>,
+    /// The gap between its footprint and the unit's, squared (`FUN_14118f8c0`).
+    pub gap_squared: f32,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its hit points (`+0x278`).
+    pub hp: f32,
+    /// Its master's id and type (`+0xf`).
+    pub master: i16,
+    /// Its type (`+0xf`).
+    pub kind: u8,
+    /// An annex's main building (`+0xbb8`).
+    pub main: Option<i32>,
+    /// The unit's owner counts its owner as its own or an ally (`FUN_141663d90` with the ally
+    /// flag, [`crate::tasks::allied`]).
+    pub allied: bool,
+}
+
+/// What a computer player's unit weighs of an object on a damage notify ([`UnitAi::damaged`]):
+/// its current target's or its attacker's threat and how long it would take to kill.
+///
+/// [`UnitAi::damaged`]: crate::unit_ai::UnitAi::damaged
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Duel {
+    /// The object may convert the unit (its unit AI's slot 0x1b8 with the unit and 1: a priest's
+    /// [`can_convert`], any other's 0).
+    ///
+    /// [`can_convert`]: crate::unit_ai::can_convert
+    pub converts: bool,
+    /// Its attacks' sum (slot 0x228, `FUN_141084070`: its master's attacks above 0).
+    pub attacks: f32,
+    /// What it deals the unit per hit (the unit's slot 0x220 with it, `FUN_141083f20`).
+    pub harms: f32,
+    /// What the unit deals it per hit (its slot 0x220 with the unit).
+    pub harmed: f32,
+    /// Its hit points (`+0x278`).
+    pub hp: f32,
+}
+
+/// An object as a unit AI's target block reads it: its state (`+0x640`) and type (`+0xf`); as
+/// the follow order reads it (slot 73): its owner, master's class, place (x, y, z), its master's
+/// radii on the ground (`+0x5d8`, `+0x5dc`) and whether the unit's player sees its tile now
+/// (`FUN_140c68a00` gives 0xf: the tile's bit of the unified map and the player's mask `+0x2a8`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Seen {
+    /// The object's state.
+    pub state: u8,
+    /// Its master's type.
+    pub kind: u8,
+    /// Its owner.
+    pub owner: usize,
+    /// Its master's class.
+    pub class: i16,
+    /// Its place.
+    pub position: [f32; 3],
+    /// Its master's radii.
+    pub radius: [f32; 2],
+    /// Its tile is visible to the viewer.
+    pub visible: bool,
+    /// Its master's `object_flags` (`+0x654`).
+    pub flags: u32,
+    /// The viewer's test of its tile (`FUN_1416635e0`, [`crate::spatial::Spatial::tile_sight`]):
+    /// 0xf seen, 0x80 explored, else 0.
+    pub sight: u8,
+}
+
+/// The class whose busy units skip the idle check (`-0xe98` raw).
+pub(super) const CLASS_20: i16 = 20;
+/// The class of the attackers and targets a villager's damage notify looks at (`-0xea2` raw).
+pub(super) const CLASS_10: i16 = 10;
+/// The class whose stop leaves the state position (`-0xe9a` raw, slot 0xb0).
+pub(super) const CLASS_18: i16 = 18;
+/// A patrol's path goes back and forth when its point is at least this far from the unit
+/// (`0x140aa2a70`, `DAT_142eb1c98`).
+pub(super) const PATROL_TURN_REACH: f32 = crate::image::unit_ai::PATROL_TURN_REACH;
+/// The patrol orders, the patrol's (`0x2c7`) and the attack move's (`0x2dd`), whose ends reset
+/// the idle and secondary timers.
+pub(crate) const PATROL: i32 = 0x2c7;
+pub(crate) const ATTACK_MOVE: i32 = 0x2dd;
+/// Classes whose actions `0x26b`, `0x26c` take another branch of the idle part (`-0xea9`,
+/// `-0xe78` raw).
+pub(super) const CLASS_3: i16 = 3;
+/// A building's master type (`'P'`, `FUN_1411942c0`).
+pub(super) const BUILDING_KIND: u8 = 80;
+/// The combat type (`0x46`), from which on the full update's tail reads a target's `+0x924`.
+pub(super) const COMBAT_KIND: u8 = 70;
+
+/// Whether the effect replaces or ends the unit's actions.
+pub(super) const fn changes_actions(e: &Effect) -> bool {
+    !matches!(
+        e,
+        Effect::CapHumanOrder(_) | Effect::AfterOrder(_) | Effect::ChangeOwner(_)
+    )
+}
+
+/// Slot 400 as the full update's tail reads it: the target of the unit's top action after the
+/// [`Effect`]s pending in `fx`, the last that replaces its actions deciding (a stop leaves none,
+/// slot 0x3c0; a move to a point, slots 0x340, 0x148, `restorePatrolInformation`, or an explore,
+/// slot 0x398, an action without an object; a move to an object, slot 0x348, holds it, as do a
+/// hunt, gather and build, slots 0x360, 0x368, 0x380); without one the unit's now
+/// ([`UnitSide::top_target_now`]).
+pub(super) fn top_target_after(
+    fx: &[Effect],
+    side: &mut dyn UnitSide,
+) -> Result<Option<i32>, GenieError> {
+    match PendingTop::of(fx) {
+        PendingTop::Replaced(target) => Ok(target),
+        PendingTop::Unchanged => side.top_target_now(),
+    }
+}
+
+/// What the [`Effect`]s pending in an update leave of the unit's top action
+/// ([`top_target_after`]'s rule).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PendingTop {
+    /// None of them replaces its actions.
+    Unchanged,
+    /// The last that replaces them leaves this target (None: no action, or one without an
+    /// object).
+    Replaced(Option<i32>),
+}
+
+impl PendingTop {
+    /// The top action's target the effects `fx` leave.
+    pub(super) fn of(fx: &[Effect]) -> Self {
+        for e in fx.iter().rev() {
+            match *e {
+                Effect::Stop
+                | Effect::Move(_)
+                | Effect::MoveAside(_)
+                | Effect::Explore(_)
+                | Effect::RestorePatrol => return Self::Replaced(None),
+                Effect::MoveToObject { target, .. }
+                | Effect::HuntObject(target)
+                | Effect::GatherObject(target)
+                | Effect::BuildObject(target)
+                | Effect::DropElsewhere { site: target, .. }
+                | Effect::WorkOn { target, .. } => return Self::Replaced(Some(target)),
+                Effect::CapHumanOrder(_)
+                | Effect::OrderOnTarget(_)
+                | Effect::AfterOrder(_)
+                | Effect::ChangeOwner(_) => {}
+            }
+        }
+        Self::Unchanged
+    }
+}
+
+/// A building on its make action without a missile and with at most this firepower forgets its
+/// target (`DAT_14330eb8c`).
+pub(super) const SINGLE_VOLLEY: f32 = crate::image::unit_ai::SINGLE_VOLLEY;
+pub(super) const CLASS_52: i16 = 52;
+
+/// A move the unit AI gives its unit (unit-AI slot 0x130, `FUN_140c55620`, to the unit's slot
+/// 0x340): a `MoveTo` to `point` within `range`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AiMove {
+    /// The point.
+    pub point: [f32; 3],
+    /// The range within which it arrives.
+    pub range: f32,
+    /// The sixth argument: the move replaces even a `MoveTo` to the same point.
+    pub force: bool,
+    /// The seventh: the unit walks (its master's walking sprite, `+0x748`), not runs.
+    pub walk: bool,
+}

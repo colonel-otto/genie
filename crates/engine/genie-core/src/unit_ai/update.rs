@@ -1,0 +1,572 @@
+//! The full update: its order's tail, its target's block and the hunters' and gatherers'
+//! searches.
+
+use crate::GenieError;
+use crate::rng::Well512;
+use crate::unit_ai::{
+    ATTACK_ACTION, ATTACK_MOVE, AfterOrder, AiMove, BREAK, BUILD_ORDER, CIVILIAN_CARED,
+    COMBAT_KIND, DEAD, Effect, GATHER_ACTION, GO_ON, Gatherable, GroupState, HUNT_ACTION,
+    LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, ORDER_ON_TARGET, PATROL, Pick, ResourceSearch,
+    Retarget, Search, Surroundings, TRADE_ACTION, UnitAi, UnitSide, changes_actions, civilian_kind,
+    civilian_search_radius, retarget_kind, top_target_after,
+};
+
+impl UnitAi {
+    /// The full update (slot 4, `0x140c66b10`; the boar's `0x140c2c010` adds its tail):
+    /// `dt` is the time the owner accumulated since its last turn (`world+0x18c[player]`),
+    /// `computer` the owner's type test (`player+0x10 == 3`). In the game's order: the target
+    /// block ([`UnitAi::target_block`]), the state position of a unit with an order, the timers, the notifies ([`UnitAi::post`]: each through
+    /// slot 0x238, then `FUN_140c5dc10`), the reset of an action value whose actions ended, the
+    /// order check of a unit no longer busy, the order queue ([`UnitAi::run_orders`]), slot 73's
+    /// retarget check, the idle part (slot 72 once the idle timer passes its timeout), the
+    /// look-around check. What it does to the unit comes back as [`Effect`]s, which the caller
+    /// applies in order. A unit in a group ([`Surroundings::group`]) keeps its state position
+    /// while the group has a command, runs its order queue only while the group is idle, its idle
+    /// check only while the group is idle and the unit still, and takes the patrol branches while
+    /// the group patrols. Its start lets the expired retarget entries go
+    /// ([`UnitAi::expire_retries`]) and forgets the update's best unit to attack
+    /// ([`UnitAi::best_this_update`]).
+    pub fn update(
+        &mut self,
+        dt: u32,
+        world_time: u32,
+        computer: bool,
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+    ) -> Result<Vec<Effect>, GenieError> {
+        let retarget = retarget_kind(self.ai_type)?;
+        self.commanded = false;
+        self.best_this_update = -1;
+        // the full update's start: the time since the last enemy sighting grows by the world's dt
+        self.time_since_enemy += at.dt_seconds;
+        let mut fx = Vec::new();
+        self.expire_retries(world_time, &mut |id| Self::world_object(id, at, side))?;
+        self.target_block(at, computer, ai, side, &mut fx)?;
+        self.keep_attackers(at, side);
+        // a unit with an order, or in a group with a command (`+0x3a8`), keeps its place as its
+        // state position (0x140c674c9)
+        if self.current_order != -1 || at.group.is_some_and(|g| g.commanded) {
+            self.state_position = [at.position[0], at.position[1]];
+        }
+        self.secondary_timer = self.secondary_timer.saturating_sub(dt);
+        self.look_around_timer = self.look_around_timer.wrapping_add(dt);
+        self.idle_timer = self.idle_timer.wrapping_add(dt);
+        let result = self.process_notifies(dt, at, computer, ai, side, &mut fx)?;
+        if result == DEAD {
+            self.boar_tail(at, computer, ai, side, &mut fx)?;
+            return Ok(fx);
+        }
+        self.end_notifies(dt, at, &mut fx)?;
+        // slot 0x430 again: a stop emptied the action list, an attack command filled it
+        let stopped = fx.contains(&Effect::Stop);
+        let busy = (at.busy && !stopped) || self.commanded;
+        if !busy {
+            self.reset_ended_action(at);
+            if self.current_order != -1 {
+                self.check_order(at, ai);
+            }
+        }
+        let interruptible = at.interruptible || stopped;
+        if self.current_action == -1
+            && (!busy || interruptible)
+            && result != 0xd
+            && self.can_order(at, false)
+            && at.group.is_none_or(|g| g.idle)
+            && !at.garrisoned
+        {
+            self.run_orders(at, side, computer, ai, &mut fx)?;
+        }
+        // an order on a target ran its work here (slot 0x230's case 0x2db, the unit's slot
+        // 0x128): the caller gives it, then the rest of the update reads what it gave the AI
+        // ([`UnitAi::after_order`])
+        if fx.iter().any(|e| matches!(e, Effect::OrderOnTarget(_))) {
+            fx.push(Effect::AfterOrder(AfterOrder {
+                busy,
+                group: at.group,
+            }));
+            return Ok(fx);
+        }
+        self.update_tail(
+            retarget, world_time, computer, busy, at.group, at, ai, side, &mut fx,
+        )?;
+        Ok(fx)
+    }
+
+    /// The full update's rest after the order on a target it took ([`AfterOrder`]), which the
+    /// game runs after the order's work inside the update and the caller once it gave the work:
+    /// [`UnitAi::update`]'s tail with what the order gave the AI and the unit, `at` its
+    /// surroundings then; the idle part reads the update's own `busy` and group from before the
+    /// order.
+    ///
+    /// # Errors
+    ///
+    /// What the tail does not model.
+    pub fn after_order(
+        &mut self,
+        after: AfterOrder,
+        world_time: u32,
+        computer: bool,
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+    ) -> Result<Vec<Effect>, GenieError> {
+        let retarget = retarget_kind(self.ai_type)?;
+        let mut fx = Vec::new();
+        self.update_tail(
+            retarget,
+            world_time,
+            computer,
+            after.busy,
+            after.group,
+            at,
+            ai,
+            side,
+            &mut fx,
+        )?;
+        Ok(fx)
+    }
+
+    /// The full update after its order queue (`0x140c66b10` from its slot 73 call on): slot 73
+    /// (the base's retarget check [`UnitAi::retarget_check`], the villager's
+    /// [`UnitAi::civilian_misc`], the artifact's [`UnitAi::artifact_misc`], livestock's
+    /// nothing), the idle part ([`UnitAi::idle_part`]), the look-around check and the boar's
+    /// tail. `busy` and `group` are what the update read before its order queue.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn update_tail(
+        &mut self,
+        retarget: Retarget,
+        world_time: u32,
+        computer: bool,
+        busy: bool,
+        group: Option<GroupState>,
+        at: &Surroundings,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        match retarget {
+            Retarget::Base => {
+                let _ = self.retarget_check(world_time, computer, at, ai, side, fx)?;
+            }
+            // the priest's checks but on the order on a target and for a computer player's
+            Retarget::Priest => {
+                if self.current_order != ORDER_ON_TARGET && !computer {
+                    let _ = self.retarget_check(world_time, computer, at, ai, side, fx)?;
+                }
+            }
+            Retarget::Civilian => self.civilian_misc(at, fx)?,
+            Retarget::Never => {}
+            Retarget::Artifact => self.artifact_misc(at, side, fx)?,
+        }
+        self.idle_part(busy, group, at, computer, ai, side, fx)?;
+        self.look_around(computer, ai)?;
+        self.top_target_tail(at, side, fx)?;
+        self.drop_started_builds(side)?;
+        self.boar_tail(at, computer, ai, side, fx)
+    }
+
+    /// The full update's tail on the target of its unit's top action (slot 400 at `0x140c684fc`,
+    /// after the look-around check), as the action list stands after the update's commands: the
+    /// last of the [`Effect`]s pending that replaces the actions decides, else the unit's now
+    /// ([`top_target_after`]). A Gaia unit
+    /// whose target is a Gaia object of type 70 or above that another player can take more than
+    /// once (`+0x924` 2) lets it go ("Tasking GAIA unit to stop attacking an object which can be
+    /// captured multiple times"): the target goes (`FUN_140c5e1e0`) and the action stops (slot
+    /// 0xb0 with 1). Then a target outside a pasture (`+0x790` −1) that cannot be targeted
+    /// (`+0x689` 0), or cannot be attacked (`+0x68a` 0) while the action value is the attack's
+    /// (600), does the same ("Tasking unit to stop attacking an object which has no targeting
+    /// flag enabled") but on the trade action (`0x267`); it reads the action value the first
+    /// stop left. A stop after a command the caller gives only once the update ends (a hunt,
+    /// gather or build, [`Effect::HuntObject`], [`Effect::GatherObject`],
+    /// [`Effect::BuildObject`]) would reach the unit before the command: not modelled.
+    pub(super) fn top_target_tail(
+        &mut self,
+        at: &Surroundings,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        let id = top_target_after(fx, side)?;
+        // a hunt, gather or build the caller gives once the update ends (after the stops)
+        let deferred = fx
+            .iter()
+            .rev()
+            .find(|e| changes_actions(e))
+            .is_some_and(|e| {
+                matches!(
+                    e,
+                    Effect::HuntObject(_)
+                        | Effect::GatherObject(_)
+                        | Effect::BuildObject(_)
+                        | Effect::WorkOn { .. }
+                )
+            });
+        let Some(t) = id.map(|id| side.target_flags(id)).transpose()?.flatten() else {
+            return Ok(());
+        };
+        let captured_again =
+            at.player == 0 && t.owner == 0 && COMBAT_KIND <= t.kind && t.capture == 2;
+        let action = if captured_again {
+            -1
+        } else {
+            self.current_action
+        };
+        let untargeted = t.pasture == -1
+            && (t.untargetable || (!t.attackable && action == ATTACK_ACTION))
+            && action != TRADE_ACTION;
+        if deferred && (captured_again || untargeted) {
+            return Err(GenieError::unsupported(
+                "a stop of the full update's tail after a command the caller gives later",
+            ));
+        }
+        if captured_again {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        if untargeted {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+        }
+        Ok(())
+    }
+
+    /// The end of the full update (`0x140c686e0`): unless the AI's order is the build order
+    /// (`0x2be`), each queued build order, the last first, whose foundation the world no longer
+    /// holds or holds in a state other than 0 (`+0x640`) leaves the queue.
+    pub(super) fn drop_started_builds(
+        &mut self,
+        side: &mut dyn UnitSide,
+    ) -> Result<(), GenieError> {
+        if self.current_order == BUILD_ORDER {
+            return Ok(());
+        }
+        for k in (0..self.orders.len()).rev() {
+            if self.orders[k].order == BUILD_ORDER
+                && side
+                    .seen_unit(self.orders[k].target)?
+                    .is_none_or(|u| u.state != 0)
+            {
+                let _ = self.orders.remove(k);
+            }
+        }
+        Ok(())
+    }
+
+    /// The boar's slot 4 (`0x140c2c010`) after the base, however that ended: its second idle
+    /// check runs only for a timer the base's left past the timeout (a unit with an action), and
+    /// a boar without a target calms down.
+    pub(super) fn boar_tail(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        if let Some(home) = self.home
+            && !home.furious
+            && self.adjusted_idle_timeout < self.idle_timer
+        {
+            self.idle_timer = 0;
+            let _ = self.process_idle(at, computer, ai, side, fx)?;
+        }
+        self.calm_down();
+        Ok(())
+    }
+
+    /// The target block at the full update's start (`0x140c66b10`): a unit inside another
+    /// (`+0x2f0`) drops its target, as does one whose target no longer exists (an attack action's
+    /// idle timer then takes its timeout; `FUN_140c5e1e0` finds no target left). A dead target (a
+    /// state above 2, not a building) of a live unit ends an action that needs a live one
+    /// ([`LIVE_TARGET_ACTIONS`]), an attack whose top action is no longer in its state 2 (slot
+    /// 0x2b0: the swing on the kill) or any action with `+0x1a8` set: `+0x1a8` clears; an attack
+    /// looks for its next target ([`UnitAi::next_after_kill`]); but for a hunt or `0x2be`, any
+    /// other action loses its target and stops (slot 0xb0 with 1). The range test of a target on
+    /// a patrol order or in a patrolling group (`FUN_140c41690`) answers 0 for a player that is
+    /// not a computer; a computer's (the ship and priority rules), a computer's priority by the
+    /// target's distance and action `0x2be`'s check (`FUN_140c40f10`) are not modelled.
+    pub(super) fn target_block(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        if self.current_target != -1 && at.garrisoned {
+            self.current_target = -1;
+        }
+        if self.current_target == -1 {
+            return Ok(());
+        }
+        let action = self.current_action;
+        match at.target {
+            None => {
+                self.current_target = -1;
+                if action == ATTACK_ACTION {
+                    self.idle_timer = self.idle_timeout;
+                }
+            }
+            Some(t) => {
+                if at.state == 2 && 2 < t.state && t.kind != 80 {
+                    let attack_over = action == ATTACK_ACTION
+                        && at.action_state.ok_or(GenieError::unsupported(
+                            "an attack whose target died, its top action not held",
+                        ))? != 2;
+                    if self.stop_after_kill || LIVE_TARGET_ACTIONS.contains(&action) || attack_over
+                    {
+                        self.stop_after_kill = false;
+                        if action == ATTACK_ACTION {
+                            self.next_after_kill(at, computer, ai, side, fx)?;
+                        } else if action != HUNT_ACTION && action != BUILD_ORDER {
+                            self.remove_target();
+                            self.stop_current(true, at, fx)?;
+                        }
+                    }
+                }
+                // on a patrol order, or in a group that patrols (`FUN_141017c40`,
+                // `FUN_141017c30`), FUN_140c41690 tests the target's range; for a player that
+                // is not a computer (FUN_141659cf0) it answers 0 at once
+                if computer
+                    && (matches!(self.current_order, PATROL | ATTACK_MOVE)
+                        || at.group.is_some_and(|g| g.patrol))
+                {
+                    return Err(GenieError::unsupported(
+                        "the patrol range of a unit AI's target",
+                    ));
+                }
+                // order 0x262, which is MOVE's action value
+                if computer
+                    && (0..100).contains(&self.order_priority)
+                    && self.current_order == 0x262
+                {
+                    return Err(GenieError::unsupported(
+                        "a computer's order priority by its target's distance",
+                    ));
+                }
+            }
+        }
+        if self.current_action == BUILD_ORDER {
+            return Err(GenieError::unsupported("action 0x2be's target check"));
+        }
+        Ok(())
+    }
+
+    /// The villager's case 0x202 on its hunt (`FUN_140c22bf0`, action 0x265): the class to hunt is
+    /// the notify's (its second parameter), else the AI's target class, else its last; with none
+    /// the target goes and the action stops (slot 0xb0 with 1; slot 0x48 hands the notify to the
+    /// owner, not held). Of a class the civilian's slot 0x1b0 gives no kind, `ClosestObject`
+    /// (every relation, below one worker for class 49) over the civilian's search
+    /// ([`civilian_search_radius`]) names the next target, which it hunts (`HuntObject`, slot 0xc8
+    /// with 1, [`UnitAi::hunt_object`]) and the processing breaks; finding none, a human player's
+    /// villager does nothing more. A class the slot names a kind of searches by it (slot 0x80,
+    /// `ClosestResourceObject` from the notify's drop site, its third parameter: kind 0 below 2
+    /// workers, the others any; [`UnitSide::closest_resource`]). A farm found (class 49) and a
+    /// computer player's villager that found nothing are not modelled.
+    pub(super) fn hunter_search(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let mut class = n.p[1];
+        if class == -1 {
+            class = self.target_type;
+        }
+        if class == -1 {
+            class = self.last_target_type;
+        }
+        if class == -1 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        let kind = civilian_kind(class);
+        let found = if kind == -1 {
+            let found = side.closest(&Search {
+                at: [at.position[0], at.position[1]],
+                radius: civilian_search_radius(at.los, at.search_radius),
+                classes: &CIVILIAN_CARED,
+                size: at.size,
+                pick: Pick::Closest {
+                    group: class,
+                    relation: -1,
+                    state: -1,
+                    master: -1,
+                    workers: if class == 49 { 1 } else { -1 },
+                    spared: -1,
+                    reach: true,
+                },
+                memory: Memory::default(),
+            })?;
+            self.alert(found, at.dt_seconds);
+            match found.position {
+                Some(position) if found.id != -1 => Some(Gatherable {
+                    id: found.id,
+                    position,
+                    class: class as i16,
+                }),
+                None if found.id != -1 => {
+                    return Err(GenieError::unsupported("a found object without its place"));
+                }
+                _ => None,
+            }
+        } else {
+            // slot 0x80 from the notify's drop site: kind 0 below 2 workers, any other any
+            side.closest_resource(ResourceSearch {
+                kind: kind as u8,
+                cap: if kind == 0 { 2 } else { -1 },
+                site: n.p[2],
+                current: self.current_target,
+                point: NO_POINT,
+                min_state: 2,
+            })?
+        };
+        let Some(found) = found else {
+            if computer {
+                return Err(GenieError::unsupported(
+                    "a computer player's hunter that found nothing",
+                ));
+            }
+            return Ok(GO_ON);
+        };
+        if class == 49 {
+            return Err(GenieError::unsupported("a hunter's search finding a farm"));
+        }
+        self.hunt_object(found.id, i32::from(found.class), found.position, at, fx)?;
+        Ok(BREAK)
+    }
+
+    /// The villager's case 0x202 on its gather (`FUN_140c22bf0`, action 0x261): the class to
+    /// gather is the AI's target class, else its last, else the notify's (its second parameter);
+    /// with none the target goes and the action stops (slot 0xb0 with 1; slot 0x48 hands the
+    /// notify to the owner, not held). The civilian's slot 0x1b0 names its gather group: by it
+    /// `ClosestResourceObject` (slot 0x80, [`UnitSide::closest_resource`]) from the notify's drop
+    /// site (its third parameter), below 4 workers for stone and gold (groups 3 and 4); a class
+    /// without a group takes `ClosestObject` (every relation, any workers) over the civilian's
+    /// search ([`civilian_search_radius`]). What it finds it gathers (`GatherObject`, slot 0xd0
+    /// with 1, [`UnitAi::gather_object`]) and the processing breaks; finding nothing, a human
+    /// player's villager does nothing more, a computer player's stops as above. For a farm (the
+    /// notify's class 49) `ClosestObject`'s ninth argument is 0: friends' farms pass.
+    pub(super) fn gatherer_search(
+        &mut self,
+        n: Notify,
+        at: &Surroundings,
+        computer: bool,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<u32, GenieError> {
+        let mut class = self.target_type;
+        if class == -1 {
+            class = self.last_target_type;
+        }
+        if class == -1 {
+            class = n.p[1];
+        }
+        if class == -1 {
+            self.remove_target();
+            self.stop_current(true, at, fx)?;
+            return Ok(GO_ON);
+        }
+        let kind = civilian_kind(class);
+        let found = if kind == -1 {
+            // "Calling closest object for a farm that's alive": the friends' pass over
+            let spared = if n.p[1] == i32::from(crate::gather::FARM_CLASS) {
+                0
+            } else {
+                -1
+            };
+            let found = side.closest(&Search {
+                at: [at.position[0], at.position[1]],
+                radius: civilian_search_radius(at.los, at.search_radius),
+                classes: &CIVILIAN_CARED,
+                size: at.size,
+                pick: Pick::Closest {
+                    group: class,
+                    relation: -1,
+                    state: -1,
+                    master: -1,
+                    workers: -1,
+                    spared,
+                    reach: true,
+                },
+                memory: Memory::default(),
+            })?;
+            self.alert(found, at.dt_seconds);
+            match found.position {
+                Some(position) if found.id != -1 => Some(Gatherable {
+                    id: found.id,
+                    position,
+                    class: class as i16,
+                }),
+                None if found.id != -1 => {
+                    return Err(GenieError::unsupported("a found object without its place"));
+                }
+                _ => None,
+            }
+        } else {
+            let cap = if matches!(kind, 3 | 4) { 4 } else { -1 };
+            side.closest_resource(ResourceSearch {
+                kind: kind as u8,
+                cap,
+                site: n.p[2],
+                current: self.current_target,
+                point: NO_POINT,
+                min_state: 2,
+            })?
+        };
+        let Some(found) = found else {
+            if computer {
+                self.remove_target();
+                self.stop_current(true, at, fx)?;
+            }
+            return Ok(GO_ON);
+        };
+        self.gather_object(found, fx);
+        Ok(BREAK)
+    }
+
+    /// `GatherObject` (slot 0xd0, `FUN_140c4dd50`) forced on what the search found: the unit's
+    /// gather command runs on it ([`Effect::GatherObject`]); taken as done (the caller stops on a
+    /// failure): the gather action value (`0x261`) becomes current, the last the one before, the
+    /// target with its class and place (the last ones kept), and the AI counts as commanded.
+    pub(super) fn gather_object(&mut self, found: Gatherable, fx: &mut Vec<Effect>) {
+        fx.push(Effect::GatherObject(found.id));
+        self.set_action(GATHER_ACTION);
+        self.set_target(found.id, i32::from(found.class), found.position);
+        self.commanded = true;
+    }
+
+    /// The target block's attack whose target died (`0x140c66b10`): processIdle (slot 0x240 with
+    /// 0, [`UnitAi::process_idle`]) may find the next thing to do (6); with nothing (5) the AI
+    /// moves to its old target's point within the unit's weapon range (slot 0x130, forced,
+    /// running: it always takes it). Then the order ends: it becomes the last order, the order and
+    /// its priority −1, a patrol order (711, 733) resetting its timers
+    /// ([`UnitAi::leave_patrol_timers`]).
+    pub(super) fn next_after_kill(
+        &mut self,
+        at: &Surroundings,
+        computer: bool,
+        ai: &mut Well512,
+        side: &mut dyn UnitSide,
+        fx: &mut Vec<Effect>,
+    ) -> Result<(), GenieError> {
+        let produced = self.process_idle(at, computer, ai, side, fx)?;
+        if !produced {
+            let m = self.move_to(AiMove {
+                point: self.target_point,
+                range: at.weapon_range,
+                force: true,
+                walk: false,
+            });
+            fx.extend(m.map(Effect::Move));
+        }
+        self.leave_patrol_timers(ai);
+        self.last_order = self.current_order;
+        self.current_order = -1;
+        self.order_priority = -1;
+        Ok(())
+    }
+}
