@@ -5,7 +5,6 @@
   "crates/engine/genie-core/src/attack.rs": 2185,
   "crates/engine/genie-core/src/best_target.rs": 917,
   "crates/engine/genie-core/src/damage.rs": 1611,
-  "crates/engine/genie-core/src/effect.rs": 2265,
   "crates/engine/genie-core/src/fmath.rs": 1356,
   "crates/engine/genie-core/src/game_status.rs": 937,
   "crates/engine/genie-core/src/gather.rs": 1550,
