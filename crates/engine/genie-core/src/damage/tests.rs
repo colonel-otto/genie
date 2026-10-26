@@ -1,0 +1,1081 @@
+/// `FUN_1411cc890`: a building's relics raise its factor (a specific one 1.2, else any 1.1),
+/// a building victim's lower it back the same way; another victim's count for nothing.
+#[test]
+fn a_building_s_relics_scale_its_elevation_factor() {
+    let up = 1.25_f32;
+    assert_eq!(
+        building_elevation_factor(up, [0, 0], 70, [5, 5]).to_bits(),
+        up.to_bits()
+    );
+    assert_eq!(
+        building_elevation_factor(up, [3, 1], 70, [0, 0]).to_bits(),
+        (up * SPECIFIC_RELIC_BOOST).to_bits()
+    );
+    assert_eq!(
+        building_elevation_factor(up, [3, 0], 70, [0, 0]).to_bits(),
+        (up * RELIC_BOOST).to_bits()
+    );
+    assert_eq!(
+        building_elevation_factor(up, [3, 0], 80, [0, 2]).to_bits(),
+        (up * RELIC_BOOST / SPECIFIC_RELIC_BOOST).to_bits()
+    );
+    assert_eq!(
+        building_elevation_factor(up, [0, 0], 80, [1, -1]).to_bits(),
+        (up / RELIC_BOOST).to_bits()
+    );
+    // the counts compare signed
+    assert_eq!(
+        building_elevation_factor(up, [-1, -1], 80, [-1, -1]).to_bits(),
+        up.to_bits()
+    );
+}
+
+use super::*;
+
+fn sheep() -> Victim {
+    Victim {
+        id: 9520,
+        hp: 14.0,
+        kind: 70,
+        class: LIVESTOCK,
+        master_id: 705,
+        player: 1,
+        position: [10.5, 10.5, 0.0],
+        master_hp: 14,
+        armored: Some(Armored {
+            armors: vec![(4, 0), (3, 0), (31, 0)],
+            terrain_bonus: -1,
+            friendly_fire: 1.0,
+            ..Armored::default()
+        }),
+        ..Victim::default()
+    }
+}
+
+fn hunter() -> Victim {
+    Victim {
+        id: 10029,
+        hp: 25.0,
+        kind: 70,
+        class: 4,
+        master_id: 592,
+        player: 1,
+        position: [10.5, 11.0, 0.0],
+        source: Attacker {
+            id: 10029,
+            kind: 70,
+            class: 4,
+            master_id: 592,
+            missile: -1,
+            player: 1,
+            ..Attacker::default()
+        },
+        weapons: vec![(11, 3), (4, 3), (13, 6), (17, 0)],
+        master_hp: 25,
+        armored: Some(Armored {
+            armors: vec![(4, 0), (3, 0)],
+            terrain_bonus: -1,
+            friendly_fire: 1.0,
+            ..Armored::default()
+        }),
+        ..Victim::default()
+    }
+}
+
+/// MarvinBlue/426048731's update 1170: the hunter 10029 (master 592: classes 11, 4, 13 and
+/// 17 at 3, 3, 6 and 0) strikes its sheep 9520 (master 705: armor 0 for 4, 3 and 31, base 0):
+/// 3 + 3 + 6 = 12, the game's 14 -> 2 hit points.
+/// Slot 0x870 (`FUN_1410857f0`): the best pierce armor, else the base armor and the best of
+/// any; a wall foundation (class 27, state 0) has no case of its own.
+#[test]
+fn a_wall_foundation_s_pierce_armor_is_computed_as_any_other() {
+    let a = Armored {
+        armors: vec![(4, 2), (3, 5)],
+        base_armor: 1,
+        ..Armored::default()
+    };
+    assert_eq!(class_armor(&a, 3, 27, 0), 5);
+    assert_eq!(class_armor(&a, 3, 27, 2), 5);
+    let none = Armored {
+        armors: vec![(4, 2)],
+        base_armor: 1,
+        ..Armored::default()
+    };
+    assert_eq!(class_armor(&none, 3, 27, 0), 2);
+    // its melee armor (FUN_141213810's wall foundation) is 0
+    assert_eq!(class_armor(&a, 4, 27, 0), 0);
+}
+
+/// Slot 0xf0 (`FUN_14118cab0`): a TRIBE attacker whose charge hits the target (slot 0x2f0)
+/// starts the static damage at its charge; any other starts at 0.
+#[test]
+fn a_static_object_takes_a_ready_charge_first() {
+    let tree = || Victim {
+        hp: 100.0,
+        class: 15,
+        kind: 10,
+        ..Victim::default()
+    };
+    let charging = Attacker {
+        kind: 70,
+        charge_type: 1,
+        charge_target: -1,
+        charge: 5.0,
+        max_charge: 5.0,
+        ..Attacker::default()
+    };
+    let mut t = tree();
+    take_static(&mut t, &charging, &[(4, 3)], 1.0);
+    assert_eq!(t.hp, 100.0 - (5.0 + 3.0));
+    let mut t = tree();
+    let plain = Attacker {
+        charge_type: 0,
+        ..charging
+    };
+    take_static(&mut t, &plain, &[(4, 3)], 1.0);
+    assert_eq!(t.hp, 97.0);
+}
+
+/// Slot 0xe8 of a moving or action object (types 30 to 49) is the static object's
+/// (`FUN_14118efd0`): the weapons times the factor, no armor; below 1 hit point it has 0,
+/// wakes and loses what it holds but to a villager. A NaN hit point count stays (`COMISS`/`JBE`).
+#[test]
+fn a_moving_object_takes_a_hit_as_a_static_one() {
+    let bird = |hp: f32| Victim {
+        hp,
+        amount: 50.0,
+        kind: 40,
+        class: 38,
+        goto_sleep: true,
+        ..Victim::default()
+    };
+    let mut hunter = hunter();
+    let mut t = bird(10.0);
+    take(&mut t, &mut hunter, &mut [], &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+    assert_eq!((t.hp, t.amount, t.goto_sleep), (5.0, 50.0, true));
+    take(&mut t, &mut hunter, &mut [], &[(4, 3), (3, 2)], 1.0, 0.0).unwrap();
+    // a villager's hit leaves what it holds
+    assert_eq!((t.hp, t.amount, t.goto_sleep), (0.0, 50.0, false));
+    let mut archer = hunter.clone();
+    archer.source.class = 0;
+    let mut t = bird(4.0);
+    take(&mut t, &mut archer, &mut [], &[(3, 4)], 1.0, 0.0).unwrap();
+    assert_eq!((t.hp, t.amount), (0.0, 0.0));
+    let mut t = bird(f32::NAN);
+    take(&mut t, &mut archer, &mut [], &[(3, 4)], 1.0, 0.0).unwrap();
+    assert!(t.hp.is_nan() && t.amount == 50.0 && t.goto_sleep);
+}
+
+#[test]
+fn a_hunter_strikes_its_sheep_for_twelve() {
+    let (mut sheep, mut hunter) = (sheep(), hunter());
+    let weapons = hunter.weapons.clone();
+    assert_eq!(
+        armor_damage(&sheep, &weapons, 1.0, &hunter.source, 0.0),
+        Ok(12.0)
+    );
+    take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
+    assert_eq!(sheep.hp, 2.0);
+    assert_eq!(sheep.damaged, [(10029, [10029, 2, 14])]);
+    // the next hit kills it, and Gaia takes a player's livestock
+    take(&mut sheep, &mut hunter, &mut [], &weapons, 1.0, 0.0).unwrap();
+    assert_eq!(sheep.hp, 0.0);
+    assert_eq!(
+        sheep.killed,
+        Some(Kill {
+            attacker: 10029,
+            attacker_player: 1,
+            to_gaia: true
+        })
+    );
+    // armor above the attack does nothing, and a hit does at least one
+    let mut armored = self::sheep();
+    let x = armored.armored.as_mut().unwrap();
+    (x.armors, x.base_armor) = (vec![(4, 10)], 10000);
+    assert_eq!(
+        armor_damage(&armored, &[(4, 3)], 1.0, &hunter.source, 0.0),
+        Ok(1.0)
+    );
+    let zero = Attacker {
+        mode_680: 1,
+        ..hunter.source
+    };
+    assert_eq!(armor_damage(&armored, &[(4, 3)], 1.0, &zero, 0.0), Ok(0.0));
+}
+
+/// Slots 0xc0 and 0xc8 of a combat unit read its hit point powerups; a type-50 object's do
+/// not. The share is at most 1 (`MINSS`), 0 without most hit points (lacking too), and a
+/// NaN most divides.
+#[test]
+fn a_hit_point_share_reads_the_powerups_and_the_master() {
+    let mut v = hunter();
+    assert_eq!(
+        (v.shown_hp(), v.most_hp(), v.hp_share(false)),
+        (25.0, 25.0, 1.0)
+    );
+    assert_eq!(v.hp_share(true), 0.0);
+    v.hp = 10.0;
+    v.armored.as_mut().unwrap().hp_powerups = [2.0, 5.0];
+    assert_eq!((v.shown_hp(), v.most_hp()), (13.0, 30.0));
+    assert_eq!(v.hp_share(false), 13.0 / 30.0);
+    assert_eq!(v.hp_share(true), 1.0 - 13.0 / 30.0);
+    v.hp = 40.0;
+    assert_eq!(v.hp_share(false), 1.0);
+    let mut rge = hunter();
+    rge.kind = 50;
+    rge.hp = 10.0;
+    rge.armored.as_mut().unwrap().hp_powerups = [2.0, 5.0];
+    assert_eq!((rge.shown_hp(), rge.most_hp()), (10.0, 25.0));
+    let mut none = hunter();
+    none.master_hp = 0;
+    assert_eq!((none.hp_share(false), none.hp_share(true)), (0.0, 0.0));
+    let mut nan = hunter();
+    nan.armored.as_mut().unwrap().hp_powerups = [0.0, f32::NAN];
+    assert!(nan.hp_share(false).is_nan());
+}
+
+/// `FUN_14107ce60`: each task of action type 0xa0 that fits the target adds its amount per
+/// whole step of a share (the target's with a work range above 0, else the attacker's; the
+/// share lacking with `attribute_type4`), and the sum is at least 0.
+#[test]
+fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
+    let task = |object_group: i16, object_id: i16, range: f32, lacking: i16| crate::masters::Task {
+        action_type: BONUS_DAMAGE,
+        object_group,
+        object_id,
+        work_range: range,
+        attribute_type4: lacking,
+        work_val1: 2.0,
+        work_val2: 0.25,
+        ..crate::masters::Task::default()
+    };
+    let (mut sheep, mut hunter) = (sheep(), hunter());
+    sheep.hp = 7.0;
+    // any target below type 80: the sheep lacks half its hit points, two steps of 0.25
+    hunter.bonus_tasks = vec![task(-1, -1, 1.0, 1)];
+    let steps = libm::floorf(0.5 / 0.25 + EPSILON);
+    assert_eq!(bonus_damage(&hunter, &sheep), steps * 2.0);
+    // the attacker's share (a work range of 0), whole: four steps
+    hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+    assert_eq!(bonus_damage(&hunter, &sheep), 4.0 * 2.0);
+    // by class or master; another class, master or action type adds nothing
+    hunter.bonus_tasks = vec![
+        task(LIVESTOCK, 0, 0.0, 0),
+        task(-1, 705, 0.0, 0),
+        task(3, 0, 0.0, 0),
+        task(-1, 9, 0.0, 0),
+        crate::masters::Task {
+            action_type: 0xa1,
+            ..task(-1, -1, 0.0, 0)
+        },
+    ];
+    assert_eq!(bonus_damage(&hunter, &sheep), 16.0);
+    // a building of another class than 51 and 54 needs its class or master
+    let mut tc = sheep.clone();
+    (tc.kind, tc.class) = (BUILDING, 3);
+    hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+    assert_eq!(bonus_damage(&hunter, &tc), 0.0);
+    tc.class = 51;
+    assert_eq!(bonus_damage(&hunter, &tc), 8.0);
+    // no step, no target hit points, or a negative sum: 0
+    hunter.bonus_tasks = vec![crate::masters::Task {
+        work_val2: 0.0,
+        ..task(-1, -1, 0.0, 0)
+    }];
+    assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
+    hunter.bonus_tasks = vec![task(-1, -1, 0.0, 0)];
+    sheep.hp = 0.0;
+    assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
+    sheep.hp = 7.0;
+    hunter.bonus_tasks = vec![crate::masters::Task {
+        work_val1: -3.0,
+        ..task(-1, -1, 0.0, 0)
+    }];
+    assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
+}
+
+/// The first melee weapon adds the bonus with the powerup.
+#[test]
+fn the_bonus_damage_adds_to_the_first_melee_weapon() {
+    let (sheep, mut hunter) = (sheep(), hunter());
+    hunter.source.attack_powerup = 1.0;
+    assert_eq!(
+        armor_damage(&sheep, &[(4, 3), (3, 2)], 1.0, &hunter.source, 2.0),
+        Ok(3.0 + 2.0 + 1.0 + 2.0)
+    );
+}
+
+/// Slots 0x878, 0x868 and 0x880: the best fighting attack (else any) with the whole
+/// powerup, the bonus against the attack's target and a ready charge of type 1; a ready
+/// charge of type 6 or 7 shows the projectile's attack and adds the charge event to the
+/// range; type 50 shows neither powerups nor charges.
+#[test]
+fn a_combat_object_shows_its_attack_armor_and_range() {
+    let (sheep, mut v) = (sheep(), hunter());
+    let none = Shown::default();
+    assert_eq!(shown_attack(&v, &none), 3);
+    v.source.attack_powerup = 1.7;
+    assert_eq!(shown_attack(&v, &none), 4);
+    let mut far = v.clone();
+    far.weapons = vec![(13, 6), (11, -2)];
+    assert_eq!(shown_attack(&far, &none), 7);
+    far.kind = 50;
+    assert_eq!(shown_attack(&far, &none), 6);
+    // the bonus against its attack's target
+    v.bonus_tasks = vec![crate::masters::Task {
+        action_type: BONUS_DAMAGE,
+        attribute_type4: 0,
+        work_val1: 1.5,
+        work_val2: 0.5,
+        ..crate::masters::Task::default()
+    }];
+    let at_sheep = Shown {
+        target: Some(&sheep),
+        ..Shown::default()
+    };
+    assert_eq!(shown_attack(&v, &at_sheep), 4 + 3);
+    v.bonus_tasks.clear();
+    // a ready charge of type 1 for every target, or for its target's class group
+    (v.source.charge_type, v.source.max_charge, v.source.charge) = (1, 5.0, 5.5);
+    v.source.charge_target = -1;
+    assert_eq!(shown_attack(&v, &none), 4 + 5);
+    v.source.charge_target = 0;
+    assert_eq!(shown_attack(&v, &none), 4);
+    assert_eq!(shown_attack(&v, &at_sheep), 4 + 5);
+    // a ready charge of type 6 shows the projectile's best fighting attack, and its range
+    // the charge event
+    (v.source.charge_type, v.source.charge_target) = (6, -1);
+    let projectile = [(13, 20), (3, 9), (4, 2)];
+    let shot = Shown {
+        projectile: Some(&projectile),
+        charge_event: 2,
+        range_powerup: 1.0,
+        ..Shown::default()
+    };
+    assert_eq!(shown_attack(&v, &shot), 9);
+    v.source.weapon_range = 4.0;
+    assert_eq!(shown_range(&v, &shot), 1.0 + (2.0 + 4.0));
+    v.source.charge = 0.5;
+    assert_eq!(shown_attack(&v, &shot), 4);
+    assert_eq!(shown_range(&v, &shot), 5.0);
+    v.kind = 50;
+    v.source.charge = 1.0;
+    assert_eq!(shown_range(&v, &shot), 4.0);
+    // the melee armor: its best of class 4 plus the powerup; a wall foundation none; type 50
+    // without the powerup; else its best of any, else its base armor
+    let mut a = hunter();
+    a.armored.as_mut().unwrap().armor_powerups = [2, 0];
+    assert_eq!(shown_melee_armor(&a), Ok(2));
+    (a.class, a.state) = (27, 0);
+    assert_eq!(shown_melee_armor(&a), Ok(0));
+    a.kind = 50;
+    a.armored.as_mut().unwrap().armors = vec![(3, 5), (11, 7)];
+    assert_eq!(shown_melee_armor(&a), Ok(7));
+    a.armored.as_mut().unwrap().armors.clear();
+    a.armored.as_mut().unwrap().base_armor = -1;
+    assert_eq!(shown_melee_armor(&a), Ok(-1));
+    a.armored = None;
+    assert!(shown_melee_armor(&a).is_err());
+}
+
+/// Slot 0x2f8: a ready charge of type 6 or 7 that works on the target.
+#[test]
+fn a_range_charge_hits_a_target_its_class_group_names() {
+    let (sheep, mut v) = (sheep(), hunter());
+    (v.source.charge_type, v.source.max_charge, v.source.charge) = (7, 5.0, 1.0);
+    v.source.charge_target = 0;
+    assert!(range_charge_hit(&v.source, &sheep));
+    v.source.charge = 0.5;
+    assert!(!range_charge_hit(&v.source, &sheep));
+    (v.source.charge_type, v.source.charge) = (1, 9.0);
+    assert!(!range_charge_hit(&v.source, &sheep));
+}
+
+/// The terrain defense scales each weapon's damage; a restriction value of 0 counts as 1 for
+/// the caller ([`crate::terrain::Terrain::defense`]).
+#[test]
+fn a_terrain_defense_bonus_scales_the_damage() {
+    let hunter = hunter();
+    let mut sheep = sheep();
+    let x = sheep.armored.as_mut().unwrap();
+    (x.terrain_bonus, x.terrain) = (4, Some(1.5));
+    assert_eq!(
+        armor_damage(&sheep, &[(4, 4)], 1.0, &hunter.source, 0.0),
+        Ok(6.0)
+    );
+    sheep.armored.as_mut().unwrap().terrain = None;
+    assert!(armor_damage(&sheep, &[(4, 4)], 1.0, &hunter.source, 0.0).is_err());
+}
+
+/// A ready charge of type 1 adds itself to the first melee weapon; the hit is the charge's,
+/// which empties it (no area effect).
+#[test]
+fn a_ready_charge_adds_to_the_first_melee_weapon_and_empties() {
+    let (mut sheep, mut hunter) = (sheep(), hunter());
+    hunter.source.charge_type = 1;
+    hunter.source.charge_target = -1;
+    hunter.source.max_charge = 5.0;
+    hunter.source.charge = 5.0;
+    assert_eq!(
+        armor_damage(&sheep, &[(4, 3), (3, 2)], 1.0, &hunter.source, 0.0),
+        Ok(5.0 + 3.0 + 2.0)
+    );
+    take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!(sheep.hp, 14.0 - 8.0);
+    assert!(hunter.source.charge_hit);
+    assert_eq!(hunter.source.charge, 0.0);
+    // not ready: no charge
+    hunter.source.charge = 4.0;
+    assert_eq!(
+        armor_damage(&sheep, &[(4, 3)], 1.0, &hunter.source, 0.0),
+        Ok(3.0)
+    );
+}
+
+#[test]
+fn a_charge_target_picks_the_class_groups() {
+    // 0: everything but buildings outside classes 51 and 54
+    assert!(charge_works(0, 1, 6, 70));
+    assert!(!charge_works(0, 1, 3, 80));
+    assert!(charge_works(0, 1, 51, 70));
+    // bit 0 infantry (6), bit 8 buildings (3)
+    assert!(charge_works(1, 1, 6, 70));
+    assert!(!charge_works(1, 1, 12, 70));
+    assert!(charge_works(0x100, 1, 3, 80));
+    assert!(!charge_works(0x100, 1, 99, 70));
+    assert!(charge_works(0x10, -4, 99, 70));
+}
+
+/// A shield of type 5 spends a charge of 1 on a melee hit; type 4 only on a missile.
+#[test]
+fn a_shield_spends_a_charge_per_blocked_hit() {
+    let mut sheep = sheep();
+    sheep.source.charge_type = 5;
+    sheep.source.charge = 1.5;
+    assert!(!shield(&mut sheep, true));
+    assert!(shield(&mut sheep, false));
+    assert_eq!(sheep.source.charge, 0.5);
+    assert!(!shield(&mut sheep, false));
+    // COMISS 1.0, charge; JA past: a NaN charge blocks the hit and stays NaN
+    sheep.source.charge = f32::NAN;
+    assert!(shield(&mut sheep, false));
+    assert!(sheep.source.charge.is_nan());
+}
+
+#[test]
+fn a_facing_offset_counts_facets_from_the_angle() {
+    let at = [10.0, 10.0, 0.0];
+    let facing = Facing {
+        angle: 0.0,
+        facets: 16,
+    };
+    assert_eq!(facing_offset(at, facing, [11.0, 10.0, 0.0]), 0.0);
+    // a quarter turn is four of 16 facets; fewer than 8 facets count as 8
+    let q = facing_offset(at, facing, [10.0, 11.0, 0.0]);
+    assert!((q - 4.0).abs() < 1e-5);
+    let few = Facing {
+        facets: 4,
+        ..facing
+    };
+    assert!((facing_offset(at, few, [10.0, 11.0, 0.0]) - 2.0).abs() < 1e-5);
+    // a NaN difference goes on to atan2f (COMISS/JC, JNC: unordered is not "within 1e-7")
+    assert!(facing_offset(at, facing, [f32::NAN, 10.0, 0.0]).is_nan());
+    // behind wraps into −π..π, and no sprite or the same point gives 0
+    let back = facing_offset(at, facing, [9.0, 9.999, 0.0]);
+    assert!(7.9 < back.abs() && back.abs() <= 8.0);
+    assert_eq!(
+        facing_offset(
+            at,
+            Facing {
+                facets: 0,
+                ..facing
+            },
+            [11.0, 12.0, 0.0]
+        ),
+        0.0
+    );
+    assert_eq!(facing_offset(at, facing, at), 0.0);
+}
+
+/// A special attack (flag 1) of an idle target facing its attacker takes the damage to 0.66.
+#[test]
+fn a_special_attack_takes_a_hit_from_the_front_to_two_thirds() {
+    let (mut sheep, mut hunter) = (sheep(), hunter());
+    let x = sheep.armored.as_mut().unwrap();
+    x.special_attack = 1;
+    x.facing = Some(Facing {
+        angle: std::f32::consts::FRAC_PI_2,
+        facets: 8,
+    });
+    take(&mut sheep, &mut hunter, &mut [], &[(4, 10)], 1.0, 0.0).unwrap();
+    assert_eq!(sheep.hp, 14.0 - 10.0 * SPECIAL);
+    // a busy target does not, and an unknown facing is not modelled
+    let mut busy = self::sheep();
+    busy.armored.as_mut().unwrap().special_attack = 1;
+    busy.armored.as_mut().unwrap().busy = true;
+    take(&mut busy, &mut hunter, &mut [], &[(4, 10)], 1.0, 0.0).unwrap();
+    assert_eq!(busy.hp, 4.0);
+    let mut unknown = self::sheep();
+    unknown.armored.as_mut().unwrap().special_attack = 1;
+    assert!(take(&mut unknown, &mut hunter, &mut [], &[(4, 10)], 1.0, 0.0).is_err());
+}
+
+/// A retaliation (flag 2) strikes a melee attacker first; an attacker it leaves at 1 hit
+/// point or less takes the hit to nothing.
+#[test]
+fn a_retaliation_strikes_the_melee_attacker_first() {
+    let (mut sheep, mut hunter) = (sheep(), hunter());
+    sheep.weapons = vec![(4, 5)];
+    let x = sheep.armored.as_mut().unwrap();
+    x.special_attack = 2;
+    x.unit_ai = true;
+    x.alert_idle = Some(true);
+    x.facing = Some(Facing {
+        angle: std::f32::consts::FRAC_PI_2,
+        facets: 8,
+    });
+    take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!((hunter.hp, sheep.hp), (20.0, 11.0));
+    assert_eq!(hunter.damaged, [(9520, [9520, 20, 25])]);
+    hunter.hp = 5.0;
+    take(&mut sheep, &mut hunter, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    // the hunter dies; the sheep loses the least, one hit point
+    assert_eq!((hunter.hp, sheep.hp), (0.0, 10.0));
+    assert!(hunter.killed.is_some());
+}
+
+/// A target that reflects gives its attacker that share of its loss, at least 1.
+#[test]
+fn reflected_damage_comes_back_at_least_one() {
+    let (mut sheep, mut hunter) = (sheep(), hunter());
+    sheep.armored.as_mut().unwrap().reflection = 0.5;
+    take(&mut sheep, &mut hunter, &mut [], &[(4, 6)], 1.0, 0.0).unwrap();
+    assert_eq!((sheep.hp, hunter.hp), (8.0, 22.0));
+    take(&mut sheep, &mut hunter, &mut [], &[(4, 1)], 1.0, 0.0).unwrap();
+    assert_eq!((sheep.hp, hunter.hp), (7.0, 21.0));
+    assert!(hunter.damaged.is_empty() && hunter.killed.is_none());
+}
+
+/// `FUN_14107f690`'s float compares as its assembly has them: a NaN gap past a radius counts
+/// as 0 (`COMISS`/`JBE`), a NaN offset stays in a narrow cone (two `JA`s past), a NaN
+/// `area_damage` leaves the factor as it is (`JC`, then `JBE` past the multiply); the tiles'
+/// rectangle truncates with `CVTTSS2SI`; the answer is whether the radius is above 0 or NaN.
+#[test]
+fn a_blast_s_nan_paths_are_the_game_s() {
+    let mut elephant = hunter();
+    elephant.source.area_effect = 1.0;
+    elephant.source.blast_level = 0x42;
+    elephant.source.area_damage = 0.5;
+    elephant.weapons = vec![(4, 10)];
+    let center = elephant.position;
+    let enemy = |x: f32, y: f32| Victim {
+        id: 2,
+        player: 2,
+        position: [x, y, 0.0],
+        blast_defense: 2,
+        ..sheep()
+    };
+    // a NaN radius on x: the gap on x is 0, the falloff takes the gap on y alone
+    let mut t = Victim {
+        radius: [f32::NAN, 0.0],
+        ..enemy(10.8, 11.5)
+    };
+    assert_eq!(
+        blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
+        Ok(true)
+    );
+    let f = (1.0 - fmath::sqrt(0.5 * 0.5)) / 1.0 * 0.5;
+    assert_eq!(t.hp, 14.0 - 10.0 * f);
+    // a narrow cone keeps a NaN offset
+    elephant.source.blast_level = 0x82;
+    elephant.armored.as_mut().unwrap().facing = Some(Facing {
+        angle: f32::NAN,
+        facets: 8,
+    });
+    let mut t = enemy(10.8, 11.0);
+    assert!(
+        facing_offset(
+            center,
+            Facing {
+                angle: f32::NAN,
+                facets: 8
+            },
+            t.position
+        )
+        .is_nan()
+    );
+    assert_eq!(
+        blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
+        Ok(true)
+    );
+    assert_eq!(t.hp, 9.0);
+    // a NaN area damage share leaves the factor at 1
+    elephant.source.blast_level = 2;
+    elephant.source.area_damage = f32::NAN;
+    let mut t = enemy(10.8, 11.0);
+    assert_eq!(
+        blast(&mut elephant, center, None, None, &mut [&mut t], 1.0),
+        Ok(true)
+    );
+    assert_eq!(t.hp, 4.0);
+    // no radius, no blast; a NaN radius blasts
+    elephant.source.area_effect = 0.0;
+    assert_eq!(
+        blast(&mut elephant, center, None, None, &mut [], 1.0),
+        Ok(false)
+    );
+    elephant.source.area_effect = f32::NAN;
+    assert_eq!(
+        blast(&mut elephant, center, None, None, &mut [], 1.0),
+        Ok(true)
+    );
+    // CVTTSS2SI gives 0x80000000 past the i32 range: 0 in the low short
+    assert_eq!(blast_tiles([3e9, 3e9, 0.0], 1.0), ([0, 0], [6, 6]));
+    assert_eq!(blast_tiles([10.5, 4.5, 0.0], 1.0), ([3, 0], [17, 11]));
+}
+
+/// A melee blast (radius 0.5, level 2, half the damage) reaches the objects about the
+/// attacker but its friends, its target excluded; a falloff (bit 6) scales by the distance.
+#[test]
+fn a_blast_reaches_the_objects_about_its_attacker() {
+    let mut elephant = hunter();
+    elephant.source.area_effect = 1.0;
+    elephant.source.blast_level = 2;
+    elephant.source.area_damage = 0.5;
+    elephant.source.player = 1;
+    elephant.weapons = vec![(4, 10)];
+    let enemy = |id: i32, x: f32| Victim {
+        id,
+        player: 2,
+        position: [x, 11.0, 0.0],
+        blast_defense: 2,
+        ..sheep()
+    };
+    let mut target = enemy(1, 10.6);
+    let mut near = enemy(2, 10.8);
+    let mut far = enemy(3, 12.0);
+    let mut friend = Victim {
+        allied: [true, true],
+        ..enemy(4, 10.7)
+    };
+    let center = elephant.position;
+    let mut all = [&mut target, &mut near, &mut far, &mut friend];
+    assert_eq!(
+        blast(&mut elephant, center, Some(1), None, &mut all, 1.0),
+        Ok(true)
+    );
+    assert_eq!(
+        (target.hp, near.hp, far.hp, friend.hp),
+        (14.0, 9.0, 14.0, 14.0)
+    );
+    // the falloff: 0.3 of radius 1 away keeps 0.7
+    elephant.source.blast_level = 0x42;
+    let mut near = enemy(2, 10.8);
+    let mut all = [&mut near];
+    assert_eq!(
+        blast(&mut elephant, center, None, None, &mut all, 1.0),
+        Ok(true)
+    );
+    let dx = (10.8f32 - 10.5f32).abs();
+    let f = (1.0 - fmath::sqrt(0.0 * 0.0 + dx * dx)) / 1.0 * 0.5;
+    assert_eq!(near.hp, 14.0 - 10.0 * f);
+}
+
+/// A player's house (master 70, class 3, type 80) of 550 hit points: melee armor 0, pierce
+/// armor 7; it cost 25 wood, paid.
+fn house() -> Victim {
+    Victim {
+        id: 500,
+        hp: 550.0,
+        kind: BUILDING,
+        class: 3,
+        master_id: 70,
+        player: 2,
+        position: [20.5, 20.5, 0.0],
+        master_hp: 550,
+        armored: Some(Armored {
+            armors: vec![(4, 0), (3, 7)],
+            terrain_bonus: -1,
+            friendly_fire: 1.0,
+            ..Armored::default()
+        }),
+        building: Some(Building {
+            cost: 25.0,
+            ..Building::default()
+        }),
+        ..Victim::default()
+    }
+}
+
+/// `FUN_1411cea90`: a hit on a building is its damage (`FUN_141082e80`), then 60 for
+/// `damaged_lately_timer` (`+0x30d`). Without a blast's damage so far (`param_8`, `UCOMISS`
+/// with 0: exactly 0), a hit that took less than its least takes the least again (slot
+/// 0xb0 with it, not the difference: `MOVAPS XMM1,XMM6` at `0x1411cef02`): 1, or 0.1 for an
+/// attacker of class 0, 22, 36, 44 or 52 under the game's setting `+0x680` at 1.
+#[test]
+fn a_building_takes_its_damage_and_at_least_its_least_hit() {
+    let mut villager = hunter();
+    let mut h = house();
+    take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!(h.hp, 547.0);
+    assert_eq!(h.damaged, [(10029, [10029, 547, 550])]);
+    let b = h.building.as_ref().unwrap();
+    assert_eq!((b.damaged_lately, b.struck, b.razed.len()), (60, true, 0));
+    // at 1 a hit may do nothing: the least takes 1 more
+    villager.source.mode_680 = 1;
+    let mut h = house();
+    h.armored.as_mut().unwrap().armors = vec![(4, 10)];
+    take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!(h.hp, 549.0);
+    // half a hit point taken: the least is taken whole again
+    let mut h = house();
+    take(&mut h, &mut villager, &mut [], &[(4, 1)], 0.5, 0.0).unwrap();
+    assert_eq!(h.hp, 548.5);
+    // an archer's least is a tenth
+    let mut archer = villager.clone();
+    archer.source.class = 0;
+    let mut h = house();
+    h.armored.as_mut().unwrap().armors = vec![(4, 10)];
+    take(&mut h, &mut archer, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!(h.hp, 550.0 - LEAST_CLASS_HIT);
+    // a blast's damage so far, even a NaN one, takes no least
+    let mut h = house();
+    h.armored.as_mut().unwrap().armors = vec![(4, 10)];
+    take(&mut h, &mut archer, &mut [], &[(4, 3)], 1.0, 2.0).unwrap();
+    assert_eq!(h.hp, 550.0);
+    take(&mut h, &mut archer, &mut [], &[(4, 3)], 1.0, f32::NAN).unwrap();
+    assert_eq!(h.hp, 550.0);
+}
+
+/// `COMISS 0, hp` / `JNC` past: a building at 0 hit points or fewer takes nothing (and is not
+/// struck); a NaN goes on.
+#[test]
+fn a_building_without_hit_points_takes_no_hit() {
+    let mut villager = hunter();
+    let mut h = Victim { hp: 0.0, ..house() };
+    take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!((h.hp, h.damaged.is_empty()), (0.0, true));
+    assert!(!h.building.as_ref().unwrap().struck);
+    let mut h = Victim {
+        hp: f32::NAN,
+        ..house()
+    };
+    take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert!(!h.damaged.is_empty() && h.building.as_ref().unwrap().struck);
+    // a NaN is not below 1: no razing
+    assert_eq!(h.building.as_ref().unwrap().razed, Vec::new());
+}
+
+/// An annex (`+0xbb8`) gives a hit with the flag set (every caller's) to its main building's
+/// slot 0xe8 with the flag clear: the main building's armor takes it, and each of its annexes
+/// (`+0xbc0`..) takes its hit points; the annex itself is not struck. A main building the hit
+/// does not hold is not modelled.
+#[test]
+fn a_hit_on_an_annex_goes_to_its_main_building() {
+    let mut villager = hunter();
+    let mut main = Victim {
+        id: 10,
+        hp: 2400.0,
+        building: Some(Building {
+            annexes: vec![11, 12],
+            cost: 275.0,
+            ..Building::default()
+        }),
+        ..house()
+    };
+    main.armored.as_mut().unwrap().armors = vec![(4, 1)];
+    let annex = |id| Victim {
+        id,
+        hp: 2400.0,
+        building: Some(Building {
+            main: Some(10),
+            ..Building::default()
+        }),
+        ..house()
+    };
+    let (mut a, mut other) = (annex(11), annex(12));
+    take(
+        &mut a,
+        &mut villager,
+        &mut [&mut main, &mut other],
+        &[(4, 3)],
+        1.0,
+        0.0,
+    )
+    .unwrap();
+    assert_eq!((main.hp, a.hp, other.hp), (2398.0, 2398.0, 2398.0));
+    assert!(main.building.as_ref().unwrap().struck);
+    assert!(!a.building.as_ref().unwrap().struck);
+    assert_eq!(main.damaged, [(10029, [10029, 2398, 550])]);
+    assert_eq!(a.damaged, []);
+    let mut alone = annex(11);
+    assert_eq!(
+        take(&mut alone, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0),
+        Err(crate::build::NOT_HELD)
+    );
+}
+
+/// A player's building left below 1 hit point (`COMISS 1, hp` / `JBE` past) is razed: a
+/// castle (82) adds event 7 and a wonder (276) event 5 to the attacker's player's history;
+/// then, but for an annex or a wall (class 27), the razing counts (attacker's player 43,
+/// 170; owner 152, 155; 350 + owner; owner 375 + attacker's player; 425 + owner) and 172
+/// and 153 with the paid cost. Gaia's buildings count nothing.
+#[test]
+fn a_player_s_building_below_one_hit_point_is_razed() {
+    let mut villager = hunter();
+    let mut castle = Victim {
+        hp: 1.5,
+        master_id: 82,
+        ..house()
+    };
+    take(&mut castle, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!(castle.hp, 0.0);
+    assert!(castle.killed.is_some());
+    let razed = &castle.building.as_ref().unwrap().razed;
+    assert_eq!(
+        razed,
+        &[Razed {
+            attacker_player: 1,
+            owner: 2,
+            event: Some(crate::history::CASTLE_DESTROYED),
+            adds: vec![
+                (1, 43, 1.0),
+                (1, 170, 25.0),
+                (2, 152, 25.0),
+                (2, 155, 1.0),
+                (1, 352, 1.0),
+                (2, 376, 1.0),
+                (1, 427, 25.0),
+                (1, 172, 25.0),
+                (2, 153, 25.0),
+            ],
+        }]
+    );
+    let mut wonder = Victim {
+        hp: 1.5,
+        master_id: 276,
+        class: WALL,
+        ..house()
+    };
+    take(&mut wonder, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    let razed = &wonder.building.as_ref().unwrap().razed;
+    assert_eq!(
+        (razed[0].event, razed[0].adds.len()),
+        (Some(crate::history::WONDER_DESTROYED), 0)
+    );
+    let mut gaia = Victim {
+        hp: 1.5,
+        player: 0,
+        ..house()
+    };
+    take(&mut gaia, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!(gaia.building.as_ref().unwrap().razed, Vec::new());
+}
+
+/// A trebuchet (`FUN_140fde380`) counts as a unit's kill (attacker's player 20, 170; owner
+/// 154, 152; 300 + owner; owner 325 + attacker's player; 400 + owner) unless its kill is
+/// counted (`+0x954`: its damage's kill ran slot 0x8b0); 172 and 153 either way.
+#[test]
+fn a_trebuchet_s_razing_counts_a_kill_unless_its_damage_counted_it() {
+    let trebuchet = |hp| Victim {
+        hp,
+        class: 54,
+        master_id: 42,
+        building: Some(Building {
+            trebuchet: true,
+            cost: 400.0,
+            ..Building::default()
+        }),
+        ..house()
+    };
+    let mut villager = hunter();
+    villager.source.mode_680 = 1;
+    // no damage at 1, the least takes it below 1 but its damage did not kill it
+    let mut t = trebuchet(1.5);
+    t.armored.as_mut().unwrap().armors = vec![(4, 10)];
+    take(&mut t, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert_eq!((t.hp, t.killed), (0.5, None));
+    assert_eq!(
+        t.building.as_ref().unwrap().razed[0].adds,
+        vec![
+            (1, 20, 1.0),
+            (1, 170, 400.0),
+            (2, 154, 1.0),
+            (2, 152, 400.0),
+            (1, 302, 1.0),
+            (2, 326, 1.0),
+            (1, 402, 400.0),
+            (1, 172, 400.0),
+            (2, 153, 400.0),
+        ]
+    );
+    let mut t = trebuchet(2.0);
+    take(&mut t, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    assert!(t.killed.is_some());
+    assert_eq!(
+        t.building.as_ref().unwrap().razed[0].adds,
+        vec![(1, 172, 400.0), (2, 153, 400.0)]
+    );
+}
+
+/// With the flag, an attacker of type 50 and up leaves a building of 1 hit point or more
+/// (`COMISS hp, 1` / `JC` past) to its combat ability's effects (`FUN_14107bdf0`): only bit 7
+/// against a player not allied both ways does anything, which is not modelled. The kill
+/// bonus (`FUN_1415c6510`) of a razing: only an attacker of type 40 and up with a task of
+/// action type 0x9a does anything, which is not modelled.
+#[test]
+fn a_building_s_attacker_effects_and_kill_bonus_are_the_game_s() {
+    let mut villager = hunter();
+    villager.source.ability = 0x80;
+    let mut h = house();
+    assert!(take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).is_err());
+    let mut h = Victim {
+        allied: [true, true],
+        ..house()
+    };
+    take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    let mut h = Victim { hp: 2.0, ..house() };
+    take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+    let mut villager = hunter();
+    villager.source.kill_bonus_tasks = true;
+    let mut h = Victim { hp: 2.0, ..house() };
+    assert!(take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).is_err());
+    let mut h = Victim {
+        hp: 2.0,
+        class: WALL,
+        ..house()
+    };
+    take(&mut h, &mut villager, &mut [], &[(4, 3)], 1.0, 0.0).unwrap();
+}
+
+/// `FUN_14107f690` on buildings: every building on its tiles starts it with nothing taken
+/// (`+0xb90`); an annex reads its main building's `area_damage` (`+0x834`), blast level
+/// (`+0x62b`) and blast so far, which its loss adds to; a building's hit is less what the
+/// blast has done to it (`FUN_141082e80`'s `param_8`). Here the annex (area damage 0: a
+/// least hit of 1 on the main building) comes first in the walk; the main building's own hit
+/// of 5 then takes 4.
+#[test]
+fn a_blast_takes_a_main_building_less_what_its_annexes_took() {
+    let mut mangonel = hunter();
+    mangonel.source.area_effect = 2.0;
+    mangonel.source.blast_level = 2;
+    mangonel.source.area_damage = 0.5;
+    mangonel.weapons = vec![(4, 10)];
+    mangonel.position = [10.5, 10.5, 0.0];
+    let center = mangonel.position;
+    let mut main = Victim {
+        id: 20,
+        hp: 100.0,
+        position: [11.5, 10.5, 0.0],
+        radius: [1.0, 1.0],
+        blast_defense: 2,
+        building: Some(Building {
+            annexes: vec![21],
+            blast_taken: 7.0,
+            ..Building::default()
+        }),
+        ..house()
+    };
+    main.source.area_damage = 0.0;
+    let mut annex = Victim {
+        id: 21,
+        hp: 100.0,
+        position: [10.5, 10.5, 0.0],
+        radius: [0.5, 0.5],
+        blast_defense: 0,
+        building: Some(Building {
+            main: Some(20),
+            ..Building::default()
+        }),
+        ..house()
+    };
+    let mut all = [&mut main, &mut annex];
+    assert_eq!(
+        blast(&mut mangonel, center, None, None, &mut all, 1.0),
+        Ok(true)
+    );
+    assert_eq!(all.map(|t| t.id), [21, 20]);
+    assert_eq!((main.hp, annex.hp), (95.0, 95.0));
+    assert_eq!(main.building.as_ref().unwrap().blast_taken, 5.0);
+    // each hit posts its damage notify to the main building's unit AI: the annex's
+    // forwarded one, then its own (426048706's gate 7228: 271, then -58)
+    let hp_after: Vec<i32> = main.damaged.iter().map(|&(_, p)| p[1]).collect();
+    assert_eq!(hp_after, [99, 95]);
+    assert_eq!(annex.damaged, []);
+}
+
+/// `FUN_14107f690` walks the rows (y outer, x inner) and a tile's objects in its list's
+/// order (`+0x28`), not by id: the blast's targets end in that order.
+#[test]
+fn a_blast_walks_a_tile_s_objects_in_its_list_order() {
+    let mut elephant = hunter();
+    elephant.source.area_effect = 1.0;
+    elephant.source.blast_level = 2;
+    elephant.source.area_damage = 0.5;
+    elephant.source.player = 1;
+    elephant.weapons = vec![(4, 10)];
+    let enemy = |id: i32, x: f32, y: f32, tile_place| Victim {
+        id,
+        tile_place,
+        player: 2,
+        position: [x, y, 0.0],
+        blast_defense: 2,
+        ..sheep()
+    };
+    let (mut a, mut b, mut c) = (
+        enemy(3, 10.6, 11.0, 1),
+        enemy(7, 10.8, 11.2, 0),
+        enemy(5, 11.2, 10.4, 0),
+    );
+    let center = elephant.position;
+    let mut all = [&mut a, &mut b, &mut c];
+    assert_eq!(
+        blast(&mut elephant, center, None, None, &mut all, 1.0),
+        Ok(true)
+    );
+    assert_eq!(all.map(|t| t.id), [5, 7, 3]);
+}
+
+/// `FUN_141203be0`: hit points gain up to the master's plus the powerup room; the overflow
+/// comes off the powerup, never below 0; a powerup above its room first takes the room; at
+/// its most a gain only takes off the powerup.
+#[test]
+fn a_gain_fills_hit_points_and_its_overflow_takes_off_the_powerup() {
+    let mut hp = 50.0;
+    let mut ups = [0.0, 0.0];
+    gain_hp(&mut hp, &mut ups, 60, 5.0);
+    assert_eq!((hp, ups), (55.0, [0.0, 0.0]));
+    gain_hp(&mut hp, &mut ups, 60, 10.0);
+    assert_eq!((hp, ups), (60.0, [0.0, 0.0]));
+    let mut hp = 65.0;
+    let mut ups = [8.0, 10.0];
+    gain_hp(&mut hp, &mut ups, 60, 10.0);
+    assert_eq!((hp, ups), (70.0, [3.0, 10.0]));
+    gain_hp(&mut hp, &mut ups, 60, 5.0);
+    assert_eq!((hp, ups), (70.0, [0.0, 10.0]));
+    let mut ups = [12.0, 10.0];
+    gain_hp(&mut hp, &mut ups, 60, 0.0);
+    assert_eq!(ups, [10.0, 10.0]);
+}
+
+/// `FUN_141193b30`: a loss leaves at least 1 hit point; full hit points (room less powerup
+/// plus hit points at least the most) become exactly the master's and answer true; a NaN is
+/// not full.
+#[test]
+fn a_heal_to_full_holds_the_master_s_hit_points() {
+    let mut hp = 30.0;
+    let mut ups = [0.0; 2];
+    assert!(!heal_hp(&mut hp, &mut ups, 60, 10.0));
+    assert_eq!(hp, 40.0);
+    assert!(heal_hp(&mut hp, &mut ups, 60, 25.0));
+    assert_eq!(hp, 60.0);
+    let mut hp = 0.5;
+    assert!(!heal_hp(&mut hp, &mut ups, 60, -3.0));
+    assert_eq!(hp, 1.0);
+    let mut hp = 55.0;
+    let mut ups = [5.0, 5.0];
+    assert!(!heal_hp(&mut hp, &mut ups, 60, 4.0));
+    assert_eq!(hp, 59.0);
+    let mut hp = f32::NAN;
+    assert!(!heal_hp(&mut hp, &mut [0.0; 2], 60, 1.0));
+}

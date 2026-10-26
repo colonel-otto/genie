@@ -1,0 +1,199 @@
+//! The armor against melee and against each weapon class, and the damage per weapon
+//! (`FUN_141082530`).
+
+use crate::GenieError;
+use crate::damage::{Armored, Attacker, Victim, charge_damage, charge_works};
+
+/// `FUN_141085450`, a combat object's melee armor as its master holds it: its best armor of
+/// class 4 above −32768, else its best of any, else its base armor.
+pub(super) fn master_melee_armor(a: &Armored) -> i16 {
+    let best = |of: Option<i16>| {
+        a.armors
+            .iter()
+            .filter(|&&(k, _)| of.is_none_or(|c| c == k))
+            .fold(i16::MIN, |m, &(_, n)| if m < n { n } else { m })
+    };
+    let mut armor = best(Some(4));
+    if armor == i16::MIN {
+        armor = best(None);
+        if armor == i16::MIN {
+            armor = a.base_armor;
+        }
+    }
+    armor
+}
+
+/// Slot 0x868 of a combat unit or building (`FUN_141213810`): [`master_melee_armor`] plus its
+/// melee armor powerup (`+0xa48`, slot 0x708) and stinger (`+0xb4c`, slot 0x770, 0 as
+/// [`Victim::most_hp`] says), each as 16 bits; a wall foundation (class 27 in state 0) has none.
+pub(super) fn melee_armor(a: &Armored, own_class: i16, state: u8) -> i16 {
+    let armor = master_melee_armor(a).wrapping_add(a.armor_powerups[0]);
+    if own_class == 27 && state == 0 {
+        return 0;
+    }
+    armor
+}
+
+/// The armor a combat object (type 70 and up) has against melee (class 4; slot 0x868,
+/// [`melee_armor`]) or pierce (class 3; slot 0x870, `FUN_1410857f0`: its best armor of the
+/// class, else its base armor and best of any, plus its powerup; the stinger `+0xb50` is 0, as
+/// [`Victim::most_hp`] says), less the armor removed.
+pub(super) fn class_armor(a: &Armored, class: i16, own_class: i16, state: u8) -> i16 {
+    let best = |c: i16, from: i16| {
+        a.armors
+            .iter()
+            .filter(|&&(k, _)| k == c)
+            .fold(from, |m, &(_, n)| if m < n { n } else { m })
+    };
+    let any = |from: i16| {
+        a.armors
+            .iter()
+            .fold(from, |m, &(_, n)| if m < n { n } else { m })
+    };
+    match class {
+        4 => melee_armor(a, own_class, state).wrapping_sub(a.armor_removed[0]),
+        3 => {
+            let mut armor = best(3, -1);
+            if armor == -1 {
+                armor = any(a.base_armor);
+            }
+            armor
+                .wrapping_add(a.armor_powerups[1])
+                .wrapping_sub(a.armor_removed[1])
+        }
+        _ => unreachable!("only melee and pierce armor have their own slots"),
+    }
+}
+
+/// [`armor_damage`]'s armor against weapon class `class`: the base armor, else the last entry
+/// of that class; an attacker of type 60 and up with `combat_ability` bit 1 against a melee or
+/// pierce entry (3, 4) of a victim without bit 2 meets 0; a combat victim's (type 70 and up)
+/// melee or pierce armor reads its class's ([`class_armor`]).
+pub(super) fn weapon_armor(
+    a: &Armored,
+    class: i16,
+    attacker: &Attacker,
+    kind: u8,
+    own_class: i16,
+    state: u8,
+) -> i16 {
+    let mut armor = a.base_armor;
+    for &(k, n) in &a.armors {
+        if k != class {
+            continue;
+        }
+        if 60 <= attacker.kind
+            && matches!(k, 3 | 4)
+            && attacker.ability & 1 != 0
+            && a.ability & 2 == 0
+        {
+            armor = 0;
+            continue;
+        }
+        armor = n;
+        if 70 <= kind && matches!(k, 3 | 4) {
+            armor = class_armor(a, k, own_class, state);
+        }
+    }
+    armor
+}
+
+/// [`armor_damage`]'s charge test of the attacker's weapon against the victim (its class
+/// `own_class`, type `kind`): the charge works on it ([`charge_works`]), its type is 1 or 3 and
+/// it is full.
+pub(super) fn charges(attacker: &Attacker, own_class: i16, kind: u8) -> bool {
+    charge_works(
+        attacker.charge_target,
+        attacker.charge_type,
+        own_class,
+        kind,
+    ) && matches!(attacker.charge_type, 1 | 3)
+        && attacker.max_charge <= attacker.charge
+}
+
+/// Slot 0xf0 of a combat object (`FUN_141082530`): per weapon (class, amount) the armor of its
+/// class (the last armor entry of the class wins: its amount, or for a type of 70 and up the
+/// melee or pierce armor, [`class_armor`]; an attacker of type 60 and up whose combat ability
+/// has bit 0 ignores melee and pierce armor unless the target's has bit 1), else the base armor.
+/// For an attacker of type 70 and up: the first melee, pierce or class-31 weapon with an attack
+/// adds a ready charge of type 1 or 3 that works on the target ([`charge_works`],
+/// `FUN_141202580`), and the first such weapon adds the attack powerup (the stinger `+0xb48`,
+/// unsaved and never written here, is 0); a weapon of class 11 adds ten per `+0xad8` (unsaved,
+/// written only by `FUN_141209d60`, which no update of this recording runs). Another class is
+/// scaled by 1 less the `bonus_damage_resistance` when it does damage. Each weapon's attack less
+/// armor, times the elevation factor and the terrain defense, adds when above 0 (or below 0
+/// against an armor below the base that rises above the attack: then at most 0). The damage is
+/// the sum, at least 1 (0 under the game's setting `+0x680` at 1). `bonus` is the attacker's
+/// bonus damage against `v` ([`bonus_damage`]), which the first such weapon adds with the
+/// powerup.
+///
+/// [`bonus_damage`]: crate::damage::shown_values::bonus_damage
+pub fn armor_damage(
+    v: &Victim,
+    weapons: &[(i16, i16)],
+    factor: f32,
+    attacker: &Attacker,
+    bonus: f32,
+) -> Result<f32, GenieError> {
+    let a = v.armored.as_ref().ok_or(GenieError::unsupported(
+        "the armor of an object without combat values",
+    ))?;
+    let (own_class, kind, state) = (v.class, v.kind, v.state);
+    let terrain = if a.terrain_bonus < 0 {
+        1.0f32
+    } else {
+        a.terrain.ok_or(GenieError::unsupported(
+            "a terrain defense bonus without the map's terrain or the restriction",
+        ))?
+    };
+    let mut sum = 0.0f32;
+    let mut charged = false;
+    let mut bonused = false;
+    for &(class, amount) in weapons {
+        let armor_f = f32::from(weapon_armor(a, class, attacker, kind, own_class, state));
+        let mut attack = f32::from(amount);
+        let pierce_or_melee = matches!(class, 3 | 4 | 31);
+        let mut resist = 1.0f32;
+        if 70 <= attacker.kind {
+            let charge =
+                !charged && 0.0 < attack && pierce_or_melee && charges(attacker, own_class, kind);
+            let c = if charge {
+                charge_damage(attacker)?
+            } else {
+                0.0
+            };
+            if 0.0 < c {
+                charged = true;
+                attack += c + 0.0;
+            } else {
+                attack += 0.0;
+            }
+            if pierce_or_melee && !bonused {
+                // the bonus, then the stinger plus the powerup
+                attack += bonus + (0.0 + attacker.attack_powerup);
+                bonused = true;
+            }
+        }
+        if !pierce_or_melee && a.resistance != 0.0 && 0.0 < attack - armor_f {
+            resist = 1.0 - a.resistance;
+        }
+        let mut armor_f = armor_f;
+        let mut below = false;
+        if attack < 0.0 && attack < armor_f && armor_f != f32::from(a.base_armor) {
+            armor_f = if armor_f < 0.0 { armor_f } else { 0.0 };
+            below = true;
+        }
+        let v = (attack - armor_f) * factor * terrain * resist;
+        if 0.0 < v || below {
+            sum += v;
+        }
+    }
+    let least = if attacker.mode_680 == 1 { 0.0 } else { 1.0 };
+    Ok(if weapons.is_empty() {
+        sum
+    } else if least > sum {
+        least
+    } else {
+        sum
+    })
+}

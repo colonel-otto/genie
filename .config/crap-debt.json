@@ -83,9 +83,9 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/damage.rs",
+      "file": "crates/engine/genie-core/src/damage/blasts.rs",
       "function": "blast",
-      "line": 1426,
+      "line": 112,
       "cyclomatic": 60.0,
       "coverage": 73.41772151898735,
       "crap": 127.62061419076379,

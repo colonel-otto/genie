@@ -1,0 +1,369 @@
+//! A target's slot 0xe8: a building's, a static object's and a combat unit's, with the
+//! unit's facing, its retaliation and the hit's end.
+
+use crate::GenieError;
+use crate::damage::{
+    Armored, Attacker, BUILDING, Building, EPSILON, FACING, LEAST_CLASS_HIT, LEAST_HIT_CLASSES,
+    MINUS_FACING, ONE, RETALIATION_RANGE, RETALIATION_SCALE, Razed, SPECIAL, VILLAGER, Victim,
+    WALL, charge_hit, damage, effective, elevation_factor, facing_offset, hp_floor, lose,
+    special_charge_ready,
+};
+
+/// The target's slot 0xe8 with the source's `weapons` at `factor`, less the damage a blast has
+/// already done to it (`blast_taken`, a building's `+0xb90`): a static, animated, doppelganger,
+/// moving or action object, or a tree (types below 50 and 90: `FUN_14118efd0`,
+/// [`take_static`]), a combat object of type 50 or 60 ([`damage`]), of type 70
+/// ([`take_unit`]) or a building ([`take_building`]). `others` are the objects besides the two
+/// the hit may reach: an annex's main building, which takes a hit on the annex, and the annexes
+/// that take a main building's hit points (every caller passes the flag that forwards an
+/// annex's hit, 1).
+///
+/// # Errors
+///
+/// A part of the hit the slice does not model.
+pub fn take(
+    t: &mut Victim,
+    src: &mut Victim,
+    others: &mut [&mut Victim],
+    weapons: &[(i16, i16)],
+    factor: f32,
+    blast_taken: f32,
+) -> Result<(), GenieError> {
+    match t.kind {
+        70 => take_unit(t, src, others, weapons, factor, blast_taken),
+        50 | 60 => damage(t, src, weapons, factor, blast_taken),
+        BUILDING => take_building(t, src, others, weapons, factor, true, blast_taken).map(|_| ()),
+        _ => {
+            take_static(t, &src.source, weapons, factor);
+            Ok(())
+        }
+    }
+}
+
+/// A building's slot 0xe8 (`FUN_1411cea90`), `forward` the flag every caller sets (clear for
+/// the main building's hit an annex forwards). Its wake from semi-asleep (`+0xc98`: the flag
+/// cleared, `FUN_14119deb0` with 0, the owner's `+0x80` list, `FUN_14107db90`) never runs here:
+/// only the building's load sets that flag (`FUN_1411df160` -> `FUN_1411ddd20` with the save's
+/// `temp_semi_asleep`), and no saved building of the 158041 recordings has it (1473 headers
+/// read); the slice does not hold it. With `forward`, an annex (`+0xbb8`) gives the hit to its
+/// main building among `others` (whose slot 0xe8 runs with the flag clear and the same
+/// `blast_taken`) and takes its hit points when that hit got past its hit point test. Else at 0
+/// hit points or fewer (`COMISS 0, hp` / `JNC`: a NaN goes on) nothing happens. The damage
+/// ([`damage`]); without a blast's damage so far (`UCOMISS blast_taken, 0`: exactly 0), a hit
+/// that took less than its least ([`ONE`]; [`LEAST_CLASS_HIT`] from the
+/// [`LEAST_HIT_CLASSES`] under the game's setting `+0x680` at 1) takes the least again (slot
+/// 0xb0 with it; `COMISS least, lost` / `JBE` past). Not held: the statistics (`FUN_1417783d0`)
+/// and the local player's telemetry (`FUN_140a4b540`). A player's building (`+0x718` above 0)
+/// left below 1 hit point (`COMISS 1, hp` / `JBE` past) is razed ([`Razed`]): a castle's or a
+/// wonder's history event; but for an annex or a wall (class 27), the razing counts, or a
+/// trebuchet's kill counts unless its kill is counted (`+0x954`, which its damage's kill sets:
+/// slot 0x8b0's `FUN_14107da00`; a building at 0 hit points takes no hit, so no earlier one
+/// did), then the kill bonus ([`kill_bonus`]) and the razing values (172, 153). Then
+/// `damaged_lately_timer` (`+0x30d`) is 60 and its annexes take its hit points (the write-back
+/// gives them to those `others` does not hold, [`Building::struck`]); with `forward`, an
+/// attacker of type 50 and up leaves a building of 1 hit point or more (`COMISS hp, 1` / `JC`
+/// past) to its effects ([`attack_effects`]). Answers whether the hit got past the hit point
+/// test.
+pub(super) fn take_building(
+    t: &mut Victim,
+    src: &mut Victim,
+    others: &mut [&mut Victim],
+    weapons: &[(i16, i16)],
+    factor: f32,
+    forward: bool,
+    blast_taken: f32,
+) -> Result<bool, GenieError> {
+    let before = t.hp;
+    let main = t.building.as_ref().and_then(|b| b.main);
+    if forward && let Some(main) = main {
+        let k = others
+            .iter()
+            .position(|v| v.id == main)
+            .ok_or(crate::build::NOT_HELD)?;
+        let mut m = std::mem::replace(&mut *others[k], Victim::placeholder());
+        let struck = take_building(&mut m, src, others, weapons, factor, false, blast_taken);
+        let annexed = m
+            .building
+            .as_ref()
+            .is_some_and(|b| b.annexes.contains(&t.id));
+        if matches!(struck, Ok(true)) && annexed {
+            t.hp = m.hp;
+        }
+        *others[k] = m;
+        return struck.map(|_| false);
+    }
+    if 0.0 >= t.hp {
+        return Ok(false);
+    }
+    damage(t, src, weapons, factor, blast_taken)?;
+    // the kill of its damage ran slot 0x8b0, which counts it (+0x954)
+    let counted = t.killed.is_some();
+    if blast_taken == 0.0 {
+        let least = if src.source.mode_680 == 1 && LEAST_HIT_CLASSES.contains(&src.source.class) {
+            LEAST_CLASS_HIT
+        } else {
+            ONE
+        };
+        if least > before - t.hp {
+            lose(t, least);
+        }
+    }
+    let b = t.building.get_or_insert_with(Building::default);
+    if 0 < t.player && ONE > t.hp {
+        let (ap, q) = (src.player, t.player);
+        let event = match t.master_id {
+            crate::turn::CASTLE => Some(crate::history::CASTLE_DESTROYED),
+            crate::turn::WONDER => Some(crate::history::WONDER_DESTROYED),
+            _ => None,
+        };
+        let mut adds = Vec::new();
+        if b.main.is_none() && t.class != WALL {
+            let cost = b.cost;
+            // 16-bit adds of the players' ids (`ADD DX, word ptr [.. + 0x718]`)
+            let (qa, apa) = (q as i16, ap as i16);
+            if !b.trebuchet {
+                adds.extend([
+                    (ap, 43, ONE),
+                    (ap, 170, cost),
+                    (q, 152, cost),
+                    (q, 155, ONE),
+                    (ap, 350 + qa, ONE),
+                    (q, 375 + apa, ONE),
+                    (ap, 425 + qa, cost),
+                ]);
+            } else if !counted {
+                adds.extend([
+                    (ap, 20, ONE),
+                    (ap, 170, cost),
+                    (q, 154, ONE),
+                    (q, 152, cost),
+                    (ap, 300 + qa, ONE),
+                    (q, 325 + apa, ONE),
+                    (ap, 400 + qa, cost),
+                ]);
+            }
+            kill_bonus(&src.source)?;
+            adds.extend([(ap, 172, cost), (q, 153, cost)]);
+        }
+        b.razed.push(Razed {
+            attacker_player: ap,
+            owner: q,
+            event,
+            adds,
+        });
+    }
+    b.damaged_lately = DAMAGED_LATELY;
+    b.struck = true;
+    let annexes = b.annexes.clone();
+    for a in others.iter_mut().filter(|a| annexes.contains(&a.id)) {
+        a.hp = t.hp;
+    }
+    if forward && 50 <= src.kind && t.hp >= ONE {
+        attack_effects(&src.source, t)?;
+    }
+    Ok(true)
+}
+
+/// `damaged_lately_timer` after a hit on a building (`MOV byte ptr [RBX + 0x30d],0x3c` at
+/// `0x1411cf4d2`).
+pub(super) const DAMAGED_LATELY: u8 = 0x3c;
+
+/// `FUN_1415c6510`, the kill bonus of the attacker `src` (type 40 and up) for an object it
+/// killed: its master's tasks of action type 0x9a pay their owner's attributes, research
+/// technologies and run effects (not modelled); an attacker without one does nothing.
+pub(super) const fn kill_bonus(src: &Attacker) -> Result<(), GenieError> {
+    if 40 <= src.kind && src.kill_bonus_tasks {
+        return Err(GenieError::unsupported(
+            "an attacker's kill bonus task (action type 0x9a)",
+        ));
+    }
+    Ok(())
+}
+
+/// `FUN_14107bdf0`, the attacker `src`'s combat ability's effects on its target `t`: only a
+/// combat ability with bit 7, against a target whose player is not allied with the attacker's
+/// both ways (`FUN_141663d90` with the ally flag, [`Victim::allied`]), does anything (its
+/// master's effects on the target, not modelled).
+pub(super) const fn attack_effects(src: &Attacker, t: &Victim) -> Result<(), GenieError> {
+    if src.ability & 0x80 != 0 && !(t.allied[0] && t.allied[1]) {
+        return Err(GenieError::unsupported(
+            "an attacker whose hits apply effects (FUN_14107bdf0)",
+        ));
+    }
+    Ok(())
+}
+
+impl Victim {
+    /// What stands in a slice of objects for one a hit has taken out for the time it changes it:
+    /// no object's id.
+    pub(super) fn placeholder() -> Self {
+        Self {
+            id: -1,
+            ..Self::default()
+        }
+    }
+}
+
+/// A static object's slot 0xe8 (`FUN_14118efd0`), also the animated, doppelganger, moving and
+/// action objects' and a tree's: it has no armor (slot 0xf0 `FUN_14118cab0`: a TRIBE attacker's
+/// ready charge on it, then the weapons times the factor) and loses the damage (slot 0xb0,
+/// `FUN_141189160`); below 1 hit point (`COMISS`/`JBE`: a NaN stays) it has 0 and wakes
+/// (`FUN_14119deb0` with 0: `goto_sleep` clears; an object asleep in its player's sleeping list
+/// moves to the live list, the caller's), and but for a villager's hit it loses what it holds.
+/// The routine's test for no attacker cannot be reached: slot 0xf0 has called the attacker's
+/// slot 0x2f0 before it. Its last call (slot 0x4c0, `FUN_141196a00` or `FUN_141158bb0`) plays
+/// the master's damage sound (`+0x700`), whose draws are the Unsynced stream's: no simulation
+/// state.
+pub(super) fn take_static(t: &mut Victim, src: &Attacker, weapons: &[(i16, i16)], factor: f32) {
+    // slot 0x2f0 of a TRIBE attacker (types 70, 80; [`charge_hit`]) starts the sum at its raw
+    // charge (slot 0x310, `+0x9e0`) plus 0
+    let mut damage = if 70 <= src.kind && charge_hit(src, t) {
+        src.charge + 0.0
+    } else {
+        0.0f32
+    };
+    for &(_, amount) in weapons {
+        damage += f32::from(amount) * factor;
+    }
+    t.hp -= damage;
+    if t.hp < 1.0 {
+        t.hp = 0.0;
+        t.goto_sleep = false;
+        if src.class != VILLAGER {
+            t.amount = 0.0;
+        }
+    }
+}
+
+/// A combat object's slot 0xe8 (`FUN_1412108e0`): none on an object below 1 hit point. The
+/// special attack (`special_attack_flag` 1) of an idle target facing its attacker takes the
+/// damage to 0.66 (its sprite, master `+0x8e8`, is not modelled); the retaliation (flag 2) of an
+/// idle target with a unit AI facing an attacker of weapon range below 0.2 strikes the attacker
+/// first with its own weapons (four times over a unit whose charge is ready,
+/// [`special_charge_ready`]), and an attacker left with at most 1 hit point
+/// takes the hit to nothing. Then the damage ([`damage`]); a hit takes at least one hit point
+/// (but past the hit point floor); a target with `damage_reflection` gives its attacker that
+/// share of the loss, at least 1 (slot 0xb0, no kill handling). Not held: the statistics
+/// (`FUN_1417783d0`); not modelled: a kill bonus task of the attacker (action type 0x9a,
+/// `FUN_1415c6510`) and its combat ability's effects (bit 7, `FUN_14107bdf0`).
+pub(super) fn take_unit(
+    t: &mut Victim,
+    src: &mut Victim,
+    others: &mut [&mut Victim],
+    weapons: &[(i16, i16)],
+    factor: f32,
+    blast_taken: f32,
+) -> Result<(), GenieError> {
+    let before = effective(t);
+    if t.hp < 1.0 {
+        return Ok(());
+    }
+    let a = t.armored.clone().ok_or(GenieError::unsupported(
+        "a combat object without its combat values",
+    ))?;
+    let mut factor = factor;
+    if a.special_attack == 1 && !a.busy {
+        let off = facing_to(&a, t.position, src)?;
+        if MINUS_FACING < off && off < FACING {
+            factor *= SPECIAL;
+            if a.special_graphic {
+                return Err(GenieError::unsupported(
+                    "a special attack's sprite (master +0x8e8)",
+                ));
+            }
+        }
+    }
+    if retaliates(t, src, others, &a)? {
+        factor = 0.0;
+    }
+    damage(t, src, weapons, factor, blast_taken)?;
+    after_hit(t, src, &a, before)
+}
+
+/// [`take_unit`]'s facing of a target (`a`, at `at`) to its attacker `src`
+/// ([`facing_offset`]).
+///
+/// # Errors
+///
+/// A target without its facing (`+0x7e8`).
+pub(super) fn facing_to(a: &Armored, at: [f32; 3], src: &Victim) -> Result<f32, GenieError> {
+    let facing = a.facing.ok_or(GenieError::unsupported(
+        "the facing of a target with a special attack or a retaliation (+0x7e8)",
+    ))?;
+    Ok(facing_offset(at, facing, src.position))
+}
+
+/// [`take_unit`]'s retaliation (`special_attack_flag` 2): an idle target with a unit AI facing
+/// an attacker of weapon range below 0.2 strikes it first with its own weapons (four times over a
+/// unit whose charge is ready, [`special_charge_ready`]); true when the attacker is left with at
+/// most 1 hit point, which takes the hit to nothing.
+///
+/// # Errors
+///
+/// A retaliating target without its unit AI's alert mode, and what the strike does not model.
+pub(super) fn retaliates(
+    t: &mut Victim,
+    src: &mut Victim,
+    others: &mut [&mut Victim],
+    a: &Armored,
+) -> Result<bool, GenieError> {
+    let reach = src.source.weapon_range;
+    let melee = reach <= RETALIATION_RANGE && RETALIATION_RANGE != reach;
+    // the conditions are pure: the ones the slice holds decide first
+    if !(a.special_attack == 2 && a.unit_ai && !a.busy && melee) {
+        return Ok(false);
+    }
+    let idle = a.alert_idle.ok_or(GenieError::unsupported(
+        "the alert mode and attackers of a retaliating target's unit AI (FUN_140c42b30)",
+    ))?;
+    if !idle {
+        return Ok(false);
+    }
+    let off = facing_to(a, t.position, src)?;
+    if !(MINUS_FACING < off && off < FACING) {
+        return Ok(false);
+    }
+    let mut f = elevation_factor(t.position[2], t.attack_elevation, src);
+    if src.kind == 70 && special_charge_ready(&src.source)? {
+        f *= RETALIATION_SCALE;
+    }
+    let w = t.weapons.clone();
+    take(src, t, others, &w, f, 0.0)?;
+    Ok(src.hp <= 1.0)
+}
+
+/// [`take_unit`]'s end after the damage: a hit takes at least one hit point of the `before`
+/// effective ones (but past the hit point floor); a target with `damage_reflection` gives its
+/// attacker that share of the loss, at least 1; below 1 hit point the attacker's kill bonus,
+/// else its combat ability's effects.
+///
+/// # Errors
+///
+/// A kill bonus task and the combat ability's effects, which are not modelled.
+pub(super) fn after_hit(
+    t: &mut Victim,
+    src: &mut Victim,
+    a: &Armored,
+    before: f32,
+) -> Result<(), GenieError> {
+    // a hit takes at least one hit point
+    let mut lost = before - effective(t);
+    let floor = hp_floor(a, t.master_hp);
+    if lost < 1.0 && (floor == 0.0 || floor + 1.0 <= before) {
+        t.hp = before - 1.0;
+        lost = 1.0;
+    }
+    if EPSILON < a.reflection {
+        let d = a.reflection * lost;
+        lose(src, if 1.0 <= d { d } else { 1.0 });
+    }
+    // COMISS 1, hp / JBE past: below 1 (not NaN) the kill bonus; COMISS hp, 1 / JC past: at 1
+    // or more (not NaN) the attacker's effects
+    if ONE > t.hp {
+        kill_bonus(&src.source)?;
+    }
+    if 50 <= src.kind && t.hp >= ONE {
+        attack_effects(&src.source, t)?;
+    }
+    Ok(())
+}
