@@ -1,0 +1,392 @@
+//! The Transport in the world: what it reads of its unit, the unload command, a move, the
+//! unload and the units put ashore.
+
+use crate::GenieError;
+use crate::checkpoint::cvttss2si;
+use crate::transport::{
+    Around, Changed, MapShore, NONE, SAIL_TO_UNLOAD, Ship, Shore, TRANSPORT, TransportAction,
+    find_drop_location, retry_point,
+};
+
+/// The transports' parts that reach the world: the unload command's install, the unload and the
+/// units put ashore.
+impl crate::turn::Turns {
+    /// What the Transport of player `p`'s object at `i` reads of it ([`Ship`]): its place, its
+    /// master's radii, whether an object is inside it, the map's size and whether it has speed.
+    pub(super) fn ship(&self, p: usize, i: usize) -> Result<Ship, GenieError> {
+        let unit = &self.players[p].objects[i];
+        let master = self.master_of(p, unit.life.master_id)?;
+        Ok(Ship {
+            position: unit.position,
+            radius: master.radius,
+            loaded: !unit.garrison.is_empty(),
+            map: self.spatial.map,
+            moves: unit.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
+        })
+    }
+
+    /// The unit's unload command (slot 0x3a8, `FUN_14108d050`) at `to` for player `p`'s object at
+    /// `i`, after the unit AI that gave it: a Transport on top (type 12, `FUN_140a7be70`) is told
+    /// to work at the unit's own place ("Telling existing action to work": slot 9 with the unit
+    /// itself as its object, [`TransportAction::work`]); else the actions go (`FUN_140a98620`,
+    /// [`crate::turn::Turns::clear_actions`]) and a Transport at the unit's place
+    /// ([`TransportAction::new`]) replaces them (slot 0x808: its slot 0x70, the base's, does
+    /// nothing; the list's add starts it, [`TransportAction::start`]), then takes the work order
+    /// at `to` from the unit itself.
+    ///
+    /// # Errors
+    ///
+    /// A map without its terrain, and what the actions' teardowns do not model.
+    pub(crate) fn transport_order(
+        &mut self,
+        p: usize,
+        i: usize,
+        to: [f32; 3],
+    ) -> Result<(), GenieError> {
+        let existing = self.players[p].objects[i].top_action_kind() == Some(TRANSPORT);
+        if !existing {
+            self.clear_actions(p, i)?;
+        }
+        let ship = self.ship(p, i)?;
+        let restriction = self
+            .master_of(p, self.players[p].objects[i].life.master_id)?
+            .terrain_restriction;
+        let mut shore = MapShore::new(
+            &self.spatial,
+            &mut self.zones,
+            &mut self.pathing,
+            restriction,
+            ship.position,
+        )?;
+        let unit = &mut self.players[p].objects[i];
+        let changes = if let Some(t) = unit.transport.as_mut().filter(|_| existing) {
+            vec![t.work(ship.position, true, &ship, &mut shore)?]
+        } else {
+            let mut t = TransportAction::new(ship.position);
+            let started = t.start(true, &ship, &mut shore);
+            let worked = t.work(to, true, &ship, &mut shore)?;
+            unit.transport = Some(t);
+            vec![started, worked]
+        };
+        for c in changes {
+            self.transport_changed(p, i, c)?;
+        }
+        Ok(())
+    }
+
+    /// The Transport of player `p`'s object at `i` takes a move to `point` (its slot 8,
+    /// [`crate::turn::Unit::transport_sail`]).
+    ///
+    /// # Errors
+    ///
+    /// A map without its terrain, a unit of a master the slice does not have.
+    pub(crate) fn transport_move(
+        &mut self,
+        p: usize,
+        i: usize,
+        point: [f32; 3],
+    ) -> Result<(), GenieError> {
+        let rng = self.streams.get(crate::rng::Stream::Sprite);
+        self.players[p].objects[i].transport_sail(
+            point,
+            (&self.spatial, &mut self.zones, &mut self.pathing),
+            (self.masters.get(p), &self.graphics, rng),
+        )
+    }
+
+    /// What a state change of the Transport of player `p`'s object at `i` leaves ([`Changed`]):
+    /// the unit stops (its `MoveTo`'s teardown, slot 0x5d0), then takes its standing sprite (slot
+    /// 0x68, [`crate::turn::Unit::show_standing`]).
+    pub(super) fn transport_changed(
+        &mut self,
+        p: usize,
+        i: usize,
+        c: Changed,
+    ) -> Result<(), GenieError> {
+        let unit = &mut self.players[p].objects[i];
+        if c.stopped
+            && let Some(m) = unit.mover.as_mut()
+        {
+            m.stop()?;
+        }
+        if c.stands {
+            let rng = self.streams.get(crate::rng::Stream::Sprite);
+            unit.show_standing(self.masters.get(p), &self.graphics, rng)?;
+        }
+        Ok(())
+    }
+
+    /// The unload of the Transport of player `p`'s object at `i` in its update's state 6
+    /// (`FUN_140aa3ba0`, [`TransportStep::unload`]): the units inside go ashore in the zone of
+    /// the point's tile ([`Shore::zone`]; any zone without a point) ([`Turns::unload_all`]).
+    /// With none ashore the point moves ([`retry_point`], the Action stream) and the Transport
+    /// sails there to unload (`set_state(4)`, then `+0x68`) when a draw found land, else the
+    /// owner hears 0x207 (no unload there); with some ashore and more inside the owner hears
+    /// 0x206 (its slot 0x2e8 with the transport's action value: the interface's messages, the
+    /// old pather's hulled area, a computer player's AI, [`crate::unit_ai::alert_owner`]). Then
+    /// the update's end ([`TransportAction::unloaded`]).
+    ///
+    /// # Errors
+    ///
+    /// A map without its terrain, a computer player's AI hearing it, and what the units put
+    /// ashore do not model.
+    ///
+    /// [`TransportStep::unload`]: crate::transport::TransportStep::unload
+    pub(crate) fn transport_unload(&mut self, p: usize, i: usize) -> Result<(), GenieError> {
+        let unit = &self.players[p].objects[i];
+        let t = unit
+            .transport
+            .ok_or(GenieError::unreachable("an unload without its Transport"))?;
+        let restriction = self.master_of(p, unit.life.master_id)?.terrain_restriction;
+        let [x, y, _] = t.point;
+        let zone = if x == NONE {
+            u32::MAX
+        } else {
+            let mut shore = MapShore::new(
+                &self.spatial,
+                &mut self.zones,
+                &mut self.pathing,
+                restriction,
+                unit.position,
+            )?;
+            u32::from(shore.zone(cvttss2si(x), cvttss2si(y))?)
+        };
+        let count = self.unload_all(p, i, zone)?;
+        let computer = self.players[p].computer;
+        let ship = self.ship(p, i)?;
+        let mut changes = Vec::new();
+        if count == 0 {
+            let terrain = self
+                .spatial
+                .terrain
+                .as_ref()
+                .ok_or(crate::zones::NO_TERRAIN)?;
+            let rng = self.streams.get(crate::rng::Stream::Action);
+            let (point, sails) = retry_point([x, y], ship.map, |tx, ty| terrain.read(tx, ty), rng);
+            let mut shore = MapShore::new(
+                &self.spatial,
+                &mut self.zones,
+                &mut self.pathing,
+                restriction,
+                ship.position,
+            )?;
+            let t = self.players[p].objects[i]
+                .transport
+                .as_mut()
+                .expect("read above");
+            t.point[0] = point[0];
+            t.point[1] = point[1];
+            if sails {
+                changes.push(t.set_state(SAIL_TO_UNLOAD, &ship, &mut shore));
+                t.retarget = true;
+            } else {
+                crate::unit_ai::alert_owner(computer)?;
+            }
+        } else if ship.loaded {
+            crate::unit_ai::alert_owner(computer)?;
+        }
+        let mut shore = MapShore::new(
+            &self.spatial,
+            &mut self.zones,
+            &mut self.pathing,
+            restriction,
+            ship.position,
+        )?;
+        let t = self.players[p].objects[i]
+            .transport
+            .as_mut()
+            .expect("read above");
+        changes.push(t.unloaded(&ship, &mut shore));
+        for c in changes {
+            self.transport_changed(p, i, c)?;
+        }
+        Ok(())
+    }
+
+    /// `FUN_141191b40`: the objects inside the transport at (`p`, `i`) go ashore in `zone` (−1
+    /// for any), from the last in: each where a drop location is free ([`Turns::drop_location`])
+    /// about the last spot one took (the first: the transport's place and radii), else about the
+    /// spot before, and so on back; one that finds none stays inside, and so does every one
+    /// after it (the spots are used up). A unit put ashore ([`Turns::come_ashore`]) makes its
+    /// place, with its master's radii, the next spot (up to 29). Returns how many went ashore,
+    /// a byte.
+    pub(super) fn unload_all(&mut self, p: usize, i: usize, zone: u32) -> Result<u8, GenieError> {
+        const SPOTS: usize = 0x1d;
+        let ship = &self.players[p].objects[i];
+        let radius = self.master_of(p, ship.life.master_id)?.radius;
+        let mut spots = [Around {
+            center: [0.0; 2],
+            radius: [0.0; 2],
+        }; SPOTS + 1];
+        spots[1] = Around {
+            center: [ship.position[0], ship.position[1]],
+            radius,
+        };
+        let mut k = 1;
+        let mut count = 0u8;
+        // the drop locations' last place, across the units (FUN_141191b40's locals)
+        let mut last = None;
+        let mut j = ship.garrison.len();
+        while 0 < j {
+            j -= 1;
+            let Some(&id) = self.players[p].objects[i].garrison.get(j) else {
+                continue;
+            };
+            // the game skips a null entry; an id the world no longer holds is one
+            let Some((up, u)) = self.object(id) else {
+                continue;
+            };
+            let made = self.master_of(up, u.life.master_id)?.clone();
+            while 0 < k {
+                if let Some(spot) =
+                    self.drop_location((p, i), id, &made, spots[k], zone, &mut last)?
+                {
+                    self.come_ashore((p, i), id, &made, spot)?;
+                    count = count.wrapping_add(1);
+                    if k < SPOTS {
+                        k += 1;
+                        spots[k] = Around {
+                            center: spot,
+                            radius: made.radius,
+                        };
+                    }
+                    break;
+                }
+                k -= 1;
+            }
+        }
+        Ok(count)
+    }
+
+    /// `FUN_141192d10` for the unit `id` (of master `made`) about `around`, in `zone` of the
+    /// transport at (`p`, `i`) ([`find_drop_location`] on the Object stream, the place `last`
+    /// across the caller's units). A place is in the zone when the zone of its tile on the
+    /// transport's zone map (`FUN_1411958c0` on its `CVTTSS2SI` tile, 0 below 0 or without a map),
+    /// cut to its low byte, is it, or touches it (`FUN_141414f70` on both low bytes; without a
+    /// map none does); −1 takes any. A place is free where the unit's master may stand for the
+    /// transport's owner (its slot 0x50, [`crate::spawn::placement`] with the spawn's arguments:
+    /// its arguments 9 and 12, 1 and 0 here, change nothing the slice reads) and the unit could
+    /// stand (its slot 0x278, [`crate::spatial::Spatial::point_clear`] by its radius and its
+    /// restriction's mask).
+    pub(crate) fn drop_location(
+        &mut self,
+        (p, i): (usize, usize),
+        id: i32,
+        made: &crate::masters::Master,
+        around: Around,
+        zone: u32,
+        last: &mut Option<[f32; 2]>,
+    ) -> Result<Option<[f32; 2]>, GenieError> {
+        let ship = &self.players[p].objects[i];
+        let restriction = self.master_of(p, ship.life.master_id)?.terrain_restriction;
+        let terrain = self
+            .spatial
+            .terrain
+            .as_ref()
+            .ok_or(crate::zones::NO_TERRAIN)?;
+        let [w, h] = self.spatial.map;
+        let zone_map = match usize::try_from(restriction) {
+            Ok(r) if zone != u32::MAX => {
+                let values = terrain
+                    .restrictions
+                    .get(r)
+                    .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+                Some(self.zones.find(w, h, &terrain.kinds, values, false))
+            }
+            _ => None,
+        };
+        let moving = made.moving.as_ref().ok_or(crate::spawn::NOT_MOVING)?;
+        let terrain = self
+            .spatial
+            .terrain
+            .as_ref()
+            .ok_or(crate::zones::NO_TERRAIN)?;
+        let values = terrain
+            .restrictions
+            .get(moving.restriction)
+            .ok_or(crate::zones::UNKNOWN_RESTRICTION)?;
+        let placing = crate::spawn::Placing {
+            player: p,
+            radius: made.radius,
+            tall: made.tall,
+            class: made.class,
+            restriction: values,
+            hill_mode: made.hill_mode,
+            placement: made.placement,
+        };
+        let unit = self.object(id).map(|(_, u)| u);
+        let (grow, mask) = unit.and_then(|u| u.mover.as_ref()).map_or_else(
+            || (made.radius[0], terrain.restriction_mask(moving.restriction)),
+            |m| (m.stats.radius[0], m.stats.restriction_mask),
+        );
+        let zone_map = zone_map.map(|k| self.zones.map(k));
+        let mut rng = self.streams.get(crate::rng::Stream::Object).clone();
+        let map = crate::spawn::WorldMap { turns: self };
+        let spatial = &self.spatial;
+        let found = find_drop_location(
+            around,
+            made.radius,
+            [w, h],
+            last,
+            &mut rng,
+            &mut |[x, y]| {
+                if zone == u32::MAX {
+                    return Ok(true);
+                }
+                let (tx, ty) = (cvttss2si(x), cvttss2si(y));
+                let tile_zone = match zone_map {
+                    Some(m) if 0 <= tx && 0 <= ty => m.zone(tx, ty),
+                    _ => 0,
+                };
+                let low = tile_zone & 0xff;
+                if u32::from(low) == zone {
+                    return Ok(true);
+                }
+                let Some(m) = zone_map else {
+                    return Ok(false);
+                };
+                m.adjacent(low, (zone & 0xff) as u16)
+                    .ok_or(GenieError::unreachable("a zone adjacency past its table"))
+            },
+            &mut |[x, y]| {
+                let [rx, ry] = made.radius;
+                spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
+                if crate::spawn::placement(&placing, &map, [x, y], false)?
+                    != crate::spawn::Tested::Free
+                {
+                    return Ok(false);
+                }
+                spatial.point_clear(id, [x, y], grow, mask)
+            },
+        );
+        *self.streams.get(crate::rng::Stream::Object) = rng;
+        found
+    }
+
+    /// `FUN_141191b40`'s put ashore of the unit `id` (of master `made`) from the transport at
+    /// (`p`, `i`) at `spot`: it takes the transport's place (its place's fields), leaves it (slot
+    /// 0x1a8) for the spot at the transport's height (slot 0x58, [`Turns::leave_container`]); its
+    /// `+0x688`, its box (`+0x6fc`..`+0x704`) and its sprites' places (`FUN_141189d50`), the
+    /// interface's, are not held; its unit AI's state position (`+0x1ac`, `+0x1b0`) becomes the
+    /// spot. A siege tower's (class 13) unload is not modelled.
+    pub(super) fn come_ashore(
+        &mut self,
+        (p, i): (usize, usize),
+        id: i32,
+        made: &crate::masters::Master,
+        spot: [f32; 2],
+    ) -> Result<(), GenieError> {
+        let ship = &self.players[p].objects[i];
+        let at = ship.position;
+        if self.master_of(p, ship.life.master_id)?.class == crate::garrison::SIEGE_CLASS {
+            return Err(crate::garrison::SIEGE_UNLOAD);
+        }
+        let (up, ui) = self.live_inside(id)?;
+        self.players[up].objects[ui].position = at;
+        self.leave_container((p, i), (up, ui), made, [spot[0], spot[1], at[2]])?;
+        if let Some(ai) = self.players[up].objects[ui].ai.as_mut() {
+            ai.state_position = spot;
+        }
+        Ok(())
+    }
+}
