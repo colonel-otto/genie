@@ -8,7 +8,7 @@ use genie_save::generated::world::{
     Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
 };
 
-pub(super) fn vec3(b: &[u8; 12]) -> genie_core::fmath::Vec3 {
+pub(super) fn vec3(b: &[u8; 12]) -> genie_core::math::fmath::Vec3 {
     let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
     [f(0), f(4), f(8)]
 }

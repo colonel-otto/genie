@@ -1,7 +1,7 @@
 //! The idle checks of ships, siege, soldiers, units that do not attack and towers.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ARTIFACT_AI, ATTACK_MOVE, AttackAsk, BOAR_AI, CIVILIAN, DEFEND_ORDER, ENEMY_SIGHTING_GAP,
     Effect, FISHING_AI, FISHING_CARED, Found, Memory, PATROL, Pick, SHIP_EVADE_REACH, SIEGE_AI,
@@ -108,7 +108,7 @@ impl UnitAi {
         let [x, y, z] = at.position;
         let dx = u.position[0] - x;
         let dy = u.position[1] - y;
-        let d = crate::fmath::sqrt(dy * dy + dx * dx);
+        let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
         let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
         let _ = self.evasive_move(point, (true, true), at, ai, side, fx)?;
         Ok(true)

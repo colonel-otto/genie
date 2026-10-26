@@ -12,8 +12,8 @@
 //! [`crate::damage`]'s).
 
 use crate::damage::Victim;
+use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, MoveWait, Walk};
-use crate::rng::Well512;
 use crate::sprite::{ActiveSprite, Graphic};
 
 mod constructor;
@@ -49,17 +49,17 @@ const NO_RANGE: f32 = 0.1;
 const HALF: f32 = 0.5;
 /// The squared reach of an attack without a range (`DAT_142ed48e4`): `0x3c23d70b`, which is
 /// `0.1f * 0.1f`, one ULP above `0.01f`.
-const TOUCH: f32 = crate::image::attack::TOUCH;
+const TOUCH: f32 = crate::math::image::attack::TOUCH;
 /// A `MoveTo` starts arrived within this gap (`DAT_142eb99cc`).
-const ARRIVED: f32 = crate::image::attack::ARRIVED;
+const ARRIVED: f32 = crate::math::image::attack::ARRIVED;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
-const EPSILON: f32 = crate::image::attack::EPSILON;
+const EPSILON: f32 = crate::math::image::attack::EPSILON;
 /// The point an attack on an object has none of (`DAT_14330ec20`).
-const NONE: f32 = crate::image::attack::NONE;
+const NONE: f32 = crate::math::image::attack::NONE;
 /// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
 const VILLAGER_CLASS: i16 = 4;
 /// The milliseconds of a second the reload world time counts (`FUN_141089820`).
-const RELOAD_MS: f32 = crate::image::attack::RELOAD_MS;
+const RELOAD_MS: f32 = crate::math::image::attack::RELOAD_MS;
 /// The hit chance's scale (`0x7fffffff`, the low word of a 64-bit Object-stream draw).
 const DRAW_SCALE: i64 = 0x7fff_ffff;
 /// The states the slice models: 1 done, 2 the target died, 4 on the way, 6 waiting to swing, 7
@@ -82,7 +82,7 @@ const GOTO_SEEN: u8 = 5;
 const GOTO_POINT: u8 = 11;
 /// The least range of a unit that walks onto the point where it saw its target
 /// (`DAT_14330eb8c`, [`GOTO_POINT`]).
-const SEEN_RANGE: f32 = crate::image::attack::SEEN_RANGE;
+const SEEN_RANGE: f32 = crate::math::image::attack::SEEN_RANGE;
 /// The predators' class (10), whose unit AI's slot 0x1f0 a failed Attack calls.
 const PREDATOR: i16 = 10;
 /// The boar's unit-AI type, whose slot 0x1f0 (`FUN_140c16d50`) sends it home.
@@ -317,11 +317,11 @@ pub struct Strike<'a> {
 }
 
 /// readyToAttack's gap for a range up to [`NO_RANGE`]: half a tile less (`DAT_142eb6e58`).
-const SHORT_RANGE_GAP: f32 = crate::image::attack::SHORT_RANGE_GAP;
+const SHORT_RANGE_GAP: f32 = crate::math::image::attack::SHORT_RANGE_GAP;
 
 /// readyToAttack's leash of stance 1 lets a target this much past the range from the unit AI's
 /// `state_position` (`DAT_14330ebb8`, read by `ADDSS` at `0x140a80051`).
-const LEASH_SLACK: f32 = crate::image::attack::LEASH_SLACK;
+const LEASH_SLACK: f32 = crate::math::image::attack::LEASH_SLACK;
 
 /// The masters readyToAttack does not turn to face their target (`0x6744`, `0x6746` raw).
 const MASTER_1704: i16 = 1704;

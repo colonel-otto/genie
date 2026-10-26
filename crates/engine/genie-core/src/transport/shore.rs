@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::transport::{
     DEEP_WATER, DRAW_SCALE, DROP_GAP, DROP_TRIES, RETRIES, RETRY_SPREAD, RETRY_STEP, STACK_PLACE,
     Shore, WATER,

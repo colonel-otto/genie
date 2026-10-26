@@ -5,7 +5,7 @@ use crate::game_status::{
     FISHING_BOAT, KEEPING_TYPES, KEPT_ACTION, LIVESTOCK, TRADE_ACTION, TRADE_CART,
     UNSTOPPED_BUILDINGS, VILLAGER,
 };
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::turn::{Releaser, Turns};
 use crate::unit_ai::{Effect, GenieError};
 
@@ -85,7 +85,7 @@ impl Turns {
         // slot 0x438 is the top action's type: a trade (0x6f) with a load held (COMISS 0, held;
         // JNC at 0x14108c11e: a NaN load counts) keeps the unit AI going
         let trading = unit.top_action_kind() == Some(TRADE_ACTION)
-            && crate::fmath::below_or_unordered(0.0, unit.life.amount)
+            && crate::math::fmath::below_or_unordered(0.0, unit.life.amount)
             && unit.life.attribute_type != -1;
         let Some(ai) = unit.ai.as_mut() else {
             return Ok(());

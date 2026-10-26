@@ -1,10 +1,10 @@
 //! PATROL, the attack move and their sweep, and the group the splitter keeps.
 
+use crate::math::rng::Stream;
 use crate::order::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };
-use crate::rng::Stream;
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 
@@ -259,7 +259,7 @@ impl Turns {
                 }
             }
             // slot 0x520: +0x824 as the game holds it (x, height, y)
-            let d = crate::fmath::sub([moved[0], moved[2], moved[1]], at);
+            let d = crate::math::fmath::sub([moved[0], moved[2], moved[1]], at);
             let influence = self.players[p].formations.influence;
             if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] <= influence * influence {
                 let _ = split.loose.remove(i);

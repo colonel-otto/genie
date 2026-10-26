@@ -7,7 +7,7 @@ use crate::group::motion::{
 };
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
 use crate::spatial::{Placed, Spatial};
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 /// One pass's end (the routine's labels).
 pub(super) enum Pass {

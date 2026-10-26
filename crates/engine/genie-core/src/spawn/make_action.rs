@@ -242,7 +242,7 @@ impl Turns {
         {
             m.progress = progress;
         }
-        if crate::fmath::below_or_unordered(progress, time) {
+        if crate::math::fmath::below_or_unordered(progress, time) {
             return Ok(0);
         }
         let pop = made.map_or(0.0, |m| population(&m.storage));

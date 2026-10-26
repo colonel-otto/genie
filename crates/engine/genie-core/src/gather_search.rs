@@ -4,7 +4,7 @@
 //! (`0x140ab0370` case 0xdf).
 
 use crate::GenieError;
-use crate::msvc;
+use crate::math::msvc;
 use crate::tasks::DropSite;
 
 /// What the searches read of an object in a map tile's list.
@@ -148,7 +148,8 @@ pub fn more_work(
                 };
                 let dx = o.position[0] - builder.position[0];
                 let dy = o.position[1] - builder.position[1];
-                let d = crate::checkpoint::cvttss2si(crate::fmath::sqrt(dy * dy + dx * dx)) as f32;
+                let d = crate::checkpoint::cvttss2si(crate::math::fmath::sqrt(dy * dy + dx * dx))
+                    as f32;
                 let workers = (o.workers - 1).max(0);
                 let take = match groups[g] {
                     Some((_, kept)) if least[g] <= d => workers < kept,
@@ -343,7 +344,7 @@ pub fn closest_resource_at(
 ) -> Result<(i32, Option<i32>), GenieError> {
     /// The fallback's steps before it has one (`1000000`).
     const NO_STEPS: i32 = 1_000_000;
-    const TILE_CENTRE: f32 = crate::image::gather_search::TILE_CENTRE;
+    const TILE_CENTRE: f32 = crate::math::image::gather_search::TILE_CENTRE;
     if seeker.state < seeker.min_state {
         return Ok((-1, None));
     }
@@ -493,8 +494,8 @@ fn push_neighbours(
 /// three times its line of sight plus 10; with one the point a quarter of the way from the
 /// site's place to the unit's, and for a footprint search the larger line of sight of the two.
 fn sort_point_and_side(at: [f32; 2], los: i32, site: Option<&SearchSite>) -> ((f32, f32), i32) {
-    const SITE_SHARE: f32 = crate::image::gather_search::SITE_SHARE;
-    const UNIT_SHARE: f32 = crate::image::gather_search::UNIT_SHARE;
+    const SITE_SHARE: f32 = crate::math::image::gather_search::SITE_SHARE;
+    const UNIT_SHARE: f32 = crate::math::image::gather_search::UNIT_SHARE;
     let [ux, uy] = at;
     site.map_or(((ux, uy), (los + 10) * 3), |s| {
         let [sx, sy, _] = s.position;
@@ -548,8 +549,8 @@ fn footprint_seeds(
 /// shorter one times 1.4 rounded down, less the shorter one (`DIAGONAL` plus `ROUNDING`,
 /// truncated).
 fn pass_distance(origin: (i32, i32), x: i32, y: i32) -> i32 {
-    const DIAGONAL: f32 = crate::image::gather_search::DIAGONAL;
-    const ROUNDING: f32 = crate::image::gather_search::ROUNDING;
+    const DIAGONAL: f32 = crate::math::image::gather_search::DIAGONAL;
+    const ROUNDING: f32 = crate::math::image::gather_search::ROUNDING;
     let (dx, dy) = ((origin.0 - x).abs(), (origin.1 - y).abs());
     if dy < dx {
         ((dy as f32 * DIAGONAL + ROUNDING) as i32 - dy) + dx

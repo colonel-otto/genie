@@ -6,9 +6,9 @@ use crate::attack::{
     Attack, DONE, FAILED, FARM, GOTO_POINT, GOTO_SEEN, KILLED, LIVESTOCK, MOVE, NO_RANGE, NONE,
     READY, Readiness, SEEN_RANGE, SWING, Strike, TOUCH, TREE, VILLAGER, VILLAGER_CLASS, set_sprite,
 };
+use crate::math::rng::Well512;
 use crate::move_to::{Goal, MoveTo, Walk};
 use crate::movement::footprint_gap;
-use crate::rng::Well512;
 use crate::sprite::ActiveSprite;
 
 impl Attack {

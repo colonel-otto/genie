@@ -2,7 +2,7 @@
 //! idle timeout.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     BOAR_AI, FISHING_AI, HUNTED_SIGHT_GROWTH, LION_AI, LIVESTOCK_AI, PREDATOR_AI, PRIEST_AI,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI, TRADE_BOAT_CLASS,
@@ -10,22 +10,22 @@ use crate::unit_ai::{
 
 /// The hunted animal evades by its speed times this (`FUN_140c1eea0`, `DAT_142eb1c98`), and a
 /// point at the map's far edge goes this far in (`FUN_140c4d140`, `DAT_14330eb8c`).
-pub(super) const EVADE_REACH: f32 = crate::image::unit_ai::EVADE_REACH;
+pub(super) const EVADE_REACH: f32 = crate::math::image::unit_ai::EVADE_REACH;
 /// `runAwayFromAttackers` (`FUN_140c5e900`): the run is the unit's speed times this
 /// (`DAT_142e8c150`); attackers closer together than `RUN_EPSILON` (`DAT_142eb0c60`) give a random
 /// direction, each part `2 r / RUN_DRAW_SCALE - RUN_ONE` (`DAT_142eb69cc`, `DAT_14330eb8c`); a
 /// defensive unit runs at most `RUN_LEASH` (`DAT_14330ebb8`) from its state position.
-pub(super) const RUN_REACH: f32 = crate::image::unit_ai::RUN_REACH;
-pub(super) const RUN_EPSILON: f32 = crate::image::unit_ai::RUN_EPSILON;
-pub(super) const RUN_DRAW_SCALE: f32 = crate::image::unit_ai::RUN_DRAW_SCALE;
-pub(super) const RUN_ONE: f32 = crate::image::unit_ai::RUN_ONE;
-pub(super) const RUN_LEASH: f32 = crate::image::unit_ai::RUN_LEASH;
+pub(super) const RUN_REACH: f32 = crate::math::image::unit_ai::RUN_REACH;
+pub(super) const RUN_EPSILON: f32 = crate::math::image::unit_ai::RUN_EPSILON;
+pub(super) const RUN_DRAW_SCALE: f32 = crate::math::image::unit_ai::RUN_DRAW_SCALE;
+pub(super) const RUN_ONE: f32 = crate::math::image::unit_ai::RUN_ONE;
+pub(super) const RUN_LEASH: f32 = crate::math::image::unit_ai::RUN_LEASH;
 /// `evasiveMoveTo` (`FUN_140c4d140`): a coordinate that is not a number becomes the unit's own
 /// plus one, or minus one above this (`DAT_14330ebb8`).
-pub(super) const EVASIVE_NEAR: f32 = crate::image::unit_ai::EVASIVE_NEAR;
+pub(super) const EVASIVE_NEAR: f32 = crate::math::image::unit_ai::EVASIVE_NEAR;
 /// The class whose attackers make a computer's unit warn its group (`FUN_140c5e900`: 22).
 pub(super) const CLASS_22: i16 = 22;
-pub(super) const EVADE_EDGE: f32 = crate::image::unit_ai::EVADE_EDGE;
+pub(super) const EVADE_EDGE: f32 = crate::math::image::unit_ai::EVADE_EDGE;
 
 /// The classes a hunted animal cares about (`+0x190`, the constructor's list).
 pub const HUNTED_CARED: [i32; 28] = [

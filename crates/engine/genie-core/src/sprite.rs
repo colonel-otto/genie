@@ -14,9 +14,9 @@
 //! (never).
 
 use crate::abilities::Look;
-use crate::fmath;
 use crate::masters::Master;
-use crate::rng::Well512;
+use crate::math::fmath;
+use crate::math::rng::Well512;
 
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -53,9 +53,9 @@ impl Graphic {
 }
 
 /// The shortest frame interval (`0x3a83126f`, also `DAT_142eb1e9c`).
-const SHORTEST: f32 = crate::image::sprite::SHORTEST;
+const SHORTEST: f32 = crate::math::image::sprite::SHORTEST;
 /// The gap below which a speed multiplier counts as none (`DAT_142eb0c60`).
-const EPSILON: f32 = crate::image::sprite::EPSILON;
+const EPSILON: f32 = crate::math::image::sprite::EPSILON;
 
 /// The active sprite (the save's `RGE_Active_Animated_Sprite`, memory `+0x24`..`+0x3b`; a static
 /// one, the save's `RGE_Active_Sprite`, has only the frame, and the clock's fields stay at rest).

@@ -1,7 +1,7 @@
 //! The game's 3-vectors (`BVector`): sums, products, length, angle, line distance and
 //! rotation.
 
-use crate::fmath::{acos, cos, sin, sqrt};
+use crate::math::fmath::{acos, cos, sin, sqrt};
 
 /// A vector in the game's order (`BVector`): x, height, y. The map's y is the third component.
 pub type Vec3 = [f32; 3];

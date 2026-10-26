@@ -4,7 +4,7 @@
 use crate::best_target::Candidate;
 
 /// The order history's window (`DAT_142efe420`, 60000 ms as a float).
-pub(super) const ORDER_WINDOW: f32 = crate::image::best_target::ORDER_WINDOW;
+pub(super) const ORDER_WINDOW: f32 = crate::math::image::best_target::ORDER_WINDOW;
 
 /// What `bestUnitToAttack` reads of the unit whose AI searches, and of that AI.
 #[derive(Clone, Debug, Default, PartialEq)]

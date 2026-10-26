@@ -25,11 +25,11 @@ impl Spatial {
         farthest: bool,
     ) -> Result<Option<[f32; 2]>, GenieError> {
         /// The footprint's last tile stops short of its edge by this (`DAT_142eb1e9c`).
-        const EDGE: f32 = crate::image::spatial::FOOTPRINT_EDGE;
+        const EDGE: f32 = crate::math::image::spatial::FOOTPRINT_EDGE;
         /// A tile's centre (`DAT_142e7f384`).
-        const CENTRE: f32 = crate::image::spatial::TILE_CENTRE;
+        const CENTRE: f32 = crate::math::image::spatial::TILE_CENTRE;
         /// The closest search's first best (`DAT_14330ebf4`).
-        const NO_SPOT: f32 = crate::image::spatial::NO_SPOT;
+        const NO_SPOT: f32 = crate::math::image::spatial::NO_SPOT;
         let [tx, ty, _] = at;
         let [rx, ry] = radius;
         let size = (((ry + rx) as i32) + 2).max(1) * 2;

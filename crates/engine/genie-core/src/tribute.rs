@@ -3,7 +3,7 @@
 //! pays the market's fee on top; what it lacks lowers both alike.
 
 use crate::GenieError;
-use crate::fmath::maxss;
+use crate::math::fmath::maxss;
 use crate::turn::Turns;
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count

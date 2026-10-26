@@ -2,11 +2,11 @@
 //! along, a slot's place and the point back from the front.
 
 use crate::GenieError;
-use crate::fmath::{Vec3, add, sub};
 use crate::group::formation::{
     BOX, COLUMN, EPSILON, FLANKED, HORDE, LINE, PHALANX, STAGGERED, USER_DEFINED,
 };
 use crate::group::{Formation, UnitGroup};
+use crate::math::fmath::{Vec3, add, sub};
 use crate::movement::PathData;
 use crate::turn::Turns;
 
@@ -82,7 +82,7 @@ impl Turns {
                 column_to_line =
                     column_to_line + g.current_target.target_radius + g.current_target.range;
             }
-            let remaining = crate::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+            let remaining = crate::math::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
             let patrol = top_path(&g.motion.paths).is_some_and(|p| p.path_flags & 1 != 0);
             if on_last_high_level_waypoint(&g.motion.paths) && !patrol {
                 if (current != COLUMN || column_to_line <= remaining)
@@ -203,9 +203,9 @@ impl Turns {
 
 /// A turn of more than this (`DAT_142eb0c64`, π/2) makes a formation of fewer than two
 /// sub-formations take its units anew (`FUN_14103a1f0`).
-pub(super) const RIGHT_ANGLE: f32 = crate::image::group::RIGHT_ANGLE;
+pub(super) const RIGHT_ANGLE: f32 = crate::math::image::group::RIGHT_ANGLE;
 /// A slot's place kept this far inside the map's far edges (`FUN_14100b760`, `DAT_142eb5690`).
-pub(super) const MAP_EDGE: f32 = crate::image::group::MAP_EDGE;
+pub(super) const MAP_EDGE: f32 = crate::math::image::group::MAP_EDGE;
 
 /// `FUN_14100b760`: a place kept on the map: below 0 it is 0, from the map's width on it is the
 /// width less [`MAP_EDGE`], on both axes (the y test against the height, its value the width's).
@@ -241,7 +241,7 @@ pub(super) fn transform_slot(
     if index < 0 || formation.slots.len() as i32 <= index {
         return false;
     }
-    if crate::fmath::sqrt(crate::fmath::dot(point, point)).abs() < EPSILON {
+    if crate::math::fmath::sqrt(crate::math::fmath::dot(point, point)).abs() < EPSILON {
         return false;
     }
     let slot = &mut formation.slots[index as usize];
@@ -249,7 +249,7 @@ pub(super) fn transform_slot(
         let offset = if matches!(transform_type, 2 | 3) {
             slot.offset
         } else {
-            crate::fmath::rotate(rotation, slot.offset)
+            crate::math::fmath::rotate(rotation, slot.offset)
         };
         let at = add(point, offset);
         slot.desired_transform_position = on_map(at, map);
@@ -278,7 +278,8 @@ pub fn find_point_from_front(line: &crate::group::PointLine, distance: f32) -> O
     };
     let mut node = 0;
     let mut diff = ground(0);
-    let mut length = crate::fmath::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
+    let mut length =
+        crate::math::fmath::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]);
     let mut covered = 0.0f32;
     while 0.0 <= length.abs() {
         let total = covered + length;
@@ -296,7 +297,7 @@ pub fn find_point_from_front(line: &crate::group::PointLine, distance: f32) -> O
             return None;
         }
         diff = ground(node);
-        length = crate::fmath::sqrt(diff[0] * diff[0] + 0.0 + diff[2] * diff[2]);
+        length = crate::math::fmath::sqrt(diff[0] * diff[0] + 0.0 + diff[2] * diff[2]);
         covered = total;
     }
     None

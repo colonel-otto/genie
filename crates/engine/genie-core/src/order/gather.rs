@@ -2,8 +2,8 @@
 
 use crate::attack::{Arms, Engagement};
 use crate::hunt::{HuntAction, HuntTask, Quarry};
+use crate::math::rng::Stream;
 use crate::order::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
-use crate::rng::Stream;
 use crate::tasks::Diplomacy;
 use crate::turn::{Turns, World};
 use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER};

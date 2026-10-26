@@ -2,7 +2,7 @@
 //! seek and explore; an order on a target and one taken at once.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     AiMove, BUILD_ACTION, CIVILIAN, DEFEND_ACTION, EXPLORE_ACTION, EXPLORE_DESTROY_ACTION,
     EXPLORE_Z, Effect, FISHING_AI, FOLLOW_ACTION, Gatherable, QueuedOrder, ResourceSearch,

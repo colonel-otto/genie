@@ -6,7 +6,7 @@
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::masters::master_type::BUILDING;
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::tech::Attributes;
 use crate::turn::Turns;
 
@@ -24,11 +24,11 @@ pub const PASTURE_LIVESTOCK: i16 = 289;
 pub const PASTURE_WORKERS: i16 = 290;
 
 /// The edges lie this far inside the pasture's ground radius (`DAT_142e7f384`).
-const INSET: f32 = crate::image::pasture::INSET;
+const INSET: f32 = crate::math::image::pasture::INSET;
 /// The step along an edge (`DAT_142e8c148`).
-const STEP: f32 = crate::image::pasture::STEP;
+const STEP: f32 = crate::math::image::pasture::STEP;
 /// An edge's end (`DAT_14330eb8c`).
-const END: f32 = crate::image::pasture::END;
+const END: f32 = crate::math::image::pasture::END;
 
 /// The points along the edges of a pasture at `at` whose ground radius on x is `radius_x`, in
 /// the routine's order: the radius less [`INSET`] gives the corners (x−r, y−r), (x+r, y−r),
@@ -157,7 +157,7 @@ impl Turns {
     /// `FUN_1411c7670`: the livestock of pasture `pasture` that player `p`'s unit at `idx` tends,
     /// −1 for none (a unit of another player, too): its livestock the world holds with their
     /// workers and their footprints' squared gap to the unit (`FUN_14118f8c0`), sorted by the
-    /// gap (`std::sort`, [`crate::msvc::sort`]); the first without workers, else the first whose
+    /// gap (`std::sort`, [`crate::math::msvc::sort`]); the first without workers, else the first whose
     /// workers are below the owner's [`PASTURE_WORKERS`].
     ///
     /// # Errors
@@ -187,7 +187,7 @@ impl Turns {
                 crate::movement::footprint_gap_squared(l.position, radius, unit.position, reach);
             tended.push((id, l.workers, gap));
         }
-        crate::msvc::sort(&mut tended, &|a, b| a.2 < b.2);
+        crate::math::msvc::sort(&mut tended, &|a, b| a.2 < b.2);
         let room = Attributes::get(&self.players[q], PASTURE_WORKERS)?;
         let mut pick = -1;
         for (id, workers, _) in tended {

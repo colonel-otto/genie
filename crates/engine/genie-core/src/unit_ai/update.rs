@@ -2,7 +2,7 @@
 //! searches.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ATTACK_ACTION, ATTACK_MOVE, AfterOrder, AiMove, BREAK, BUILD_ORDER, CIVILIAN_CARED,
     COMBAT_KIND, DEAD, Effect, GATHER_ACTION, GO_ON, Gatherable, GroupState, HUNT_ACTION,

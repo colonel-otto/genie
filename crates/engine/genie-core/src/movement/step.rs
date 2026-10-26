@@ -1,6 +1,6 @@
 //! The velocity step, a new object's setup, the position setter and the motion step's loop.
 
-use crate::fmath::Vec3;
+use crate::math::fmath::Vec3;
 use crate::movement::{
     ANNEX_GAP, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion, MoveStats, Mover, Next,
     Planning, RANGE_FLOOR, Reach, Step, footprint_gap, gate_gap, ground, include_kept,
@@ -8,7 +8,7 @@ use crate::movement::{
 };
 use crate::pathing::Pathing;
 use crate::spatial::{Placed, Spatial};
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 impl Mover {
     /// The velocity part of `RGE_Moving_Object::update` (`FUN_140f9ba80`): the forward speed moves

@@ -3,7 +3,7 @@
 
 use crate::mesh::{Mesh, ONE};
 use crate::short_path::{Ctx, Goal, NONE, Point, Search, TO_FIXED, TO_FLOAT, clip, tile_of};
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 /// The short pather's arguments (`FUN_140f9d3a0`'s block, which `FUN_140f9e540` and
 /// `FUN_140fa0110` fill): the start and the goal in fixed point (the callers truncate them), the

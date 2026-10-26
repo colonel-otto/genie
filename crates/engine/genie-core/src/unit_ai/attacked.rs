@@ -2,7 +2,7 @@
 //! the explorers' search.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ATTACK_ACTION, ATTACK_MOVE, AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER, AiMove, AttackAsk, BREAK,
     DEAD, EXPLORE_ACTION, Effect, FOUNDATION_ORDER, GO_ON, MOVE_ACTION, MOVE_ASIDE_ACTION,

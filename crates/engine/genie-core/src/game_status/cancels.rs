@@ -369,7 +369,7 @@ impl Turns {
             return Ok(());
         }
         let attribute = crate::tech::Attributes::get(&self.players[p], CURRENT_AGE)?;
-        if crate::fmath::below_or_unordered(ONE_UNIT_AGE, attribute) {
+        if crate::math::fmath::below_or_unordered(ONE_UNIT_AGE, attribute) {
             return Ok(());
         }
         let master = self.players[p].objects[idx]

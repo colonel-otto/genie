@@ -328,7 +328,7 @@ pub fn tower_can_attack(me: &Attacker, t: &Target) -> Result<bool, GenieError> {
 
 /// An attacker without a missile is armed with a firepower above this (`FUN_14120ea30`,
 /// `DAT_14330eb8c`).
-pub(super) const ARMED_FIREPOWER: f32 = crate::image::unit_ai::ARMED_FIREPOWER;
+pub(super) const ARMED_FIREPOWER: f32 = crate::math::image::unit_ai::ARMED_FIREPOWER;
 /// A soldier never attacks with this master (raw `0x6258`).
 pub(super) const SOLDIER_NEVER: i16 = 444;
 /// The master and class whose packed state (top action 124 or 125) attacks nothing (raw
@@ -339,14 +339,14 @@ pub(super) const PACKED_CLASS: i16 = 54;
 pub(super) const HELD_NO_ATTACK: i16 = 57;
 /// The soldier's range against a target grows by this for its stance checks
 /// (`DAT_142e7f384`).
-pub(super) const STANCE_RANGE_GROWTH: f32 = crate::image::unit_ai::STANCE_RANGE_GROWTH;
+pub(super) const STANCE_RANGE_GROWTH: f32 = crate::math::image::unit_ai::STANCE_RANGE_GROWTH;
 /// And the defend stance's by this more (`DAT_14330ebb8`).
-pub(super) const DEFEND_GROWTH: f32 = crate::image::unit_ai::DEFEND_GROWTH;
+pub(super) const DEFEND_GROWTH: f32 = crate::math::image::unit_ai::DEFEND_GROWTH;
 
 /// The squared gap between a point and an object's footprint (`FUN_140a847c0`: per axis the
 /// distance less the radius, `MAXSS 0` of it, so a gap that is not a number stays one).
 pub(super) fn point_gap_squared(point: [f32; 2], at: [f32; 3], radius: [f32; 2]) -> f32 {
-    let gap = |d: f32, r: f32| crate::fmath::maxss(0.0, d.abs() - r);
+    let gap = |d: f32, r: f32| crate::math::fmath::maxss(0.0, d.abs() - r);
     let x = gap(point[0] - at[0], radius[0]);
     let y = gap(point[1] - at[1], radius[1]);
     y * y + x * x

@@ -23,9 +23,9 @@ mod unload;
 pub(crate) use self::shore::MapShore;
 pub use self::shore::{Around, find_drop_location, retry_point};
 #[cfg(test)]
-use crate::movement::PathAsk;
+use crate::math::rng::Well512;
 #[cfg(test)]
-use crate::rng::Well512;
+use crate::movement::PathAsk;
 
 /// The Transport action's type, which word 9 adds.
 pub const TRANSPORT: i16 = 12;
@@ -34,19 +34,19 @@ pub const TRANSPORT: i16 = 12;
 pub const TRANSPORT_ACTION: i32 = 0x266;
 
 /// The action's point while it has none (`DAT_14330ec20`).
-pub const NONE: f32 = crate::image::transport::NONE;
+pub const NONE: f32 = crate::math::image::transport::NONE;
 /// The reach within which a tile of the point's zone lets the unit unload (`DAT_142e8c150`).
-const NEAR: f32 = crate::image::transport::NEAR;
+const NEAR: f32 = crate::math::image::transport::NEAR;
 /// The shore search's margin about the unit's footprint (`DAT_142e8c150`).
-const SHORE_MARGIN: f32 = crate::image::transport::SHORE_MARGIN;
+const SHORE_MARGIN: f32 = crate::math::image::transport::SHORE_MARGIN;
 /// The squared gap from the unit's footprint within which the work unloads at once
 /// (`DAT_142eb0f48`).
-const UNLOAD_REACH_SQUARED: f32 = crate::image::transport::UNLOAD_REACH_SQUARED;
+const UNLOAD_REACH_SQUARED: f32 = crate::math::image::transport::UNLOAD_REACH_SQUARED;
 /// The `MoveTo`'s range to the point (`DAT_142e8c148`).
-const MOVE_RANGE: f32 = crate::image::transport::MOVE_RANGE;
+const MOVE_RANGE: f32 = crate::math::image::transport::MOVE_RANGE;
 /// The new point's spread about the old one (`DAT_14330ebb8`): a draw over [`RETRY_STEP`] less
 /// this.
-const RETRY_SPREAD: f32 = crate::image::transport::RETRY_SPREAD;
+const RETRY_SPREAD: f32 = crate::math::image::transport::RETRY_SPREAD;
 /// The divisor that cuts a 15-bit draw to 0..10 tiles (`FUN_140aa3ba0`'s `0xccc`).
 const RETRY_STEP: u32 = 0xccc;
 /// The new point's draws (`FUN_140aa3ba0`).
@@ -56,8 +56,8 @@ const DEEP_WATER: u8 = 0x16;
 const WATER: u8 = 1;
 /// A drop location's draw scale (`DAT_142eb69cc`) and the gap past the footprints
 /// (`DAT_142eb99cc`).
-const DRAW_SCALE: f32 = crate::image::transport::DRAW_SCALE;
-const DROP_GAP: f32 = crate::image::transport::DROP_GAP;
+const DRAW_SCALE: f32 = crate::math::image::transport::DRAW_SCALE;
+const DROP_GAP: f32 = crate::math::image::transport::DROP_GAP;
 /// The draws `find_drop_location` makes (`FUN_141192d10`: 50).
 const DROP_TRIES: u16 = 50;
 

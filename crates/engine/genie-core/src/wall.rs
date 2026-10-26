@@ -19,10 +19,10 @@ use crate::order::Place;
 use crate::turn::Turns;
 
 /// The snap's half tile and its step up (`FUN_141123ac0`).
-const HALF: f32 = crate::image::wall::HALF;
-const ONE: f32 = crate::image::wall::ONE;
+const HALF: f32 = crate::math::image::wall::HALF;
+const ONE: f32 = crate::math::image::wall::ONE;
 /// How far inside the map's far edges the snap keeps a footprint (`FUN_141123ac0`).
-const MAP_MARGIN: f32 = crate::image::wall::MAP_MARGIN;
+const MAP_MARGIN: f32 = crate::math::image::wall::MAP_MARGIN;
 
 /// The buildings' master type: a wall of another type does nothing.
 const BUILDING: u8 = 80;

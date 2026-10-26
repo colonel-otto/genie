@@ -52,7 +52,7 @@ const CIRCLE_MASTER: i16 = 112;
 const MARKET: i16 = 84;
 
 /// `DAT_142eb99cc`: a footprint's high edge, less this, is its last tile.
-const EDGE: f32 = crate::image::visibility::EDGE;
+const EDGE: f32 = crate::math::image::visibility::EDGE;
 
 /// One player's `RGE_Visible_Map` (player `+0x70`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -189,7 +189,7 @@ impl VisibleResources {
             .and_then(|g| self.lists.get_mut(g))?;
         // COMISS r, p; JBE: a record at or below the point (or NaN) measures p - r
         let gap = |r: f32, p: f32| {
-            if crate::fmath::at_most_or_unordered(r, p) {
+            if crate::math::fmath::at_most_or_unordered(r, p) {
                 p - r
             } else {
                 r - p
@@ -206,7 +206,7 @@ impl VisibleResources {
             }
         }
         if let Some(i) = best {
-            list[i].distance = crate::fmath::sqrt(nearest);
+            list[i].distance = crate::math::fmath::sqrt(nearest);
         }
         best
     }

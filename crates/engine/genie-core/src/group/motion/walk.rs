@@ -1,16 +1,16 @@
 //! The walk toward the walked level's waypoint, and `BMotion`'s update with what it reads of
 //! the world.
 
-use crate::fmath::Vec3;
 use crate::group::Motion;
 use crate::group::motion::{
     EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, World, ground,
     hold, passes_waypoint, path_step, point, reset_level, set_flag,
 };
+use crate::math::fmath::Vec3;
 use crate::movement::{Planning, footprint_gap};
 use crate::spatial::Placed;
 use crate::turn::Turns;
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 /// The walk of the walked level (`LAB_14104b6b4`): see [`path_step`].
 pub(super) fn steer(
@@ -215,7 +215,7 @@ impl Turns {
                 pathing: &mut self.pathing,
                 now: self.world_time,
                 computer: lead.computer,
-                object: self.streams.get(crate::rng::Stream::Object),
+                object: self.streams.get(crate::math::rng::Stream::Object),
                 construction_rate: 0.0,
                 groups: &self.groups,
             };

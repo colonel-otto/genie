@@ -338,7 +338,7 @@ pub fn build_placement(
 }
 
 /// How far BUILD's placement scan looks around the point (`FUN_14123aee0`, `DAT_142eb9430`).
-pub(super) const BUILD_SCAN: f32 = crate::image::spawn::BUILD_SCAN;
+pub(super) const BUILD_SCAN: f32 = crate::math::image::spawn::BUILD_SCAN;
 
 /// The first object of a scan, which the game reports as the blocker: the tiles row by row, each
 /// tile's objects in its list's order ([`crate::spatial::Spatial::objects_on`], the game's: the

@@ -1,8 +1,8 @@
 //! The searches for more work and for resources, and the objects its unit AI names.
 
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
-use crate::rng::Stream;
 use crate::spatial::Spatial;
 use crate::turn::unit::Unit;
 use crate::turn::view::{Context, OwnerView};
@@ -29,7 +29,7 @@ impl Unit {
         built: i16,
     ) -> Result<Option<crate::order::Work>, GenieError> {
         use crate::gather_search::{self, Candidate};
-        use crate::image::gather_search::{REACH_CAP, REACH_FLOOR};
+        use crate::math::image::gather_search::{REACH_CAP, REACH_FLOOR};
         /// The reach a line of sight below the floor takes (the Build's immediate 4.0).
         const REACH_LOW: f32 = 4.0;
         let masters = c.masters.ok_or(GenieError::unsupported(
@@ -167,7 +167,7 @@ impl Unit {
         // NaN compares false as the game's `comiss` does
         let beyond = |a: [f32; 3], b: [f32; 3], limit: f32| {
             let (dx, dz, dy) = (a[0] - b[0], a[2] - b[2], a[1] - b[1]);
-            let d = crate::fmath::sqrt(dx * dx + dz * dz + dy * dy);
+            let d = crate::math::fmath::sqrt(dx * dx + dz * dz + dy * dy);
             d.partial_cmp(&limit) != Some(std::cmp::Ordering::Less)
         };
         let hunt = self.hunt.as_ref().expect("the caller's");
@@ -195,7 +195,7 @@ impl Unit {
                 self.position[2] - t.position[2],
                 self.position[1] - t.position[1],
             );
-            if near < crate::fmath::sqrt(dx * dx + dz * dz + dy * dy) {
+            if near < crate::math::fmath::sqrt(dx * dx + dz * dz + dy * dy) {
                 return Ok(false);
             }
         }

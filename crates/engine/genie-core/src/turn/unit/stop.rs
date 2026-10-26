@@ -2,7 +2,7 @@
 //! applied.
 
 use crate::masters::Masters;
-use crate::rng::{Stream, Well512};
+use crate::math::rng::{Stream, Well512};
 use crate::sprite::Graphic;
 use crate::turn::unit::Unit;
 use crate::turn::view::{AiWork, Context};

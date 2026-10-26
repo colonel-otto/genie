@@ -382,10 +382,10 @@ pub(super) fn segment_meets_box(
     // COMISS/JC (0x141052fb8..0x141052ff9, 0x1410530dc..0x141053119; 0x1410514ad..0x141051620,
     // 0x14105189e..0x1410518f2): a NaN coordinate is out
     let outside = |p: [f32; 2]| {
-        crate::fmath::below_or_unordered(p[0], lo_x - r)
-            || crate::fmath::below_or_unordered(r + hi_x, p[0])
-            || crate::fmath::below_or_unordered(p[1], lo_y - r)
-            || crate::fmath::below_or_unordered(r + hi_y, p[1])
+        crate::math::fmath::below_or_unordered(p[0], lo_x - r)
+            || crate::math::fmath::below_or_unordered(r + hi_x, p[0])
+            || crate::math::fmath::below_or_unordered(p[1], lo_y - r)
+            || crate::math::fmath::below_or_unordered(r + hi_y, p[1])
     };
     !(outside(start) && outside(end))
 }

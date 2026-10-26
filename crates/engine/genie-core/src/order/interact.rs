@@ -1,10 +1,10 @@
 //! An interact order's unit, an order on a target, MOVE and its groups.
 
+use crate::math::rng::Stream;
 use crate::order::{
     CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
     offset_point, readiness, set_differentiator_groups,
 };
-use crate::rng::Stream;
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 

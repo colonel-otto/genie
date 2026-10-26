@@ -2,7 +2,7 @@
 //! what keeps a player in the game.
 
 use crate::GenieError;
-use crate::fmath::{at_most_or_unordered, below_or_unordered};
+use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
 use crate::turn::Turns;
 use crate::world_player::{
     ALIVE_STORE_MODE, BUILDING_CLASS, COMPUTER_TYPE, GAIA_TYPE, HUMAN_TYPE, KING, PACKED_CLASS,

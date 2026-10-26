@@ -21,7 +21,7 @@ pub const WAITING: u8 = 10;
 
 /// `DAT_142eb56a0` (a double): the foundation's build points (`+0xc50`, widened) at most which
 /// it is not solid yet.
-const SOLID_FROM: f64 = crate::image::wait_solidify::SOLID_FROM;
+const SOLID_FROM: f64 = crate::math::image::wait_solidify::SOLID_FROM;
 
 /// `TRIBE_Action_Wait_Solidify`: its state (`+0x18`), its task (`+0x48`) and the foundation it
 /// waits for (`+0x68`).

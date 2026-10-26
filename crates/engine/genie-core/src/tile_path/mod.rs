@@ -15,7 +15,7 @@
 //! in the world, not in the save: the slice builds it from the map's terrain, the restriction's
 //! passability and the obstruction manager's blocked tiles, as the game does at load.
 
-use crate::fmath::{self, Vec3};
+use crate::math::fmath::{self, Vec3};
 
 mod goal_marks;
 mod grid;
@@ -57,19 +57,19 @@ pub const LONE: u8 = 0x80;
 /// The cost the best node starts from in each search (`0x497423f0`).
 const NO_COST: f32 = 999_999.0;
 /// The goal's own tile counts when the goal is this near it (`DAT_142eb99cc`).
-const GOAL_GAP: f32 = crate::image::tile_path::GOAL_GAP;
+const GOAL_GAP: f32 = crate::math::image::tile_path::GOAL_GAP;
 /// The planner's half tile (`DAT_142e7f384`) and its −0.5 (`DAT_142eb6e58`).
 const HALF: f32 = 0.5;
 /// A goal's range below 1 grows the marked square by 1 (`DAT_14330eb8c`).
-const ONE: f32 = crate::image::tile_path::ONE;
+const ONE: f32 = crate::math::image::tile_path::ONE;
 /// The hierarchical search marks 0.1 more on the square's far sides (`DAT_142eb5690`).
-const FAR_SIDE: f32 = crate::image::tile_path::FAR_SIDE;
+const FAR_SIDE: f32 = crate::math::image::tile_path::FAR_SIDE;
 /// A computer player's search stops early near the goal (`DAT_14330ebb8`, `DAT_142eb0f4c`).
-const EARLY_LEFT: f32 = crate::image::tile_path::EARLY_LEFT;
-const EARLY_START: f32 = crate::image::tile_path::EARLY_START;
+const EARLY_LEFT: f32 = crate::math::image::tile_path::EARLY_LEFT;
+const EARLY_START: f32 = crate::math::image::tile_path::EARLY_START;
 /// The level-0 search costs a turn's shortcut from the node before at 1.1 times its cost
 /// (`DAT_142e86c14`).
-const SHORTCUT_COST: f32 = crate::image::tile_path::SHORTCUT_COST;
+const SHORTCUT_COST: f32 = crate::math::image::tile_path::SHORTCUT_COST;
 
 /// What a search returns (its result byte).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

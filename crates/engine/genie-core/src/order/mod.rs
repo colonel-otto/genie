@@ -116,7 +116,7 @@ const MASTER_1893: i16 = 1893;
 const PASTURE_CLASS: i16 = 49;
 const MASTER_1897: i16 = 1897;
 /// The range of GUARD's defend order (`DAT_142eb3634`, [`Turns::guard`]).
-const GUARD_RANGE: f32 = crate::image::order::GUARD_RANGE;
+const GUARD_RANGE: f32 = crate::math::image::order::GUARD_RANGE;
 /// A building's master type (`'P'`); types below 30 do not move.
 pub(crate) const BUILDING: u8 = 80;
 const MOVING: u8 = 30;
@@ -199,12 +199,12 @@ type SplitPath<'a> =
 
 /// The drop-site table's search starts beyond this squared distance (`FUN_141658e20`,
 /// `DAT_142f89ac4`).
-const TABLE_DROP_FAR: f32 = crate::image::order::TABLE_DROP_FAR;
+const TABLE_DROP_FAR: f32 = crate::math::image::order::TABLE_DROP_FAR;
 /// The loads whose drop-off works with the hunt's task filter (`FUN_14161e370`'s list: meat 15,
 /// wood 1, food 0).
 const HUNTED_LOADS: [i16; 3] = [15, 1, 0];
 /// The action's point on neither axis (`DAT_14330ec20`).
-const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 
 /// A hunt command on an object the world does not hold.
 pub(crate) const HUNT_TARGET_GONE: GenieError =
@@ -217,10 +217,10 @@ pub(crate) const NO_HUNT_TASK: GenieError =
 const MAX_UNGROUPED: u8 = 69;
 /// Units whose speeds differ by more than this do not join where the player breaks formations by
 /// speed (`FUN_140fd76d0`, `DAT_143cc2918`).
-const SPLIT_SPEED_GAP: f32 = crate::image::order::SPLIT_SPEED_GAP;
+const SPLIT_SPEED_GAP: f32 = crate::math::image::order::SPLIT_SPEED_GAP;
 /// Units nearer than this are measured by a path (`FUN_140fd76d0`, `DAT_142e7f38c`) while
 /// `DAT_1439e60e3` (1 at run time) holds.
-const SPLIT_PATH_REACH: f32 = crate::image::order::SPLIT_PATH_REACH;
+const SPLIT_PATH_REACH: f32 = crate::math::image::order::SPLIT_PATH_REACH;
 const SPLIT_BY_PATH: bool = true;
 
 /// `FUN_140fd76d0`'s test whether `b` joins `a`: both above type 69, both of formation category
@@ -255,18 +255,18 @@ fn splits_together(
         return Ok(false);
     }
     let (dx, dy) = (a.moved_at[0] - b.moved_at[0], a.moved_at[1] - b.moved_at[1]);
-    let d = crate::fmath::sqrt(dx * dx + 0.0 + dy * dy);
+    let d = crate::math::fmath::sqrt(dx * dx + 0.0 + dy * dy);
     if SPLIT_BY_PATH
         && d < SPLIT_PATH_REACH
         && let Some((code, length)) = path(a, b)?
     {
-        let joins = code == 1 && crate::fmath::at_most_or_unordered(length, f.influence);
+        let joins = code == 1 && crate::math::fmath::at_most_or_unordered(length, f.influence);
         if !joins {
             let _ = far.insert(b.id);
         }
         return Ok(joins);
     }
-    Ok(crate::fmath::at_most_or_unordered(d, f.influence))
+    Ok(crate::math::fmath::at_most_or_unordered(d, f.influence))
 }
 
 /// The class `FUN_140c89760` lets scout without the master's flag when a game setting allows it
@@ -277,8 +277,8 @@ const TROPHY: i16 = 1649;
 const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
 /// A patrol's waypoint counts when it is this far from the last one on x or y
 /// (`FUN_14161b970`, `DAT_14330eb8c`), or this far the other way (`DAT_14330ec20`).
-const WAYPOINT_APART: f32 = crate::image::order::WAYPOINT_APART;
-const WAYPOINT_APART_LOW: f32 = crate::image::order::WAYPOINT_APART_LOW;
+const WAYPOINT_APART: f32 = crate::math::image::order::WAYPOINT_APART;
+const WAYPOINT_APART_LOW: f32 = crate::math::image::order::WAYPOINT_APART_LOW;
 
 impl Turns {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {
@@ -505,7 +505,7 @@ fn ignore_unit(ignore: &mut Vec<i32>, id: i32) {
 /// whether it is too close, below the least range (slot 0x240; `COMISS`, `SETA`: NaN not).
 fn work_reach(gap: f32, weapon_range: f32, min_range: f32) -> (bool, bool) {
     let too_close = gap < min_range;
-    let within = !crate::fmath::below_or_unordered(weapon_range, gap) && !too_close;
+    let within = !crate::math::fmath::below_or_unordered(weapon_range, gap) && !too_close;
     (within, too_close)
 }
 
@@ -514,7 +514,7 @@ fn work_reach(gap: f32, weapon_range: f32, min_range: f32) -> (bool, bool) {
 const TOO_CLOSE: i32 = 0x1fe;
 
 /// A whole share (`DAT_14330ebcc`), which `FUN_1411859a0` takes hit points against.
-const DAMAGE_WHOLE: f32 = crate::image::order::DAMAGE_WHOLE;
+const DAMAGE_WHOLE: f32 = crate::math::image::order::DAMAGE_WHOLE;
 
 /// The damage share `FUN_1411859a0` picks damage sprites by: `100 − hp × 100 / hit points`,
 /// whole, of hit points at most the master's. An object whose share is its resource's (the

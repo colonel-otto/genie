@@ -2,7 +2,7 @@
 //! players' relations, each player's frame and the update with its commands.
 
 use crate::lifecycle::seconds;
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::turn::command::Command;
 use crate::turn::unit::{AiResume, Captured, Step};
 use crate::turn::{PlayerFrame, Turns};

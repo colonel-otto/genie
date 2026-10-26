@@ -1015,7 +1015,7 @@ fn the_idle_timer_counts_while_idle() {
     t.idle_timer_step(1);
     assert_eq!(t.groups.get(1).unwrap().idle_timer, 3000);
     let mut streams = t.streams.clone();
-    let draw = streams.get(crate::rng::Stream::World).rand15();
+    let draw = streams.get(crate::math::rng::Stream::World).rand15();
     t.idle_timer_step(1);
     assert_eq!(t.groups.get(1).unwrap().idle_timer, draw % 750);
     t.groups.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
@@ -1164,7 +1164,7 @@ fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
     assert!(!t.any_member_held(2));
     // the World stream's next draw, modulo 750
     let mut streams = t.streams.clone();
-    let draw = streams.get(crate::rng::Stream::World).rand15();
+    let draw = streams.get(crate::math::rng::Stream::World).rand15();
     t.reset_idle_timer(1);
     assert_eq!(t.groups.groups[0].idle_timer, draw % 750);
     assert_eq!(t.streams, streams);

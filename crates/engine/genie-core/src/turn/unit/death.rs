@@ -4,7 +4,7 @@ use crate::build::{Completion, Construction};
 use crate::fly::Fly;
 use crate::lifecycle::Class;
 use crate::masters::Master;
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::turn::unit::{NO_DYING_SPRITE, Unit};
 use crate::turn::view::Context;
 use crate::turn::world::{built_death, combat_dies, farm_bonus, refund_of};

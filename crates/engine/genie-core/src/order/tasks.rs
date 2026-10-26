@@ -1,8 +1,8 @@
 //! The hunt and gather commands, a build's and a repair's start, retake and target.
 
 use crate::hunt::HuntTask;
+use crate::math::rng::Stream;
 use crate::order::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
-use crate::rng::Stream;
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 

@@ -121,7 +121,7 @@ pub struct Shown<'a> {
     /// The unit's sprite.
     pub sprite: &'a mut Option<crate::sprite::ActiveSprite>,
     /// The Sprite stream.
-    pub rng: &'a mut crate::rng::Well512,
+    pub rng: &'a mut crate::math::rng::Well512,
     /// The `MoveTo`'s sprite.
     pub graphic: Option<Graphic>,
 }

@@ -1,7 +1,7 @@
 //! The unit AI's state, gates, the auto scout and the STOP, EXPLORE and standing commands.
 
+use crate::math::rng::Stream;
 use crate::order::{AUTO_SCOUT_CLASS, BUILDING, Place, lock_gate, set_stance};
-use crate::rng::Stream;
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 

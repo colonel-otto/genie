@@ -744,8 +744,8 @@
       "function": "Unit::enter_building",
       "line": 315,
       "cyclomatic": 19.0,
-      "coverage": 60.0,
-      "crap": 42.104000000000006,
+      "coverage": 60.56338028169014,
+      "crap": 41.1414597483732,
       "crate": "genie-core"
     },
     {
@@ -852,8 +852,8 @@
       "function": "Unit::update",
       "line": 32,
       "cyclomatic": 396.0,
-      "coverage": 47.89244186046512,
-      "crap": 22582.69111640843,
+      "coverage": 47.82293178519594,
+      "crap": 22671.598951890974,
       "crate": "genie-core"
     },
     {

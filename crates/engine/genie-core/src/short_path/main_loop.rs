@@ -5,7 +5,7 @@ use crate::short_path::{
     T_START, TO_FIXED, TO_FLOAT, UNSET, cheb, corner_emits, float_distance, in_box, isqrt,
     through_float,
 };
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 impl Search<'_> {
     /// Type 2, a node on a shape's side: a polygon already holding its point is walked again from

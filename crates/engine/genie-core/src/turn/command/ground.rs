@@ -25,7 +25,7 @@ impl Turns {
         units: &[i32],
     ) -> Result<(), GenieError> {
         /// The notify's radii are hundredths (`DAT_14330ebcc`).
-        const RADIUS_SCALE: f32 = crate::image::unit_ai::RADIUS_SCALE;
+        const RADIUS_SCALE: f32 = crate::math::image::unit_ai::RADIUS_SCALE;
         let (site_owner, site) = self.object(foundation).ok_or(GenieError::unsupported(
             "a footprint's foundation the slice does not hold",
         ))?;
@@ -228,7 +228,8 @@ impl Turns {
                 .spatial
                 .get(cl.id)
                 .is_some_and(|o| o.obstruction.is_some());
-            if !look.roo_called && (crate::fmath::below_or_unordered(0.0, look.height) || recorded)
+            if !look.roo_called
+                && (crate::math::fmath::below_or_unordered(0.0, look.height) || recorded)
             {
                 self.pathing.removed(cl.id);
                 self.spatial.drop_record(cl.id);
@@ -305,7 +306,7 @@ impl Turns {
             speed: 0.0,
             unknown: None,
             obstruction: (!desolid
-                && !crate::fmath::at_most_or_unordered(made.height, 0.0)
+                && !crate::math::fmath::at_most_or_unordered(made.height, 0.0)
                 && record.recorded())
             .then_some(record),
         };

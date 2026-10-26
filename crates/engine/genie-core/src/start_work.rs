@@ -18,9 +18,9 @@
 
 use crate::GenieError;
 use crate::gather_search::{self, Candidate};
+use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::order::Work;
-use crate::rng::Stream;
 use crate::turn::Turns;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).

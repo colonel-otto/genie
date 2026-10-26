@@ -6,15 +6,15 @@
 
 use crate::GenieError;
 use crate::masters::{Master, Task, master_type};
+use crate::math::rng::{Stream, Well512};
 use crate::order::Place;
-use crate::rng::{Stream, Well512};
 use crate::sprite::Graphic;
 use crate::turn::{Turns, Unit};
 
 /// A master's hit points this near 0 give no share (`ABS(x) <= 1.1920929e-07`).
 const NO_HIT_POINTS: f32 = f32::EPSILON;
 /// The whole of a damage share (`DAT_14330ebcc`, 100).
-const WHOLE: f32 = crate::image::upgrade::WHOLE;
+const WHOLE: f32 = crate::math::image::upgrade::WHOLE;
 /// A sprite the data file does not have.
 const NO_SPRITE: GenieError = GenieError::unsupported("a sprite the data file does not have");
 /// The villager class (4), whose load an upgrade without its master kept goes to its player.

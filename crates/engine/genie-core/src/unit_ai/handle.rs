@@ -1,7 +1,7 @@
 //! The notifies' handling, the artifact's and the base's.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ARTIFACT_AI,
     ARTIFACT_CARED, ATTACK_ACTION, ATTACK_ORDER, BREAK, BUILD_ACTION, DAMAGED, DEAD, Effect,
@@ -80,7 +80,7 @@ impl UnitAi {
                     // processing breaks
                     let flags = at.target.map_or(0, |t| t.flags);
                     if let Some(gap) = gap
-                        && !crate::fmath::below_or_unordered(at.los * at.los, gap)
+                        && !crate::math::fmath::below_or_unordered(at.los * at.los, gap)
                         && flags & 0x10 == 0
                     {
                         let _ =

@@ -25,7 +25,7 @@ pub const WALK: u8 = 11;
 pub const FAILED: u8 = 13;
 
 /// A point of −1 is no point (`DAT_14330ec20`).
-const NO_POINT: f32 = crate::image::explore::NO_POINT;
+const NO_POINT: f32 = crate::math::image::explore::NO_POINT;
 
 /// The action's notify to its unit AI when it waits for a point (state 3): 0x202 with the
 /// explore action value 605.
@@ -290,7 +290,7 @@ pub fn closest_undiscovered(
     area: &mut dyn Area,
     seeker: Seeker,
     map: [i32; 2],
-    ai: &mut crate::rng::Well512,
+    ai: &mut crate::math::rng::Well512,
 ) -> Result<Option<[i32; 2]>, GenieError> {
     if seeker.computer {
         return Ok(None);
@@ -357,7 +357,7 @@ pub fn beyond_sight(
     at: [f32; 3],
     line_of_sight: f32,
     map: [i32; 2],
-    ai: &mut crate::rng::Well512,
+    ai: &mut crate::math::rng::Well512,
 ) -> Result<Option<[i32; 2]>, GenieError> {
     let own = area.own_zone();
     let [w, h] = map;
@@ -479,12 +479,12 @@ mod tests {
         }
         fn distance(&self, x: i32, y: i32) -> f32 {
             let (dx, dy) = ((x - 20) as f32, (y - 92) as f32);
-            crate::fmath::sqrt(dx * dx + dy * dy)
+            crate::math::fmath::sqrt(dx * dx + dy * dy)
         }
     }
 
-    fn rng() -> crate::rng::Well512 {
-        let mut r = crate::rng::Well512::default();
+    fn rng() -> crate::math::rng::Well512 {
+        let mut r = crate::math::rng::Well512::default();
         r.set_seed(7);
         r
     }
@@ -626,7 +626,7 @@ mod tests {
             computer: false,
         };
         let seeded = || {
-            let mut r = crate::rng::Well512::default();
+            let mut r = crate::math::rng::Well512::default();
             r.set_seed(7);
             r
         };

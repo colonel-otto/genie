@@ -6,7 +6,7 @@ use crate::damage::{
     BUILDING, EPSILON, ONE, Victim, charge_hit, charged, master_melee_armor, melee_armor,
     range_charge_hit,
 };
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 /// The action type of a bonus damage task (`FUN_14107ce60`).
 pub const BONUS_DAMAGE: i16 = 0xa0;

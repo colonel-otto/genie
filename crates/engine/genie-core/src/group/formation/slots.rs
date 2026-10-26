@@ -2,10 +2,10 @@
 //! population in order and a line after a column.
 
 use crate::GenieError;
-use crate::fmath::{Vec3, sub};
 use crate::group::formation::{BOX, COLUMN};
 use crate::group::{Formation, UnitGroup, sub_formation};
-use crate::image::group::FARTHEST;
+use crate::math::fmath::{Vec3, sub};
+use crate::math::image::group::FARTHEST;
 use crate::turn::Turns;
 
 /// The capacity of `ClosestUnit`'s list of the units the slots took (`DAT_143f20710`, 0x118
@@ -99,7 +99,7 @@ impl Turns {
         let object = self.world_object(id)?;
         let mut d = sub(at, object.moved_vector());
         d[1] = 0.0;
-        Some(crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]))
+        Some(crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]))
     }
 
     /// `FUN_141009760` of `formation` for group `g` without the settings' flag `DAT_143f01834`

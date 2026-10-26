@@ -1,6 +1,6 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
-use crate::fmath::Vec3;
+use crate::math::fmath::Vec3;
 use crate::movement::{
     Avoided, EPSILON, LONG_PATH_MOVER, LongWalker, Me, Mover, PUSHED, PathAsk, PathData, Planning,
     REACH_NEAR, REACH_SHORT, USER_WAYPOINT_MIDDLE, WIDE_CLASS, WIDE_MASTER, WIDE_RANGE,
@@ -9,7 +9,7 @@ use crate::movement::{
 };
 use crate::spatial::{Placed, Spatial};
 use crate::tile_path::{Path, Request};
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 impl Mover {
     /// `FUN_140fa0370`: both ends lie on the map. With a planner for its restriction, the tile

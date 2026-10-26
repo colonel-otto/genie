@@ -137,7 +137,7 @@ impl RepairAction {
         step: &mut RepairStep,
     ) -> Result<(), GenieError> {
         self.timer -= walk.dt;
-        if crate::fmath::below_or_unordered(0.0, self.timer) {
+        if crate::math::fmath::below_or_unordered(0.0, self.timer) {
             return Ok(());
         }
         if self.reaches(walk, view) {
@@ -247,7 +247,7 @@ impl RepairAction {
             return false;
         };
         let gap = Self::gap(walk, view, t);
-        !crate::fmath::below_or_unordered(REACH, gap)
+        !crate::math::fmath::below_or_unordered(REACH, gap)
     }
 
     /// The footprints' gap less the moving target's or the scenario's margin.

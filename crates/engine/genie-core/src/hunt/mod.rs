@@ -70,7 +70,7 @@ const FARM_AT_WORK: i16 = 0x7d;
 const ARRIVED: f32 = 0.01;
 /// Own livestock farther than this squared from its drop site is led there first
 /// (`DAT_142ecccc4`).
-const HERD_REACH: f32 = crate::image::hunt::HERD_REACH;
+const HERD_REACH: f32 = crate::math::image::hunt::HERD_REACH;
 /// Own livestock this far squared from its drop site or farther is slaughtered where it stands
 /// (`DAT_142eb0f64`).
 const HERD_FAR: f32 = 900.0;
@@ -80,11 +80,11 @@ const LEAD_REACH: f32 = 2.25;
 /// The wait of a herder leading livestock (`set_state(10)`'s timer, `0xbf800000`).
 const LEAD_WAIT: f32 = -1.0;
 /// A face on dead livestock beyond the task's range plus this walks again (`DAT_142eb5690`).
-const GAP: f32 = crate::image::hunt::GAP;
+const GAP: f32 = crate::math::image::hunt::GAP;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
-const REMAINDER: f32 = crate::image::hunt::REMAINDER;
+const REMAINDER: f32 = crate::math::image::hunt::REMAINDER;
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
-const LAST_BIT: f32 = crate::image::hunt::LAST_BIT;
+const LAST_BIT: f32 = crate::math::image::hunt::LAST_BIT;
 /// A task whose `attribute_type4` is this (`0x124`) stops its target's decay under player
 /// attribute 292 (`FUN_140ac44b0`).
 const DECAY_TASK: i16 = 0x124;
@@ -92,7 +92,7 @@ const DECAY_TASK: i16 = 0x124;
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
 /// The range of the walk to the hunter's own player's livestock (`DAT_142eb4838`).
-const OWN_LIVESTOCK_RANGE: f32 = crate::image::hunt::OWN_LIVESTOCK_RANGE;
+const OWN_LIVESTOCK_RANGE: f32 = crate::math::image::hunt::OWN_LIVESTOCK_RANGE;
 /// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
 const VILLAGER_CLASS: i16 = 4;
 /// Classes the hunt treats apart: livestock (58, `-0xe72`) and 49 (`-0xe7b`).

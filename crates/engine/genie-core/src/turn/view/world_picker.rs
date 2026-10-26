@@ -18,8 +18,8 @@ pub(super) fn attacks(m: &crate::masters::Master) -> f32 {
 
 /// The hit points (`DAT_14330ebc8`) and the range (`DAT_142e7f384`) below which a villager
 /// fights its attacker back ([`WorldPicker::harmless`]).
-pub(super) const HARMLESS_HP: f32 = crate::image::unit_ai::HARMLESS_HP;
-pub(super) const HARMLESS_RANGE: f32 = crate::image::unit_ai::HARMLESS_RANGE;
+pub(super) const HARMLESS_HP: f32 = crate::math::image::unit_ai::HARMLESS_HP;
+pub(super) const HARMLESS_RANGE: f32 = crate::math::image::unit_ai::HARMLESS_RANGE;
 
 /// An object the unit AI found or names that the slice does not hold (another player's it does
 /// not keep).

@@ -8,9 +8,9 @@ use crate::gather::{
     IDLE, MOVED, Resource, SPECIAL_TARGETS, STOP_CENTRE, STOP_DRAWS, STOP_FARMS, WALK, WORK, food,
 };
 use crate::hunt::HuntTask;
+use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, MoveWait};
 use crate::movement::Mover;
-use crate::rng::Well512;
 use crate::sprite::ActiveSprite;
 
 /// What the constructor reads to time a farm's stops: the gatherer's work rate (its master's

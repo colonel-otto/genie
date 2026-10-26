@@ -285,7 +285,7 @@ impl Master {
         } else {
             SPEED_CAP
         };
-        if capped && !crate::fmath::at_most_or_unordered(self.max_speed, cap) {
+        if capped && !crate::math::fmath::at_most_or_unordered(self.max_speed, cap) {
             self.max_speed = cap;
         }
     }

@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
 use crate::masters::{AttributeWorld, Master, master_type};
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::turn::Turns;
 
 impl Turns {
@@ -75,7 +75,7 @@ impl Turns {
         id: i32,
         after: bool,
     ) -> Result<(), GenieError> {
-        use crate::fmath::at_most_or_unordered;
+        use crate::math::fmath::at_most_or_unordered;
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
@@ -364,7 +364,7 @@ impl Turns {
         };
         if 7 <= u.life.state
             || u.life.inside.is_some()
-            || crate::fmath::at_most_or_unordered(master.height, 0.0)
+            || crate::math::fmath::at_most_or_unordered(master.height, 0.0)
         {
             return;
         }

@@ -8,7 +8,7 @@
 //! are [`GenieError`].
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 
 /// What the dead-object steps read from an object's master that the header save does not hold;
 /// they come from the `.dat`.

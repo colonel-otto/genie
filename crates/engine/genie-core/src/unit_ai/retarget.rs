@@ -1,7 +1,7 @@
 //! The idle part of the update, the retarget check and search, and the types' other checks.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ATTACK_ACTION, ATTACK_MOVE, ATTACK_ORDER, AiMove, AttackAsk, BUILDING_KIND, CLASS_3, CLASS_20,
     CLASS_52, DEFEND_LEASH, DEFEND_ORDER, DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_ORDER,

@@ -1,8 +1,8 @@
 //! A builder's and a gatherer's drop-off and a gatherer's update and search.
 
 use crate::hunt::HuntSprites;
+use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
-use crate::rng::Stream;
 use crate::tasks::Actor;
 use crate::turn::unit::{Unit, second_target_checked};
 use crate::turn::view::{Context, DropWorld};

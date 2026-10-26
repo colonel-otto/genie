@@ -2,12 +2,12 @@
 //! speed, facing, place and own move.
 
 use crate::GenieError;
-use crate::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
 use crate::group::SpecificMove;
 use crate::group::motion::{moved_vector, passes_waypoint};
 use crate::group::steer::{
     BUILDING_KIND, CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, MOVES, SLOT_REACH,
 };
+use crate::math::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
 use crate::turn::Turns;
 
 impl Turns {
@@ -70,7 +70,7 @@ impl Turns {
                 pathing: &mut self.pathing,
                 now: self.world_time,
                 computer,
-                object: self.streams.get(crate::rng::Stream::Object),
+                object: self.streams.get(crate::math::rng::Stream::Object),
                 construction_rate: 0.0,
                 groups: &self.groups,
             };

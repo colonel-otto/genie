@@ -1,7 +1,7 @@
 //! An order's processing: the combat and work orders, the top target and the attack slots.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ATTACK_ACTION, ATTACK_MOVE, ATTACK_ORDER, AUTO_SCOUT_ACTION, AUTO_SCOUT_ORDER,
     BOAR_LURING_ACTION, BUILD_ORDER, CIVILIAN, CLASS_18, CONVERT_ACTION, DEFEND_ORDER,

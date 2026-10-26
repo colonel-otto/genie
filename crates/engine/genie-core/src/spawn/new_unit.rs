@@ -2,9 +2,9 @@
 //! constructor.
 
 use crate::lifecycle::{Class, Lifecycle};
+use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::production::IN_PRODUCTION;
-use crate::rng::Stream;
 use crate::spatial::{Obstruction, Placed};
 use crate::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
 use crate::sprite::{ActiveSprite, Graphic};

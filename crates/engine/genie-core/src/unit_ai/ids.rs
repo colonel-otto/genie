@@ -1,7 +1,7 @@
 //! The orders, actions, timers and reaches the unit AI names, its factory types and stances.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ARTIFACT_AI, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder, SIEGE_AI,
     SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
@@ -82,10 +82,10 @@ pub const AUTO_SCOUT_ACTION: i32 = 0x2bd;
 /// `0x25d`: the explore's action value (slot 0x100).
 pub const EXPLORE_ACTION: i32 = crate::explore::EXPLORE_ACTION;
 /// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
-pub(super) const EXPLORE_Z: f32 = crate::image::unit_ai::EXPLORE_Z;
+pub(super) const EXPLORE_Z: f32 = crate::math::image::unit_ai::EXPLORE_Z;
 /// The villager's reach test of the foundation its search found (slot 0x3d0 in
 /// `FUN_140c22bf0`, `DAT_142eb5690`).
-pub(super) const FOUNDATION_REACH: f32 = crate::image::unit_ai::FOUNDATION_REACH;
+pub(super) const FOUNDATION_REACH: f32 = crate::math::image::unit_ai::FOUNDATION_REACH;
 /// The move action value (`0x262`).
 pub const MOVE_ACTION: i32 = 0x262;
 
@@ -110,9 +110,9 @@ pub const DEFEND_ORDER: i32 = 0x2bd;
 /// The defend's action value (`0x259`, slots 0x170 and 0x178).
 pub(super) const DEFEND_ACTION: i32 = 0x259;
 /// The target point's x that marks it unset (`DAT_14330ec20`, −1), which the defend order fills.
-pub(super) const INVALID_POINT: f32 = crate::image::unit_ai::INVALID_POINT;
+pub(super) const INVALID_POINT: f32 = crate::math::image::unit_ai::INVALID_POINT;
 /// What the defend order adds to its desired distance before it follows (`DAT_14330eb8c`, 1).
-pub(super) const DEFEND_SLACK: f32 = crate::image::unit_ai::DEFEND_SLACK;
+pub(super) const DEFEND_SLACK: f32 = crate::math::image::unit_ai::DEFEND_SLACK;
 /// The master whose unit takes no defend order (slot 0x230's case 0x2bd: raw `0x611c`).
 pub(super) const DEFENDLESS_MASTER: i16 = 128;
 
@@ -170,8 +170,8 @@ pub(super) const TREBUCHET_CLASS: i16 = 51;
 pub(super) const TREBUCHET_PACKED_CLASS: i16 = 54;
 /// The follow order's target counts as moved when it is more than a tile off the AI's target
 /// point on either axis (`0x140c567c0`: `DAT_14330ec20`, `DAT_14330eb8c`).
-pub(super) const FOLLOW_SLACK_LOW: f32 = crate::image::unit_ai::FOLLOW_SLACK_LOW;
-pub(super) const FOLLOW_SLACK_HIGH: f32 = crate::image::unit_ai::FOLLOW_SLACK_HIGH;
+pub(super) const FOLLOW_SLACK_LOW: f32 = crate::math::image::unit_ai::FOLLOW_SLACK_LOW;
+pub(super) const FOLLOW_SLACK_HIGH: f32 = crate::math::image::unit_ai::FOLLOW_SLACK_HIGH;
 
 /// The hunted animal's idle check (`FUN_140c1eea0`): away from its origin by more than
 /// `DAT_142eb0f48` (4, squared) it goes home once in 7 checks; otherwise it wanders 1 to 3 tiles
@@ -192,10 +192,10 @@ pub(super) const LION_IDLE_TIMEOUT: u32 = 6000;
 pub(super) const LION_ATTACKED_TIMEOUT: u32 = 1000;
 /// Outside mode 1 the lion attacks within this share of its line of sight (`FUN_140c1fb70`,
 /// `DAT_142e7f384`).
-pub(super) const LION_SIGHT_SHARE: f32 = crate::image::unit_ai::LION_SIGHT_SHARE;
+pub(super) const LION_SIGHT_SHARE: f32 = crate::math::image::unit_ai::LION_SIGHT_SHARE;
 /// Finding no villager outside mode 1 it attacks within its line of sight over this
 /// (`FUN_140c1fb70`, `DAT_142eb1c98`).
-pub(super) const LION_SIGHT_DIVISOR: f32 = crate::image::unit_ai::LION_SIGHT_DIVISOR;
+pub(super) const LION_SIGHT_DIVISOR: f32 = crate::math::image::unit_ai::LION_SIGHT_DIVISOR;
 /// The class of the king's branch of the hunted animal's idle check (`-0xe71` raw).
 pub(super) const CLASS_KING: i16 = 59;
 /// The king's master that the branch passes over (raw `0x635c`).
@@ -205,7 +205,7 @@ pub(super) const KING_UNLED: i16 = 704;
 /// the unit AI's table is [`RUN_ONE`]'s).
 ///
 /// [`RUN_ONE`]: crate::unit_ai::RUN_ONE
-pub(super) const WALK_BACK: f32 = crate::image::unit_ai::RUN_ONE;
+pub(super) const WALK_BACK: f32 = crate::math::image::unit_ai::RUN_ONE;
 
 /// The action values the full update resets once the unit's actions ended (`0x140c66b10`, the
 /// unit's slot 0x430 false): attack, `0x261`, move, hunt, `0x269`, `0x26b`, `0x26c`, build and
@@ -218,9 +218,9 @@ pub(super) const ATTACK_ACTION: i32 = 600;
 pub(super) const ATTACK_ORDER: i32 = 700;
 /// A human player's unit on the attack order with a range above this does not retarget
 /// (processMisc).
-pub(super) const RETARGET_RANGE: f32 = crate::image::unit_ai::RETARGET_RANGE;
+pub(super) const RETARGET_RANGE: f32 = crate::math::image::unit_ai::RETARGET_RANGE;
 /// The retarget's reference distance about a current target (`DAT_142eb9430`).
-pub(super) const RETARGET_REACH: f32 = crate::image::unit_ai::RETARGET_REACH;
+pub(super) const RETARGET_REACH: f32 = crate::math::image::unit_ai::RETARGET_REACH;
 
 /// What the retarget's search reads of its checks ([`UnitAi::retarget_outcome`]): the current
 /// target is a building's, wall's or trebuchet's (or one off the attack order), and the top

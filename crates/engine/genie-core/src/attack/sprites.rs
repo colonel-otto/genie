@@ -2,8 +2,8 @@
 
 use crate::GenieError;
 use crate::attack::{Arms, RELOAD_MS, Strike};
+use crate::math::rng::Well512;
 use crate::movement::Mover;
-use crate::rng::Well512;
 use crate::sprite::{ActiveSprite, Graphic};
 
 /// The sprites a swing of a unit (its terrain look `look`, its master `master`) takes before its

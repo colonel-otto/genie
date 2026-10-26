@@ -2,8 +2,8 @@
 //! and master switches.
 
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::order::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
-use crate::rng::Stream;
 use crate::tasks::Diplomacy;
 use crate::turn::{Releaser, Turns, Unit, World};
 use crate::unit_ai::GenieError;
@@ -325,7 +325,7 @@ pub(crate) struct SwitchWorld<'a> {
     pub(crate) spatial: &'a mut crate::spatial::Spatial,
     pub(crate) pathing: &'a mut crate::pathing::Pathing,
     pub(crate) graphics: &'a std::collections::BTreeMap<i16, crate::sprite::Graphic>,
-    pub(crate) sprite: &'a mut crate::rng::Well512,
+    pub(crate) sprite: &'a mut crate::math::rng::Well512,
 }
 
 /// What [`switch_master`] leaves to its owner, in the game's order: the old master's storage

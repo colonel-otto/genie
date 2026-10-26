@@ -45,17 +45,17 @@ use crate::turn::Turns;
 
 /// The squared footprint gap past which a garrison order sends no unit (`FUN_141621220` with 0:
 /// no limit).
-const FAR: f32 = crate::image::garrison::FAR;
+const FAR: f32 = crate::math::image::garrison::FAR;
 /// The squared footprint gap within which a garrison order's target's neighbours shelter units
 /// too (`FUN_14161e370` with `+0x1e`, `DAT_14330ebcc`, 100.0: ten tiles).
-pub(crate) const NEARBY: f32 = crate::image::garrison::NEARBY;
+pub(crate) const NEARBY: f32 = crate::math::image::garrison::NEARBY;
 /// The squared footprint gap within which the town bell reaches (its ring `FUN_14163a650`, its
 /// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
 /// An enter into an object the world holds asleep.
 const ENTER_SLEEPING: GenieError = GenieError::unsupported("an enter into a sleeping object");
 /// An enter without its owner's masters.
 pub(crate) const NO_MASTERS: GenieError = GenieError::unsupported("an enter without the masters");
-pub(crate) const TOWN_BELL_REACH: f32 = crate::image::garrison::TOWN_BELL_REACH;
+pub(crate) const TOWN_BELL_REACH: f32 = crate::math::image::garrison::TOWN_BELL_REACH;
 
 /// The class of buildings, which a unit's garrison task names (`FUN_1415c9240` with 3, 3).
 pub(crate) const BUILDING_CLASS: i16 = 3;
@@ -71,7 +71,7 @@ const VILLAGER_KIND: u8 = 70;
 
 /// The class-flags table `FUN_1411205e0` reads (`DAT_1439e37b0`, a u32 per class; its count,
 /// `DAT_1439e2cf8`, is 64), as the image holds it (nothing writes it).
-const CLASS_FLAGS: [u32; 64] = crate::image::garrison::CLASS_FLAGS;
+const CLASS_FLAGS: [u32; 64] = crate::math::image::garrison::CLASS_FLAGS;
 /// The class flags a unit garrisons a transport with (`FUN_14120eb10`, `FUN_141621220`).
 const TRANSPORTED: u32 = 0x10002;
 

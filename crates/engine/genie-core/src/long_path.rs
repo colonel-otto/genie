@@ -28,7 +28,7 @@
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
 use crate::GenieError;
-use crate::fmath::Vec3;
+use crate::math::fmath::Vec3;
 use crate::spatial::{BLOCKED, Tiles};
 use crate::tile_path::Path;
 
@@ -49,16 +49,16 @@ const SENTINEL: i32 = 0x88ca_6c00_u32 as i32;
 
 /// The goal counts as reached within this many tiles, and a range above it ends the search
 /// before it starts when the goal lies within the range (`DAT_14330eb8c`).
-const REACHED: f32 = crate::image::long_path::REACHED;
+const REACHED: f32 = crate::math::image::long_path::REACHED;
 
 /// The margin of the reached test within the range (`DAT_142eb0c60`).
-const EPSILON: f32 = crate::image::long_path::EPSILON;
+const EPSILON: f32 = crate::math::image::long_path::EPSILON;
 
 /// A target's footprint ends this short of its far edges (`DAT_142eb99cc`).
-const EDGE_GAP: f32 = crate::image::long_path::EDGE_GAP;
+const EDGE_GAP: f32 = crate::math::image::long_path::EDGE_GAP;
 
 /// A path point lies at its tile's centre: the tile plus this on both axes (`DAT_142e7f384`).
-const TILE_CENTRE: f32 = crate::image::long_path::TILE_CENTRE;
+const TILE_CENTRE: f32 = crate::math::image::long_path::TILE_CENTRE;
 
 /// The record class whose tiles an allied unit may pass when its gate lets it (`0x500` in the
 /// obstruction manager's word, bits 8 to 13).
@@ -482,7 +482,7 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
     let mut heap = Heap {
         slots: vec![([0, 0], SENTINEL), ([x0, y0], start_cost)],
     };
-    let straight = crate::fmath::sqrt(gap2 as f32) as i32;
+    let straight = crate::math::fmath::sqrt(gap2 as f32) as i32;
     let budget = if req.computer {
         straight.wrapping_mul(COMPUTER_FACTOR)
     } else {
@@ -498,7 +498,8 @@ fn search(tiles: &Tiles, map: [i32; 2], req: &LongRequest) -> Result<Searched, G
         }
         let ([cx, cy], _) = heap.slots[1];
         let (gx, gy) = (x1 - cx, y1 - cy);
-        let d = crate::fmath::sqrt(gx.wrapping_mul(gx).wrapping_add(gy.wrapping_mul(gy)) as f32);
+        let d =
+            crate::math::fmath::sqrt(gx.wrapping_mul(gx).wrapping_add(gy.wrapping_mul(gy)) as f32);
         if in_rect(cx, cy) || search_reached(req, d) {
             return Ok(Searched::Ran {
                 reached: true,

@@ -7027,7 +7027,7 @@ fn a_unit_runs_from_its_attackers_within_its_leash() {
         (r + r) / RUN_DRAW_SCALE - RUN_ONE
     };
     let (vx, vy) = (part(), part());
-    let d = crate::fmath::sqrt(vy * vy + vx * vx);
+    let d = crate::math::fmath::sqrt(vy * vy + vx * vx);
     let away = [20.0 - (vx / d) * 2.0, 30.0 - (vy / d) * 2.0, 0.0];
     let mut u = runner(vec![77, 78]);
     assert_eq!(run(&mut u, &at, true, false).1, to(away));
@@ -8298,7 +8298,7 @@ fn a_siege_unit_attacks_by_its_stance_its_class_and_its_priority() {
         assert_eq!(check(&MANGONEL, &seeker(0), &t), Ok(false));
     }
     // the diagonal: sqrt(0.36 + 0.36) = 0.8485; a gap of 7.8 - 0.8485 is within 7
-    let diagonal = crate::fmath::sqrt(0.6f32 * 0.6 + 0.6 * 0.6);
+    let diagonal = crate::math::fmath::sqrt(0.6f32 * 0.6 + 0.6 * 0.6);
     let x = 20.0 + 0.2 + 7.0 + diagonal;
     assert_eq!(check(&MANGONEL, &seeker(2), &villager(x - 0.01)), Ok(true));
     assert_eq!(check(&MANGONEL, &seeker(2), &villager(x + 0.01)), Ok(false));

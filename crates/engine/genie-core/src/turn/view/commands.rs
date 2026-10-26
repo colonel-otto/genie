@@ -216,7 +216,7 @@ impl UnitView<'_> {
 
 /// The auto scout's search reaches within its line of sight less this (`FUN_140c65490`,
 /// `DAT_14330eb8c`).
-pub(in crate::turn) const LOS_MARGIN: f32 = crate::image::explore::LOS_MARGIN;
+pub(in crate::turn) const LOS_MARGIN: f32 = crate::math::image::explore::LOS_MARGIN;
 
 /// The masters of a town centre (`FUN_1416597e0`: 109, then 444).
 pub(in crate::turn) const TOWN_CENTRES: [i16; 2] = [109, 444];
@@ -303,6 +303,6 @@ impl crate::explore::Area for ScoutArea<'_> {
         };
         let gx = gap(x as f32 - self.me.position[0], self.radius[0]);
         let gy = gap(y as f32 - self.me.position[1], self.radius[1]);
-        crate::fmath::sqrt(gy * gy + gx * gx)
+        crate::math::fmath::sqrt(gy * gy + gx * gx)
     }
 }

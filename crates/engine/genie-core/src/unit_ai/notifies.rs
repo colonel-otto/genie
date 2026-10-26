@@ -1,7 +1,7 @@
 //! The notifies' processing: their queue, their acceptance and their buffer.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, Effect, GO_ON, MOVE_ACTION, NO_LONGER_ON_ME,
     Notify, PRODUCED, Surroundings, UnitAi, UnitSide,

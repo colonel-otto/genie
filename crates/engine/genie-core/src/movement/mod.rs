@@ -9,7 +9,7 @@
 //!
 //! Vectors are the game's `BVector`s ([`fmath::Vec3`]: x, height, y).
 
-use crate::fmath::{self, Vec3};
+use crate::math::fmath::{self, Vec3};
 use crate::spatial::{Placed, Spatial};
 
 mod long_walk;
@@ -42,9 +42,9 @@ use crate::GenieError;
 #[cfg(test)]
 use crate::hull_path::HullPather;
 #[cfg(test)]
-use crate::pathing::{Pathing, PlanBudget};
+use crate::math::rng::Well512;
 #[cfg(test)]
-use crate::rng::Well512;
+use crate::pathing::{Pathing, PlanBudget};
 #[cfg(test)]
 use crate::tile_path::Path;
 
@@ -280,30 +280,30 @@ pub enum Motion {
 }
 
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`).
-const EPSILON: f32 = crate::image::movement::EPSILON;
+const EPSILON: f32 = crate::math::image::movement::EPSILON;
 /// The world's up axis (`DAT_143cc2f30`), the yaw's axis.
 const UP: Vec3 = [0.0, 1.0, 0.0];
 /// How far inside the map's edge a moving unit's footprint stays (`DAT_142eb99cc`), and how far
 /// below the edge a position stays (`DAT_142eb1e9c`).
-const EDGE_GAP: f32 = crate::image::movement::EDGE_GAP;
-const EDGE_POSITION_GAP: f32 = crate::image::movement::EDGE_POSITION_GAP;
+const EDGE_GAP: f32 = crate::math::image::movement::EDGE_GAP;
+const EDGE_POSITION_GAP: f32 = crate::math::image::movement::EDGE_POSITION_GAP;
 /// A walk to a point checks its range only above this (`DAT_142eb5690`).
-const RANGE_FLOOR: f32 = crate::image::movement::RANGE_FLOOR;
+const RANGE_FLOOR: f32 = crate::math::image::movement::RANGE_FLOOR;
 /// The class the motion step measures by its annexes (`-0xe85` encoded).
 const GATE: i16 = 39;
 /// A point within this many tiles is the short pather's to reach (`FUN_140fa0370`,
 /// `DAT_142eb0f4c`).
-const REACH_SHORT: f32 = crate::image::movement::REACH_SHORT;
+const REACH_SHORT: f32 = crate::math::image::movement::REACH_SHORT;
 /// A point whose squared gap to the unit's footprint is below this is not reached when the
 /// short pather did not reach it (`FUN_140fa0370`, `DAT_14330eb8c`).
-const REACH_NEAR: f32 = crate::image::movement::REACH_NEAR;
+const REACH_NEAR: f32 = crate::math::image::movement::REACH_NEAR;
 /// The master the long pather lets move without a speed (`FUN_140f9eb70`, raw id `0x2a`).
 pub(crate) const LONG_PATH_MOVER: i16 = 42;
 /// A target of this master (raw `0x60c9`) or class gives the tile planner of a reach test this
 /// much more range (`FUN_140fa0370`, `DAT_142eb1c98`).
 const WIDE_MASTER: i16 = 45;
 const WIDE_CLASS: i16 = 33;
-const WIDE_RANGE: f32 = crate::image::movement::WIDE_RANGE;
+const WIDE_RANGE: f32 = crate::math::image::movement::WIDE_RANGE;
 /// The trade cart's class (19), whose path requests the owner's budget limits (`FUN_14165d6f0`).
 const TRADE_CART: i16 = 19;
 /// The classes a long path's stretch may not cross (`0x141150f00` after `FUN_140f9eb70`, raw
@@ -315,9 +315,9 @@ const BUILDING_CLASS: i16 = 3;
 const VILLAGER_CLASS: i16 = 4;
 /// A long path's stretch is checked for walls with the unit's radius times this
 /// (`DAT_142e85190`).
-const LONG_PATH_GROW: f32 = crate::image::movement::LONG_PATH_GROW;
+const LONG_PATH_GROW: f32 = crate::math::image::movement::LONG_PATH_GROW;
 /// No distance (`DAT_14330ebf4`).
-const FAR: f32 = crate::image::movement::FAR;
+const FAR: f32 = crate::math::image::movement::FAR;
 /// The motion step's switches (`DAT_1439e3cc0`, `DAT_1439e3cc4`, `DAT_1439e3cc8`): the short
 /// pather, the tile pathfinder and the long pather run; all three are 1 at run time.
 const SHORT_PATHER: bool = true;
@@ -325,12 +325,12 @@ const TILE_PATHER: bool = true;
 const LONG_PATHER: bool = true;
 /// The short pather serves a waypoint this near (`DAT_142ec9ec0`), and one this near a target
 /// before the tile pathfinder (`DAT_142eb0f4c`).
-const SHORT_REACH: f32 = crate::image::movement::SHORT_REACH;
-const TARGET_SHORT_REACH: f32 = crate::image::movement::TARGET_SHORT_REACH;
+const SHORT_REACH: f32 = crate::math::image::movement::SHORT_REACH;
+const TARGET_SHORT_REACH: f32 = crate::math::image::movement::TARGET_SHORT_REACH;
 /// A waypoint or target nearer than this takes the close-in path (`DAT_14330eb8c`).
-const CLOSE: f32 = crate::image::movement::CLOSE;
+const CLOSE: f32 = crate::math::image::movement::CLOSE;
 /// A unit pushed into a met object counts beyond its radius times this (`DAT_142eb880c`).
-const PUSHED: f32 = crate::image::movement::PUSHED;
+const PUSHED: f32 = crate::math::image::movement::PUSHED;
 
 /// `FUN_1411615a0`: how deep two boxes (centre, radii on the ground) overlap, the lesser of the
 /// two axes; 0 when they do not.
@@ -348,13 +348,13 @@ fn overlap(a: Vec3, [ar, ad]: [f32; 2], b: Vec3, [br, bd]: [f32; 2]) -> f32 {
 
 /// A unit's own waypoint on a tile's edge moves this far into the tile (`FUN_14114e920`,
 /// `DAT_142e7f384`).
-const USER_WAYPOINT_MIDDLE: f32 = crate::image::movement::USER_WAYPOINT_MIDDLE;
+const USER_WAYPOINT_MIDDLE: f32 = crate::math::image::movement::USER_WAYPOINT_MIDDLE;
 /// How far level 0's look ahead reaches on its parent's path, squared (`DAT_14330ebcc`).
-const LOOK_AHEAD: f32 = crate::image::movement::LOOK_AHEAD;
+const LOOK_AHEAD: f32 = crate::math::image::movement::LOOK_AHEAD;
 /// `FUN_141142750` grows the walk's query by the unit's radius times `DAT_142e7f384`.
-const STRAIGHT_GROW: f32 = crate::image::movement::STRAIGHT_GROW;
+const STRAIGHT_GROW: f32 = crate::math::image::movement::STRAIGHT_GROW;
 /// A path shorter than this is too short (`DAT_142eb99cc`).
-const SHORTEST: f32 = crate::image::movement::SHORTEST;
+const SHORTEST: f32 = crate::math::image::movement::SHORTEST;
 /// The point `FUN_140f9bcd0` returns outside a path: `DAT_143f0dc88`, in `.bss` (zero at the
 /// load; probed zero in records/425906646 with no write in the update after).
 pub(crate) const OUTSIDE_PATH: Vec3 = [0.0; 3];
@@ -364,17 +364,17 @@ pub(crate) const OUTSIDE_PATH: Vec3 = [0.0; 3];
 const LONG: f32 = 5.0;
 const DETOUR: f32 = 1.25;
 /// A new level's stretches longer than this squared get a midpoint (`DAT_142ed6f20`).
-const SPLIT: f32 = crate::image::movement::SPLIT;
+const SPLIT: f32 = crate::math::image::movement::SPLIT;
 /// How many plans one motion step makes at most.
 const PLANS: u32 = 3;
 /// What a gate's annex's gap loses against the gate's own (`XMM14`, the motion step's load at
 /// 0x1411510e7, the same as [`RANGE_FLOOR`]'s).
-const ANNEX_GAP: f32 = crate::image::movement::RANGE_FLOOR;
+const ANNEX_GAP: f32 = crate::math::image::movement::RANGE_FLOOR;
 /// A level's plans before it gives up (`FUN_140f8f670`).
 const CONTINUE: i32 = 10;
 /// The widest unit the new short pather takes (`DAT_142e7f384`, `FUN_140f9e540`'s load at
 /// 0x140f9e713).
-const NEW_PATHER_RADIUS: f32 = crate::image::movement::NEW_PATHER_RADIUS;
+const NEW_PATHER_RADIUS: f32 = crate::math::image::movement::NEW_PATHER_RADIUS;
 /// The motion step's include list (`DAT_143f4a000`, its count `local_19bc`) holds at most 0x100
 /// kept hits (`CMP RCX, 0x100; JGE` at 0x1411547cc).
 const INCLUDED: usize = 0x100;

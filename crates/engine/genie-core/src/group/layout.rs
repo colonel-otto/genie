@@ -4,28 +4,28 @@
 //! (`FUN_14103fd00`) makes them.
 
 use crate::GenieError;
-use crate::fmath::{self, Vec3};
 use crate::group::formation::{BOX, HORDE, PHALANX, USER_DEFINED};
 use crate::group::{Formation, FormationLine, Slot, UnitGroup};
+use crate::math::fmath::{self, Vec3};
 use crate::turn::Turns;
 
 /// A horde's and a user defined formation's slots lie at most this far from the group's place
 /// (`DAT_14330ebb8`).
-const HORDE_REACH: f32 = crate::image::group::HORDE_REACH;
+const HORDE_REACH: f32 = crate::math::image::group::HORDE_REACH;
 /// A user defined formation's slots move back by the farthest one ahead plus this
 /// (`DAT_142e7f384`).
-const USER_DEFINED_BACK: f32 = crate::image::group::USER_DEFINED_BACK;
+const USER_DEFINED_BACK: f32 = crate::math::image::group::USER_DEFINED_BACK;
 /// Half: a phalanx's even line's step, a box's first side and its middles (`DAT_142e7f384`, and
 /// the phalanx's `DAT_142e8c150` as a divisor).
-const BOX_HALF: f32 = crate::image::group::BOX_HALF;
+const BOX_HALF: f32 = crate::math::image::group::BOX_HALF;
 /// A phalanx's even line moves back by its step over this (`DAT_142e8c150`).
-const TWO: f32 = crate::image::group::SPACING_FACTOR;
+const TWO: f32 = crate::math::image::group::SPACING_FACTOR;
 /// A box's perimeter is its side times this (`DAT_142eb0f48`).
-const BOX_SIDES: f32 = crate::image::group::BOX_SIDES;
+const BOX_SIDES: f32 = crate::math::image::group::BOX_SIDES;
 /// A box too small for its units grows to this share of their length (`DAT_142eb880c`).
-const BOX_SIDE_SHARE: f32 = crate::image::group::BOX_SIDE_SHARE;
+const BOX_SIDE_SHARE: f32 = crate::math::image::group::BOX_SIDE_SHARE;
 /// Two slots whose offsets on x differ by less than this share a box's line (`DAT_142eb0c60`).
-const LINE_EPSILON: f32 = crate::image::group::EPSILON;
+const LINE_EPSILON: f32 = crate::math::image::group::EPSILON;
 /// The places of the box's positions buffer (`DAT_143f15f00`, `FUN_14102ab30`'s `0x3c`).
 pub const BOX_POSITIONS: usize = 60;
 

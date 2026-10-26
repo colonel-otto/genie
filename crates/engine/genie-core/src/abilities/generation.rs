@@ -3,7 +3,7 @@
 use crate::abilities::{BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, WORKING, WORKING_ACTIONS};
 use crate::masters::Task;
 use crate::turn::Turns;
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 /// What a generation task's test reads of the object's top action (`FUN_140a986f0`): its type
 /// (`+0x8`), its state (`+0x18`) and its target as the world holds it (`FUN_140a78450`), None

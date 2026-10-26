@@ -1,7 +1,7 @@
 //! A hunter's search, its walk after a drop and its drop-off.
 
+use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
-use crate::rng::Stream;
 use crate::spatial::{Placed, Spatial};
 use crate::turn::unit::Unit;
 use crate::turn::view::{Context, DropWorld};

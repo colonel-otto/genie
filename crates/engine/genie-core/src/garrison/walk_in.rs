@@ -9,7 +9,7 @@ use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up}
 pub const ENTER: i16 = 3;
 
 /// The gap below which the Enter's `MoveTo` starts arrived (`0x140aa2100`, `DAT_142eb99cc`).
-pub(super) const ARRIVED: f32 = crate::image::move_to::ARRIVED;
+pub(super) const ARRIVED: f32 = crate::math::image::move_to::ARRIVED;
 
 /// The Enter action's states the slice models: 1 done (inside), 2 waiting to try again, 4
 /// walking to the target.

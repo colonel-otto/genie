@@ -15,8 +15,8 @@
 //! draws) and a gather left without a target and a load.
 
 use crate::hunt::{HuntSprites, HuntTask};
+use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, MoveWait};
-use crate::rng::Well512;
 use crate::sprite::ActiveSprite;
 
 mod point_walks;
@@ -71,7 +71,7 @@ const SEARCH_WAIT: f32 = -10.0;
 /// `set_state(0xf3)`'s timer: a second (`0xbf800000`, an immediate in `0x140a8cd40`).
 const FARM_WAIT_TIME: f32 = -1.0;
 /// `mGatherX` of none (`DAT_14330ec20`, −1.0, read at `0x140a8d1c6`).
-const NO_GATHER_POINT: f32 = crate::image::gather::NO_GATHER_POINT;
+const NO_GATHER_POINT: f32 = crate::math::image::gather::NO_GATHER_POINT;
 /// The gatherers whose gather without a target waits for another farm (`set_state(0xf3)`,
 /// `0x140a8e1d0`'s cases 3, 5 and 6: masters 259, 214, 1891 and 1892).
 const FARM_WAITERS: [i16; 4] = [259, 214, 1891, 1892];
@@ -82,18 +82,18 @@ const TRAP_WAITERS: [i16; 3] = [13, 2356, 2171];
 /// A `MoveTo` starts in place within this gap of its target (`0x140aa2100`).
 const ARRIVED: f32 = 0.01;
 /// Below this a target's or a load's remainder counts as nothing (`DAT_142eb5690`).
-const REMAINDER: f32 = crate::image::gather::REMAINDER;
+const REMAINDER: f32 = crate::math::image::gather::REMAINDER;
 /// A target's last bit adds its master's first storage amount times this (`DAT_142eb1e9c`).
-const LAST_BIT: f32 = crate::image::gather::LAST_BIT;
+const LAST_BIT: f32 = crate::math::image::gather::LAST_BIT;
 /// A drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
-const DROP_REACH: f32 = crate::image::gather::DROP_REACH;
+const DROP_REACH: f32 = crate::math::image::gather::DROP_REACH;
 /// A random wait's shift (`DAT_142e7f384`).
-const WAIT_SHIFT: f32 = crate::image::gather::WAIT_SHIFT;
+const WAIT_SHIFT: f32 = crate::math::image::gather::WAIT_SHIFT;
 /// A failed walk to a target with at most this many workers waits (`0x140a8e1d0` case 3,
 /// `DAT_142eb1c98`), as one to a target at least `WAIT_GAP` away (the squared footprint gap,
 /// `DAT_142ec9ec0`); else the gatherer searches.
-const WAIT_WORKERS: f32 = crate::image::gather::WAIT_WORKERS;
-const WAIT_GAP: f32 = crate::image::gather::WAIT_GAP;
+const WAIT_WORKERS: f32 = crate::math::image::gather::WAIT_WORKERS;
+const WAIT_GAP: f32 = crate::math::image::gather::WAIT_GAP;
 /// The farm class, whose gather the slice does not model yet.
 pub const FARM_CLASS: i16 = 49;
 /// The villagers' class, whose `MoveTo` waits once when the motion step gives up.
@@ -109,9 +109,9 @@ const STOP_FARMS: [i16; 2] = [50, 1187];
 /// A farm's stops under the game's farm setting (the constructor's `mNumberStops`).
 const FARM_STOPS: u8 = 4;
 /// A stop's point lies this far into its tile (`DAT_142e7f384`).
-const STOP_CENTRE: f32 = crate::image::gather::STOP_CENTRE;
+const STOP_CENTRE: f32 = crate::math::image::gather::STOP_CENTRE;
 /// The productivity of a task without a productivity attribute (`DAT_14330eb8c`).
-const DEFAULT_PRODUCTIVITY: f32 = crate::image::gather::DEFAULT_PRODUCTIVITY;
+const DEFAULT_PRODUCTIVITY: f32 = crate::math::image::gather::DEFAULT_PRODUCTIVITY;
 /// The draws a stop's point takes at most (`set_state(4)`'s loop).
 const STOP_DRAWS: u32 = 10;
 /// The player's attribute that sells a farm's food at once (`player+0x100` at `+0x300`).

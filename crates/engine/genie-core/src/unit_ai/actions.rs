@@ -1,7 +1,7 @@
 //! The actions' outcomes, the stops and the order queue.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ATTACK_MOVE, AiMove, CLASS_18, ENDED_ACTIONS, Effect, GO_ON, MOVE_ACTION, Notify, PATROL,
     PRODUCED, QueuedOrder, Surroundings, UnitAi, UnitSide, WALK_BACK, point_gap_squared,
@@ -302,7 +302,7 @@ impl UnitAi {
     /// busy. True when it walks.
     pub(super) fn walk_back(&mut self, at: &Surroundings, fx: &mut Vec<Effect>) -> bool {
         let gap = point_gap_squared(self.state_position, at.position, at.size);
-        if !crate::fmath::below_or_unordered(WALK_BACK, gap) {
+        if !crate::math::fmath::below_or_unordered(WALK_BACK, gap) {
             return false;
         }
         let [x, y] = self.state_position;

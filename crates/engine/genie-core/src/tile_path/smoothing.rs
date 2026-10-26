@@ -1,18 +1,18 @@
 //! The smoothing of a found path (`FUN_140f7dbb0`): its straight stretches wherever the unit
 //! can walk straight.
 
-use crate::fmath;
-use crate::fmath::Vec3;
+use crate::math::fmath;
+use crate::math::fmath::Vec3;
 use crate::tile_path::Path;
 
 /// The longest step between the points the smoothing puts on a straight stretch
 /// (`DAT_142f430e8`).
-pub(super) const SMOOTH_STEP: f32 = crate::image::tile_path::SMOOTH_STEP;
+pub(super) const SMOOTH_STEP: f32 = crate::math::image::tile_path::SMOOTH_STEP;
 /// The level-0 search runs only for paths shorter than this (`DAT_142f430ec`).
-pub(super) const TILE_SEARCH_LENGTH: f32 = crate::image::tile_path::TILE_SEARCH_LENGTH;
+pub(super) const TILE_SEARCH_LENGTH: f32 = crate::math::image::tile_path::TILE_SEARCH_LENGTH;
 /// The squared distance from the start within which the planner looks for a shorter first
 /// stretch (`DAT_14330ebcc`).
-pub(super) const SHORTCUT_REACH: f32 = crate::image::tile_path::SHORTCUT_REACH;
+pub(super) const SHORTCUT_REACH: f32 = crate::math::image::tile_path::SHORTCUT_REACH;
 
 /// The obstruction manager as the smoothing asks it for a unit (`FUN_140f7dbb0`).
 pub trait SegmentTest<E> {

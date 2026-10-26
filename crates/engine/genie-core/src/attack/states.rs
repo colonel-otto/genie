@@ -6,9 +6,9 @@ use crate::attack::{
     ARRIVED, Attack, BOAR_AI, DONE, Engagement, FAILED, HALF, LION_AI, MOVE, NO_RANGE, NONE,
     PREDATOR, Strike, VILLAGER, set_sprite,
 };
+use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, Walk};
 use crate::movement::Mover;
-use crate::rng::Well512;
 use crate::sprite::ActiveSprite;
 
 impl Attack {

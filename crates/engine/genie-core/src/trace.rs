@@ -22,7 +22,7 @@
 //!   `to_ai_action`, `from_target`, `to_target`); −1 stands for none. Each carries `tick`,
 //!   `player` and `object`.
 //! - `genie_core::draws` (TRACE): each step of a random generator (the event `draw`: `stream`,
-//!   the [`crate::rng::Stream`] as its number, 255 for a generator outside the eleven; `draw`,
+//!   the [`crate::math::rng::Stream`] as its number, 255 for a generator outside the eleven; `draw`,
 //!   the generator's draw count after it; `value`, the raw step; `at`, the engine's line that
 //!   asked for it). Compared with the tick oracle's `ai_draws`, it finds the update where a
 //!   stream's draws part from the game's.
@@ -324,9 +324,9 @@ mod tests {
     /// asked for it, through every draw helper.
     #[test]
     fn a_draw_tells_its_stream_value_and_the_line_that_asked() {
-        let mut streams = crate::rng::Streams::default();
+        let mut streams = crate::math::rng::Streams::default();
         streams.seed_all(29910);
-        let ai = streams.get(crate::rng::Stream::Ai);
+        let ai = streams.get(crate::math::rng::Stream::Ai);
         let mut copy = ai.clone();
         let (lines, line) = (
             heard_with_draws(|| {
@@ -345,7 +345,7 @@ mod tests {
         );
         assert!(draws[0].starts_with(&head), "{} against {head}", draws[0]);
         // a generator outside the streams, and a helper of two steps
-        let mut lone = crate::rng::Well512::default();
+        let mut lone = crate::math::rng::Well512::default();
         lone.set_seed(1);
         let lines = heard_with_draws(|| {
             let _ = lone.raw64();

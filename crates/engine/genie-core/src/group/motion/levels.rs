@@ -1,9 +1,9 @@
 //! The walked level's flags, its reset, a looping path's next waypoint and the waypoints'
 //! points and ground lengths.
 
-use crate::fmath;
-use crate::fmath::Vec3;
 use crate::group::motion::NEAR;
+use crate::math::fmath;
+use crate::math::fmath::Vec3;
 use crate::movement::PathData;
 
 /// `FUN_140f9b4d0(level, bit, on)` on the walked level: its flag `bit` set or cleared; bit 2 is

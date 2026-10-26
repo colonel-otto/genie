@@ -113,7 +113,7 @@ impl crate::turn::Turns {
 
 /// The seconds of work a new object's building gets at once from its owner's slot 0x1c0 with its
 /// flag (`FUN_14162ce00`'s `FUN_1411cc430` with `DAT_142eea788`).
-pub(super) const STACK_WORK: f32 = crate::image::build::STACK_WORK;
+pub(super) const STACK_WORK: f32 = crate::math::image::build::STACK_WORK;
 
 /// The guard of an object the routines here reach through the object itself (their callers
 /// hold it): the slice's lists hold every object the world does.
@@ -165,7 +165,8 @@ impl crate::turn::Turns {
             };
             match self.object(main) {
                 Some((_, m))
-                    if m.life.state == 0 && crate::fmath::at_most_or_unordered(1.0, m.life.hp) =>
+                    if m.life.state == 0
+                        && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp) =>
                 {
                     at = main;
                 }
@@ -173,7 +174,7 @@ impl crate::turn::Turns {
             }
         }
         let (q, u) = self.object(at).ok_or(NOT_HELD)?;
-        if u.life.state != 0 || crate::fmath::below_or_unordered(u.life.hp, 1.0) {
+        if u.life.state != 0 || crate::math::fmath::below_or_unordered(u.life.hp, 1.0) {
             return Ok(());
         }
         if u.construction.is_some_and(|c| c.desolid) {
@@ -244,7 +245,7 @@ impl crate::turn::Turns {
                 m,
                 u.build_frame,
                 &self.graphics,
-                self.streams.get(crate::rng::Stream::Sprite),
+                self.streams.get(crate::math::rng::Stream::Sprite),
             );
         }
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)

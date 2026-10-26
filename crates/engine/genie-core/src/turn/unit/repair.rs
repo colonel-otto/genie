@@ -1,8 +1,8 @@
 //! The repair part of the update and the unit's attackers and seen target.
 
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::movement::Me;
-use crate::rng::Stream;
 use crate::spatial::Spatial;
 use crate::turn::unit::{PaidAttributes, Unit};
 use crate::turn::view::{Context, RepairWrite};

@@ -1,7 +1,7 @@
 //! What the unit AI asks of the world ([`UnitSide`]) and the commands it gives its unit.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{AiMove, Attacked, Duel, Found, PatrolPath, Search, Seeker, UnitAi, UnitSeen};
 
 /// The caller's answer to a [`Search`].

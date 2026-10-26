@@ -43,38 +43,38 @@ pub use self::taking::take;
 #[cfg(test)]
 use self::taking::take_static;
 #[cfg(test)]
-use crate::fmath;
+use crate::math::fmath;
 
 /// Elevation: a higher attacker hits at 1.25 (`DAT_142eb56a8`), a lower one at 0.75
 /// (`DAT_142e7f388`), each plus its player's and the target's player's attributes (211/272,
 /// 212/273).
-const HIGHER: f32 = crate::image::damage::HIGHER;
-const LOWER: f32 = crate::image::damage::LOWER;
+const HIGHER: f32 = crate::math::image::damage::HIGHER;
+const LOWER: f32 = crate::math::image::damage::LOWER;
 /// A building's hits with a specific relic inside (`DAT_142ed66b4`, 1.2), and with any relic
 /// (`DAT_142e86c14`, 1.1), [`building_elevation_factor`].
-const SPECIFIC_RELIC_BOOST: f32 = crate::image::damage::SPECIFIC_RELIC_BOOST;
-const RELIC_BOOST: f32 = crate::image::damage::RELIC_BOOST;
+const SPECIFIC_RELIC_BOOST: f32 = crate::math::image::damage::SPECIFIC_RELIC_BOOST;
+const RELIC_BOOST: f32 = crate::math::image::damage::RELIC_BOOST;
 /// The gap below which the game takes a distance as zero (`DAT_142eb0c60`), and the share of
 /// reflected damage above which a target reflects.
-const EPSILON: f32 = crate::image::damage::EPSILON;
+const EPSILON: f32 = crate::math::image::damage::EPSILON;
 /// A special attack and a retaliation need their attacker within 1.2 facets of where the target
 /// faces (`DAT_142ed66b4`, `DAT_142eb99e4`); the special attack takes the hit's damage to 0.66
 /// (`DAT_142f3855c`); a retaliation answers attackers of a weapon range below 0.2
 /// (`DAT_142eae8d0`), four times over an attacker whose charge is ready (`DAT_142eb0f48`).
-const FACING: f32 = crate::image::damage::FACING;
-const MINUS_FACING: f32 = crate::image::damage::MINUS_FACING;
-const SPECIAL: f32 = crate::image::damage::SPECIAL;
-const RETALIATION_RANGE: f32 = crate::image::damage::RETALIATION_RANGE;
-const RETALIATION_SCALE: f32 = crate::image::damage::RETALIATION_SCALE;
+const FACING: f32 = crate::math::image::damage::FACING;
+const MINUS_FACING: f32 = crate::math::image::damage::MINUS_FACING;
+const SPECIAL: f32 = crate::math::image::damage::SPECIAL;
+const RETALIATION_RANGE: f32 = crate::math::image::damage::RETALIATION_RANGE;
+const RETALIATION_SCALE: f32 = crate::math::image::damage::RETALIATION_SCALE;
 /// A melee attacker (weapon range below 0.99, `DAT_142eb569c`) with an area effect tramples:
 /// its blast goes about itself (`FUN_1412115e0`).
-pub const BLAST_RANGE: f32 = crate::image::damage::BLAST_RANGE;
+pub const BLAST_RANGE: f32 = crate::math::image::damage::BLAST_RANGE;
 /// A cone blast (its level's bit 7) reaches objects within half a facet of where its attacker
 /// faces (`DAT_142e7f384`, `DAT_142eb6e58`), or within 1.67 facets (`DAT_142f4fea8`) for a wide
 /// one (bit 5).
-const CONE: f32 = crate::image::damage::CONE;
-const MINUS_CONE: f32 = crate::image::damage::MINUS_CONE;
-const WIDE_CONE: f32 = crate::image::damage::WIDE_CONE;
+const CONE: f32 = crate::math::image::damage::CONE;
+const MINUS_CONE: f32 = crate::math::image::damage::MINUS_CONE;
+const WIDE_CONE: f32 = crate::math::image::damage::WIDE_CONE;
 
 /// The villager class (4): its hits leave what a static target holds.
 const VILLAGER: i16 = 4;
@@ -96,10 +96,10 @@ const BUILDING: u8 = 80;
 const WALL: i16 = 27;
 /// 1 (`DAT_14330eb8c`, read into `XMM9` at `0x1411cec8e`): a building's least hit, the hit
 /// points below which a hit razes a building or kills a unit, and what each razing count adds.
-const ONE: f32 = crate::image::damage::ONE;
+const ONE: f32 = crate::math::image::damage::ONE;
 /// The least hit of the attacker classes [`LEAST_HIT_CLASSES`] under the game's setting `+0x680`
 /// at 1 (`DAT_142eb5690`, read into `XMM6` at `0x1411ceea4`).
-const LEAST_CLASS_HIT: f32 = crate::image::damage::LEAST_CLASS_HIT;
+const LEAST_CLASS_HIT: f32 = crate::math::image::damage::LEAST_CLASS_HIT;
 /// The attacker classes whose least hit on a building is [`LEAST_CLASS_HIT`] (decoded `0`, `0x24`,
 /// `0x16`, `0x2c`, `0x34` at `0x1411ced23`..`0x1411cee9e`).
 const LEAST_HIT_CLASSES: [i16; 5] = [0, 36, 22, 44, 52];

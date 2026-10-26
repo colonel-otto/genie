@@ -1,8 +1,8 @@
 //! A unit AI's construction, its order and target, its patrol and its moves.
 
 use crate::GenieError;
+use crate::math::rng::Well512;
 use crate::movement::PathAsk;
-use crate::rng::Well512;
 use crate::unit_ai::{
     ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, ATTACK_MOVE, AiMove, BOAR_AI, CLASS_KING,
     COMPUTER_SOLDIER_IDLE_TIMEOUT, DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP,
@@ -320,8 +320,8 @@ impl UnitAi {
                 ai.zero_patrol();
             } else {
                 let (dx, dy) = (point[0] - at[0], point[1] - at[1]);
-                let d = crate::fmath::sqrt(dy * dy + dx * dx);
-                ask.back_and_forth = crate::fmath::at_most_or_unordered(PATROL_TURN_REACH, d);
+                let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
+                ask.back_and_forth = crate::math::fmath::at_most_or_unordered(PATROL_TURN_REACH, d);
             }
         }
         ask.attack_move = ai

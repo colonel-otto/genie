@@ -331,4 +331,4 @@ pub fn best_unit_to_attack(
 
 /// 1 (`DAT_14330eb8c`): an extra object under the least range counts this much beyond the
 /// weapon range.
-pub(super) const ONE: f32 = crate::image::best_target::ONE;
+pub(super) const ONE: f32 = crate::math::image::best_target::ONE;

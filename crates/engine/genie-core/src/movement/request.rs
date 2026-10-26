@@ -2,7 +2,7 @@
 //! goal's reach.
 
 use crate::GenieError;
-use crate::fmath::Vec3;
+use crate::math::fmath::Vec3;
 use crate::movement::{
     BUILDING_CLASS, CLOSE, CONTINUE, DETOUR, EPSILON, FAR, GATE, Goal, LONG, LONG_PATH_GROW,
     LONG_PATH_MOVER, LONG_PATHER, LongWalker, Me, Mover, PathData, Planning, RANGE_FLOOR,

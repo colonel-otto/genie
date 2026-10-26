@@ -2,8 +2,8 @@
 //! and the way back.
 
 use crate::hunt::HUNT;
+use crate::math::rng::Stream;
 use crate::order::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
-use crate::rng::Stream;
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 

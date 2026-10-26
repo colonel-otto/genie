@@ -1,15 +1,15 @@
 //! The members' moves to their slots, a free member's stop, the line test and a member's
 //! steering toward its slot (`FUN_141025fb0`).
 
-use crate::fmath::{Vec3, below_or_unordered};
 use crate::group::SpecificMove;
 use crate::group::motion::{hold, moved_vector};
 use crate::group::steer::{
     ACTION_KIND, ASIDE, ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO,
     MOVES,
 };
+use crate::math::fmath::{Vec3, below_or_unordered};
 use crate::turn::Turns;
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 impl Turns {
     /// The members' moves to their slots (`0x14103e8e8`..`0x14103efba`) of group `group`, whose

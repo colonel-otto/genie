@@ -1,8 +1,8 @@
 //! The unit AI's part of the update: its surroundings, its side and its run.
 
 use crate::masters::Master;
+use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
-use crate::rng::{Stream, Well512};
 use crate::turn::unit::{Captured, Step, Unit};
 use crate::turn::view::{Context, OwnerView, UnitView};
 use crate::unit_ai::{Effect, GenieError, Surroundings, UnitAi};

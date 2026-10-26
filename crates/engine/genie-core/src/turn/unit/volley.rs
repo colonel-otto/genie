@@ -3,8 +3,8 @@
 use crate::damage::Victim;
 use crate::lifecycle::{Class, Lifecycle};
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::movement::Mover;
-use crate::rng::Stream;
 use crate::spatial::Placed;
 use crate::sprite::ActiveSprite;
 use crate::turn::ARMED_FIREPOWER;

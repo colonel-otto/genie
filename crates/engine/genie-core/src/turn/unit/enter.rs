@@ -1,10 +1,10 @@
 //! A unit entering a building or a transport, and the transport's sail.
 
 use crate::masters::{Master, Masters};
+use crate::math::rng::{Stream, Well512};
 use crate::move_to::MoveTo;
 use crate::movement::Me;
 use crate::pathing::Pathing;
-use crate::rng::{Stream, Well512};
 use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::tasks::{Actor, DropSite};
@@ -362,7 +362,8 @@ impl Unit {
             }
         }
         if bm.kind == crate::order::BUILDING
-            && building.life.hp <= f32::from(bm.hit_points) * crate::image::garrison::ENTER_HP_SHARE
+            && building.life.hp
+                <= f32::from(bm.hit_points) * crate::math::image::garrison::ENTER_HP_SHARE
         {
             return Err(GenieError::unsupported(
                 "an enter into a building at a fifth of its hit points (state 13)",

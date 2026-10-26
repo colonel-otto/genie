@@ -5,7 +5,7 @@ use crate::tile_path::{
     CLOSED, E, EARLY_LEFT, EARLY_START, GOAL, LONE, MIXED, N, NO_COST, NODE, OPEN, Planner, S,
     SHORTCUT_COST, W,
 };
-use crate::{fmath, msvc};
+use crate::{math::fmath, math::msvc};
 
 /// A search node (`0x28` bytes, from the planner's pool `+0x428`, `FUN_140f79c90`).
 #[derive(Clone, Copy, Debug, PartialEq)]

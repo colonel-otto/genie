@@ -9,7 +9,7 @@
 //! (update `0x14113e520`).
 
 use crate::GenieError;
-use crate::fmath;
+use crate::math::fmath;
 
 /// The missile action's type, which word 9 adds when it is the top action.
 pub const MISSILE: i16 = 8;
@@ -21,27 +21,27 @@ pub const DONE: u8 = 1;
 
 /// A target's height counts a third of its master's height radius (`FUN_140a9c600`,
 /// `DAT_142eb1c98`).
-const HEIGHT_SHARE: f32 = crate::image::missile::HEIGHT_SHARE;
+const HEIGHT_SHARE: f32 = crate::math::image::missile::HEIGHT_SHARE;
 /// The hit chance's draw scale (`DAT_142eb69cc`) and a missed missile's half spread
 /// (`DAT_142e7f384`).
-const DRAW_SCALE: f32 = crate::image::missile::DRAW_SCALE;
-const HALF: f32 = crate::image::missile::HALF;
+const DRAW_SCALE: f32 = crate::math::image::missile::DRAW_SCALE;
+const HALF: f32 = crate::math::image::missile::HALF;
 /// A missile past its reach ends this far beyond its point (`DAT_142eb5be8`).
-const BEYOND: f32 = crate::image::missile::BEYOND;
+const BEYOND: f32 = crate::math::image::missile::BEYOND;
 /// A missile within this of its point may touch the ground (`DAT_142eb5690`, `+0x994`).
-pub const LANDING: f32 = crate::image::missile::LANDING;
+pub const LANDING: f32 = crate::math::image::missile::LANDING;
 /// The hit query holds its ends this far inside the map's far edges (`FUN_1411570c0`,
 /// `DAT_142eb5690`).
-pub const QUERY_EDGE: f32 = crate::image::missile::QUERY_EDGE;
+pub const QUERY_EDGE: f32 = crate::math::image::missile::QUERY_EDGE;
 /// The reach adds this to the shooter's radius and range (`FUN_141081020`, `DAT_142e8c150`).
-const REACH_MARGIN: f32 = crate::image::missile::REACH_MARGIN;
+const REACH_MARGIN: f32 = crate::math::image::missile::REACH_MARGIN;
 /// A volley's count takes the firepower past this hair (`FUN_141203140`).
-const VOLLEY_EPSILON: f32 = crate::image::missile::VOLLEY_EPSILON;
+const VOLLEY_EPSILON: f32 = crate::math::image::missile::VOLLEY_EPSILON;
 /// A volley's scatter: the draw's scale and the half spread (`FUN_14120c0a0`).
-const VOLLEY_SCALE: f32 = crate::image::missile::VOLLEY_SCALE;
-const VOLLEY_HALF: f32 = crate::image::missile::VOLLEY_HALF;
+const VOLLEY_SCALE: f32 = crate::math::image::missile::VOLLEY_SCALE;
+const VOLLEY_HALF: f32 = crate::math::image::missile::VOLLEY_HALF;
 /// What a volley's extra missile's reach adds to the range (`FUN_141226690`).
-const VOLLEY_REACH_MARGIN: f32 = crate::image::missile::VOLLEY_REACH_MARGIN;
+const VOLLEY_REACH_MARGIN: f32 = crate::math::image::missile::VOLLEY_REACH_MARGIN;
 
 /// What a missile's master holds for the flight: the `.dat`'s `projectile_type` (`+0x880`, not
 /// saved), `smart_mode` (`+0x881`, the save's `targetting_type`), `hit_mode` (`+0x882`,

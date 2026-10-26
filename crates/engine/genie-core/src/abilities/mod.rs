@@ -34,8 +34,8 @@
 
 use crate::GenieError;
 use crate::damage::Victim;
-use crate::fmath;
 use crate::masters::Task;
+use crate::math::fmath;
 use crate::turn::Turns;
 
 mod generation;
@@ -73,9 +73,9 @@ const ALWAYS_REACHED: u8 = 2;
 
 /// Hit points below which an object counts dead, and the store's give threshold
 /// (`DAT_14330eb8c`).
-const ONE: f32 = crate::image::abilities::ONE;
+const ONE: f32 = crate::math::image::abilities::ONE;
 /// The range below which a removal reward task pays (`DAT_142eb0c60`).
-const EPSILON: f32 = crate::image::abilities::EPSILON;
+const EPSILON: f32 = crate::math::image::abilities::EPSILON;
 
 /// What the routine keeps on its object. The constructor's values are the default: no timer,
 /// rate 1 and the master's look.

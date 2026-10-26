@@ -2,8 +2,8 @@
 //! built back from its end.
 
 use crate::GenieError;
-use crate::fmath::sqrt;
 use crate::hull_path::{EPSILON, HullPather, LINE_HITS, Node, Point, Waypoints};
+use crate::math::fmath::sqrt;
 use crate::spatial::Hit;
 
 impl HullPather<'_> {

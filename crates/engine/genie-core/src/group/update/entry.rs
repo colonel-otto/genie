@@ -231,7 +231,7 @@ impl Turns {
             ));
         };
         let most = f32::from(self.master_of(p, u.life.master_id)?.hit_points);
-        Ok(crate::fmath::below_or_unordered(u.life.hp, most)
+        Ok(crate::math::fmath::below_or_unordered(u.life.hp, most)
             && self.spatial.allied_with(owner, p)
             && self.spatial.allied_with(p, owner))
     }

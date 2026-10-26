@@ -7,9 +7,9 @@ use crate::turn::Turns;
 
 /// A unit's radius in a formation where its master has no full footprint (`FUN_141025920`,
 /// `DAT_142e7f384`).
-const DEFAULT_RADIUS: f32 = crate::image::group::DEFAULT_RADIUS;
+const DEFAULT_RADIUS: f32 = crate::math::image::group::DEFAULT_RADIUS;
 /// A radius's share of the spacing (`DAT_142e8c150`): two radii side by side.
-const SPACING_FACTOR: f32 = crate::image::group::SPACING_FACTOR;
+const SPACING_FACTOR: f32 = crate::math::image::group::SPACING_FACTOR;
 /// A group holds fewer than this many members (`FUN_1410083c0`'s `0x46`: "No room in this
 /// group").
 const MAX_MEMBERS: usize = 70;
@@ -353,7 +353,7 @@ impl Turns {
             let _ = self.remove_unit(old, id, -1, false)?;
         }
         let place = self.place(id).expect("the unit found above");
-        let ai_rng = self.streams.get(crate::rng::Stream::Ai);
+        let ai_rng = self.streams.get(crate::math::rng::Stream::Ai);
         // a sleeping unit joins as a live one
         let u = match place {
             crate::order::Place::Live(q, i) => &mut self.players[q].objects[i],
@@ -669,7 +669,7 @@ mod tests {
         t.groups.get_mut(1).unwrap().desired_spacing = 0.0;
         let _ = t.lock_formation(1, crate::group::formation::LINE);
         let spacing = t.groups.get(1).unwrap().desired_spacing;
-        assert_eq!(spacing, 0.2 * crate::image::group::SPACING_FACTOR);
+        assert_eq!(spacing, 0.2 * crate::math::image::group::SPACING_FACTOR);
     }
 
     /// Kept moving, the unit's walk stays; a unit the world does not hold leaves the first

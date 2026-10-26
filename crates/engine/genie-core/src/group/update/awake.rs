@@ -2,11 +2,11 @@
 //! the lines' ranges and the relayout.
 
 use crate::GenieError;
-use crate::fmath::Vec3;
 use crate::group::UnitGroup;
 use crate::group::update::{
     ATTACK, DIFFERENTIATORS, FRONT_AHEAD, NO_COMMAND, OTHER_COMMANDS, RELAYOUT_SPACING, TURN_LIMIT,
 };
+use crate::math::fmath::Vec3;
 use crate::turn::Turns;
 
 impl Turns {
@@ -271,7 +271,7 @@ impl Turns {
     /// does not), or motion flags bit 1 or flags bit 14 is set.
     pub(super) fn turns_formation(&self, group: i32, forward: Vec3) -> bool {
         let g = self.groups.get(group).expect("held");
-        let turn = crate::fmath::angle_between(g.motion.position[1], forward).abs();
+        let turn = crate::math::fmath::angle_between(g.motion.position[1], forward).abs();
         TURN_LIMIT < turn || g.motion.flags & 2 != 0 || g.flags & 0x4000 != 0
     }
 
@@ -295,7 +295,7 @@ impl Turns {
             sum = [sum[0] + v[0], sum[1] + v[1], sum[2] + v[2]];
         }
         let n = g.members.len() as i32 as f32;
-        let ahead = crate::fmath::scale(0.0, g.motion.position[1]);
+        let ahead = crate::math::fmath::scale(0.0, g.motion.position[1]);
         let point = [
             sum[0] / n + ahead[0],
             sum[1] / n + ahead[1],
@@ -376,7 +376,7 @@ impl Turns {
                 && g.current_formation.as_ref().is_some_and(|f| f.kind == 6)
             {
                 refill = true;
-            } else if crate::fmath::at_most_or_unordered(g.total_spacing, RELAYOUT_SPACING) {
+            } else if crate::math::fmath::at_most_or_unordered(g.total_spacing, RELAYOUT_SPACING) {
                 g.flags |= 0x80;
             } else {
                 relayout = true;

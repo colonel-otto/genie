@@ -592,7 +592,7 @@ pub fn cost_test(
             }
             let room = attributes.get(HEADROOM)? + pop;
             // CMOVBE: the cap unless it is above the headroom's sum (a NaN takes the cap)
-            let limit = if crate::fmath::at_most_or_unordered(cap, room) {
+            let limit = if crate::math::fmath::at_most_or_unordered(cap, room) {
                 cap
             } else {
                 room

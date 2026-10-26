@@ -58,7 +58,7 @@ impl Attack {
     /// charge that hits the target (slot 0x2f0, [`crate::damage::charge_hit`]; slot 0x2f8's
     /// charge range is a charge of types 6 and 7, which [`engagement`] does not take); else the
     /// attack sprite (`+0x70`) or, with a second one (`+0x78`), a draw of the Object stream
-    /// (`FUN_140810fc0` with 2, [`crate::rng::Well512::below_checked`]: 0 the first) for a master
+    /// (`FUN_140810fc0` with 2, [`crate::math::rng::Well512::below_checked`]: 0 the first) for a master
     /// whose move algorithm lacks bit 0 (slot 0x5d8); one with it takes the second after a stop
     /// (`+0x958`, not held). The unit takes it (without one slot 0x68 shows its master's standing
     /// sprite) from its first frame (`FUN_1413b9f00`); a hit is pending; a reload shorter than

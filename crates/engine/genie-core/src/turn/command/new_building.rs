@@ -4,8 +4,8 @@
 use crate::build::Construction;
 use crate::lifecycle::{Class, Lifecycle};
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::movement::Mover;
-use crate::rng::Stream;
 use crate::turn::unit::Unit;
 use crate::turn::world::count_class;
 use crate::turn::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, Turns};

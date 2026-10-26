@@ -10,7 +10,7 @@ use crate::turn::Turns;
 
 /// A group whose top speed is below this does not move (`commandMoveTo`, `DAT_142eb0c60`); nor is
 /// a path shorter than it one.
-const EPSILON: f32 = crate::image::group::EPSILON;
+const EPSILON: f32 = crate::math::image::group::EPSILON;
 /// The group's command while it moves (`mCurrentCommand` 1).
 pub const MOVE_COMMAND: i32 = 1;
 /// A new path's flags (`FUN_14152eea0`'s construction).
@@ -19,7 +19,7 @@ const NEW_PATH_FLAGS: u32 = 6;
 const CONTINUE: i32 = 10;
 /// A patrol's leg goes back and forth when its point is at least this far from the group on
 /// the ground (`commandMoveTo` at 0x141010ddb, `DAT_14330ebb8`).
-const PATROL_LEG_REACH: f32 = crate::image::group::PATROL_LEG_REACH;
+const PATROL_LEG_REACH: f32 = crate::math::image::group::PATROL_LEG_REACH;
 
 /// The queued commands on a target `checkQueuedOrders` hands to `FUN_14100fc50` when the world
 /// holds the target (its switch's cases 3 and `0x2713`).
@@ -364,7 +364,7 @@ impl Turns {
         }
         path.measure();
         let path = (2 <= path.points.len()
-            && crate::fmath::below_or_unordered(EPSILON, path.length))
+            && crate::math::fmath::below_or_unordered(EPSILON, path.length))
         .then_some(path);
         if path.is_none() {
             g.flags &= !0x800;
@@ -405,7 +405,7 @@ impl Turns {
         g.current_command = MOVE_COMMAND;
         if g.motion.flags & 2 == 0 && !patrol {
             let column =
-                length.is_none_or(|l| crate::fmath::below_or_unordered(min_column as f32, l));
+                length.is_none_or(|l| crate::math::fmath::below_or_unordered(min_column as f32, l));
             self.update_desired_positions(
                 group,
                 if column {
@@ -593,10 +593,10 @@ impl Turns {
 /// too), bit 1; any other move clears bit 0 and sets bit 1.
 fn move_path_flags(from: [f32; 3], to: [f32; 3], leg: bool) -> u32 {
     if leg {
-        let mut d = crate::fmath::sub(from, to);
+        let mut d = crate::math::fmath::sub(from, to);
         d[1] = 0.0;
-        let length = crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
-        if crate::fmath::at_most_or_unordered(PATROL_LEG_REACH, length) {
+        let length = crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+        if crate::math::fmath::at_most_or_unordered(PATROL_LEG_REACH, length) {
             NEW_PATH_FLAGS | 1 | 2
         } else {
             (NEW_PATH_FLAGS | 1) & !2

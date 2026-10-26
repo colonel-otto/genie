@@ -153,7 +153,7 @@ impl Turns {
                 let u = &mut self.players[q].sleeping[j];
                 u.life.hp = v.hp;
                 u.life.amount = v.amount;
-                if crate::fmath::at_most_or_unordered(1.0, v.hp) {
+                if crate::math::fmath::at_most_or_unordered(1.0, v.hp) {
                     return Ok(());
                 }
                 let j = self.wake(v.id);

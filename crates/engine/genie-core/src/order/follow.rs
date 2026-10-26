@@ -1,11 +1,11 @@
 //! FOLLOW and GUARD, a move to an object and the head action's move.
 
 use crate::hunt::HUNT;
+use crate::math::rng::Stream;
 use crate::order::{
     Followed, GUARD_RANGE, LIVESTOCK, MOVING, Place, VILLAGER, follow_axis, follow_spread,
     ignore_unit,
 };
-use crate::rng::Stream;
 use crate::turn::Turns;
 use crate::unit_ai::{GenieError, MOVE_ORDER};
 
@@ -163,7 +163,7 @@ impl Turns {
         };
         let master = self.master_of(p, u.life.master_id)?;
         let speed = master.moving.as_ref().map_or(0.0, |m| m.speed);
-        let moves = MOVING <= master.kind && crate::fmath::below_or_unordered(0.0, speed);
+        let moves = MOVING <= master.kind && crate::math::fmath::below_or_unordered(0.0, speed);
         Ok(moves.then_some([u.position[0], u.position[1]]))
     }
 

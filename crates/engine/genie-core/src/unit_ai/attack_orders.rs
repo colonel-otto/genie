@@ -1,7 +1,7 @@
 //! The orders a unit AI takes at once and its attack commands.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ARTIFACT_AI, ATTACK_ACTION, CIVILIAN, Effect, Notify, PENDING_BEFORE_ATTACK, QueuedOrder,
     SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi, UnitSide, civilian_may_attack, lion_may_attack,

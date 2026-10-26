@@ -175,7 +175,7 @@ const BUILDING: u8 = 80;
 /// The town bell's reach ([`crate::garrison::TOWN_BELL_REACH`]).
 const REACH: f32 = crate::garrison::TOWN_BELL_REACH;
 /// A record's point on neither axis (`DAT_14330ec20`).
-const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 
 impl crate::turn::Turns {
     /// `TOWN_BELL` (0x7f, `do_command`): the object `id` (none for −1, `FUN_140e6bad0`) of the
@@ -236,7 +236,7 @@ impl crate::turn::Turns {
                 let (o_at, o_radius) = t.ground(id)?;
                 let gap = footprint_gap_squared(o_at, o_radius, at, radius);
                 // COMISS REACH, gap; JC: a gap above it, or a NaN, is out
-                Ok(!crate::fmath::below_or_unordered(REACH, gap))
+                Ok(!crate::math::fmath::below_or_unordered(REACH, gap))
             };
             if (class == VILLAGER_CLASS && kind == UNIT && near(self)?)
                 || (master == MASTER_1808 && near(self)?)
@@ -283,7 +283,7 @@ impl crate::turn::Turns {
             let (b_at, b_radius) = self.ground(id)?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
-            if crate::fmath::below_or_unordered(REACH, gap) {
+            if crate::math::fmath::below_or_unordered(REACH, gap) {
                 continue;
             }
             self.workers_out(owner, idx)?;
@@ -326,7 +326,7 @@ impl crate::turn::Turns {
             let (b_at, b_radius) = self.ground(b.id)?;
             // COMISS REACH, gap; JC: a gap above it, or a NaN, lets none out
             let gap = footprint_gap_squared(b_at, b_radius, at, radius);
-            if crate::fmath::below_or_unordered(REACH, gap) {
+            if crate::math::fmath::below_or_unordered(REACH, gap) {
                 continue;
             }
             self.workers_out(owner, idx)?;

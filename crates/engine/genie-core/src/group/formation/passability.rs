@@ -3,25 +3,25 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::fmath::{Vec3, scale, sub};
 use crate::group::formation::{RIGHT_ANGLE, find_point_from_front, transform_slot};
 use crate::group::{Formation, Slot, UnitGroup};
-use crate::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
+use crate::math::fmath::{Vec3, scale, sub};
+use crate::math::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
 use crate::turn::Turns;
 
 /// The passability's box starts at this (`DAT_142eea788`) on its low sides, 0 on its high ones.
-pub(super) const PASS_FAR: f32 = crate::image::group::PASS_FAR;
+pub(super) const PASS_FAR: f32 = crate::math::image::group::PASS_FAR;
 /// The passability's grid holds the box plus this (`DAT_142eb0f50`) and one more cell
 /// ([`PASS_ONE`]) a side.
-pub(super) const PASS_MARGIN: f32 = crate::image::group::PASS_MARGIN;
+pub(super) const PASS_MARGIN: f32 = crate::math::image::group::PASS_MARGIN;
 /// The grid starts this far below the box (`DAT_142ed6f20`).
-pub(super) const PASS_HALF_MARGIN: f32 = crate::image::group::PASS_HALF_MARGIN;
+pub(super) const PASS_HALF_MARGIN: f32 = crate::math::image::group::PASS_HALF_MARGIN;
 /// Below this share of the slots' array reachable (`DAT_142eae8d0`), only the nearest slot is.
-pub(super) const PASS_SHARE: f32 = crate::image::group::PASS_SHARE;
+pub(super) const PASS_SHARE: f32 = crate::math::image::group::PASS_SHARE;
 /// The grid's extra cell, and the spacing below which slots are nudged (`DAT_14330eb8c`).
-pub(super) const PASS_ONE: f32 = crate::image::group::PASS_ONE;
+pub(super) const PASS_ONE: f32 = crate::math::image::group::PASS_ONE;
 /// A slot lies in its cell's middle (`DAT_142e7f384`).
-pub(super) const PASS_HALF: f32 = crate::image::group::PASS_HALF;
+pub(super) const PASS_HALF: f32 = crate::math::image::group::PASS_HALF;
 /// The grid's sides are at most this many cells (the literal `0x64` at `0x14103bf01`).
 pub(super) const PASS_CELLS: i32 = 100;
 /// The grid's bytes (`local_2948`, cleared by the literal `0x2710` at `0x14103bf36`).
@@ -85,7 +85,7 @@ impl Turns {
             .motion
             .calculate_yaw_angle(canon, formation.transform_orientation, dt, false);
         let flips = RIGHT_ANGLE < (yaw - old).abs() && g.unit_types.len() < 2;
-        let rotation = crate::fmath::rotation(yaw, up);
+        let rotation = crate::math::fmath::rotation(yaw, up);
         formation.transform_orientation = forward;
         for s in formation.every_slot_mut() {
             s.transformed = 0;
@@ -108,7 +108,7 @@ impl Turns {
                     if 0 < i {
                         back = line.distance_back;
                         // COMISS/JA at 0x14103a850: a NaN distance back takes the spacing too
-                        if crate::fmath::at_most_or_unordered(back, 0.0) {
+                        if crate::math::fmath::at_most_or_unordered(back, 0.0) {
                             back = i as f32 * g.desired_spacing;
                         }
                     }
@@ -314,7 +314,7 @@ impl Turns {
             };
             let s = &mut formation.slots[u];
             // COMISS/JC at 0x14103cde3: a NaN spacing nudges too
-            if crate::fmath::below_or_unordered(g.desired_spacing, PASS_ONE) {
+            if crate::math::fmath::below_or_unordered(g.desired_spacing, PASS_ONE) {
                 s.transform_position[0] = x as f32 + PASS_HALF + SLOT_NUDGE[nudge][0];
                 s.transform_position[2] = y as f32 + PASS_HALF + SLOT_NUDGE[nudge][1];
             } else {
@@ -504,7 +504,7 @@ pub(super) fn passability_box(
     at: Vec3,
     position: Vec3,
 ) -> ([f32; 4], Option<usize>) {
-    use crate::fmath::{maxss, minss};
+    use crate::math::fmath::{maxss, minss};
     let (mut min_x, mut min_z, mut max_x, mut max_z) = (PASS_FAR, PASS_FAR, 0.0f32, 0.0f32);
     let mut best = FARTHEST;
     let mut nearest = None;
@@ -538,7 +538,7 @@ pub(super) fn passability_box(
 /// (`JNC`: also NaN); else along x, bits 6 and 7 for a `dx` below 0 (`JC`: also NaN), bit 6 alone
 /// otherwise.
 pub(super) fn cell_mark(b: u8, dx: f32, dz: f32) -> u8 {
-    use crate::fmath::{at_most_or_unordered, below_or_unordered};
+    use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
     let b = count_up(b) | 1;
     if at_most_or_unordered(dx.abs(), dz.abs()) {
         if below_or_unordered(dz, 0.0) {

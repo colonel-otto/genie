@@ -3,9 +3,9 @@
 use crate::build::Walk;
 use crate::damage::Victim;
 use crate::masters::Masters;
+use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::{Me, Mover, Planning};
 use crate::pathing::Pathing;
-use crate::rng::{Stream, Streams, Well512};
 use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::tasks::DropSite;

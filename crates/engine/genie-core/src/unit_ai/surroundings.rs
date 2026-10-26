@@ -2,7 +2,7 @@
 //! and what it has seen.
 
 use crate::GenieError;
-use crate::fmath::Vec3;
+use crate::math::fmath::Vec3;
 use crate::unit_ai::{Effect, Search, UnitSide};
 
 /// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
@@ -361,7 +361,7 @@ pub(super) const CLASS_10: i16 = 10;
 pub(super) const CLASS_18: i16 = 18;
 /// A patrol's path goes back and forth when its point is at least this far from the unit
 /// (`0x140aa2a70`, `DAT_142eb1c98`).
-pub(super) const PATROL_TURN_REACH: f32 = crate::image::unit_ai::PATROL_TURN_REACH;
+pub(super) const PATROL_TURN_REACH: f32 = crate::math::image::unit_ai::PATROL_TURN_REACH;
 /// The patrol orders, the patrol's (`0x2c7`) and the attack move's (`0x2dd`), whose ends reset
 /// the idle and secondary timers.
 pub(crate) const PATROL: i32 = 0x2c7;
@@ -437,7 +437,7 @@ impl PendingTop {
 
 /// A building on its make action without a missile and with at most this firepower forgets its
 /// target (`DAT_14330eb8c`).
-pub(super) const SINGLE_VOLLEY: f32 = crate::image::unit_ai::SINGLE_VOLLEY;
+pub(super) const SINGLE_VOLLEY: f32 = crate::math::image::unit_ai::SINGLE_VOLLEY;
 pub(super) const CLASS_52: i16 = 52;
 
 /// A move the unit AI gives its unit (unit-AI slot 0x130, `FUN_140c55620`, to the unit's slot

@@ -5,18 +5,18 @@ use crate::masters::{DamageGraphic, TrainLocation, attribute};
 
 /// 32767.0 (`DAT_142eb69cc`): a capped add or multiply holds hit points and carry capacity
 /// below it.
-pub(super) const SHORT_CAP: f32 = crate::image::masters::SHORT_CAP;
+pub(super) const SHORT_CAP: f32 = crate::math::image::masters::SHORT_CAP;
 /// 0.5 (`DAT_142e7f384`): a multiply's rounding.
-pub(super) const ROUND: f32 = crate::image::masters::ROUND;
+pub(super) const ROUND: f32 = crate::math::image::masters::ROUND;
 /// 4.5 (`DAT_142f52490`): the most speed a capped add or multiply leaves .
-pub(super) const SPEED_CAP: f32 = crate::image::masters::SPEED_CAP;
+pub(super) const SPEED_CAP: f32 = crate::math::image::masters::SPEED_CAP;
 /// 20.0 (`DAT_142e7f38c`): a missile master's .
-pub(super) const MISSILE_SPEED_CAP: f32 = crate::image::masters::MISSILE_SPEED_CAP;
+pub(super) const MISSILE_SPEED_CAP: f32 = crate::math::image::masters::MISSILE_SPEED_CAP;
 /// 1.0 (`DAT_14330eb8c`): a handicap above it raises an attack class at 0 .
-pub(super) const HANDICAP_FLOOR: f32 = crate::image::masters::HANDICAP_FLOOR;
+pub(super) const HANDICAP_FLOOR: f32 = crate::math::image::masters::HANDICAP_FLOOR;
 /// 100.0 (`DAT_14330ebcc`): a multiply's armor or attack amount is a percentage (an image role to
 /// add: `masters::PERCENT`).
-pub(super) const PERCENT: f32 = crate::image::masters::PERCENT;
+pub(super) const PERCENT: f32 = crate::math::image::masters::PERCENT;
 /// The attack classes a handicap leaves alone (`0x280000018`'s bits up to class 0x21): 3, 4, 31
 /// and 33.
 pub(super) const UNHANDICAPPED: u64 = 0x2_8000_0018;
@@ -87,7 +87,7 @@ pub(super) fn add_sprite(field: &mut i16, v: f32, world: &AttributeWorld<'_>) {
 /// An add to the hit points or the carry capacity (`FUN_141126af0`): capped, a sum of at least
 /// 32767 (or NaN, `COMISS` then `JBE`) holds 0x7fff; else the amount's low 16 bits add.
 pub(super) fn add_short(value: i16, v: f32, capped: bool) -> i16 {
-    if capped && crate::fmath::at_most_or_unordered(SHORT_CAP, f32::from(value) + v) {
+    if capped && crate::math::fmath::at_most_or_unordered(SHORT_CAP, f32::from(value) + v) {
         0x7fff
     } else {
         low16(v).wrapping_add(value)
@@ -98,7 +98,7 @@ pub(super) fn add_short(value: i16, v: f32, capped: bool) -> i16 {
 /// truncated; capped, a product of at least 32767 (or NaN) holds 0x7fff.
 pub(super) fn multiply_short(value: i16, v: f32, capped: bool) -> i16 {
     let x = f32::from(value) * v + ROUND;
-    if capped && crate::fmath::at_most_or_unordered(SHORT_CAP, x) {
+    if capped && crate::math::fmath::at_most_or_unordered(SHORT_CAP, x) {
         0x7fff
     } else {
         low16(x)
@@ -108,7 +108,7 @@ pub(super) fn multiply_short(value: i16, v: f32, capped: bool) -> i16 {
 /// An armor or attack amount's class (its high byte) and amount (its low byte, negated for a
 /// negative amount; `COMISS` with 0 then `JC`, so a NaN takes the negative branch).
 pub(super) fn class_amount(v: f32) -> (i16, i16) {
-    if crate::fmath::below_or_unordered(v, 0.0) {
+    if crate::math::fmath::below_or_unordered(v, 0.0) {
         let u = crate::checkpoint::cvttss2si(-v) as u16;
         ((u as i16) >> 8, ((u & 0xff) as i16).wrapping_neg())
     } else {
@@ -121,7 +121,7 @@ pub(super) fn class_amount(v: f32) -> (i16, i16) {
 /// NaN does not) for a class above 0x21 (an unsigned compare) or not one of [`UNHANDICAPPED`].
 pub(super) fn handicapped(handicap: Option<f32>, class: i16) -> Option<f32> {
     let f = handicap?;
-    let raised = !crate::fmath::at_most_or_unordered(f, HANDICAP_FLOOR)
+    let raised = !crate::math::fmath::at_most_or_unordered(f, HANDICAP_FLOOR)
         && (0x21 < class as u16 || UNHANDICAPPED >> (class as u16 & 0x3f) & 1 == 0);
     raised.then_some(f)
 }
@@ -142,7 +142,7 @@ pub(super) const fn cost_resource(attribute: u8) -> i16 {
 /// the most; to an unsigned 64-bit count, at most `most`), new ones `fill`; the selected entry
 /// (`entry`) stays below the count (an unsigned compare: with none left it stays).
 pub(super) fn resize_count(v: f32) -> u64 {
-    let f = crate::fmath::maxss(0.0, v);
+    let f = crate::math::fmath::maxss(0.0, v);
     // `CVTTSS2SI RBX` plus 2^63 past 2^63: any value from there on is past the most
     crate::checkpoint::cvttss2si_64(f) as u64
 }

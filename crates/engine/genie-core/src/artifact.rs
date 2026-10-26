@@ -93,7 +93,7 @@ const WAIT: u8 = 10;
 const TO_GAIA: u8 = 100;
 /// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
 /// (`FUN_140aa0df0`, `DAT_142eae8d0`).
-const TOWN_CENTRE_OFFSET: f32 = crate::image::artifact::TOWN_CENTRE_OFFSET;
+const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET;
 
 impl Artifact {
     /// A new action, about to check for a new owner.

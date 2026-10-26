@@ -191,7 +191,7 @@ impl Turns {
         amount: f32,
     ) -> Result<(), GenieError> {
         let exponent = self.attribute_of(p, FARM_EXPONENT);
-        if crate::fmath::below_or_unordered(exponent, 0.0) {
+        if crate::math::fmath::below_or_unordered(exponent, 0.0) {
             return Ok(());
         }
         let mut ids = Vec::new();

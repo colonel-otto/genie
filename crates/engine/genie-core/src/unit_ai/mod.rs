@@ -105,9 +105,9 @@ use self::surroundings::{
     top_target_after,
 };
 #[cfg(test)]
-use crate::movement::PathAsk;
+use crate::math::rng::Well512;
 #[cfg(test)]
-use crate::rng::Well512;
+use crate::movement::PathAsk;
 
 /// A notify to a unit AI (the save's `temp_notify`, 0x18 bytes): from `caller` to `recipient`, of
 /// `kind`, with three parameters.
@@ -200,9 +200,9 @@ pub(crate) const PENDING_BEFORE_ATTACK: GenieError =
 /// target when a computer player owns it (`FUN_141081020`).
 const MISSILE_WARNING: i32 = 0x20f;
 /// The damage case's unit too slow to run away (`DAT_142eb0c60`, [`UnitAi::damaged`]).
-const STILL: f32 = crate::image::unit_ai::STILL;
+const STILL: f32 = crate::math::image::unit_ai::STILL;
 /// The damage case's kill time of an object the unit cannot harm (`DAT_142efe41c`, 25000).
-const NEVER_KILLED: f32 = crate::image::unit_ai::NEVER_KILLED;
+const NEVER_KILLED: f32 = crate::math::image::unit_ai::NEVER_KILLED;
 /// The action value of a unit moving off a footprint with a group.
 pub const GROUP_ASIDE_ACTION: i32 = 0x2c0;
 /// The order on a foundation a villager sent off its footprint takes up again (slot 0x108,
@@ -212,7 +212,7 @@ pub const FOUNDATION_ORDER: i32 = 0x2de;
 /// order switch's case 0x2de); the full update's reset of ended actions leaves it.
 pub const WAIT_SOLIDIFY_ACTION: i32 = 0x27a;
 /// [`SENT_OFF`]'s radii are hundredths (`DAT_14330ebcc`).
-const RADIUS_SCALE: f32 = crate::image::unit_ai::RADIUS_SCALE;
+const RADIUS_SCALE: f32 = crate::math::image::unit_ai::RADIUS_SCALE;
 /// The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
 const PREY_CLASS: i16 = 9;
 /// The villagers' class.
@@ -221,10 +221,10 @@ const VILLAGER_CLASS: i16 = 4;
 /// What a notify handler (unit-AI slot 0x238) returns: go on with the next notify.
 const GO_ON: u32 = 2;
 /// The defend stance's leash, squared (`DAT_142ed6f20`).
-const DEFEND_LEASH: f32 = crate::image::unit_ai::DEFEND_LEASH;
+const DEFEND_LEASH: f32 = crate::math::image::unit_ai::DEFEND_LEASH;
 /// What the stand ground stance's leash adds to the unit's range (`DAT_142eb880c`, 0.25, read by
 /// `ADDSS` at `0x140c57c6a`).
-const STAND_GROUND_SLACK: f32 = crate::image::unit_ai::STAND_GROUND_SLACK;
+const STAND_GROUND_SLACK: f32 = crate::math::image::unit_ai::STAND_GROUND_SLACK;
 /// "Notify processing returned stop or new action, breaking."
 const BREAK: u32 = 3;
 /// "I'm dead, purging notifyQueue and returning FALSE."
@@ -264,7 +264,7 @@ const TRADE_BOAT_CLASS: i16 = 2;
 const TRADE_ACTION: i32 = 0x267;
 /// A computer player's ship evades the object its idle check found by its speed times this
 /// (`FUN_140c21930`, `FUN_140c1eab0`: `DAT_142ec9eb8`).
-const SHIP_EVADE_REACH: f32 = crate::image::unit_ai::SHIP_EVADE_REACH;
+const SHIP_EVADE_REACH: f32 = crate::math::image::unit_ai::SHIP_EVADE_REACH;
 /// The classes of the foundations a fishing ship's builder looks for (`FUN_140c25ca0`, in its
 /// order): buildings, walls, gates, towers and farms.
 const FISHING_BUILDS: [i32; 5] = [3, 27, 39, 52, 49];
@@ -273,7 +273,7 @@ const FISHING_BUILDS: [i32; 5] = [3, 27, 39, 52, 49];
 const FISHING_BUILD_FAR: i32 = 9999;
 /// The seconds without a sighting after which enemies found are the owner's news
 /// (`DAT_142eb0f4c`).
-const ENEMY_SIGHTING_GAP: f32 = crate::image::unit_ai::ENEMY_SIGHTING_GAP;
+const ENEMY_SIGHTING_GAP: f32 = crate::math::image::unit_ai::ENEMY_SIGHTING_GAP;
 
 /// The notify queue's capacity of a unit AI of `ai_type` holding `count` notifies: the
 /// factory's (`FUN_141215560`: 5 for the artifact's and the livestock's, types 14 and 19; 10

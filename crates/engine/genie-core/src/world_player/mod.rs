@@ -35,7 +35,7 @@
 //! [`Turns::world_player_second`]: crate::turn::Turns::world_player_second
 //! [`Turns::world_player_tail`]: crate::turn::Turns::world_player_tail
 
-use crate::fmath::below_or_unordered;
+use crate::math::fmath::below_or_unordered;
 
 mod counts;
 mod income;
@@ -47,13 +47,13 @@ pub use self::tech_tree::{TechTree, TreeBuilding, TreeQuery, TreeUnit, UniqueUni
 use crate::turn::Turns;
 
 /// One second (`DAT_14330eb8c`): the loop's step.
-const SECOND: f32 = crate::image::world_player::SECOND;
+const SECOND: f32 = crate::math::image::world_player::SECOND;
 /// One hundred (`DAT_14330ebcc`): attribute 22 is a percentage.
-const PERCENT: f32 = crate::image::world_player::PERCENT;
+const PERCENT: f32 = crate::math::image::world_player::PERCENT;
 /// A minute's seconds (`DAT_14330ebc8`): the trickles and the mills' food are rates a minute.
-const MINUTE: f32 = crate::image::world_player::MINUTE;
+const MINUTE: f32 = crate::math::image::world_player::MINUTE;
 /// The livestock food over which a mill's yield grows by one e-fold (`DAT_142eb0f54`).
-const LIVESTOCK_SCALE: f32 = crate::image::world_player::LIVESTOCK_SCALE;
+const LIVESTOCK_SCALE: f32 = crate::math::image::world_player::LIVESTOCK_SCALE;
 /// Until this world time (ms) the scout map takes only the explored tiles the player sees.
 const EARLY_SCOUTING_MS: u32 = 5000;
 

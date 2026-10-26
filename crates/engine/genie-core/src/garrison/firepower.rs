@@ -3,15 +3,15 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::fmath::{at_most_or_unordered, maxss};
 use crate::masters::{Master, Masters};
+use crate::math::fmath::{at_most_or_unordered, maxss};
 
 /// A combat master's attack rate needs a weapon range above this (`FUN_14120dc10`).
-pub(super) const RATE_RANGE: f32 = crate::image::garrison::RATE_RANGE;
+pub(super) const RATE_RANGE: f32 = crate::math::image::garrison::RATE_RANGE;
 /// A unit's firepower counts its volley missiles beyond this many (`FUN_14120e1a0`).
-pub(super) const ONE_MISSILE: f32 = crate::image::garrison::ONE_MISSILE;
+pub(super) const ONE_MISSILE: f32 = crate::math::image::garrison::ONE_MISSILE;
 /// A reload at most this long gives no firepower (`FUN_14120e1a0`).
-pub(super) const EPSILON: f32 = crate::image::garrison::EPSILON;
+pub(super) const EPSILON: f32 = crate::math::image::garrison::EPSILON;
 /// The armor classes the attack rates sum: pierce (3) and 38 for missiles; melee (4) and 31 too
 /// for a master's own weapons.
 pub(super) const PIERCE: i16 = 3;

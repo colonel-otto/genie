@@ -630,7 +630,7 @@ impl Turns {
             &crate::unit_ai::Surroundings,
             &mut dyn crate::unit_ai::UnitSide,
             bool,
-            &mut crate::rng::Well512,
+            &mut crate::math::rng::Well512,
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
         let frame = self.player_frame();

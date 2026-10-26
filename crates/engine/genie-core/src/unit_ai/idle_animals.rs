@@ -1,7 +1,7 @@
 //! The idle checks of the boar, the hunted animals and the lions.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     AI_MOVE_RANGE, AiMove, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW, BOAR_OFFSET, BOAR_STEP,
     BOAR_WANDER, CLASS_KING, EVADE_REACH, Effect, Found, HUNTED_CARED, HUNTED_HOME,
@@ -126,7 +126,7 @@ impl UnitAi {
         let [x, y, z] = at.position;
         let reach = at.speed * EVADE_REACH;
         let (dx, dy) = (other[0] - x, other[1] - y);
-        let d = crate::fmath::sqrt(dy * dy + dx * dx);
+        let d = crate::math::fmath::sqrt(dy * dy + dx * dx);
         let point = [x - (dx / d) * reach, y - (dy / d) * reach, z];
         let _ = self.evasive_move(point, (true, false), at, ai, side, fx)?;
         Ok(true)

@@ -349,11 +349,11 @@ impl Same for ObjectRow {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MoveRow {
     /// `+0x830`: where it heads.
-    pub forward: genie_core::fmath::Vec3,
+    pub forward: genie_core::math::fmath::Vec3,
     /// `+0x83c`: its right.
-    pub right: genie_core::fmath::Vec3,
+    pub right: genie_core::math::fmath::Vec3,
     /// Velocity and acceleration, when the object has velocity data.
-    pub velocity: Option<(genie_core::fmath::Vec3, genie_core::fmath::Vec3)>,
+    pub velocity: Option<(genie_core::math::fmath::Vec3, genie_core::math::fmath::Vec3)>,
     /// Its path data, the walked level first.
     pub paths: Vec<genie_core::movement::PathData>,
     /// `+0x7f9`, `+0x7fa`, `+0x7fb`, `+0x870`, `+0x874`.

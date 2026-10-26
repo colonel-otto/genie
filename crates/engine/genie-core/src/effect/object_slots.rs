@@ -16,7 +16,7 @@ pub(super) const KEPT_STORAGE: u8 = 64;
 /// A hit point total a capped multiply holds an object's below (`FUN_1411962e0`: `0x46fffe00`).
 pub(super) const OBJECT_HP_CAP: f32 = 32767.0;
 /// A multiply's rounding (`DAT_142e7f384`, 0.5).
-pub(super) const ROUND: f32 = crate::image::effect::ROUND;
+pub(super) const ROUND: f32 = crate::math::image::effect::ROUND;
 
 impl Turns {
     /// What the masters' setters read of the world for player `p` ([`AttributeWorld`]): the
@@ -146,7 +146,7 @@ impl Turns {
                     // COMISS 32767, x; JBE: a NaN holds the cap too
                     Change::Multiply
                         if CAPPED
-                            && crate::fmath::at_most_or_unordered(
+                            && crate::math::fmath::at_most_or_unordered(
                                 OBJECT_HP_CAP,
                                 v * hp + ROUND,
                             ) =>
@@ -298,7 +298,7 @@ impl Turns {
 
 /// 1.0 (`DAT_14330eb8c`): a building whose master has no build time takes the new one as its
 /// points.
-pub(super) const ONE: f32 = crate::image::effect::ONE;
+pub(super) const ONE: f32 = crate::math::image::effect::ONE;
 /// The player's `+0x648`, which caps an add or multiply of hit points (not held: 0 for every
 /// player probed).
 pub(super) const CAPPED: bool = false;

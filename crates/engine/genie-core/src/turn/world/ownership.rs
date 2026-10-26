@@ -468,4 +468,4 @@ pub(super) const STORAGE_8: u8 = 8;
 /// The population headroom attribute, which a building's held amount gives (`+0x308` 4).
 pub(super) const POPULATION_HEADROOM: i16 = 4;
 /// The point a building's units leave toward on an ownership change: none (`DAT_14330ec20`).
-pub(super) const HANDOVER_NO_POINT: f32 = crate::image::turn::HANDOVER_NO_POINT;
+pub(super) const HANDOVER_NO_POINT: f32 = crate::math::image::turn::HANDOVER_NO_POINT;

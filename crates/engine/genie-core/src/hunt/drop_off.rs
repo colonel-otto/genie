@@ -29,7 +29,7 @@ pub enum Dropped {
 /// The wait of a hunt's drop-off that cannot go on (`0xc0400000`).
 pub(super) const DROP_WAIT: f32 = -3.0;
 /// A hunt's drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
-pub(super) const DROP_REACH: f32 = crate::image::hunt::DROP_REACH;
+pub(super) const DROP_REACH: f32 = crate::math::image::hunt::DROP_REACH;
 
 impl HuntAction {
     /// `set_state(8)` (`0x140ac60e0` case 8) with a load and its drop site (`carry_to`; without one
@@ -202,7 +202,7 @@ impl HuntAction {
     /// (`set_state(8)`, true, the caller's); with none, or one that is not a number (`COMISS`
     /// with `JBE`), the hunt searches (`set_state(3)`: [`SEARCH`] here, the rest the caller's).
     pub(super) fn ends_without_target(&mut self, held: f32) -> bool {
-        if crate::fmath::at_most_or_unordered(held, 0.0) {
+        if crate::math::fmath::at_most_or_unordered(held, 0.0) {
             self.state = SEARCH;
             false
         } else {

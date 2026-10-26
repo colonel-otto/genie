@@ -195,8 +195,8 @@ pub fn walk_or_give_up(walk: Walk<'_>) -> Result<Option<MoveTo>, GenieError> {
 
 /// A target leaves the `MoveTo`'s point when it is more than this off it on either axis
 /// (`DAT_142eb6e58`, `DAT_142e7f384`).
-const OFF_LOW: f32 = crate::image::move_to::OFF_LOW;
-const OFF_HIGH: f32 = crate::image::move_to::OFF_HIGH;
+const OFF_LOW: f32 = crate::math::image::move_to::OFF_LOW;
+const OFF_HIGH: f32 = crate::math::image::move_to::OFF_HIGH;
 
 /// What [`target_moved`] found.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -312,13 +312,13 @@ pub struct MoveToAction {
 
 /// A `MoveTo`'s start counts the unit at its target within this gap (`0x140aa2100`,
 /// `DAT_142eb99cc`).
-const ARRIVED: f32 = crate::image::move_to::ARRIVED;
+const ARRIVED: f32 = crate::math::image::move_to::ARRIVED;
 /// A `MoveTo` to an object the world does not hold.
 pub(crate) const TARGET_LACKING: GenieError =
     GenieError::unsupported("a MoveTo to an object the world lacks");
 /// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
 /// (`FUN_140aa0df0`, `DAT_142eae8d0`).
-const TOWN_CENTRE_OFFSET: f32 = crate::image::artifact::TOWN_CENTRE_OFFSET;
+const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET;
 /// The town centre's master (`FUN_140aa0df0`'s `0x6109` raw), to which livestock walks beside.
 const TOWN_CENTRE: i16 = 109;
 
@@ -364,7 +364,7 @@ pub fn object_range(range: f32, master: Option<&crate::masters::Master>) -> f32 
                 .any(|t| t.action_type == crate::build::CART_TASK)
     });
     if cart {
-        crate::image::order::CART_MOVE_RANGE
+        crate::math::image::order::CART_MOVE_RANGE
     } else {
         0.0
     }

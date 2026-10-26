@@ -6,9 +6,9 @@ use crate::attack::{
     Arms, Attack, Begun, Commanded, Engagement, FAILED, GATE, GOTO_SEEN, LEASH_SLACK, MASTER_1704,
     MASTER_1706, NONE, Strike, face_target, set_sprite,
 };
+use crate::math::rng::Well512;
 use crate::move_to::{MoveTo, MoveWait, Walk};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
-use crate::rng::Well512;
 use crate::sprite::{ActiveSprite, Graphic};
 
 impl Attack {
@@ -178,7 +178,7 @@ impl Attack {
                 posted.push((0x1fe, [-1; 3]));
             }
             failed_first = !movable;
-        } else if !crate::fmath::at_most_or_unordered(reach_gap, self.reach()) {
+        } else if !crate::math::fmath::at_most_or_unordered(reach_gap, self.reach()) {
             if !self.sub_action {
                 posted.push((0x1fd, [0; 3]));
             }
@@ -216,7 +216,7 @@ impl Attack {
     /// least the range plus [`LEASH_SLACK`] (`COMISS`/`JNC`: a NaN distance is within).
     pub(super) fn off_leash(&self, at: [f32; 3], centre: [f32; 2]) -> bool {
         let (dx, dy) = (at[0] - centre[0], at[1] - centre[1]);
-        crate::fmath::sqrt(dy * dy + dx * dx) >= self.range + LEASH_SLACK
+        crate::math::fmath::sqrt(dy * dy + dx * dx) >= self.range + LEASH_SLACK
     }
 
     /// The start's `set_state(13)` for a unit that cannot move out of reach of its target

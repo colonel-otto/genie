@@ -3,7 +3,7 @@ use super::*;
 /// No sprite shown: a test hunt's walk.
 fn shown<'a>(
     sprite: &'a mut Option<crate::sprite::ActiveSprite>,
-    rng: &'a mut crate::rng::Well512,
+    rng: &'a mut crate::math::rng::Well512,
 ) -> Shown<'a> {
     Shown {
         sprite,
@@ -609,7 +609,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
     let run = |h: &mut HuntAction, who: PointWalker| {
         let mut mover = walker();
         let mut world = crate::spatial::Spatial::default();
-        let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
+        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         let walk = Walk {
             mover: Some(&mut mover),
             me: crate::movement::Me {
@@ -700,7 +700,7 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         stance: 0,
     };
     let drop = |h: &mut HuntAction, rig: &mut WalkRig, anim: &mut Option<f32>| {
-        let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
+        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         let (mut kind, mut held) = (1, 3.0);
         let shown = shown(&mut sprite, &mut rng);
         let walk = rig.walk(DROP);
@@ -741,7 +741,7 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
     assert!(drop(&mut h, &mut rig, &mut anim).is_err());
     // the walk to a point
     let point_walk = |h: &mut HuntAction, rig: &mut WalkRig, who| {
-        let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
+        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         let state = h.state;
         h.update_point_walk(rig.walk(state), who, shown(&mut sprite, &mut rng))
     };
@@ -1042,7 +1042,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
     };
     let mut mover = walker();
     let mut world = crate::spatial::Spatial::default();
-    let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
+    let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
     let (mut kind, mut held) = (1, 7.057_053_6);
     let site = DropOff {
         takes: true,
@@ -1112,7 +1112,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
     };
     let step = |hunt: &mut HuntAction, mover: &mut Mover, anim: &mut Option<f32>| {
         let mut world = crate::spatial::Spatial::default();
-        let (mut sprite, mut rng) = (None, crate::rng::Well512::default());
+        let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         hunt.update_drop(
             walk(mover, &mut world),
             &mut 15,

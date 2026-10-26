@@ -24,7 +24,7 @@ pub(crate) struct Seeker<'a, 'b> {
 pub(super) const FISHING_SHIP: i16 = 21;
 /// The squared footprint gap within which a fishing ship counts a drop site its path does not
 /// reach (`DAT_14330ebcc`).
-pub(super) const FISHING_REACH: f32 = crate::image::turn::FISHING_REACH;
+pub(super) const FISHING_REACH: f32 = crate::math::image::turn::FISHING_REACH;
 
 /// A search for drop sites (`FUN_1411671e0`: in state 2, not at work on the action type `at_work`
 /// (its argument 8: an object of type 40 up whose top action is of that type, or `0x7c` too for
@@ -140,11 +140,11 @@ pub(super) const PACK: i16 = 0x7c;
 
 /// A drop site within this path length is measured by the short path too (`FUN_1411671e0`,
 /// `DAT_142eb0f4c`).
-pub(in crate::turn) const SHORT_DROP_REACH: f32 = crate::image::turn::SHORT_DROP_REACH;
+pub(in crate::turn) const SHORT_DROP_REACH: f32 = crate::math::image::turn::SHORT_DROP_REACH;
 /// The range the short path measures a drop site within (`DAT_142eb5690`).
-pub(in crate::turn) const DROP_REACH: f32 = crate::image::turn::DROP_REACH;
+pub(in crate::turn) const DROP_REACH: f32 = crate::math::image::turn::DROP_REACH;
 /// The distance a drop-site search starts from (`DAT_14330ebf4`, the largest float).
-pub(in crate::turn) const NO_DROP_DISTANCE: f32 = crate::image::turn::NO_DROP_DISTANCE;
+pub(in crate::turn) const NO_DROP_DISTANCE: f32 = crate::math::image::turn::NO_DROP_DISTANCE;
 
 /// `FUN_1411671e0` with a point and no unit: of the player's live objects (`others`, in list
 /// order) of a master in `sites` and in state 2, the one nearest `at` (its centre's squared

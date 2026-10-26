@@ -2,10 +2,10 @@
 
 use crate::hunt::{HUNT, HuntTask};
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::order::{
     ATTACK_TASK, BUILDING, GARRISON, MASTER_84, MASTER_1808, VILLAGER, Work, own_order_target,
 };
-use crate::rng::Stream;
 use crate::tasks::{Actor, Diplomacy, enabled};
 use crate::turn::{Turns, World};
 use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER, MOVE_ORDER};

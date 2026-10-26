@@ -1,8 +1,8 @@
 //! An artifact's and a herd's take, an order's cancel and a unit's order.
 
 use crate::hunt::HUNT;
+use crate::math::rng::Stream;
 use crate::order::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
-use crate::rng::Stream;
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::GenieError;
 

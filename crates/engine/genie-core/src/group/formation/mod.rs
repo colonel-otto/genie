@@ -19,9 +19,9 @@ pub use self::desired_positions::{find_point_from_front, on_last_high_level_wayp
 #[cfg(test)]
 use self::passability::{cell_mark, count_up, passability_box, slot_tile};
 #[cfg(test)]
-use crate::fmath::Vec3;
-#[cfg(test)]
 use crate::group::UnitGroup;
+#[cfg(test)]
+use crate::math::fmath::Vec3;
 #[cfg(test)]
 use crate::movement::PathData;
 #[cfg(test)]
@@ -48,14 +48,14 @@ pub const FLANKED: i32 = 8;
 const CATEGORIES: i32 = 6;
 /// A flanked line's slots move apart by this less the line's share of the depth
 /// (`DAT_142eb3634`).
-const FLANK_SPACING: f32 = crate::image::group::FLANK_SPACING;
+const FLANK_SPACING: f32 = crate::math::image::group::FLANK_SPACING;
 /// A staggered line moves by a quarter of the slot offset (`DAT_142eb0f48`).
-const STAGGER_SHARE: f32 = crate::image::group::STAGGER_SHARE;
+const STAGGER_SHARE: f32 = crate::math::image::group::STAGGER_SHARE;
 /// A staggered line's offset is twice the spacing, and an even line moves by half the offset
 /// (`DAT_142e8c150`).
-const TWO: f32 = crate::image::group::SPACING_FACTOR;
+const TWO: f32 = crate::math::image::group::SPACING_FACTOR;
 /// Below this a distance back counts as none (`DAT_142eb0c60`).
-const EPSILON: f32 = crate::image::group::EPSILON;
+const EPSILON: f32 = crate::math::image::group::EPSILON;
 
 impl Formation {
     /// `BFormation`'s constructor (the 0x58 bytes `FUN_14103fd00` allocates): no slots, no

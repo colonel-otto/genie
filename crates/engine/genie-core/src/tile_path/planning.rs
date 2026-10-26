@@ -1,7 +1,7 @@
 //! The planner's entry (`FUN_140f7c530`): the search over the levels, the shortcut near the
 //! start and the search on the tiles.
 
-use crate::fmath;
+use crate::math::fmath;
 use crate::tile_path::{
     Found, GOAL_GAP, NODE, Path, Planner, Request, SHORTCUT_REACH, SegmentTest, TILE_SEARCH_LENGTH,
     smooth, tile,

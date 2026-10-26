@@ -8,18 +8,18 @@ use crate::best_target::ORDER_WINDOW;
 pub const STATISTICS: usize = 128;
 /// A kill time's stand-in when the unit does no damage to an object it may still work on
 /// (`DAT_14330ebb8`), and the current target's bonus.
-pub(super) const NO_DAMAGE_KILL: f32 = crate::image::best_target::FIVE;
+pub(super) const NO_DAMAGE_KILL: f32 = crate::math::image::best_target::FIVE;
 /// The kill time of an object the unit neither damages nor works on (`DAT_14330ebf4`).
-pub(super) const NEVER: f32 = crate::image::best_target::NEVER;
+pub(super) const NEVER: f32 = crate::math::image::best_target::NEVER;
 /// Damage at most this does not count (`DAT_142eb0c60`), nor a span below it.
-pub(super) const EPSILON: f32 = crate::image::best_target::EPSILON;
+pub(super) const EPSILON: f32 = crate::math::image::best_target::EPSILON;
 /// The scores' scale (`DAT_142eb0f4c`), a distance score's top (`DAT_142efe418`) and the
 /// targeting factor's per cent (`DAT_142eb99cc`).
-pub(super) const SCORE: f32 = crate::image::best_target::SCORE;
-pub(super) const DISTANCE_SCORE: f32 = crate::image::best_target::DISTANCE_SCORE;
-pub(super) const PER_CENT: f32 = crate::image::best_target::PER_CENT;
+pub(super) const SCORE: f32 = crate::math::image::best_target::SCORE;
+pub(super) const DISTANCE_SCORE: f32 = crate::math::image::best_target::DISTANCE_SCORE;
+pub(super) const PER_CENT: f32 = crate::math::image::best_target::PER_CENT;
 /// The rank's step per tier (`DAT_142eea788`).
-pub(super) const TIER: f32 = crate::image::best_target::TIER;
+pub(super) const TIER: f32 = crate::math::image::best_target::TIER;
 /// The classes whose objects stand fixed for the rank (`FUN_140c66590`'s mask
 /// `0x12000000000008`: 3, 49, 52).
 pub(super) const FIXED_CLASSES: u64 = 0x0012_0000_0000_0008;
@@ -198,7 +198,7 @@ impl Statistics {
         }
         least(&mut self.distance[0], c.distance);
         most(&mut self.distance[1], c.distance);
-        e.kill_time = if crate::fmath::below_or_unordered(EPSILON, c.damage) {
+        e.kill_time = if crate::math::fmath::below_or_unordered(EPSILON, c.damage) {
             (c.hp / c.damage) / c.reload
         } else if c.workable {
             NO_DAMAGE_KILL
@@ -251,18 +251,18 @@ impl Statistics {
             };
             let mut kill = top * SCORE;
             if e.moving {
-                if crate::fmath::at_most_or_unordered(EPSILON, moving_kill_span) {
+                if crate::math::fmath::at_most_or_unordered(EPSILON, moving_kill_span) {
                     kill -= ((e.kill_time - moving_kill_low) / moving_kill_span) * kill;
                 }
                 e.kill_score = kill;
                 let mut d = DISTANCE_SCORE;
-                if crate::fmath::at_most_or_unordered(EPSILON, moving_distance_span) {
+                if crate::math::fmath::at_most_or_unordered(EPSILON, moving_distance_span) {
                     d -= ((e.distance - moving_distance_low) / moving_distance_span)
                         * DISTANCE_SCORE;
                 }
                 e.distance_score = d;
             } else {
-                if crate::fmath::at_most_or_unordered(EPSILON, kill_span) {
+                if crate::math::fmath::at_most_or_unordered(EPSILON, kill_span) {
                     kill -= ((e.kill_time - kill_low) / kill_span) * kill;
                 }
                 e.kill_score = kill;

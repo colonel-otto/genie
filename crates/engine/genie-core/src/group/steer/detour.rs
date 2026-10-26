@@ -1,14 +1,14 @@
 //! The way round a record on the line to the slot: the short pather, the long pather and the
 //! tile planner.
 
-use crate::fmath::{Vec3, at_most_or_unordered};
 use crate::group::motion::moved_vector;
 use crate::group::steer::{
     BLOCKED, EPSILON, MOVES, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
     ROUND_STILL, ROUND_TIMER,
 };
+use crate::math::fmath::{Vec3, at_most_or_unordered};
 use crate::turn::Turns;
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 impl Turns {
     /// The way round a record on the line to the slot (`0x141026867`..`0x1410277e5`), for member
@@ -278,7 +278,7 @@ impl Turns {
             pathing: &mut self.pathing,
             now: self.world_time,
             computer,
-            object: self.streams.get(crate::rng::Stream::Object),
+            object: self.streams.get(crate::math::rng::Stream::Object),
             construction_rate: 0.0,
             groups: &self.groups,
         };

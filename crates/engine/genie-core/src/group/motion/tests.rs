@@ -39,8 +39,8 @@ fn a_nan_yaw_does_not_turn() {
     );
 }
 use crate::group::UnitGroups;
+use crate::math::rng::Well512;
 use crate::pathing::Pathing;
-use crate::rng::Well512;
 
 fn level(level: u8, points: &[[f32; 2]], waypoint: i32, state: i32) -> PathData {
     PathData {

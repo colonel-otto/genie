@@ -1,10 +1,10 @@
 //! Path points, the gaps between footprints and the position setter's tests.
 
-use crate::fmath;
-use crate::fmath::Vec3;
+use crate::math::fmath;
+use crate::math::fmath::Vec3;
+use crate::math::rng::Well512;
 use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
 use crate::pathing::Pathing;
-use crate::rng::Well512;
 use crate::spatial::Placed;
 use crate::tile_path::Path;
 
@@ -74,14 +74,14 @@ pub(super) fn short_range(near: bool, range: f32) -> f32 {
 
 /// A master whose object flags have bit 1 turns as if dt were this many times longer
 /// (`DAT_14330ebcc`).
-pub(super) const FAST_TURN: f32 = crate::image::movement::FAST_TURN;
+pub(super) const FAST_TURN: f32 = crate::math::image::movement::FAST_TURN;
 /// The pause a kept hit's ranking gives a unit the walker outranks: 0.1 for an ally
 /// (`DAT_142eb5690`), 0.5 for another (`DAT_142e7f384`).
-pub(super) const ALLY_PAUSE: f32 = crate::image::movement::ALLY_PAUSE;
-pub(super) const OTHER_PAUSE: f32 = crate::image::movement::OTHER_PAUSE;
+pub(super) const ALLY_PAUSE: f32 = crate::math::image::movement::ALLY_PAUSE;
+pub(super) const OTHER_PAUSE: f32 = crate::math::image::movement::OTHER_PAUSE;
 /// The pause a level at its last waypoint without a path gives its own unit while it may still
 /// try (`DAT_142eb5690`).
-pub(super) const STUCK_PAUSE: f32 = crate::image::movement::STUCK_PAUSE;
+pub(super) const STUCK_PAUSE: f32 = crate::math::image::movement::STUCK_PAUSE;
 /// What [`Mover::avoid`] makes of the walk's hits: the hits it keeps and the pauses it gives.
 ///
 /// [`Mover::avoid`]: crate::movement::Mover::avoid
@@ -92,7 +92,7 @@ pub(super) struct Avoided {
     pub(super) at_target: bool,
 }
 /// 2π (`DAT_142eb56ac`): over a revolution's time, the most a unit turns per second.
-pub(super) const TWO_PI: f32 = crate::image::movement::TWO_PI;
+pub(super) const TWO_PI: f32 = crate::math::image::movement::TWO_PI;
 
 /// The most a unit of a moving master turns per second (`+0x774`) as every copy of the master
 /// sets it (master slot 0x80, `FUN_1410e3a70`, which also leaves the turn radius 0 and its

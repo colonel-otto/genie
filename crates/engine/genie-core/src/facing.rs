@@ -8,24 +8,24 @@
 //! ([`SpriteFacets`]); the slice takes them from the unit's master when every sprite of the
 //! master has the same ([`crate::movement::MoveStats::facets`]).
 
-use crate::fmath::{self, Vec3};
+use crate::math::fmath::{self, Vec3};
 
-const TWO_PI: f32 = crate::image::facing::TWO_PI;
-const MINUS_TWO_PI: f32 = crate::image::facing::MINUS_TWO_PI;
-const PI: f32 = crate::image::facing::PI;
-const MINUS_PI: f32 = crate::image::facing::MINUS_PI;
+const TWO_PI: f32 = crate::math::image::facing::TWO_PI;
+const MINUS_TWO_PI: f32 = crate::math::image::facing::MINUS_TWO_PI;
+const PI: f32 = crate::math::image::facing::PI;
+const MINUS_PI: f32 = crate::math::image::facing::MINUS_PI;
 /// A facet's angle starts a quarter turn of π in (`DAT_142eb6e44`).
-const QUARTER_PI: f32 = crate::image::facing::QUARTER_PI;
+const QUARTER_PI: f32 = crate::math::image::facing::QUARTER_PI;
 /// A facing within half a facet (`DAT_142e7f384`, `DAT_142eb6e58`) faces.
-const HALF: f32 = crate::image::facing::HALF;
-const MINUS_HALF: f32 = crate::image::facing::MINUS_HALF;
+const HALF: f32 = crate::math::image::facing::HALF;
+const MINUS_HALF: f32 = crate::math::image::facing::MINUS_HALF;
 /// No offset below this (`DAT_142eb0c60`).
-const EPSILON: f32 = crate::image::facing::EPSILON;
+const EPSILON: f32 = crate::math::image::facing::EPSILON;
 /// The cosine's bounds (`DAT_14330eb8c`, `DAT_14330ec20`) and the diagonal's square (`DAT_142e8c150`)
 /// of the forward vector's facet (`FUN_14119d0c0`).
-const ONE: f32 = crate::image::facing::ONE;
-const MINUS_ONE: f32 = crate::image::facing::MINUS_ONE;
-const TWO: f32 = crate::image::facing::TWO;
+const ONE: f32 = crate::math::image::facing::ONE;
+const MINUS_ONE: f32 = crate::math::image::facing::MINUS_ONE;
+const TWO: f32 = crate::math::image::facing::TWO;
 
 /// What the facing routines read of the current sprite: its facets and whether its sequence
 /// flags have bit 1 (`+0x1a`).
@@ -174,7 +174,7 @@ pub fn face(at: [f32; 2], angle: f32, to: [f32; 2], s: Option<SpriteFacets>) -> 
 }
 
 /// The world time in milliseconds a second (`DAT_14330ebe0`).
-const MS_PER_SECOND: f32 = crate::image::facing::MS_PER_SECOND;
+const MS_PER_SECOND: f32 = crate::math::image::facing::MS_PER_SECOND;
 
 /// `FUN_141162db0` for a unit with a turn time (its master's `+0x758`, seconds): facing `to`
 /// from `at` within half a facet it faces; else, once `turn_time` passed since its last step

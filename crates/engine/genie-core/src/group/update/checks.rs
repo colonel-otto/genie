@@ -58,7 +58,7 @@ impl Turns {
                 } else {
                     master.search_radius
                 };
-                let reach = crate::fmath::maxss(search, master.line_of_sight);
+                let reach = crate::math::fmath::maxss(search, master.line_of_sight);
                 let reach = reach * reach;
                 let mut nearest = FARTHEST;
                 let mut found = false;
@@ -480,7 +480,7 @@ impl Turns {
             "a unit without its sprite's graphic",
         ))?;
         let place = self.place(id).expect("found above");
-        let rng = self.streams.get(crate::rng::Stream::Sprite);
+        let rng = self.streams.get(crate::math::rng::Stream::Sprite);
         let u = match place {
             crate::order::Place::Live(p, i) => &mut self.players[p].objects[i],
             crate::order::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],

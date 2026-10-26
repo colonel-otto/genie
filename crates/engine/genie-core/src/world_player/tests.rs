@@ -187,7 +187,7 @@ fn a_mill_s_livestock_makes_food() {
     p.attributes[254] = 15.0;
     p.update_time = 0.5;
     t.update_world_player(1).unwrap();
-    let grows = crate::fmath::log(400.0 / 200.0 + 1.0);
+    let grows = crate::math::fmath::log(400.0 / 200.0 + 1.0);
     let food = 15.0 / 60.0 * (1.5 * grows);
     assert_eq!(t.players[1].resources[0], food);
     assert_eq!(t.players[1].attributes[166], food);

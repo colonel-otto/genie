@@ -1,8 +1,8 @@
 //! A new level's path: no path, its link under the walked level, the short pather's ignore list
 //! and a blocked start.
 
-use crate::fmath::Vec3;
 use crate::hull_path::HullPather;
+use crate::math::fmath::Vec3;
 use crate::movement::{
     CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, SHORT_PATHER, SPLIT,
     STUCK_PAUSE, Step, Walker, footprint_gap_squared, owner_number, short_path_including, split,
@@ -10,7 +10,7 @@ use crate::movement::{
 };
 use crate::spatial::{Placed, Spatial};
 use crate::tile_path::{Path, Request};
-use crate::{GenieError, fmath, short_path};
+use crate::{GenieError, math::fmath, short_path};
 
 impl Mover {
     /// The new level's path is no path (`0x141150f00` after the plans, fewer than two points or

@@ -2,8 +2,8 @@
 //! entry's costs.
 
 use crate::masters::Masters;
+use crate::math::rng::Stream;
 use crate::production::Production;
-use crate::rng::Stream;
 use crate::turn::command::{CURRENT_AGE, ONE_UNIT_AGE, QueueAt, ResearchAt};
 use crate::turn::unit::POPULATION;
 use crate::turn::{

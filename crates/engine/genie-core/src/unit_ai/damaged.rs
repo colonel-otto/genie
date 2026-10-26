@@ -1,8 +1,8 @@
 //! What the villagers, transports, traders, fishing ships and buildings do when damaged.
 
 use crate::GenieError;
-use crate::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
-use crate::rng::Well512;
+use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ACTION_COMPLETED, BREAK, BUILD_ACTION, CLASS_10, DEAD, EXPLORE_ACTION, Effect,
     FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED, FOUNDATION_REACH, GO_ON, HUNT_ACTION,
@@ -186,7 +186,7 @@ impl UnitAi {
     /// class (`+0x4c`) other than 3, 27, 39, 49 and 4, then a draw (`processNotify`) whose
     /// `r * 100 / 0x7fff` is at least the owner's `chance_for_archers_to_maintain_distance`.
     pub(super) fn keeps_distance(&self, at: &Surroundings, ai: &mut Well512) -> bool {
-        if !crate::fmath::at_most_or_unordered(1.0, at.weapon_range)
+        if !crate::math::fmath::at_most_or_unordered(1.0, at.weapon_range)
             || matches!(self.target_type, 3 | 27 | 39 | 49 | 4)
         {
             return false;

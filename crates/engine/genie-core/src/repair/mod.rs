@@ -29,16 +29,16 @@ pub const REPAIR: i16 = 0x6a;
 pub const REPAIR_ACTION: i32 = 0x26a;
 
 /// The gap within which a repairer reaches its target (`DAT_142eb5690`).
-pub const REACH: f32 = crate::image::repair::REACH;
+pub const REACH: f32 = crate::math::image::repair::REACH;
 /// What a moving target (`FUN_140fdd080`) or a scenario's game mode adds to the reach
 /// (`DAT_142e8c150`).
-const MOVING_REACH: f32 = crate::image::repair::MOVING_REACH;
+const MOVING_REACH: f32 = crate::math::image::repair::MOVING_REACH;
 /// The hit points below which a target in state 2 is not repaired (`DAT_142e7f384`), and the
 /// share each repairer past the first adds to the work (the same constant).
-const LEAST_HP: f32 = crate::image::repair::LEAST_HP;
-const EXTRA_REPAIRER: f32 = crate::image::repair::EXTRA_REPAIRER;
+const LEAST_HP: f32 = crate::math::image::repair::LEAST_HP;
+const EXTRA_REPAIRER: f32 = crate::math::image::repair::EXTRA_REPAIRER;
 /// The wait of state 10 (`0x3f800000`), and the repairer count's first (`DAT_14330eb8c`).
-const ONE: f32 = crate::image::repair::ONE;
+const ONE: f32 = crate::math::image::repair::ONE;
 
 /// The Repair action's states.
 const DONE: u8 = 1;

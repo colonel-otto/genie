@@ -2,7 +2,7 @@
 //! (slot 0xb8).
 
 use crate::damage::{Armored, Victim};
-use crate::fmath;
+use crate::math::fmath;
 
 /// `FUN_14108d8a0`: a shield blocks the hit: a target whose master's charge type is 5 against a
 /// melee hit (4 against a missile) spends a charge of 1 when it has one (`COMISS 1.0, charge`,

@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::effect::kind;
 use crate::masters::{Master, master_type};
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::tech::EffectCommand;
 use crate::turn::{Turns, Unit};
 

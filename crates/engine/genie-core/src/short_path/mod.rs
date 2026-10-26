@@ -5,7 +5,7 @@
 //! shape shrunk by `d = 0x200000 - r` (shapes are stored grown by half a tile). The map of the
 //! search, its node types and its ties: `docs/AoE2DE_s_exe_SHORT_PATHER.md`.
 
-use crate::fmath;
+use crate::math::fmath;
 use crate::mesh::{Mesh, ONE, Rect};
 
 mod call;
@@ -26,8 +26,8 @@ use self::nodes::{cheb, clamp_to_box, clip, corner_emits, in_box};
 pub type Point = [i32; 2];
 
 /// `DAT_142f43b10`, `DAT_142f43a10`: fixed point to float and back.
-const TO_FLOAT: f32 = crate::image::short_path::TO_FLOAT;
-pub(crate) const TO_FIXED: f32 = crate::image::short_path::TO_FIXED;
+const TO_FLOAT: f32 = crate::math::image::short_path::TO_FLOAT;
+pub(crate) const TO_FIXED: f32 = crate::math::image::short_path::TO_FIXED;
 /// The raycast's start `t` (`0x466666`, 1.1).
 const T_START: i32 = 0x46_6666;
 

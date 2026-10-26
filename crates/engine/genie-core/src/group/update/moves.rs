@@ -52,9 +52,9 @@ impl Turns {
                             .master_of(leader.player(), leader.master_id())?
                             .line_of_sight;
                         let range = sight * FOLLOW_SHARE;
-                        let d = crate::fmath::sub(from, moved);
+                        let d = crate::math::fmath::sub(from, moved);
                         let squared = d[0] * d[0] + 0.0 + d[2] * d[2];
-                        if !crate::fmath::below_or_unordered(squared, range * range) {
+                        if !crate::math::fmath::below_or_unordered(squared, range * range) {
                             let _ = self.command_move_to(
                                 group,
                                 target,
@@ -141,9 +141,9 @@ impl Turns {
                         // DAT_143f0dc78, zero-initialised (.bss) and written by nothing
                         _ => [0.0; 3],
                     };
-                    let d = crate::fmath::sub(end, target.moved_vector());
+                    let d = crate::math::fmath::sub(end, target.moved_vector());
                     let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-                    if !crate::fmath::below_or_unordered(squared, CLOSE) {
+                    if !crate::math::fmath::below_or_unordered(squared, CLOSE) {
                         self.groups.get_mut(group).expect("held").current_command = FOLLOW;
                         return Ok(false);
                     }
@@ -327,9 +327,9 @@ impl Turns {
                     .expect("the member is held");
                 let own =
                     &mut self.groups.get_mut(group).expect("held").members[i - 1].specific_move;
-                let mut d = crate::fmath::sub(at, own.last_position);
+                let mut d = crate::math::fmath::sub(at, own.last_position);
                 d[1] = 0.0;
-                own.distance -= crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+                own.distance -= crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
                 own.last_position = at;
                 continue;
             }
@@ -341,7 +341,7 @@ impl Turns {
             let g = self.groups.get_mut(group).expect("held");
             let timer = &mut g.members[i - 1].specific_move.timer;
             *timer -= dt;
-            if !crate::fmath::below_or_unordered(0.0, *timer) {
+            if !crate::math::fmath::below_or_unordered(0.0, *timer) {
                 g.members[i - 1].specific_move = SpecificMove {
                     path_id: -1,
                     reason: -1,
@@ -388,7 +388,7 @@ impl Turns {
             pathing: &mut self.pathing,
             now: self.world_time,
             computer,
-            object: self.streams.get(crate::rng::Stream::Object),
+            object: self.streams.get(crate::math::rng::Stream::Object),
             construction_rate,
             groups: &self.groups,
         };
@@ -456,7 +456,7 @@ impl Turns {
         if self.groups.get(group).is_none() {
             return;
         }
-        let draw = self.streams.get(crate::rng::Stream::World).rand15();
+        let draw = self.streams.get(crate::math::rng::Stream::World).rand15();
         if let Some(g) = self.groups.get_mut(group) {
             g.idle_timer = draw % IDLE_SPAN;
         }

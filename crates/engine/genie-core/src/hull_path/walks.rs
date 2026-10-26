@@ -2,11 +2,11 @@
 //! (`pathWithinHull`).
 
 use crate::GenieError;
-use crate::fmath::{at_most_or_unordered, maxss, sqrt};
 use crate::hull_path::{
     DIRECTIONS, ENTRANCE_STEP, EXIT_STEP, HALF, HULL_ITERATIONS, HullPather, NUDGE, Node, ONE,
     PATHS, Point, SAME_END, SIDES, SQRT_2, Target, Waypoints, Within,
 };
+use crate::math::fmath::{at_most_or_unordered, maxss, sqrt};
 
 impl HullPather<'_> {
     /// The gap between `p` and the target's box grown by the radius; each axis held at 0 or

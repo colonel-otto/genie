@@ -6,11 +6,11 @@ use crate::attack::{
     set_sprite, squared_reach, strike,
 };
 use crate::damage::Victim;
+use crate::math::rng::Well512;
 use crate::move_to::{
     Follow, MoveTo, Walk, follow_path_end, start_walk_or_give_up, target_moved, walk_or_give_up,
 };
 use crate::movement::footprint_gap_squared;
-use crate::rng::Well512;
 use crate::{GenieError, damage};
 
 impl Attack {

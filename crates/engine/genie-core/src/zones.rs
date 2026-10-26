@@ -268,8 +268,8 @@ impl ZoneMap {
             for ty in y0..=y1 {
                 let dy = y.wrapping_sub(ty);
                 let steps = dy.wrapping_mul(dy).wrapping_add(dx.wrapping_mul(dx));
-                let d = crate::fmath::sqrt(steps as f32);
-                if crate::fmath::at_most_or_unordered(d, reach) && self.zone(tx, ty) == zone {
+                let d = crate::math::fmath::sqrt(steps as f32);
+                if crate::math::fmath::at_most_or_unordered(d, reach) && self.zone(tx, ty) == zone {
                     return Some([tx, ty]);
                 }
             }

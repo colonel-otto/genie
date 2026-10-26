@@ -4,10 +4,10 @@
 //! the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once.
 
 use crate::GenieError;
-use crate::fmath::{cos, sin};
 use crate::masters::Task;
+use crate::math::fmath::{cos, sin};
+use crate::math::rng::Well512;
 use crate::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
-use crate::rng::Well512;
 
 /// The Fly action's type, which word 9 adds.
 pub const FLY: i16 = 10;
@@ -17,9 +17,9 @@ const CHOOSING: u8 = 3;
 const FLYING: u8 = 4;
 
 /// Below this (`DAT_142eb0c60`, 1e-7) a task value counts as none.
-const EPSILON: f32 = crate::image::fly::EPSILON;
+const EPSILON: f32 = crate::math::image::fly::EPSILON;
 /// Degrees to radians (`DAT_142eb568c`).
-const DEGREE: f32 = crate::image::fly::DEGREE;
+const DEGREE: f32 = crate::math::image::fly::DEGREE;
 /// The flight angle's step between tries, in degrees, and the tries (`FUN_140a84b40`, state 3).
 const ANGLE_STEP: i32 = 80;
 const TRIES: i32 = 12;
@@ -68,7 +68,7 @@ pub struct Sky<'a> {
 }
 
 /// The height a bird of fly mode 1 flies at once its Fly starts (`FUN_140a84900`).
-pub const HEIGHT: f32 = crate::image::fly::HEIGHT;
+pub const HEIGHT: f32 = crate::math::image::fly::HEIGHT;
 
 impl Fly {
     /// The Fly a bird's default task starts (constructor `FUN_140a845c0`, then its first, slot

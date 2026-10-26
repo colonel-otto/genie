@@ -66,9 +66,9 @@ pub struct Cleared {
 /// alone unless their master has height.
 pub(super) const FLAG_MASTERS: [i16; 3] = [0x112, 0x699, 0x6f9];
 /// The tiles the footprint clearing scans each way of the building's place (`DAT_142eb0f48`).
-pub(crate) const CLEARING_REACH: f32 = crate::image::build::CLEARING_REACH;
+pub(crate) const CLEARING_REACH: f32 = crate::math::image::build::CLEARING_REACH;
 /// The hit points a tree at most has that the builder's clearing takes (`DAT_14330eb8c`).
-pub(super) const STUMP_HP: f32 = crate::image::build::STUMP_HP;
+pub(super) const STUMP_HP: f32 = crate::math::image::build::STUMP_HP;
 /// The masters whose classes (39, the gate, and 52) take their owner's walls (27) off their
 /// footprint, and the tree class (15).
 pub(super) const GATE: i16 = 39;
@@ -97,7 +97,7 @@ pub(crate) fn footprint_clearing(
     site: &ClearingSite,
     look: &dyn Fn(i32) -> Option<ClearLook>,
 ) -> Result<Vec<Cleared>, GenieError> {
-    use crate::fmath::below_or_unordered;
+    use crate::math::fmath::below_or_unordered;
     let [rx, ry] = site.radius;
     if !below_or_unordered(0.0, rx) && !below_or_unordered(0.0, ry) {
         return Ok(Vec::new());
@@ -162,7 +162,7 @@ pub(super) fn clearing_takes(
     o: &crate::spatial::Placed,
     look: &dyn Fn(i32) -> Option<ClearLook>,
 ) -> Result<Option<Cleared>, GenieError> {
-    use crate::fmath::below_or_unordered;
+    use crate::math::fmath::below_or_unordered;
     if o.master == site.master {
         return Ok(None);
     }

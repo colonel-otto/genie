@@ -316,7 +316,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
 /// clears `+0x7b8`; the Attack waits in state 4 for the `MoveTo`'s end.
 #[test]
 fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
-    use crate::rng::Well512;
+    use crate::math::rng::Well512;
     use crate::spatial::Placed;
     use crate::sprite::Graphic;
     let standing = Graphic {
@@ -1226,7 +1226,7 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     };
     let mut pathing = crate::pathing::Pathing::default();
     let graphics = std::collections::BTreeMap::new();
-    let mut rng = crate::rng::Well512::default();
+    let mut rng = crate::math::rng::Well512::default();
     let world = SwitchWorld {
         spatial: &mut spatial,
         pathing: &mut pathing,

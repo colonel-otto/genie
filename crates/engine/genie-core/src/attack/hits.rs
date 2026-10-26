@@ -3,7 +3,7 @@
 
 use crate::attack::{BUILDING, DRAW_SCALE, QUIET_SWINGS};
 use crate::damage::Victim;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::{GenieError, damage};
 
 /// Where a hit comes from: the place it lands (`FUN_141084230`'s x, y, z: the attacker's for a
@@ -49,7 +49,7 @@ pub(super) fn after_hit(
     fire: i16,
     frame: i16,
 ) -> AfterHit {
-    if ranged && crate::fmath::at_most_or_unordered(timer, 0.0) {
+    if ranged && crate::math::fmath::at_most_or_unordered(timer, 0.0) {
         if !target {
             return AfterHit::Done;
         }

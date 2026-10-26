@@ -5,7 +5,7 @@ use crate::build::{Completion, Construction, Site};
 use crate::damage::Victim;
 use crate::lifecycle::Lifecycle;
 use crate::masters::Master;
-use crate::rng::{Stream, Well512};
+use crate::math::rng::{Stream, Well512};
 use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::turn::unit::{Unit, annexes_of};
@@ -399,7 +399,7 @@ impl Unit {
     /// (slot 0xc0). Then an object at its most (slot 0xc0 at least slot 200) has the armor its
     /// charge's hits took back (`+0x9e4` and `+0x9e6`, one dword, zeroed).
     pub(in crate::turn) fn regenerate(&mut self, master: &Master, dt_seconds: f32) {
-        use crate::fmath::{at_most_or_unordered, below_or_unordered};
+        use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
         let rate = regeneration_rate(master, self);
         if below_or_unordered(self.life.hp, REGENERATION_LEAST_HP) || self.life.state != 2 {
             return;
@@ -456,10 +456,11 @@ impl Unit {
     /// (`MAXSS` with 1: not below 1, a NaN becomes 1) and the powerup takes the room.
     pub(in crate::turn) fn clamp_hp_powerup(&mut self) {
         let [up, room] = self.hp_powerups;
-        if crate::fmath::at_most_or_unordered(up, room) {
+        if crate::math::fmath::at_most_or_unordered(up, room) {
             return;
         }
-        self.life.hp = crate::fmath::maxss(self.life.hp - (room - up).abs(), HP_POWERUP_FLOOR);
+        self.life.hp =
+            crate::math::fmath::maxss(self.life.hp - (room - up).abs(), HP_POWERUP_FLOOR);
         self.hp_powerups[0] = room;
     }
 
@@ -571,7 +572,7 @@ pub(in crate::turn) fn farm_stage_terrain(
     build_time: i16,
 ) -> Option<u8> {
     /// The stages over the build time (`DAT_142eb1c98`).
-    const STAGES: f32 = crate::image::turn::FARM_STAGES;
+    const STAGES: f32 = crate::math::image::turn::FARM_STAGES;
     /// A farm's first stage terrain (`0x1d`).
     const FIRST_STAGE: u8 = 29;
     /// A rice farm's first stage terrain on mangrove or rice (`0x41`).
@@ -592,9 +593,9 @@ pub(super) const DEATH_BLAST_MASTERS: [i16; 6] = [527, 528, 1104, 2133, 2134, 21
 /// The classes whose units blast so: 35 (petards) and 64.
 pub(super) const DEATH_BLAST_CLASSES: [i16; 2] = [35, 64];
 /// The hit points below which they blast (`DAT_14330eb8c`; `COMISS`, a NaN does not).
-pub(super) const DEATH_BLAST_HP: f32 = crate::image::turn::DEATH_BLAST_HP;
+pub(super) const DEATH_BLAST_HP: f32 = crate::math::image::turn::DEATH_BLAST_HP;
 /// The blast's damage factor (`XMM11`, the same constant).
-pub(super) const DEATH_BLAST_FACTOR: f32 = crate::image::turn::DEATH_BLAST_FACTOR;
+pub(super) const DEATH_BLAST_FACTOR: f32 = crate::math::image::turn::DEATH_BLAST_FACTOR;
 
 /// `TRIBE_Combat_Object::update`'s test for the blast at death: a unit of one of
 /// [`DEATH_BLAST_MASTERS`] or [`DEATH_BLAST_CLASSES`] below [`DEATH_BLAST_HP`] hit points in state
@@ -607,17 +608,17 @@ pub(in crate::turn) fn blasts_at_death(master: &Master, life: &Lifecycle) -> boo
 }
 
 /// A hero's regeneration (`DAT_142ed06a8`, a minute's hit points).
-pub(super) const HERO_REGENERATION: f32 = crate::image::turn::HERO_REGENERATION;
+pub(super) const HERO_REGENERATION: f32 = crate::math::image::turn::HERO_REGENERATION;
 /// The regeneration's minute (`DAT_14330ebc8`).
-pub(super) const REGENERATION_MINUTE: f32 = crate::image::turn::REGENERATION_MINUTE;
+pub(super) const REGENERATION_MINUTE: f32 = crate::math::image::turn::REGENERATION_MINUTE;
 /// The size below which a rate or a period is none (`DAT_142f49458`).
-pub(super) const REGENERATION_EPSILON: f32 = crate::image::turn::REGENERATION_EPSILON;
+pub(super) const REGENERATION_EPSILON: f32 = crate::math::image::turn::REGENERATION_EPSILON;
 /// The hit points below which nothing regenerates (`DAT_14330eb8c`).
-pub(super) const REGENERATION_LEAST_HP: f32 = crate::image::turn::REGENERATION_LEAST_HP;
+pub(super) const REGENERATION_LEAST_HP: f32 = crate::math::image::turn::REGENERATION_LEAST_HP;
 /// A whole hit point, the `fmodf` divisor (`XMM11`, `DAT_14330eb8c`).
-pub(super) const REGENERATION_POINT: f32 = crate::image::turn::REGENERATION_POINT;
+pub(super) const REGENERATION_POINT: f32 = crate::math::image::turn::REGENERATION_POINT;
 /// The hit points a powerup's check leaves at least (`MAXSS` with `DAT_14330eb8c`).
-pub(super) const HP_POWERUP_FLOOR: f32 = crate::image::turn::HP_POWERUP_FLOOR;
+pub(super) const HP_POWERUP_FLOOR: f32 = crate::math::image::turn::HP_POWERUP_FLOOR;
 
 /// Slot 0x260 of a combat object (`FUN_1412033a0`), its regeneration rate in hit points a
 /// minute: its stinger (`+0xb3c`, slot 0x750) plus (its powerup (`+0xa34`, slot 0x6f0) plus (a

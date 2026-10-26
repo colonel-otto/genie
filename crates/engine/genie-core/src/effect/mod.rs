@@ -22,7 +22,7 @@ use self::object_slots::{CAPPED, ONE, ROUND, has_actions, shows_sprite, within_t
 #[cfg(test)]
 use self::object_slots::{HEADROOM, POPULATION, RESOURCE_19, charge_after};
 #[cfg(test)]
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 #[cfg(test)]
 use crate::tech::EffectCommand;
 #[cfg(test)]

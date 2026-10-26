@@ -1,8 +1,8 @@
 //! What the unit AI asks of the world through its view: [`crate::unit_ai::UnitSide`] for
 //! [`UnitView`].
 
+use crate::math::rng::Well512;
 use crate::movement::{Me, Planning, footprint_gap_squared};
-use crate::rng::Well512;
 use crate::spatial::Placed;
 use crate::tasks::Actor;
 use crate::turn::PETARD;
@@ -157,7 +157,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         /// The siege tower master (`FUN_141194f10`'s 0x451).
         const SIEGE_TOWER: i16 = 0x451;
         /// `AskForHelp`'s reach (`DAT_142ecccc4`): the squared footprint gap of 3 tiles.
-        const HELP_REACH: f32 = crate::image::unit_ai::HELP_REACH;
+        const HELP_REACH: f32 = crate::math::image::unit_ai::HELP_REACH;
         let lists = self.spatial.searched().ok_or(GenieError::unsupported(
             "a search that reads the registry's last answer (before any query)",
         ))?;

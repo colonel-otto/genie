@@ -38,18 +38,18 @@ use crate::unit_ai::GenieError;
 
 /// A unit smaller than this on both axes (`DAT_142f5d120`) steps by twice its radius plus
 /// `GAP` (`DAT_142eb5690`).
-const SMALL: f32 = crate::image::spawn::SMALL;
-const GAP: f32 = crate::image::spawn::GAP;
+const SMALL: f32 = crate::math::image::spawn::SMALL;
+const GAP: f32 = crate::math::image::spawn::GAP;
 /// The share of a side the first segments cover (`DAT_142eb880c`).
-const SIDE_SHARE: f32 = crate::image::spawn::SIDE_SHARE;
+const SIDE_SHARE: f32 = crate::math::image::spawn::SIDE_SHARE;
 /// No gather point (`DAT_14330ec20`).
-const NONE: f32 = crate::image::spawn::NONE;
+const NONE: f32 = crate::math::image::spawn::NONE;
 /// The placement test's objects lie within this many tiles of the point (`DAT_142eb9430`).
-const REACH: f32 = crate::image::spawn::REACH;
+const REACH: f32 = crate::math::image::spawn::REACH;
 /// A tile whose terrain's restriction value is this or less is not passable (`DAT_14330eb78`).
-const PASSABLE: f32 = crate::image::spawn::PASSABLE;
+const PASSABLE: f32 = crate::math::image::spawn::PASSABLE;
 /// How far inside its far edges a box's last tile lies (`DAT_142eb1e9c`).
-const INSIDE: f32 = crate::image::spawn::INSIDE;
+const INSIDE: f32 = crate::math::image::spawn::INSIDE;
 
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
@@ -74,7 +74,7 @@ pub(crate) const VILLAGER: i16 = 4;
 pub(crate) const MAKE_ACTION: i32 = 0x26b;
 
 /// A new moving object's right vector's z (`FUN_1411580a0` reads `DAT_14330ec20`).
-pub(crate) const START_RIGHT_Z: f32 = crate::image::spawn::START_RIGHT_Z;
+pub(crate) const START_RIGHT_Z: f32 = crate::math::image::spawn::START_RIGHT_Z;
 /// The player's attribute a new soldier's unit AI reads: the current age (`player+0x100` at
 /// `+0x30`, `FUN_140c12300`).
 const CURRENT_AGE: i16 = 6;

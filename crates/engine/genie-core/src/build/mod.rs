@@ -45,11 +45,11 @@ use crate::spatial::Spatial;
 pub const BUILD: i16 = 101;
 
 /// The gap below which a `MoveTo` has arrived (`DAT_142eb99cc`).
-const ARRIVED: f32 = crate::image::build::ARRIVED;
+const ARRIVED: f32 = crate::math::image::build::ARRIVED;
 /// The villager's class (4, `-0xea8` encoded): Build's walk off the footprint returns at once.
 const VILLAGER: i16 = 4;
 /// A builder within this of its foundation's footprint has reached it (`DAT_142eb5690`).
-const REACH: f32 = crate::image::build::REACH;
+const REACH: f32 = crate::math::image::build::REACH;
 /// A player's sight of an object it sees (slot 0x1e0).
 const SEEN: u8 = 0xf;
 /// A foundation of another player than the builder's, which the slice does not hand the Build.
@@ -406,7 +406,7 @@ pub(crate) fn show_built(
     master: &Master,
     frame: u8,
     graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
-    sprite_rng: &mut crate::rng::Well512,
+    sprite_rng: &mut crate::math::rng::Well512,
 ) {
     let standing = (0 <= master.standing_sprite)
         .then(|| graphics.get(&master.standing_sprite).copied())
@@ -443,7 +443,7 @@ mod built_sprite_tests {
             standing_sprite: 11,
             ..Master::default()
         };
-        let mut rng = crate::rng::Well512::default();
+        let mut rng = crate::math::rng::Well512::default();
         let mut sprite = Some(ActiveSprite::start(g(10, 1), &mut rng));
         show_built(&mut sprite, &master, 2, &graphics, &mut rng);
         let s = sprite.unwrap();
@@ -591,13 +591,13 @@ struct Load {
 }
 
 /// A second builder works at a third of the rate of the first (`DAT_142ed66b0`).
-const EXTRA_BUILDER: f32 = crate::image::build::EXTRA_BUILDER;
+const EXTRA_BUILDER: f32 = crate::math::image::build::EXTRA_BUILDER;
 /// The progress a started foundation holds before its first work (`0x2edbe6ff`, about 1e-10).
 const STARTED: u32 = 0x2edb_e6ff;
 /// The Wonder's master (`0x114`), whose construction rate the player's attribute raises at most to
 /// `DAT_142ed66b4`.
 const WONDER: i16 = 0x114;
-const WONDER_RATE: f32 = crate::image::build::WONDER_RATE;
+const WONDER_RATE: f32 = crate::math::image::build::WONDER_RATE;
 /// The castles and the wonders their owner built (attributes 173 and 174: their completion adds
 /// 1, their death takes nothing), and the attribute their paid cost goes to rather than 98 and
 /// 165 (184), all `FUN_1411dbb70`.
@@ -636,7 +636,7 @@ pub const DROP: u8 = 8;
 /// The drop-off's wait after a drop site out of reach (`0xc0400000`).
 const DROP_WAIT: f32 = -3.0;
 /// The drop-off reaches its drop site within this squared footprint gap (`DAT_14330eb8c`).
-const DROP_REACH: f32 = crate::image::build::DROP_REACH;
+const DROP_REACH: f32 = crate::math::image::build::DROP_REACH;
 /// The orders whose targets gone the unit AI drops after a drop-off (`FUN_140c5de60`: the bits
 /// of `0x400011` over `order - 0x2c5`).
 pub(crate) const DROPPED_ORDERS: [i32; 3] = [0x2c5, 0x2c9, 0x2db];

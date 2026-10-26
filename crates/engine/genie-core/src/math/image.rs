@@ -4,7 +4,7 @@
 //! (`image::<module>::<NAME>`); the table holds where each is, so a new build regenerates this
 //! file and leaves the ports alone.
 
-/// The values `crate::abilities`'s port reads.
+/// The values the `abilities` port reads.
 pub mod abilities {
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
@@ -12,13 +12,13 @@ pub mod abilities {
     pub const ONE: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::artifact`'s port reads.
+/// The values the `artifact` port reads.
 pub mod artifact {
     /// 0.20000000298023224
     pub const TOWN_CENTRE_OFFSET: f32 = f32::from_bits(0x3e4c_cccd);
 }
 
-/// The values `crate::attack`'s port reads.
+/// The values the `attack` port reads.
 pub mod attack {
     /// 0.009999999776482582
     pub const ARRIVED: f32 = f32::from_bits(0x3c23_d70a);
@@ -38,7 +38,7 @@ pub mod attack {
     pub const TOUCH: f32 = f32::from_bits(0x3c23_d70b);
 }
 
-/// The values `crate::best_target`'s port reads.
+/// The values the `best_target` port reads.
 pub mod best_target {
     /// 75.0
     pub const DISTANCE_SCORE: f32 = f32::from_bits(0x4296_0000);
@@ -62,7 +62,7 @@ pub mod best_target {
     pub const TIER: f32 = f32::from_bits(0x461c_4000);
 }
 
-/// The values `crate::build`'s port reads.
+/// The values the `build` port reads.
 pub mod build {
     /// 0.009999999776482582
     pub const ARRIVED: f32 = f32::from_bits(0x3c23_d70a);
@@ -82,7 +82,7 @@ pub mod build {
     pub const WONDER_RATE: f32 = f32::from_bits(0x3f99_999a);
 }
 
-/// The values `crate::damage`'s port reads.
+/// The values the `damage` port reads.
 pub mod damage {
     /// 0.9900000095367432
     pub const BLAST_RANGE: f32 = f32::from_bits(0x3f7d_70a4);
@@ -126,13 +126,13 @@ pub mod damage {
     pub const WIDE_CONE: f32 = f32::from_bits(0x3fd5_c28f);
 }
 
-/// The values `crate::diplomacy`'s port reads.
+/// The values the `diplomacy` port reads.
 pub mod diplomacy {
     /// -1.0
     pub const NO_POINT: f32 = f32::from_bits(0xbf80_0000);
 }
 
-/// The values `crate::effect`'s port reads.
+/// The values the `effect` port reads.
 pub mod effect {
     /// -1.0
     pub const NO_TIME: f32 = f32::from_bits(0xbf80_0000);
@@ -148,7 +148,7 @@ pub mod effect {
     pub const STATE_UNAVAILABLE: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::explore`'s port reads.
+/// The values the `explore` port reads.
 pub mod explore {
     /// 1.0
     pub const LOS_MARGIN: f32 = f32::from_bits(0x3f80_0000);
@@ -156,7 +156,7 @@ pub mod explore {
     pub const NO_POINT: f32 = f32::from_bits(0xbf80_0000);
 }
 
-/// The values `crate::facing`'s port reads.
+/// The values the `facing` port reads.
 pub mod facing {
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
@@ -184,7 +184,7 @@ pub mod facing {
     pub const TWO_PI: f32 = f32::from_bits(0x40c9_0fdb);
 }
 
-/// The values `crate::farm_queue`'s port reads.
+/// The values the `farm_queue` port reads.
 pub mod farm_queue {
     /// -1.0
     pub const NO_FARM: f32 = f32::from_bits(0xbf80_0000);
@@ -192,7 +192,7 @@ pub mod farm_queue {
     pub const ONE_FARM: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::fly`'s port reads.
+/// The values the `fly` port reads.
 pub mod fly {
     /// 0.01745329238474369
     pub const DEGREE: f32 = f32::from_bits(0x3c8e_fa35);
@@ -202,13 +202,13 @@ pub mod fly {
     pub const HEIGHT: f32 = f32::from_bits(0x4110_0000);
 }
 
-/// The values `crate::game_status`'s port reads.
+/// The values the `game_status` port reads.
 pub mod game_status {
     /// 1.0
     pub const ONE_UNIT_AGE: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::garrison`'s port reads.
+/// The values the `garrison` port reads.
 pub mod garrison {
     /// 0x10103, 0x2, 0x0, 0x2, 0x10163, 0x0, 0x10103, 0x0, 0x0, 0x0, 0x0, 0x0, 0x403, 0x3, 0x0, 0x0, 0x0, 0x10, 0x102, 0x2, 0x0, 0x140, 0x1, 0x403, 0x403, 0x103, 0x403, 0x0, 0x103, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x103, 0x403, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x102, 0x10103, 0x10103, 0x10103, 0x403, 0x0, 0x0, 0x10103, 0x3, 0x1, 0x3, 0x1, 0x3, 0x10103, 0x403, 0x102, 0x102, 0x0, 0x2, 0x0, 0x0
     pub const CLASS_FLAGS: [u32; 64] = [
@@ -244,7 +244,7 @@ pub mod garrison {
     pub const UNLOAD_RANGE: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::gather`'s port reads.
+/// The values the `gather` port reads.
 pub mod gather {
     /// 1.0
     pub const DEFAULT_PRODUCTIVITY: f32 = f32::from_bits(0x3f80_0000);
@@ -266,7 +266,7 @@ pub mod gather {
     pub const WAIT_WORKERS: f32 = f32::from_bits(0x4040_0000);
 }
 
-/// The values `crate::gather_search`'s port reads.
+/// The values the `gather_search` port reads.
 pub mod gather_search {
     /// 1.399999976158142
     pub const DIAGONAL: f32 = f32::from_bits(0x3fb3_3333);
@@ -284,7 +284,7 @@ pub mod gather_search {
     pub const UNIT_SHARE: f32 = f32::from_bits(0x3e80_0000);
 }
 
-/// The values `crate::group`'s port reads.
+/// The values the `group` port reads.
 pub mod group {
     /// 0.10000000149011612
     pub const ASIDE_TIMER: f32 = f32::from_bits(0x3dcc_cccd);
@@ -404,7 +404,7 @@ pub mod group {
     pub const WIDE_RADIUS: f32 = f32::from_bits(0x3f00_0000);
 }
 
-/// The values `crate::history`'s port reads.
+/// The values the `history` port reads.
 pub mod history {
     /// 0.15
     pub const BATTLE_RECORD: f64 = f64::from_bits(0x3fc3_3333_3333_3333);
@@ -412,7 +412,7 @@ pub mod history {
     pub const BATTLE_START: f64 = f64::from_bits(0x3fbe_b851_eb85_1eb8);
 }
 
-/// The values `crate::hull_path`'s port reads.
+/// The values the `hull_path` port reads.
 pub mod hull_path {
     /// 0.0, 1.0, 1.0, 0.0, 0.0, -1.0, -1.0, 0.0, 0.7071067690849304, 0.7071067690849304, 0.7071067690849304, -0.7071067690849304, -0.7071067690849304, -0.7071067690849304, -0.7071067690849304, 0.7071067690849304, 0.3826834261417389, 0.9238795042037964, 0.9238795042037964, 0.3826834261417389, 0.9238795042037964, -0.3826834261417389, 0.9238795042037964, -0.3826834261417389, -0.3826834261417389, -0.9238795042037964, -0.9238795042037964, -0.3826834261417389, -0.9238795042037964, 0.3826834261417389, -0.3826834261417389, 0.9238795042037964
     pub const DIRECTIONS: [[f32; 2]; 16] = [
@@ -480,7 +480,7 @@ pub mod hull_path {
     pub const UNTURN: f32 = f32::from_bits(0xc3b4_0000);
 }
 
-/// The values `crate::hunt`'s port reads.
+/// The values the `hunt` port reads.
 pub mod hunt {
     /// 1.0
     pub const DROP_REACH: f32 = f32::from_bits(0x3f80_0000);
@@ -498,7 +498,7 @@ pub mod hunt {
     pub const TREE_NEAR: f32 = f32::from_bits(0x40a0_0000);
 }
 
-/// The values `crate::long_path`'s port reads.
+/// The values the `long_path` port reads.
 pub mod long_path {
     /// 0.009999999776482582
     pub const EDGE_GAP: f32 = f32::from_bits(0x3c23_d70a);
@@ -510,7 +510,7 @@ pub mod long_path {
     pub const TILE_CENTRE: f32 = f32::from_bits(0x3f00_0000);
 }
 
-/// The values `crate::market`'s port reads.
+/// The values the `market` port reads.
 pub mod market {
     /// -1.0
     pub const FLIP: f32 = f32::from_bits(0xbf80_0000);
@@ -534,7 +534,7 @@ pub mod market {
     pub const WOOD_START: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::masters`'s port reads.
+/// The values the `masters` port reads.
 pub mod masters {
     /// 1.0
     pub const HANDICAP_FLOOR: f32 = f32::from_bits(0x3f80_0000);
@@ -550,7 +550,7 @@ pub mod masters {
     pub const SPEED_CAP: f32 = f32::from_bits(0x4090_0000);
 }
 
-/// The values `crate::missile`'s port reads.
+/// The values the `missile` port reads.
 pub mod missile {
     /// -2.0
     pub const BEYOND: f32 = f32::from_bits(0xc000_0000);
@@ -576,7 +576,7 @@ pub mod missile {
     pub const VOLLEY_SCALE: f32 = f32::from_bits(0x46ff_fe00);
 }
 
-/// The values `crate::move_to`'s port reads.
+/// The values the `move_to` port reads.
 pub mod move_to {
     /// 0.009999999776482582
     pub const ARRIVED: f32 = f32::from_bits(0x3c23_d70a);
@@ -586,7 +586,7 @@ pub mod move_to {
     pub const OFF_LOW: f32 = f32::from_bits(0xbf00_0000);
 }
 
-/// The values `crate::movement`'s port reads.
+/// The values the `movement` port reads.
 pub mod movement {
     /// 0.10000000149011612
     pub const ALLY_PAUSE: f32 = f32::from_bits(0x3dcc_cccd);
@@ -638,7 +638,7 @@ pub mod movement {
     pub const WIDE_RANGE: f32 = f32::from_bits(0x4040_0000);
 }
 
-/// The values `crate::order`'s port reads.
+/// The values the `order` port reads.
 pub mod order {
     /// 10000.0
     pub const BOX_START: f32 = f32::from_bits(0x461c_4000);
@@ -668,7 +668,7 @@ pub mod order {
     pub const WAYPOINT_APART_LOW: f32 = f32::from_bits(0xbf80_0000);
 }
 
-/// The values `crate::pasture`'s port reads.
+/// The values the `pasture` port reads.
 pub mod pasture {
     /// 1.0
     pub const END: f32 = f32::from_bits(0x3f80_0000);
@@ -678,7 +678,7 @@ pub mod pasture {
     pub const STEP: f32 = f32::from_bits(0x3e99_999a);
 }
 
-/// The values `crate::registry`'s port reads.
+/// The values the `registry` port reads.
 pub mod registry {
     /// 7.0
     pub const MARGIN: f32 = f32::from_bits(0x40e0_0000);
@@ -686,7 +686,7 @@ pub mod registry {
     pub const MOST_RADIUS: f32 = f32::from_bits(0x4230_0000);
 }
 
-/// The values `crate::repair`'s port reads.
+/// The values the `repair` port reads.
 pub mod repair {
     /// 0.5
     pub const EXTRA_REPAIRER: f32 = f32::from_bits(0x3f00_0000);
@@ -700,7 +700,7 @@ pub mod repair {
     pub const REACH: f32 = f32::from_bits(0x3dcc_cccd);
 }
 
-/// The values `crate::rng`'s port reads.
+/// The values the `rng` port reads.
 pub mod rng {
     /// 1.0
     pub const FLOAT_MAX: f32 = f32::from_bits(0x3f80_0000);
@@ -708,7 +708,7 @@ pub mod rng {
     pub const FLOAT_SCALE: f64 = f64::from_bits(0x3df0_0000_0000_0000);
 }
 
-/// The values `crate::short_path`'s port reads.
+/// The values the `short_path` port reads.
 pub mod short_path {
     /// 4194304.0
     pub const TO_FIXED: f32 = f32::from_bits(0x4a80_0000);
@@ -716,7 +716,7 @@ pub mod short_path {
     pub const TO_FLOAT: f32 = f32::from_bits(0x3480_0000);
 }
 
-/// The values `crate::spatial`'s port reads.
+/// The values the `spatial` port reads.
 pub mod spatial {
     /// 0.10000000149011612
     pub const CLOSEST_RANGE: f32 = f32::from_bits(0x3dcc_cccd);
@@ -730,7 +730,7 @@ pub mod spatial {
     pub const TILE_CENTRE: f32 = f32::from_bits(0x3f00_0000);
 }
 
-/// The values `crate::spawn`'s port reads.
+/// The values the `spawn` port reads.
 pub mod spawn {
     /// 8.0
     pub const BUILD_SCAN: f32 = f32::from_bits(0x4100_0000);
@@ -752,7 +752,7 @@ pub mod spawn {
     pub const START_RIGHT_Z: f32 = f32::from_bits(0xbf80_0000);
 }
 
-/// The values `crate::sprite`'s port reads.
+/// The values the `sprite` port reads.
 pub mod sprite {
     /// 1.0000000116860974e-07
     pub const EPSILON: f32 = f32::from_bits(0x33d6_bf95);
@@ -760,7 +760,7 @@ pub mod sprite {
     pub const SHORTEST: f32 = f32::from_bits(0x3a83_126f);
 }
 
-/// The values `crate::terrain`'s port reads.
+/// The values the `terrain` port reads.
 pub mod terrain {
     /// 0.0010000000474974513
     pub const INSIDE: f32 = f32::from_bits(0x3a83_126f);
@@ -768,7 +768,7 @@ pub mod terrain {
     pub const TILE: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::tile_path`'s port reads.
+/// The values the `tile_path` port reads.
 pub mod tile_path {
     /// 5.0
     pub const EARLY_LEFT: f32 = f32::from_bits(0x40a0_0000);
@@ -790,7 +790,7 @@ pub mod tile_path {
     pub const TILE_SEARCH_LENGTH: f32 = f32::from_bits(0x420c_0000);
 }
 
-/// The values `crate::transport`'s port reads.
+/// The values the `transport` port reads.
 pub mod transport {
     /// 32767.0
     pub const DRAW_SCALE: f32 = f32::from_bits(0x46ff_fe00);
@@ -810,7 +810,7 @@ pub mod transport {
     pub const UNLOAD_REACH_SQUARED: f32 = f32::from_bits(0x4080_0000);
 }
 
-/// The values `crate::treason`'s port reads.
+/// The values the `treason` port reads.
 pub mod treason {
     /// 400.0
     pub const TREASON_COST: f32 = f32::from_bits(0x43c8_0000);
@@ -818,7 +818,7 @@ pub mod treason {
     pub const TREASON_DISCOUNT_COST: f32 = f32::from_bits(0x4348_0000);
 }
 
-/// The values `crate::turn`'s port reads.
+/// The values the `turn` port reads.
 pub mod turn {
     /// 1.0
     pub const ARMED_FIREPOWER: f32 = f32::from_bits(0x3f80_0000);
@@ -870,7 +870,7 @@ pub mod turn {
     pub const TREE_SEARCH_WITHIN: f32 = f32::from_bits(0x4100_0000);
 }
 
-/// The values `crate::unit_ai`'s port reads.
+/// The values the `unit_ai` port reads.
 pub mod unit_ai {
     /// 1.0
     pub const ARMED_FIREPOWER: f32 = f32::from_bits(0x3f80_0000);
@@ -954,25 +954,25 @@ pub mod unit_ai {
     pub const STILL: f32 = f32::from_bits(0x33d6_bf95);
 }
 
-/// The values `crate::upgrade`'s port reads.
+/// The values the `upgrade` port reads.
 pub mod upgrade {
     /// 100.0
     pub const WHOLE: f32 = f32::from_bits(0x42c8_0000);
 }
 
-/// The values `crate::visibility`'s port reads.
+/// The values the `visibility` port reads.
 pub mod visibility {
     /// 0.009999999776482582
     pub const EDGE: f32 = f32::from_bits(0x3c23_d70a);
 }
 
-/// The values `crate::wait_solidify`'s port reads.
+/// The values the `wait_solidify` port reads.
 pub mod wait_solidify {
     /// 0.01
     pub const SOLID_FROM: f64 = f64::from_bits(0x3f84_7ae1_47ae_147b);
 }
 
-/// The values `crate::wall`'s port reads.
+/// The values the `wall` port reads.
 pub mod wall {
     /// 0.5
     pub const HALF: f32 = f32::from_bits(0x3f00_0000);
@@ -982,7 +982,7 @@ pub mod wall {
     pub const ONE: f32 = f32::from_bits(0x3f80_0000);
 }
 
-/// The values `crate::world_player`'s port reads.
+/// The values the `world_player` port reads.
 pub mod world_player {
     /// 200.0
     pub const LIVESTOCK_SCALE: f32 = f32::from_bits(0x4348_0000);

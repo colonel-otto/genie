@@ -1,7 +1,7 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
-use crate::fmath::Vec3;
 use crate::hull_path::HullPather;
+use crate::math::fmath::Vec3;
 use crate::movement::{
     EPSILON, INCLUDED, NEW_PATHER_RADIUS, PLANS, Planning, footprint_gap, footprint_gap_squared,
 };
@@ -9,7 +9,7 @@ use crate::pathing::{Pathing, PlanBudget};
 use crate::short_path::{Call, Entry, Listed};
 use crate::spatial::{Placed, Spatial};
 use crate::tile_path::{Path, Request};
-use crate::{GenieError, fmath, short_path};
+use crate::{GenieError, math::fmath, short_path};
 
 /// How a step relates to its waypoint (slot 196, `0x14114f400`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -5,7 +5,7 @@ use crate::short_path::{
     Hit, Kind, NONE, Node, Point, Search, TO_FIXED, TO_FLOAT, contact_point, in_box, shrunk_corner,
     snap_to_side, strictly_inside, through_float, tile_of,
 };
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 impl Search<'_> {
     /// `FUN_140fa4410`: the start's node (type 0, cost 0, the Euclidean estimate); 3 when the start

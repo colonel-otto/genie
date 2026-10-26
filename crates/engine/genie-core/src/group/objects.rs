@@ -58,7 +58,7 @@ impl WorldObject<'_> {
     }
 
     /// Its place: x, y, z (`+0x3c8`, `+0x4c8`, `+0x5a8`).
-    pub(crate) const fn position(&self) -> crate::fmath::Vec3 {
+    pub(crate) const fn position(&self) -> crate::math::fmath::Vec3 {
         match *self {
             Self::Unit(_, u) => u.position,
             Self::Ghost(_, g) => g.position,
@@ -77,7 +77,7 @@ impl WorldObject<'_> {
 
     /// Slot 0x648, its forward: a moving object's `+0x830` (`FUN_14106d500`), a static,
     /// animated or doppelganger object's (0, 0, 0) (`FUN_141071e10`).
-    pub(crate) fn forward(&self) -> crate::fmath::Vec3 {
+    pub(crate) fn forward(&self) -> crate::math::fmath::Vec3 {
         match *self {
             Self::Unit(_, u) => u.mover.as_ref().map_or([0.0; 3], |m| m.forward),
             Self::Ghost(..) => [0.0; 3],
@@ -87,7 +87,7 @@ impl WorldObject<'_> {
     /// Slot 0x520, where it last moved to as the game's vector (x, height, y): a moving
     /// object's `+0x824` ([`crate::group::motion::moved_vector`]), any other's place
     /// (`FUN_141196c10`, a ghost's too).
-    pub(crate) fn moved_vector(&self) -> crate::fmath::Vec3 {
+    pub(crate) fn moved_vector(&self) -> crate::math::fmath::Vec3 {
         match *self {
             Self::Unit(_, u) => motion::moved_vector(u),
             Self::Ghost(_, g) => [g.position[0], g.position[2], g.position[1]],

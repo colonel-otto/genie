@@ -1,7 +1,7 @@
 //! A new object on the ground, the command check's units and the mule cart's searches.
 
+use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
-use crate::rng::Stream;
 use crate::turn::Turns;
 use crate::turn::unit::Unit;
 use crate::turn::view::Foreign;
@@ -109,7 +109,7 @@ impl Turns {
         p: usize,
         idx: usize,
     ) -> Result<(i32, [f32; 3]), GenieError> {
-        const CART_REACH: f32 = crate::image::turn::CART_REACH;
+        const CART_REACH: f32 = crate::math::image::turn::CART_REACH;
         let id = self.players[p].objects[idx].id;
         let current = self.players[p].objects[idx]
             .ai

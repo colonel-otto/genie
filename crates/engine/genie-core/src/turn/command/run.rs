@@ -1,7 +1,7 @@
 //! A command's run in the command phase ([`Turns::run`]), a human player's order and the
 //! order units' reset.
 
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::turn::Turns;
 use crate::turn::command::{Command, Order, QueueAt, ResearchAt};
 use crate::unit_ai::GenieError;

@@ -9,9 +9,9 @@ use crate::order::BUILDING;
 use crate::turn::Turns;
 
 /// UNLOAD's point without one (`DAT_14330ec20`).
-pub(super) const NO_POINT: f32 = crate::image::garrison::NO_POINT;
+pub(super) const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 /// UNLOAD's order range (`DAT_14330eb8c`).
-pub(super) const UNLOAD_RANGE: f32 = crate::image::garrison::UNLOAD_RANGE;
+pub(super) const UNLOAD_RANGE: f32 = crate::math::image::garrison::UNLOAD_RANGE;
 
 impl Turns {
     /// UNLOAD (`FUN_14161f410`) of player `player`'s objects `ids` (each alive, at least 1 hit

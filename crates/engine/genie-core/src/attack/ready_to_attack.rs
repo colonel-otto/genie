@@ -149,8 +149,8 @@ impl Attack {
     /// under way, `FUN_1412161a0`) or the target's gap `near` is in range ([`in_range`]).
     pub(super) fn ready_at_once(&self, to: [f32; 3], near: f32, moves_or_volleys: bool) -> bool {
         let moved = to != self.point;
-        let far =
-            (0..3).any(|i| crate::fmath::below_or_unordered(HALF, (to[i] - self.point[i]).abs()));
+        let far = (0..3)
+            .any(|i| crate::math::fmath::below_or_unordered(HALF, (to[i] - self.point[i]).abs()));
         !moved || (!far && (moves_or_volleys || in_range(near, self.range, self.min_range)))
     }
 
@@ -181,7 +181,7 @@ impl Attack {
             return Ok(Readiness::Waiting);
         }
         Ok(
-            if crate::fmath::at_most_or_unordered(*s.attack_timer, 0.0) {
+            if crate::math::fmath::at_most_or_unordered(*s.attack_timer, 0.0) {
                 Readiness::Ready
             } else {
                 Readiness::Waiting
@@ -194,7 +194,7 @@ impl Attack {
 /// gap `near` (half a tile less for a range up to 0.1) is not beyond the range (`COMISS`/`JA`), and
 /// the least range is at most 0.1 or at most the gap (`COMISS`/`JBE` each: NaN passes).
 pub(super) fn in_range(near: f32, range: f32, min_range: f32) -> bool {
-    use crate::fmath::at_most_or_unordered;
+    use crate::math::fmath::at_most_or_unordered;
     at_most_or_unordered(near, range)
         && (at_most_or_unordered(min_range, NO_RANGE) || at_most_or_unordered(min_range, near))
 }

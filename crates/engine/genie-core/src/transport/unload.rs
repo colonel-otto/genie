@@ -86,7 +86,7 @@ impl crate::turn::Turns {
         i: usize,
         point: [f32; 3],
     ) -> Result<(), GenieError> {
-        let rng = self.streams.get(crate::rng::Stream::Sprite);
+        let rng = self.streams.get(crate::math::rng::Stream::Sprite);
         self.players[p].objects[i].transport_sail(
             point,
             (&self.spatial, &mut self.zones, &mut self.pathing),
@@ -110,7 +110,7 @@ impl crate::turn::Turns {
             m.stop()?;
         }
         if c.stands {
-            let rng = self.streams.get(crate::rng::Stream::Sprite);
+            let rng = self.streams.get(crate::math::rng::Stream::Sprite);
             unit.show_standing(self.masters.get(p), &self.graphics, rng)?;
         }
         Ok(())
@@ -161,7 +161,7 @@ impl crate::turn::Turns {
                 .terrain
                 .as_ref()
                 .ok_or(crate::zones::NO_TERRAIN)?;
-            let rng = self.streams.get(crate::rng::Stream::Action);
+            let rng = self.streams.get(crate::math::rng::Stream::Action);
             let (point, sails) = retry_point([x, y], ship.map, |tx, ty| terrain.read(tx, ty), rng);
             let mut shore = MapShore::new(
                 &self.spatial,
@@ -320,7 +320,7 @@ impl crate::turn::Turns {
             |m| (m.stats.radius[0], m.stats.restriction_mask),
         );
         let zone_map = zone_map.map(|k| self.zones.map(k));
-        let mut rng = self.streams.get(crate::rng::Stream::Object).clone();
+        let mut rng = self.streams.get(crate::math::rng::Stream::Object).clone();
         let map = crate::spawn::WorldMap { turns: self };
         let spatial = &self.spatial;
         let found = find_drop_location(
@@ -359,7 +359,7 @@ impl crate::turn::Turns {
                 spatial.point_clear(id, [x, y], grow, mask)
             },
         );
-        *self.streams.get(crate::rng::Stream::Object) = rng;
+        *self.streams.get(crate::math::rng::Stream::Object) = rng;
         found
     }
 

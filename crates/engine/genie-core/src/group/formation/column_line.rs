@@ -2,12 +2,12 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::fmath::{Vec3, add, scale, sub};
 use crate::group::formation::{
     CATEGORIES, COLUMN, EPSILON, FLANK_SPACING, FLANKED, LINE, STAGGER_SHARE, STAGGERED, TWO,
 };
 use crate::group::layout::{clear_line, reset_line};
 use crate::group::{Formation, Slot, UnitGroup};
+use crate::math::fmath::{Vec3, add, scale, sub};
 use crate::turn::Turns;
 
 /// What createColumnLine reads of one sub-formation's statistic.
@@ -25,7 +25,7 @@ pub(super) struct Category {
 /// the columns (a column's), then fewer lines until a line is at least twice as wide as the
 /// formation is deep (a column the reverse). Returns (lines, columns).
 pub(super) fn sizes(count: i32, by_line: bool) -> (i32, i32) {
-    let root = cvttss2si(crate::fmath::sqrt(count as f32).ceil());
+    let root = cvttss2si(crate::math::fmath::sqrt(count as f32).ceil());
     let root = root.max(1);
     let per = |a: i32| {
         let b = count / a;

@@ -2,11 +2,11 @@
 
 use crate::attack::gaps;
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::order::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
-use crate::rng::Stream;
 use crate::tasks::Diplomacy;
 use crate::turn::{Turns, World};
 use crate::unit_ai::{GenieError, HUNT_ACTION, MOVE_ORDER};

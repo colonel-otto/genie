@@ -7,7 +7,7 @@ use crate::damage::{
     WIDE_CONE, armor_damage, bonus_damage, charge_hit, elevation_factor, facing_offset, kill_bonus,
     lose, shield, take,
 };
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 /// `FUN_141082e80`: the damage ([`armor_damage`]) beyond what a blast has done: an attacker of
 /// type 70 and up records whether the hit is its charge's (slot 0x2f0, `+0x8a8`), which empties

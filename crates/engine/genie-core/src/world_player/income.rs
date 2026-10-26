@@ -1,7 +1,7 @@
 //! The income: the trickles, the mills' food, the attribute adds and their sharing, and the
 //! update's tail.
 
-use crate::fmath::at_most_or_unordered;
+use crate::math::fmath::at_most_or_unordered;
 use crate::turn::Turns;
 use crate::world_player::{
     BUILDING_TYPE, COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE,
@@ -26,7 +26,7 @@ impl Turns {
     /// (master 68, [`crate::tracker::Tracker::list`]), each object the world holds whose type is
     /// a building's sums its livestock (`mLivestockSummation`, `+0xc28`, in the list's order from
     /// 0); food grows by attribute 254 over 60 times (`time` times logf(sum / 200 + 1))
-    /// ([`crate::fmath::log`]), with its statistic and its sharing ([`Turns::add_resource`]),
+    /// ([`crate::math::fmath::log`]), with its statistic and its sharing ([`Turns::add_resource`]),
     /// also when that is 0. `time` is the update time before the loop's step.
     pub fn mill_food(&mut self, p: usize, time: f32) {
         let mut sum = 0.0;
@@ -43,7 +43,7 @@ impl Turns {
                 sum += unit.livestock_summation;
             }
         }
-        let grows = crate::fmath::log(sum / LIVESTOCK_SCALE + SECOND);
+        let grows = crate::math::fmath::log(sum / LIVESTOCK_SCALE + SECOND);
         let rate = get(&self.players[p].attributes, attribute::MILL_FOOD) / MINUTE;
         self.add_resource(p, attribute::FOOD, rate * (time * grows), 1, true);
     }

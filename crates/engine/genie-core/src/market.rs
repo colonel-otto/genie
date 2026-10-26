@@ -6,7 +6,7 @@
 //! to 0. Nothing else changes the prices.
 
 use crate::checkpoint::cvttss2si;
-use crate::fmath::{at_most_or_unordered, below_or_unordered, maxss};
+use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
 use crate::turn::Turns;
 
 /// The commodities: food, wood and stone (the commands' only ones) and the ore (attribute
@@ -21,21 +21,21 @@ const GOLD: usize = 3;
 const FEE: usize = 78;
 /// A commodity's price after its net trades came back to 0 (`DAT_142f03164`, `DAT_14330eb8c`,
 /// `DAT_142f0703c`).
-const FOOD_START: f32 = crate::image::market::FOOD_START;
-const WOOD_START: f32 = crate::image::market::WOOD_START;
-const STONE_START: f32 = crate::image::market::STONE_START;
-const ORE_START: f32 = crate::image::market::ORE_START;
+const FOOD_START: f32 = crate::math::image::market::FOOD_START;
+const WOOD_START: f32 = crate::math::image::market::WOOD_START;
+const STONE_START: f32 = crate::math::image::market::STONE_START;
+const ORE_START: f32 = crate::math::image::market::ORE_START;
 /// A trade's growth of the swing (`DAT_142e8c150`), the hundredths of its step
 /// (`DAT_14330ebcc`) and the sign flip of a negative growth (`DAT_14330ec20`).
-const SWING: f32 = crate::image::market::SWING;
-const PERCENT: f32 = crate::image::market::PERCENT;
-const FLIP: f32 = crate::image::market::FLIP;
+const SWING: f32 = crate::math::image::market::SWING;
+const PERCENT: f32 = crate::math::image::market::PERCENT;
+const FLIP: f32 = crate::math::image::market::FLIP;
 /// The price of an attribute no commodity is (`FUN_1415cd3c0`, `DAT_14330ec20`).
-const UNKNOWN_PRICE: f32 = crate::image::market::UNKNOWN_PRICE;
+const UNKNOWN_PRICE: f32 = crate::math::image::market::UNKNOWN_PRICE;
 /// A purchase costs at least this (`DAT_142f66f34`).
-const LEAST_COST: f32 = crate::image::market::LEAST_COST;
+const LEAST_COST: f32 = crate::math::image::market::LEAST_COST;
 /// A sale's gold rounds half up (`DAT_142e7f384`).
-const ROUND: f32 = crate::image::market::ROUND;
+const ROUND: f32 = crate::math::image::market::ROUND;
 
 /// One commodity's state in the world.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

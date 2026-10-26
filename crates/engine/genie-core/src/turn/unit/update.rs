@@ -6,9 +6,9 @@ use crate::build::{Builder, Completion, Site};
 use crate::hunt::{Gatherer, HuntSprites};
 use crate::lifecycle::Class;
 use crate::masters::Master;
+use crate::math::rng::Stream;
 use crate::move_to::MoveTo;
 use crate::movement::{Me, Mover, footprint_gap_squared};
-use crate::rng::Stream;
 use crate::spatial::Spatial;
 use crate::tasks::Actor;
 use crate::turn::unit::{
@@ -97,7 +97,7 @@ impl Unit {
             // RGE_Moving_Object::update: a unit that moves animates at its speed (+0x7b8)
             if let Some(v) = mover.velocity.as_ref() {
                 let [x, y, z] = v.velocity;
-                let speed = crate::fmath::sqrt(x * x + y * y + z * z);
+                let speed = crate::math::fmath::sqrt(x * x + y * y + z * z);
                 if SPEED_EPSILON < speed {
                     self.anim_speed = Some(speed);
                 }
@@ -525,7 +525,9 @@ impl Unit {
                 .find(|u| u.id == worked)
                 .and_then(|u| u.annex_of)
                 .and_then(|m| others.iter().find(|u| u.id == m))
-                .filter(|m| m.life.state == 0 && crate::fmath::at_most_or_unordered(1.0, m.life.hp))
+                .filter(|m| {
+                    m.life.state == 0 && crate::math::fmath::at_most_or_unordered(1.0, m.life.hp)
+                })
             {
                 worked = m.id;
                 main_work = Some(crate::build::MainWork {

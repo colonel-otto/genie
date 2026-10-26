@@ -84,7 +84,7 @@ pub fn repair_building(
     if TREBUCHETS.contains(&set[idx].class) {
         return repair_unit(set, idx, amount, payer);
     }
-    if crate::fmath::below_or_unordered(set[idx].hp, ONE) {
+    if crate::math::fmath::below_or_unordered(set[idx].hp, ONE) {
         return Ok(2);
     }
     if top && let Some(main) = set[idx].main {

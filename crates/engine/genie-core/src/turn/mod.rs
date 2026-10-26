@@ -27,8 +27,8 @@ mod world;
 
 use crate::GenieError;
 use crate::masters::Masters;
+use crate::math::rng::Streams;
 use crate::pathing::Pathing;
-use crate::rng::Streams;
 use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::tasks::DropSite;
@@ -119,12 +119,12 @@ pub(crate) const ATTACKER_MASTER: GenieError =
 
 /// A gate's height (its master's `radius_z`) above this shuts it (`DAT_142eb0c60`); a unit
 /// slower than it counts in a gate only when it is a player's.
-const GATE_EPSILON: f32 = crate::image::turn::GATE_EPSILON;
+const GATE_EPSILON: f32 = crate::math::image::turn::GATE_EPSILON;
 /// A gate's query grows its records and its own box by this (`FUN_1410562d0` with
 /// `DAT_142eb3630`).
-const GATE_GROW: f32 = crate::image::turn::GATE_GROW;
+const GATE_GROW: f32 = crate::math::image::turn::GATE_GROW;
 /// The least height of a shut gate its player opens (`FUN_14162f7e0`, `DAT_14330eb8c`).
-const GATE_SHUT_HEIGHT: f32 = crate::image::turn::GATE_SHUT_HEIGHT;
+const GATE_SHUT_HEIGHT: f32 = crate::math::image::turn::GATE_SHUT_HEIGHT;
 /// The seconds an open gate with nothing in it waits before it shuts (`FUN_1411e7730`'s
 /// immediate `0x3f000000`).
 const GATE_CLOSE_DELAY: f32 = 0.5;
@@ -211,7 +211,7 @@ const VILLAGER_FEMALE: i16 = 0x125;
 /// (`FUN_1411c39b0`, the player's attribute 255).
 const BUILDING_TERRAIN: usize = 255;
 /// A building at most this share of its hit points lets its garrison out (`DAT_142eae8d0`).
-const EJECT_SHARE: f32 = crate::image::turn::EJECT_SHARE;
+const EJECT_SHARE: f32 = crate::math::image::turn::EJECT_SHARE;
 /// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
 pub(crate) const MONASTERY: i16 = 104;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
@@ -233,17 +233,17 @@ const ONE_UNIT_GAME: i32 = 0x10;
 const SEARCH_AGAIN: f32 = -10.0;
 /// `FUN_140ac4670`'s first argument when a hunt's target went on the walk to it, or its `MoveTo`
 /// failed (`DAT_142eb9430`): the hunt searches within this of its point.
-const TREE_SEARCH_WITHIN: f32 = crate::image::turn::TREE_SEARCH_WITHIN;
+const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH_WITHIN;
 /// `FUN_140ac4670`'s second argument when a hunt's Attack failed (`DAT_14330ebb8`): the tree
 /// found counts within this of the unit.
-const TREE_NEAR: f32 = crate::image::hunt::TREE_NEAR;
+const TREE_NEAR: f32 = crate::math::image::hunt::TREE_NEAR;
 /// The notify "Action %d has been invalidated or requires a search." (0x202) with the action's
 /// value: a Build waiting without work posts it ([`BUILD_ACTION`]), a searching Hunt too.
 const SEARCH_NEEDED: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
-const SPEED_EPSILON: f32 = crate::image::turn::SPEED_EPSILON;
+const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).
-const ARMED_FIREPOWER: f32 = crate::image::turn::ARMED_FIREPOWER;
+const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWER;
 
 /// The pasture master whose foundation keeps its snow and whose stack unit depends on the rice
 /// terrain under it (1889).

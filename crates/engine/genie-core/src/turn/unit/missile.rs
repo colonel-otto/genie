@@ -1,6 +1,6 @@
 //! A missile's flight: where it ends, what it hits and where it lands.
 
-use crate::rng::Stream;
+use crate::math::rng::Stream;
 use crate::turn::unit::{Fired, Unit, missed_passes};
 use crate::turn::view::Context;
 use crate::turn::world::{forget_resource, victim_of};

@@ -99,9 +99,9 @@ impl Well512 {
     #[track_caller]
     pub fn float01(&mut self) -> f32 {
         /// The step's scale (`DAT_142ea7c48`).
-        const SCALE: f64 = crate::image::rng::FLOAT_SCALE;
+        const SCALE: f64 = crate::math::image::rng::FLOAT_SCALE;
         /// The top (`DAT_14330eb8c`).
-        const MAX: f32 = crate::image::rng::FLOAT_MAX;
+        const MAX: f32 = crate::math::image::rng::FLOAT_MAX;
         let v = (f64::from(self.raw()) * SCALE) as f32;
         if (0.0..=MAX).contains(&v) {
             v

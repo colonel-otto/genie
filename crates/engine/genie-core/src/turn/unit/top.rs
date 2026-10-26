@@ -92,7 +92,7 @@ impl Unit {
             moving: m
                 .velocity
                 .as_ref()
-                .is_some_and(|v| 0.0 < crate::fmath::length(v.velocity)),
+                .is_some_and(|v| 0.0 < crate::math::fmath::length(v.velocity)),
             waits: m.waiting != 0 && !self.top_action().is_some_and(|a| matches!(a.state, 6 | 7)),
             last_move: m.last_move,
             pause: m.paths.first().map(|l| l.pause_time),

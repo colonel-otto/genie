@@ -73,7 +73,7 @@ pub struct Terrain {
 }
 
 /// A tile's side (`DAT_14330eb8c`), which the slope shares measure against.
-const TILE: f32 = crate::image::terrain::TILE;
+const TILE: f32 = crate::math::image::terrain::TILE;
 
 /// `FUN_140f69470` (HD's `RGE_Map::get_tile_type`): the shape of the tile of elevation `e` from
 /// its neighbours' (`n`orth is `y − 1`, `e`ast `x + 1`; a neighbour off the map counts as the
@@ -407,7 +407,7 @@ impl Terrain {
     /// Never: the tiles it covers are held on the map.
     pub fn cover(&mut self, f: &Foundation) -> Result<(), GenieError> {
         /// `DAT_142eb1e9c`.
-        const INSIDE: f32 = crate::image::terrain::INSIDE;
+        const INSIDE: f32 = crate::math::image::terrain::INSIDE;
         let [x, y, _] = f.position;
         let [cx, cy] = f.clearance;
         let (mut x0, mut y0) = ((x - cx) as i32, (y - cy) as i32);

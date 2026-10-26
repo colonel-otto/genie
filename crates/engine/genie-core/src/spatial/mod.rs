@@ -30,11 +30,11 @@ use self::pather::{WalkTest, record_meets_segment};
 use self::pather::{box_meets_segment, ccw};
 
 /// The range of `ClosestObject`'s reachability check (`FUN_140c488b0`, `DAT_142eb5690`).
-const CLOSEST_RANGE: f32 = crate::image::spatial::CLOSEST_RANGE;
+const CLOSEST_RANGE: f32 = crate::math::image::spatial::CLOSEST_RANGE;
 
 /// How near (squared) a unit AI's search comes to the last one's place to skip its query
 /// (`FUN_140c63e20`).
-const SEARCH_REUSE_SQUARED: f32 = crate::image::spatial::SEARCH_REUSE_SQUARED;
+const SEARCH_REUSE_SQUARED: f32 = crate::math::image::spatial::SEARCH_REUSE_SQUARED;
 
 /// The pasture and livestock classes `ClosestObject` treats apart.
 const PASTURE_CLASS: i32 = 49;

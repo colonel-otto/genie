@@ -1,7 +1,7 @@
 {
  "threshold": 700,
  "files": {
-  "crates/engine/genie-core/src/turn/unit/update.rs": 1706,
+  "crates/engine/genie-core/src/turn/unit/update.rs": 1708,
   "crates/engine/genie-core/src/turn/view/side.rs": 1055
  }
 }

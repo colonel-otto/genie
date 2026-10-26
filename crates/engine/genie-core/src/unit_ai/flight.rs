@@ -1,7 +1,7 @@
 //! The flight of the hunted animals, the boar and the villagers, and their calls for help.
 
 use crate::GenieError;
-use crate::rng::Well512;
+use crate::math::rng::Well512;
 use crate::unit_ai::{
     ATTACK_ACTION, AiMove, BREAK, BUILD_ACTION, CLASS_22, CLASS_KING, CLASS_VILLAGER, DEAD,
     EVADE_EDGE, EVASIVE_NEAR, EXPLORE_ACTION, Effect, FOUNDATION_REACH, GATHER_ACTION, GO_ON,
@@ -103,20 +103,20 @@ impl UnitAi {
             ));
         }
         let reach = at.speed * RUN_REACH;
-        let mut d = crate::fmath::sqrt(vy * vy + vx * vx);
+        let mut d = crate::math::fmath::sqrt(vy * vy + vx * vx);
         if d < RUN_EPSILON {
             let r = ai.rand15() as i32 as f32;
             vx = (r + r) / RUN_DRAW_SCALE - RUN_ONE;
             let r = ai.rand15() as i32 as f32;
             vy = (r + r) / RUN_DRAW_SCALE - RUN_ONE;
-            d = crate::fmath::sqrt(vy * vy + vx * vx);
+            d = crate::math::fmath::sqrt(vy * vy + vx * vx);
         }
         let mut ex = x - (vx / d) * reach;
         let mut ey = y - (vy / d) * reach;
         if at.player != 0 && self.stance == 1 {
             let gx = self.state_position[0] - ex;
             let gy = self.state_position[1] - ey;
-            if RUN_LEASH < crate::fmath::sqrt(gy * gy + gx * gx) {
+            if RUN_LEASH < crate::math::fmath::sqrt(gy * gy + gx * gx) {
                 ex = self.state_position[0] - (vx / d) * RUN_LEASH;
                 ey = self.state_position[1] - (vy / d) * RUN_LEASH;
             }
@@ -147,7 +147,7 @@ impl UnitAi {
         let near = |p: f32, own: f32| {
             if !p.is_nan() {
                 p
-            } else if crate::fmath::at_most_or_unordered(own, EVASIVE_NEAR) {
+            } else if crate::math::fmath::at_most_or_unordered(own, EVASIVE_NEAR) {
                 // COMISS own, 5.0; JBE
                 own + RUN_ONE
             } else {

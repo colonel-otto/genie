@@ -8,15 +8,15 @@ use crate::turn::Turns;
 
 /// A group whose `mGroupFlags` bit 9 is set moves at its slowest member's speed divided by this
 /// (`FUN_14100bcb0`, `DAT_142ed66b4`).
-const SLOW_GROUP_FACTOR: f32 = crate::image::group::SLOW_GROUP_FACTOR;
+const SLOW_GROUP_FACTOR: f32 = crate::math::image::group::SLOW_GROUP_FACTOR;
 /// A member farther than this from its slot leaves the group (`FUN_14100bcb0`'s far test,
 /// `DAT_142e7f38c`).
-const FAR: f32 = crate::image::group::FAR;
+const FAR: f32 = crate::math::image::group::FAR;
 /// The far test's distance in a formation of type 7, or once a member of radius
 /// [`WIDE_RADIUS`] or more came before (`DAT_142ecbff0`).
-const FAR_WIDE: f32 = crate::image::group::FAR_WIDE;
+const FAR_WIDE: f32 = crate::math::image::group::FAR_WIDE;
 /// The radius from which the far test takes [`FAR_WIDE`] (`DAT_142e7f384`).
-const WIDE_RADIUS: f32 = crate::image::group::WIDE_RADIUS;
+const WIDE_RADIUS: f32 = crate::math::image::group::WIDE_RADIUS;
 /// The types of action objects (`RGE_Action_Object`), whose action list slot 0x538 reads.
 const ACTION_KIND: u8 = 40;
 /// The objects of the members' searches a group keeps at most (`FUN_140c65c60`'s `0x46`).
@@ -325,7 +325,7 @@ impl Turns {
             }
             if let Some((p, u)) = self.object(m.id) {
                 let unit = FormationUnit::of(self.master_of(p, u.life.master_id)?);
-                let s = unit.radius * crate::image::group::SPACING_FACTOR;
+                let s = unit.radius * crate::math::image::group::SPACING_FACTOR;
                 if spacing <= s && s != spacing {
                     spacing = s;
                 }
@@ -568,15 +568,16 @@ impl Turns {
         let Some(slot) = f.slots.iter().find(|s| s.unit_id == view.id) else {
             return Ok(false);
         };
-        let mut d = crate::fmath::sub(view.at, slot.transform_position);
+        let mut d = crate::math::fmath::sub(view.at, slot.transform_position);
         d[1] = 0.0;
-        let limit = if f.kind == 7 || !crate::fmath::below_or_unordered(largest, WIDE_RADIUS) {
+        let limit = if f.kind == 7 || !crate::math::fmath::below_or_unordered(largest, WIDE_RADIUS)
+        {
             FAR_WIDE
         } else {
             FAR
         };
-        let gap = crate::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
-        Ok(!crate::fmath::at_most_or_unordered(gap, limit))
+        let gap = crate::math::fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
+        Ok(!crate::math::fmath::at_most_or_unordered(gap, limit))
     }
 
     /// A member inside another object (`+0x2f0`: another object's garrison holds it) stops

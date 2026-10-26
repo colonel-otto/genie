@@ -3,7 +3,7 @@
 //! its arguments' edge cases and seeded draws in the tick oracle's emulator), a header line
 //! (`fuzz ADDR SIG`) and per call the arguments' and the result's bits in hex.
 
-use genie_core::{facing, fmath};
+use genie_core::{facing, math::fmath};
 
 /// A call: the arguments' bits and the result's (None where the call faulted in the emulator).
 type Call = (Vec<u32>, Option<u32>);

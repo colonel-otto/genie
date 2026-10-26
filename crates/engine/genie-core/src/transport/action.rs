@@ -31,8 +31,8 @@ impl TransportAction {
     pub fn start(&mut self, first: bool, ship: &Ship, shore: &mut impl Shore) -> Changed {
         let [x, y, _] = self.point;
         let sails = first
-            && crate::fmath::at_most_or_unordered(0.0, x)
-            && crate::fmath::at_most_or_unordered(0.0, y);
+            && crate::math::fmath::at_most_or_unordered(0.0, x)
+            && crate::math::fmath::at_most_or_unordered(0.0, y);
         self.set_state(if sails { SAIL } else { IDLE }, ship, shore)
     }
 
@@ -111,14 +111,15 @@ impl TransportAction {
         let zone = shore.zone(cvttss2si(x), cvttss2si(y))?;
         let [ux, uy, _] = ship.position;
         // MAXSS 0, gap: the gap when it is not below 0, a NaN gap too
-        let dx = crate::fmath::maxss(0.0, (x - ux).abs() - ship.radius[0]);
-        let dy = crate::fmath::maxss(0.0, (y - uy).abs() - ship.radius[1]);
+        let dx = crate::math::fmath::maxss(0.0, (x - ux).abs() - ship.radius[0]);
+        let dy = crate::math::fmath::maxss(0.0, (y - uy).abs() - ship.radius[1]);
         let near = shore.near(zone as u8, NEAR)?;
-        let within = !crate::fmath::below_or_unordered(UNLOAD_REACH_SQUARED, dy * dy + dx * dx);
+        let within =
+            !crate::math::fmath::below_or_unordered(UNLOAD_REACH_SQUARED, dy * dy + dx * dx);
         let state = if near && within {
             UNLOAD
-        } else if crate::fmath::below_or_unordered(x, 0.0)
-            || crate::fmath::below_or_unordered(y, 0.0)
+        } else if crate::math::fmath::below_or_unordered(x, 0.0)
+            || crate::math::fmath::below_or_unordered(y, 0.0)
         {
             return Ok(Changed::default());
         } else if by_self {

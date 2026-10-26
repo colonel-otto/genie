@@ -11,11 +11,11 @@ use crate::order::BUILDING;
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up
 /// to which an Enter's reach of a target with speed tests the tiles about the two
 /// (`FUN_140a85c30`): `DAT_14330eb8c`, 1.0.
-pub(super) const ENTER_NEAR: f32 = crate::image::garrison::ENTER_NEAR;
+pub(super) const ENTER_NEAR: f32 = crate::math::image::garrison::ENTER_NEAR;
 /// Half a tile (`DAT_142e7f384`, 0.5): what an Enter's meeting point adds to a tile or to a
 /// place before `floorf` (`FUN_140a85f30`), and how far a target leaves its point before the
 /// Enter walks again (`FUN_140a7bd10`).
-pub(super) const HALF_TILE: f32 = crate::image::garrison::HALF_TILE;
+pub(super) const HALF_TILE: f32 = crate::math::image::garrison::HALF_TILE;
 
 /// An Enter whose transport cannot reach where it meets the unit (`set_state(13)` in
 /// `set_state(4)`), which is not modelled.

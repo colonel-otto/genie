@@ -7,7 +7,7 @@
 //! The ignored sweeps run every f32 through a port and through the `libm` crate, which ports the
 //! same msun sources the game links (`cargo test --release -- --ignored`).
 
-use genie_core::fmath;
+use genie_core::math::fmath;
 
 /// Each routine's calls: its name, then per call the inputs and the output as f32 bits.
 fn fixture() -> Vec<(String, Vec<Vec<u32>>)> {

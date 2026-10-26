@@ -3,29 +3,29 @@
 //! (`FUN_141039680`) and the motion's orientation (`FUN_141049e10`).
 
 use crate::GenieError;
-use crate::fmath::{self, Vec3, cross, normalize};
 use crate::group::Motion;
 use crate::group::formation::on_map;
 use crate::group::motion::moved_vector;
+use crate::math::fmath::{self, Vec3, cross, normalize};
 use crate::turn::Turns;
 
 /// The spiral's steps (`FUN_141007630`'s table from `DAT_142f49460` and `DAT_142f49480`), x and y:
 /// up y, up x, down y, down x.
 const SPIRAL: [[f32; 2]; 4] = [
-    crate::image::group::SPIRAL_FIRST[0],
-    crate::image::group::SPIRAL_FIRST[1],
-    crate::image::group::SPIRAL_LAST[0],
-    crate::image::group::SPIRAL_LAST[1],
+    crate::math::image::group::SPIRAL_FIRST[0],
+    crate::math::image::group::SPIRAL_FIRST[1],
+    crate::math::image::group::SPIRAL_LAST[0],
+    crate::math::image::group::SPIRAL_LAST[1],
 ];
 /// The points the spiral tries (`FUN_141007630`'s count from 1 below `0x191`).
 const SPIRAL_POINTS: i32 = 400;
 /// `FUN_141049e10` refuses a forward whose dot product with the up is below this
 /// (`DAT_142f4c1a0`) ...
-const SQUARE_MIN: f32 = crate::image::group::SQUARE_MIN;
+const SQUARE_MIN: f32 = crate::math::image::group::SQUARE_MIN;
 /// ... or above this (`DAT_14330eb78`).
-const SQUARE_MAX: f32 = crate::image::group::SQUARE_MAX;
+const SQUARE_MAX: f32 = crate::math::image::group::SQUARE_MAX;
 /// A group whose members' forwards cancel out and that holds none faces x (`DAT_14330eb8c`).
-const DEFAULT_FORWARD: f32 = crate::image::group::DEFAULT_FORWARD;
+const DEFAULT_FORWARD: f32 = crate::math::image::group::DEFAULT_FORWARD;
 
 /// `FUN_141007630`'s spiral: where it is (x, y), its direction in [`SPIRAL`], its leg's length
 /// and its count of steps (from 1).
@@ -369,10 +369,10 @@ impl Turns {
 
 /// `movePositionToFront`'s share of the spacing (`DAT_142e7f384`; the whole spacing for a
 /// staggered lock) and of the lead's radius.
-const FRONT_SHARE: f32 = crate::image::group::FRONT_SHARE;
+const FRONT_SHARE: f32 = crate::math::image::group::FRONT_SHARE;
 
 /// The first best distance of `movePositionToFront`'s searches (`DAT_14330ebf4`).
-const FARTHEST: f32 = crate::image::group::FARTHEST;
+const FARTHEST: f32 = crate::math::image::group::FARTHEST;
 
 /// `p − q` squared on the ground, the height difference zeroed (`FUN_14087e560`, then
 /// `x² + 0 + y²`).

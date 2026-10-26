@@ -2,8 +2,8 @@
 //! building a death makes.
 
 use crate::lifecycle::{Class, Lifecycle};
+use crate::math::rng::Stream;
 use crate::movement::Mover;
-use crate::rng::Stream;
 use crate::spatial::{Obstruction, Placed};
 use crate::spawn::{
     BUILDING, Facing, NOT_MOVING, Placing, Site, TRIBE_COMBAT, WALL, WorldMap, corner_tiles,

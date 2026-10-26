@@ -1727,7 +1727,7 @@ fn coast_world(ship: [f32; 2]) -> Turns {
 /// the Object stream) where a unit of radius 0.2 stands on the land (x 15 and up) and clear
 /// of the ship.
 fn ashore(t: &mut Turns, center: [f32; 2], radius: f32) -> [f32; 2] {
-    let mut r = t.streams.get(crate::rng::Stream::Object).clone();
+    let mut r = t.streams.get(crate::math::rng::Stream::Object).clone();
     let gap = radius + (0.2 + 0.01);
     let along = |r: u32, c: f32| ((r as f32 * (radius + radius)) / 32767.0 - radius) + c;
     let mut place = [0.0; 2];
@@ -1865,7 +1865,7 @@ fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
         .iter()
         .position(|u| u.id == 200)
         .unwrap();
-    let mut action = t.streams.get(crate::rng::Stream::Action).clone();
+    let mut action = t.streams.get(crate::math::rng::Stream::Action).clone();
     t.transport_unload(1, idx).unwrap();
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
     // the first draws: from the old point (15.5, 10.5), r / 0xccc tiles less 5

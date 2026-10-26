@@ -136,7 +136,7 @@ impl BuildAction {
         mut builder: Builder<'_>,
         step: &mut BuildStep,
     ) -> Result<(), GenieError> {
-        if crate::fmath::below_or_unordered(self.timer, 0.0) {
+        if crate::math::fmath::below_or_unordered(self.timer, 0.0) {
             self.timer += walk.dt;
             if self.timer < 0.0 {
                 return Ok(());

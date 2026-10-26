@@ -241,8 +241,8 @@ impl PointLine {
 
 /// The 3D distance between two stored points (`FUN_14087e560`, `FUN_14099ef70`).
 fn stretch(a: &LinePoint, b: &LinePoint) -> f32 {
-    let d = crate::fmath::sub(a.point, b.point);
-    crate::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
+    let d = crate::math::fmath::sub(a.point, b.point);
+    crate::math::fmath::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
 }
 
 /// The members of one formation category (`FUN_141023570`).

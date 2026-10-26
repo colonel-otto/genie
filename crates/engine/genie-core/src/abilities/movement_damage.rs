@@ -7,7 +7,7 @@ use crate::abilities::{
 use crate::damage::Victim;
 use crate::masters::Task;
 use crate::turn::Turns;
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 /// A movement damage task's timer (`+0x9a4`, `0x141207758`): above 0 (not a NaN) it runs down by
 /// the world's dt, never below 0. The task hits once it is at most 0 (`COMISS 0, t` / `JC`: a

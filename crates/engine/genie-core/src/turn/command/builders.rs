@@ -2,8 +2,8 @@
 //! and the build command.
 
 use crate::build::{BUILD, BuildAction, BuildTask};
+use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
-use crate::rng::Stream;
 use crate::tasks::{Actor, TaskTarget};
 use crate::turn::command::{FOUNDATION_GONE, NO_BUILD_TASK};
 use crate::turn::view::Wait;
@@ -45,7 +45,7 @@ impl Turns {
             let m = self.master_of(q, unit.life.master_id)?;
             let speed = m.moving.map_or(0.0, |s| s.speed);
             let kind = m.kind;
-            let moves = 0x1d < kind && crate::fmath::below_or_unordered(0.0, speed);
+            let moves = 0x1d < kind && crate::math::fmath::below_or_unordered(0.0, speed);
             if !moves && !queued {
                 continue;
             }

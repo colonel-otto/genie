@@ -30,11 +30,11 @@ pub(super) const fn tech_time_mode(mode: i16) -> Option<u8> {
 
 /// 1.0, 2.0 and 3.0 (`DAT_14330eb8c`, `DAT_142e8c150`, `DAT_142eb1c98`): a state change's values
 /// (kind 8's mode 12): 0 disables, 1 makes it unavailable, 2 available and enabled, 3 researched.
-pub(super) const STATE_UNAVAILABLE: f32 = crate::image::effect::STATE_UNAVAILABLE;
-pub(super) const STATE_AVAILABLE: f32 = crate::image::effect::STATE_AVAILABLE;
-pub(super) const STATE_RESEARCHED: f32 = crate::image::effect::STATE_RESEARCHED;
+pub(super) const STATE_UNAVAILABLE: f32 = crate::math::image::effect::STATE_UNAVAILABLE;
+pub(super) const STATE_AVAILABLE: f32 = crate::math::image::effect::STATE_AVAILABLE;
+pub(super) const STATE_RESEARCHED: f32 = crate::math::image::effect::STATE_RESEARCHED;
 /// −1.0 (`DAT_14330ec20`): a research time without a `.dat` location, and a set's "none".
-pub(super) const NO_TIME: f32 = crate::image::effect::NO_TIME;
+pub(super) const NO_TIME: f32 = crate::math::image::effect::NO_TIME;
 
 impl Turns {
     /// `FUN_1415c3f20`'s technology change (kind 8, its `0x6f` case) for player `p`'s technology
@@ -215,7 +215,7 @@ impl Turns {
             let short = |x: f32| f32::from(crate::checkpoint::cvttss2si(x) as i16);
             let adjustment = match mode {
                 2 => {
-                    let half = if crate::fmath::below_or_unordered(v, ONE) {
+                    let half = if crate::math::fmath::below_or_unordered(v, ONE) {
                         -ROUND
                     } else {
                         ROUND

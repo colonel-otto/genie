@@ -27,7 +27,7 @@ pub(crate) struct Shelters {
 }
 /// A building takes units in only above this share of its master's hit points (`FUN_14120eb10`,
 /// in doubles).
-pub(super) const LEAST_HP_SHARE: f64 = crate::image::garrison::LEAST_HP_SHARE;
+pub(super) const LEAST_HP_SHARE: f64 = crate::math::image::garrison::LEAST_HP_SHARE;
 
 impl Turns {
     /// `UNIT_ORDER`'s garrison (action 5) on `target`, which the world holds (`FUN_140e7f200`; the
@@ -169,7 +169,7 @@ impl Turns {
             let (o_at, o_radius) = self.ground(id)?;
             // COMISS NEARBY, gap; JC: a gap above it, or a NaN, is out
             let gap = footprint_gap_squared(o_at, o_radius, at, radius);
-            if crate::fmath::below_or_unordered(NEARBY, gap) {
+            if crate::math::fmath::below_or_unordered(NEARBY, gap) {
                 continue;
             }
             let om = self.master_of(op, o.life.master_id)?;
@@ -205,7 +205,7 @@ impl Turns {
     /// left its nearest shelter. The count is the one of the count list at the pair's index
     /// (the list holds what its caller pushed, in its own order: an index into it need not be
     /// its shelter's), which each taker raises. The shelters go in a hash map by id
-    /// (`FUN_1415f0c40`), whose order ([`crate::msvc::unordered_map_order`]) the next part
+    /// (`FUN_1415f0c40`), whose order ([`crate::math::msvc::unordered_map_order`]) the next part
     /// follows ([`Turns::shelter_in`]). Not modelled: the groups the splitter forms.
     pub(crate) fn shelter(
         &mut self,
@@ -270,7 +270,7 @@ impl Turns {
                 }
             }
         }
-        crate::msvc::sort(
+        crate::math::msvc::sort(
             &mut pairs,
             &|a: (usize, usize, f32), b: (usize, usize, f32)| a.2 < b.2,
         );
@@ -297,7 +297,7 @@ impl Turns {
                 taken[i] = true;
             }
         }
-        for building in crate::msvc::unordered_map_order(first_taken) {
+        for building in crate::math::msvc::unordered_map_order(first_taken) {
             let j = all
                 .iter()
                 .position(|&b| b == building)

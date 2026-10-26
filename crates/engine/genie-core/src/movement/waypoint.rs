@@ -1,6 +1,6 @@
 //! A reached waypoint and what follows it: the next waypoint, a level's end and the moving state.
 
-use crate::fmath::Vec3;
+use crate::math::fmath::Vec3;
 use crate::movement::{
     CLOSE, EPSILON, Goal, LOOK_AHEAD, Me, Motion, Mover, Next, PathData, RANGE_FLOOR,
     STRAIGHT_GROW, TARGET_SHORT_REACH, drop_edge_waypoints, footprint_gap, gate_gap, looping_next,
@@ -8,7 +8,7 @@ use crate::movement::{
 };
 use crate::pathing::Pathing;
 use crate::spatial::Spatial;
-use crate::{GenieError, fmath};
+use crate::{GenieError, math::fmath};
 
 impl Mover {
     /// The waypoint the level walks to was reached (`LAB_14115136c`, the level's bit 0): with

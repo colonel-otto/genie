@@ -173,7 +173,7 @@ impl Construction {
             }
         }
         // COMISS: a NaN hit point count is not worked on either
-        if site.life.state != 0 || crate::fmath::below_or_unordered(site.life.hp, 1.0) {
+        if site.life.state != 0 || crate::math::fmath::below_or_unordered(site.life.hp, 1.0) {
             return Ok(Worked::Done);
         }
         let c = &mut *site.construction;
@@ -212,7 +212,7 @@ impl Construction {
         *hp = if hit_points < new { hit_points } else { new };
         let before = self.progress;
         self.progress = amount + before;
-        crate::fmath::at_most_or_unordered(build_time, amount + before)
+        crate::math::fmath::at_most_or_unordered(build_time, amount + before)
     }
 
     /// The construction completes: the building's `set_state(2)` (`FUN_1411dbb70` from state 0;

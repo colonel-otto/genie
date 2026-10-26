@@ -1,7 +1,7 @@
 //! The path's points: the tiles a node's path crosses into and aims at, traced back from the
 //! goal.
 
-use crate::fmath::Vec3;
+use crate::math::fmath::Vec3;
 use crate::tile_path::{E, HALF, N, Planner, S, W};
 
 impl Planner {

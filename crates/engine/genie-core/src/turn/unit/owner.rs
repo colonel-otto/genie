@@ -2,8 +2,8 @@
 
 use crate::build::BUILD;
 use crate::masters::Masters;
+use crate::math::rng::{Stream, Well512};
 use crate::move_to::{MoveTo, MoveToAction};
-use crate::rng::{Stream, Well512};
 use crate::sprite::Graphic;
 use crate::turn::unit::{UNPACKED_TREBUCHET, Unit};
 use crate::turn::view::Context;
@@ -86,7 +86,7 @@ impl Unit {
         }
         let top = self.top_action_kind().map_or(-1, i32::from);
         let trading = top == TRADE_ACTION
-            && crate::fmath::below_or_unordered(0.0, self.life.amount)
+            && crate::math::fmath::below_or_unordered(0.0, self.life.amount)
             && self.life.attribute_type != -1;
         if class != LIVESTOCK
             && !trading

@@ -31,7 +31,7 @@ impl Turns {
                 Some((target, class)),
                 point,
                 clears,
-                self.streams.get(crate::rng::Stream::Ai),
+                self.streams.get(crate::math::rng::Stream::Ai),
             )?;
             self.remember_order(player, idx, (ENTER_ORDER, ENTER_ACTION))?;
         }
@@ -211,7 +211,7 @@ impl Turns {
             unit.shows_standing_sprite(
                 masters,
                 &self.graphics,
-                self.streams.get(crate::rng::Stream::Sprite),
+                self.streams.get(crate::math::rng::Stream::Sprite),
             )?;
             let state = unit.life.state;
             if let Some(ai) = unit.ai.as_mut() {
@@ -313,7 +313,7 @@ impl Turns {
             pathing: &mut self.pathing,
             now: self.world_time,
             computer: self.players[tp].computer,
-            object: self.streams.get(crate::rng::Stream::Object),
+            object: self.streams.get(crate::math::rng::Stream::Object),
             construction_rate: self.players[tp].construction_rate,
             groups: &self.groups,
         };
@@ -370,7 +370,7 @@ impl Turns {
                 masters: self.masters.get(player),
                 target_masters: self.masters.get(tp),
                 graphics: &self.graphics,
-                sprite_rng: self.streams.get(crate::rng::Stream::Sprite),
+                sprite_rng: self.streams.get(crate::math::rng::Stream::Sprite),
                 drop_sites: &self.drop_sites,
                 attributes: &owner.attributes,
                 civ: owner.civ,
@@ -438,7 +438,7 @@ impl Turns {
                 masters: Some(masters),
                 target_masters: self.masters.get(tp),
                 graphics: &self.graphics,
-                sprite_rng: self.streams.get(crate::rng::Stream::Sprite),
+                sprite_rng: self.streams.get(crate::math::rng::Stream::Sprite),
                 drop_sites: &self.drop_sites,
                 attributes: &owner.attributes,
                 civ: owner.civ,
