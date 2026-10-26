@@ -1477,3 +1477,131 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
     t.withdraw_tech(0, 1640, 0).unwrap();
     assert_eq!(t.players[0].techs[0].state, 0);
 }
+
+/// The sprite part of `FUN_141614f40` after a change of the standing sprite (attribute 71) of
+/// master 4: its idle unit without actions shows the new standing sprite (slot 0x68); one whose
+/// idle variant is 1 keeps its sprite (it shows the second standing sprite, 72); one with
+/// actions leaves its sprite to them (an Explore's slot 0x50 does nothing).
+#[test]
+fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
+    use crate::objects::sprite::{ActiveSprite, Graphic};
+    let graphic = |id| Graphic {
+        id,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let mut rng = crate::math::rng::Well512::default();
+    let mut shown = |id, variant| {
+        let mut u = unit_of(id, 4, 30.0);
+        u.sprite = Some(ActiveSprite::start(graphic(300), &mut rng));
+        u.idle_variant = variant;
+        u
+    };
+    let mut exploring = shown(3, 0);
+    exploring.explore = Some(crate::movement::explore::ExploreAction::new([5.0, 5.0, 0.0]).0);
+    let player = Player {
+        objects: vec![shown(1, 0), shown(2, 1), exploring],
+        ..Player::default()
+    };
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    t.masters = vec![Masters::new([Master {
+        standing_sprite: 300,
+        ..combat(4, 6, 60)
+    }])];
+    t.graphics = [(300, graphic(300)), (301, graphic(301))]
+        .into_iter()
+        .collect();
+    t.load_trackers();
+    t.do_effect(0, &[attribute(0, 4, -1, 71, 301.0)], None)
+        .unwrap();
+    let sprite = |i: usize| {
+        t.players[0].objects[i]
+            .sprite
+            .as_ref()
+            .map(|s| s.graphic.id)
+    };
+    assert_eq!(t.masters[0].get(4).map(|m| m.standing_sprite), Some(301));
+    // the unit with an action leaves its sprite to the action (an Explore holds none)
+    assert_eq!(
+        (sprite(0), sprite(1), sprite(2)),
+        (Some(301), Some(300), Some(300))
+    );
+}
+
+/// `FUN_14165a400`'s records around a master's change: the height (32) of a house master
+/// takes each built house's record off first (`FUN_14165b510`) and gives it again after when
+/// the master stands (`FUN_1411c3f70`): from 0 to 2 the house gains its wall record, back to 0
+/// it has none; an obstruction type's change (78) to another gives the record again with the
+/// new kind. A hero status (40) of a unit in a group is not modelled; one outside a group
+/// changes.
+#[test]
+fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
+    let mut house = unit_of(1, 70, 550.0);
+    house.position = [5.5, 5.5, 0.0];
+    house.construction = Some(built());
+    let mut soldier = unit_of(2, 4, 30.0);
+    soldier.group.id = 7;
+    let player = Player {
+        objects: vec![house, soldier],
+        ..Player::default()
+    };
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
+    t.masters = vec![Masters::new([
+        combat(4, 6, 60),
+        Master {
+            id: 70,
+            kind: 80,
+            class: 3,
+            hit_points: 550,
+            radius: [0.5, 0.5],
+            obstruction_type: 2,
+            obstruction_class: 2,
+            ..Master::default()
+        },
+    ])];
+    t.spatial = crate::map::spatial::Spatial::new([10, 10]);
+    t.spatial.insert(
+        1,
+        crate::map::spatial::Placed {
+            position: [5.5, 5.5, 0.0],
+            radius: [0.5, 0.5],
+            class: 3,
+            player: 0,
+            master: 70,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t.load_trackers();
+    let record = |t: &World| t.spatial.get(1).and_then(|p| p.obstruction);
+    t.do_effect(0, &[attribute(0, 70, -1, 32, 2.0)], None)
+        .unwrap();
+    assert_eq!(
+        record(&t),
+        Some(crate::map::spatial::Obstruction { kind: 2, class: 2 })
+    );
+    t.do_effect(0, &[attribute(0, 70, -1, 78, 3.0)], None)
+        .unwrap();
+    assert_eq!(
+        record(&t),
+        Some(crate::map::spatial::Obstruction { kind: 3, class: 2 })
+    );
+    t.do_effect(0, &[attribute(0, 70, -1, 32, 0.0)], None)
+        .unwrap();
+    assert_eq!(record(&t), None);
+    assert!(
+        t.do_effect(0, &[attribute(0, 4, -1, 40, 1.0)], None)
+            .is_err()
+    );
+    t.players[0].objects[1].group.id = -1;
+    t.do_effect(0, &[attribute(0, 4, -1, 40, 1.0)], None)
+        .unwrap();
+}

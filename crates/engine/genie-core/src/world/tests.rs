@@ -2072,10 +2072,23 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
     assert!(t.order_on_target(1, 0, order(9175)).is_err());
 }
 
+/// [`placeable`]'s map with its tiles (class 4, open), on which the walker's restriction 7
+/// lets a unit stand anywhere: the spatial table starts empty.
+pub(crate) fn open_map(t: &mut World) {
+    t.spatial = Spatial::with_tiles(
+        [120, 120],
+        crate::map::spatial::Tiles::new(120, 120, vec![4; 120 * 120]),
+    );
+    placeable(t);
+    if let Some(terrain) = t.spatial.terrain.as_mut() {
+        terrain.restrictions = vec![vec![1.0]; 8];
+    }
+}
+
 /// [`sent_off_world`] with its villager the forager 120 (a Gather task on class 7 for food,
 /// dropping at the town centre 109, as the drop-site table has it), Gaia's berry bushes 600 and
-/// 601 (master 59, class 7) and player 1's town centre 700, all placed on [`placeable`]'s map;
-/// the villager can move.
+/// 601 (master 59, class 7) and player 1's town centre 700, all placed on [`open_map`]; the
+/// villager can move.
 pub(crate) fn forage_world() -> World {
     let mut t = sent_off_world(vec![]);
     for masters in &mut t.masters {
@@ -2139,15 +2152,7 @@ pub(crate) fn forage_world() -> World {
     });
     t.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
     t.players[1].objects[0].life.master_id = 120;
-    t.spatial = Spatial::with_tiles(
-        [120, 120],
-        crate::map::spatial::Tiles::new(120, 120, vec![4; 120 * 120]),
-    );
-    placeable(&mut t);
-    if let Some(terrain) = t.spatial.terrain.as_mut() {
-        // the walker's restriction 7 lets it stand anywhere
-        terrain.restrictions = vec![vec![1.0]; 8];
-    }
+    open_map(&mut t);
     let placed = |x: f32, class, player, master, radius| Placed {
         position: [x, 89.5, 0.0],
         radius,
@@ -2311,6 +2316,49 @@ fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
     t.order_work(1, 0, &work).unwrap();
     assert_eq!(carries(&t), carrying);
     assert_eq!(t.players[0].objects[0].workers, 0);
+}
+
+/// The work command without a task (`FUN_14106ff70`'s move): the forager sent to its town
+/// centre empty-handed (no task on class 3) is told of the move (order 0x2c6, the centre with
+/// its class) and walks to the centre; sent to a point it walks there; in state 1 it is told of
+/// no order (−1) and stays; a master that does not move does nothing.
+#[test]
+fn a_work_command_without_a_task_moves_the_unit_there() {
+    let work = |target| crate::orders::Work {
+        target,
+        point: [20.0, 89.5, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    let mut t = forage_world();
+    t.order_work(1, 0, &work(700)).unwrap();
+    let v = &t.players[1].objects[0];
+    assert!(v.move_to.is_some());
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (crate::unit_ai::MOVE_ORDER, crate::unit_ai::MOVE_ACTION, 700)
+    );
+    let mut t = forage_world();
+    t.order_work(1, 0, &work(-1)).unwrap();
+    let v = &t.players[1].objects[0];
+    assert!(v.move_to.is_some());
+    assert_eq!(
+        v.ai.as_ref().map(|ai| ai.current_order),
+        Some(crate::unit_ai::MOVE_ORDER)
+    );
+    let mut t = forage_world();
+    t.players[1].objects[0].life.state = 1;
+    t.order_work(1, 0, &work(700)).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.move_to, None);
+    assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(-1));
+    let mut t = forage_world();
+    t.masters[1].get_mut(120).unwrap().moving = None;
+    let before = t.players[1].objects[0].clone();
+    t.order_work(1, 0, &work(700)).unwrap();
+    assert_eq!(t.players[1].objects[0].move_to, before.move_to);
 }
 
 /// A move toward an object while gathering (`FUN_140a97730`, the Gather's slot 0x40,
@@ -2732,9 +2780,400 @@ fn an_explored_map_leaves_the_auto_scout_nothing_to_seek() {
     assert_eq!(found, Some(None));
 }
 
+/// The unit AI's `ClosestResourceObject` from the forager's side (`FUN_140c49760`,
+/// [`UnitSide::closest_resource`]): of the bushes (gather group 2, gathering by themselves) the
+/// nearer, 600; passing over its current target the other; from its town centre as the drop
+/// site the one nearer the centre; none below the state asked for.
+///
+/// [`UnitSide::closest_resource`]: crate::unit_ai::UnitSide::closest_resource
+#[test]
+fn the_unit_ai_s_resource_search_finds_the_nearest_bush_it_reaches() {
+    use crate::unit_ai::{NO_POINT, ResourceSearch};
+    let mut t = forage_world();
+    for masters in &mut t.masters {
+        let bush = masters.get_mut(59).unwrap();
+        (bush.auto_gather, bush.gather_group) = (true, 2);
+        // the walk reaches the forager's line of sight plus 5 tiles: 601 lies 7 away
+        masters.get_mut(120).unwrap().line_of_sight = 4.0;
+    }
+    let search = |t: &mut World, s: ResourceSearch| {
+        let mut found = None;
+        t.run_unit_ai((1, 0), |_, _, side, _, _| {
+            found = Some(side.closest_resource(s)?);
+            Ok(Vec::new())
+        })
+        .unwrap();
+        found.unwrap().map(|g| (g.id, g.class))
+    };
+    let any = ResourceSearch {
+        kind: 2,
+        cap: -1,
+        site: -1,
+        current: -1,
+        point: NO_POINT,
+        min_state: 2,
+    };
+    assert_eq!(search(&mut t, any), Some((600, 7)));
+    assert_eq!(
+        search(
+            &mut t,
+            ResourceSearch {
+                current: 600,
+                ..any
+            }
+        ),
+        Some((601, 7))
+    );
+    assert_eq!(
+        search(&mut t, ResourceSearch { site: 700, ..any }),
+        Some((600, 7))
+    );
+    assert_eq!(
+        search(&mut t, ResourceSearch { site: 4444, ..any }),
+        Some((600, 7))
+    );
+    assert_eq!(
+        search(
+            &mut t,
+            ResourceSearch {
+                min_state: 3,
+                ..any
+            }
+        ),
+        None
+    );
+}
+
+/// [`forage_world`] with player 1's mule cart 750 (master 1808: a building of a task of action
+/// type 0x99 on class 7, berries) at (24.5, 89.5), moving and with a unit AI; the bushes gather
+/// by themselves as group 1.
+fn cart_world() -> World {
+    let mut t = forage_world();
+    for masters in &mut t.masters {
+        let bush = masters.get_mut(59).unwrap();
+        (bush.auto_gather, bush.gather_group) = (true, 1);
+        let cart = Master {
+            id: 1808,
+            kind: 80,
+            class: 3,
+            radius: [0.5, 0.5],
+            line_of_sight: 4.0,
+            moving: Some(crate::gathering::hunt::tests::walker().stats),
+            tasks: vec![crate::objects::masters::Task {
+                action_type: crate::construction::build::CART_TASK,
+                object_group: 7,
+                ..crate::objects::masters::Task::default()
+            }],
+            ..Master::default()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([cart]));
+    }
+    t.players[1].objects.push(Unit {
+        id: 750,
+        position: [24.5, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 100.0,
+            master_id: 1808,
+            ..Lifecycle::default()
+        },
+        mover: Some(crate::gathering::hunt::tests::walker()),
+        ai: Some(UnitAi {
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            ..UnitAi::default()
+        }),
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    });
+    t.spatial.insert(
+        750,
+        Placed {
+            position: [24.5, 89.5, 0.0],
+            radius: [0.5, 0.5],
+            class: 3,
+            player: 1,
+            master: 1808,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t
+}
+
+/// The mule cart's own search (slot 0x1e8, `FUN_140c16240`): its task's class 7 names gather
+/// group 1, searched from the cart as the drop site; the nearer bush by the footprints' gap
+/// with its place. Without its movement state the search is not modelled; without a task of
+/// a known class it finds none (its own place).
+#[test]
+fn a_mule_cart_finds_the_nearest_resource_of_its_task_s_class() {
+    let mut t = cart_world();
+    assert_eq!(t.cart_find(1, 3), Ok((600, [32.5, 89.5, 0.0])));
+    let mut t = cart_world();
+    t.masters[1].get_mut(1808).unwrap().tasks[0].object_group = 99;
+    assert_eq!(t.cart_find(1, 3), Ok((-1, [24.5, 89.5, 0.0])));
+    let mut t = cart_world();
+    t.players[1].objects[3].mover = None;
+    assert!(t.cart_find(1, 3).is_err());
+}
+
+/// [`forage_world`] with the house's foundation 10028 placed (radii 1) and the forager standing
+/// on its footprint at (30, 88.5).
+fn footprint_world() -> World {
+    let mut t = forage_world();
+    t.spatial.insert(
+        10028,
+        Placed {
+            position: [30.0, 88.0, 0.0],
+            radius: [1.0, 1.0],
+            class: 3,
+            player: 1,
+            master: 70,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t.players[1].objects[0].position = [30.0, 88.5, 0.0];
+    t.spatial.set_position(9175, [30.0, 88.5, 0.0]);
+    t
+}
+
+/// `FUN_14123bb20`'s sending off of the units on a new foundation's footprint: the idle forager
+/// standing there hears notify 0x216 with the foundation master's radii in hundredths and the
+/// foundation; a bush (without a unit AI), an object the world does not hold, a unit at work
+/// on the foundation, one walking and one moving off already are passed over.
+#[test]
+fn the_units_on_a_new_foundation_are_sent_off_it() {
+    let sent = |t: &World| {
+        t.players[1].objects[0]
+            .ai
+            .as_ref()
+            .unwrap()
+            .notifies
+            .iter()
+            .filter(|n| n.kind == crate::unit_ai::SENT_OFF)
+            .map(|n| n.p)
+            .collect::<Vec<_>>()
+    };
+    let mut t = footprint_world();
+    t.evacuate(10028, &[9175, 600, 4444]).unwrap();
+    assert_eq!(sent(&t), [[100, 100, 10028]]);
+    let mut t = footprint_world();
+    t.players[1].objects[0].anim_speed = Some(1.0);
+    t.evacuate(10028, &[9175]).unwrap();
+    assert_eq!(sent(&t), Vec::<[i32; 3]>::new());
+    let mut t = footprint_world();
+    t.players[1].objects[0].ai.as_mut().unwrap().current_action = crate::unit_ai::MOVE_ASIDE_ACTION;
+    t.evacuate(10028, &[9175]).unwrap();
+    assert_eq!(sent(&t), Vec::<[i32; 3]>::new());
+    let mut t = footprint_world();
+    t.order_work(
+        1,
+        0,
+        &crate::orders::Work {
+            target: 10028,
+            point: [30.0, 88.0, 0.0],
+            carry_test: false,
+            filter: -1,
+            notified: true,
+        },
+    )
+    .unwrap();
+    t.evacuate(10028, &[9175]).unwrap();
+    assert_eq!(sent(&t), Vec::<[i32; 3]>::new());
+    assert!(t.evacuate(4444, &[9175]).is_err());
+}
+
+/// `FUN_14123bb20`'s owner's units of a formation category on the footprint go together
+/// (`FUN_1411566b0` with 1, then `FUN_1416123a0`): the farthest free spot beside the footprint
+/// from the first, and the forager the splitter leaves loose takes the action of moving off a
+/// footprint (`0x2bf`) and moves there, so it hears no notify `0x21b`.
+#[test]
+fn a_formation_s_units_on_a_new_foundation_move_off_together() {
+    let mut t = footprint_world();
+    for masters in &mut t.masters {
+        masters.get_mut(120).unwrap().formation_category = 1;
+    }
+    t.evacuate(10028, &[9175]).unwrap();
+    let v = &t.players[1].objects[0];
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(ai.current_action, crate::unit_ai::MOVE_ASIDE_ACTION);
+    assert!(
+        ai.notifies
+            .iter()
+            .all(|n| n.kind != crate::unit_ai::SENT_OFF_GROUP)
+    );
+    assert!(v.move_to.is_some());
+}
+
+/// A built castle's death outside its update (`FUN_1411dbb70` to state 3 from 2,
+/// [`World::set_state`]): the population headroom its storage gave leaves its owner (mode 4),
+/// the castle count (attribute 134) falls by one, not below 0, and it goes to state 3. A
+/// computer player's building, or one with units inside, is not modelled.
+#[test]
+fn a_built_castle_s_death_takes_its_headroom_and_its_count() {
+    let castle = Master {
+        id: 82,
+        kind: 80,
+        class: 3,
+        radius: [2.0, 2.0],
+        hit_points: 4800,
+        storage: vec![(4, 20.0, 4)],
+        building: Some(crate::objects::masters::BuildingMaster {
+            tech: -1,
+            foundation_terrain: -1,
+            stack_unit: -1,
+            head_unit: -1,
+            transform_unit: -1,
+            annexes: [-1; 4],
+            ..crate::objects::masters::BuildingMaster::default()
+        }),
+        ..Master::default()
+    };
+    let world = |count: f32| {
+        let mut attributes = vec![0.0; 250];
+        attributes[4] = 25.0;
+        attributes[134] = count;
+        let mut t = World::new(
+            0,
+            1,
+            0,
+            vec![0, 0],
+            vec![
+                Player::default(),
+                Player {
+                    objects: vec![Unit {
+                        id: 900,
+                        position: [50.0, 50.0, 0.0],
+                        life: Lifecycle {
+                            state: 2,
+                            hp: 4800.0,
+                            master_id: 82,
+                            ..Lifecycle::default()
+                        },
+                        pasture: -1,
+                        my_pasture: -1,
+                        ..Unit::default()
+                    }],
+                    attributes,
+                    ..Player::default()
+                },
+            ],
+        );
+        t.masters = vec![Masters::default(), Masters::new([castle.clone()])];
+        t
+    };
+    let mut t = world(1.0);
+    t.set_state(1, 900, 3).unwrap();
+    let p = &t.players[1];
+    assert_eq!((p.attributes[4], p.attributes[134]), (5.0, 0.0));
+    assert_eq!(p.objects[0].life.state, 3);
+    let mut t = world(0.0);
+    t.set_state(1, 900, 3).unwrap();
+    assert_eq!(t.players[1].attributes[134], 0.0);
+    let mut t = world(1.0);
+    t.players[1].computer = true;
+    assert!(t.set_state(1, 900, 3).is_err());
+    let mut t = world(1.0);
+    t.players[1].objects[0].garrison = vec![5];
+    assert!(t.set_state(1, 900, 3).is_err());
+}
+
+/// The load's shape mesh (`RGE_Static_Object::rehook` per object): a standing house of a tall
+/// master with an obstruction kind and class takes its shape; a dead one (state 7), one inside
+/// another, a desolid foundation, an object the spatial table lacks and one whose master lacks
+/// a kind or class take none.
+#[test]
+fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
+    let house = |id, state, inside, desolid: bool, master| Unit {
+        id,
+        position: [10.5, 10.5, 0.0],
+        life: Lifecycle {
+            state,
+            master_id: master,
+            inside,
+            ..Lifecycle::default()
+        },
+        construction: desolid.then_some(Construction {
+            progress: 0.0,
+            desolid: true,
+            builders: 0,
+            hit_points: 550,
+            build_time: 25,
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
+            snow: false,
+            sprite_override: false,
+            started: false,
+        }),
+        ..Unit::default()
+    };
+    let mut t = World::new(
+        0,
+        1,
+        0,
+        vec![0],
+        vec![Player {
+            objects: vec![
+                house(1, 2, None, false, 70),
+                house(2, 7, None, false, 70),
+                house(3, 2, Some(1), false, 70),
+                house(4, 0, None, true, 70),
+                house(5, 2, None, false, 70),
+                house(6, 2, None, false, 71),
+            ],
+            ..Player::default()
+        }],
+    );
+    let master = |id, obstruction_class| Master {
+        id,
+        kind: 80,
+        class: 3,
+        radius: [1.0, 1.0],
+        tall: true,
+        obstruction_type: 2,
+        obstruction_class,
+        ..Master::default()
+    };
+    t.masters = vec![Masters::new([master(70, 2), master(71, 0)])];
+    t.spatial = Spatial::new([40, 40]);
+    for id in [1, 2, 3, 4, 6] {
+        t.spatial.insert(
+            id,
+            Placed {
+                position: [10.5, 10.5, 0.0],
+                radius: [1.0, 1.0],
+                class: 3,
+                player: 0,
+                master: 70,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+    }
+    t.build_mesh();
+    let shaped: Vec<i32> = (1..=6)
+        .filter(|&id| t.pathing.shape(id).is_some())
+        .collect();
+    assert_eq!(shaped, [1]);
+}
+
 /// [`sent_off_world`] with its villager the hunter 122 (task 110 on class 9 within 0.5,
 /// dropping at the town centre 109), Gaia's deer 500 and 501 (master 65, class 9) and player 1's
-/// town centre 700, all placed; the villager can move.
+/// town centre 700, all placed on [`open_map`]; the villager can move.
 pub(crate) fn hunt_world() -> World {
     let mut t = sent_off_world(vec![]);
     for masters in &mut t.masters {
@@ -2792,6 +3231,7 @@ pub(crate) fn hunt_world() -> World {
         my_pasture: -1,
         ..Unit::default()
     });
+    open_map(&mut t);
     let placed = |x: f32, class, player, master, radius| Placed {
         position: [x, 89.5, 0.0],
         radius,
@@ -2885,6 +3325,489 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         (-1, 700, 8, [-1.0; 3], 3)
     );
     assert_eq!(t.players[1].objects[2].workers, 1);
+}
+
+/// Runs `f` on object `i` of player `p` with its Context as its update has it (dt `dt`, outside
+/// a turn), then what the Context gathered ([`World::finish_object`]): `f`'s answer, or the
+/// first error.
+pub(crate) fn in_update<R>(
+    t: &mut World,
+    (p, i): (usize, usize),
+    dt: u32,
+    f: impl FnOnce(&mut Unit, &mut context::Context<'_>, &mut Vec<Unit>) -> Result<R, GenieError>,
+) -> Result<R, GenieError> {
+    let frame = t.player_frame();
+    let id = t.players[p].objects[i].id;
+    let (result, out, victim) = t.run_object((p, i), (dt, None), &frame, None, f);
+    let step = match &result {
+        Ok(_) => Ok(crate::objects::unit::Step::Stay),
+        Err(e) => Err(e.clone()),
+    };
+    let (done, ..) = t.finish_object((p, i, id), (dt, false), out, victim, step);
+    let _ = done?;
+    result
+}
+
+/// [`hunt_world`]'s hunter on deer 500 (the hunt command's), its hunt then set by `set`.
+fn hunter_in(set: impl FnOnce(&mut crate::gathering::hunt::HuntAction)) -> World {
+    let mut t = hunt_world();
+    t.hunt_command(1, 0, 500).unwrap();
+    set(t.players[1].objects[0].hunt.as_mut().unwrap());
+    t
+}
+
+/// The hunter's notifies of `kind` (their parameters).
+fn notified(t: &World, kind: i32) -> Vec<[i32; 3]> {
+    t.players[1].objects[0]
+        .ai
+        .as_ref()
+        .unwrap()
+        .notifies
+        .iter()
+        .filter(|n| n.kind == kind)
+        .map(|n| n.p)
+        .collect()
+}
+
+/// The hunter's part of the update in its hunt's state ([`Unit::hunt_part`]) with `dt`, the
+/// hunter as a combat object and its lost tree as the update reads them.
+fn hunt_part_of(t: &mut World, dt: u32) -> Result<bool, GenieError> {
+    in_update(t, (1, 0), dt, |unit, c, others| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let mut own = unit.own_victim(c);
+        let tree_lost = unit.tree_lost();
+        unit.hunt_part(c, others, me, &mut own, tree_lost)
+    })
+}
+
+/// The drop-off's wait (state 8, its timer below 0, `0x140ac7a00` case 7): the timer runs by
+/// dt; at its end the drop site goes and `set_state(8)` searches again, finding the town centre
+/// and walking there.
+#[test]
+fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
+    use crate::gathering::hunt::DROP;
+    let wait = |timer| {
+        hunter_in(|h| {
+            (h.state, h.timer, h.target, h.carry_to) = (DROP, timer, -1, 700);
+            h.attack = None;
+        })
+    };
+    let mut t = wait(-0.5);
+    t.players[1].objects[2].workers = 1;
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.state, h.carry_to), (DROP, 700));
+    assert!((h.timer + 0.45).abs() < 1e-6);
+    let mut t = wait(-0.01);
+    t.players[1].objects[0].life.attribute_type = 15;
+    t.players[1].objects[0].life.amount = 5.0;
+    t.players[1].objects[2].workers = 1;
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.state, h.carry_to, h.timer), (DROP, 700, 0.0));
+    // the centre let go, then taken again as the new drop site
+    assert_eq!(t.players[1].objects[2].workers, 1);
+}
+
+/// The drop-off's walk (state 8, case 7): arrived at the town centre within a tile, where the
+/// drop-site table takes meat, the hunter's load goes to its player as food and it carries
+/// nothing; the hunt goes back to its deer (`set_state(4)`: the live deer's chase, state 12).
+/// A failed walk waits 3
+/// seconds and stops the animation; a centre that does not take the load is not modelled.
+#[test]
+fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
+    use crate::gathering::hunt::{ATTACK, DROP};
+    use crate::movement::move_to::MoveTo;
+    let dropping = |move_to| {
+        let mut t = hunter_in(|h| {
+            (h.state, h.timer, h.carry_to, h.move_to) = (DROP, 0.0, 700, Some(move_to));
+            h.attack = None;
+        });
+        let v = &mut t.players[1].objects[0];
+        (v.life.attribute_type, v.life.amount) = (15, 5.0);
+        v.position = [22.3, 89.5, 0.0];
+        t.spatial.set_position(9175, [22.3, 89.5, 0.0]);
+        t.drop_sites = vec![DropSite {
+            building: 109,
+            worker_class: 4,
+            targets: vec![crate::unit_ai::task_finder::DropTarget {
+                class: 9,
+                workers: -1,
+                state: -1,
+                attribute: 15,
+            }],
+            ..DropSite::default()
+        }];
+        t
+    };
+    let mut t = dropping(MoveTo::Arrived);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.amount, 0.0);
+    assert_eq!(t.players[1].resources[0], 5.0);
+    let h = v.hunt.unwrap();
+    assert_eq!((h.state, h.target, h.carry_to), (ATTACK, 500, -1));
+    let mut t = dropping(MoveTo::Failed);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.anim_speed, Some(0.0));
+    assert!(v.hunt.is_some_and(|h| h.timer < 0.0));
+    let mut t = dropping(MoveTo::Arrived);
+    t.drop_sites.clear();
+    assert!(hunt_part_of(&mut t, 50).is_err());
+}
+
+/// The failed hunt (state 13, case 0xc): notify 0x1f9 with the hunt action; the hunt goes and
+/// its deer, another player's, is let go after the update. With a sub-action it is not
+/// modelled; without a hunt the part is not the hunter's (false).
+#[test]
+fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
+    use crate::gathering::hunt::FAILED;
+    let mut t = hunter_in(|h| {
+        h.state = FAILED;
+        h.attack = None;
+    });
+    assert_eq!(t.players[0].objects[0].workers, 1);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(t.players[1].objects[0].hunt, None);
+    assert_eq!(
+        notified(&t, crate::unit_ai::ACTION_FAILED),
+        [[crate::unit_ai::HUNT_ACTION, 0, 0]]
+    );
+    assert_eq!(t.players[0].objects[0].workers, 0);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(false));
+    let mut t = hunter_in(|h| h.state = FAILED);
+    assert!(hunt_part_of(&mut t, 50).is_err());
+}
+
+/// The search (state 3, case 2): the timer runs by dt; at its end it starts again at −10 s and
+/// the unit AI hears notify 0x202 with the hunt action, the hunt's class (9) and its drop site,
+/// the town centre the search finds. Without its target a lead (state 10, case 9) searches at
+/// once; a done hunt (state 2) waits, but of a tree's class it is not modelled.
+#[test]
+fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
+    use crate::gathering::hunt::{IDLE, LEAD, SEARCH};
+    let search = [crate::unit_ai::HUNT_ACTION, 9, 700];
+    let mut t = hunter_in(|h| {
+        (h.state, h.timer) = (SEARCH, -0.5);
+        h.attack = None;
+    });
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(notified(&t, SEARCH_NEEDED), [[0; 3]; 0]);
+    t.players[1].objects[0].hunt.as_mut().unwrap().timer = -0.01;
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(notified(&t, SEARCH_NEEDED), [search]);
+    assert_eq!(
+        t.players[1].objects[0].hunt.map(|h| h.timer),
+        Some(SEARCH_AGAIN)
+    );
+    let mut t = hunter_in(|h| {
+        (h.state, h.target) = (LEAD, -1);
+        h.attack = None;
+    });
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(SEARCH));
+    assert_eq!(notified(&t, SEARCH_NEEDED), [search]);
+    let mut t = hunter_in(|h| {
+        h.state = IDLE;
+        h.attack = None;
+    });
+    let before = t.players[1].objects[0].hunt;
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(t.players[1].objects[0].hunt, before);
+    t.players[1].objects[0].hunt.as_mut().unwrap().target_class = 15;
+    assert!(hunt_part_of(&mut t, 50).is_err());
+}
+
+/// The walks to a point (states 15 and 11): arrived, state 15 is done (`set_state(2)`: the
+/// target goes and is let go) and state 11 searches (`set_state(3)`: notify 0x202); a waiting
+/// walk asks again after its delay. Waiting after a given-up `MoveTo` without its target (state
+/// 4, its timer below 0) the timer runs, then the walk to the point (state 11).
+#[test]
+fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
+    use crate::gathering::hunt::{IDLE, SEARCH, WALK, WALK_POINT, WALK_SEARCH};
+    use crate::movement::move_to::MoveTo;
+    let walked = |state| {
+        hunter_in(|h| {
+            (h.state, h.move_to) = (state, Some(MoveTo::Arrived));
+            h.attack = None;
+        })
+    };
+    let mut t = walked(WALK_POINT);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.state, h.target, h.move_to), (IDLE, -1, None));
+    assert_eq!(t.players[0].objects[0].workers, 0);
+    let mut t = walked(WALK_SEARCH);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(SEARCH));
+    assert_eq!(notified(&t, SEARCH_NEEDED).len(), 1);
+    let mut t = hunter_in(|h| {
+        (h.state, h.move_to) = (WALK_POINT, Some(MoveTo::Waiting));
+        h.move_wait.delay = 1.0;
+        h.attack = None;
+    });
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.move_to, h.state), (Some(MoveTo::Waiting), WALK_POINT));
+    let mut t = hunter_in(|h| {
+        (h.state, h.target, h.timer, h.move_to) = (WALK, -1, -0.01, None);
+        h.point = [36.0, 89.5, 0.0];
+        h.attack = None;
+    });
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(
+        t.players[1].objects[0].hunt.map(|h| h.state),
+        Some(WALK_SEARCH)
+    );
+}
+
+/// The hunt's strike (`0x140ac7a00`'s states 12 and 7, [`Unit::hunt_strike`]): the hunt
+/// command's Attack on the live deer walks to it (state 4, its `MoveTo` moving on a path).
+/// Gathering the dead deer (work rate 1 by work value 1 a second) the hunter gains 0.05 in
+/// 50 ms and the deer loses it; with less room than that it is full and carries its load to the
+/// town centre (state 8) without taking it.
+#[test]
+fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
+    use crate::gathering::hunt::{ATTACK, DROP, GATHER};
+    use crate::movement::move_to::MoveTo;
+    let mut t = hunter_in(|_| {});
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let v = &t.players[1].objects[0];
+    let h = v.hunt.unwrap();
+    assert_eq!(
+        (h.state, h.attack.map(|a| (a.state, a.move_to))),
+        (ATTACK, Some((4, Some(MoveTo::Moving))))
+    );
+    assert!(v.mover.as_ref().is_some_and(|m| !m.paths.is_empty()));
+    let gathering = |held: f32| {
+        let mut t = hunter_in(|h| {
+            (h.state, h.attack, h.move_to) = (GATHER, None, None);
+            (h.task.work_value, h.task.resource) = (1.0, 15);
+        });
+        for masters in &mut t.masters {
+            let hunter = masters.get_mut(122).unwrap();
+            (hunter.capacity, hunter.work_rate) = (10, 1.0);
+        }
+        let deer = &mut t.players[0].objects[0];
+        (deer.life.state, deer.life.hp) = (3, 0.0);
+        (deer.life.attribute_type, deer.life.amount) = (15, 100.0);
+        let v = &mut t.players[1].objects[0];
+        (v.life.attribute_type, v.life.amount) = (15, held);
+        v.position = [31.9, 89.5, 0.0];
+        t.spatial.set_position(9175, [31.9, 89.5, 0.0]);
+        t
+    };
+    let mut t = gathering(5.0);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let (gained, left) = (
+        t.players[1].objects[0].life.amount,
+        t.players[0].objects[0].life.amount,
+    );
+    assert!((gained - 5.05).abs() < 1e-5 && (left - 99.95).abs() < 1e-4);
+    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(GATHER));
+    let mut t = gathering(9.99);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.state, h.carry_to), (DROP, 700));
+    assert_eq!(t.players[1].objects[0].life.amount, 9.99);
+    assert_eq!(t.players[0].objects[0].life.amount, 100.0);
+}
+
+/// [`hunt_world`] with player 1's own sheep 510 (master 594, class 58, moving) at `x` beside
+/// the hunter, its hunter's task on livestock, the drop-site table's town centre taking
+/// livestock; the hunt command's hunt faces it (state 4, arrived).
+fn shepherd_world(x: f32) -> World {
+    use crate::movement::move_to::MoveTo;
+    let mut t = hunt_world();
+    for masters in &mut t.masters {
+        let sheep = Master {
+            id: 594,
+            kind: 70,
+            class: 58,
+            radius: [0.2, 0.2],
+            moving: Some(crate::gathering::hunt::tests::walker().stats),
+            ..Master::default()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([sheep]));
+        masters
+            .get_mut(122)
+            .unwrap()
+            .tasks
+            .push(crate::objects::masters::Task {
+                action_type: 110,
+                object_group: 58,
+                work_range: 0.5,
+                ..crate::objects::masters::Task::default()
+            });
+    }
+    t.players[1].objects.push(Unit {
+        id: 510,
+        position: [x, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 7.0,
+            master_id: 594,
+            attribute_type: 15,
+            amount: 100.0,
+            ..Lifecycle::default()
+        },
+        mover: Some(crate::gathering::hunt::tests::walker()),
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    });
+    t.spatial.insert(
+        510,
+        Placed {
+            position: [x, 89.5, 0.0],
+            radius: [0.2, 0.2],
+            class: 58,
+            player: 1,
+            master: 594,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    t.drop_sites = vec![DropSite {
+        building: 109,
+        worker_class: 4,
+        livestock: true,
+        ..DropSite::default()
+    }];
+    t.hunt_command(1, 0, 510).unwrap();
+    let h = t.players[1].objects[0].hunt.as_mut().unwrap();
+    (h.move_to, h.attack) = (Some(MoveTo::Arrived), None);
+    t
+}
+
+/// A hunt facing its own live sheep (`set_state(6)` on livestock with its herd,
+/// [`Unit::herd_for`]): the sheep stands more than 3 tiles from the drop-site table's nearest
+/// town centre, so the hunter leads it there (state 10, the centre its drop site) and the sheep
+/// walks; the lead goes on in the next update. A sheep beside the centre is slaughtered at once
+/// (state 12, the Attack).
+#[test]
+fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
+    use crate::gathering::hunt::{ATTACK, LEAD};
+    let mut t = shepherd_world(30.2);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.state, h.target, h.drop_site), (LEAD, 510, 700));
+    assert!(t.players[1].objects[3].move_to.is_some());
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(LEAD));
+    let mut t = shepherd_world(22.6);
+    t.players[1].objects[0].position = [23.2, 89.5, 0.0];
+    t.spatial.set_position(9175, [23.2, 89.5, 0.0]);
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.state, h.attack.map(|a| a.target)), (ATTACK, Some(510)));
+}
+
+/// [`hunt_world`] with Gaia's trees 520 and 521 (master 349, class 15, 100 wood, gathered by
+/// themselves as group 0) at x `near` and 40, the hunter's task on trees, its unit AI targeting
+/// class 15 and its hunt without a target at its own place.
+fn lumber_world(near: f32) -> World {
+    let mut t = hunt_world();
+    for masters in &mut t.masters {
+        let tree = Master {
+            id: 349,
+            kind: 10,
+            class: 15,
+            radius: [0.5, 0.5],
+            auto_gather: true,
+            gather_group: 0,
+            ..Master::default()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([tree]));
+        let hunter = masters.get_mut(122).unwrap();
+        hunter.line_of_sight = 4.0;
+        hunter.tasks.push(crate::objects::masters::Task {
+            action_type: 110,
+            object_group: 15,
+            work_range: 0.5,
+            ..crate::objects::masters::Task::default()
+        });
+    }
+    let tree = |id, x: f32| Unit {
+        id,
+        position: [x, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 20.0,
+            master_id: 349,
+            attribute_type: 1,
+            amount: 100.0,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    t.players[0]
+        .objects
+        .extend([tree(520, near), tree(521, 40.0)]);
+    for (id, x) in [(520, near), (521, 40.0)] {
+        t.spatial.insert(
+            id,
+            Placed {
+                position: [x, 89.5, 0.0],
+                radius: [0.5, 0.5],
+                class: 15,
+                player: 0,
+                master: 349,
+                obstruction_type: 0,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            },
+        );
+    }
+    t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
+    t.hunt_command(1, 0, 500).unwrap();
+    let v = &mut t.players[1].objects[0];
+    let h = v.hunt.as_mut().unwrap();
+    (h.target, h.target_class, h.attack, h.point) = (-1, 15, None, v.position);
+    v.ai.as_mut().unwrap().target_type = 15;
+    t
+}
+
+/// The hunt's search for the next tree (`FUN_140ac4670`, [`Unit::hunt_tree_search`]): the
+/// unit AI's `ClosestResourceObject` of group 0 names the nearer tree, which the hunt takes
+/// (slot 0x48: its Attack on the tree) and the tree counts the hunter. A hunt farther than
+/// `within` from its point, a tree farther than `near` from the unit, or no tree, find none.
+#[test]
+fn a_hunt_that_lost_its_tree_takes_the_next_one() {
+    let search = |t: &mut World, within, near| {
+        in_update(t, (1, 0), 50, |unit, c, others| {
+            unit.hunt_tree_search(c, others, within, near)
+        })
+    };
+    let mut t = lumber_world(31.5);
+    assert_eq!(search(&mut t, Some(8.0), None), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!((h.target, h.attack.map(|a| a.target)), (520, Some(520)));
+    assert_eq!(t.players[0].objects[2].workers, 1);
+    let mut t = lumber_world(31.5);
+    t.players[1].objects[0].hunt.as_mut().unwrap().point = [40.0, 89.5, 0.0];
+    assert_eq!(search(&mut t, Some(8.0), None), Ok(false));
+    assert_eq!(search(&mut t, None, Some(1.5)), Ok(false));
+    let mut t = lumber_world(31.5);
+    for i in [2, 3] {
+        t.players[0].objects[i].life.amount = 0.0;
+    }
+    assert_eq!(search(&mut t, None, None), Ok(false));
 }
 
 /// The unit AI's repair order on the player's damaged house (`0x2ce`, slot 0x378 forced,

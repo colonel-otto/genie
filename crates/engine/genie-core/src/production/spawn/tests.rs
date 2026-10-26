@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::GatherPoint;
 use crate::objects::unit::Unit;
+use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
 
 /// records/425906646's update 1883: a TC's gather point on a tree that is gone; its new
 /// villager takes the closest tree of Gaia's (by centre) within its sight of the point,
@@ -371,4 +372,110 @@ fn the_first_object_of_a_tile_s_list_reports_the_block() {
         at(vec![soldier, sheep(2)]),
         Tested::Blocked { stays: false }
     );
+}
+
+/// `FUN_140ad0240` at the forage world's town centre 700: a villager (master 83) spawns beside
+/// it and stands idle; attribute 81 lowers by its population and the centre's unit AI hears
+/// that its make action completed (0x1fa with 0x26b). With the centre's command queue the
+/// new villager's unit AI takes each order behind its own (priority 100, ready, at the
+/// centre's height). A computer player's spawn, one without the players' sight and a master
+/// that does not move are not modelled.
+#[test]
+fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
+    let world = || {
+        let mut t = crate::world::tests::forage_world();
+        // the villager's standing sprite (a graphic of ten frames, eight facets)
+        for masters in &mut t.masters {
+            masters.get_mut(83).unwrap().standing_sprite = 300;
+        }
+        let _ = t.graphics.insert(
+            300,
+            crate::objects::sprite::Graphic {
+                id: 300,
+                frames: 10,
+                facets: 8,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            },
+        );
+        let p = &mut t.players[1];
+        p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()] = 3.0;
+        p.objects[2].ai = Some(UnitAi {
+            ai_type: 3,
+            current_order: -1,
+            current_action: -1,
+            current_target: -1,
+            ..UnitAi::default()
+        });
+        t
+    };
+    let mut t = world();
+    let before = t.players[1].objects.len();
+    t.spawn(1, 2, 83, 1.0).unwrap();
+    let p = &t.players[1];
+    assert_eq!(p.objects.len(), before + 1);
+    let made = p.objects.last().unwrap();
+    assert_eq!(made.life.master_id, 83);
+    assert_eq!(
+        p.attributes[usize::try_from(crate::production::IN_PRODUCTION).unwrap()],
+        2.0
+    );
+    let completed = p.objects[2]
+        .ai
+        .as_ref()
+        .unwrap()
+        .notifies
+        .iter()
+        .any(|n| n.kind == ACTION_COMPLETED && n.p == [MAKE_ACTION, 0, 0]);
+    assert!(completed);
+    // the centre's command queue goes to the new unit
+    let mut t = world();
+    let order = crate::unit_ai::QueuedOrder {
+        issuer: 1,
+        order: crate::unit_ai::MOVE_ORDER,
+        priority: 5,
+        target: -1,
+        target_owner: -1,
+        point: [40.0, 80.0, 7.0],
+        range: 2.0,
+        shown: [40.0, 80.0],
+        ready: false,
+        target_type: -1,
+    };
+    t.players[1].objects[2]
+        .ai
+        .as_mut()
+        .unwrap()
+        .building_orders
+        .push(order);
+    t.spawn(1, 2, 83, 1.0).unwrap();
+    let made = t.players[1].objects.last().unwrap();
+    let queued = made
+        .ai
+        .as_ref()
+        .map(|ai| ai.orders.clone())
+        .unwrap_or_default();
+    assert_eq!(
+        queued
+            .iter()
+            .map(|o| (o.order, o.priority, o.point, o.range, o.ready))
+            .collect::<Vec<_>>(),
+        [(
+            crate::unit_ai::MOVE_ORDER,
+            100,
+            [40.0, 80.0, 0.0],
+            0.0,
+            true
+        )]
+    );
+    let mut t = world();
+    t.players[1].computer = true;
+    assert!(t.spawn(1, 2, 83, 1.0).is_err());
+    let mut t = world();
+    t.spatial.sight = None;
+    assert!(t.spawn(1, 2, 83, 1.0).is_err());
+    let mut t = world();
+    assert!(t.spawn(1, 2, 59, 1.0).is_err());
 }
