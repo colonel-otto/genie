@@ -917,3 +917,84 @@ fn a_line_of_two_unit_types_alternates_its_slots() {
     assert_eq!(f.lines[1].distance_back, 1.0);
     assert_eq!(f.lines[1].indices, [5, 6, 7, 8, 9]);
 }
+
+/// A staggered line doubles its spacing and moves its lines a quarter step apart (the even
+/// back, the odd forward); a flanked line's slots move apart from its middle by 2.5 less the
+/// line's share of the depth.
+#[test]
+fn a_staggered_line_shifts_its_lines_and_a_flanked_one_parts_them() {
+    let g = group_of(3, 10, 1.0, &[(4, 10)]);
+    let offsets = |f: &Formation, line: usize| -> Vec<f32> {
+        f.slots[line * 5..line * 5 + 5]
+            .iter()
+            .map(|s| s.offset[2])
+            .collect()
+    };
+    let mut f = Formation::new();
+    assert!(column_line_slots(&mut f, &g, false, (true, false), 0));
+    assert_eq!(f.kind, STAGGERED);
+    assert_eq!(offsets(&f, 0), [-3.5, -1.5, 0.5, 2.5, 4.5]);
+    assert_eq!(offsets(&f, 1), [-4.5, -2.5, -0.5, 1.5, 3.5]);
+    assert_eq!(f.lines[1].distance_back, 2.0);
+    let mut f = Formation::new();
+    assert!(column_line_slots(&mut f, &g, false, (false, true), 0));
+    assert_eq!(f.kind, FLANKED);
+    assert_eq!(offsets(&f, 0), [-4.5, -3.5, 2.5, 3.5, 4.5]);
+    assert_eq!(offsets(&f, 1), [-4.0, -3.0, 2.0, 3.0, 4.0]);
+    let mut f = Formation::new();
+    assert!(column_line_slots(&mut f, &g, true, (false, false), 0));
+    assert_eq!((f.kind, f.maximum_width, f.maximum_depth), (COLUMN, 2, 5));
+    assert!(!column_line_slots(
+        &mut f,
+        &UnitGroup::default(),
+        false,
+        (false, false),
+        0
+    ));
+}
+
+/// Two sub-formations: the narrower (three of category 0) takes one line of the widest's
+/// width, ahead of the wider (ten of category 3, spacing 1.5); the wider one's first line
+/// stands back by the narrower's spacing plus the difference of the spacings.
+#[test]
+fn a_narrow_sub_formation_takes_one_line_ahead_of_a_wider_one() {
+    let mut g = group_of(3, 10, 1.5, &[(4, 10)]);
+    let narrow = group_of(0, 3, 1.0, &[(83, 3)]);
+    g.unit_types.insert(0, narrow.unit_types[0].clone());
+    g.members.extend((10..13).map(|id| crate::groups::Member {
+        id,
+        ..crate::groups::Member::default()
+    }));
+    let mut f = Formation::new();
+    assert!(column_line_slots(&mut f, &g, false, (false, false), 0));
+    assert_eq!((f.maximum_width, f.maximum_depth), (5, 3));
+    let first: Vec<(f32, i32)> = f.slots[..3]
+        .iter()
+        .map(|s| (s.offset[2], s.desired_category))
+        .collect();
+    assert_eq!(first, [(-1.0, 0), (0.0, 0), (1.0, 0)]);
+    assert_eq!(f.lines[0].indices, [0, 1, 2]);
+    assert_eq!(f.lines[1].indices, [3, 4, 5, 6, 7]);
+    let back: Vec<f32> = f.lines.iter().map(|l| l.distance_back).collect();
+    assert_eq!(back, [0.0, 1.5, 3.0]);
+}
+
+/// A sub-formation beside the widest: within its width one line of all its units; else the
+/// lines its width needs and the columns over them, a line less while its columns are fewer
+/// than its empty places (7 units at 1.3: 6 lines of 2 leave 5 empty, 5 leave 3, 4 leave 1); a
+/// NaN width (`CVTTSS2SI` of a NaN, clamped) one line.
+#[test]
+fn a_sub_formation_fits_the_widest_line() {
+    use super::column_line::{Category, fit_to_widest};
+    let cat = |count, spacing| Category {
+        count,
+        spacing,
+        types: 1,
+        unit_types: Vec::new(),
+        unit_type_counts: Vec::new(),
+    };
+    assert_eq!(fit_to_widest(&cat(4, 1.0), 4.0), (1, 4));
+    assert_eq!(fit_to_widest(&cat(9, 1.0), 8.0), (2, 5));
+    assert_eq!(fit_to_widest(&cat(7, 1.0), 1.3), (4, 2));
+    assert_eq!(fit_to_widest(&cat(7, 1.0), f32::NAN), (1, 7));
+}

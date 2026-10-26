@@ -7,6 +7,7 @@ use crate::groups::steer::{
     ROUND_STILL, ROUND_TIMER,
 };
 use crate::math::fmath::{Vec3, at_most_or_unordered};
+use crate::pathing::tile_path::Path;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
 
@@ -59,200 +60,47 @@ impl World {
         gap: f32,
         differentiators: &[i32],
     ) -> Result<(), GenieError> {
-        use crate::pathing::tile_path::Path;
         let g = self.groups.get(group).expect("held");
         let id = g.members[index].id;
         let to = g.current_formation.as_ref().expect("a formation").slots[slot].transform_position;
         let [place, forward, _, _] = g.motion.position;
         let (moving, waits) = (g.motion.moving(), g.motion.waits_to_move());
-        let (p, u) = self.object(id).expect("the member is held");
-        let master = self.master_of(p, u.life.master_id)?;
-        let (radius, height) = (master.radius, master.height);
-        let mover = u.mover.as_ref().expect(MOVES);
-        let solid = mover.stats.radius.iter().all(|&r| 0.0 < r);
-        let (at, here) = (moved_vector(u), u.position);
-        let mask = mover.stats.restriction_mask;
-        let restriction = mover.stats.restriction;
-        let computer = self.players.get(p).is_some_and(|q| q.computer);
-        let walker = crate::movement::Walker {
-            radius: radius[0] * ROUND_RADIUS,
-            ..mover.walker(id)
+        let r = self.rounder(id, differentiators)?;
+        let mut way = Way {
+            record: Path::default(),
+            result: BLOCKED,
+            planned: false,
+            goal: to,
         };
-        let grow = radius[0] * ROUND_RADIUS;
-        // FUN_140a847c0: the squared gap from the unit's footprint (its place) to a point
-        let near = |x: f32, y: f32| {
-            let gx = ((x - here[0]).abs() - radius[0]).max(0.0);
-            let gy = ((y - here[1]).abs() - radius[1]).max(0.0);
-            gy * gy + gx * gx < ROUND_REACH
-        };
-        let mut record = Path::default();
-        let mut result = BLOCKED;
-        let mut planned = false;
-        let mut goal = to;
-        if self
-            .spatial
-            .point_clear_among(id, [to[0], to[2]], grow, mask, differentiators)?
-        {
-            let mut served = false;
-            if solid && near(to[0], to[2]) {
-                let r = self.round_short(
-                    walker,
-                    computer,
-                    [at[0], at[2]],
-                    to,
-                    differentiators,
-                    &mut record,
-                )?;
-                if record.points.len() < 2 || at_most_or_unordered(record.length, EPSILON) {
-                    record.points.clear();
-                } else {
-                    result = r;
-                    served = !matches!(r, BLOCKED | OFF_MAP);
-                }
-            }
-            if !served
-                && let Some(r) = self.round_plan(restriction, [at[0], at[2]], to, &mut record)?
-            {
-                result = r;
-                planned = true;
+        self.round_to_slot(&r, to, &mut way)?;
+        if way.result != REACHED {
+            self.round_one_step(&r, to, forward, &mut way)?;
+            if !matches!(way.result, REACHED | PARTIAL) {
+                self.round_to_place(&r, place, &mut way)?;
             }
         }
-        if result != REACHED {
-            let d = fmath::sub(to, at);
-            let mut dir = if d[0].abs() <= ROUND_STILL && d[2].abs() <= ROUND_STILL {
-                forward
-            } else {
-                d
-            };
-            dir[1] = 0.0;
-            let len = fmath::sqrt(dir[0] * dir[0] + 0.0 + dir[2] * dir[2]);
-            let dir = [dir[0] / len, dir[1] / len, dir[2] / len];
-            let mut step = fmath::add(at, fmath::scale(1.0, dir));
-            let [w, h] = self.spatial.map;
-            let (top_x, top_y) = (w as f32 - radius[0], h as f32 - height);
-            if radius[0] > step[0] {
-                step[0] = radius[0];
-            } else if step[0] > top_x {
-                step[0] = top_x;
-            }
-            if height > step[2] {
-                step[2] = height;
-            } else if step[2] > top_y {
-                step[2] = top_y;
-            }
-            goal = step;
-            if self.spatial.point_clear_among(
-                id,
-                [step[0], step[2]],
-                grow,
-                mask,
-                differentiators,
-            )? {
-                record.points.clear();
-                let mut reached = false;
-                if solid {
-                    result = self.round_short(
-                        walker,
-                        computer,
-                        [at[0], at[2]],
-                        step,
-                        differentiators,
-                        &mut record,
-                    )?;
-                } else {
-                    let (found, path) = self.round_long(id, [here[0], here[1]], step)?;
-                    record.points = path.points;
-                    // a long path found is measured once and taken as it is
-                    if found {
-                        result = REACHED;
-                        record.measure();
-                        reached = true;
-                    } else {
-                        record.measure();
-                    }
-                }
-                // COMISS with JA (a NaN length passes), then JNC
-                if !reached
-                    && (result != REACHED
-                        || ROUND_LENGTH < record.length
-                        || record.points.len() < 2
-                        || at_most_or_unordered(record.length, EPSILON))
-                {
-                    result = BLOCKED;
-                    record.points.clear();
-                }
-            }
-            if !matches!(result, REACHED | PARTIAL) {
-                goal = place;
-                if self.spatial.point_clear_among(
-                    id,
-                    [place[0], place[2]],
-                    grow,
-                    mask,
-                    differentiators,
-                )? {
-                    record.points.clear();
-                    let short = solid && near(place[0], place[2]);
-                    if short {
-                        let r = self.round_short(
-                            walker,
-                            computer,
-                            [at[0], at[2]],
-                            place,
-                            differentiators,
-                            &mut record,
-                        )?;
-                        result = r;
-                        if record.points.len() < 2 || at_most_or_unordered(record.length, EPSILON) {
-                            result = BLOCKED;
-                            record.points.clear();
-                        }
-                    } else if let Some(r) =
-                        self.round_plan(restriction, [at[0], at[2]], place, &mut record)?
-                    {
-                        result = r;
-                        planned = true;
-                    }
-                }
-            }
+        let mut serves = matches!(way.result, REACHED | PARTIAL);
+        if matches!(way.result, BLOCKED | OFF_MAP) {
+            serves = self.round_long_way(&r, to, &mut way)?;
         }
-        let mut serves = matches!(result, REACHED | PARTIAL);
-        if matches!(result, BLOCKED | OFF_MAP) {
-            record.points.clear();
-            let (_, path) = self.round_long(id, [at[0], at[2]], to)?;
-            record.points = path.points;
-            if 2 < record.points.len() {
-                goal = *record.points.last().expect("more than 2 points");
-                serves = true;
-            }
-        }
-        if serves && !moving && !waits {
-            // FUN_140f9bcd0 outside the path: its static point
-            let end = record
-                .points
-                .last()
-                .copied()
-                .unwrap_or(crate::movement::OUTSIDE_PATH);
-            let mut d = fmath::sub(to, end);
-            d[1] = 0.0;
-            if gap < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]) {
-                self.stop_member(id)?;
-                self.show_standing(id)?;
-                self.groups.get_mut(group).expect("held").members[index]
-                    .specific_move
-                    .consecutive_move_failures = 0;
-                self.set_slot_state(group, slot, 3);
-                return Ok(());
-            }
+        if serves && !moving && !waits && ends_farther(&way.record, to, gap) {
+            self.stop_member(id)?;
+            self.show_standing(id)?;
+            self.groups.get_mut(group).expect("held").members[index]
+                .specific_move
+                .consecutive_move_failures = 0;
+            self.set_slot_state(group, slot, 3);
+            return Ok(());
         }
         if serves {
             let now = self.world_time;
             if let Some((_, u)) = self.object_mut(id)
                 && let Some(m) = u.mover.as_mut()
             {
-                m.take_record_path(record.points, record.length, now, planned);
+                m.take_record_path(way.record.points, way.record.length, now, way.planned);
             }
-            let _ = self.set_specific_move(group, id, (-1, 0), (goal, ROUND_TIMER, ROUND_TIMER));
+            let goal = (way.goal, ROUND_TIMER, ROUND_TIMER);
+            let _ = self.set_specific_move(group, id, (-1, 0), goal);
         }
         self.set_slot_state(group, slot, 0);
         self.stop_member(id)?;
@@ -260,6 +108,189 @@ impl World {
             .specific_move
             .consecutive_move_failures += 1;
         Ok(())
+    }
+
+    /// What the way round reads of member `id` ([`Rounder`]).
+    ///
+    /// # Errors
+    ///
+    /// A member of a master the slice does not have.
+    fn rounder<'d>(&self, id: i32, differentiators: &'d [i32]) -> Result<Rounder<'d>, GenieError> {
+        let (p, u) = self.object(id).expect("the member is held");
+        let master = self.master_of(p, u.life.master_id)?;
+        let mover = u.mover.as_ref().expect(MOVES);
+        let grow = master.radius[0] * ROUND_RADIUS;
+        Ok(Rounder {
+            id,
+            walker: crate::movement::Walker {
+                radius: grow,
+                ..mover.walker(id)
+            },
+            computer: self.players.get(p).is_some_and(|q| q.computer),
+            at: moved_vector(u),
+            here: u.position,
+            mask: mover.stats.restriction_mask,
+            restriction: mover.stats.restriction,
+            grow,
+            radius: master.radius,
+            height: master.height,
+            solid: mover.stats.radius.iter().all(|&r| 0.0 < r),
+            differentiators,
+        })
+    }
+
+    /// Whether the member could stand at `p` (slot 0x270, [`Spatial::point_clear_among`]: the
+    /// records grown by the short pather's radius, the differentiators ignored).
+    ///
+    /// [`Spatial::point_clear_among`]: crate::map::spatial::Spatial::point_clear_among
+    fn round_clear(&self, r: &Rounder<'_>, p: Vec3) -> Result<bool, GenieError> {
+        self.spatial
+            .point_clear_among(r.id, [p[0], p[2]], r.grow, r.mask, r.differentiators)
+    }
+
+    /// The way round's first try ([`World::way_round`]'s 1): to the slot `to` when the member
+    /// could stand there, by the short pather when its footprint is near (a path of fewer than
+    /// 2 points or no longer than [`EPSILON`] keeps no points and its result is not taken; a
+    /// result but blocked or off the map serves), else by the tile planner (planned).
+    fn round_to_slot(
+        &mut self,
+        r: &Rounder<'_>,
+        to: Vec3,
+        way: &mut Way,
+    ) -> Result<(), GenieError> {
+        if !self.round_clear(r, to)? {
+            return Ok(());
+        }
+        let mut served = false;
+        if r.solid && r.near(to[0], to[2]) {
+            let from = [r.at[0], r.at[2]];
+            let res = self.round_short(
+                r.walker,
+                r.computer,
+                from,
+                to,
+                r.differentiators,
+                &mut way.record,
+            )?;
+            if way.record.points.len() < 2 || at_most_or_unordered(way.record.length, EPSILON) {
+                way.record.points.clear();
+            } else {
+                way.result = res;
+                served = !matches!(res, BLOCKED | OFF_MAP);
+            }
+        }
+        if !served
+            && let Some(res) =
+                self.round_plan(r.restriction, [r.at[0], r.at[2]], to, &mut way.record)?
+        {
+            way.result = res;
+            way.planned = true;
+        }
+        Ok(())
+    }
+
+    /// The way round's second try ([`World::way_round`]'s 2): one tile toward the slot
+    /// ([`one_step_toward`]), the goal, when the member could stand there: the long pather from
+    /// its place's tile for a member without a footprint and a height (found: reached, its path as
+    /// it is), else the short pather; a path not reached, longer than [`ROUND_LENGTH`], of fewer
+    /// than 2 points or no longer than [`EPSILON`] is blocked, its points emptied.
+    fn round_one_step(
+        &mut self,
+        r: &Rounder<'_>,
+        to: Vec3,
+        forward: Vec3,
+        way: &mut Way,
+    ) -> Result<(), GenieError> {
+        let step = one_step_toward(r, to, forward, self.spatial.map);
+        way.goal = step;
+        if !self.round_clear(r, step)? {
+            return Ok(());
+        }
+        way.record.points.clear();
+        let mut reached = false;
+        if r.solid {
+            let from = [r.at[0], r.at[2]];
+            way.result = self.round_short(
+                r.walker,
+                r.computer,
+                from,
+                step,
+                r.differentiators,
+                &mut way.record,
+            )?;
+        } else {
+            let (found, path) = self.round_long(r.id, [r.here[0], r.here[1]], step)?;
+            way.record.points = path.points;
+            // a long path found is measured once and taken as it is
+            way.record.measure();
+            if found {
+                way.result = REACHED;
+                reached = true;
+            }
+        }
+        // COMISS with JA (a NaN length passes), then JNC
+        if !reached
+            && (way.result != REACHED
+                || ROUND_LENGTH < way.record.length
+                || way.record.points.len() < 2
+                || at_most_or_unordered(way.record.length, EPSILON))
+        {
+            way.result = BLOCKED;
+            way.record.points.clear();
+        }
+        Ok(())
+    }
+
+    /// The way round's third try ([`World::way_round`]'s 3): to the group's place, the goal,
+    /// when the member could stand there: the short pather when its footprint is near (a path
+    /// of fewer than 2 points or no longer than [`EPSILON`] is blocked), else the tile planner
+    /// (planned).
+    fn round_to_place(
+        &mut self,
+        r: &Rounder<'_>,
+        place: Vec3,
+        way: &mut Way,
+    ) -> Result<(), GenieError> {
+        way.goal = place;
+        if !self.round_clear(r, place)? {
+            return Ok(());
+        }
+        way.record.points.clear();
+        if r.solid && r.near(place[0], place[2]) {
+            let from = [r.at[0], r.at[2]];
+            way.result = self.round_short(
+                r.walker,
+                r.computer,
+                from,
+                place,
+                r.differentiators,
+                &mut way.record,
+            )?;
+            if way.record.points.len() < 2 || at_most_or_unordered(way.record.length, EPSILON) {
+                way.result = BLOCKED;
+                way.record.points.clear();
+            }
+        } else if let Some(res) =
+            self.round_plan(r.restriction, [r.at[0], r.at[2]], place, &mut way.record)?
+        {
+            way.result = res;
+            way.planned = true;
+        }
+        Ok(())
+    }
+
+    /// The way round's last try ([`World::way_round`]'s 4, blocked or off the map): the long
+    /// pather from where the member last moved to toward the slot's tile; a path of more than 2
+    /// points serves, its last point the goal. Whether it serves.
+    fn round_long_way(&self, r: &Rounder<'_>, to: Vec3, way: &mut Way) -> Result<bool, GenieError> {
+        way.record.points.clear();
+        let (_, path) = self.round_long(r.id, [r.at[0], r.at[2]], to)?;
+        way.record.points = path.points;
+        if 2 < way.record.points.len() {
+            way.goal = *way.record.points.last().expect("more than 2 points");
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     /// The way round's short pather ([`World::way_round`], `FUN_140f9e540` with the record) for
@@ -272,7 +303,7 @@ impl World {
         from: [f32; 2],
         to: Vec3,
         ignore: &[i32],
-        record: &mut crate::pathing::tile_path::Path,
+        record: &mut Path,
     ) -> Result<u8, GenieError> {
         let mut plan = crate::movement::Planning {
             pathing: &mut self.pathing,
@@ -303,7 +334,7 @@ impl World {
         id: i32,
         from: [f32; 2],
         to: Vec3,
-    ) -> Result<(bool, crate::pathing::tile_path::Path), GenieError> {
+    ) -> Result<(bool, Path), GenieError> {
         let (p, u) = self.object(id).expect("the member is held");
         let mover = u.mover.as_ref().expect(MOVES);
         let computer = self.players.get(p).is_some_and(|q| q.computer);
@@ -327,7 +358,7 @@ impl World {
         restriction: usize,
         from: [f32; 2],
         to: Vec3,
-        record: &mut crate::pathing::tile_path::Path,
+        record: &mut Path,
     ) -> Result<Option<u8>, GenieError> {
         let tiles = self.spatial.tiles();
         let Some(planner) = self.pathing.planner(restriction, tiles) else {
@@ -345,4 +376,85 @@ impl World {
         let found = planner.plan::<GenieError>(&req, false, record, None)?;
         Ok(Some(found.code()))
     }
+}
+
+/// What the way round reads of the member (`way_round`'s locals): its id, the short pather's
+/// walker (its radius on x times [`ROUND_RADIUS`]) of a computer player or not, where it last
+/// moved to (slot 0x520) and its place, its restriction and mask, the radius the position tests
+/// grow the records by, its master's radii and height radius (`+0x5e0`), whether it has a
+/// footprint and a height (`FUN_141194060`) and the ignore list.
+pub(super) struct Rounder<'d> {
+    pub(super) id: i32,
+    pub(super) walker: crate::movement::Walker,
+    pub(super) computer: bool,
+    pub(super) at: Vec3,
+    pub(super) here: Vec3,
+    pub(super) mask: u8,
+    pub(super) restriction: usize,
+    pub(super) grow: f32,
+    pub(super) radius: [f32; 2],
+    pub(super) height: f32,
+    pub(super) solid: bool,
+    pub(super) differentiators: &'d [i32],
+}
+
+impl Rounder<'_> {
+    /// `FUN_140a847c0`: the squared gap from the member's footprint (its place) to (`x`, `y`)
+    /// is below [`ROUND_REACH`].
+    pub(super) fn near(&self, x: f32, y: f32) -> bool {
+        let gx = ((x - self.here[0]).abs() - self.radius[0]).max(0.0);
+        let gy = ((y - self.here[1]).abs() - self.radius[1]).max(0.0);
+        gy * gy + gx * gx < ROUND_REACH
+    }
+}
+
+/// The way round found so far: the record's path (a new path record, `FUN_14152eea0`), the
+/// pather's result, whether the tile planner made it, and where the member goes.
+struct Way {
+    record: Path,
+    result: u8,
+    planned: bool,
+    goal: Vec3,
+}
+
+/// One tile from where the member last moved to toward `to` (the direction on the ground; the
+/// group's `forward` when both its axes are within [`ROUND_STILL`]), held inside the map (`map`)
+/// by the member's radius on x and, on y, its height radius.
+pub(super) fn one_step_toward(r: &Rounder<'_>, to: Vec3, forward: Vec3, map: [i32; 2]) -> Vec3 {
+    let d = fmath::sub(to, r.at);
+    let mut dir = if d[0].abs() <= ROUND_STILL && d[2].abs() <= ROUND_STILL {
+        forward
+    } else {
+        d
+    };
+    dir[1] = 0.0;
+    let len = fmath::sqrt(dir[0] * dir[0] + 0.0 + dir[2] * dir[2]);
+    let dir = [dir[0] / len, dir[1] / len, dir[2] / len];
+    let mut step = fmath::add(r.at, fmath::scale(1.0, dir));
+    let [w, h] = map;
+    let (top_x, top_y) = (w as f32 - r.radius[0], h as f32 - r.height);
+    if r.radius[0] > step[0] {
+        step[0] = r.radius[0];
+    } else if step[0] > top_x {
+        step[0] = top_x;
+    }
+    if r.height > step[2] {
+        step[2] = r.height;
+    } else if step[2] > top_y {
+        step[2] = top_y;
+    }
+    step
+}
+
+/// `FUN_140f9bcd0` outside the path (its static point): the way's end lies farther than `gap`
+/// from the slot `to` on the ground.
+pub(super) fn ends_farther(record: &Path, to: Vec3, gap: f32) -> bool {
+    let end = record
+        .points
+        .last()
+        .copied()
+        .unwrap_or(crate::movement::OUTSIDE_PATH);
+    let mut d = fmath::sub(to, end);
+    d[1] = 0.0;
+    gap < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2])
 }

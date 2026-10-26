@@ -7,22 +7,45 @@ use crate::groups::motion::{
     CLOSE, CONTINUE, EPSILON, LAST_TRIES, Lead, LeadGroup, NEAR, NEW_PATH_FLAGS, PATROL_PAUSE,
     Pass, SHORT_LENGTH, SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
-use crate::map::spatial::Placed;
+use crate::map::spatial::{Placed, Spatial};
+use crate::math::fmath::Vec3;
 use crate::movement::{LongWalker, PathData, long_path_for, short_path_for, tile_plan_for};
 use crate::pathing::tile_path::Path;
 
-/// Where the request (`FUN_14104a270`'s state 2) goes on after a planner.
-pub(super) enum Stage {
-    /// `LAB_14104b2ae`: a found path long enough goes to the link.
-    Found,
-    /// `LAB_14104b2cd`: the long pather.
-    Long,
+/// What the request plans toward: the walked level's number, range and target, its waypoint,
+/// the group's place (x, height, y; `from` its ground point) and the ground distance between
+/// them.
+struct Leg {
+    level: u8,
+    range: f32,
+    target_id: i32,
+    waypoint: Vec3,
+    at: Vec3,
+    from: [f32; 2],
+    way: f32,
 }
 
-/// The path request of the walked level in state 2 (`0x14104a80b` on): see [`path_step`].
+/// The path the planners made so far, and what the routine's flags say of it.
+#[derive(Default)]
+struct PathSoFar {
+    path: Path,
+    /// The path reaches the waypoint.
+    found: bool,
+    /// The tile pathfinder made it: a top level's plan, linked as level 1.
+    planned: bool,
+    /// A path stands to link.
+    has_plan: bool,
+}
+
+/// The path request of the walked level in state 2 (`0x14104a80b` on): see [`path_step`]. Its
+/// turn first ([`take_turn`]); then the tile pathfinder for a top level ([`tile_plan`]); without
+/// a plan of three points or more, the short pather for a waypoint within [`SHORT_REACH`]
+/// ([`short_plan`]), and with still no plan the straight way when the waypoint (less the
+/// level's range at a top level's last waypoint) or the target is nearer than [`CLOSE`]
+/// ([`straight_way`]); with none found, or a path of fewer than two points or shorter than
+/// [`SHORT_LENGTH`], the long pather ([`long_plan`]). The path goes to the link ([`link`]).
 ///
 /// [`path_step`]: crate::groups::motion::step::path_step
-#[allow(clippy::too_many_lines)]
 pub(super) fn request(
     motion: &mut Motion,
     lead: &Lead,
@@ -31,8 +54,77 @@ pub(super) fn request(
     target: Option<&Placed>,
     target_gap2: f32,
 ) -> Result<Option<Pass>, GenieError> {
-    let spatial = world.spatial;
+    if let Some(pass) = take_turn(motion, lead, world, budget) {
+        return Ok(Some(pass));
+    }
+    let level = &motion.paths[0];
+    let (at, waypoint) = (motion.position[0], point(level, level.waypoint));
+    let leg = Leg {
+        level: level.level,
+        range: level.range,
+        target_id: level.target,
+        waypoint,
+        at,
+        from: [at[0], at[2]],
+        way: ground(waypoint, at),
+    };
+    let mut plan = PathSoFar::default();
+    if leg.level == 2 {
+        tile_plan(lead, world, &leg, target, &mut plan)?;
+    }
+    let level = &motion.paths[0];
+    let (short_range, beyond) = if leg.level == 2 && level.points.len() as i32 == level.waypoint + 1
+    {
+        (leg.range, leg.way - leg.range)
+    } else {
+        (0.0, leg.way)
+    };
+    let mut long = false;
+    if !plan.has_plan || plan.path.points.len() < 3 {
+        if leg.way <= SHORT_REACH
+            && let Some(pass) = short_plan(
+                motion,
+                lead,
+                world,
+                &leg,
+                (target, target_gap2),
+                short_range,
+                &mut plan,
+            )?
+        {
+            return Ok(Some(pass));
+        }
+        if !plan.has_plan {
+            if beyond < CLOSE || target_gap2 < CLOSE {
+                straight_way(lead, world.spatial, &leg, &mut plan)?;
+            }
+            long = !plan.found;
+        }
+    }
+    if long || plan.path.points.len() < 2 || plan.path.length < SHORT_LENGTH {
+        long_plan(lead, world.spatial, &leg, target, &mut plan)?;
+    }
     let now = world.plan.now;
+    Ok(link(
+        motion,
+        lead,
+        plan.path,
+        (plan.found, plan.planned),
+        now,
+    ))
+}
+
+/// The request's turn (`0x14104a80b`): with `budget` a player over its path budget waits (its
+/// wait delays counted, the group stands). Else the plan counts against the player's budget,
+/// the wait delays go back to 0, and the walked level spends one of its plans when the top level
+/// has no path, or does not loop and the lead's group does not patrol: the last one spent, it
+/// gives up ([`give_up`]). None when the request goes on.
+fn take_turn(
+    motion: &mut Motion,
+    lead: &Lead,
+    world: &mut StepWorld<'_, '_>,
+    budget: bool,
+) -> Option<Pass> {
     if budget
         && !world
             .plan
@@ -42,7 +134,7 @@ pub(super) fn request(
     {
         motion.number_wait_delays += 1;
         motion.stand();
-        return Ok(Some(Pass::Done(false)));
+        return Some(Pass::Done(false));
     }
     world.plan.pathing.count_plan(lead.player);
     motion.number_wait_delays = 0;
@@ -58,181 +150,206 @@ pub(super) fn request(
         level.continue_counter -= 1;
         if level.continue_counter <= 0 {
             give_up(motion);
-            return Ok(Some(Pass::Done(false)));
+            return Some(Pass::Done(false));
         }
     }
-    let level = &motion.paths[0];
-    let (level_number, range, target_id) = (level.level, level.range, level.target);
-    let waypoint = point(level, level.waypoint);
-    let at = motion.position[0];
-    let from = [at[0], at[2]];
-    let way = ground(waypoint, at);
-    let mut path = Path::default();
-    let mut found = false;
-    let mut planned = false;
-    let mut has_plan = false;
-    let held_target = target.map(|_| target_id);
-    // the tile pathfinder for a top level (DAT_1439e3cc4)
-    if level_number == 2 {
-        let radii = target.map_or(0.0, |t| t.radius[0]) + lead.walker.radius;
-        let mut plan = world.plan.reborrow();
-        plan.computer = lead.computer;
-        let r = tile_plan_for(
+    None
+}
+
+/// The tile pathfinder for a top level (`DAT_1439e3cc4`) from the group's place to the
+/// waypoint, within the target's radius plus the lead's: without a planner for the lead's
+/// restriction the straight way is the plan; a result of 1, 2 or above 4 is a plan, dropped when
+/// its end lies farther from the waypoint than the group does.
+fn tile_plan(
+    lead: &Lead,
+    world: &mut StepWorld<'_, '_>,
+    leg: &Leg,
+    target: Option<&Placed>,
+    plan: &mut PathSoFar,
+) -> Result<(), GenieError> {
+    let spatial = world.spatial;
+    let radii = target.map_or(0.0, |t| t.radius[0]) + lead.walker.radius;
+    let mut planning = world.plan.reborrow();
+    planning.computer = lead.computer;
+    let r = tile_plan_for(
+        lead.walker,
+        leg.from,
+        target.map(|_| leg.target_id),
+        spatial,
+        &mut planning,
+        (leg.waypoint, radii, leg.range),
+        target,
+        &mut plan.path,
+    )?;
+    match r {
+        None => {
+            let _ = plan.path.insert(0, leg.at);
+            let _ = plan.path.push(leg.waypoint);
+            (plan.planned, plan.has_plan, plan.found) = (true, true, true);
+        }
+        Some(r) if (1..=2).contains(&r) || 4 < r => {
+            (plan.planned, plan.found, plan.has_plan) = (true, true, true);
+            let end = plan.path.points.last().copied().unwrap_or([0.0; 3]);
+            if leg.way < ground(leg.waypoint, end) {
+                plan.path.points.clear();
+                (plan.found, plan.has_plan) = (false, false);
+            }
+        }
+        Some(_) => {}
+    }
+    plan.path.measure();
+    Ok(())
+}
+
+/// The short pather (`DAT_1439e3cc0`) for a near waypoint, within `short_range` of it, the
+/// lead's differentiator units (else the lead) ignored; it runs only for a lead it serves (else
+/// its result is 0 with no path). A result other than 3 or 4 with a path of two points or more
+/// longer than [`EPSILON`] is the plan; with result 0 and no such path the group is where it
+/// was going ([`in_range`]). None when the request goes on (a plan only when the pather made
+/// one).
+fn short_plan(
+    motion: &mut Motion,
+    lead: &Lead,
+    world: &mut StepWorld<'_, '_>,
+    leg: &Leg,
+    (target, target_gap2): (Option<&Placed>, f32),
+    short_range: f32,
+    plan: &mut PathSoFar,
+) -> Result<Option<Pass>, GenieError> {
+    let spatial = world.spatial;
+    plan.planned = false;
+    plan.path.points.clear();
+    let ignore = lead
+        .group
+        .as_ref()
+        .map_or_else(|| vec![lead.walker.id], |g| g.differentiator_units.clone());
+    let mut r = 0;
+    if lead.solid {
+        let mut planning = world.plan.reborrow();
+        planning.computer = lead.computer;
+        r = short_path_for(
             lead.walker,
-            from,
-            held_target,
+            leg.from,
             spatial,
-            &mut plan,
-            (waypoint, radii, range),
-            target,
-            &mut path,
+            &mut planning,
+            (leg.waypoint, short_range, leg.target_id),
+            &ignore,
+            &mut plan.path,
         )?;
-        match r {
-            None => {
-                // no planner for the lead's restriction: the straight way
-                let _ = path.insert(0, at);
-                let _ = path.push(waypoint);
-                planned = true;
-                has_plan = true;
-                found = true;
-            }
-            Some(r) if (1..=2).contains(&r) || 4 < r => {
-                planned = true;
-                found = true;
-                has_plan = true;
-                let end = path.points.last().copied().unwrap_or([0.0; 3]);
-                if way < ground(waypoint, end) {
-                    path.points.clear();
-                    found = false;
-                    has_plan = false;
-                }
-            }
-            Some(_) => {}
-        }
-        path.measure();
     }
-    let (mut short_range, mut beyond) = (0.0, way);
-    let level = &motion.paths[0];
-    if level_number == 2 && level.points.len() as i32 == level.waypoint + 1 {
-        short_range = range;
-        beyond = way - range;
+    plan.path.measure();
+    plan.has_plan = plan.found;
+    if r == 3 || r == 4 {
+        return Ok(None);
     }
-    let mut stage = if !has_plan || path.points.len() < 3 {
-        if way <= SHORT_REACH {
-            // the short pather (DAT_1439e3cc0)
-            planned = false;
-            path.points.clear();
-            let ignore =
-                lead_group.map_or_else(|| vec![lead.walker.id], |g| g.differentiator_units.clone());
-            let mut r = 0;
-            if lead.solid {
-                let mut plan = world.plan.reborrow();
-                plan.computer = lead.computer;
-                r = short_path_for(
-                    lead.walker,
-                    from,
-                    spatial,
-                    &mut plan,
-                    (waypoint, short_range, target_id),
-                    &ignore,
-                    &mut path,
-                )?;
-            }
-            path.measure();
-            has_plan = found;
-            if r != 3 && r != 4 {
-                if EPSILON < path.length && 1 < path.points.len() {
-                    found = true;
-                    has_plan = true;
-                } else if r == 0 && (path.points.len() < 2 || path.length < EPSILON) {
-                    // in range of the waypoint: the new level goes
-                    let reach = if target.is_none() || 0.0 < range {
-                        range
-                    } else {
-                        NEAR
-                    };
-                    if reach < target_gap2 {
-                        let level = &motion.paths[0];
-                        if level.waypoint == level.points.len() as i32 - 1 && level.created == now {
-                            motion.stand();
-                            // FUN_140f9b4b0: the level resets and takes state 6
-                            reset_level(&mut motion.paths);
-                            motion.paths[0].state = 6;
-                            return Ok(Some(Pass::Done(true)));
-                        }
-                        return Ok(Some(Pass::Reached));
-                    }
-                    motion.paths[0].state = 4;
-                    return Ok(Some(Pass::Next));
-                }
-            }
+    if EPSILON < plan.path.length && 1 < plan.path.points.len() {
+        (plan.found, plan.has_plan) = (true, true);
+        return Ok(None);
+    }
+    if r != 0 || !(plan.path.points.len() < 2 || plan.path.length < EPSILON) {
+        return Ok(None);
+    }
+    let reach = if target.is_none() || 0.0 < leg.range {
+        leg.range
+    } else {
+        NEAR
+    };
+    Ok(Some(in_range(motion, reach, target_gap2, world.plan.now)))
+}
+
+/// The short pather found no way, the group at its waypoint: a group farther than `reach` from
+/// the target (every group without one, its gap the largest float) counts the waypoint reached,
+/// and at the last waypoint of a level made in this tick (`now`) the walk ends there (the group
+/// stands, the level resets and takes state 6: `FUN_140f9b4b0`); a group within reach arrived
+/// (state 4).
+fn in_range(motion: &mut Motion, reach: f32, target_gap2: f32, now: u32) -> Pass {
+    if reach < target_gap2 {
+        let level = &motion.paths[0];
+        if level.waypoint == level.points.len() as i32 - 1 && level.created == now {
+            motion.stand();
+            reset_level(&mut motion.paths);
+            motion.paths[0].state = 6;
+            return Pass::Done(true);
         }
-        if has_plan {
-            Stage::Found
-        } else {
-            if beyond < CLOSE || target_gap2 < CLOSE {
-                // the straight way when nothing stands on it (FUN_1411570c0 with its tiles)
-                let ignore = lead_group.map_or_else(|| vec![lead.walker.id], |g| g.members.clone());
-                let hits = spatial.line_query(
-                    hold(at, spatial.map),
-                    hold(waypoint, spatial.map),
-                    lead.walker.radius,
-                    Some(lead.walker.mask),
-                    &ignore,
-                )?;
-                if hits.is_empty() {
-                    path.points.clear();
-                    let _ = path.insert(0, at);
-                    let _ = path.push(waypoint);
-                    path.measure();
-                    found = true;
-                }
+        return Pass::Reached;
+    }
+    motion.paths[0].state = 4;
+    Pass::Next
+}
+
+/// The straight way when nothing stands on it (`FUN_1411570c0` with its tiles, from the group's
+/// place to the waypoint, both held inside the map, the lead's group's members, else the lead,
+/// ignored): the two points are the plan, found.
+fn straight_way(
+    lead: &Lead,
+    spatial: &Spatial,
+    leg: &Leg,
+    plan: &mut PathSoFar,
+) -> Result<(), GenieError> {
+    let ignore = lead
+        .group
+        .as_ref()
+        .map_or_else(|| vec![lead.walker.id], |g| g.members.clone());
+    let hits = spatial.line_query(
+        hold(leg.at, spatial.map),
+        hold(leg.waypoint, spatial.map),
+        lead.walker.radius,
+        Some(lead.walker.mask),
+        &ignore,
+    )?;
+    if hits.is_empty() {
+        plan.path.points.clear();
+        let _ = plan.path.insert(0, leg.at);
+        let _ = plan.path.push(leg.waypoint);
+        plan.path.measure();
+        plan.found = true;
+    }
+    Ok(())
+}
+
+/// The long pather (`DAT_1439e3cc8`) for the lead from the group's place to the waypoint within
+/// the level's range (and to the target): its path is the plan, found when it reaches; a found
+/// path whose end lies farther from the waypoint than the group does keeps no points (length
+/// 0), and a path shorter than [`EPSILON`] is not found.
+fn long_plan(
+    lead: &Lead,
+    spatial: &Spatial,
+    leg: &Leg,
+    target: Option<&Placed>,
+    plan: &mut PathSoFar,
+) -> Result<(), GenieError> {
+    let walker = LongWalker {
+        id: lead.walker.id,
+        position: lead.position,
+        radius: lead.radius,
+        mask: lead.walker.mask,
+        moves: lead.moves,
+        ignore_units: &lead.ignore_units,
+        group_units: lead.group.as_ref().map(|g| g.lowered.clone()),
+    };
+    let (reached, long) = long_path_for(
+        &walker,
+        leg.from,
+        spatial,
+        lead.computer,
+        (leg.waypoint, leg.range),
+        target.map(|t| (leg.target_id, t)),
+    )?;
+    plan.path = long;
+    plan.path.measure();
+    plan.found = reached;
+    if EPSILON <= plan.path.length {
+        if plan.found {
+            let end = plan.path.points.last().copied().unwrap_or([0.0; 3]);
+            if leg.way < ground(leg.waypoint, end) {
+                plan.path.points.clear();
+                plan.path.length = 0.0;
             }
-            if found { Stage::Found } else { Stage::Long }
         }
     } else {
-        Stage::Found
-    };
-    if matches!(stage, Stage::Found) && (path.points.len() < 2 || path.length < SHORT_LENGTH) {
-        stage = Stage::Long;
+        plan.found = false;
     }
-    if matches!(stage, Stage::Long) {
-        // the long pather (DAT_1439e3cc8)
-        path.points.clear();
-        let walker = LongWalker {
-            id: lead.walker.id,
-            position: lead.position,
-            radius: lead.radius,
-            mask: lead.walker.mask,
-            moves: lead.moves,
-            ignore_units: &lead.ignore_units,
-            group_units: lead_group.map(|g| g.lowered.clone()),
-        };
-        let long_target = target.map(|t| (target_id, t));
-        let (reached, long) = long_path_for(
-            &walker,
-            from,
-            spatial,
-            lead.computer,
-            (waypoint, range),
-            long_target,
-        )?;
-        path = long;
-        path.measure();
-        found = reached;
-        if EPSILON <= path.length {
-            if found {
-                let end = path.points.last().copied().unwrap_or([0.0; 3]);
-                if way < ground(waypoint, end) {
-                    path.points.clear();
-                    path.length = 0.0;
-                }
-            }
-        } else {
-            found = false;
-        }
-    }
-    Ok(link(motion, lead, path, (found, planned), now))
+    Ok(())
 }
 
 /// The request's end (`LAB_14104b4c5`): a top level without a found path, or a path of fewer

@@ -1220,3 +1220,167 @@ fn a_grouped_units_list_is_its_groups_differentiator_units() {
     assert_eq!(groups.group_units(9), None);
     assert_eq!(groups.group_units(-1), None);
 }
+
+/// [`world`] on its 8 by 8 map of one terrain every master stands on, its soldiers placed.
+fn grounded() -> World {
+    use crate::map::terrain::{Terrain, TerrainKind};
+    let mut t = world();
+    let kinds = vec![TerrainKind {
+        shown: true,
+        flags: 1,
+        forest: false,
+    }];
+    t.spatial.terrain = Some(Terrain::new(
+        8,
+        8,
+        vec![(0, 255, -1); 64],
+        kinds,
+        vec![vec![1.0]],
+    ));
+    t.spatial.sight.as_mut().unwrap().registry =
+        Some(crate::vision::registry::Registry::new(4, 65));
+    for p in 1..4 {
+        for u in &mut t.players[p].objects {
+            u.ai.as_mut().unwrap().ai_type = crate::unit_ai::SOLDIER_AI;
+            u.mover = Some(crate::movement::Mover {
+                moved_at: u.position,
+                ..crate::gathering::hunt::tests::walker()
+            });
+        }
+        for u in t.players[p].objects.clone() {
+            t.spatial.insert(
+                u.id,
+                crate::map::spatial::Placed {
+                    position: u.position,
+                    radius: [0.2, 0.2],
+                    class: 6,
+                    player: p,
+                    master: 4,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: true,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+        }
+    }
+    t
+}
+
+/// An awake group without a command (`BUnitGroup::update` from `0x14103dd65`) runs on: its
+/// lead is the member nearest its target's place (10). With motion flags bit 1 it places
+/// itself (flags bit 10) facing its members' mean forward, and its formation turns (bit 8
+/// clears): the walked level holds no path, so the group moves to its members' mean place.
+/// Without bit 1 nothing turns it, unless flags bit 14 does; flags bit 18 puts it at its
+/// centroid; flags bit 15 places it too, and clears.
+#[test]
+fn an_awake_group_without_a_command_places_itself_and_turns_its_formation() {
+    let mean = [4.0 / 3.0, 0.0, 4.0 / 3.0];
+    let run = |flags, motion_flags| {
+        let mut t = grounded();
+        let g = t.groups.get_mut(1).unwrap();
+        (g.flags, g.motion.flags) = (flags, motion_flags);
+        assert_eq!(t.group_update(1), Ok(true));
+        let g = t.groups.get(1).unwrap().clone();
+        assert_eq!((g.motion.lead, g.centroid), (10, mean));
+        g
+    };
+    let g = run(0x100, 3);
+    assert_eq!(g.flags, 0x400);
+    assert_eq!(g.motion.position[1], [-1.0, 0.0, 0.0]);
+    assert_eq!(g.motion.position[0], mean);
+    let g = run(0x100, 1);
+    assert_eq!(g.flags, 0);
+    assert_eq!(g.motion.position[..2], [[0.0; 3], [1.0, 0.0, 0.0]]);
+    let g = run(0x4100, 1);
+    assert_eq!(g.flags, 0);
+    assert_eq!(g.motion.position[0], mean);
+    let g = run(0x4_0000, 1);
+    assert_eq!(g.flags, 0);
+    assert_eq!(g.motion.position[0], mean);
+    let g = run(0x8000, 1);
+    assert_eq!(g.flags, 0x400);
+    assert_eq!(g.motion.position[1], [-1.0, 0.0, 0.0]);
+}
+
+/// The awake update of a group in a formation of three slots (`BUnitGroup::update` after
+/// `BMotion`'s update): its members walk to their slots (`FUN_141041810` as laid out: 10 to
+/// (3, 4), 11 to (4, 4), 12 to (5, 4)) and its due order goes. With motion flags bit 1 the
+/// formation turns: the group stands at its members' mean place facing their forward (-x),
+/// the slots turn with it about that place and take the nearest units anew.
+#[test]
+fn an_awake_group_s_members_walk_to_their_slots_and_its_due_orders_go() {
+    let run = |flags, motion_flags| {
+        let mut t = grounded();
+        let slot = |x: f32| crate::groups::Slot {
+            unit_id: 9 + x as i32,
+            offset: [x - 2.0, 0.0, 0.0],
+            transform_position: [x + 2.0, 0.0, 4.0],
+            desired_category: 1,
+            desired_sub_category: -1,
+            active: 1,
+            transformed: 1,
+            ..crate::groups::Slot::default()
+        };
+        let g = t.groups.get_mut(1).unwrap();
+        g.current_formation = Some(crate::groups::Formation {
+            kind: 2,
+            transform_type: 1,
+            transform_orientation: [0.0, 0.0, 1.0],
+            slots: vec![slot(1.0), slot(2.0), slot(3.0)],
+            ..crate::groups::Formation::new()
+        });
+        (g.flags, g.motion.flags) = (flags, motion_flags);
+        g.order_queue.push(crate::groups::GroupOrder::default());
+        t.build_mesh();
+        assert_eq!(t.group_update(1), Ok(true));
+        assert_eq!(t.groups.get(1).unwrap().order_queue.len(), 0);
+        let f = t.groups.get(1).unwrap().current_formation.clone().unwrap();
+        let walks = [10, 11, 12].map(|id| {
+            let m = t.object(id).unwrap().1.mover.clone().unwrap();
+            m.paths[0].points.clone()
+        });
+        (f, walks)
+    };
+    let (f, walks) = run(0, 1);
+    let slots: Vec<_> = f
+        .slots
+        .iter()
+        .map(|s| (s.unit_id, s.transform_position))
+        .collect();
+    assert_eq!(
+        slots,
+        [
+            (10, [3.0, 0.0, 4.0]),
+            (11, [4.0, 0.0, 4.0]),
+            (12, [5.0, 0.0, 4.0])
+        ]
+    );
+    assert_eq!(
+        walks,
+        [
+            vec![[1.0, 0.0, 1.0], [3.0, 0.0, 4.0]],
+            vec![[2.0, 0.0, 1.0], [4.0, 0.0, 4.0]],
+            vec![[1.0, 0.0, 2.0], [5.0, 0.0, 4.0]],
+        ]
+    );
+    let (f, walks) = run(0x100, 3);
+    let ids: Vec<_> = f.slots.iter().map(|s| s.unit_id).collect();
+    assert_eq!(ids, [11, 10, 12]);
+    let x: Vec<_> = f.slots.iter().map(|s| s.transform_position[0]).collect();
+    assert!(
+        (x[0] - 7.0 / 3.0).abs() < 1e-6
+            && (x[1] - 4.0 / 3.0).abs() < 1e-6
+            && (x[2] - 1.0 / 3.0).abs() < 1e-6,
+        "{x:?}"
+    );
+    // 11 walks from (2, 1) to the first slot
+    let [from, to] = [walks[1][0], walks[1][1]];
+    assert_eq!(from, [2.0, 0.0, 1.0]);
+    assert!(
+        (to[0] - 7.0 / 3.0).abs() < 1e-6 && (to[2] - 4.0 / 3.0).abs() < 1e-6,
+        "{to:?}"
+    );
+}

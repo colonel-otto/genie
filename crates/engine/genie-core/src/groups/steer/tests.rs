@@ -526,3 +526,60 @@ fn the_members_moves_end_wait_or_stop() {
         [6.0, 9.0]
     );
 }
+
+/// What the way round reads of a member at `at` (x, height, y) of radius 0.2 and height
+/// radius 0.5.
+fn rounder(at: crate::math::fmath::Vec3) -> detour::Rounder<'static> {
+    detour::Rounder {
+        id: 10,
+        walker: crate::movement::Walker {
+            id: 10,
+            radius: 0.1,
+            restriction: 0,
+            mask: 2,
+        },
+        computer: false,
+        at,
+        here: [at[0], at[2], at[1]],
+        mask: 2,
+        restriction: 0,
+        grow: 0.1,
+        radius: [0.2, 0.2],
+        height: 0.5,
+        solid: true,
+        differentiators: &[],
+    }
+}
+
+/// The way round's step: one tile toward the slot on the ground, the group's forward when the
+/// member is on it, held inside the map by the member's radius on x and its height radius on
+/// y; its footprint is near a point within 10 of it (the squared gap below 100).
+#[test]
+fn the_way_round_s_step_goes_one_tile_toward_the_slot_inside_the_map() {
+    use detour::one_step_toward;
+    let (map, forward) = ([32, 32], [0.0, 0.0, 1.0]);
+    let step = |at, to| one_step_toward(&rounder(at), to, forward, map);
+    assert_eq!(step([5.0, 0.0, 5.0], [9.0, 0.0, 5.0]), [6.0, 0.0, 5.0]);
+    assert_eq!(step([5.0, 0.0, 5.0], [5.0, 0.0, 5.0]), [5.0, 0.0, 6.0]);
+    assert_eq!(step([0.5, 0.0, 5.0], [-9.0, 0.0, 5.0]), [0.2, 0.0, 5.0]);
+    assert_eq!(step([31.5, 0.0, 5.0], [40.0, 0.0, 5.0]), [31.8, 0.0, 5.0]);
+    assert_eq!(step([5.0, 0.0, 0.8], [5.0, 0.0, -9.0]), [5.0, 0.0, 0.5]);
+    assert_eq!(step([5.0, 0.0, 31.2], [5.0, 0.0, 40.0]), [5.0, 0.0, 31.5]);
+    let r = rounder([5.0, 0.0, 5.0]);
+    assert!(r.near(15.1, 5.0));
+    assert!(!r.near(15.3, 5.0));
+}
+
+/// `FUN_140f9bcd0` outside the path: a way that ends farther from the slot than the gap
+/// (on the ground) falls short; an empty one ends at the origin.
+#[test]
+fn a_way_round_that_ends_farther_than_the_gap_falls_short() {
+    use crate::pathing::tile_path::Path;
+    use detour::ends_farther;
+    let mut way = Path::default();
+    let _ = way.push([9.0, 3.0, 5.0]);
+    assert!(ends_farther(&way, [10.0, 0.0, 5.0], 0.5));
+    assert!(!ends_farther(&way, [10.0, 0.0, 5.0], 1.5));
+    assert!(ends_farther(&Path::default(), [3.0, 0.0, 4.0], 4.9));
+    assert!(!ends_farther(&Path::default(), [3.0, 0.0, 4.0], 5.0));
+}
