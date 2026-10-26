@@ -27,7 +27,6 @@
   "crates/formats/genie-dat/src/unit_type.rs": 1527,
   "crates/formats/genie-hki/src/lib.rs": 1527,
   "crates/formats/genie-lang/src/lib.rs": 863,
-  "crates/formats/genie-rec/src/actions.rs": 2122,
   "crates/formats/genie-rec/src/ai.rs": 1111,
   "crates/formats/genie-rec/src/player.rs": 898,
   "crates/formats/genie-rec/src/unit.rs": 1348,

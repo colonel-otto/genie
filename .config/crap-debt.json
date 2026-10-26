@@ -1136,192 +1136,192 @@
       "crate": "genie-lang"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "AIOrderCommand::read_from",
-      "line": 465,
-      "cyclomatic": 22.0,
+      "file": "crates/formats/genie-rec/src/actions/buildings.rs",
+      "function": "MakeCommand::read_from",
+      "line": 29,
+      "cyclomatic": 7.0,
       "coverage": 0.0,
-      "crap": 506.0,
+      "crap": 56.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "AIOrderCommand::write_to",
-      "line": 507,
-      "cyclomatic": 23.0,
+      "file": "crates/formats/genie-rec/src/actions/buildings.rs",
+      "function": "MakeCommand::write_to",
+      "line": 53,
+      "cyclomatic": 7.0,
       "coverage": 0.0,
-      "crap": 552.0,
+      "crap": 56.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "AttackGroundCommand::write_to",
-      "line": 1409,
-      "cyclomatic": 6.0,
+      "file": "crates/formats/genie-rec/src/actions/buildings.rs",
+      "function": "ResearchCommand::write_to",
+      "line": 107,
+      "cyclomatic": 7.0,
       "coverage": 0.0,
-      "crap": 42.0,
+      "crap": 56.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "Command::read_from",
-      "line": 1879,
-      "cyclomatic": 38.0,
-      "coverage": 75.60975609756098,
-      "crap": 58.95152420887683,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "CreateCommand::read_from",
-      "line": 351,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "CreateCommand::write_to",
-      "line": 370,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "FormFormationCommand::read_from",
-      "line": 836,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "FormFormationCommand::write_to",
-      "line": 855,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
+      "file": "crates/formats/genie-rec/src/actions/game.rs",
       "function": "GameCommand::read_from",
-      "line": 1216,
+      "line": 136,
       "cyclomatic": 16.0,
       "coverage": 22.413793103448278,
       "crap": 135.562097666981,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "GroupWaypointCommand::write_to",
-      "line": 616,
+      "file": "crates/formats/genie-rec/src/actions/groups.rs",
+      "function": "FormFormationCommand::read_from",
+      "line": 311,
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "MakeCommand::read_from",
-      "line": 958,
-      "cyclomatic": 7.0,
+      "file": "crates/formats/genie-rec/src/actions/groups.rs",
+      "function": "FormFormationCommand::write_to",
+      "line": 330,
+      "cyclomatic": 6.0,
       "coverage": 0.0,
-      "crap": 56.0,
+      "crap": 42.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "MakeCommand::write_to",
-      "line": 982,
-      "cyclomatic": 7.0,
+      "file": "crates/formats/genie-rec/src/actions/groups.rs",
+      "function": "GroupWaypointCommand::write_to",
+      "line": 91,
+      "cyclomatic": 6.0,
       "coverage": 0.0,
-      "crap": 56.0,
+      "crap": 42.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "MoveCommand::write_to",
-      "line": 321,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "OrderCommand::write_to",
-      "line": 182,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
+      "file": "crates/formats/genie-rec/src/actions/groups.rs",
       "function": "PatrolCommand::write_to",
-      "line": 804,
+      "line": 279,
       "cyclomatic": 9.0,
       "coverage": 0.0,
       "crap": 90.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "ResearchCommand::write_to",
-      "line": 1036,
-      "cyclomatic": 7.0,
+      "file": "crates/formats/genie-rec/src/actions/groups.rs",
+      "function": "UserPatchAICommand::read_from",
+      "line": 378,
+      "cyclomatic": 6.0,
       "coverage": 0.0,
-      "crap": 56.0,
+      "crap": 42.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/actions.rs",
+      "file": "crates/formats/genie-rec/src/actions/groups.rs",
+      "function": "UserPatchAICommand::write_to",
+      "line": 403,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/mod.rs",
+      "function": "Command::read_from",
+      "line": 246,
+      "cyclomatic": 38.0,
+      "coverage": 75.60975609756098,
+      "crap": 58.95152420887683,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "AIOrderCommand::read_from",
+      "line": 334,
+      "cyclomatic": 22.0,
+      "coverage": 0.0,
+      "crap": 506.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "AIOrderCommand::write_to",
+      "line": 376,
+      "cyclomatic": 23.0,
+      "coverage": 0.0,
+      "crap": 552.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "CreateCommand::read_from",
+      "line": 220,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "CreateCommand::write_to",
+      "line": 239,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "MoveCommand::write_to",
+      "line": 190,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "OrderCommand::write_to",
+      "line": 51,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "WorkCommand::read_from",
+      "line": 116,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/orders.rs",
+      "function": "WorkCommand::write_to",
+      "line": 136,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/tasks.rs",
+      "function": "AttackGroundCommand::write_to",
+      "line": 44,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-rec"
+    },
+    {
+      "file": "crates/formats/genie-rec/src/actions/tasks.rs",
       "function": "SetGatherPointCommand::write_to",
-      "line": 1668,
+      "line": 303,
       "cyclomatic": 12.0,
       "coverage": 0.0,
       "crap": 156.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "UserPatchAICommand::read_from",
-      "line": 903,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "UserPatchAICommand::write_to",
-      "line": 928,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "WorkCommand::read_from",
-      "line": 247,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-rec"
-    },
-    {
-      "file": "crates/formats/genie-rec/src/actions.rs",
-      "function": "WorkCommand::write_to",
-      "line": 267,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
       "crate": "genie-rec"
     },
     {
