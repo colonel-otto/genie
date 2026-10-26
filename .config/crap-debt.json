@@ -434,6 +434,24 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/movement/explore.rs",
+      "function": "Unit::explore_owner",
+      "line": 457,
+      "cyclomatic": 9.0,
+      "coverage": 0.0,
+      "crap": 90.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/movement/explore.rs",
+      "function": "Unit::explore_to",
+      "line": 427,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/movement/move_to.rs",
       "function": "MoveToAction::update",
       "line": 511,
@@ -458,24 +476,6 @@
       "cyclomatic": 94.0,
       "coverage": 37.29903536977492,
       "crap": 2272.10280446317,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/objects/unit/death.rs",
-      "function": "Unit::explore_owner",
-      "line": 50,
-      "cyclomatic": 9.0,
-      "coverage": 0.0,
-      "crap": 90.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/objects/unit/death.rs",
-      "function": "Unit::explore_to",
-      "line": 20,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
       "crate": "genie-core"
     },
     {

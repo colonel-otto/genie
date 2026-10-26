@@ -9,8 +9,15 @@
 //!
 //! Vectors are the game's `BVector`s ([`fmath::Vec3`]: x, height, y).
 
+use self::long_walk::{Reach, include_kept, may_plan, owner_number, reach};
+use self::path_points::{
+    ALLY_PAUSE, Avoided, FAST_TURN, Goal, Next, OTHER_PAUSE, STUCK_PAUSE, Step, cut_path, ground,
+    ground_line, moved_far, point_or_zero, point_or_zero_of, short_range, split, too_short,
+};
+use crate::GenieError;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
+use crate::objects::unit::Unit;
 
 pub(crate) mod ai_moves;
 pub mod explore;
@@ -31,18 +38,11 @@ pub(crate) use self::long_walk::{
     LongWalker, Walker, long_path_for, lowered_units, short_path_for, short_path_including,
     tile_plan_for,
 };
-use self::long_walk::{Reach, include_kept, may_plan, owner_number, reach};
 #[cfg(test)]
 use self::path_points::TWO_PI;
-use self::path_points::{
-    ALLY_PAUSE, Avoided, FAST_TURN, Goal, Next, OTHER_PAUSE, STUCK_PAUSE, Step, cut_path, ground,
-    ground_line, moved_far, point_or_zero, point_or_zero_of, short_range, split, too_short,
-};
 pub use self::path_points::{
     Planning, Turning, footprint_gap, footprint_gap_squared, turn_rate, turning,
 };
-#[cfg(test)]
-use crate::GenieError;
 #[cfg(test)]
 use crate::math::rng::Well512;
 #[cfg(test)]
@@ -584,6 +584,26 @@ fn remove_point(points: &mut Vec<Vec3>, i: i32) -> bool {
             true
         }
         _ => false,
+    }
+}
+
+impl Unit {
+    /// Slot 0x5d0 of a unit whose `MoveTo` went.
+    pub(crate) fn stop_mover(&mut self) -> Result<(), GenieError> {
+        self.mover
+            .as_mut()
+            .ok_or(crate::world::WALKER_UNMOVING)?
+            .stop()
+    }
+
+    /// A stop since the last look cleared the animation speed (`+0x7b8`, [`Mover::speed_stopped`]).
+    ///
+    /// [`Mover::speed_stopped`]: crate::movement::Mover::speed_stopped
+    pub(crate) fn take_stopped_speed(&mut self) {
+        if let Some(m) = self.mover.as_mut().filter(|m| m.speed_stopped) {
+            m.speed_stopped = false;
+            self.anim_speed = Some(0.0);
+        }
     }
 }
 

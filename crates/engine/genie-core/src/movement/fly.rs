@@ -5,9 +5,11 @@
 
 use crate::GenieError;
 use crate::math::fmath::{cos, sin};
-use crate::math::rng::Well512;
+use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
 use crate::objects::masters::Task;
+use crate::objects::unit::Unit;
+use crate::world::context::Context;
 
 /// The Fly action's type, which word 9 adds.
 pub const FLY: i16 = 10;
@@ -278,6 +280,40 @@ impl Fly {
         let ex = point[0] - hx;
         let d = ex * ex + ey * ey;
         d < leash || d <= bird
+    }
+}
+
+impl Unit {
+    /// The default task's Fly ([`crate::movement::fly::Fly::start`]): a player's bird (its task's
+    /// `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the fly
+    /// height (slot 0x58, the position setter: its tile stays, so do its counts).
+    pub(crate) fn start_fly(&mut self, c: &mut Context<'_>, task: Task) -> Result<(), GenieError> {
+        if c.player != 0 {
+            return Err(GenieError::unsupported(
+                "a player's bird's default Fly (its task's +0x15)",
+            ));
+        }
+        let fly_mode = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .map(|m| m.fly_mode)
+            .ok_or(GenieError::unsupported(
+                "a bird of a master the slice does not have",
+            ))?;
+        self.fly = Some(Fly::start(
+            task,
+            self.position,
+            c.streams.get(Stream::Action),
+        ));
+        if fly_mode == 1 {
+            self.position[2] = HEIGHT;
+            c.spatial.set_position(self.id, self.position);
+            // the position setter marks the move (`+0x824`, `+0x870`)
+            if let Some(m) = self.mover.as_mut() {
+                m.mark_move(self.position, c.world_time);
+            }
+        }
+        Ok(())
     }
 }
 

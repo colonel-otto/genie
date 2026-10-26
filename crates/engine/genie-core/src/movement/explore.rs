@@ -8,7 +8,10 @@
 //! is done it goes back to state 3.
 
 use crate::GenieError;
+use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
+use crate::objects::unit::Unit;
+use crate::world::context::Context;
 
 /// The Explore action's type.
 pub const EXPLORE: i16 = 4;
@@ -412,6 +415,81 @@ pub fn beyond_sight(
         }
     }
     Ok(None)
+}
+
+impl Unit {
+    /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
+    /// its own height: its top Explore takes the point (slot 0x48), else a new Explore
+    /// (`FUN_140a87d30`) becomes its only action (`set_only_action`, `FUN_14106e990`: the actions
+    /// it had go, `FUN_140a98620`, and the new one starts, `FUN_140a977e0`). A `MoveTo` of the
+    /// Explore that goes stops the unit (its teardown, slot 0x5d0); other actions it would
+    /// replace are not modelled.
+    pub(crate) fn explore_to(
+        &mut self,
+        point: [f32; 2],
+        c: &mut Context<'_>,
+    ) -> Result<(), GenieError> {
+        let at = [point[0], point[1], self.position[2]];
+        let owner = if let Some(e) = self.explore.as_mut() {
+            let walked = e.move_to.is_some();
+            let owner = e.take_point(at);
+            if walked {
+                self.stop_mover()?;
+            }
+            owner
+        } else {
+            if self.top_action().is_some() || self.unmodelled_action.is_some() {
+                return Err(GenieError::unsupported(
+                    "an Explore replacing another action",
+                ));
+            }
+            let (e, owner) = ExploreAction::new(at);
+            self.explore = Some(e);
+            owner
+        };
+        self.explore_owner(owner, c)
+    }
+
+    /// What an Explore's `set_state` asks of its unit ([`crate::movement::explore::Owner`]): its notify 0x202
+    /// with the explore's action value to the unit AI, and the standing sprite (slot 0x68 with
+    /// the master's `+0x470`) where the slice holds the unit's sprite. `Set_state` 2's slots are
+    /// not modelled.
+    pub(crate) fn explore_owner(
+        &mut self,
+        owner: Owner,
+        c: &mut Context<'_>,
+    ) -> Result<(), GenieError> {
+        use crate::movement::explore::Owner;
+        match owner {
+            Owner::Nothing => return Ok(()),
+            Owner::Stopped => {
+                return Err(GenieError::unsupported(
+                    "an Explore's set_state 2 (slots 0x68)",
+                ));
+            }
+            Owner::WantsPoint => self.post_own(WANTS_POINT, [EXPLORE_ACTION, 0, 0])?,
+            Owner::Standing => {}
+        }
+        if let Some(m) = self.mover.as_mut() {
+            m.shows_standing();
+        }
+        if self.sprite.is_some() {
+            let standing = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .map(|m| m.standing_sprite)
+                .and_then(|id| c.graphics.get(&id).copied())
+                .ok_or(GenieError::unsupported(
+                    "an explorer without its standing sprite",
+                ))?;
+            crate::combat::attack::set_sprite(
+                &mut self.sprite,
+                standing,
+                c.streams.get(Stream::Sprite),
+            );
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

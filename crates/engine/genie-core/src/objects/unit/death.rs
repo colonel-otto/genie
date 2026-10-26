@@ -1,9 +1,8 @@
-//! A unit's explore, its stopped mover, the default task's fly and the deaths.
+//! An object's death (`set_state(3)` and the static part of it) and a foundation's death.
 
 use crate::GenieError;
 use crate::construction::build::{Completion, Construction};
 use crate::math::rng::Stream;
-use crate::movement::fly::Fly;
 use crate::objects::lifecycle::Class;
 use crate::objects::lifecycle::death_parts::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::objects::masters::Master;
@@ -11,136 +10,6 @@ use crate::objects::unit::{NO_DYING_SPRITE, Unit};
 use crate::world::context::Context;
 
 impl Unit {
-    /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at
-    /// its own height: its top Explore takes the point (slot 0x48), else a new Explore
-    /// (`FUN_140a87d30`) becomes its only action (`set_only_action`, `FUN_14106e990`: the actions
-    /// it had go, `FUN_140a98620`, and the new one starts, `FUN_140a977e0`). A `MoveTo` of the
-    /// Explore that goes stops the unit (its teardown, slot 0x5d0); other actions it would
-    /// replace are not modelled.
-    pub(crate) fn explore_to(
-        &mut self,
-        point: [f32; 2],
-        c: &mut Context<'_>,
-    ) -> Result<(), GenieError> {
-        let at = [point[0], point[1], self.position[2]];
-        let owner = if let Some(e) = self.explore.as_mut() {
-            let walked = e.move_to.is_some();
-            let owner = e.take_point(at);
-            if walked {
-                self.stop_mover()?;
-            }
-            owner
-        } else {
-            if self.top_action().is_some() || self.unmodelled_action.is_some() {
-                return Err(GenieError::unsupported(
-                    "an Explore replacing another action",
-                ));
-            }
-            let (e, owner) = crate::movement::explore::ExploreAction::new(at);
-            self.explore = Some(e);
-            owner
-        };
-        self.explore_owner(owner, c)
-    }
-
-    /// What an Explore's `set_state` asks of its unit ([`crate::movement::explore::Owner`]): its notify 0x202
-    /// with the explore's action value to the unit AI, and the standing sprite (slot 0x68 with
-    /// the master's `+0x470`) where the slice holds the unit's sprite. `Set_state` 2's slots are
-    /// not modelled.
-    pub(crate) fn explore_owner(
-        &mut self,
-        owner: crate::movement::explore::Owner,
-        c: &mut Context<'_>,
-    ) -> Result<(), GenieError> {
-        use crate::movement::explore::Owner;
-        match owner {
-            Owner::Nothing => return Ok(()),
-            Owner::Stopped => {
-                return Err(GenieError::unsupported(
-                    "an Explore's set_state 2 (slots 0x68)",
-                ));
-            }
-            Owner::WantsPoint => self.post_own(
-                crate::movement::explore::WANTS_POINT,
-                [crate::movement::explore::EXPLORE_ACTION, 0, 0],
-            )?,
-            Owner::Standing => {}
-        }
-        if let Some(m) = self.mover.as_mut() {
-            m.shows_standing();
-        }
-        if self.sprite.is_some() {
-            let standing = c
-                .masters
-                .and_then(|m| m.get(self.life.master_id))
-                .map(|m| m.standing_sprite)
-                .and_then(|id| c.graphics.get(&id).copied())
-                .ok_or(GenieError::unsupported(
-                    "an explorer without its standing sprite",
-                ))?;
-            crate::combat::attack::set_sprite(
-                &mut self.sprite,
-                standing,
-                c.streams.get(Stream::Sprite),
-            );
-        }
-        Ok(())
-    }
-
-    /// Slot 0x5d0 of a unit whose `MoveTo` went.
-    pub(crate) fn stop_mover(&mut self) -> Result<(), GenieError> {
-        self.mover
-            .as_mut()
-            .ok_or(crate::world::WALKER_UNMOVING)?
-            .stop()
-    }
-
-    /// A stop since the last look cleared the animation speed (`+0x7b8`, [`Mover::speed_stopped`]).
-    ///
-    /// [`Mover::speed_stopped`]: crate::movement::Mover::speed_stopped
-    pub(crate) fn take_stopped_speed(&mut self) {
-        if let Some(m) = self.mover.as_mut().filter(|m| m.speed_stopped) {
-            m.speed_stopped = false;
-            self.anim_speed = Some(0.0);
-        }
-    }
-
-    /// The default task's Fly ([`crate::movement::fly::Fly::start`]): a player's bird (its task's
-    /// `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the fly
-    /// height (slot 0x58, the position setter: its tile stays, so do its counts).
-    pub(crate) fn start_fly(
-        &mut self,
-        c: &mut Context<'_>,
-        task: crate::objects::masters::Task,
-    ) -> Result<(), GenieError> {
-        if c.player != 0 {
-            return Err(GenieError::unsupported(
-                "a player's bird's default Fly (its task's +0x15)",
-            ));
-        }
-        let fly_mode = c
-            .masters
-            .and_then(|m| m.get(self.life.master_id))
-            .map(|m| m.fly_mode)
-            .ok_or(GenieError::unsupported(
-                "a bird of a master the slice does not have",
-            ))?;
-        self.fly = Some(Fly::start(
-            task,
-            self.position,
-            c.streams.get(Stream::Action),
-        ));
-        if fly_mode == 1 {
-            self.position[2] = crate::movement::fly::HEIGHT;
-            c.spatial.set_position(self.id, self.position);
-            // the position setter marks the move (`+0x824`, `+0x870`)
-            if let Some(m) = self.mover.as_mut() {
-                m.mark_move(self.position, c.world_time);
-            }
-        }
-        Ok(())
-    }
-
     /// The death's `set_state(3)` (from `before`, the state the object had) and the static
     /// update's dying sprite after it (slot 0x7a0, then slot 0x68, `FUN_141217000`). A building's
     /// (`FUN_1411dbb70`) first sets its annexes' states (the caller's after the update), then a
