@@ -2,7 +2,7 @@
 
 use crate::math::rng::Stream;
 use crate::order::Work;
-use crate::spawn::{BUILDING, VILLAGER};
+use crate::production::spawn::{BUILDING, VILLAGER};
 use crate::turn::{GatherPoint, Turns, Unit};
 use crate::unit_ai::GenieError;
 

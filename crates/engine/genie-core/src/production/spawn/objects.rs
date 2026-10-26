@@ -4,11 +4,11 @@
 use crate::lifecycle::{Class, Lifecycle};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
-use crate::spatial::{Obstruction, Placed};
-use crate::spawn::{
+use crate::production::spawn::{
     BUILDING, Facing, NOT_MOVING, Placing, Site, TRIBE_COMBAT, WALL, WorldMap, corner_tiles,
     placement, spawn_point,
 };
+use crate::spatial::{Obstruction, Placed};
 use crate::sprite::ActiveSprite;
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::{GenieError, factory_type};

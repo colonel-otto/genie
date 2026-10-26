@@ -264,7 +264,7 @@ impl crate::turn::Turns {
     /// transport's zone map (`FUN_1411958c0` on its `CVTTSS2SI` tile, 0 below 0 or without a map),
     /// cut to its low byte, is it, or touches it (`FUN_141414f70` on both low bytes; without a
     /// map none does); −1 takes any. A place is free where the unit's master may stand for the
-    /// transport's owner (its slot 0x50, [`crate::spawn::placement`] with the spawn's arguments:
+    /// transport's owner (its slot 0x50, [`crate::production::spawn::placement`] with the spawn's arguments:
     /// its arguments 9 and 12, 1 and 0 here, change nothing the slice reads) and the unit could
     /// stand (its slot 0x278, [`crate::spatial::Spatial::point_clear`] by its radius and its
     /// restriction's mask).
@@ -295,7 +295,10 @@ impl crate::turn::Turns {
             }
             _ => None,
         };
-        let moving = made.moving.as_ref().ok_or(crate::spawn::NOT_MOVING)?;
+        let moving = made
+            .moving
+            .as_ref()
+            .ok_or(crate::production::spawn::NOT_MOVING)?;
         let terrain = self
             .spatial
             .terrain
@@ -305,7 +308,7 @@ impl crate::turn::Turns {
             .restrictions
             .get(moving.restriction)
             .ok_or(crate::pathing::zones::UNKNOWN_RESTRICTION)?;
-        let placing = crate::spawn::Placing {
+        let placing = crate::production::spawn::Placing {
             player: p,
             radius: made.radius,
             tall: made.tall,
@@ -321,7 +324,7 @@ impl crate::turn::Turns {
         );
         let zone_map = zone_map.map(|k| self.zones.map(k));
         let mut rng = self.streams.get(crate::math::rng::Stream::Object).clone();
-        let map = crate::spawn::WorldMap { turns: self };
+        let map = crate::production::spawn::WorldMap { turns: self };
         let spatial = &self.spatial;
         let found = find_drop_location(
             around,
@@ -351,8 +354,8 @@ impl crate::turn::Turns {
             &mut |[x, y]| {
                 let [rx, ry] = made.radius;
                 spatial.check_known([x - rx, y - ry, x + rx, y + ry])?;
-                if crate::spawn::placement(&placing, &map, [x, y], false)?
-                    != crate::spawn::Tested::Free
+                if crate::production::spawn::placement(&placing, &map, [x, y], false)?
+                    != crate::production::spawn::Tested::Free
                 {
                     return Ok(false);
                 }

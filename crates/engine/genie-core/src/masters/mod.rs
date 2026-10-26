@@ -359,7 +359,7 @@ pub struct Master {
     pub ghost_on_death: u8,
     /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and
     /// `placement_terrain`, −1 for none): the two side terrains, then the two terrains
-    /// ([`crate::spawn::placement_terrains`]).
+    /// ([`crate::production::spawn::placement_terrains`]).
     pub placement: [i16; 4],
     /// The death sprite (`+0x480`, −1 for none) and the death spawns (`+0x5e4`, `+0x5e6`, −1 for
     /// none), and what a dead object's steps read of the master

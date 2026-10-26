@@ -2,7 +2,7 @@
 //! `+0xbe8` to `+0xc01`, `+0xcd8`) and the action of its production list (`+0xbf8`) that works
 //! the first entry off: the make action (`TRIBE_Action_Make_Obj`, update `0x140ad0490`) or the
 //! research's (`TRIBE_Action_Make_Tech`). The building's update makes and runs that action after
-//! its combat update (`FUN_1411e7dc0`, [`crate::spawn`]); QUEUE's building part is
+//! its combat update (`FUN_1411e7dc0`, [`crate::production::spawn`]); QUEUE's building part is
 //! `FUN_1411cbc40` ([`crate::turn`]); the cancels are `FUN_1411d66b0`, `FUN_1411d61e0` and
 //! `FUN_1411cff00` ([`crate::game_status`]).
 //!
@@ -15,6 +15,8 @@
 
 use crate::GenieError;
 use crate::masters::{Master, Masters, TrainLocation};
+
+pub mod spawn;
 
 /// One slot of a building's queue (`+0xbe8`, 0x30 bytes; the save's `mProductionQueue[i]`). A
 /// slot the buffer's growth adds is zeroed (`calloc`), as [`Entry::default`] is.

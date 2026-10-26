@@ -1,7 +1,7 @@
 //! The placement test's terrains (`FUN_141123f80`): the hill mode, the placement and side
 //! terrains and the tiles beside a box.
 
-use crate::spawn::PlaceMap;
+use crate::production::spawn::PlaceMap;
 use crate::unit_ai::GenieError;
 
 /// What BUILD's placement test reads of the building master and the game.

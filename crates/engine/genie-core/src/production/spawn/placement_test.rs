@@ -1,7 +1,7 @@
 //! The master's placement test (slot 0x50): the objects near a candidate, BUILD's placement
 //! test and the spawn's.
 
-use crate::spawn::{
+use crate::production::spawn::{
     BUILDING, BuildSite, CLASS_51, CLASS_54, FARM, GATE, INSIDE, PASSABLE, REACH, RELIC, TREE,
     Tested, WALL, hill_fails, placement_terrains,
 };

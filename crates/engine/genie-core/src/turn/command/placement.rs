@@ -68,7 +68,7 @@ impl Turns {
     }
 
     /// Whether BUILD (`FUN_140e7a400`) places a foundation of `master` at `at` for `player`: its
-    /// placement test ([`crate::spawn::build_placement`], the master's slot 0x50), then the
+    /// placement test ([`crate::production::spawn::build_placement`], the master's slot 0x50), then the
     /// payment's (`FUN_14162fb60` -> `FUN_141618db0`: every cost entry of a resource, paid or
     /// not, at most what the player holds). A refused BUILD places, pays and draws nothing (the
     /// player's slot 0x380 shows why). A cost in population (attribute 4) is not modelled.
@@ -85,7 +85,7 @@ impl Turns {
         self.affords(player, master)
     }
 
-    /// The master's placement test (slot 0x50, [`crate::spawn::build_placement`]) of a
+    /// The master's placement test (slot 0x50, [`crate::production::spawn::build_placement`]) of a
     /// foundation of `master` for `player` at `at`, `human` its explored test (`p6`): 0 when it
     /// may go there, else the game's code.
     pub(crate) fn placement_code(
@@ -126,7 +126,7 @@ impl Turns {
             .ok_or(GenieError::unsupported(
                 "a foundation's terrain restriction the data file does not have",
             ))?;
-        let build = crate::spawn::BuildSite {
+        let build = crate::production::spawn::BuildSite {
             player,
             human,
             clearance: site.clearance,
@@ -138,8 +138,8 @@ impl Turns {
             zones: false,
             own,
         };
-        let map = crate::spawn::WorldMap { turns: self };
-        crate::spawn::build_placement(&build, &map, at)
+        let map = crate::production::spawn::WorldMap { turns: self };
+        crate::production::spawn::build_placement(&build, &map, at)
     }
 
     /// The payment's test of a foundation of `master` for `player` (`FUN_14162fb60` ->

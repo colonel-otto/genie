@@ -361,7 +361,7 @@ impl Unit {
         }
         let mut mover = Mover {
             forward: [1.0, 0.0, 0.0],
-            right: [0.0, 0.0, crate::spawn::START_RIGHT_Z],
+            right: [0.0, 0.0, crate::production::spawn::START_RIGHT_Z],
             velocity: None,
             paths: Vec::new(),
             factor: 1.0,

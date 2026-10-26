@@ -63,7 +63,6 @@ pub mod pathing;
 pub mod production;
 pub mod settings;
 pub mod spatial;
-pub mod spawn;
 pub mod sprite;
 pub mod start_work;
 pub mod tasks;

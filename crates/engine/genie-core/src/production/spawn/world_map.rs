@@ -1,6 +1,6 @@
 //! The map as the placement test reads it from the world ([`WorldMap`]).
 
-use crate::spawn::{Near, PlaceMap};
+use crate::production::spawn::{Near, PlaceMap};
 use crate::turn::Turns;
 use crate::unit_ai::GenieError;
 

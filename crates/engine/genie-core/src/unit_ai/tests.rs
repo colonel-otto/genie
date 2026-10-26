@@ -4776,7 +4776,7 @@ fn a_making_building_runs_process_idle_only_without_a_target() {
     let tc = |target| UnitAi {
         ai_type: 15,
         current_order: ATTACK_ORDER,
-        current_action: crate::spawn::MAKE_ACTION,
+        current_action: crate::production::spawn::MAKE_ACTION,
         current_target: target,
         idle_timer: 4000,
         adjusted_idle_timeout: 1080,
@@ -4860,7 +4860,7 @@ fn a_unit_ai_with_a_target_runs_its_update_on_any_order() {
         ..Surroundings::default()
     };
     for (ai_type, order, action) in [
-        (15, ATTACK_ORDER, crate::spawn::MAKE_ACTION),
+        (15, ATTACK_ORDER, crate::production::spawn::MAKE_ACTION),
         (5, -1, ATTACK_ACTION),
         (17, MOVE_ORDER, -1),
         (17, MOVE_ORDER, 620),

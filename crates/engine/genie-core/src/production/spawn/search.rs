@@ -1,7 +1,7 @@
 //! The spawn point search (`FUN_1411d12d0`): the building's sides in segments, each spot's
 //! candidates (`FUN_1411c5b60`) and the corners' wall checks.
 
-use crate::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
+use crate::production::spawn::{GAP, NONE, SIDE_SHARE, SMALL, Site, Tested};
 use crate::unit_ai::GenieError;
 
 /// One spot (`FUN_1411c5b60`'s argument): its candidates `i` in `0..=count` lie at

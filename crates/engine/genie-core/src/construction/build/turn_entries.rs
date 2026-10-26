@@ -444,7 +444,13 @@ impl crate::turn::Turns {
         // a plain object (types 10 and 20 to 39: a pasture's livestock): the master's slot 0x40
         // there, facing its drawn angle
         if made.kind != BUILDING_TYPE {
-            let idx = self.plain_object(p, master, &made, at, crate::spawn::Facing::Drawn)?;
+            let idx = self.plain_object(
+                p,
+                master,
+                &made,
+                at,
+                crate::production::spawn::Facing::Drawn,
+            )?;
             let id = self.players[p].objects[idx].id;
             if flagged {
                 self.clear_footprint(p, master, [at[0], at[1]], true)?;

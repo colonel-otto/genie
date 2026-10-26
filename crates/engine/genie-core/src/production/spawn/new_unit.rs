@@ -5,8 +5,8 @@ use crate::lifecycle::{Class, Lifecycle};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::production::IN_PRODUCTION;
+use crate::production::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
 use crate::spatial::{Obstruction, Placed};
-use crate::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::{ACTION_COMPLETED, GenieError, NewObject, Notify, UnitAi, factory_type};
@@ -29,7 +29,7 @@ impl Turns {
     /// (`FUN_140c898a0`), the per-master counts (slot 0x398's `+0x13b0`), the sounds and
     /// particles (`FUN_1411a52e0`).
     ///
-    /// [`spawn_point`]: crate::spawn::search::spawn_point
+    /// [`spawn_point`]: crate::production::spawn::search::spawn_point
     pub(super) fn spawn(
         &mut self,
         p: usize,

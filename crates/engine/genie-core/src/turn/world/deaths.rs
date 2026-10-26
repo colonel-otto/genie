@@ -254,10 +254,12 @@ pub(crate) fn count_class(attributes: &mut [f32], master: &Master, by: f32) {
         }
         return;
     }
-    if master.class == crate::spawn::VILLAGER && matches!(master.task_by_group, 1 | 2) {
+    if master.class == crate::production::spawn::VILLAGER && matches!(master.task_by_group, 1 | 2) {
         add(38);
     }
-    if master.class == crate::spawn::VILLAGER || CIVILIAN_CLASSES.contains(&master.class) {
+    if master.class == crate::production::spawn::VILLAGER
+        || CIVILIAN_CLASSES.contains(&master.class)
+    {
         add(37);
     }
 }
