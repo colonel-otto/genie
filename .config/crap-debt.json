@@ -191,45 +191,45 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion.rs",
+      "file": "crates/engine/genie-core/src/group/motion/request.rs",
       "function": "link",
-      "line": 748,
+      "line": 246,
       "cyclomatic": 18.0,
       "coverage": 0.0,
       "crap": 342.0,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion.rs",
-      "function": "pass",
-      "line": 395,
-      "cyclomatic": 20.0,
-      "coverage": 58.06451612903226,
-      "crap": 49.49884193212715,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/group/motion.rs",
-      "function": "reached",
-      "line": 470,
-      "cyclomatic": 15.0,
-      "coverage": 51.11111111111111,
-      "crap": 41.29135802469136,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/group/motion.rs",
+      "file": "crates/engine/genie-core/src/group/motion/request.rs",
       "function": "request",
-      "line": 528,
+      "line": 26,
       "cyclomatic": 45.0,
       "coverage": 0.0,
       "crap": 2070.0,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion.rs",
+      "file": "crates/engine/genie-core/src/group/motion/step.rs",
+      "function": "pass",
+      "line": 89,
+      "cyclomatic": 20.0,
+      "coverage": 58.06451612903226,
+      "crap": 49.49884193212715,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/group/motion/step.rs",
+      "function": "reached",
+      "line": 164,
+      "cyclomatic": 15.0,
+      "coverage": 51.11111111111111,
+      "crap": 41.29135802469136,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/group/motion/walk.rs",
       "function": "steer",
-      "line": 824,
+      "line": 16,
       "cyclomatic": 34.0,
       "coverage": 46.478873239436616,
       "crap": 211.2285065281592,
