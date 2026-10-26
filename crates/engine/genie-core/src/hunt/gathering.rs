@@ -1,0 +1,204 @@
+//! The walk to a dead target (state 4), the face (6) and the gathering (7).
+
+use crate::GenieError;
+use crate::attack::{Strike, set_sprite};
+use crate::damage::Victim;
+use crate::hunt::{
+    ARRIVED, CLASS_49, FACE, GAP, GATHER, Gatherer, HERD_FAR, HERD_REACH, Herd, HuntAction,
+    LAST_BIT, LIVESTOCK, OWN_LIVESTOCK_RANGE, REMAINDER, WALK, food,
+};
+use crate::move_to::{MoveTo, MoveWait, Walk};
+use crate::movement::footprint_gap;
+
+impl HuntAction {
+    /// `set_state(4)` (`0x140ac60e0` case 4) after the target died, or for live livestock of the
+    /// hunter's `player`: the sub-actions go, the timer clears, the target's place becomes the
+    /// point, and a quiet `MoveTo` to the target within the task's range (`OWN_LIVESTOCK_RANGE`
+    /// to own livestock) starts (`FUN_140aa0df0`, its start `0x140aa2100`: a unit within 0.01 of
+    /// the target's footprint is there already, state 1; else state 3). Another live target is
+    /// not modelled.
+    pub(super) fn set_walk(
+        &mut self,
+        walk: &mut Walk<'_>,
+        victim: &Victim,
+        player: usize,
+    ) -> Result<(), GenieError> {
+        self.tear_down(walk.mover.as_deref_mut())?;
+        self.state = WALK;
+        self.timer = 0.0;
+        let own_livestock = victim.class == LIVESTOCK && victim.player == player;
+        if victim.state <= 2 && !own_livestock {
+            return Err(GenieError::unsupported(
+                "a hunt's set_state 4 on a live target after its attack",
+            ));
+        }
+        let t = walk
+            .world
+            .get_known(self.target)?
+            .ok_or(GenieError::unsupported("a hunt's target without a place"))?;
+        self.point = t.position;
+        self.walk_range = if victim.state <= 2 {
+            OWN_LIVESTOCK_RANGE
+        } else {
+            self.task.range
+        };
+        self.move_wait = MoveWait::default();
+        let mover = walk.mover.as_deref().ok_or(crate::turn::HUNTER_UNMOVING)?;
+        let ground = [mover.stats.radius[0], mover.stats.radius[1]];
+        let gap = footprint_gap(walk.me.position, ground, t.position, t.radius);
+        self.move_to = Some(if ARRIVED < gap {
+            if mover.stats.speed == 0.0 {
+                return Err(GenieError::unsupported(
+                    "a MoveTo of a unit without speed (state 13)",
+                ));
+            }
+            MoveTo::Start
+        } else {
+            MoveTo::Arrived
+        });
+        Ok(())
+    }
+
+    /// `set_state(6)` (case 6): the hunt faces its target. Live livestock of its own player is led
+    /// to its drop site first when it stands more than 3 tiles from it (`HERD_REACH` squared,
+    /// `set_state` 10, not modelled); then live livestock is attacked (`set_state` 12, with an Attack
+    /// of the master's ranges: [`Herd`]). Dead livestock out of the task's range plus `GAP` is
+    /// walked to again (`set_state` 4, [`HuntAction::set_walk`]). Otherwise the unit takes the hunt's sprite
+    /// (`FUN_140ac51d0`: the carrying one for a load of the task's resource of 1 or more, else the
+    /// moving one; slot 0x68 takes the standing sprite for none) and its timer is 0. Another
+    /// player's target of class 49 (`FUN_141185360`: a farm changes hands, `FUN_1411858f0`, a
+    /// pasture's livestock ends the hunt) is not modelled.
+    pub(super) fn set_face(
+        &mut self,
+        walk: Walk<'_>,
+        strike: &mut Strike<'_>,
+        gather: &mut Gatherer<'_>,
+        herd: Option<Herd>,
+    ) -> Result<(), GenieError> {
+        // another player's target of class 49 (a farm's or a pasture's livestock): only a building
+        // changes hands (FUN_141185360, FUN_1411858f0), any other ends the hunt (set_state 1);
+        // the hunter's own goes on to its sprite
+        if gather.target_class == CLASS_49 && strike.victim.player != strike.own.player {
+            return Err(GenieError::unsupported(
+                "a hunt facing a target of class 49 (set_state 6)",
+            ));
+        }
+        if gather.target_class == LIVESTOCK {
+            if strike.victim.state <= 2 {
+                let herd = herd.ok_or(GenieError::unsupported(
+                    "a hunt facing live livestock unprepared",
+                ))?;
+                // own livestock more than 3 tiles from its drop site is led there: once sent
+                // (`moved_sheep`) the hunt waits for it; nearer than 30 tiles an animal that
+                // stands is sent (its slot 0x138) with the herd around it (`FUN_140ac4c60`, the
+                // caller's); either way `moved_sheep` and `set_state(10)`
+                if let (true, Some((site, gap_squared))) = (herd.own, herd.drop_site) {
+                    self.drop_site = site;
+                    if HERD_REACH < gap_squared && (self.lead.moved || gap_squared < HERD_FAR) {
+                        if !self.lead.moved && herd.idle {
+                            gather.leads = Some(site);
+                        }
+                        self.lead.moved = true;
+                        return self.set_lead(walk, strike, &herd);
+                    }
+                }
+                return self.start_attack(walk, strike, &herd);
+            }
+            let t = walk
+                .world
+                .get_known(self.target)?
+                .ok_or(GenieError::unsupported("a hunt's target without a place"))?;
+            let me = walk.me.position;
+            let ground = walk
+                .mover
+                .as_deref()
+                .map(|m| [m.stats.radius[0], m.stats.radius[1]])
+                .ok_or(crate::turn::HUNTER_UNMOVING)?;
+            if self.task.range + GAP < footprint_gap(me, ground, t.position, t.radius) {
+                let mut walk = walk;
+                let player = strike.own.player;
+                return self.set_walk(&mut walk, strike.victim, player);
+            }
+        }
+        self.move_to = None;
+        self.state = FACE;
+        self.timer = 0.0;
+        let carrying = self.task.resource != -1
+            && *gather.held_kind == self.task.resource
+            && 1 <= *gather.held as i32;
+        let g = match (carrying, gather.sprites.carrying) {
+            (true, Some(g)) => Some(g),
+            _ => gather.sprites.moving,
+        }
+        .or(gather.sprites.standing);
+        if let Some(g) = g {
+            set_sprite(strike.sprite, g, strike.sprite_rng);
+        }
+        Ok(())
+    }
+
+    /// `set_state(7)` (case 7): a food task keeps a load of food (`FUN_14119d310` keeps the
+    /// amount), any other load is dropped; the unit takes the working sprite (slot 0x68; the
+    /// standing one for none); the gathering sound is not held.
+    pub(super) fn set_gather(&mut self, strike: &mut Strike<'_>, gather: &mut Gatherer<'_>) {
+        self.state = GATHER;
+        let kind = self.task.resource;
+        let keeps = food(kind) && food(*gather.held_kind);
+        if *gather.held_kind != kind {
+            *gather.held = if keeps { *gather.held } else { 0.0 };
+            *gather.held_kind = kind;
+        }
+        if let Some(g) = gather.sprites.working.or(gather.sprites.standing) {
+            set_sprite(strike.sprite, g, strike.sprite_rng);
+        }
+    }
+
+    /// State 7 (case 6): the work, `(work rate) × work_val1 × dt`, at most what the target holds,
+    /// times the productivity, while the load stays within the capacity: the target loses the
+    /// work, its last bit below 0.1 going with a thousandth of its master's first storage amount;
+    /// the unit gains, a remainder below 0.1 of the capacity rounding the load up. A full load or
+    /// an empty target ends the gathering: true asks the caller for `set_state(8)` (its drop site
+    /// search, [`HuntAction::set_drop`]). The game's `+0xc14`
+    /// (`FUN_140c884c0`), 0 as the tick oracle holds it, would take the whole target at once.
+    pub(super) fn gather(
+        &self,
+        dt: f32,
+        victim: &mut Victim,
+        g: &mut Gatherer<'_>,
+    ) -> Result<bool, GenieError> {
+        let work = (g.work_rate * self.task.work_value) * dt;
+        let take = if work <= victim.amount {
+            work
+        } else {
+            victim.amount
+        };
+        let mut gain = g.productivity * take;
+        let capacity = g.capacity;
+        // `<=` in the game: a NaN goes to the drop-off too
+        let room = capacity - *g.held;
+        if !matches!(
+            gain.partial_cmp(&room),
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+        ) {
+            return Ok(true);
+        }
+        victim.amount -= take;
+        // the last bit and the storage's share summed first (`0x140ac8e04`)
+        if victim.amount < REMAINDER {
+            gain += g.target_storage * LAST_BIT + victim.amount;
+            victim.amount = 0.0;
+        }
+        *g.held += gain;
+        let over = (*g.held - capacity).abs();
+        if *g.held < capacity && over < REMAINDER && over <= victim.amount {
+            victim.amount -= over;
+            *g.held += over;
+        }
+        if matches!(g.target_class, 9 | 10) && *g.held_kind == 3 && self.task.resource == 3 {
+            return Err(GenieError::unsupported(
+                "a gold load of class 9 or 10 (its player's attribute 3)",
+            ));
+        }
+        Ok(!(REMAINDER <= over && 0.0 < victim.amount))
+    }
+}

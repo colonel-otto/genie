@@ -290,9 +290,9 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/hunt.rs",
+      "file": "crates/engine/genie-core/src/hunt/update.rs",
       "function": "HuntAction::update",
-      "line": 985,
+      "line": 18,
       "cyclomatic": 56.0,
       "coverage": 0.0,
       "crap": 3192.0,
