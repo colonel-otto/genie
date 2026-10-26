@@ -1,0 +1,150 @@
+//! A unit's attack rate and firepower, and its share of a building's volleys
+//! (`FUN_141213520`).
+
+use crate::GenieError;
+use crate::checkpoint::cvttss2si;
+use crate::fmath::{at_most_or_unordered, maxss};
+use crate::masters::{Master, Masters};
+
+/// A combat master's attack rate needs a weapon range above this (`FUN_14120dc10`).
+pub(super) const RATE_RANGE: f32 = crate::image::garrison::RATE_RANGE;
+/// A unit's firepower counts its volley missiles beyond this many (`FUN_14120e1a0`).
+pub(super) const ONE_MISSILE: f32 = crate::image::garrison::ONE_MISSILE;
+/// A reload at most this long gives no firepower (`FUN_14120e1a0`).
+pub(super) const EPSILON: f32 = crate::image::garrison::EPSILON;
+/// The armor classes the attack rates sum: pierce (3) and 38 for missiles; melee (4) and 31 too
+/// for a master's own weapons.
+pub(super) const PIERCE: i16 = 3;
+pub(super) const MELEE: i16 = 4;
+pub(super) const CLASS_31: i16 = 31;
+pub(super) const CLASS_38: i16 = 38;
+/// The class whose garrison share is 1 whatever its firepower (`FUN_141213520`, `-0xe82` raw);
+/// UNLOAD's flag 0 leaves it inside (`FUN_14118a610`).
+pub(super) const WHOLE_SHARE_CLASS: i16 = 42;
+
+/// The amounts of `weapons` (class, amount) whose class `counts`.
+pub(super) fn weapons_sum(weapons: &[(i16, i16)], counts: impl Fn(i16) -> bool) -> f32 {
+    weapons
+        .iter()
+        .filter(|&&(class, _)| counts(class))
+        .fold(0.0, |sum, &(_, amount)| sum + f32::from(amount))
+}
+
+/// `FUN_14120dc10`: the attack rate of an object of `master` (its reload powerup `+0xa28`
+/// taken off its reload): none without a reload or a range above 1 (an unordered one too);
+/// else the pierce and class 38 amounts of its volley missile (a master its player has; not for
+/// classes 4 and 6), else its own melee, pierce, class 31 and 38 amounts, over the reload.
+#[must_use]
+pub fn attack_rate(master: &Master, masters: &Masters, reload_powerup: f32) -> f32 {
+    // COMISS reload, 0 and COMISS range, 1.0, each with JBE
+    if at_most_or_unordered(master.reload, 0.0)
+        || at_most_or_unordered(master.weapon_range, RATE_RANGE)
+    {
+        return 0.0;
+    }
+    // the game reads the slot of an id below the player's master count without testing it: a
+    // null slot there would crash it, so a master the player has is the only case it runs
+    let volley = master
+        .volley_missile
+        .and_then(|id| masters.get(id))
+        .filter(|_| !matches!(master.class, 4 | 6));
+    let sum = volley.map_or_else(
+        || {
+            weapons_sum(&master.weapons, |c| {
+                matches!(c, MELEE | PIERCE | CLASS_31 | CLASS_38)
+            })
+        },
+        |v| weapons_sum(&v.weapons, |c| matches!(c, PIERCE | CLASS_38)),
+    );
+    sum / (master.reload - reload_powerup)
+}
+
+/// Whether the player's master table has a slot for `id` (`0 <= id < player+0x20`), as far as
+/// [`Masters`] knows it: up to its last master. The game's count can run past the last master
+/// with null slots, which [`Masters`] does not keep.
+pub(super) fn in_table(masters: &Masters, id: i16) -> bool {
+    0 <= id && masters.iter().any(|m| id <= m.id)
+}
+
+/// `FUN_14120e1a0`: what a unit of `master` (its reload powerup `reload_powerup`) fires inside a
+/// building. A master's garrison firepower at most 0 is its magnitude; else the firepower times
+/// its rate: the pierce and class 38 amounts of its volley missile (else its missile; the slot
+/// the player's table holds, nothing for a null one) times its volley fire past one missile (in
+/// whole missiles, `CVTTSS2SI`, the products wrapping), plus its own melee, pierce, class 31 and
+/// 38 amounts, over its reload (none at most 1e-7).
+#[must_use]
+pub fn firepower(master: &Master, masters: &Masters, reload_powerup: f32) -> f32 {
+    let g = master.garrison_firepower;
+    // COMISS 0, g; JC: an unordered firepower goes on
+    if g <= 0.0 {
+        return g.abs();
+    }
+    let mut sum = 0.0f32;
+    // COMISS volley, 1.0; JBE: an unordered volley fire adds no missiles
+    if ONE_MISSILE < master.volley_fire {
+        // the volley missile's slot when the table has one, else the missile's (an id out of
+        // the table gives none); a null slot or one without weapons adds nothing
+        let missile = master
+            .volley_missile
+            .filter(|&id| in_table(masters, id))
+            .map_or_else(|| masters.get(master.missile), |id| masters.get(id));
+        if let Some(m) = missile {
+            let extra = cvttss2si(master.volley_fire - ONE_MISSILE);
+            for &(class, amount) in &m.weapons {
+                if matches!(class, PIERCE | CLASS_38) {
+                    // IMUL EAX, R8D then CVTDQ2PS
+                    sum += i32::from(amount).wrapping_mul(extra) as f32;
+                }
+            }
+        }
+    }
+    // one sum, the missile's amounts first
+    for &(class, amount) in &master.weapons {
+        if matches!(class, MELEE | PIERCE | CLASS_31 | CLASS_38) {
+            sum += f32::from(amount);
+        }
+    }
+    let reload = master.reload - reload_powerup;
+    if reload <= EPSILON {
+        return 0.0;
+    }
+    sum / reload * g
+}
+
+/// The type of a combat unit: the master a transforming master names (`+0x656`), and a unit a
+/// transport takes in (`FUN_14120eb10`).
+pub(crate) const COMBAT_KIND: u8 = 70;
+
+/// `FUN_141213520`: the share of a building's volleys a unit of `master` inside it adds, against
+/// the building's attack rate `rate` ([`attack_rate`]): none against a rate of ±0 (`_fdclass`);
+/// 1 for class 42; else its [`firepower`] over the rate, at least the floor (`MAXSS`): 0, or for
+/// a master with object flag 3 the firepower over the rate of the master the flags' upper half
+/// names (`+0x656`, the `.dat`'s trait piece) when that one is of type 70.
+pub fn share(
+    master: &Master,
+    masters: &Masters,
+    reload_powerup: f32,
+    rate: f32,
+) -> Result<f32, GenieError> {
+    if rate == 0.0 {
+        return Ok(0.0);
+    }
+    if master.class == WHOLE_SHARE_CLASS {
+        return Ok(1.0);
+    }
+    let mut floor = 0.0;
+    if master.object_flags & 8 != 0 {
+        // MOVZX of the ushort at +0x656; the game reads the slot without a test, so a null one
+        // would crash it: a master the player has is the only case it runs
+        let other = u16::try_from(master.object_flags >> 16).unwrap_or(u16::MAX);
+        if let Some(m) = i16::try_from(other).ok().and_then(|id| masters.get(id))
+            && m.kind == COMBAT_KIND
+        {
+            floor = firepower(m, masters, reload_powerup) / rate;
+        }
+    }
+    Ok(maxss(
+        firepower(master, masters, reload_powerup) / rate,
+        floor,
+    ))
+}

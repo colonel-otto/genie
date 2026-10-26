@@ -1,0 +1,85 @@
+//! Garrisoning: `UNIT_ORDER`'s garrison (action 5 on a building, `FUN_14161e370` ->
+//! `FUN_141621220`), which sends each unit to a building that takes it in, nearest first, each
+//! building up to its capacity, and gives each building's units, through the order splitter,
+//! the garrison work on it (slot 0x7e8 with task filter 3); and a building's test whether it takes
+//! a unit in (`FUN_14120eb10`).
+
+use crate::GenieError;
+
+mod enter;
+mod firepower;
+mod let_out;
+mod meeting;
+mod shelter;
+mod takes_in;
+mod unload;
+mod walk_in;
+
+pub(crate) use self::firepower::COMBAT_KIND;
+use self::firepower::WHOLE_SHARE_CLASS;
+pub use self::firepower::{attack_rate, firepower, share};
+use self::meeting::{ENTER_NEAR, HALF_TILE, UNPLACED};
+pub use self::meeting::{MeetingTarget, landing_tile, meeting, walled_off};
+pub(crate) use self::meeting::{UNREACHED, enter_view, ship_reaches};
+use self::shelter::LEAST_HP_SHARE;
+pub(crate) use self::shelter::Shelters;
+#[cfg(test)]
+use self::takes_in::MASTER_1811;
+use self::takes_in::{MASTER_1808, has_garrison_task};
+pub use self::takes_in::{class_has_flags, garrison_type_takes, is_garrison_task};
+use self::unload::NO_POINT;
+#[cfg(test)]
+use self::unload::unload_group_takes;
+pub use self::walk_in::{ENTER, ENTERED, EnterAction, EnterStep, EnterTarget, FAILED, Walking};
+pub(crate) use self::walk_in::{SIEGE_CLASS, SIEGE_UNLOAD};
+#[cfg(test)]
+use self::walk_in::{WAIT, WALK};
+#[cfg(test)]
+use crate::masters::{Master, Masters, Task};
+#[cfg(test)]
+use crate::move_to::{MoveTo, Walk};
+#[cfg(test)]
+use crate::order::GARRISON;
+#[cfg(test)]
+use crate::turn::Turns;
+
+/// The squared footprint gap past which a garrison order sends no unit (`FUN_141621220` with 0:
+/// no limit).
+const FAR: f32 = crate::image::garrison::FAR;
+/// The squared footprint gap within which a garrison order's target's neighbours shelter units
+/// too (`FUN_14161e370` with `+0x1e`, `DAT_14330ebcc`, 100.0: ten tiles).
+pub(crate) const NEARBY: f32 = crate::image::garrison::NEARBY;
+/// The squared footprint gap within which the town bell reaches (its ring `FUN_14163a650`, its
+/// end `FUN_14163ab80`, and `FUN_141621220` with `param_6` 1: `DAT_142ef3e70`, 625.0, 25 tiles).
+/// An enter into an object the world holds asleep.
+const ENTER_SLEEPING: GenieError = GenieError::unsupported("an enter into a sleeping object");
+/// An enter without its owner's masters.
+pub(crate) const NO_MASTERS: GenieError = GenieError::unsupported("an enter without the masters");
+pub(crate) const TOWN_BELL_REACH: f32 = crate::image::garrison::TOWN_BELL_REACH;
+
+/// The class of buildings, which a unit's garrison task names (`FUN_1415c9240` with 3, 3).
+pub(crate) const BUILDING_CLASS: i16 = 3;
+/// A gate's class: its annex is not its main building for a garrison order.
+const GATE_CLASS: i16 = 39;
+/// The ids a command's check reads (`FUN_140e558b0`): a human player's first 60, a computer
+/// player's first 500.
+const HUMAN_IDS: usize = 60;
+const COMPUTER_IDS: usize = 500;
+/// `SEEK_SHELTER`'s villagers: class 4 of type 70.
+const VILLAGER_CLASS: i16 = 4;
+const VILLAGER_KIND: u8 = 70;
+
+/// The class-flags table `FUN_1411205e0` reads (`DAT_1439e37b0`, a u32 per class; its count,
+/// `DAT_1439e2cf8`, is 64), as the image holds it (nothing writes it).
+const CLASS_FLAGS: [u32; 64] = crate::image::garrison::CLASS_FLAGS;
+/// The class flags a unit garrisons a transport with (`FUN_14120eb10`, `FUN_141621220`).
+const TRANSPORTED: u32 = 0x10002;
+
+/// The unit AI's order of entering (`0x2cd`), which the garrison work notifies.
+pub const ENTER_ORDER: i32 = crate::ai_kinds::ORDER_ENTER;
+/// The unit AI's action value of entering (`0x269`), which the garrison work notifies and the
+/// Enter's notifies carry.
+pub const ENTER_ACTION: i32 = 0x269;
+
+#[cfg(test)]
+pub(crate) mod tests;
