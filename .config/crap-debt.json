@@ -236,9 +236,9 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/steer.rs",
+      "file": "crates/engine/genie-core/src/group/steer/detour.rs",
       "function": "Turns::way_round",
-      "line": 404,
+      "line": 54,
       "cyclomatic": 53.0,
       "coverage": 62.311557788944725,
       "crap": 203.37522845661857,
