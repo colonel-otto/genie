@@ -1,5 +1,6 @@
 //! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
 
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     Avoided, EPSILON, LONG_PATH_MOVER, LongWalker, Me, Mover, PUSHED, PathAsk, PathData, Planning,
@@ -8,7 +9,6 @@ use crate::movement::{
     point_or_zero_of, vector,
 };
 use crate::pathing::tile_path::{Path, Request};
-use crate::spatial::{Placed, Spatial};
 use crate::{GenieError, math::fmath};
 
 impl Mover {
@@ -498,7 +498,7 @@ impl Mover {
 
     /// The pause of unit `id`'s walked level as slot 0x5f0 leaves it: the last this walk gave it
     /// (the game's call writes it at once, a later pass of the same step reads it), else the
-    /// world's ([`crate::spatial::Gait::pause`]).
+    /// world's ([`crate::map::spatial::Gait::pause`]).
     pub(super) fn pause_of(&self, world: &Spatial, id: i32) -> Option<f32> {
         self.pauses
             .iter()

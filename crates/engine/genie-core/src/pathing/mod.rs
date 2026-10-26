@@ -9,10 +9,10 @@
 //! and every change of a static record's tiles rebuilds the planners' cells over them (the
 //! manager's callback `FUN_140f7d4b0` -> `FUN_140f7e4b0`).
 
+use crate::map::spatial::{BLOCKED, Placed, Tiles};
 use crate::pathing::mesh::{Mesh, ONE, Rect};
 use crate::pathing::short_path::Pather;
 use crate::pathing::tile_path::Planner;
-use crate::spatial::{BLOCKED, Placed, Tiles};
 use std::collections::BTreeMap;
 
 pub mod hull_path;
@@ -469,7 +469,7 @@ mod tests {
         let (_, ignore) = p.smoothing_ignore(31143, Some((5000, &[5001])));
         assert_eq!(ignore, [31143, 5001, 27173]);
     }
-    use crate::spatial::Obstruction;
+    use crate::map::spatial::Obstruction;
 
     fn villager(x: f32, y: f32) -> Placed {
         Placed {

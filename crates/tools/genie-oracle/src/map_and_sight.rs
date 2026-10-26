@@ -16,7 +16,10 @@ use genie_save::Header;
 /// foundation no builder has started; the first builder's Build state 7 adds its record). Checked
 /// against the game's obstruction manager, dumped by the tick oracle.
 /// The map's terrain per tile from the save, with the `.dat`'s terrain records.
-pub(super) fn map_terrain(header: &Header, terrain: &TerrainTable) -> genie_core::terrain::Terrain {
+pub(super) fn map_terrain(
+    header: &Header,
+    terrain: &TerrainTable,
+) -> genie_core::map::terrain::Terrain {
     let map = &header.world.base_world.map;
     let tiles = map
         .rows
@@ -27,7 +30,7 @@ pub(super) fn map_terrain(header: &Header, terrain: &TerrainTable) -> genie_core
                 .map(|t| (t.terrain_type, t.restore_terrain_type, t.layer))
         })
         .collect();
-    let mut t = genie_core::terrain::Terrain::new(
+    let mut t = genie_core::map::terrain::Terrain::new(
         map.map_width,
         map.map_height,
         tiles,
@@ -45,7 +48,7 @@ pub(super) fn map_terrain(header: &Header, terrain: &TerrainTable) -> genie_core
 
 /// The differences between the slice's map terrain and a save's, tile by tile.
 pub fn terrain_differences(
-    slice: &genie_core::terrain::Terrain,
+    slice: &genie_core::map::terrain::Terrain,
     save: &[u8],
 ) -> Result<Vec<String>, Error> {
     let chapter = de::chapters(save)?[0];
@@ -54,7 +57,7 @@ pub fn terrain_differences(
 
 /// [`terrain_differences`] of a read header.
 pub(super) fn header_terrain_differences(
-    slice: &genie_core::terrain::Terrain,
+    slice: &genie_core::map::terrain::Terrain,
     header: &Header,
 ) -> Vec<String> {
     let (width, tiles) = saved_terrain(header);
@@ -79,7 +82,7 @@ pub(super) fn saved_terrain(header: &Header) -> (usize, Vec<(u8, u8, i16)>) {
 
 /// The tiles whose terrain differs between the slice and the game's.
 pub(super) fn tile_differences(
-    slice: &genie_core::terrain::Terrain,
+    slice: &genie_core::map::terrain::Terrain,
     width: usize,
     tiles: &[(u8, u8, i16)],
 ) -> Vec<String> {
@@ -130,8 +133,11 @@ impl SavedStep {
     }
 }
 
-pub(super) fn spatial(header: &Header, terrain: &TerrainTable) -> genie_core::spatial::Spatial {
-    use genie_core::spatial::{Obstruction, Placed, Spatial, Tiles};
+pub(super) fn spatial(
+    header: &Header,
+    terrain: &TerrainTable,
+) -> genie_core::map::spatial::Spatial {
+    use genie_core::map::spatial::{Obstruction, Placed, Spatial, Tiles};
     let map = &header.world.base_world.map;
     let classes = map
         .rows

@@ -266,7 +266,7 @@ impl crate::turn::Turns {
     /// map none does); −1 takes any. A place is free where the unit's master may stand for the
     /// transport's owner (its slot 0x50, [`crate::production::spawn::placement`] with the spawn's arguments:
     /// its arguments 9 and 12, 1 and 0 here, change nothing the slice reads) and the unit could
-    /// stand (its slot 0x278, [`crate::spatial::Spatial::point_clear`] by its radius and its
+    /// stand (its slot 0x278, [`crate::map::spatial::Spatial::point_clear`] by its radius and its
     /// restriction's mask).
     pub(crate) fn drop_location(
         &mut self,

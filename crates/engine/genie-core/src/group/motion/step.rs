@@ -5,8 +5,8 @@ use crate::group::motion::{
     CLOSE, EPSILON, GroupView, Lead, LeadGroup, NEAR, PASSES, looping_next, point, request,
     reset_level, set_flag, steer,
 };
+use crate::map::spatial::{Placed, Spatial};
 use crate::movement::{Planning, footprint_gap, footprint_gap_squared};
-use crate::spatial::{Placed, Spatial};
 use crate::{GenieError, math::fmath};
 
 /// One pass's end (the routine's labels).

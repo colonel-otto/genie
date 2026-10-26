@@ -127,7 +127,7 @@ impl Turns {
     /// (`FUN_141052b90` with the buffer the last `FUN_1410562d0` left), which the routine never
     /// removes (no `FUN_1410561f0`): it stays for the queries after. Each point, kept on the map
     /// ([`on_map`]), is a point query with that buffer that leaves out the objects that move
-    /// (flags 0x60, [`crate::spatial::Spatial::point_hit`]). From the
+    /// (flags 0x60, [`crate::map::spatial::Spatial::point_hit`]). From the
     /// centroid the spiral steps by [`SPIRAL`]'s directions in turn, a turn after each step that
     /// its count (from 1) divides by the leg's length, which grows on the turns to y; after
     /// [`SPIRAL_POINTS`] points, or for a group without members, the centroid. The point keeps the
@@ -224,7 +224,7 @@ impl Turns {
     /// its own, or with motion flags bit 1 the members' centre (slot 0x520, summed over the
     /// members the world holds, over the members' count). A flanked group (locked type 8) whose
     /// lead's object ([`Turns::lead_object`]) moves and could stand there among the members (slot
-    /// 0x270, [`crate::spatial::Spatial::point_clear_among`], with [`FRONT_SHARE`] of its radius;
+    /// 0x270, [`crate::map::spatial::Spatial::point_clear_among`], with [`FRONT_SHARE`] of its radius;
     /// an object that does not move cannot) stands there. Else the members within the spacing ([`FRONT_SHARE`] of it but for a
     /// staggered lock, type 7) of the line along the forward through that place (on the
     /// ground, [`fmath::line_distance`]) are in front: of them the one nearest the point ahead
@@ -413,8 +413,8 @@ mod tests {
     /// A 20 by 20 map of terrain class 1, its objects on the obstruction manager, and group 1 of
     /// them at (10, 10) facing x, spacing 2, two stored points.
     fn front_world(units: Vec<crate::turn::Unit>) -> Turns {
-        use crate::spatial::{Obstruction, Placed, Spatial, Tiles};
-        use crate::terrain::{Terrain, TerrainKind};
+        use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
+        use crate::map::terrain::{Terrain, TerrainKind};
         let mut t = Turns::new(
             0,
             1,

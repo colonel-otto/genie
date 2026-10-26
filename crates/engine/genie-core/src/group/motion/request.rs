@@ -7,9 +7,9 @@ use crate::group::motion::{
     CLOSE, CONTINUE, EPSILON, LAST_TRIES, Lead, LeadGroup, NEAR, NEW_PATH_FLAGS, PATROL_PAUSE,
     Pass, SHORT_LENGTH, SHORT_REACH, STUCK_PAUSE, World, ground, hold, point, reset_level,
 };
+use crate::map::spatial::Placed;
 use crate::movement::{LongWalker, PathData, long_path_for, short_path_for, tile_plan_for};
 use crate::pathing::tile_path::Path;
-use crate::spatial::Placed;
 
 /// Where the request (`FUN_14104a270`'s state 2) goes on after a planner.
 pub(super) enum Stage {

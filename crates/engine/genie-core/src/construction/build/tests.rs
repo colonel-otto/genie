@@ -19,8 +19,8 @@ fn on_map(
     class: i16,
     r: f32,
     buildable: u8,
-) -> crate::spatial::Placed {
-    crate::spatial::Placed {
+) -> crate::map::spatial::Placed {
+    crate::map::spatial::Placed {
         position: [x, y, 0.0],
         radius: [r, r],
         class,
@@ -55,7 +55,7 @@ const fn seen(hp: f32, height: f32) -> ClearLook {
 /// what does not overlap, a live tree and the house's own master stay.
 #[test]
 fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
-    use crate::spatial::Tiles;
+    use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     let objects = [
         (5, on_map(10.5, 10.5, 1358, 5, 0.5, 1), seen(1.0, 0.0)),
@@ -98,7 +98,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
     // a wall of another player stays under a gate
     world.insert(
         4,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             player: 2,
             ..objects[5].1
         },
@@ -118,7 +118,7 @@ fn the_footprint_clearing_takes_buildable_objects_in_the_tiles_order() {
 /// part whatever the call; a building only when it is tall and not desolid.
 #[test]
 fn a_cleared_object_loses_its_record_by_its_type_and_the_call() {
-    use crate::spatial::Tiles;
+    use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     let looks = [
         (1, seen(1.0, 1.0)),
@@ -295,8 +295,8 @@ const TASK: BuildTask = BuildTask {
 };
 
 /// MarvinBlue/426048731's house 10028 as BUILD placed it: a foundation of master 70.
-fn house() -> crate::spatial::Placed {
-    crate::spatial::Placed {
+fn house() -> crate::map::spatial::Placed {
+    crate::map::spatial::Placed {
         position: [30.0, 88.0, 0.0],
         radius: [1.0, 1.0],
         class: 3,
@@ -389,7 +389,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
     let mut world = Spatial::default();
     world.insert(
         10029,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             player: 1,
             ..house()
         },
@@ -554,7 +554,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
             plan: None,
         }
     }
-    use crate::spatial::Placed;
+    use crate::map::spatial::Placed;
     let mut world = Spatial::default();
     world.insert(
         10913,
@@ -707,7 +707,7 @@ fn a_builder_whose_foundation_dies_walks_to_its_point_then_waits() {
 /// plans its path there).
 #[test]
 fn a_waiting_builder_whose_foundation_dies_walks_to_its_place() {
-    use crate::spatial::Placed;
+    use crate::map::spatial::Placed;
     let mut world = Spatial::default();
     world.insert(
         10645,
@@ -895,12 +895,12 @@ fn a_builder_told_to_build_its_foundation_again_starts_over() {
 /// foundation (27) covers its snow with terrain 6 under layer 32.
 #[test]
 fn the_work_that_reaches_the_build_time_completes_the_building() {
-    use crate::spatial::Tiles;
-    use crate::terrain::{Terrain, TerrainKind};
+    use crate::map::spatial::Tiles;
+    use crate::map::terrain::{Terrain, TerrainKind};
     let mut world = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
     world.insert(
         10026,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [2.0, 2.0, 0.0],
             ..house()
         },
@@ -1015,14 +1015,14 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
 /// 165 as other buildings do, but as an annex.
 #[test]
 fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
+    use crate::map::spatial::Tiles;
+    use crate::map::terrain::{Terrain, TerrainKind};
     use crate::players::history::{CASTLE_BUILT, WONDER_BUILT};
-    use crate::spatial::Tiles;
-    use crate::terrain::{Terrain, TerrainKind};
     fn complete(id: i16, cost: Vec<(i16, i16, bool)>, main: bool) -> Built {
         let mut world = Spatial::with_tiles([4, 4], Tiles::new(4, 4, vec![4; 16]));
         world.insert(
             10026,
-            crate::spatial::Placed {
+            crate::map::spatial::Placed {
                 position: [2.0, 2.0, 0.0],
                 master: id,
                 ..house()
@@ -1145,7 +1145,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
 /// marks its tiles) and adds 0.021 s of work: 550 hit points over 25 s, so 1.462 hit points.
 #[test]
 fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
-    use crate::spatial::Tiles;
+    use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
     world.insert(10028, house());
     let mut life = Lifecycle {
@@ -1199,7 +1199,7 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
     assert!(!c.desolid);
     assert_eq!(c.progress, f32::from_bits(STARTED) + rate);
     assert!(world.get(10028).unwrap().obstruction.is_some());
-    assert!(world.tiles().word(29, 87).unwrap() & crate::spatial::BLOCKED != 0);
+    assert!(world.tiles().word(29, 87).unwrap() & crate::map::spatial::BLOCKED != 0);
 }
 
 /// A gate's foundation (master 665) with its two posts (1192, annexes of a building type):
@@ -1208,9 +1208,9 @@ fn the_first_work_starts_the_foundation_and_adds_its_share_of_hit_points() {
 /// first work starts it.
 #[test]
 fn the_work_starts_the_desolid_annexes_first() {
-    use crate::spatial::Tiles;
+    use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
-    let at = |x: f32, id: i16| crate::spatial::Placed {
+    let at = |x: f32, id: i16| crate::map::spatial::Placed {
         position: [x, 88.0, 0.0],
         master: id,
         ..house()
@@ -1300,20 +1300,20 @@ fn the_work_starts_the_desolid_annexes_first() {
 /// the house 33439 that 30828 started in update 199).
 #[test]
 fn a_construction_s_start_moves_its_foundation_for_the_walks_of_the_update() {
-    use crate::spatial::Tiles;
+    use crate::map::spatial::Tiles;
     let mut world = Spatial::with_tiles([120, 120], Tiles::new(120, 120, vec![4; 120 * 120]));
     world.insert(
         33439,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [194.0, 64.0, 0.0],
             ..house()
         },
     );
     world.set_gait(
         33439,
-        Some(crate::spatial::Gait {
+        Some(crate::map::spatial::Gait {
             last_move: 7000,
-            ..crate::spatial::Gait::default()
+            ..crate::map::spatial::Gait::default()
         }),
     );
     let mut c = Construction {
@@ -1426,16 +1426,16 @@ fn an_annex_s_work_goes_to_its_main_building() {
     );
 }
 
+use crate::map::spatial::Spatial;
 use crate::movement::Me;
-use crate::spatial::Spatial;
 
 /// MarvinBlue/426048731 after tick 679: builder 9175 stands on the house foundation 10028's
 /// footprint, works on it (state 6) and walks off it in update 681 (state 223) to the free tile
 /// the game picks, (29.5, 89.5).
 #[test]
 fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
+    use crate::map::spatial::{Placed, Tiles};
     use crate::movement::{MoveStats, Mover};
-    use crate::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([40, 120], Tiles::new(40, 120, vec![4; 40 * 120]));
     let unit = |x, y, radius, master, kind| Placed {
         position: [x, y, 0.0],
@@ -1596,7 +1596,7 @@ fn walk_update(
     (class, at, computer): (i16, [f32; 3], bool),
     prepare: impl FnOnce(&mut Spatial),
 ) -> (BuildStep, Spatial) {
-    use crate::spatial::{Placed, Tiles};
+    use crate::map::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     world.insert(
         10028,
@@ -1764,7 +1764,7 @@ fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
 /// 7) and the tiles hold no other player's mark: the builder joins the work.
 #[test]
 fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
-    use crate::spatial::{Placed, Tiles};
+    use crate::map::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     world.insert(
         10028,
@@ -1903,7 +1903,7 @@ fn a_builder_s_set_state_7_clears_a_stump_and_joins() {
 /// foundation let go, no point.
 #[test]
 fn another_player_s_marks_on_the_footprint_halt_the_build() {
-    use crate::spatial::{Placed, Tiles};
+    use crate::map::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     world.insert(
         10028,
@@ -2038,7 +2038,7 @@ fn another_player_s_marks_on_the_footprint_halt_the_build() {
 /// the Build and its waits (`+0x889`) start again.
 #[test]
 fn a_builder_waiting_21_times_on_an_occupied_footprint_gives_up() {
-    use crate::spatial::{Placed, Tiles};
+    use crate::map::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     world.insert(
         10028,
@@ -2596,7 +2596,7 @@ fn a_builder_at_the_foundation_works_in_its_first_update_the_others_walk_to_it()
 /// The house 10028 at (10.5, 10.5) and the mill 300 at (15.5, 10.5) of player 1, on 20 x 20
 /// tiles.
 fn drop_world() -> Spatial {
-    use crate::spatial::{Placed, Tiles};
+    use crate::map::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
     world.insert(
         10028,

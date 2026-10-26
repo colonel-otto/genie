@@ -81,7 +81,7 @@ impl Turns {
     /// A construction start's clearing (`FUN_1411cd0d0`) for the foundation `id`: the tiles from 5
     /// before its box to 5 past it (held on the map; rows, then columns), each tile's objects in
     /// its list's order: a desolid foundation (type 80, `+0xc60`) other than it whose owner sees
-    /// and explored the tile ([`crate::spatial::Spatial::sees_and_explored`]) and whose box
+    /// and explored the tile ([`crate::map::spatial::Spatial::sees_and_explored`]) and whose box
     /// overlaps its own (on each axis the gap below the two radii summed) is removed
     /// ([`Turns::remove_building`]) and its `mROOAlreadyCalled` (`+0x686`) set.
     pub(crate) fn clear_foundations_under(&mut self, id: i32) -> Result<(), GenieError> {
@@ -410,7 +410,7 @@ impl Turns {
     /// is not 2, a master of fog visibility 2 leaves its ghosts (`FUN_14118e990`,
     /// [`Turns::ghosts_at_death`], before the state changes); from below 4 to above 6 it leaves
     /// the visible-resource lists (`FUN_1411980b0`, [`crate::turn::forget_resource`]); its sight
-    /// follows ([`crate::spatial::Spatial::sight_state`]); from below 7 to 7 the storage of flag
+    /// follows ([`crate::map::spatial::Spatial::sight_state`]); from below 7 to 7 the storage of flag
     /// 32 leaves its owner; then the state, and a sleeping object wakes unless the state is 2 or
     /// 6. Not held: the statistics and the scenario's events.
     fn base_set_state(
@@ -518,8 +518,8 @@ impl Turns {
 mod tests {
     use super::*;
     use crate::construction::build::Construction;
+    use crate::map::spatial::Obstruction;
     use crate::masters::{Master, Masters};
-    use crate::spatial::Obstruction;
     use crate::turn::{Player, Unit};
 
     /// Gaia and two players: player 1's villager 10, house foundation 11 (build time 25, cost 25
@@ -689,8 +689,8 @@ mod tests {
 mod clearing_tests {
     use super::*;
     use crate::lifecycle::{Class, Lifecycle};
+    use crate::map::spatial::{Placed, Spatial, Tiles};
     use crate::masters::{Master, Masters};
-    use crate::spatial::{Placed, Spatial, Tiles};
     use crate::turn::{Player, Unit};
 
     /// A live object `id` of `master` at `x`, `y`, outside any pasture.
@@ -822,7 +822,7 @@ mod clearing_tests {
                 let m = ms.get(u.life.master_id).expect("a test master");
                 let mut at = placed(&u, m, p);
                 if m.obstruction_type == 2 {
-                    at.obstruction = Some(crate::spatial::Obstruction { kind: 2, class: 0 });
+                    at.obstruction = Some(crate::map::spatial::Obstruction { kind: 2, class: 0 });
                 }
                 t.spatial.insert(u.id, at);
             }

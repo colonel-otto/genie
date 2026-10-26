@@ -165,11 +165,11 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
             ..Player::default()
         }],
     );
-    t.spatial = crate::spatial::Spatial::new([10, 10]);
+    t.spatial = crate::map::spatial::Spatial::new([10, 10]);
     for id in 1..=3 {
         t.spatial.insert(
             id,
-            crate::spatial::Placed {
+            crate::map::spatial::Placed {
                 position: [5.5, 5.5, 0.0],
                 radius: [0.5, 0.5],
                 class: 0,
@@ -195,7 +195,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         t.give_record(id, &master);
     }
     let record = |t: &Turns, id| t.spatial.get(id).and_then(|p| p.obstruction);
-    let wall = Some(crate::spatial::Obstruction { kind: 2, class: 2 });
+    let wall = Some(crate::map::spatial::Obstruction { kind: 2, class: 2 });
     assert_eq!(
         [record(&t, 1), record(&t, 2), record(&t, 3)],
         [wall, None, None]
@@ -328,7 +328,7 @@ fn built() -> crate::construction::build::Construction {
         builders: 0,
         hit_points: 1,
         build_time: 1,
-        record: crate::spatial::Obstruction { kind: 0, class: 0 },
+        record: crate::map::spatial::Obstruction { kind: 0, class: 0 },
         snow: false,
         sprite_override: false,
         started: false,
@@ -605,7 +605,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         t.spatial.sight = Some(v);
         t.spatial.insert(
             1,
-            crate::spatial::Placed {
+            crate::map::spatial::Placed {
                 position,
                 radius,
                 class: 11,
@@ -684,7 +684,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     for id in [1, 3] {
         t.spatial.insert(
             id,
-            crate::spatial::Placed {
+            crate::map::spatial::Placed {
                 position: [5.5, 5.5, 0.0],
                 radius: [0.5, 0.5],
                 class: 6,
@@ -742,7 +742,10 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     assert_eq!(follows(&p.objects[1]), (None, false, -1));
     let c = p.objects[0].construction.unwrap();
     assert_eq!(c.build_time, 33);
-    assert_eq!(c.record, crate::spatial::Obstruction { kind: 5, class: 2 });
+    assert_eq!(
+        c.record,
+        crate::map::spatial::Obstruction { kind: 5, class: 2 }
+    );
     let tall = |id| t.spatial.get(id).unwrap().tall;
     assert_eq!((tall(1), tall(3)), (true, false));
     let los = |id| t.spatial.sight.as_ref().unwrap().seer(id).unwrap().los;

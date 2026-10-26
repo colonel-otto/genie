@@ -161,13 +161,13 @@ impl Turns {
     /// lead -1 the world's object -1), else that of the first active slot's unit the world's
     /// table holds ([`Turns::world_object`], an empty slot's -1 too; none: nothing). The slots' places are their transform positions
     /// (`+0x1c`, the save's `mTransformPosition`). At the first active slot whose place's tile
-    /// the tester cannot stand on (`FUN_141185690`, [`crate::spatial::Spatial::standable`] with
+    /// the tester cannot stand on (`FUN_141185690`, [`crate::map::spatial::Spatial::standable`] with
     /// its master's terrain mask): the active slot nearest the group's place (3D) must be
     /// standable, else it takes the group's place on x and y if that is (else nothing more).
     /// The box around the tester's place and the active slots' places gets the
     /// temporary records of the tiles its mask lacks (`FUN_141052b90`), the members are ignored
     /// (`FUN_1410562e0`), and each active slot is reachable when the line from the group's place
-    /// to it meets nothing standing ([`crate::spatial::Spatial::still_line_hit`]). With fewer
+    /// to it meets nothing standing ([`crate::map::spatial::Spatial::still_line_hit`]). With fewer
     /// than [`PASS_SHARE`] of the slots' array reachable, all are unreachable but the nearest,
     /// which takes the group's place. On a grid of the box plus [`PASS_HALF_MARGIN`] each way
     /// (at most [`PASS_CELLS`] cells a side) the reachable slots' cells count their slots (bits 1 to 5, bit

@@ -19,7 +19,7 @@ pub const fn terrain_mask(terrain: i16) -> Option<u8> {
 }
 
 /// The look a terrain look task gives on a tile whose terrain's flag byte (the terrain table's
-/// `+0x2`, [`crate::terrain::TerrainKind::flags`]) has a bit of its mask (`0x14120754e`): its
+/// `+0x2`, [`crate::map::terrain::TerrainKind::flags`]) has a bit of its mask (`0x14120754e`): its
 /// sprites, each a null sprite where the world's sprite table (`world+0xc0`) has none
 /// (`exists`): the task's ids, −1 for none, its load resolved, and its sound event ids
 /// (`FUN_141533c70`: from 0 to the table's count, and not null). A task's id below −1 would

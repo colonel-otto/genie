@@ -1,5 +1,6 @@
 //! The velocity step, a new object's setup, the position setter and the motion step's loop.
 
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     ANNEX_GAP, EDGE_GAP, EDGE_POSITION_GAP, EPSILON, FAR, Goal, Me, Motion, MoveStats, Mover, Next,
@@ -7,7 +8,6 @@ use crate::movement::{
     map_position, moved_far, pause_holds, point_or_zero_of, reach, vector,
 };
 use crate::pathing::Pathing;
-use crate::spatial::{Placed, Spatial};
 use crate::{GenieError, math::fmath};
 
 impl Mover {
@@ -20,7 +20,7 @@ impl Mover {
         position: [f32; 3],
         dt: f32,
         map: [i32; 2],
-        terrain: Option<&crate::terrain::Terrain>,
+        terrain: Option<&crate::map::terrain::Terrain>,
         now: u32,
     ) -> [f32; 3] {
         let Some(v) = self.velocity.as_mut() else {
@@ -45,7 +45,7 @@ impl Mover {
     }
 
     /// The static `new_position`'s end (`0x1411a58b0`, slot 0x60: `FUN_141158000` ->
-    /// `FUN_141193a10`): the place takes the ground's height ([`crate::terrain::Terrain::ground`])
+    /// `FUN_141193a10`): the place takes the ground's height ([`crate::map::terrain::Terrain::ground`])
     /// by the master's fly mode: 0 puts it on the ground, 1 lifts it to the ground when below,
     /// others keep it. Without the map's elevations the height stays; `+0x7f8` (the place is on
     /// the ground) is not held.
@@ -53,7 +53,7 @@ impl Mover {
     pub fn grounded(
         &self,
         [x, y, z]: [f32; 3],
-        terrain: Option<&crate::terrain::Terrain>,
+        terrain: Option<&crate::map::terrain::Terrain>,
     ) -> [f32; 3] {
         let z = terrain
             .and_then(|t| t.ground(x, y).ok())

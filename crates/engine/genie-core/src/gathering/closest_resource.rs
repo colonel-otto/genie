@@ -1,9 +1,9 @@
 //! `ClosestResourceObject` (`FUN_140c49760`): where it searches from and what it finds; a
 //! herded sheep.
 
+use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::movement::{Me, Planning};
-use crate::spatial::Spatial;
 use crate::turn::unit::Unit;
 use crate::turn::view::Foreign;
 use crate::unit_ai::GenieError;
@@ -168,7 +168,7 @@ pub(crate) fn closest_resource_of(
     };
     let master_id = unit.life.master_id;
     let plan = &mut c.plan;
-    let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
+    let blocked = u64::from(mask ^ 0xff) | crate::map::spatial::BLOCKED;
     gather_search::closest_resource_at(
         &seeker,
         site.as_ref(),

@@ -269,7 +269,7 @@ impl Turns {
                 builders: 0,
                 hit_points: made.hit_points,
                 build_time: made.build_time,
-                record: crate::spatial::Obstruction {
+                record: crate::map::spatial::Obstruction {
                     kind: made.obstruction_type,
                     class: made.obstruction_class,
                 },

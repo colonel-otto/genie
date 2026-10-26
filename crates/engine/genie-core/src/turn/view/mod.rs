@@ -1,10 +1,10 @@
 //! The views a unit's update and its unit AI read the world through ([`UnitView`],
 //! [`Context`], [`Foreign`], [`OwnerView`], the pickers).
 
+use crate::map::spatial::{Placed, Spatial};
 use crate::masters::Masters;
 use crate::math::rng::Well512;
 use crate::pathing::Pathing;
-use crate::spatial::{Placed, Spatial};
 use crate::sprite::Graphic;
 use crate::tasks::DropSite;
 use crate::turn::player::Player;

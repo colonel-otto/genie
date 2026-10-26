@@ -1,8 +1,8 @@
 //! The drop-site searches (`FUN_1411671e0`): from a unit, or from a point without one.
 
+use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::movement::{Me, Mover, Planning, footprint_gap_squared};
-use crate::spatial::Spatial;
 use crate::turn::unit::Unit;
 use crate::unit_ai::GenieError;
 

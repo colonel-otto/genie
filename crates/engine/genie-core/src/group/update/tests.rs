@@ -59,7 +59,7 @@ fn world() -> Turns {
         ..Master::default()
     };
     t.masters = vec![Masters::new([master]); 4];
-    let mut s = crate::spatial::Spatial::new([8, 8]);
+    let mut s = crate::map::spatial::Spatial::new([8, 8]);
     s.relations = vec![
         vec![0, 3, 3, 3],
         vec![0, 0, 3, 0],
@@ -959,7 +959,7 @@ fn a_member_s_own_move_walks_its_path() {
     t.players[1].objects[0].mover = Some(walker);
     t.spatial.insert(
         10,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [1.0, 1.0, 0.0],
             radius: [0.2, 0.2],
             class: 6,

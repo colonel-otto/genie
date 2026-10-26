@@ -17,8 +17,8 @@ fn a_larger_slots_array_drops_the_transform_marks() {
 /// and 6 (category 3), and player 1's `units` (id, master, x, y) on it and on the
 /// obstruction manager, all in group 1 at the origin facing x.
 pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usize)]) -> Turns {
-    use crate::spatial::{Obstruction, Placed, Spatial, Tiles};
-    use crate::terrain::{Terrain, TerrainKind};
+    use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
+    use crate::map::terrain::{Terrain, TerrainKind};
     let objects: Vec<crate::turn::Unit> = units
         .iter()
         .map(|&(id, master, x, y)| {
@@ -479,7 +479,7 @@ pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::vision::ghost::Ghost {
 /// unit tests them, and slot 1 moves as with that unit as the lead.
 #[test]
 fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
-    use crate::terrain::{Terrain, TerrainKind};
+    use crate::map::terrain::{Terrain, TerrainKind};
     let run = |ghost: bool| {
         let mut t = slot_world(&[(10, 4, 5.5, 5.5), (11, 4, 7.5, 5.5)], &[(8, 5)]);
         let kind = |flags: u8| TerrainKind {

@@ -392,7 +392,7 @@ impl Turns {
     /// afresh, sets the alert mode (`+0x1b8`) to whether it found enemies and, with enemies,
     /// restarts the time since a sighting (`+0x1b4`; a computer player's notify after 10 s is
     /// not modelled). Then the objects of the search's lists 4, 3 and 2 in that order
-    /// ([`crate::spatial::Spatial::searched`]) that the world's table holds in a state below 3
+    /// ([`crate::map::spatial::Spatial::searched`]) that the world's table holds in a state below 3
     /// (`+0x640`), of any owner, the third list's only of a class the unit AI attacks among
     /// neutrals (slot 0xa8, [`crate::unit_ai::type_attacks_neutral`]), join the list: each
     /// once when it held any on entry (the duplicate test runs only then), and the list stops at
@@ -761,7 +761,7 @@ mod tests {
             ..Master::default()
         };
         t.masters = vec![Masters::new([master(4, 6), master(6, 4)]); 4];
-        let mut s = crate::spatial::Spatial::new([20, 20]);
+        let mut s = crate::map::spatial::Spatial::new([20, 20]);
         s.relations = vec![
             vec![0, 3, 3, 3],
             vec![0, 0, 3, 1],

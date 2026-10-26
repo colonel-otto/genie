@@ -217,7 +217,7 @@ fn moved_ship(y: f32) -> EnterTarget {
 }
 
 /// A walk of unit 1 without movement state or world, as [`EnterAction::update`] takes it.
-fn idle_walk(world: &mut crate::spatial::Spatial) -> Walk<'_> {
+fn idle_walk(world: &mut crate::map::spatial::Spatial) -> Walk<'_> {
     Walk {
         mover: None,
         me: crate::movement::Me {
@@ -237,7 +237,7 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
     // FUN_140a87a80 state 4: FUN_140a7bbf0 (not on the point) and FUN_140a7bd10 (more than
     // half a tile off: COMISS/JA) set_state(4); then the new MoveTo's update; the transport's
     // order waits on slot 0x3d8
-    let mut world = crate::spatial::Spatial::new([100, 100]);
+    let mut world = crate::map::spatial::Spatial::new([100, 100]);
     let point = [82.5, 89.5, 0.0];
     let mut enter = EnterAction {
         move_to: Some(MoveTo::Arrived),
@@ -299,7 +299,7 @@ fn a_transport_that_moved_off_the_point_makes_the_enter_walk_again() {
 /// onto its timer (code 0: nothing else happens); at its delay it asks again.
 #[test]
 fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
-    let mut world = crate::spatial::Spatial::new([100, 100]);
+    let mut world = crate::map::spatial::Spatial::new([100, 100]);
     let ship = moved_ship(89.5);
     let mut enter = EnterAction {
         move_to: Some(MoveTo::Waiting),
@@ -347,7 +347,7 @@ fn an_enter_s_waiting_move_to_asks_again_at_its_delay() {
 fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
     // the set_state(4) of a moved transport finds the unit in reach: FUN_140a867b0, then the
     // update's code 1 (no MoveTo) in reach enters again
-    let mut world = crate::spatial::Spatial::new([100, 100]);
+    let mut world = crate::map::spatial::Spatial::new([100, 100]);
     let mut enter = EnterAction {
         move_to: Some(MoveTo::Arrived),
         ..EnterAction::new(7420, [82.5, 89.5, 0.0], 1.0, 20)
@@ -389,13 +389,13 @@ fn a_walk_again_into_reach_enters_and_the_update_enters_again() {
 fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     // code 3: +0x68 lets one set_state(4); the next waits a second (set_state(2)), whose end
     // walks again
-    let mut world = crate::spatial::Spatial::new([100, 100]);
+    let mut world = crate::map::spatial::Spatial::new([100, 100]);
     let ship = moved_ship(89.5);
     let mut enter = EnterAction {
         move_to: Some(MoveTo::Failed),
         ..EnterAction::new(7420, [82.5, 89.5, 0.0], 1.0, 20)
     };
-    let run = |enter: &mut EnterAction, world: &mut crate::spatial::Spatial| {
+    let run = |enter: &mut EnterAction, world: &mut crate::map::spatial::Spatial| {
         enter.update(
             idle_walk(world),
             Some(ship),
@@ -1048,13 +1048,13 @@ pub(crate) fn sized_world(w: i32, h: i32) -> Turns {
     }
     t.masters = (0..4).map(|_| masters.clone()).collect();
     let n = (w * h) as usize;
-    t.spatial = crate::spatial::Spatial::new([w, h]);
-    let mut terrain = crate::terrain::Terrain::new(
+    t.spatial = crate::map::spatial::Spatial::new([w, h]);
+    let mut terrain = crate::map::terrain::Terrain::new(
         w,
         h,
         vec![(0, 255, -1); n],
         vec![
-            crate::terrain::TerrainKind {
+            crate::map::terrain::TerrainKind {
                 shown: true,
                 flags: 0,
                 forest: false,
@@ -1085,7 +1085,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> Turns {
     tc.firepower = 1.0;
     t.spatial.insert(
         100,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [10.0, 10.0, 0.0],
             radius: [2.0, 2.0],
             class: 52,
@@ -1096,7 +1096,7 @@ pub(crate) fn sized_world(w: i32, h: i32) -> Turns {
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(crate::spatial::Obstruction { kind: 2, class: 2 }),
+            obstruction: Some(crate::map::spatial::Obstruction { kind: 2, class: 2 }),
         },
     );
     t
@@ -1149,7 +1149,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     t.players[1].objects.push(v);
     t.spatial.insert(
         400,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [12.5, 10.0, 0.0],
             radius: [0.2, 0.2],
             class: 4,
@@ -1195,7 +1195,7 @@ pub(crate) fn inside_tc(t: &mut Turns, p: usize, id: i32, m: i16) {
     t.players[p].objects.push(u);
     t.spatial.insert(
         id,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [10.0, 10.0, 0.0],
             radius: [0.2, 0.2],
             class: 4,
@@ -1322,7 +1322,7 @@ pub(crate) fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
     t.players[p].objects.push(v);
     t.spatial.insert(
         id,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [at[0], at[1], 0.0],
             radius: [0.2, 0.2],
             class: 4,
@@ -1346,7 +1346,7 @@ pub(crate) fn building_at(t: &mut Turns, id: i32, m: i16, at: [f32; 2], annex_of
     t.players[1].objects.push(b);
     t.spatial.insert(
         id,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [at[0], at[1], 0.0],
             radius: [2.0, 2.0],
             class: 52,
@@ -1357,7 +1357,7 @@ pub(crate) fn building_at(t: &mut Turns, id: i32, m: i16, at: [f32; 2], annex_of
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(crate::spatial::Obstruction { kind: 2, class: 2 }),
+            obstruction: Some(crate::map::spatial::Obstruction { kind: 2, class: 2 }),
         },
     );
 }
@@ -1467,7 +1467,7 @@ fn ship_at(t: &mut Turns, at: [f32; 2]) {
     ship.position = [at[0], at[1], 0.0];
     t.spatial.insert(
         200,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [at[0], at[1], 0.0],
             radius: [0.5, 0.5],
             class: 20,
@@ -1545,12 +1545,12 @@ fn shore_world(at: [f32; 2], ship: [f32; 2]) -> Turns {
             _ => (0, 255, -1),
         })
         .collect();
-    let kind = |flags| crate::terrain::TerrainKind {
+    let kind = |flags| crate::map::terrain::TerrainKind {
         shown: true,
         flags,
         forest: false,
     };
-    let mut terrain = crate::terrain::Terrain::new(
+    let mut terrain = crate::map::terrain::Terrain::new(
         40,
         40,
         tiles,
@@ -1691,14 +1691,19 @@ fn coast_world(ship: [f32; 2]) -> Turns {
         })
         .collect();
     let kinds: Vec<u8> = tiles.iter().map(|t| t.0).collect();
-    let kind = |flags| crate::terrain::TerrainKind {
+    let kind = |flags| crate::map::terrain::TerrainKind {
         shown: true,
         flags,
         forest: false,
     };
     let restrictions = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
-    let mut terrain =
-        crate::terrain::Terrain::new(30, 20, tiles, vec![kind(8), kind(1)], restrictions.clone());
+    let mut terrain = crate::map::terrain::Terrain::new(
+        30,
+        20,
+        tiles,
+        vec![kind(8), kind(1)],
+        restrictions.clone(),
+    );
     terrain.set_elevations(vec![0; 30 * 20]);
     t.spatial.terrain = Some(terrain);
     t.pathing = crate::pathing::Pathing::new([30, 20], kinds, restrictions, 0);

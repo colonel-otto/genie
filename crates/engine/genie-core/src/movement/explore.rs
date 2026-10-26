@@ -206,7 +206,7 @@ pub trait Area {
     fn zone(&mut self, x: i32, y: i32) -> u16;
     /// The unit's own zone (`FUN_14118eea0`).
     fn own_zone(&mut self) -> u16;
-    /// The unit could stand at the point (slot 0x278, [`crate::spatial::Spatial::point_clear`]).
+    /// The unit could stand at the point (slot 0x278, [`crate::map::spatial::Spatial::point_clear`]).
     fn clear(&self, x: i32, y: i32) -> Result<bool, GenieError>;
     /// The unit reaches the point within its line of sight less a tile (slot 0x3d8,
     /// [`crate::movement::Mover::reaches`]).

@@ -107,7 +107,7 @@ pub fn planner_from_save(
     terrain: &TerrainTable,
     passable: Vec<f32>,
 ) -> Result<genie_core::pathing::tile_path::Planner, Error> {
-    use genie_core::spatial::BLOCKED;
+    use genie_core::map::spatial::BLOCKED;
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
     let map = &header.world.base_world.map;

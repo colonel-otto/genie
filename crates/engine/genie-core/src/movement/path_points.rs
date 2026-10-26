@@ -1,12 +1,12 @@
 //! Path points, the gaps between footprints and the position setter's tests.
 
+use crate::map::spatial::Placed;
 use crate::math::fmath;
 use crate::math::fmath::Vec3;
 use crate::math::rng::Well512;
 use crate::movement::{EPSILON, Motion, PathData, RANGE_FLOOR, SHORTEST};
 use crate::pathing::Pathing;
 use crate::pathing::tile_path::Path;
-use crate::spatial::Placed;
 
 /// `FUN_140f98dd0`: the path ends before its point `i` (the points from `i` on go) and is
 /// measured again (`FUN_140f95a60`, true); an index outside the path, or an empty path, changes

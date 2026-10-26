@@ -147,7 +147,7 @@ pub struct RepairView<'a> {
     pub stance: u8,
     /// The unit's quick path to the target within [`REACH`] (slot 0x3e0, `canQuickPath`) over
     /// the world's objects.
-    pub can_path: &'a mut dyn FnMut(&crate::spatial::Spatial) -> Result<bool, GenieError>,
+    pub can_path: &'a mut dyn FnMut(&crate::map::spatial::Spatial) -> Result<bool, GenieError>,
     /// The target's repair by `amount` (a building's or a combat unit's slot 0x8c8, any other's
     /// slot 0x110): 0 to go on, 1 once it holds its most hit points, 2 when the player cannot pay.
     pub repair: &'a mut dyn FnMut(f32) -> Result<u8, GenieError>,

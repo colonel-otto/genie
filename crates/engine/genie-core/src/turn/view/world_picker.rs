@@ -1,8 +1,8 @@
 //! The world as `bestUnitToAttack` and the attack tests read it ([`WorldPicker`]).
 
+use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::movement::Mover;
-use crate::spatial::Spatial;
 use crate::turn::unit::Unit;
 use crate::turn::view::Foreign;
 use crate::turn::world::victim_of;

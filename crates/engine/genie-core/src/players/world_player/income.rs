@@ -147,7 +147,7 @@ impl Turns {
 
     /// `WorldPlayer::update` after `WorldPlayerBase::update`: player `p`'s scout map (`+0x1370`,
     /// once made) takes 1 on each tile its tile list (`+0x180`) holds, in order: until the world
-    /// time is 5000 ms only on the tiles the player sees ([`crate::spatial::Spatial::scout_sight`]
+    /// time is 5000 ms only on the tiles the player sees ([`crate::map::spatial::Spatial::scout_sight`]
     /// is 0xf), after it on all. The list's new count (`+8`, `FUN_141662720`), which it reads and
     /// clears, is the list's length: only the AI's `FUN_140b90b90`, which a playback does not
     /// run, reads it too, and the player's update ends with the list emptied (`FUN_141661030`).

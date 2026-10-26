@@ -404,8 +404,8 @@ fn a_removal_reward_with_its_flag_pays_the_last_paid_cost_of_its_resource_times_
     assert_eq!(reward(&t, 1, Some(1.0), &[(0, 50, true)]).amount, 0);
 }
 
+use crate::map::spatial::{Placed, Spatial};
 use crate::masters::{Master, Masters};
-use crate::spatial::{Placed, Spatial};
 use crate::turn::{Player, Unit};
 
 /// Gaia and two enemies, the world's dt half a second, a 20 by 20 map.
@@ -745,12 +745,12 @@ fn a_movement_damage_on_the_pending_target_hits_it_as_the_update_left_it() {
 fn waters(t: &mut Turns) {
     let mut tiles = vec![(1u8, 255u8, -1i16); 400];
     tiles[6 * 20 + 5] = (2, 255, -1);
-    let kind = |flags| crate::terrain::TerrainKind {
+    let kind = |flags| crate::map::terrain::TerrainKind {
         shown: true,
         flags,
         forest: false,
     };
-    t.spatial.terrain = Some(crate::terrain::Terrain::new(
+    t.spatial.terrain = Some(crate::map::terrain::Terrain::new(
         20,
         20,
         tiles,

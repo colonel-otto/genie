@@ -1,8 +1,8 @@
 //! A gatherer's walk after a drop and the drop sites it walks to.
 
+use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
-use crate::spatial::Spatial;
 use crate::turn::unit::Unit;
 use crate::turn::view::{Context, DropWorld};
 use crate::turn::world::{Seeker, drop_site_search};

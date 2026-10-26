@@ -139,7 +139,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
 /// table it walks back to its foundation; carrying nothing it is not ordered at all.
 #[test]
 fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
-    use crate::spatial::Placed;
+    use crate::map::spatial::Placed;
     let placed = |position, master, radius| Placed {
         position,
         radius,
@@ -195,7 +195,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             builders: 1,
             hit_points: 550,
             build_time: 25,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: false,
@@ -316,8 +316,8 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
 /// clears `+0x7b8`; the Attack waits in state 4 for the `MoveTo`'s end.
 #[test]
 fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
+    use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
-    use crate::spatial::Placed;
     use crate::sprite::Graphic;
     let standing = Graphic {
         id: 300,
@@ -387,7 +387,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
         unknown: None,
         obstruction: None,
     };
-    t.spatial = crate::spatial::Spatial::new([120, 120]);
+    t.spatial = crate::map::spatial::Spatial::new([120, 120]);
     t.spatial.insert(11, placed(10.0, 0, 1, 4));
     t.spatial.insert(50, placed(10.4, 10, 0, 126));
     let mut rng = Well512::default();
@@ -844,7 +844,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
             builders: 0,
             hit_points: 100,
             build_time: 10,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: true,
@@ -1195,10 +1195,10 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
         standing_sprite: -1,
         ..Master::default()
     };
-    let mut spatial = crate::spatial::Spatial::new([10, 10]);
+    let mut spatial = crate::map::spatial::Spatial::new([10, 10]);
     spatial.insert(
         7,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [3.5, 3.5, 0.0],
             radius: [0.2, 0.2],
             class: 6,
@@ -1370,7 +1370,7 @@ fn followers() -> Turns {
     });
     t.spatial.insert(
         30,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: [40.0, 20.0, 0.0],
             radius: [0.5, 0.5],
             class: 6,
@@ -1494,7 +1494,7 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
         builders: 2,
         hit_points: 100,
         build_time: 10,
-        record: crate::spatial::Obstruction { kind: 2, class: 2 },
+        record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
         snow: false,
         sprite_override: false,
         started: true,
@@ -1606,7 +1606,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             builders,
             hit_points: 100,
             build_time: 10,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: true,
@@ -1767,7 +1767,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
 fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let units = [(11, 4, [30.0, 30.0])];
     let mut t = soldiers(&units, &[]);
-    t.spatial = crate::spatial::Spatial::new([40, 40]);
+    t.spatial = crate::map::spatial::Spatial::new([40, 40]);
     let sight = crate::vision::visibility::Visibility::new(
         40,
         40,
@@ -1815,7 +1815,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         sheep(22, 20.5, 10.5),
     ]);
     t.players[2].objects.push(sheep(23, 11.5, 10.5));
-    let placed = |player, master, at: [f32; 2], radius| crate::spatial::Placed {
+    let placed = |player, master, at: [f32; 2], radius| crate::map::spatial::Placed {
         position: [at[0], at[1], 0.0],
         radius: [radius, radius],
         class: LIVESTOCK,
@@ -1935,7 +1935,7 @@ fn soldier_and_enemy(x: f32, class: i16) -> Turns {
     for (id, player, x) in [(10, 1, 10.0), (20, 2, x)] {
         t.spatial.insert(
             id,
-            crate::spatial::Placed {
+            crate::map::spatial::Placed {
                 position: [x, 10.0, 0.0],
                 radius: [0.2, 0.2],
                 class,
@@ -2410,16 +2410,16 @@ fn two_patrollers() -> Turns {
 /// `t` on a 60 by 60 map of open land, its sight's registry for the searches.
 fn searchable(mut t: Turns) -> Turns {
     // the group's statistics search the members' surroundings
-    let mut s = crate::spatial::Spatial::with_tiles(
+    let mut s = crate::map::spatial::Spatial::with_tiles(
         [60, 60],
-        crate::spatial::Tiles::new(60, 60, vec![1; 3600]),
+        crate::map::spatial::Tiles::new(60, 60, vec![1; 3600]),
     );
-    let kind = crate::terrain::TerrainKind {
+    let kind = crate::map::terrain::TerrainKind {
         shown: true,
         flags: 1,
         forest: false,
     };
-    s.terrain = Some(crate::terrain::Terrain::new(
+    s.terrain = Some(crate::map::terrain::Terrain::new(
         60,
         60,
         vec![(0, 255, -1); 3600],

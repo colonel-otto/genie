@@ -1,10 +1,10 @@
 //! The world as the header save holds it ([`Turns::new`]): the next object id, the
 //! planners and the shape mesh the game's load builds.
 
+use crate::map::spatial::Spatial;
 use crate::math::rng::Streams;
 use crate::movement::Mover;
 use crate::pathing::Pathing;
-use crate::spatial::Spatial;
 use crate::turn::player::Player;
 use crate::turn::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, Turns};
 

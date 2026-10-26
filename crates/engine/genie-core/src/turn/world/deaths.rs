@@ -1,9 +1,9 @@
 //! A death's parts: a farm's bonus, the visible resources forgotten, the combat object's death
 //! and refund, a built building's death and storage, and the military and civilian counts.
 
+use crate::map::spatial::Spatial;
 use crate::masters::{Master, Masters};
 use crate::pathing::Pathing;
-use crate::spatial::Spatial;
 use crate::turn::unit::Unit;
 use crate::turn::{
     BuildingDeath, CASTLE, CASTLES, MONASTERIES, MONASTERY, RESTORED_FOUNDATION, WONDER, WONDERS,

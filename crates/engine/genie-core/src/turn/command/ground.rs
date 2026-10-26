@@ -1,8 +1,8 @@
 //! A new building's ground: the units on its foundation sent off, its terrain, the footprint
 //! clearing and its place.
 
+use crate::map::spatial::Placed;
 use crate::masters::Master;
-use crate::spatial::Placed;
 use crate::turn::Turns;
 use crate::turn::world::clear_look_of;
 use crate::unit_ai::{GenieError, Notify};
@@ -150,7 +150,7 @@ impl Turns {
     /// The building constructor's terrain (`FUN_1411de5f0`, for a master with a build time, not
     /// of class 51 or 54, nor 357 or 1188): a farm (master 50) lays terrain 29 under its
     /// clearance, a rice farm (1187) terrain 65 (`FUN_1411ce250` -> `FUN_1411ddd90`,
-    /// [`crate::terrain::Terrain::cover`]), before the footprint clearing.
+    /// [`crate::map::terrain::Terrain::cover`]), before the footprint clearing.
     pub(in crate::turn) fn construction_terrain(
         &mut self,
         player: usize,
@@ -166,7 +166,7 @@ impl Turns {
         if m.build_time <= 0 {
             return Ok(());
         }
-        let f = crate::terrain::Foundation {
+        let f = crate::map::terrain::Foundation {
             position,
             clearance: m.clearance,
             terrain: laid,
@@ -290,7 +290,7 @@ impl Turns {
         position: [f32; 3],
         desolid: bool,
     ) {
-        let record = crate::spatial::Obstruction {
+        let record = crate::map::spatial::Obstruction {
             kind: made.obstruction_type,
             class: made.obstruction_class,
         };

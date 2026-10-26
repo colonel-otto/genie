@@ -2,8 +2,8 @@
 //! the kill and its counts.
 
 use crate::combat::damage::Victim;
+use crate::map::spatial::Spatial;
 use crate::masters::Master;
-use crate::spatial::Spatial;
 use crate::tasks::Diplomacy;
 use crate::turn::unit::Unit;
 use crate::turn::world::World;
@@ -360,7 +360,7 @@ pub(crate) fn victim_of(
     master: &Master,
     attributes: &[f32],
     p: usize,
-    terrain: Option<&crate::terrain::Terrain>,
+    terrain: Option<&crate::map::terrain::Terrain>,
     mode_680: i32,
 ) -> Victim {
     let at = |i: usize| attributes.get(i).copied().unwrap_or(0.0);

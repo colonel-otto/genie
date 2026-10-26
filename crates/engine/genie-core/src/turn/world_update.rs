@@ -49,7 +49,7 @@ impl Turns {
     /// walk's query ([`Spatial::walk_hits`]), as each update does first: for a look at the
     /// world between updates.
     ///
-    /// [`Spatial::walk_hits`]: crate::spatial::Spatial::walk_hits
+    /// [`Spatial::walk_hits`]: crate::map::spatial::Spatial::walk_hits
     pub fn sync_world(&mut self) {
         self.sync_moving();
     }
@@ -57,7 +57,7 @@ impl Turns {
     /// Tell the world which objects move now and how the players stand to each other, for the
     /// walk's query ([`Spatial::walk_hits`]).
     ///
-    /// [`Spatial::walk_hits`]: crate::spatial::Spatial::walk_hits
+    /// [`Spatial::walk_hits`]: crate::map::spatial::Spatial::walk_hits
     pub(super) fn sync_moving(&mut self) {
         for p in &self.players {
             for u in p.objects.iter().chain(&p.sleeping) {

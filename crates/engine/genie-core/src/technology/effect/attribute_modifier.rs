@@ -368,7 +368,7 @@ impl Turns {
         {
             return;
         }
-        let record = crate::spatial::Obstruction {
+        let record = crate::map::spatial::Obstruction {
             kind: master.obstruction_type,
             class: master.obstruction_class,
         };
@@ -449,7 +449,7 @@ impl Turns {
                     | a::TRAIN_LOCATIONS_ENTRY_MOD
                     | a::TRAIN_LOCATIONS_TOTAL_NUM => c.build_time = master.build_time,
                     a::OBSTRUCTION_TYPE | a::BLOCKAGE_CLASS => {
-                        c.record = crate::spatial::Obstruction {
+                        c.record = crate::map::spatial::Obstruction {
                             kind: master.obstruction_type,
                             class: master.obstruction_class,
                         };

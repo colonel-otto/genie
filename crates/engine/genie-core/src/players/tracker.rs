@@ -627,7 +627,7 @@ mod tests {
                     builders: 0,
                     hit_points: 2400,
                     build_time: 150,
-                    record: crate::spatial::Obstruction { kind: 0, class: 0 },
+                    record: crate::map::spatial::Obstruction { kind: 0, class: 0 },
                     snow: false,
                     sprite_override: false,
                     started: false,

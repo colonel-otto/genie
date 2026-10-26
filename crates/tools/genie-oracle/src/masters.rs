@@ -294,7 +294,7 @@ fn dat_work(id: i16, unit: &genie_dat::de::Unit, sounds: &[genie_dat::de::Sound]
 pub struct TerrainTable {
     classes: Vec<u8>,
     /// Each terrain's record as the map's terrain reads see it.
-    kinds: Vec<genie_core::terrain::TerrainKind>,
+    kinds: Vec<genie_core::map::terrain::TerrainKind>,
     masks: Vec<u8>,
     /// Each terrain restriction's value per terrain (`passable_buildable_dmg_multiplier`).
     passable: Vec<Vec<f32>>,
@@ -308,7 +308,7 @@ impl TerrainTable {
             .terrain_block
             .terrains
             .iter()
-            .map(|t| genie_core::terrain::terrain_class(t.is_water))
+            .map(|t| genie_core::map::terrain::terrain_class(t.is_water))
             .collect();
         let masks = dat
             .terrain_restrictions
@@ -347,7 +347,7 @@ impl TerrainTable {
                     })
                     .map(|(_, &d)| i32::from(d))
                     .sum();
-                genie_core::terrain::TerrainKind {
+                genie_core::map::terrain::TerrainKind {
                     shown: t.enabled != 0 || 0 <= t.terrain_to_draw,
                     flags: t.is_water,
                     forest: 249 < trees,
@@ -382,7 +382,7 @@ impl TerrainTable {
 
     /// Each terrain's record as the map's terrain reads see it.
     #[must_use]
-    pub fn kinds(&self) -> &[genie_core::terrain::TerrainKind] {
+    pub fn kinds(&self) -> &[genie_core::map::terrain::TerrainKind] {
         &self.kinds
     }
 }

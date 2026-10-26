@@ -21,9 +21,9 @@ pub(crate) use self::step::{World, path_step};
 pub(in crate::group) use self::walk::moved_vector;
 use self::walk::{SHORT_IGNORED, steer};
 #[cfg(test)]
-use crate::movement::{PathData, Planning};
+use crate::map::spatial::Spatial;
 #[cfg(test)]
-use crate::spatial::Spatial;
+use crate::movement::{PathData, Planning};
 
 /// A move or a turn below this counts as none (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::math::image::group::EPSILON;

@@ -303,9 +303,9 @@ impl Turns {
     }
 
     /// `FUN_141188ea0` of `object` for player `player`: its tile (`CVTTSS2SI` of its x and y)
-    /// seen by the player now (slot 0x1e0, `FUN_1416635e0`, 0xf: [`crate::spatial::Spatial::
+    /// seen by the player now (slot 0x1e0, `FUN_1416635e0`, 0xf: [`crate::map::spatial::Spatial::
     /// sees_tile`]), or, for a master whose `fog_visibility` (`+0x605`) is set, seen or explored
-    /// ([`crate::spatial::Spatial::explored`]).
+    /// ([`crate::map::spatial::Spatial::explored`]).
     ///
     /// # Errors
     ///

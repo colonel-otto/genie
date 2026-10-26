@@ -26,10 +26,10 @@ pub(crate) mod view;
 pub(crate) mod world;
 
 use crate::GenieError;
+use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::math::rng::Streams;
 use crate::pathing::Pathing;
-use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::tasks::DropSite;
 pub use crate::turn::command::{Command, GatherPoint, Order};

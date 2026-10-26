@@ -1,5 +1,6 @@
 //! A reached waypoint and what follows it: the next waypoint, a level's end and the moving state.
 
+use crate::map::spatial::Spatial;
 use crate::math::fmath::Vec3;
 use crate::movement::{
     CLOSE, EPSILON, Goal, LOOK_AHEAD, Me, Motion, Mover, Next, PathData, RANGE_FLOOR,
@@ -7,7 +8,6 @@ use crate::movement::{
     map_position, point_or_zero_of, remove_point, vector,
 };
 use crate::pathing::Pathing;
-use crate::spatial::Spatial;
 use crate::{GenieError, math::fmath};
 
 impl Mover {

@@ -5,9 +5,9 @@ use crate::construction::build::{
     Built, CASTLE_WONDER_COST, CASTLES_BUILT, Construction, MASTER_1889, MainWork, RICE_PASTURE,
     SITE_GONE, STARTED, Site, StackUnit, WONDER, WONDERS_BUILT, Worked,
 };
+use crate::map::spatial::Spatial;
 use crate::masters::Master;
 use crate::pathing::Pathing;
-use crate::spatial::Spatial;
 use crate::turn::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
 use crate::unit_ai::GenieError;
 
@@ -43,7 +43,7 @@ pub(super) fn hand_storage(
 
 /// [`Construction::complete`]'s ground: on snow the building gets its snow flag; its foundation
 /// terrain covers its clearance (terrain 0x3f under master 1889's pasture on mangrove or rice,
-/// `stack_master` [`RICE_PASTURE`]; [`crate::terrain::Terrain::cover`]).
+/// `stack_master` [`RICE_PASTURE`]; [`crate::map::terrain::Terrain::cover`]).
 ///
 /// # Errors
 ///
@@ -51,7 +51,7 @@ pub(super) fn hand_storage(
 pub(super) fn lay_foundation(
     c: &mut Construction,
     world: &mut Spatial,
-    placed: &crate::spatial::Placed,
+    placed: &crate::map::spatial::Placed,
     master: &Master,
     building: &crate::masters::BuildingMaster,
     stack_master: i16,
@@ -73,7 +73,7 @@ pub(super) fn lay_foundation(
         } else {
             building.foundation_terrain as u8
         };
-        terrain.cover(&crate::terrain::Foundation {
+        terrain.cover(&crate::map::terrain::Foundation {
             position: placed.position,
             clearance: master.clearance,
             terrain: laid,
@@ -227,7 +227,7 @@ impl Construction {
     /// (`FUN_141055b40`), lets its tiles go (`FUN_140f65580`, a building on a tile that is no
     /// annex) and sets `+0x686`; its owner makes the stack unit (the caller's, [`Built::stack`]);
     /// on snow it gets its snow flag; its foundation terrain covers its clearance (terrain 0x3f
-    /// under master 1889's pasture, [`crate::terrain::Terrain::cover`]; the tile it stands on,
+    /// under master 1889's pasture, [`crate::map::terrain::Terrain::cover`]; the tile it stands on,
     /// `+0x2e8`, keeps no terrain to restore in the slice); its owner's attributes 98 and 165
     /// grow by its paid cost (`0x1411dd3ee`: the sum of its cost entries flagged paid) unless it
     /// is an annex or has a stack unit; the castle (82) and the wonder (276) instead record

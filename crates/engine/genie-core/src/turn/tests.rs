@@ -3,12 +3,12 @@ use crate::checkpoint::TopAction;
 use crate::construction::build::{BuildAction, BuildTask, Construction};
 use crate::lifecycle::seconds;
 use crate::lifecycle::{Class, Lifecycle, MasterData};
+use crate::map::spatial::{Placed, Spatial};
 use crate::masters::{Master, Masters};
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveTo;
 use crate::ownership::artifact::Artifact;
-use crate::spatial::{Placed, Spatial};
 use crate::tasks::{Actor, Diplomacy};
 use crate::turn::command::{Command, GatherPoint, ResearchAt};
 use crate::turn::player::Player;
@@ -348,12 +348,12 @@ fn placeable(t: &mut Turns) {
     let (w, h) = (120, 120);
     let n = (w * h) as usize;
     t.spatial.map = [w, h];
-    let mut terrain = crate::terrain::Terrain::new(
+    let mut terrain = crate::map::terrain::Terrain::new(
         w,
         h,
         vec![(0, 255, -1); n],
         vec![
-            crate::terrain::TerrainKind {
+            crate::map::terrain::TerrainKind {
                 shown: true,
                 flags: 0,
                 forest: false,
@@ -973,7 +973,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
     ];
     t.spatial = Spatial::with_tiles(
         [120, 120],
-        crate::spatial::Tiles::new(120, 120, vec![0; 120 * 120]),
+        crate::map::spatial::Tiles::new(120, 120, vec![0; 120 * 120]),
     );
     placeable(&mut t);
     for u in &t.players[0].sleeping {
@@ -1519,7 +1519,7 @@ fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> Turns {
             builders: 0,
             hit_points: 550,
             build_time: 25,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: false,
@@ -1730,7 +1730,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
     t.players[1].objects.push(annex);
     t.spatial = Spatial::with_tiles(
         [120, 120],
-        crate::spatial::Tiles::new(120, 120, vec![4; 14400]),
+        crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
     );
     for (id, x) in [(10028, 30.0), (10031, 32.0)] {
         t.spatial.insert(
@@ -1941,7 +1941,7 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> Turns {
     t.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
     t.spatial = Spatial::with_tiles(
         [120, 120],
-        crate::spatial::Tiles::new(120, 120, vec![4; 14400]),
+        crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
     );
     t.spatial.insert(
         10028,
@@ -3050,9 +3050,12 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         ..Master::default()
     };
     t.masters = (0..4).map(|_| Masters::new([master.clone()])).collect();
-    t.spatial = Spatial::with_tiles([20, 20], crate::spatial::Tiles::new(20, 20, vec![1; 400]));
+    t.spatial = Spatial::with_tiles(
+        [20, 20],
+        crate::map::spatial::Tiles::new(20, 20, vec![1; 400]),
+    );
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
-    let record = crate::spatial::Obstruction { kind: 2, class: 5 };
+    let record = crate::map::spatial::Obstruction { kind: 2, class: 5 };
     t.spatial.insert(
         27687,
         Placed {
@@ -3073,7 +3076,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         t.spatial
             .tiles()
             .word(9, 10)
-            .is_some_and(|w| w & crate::spatial::BLOCKED != 0)
+            .is_some_and(|w| w & crate::map::spatial::BLOCKED != 0)
     };
     assert!(blocked(&t));
     let mut open = vec![false; 4];
@@ -3109,7 +3112,10 @@ fn a_gate_opens_for_its_allies_while_they_update() {
 /// counts but is no ally, a wall next to it neither.
 #[test]
 fn a_gate_counts_the_moving_units_between_its_posts() {
-    let mut s = Spatial::with_tiles([40, 40], crate::spatial::Tiles::new(40, 40, vec![1; 1600]));
+    let mut s = Spatial::with_tiles(
+        [40, 40],
+        crate::map::spatial::Tiles::new(40, 40, vec![1; 1600]),
+    );
     s.relations = vec![vec![0, 3, 3], vec![3, 0, 3], vec![3, 3, 0]];
     let placed = |x: f32, class, player, speed, kind| Placed {
         position: [x, 20.0, 0.0],
@@ -3122,7 +3128,7 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
         tall: true,
         speed,
         unknown: None,
-        obstruction: Some(crate::spatial::Obstruction { kind, class: 2 }),
+        obstruction: Some(crate::map::spatial::Obstruction { kind, class: 2 }),
     };
     s.insert(27745, placed(20.0, 39, 1, 0.0, 2));
     s.insert(27746, placed(18.5, 39, 1, 0.0, 2));
@@ -4081,7 +4087,7 @@ fn teardown_world() -> Turns {
             builders: 1,
             hit_points: 550,
             build_time: 25,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: true,
@@ -4351,7 +4357,7 @@ fn deaths_world() -> Turns {
             builders: 1,
             hit_points: 550,
             build_time: 25,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: true,
@@ -5041,7 +5047,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
             builders: 0,
             hit_points: 20000,
             build_time: 10,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: true,
@@ -5921,7 +5927,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
 /// hit points blast the players' walls in update 1.
 #[test]
 fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
-    use crate::spatial::Placed;
+    use crate::map::spatial::Placed;
     let petard = Master {
         id: 706,
         kind: 70,
@@ -6015,7 +6021,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         unknown: None,
         obstruction: None,
     };
-    t.spatial = crate::spatial::Spatial::new([200, 200]);
+    t.spatial = crate::map::spatial::Spatial::new([200, 200]);
     t.spatial.insert(7948, placed(101.5, 35, 0, 706));
     t.spatial.insert(7231, placed(102.5, 27, 1, 117));
     t.spatial.insert(8858, placed(100.5, 15, 0, 1250));
@@ -6104,7 +6110,7 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
             builders: 0,
             hit_points: 1650,
             build_time: 100,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: false,
@@ -6206,7 +6212,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             builders: 0,
             hit_points: 10,
             build_time: 70,
-            record: crate::spatial::Obstruction { kind: 2, class: 2 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 2 },
             snow: false,
             sprite_override: false,
             started: true,
@@ -6481,7 +6487,7 @@ fn building_short_of_its_build_time_dies(state: u8) {
             builders: 0,
             hit_points: 1200,
             build_time: 50,
-            record: crate::spatial::Obstruction { kind: 2, class: 0 },
+            record: crate::map::spatial::Obstruction { kind: 2, class: 0 },
             snow: false,
             sprite_override: false,
             started: false,
@@ -8183,11 +8189,11 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Turns {
     players[1].relations = vec![3, 0];
     let mut t = Turns::new(0, 29910, 1, vec![0; 2], players);
     t.spatial = Spatial::new([40, 40]);
-    let mut terrain = crate::terrain::Terrain::new(
+    let mut terrain = crate::map::terrain::Terrain::new(
         40,
         40,
         vec![(0, 0, -1); 40 * 40],
-        vec![crate::terrain::TerrainKind {
+        vec![crate::map::terrain::TerrainKind {
             shown: true,
             flags: 0,
             forest: false,
@@ -8240,7 +8246,7 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Turns {
             tall: true,
             speed: 0.0,
             unknown: None,
-            obstruction: Some(crate::spatial::Obstruction { kind: 2, class: 0 }),
+            obstruction: Some(crate::map::spatial::Obstruction { kind: 2, class: 0 }),
         },
     );
     t.recycling.next_id = -1;

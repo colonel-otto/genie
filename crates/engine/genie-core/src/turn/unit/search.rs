@@ -1,9 +1,9 @@
 //! The searches for more work and for resources, and the objects its unit AI names.
 
+use crate::map::spatial::Spatial;
 use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
-use crate::spatial::Spatial;
 use crate::turn::unit::Unit;
 use crate::turn::view::{Context, OwnerView};
 use crate::turn::world::{Releaser, ResourceWorld, closest_resource_of};

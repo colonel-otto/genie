@@ -1,11 +1,11 @@
 //! The walk: its kept hits, the obstruction query's ends, the facets, the steering and the speed
 //! control.
 
+use crate::map::spatial::Spatial;
 use crate::math::fmath::Vec3;
 use crate::movement::{
     ALLY_PAUSE, EPSILON, FAST_TURN, Me, Motion, Mover, Next, OTHER_PAUSE, UP, Velocity, vector,
 };
-use crate::spatial::Spatial;
 use crate::{GenieError, math::fmath};
 
 impl Mover {

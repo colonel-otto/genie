@@ -1,6 +1,7 @@
 //! A new level's path: no path, its link under the walked level, the short pather's ignore list
 //! and a blocked start.
 
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, SHORT_PATHER, SPLIT,
@@ -9,7 +10,6 @@ use crate::movement::{
 };
 use crate::pathing::hull_path::HullPather;
 use crate::pathing::tile_path::{Path, Request};
-use crate::spatial::{Placed, Spatial};
 use crate::{GenieError, math::fmath, pathing::short_path};
 
 impl Mover {
@@ -132,7 +132,7 @@ impl Mover {
     /// (`+0x858`'s path at `+0x8`), and, for a standing unit with a target whose action is in
     /// state 8 (a drop-off), the workers standing within its radius and a tenth (the records
     /// `FUN_141051900` finds; one whose current path level's path was made this update is
-    /// passed, [`crate::spatial::Gait::path_made`]) of the classes 2, 4,
+    /// passed, [`crate::map::spatial::Gait::path_made`]) of the classes 2, 4,
     /// 19 and 21 (or whose slot 0x4f0 says so: 0 for a combat object, a task of action type 0x99
     /// on the master for a building of the classes 3, 27, 39, 49 and 52), when the
     /// unit's start is blocked (`FUN_140fa0110`: [`short_path::Pather::start_blocked`] along

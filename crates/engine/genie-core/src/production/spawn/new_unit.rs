@@ -2,11 +2,11 @@
 //! constructor.
 
 use crate::lifecycle::{Class, Lifecycle};
+use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
 use crate::production::IN_PRODUCTION;
 use crate::production::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
-use crate::spatial::{Obstruction, Placed};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::{ACTION_COMPLETED, GenieError, NewObject, Notify, UnitAi, factory_type};

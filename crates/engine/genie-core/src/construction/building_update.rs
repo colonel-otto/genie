@@ -4,9 +4,9 @@
 use crate::combat::damage::Victim;
 use crate::construction::build::{Completion, Construction, Site};
 use crate::lifecycle::Lifecycle;
+use crate::map::spatial::Spatial;
 use crate::masters::Master;
 use crate::math::rng::{Stream, Well512};
-use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::turn::unit::{Unit, annexes_of};
 use crate::turn::view::Context;
@@ -39,7 +39,7 @@ impl Unit {
             .building
             .as_ref()
             .is_some_and(|b| b.transform_unit != -1);
-        if master.class != crate::spatial::GATE_CLASS || !transforms || self.life.state != 2 {
+        if master.class != crate::map::spatial::GATE_CLASS || !transforms || self.life.state != 2 {
             return Ok(());
         }
         let height = master.height;
@@ -88,7 +88,7 @@ impl Unit {
     /// `TRIBE_Building_Object::update`'s farm part for a foundation (state 0) with a build time
     /// (`0x1411ca2ef`): its stage, its build points times 3 over its build time (truncated, at
     /// most 2), lays terrain under it each update (`FUN_1411ce250` -> `FUN_1411ddd90`,
-    /// [`crate::terrain::Terrain::cover`]): 29 plus the stage under a farm (master 50); under a
+    /// [`crate::map::terrain::Terrain::cover`]): 29 plus the stage under a farm (master 50); under a
     /// rice farm or a pasture (1187, 1889) 65 plus the stage on mangrove or rice terrain (`+0xcd0`,
     /// [`Unit::rice`]), else its foundation terrain (`+0x988`) plus 2 plus the stage (bytes).
     /// `FUN_1411ce250` maps the terrains 8, 27 and 64 by the local player's view and the tile's
@@ -118,7 +118,7 @@ impl Unit {
                 "a farm's stage terrain the local player's view maps (8, 27, 64)",
             ));
         }
-        let f = crate::terrain::Foundation {
+        let f = crate::map::terrain::Foundation {
             position: self.position,
             clearance: m.clearance,
             terrain,

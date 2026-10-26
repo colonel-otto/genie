@@ -1,5 +1,6 @@
 //! A step's reach of its waypoint, the long pather's walker and the units whose tiles it lowers.
 
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     EPSILON, INCLUDED, NEW_PATHER_RADIUS, PLANS, Planning, footprint_gap, footprint_gap_squared,
@@ -8,7 +9,6 @@ use crate::pathing::hull_path::HullPather;
 use crate::pathing::short_path::{Call, Entry, Listed};
 use crate::pathing::tile_path::{Path, Request};
 use crate::pathing::{Pathing, PlanBudget};
-use crate::spatial::{Placed, Spatial};
 use crate::{GenieError, math::fmath, pathing::short_path};
 
 /// How a step relates to its waypoint (slot 196, `0x14114f400`).
@@ -194,7 +194,7 @@ pub(crate) fn tile_plan_for(
     let Some(planner) = plan.pathing.planner(walker.restriction, world.tiles()) else {
         return Ok(None);
     };
-    let mut walls = crate::spatial::SmoothingWalls::new(world, radius, mask, &ignore);
+    let mut walls = crate::map::spatial::SmoothingWalls::new(world, radius, mask, &ignore);
     let found = planner.plan::<GenieError>(&req, target_box, out, Some(&mut walls))?;
     if walls.ran {
         plan.pathing.smoothing_ran(slots);

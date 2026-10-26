@@ -264,7 +264,7 @@ fn at_its_point_a_human_s_moved_gatherer_idles_and_a_computer_s_is_done() {
             walk_to: Some([30.0, 40.0, 0.0]),
             ..GatherAction::new(task(), &bush(), true, rate()).unwrap()
         };
-        let mut world = crate::spatial::Spatial::default();
+        let mut world = crate::map::spatial::Spatial::default();
         let walk = Walk {
             mover: Some(&mut mover),
             me: crate::movement::Me {
@@ -315,7 +315,7 @@ fn a_gatherer_without_a_target_or_a_load_asks_for_another_every_ten_seconds() {
     // the 4v4's forager 31237 at update 10820: its bush went while it walked there
     let run = |master: i16, g: &mut GatherAction, dt: f32| {
         let mut mover = crate::gathering::hunt::tests::walker();
-        let mut world = crate::spatial::Spatial::default();
+        let mut world = crate::map::spatial::Spatial::default();
         let walk = Walk {
             mover: Some(&mut mover),
             me: crate::movement::Me {
@@ -388,7 +388,7 @@ fn farm_update(
     computer: bool,
 ) -> Result<Next, GenieError> {
     let mut mover = crate::gathering::hunt::tests::walker();
-    let mut world = crate::spatial::Spatial::default();
+    let mut world = crate::map::spatial::Spatial::default();
     let walk = Walk {
         mover: Some(&mut mover),
         me: crate::movement::Me {
@@ -447,7 +447,7 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
     });
     mover.angle = 0.0;
     let before = mover.angle;
-    let mut world = crate::spatial::Spatial::default();
+    let mut world = crate::map::spatial::Spatial::default();
     let walk = Walk {
         mover: Some(&mut mover),
         me: crate::movement::Me {

@@ -57,7 +57,7 @@ impl Master {
         stats: &mut MoveStats,
         attribute: u8,
         graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
-        terrain: Option<&crate::terrain::Terrain>,
+        terrain: Option<&crate::map::terrain::Terrain>,
     ) {
         use crate::masters::attribute as a;
         match attribute {
@@ -109,7 +109,7 @@ impl Master {
         &mut self,
         attribute: u8,
         graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
-        terrain: Option<&crate::terrain::Terrain>,
+        terrain: Option<&crate::map::terrain::Terrain>,
     ) {
         use crate::masters::attribute as a;
         match attribute {

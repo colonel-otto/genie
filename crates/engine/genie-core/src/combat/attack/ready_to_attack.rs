@@ -207,9 +207,9 @@ pub(super) fn in_range(near: f32, range: f32, min_range: f32) -> bool {
 ///
 /// A tile the map's sight does not hold.
 pub(super) fn target_unseen(
-    world: &crate::spatial::Spatial,
+    world: &crate::map::spatial::Spatial,
     s: &Strike<'_>,
-    t: &crate::spatial::Placed,
+    t: &crate::map::spatial::Placed,
 ) -> Result<bool, GenieError> {
     let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
     Ok(0 < t.player

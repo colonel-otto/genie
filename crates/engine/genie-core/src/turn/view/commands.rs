@@ -1,7 +1,7 @@
 //! The repair and enter commands of the unit AI and the auto scout's area.
 
+use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning};
-use crate::spatial::Spatial;
 use crate::tasks::Actor;
 use crate::turn::unit::Unit;
 use crate::turn::view::{AiStart, EnterOrder, RepairOrder, UnitView};

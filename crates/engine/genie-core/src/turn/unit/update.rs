@@ -4,12 +4,12 @@ use crate::combat::attack::Strike;
 use crate::construction::build::{Builder, Completion, Site};
 use crate::gathering::hunt::{Gatherer, HuntSprites};
 use crate::lifecycle::Class;
+use crate::map::spatial::Spatial;
 use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, Mover, footprint_gap_squared};
 use crate::ownership::artifact::{Artifact, Handover};
-use crate::spatial::Spatial;
 use crate::tasks::Actor;
 use crate::turn::unit::{
     AiResume, Aimed, Captured, Step, Unit, armed, give_load, hunt_walk_sprite, loses_actions,

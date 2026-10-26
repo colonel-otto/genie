@@ -1,7 +1,7 @@
 //! The objects on the map: their tiles and records, their freezing and the known checks, their
 //! moves inside and out, and the segment tests.
 
-use crate::spatial::{
+use crate::map::spatial::{
     Grid, Obstruction, Placed, RecordCells, Spatial, Tiles, WalkTest, tile_record_id,
 };
 use crate::unit_ai::GenieError;

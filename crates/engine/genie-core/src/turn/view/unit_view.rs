@@ -4,8 +4,8 @@
 
 use crate::combat::damage::Victim;
 use crate::construction::build::Walk;
+use crate::map::spatial::Placed;
 use crate::movement::{Me, footprint_gap_squared};
-use crate::spatial::Placed;
 use crate::tasks::Actor;
 use crate::turn::unit::Unit;
 use crate::turn::view::{

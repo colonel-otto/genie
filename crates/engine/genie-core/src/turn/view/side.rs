@@ -1,9 +1,9 @@
 //! What the unit AI asks of the world through its view: [`crate::unit_ai::UnitSide`] for
 //! [`UnitView`].
 
+use crate::map::spatial::Placed;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Planning, footprint_gap_squared};
-use crate::spatial::Placed;
 use crate::tasks::Actor;
 use crate::turn::PETARD;
 use crate::turn::view::{
@@ -42,7 +42,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// Slot 0x278 (`FUN_141158720`, [`Spatial::point_clear`]): the unit, of its radius and its
     /// restriction's terrain classes, could stand at `point`.
     ///
-    /// [`Spatial::point_clear`]: crate::spatial::Spatial::point_clear
+    /// [`Spatial::point_clear`]: crate::map::spatial::Spatial::point_clear
     fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
@@ -60,7 +60,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// ([`Spatial::spot_off`] with the notify's radii; none without the foundation), its height
     /// and class, its owner, the foundation and its current action's target as orders name them.
     ///
-    /// [`Spatial::spot_off`]: crate::spatial::Spatial::spot_off
+    /// [`Spatial::spot_off`]: crate::map::spatial::Spatial::spot_off
     fn off_footprint(
         &mut self,
         site: i32,

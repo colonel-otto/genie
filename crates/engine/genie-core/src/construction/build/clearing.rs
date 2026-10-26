@@ -1,7 +1,7 @@
 //! The footprint clearing (`FUN_1415c3620`) of a building: the objects on its tiles that go.
 
 use crate::construction::build::WALL;
-use crate::spatial::Spatial;
+use crate::map::spatial::Spatial;
 use crate::unit_ai::GenieError;
 
 /// What the footprint clearing (`FUN_1415c3620`) reads of the new building: its owner
@@ -159,7 +159,7 @@ pub(super) fn clearing_tiles(at: [f32; 2], [w, h]: [i32; 2]) -> Option<([i16; 2]
 pub(super) fn clearing_takes(
     site: &ClearingSite,
     id: i32,
-    o: &crate::spatial::Placed,
+    o: &crate::map::spatial::Placed,
     look: &dyn Fn(i32) -> Option<ClearLook>,
 ) -> Result<Option<Cleared>, GenieError> {
     use crate::math::fmath::below_or_unordered;

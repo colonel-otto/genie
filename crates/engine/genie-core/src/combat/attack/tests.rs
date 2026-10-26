@@ -665,11 +665,11 @@ fn a_trample_reads_a_building_s_blast_so_far_or_its_main_building_s() {
 }
 
 /// A world holding the target `id` of `player` and class `class` at `at`, radius 0.2.
-fn world_with(id: i32, player: usize, class: i16, at: [f32; 3]) -> crate::spatial::Spatial {
-    let mut world = crate::spatial::Spatial::default();
+fn world_with(id: i32, player: usize, class: i16, at: [f32; 3]) -> crate::map::spatial::Spatial {
+    let mut world = crate::map::spatial::Spatial::default();
     world.insert(
         id,
-        crate::spatial::Placed {
+        crate::map::spatial::Placed {
             position: at,
             radius: [0.2, 0.2],
             class,
@@ -686,7 +686,7 @@ fn world_with(id: i32, player: usize, class: i16, at: [f32; 3]) -> crate::spatia
     world
 }
 
-fn walk_in<'a>(mover: &'a mut Mover, world: &'a mut crate::spatial::Spatial) -> Walk<'a> {
+fn walk_in<'a>(mover: &'a mut Mover, world: &'a mut crate::map::spatial::Spatial) -> Walk<'a> {
     Walk {
         mover: Some(mover),
         me: crate::movement::Me {
@@ -1447,7 +1447,7 @@ fn a_gate_s_reach_is_to_its_nearest_part() {
         for (id, x) in [(8, 10.9), (9, 20.0), (10, 10.5)] {
             world.insert(
                 id,
-                crate::spatial::Placed {
+                crate::map::spatial::Placed {
                     position: [x, 10.0, 0.0],
                     ..*world.get(7).unwrap()
                 },

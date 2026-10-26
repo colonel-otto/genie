@@ -2,7 +2,7 @@
 //! and closed after a player's update.
 
 use crate::GenieError;
-use crate::spatial::Spatial;
+use crate::map::spatial::Spatial;
 use crate::turn::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, Turns};
 
 /// The units in gate `gate` (`FUN_1411d0570`): the obstruction manager's query from its first
@@ -84,7 +84,7 @@ impl Turns {
                 masters
                     .and_then(|m| m.get(owner.objects[i].life.master_id))
                     .is_some_and(|m| {
-                        m.class == crate::spatial::GATE_CLASS
+                        m.class == crate::map::spatial::GATE_CLASS
                             && m.building.as_ref().is_some_and(|b| 0 <= b.transform_unit)
                     })
             })
@@ -102,7 +102,7 @@ impl Turns {
             .get(q)
             .and_then(|m| m.get(gate.life.master_id))
             .is_some_and(|m| {
-                m.class == crate::spatial::GATE_CLASS
+                m.class == crate::map::spatial::GATE_CLASS
                     && m.building.as_ref().is_some_and(|b| b.transform_unit != -1)
             });
         gate.life.state < 3
@@ -155,7 +155,7 @@ impl Turns {
     /// (`q`'s slot 0x320, `FUN_141619480`) unless the next player counts `q` an ally and is
     /// counted one by it (they stay open for it): each gate `p` may pass gets its record, its
     /// tiles' marks and its mesh shape again (`FUN_141056460`), but for a part of obstruction
-    /// kind 0 or 12 or of class 0 ([`crate::spatial::Obstruction::recorded`]).
+    /// kind 0 or 12 or of class 0 ([`crate::map::spatial::Obstruction::recorded`]).
     pub(crate) fn close_gates(&mut self, p: usize, open: &mut [bool]) {
         if p == 0 {
             return;
@@ -180,7 +180,7 @@ impl Turns {
                 let Some(m) = self.masters.get(q).and_then(|t| t.get(master)) else {
                     continue;
                 };
-                let record = crate::spatial::Obstruction {
+                let record = crate::map::spatial::Obstruction {
                     kind: m.obstruction_type,
                     class: m.obstruction_class,
                 };

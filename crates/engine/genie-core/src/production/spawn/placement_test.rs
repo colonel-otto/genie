@@ -50,7 +50,7 @@ pub struct Near {
     /// Its hit points.
     pub hp: f32,
     /// The terrain of its tile (`+0x2e8`, taken as the tile it stands on) is a forest
-    /// ([`crate::terrain::TerrainKind::forest`]).
+    /// ([`crate::map::terrain::TerrainKind::forest`]).
     pub forest_tile: bool,
 }
 
@@ -124,7 +124,7 @@ pub trait PlaceMap {
     fn vision(&self, player: usize) -> [u64; 2];
     /// A tile's elevation (`+0x14`), when the map holds it.
     fn elevation(&self, x: i32, y: i32) -> Option<u8>;
-    /// A tile's shape (`+0x8`, [`crate::terrain::Terrain::set_elevations`]), when the map holds
+    /// A tile's shape (`+0x8`, [`crate::map::terrain::Terrain::set_elevations`]), when the map holds
     /// it.
     fn shape(&self, x: i32, y: i32) -> Option<u8>;
     /// Player `a` counts player `b` as an ally (`FUN_141663dc0`): itself; never Gaia; relation 0,
@@ -341,7 +341,7 @@ pub fn build_placement(
 pub(super) const BUILD_SCAN: f32 = crate::math::image::spawn::BUILD_SCAN;
 
 /// The first object of a scan, which the game reports as the blocker: the tiles row by row, each
-/// tile's objects in its list's order ([`crate::spatial::Spatial::objects_on`], the game's: the
+/// tile's objects in its list's order ([`crate::map::spatial::Spatial::objects_on`], the game's: the
 /// load files them in the save's order, as the game's load does).
 pub(super) fn first(found: &[Found]) -> Option<Near> {
     found.first().map(|&(_, o)| o)

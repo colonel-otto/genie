@@ -173,7 +173,7 @@ impl Turns {
         placed.position = at;
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         placed.obstruction =
-            (made.obstruction_type != 0 && solid).then_some(crate::spatial::Obstruction {
+            (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,
                 class: made.obstruction_class,
             });
@@ -303,7 +303,7 @@ impl Turns {
         placed.position = at;
         let solid = 0.0 < made.radius[0] && 0.0 < made.radius[1] && made.tall;
         placed.obstruction =
-            (made.obstruction_type != 0 && solid).then_some(crate::spatial::Obstruction {
+            (made.obstruction_type != 0 && solid).then_some(crate::map::spatial::Obstruction {
                 kind: made.obstruction_type,
                 class: made.obstruction_class,
             });

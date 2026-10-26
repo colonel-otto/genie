@@ -28,7 +28,7 @@ pub struct SliceRun {
     /// What the players see after the run.
     pub visibility: Option<Visibility>,
     /// The map's terrain after the run.
-    pub terrain: Option<genie_core::terrain::Terrain>,
+    pub terrain: Option<genie_core::map::terrain::Terrain>,
     /// The objects the slice stopped updating, of every player.
     pub frozen: Vec<i32>,
     /// Every object's freeze, by player: the tick, the object and why.
@@ -250,7 +250,7 @@ pub fn tile_lists_from_dump(text: &str) -> Result<Vec<(i32, i32, Vec<i32>)>, Err
 /// order, as differences: `tile (x, y) order slice [...], the game [...]`. Tiles whose objects
 /// differ are left out: their objects' places differ.
 pub(super) fn tile_order_differences(
-    spatial: &genie_core::spatial::Spatial,
+    spatial: &genie_core::map::spatial::Spatial,
     game: &[(i32, i32, Vec<i32>)],
 ) -> Vec<String> {
     game.iter()

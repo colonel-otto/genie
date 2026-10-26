@@ -61,7 +61,7 @@ impl Turns {
     ///
     /// A master the slice does not have, or no players' sight.
     ///
-    /// [`Spatial::explored`]: crate::spatial::Spatial::explored
+    /// [`Spatial::explored`]: crate::map::spatial::Spatial::explored
     pub(crate) fn made_new_object(&mut self, p: usize) -> Result<(), GenieError> {
         let Some(u) = self.players[p].objects.last() else {
             return Ok(());

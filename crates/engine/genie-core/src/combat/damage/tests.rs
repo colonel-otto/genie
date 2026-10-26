@@ -392,7 +392,7 @@ fn a_range_charge_hits_a_target_its_class_group_names() {
 }
 
 /// The terrain defense scales each weapon's damage; a restriction value of 0 counts as 1 for
-/// the caller ([`crate::terrain::Terrain::defense`]).
+/// the caller ([`crate::map::terrain::Terrain::defense`]).
 #[test]
 fn a_terrain_defense_bonus_scales_the_damage() {
     let hunter = hunter();

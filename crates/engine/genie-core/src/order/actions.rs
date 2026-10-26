@@ -322,7 +322,7 @@ impl Turns {
 /// What a master change ([`switch_master`]) changes of the world besides its unit: the place and
 /// its records, the pathing, and the sprites with the Sprite stream.
 pub(crate) struct SwitchWorld<'a> {
-    pub(crate) spatial: &'a mut crate::spatial::Spatial,
+    pub(crate) spatial: &'a mut crate::map::spatial::Spatial,
     pub(crate) pathing: &'a mut crate::pathing::Pathing,
     pub(crate) graphics: &'a std::collections::BTreeMap<i16, crate::sprite::Graphic>,
     pub(crate) sprite: &'a mut crate::math::rng::Well512,

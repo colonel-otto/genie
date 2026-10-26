@@ -115,10 +115,10 @@ pub fn find_drop_location(
 /// The map as a unit's Transport reads it ([`Shore`]): the map's terrain, the zone maps and the
 /// planners, the unit's terrain restriction (its master's `+0x606`; none below 0) and its tile.
 pub(crate) struct MapShore<'a> {
-    pub(super) terrain: &'a crate::terrain::Terrain,
+    pub(super) terrain: &'a crate::map::terrain::Terrain,
     pub(super) zones: &'a mut crate::pathing::zones::Zones,
     pub(super) pathing: &'a mut crate::pathing::Pathing,
-    pub(super) tiles: &'a crate::spatial::Tiles,
+    pub(super) tiles: &'a crate::map::spatial::Tiles,
     pub(super) map: [i32; 2],
     pub(super) restriction: Option<usize>,
     pub(super) tile: [i32; 2],
@@ -131,7 +131,7 @@ impl<'a> MapShore<'a> {
     ///
     /// A map without its terrain.
     pub(crate) fn new(
-        spatial: &'a crate::spatial::Spatial,
+        spatial: &'a crate::map::spatial::Spatial,
         zones: &'a mut crate::pathing::zones::Zones,
         pathing: &'a mut crate::pathing::Pathing,
         restriction: i16,

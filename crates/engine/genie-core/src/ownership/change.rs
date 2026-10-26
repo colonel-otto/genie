@@ -1,8 +1,8 @@
 //! An ownership change (slot 0x70, `FUN_14120f800`): to Gaia, a building's with its
 //! foundation, annexes and garrison, and the attributes and storage it moves.
 
+use crate::map::spatial::Spatial;
 use crate::masters::{Master, Masters};
-use crate::spatial::Spatial;
 use crate::turn::player::Player;
 use crate::turn::unit::{LIVESTOCK, Unit};
 use crate::turn::world::count_class;
@@ -157,7 +157,11 @@ impl Turns {
 
     /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` leaving its old owner's
     /// map (slot 0x1d8).
-    pub(crate) fn foundation_sight_off(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
+    pub(crate) fn foundation_sight_off(
+        &mut self,
+        id: i32,
+        placed: Option<crate::map::spatial::Placed>,
+    ) {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
             v.sight_off(id, p.position, p.radius, true, false);
         }
@@ -165,7 +169,11 @@ impl Turns {
 
     /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` coming on its new
     /// owner's map (slot 0x1d0).
-    pub(crate) fn foundation_sight_on(&mut self, id: i32, placed: Option<crate::spatial::Placed>) {
+    pub(crate) fn foundation_sight_on(
+        &mut self,
+        id: i32,
+        placed: Option<crate::map::spatial::Placed>,
+    ) {
         if let (Some(p), Some(v)) = (placed, self.spatial.sight.as_mut()) {
             let _ = v.sight_on(id, p.position, p.radius, true, false);
         }
@@ -174,7 +182,7 @@ impl Turns {
     /// [`Turns::building_changes_hands`] below state 3: the building's record and mesh shape of
     /// `master`'s obstruction come again (`FUN_141056460`).
     pub(crate) fn record_again(&mut self, id: i32, master: &Master) {
-        let record = crate::spatial::Obstruction {
+        let record = crate::map::spatial::Obstruction {
             kind: master.obstruction_type,
             class: master.obstruction_class,
         };

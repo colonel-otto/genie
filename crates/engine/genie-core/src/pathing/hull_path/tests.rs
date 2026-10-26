@@ -1,5 +1,5 @@
 use super::*;
-use crate::spatial::{Obstruction, Tiles};
+use crate::map::spatial::{Obstruction, Tiles};
 
 /// The unit square as `addShapeToHulls` makes a hull of it: high right, low right, low left,
 /// high left.
@@ -505,7 +505,7 @@ fn a_tile_s_tall_objects_go_into_the_hulls_unless_passed_or_left_out() {
     w.insert(5, tall(5.7, 5.7, 0.2, 10)); // moving
     w.set_gait(
         5,
-        Some(crate::spatial::Gait {
+        Some(crate::map::spatial::Gait {
             moving: true,
             ..Default::default()
         }),
@@ -670,7 +670,7 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
     w.insert(33, tall(0.5, 5.5, 0.2, 10));
     w.set_gait(
         33,
-        Some(crate::spatial::Gait {
+        Some(crate::map::spatial::Gait {
             moving: true,
             ..Default::default()
         }),
@@ -1173,7 +1173,7 @@ fn an_included_moving_unit_blocks_the_line_tests() {
     w.insert(50, placed(6.0, 5.5, 0.3, 5));
     w.set_gait(
         50,
-        Some(crate::spatial::Gait {
+        Some(crate::map::spatial::Gait {
             moving: true,
             ..Default::default()
         }),

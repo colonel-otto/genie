@@ -12,10 +12,10 @@
 //! the Build end (state 1) and the AI runs its queue.
 
 use crate::lifecycle::Lifecycle;
+use crate::map::spatial::Obstruction;
 use crate::masters::Master;
 use crate::movement::move_to::MoveWait;
 pub use crate::movement::move_to::{MoveTo, Walk};
-use crate::spatial::Obstruction;
 use crate::unit_ai::{GenieError, UnitAi};
 
 mod clearing;
@@ -37,9 +37,9 @@ use self::placing::beside_diagonal;
 pub(crate) use self::turn_entries::{NO_CONSTRUCTION, NOT_HELD, held};
 use self::update::drop_done_orders;
 #[cfg(test)]
-use crate::pathing::Pathing;
+use crate::map::spatial::Spatial;
 #[cfg(test)]
-use crate::spatial::Spatial;
+use crate::pathing::Pathing;
 
 /// The Build action's type, which word 9 adds.
 pub const BUILD: i16 = 101;
@@ -662,8 +662,8 @@ const BUILD_ORDER: i32 = crate::ai_kinds::ORDER_BUILD;
 mod stack_tests {
     use super::*;
     use crate::lifecycle::{Class, Lifecycle};
+    use crate::map::spatial::{Placed, Tiles};
     use crate::masters::{BuildingMaster, Masters};
-    use crate::spatial::{Placed, Tiles};
     use crate::turn::{Player, Turns, Unit};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
@@ -795,12 +795,12 @@ mod stack_tests {
             ],
         );
         t.spatial = Spatial::with_tiles([200, 200], Tiles::new(200, 200, vec![0; 200 * 200]));
-        t.spatial.terrain = Some(crate::terrain::Terrain::new(
+        t.spatial.terrain = Some(crate::map::terrain::Terrain::new(
             200,
             200,
             vec![(0, 255, -1); 200 * 200],
             vec![
-                crate::terrain::TerrainKind {
+                crate::map::terrain::TerrainKind {
                     shown: true,
                     flags: 0,
                     forest: false,

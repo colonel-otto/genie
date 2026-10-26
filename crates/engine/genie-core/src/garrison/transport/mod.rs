@@ -134,7 +134,7 @@ pub trait Shore {
     ///
     /// A map the caller cannot read.
     fn near(&mut self, zone: u8, reach: f32) -> Result<bool, GenieError>;
-    /// The terrain table's flags of tile (`x`, `y`) ([`crate::terrain::Terrain::flags_at`]).
+    /// The terrain table's flags of tile (`x`, `y`) ([`crate::map::terrain::Terrain::flags_at`]).
     fn flags(&self, x: i16, y: i16) -> u8;
     /// `FUN_140f7c390` with the planner of the unit's restriction (`FUN_140f7cb30`, none without
     /// a master): the last point of the planner's path from `from` to `to` whose tile has an edge

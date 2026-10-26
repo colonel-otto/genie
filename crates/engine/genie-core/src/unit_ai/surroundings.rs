@@ -348,7 +348,7 @@ pub struct Seen {
     pub visible: bool,
     /// Its master's `object_flags` (`+0x654`).
     pub flags: u32,
-    /// The viewer's test of its tile (`FUN_1416635e0`, [`crate::spatial::Spatial::tile_sight`]):
+    /// The viewer's test of its tile (`FUN_1416635e0`, [`crate::map::spatial::Spatial::tile_sight`]):
     /// 0xf seen, 0x80 explored, else 0.
     pub sight: u8,
 }

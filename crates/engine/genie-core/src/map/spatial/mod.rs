@@ -550,7 +550,7 @@ pub struct Spatial {
     /// rebuild sets them ([`crate::vision`]); a player without them sees with its own bits.
     pub vision: Vec<[u64; 2]>,
     /// The map's terrain, when the slice holds it.
-    pub terrain: Option<crate::terrain::Terrain>,
+    pub terrain: Option<crate::map::terrain::Terrain>,
     /// The unit AIs' search cache ([`SearchCache`]).
     search_cache: std::cell::RefCell<SearchCache>,
     /// The obstruction manager's grid, from the map's size.

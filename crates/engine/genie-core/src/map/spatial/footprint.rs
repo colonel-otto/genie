@@ -1,7 +1,7 @@
 //! A footprint's spots, occupants and clearing, foreign marks, clear points and obstruction
 //! candidates.
 
-use crate::spatial::{Placed, QUERY_HITS, Spatial, TESTED_KINDS, tile_record_id};
+use crate::map::spatial::{Placed, QUERY_HITS, Spatial, TESTED_KINDS, tile_record_id};
 use crate::unit_ai::GenieError;
 
 impl Spatial {
@@ -262,7 +262,7 @@ impl Spatial {
     ///
     /// A record whose place the slice does not know near the point.
     ///
-    /// [`Gait::moving`]: crate::spatial::Gait::moving
+    /// [`Gait::moving`]: crate::map::spatial::Gait::moving
     pub fn point_hit(
         &self,
         point: [f32; 2],

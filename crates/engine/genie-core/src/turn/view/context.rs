@@ -2,11 +2,11 @@
 
 use crate::combat::damage::Victim;
 use crate::construction::build::Walk;
+use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::{Me, Mover, Planning};
 use crate::pathing::Pathing;
-use crate::spatial::Spatial;
 use crate::sprite::Graphic;
 use crate::tasks::DropSite;
 use crate::turn::unit::{AiResume, Unit};

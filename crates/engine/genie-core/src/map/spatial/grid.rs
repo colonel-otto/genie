@@ -1,7 +1,7 @@
 //! The obstruction grid's cells and visits, the scout map, gaits, annexes, alliances and the line
 //! queries.
 
-use crate::spatial::{
+use crate::map::spatial::{
     Gait, Placed, QUERY_HITS, Spatial, TESTED_KINDS, record_meets_segment, tile_record_id,
 };
 use crate::unit_ai::GenieError;
@@ -74,7 +74,7 @@ impl Spatial {
     /// it now, in none without a record or out of the world. Every change of an object's place,
     /// radii or record runs it.
     ///
-    /// [`RecordCells`]: crate::spatial::RecordCells
+    /// [`RecordCells`]: crate::map::spatial::RecordCells
     pub(super) fn refile(&mut self, id: i32) {
         let cell = self
             .objects
@@ -108,7 +108,7 @@ impl Spatial {
     /// visits, in id order: those [`Spatial::visits`] passes, read from the cells it visits on
     /// each level ([`RecordCells`]) instead of tested one by one.
     ///
-    /// [`RecordCells`]: crate::spatial::RecordCells
+    /// [`RecordCells`]: crate::map::spatial::RecordCells
     pub(super) fn visited_records(&self, rect: [f32; 4]) -> Vec<i32> {
         let mut ids = Vec::new();
         for level in -1..self.grid.levels {

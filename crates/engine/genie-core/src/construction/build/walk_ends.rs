@@ -66,8 +66,8 @@ impl BuildAction {
     /// Another player's foundation, one its owner sees only through its ghosts, and what the
     /// restart and the wait do not model.
     ///
-    /// [`Spatial::building_sight`]: crate::spatial::Spatial::building_sight
-    /// [`Spatial::foreign_marks`]: crate::spatial::Spatial::foreign_marks
+    /// [`Spatial::building_sight`]: crate::map::spatial::Spatial::building_sight
+    /// [`Spatial::foreign_marks`]: crate::map::spatial::Spatial::foreign_marks
     pub(super) fn walk_failed(
         &mut self,
         walk: &mut Walk<'_>,

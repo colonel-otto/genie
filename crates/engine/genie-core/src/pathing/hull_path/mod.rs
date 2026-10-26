@@ -22,8 +22,8 @@
 //! pather's ignore list: the caller's objects (slot 0x3e8's the unit and its target) and the tile
 //! under a listed one-tile object that the unit's terrain cannot cross.
 
+use crate::map::spatial::Spatial;
 use crate::math::fmath::sqrt;
-use crate::spatial::Spatial;
 
 mod area;
 mod convex;
@@ -36,7 +36,7 @@ mod walks;
 pub(crate) use self::setup::{NO_RESTRICTION, NO_TERRAIN};
 pub use self::setup::{quick_reach, quick_reach_from};
 #[cfg(test)]
-use crate::spatial::{Placed, tile_record_id};
+use crate::map::spatial::{Placed, tile_record_id};
 
 /// A point on the map, x and y.
 type Point = [f32; 2];
@@ -99,7 +99,7 @@ const SIDES: [[f32; 2]; 4] = crate::math::image::hull_path::SIDES;
 /// A box in a hull (`ObstructionInfo`, 0x14 bytes): an obstruction's box grown by the unit's
 /// radius and the obstruction's id (an object's, or a tile's [`tile_record_id`]).
 ///
-/// [`tile_record_id`]: crate::spatial::tile_record_id
+/// [`tile_record_id`]: crate::map::spatial::tile_record_id
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Shape {
     bounds: [f32; 4],

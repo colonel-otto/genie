@@ -8,7 +8,7 @@
 //! tiles sit in a binary heap by cost, whose sift down the game runs only while the count's half
 //! is above 1 and only to children below that half: the slice keeps both quirks. A tile is
 //! entered when its terrain class is in the unit's mask, no static record blocks it (the
-//! obstruction manager's word, [`crate::spatial::BLOCKED`]) and no tall object stands on it (the
+//! obstruction manager's word, [`crate::map::spatial::BLOCKED`]) and no tall object stands on it (the
 //! map's count at `+0x10`, less the unit's own and the ignored units', `FUN_140f60440`); a
 //! diagonal step also needs both tiles beside it so. The search ends at the goal tile or within
 //! a tile of it (or, with `within_range`, within the range), after too many expansions, or when
@@ -28,9 +28,9 @@
 //! may cross anyway, `FUN_1413fc2b0`) is never set in this build: no instruction writes it.
 
 use crate::GenieError;
+use crate::map::spatial::{BLOCKED, Tiles};
 use crate::math::fmath::Vec3;
 use crate::pathing::tile_path::Path;
-use crate::spatial::{BLOCKED, Tiles};
 
 /// The search expands at most this many tiles (`FUN_140f9eb70`: `20000 < n` breaks).
 const MOST_EXPANSIONS: i32 = 20000;

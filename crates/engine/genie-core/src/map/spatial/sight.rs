@@ -1,7 +1,7 @@
 //! The artifact's owner search, an ownership change, vision and sight, ghosts and the standable
 //! spots.
 
-use crate::spatial::{BLOCKED, Placed, Spatial};
+use crate::map::spatial::{BLOCKED, Placed, Spatial};
 use crate::unit_ai::GenieError;
 use crate::vision::visibility::Visibility;
 
@@ -398,7 +398,7 @@ impl Spatial {
     /// game counts the ghost by its master's height radius, which the slice does not hold, so
     /// the ghost counts as not tall.
     ///
-    /// [`Tiles`]: crate::spatial::Tiles
+    /// [`Tiles`]: crate::map::spatial::Tiles
     pub fn insert_ghost(&mut self, id: i32, position: [f32; 3]) {
         if let Some(i) = self.tiles.tile_of(position) {
             let objects = &self.objects;

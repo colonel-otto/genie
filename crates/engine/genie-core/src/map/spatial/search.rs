@@ -1,7 +1,7 @@
 //! A position's change, the sight check and the unit AI's searches: the closest object and the
 //! best unit to attack.
 
-use crate::spatial::{
+use crate::map::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FARMER_CLASS, FISH_TRAP, FarmLook, Filter,
     LIVESTOCK_CLASS, PASTURE_CLASS, PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED,
     Spatial, TESTED_KINDS, TRAPPERS, players_seen, record_meets_segment, tile_record_id,
@@ -27,7 +27,7 @@ impl Spatial {
     ///
     /// A record whose place the slice does not know near the line.
     ///
-    /// [`Gait::moving`]: crate::spatial::Gait::moving
+    /// [`Gait::moving`]: crate::map::spatial::Gait::moving
     pub fn still_line_hit(
         &self,
         from: [f32; 2],
@@ -150,7 +150,7 @@ impl Spatial {
     /// query near a frozen object, or a last answer the slice has not got, fails. `shuns`
     /// answers for a found object whether a class-10 searcher passes it ([`Spatial::closest_object`]).
     ///
-    /// [`SearchCache`]: crate::spatial::SearchCache
+    /// [`SearchCache`]: crate::map::spatial::SearchCache
     #[allow(clippy::too_many_arguments)]
     pub fn search(
         &self,
@@ -205,7 +205,7 @@ impl Spatial {
     /// registry unless the [`SearchCache`] holds near the place; true when it queried afresh. The
     /// lists it leaves are [`Spatial::searched`]'s.
     ///
-    /// [`SearchCache`]: crate::spatial::SearchCache
+    /// [`SearchCache`]: crate::map::spatial::SearchCache
     pub fn search_query(&self, player: usize, search: &Search<'_>) -> Result<bool, GenieError> {
         let v = self.sight.as_ref().ok_or(GenieError::unsupported(
             "a search without the players' sight",

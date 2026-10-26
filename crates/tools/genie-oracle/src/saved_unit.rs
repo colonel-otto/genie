@@ -308,7 +308,7 @@ pub(super) fn construction(
         builders: b.tribe_combat_object.num_builders,
         hit_points: ms.read_temp_6,
         build_time,
-        record: genie_core::spatial::Obstruction {
+        record: genie_core::map::spatial::Obstruction {
             kind: ms.obstruction_type,
             class: ms.obstruction_class,
         },

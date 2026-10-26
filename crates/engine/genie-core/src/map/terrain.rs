@@ -3,7 +3,7 @@
 //! slice reads them: a completed building's snow check and its foundation terrain
 //! (`FUN_1411dbb70`, `FUN_1411ddd90`).
 //!
-//! The obstruction manager keeps its own copy of the terrain classes ([`crate::spatial::Tiles`]),
+//! The obstruction manager keeps its own copy of the terrain classes ([`crate::map::spatial::Tiles`]),
 //! which a terrain change does not update; the map's render caches (`FUN_140f741b0`'s blends and
 //! minimap) are not held.
 

@@ -303,7 +303,7 @@ pub(super) fn hunted_origins(turns: &mut Turns, start: &Header) {
 }
 
 /// The world's objects as movement sees them, from a save ([`spatial`]), on a map without terrain.
-pub fn spatial_from_save(save: &[u8]) -> Result<genie_core::spatial::Spatial, Error> {
+pub fn spatial_from_save(save: &[u8]) -> Result<genie_core::map::spatial::Spatial, Error> {
     spatial_with_tiles(save, &TerrainTable::default())
 }
 
@@ -311,7 +311,7 @@ pub fn spatial_from_save(save: &[u8]) -> Result<genie_core::spatial::Spatial, Er
 pub fn spatial_with_tiles(
     save: &[u8],
     terrain: &TerrainTable,
-) -> Result<genie_core::spatial::Spatial, Error> {
+) -> Result<genie_core::map::spatial::Spatial, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
     Ok(spatial(&header, terrain))

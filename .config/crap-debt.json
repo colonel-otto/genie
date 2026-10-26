@@ -362,6 +362,24 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/map/spatial/search.rs",
+      "function": "Spatial::closest_object",
+      "line": 348,
+      "cyclomatic": 49.0,
+      "coverage": 52.0,
+      "crap": 314.531392,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/map/spatial/sight.rs",
+      "function": "Spatial::artifact_owner",
+      "line": 20,
+      "cyclomatic": 28.0,
+      "coverage": 74.10714285714286,
+      "crap": 41.60993303571428,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/movement/move_to.rs",
       "function": "MoveToAction::update",
       "line": 511,
@@ -656,24 +674,6 @@
       "cyclomatic": 78.0,
       "coverage": 53.125,
       "crap": 704.6326904296875,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/spatial/search.rs",
-      "function": "Spatial::closest_object",
-      "line": 348,
-      "cyclomatic": 49.0,
-      "coverage": 52.0,
-      "crap": 314.531392,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/spatial/sight.rs",
-      "function": "Spatial::artifact_owner",
-      "line": 20,
-      "cyclomatic": 28.0,
-      "coverage": 74.10714285714286,
-      "crap": 41.60993303571428,
       "crate": "genie-core"
     },
     {
@@ -1912,7 +1912,7 @@
     {
       "file": "crates/tools/genie-oracle/src/map_and_sight.rs",
       "function": "resource_differences",
-      "line": 393,
+      "line": 399,
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
@@ -1921,7 +1921,7 @@
     {
       "file": "crates/tools/genie-oracle/src/map_and_sight.rs",
       "function": "spatial",
-      "line": 133,
+      "line": 136,
       "cyclomatic": 14.0,
       "coverage": 0.0,
       "crap": 210.0,
@@ -1930,7 +1930,7 @@
     {
       "file": "crates/tools/genie-oracle/src/map_and_sight.rs",
       "function": "visibility_differences",
-      "line": 345,
+      "line": 351,
       "cyclomatic": 9.0,
       "coverage": 0.0,
       "crap": 90.0,

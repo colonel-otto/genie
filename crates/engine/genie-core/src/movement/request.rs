@@ -2,6 +2,7 @@
 //! goal's reach.
 
 use crate::GenieError;
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
 use crate::movement::{
     BUILDING_CLASS, CLOSE, CONTINUE, DETOUR, EPSILON, FAR, GATE, Goal, LONG, LONG_PATH_GROW,
@@ -11,7 +12,6 @@ use crate::movement::{
     long_path_for, may_plan, point_or_zero, short_range, too_short, vector,
 };
 use crate::pathing::tile_path::Path;
-use crate::spatial::{Placed, Spatial};
 
 impl Mover {
     /// The motion step's path request for the level it walks, in state 2 (`0x141150f00`, its

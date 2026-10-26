@@ -1,7 +1,7 @@
 use super::*;
 use crate::group::{Formation, Member, Slot, UnitGroup, UnitGroups};
+use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::masters::{Master, Masters};
-use crate::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::turn::{Player, Unit};
 use crate::unit_ai::UnitAi;
 

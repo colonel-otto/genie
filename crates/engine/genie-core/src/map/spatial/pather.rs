@@ -1,6 +1,6 @@
 //! The old short pather's queries, the map's edge records and the segment tests.
 
-use crate::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
+use crate::map::spatial::{QUERY_HITS, Spatial, TESTED_KINDS};
 use crate::unit_ai::GenieError;
 
 /// A record a pather query met (an entry of `FUN_141051900`'s list): an object's (its id) or a
@@ -37,7 +37,7 @@ impl Spatial {
     /// read. A walk whose grown box leaves the map is blocked (`FUN_141052350`) or meets the
     /// map's edge records first ([`Spatial::edge_records`]).
     ///
-    /// [`Gait::moving`]: crate::spatial::Gait::moving
+    /// [`Gait::moving`]: crate::map::spatial::Gait::moving
     #[allow(clippy::too_many_arguments)]
     pub(super) fn pather_query(
         &self,

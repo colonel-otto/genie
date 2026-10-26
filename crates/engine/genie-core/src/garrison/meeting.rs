@@ -44,7 +44,7 @@ pub struct MeetingTarget {
 /// (`COMISS 0, speed` with `JNC`: a NaN speed has some), is met at its place. One idle (its
 /// action state 0) or in state 2 and with room meets the unit where its slot 0x428
 /// ([`landing_tile`], `landing`) finds the shore, at the tile's centre (code 1), else, the unit
-/// standing on a beach (`beach`, [`crate::terrain::Terrain::beach`]), at the unit's place rounded
+/// standing on a beach (`beach`, [`crate::map::terrain::Terrain::beach`]), at the unit's place rounded
 /// to the nearest corner (`floorf` of each plus 0.5, code 1), else at its place. One under an
 /// action in state 3, 4 or 11 meets it where that action goes, but a siege weapon (class 13)
 /// at its place; any other state at its place.
@@ -186,14 +186,14 @@ pub(super) const UNPLACED: GenieError =
 
 /// [`meeting`] for `unit` (with its movement state `stats`) and its target `t`: the shore on the
 /// way from the target's tile to the unit's ([`landing_tile`]): a beach
-/// ([`crate::terrain::Terrain::beach`]) whose zone for the unit's restriction (`FUN_1411958c0`:
+/// ([`crate::map::terrain::Terrain::beach`]) whose zone for the unit's restriction (`FUN_1411958c0`:
 /// 0 for a tile below 0) is the zone of the unit's own tile (`FUN_14118eea0`), where the unit
-/// could stand (slot 0x278, [`crate::spatial::Spatial::point_clear`] with the master's x radius
+/// could stand (slot 0x278, [`crate::map::spatial::Spatial::point_clear`] with the master's x radius
 /// and the restriction's mask); else a beach under the unit (`FUN_1413fbf30`).
 pub(crate) fn meeting_point(
     t: &MeetingTarget,
     unit: (i32, [f32; 3], &crate::movement::MoveStats),
-    spatial: &crate::spatial::Spatial,
+    spatial: &crate::map::spatial::Spatial,
     zones: &mut crate::pathing::zones::Zones,
 ) -> Result<([f32; 2], u8), GenieError> {
     let (id, [ux, uy, _], stats) = unit;
@@ -229,7 +229,7 @@ pub(crate) fn meeting_point(
 /// moved to (slot 0x520), its buildings those whose master (`masters`, each player's) is of
 /// type 80.
 pub(crate) fn enter_reach(
-    spatial: &crate::spatial::Spatial,
+    spatial: &crate::map::spatial::Spatial,
     masters: &[Masters],
     (id, stats, moved_at): (i32, &crate::movement::MoveStats, [f32; 3]),
     (target, target_mover): (i32, Option<&crate::movement::Mover>),
@@ -278,7 +278,7 @@ pub(crate) fn enter_reach(
 /// `set_state(4)` moves either, so it holds there).
 #[allow(clippy::type_complexity)]
 pub(crate) fn enter_view(
-    spatial: &crate::spatial::Spatial,
+    spatial: &crate::map::spatial::Spatial,
     zones: &mut crate::pathing::zones::Zones,
     masters: &[Masters],
     unit: &crate::turn::Unit,
@@ -329,7 +329,7 @@ pub(crate) fn enter_view(
 /// from where it last moved to; one without movement state does not.
 pub(crate) fn ship_reaches(
     ship: &crate::turn::Unit,
-    world: &crate::spatial::Spatial,
+    world: &crate::map::spatial::Spatial,
     plan: &mut crate::movement::Planning<'_>,
     to: [f32; 3],
 ) -> Result<bool, GenieError> {

@@ -6,8 +6,8 @@
 //! state 4 each update runs the motion step (object slot 193, [`Mover::motion`]).
 
 use crate::GenieError;
+use crate::map::spatial::Spatial;
 use crate::movement::{Me, Motion, Mover, PathAsk, Planning, footprint_gap, footprint_gap_squared};
-use crate::spatial::Spatial;
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
 pub const MOVE_TO: i16 = 1;
@@ -594,7 +594,7 @@ impl MoveToAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::spatial::Placed;
+    use crate::map::spatial::Placed;
 
     /// `FUN_140aa0df0` with no range takes the unit's slot 0x268: 0.75 for a building whose
     /// master has a task of action type 0x99 (431096717's mule carts of player 2 at update 1),

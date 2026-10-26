@@ -1,6 +1,6 @@
 //! The Artifact action (type 107): the default task of livestock, which keeps checking whether a
 //! unit of another player is close enough to take the animal over (the search is the caller's,
-//! [`crate::spatial::Spatial::artifact_owner`]).
+//! [`crate::map::spatial::Spatial::artifact_owner`]).
 //!
 //! 158041: `TRIBE_Action_Artifact`, vtable `0x142ed6520`; update `0x140aad250` (slot 6), `set_state`
 //! `0x140aace30` (slot 16). The .dat gives Goat, Goose, Cow and Sheep the default task 0, a task with
@@ -707,7 +707,7 @@ mod tests {
         let _ = a.take_point([28.5, 93.5, 0.0]);
         let mut mover = crate::gathering::hunt::tests::walker();
         mover.stats.speed = 0.0;
-        let mut world = crate::spatial::Spatial::new([120, 120]);
+        let mut world = crate::map::spatial::Spatial::new([120, 120]);
         let walk = Walk {
             mover: Some(&mut mover),
             me: crate::movement::Me {

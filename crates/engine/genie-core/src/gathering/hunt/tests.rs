@@ -455,7 +455,7 @@ fn a_hunt_whose_target_went_walks_to_its_point() {
         lead: Lead::default(),
     };
     let mut mover = walker();
-    let mut world = crate::spatial::Spatial::default();
+    let mut world = crate::map::spatial::Spatial::default();
     let (mut kind, mut held) = (-1, 0.0);
     let mut walk = Walk {
         mover: Some(&mut mover),
@@ -534,7 +534,7 @@ fn a_hunt_faces_its_own_pasture_s_dead_livestock() {
         };
         let mut rig = Rig::new(victim);
         let mut mover = walker();
-        let mut world = crate::spatial::Spatial::default();
+        let mut world = crate::map::spatial::Spatial::default();
         let walk = Walk {
             mover: Some(&mut mover),
             me: crate::movement::Me {
@@ -608,7 +608,7 @@ fn a_walk_to_the_point_ends_in_a_search_or_done() {
     };
     let run = |h: &mut HuntAction, who: PointWalker| {
         let mut mover = walker();
-        let mut world = crate::spatial::Spatial::default();
+        let mut world = crate::map::spatial::Spatial::default();
         let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         let walk = Walk {
             mover: Some(&mut mover),
@@ -1011,7 +1011,7 @@ fn a_hunter_facing_livestock_leads_slaughters_or_walks_to_it() {
 /// the unit carries nothing after; the hunt has no target to go back to.
 #[test]
 fn a_drop_off_gives_the_load_to_the_player() {
-    fn walk<'a>(mover: &'a mut Mover, world: &'a mut crate::spatial::Spatial) -> Walk<'a> {
+    fn walk<'a>(mover: &'a mut Mover, world: &'a mut crate::map::spatial::Spatial) -> Walk<'a> {
         Walk {
             mover: Some(mover),
             me: crate::movement::Me {
@@ -1041,7 +1041,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
         lead: Lead::default(),
     };
     let mut mover = walker();
-    let mut world = crate::spatial::Spatial::default();
+    let mut world = crate::map::spatial::Spatial::default();
     let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
     let (mut kind, mut held) = (1, 7.057_053_6);
     let site = DropOff {
@@ -1111,7 +1111,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
         ..site
     };
     let step = |hunt: &mut HuntAction, mover: &mut Mover, anim: &mut Option<f32>| {
-        let mut world = crate::spatial::Spatial::default();
+        let mut world = crate::map::spatial::Spatial::default();
         let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         hunt.update_drop(
             walk(mover, &mut world),

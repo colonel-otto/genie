@@ -2,10 +2,10 @@
 
 use crate::combat::damage::Victim;
 use crate::lifecycle::{Class, Lifecycle};
+use crate::map::spatial::Placed;
 use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
-use crate::spatial::Placed;
 use crate::sprite::ActiveSprite;
 use crate::turn::ARMED_FIREPOWER;
 use crate::turn::unit::Unit;
@@ -409,7 +409,7 @@ impl Unit {
             speed: mover.stats.speed,
             unknown: None,
             obstruction: (made.obstruction_type != 0 && solid).then_some(
-                crate::spatial::Obstruction {
+                crate::map::spatial::Obstruction {
                     kind: made.obstruction_type,
                     class: made.obstruction_class,
                 },

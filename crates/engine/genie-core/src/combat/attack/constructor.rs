@@ -103,7 +103,7 @@ impl Attack {
     ///
     /// What the start does not model, and a target the world does not hold.
     pub fn command(
-        (target, world): (i32, &crate::spatial::Spatial),
+        (target, world): (i32, &crate::map::spatial::Spatial),
         e: &Engagement,
         arms: Arms,
         (visible, target_owner): (bool, usize),
@@ -306,8 +306,8 @@ pub fn engagement(
     ai: Option<&crate::unit_ai::UnitAi>,
     speed: f32,
     master: &crate::masters::Master,
-    me: &crate::spatial::Placed,
-    them: &crate::spatial::Placed,
+    me: &crate::map::spatial::Placed,
+    them: &crate::map::spatial::Placed,
     world_time: u32,
 ) -> Result<Engagement, GenieError> {
     if matches!(master.charge_type, 6 | 7) {

@@ -2,9 +2,9 @@
 //! built back from its end.
 
 use crate::GenieError;
+use crate::map::spatial::Hit;
 use crate::math::fmath::sqrt;
 use crate::pathing::hull_path::{EPSILON, HullPather, LINE_HITS, Node, Point, Waypoints};
-use crate::spatial::Hit;
 
 impl HullPather<'_> {
     // The node lists.

@@ -6,9 +6,9 @@ use crate::group::motion::{
     EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, World, ground,
     hold, passes_waypoint, path_step, point, reset_level, set_flag,
 };
+use crate::map::spatial::Placed;
 use crate::math::fmath::Vec3;
 use crate::movement::{Planning, footprint_gap};
-use crate::spatial::Placed;
 use crate::turn::Turns;
 use crate::{GenieError, math::fmath};
 

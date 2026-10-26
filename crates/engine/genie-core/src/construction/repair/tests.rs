@@ -1,6 +1,6 @@
 use super::*;
+use crate::map::spatial::Spatial;
 use crate::movement::Me;
-use crate::spatial::Spatial;
 
 const TASK: RepairTask = RepairTask {
     id: 7,

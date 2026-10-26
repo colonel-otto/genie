@@ -2,10 +2,10 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
+use crate::map::spatial::{Spatial, tile_record_id};
 use crate::pathing::hull_path::{
     GatePass, HALF, HullPather, KeptHulls, Node, ONE, PATHS, Point, Waypoints,
 };
-use crate::spatial::{Spatial, tile_record_id};
 
 /// A quick path without the map's terrain.
 pub(crate) const NO_TERRAIN: GenieError =

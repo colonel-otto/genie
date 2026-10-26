@@ -9,8 +9,8 @@
 //!
 //! Vectors are the game's `BVector`s ([`fmath::Vec3`]: x, height, y).
 
+use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
-use crate::spatial::{Placed, Spatial};
 
 pub mod explore;
 pub mod fly;

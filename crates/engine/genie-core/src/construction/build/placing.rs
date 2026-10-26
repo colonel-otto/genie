@@ -19,7 +19,7 @@ impl BuildAction {
     /// itself. Another player's marks on the footprint ([`Spatial::foreign_marks`]) halt it
     /// ([`BuildStep::removes`]).
     ///
-    /// [`Spatial::foreign_marks`]: crate::spatial::Spatial::foreign_marks
+    /// [`Spatial::foreign_marks`]: crate::map::spatial::Spatial::foreign_marks
     pub(super) fn place(
         &mut self,
         walk: &mut Walk<'_>,

@@ -244,7 +244,7 @@ impl Turns {
             construction_rate: self.players[p].construction_rate,
             groups: &self.groups,
         };
-        let blocked = u64::from(mask ^ 0xff) | crate::spatial::BLOCKED;
+        let blocked = u64::from(mask ^ 0xff) | crate::map::spatial::BLOCKED;
         gather_search::closest_resource_at(
             &seeker,
             None,
