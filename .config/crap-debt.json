@@ -1073,18 +1073,18 @@
       "crate": "genie-dat"
     },
     {
-      "file": "crates/formats/genie-hki/src/lib.rs",
+      "file": "crates/formats/genie-hki/src/key.rs",
       "function": "Hotkey::write_to",
-      "line": 1022,
+      "line": 186,
       "cyclomatic": 7.0,
       "coverage": 0.0,
       "crap": 56.0,
       "crate": "genie-hki"
     },
     {
-      "file": "crates/formats/genie-hki/src/lib.rs",
+      "file": "crates/formats/genie-hki/src/metadata.rs",
       "function": "keycode_id",
-      "line": 28,
+      "line": 10,
       "cyclomatic": 28.0,
       "coverage": 0.0,
       "crap": 812.0,
