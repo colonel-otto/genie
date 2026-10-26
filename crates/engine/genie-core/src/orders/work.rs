@@ -6,8 +6,8 @@ use crate::math::rng::Stream;
 use crate::orders::{
     ATTACK_TASK, BUILDING, GARRISON, MASTER_84, MASTER_1808, VILLAGER, Work, own_order_target,
 };
-use crate::tasks::{Actor, Diplomacy, enabled};
 use crate::turn::{Turns, World};
+use crate::unit_ai::task_finder::{Actor, Diplomacy, enabled};
 use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER, MOVE_ORDER};
 
 impl Turns {
@@ -158,7 +158,7 @@ impl Turns {
     }
 
     /// The unit's own task list's finder with filter 3 (slot 2 of its master's `+0x788`,
-    /// `FUN_1412784d0`: the garrison's, [`crate::tasks::find_task`]) on `target`: whether it
+    /// `FUN_1412784d0`: the garrison's, [`crate::unit_ai::task_finder::find_task`]) on `target`: whether it
     /// finds a task, as a gather point on a building asks (`FUN_140ace9c0`).
     pub(crate) fn garrison_task_found(
         &self,
@@ -183,10 +183,16 @@ impl Turns {
         };
         let t = self.task_target(target, 1)?;
         let general = self.task_target(target, 2)?;
-        Ok(
-            crate::tasks::find_task(master, &actor, Some(&t), Some(&general), None, 3, &world)?
-                .is_some(),
-        )
+        Ok(crate::unit_ai::task_finder::find_task(
+            master,
+            &actor,
+            Some(&t),
+            Some(&general),
+            None,
+            3,
+            &world,
+        )?
+        .is_some())
     }
 
     /// The work command's carried-resource test (`+0x12`, `FUN_14106ff70` with `param_8`) on the
@@ -354,7 +360,7 @@ impl Turns {
                     let unit = &mut self.players[player].objects[idx];
                     if let Some(ai) = unit.ai.as_mut() {
                         ai.notify_work(
-                            crate::ai_kinds::ORDER_GATHER,
+                            crate::unit_ai::ai_kinds::ORDER_GATHER,
                             crate::unit_ai::GATHER_ACTION,
                             Some((target, class)),
                             point,
@@ -364,7 +370,10 @@ impl Turns {
                         self.remember_order(
                             player,
                             idx,
-                            (crate::ai_kinds::ORDER_GATHER, crate::unit_ai::GATHER_ACTION),
+                            (
+                                crate::unit_ai::ai_kinds::ORDER_GATHER,
+                                crate::unit_ai::GATHER_ACTION,
+                            ),
                         )?;
                     }
                 }
@@ -517,7 +526,7 @@ impl Turns {
     /// own. None: no task. The terrain under the point, which only a task for a terrain reads, is
     /// not passed.
     ///
-    /// [`find_task`]: crate::tasks::find_task
+    /// [`find_task`]: crate::unit_ai::task_finder::find_task
     pub(crate) fn find_work_task(
         &mut self,
         player: usize,
@@ -544,8 +553,16 @@ impl Turns {
         let t = self.task_target(target, 1)?;
         let general = self.task_target(target, 2)?;
         let find = |list: &Master, filter: i16| {
-            crate::tasks::find_task(list, &actor, Some(&t), Some(&general), None, filter, &world)
-                .map(Option::<&crate::masters::Task>::copied)
+            crate::unit_ai::task_finder::find_task(
+                list,
+                &actor,
+                Some(&t),
+                Some(&general),
+                None,
+                filter,
+                &world,
+            )
+            .map(Option::<&crate::masters::Task>::copied)
         };
         if let Some(task) = find(own, filter)? {
             return Ok(Some(task));

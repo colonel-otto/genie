@@ -7,8 +7,8 @@ use crate::orders::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
-use crate::tasks::Diplomacy;
 use crate::turn::{Turns, World};
+use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::{GenieError, HUNT_ACTION, MOVE_ORDER};
 
 impl Turns {

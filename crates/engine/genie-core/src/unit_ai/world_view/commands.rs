@@ -2,11 +2,11 @@
 
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning};
-use crate::tasks::Actor;
 use crate::turn::unit::Unit;
-use crate::turn::view::{AiStart, EnterOrder, RepairOrder, UnitView};
 use crate::turn::world::{SideWorld, task_search, task_target_with};
 use crate::unit_ai::GenieError;
+use crate::unit_ai::task_finder::Actor;
+use crate::unit_ai::world_view::{AiStart, EnterOrder, RepairOrder, UnitView};
 
 impl UnitView<'_> {
     /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the
@@ -167,9 +167,7 @@ impl UnitView<'_> {
     }
 
     /// What an explorer's searches ask of the world, the map's size and the unit's line of sight.
-    pub(in crate::turn) fn scout_area(
-        &mut self,
-    ) -> Result<(ScoutArea<'_>, [i32; 2], f32), GenieError> {
+    pub(crate) fn scout_area(&mut self) -> Result<(ScoutArea<'_>, [i32; 2], f32), GenieError> {
         let unit = &*self.unit;
         let master = self
             .masters
@@ -224,16 +222,16 @@ impl UnitView<'_> {
 
 /// The auto scout's search reaches within its line of sight less this (`FUN_140c65490`,
 /// `DAT_14330eb8c`).
-pub(in crate::turn) const LOS_MARGIN: f32 = crate::math::image::explore::LOS_MARGIN;
+pub(crate) const LOS_MARGIN: f32 = crate::math::image::explore::LOS_MARGIN;
 
 /// The masters of a town centre (`FUN_1416597e0`: 109, then 444).
-pub(in crate::turn) const TOWN_CENTRES: [i16; 2] = [109, 444];
+pub(crate) const TOWN_CENTRES: [i16; 2] = [109, 444];
 
 /// `FUN_1416597e0` with 0: the player's first town centre, by the player's index of objects by
 /// master (`player+0x18`, `FUN_14104f560`: those of master 109, then 444), as its tile. The
 /// index's order within a master is not held: two objects of the first master found are not
 /// modelled.
-pub(in crate::turn) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, GenieError> {
+pub(crate) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, GenieError> {
     for master in TOWN_CENTRES {
         let mut found = units.iter().filter(|u| u.life.master_id == master);
         let Some(first) = found.next() else { continue };
@@ -248,19 +246,19 @@ pub(in crate::turn) fn town_centre(units: &[Unit]) -> Result<Option<[i32; 2]>, G
 }
 
 /// What the auto scout's search asks of the world for one unit ([`crate::movement::explore::Area`]).
-pub(in crate::turn) struct ScoutArea<'a> {
-    pub(in crate::turn) spatial: &'a Spatial,
-    pub(in crate::turn) zones: &'a crate::pathing::zones::ZoneMap,
-    pub(in crate::turn) plan: Planning<'a>,
-    pub(in crate::turn) mover: &'a Mover,
-    pub(in crate::turn) me: Me,
-    pub(in crate::turn) player: usize,
-    pub(in crate::turn) master: i16,
-    pub(in crate::turn) radius: [f32; 2],
+pub(crate) struct ScoutArea<'a> {
+    pub(crate) spatial: &'a Spatial,
+    pub(crate) zones: &'a crate::pathing::zones::ZoneMap,
+    pub(crate) plan: Planning<'a>,
+    pub(crate) mover: &'a Mover,
+    pub(crate) me: Me,
+    pub(crate) player: usize,
+    pub(crate) master: i16,
+    pub(crate) radius: [f32; 2],
     /// The reach of slot 0x3d8: the line of sight less a tile.
-    pub(in crate::turn) reach: f32,
+    pub(crate) reach: f32,
     /// The search reads the player's scout map for the tiles seen (`FUN_140c4b130` with one).
-    pub(in crate::turn) scouted: bool,
+    pub(crate) scouted: bool,
 }
 
 impl crate::movement::explore::Area for ScoutArea<'_> {

@@ -9,15 +9,15 @@ use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveTo;
 use crate::ownership::artifact::Artifact;
-use crate::tasks::{Actor, Diplomacy};
 use crate::turn::command::{Command, GatherPoint, ResearchAt};
 use crate::turn::player::Player;
 use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
-use crate::turn::view::{Foreign, Wait, patrol_information};
 use crate::turn::world::{
     SideWorld, World, change_hands, count_class, search_origin, storage_leaves, task_search,
     task_target_with, wait_progress,
 };
+use crate::unit_ai::task_finder::{Actor, Diplomacy};
+use crate::unit_ai::world_view::{Foreign, Wait, patrol_information};
 use crate::unit_ai::{BUILD_ORDER, GenieError, Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 
@@ -1816,7 +1816,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
         (
-            crate::ai_kinds::ORDER_REPAIR,
+            crate::unit_ai::ai_kinds::ORDER_REPAIR,
             crate::construction::repair::REPAIR_ACTION,
             10028
         )
@@ -1874,7 +1874,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     use crate::unit_ai::QueuedOrder;
     let order = QueuedOrder {
         issuer: 1,
-        order: crate::ai_kinds::ORDER_REPAIR,
+        order: crate::unit_ai::ai_kinds::ORDER_REPAIR,
         priority: 100,
         target: 10028,
         target_owner: 1,
@@ -6957,7 +6957,7 @@ fn scout_attack_on(
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
     let attacked = {
-        let mut side = view::UnitView {
+        let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
             attacker: crate::unit_ai::Attacker {
                 ai_type: 13,
@@ -7136,7 +7136,7 @@ fn attack_by(
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
     let attacked = {
-        let mut side = view::UnitView {
+        let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
             attacker: crate::unit_ai::Attacker {
                 ai_type: 13,
@@ -7312,7 +7312,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
     let graphics = std::collections::BTreeMap::new();
-    let side = view::UnitView {
+    let side = crate::unit_ai::world_view::UnitView {
         unit: &mut unit,
         attacker: crate::unit_ai::Attacker {
             ai_type: 13,

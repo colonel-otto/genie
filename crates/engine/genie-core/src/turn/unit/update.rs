@@ -10,12 +10,10 @@ use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, Mover, footprint_gap_squared};
 use crate::ownership::artifact::{Artifact, Handover};
-use crate::tasks::Actor;
 use crate::turn::unit::{
     AiResume, Aimed, Captured, Step, Unit, armed, give_load, hunt_walk_sprite, loses_actions,
     second_target_checked,
 };
-use crate::turn::view::Context;
 use crate::turn::world::{
     clear_look_of, farm_bonus, forget_resource, nearest_drop_site, release_own, state_of,
     victim_of, wait_progress,
@@ -24,6 +22,8 @@ use crate::turn::{
     BUILDING_KIND, DROP_SITE_MASTERS, SEARCH_AGAIN, SEARCH_NEEDED, SPEED_EPSILON, TREE_NEAR,
     TREE_SEARCH_WITHIN,
 };
+use crate::unit_ai::task_finder::Actor;
+use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, BUILD_ACTION, BUILD_ORDER, GenieError, TARGET_MOVED, UnitAi,
 };
@@ -480,7 +480,11 @@ impl Unit {
                         };
                         state_of(build.site, others, c.foreign).map(|state| {
                             let drop = crate::gathering::hunt::DropOff {
-                                takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
+                                takes: crate::unit_ai::task_finder::drops_at(
+                                    c.drop_sites,
+                                    s.master,
+                                    &actor,
+                                ),
                                 gap_squared: footprint_gap_squared(
                                     me_at.position,
                                     me_at.radius,
@@ -1160,7 +1164,11 @@ impl Unit {
                         civ: c.civ,
                     };
                     Some(crate::gathering::hunt::DropOff {
-                        takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
+                        takes: crate::unit_ai::task_finder::drops_at(
+                            c.drop_sites,
+                            s.master,
+                            &actor,
+                        ),
                         gap_squared: footprint_gap_squared(
                             me_position,
                             me_radius,
@@ -1717,7 +1725,7 @@ impl Unit {
 
     /// [`Unit::ai_part`]'s first step: the pathing grid takes a unit of a master of kind 40 or
     /// more where it stands, moving or not.
-    pub(super) fn refresh_pathing(&self, c: &mut Context<'_>) {
+    pub(crate) fn refresh_pathing(&self, c: &mut Context<'_>) {
         if let Some(m) = c
             .masters
             .and_then(|ms| ms.get(self.life.master_id))

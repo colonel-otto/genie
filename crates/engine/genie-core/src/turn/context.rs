@@ -8,11 +8,11 @@ use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::{Me, Mover, Planning};
 use crate::pathing::Pathing;
 use crate::sprite::Graphic;
-use crate::tasks::DropSite;
 use crate::turn::unit::{AiResume, Unit};
-use crate::turn::view::{AiStart, AiWork, Foreign, RepairWrite};
 use crate::turn::world::Releaser;
 use crate::turn::{BuildingDeath, Recycling};
+use crate::unit_ai::task_finder::DropSite;
+use crate::unit_ai::world_view::{AiStart, AiWork, Foreign, RepairWrite};
 use crate::unit_ai::{AiMove, GenieError};
 
 pub(crate) struct Context<'a> {
@@ -22,7 +22,7 @@ pub(crate) struct Context<'a> {
     /// The ticks so far, this one included.
     pub(in crate::turn) tick: u32,
     /// The owner's accumulated time when it has the turn: the full unit-AI update runs.
-    pub(in crate::turn) turn: Option<u32>,
+    pub(crate) turn: Option<u32>,
     pub(crate) world_time: u32,
     pub(crate) computer: bool,
     pub(crate) streams: &'a mut Streams,
@@ -40,7 +40,7 @@ pub(crate) struct Context<'a> {
     /// the objects about a unit with an area effect, which its blast may reach.
     pub(crate) victim: Option<&'a mut Victim>,
     /// The unit AI's current target as its target block reads it ([`Turns::seen`]).
-    pub(in crate::turn) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
+    pub(crate) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
     pub(crate) blasted: Vec<Victim>,
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
     pub(in crate::turn) own_killed: Option<crate::combat::damage::Kill>,
@@ -64,10 +64,10 @@ pub(crate) struct Context<'a> {
     pub(in crate::turn) ai_resume: Option<AiResume>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
     /// whether it has the unit's master: the update ends with the takeover ([`Step::Captured`]).
-    pub(in crate::turn) taken_over: Option<(usize, bool)>,
+    pub(crate) taken_over: Option<(usize, bool)>,
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
     /// caller's ([`crate::turn::unit::Captured::building`]).
-    pub(in crate::turn) building_handover: bool,
+    pub(crate) building_handover: bool,
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
@@ -76,7 +76,7 @@ pub(crate) struct Context<'a> {
     /// The foundations a counted builder's Build leaves as the unit's action list goes
     /// ([`Unit::clear_own_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
     /// builder less ([`Turns::leave_builders`]), the caller's before the releases.
-    pub(in crate::turn) builder_leaves: Vec<i32>,
+    pub(crate) builder_leaves: Vec<i32>,
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
     /// building: the caller runs the group's removeUnit ([`Turns::remove_unit`]).
     pub(crate) left_group: Option<(i32, i32)>,
@@ -105,7 +105,7 @@ pub(crate) struct Context<'a> {
     /// The tracker's promotions (`FUN_14104fb20`) of the owner's units whose master changed
     /// while the unit AI ran (the unit, its old master, its new one), the caller's after the
     /// update ([`Turns::track_promote`]).
-    pub(in crate::turn) promotions: Vec<(i32, i16, i16)>,
+    pub(crate) promotions: Vec<(i32, i16, i16)>,
     /// The flares a hit on a player's object has that player make (master 112, its slot 0x1c0)
     /// at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's
     /// after the update ([`Turns::make_flare`]).
@@ -120,7 +120,7 @@ pub(crate) struct Context<'a> {
     /// The world's reusable ids and pools.
     pub(crate) recycling: &'a mut Recycling,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
-    pub(in crate::turn) mode_1: bool,
+    pub(crate) mode_1: bool,
     /// The owner's attributes, which a gatherer's productivity reads.
     pub(crate) attributes: &'a [f32],
     /// The owner's food, wood, stone and gold ([`Player::resources`]), which a repair pays from.
@@ -135,7 +135,7 @@ pub(crate) struct Context<'a> {
     pub(crate) player: usize,
     pub(crate) civ: u8,
     /// The owner's AI settings (`+0x608`..), which its unit AIs read.
-    pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
+    pub(crate) ai_settings: crate::turn::player::AiSettings,
     /// The player shares its gathered resources with its allies (`+0x1426`).
     pub(crate) sharing: bool,
     /// The game's farm setting ([`crate::settings::Settings::walkable_farms`]).
@@ -149,28 +149,28 @@ pub(crate) struct Context<'a> {
     pub(in crate::turn) game_status: &'a [u8],
     /// The player whose turn this tick is (`world+0x188`), every player's accumulated time
     /// (`world+0x18c`, as it stands when the object updates) and computer flag.
-    pub(in crate::turn) player_turn: usize,
-    pub(in crate::turn) player_time: &'a [u32],
+    pub(crate) player_turn: usize,
+    pub(crate) player_time: &'a [u32],
     pub(crate) computers: &'a [bool],
     /// Each player's `chance_to_dodge_missiles` ([`crate::turn::Player::dodge_chance`]).
-    pub(in crate::turn) dodge_chances: &'a [u8],
+    pub(crate) dodge_chances: &'a [u8],
     /// Each player's `chance_for_archers_to_maintain_distance`
     /// ([`crate::turn::Player::keep_distance_chance`]).
-    pub(in crate::turn) keep_distance_chances: &'a [u8],
+    pub(crate) keep_distance_chances: &'a [u8],
     /// Some player's attribute 204 is not 0, which a building's completion reads.
     pub(crate) attribute_204: bool,
     /// [`Turns::mode_680`].
     pub(crate) mode_680: i32,
     /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
     /// reads.
-    pub(in crate::turn) carry_rule: bool,
+    pub(crate) carry_rule: bool,
     /// The game mode is one of `FUN_141302540`'s ([`scenario_mode`]).
     pub(crate) scenario: bool,
     /// The game mode's descriptor flag `+0x9c` ([`standard_mode`]) and each player's computer
     /// flag and `mAllowCapturingGaiaUnits`, which a takeover by sight reads
     /// ([`crate::vision::visibility::sight_taker`]).
-    pub(in crate::turn) standard: bool,
-    pub(in crate::turn) sight_takers: &'a [(bool, bool)],
+    pub(crate) standard: bool,
+    pub(crate) sight_takers: &'a [(bool, bool)],
     /// The owner's object tracker, which a completion's first part (`FUN_1411c6bd0`) moves a
     /// building in, and the unit lines its keys read ([`crate::players::tracker`]).
     pub(crate) tracker: &'a mut crate::players::tracker::Tracker,
@@ -231,7 +231,7 @@ pub(crate) struct Context<'a> {
     pub(crate) entered: Option<(i32, f32)>,
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
-    pub(in crate::turn) starts: Vec<AiStart>,
+    pub(crate) starts: Vec<AiStart>,
     /// The work a builder gave an annex whose main building takes it (the foundation, the
     /// seconds; [`crate::construction::build::Worked::Main`]), which the caller runs after the update
     /// ([`Turns::work_building`]).

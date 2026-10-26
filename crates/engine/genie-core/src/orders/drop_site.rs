@@ -108,7 +108,7 @@ impl Turns {
     }
 
     /// `FUN_141658e20` for player `p` at `at`: of the buildings the drop-site table gives for the
-    /// resource `held` from workers of `class` ([`crate::tasks::table_drop_buildings`] for the
+    /// resource `held` from workers of `class` ([`crate::unit_ai::task_finder::table_drop_buildings`] for the
     /// player's civ), the objects of each master's done list in the player's tracker in turn
     /// (`FUN_14104f600`, the master itself the key) that the world holds in state 2, the nearest
     /// by the squared distance of the centres (the first of equals; none from

@@ -399,7 +399,7 @@ pub struct MasterTable {
     pub terrain: TerrainTable,
     /// The drop-site table (`dropsites.json` beside the `.dat`, [`crate::drop_sites`]); empty
     /// when not loaded.
-    pub drop_sites: Vec<genie_core::tasks::DropSite>,
+    pub drop_sites: Vec<genie_core::unit_ai::task_finder::DropSite>,
     /// The linked technologies (`linkedTechs.json` beside the `.dat`, [`crate::linked_techs`]);
     /// empty when not loaded.
     pub linked_techs: std::collections::BTreeMap<i16, genie_core::technology::Linked>,

@@ -47,7 +47,7 @@ impl UnitAi {
             self.insert_order(kept, true);
         }
         self.insert_order(order, true);
-        if order.order != crate::ai_kinds::ORDER_ATTACK_ROUNDUP {
+        if order.order != crate::unit_ai::ai_kinds::ORDER_ATTACK_ROUNDUP {
             self.remove_target();
             self.stop_with(true, place, fx)?;
         }

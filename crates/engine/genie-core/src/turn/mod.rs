@@ -18,11 +18,11 @@
 //!
 //! [`Mover::step_velocity`]: crate::movement::Mover::step_velocity
 
-mod command;
+pub(crate) mod command;
+pub(crate) mod context;
 mod game;
 pub(crate) mod player;
 pub(crate) mod unit;
-pub(crate) mod view;
 pub(crate) mod world;
 
 use crate::GenieError;
@@ -31,7 +31,6 @@ use crate::masters::Masters;
 use crate::math::rng::Streams;
 use crate::pathing::Pathing;
 use crate::sprite::Graphic;
-use crate::tasks::DropSite;
 pub use crate::turn::command::{Command, GatherPoint, Order};
 pub use crate::turn::game::GameCommand;
 pub(crate) use crate::turn::player::NO_ATTRIBUTE;
@@ -39,12 +38,13 @@ pub use crate::turn::player::{AiSettings, Formations, Player};
 pub(crate) use crate::turn::unit::EnterWorld;
 pub use crate::turn::unit::Unit;
 pub(crate) use crate::turn::unit::{PointMove, annexes_of, give_load};
-pub(crate) use crate::turn::view::DropWorld;
-pub(crate) use crate::turn::view::{EnterOrder, RepairOrder};
 pub(crate) use crate::turn::world::{
     DEAD_COPY_TYPES, Releaser, World, built_death, combat_dies, count_class, drop_site_search,
     farm_bonus, forget_resource, refund_of, released, storage_leaves, victim_of,
 };
+use crate::unit_ai::task_finder::DropSite;
+pub(crate) use crate::unit_ai::world_view::DropWorld;
+pub(crate) use crate::unit_ai::world_view::{EnterOrder, RepairOrder};
 
 mod forced;
 mod object_step;
@@ -213,7 +213,7 @@ pub(crate) const EJECT_SHARE: f32 = crate::math::image::turn::EJECT_SHARE;
 /// The monastery (master 104, `0x6104` raw), whose relics give goods every second.
 pub(crate) const MONASTERY: i16 = 104;
 /// The petard (master 440, `0x6254` raw), which a class-10 searcher passes (`FUN_140c488b0`).
-const PETARD: i16 = 440;
+pub(crate) const PETARD: i16 = 440;
 /// The villager's class (4), which a building's repair by its garrison counts.
 pub(crate) const VILLAGER_CLASS: i16 = 4;
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:

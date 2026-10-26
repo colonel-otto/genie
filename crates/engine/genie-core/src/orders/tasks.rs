@@ -192,7 +192,7 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                crate::ai_kinds::ORDER_REPAIR,
+                crate::unit_ai::ai_kinds::ORDER_REPAIR,
                 crate::construction::repair::REPAIR_ACTION,
                 Some((target, class)),
                 point,
@@ -203,7 +203,7 @@ impl Turns {
                 player,
                 idx,
                 (
-                    crate::ai_kinds::ORDER_REPAIR,
+                    crate::unit_ai::ai_kinds::ORDER_REPAIR,
                     crate::construction::repair::REPAIR_ACTION,
                 ),
             )?;
@@ -264,7 +264,7 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
-                crate::ai_kinds::ORDER_REPAIR,
+                crate::unit_ai::ai_kinds::ORDER_REPAIR,
                 crate::construction::repair::REPAIR_ACTION,
                 Some((target, class)),
                 point,
@@ -275,7 +275,7 @@ impl Turns {
                 player,
                 idx,
                 (
-                    crate::ai_kinds::ORDER_REPAIR,
+                    crate::unit_ai::ai_kinds::ORDER_REPAIR,
                     crate::construction::repair::REPAIR_ACTION,
                 ),
             )?;

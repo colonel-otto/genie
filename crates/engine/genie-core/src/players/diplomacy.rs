@@ -48,7 +48,7 @@ const PLAYER_BITS: u64 = 0x01ff_ffff_01ff_ffff;
 
 /// `FUN_1416397d0`'s relation for a stance: 1 and 2 an enemy's (3; 4 with the world's
 /// `+0x820` object in its state 1, `FUN_1415e8e10`, which the slice does not hold, as the task
-/// finder's [`crate::tasks::allied`]), 3 a neutral's, 4 and 5 an ally's; another none.
+/// finder's [`crate::unit_ai::task_finder::allied`]), 3 a neutral's, 4 and 5 an ally's; another none.
 #[must_use]
 pub const fn relation_of_stance(stance: u8) -> Option<u8> {
     match stance {

@@ -86,7 +86,7 @@ impl UnitAi {
         // `FUN_140c64b60` with 0: the last order kept) at priority 100
         if self.current_order != -1 && n.caller != self.current_target {
             self.requeue_current(at, side, computer, ai_rng, fx)?;
-            self.set_order_with(crate::ai_kinds::ORDER_ATTACK, false, ai_rng);
+            self.set_order_with(crate::unit_ai::ai_kinds::ORDER_ATTACK, false, ai_rng);
             self.order_priority = 100;
         }
         // slot 0xb8 forced, the civilian's
@@ -115,21 +115,21 @@ impl UnitAi {
         let state = held_action_state(at.action_state)?;
         let gathers = matches!(
             order,
-            crate::ai_kinds::ORDER_HUNT
-                | crate::ai_kinds::ORDER_GATHER
-                | crate::ai_kinds::ORDER_AUTO_BOAR_LURING
+            crate::unit_ai::ai_kinds::ORDER_HUNT
+                | crate::unit_ai::ai_kinds::ORDER_GATHER
+                | crate::unit_ai::ai_kinds::ORDER_AUTO_BOAR_LURING
         );
         let moves = matches!(
             order,
-            crate::ai_kinds::ORDER_MOVEMENT | crate::ai_kinds::ORDER_ENTER
+            crate::unit_ai::ai_kinds::ORDER_MOVEMENT | crate::unit_ai::ai_kinds::ORDER_ENTER
         ) && 0.0 < at.anim_speed.ok_or(NO_ANIM_SPEED)?;
         Ok(moves
-            || order == crate::ai_kinds::ORDER_ATTACK
+            || order == crate::unit_ai::ai_kinds::ORDER_ATTACK
             || (gathers
                 && state == 12
                 && at.target.is_some_and(|t| t.class == CLASS_10)
                 && attacker.owner == 0)
-            || order == crate::ai_kinds::ORDER_REPAIR
+            || order == crate::unit_ai::ai_kinds::ORDER_REPAIR
             || (fierce && gathers && state < 16 && (0x9110u32 >> state) & 1 != 0))
     }
 

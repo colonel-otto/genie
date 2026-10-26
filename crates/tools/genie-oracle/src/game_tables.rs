@@ -104,7 +104,9 @@ pub fn unit_lines(json: &str) -> Result<Vec<genie_core::lines::UnitLine>, UnitLi
 /// The game's drop-site table (`resources/_common/dat/dropsites.json`): each entry's
 /// `building_id`, `worker_object_group` (−1 when absent), `worker_object_list`, `target_civs`,
 /// its targets' `attribute_type`s and its `update_ai_resource_types`, in file order.
-pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_json::Error> {
+pub fn drop_sites(
+    json: &str,
+) -> Result<Vec<genie_core::unit_ai::task_finder::DropSite>, serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(json)?;
     let num = |v: &serde_json::Value| v.as_i64().unwrap_or(-1);
     let list = |e: &serde_json::Value, key: &str| -> Vec<i64> {
@@ -117,7 +119,7 @@ pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_
         .map_or_else(Vec::new, |entries| {
             entries
                 .iter()
-                .map(|e| genie_core::tasks::DropSite {
+                .map(|e| genie_core::unit_ai::task_finder::DropSite {
                     building: num(&e["building_id"]) as i16,
                     worker_class: e.get("worker_object_group").map_or(-1, num) as i16,
                     workers: list(e, "worker_object_list")
@@ -134,7 +136,7 @@ pub fn drop_sites(json: &str) -> Result<Vec<genie_core::tasks::DropSite>, serde_
                         ts.iter()
                             .map(|t| {
                                 let field = |key: &str| t.get(key).map_or(-1, num);
-                                genie_core::tasks::DropTarget {
+                                genie_core::unit_ai::task_finder::DropTarget {
                                     class: field("object_group") as i16,
                                     workers: field("worker_num") as i32,
                                     state: field("object_state") as i32,

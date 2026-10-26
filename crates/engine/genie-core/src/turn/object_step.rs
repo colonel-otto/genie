@@ -5,10 +5,10 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::lifecycle::seconds;
 use crate::turn::unit::{AiResume, Step, Unit};
-use crate::turn::view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
 use crate::turn::{
     BuildingDeath, LEAVES_ITS_LIST, PlayerFrame, Turns, scenario_mode, standard_mode, unit,
 };
+use crate::unit_ai::world_view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
 
 impl Turns {
     /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI

@@ -9,13 +9,13 @@ use crate::masters::Master;
 use crate::math::rng::{Stream, Well512};
 use crate::sprite::Graphic;
 use crate::turn::unit::{Unit, annexes_of};
-use crate::turn::view::Context;
 use crate::turn::world::{farm_bonus, victim_of};
 use crate::turn::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
     VILLAGER_CLASS, gate_units,
 };
 use crate::unit_ai::GenieError;
+use crate::unit_ai::world_view::Context;
 
 impl Unit {
     /// The gate's update (`FUN_1411e7730`, `TRIBE_Building_Object::update` for a master of class

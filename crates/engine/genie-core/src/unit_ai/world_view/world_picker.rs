@@ -4,9 +4,9 @@ use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::movement::Mover;
 use crate::turn::unit::Unit;
-use crate::turn::view::Foreign;
 use crate::turn::world::victim_of;
 use crate::unit_ai::GenieError;
+use crate::unit_ai::world_view::Foreign;
 
 /// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0 (`COMISS`), from +0.
 pub(super) fn attacks(m: &crate::masters::Master) -> f32 {
@@ -29,37 +29,37 @@ pub(super) const NOT_HELD: GenieError =
 /// What `bestUnitToAttack` reads of the world for the unit whose AI runs
 /// ([`crate::unit_ai::AttackPicker`]): the objects it found, by what the world holds of them, and
 /// the unit's quick path to them.
-pub(in crate::turn) struct WorldPicker<'a> {
+pub(crate) struct WorldPicker<'a> {
     /// What the tests read of the unit.
-    pub(in crate::turn) attacker: &'a crate::unit_ai::Attacker,
+    pub(crate) attacker: &'a crate::unit_ai::Attacker,
     /// What they read of its unit AI; None outside `bestUnitToAttack`.
-    pub(in crate::turn) seeker: Option<crate::unit_ai::Seeker>,
+    pub(crate) seeker: Option<crate::unit_ai::Seeker>,
     /// The unit.
-    pub(in crate::turn) me: i32,
+    pub(crate) me: i32,
     /// Its owner.
-    pub(in crate::turn) player: usize,
+    pub(crate) player: usize,
     /// The owner's other objects.
-    pub(in crate::turn) others: &'a [Unit],
+    pub(crate) others: &'a [Unit],
     /// The other players' lists.
-    pub(in crate::turn) foreign: Foreign<'a>,
+    pub(crate) foreign: Foreign<'a>,
     /// The world's objects.
-    pub(in crate::turn) spatial: &'a Spatial,
+    pub(crate) spatial: &'a Spatial,
     /// Every player's masters.
-    pub(in crate::turn) every: &'a [Masters],
+    pub(crate) every: &'a [Masters],
     /// The unit's master's terrain restriction (`+0x606`).
-    pub(in crate::turn) restriction: i16,
+    pub(crate) restriction: i16,
     /// The unit itself.
-    pub(in crate::turn) unit: &'a Unit,
+    pub(crate) unit: &'a Unit,
     /// Its owner's attributes, diplomacy and AI settings.
-    pub(in crate::turn) attributes: &'a [f32],
+    pub(crate) attributes: &'a [f32],
     /// Its owner's diplomacy (`player+0x260`).
-    pub(in crate::turn) relations: &'a [u8],
+    pub(crate) relations: &'a [u8],
     /// Its owner's AI settings.
-    pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
+    pub(crate) ai_settings: crate::turn::player::AiSettings,
     /// The world's time.
-    pub(in crate::turn) now: u32,
+    pub(crate) now: u32,
     /// The game's setting `+0x680`.
-    pub(in crate::turn) mode_680: i32,
+    pub(crate) mode_680: i32,
 }
 
 impl WorldPicker<'_> {
@@ -139,7 +139,7 @@ impl WorldPicker<'_> {
 
     /// What a computer player's unit weighs of object `other` on a damage notify
     /// ([`crate::unit_ai::Duel`]).
-    pub(in crate::turn) fn duel(&self, other: i32) -> Result<crate::unit_ai::Duel, GenieError> {
+    pub(crate) fn duel(&self, other: i32) -> Result<crate::unit_ai::Duel, GenieError> {
         let (_, o, _, om) = self.held(other).ok_or(NOT_HELD)?;
         Ok(crate::unit_ai::Duel {
             converts: self.converts(other, self.me, true)?,
@@ -157,7 +157,7 @@ impl WorldPicker<'_> {
     /// range of at most [`HARMLESS_RANGE`] (slot 0x880, `COMISS` with `JNC`: not a NaN), is
     /// fought back as Gaia's attackers are. Its attack's target (an Attack's, `FUN_14107cc30`)
     /// counts when the world holds it.
-    pub(in crate::turn) fn harmless(&self, other: i32) -> Result<bool, GenieError> {
+    pub(crate) fn harmless(&self, other: i32) -> Result<bool, GenieError> {
         let (q, o, attributes, om) = self.held(other).ok_or(NOT_HELD)?;
         if om.object_flags & 0x10 == 0 || om.copy_id != om.id {
             return Ok(false);
@@ -192,7 +192,7 @@ impl WorldPicker<'_> {
     /// those the world holds, the one with the least footprint gap to it (`FUN_14118f680`,
     /// [`crate::movement::footprint_gap`]; the first of a tie, `COMISS`: a NaN gap takes none
     /// over), −1 for none; None for a target the world does not hold or without a unit AI.
-    pub(in crate::turn) fn nearest_attacker_of(&self, target: i32) -> Option<i32> {
+    pub(crate) fn nearest_attacker_of(&self, target: i32) -> Option<i32> {
         let (_, t, _, tm) = self.held(target)?;
         let ai = t.ai.as_ref()?;
         let mut best: Option<(f32, i32)> = None;
@@ -209,10 +209,7 @@ impl WorldPicker<'_> {
     }
 
     /// The object `id` as the attack tests read it, and whether it moves (slot 0x208 above 0).
-    pub(in crate::turn) fn target(
-        &self,
-        id: i32,
-    ) -> Result<(crate::unit_ai::Target, bool), GenieError> {
+    pub(crate) fn target(&self, id: i32) -> Result<(crate::unit_ai::Target, bool), GenieError> {
         let (owner, t) = self
             .foreign
             .find(id)
@@ -268,12 +265,12 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
     fn searcher(
         &mut self,
         memory: crate::unit_ai::Memory<'_>,
-    ) -> Result<crate::best_target::Searcher, GenieError> {
+    ) -> Result<crate::unit_ai::best_target::Searcher, GenieError> {
         let seeker = self.seeker.ok_or(GenieError::unsupported(
             "an attack test outside bestUnitToAttack",
         ))?;
         let a = self.attacker;
-        Ok(crate::best_target::Searcher {
+        Ok(crate::unit_ai::best_target::Searcher {
             id: self.me,
             target: seeker.target,
             target_types: [seeker.target_type, seeker.last_target_type],
@@ -296,13 +293,13 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
                 self.ai_settings.local_targeting_mode,
                 self.ai_settings.targeting_factor_scalar,
             ),
-            weights: crate::best_target::order_weights(memory.history, self.now),
+            weights: crate::unit_ai::best_target::order_weights(memory.history, self.now),
             retries: memory.retries.iter().map(|&(id, _)| id).collect(),
             now: self.now,
         })
     }
 
-    fn thing(&mut self, id: i32) -> Result<Option<crate::best_target::Thing>, GenieError> {
+    fn thing(&mut self, id: i32) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError> {
         let Some((owner, t, _, m)) = self.held(id) else {
             return Ok(None);
         };
@@ -317,9 +314,9 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
             .and_then(|v| v.seer(id))
             .map_or(0, |s| s.capture);
         let a = self.attacker;
-        Ok(Some(crate::best_target::Thing {
+        Ok(Some(crate::unit_ai::best_target::Thing {
             owner,
-            allied: crate::tasks::allied(self.relations, self.player, owner, true),
+            allied: crate::unit_ai::task_finder::allied(self.relations, self.player, owner, true),
             state: t.life.state,
             has_ai: t.ai.is_some(),
             inside: t.life.inside.is_some(),
@@ -374,14 +371,14 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
         id: i32,
         distance: f32,
         category: i32,
-    ) -> Result<crate::best_target::Candidate, GenieError> {
+    ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         let (_, t, _, m) = self.held(id).ok_or(NOT_HELD)?;
         let (_, me, _, mm) = self.held(self.me).ok_or(GenieError::unsupported(
             "a searching unit of a master the slice does not have",
         ))?;
         let damage = self.damage(self.me, id)?;
         let armed = 0.0 < attacks(m) || self.converts(id, self.me, true)?;
-        Ok(crate::best_target::Candidate {
+        Ok(crate::unit_ai::best_target::Candidate {
             id,
             distance,
             category,
@@ -449,7 +446,7 @@ impl crate::unit_ai::AttackPicker for WorldPicker<'_> {
 /// (`FUN_140f960f0`) copied into a new path ([`crate::pathing::tile_path::Path::append`]: its points, its
 /// length or one measured) with its flags, and that level's waypoint; None without path data or
 /// a path at the top.
-pub(in crate::turn) fn patrol_information(
+pub(crate) fn patrol_information(
     mover: Option<&Mover>,
 ) -> Option<(crate::unit_ai::PatrolPath, i32)> {
     let top = mover?.paths.last().filter(|l| l.has_path)?;

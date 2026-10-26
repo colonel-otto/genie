@@ -208,8 +208,9 @@ impl Turns {
         owner: usize,
         pending: &mut Pending<'_>,
     ) -> Result<Option<Bystander>, GenieError> {
-        let allied =
-            |q: usize| crate::tasks::allied(&self.players[owner].relations, owner, q, true);
+        let allied = |q: usize| {
+            crate::unit_ai::task_finder::allied(&self.players[owner].relations, owner, q, true)
+        };
         if let Some(v) = pending.get(id) {
             return Ok(Some(Bystander {
                 id,

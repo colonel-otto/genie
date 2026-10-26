@@ -5,8 +5,8 @@ use crate::map::spatial::Spatial;
 use crate::masters::Masters;
 use crate::movement::{Me, Planning};
 use crate::turn::unit::Unit;
-use crate::turn::view::Foreign;
 use crate::unit_ai::GenieError;
+use crate::unit_ai::world_view::Foreign;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {

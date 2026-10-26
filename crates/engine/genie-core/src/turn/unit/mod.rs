@@ -11,11 +11,10 @@ use crate::ownership::artifact::Artifact;
 use crate::production::Production;
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::command::GatherPoint;
-use crate::turn::view::Context;
 use crate::turn::{Gate, WONDER};
+use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{GenieError, UnitAi};
 
-mod ai;
 mod death;
 mod owner;
 mod search;
@@ -23,11 +22,10 @@ mod stop;
 mod top;
 mod update;
 
-pub(in crate::turn) use self::ai::AiResume;
 pub(crate) use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
 pub(crate) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
-pub(in crate::turn) use crate::combat::volley::{Aimed, armed, same_members};
+pub(crate) use crate::combat::volley::{Aimed, armed, same_members};
 pub(in crate::turn) use crate::construction::building_update::blasts_at_death;
 #[cfg(test)]
 pub(in crate::turn) use crate::construction::building_update::{
@@ -35,6 +33,7 @@ pub(in crate::turn) use crate::construction::building_update::{
 };
 pub(crate) use crate::garrison::unit::EnterWorld;
 pub(crate) use crate::gathering::gather::unit::give_load;
+pub(in crate::turn) use crate::unit_ai::unit::AiResume;
 
 /// A dying sprite the `.dat` does not have.
 const NO_DYING_SPRITE: GenieError =

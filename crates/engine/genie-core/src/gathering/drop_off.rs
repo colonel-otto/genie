@@ -4,9 +4,9 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
 use crate::turn::unit::Unit;
-use crate::turn::view::{Context, DropWorld};
 use crate::turn::world::{Seeker, drop_site_search};
 use crate::unit_ai::GenieError;
+use crate::unit_ai::world_view::{Context, DropWorld};
 
 impl Unit {
     /// The Gather's state 8 after the deposit without a target (`0x140a8e1d0` case 7; its drop

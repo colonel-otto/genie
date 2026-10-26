@@ -4,8 +4,8 @@ use crate::combat::attack::{Arms, Engagement};
 use crate::gathering::hunt::{HuntAction, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
-use crate::tasks::Diplomacy;
 use crate::turn::{Turns, World};
+use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::{GenieError, HUNT_ACTION, HUNT_ORDER};
 
 impl Turns {
@@ -329,7 +329,7 @@ impl Turns {
         let unit = &mut self.players[player].objects[idx];
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
             ai.notify_work(
-                crate::ai_kinds::ORDER_GATHER,
+                crate::unit_ai::ai_kinds::ORDER_GATHER,
                 crate::unit_ai::GATHER_ACTION,
                 Some((target, i32::from(resource.class))),
                 point,
@@ -339,7 +339,10 @@ impl Turns {
             self.remember_order(
                 player,
                 idx,
-                (crate::ai_kinds::ORDER_GATHER, crate::unit_ai::GATHER_ACTION),
+                (
+                    crate::unit_ai::ai_kinds::ORDER_GATHER,
+                    crate::unit_ai::GATHER_ACTION,
+                ),
             )?;
         }
         self.clear_actions(player, idx)?;

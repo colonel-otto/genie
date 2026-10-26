@@ -16,10 +16,12 @@
 //! does to its unit comes back as [`Effect`]s, in order.
 
 mod actions;
+pub mod ai_kinds;
 mod attack_orders;
 mod attack_pick;
 mod attack_rules;
 mod attacked;
+pub mod best_target;
 mod cared;
 mod damaged;
 mod flight;
@@ -34,7 +36,10 @@ mod process_order;
 mod retarget;
 mod side;
 mod surroundings;
+pub mod task_finder;
+pub(crate) mod unit;
 mod update;
+pub(crate) mod world_view;
 
 pub(crate) use self::attack_pick::spares_friends;
 pub use self::attack_pick::{
@@ -117,7 +122,7 @@ pub struct Notify {
     pub caller: i32,
     /// The object whose unit AI takes it.
     pub recipient: i32,
-    /// The kind (named in [`crate::ai_kinds`]).
+    /// The kind (named in [`crate::unit_ai::ai_kinds`]).
     pub kind: i32,
     /// Its three parameters.
     pub p: [i32; 3],
@@ -149,12 +154,12 @@ impl Notify {
 }
 
 /// The notify kinds the slice posts or processes, the game's names where its log lines give one
-/// ([`crate::ai_kinds`], generated). `0x1fa`: an action completed (p1 the action value).
-pub const ACTION_COMPLETED: i32 = crate::ai_kinds::NOTIFY_ACTION_COMPLETED;
+/// ([`crate::unit_ai::ai_kinds`], generated). `0x1fa`: an action completed (p1 the action value).
+pub const ACTION_COMPLETED: i32 = ai_kinds::NOTIFY_ACTION_COMPLETED;
 /// `0x1fb`: an action's invalidation (p1 the action value).
-pub const ACTION_INVALIDATED: i32 = crate::ai_kinds::NOTIFY_ACTION_INVALIDATED;
+pub const ACTION_INVALIDATED: i32 = ai_kinds::NOTIFY_ACTION_INVALIDATED;
 /// `0x1f9`: an action failed (p1 its action value).
-pub const ACTION_FAILED: i32 = crate::ai_kinds::NOTIFY_ACTION_FAILED;
+pub const ACTION_FAILED: i32 = ai_kinds::NOTIFY_ACTION_FAILED;
 /// `0x1fc`: a `MoveTo`'s target left its point and its path's end did not follow (p1..p3 0).
 pub const TARGET_MOVED: i32 = 0x1fc;
 /// `0x215` (no log line): the motion step met a unit of its walked target's master that neither
@@ -176,10 +181,10 @@ pub const OTHER_LOAD: i32 = 0x21c;
 /// `0x20b`: the unit changed hands (p1 the new owner).
 pub const OWNER_CHANGED: i32 = 0x20b;
 /// `500`: the unit took damage.
-pub const DAMAGED: i32 = crate::ai_kinds::NOTIFY_DAMAGED;
+pub const DAMAGED: i32 = ai_kinds::NOTIFY_DAMAGED;
 /// `699`: a unit is no longer doing an action on this one.
 /// Notify 699: an object no longer acts on the unit (its action let the unit go, `FUN_141086e60`).
-pub const NO_LONGER_ON_ME: i32 = crate::ai_kinds::NOTIFY_NO_LONGER_ON_ME;
+pub const NO_LONGER_ON_ME: i32 = ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 
 /// `0x2db`: the order an INTERACT queues on its target (slot 0x230 runs it as the unit's slot
 /// 0x128 on the target, case `0x2db`/`0x325` of `FUN_140c5c170`, which logs no line to name it).
@@ -575,7 +580,7 @@ pub struct OrderRecord {
     pub position: [f32; 3],
     /// The target (`mTargetID`).
     pub target: i32,
-    /// The target's attack category ([`crate::best_target::category`], `mTargetAttackCategory`).
+    /// The target's attack category ([`crate::unit_ai::best_target::category`], `mTargetAttackCategory`).
     pub category: i32,
     /// The target's place then (`mTargetPosition`).
     pub target_position: [f32; 3],

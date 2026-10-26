@@ -6,23 +6,22 @@ use crate::masters::Masters;
 use crate::math::rng::Well512;
 use crate::pathing::Pathing;
 use crate::sprite::Graphic;
-use crate::tasks::DropSite;
 use crate::turn::player::Player;
 use crate::turn::unit::Unit;
 use crate::turn::world::Releaser;
+use crate::unit_ai::task_finder::DropSite;
 
 mod commands;
-mod context;
 mod side;
 mod unit_view;
 mod world_picker;
 
-pub(in crate::turn) use self::commands::town_centre;
-pub(crate) use self::context::{Context, ObjectOutputs};
+pub(crate) use self::commands::town_centre;
 use self::world_picker::NOT_HELD;
 #[cfg(test)]
 use self::world_picker::attacks;
-pub(in crate::turn) use self::world_picker::{WorldPicker, patrol_information};
+pub(crate) use self::world_picker::{WorldPicker, patrol_information};
+pub(crate) use crate::turn::context::{Context, ObjectOutputs};
 #[cfg(test)]
 use crate::unit_ai::UnitAi;
 
@@ -49,7 +48,7 @@ pub(crate) struct DropWorld<'a> {
 
 /// A unit command a unit AI's update gave that the caller runs after it ([`Context::works`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::turn) enum AiWork {
+pub(crate) enum AiWork {
     /// `HuntObject`'s unit part on the target: the stop, then the hunt command
     /// ([`Turns::hunt_command`]).
     Hunt(i32),
@@ -142,7 +141,7 @@ pub(crate) struct Foreign<'a> {
     pub(crate) after: &'a [Player],
     /// The live list of the player whose list is out, once its object changed hands: that
     /// object's AI part reads it as another player's ([`OwnerView`]).
-    pub(in crate::turn) left: Option<(usize, &'a [Unit])>,
+    pub(crate) left: Option<(usize, &'a [Unit])>,
 }
 
 impl<'a> Foreign<'a> {
@@ -183,26 +182,22 @@ impl<'a> Foreign<'a> {
 /// owner's list among the others' (`RGE_Combat_Object::update` reads the owner after the
 /// change).
 #[derive(Clone, Copy)]
-pub(in crate::turn) struct OwnerView<'a> {
-    pub(in crate::turn) player: usize,
-    pub(in crate::turn) others: &'a [Unit],
-    pub(in crate::turn) foreign: Foreign<'a>,
-    pub(in crate::turn) masters: Option<&'a Masters>,
-    pub(in crate::turn) relations: &'a [u8],
-    pub(in crate::turn) attributes: &'a [f32],
-    pub(in crate::turn) civ: u8,
-    pub(in crate::turn) construction_rate: f32,
-    pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
+pub(crate) struct OwnerView<'a> {
+    pub(crate) player: usize,
+    pub(crate) others: &'a [Unit],
+    pub(crate) foreign: Foreign<'a>,
+    pub(crate) masters: Option<&'a Masters>,
+    pub(crate) relations: &'a [u8],
+    pub(crate) attributes: &'a [f32],
+    pub(crate) civ: u8,
+    pub(crate) construction_rate: f32,
+    pub(crate) ai_settings: crate::turn::player::AiSettings,
 }
 
 impl<'a> OwnerView<'a> {
     /// The owner's side: player `new`'s when the unit changed hands to it in its update, else
     /// the updating player's (`c`, its other objects `others`).
-    pub(in crate::turn) fn of<'c: 'a>(
-        c: &Context<'c>,
-        others: &'a [Unit],
-        new: Option<usize>,
-    ) -> Self {
+    pub(crate) fn of<'c: 'a>(c: &Context<'c>, others: &'a [Unit], new: Option<usize>) -> Self {
         let own = Self {
             player: c.player,
             others,
@@ -237,7 +232,7 @@ impl<'a> OwnerView<'a> {
 /// What [`UnitView::hunt_now`] hunts by ([`UnitView::hunt_plan`]): the task, the master the
 /// unit switches to (none to keep its own), its own master, the quarry and the target's place.
 ///
-/// [`UnitView::hunt_now`]: crate::turn::view::UnitView::hunt_now
+/// [`UnitView::hunt_now`]: crate::unit_ai::world_view::UnitView::hunt_now
 struct HuntPlan<'u> {
     task: crate::masters::Task,
     switch: Option<&'u crate::masters::Master>,
@@ -248,69 +243,69 @@ struct HuntPlan<'u> {
 
 /// A unit and the world as its unit AI asks them while it runs, the AI taken out of the unit
 /// for that time ([`crate::unit_ai::UnitSide`]): the searches and the unit's own commands.
-pub(in crate::turn) struct UnitView<'u> {
+pub(crate) struct UnitView<'u> {
     /// The unit, without its unit AI.
-    pub(in crate::turn) unit: &'u mut Unit,
+    pub(crate) unit: &'u mut Unit,
     /// What the attack check of a search reads of the unit.
-    pub(in crate::turn) attacker: crate::unit_ai::Attacker,
+    pub(crate) attacker: crate::unit_ai::Attacker,
     /// The owner, as the AI runs (a captured unit's new one).
-    pub(in crate::turn) player: usize,
+    pub(crate) player: usize,
     /// The owner is a computer player.
-    pub(in crate::turn) computer: bool,
+    pub(crate) computer: bool,
     /// The world's objects (and the players' scout maps, which an auto scout makes and marks).
-    pub(in crate::turn) spatial: &'u mut Spatial,
+    pub(crate) spatial: &'u mut Spatial,
     /// The planners and the mesh, which a reach test walks.
-    pub(in crate::turn) pathing: &'u mut Pathing,
+    pub(crate) pathing: &'u mut Pathing,
     /// The world's unit groups, which a reach test's long path reads.
-    pub(in crate::turn) groups: &'u crate::groups::UnitGroups,
+    pub(crate) groups: &'u crate::groups::UnitGroups,
     /// The Object stream, which a reach test's new path draws from.
-    pub(in crate::turn) object: &'u mut Well512,
+    pub(crate) object: &'u mut Well512,
     /// The Sprite stream, which a new sprite draws from.
-    pub(in crate::turn) sprite: &'u mut Well512,
+    pub(crate) sprite: &'u mut Well512,
     /// The world's time.
-    pub(in crate::turn) world_time: u32,
+    pub(crate) world_time: u32,
     /// The owner's construction rate.
-    pub(in crate::turn) construction_rate: f32,
+    pub(crate) construction_rate: f32,
     /// The owner's other objects.
-    pub(in crate::turn) others: &'u [Unit],
+    pub(crate) others: &'u [Unit],
     /// The map's terrain zones, which an explorer's search reads.
-    pub(in crate::turn) zones: &'u mut crate::pathing::zones::Zones,
+    pub(crate) zones: &'u mut crate::pathing::zones::Zones,
     /// The other players' lists.
-    pub(in crate::turn) foreign: Foreign<'u>,
+    pub(crate) foreign: Foreign<'u>,
     /// Every player's masters.
-    pub(in crate::turn) every: &'u [Masters],
+    pub(crate) every: &'u [Masters],
     /// The owner's masters.
-    pub(in crate::turn) masters: Option<&'u Masters>,
+    pub(crate) masters: Option<&'u Masters>,
     /// The sprites.
-    pub(in crate::turn) graphics: &'u std::collections::BTreeMap<i16, Graphic>,
+    pub(crate) graphics: &'u std::collections::BTreeMap<i16, Graphic>,
     /// The objects an action took (slot 0x178), the caller's.
-    pub(in crate::turn) takes: &'u mut Vec<(i32, Releaser)>,
+    pub(crate) takes: &'u mut Vec<(i32, Releaser)>,
     /// The objects an action let go (slot 0x180), the caller's.
-    pub(in crate::turn) releases: &'u mut Vec<(i32, Releaser)>,
+    pub(crate) releases: &'u mut Vec<(i32, Releaser)>,
     /// The foundations a counted builder's Build left ([`Context::builder_leaves`]), the
     /// caller's.
-    pub(in crate::turn) builder_leaves: &'u mut Vec<i32>,
+    pub(crate) builder_leaves: &'u mut Vec<i32>,
     /// The actions its slots 0x388 and 0x378 gave ([`AiStart`]), the caller's.
-    pub(in crate::turn) starts: &'u mut Vec<AiStart>,
+    pub(crate) starts: &'u mut Vec<AiStart>,
     /// What its master change (slot 0x90) gives or takes of its owner's attributes, the caller's.
-    pub(in crate::turn) attribute_adds: &'u mut Vec<(i16, f32)>,
+    pub(crate) attribute_adds: &'u mut Vec<(i16, f32)>,
     /// Its master change's tracker promotion ([`Context::promotions`]), the caller's.
-    pub(in crate::turn) promotions: &'u mut Vec<(i32, i16, i16)>,
+    pub(crate) promotions: &'u mut Vec<(i32, i16, i16)>,
     /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
     /// sites.
-    pub(in crate::turn) relations: &'u [u8],
-    pub(in crate::turn) attributes: &'u [f32],
-    pub(in crate::turn) civ: u8,
+    pub(crate) relations: &'u [u8],
+    pub(crate) attributes: &'u [f32],
+    pub(crate) civ: u8,
     /// The owner's AI settings.
-    pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
-    pub(in crate::turn) drop_sites: &'u [DropSite],
+    pub(crate) ai_settings: crate::turn::player::AiSettings,
+    pub(crate) drop_sites: &'u [DropSite],
     /// The owner's object tracker, whose done lists the drop-site table's search reads.
-    pub(in crate::turn) tracker: &'u crate::players::tracker::Tracker,
+    pub(crate) tracker: &'u crate::players::tracker::Tracker,
     /// The game's setting at `+0x680` ([`Turns::mode_680`]), which a hit's source carries.
-    pub(in crate::turn) mode_680: i32,
+    pub(crate) mode_680: i32,
     /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start
     /// reads.
-    pub(in crate::turn) carry_rule: bool,
+    pub(crate) carry_rule: bool,
 }
 
 #[cfg(test)]

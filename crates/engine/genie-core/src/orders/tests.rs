@@ -74,20 +74,20 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         class: 58,
         ..Master::default()
     }])];
-    let tc = crate::tasks::DropSite {
+    let tc = crate::unit_ai::task_finder::DropSite {
         building: 109,
         worker_class: 4,
-        ..crate::tasks::DropSite::default()
+        ..crate::unit_ai::task_finder::DropSite::default()
     };
     t.drop_sites = vec![tc.clone()];
     assert!(t.drop_off_unasked(0, 0, true).is_ok());
     t.drop_sites = vec![
         tc,
-        crate::tasks::DropSite {
+        crate::unit_ai::task_finder::DropSite {
             building: 1897,
             worker_class: 58,
             resource_types: vec![0],
-            ..crate::tasks::DropSite::default()
+            ..crate::unit_ai::task_finder::DropSite::default()
         },
     ];
     let pen = |id, x: f32, state| Unit {
@@ -258,11 +258,11 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         t
     };
     let mut t = world();
-    t.drop_sites = vec![crate::tasks::DropSite {
+    t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: 68,
         worker_class: 4,
         resource_types: vec![1],
-        ..crate::tasks::DropSite::default()
+        ..crate::unit_ai::task_finder::DropSite::default()
     }];
     t.unit_order(0, &[10], 8).unwrap();
     let build = t.players[0].objects[0].build.unwrap();
@@ -292,11 +292,11 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     // 7 asks the Build as 8 does; 6 does not ask it: the search alone (no drop site in the
     // table here, nothing to work on)
     let mut t = world();
-    t.drop_sites = vec![crate::tasks::DropSite {
+    t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
         building: 68,
         worker_class: 4,
         resource_types: vec![1],
-        ..crate::tasks::DropSite::default()
+        ..crate::unit_ai::task_finder::DropSite::default()
     }];
     t.unit_order(0, &[10], 7).unwrap();
     assert_eq!(

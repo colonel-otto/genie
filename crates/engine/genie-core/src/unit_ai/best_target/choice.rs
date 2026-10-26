@@ -1,6 +1,6 @@
 //! `bestUnitToAttack` itself (`FUN_140c44680`): the object tests, the ranges and the choice.
 
-use crate::best_target::{
+use crate::unit_ai::best_target::{
     Ask, Battlefield, EPSILON, STATISTICS, Searcher, Statistics, Thing, category,
 };
 

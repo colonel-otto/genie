@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::masters::{Master, Masters, Task};
-use crate::tasks::{Actor, Diplomacy, TaskTarget, find_task};
+use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget, find_task};
 
 impl Masters {
     /// The masters, by their ids.

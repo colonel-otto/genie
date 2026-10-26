@@ -4,13 +4,13 @@
 use crate::map::spatial::Placed;
 use crate::math::rng::Well512;
 use crate::movement::{Me, Planning, footprint_gap_squared};
-use crate::tasks::Actor;
 use crate::turn::PETARD;
-use crate::turn::view::{
-    AiStart, HuntPlan, RepairOrder, UnitView, Wait, WorldPicker, patrol_information, town_centre,
-};
 use crate::turn::world::{
     Releaser, ResourceWorld, SideWorld, closest_resource_of, herded, task_search, task_target_with,
+};
+use crate::unit_ai::task_finder::Actor;
+use crate::unit_ai::world_view::{
+    AiStart, HuntPlan, RepairOrder, UnitView, Wait, WorldPicker, patrol_information, town_centre,
 };
 use crate::unit_ai::{AiMove, GenieError, Search, UnitAi};
 
@@ -261,7 +261,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             master: u.life.master_id,
             kind: m.kind,
             main: u.annex_of,
-            allied: crate::tasks::allied(self.relations, self.player, owner, true),
+            allied: crate::unit_ai::task_finder::allied(self.relations, self.player, owner, true),
         }))
     }
 

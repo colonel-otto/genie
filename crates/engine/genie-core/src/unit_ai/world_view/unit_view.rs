@@ -6,13 +6,13 @@ use crate::combat::damage::Victim;
 use crate::construction::build::Walk;
 use crate::map::spatial::Placed;
 use crate::movement::{Me, footprint_gap_squared};
-use crate::tasks::Actor;
 use crate::turn::unit::Unit;
-use crate::turn::view::{
-    HuntPlan, NOT_HELD, UnitView, VILLAGER_FEMALE, VILLAGER_MALE, WorldPicker,
-};
 use crate::turn::world::{
     Releaser, SideWorld, task_search, task_target_with, victim_in, victim_of,
+};
+use crate::unit_ai::task_finder::Actor;
+use crate::unit_ai::world_view::{
+    HuntPlan, NOT_HELD, UnitView, VILLAGER_FEMALE, VILLAGER_MALE, WorldPicker,
 };
 use crate::unit_ai::{GenieError, UnitAi};
 
@@ -49,7 +49,7 @@ impl UnitView<'_> {
     /// a building whose master has no attack for a patrolling group's member; then its unit AI's
     /// attack check (slot 0xa0 with 0, [`crate::unit_ai::can_attack`]) on the attacker. True for
     /// a helper that answers.
-    pub(in crate::turn) fn helper_free(
+    pub(crate) fn helper_free(
         &self,
         owner: usize,
         u: &Unit,
@@ -395,10 +395,10 @@ impl<'u> UnitView<'u> {
     /// A target gone or of a master the slice does not have, no hunt task, and a target without
     /// its place.
     ///
-    /// [`UnitView::hunt_now`]: crate::turn::view::UnitView::hunt_now
+    /// [`UnitView::hunt_now`]: crate::unit_ai::world_view::UnitView::hunt_now
     pub(super) fn hunt_plan(&self, target: i32) -> Result<HuntPlan<'u>, GenieError> {
         use crate::gathering::hunt::Quarry;
-        use crate::tasks::Diplomacy;
+        use crate::unit_ai::task_finder::Diplomacy;
         let (player, others, foreign) = (self.player, self.others, self.foreign);
         let unit = &*self.unit;
         let find = |id: i32| {

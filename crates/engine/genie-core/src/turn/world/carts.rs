@@ -4,9 +4,9 @@ use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::turn::Turns;
 use crate::turn::unit::Unit;
-use crate::turn::view::Foreign;
 use crate::turn::world::{ResourceWorld, closest_resource_of};
 use crate::unit_ai::GenieError;
+use crate::unit_ai::world_view::Foreign;
 
 impl Turns {
     /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,

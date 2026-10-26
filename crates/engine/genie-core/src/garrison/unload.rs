@@ -279,7 +279,7 @@ impl Turns {
         };
         let order = crate::unit_ai::QueuedOrder {
             issuer: player as i32,
-            order: crate::ai_kinds::ORDER_UNLOAD,
+            order: crate::unit_ai::ai_kinds::ORDER_UNLOAD,
             priority: 100,
             target: id,
             target_owner: player as i32,

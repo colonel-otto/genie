@@ -4,7 +4,7 @@ use crate::masters::Master;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Mover;
 use crate::turn::unit::{Captured, Step, Unit};
-use crate::turn::view::{Context, OwnerView, UnitView};
+use crate::unit_ai::world_view::{Context, OwnerView, UnitView};
 use crate::unit_ai::{Effect, GenieError, Surroundings, UnitAi};
 
 impl Unit {
@@ -12,7 +12,7 @@ impl Unit {
     /// (`FUN_141163080`: the action object's shape), `RGE_Combat_Object::update`'s sight mask,
     /// then the unit AI's full update on its owner's turn, else its check between turns, and the
     /// effects it has on the unit; then the step the update ends with.
-    pub(in crate::turn) fn ai_part(
+    pub(crate) fn ai_part(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -154,7 +154,7 @@ impl Unit {
     /// A busy unit of a master the slice does not have, and what the target's block and the
     /// named units do not model.
     #[allow(clippy::too_many_lines)]
-    pub(in crate::turn) fn surroundings(
+    pub(crate) fn surroundings(
         &self,
         c: &Context<'_>,
         others: &[Self],
@@ -264,7 +264,7 @@ impl Unit {
     /// # Panics
     ///
     /// A unit without a unit AI: the callers ask for one.
-    pub(in crate::turn) fn with_side<R>(
+    pub(crate) fn with_side<R>(
         &mut self,
         c: &mut Context<'_>,
         view: &OwnerView<'_>,
@@ -324,7 +324,7 @@ impl Unit {
     ///
     /// A unit without a unit AI, slot 0x2d0 and the surroundings' parts the slice does not model,
     /// and what `f` and the effects do not.
-    pub(in crate::turn) fn run_ai(
+    pub(crate) fn run_ai(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -371,8 +371,8 @@ impl Unit {
 /// `after`, the rest of the unit AI's full update once the caller gave the order on a target
 /// the update took ([`crate::unit_ai::UnitAi::after_order`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::turn) struct AiResume {
-    pub(in crate::turn) captured: Option<Captured>,
-    pub(in crate::turn) leaves: Step,
-    pub(in crate::turn) after: Option<crate::unit_ai::AfterOrder>,
+pub(crate) struct AiResume {
+    pub(crate) captured: Option<Captured>,
+    pub(crate) leaves: Step,
+    pub(crate) after: Option<crate::unit_ai::AfterOrder>,
 }

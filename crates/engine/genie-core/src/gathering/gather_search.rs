@@ -5,7 +5,7 @@
 
 use crate::GenieError;
 use crate::math::msvc;
-use crate::tasks::DropSite;
+use crate::unit_ai::task_finder::DropSite;
 
 /// What the searches read of an object in a map tile's list.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -57,7 +57,7 @@ pub struct Builder {
 
 /// `FUN_1415cc4e0` with `param_5` and `param_6` 0: the object the builder works next, from the
 /// drop site's entry for the building, the builder's class and its owner's civ (`entry`,
-/// [`crate::tasks::drop_site`]; none, or one without `auto_work`, finds nothing). The search
+/// [`crate::unit_ai::task_finder::drop_site`]; none, or one without `auto_work`, finds nothing). The search
 /// covers the tiles within the reach plus the builder's radius (rounded) of the building's tile,
 /// cut to the map; of those only the tiles the builder reaches count ([`reached`], with
 /// `blocked` the builder's restriction's planner, `FUN_140f7d470`; None without a planner, when
@@ -606,7 +606,7 @@ pub const fn gather_group(attribute: i16) -> (u8, i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tasks::DropTarget;
+    use crate::unit_ai::task_finder::DropTarget;
 
     fn tree(id: i32, x: f32, y: f32) -> Candidate {
         Candidate {

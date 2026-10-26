@@ -5,8 +5,8 @@ use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::turn::unit::{PaidAttributes, Unit};
-use crate::turn::view::{Context, RepairWrite};
 use crate::turn::world::release_own;
+use crate::unit_ai::world_view::{Context, RepairWrite};
 use crate::unit_ai::{AiMove, GenieError};
 
 impl Unit {
@@ -57,7 +57,7 @@ impl Unit {
                 state: t.life.state,
                 hp: t.life.hp,
                 owner: q,
-                allied: crate::tasks::allied(c.relations, player, q, true),
+                allied: crate::unit_ai::task_finder::allied(c.relations, player, q, true),
                 position: t.position,
                 radius: tm.radius,
                 class: tm.class,

@@ -4,9 +4,9 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::turn::unit::Unit;
-use crate::turn::view::{Context, DropWorld};
 use crate::turn::world::herded;
 use crate::turn::{SEARCH_AGAIN, SEARCH_NEEDED};
+use crate::unit_ai::world_view::{Context, DropWorld};
 use crate::unit_ai::{GenieError, Search};
 
 impl Unit {
@@ -387,7 +387,7 @@ impl Unit {
             state: t.life.state,
             player: owner,
             amount: t.life.amount,
-            allied: crate::tasks::allied(relations, c.player, owner, true),
+            allied: crate::unit_ai::task_finder::allied(relations, c.player, owner, true),
             top_action: t.top_action_kind(),
             drop_site: false,
         };

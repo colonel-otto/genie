@@ -4,8 +4,8 @@ use crate::GenieError;
 use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, COMBAT_KIND, LEAST_HP_SHARE, TRANSPORTED};
 use crate::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
-use crate::tasks::Diplomacy;
 use crate::turn::{Turns, World};
+use crate::unit_ai::task_finder::Diplomacy;
 
 /// `FUN_1411205e0`: whether a master's class (`+0x410`, the short `MOVSX` widens) has one of
 /// `flags` in the class-flags table: a class below 0 or not below the table's count

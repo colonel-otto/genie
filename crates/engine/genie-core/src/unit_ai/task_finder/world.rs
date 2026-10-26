@@ -2,11 +2,11 @@
 //! a target's state and the search of slot 0x820.
 
 use crate::masters::{Master, Masters};
-use crate::tasks::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::turn::player::Player;
 use crate::turn::unit::Unit;
-use crate::turn::view::Foreign;
 use crate::unit_ai::GenieError;
+use crate::unit_ai::task_finder::{Actor, Diplomacy, DropSite, TaskTarget};
+use crate::unit_ai::world_view::Foreign;
 
 /// The players' relations and the drop sites, as the task finder reads them.
 pub(crate) struct World<'a> {
@@ -15,14 +15,14 @@ pub(crate) struct World<'a> {
 }
 
 impl Diplomacy for World<'_> {
-    /// [`crate::tasks::allied`] with `from`'s diplomacy.
+    /// [`crate::unit_ai::task_finder::allied`] with `from`'s diplomacy.
     fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
         let relations = self.players.get(from).map_or(&[][..], |p| &p.relations[..]);
-        crate::tasks::allied(relations, from, to, with_ally)
+        crate::unit_ai::task_finder::allied(relations, from, to, with_ally)
     }
 
     fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool {
-        crate::tasks::drops_at(self.drop_sites, building, actor)
+        crate::unit_ai::task_finder::drops_at(self.drop_sites, building, actor)
     }
 }
 
@@ -36,7 +36,7 @@ pub(crate) struct SideWorld<'a> {
 }
 
 impl Diplomacy for SideWorld<'_> {
-    /// [`crate::tasks::allied`] with `from`'s diplomacy.
+    /// [`crate::unit_ai::task_finder::allied`] with `from`'s diplomacy.
     fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
         let relations = if from == self.player {
             self.relations
@@ -45,11 +45,11 @@ impl Diplomacy for SideWorld<'_> {
                 .player(from)
                 .map_or(&[][..], |p| &p.relations[..])
         };
-        crate::tasks::allied(relations, from, to, with_ally)
+        crate::unit_ai::task_finder::allied(relations, from, to, with_ally)
     }
 
     fn drops_at(&self, building: i16, actor: &Actor<'_>) -> bool {
-        crate::tasks::drops_at(self.drop_sites, building, actor)
+        crate::unit_ai::task_finder::drops_at(self.drop_sites, building, actor)
     }
 }
 
@@ -118,7 +118,7 @@ pub(crate) fn task_target_with<'a>(
 
 /// The search of a unit's slot 0x820 (`FUN_14106c6a0`) on target `t` (`general` the target the
 /// general search reads, its main building's) with `filter`: the list of its own master
-/// (`actor.master`) gives the task ([`crate::tasks::find_task`] in mode 0); without one, a
+/// (`actor.master`) gives the task ([`crate::unit_ai::task_finder::find_task`] in mode 0); without one, a
 /// master with a task swap group (`+0x7b8`) tries its player's masters (`masters`) in id order
 /// of its class, type and group, its own too, with any filter, and the first with a task gives
 /// it. The task, with the master that gave it when the swap group did: with its `param_7` the
@@ -136,8 +136,16 @@ pub(crate) fn task_search<'m>(
 ) -> Result<Option<(crate::masters::Task, Option<&'m Master>)>, GenieError> {
     let own = actor.master;
     let find = |list: &Master, filter: i16| {
-        crate::tasks::find_task(list, actor, Some(t), Some(general), None, filter, dip)
-            .map(Option::<&crate::masters::Task>::copied)
+        crate::unit_ai::task_finder::find_task(
+            list,
+            actor,
+            Some(t),
+            Some(general),
+            None,
+            filter,
+            dip,
+        )
+        .map(Option::<&crate::masters::Task>::copied)
     };
     if let Some(task) = find(own, filter)? {
         return Ok(Some((task, None)));

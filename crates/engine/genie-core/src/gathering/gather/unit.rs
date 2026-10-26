@@ -3,10 +3,10 @@
 use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
-use crate::tasks::Actor;
 use crate::turn::unit::{Unit, second_target_checked};
-use crate::turn::view::{Context, DropWorld};
 use crate::turn::world::state_of;
+use crate::unit_ai::task_finder::Actor;
+use crate::unit_ai::world_view::{Context, DropWorld};
 use crate::unit_ai::{BUILD_ACTION, GenieError};
 
 impl Unit {
@@ -204,7 +204,11 @@ impl Unit {
                         civ: c.civ,
                     };
                     Some(crate::gathering::hunt::DropOff {
-                        takes: crate::tasks::drops_at(c.drop_sites, s.master, &actor),
+                        takes: crate::unit_ai::task_finder::drops_at(
+                            c.drop_sites,
+                            s.master,
+                            &actor,
+                        ),
                         gap_squared: footprint_gap_squared(
                             me_position,
                             me_radius,
@@ -439,7 +443,8 @@ pub(crate) fn give_load(
     amount: f32,
 ) -> Result<(), GenieError> {
     let own = relations.get(player).map_or(&[][..], |r| &r[..]);
-    let allied = (1..own.len()).any(|q| q != player && crate::tasks::allied(own, player, q, true));
+    let allied = (1..own.len())
+        .any(|q| q != player && crate::unit_ai::task_finder::allied(own, player, q, true));
     if sharing && allied {
         return Err(GenieError::unsupported(
             "a load given to a player with allies (+0x1426)",

@@ -27,7 +27,7 @@ pub struct Search<'a> {
     pub memory: Memory<'a>,
 }
 
-/// `bestUnitToAttack`'s arguments past its point ([`crate::best_target::Ask`] without its
+/// `bestUnitToAttack`'s arguments past its point ([`crate::unit_ai::best_target::Ask`] without its
 /// list: at most one extra object).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AttackAsk {
@@ -57,10 +57,10 @@ impl AttackAsk {
         work_state: false,
     };
 
-    /// The full arguments ([`crate::best_target::Ask`]).
+    /// The full arguments ([`crate::unit_ai::best_target::Ask`]).
     #[must_use]
-    pub fn ask(&self) -> crate::best_target::Ask {
-        crate::best_target::Ask {
+    pub fn ask(&self) -> crate::unit_ai::best_target::Ask {
+        crate::unit_ai::best_target::Ask {
             distance: self.distance,
             idle: self.idle,
             paths: u8::from(self.paths),
@@ -471,7 +471,7 @@ pub(crate) fn spares_friends(me: &Attacker, t: &Target) -> Result<bool, GenieErr
     Ok(true)
 }
 
-/// What `bestUnitToAttack` (`FUN_140c44680`, [`crate::best_target::best_unit_to_attack`]) asks
+/// What `bestUnitToAttack` (`FUN_140c44680`, [`crate::unit_ai::best_target::best_unit_to_attack`]) asks
 /// of the world while its unit AI runs: the searching unit ([`AttackPicker::searcher`]) and its
 /// reads and tests of the objects its search found; the paths (slot 0x3d0) are the search's.
 pub trait AttackPicker {
@@ -480,44 +480,47 @@ pub trait AttackPicker {
     /// # Errors
     ///
     /// A unit the reads do not model (a computer player's).
-    fn searcher(&mut self, memory: Memory<'_>) -> Result<crate::best_target::Searcher, GenieError>;
+    fn searcher(
+        &mut self,
+        memory: Memory<'_>,
+    ) -> Result<crate::unit_ai::best_target::Searcher, GenieError>;
 
-    /// [`crate::best_target::Battlefield::thing`].
+    /// [`crate::unit_ai::best_target::Battlefield::thing`].
     ///
     /// # Errors
     ///
     /// An object the slice does not hold.
-    fn thing(&mut self, id: i32) -> Result<Option<crate::best_target::Thing>, GenieError>;
+    fn thing(&mut self, id: i32) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError>;
 
-    /// [`crate::best_target::Battlefield::can_attack`].
+    /// [`crate::unit_ai::best_target::Battlefield::can_attack`].
     ///
     /// # Errors
     ///
     /// What the attack check does not model.
     fn can_attack(&mut self, id: i32) -> Result<bool, GenieError>;
 
-    /// [`crate::best_target::Battlefield::attacks_neutral`].
+    /// [`crate::unit_ai::best_target::Battlefield::attacks_neutral`].
     ///
     /// # Errors
     ///
     /// A unit-AI type whose test is not modelled.
     fn attacks_neutral(&mut self, class: i16) -> Result<bool, GenieError>;
 
-    /// [`crate::best_target::Battlefield::spares_friends`].
+    /// [`crate::unit_ai::best_target::Battlefield::spares_friends`].
     ///
     /// # Errors
     ///
     /// What the scan does not model.
     fn spares_friends(&mut self, id: i32) -> Result<bool, GenieError>;
 
-    /// [`crate::best_target::Battlefield::shuns`].
+    /// [`crate::unit_ai::best_target::Battlefield::shuns`].
     ///
     /// # Errors
     ///
     /// What the test does not model.
     fn shuns(&mut self, id: i32) -> Result<bool, GenieError>;
 
-    /// [`crate::best_target::Battlefield::candidate`].
+    /// [`crate::unit_ai::best_target::Battlefield::candidate`].
     ///
     /// # Errors
     ///
@@ -527,30 +530,30 @@ pub trait AttackPicker {
         id: i32,
         distance: f32,
         category: i32,
-    ) -> Result<crate::best_target::Candidate, GenieError>;
+    ) -> Result<crate::unit_ai::best_target::Candidate, GenieError>;
 
-    /// [`crate::best_target::Battlefield::armored`].
+    /// [`crate::unit_ai::best_target::Battlefield::armored`].
     ///
     /// # Errors
     ///
     /// What the read does not model.
     fn armored(&mut self, id: i32) -> Result<bool, GenieError>;
 
-    /// [`crate::best_target::Battlefield::weapon_range`].
+    /// [`crate::unit_ai::best_target::Battlefield::weapon_range`].
     ///
     /// # Errors
     ///
     /// What the read does not model.
     fn weapon_range(&mut self, id: i32) -> Result<f32, GenieError>;
 
-    /// [`crate::best_target::Battlefield::engages`].
+    /// [`crate::unit_ai::best_target::Battlefield::engages`].
     ///
     /// # Errors
     ///
     /// What the reads do not model.
     fn engages(&mut self, id: i32) -> Result<bool, GenieError>;
 
-    /// [`crate::best_target::Battlefield::quick_path`].
+    /// [`crate::unit_ai::best_target::Battlefield::quick_path`].
     ///
     /// # Errors
     ///
@@ -567,11 +570,14 @@ pub(super) const NO_ATTACK: GenieError =
 pub struct NoAttack;
 
 impl AttackPicker for NoAttack {
-    fn searcher(&mut self, _: Memory<'_>) -> Result<crate::best_target::Searcher, GenieError> {
+    fn searcher(
+        &mut self,
+        _: Memory<'_>,
+    ) -> Result<crate::unit_ai::best_target::Searcher, GenieError> {
         Err(NO_ATTACK)
     }
 
-    fn thing(&mut self, _: i32) -> Result<Option<crate::best_target::Thing>, GenieError> {
+    fn thing(&mut self, _: i32) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError> {
         Err(NO_ATTACK)
     }
 
@@ -596,7 +602,7 @@ impl AttackPicker for NoAttack {
         _: i32,
         _: f32,
         _: i32,
-    ) -> Result<crate::best_target::Candidate, GenieError> {
+    ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         Err(NO_ATTACK)
     }
 

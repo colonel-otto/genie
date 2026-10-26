@@ -9,8 +9,8 @@ use crate::movement::Mover;
 use crate::sprite::ActiveSprite;
 use crate::turn::ARMED_FIREPOWER;
 use crate::turn::unit::Unit;
-use crate::turn::view::Context;
 use crate::turn::world::Releaser;
+use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{ACTION_EXECUTED, GenieError, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 

@@ -656,7 +656,7 @@ const FISH_TRAP: i16 = 199;
 const FARM: i16 = 49;
 /// The build order (`0x2be`), which the end of the work drops from the AI's queue once its
 /// foundation is gone or built (`FUN_140c5dcd0`).
-const BUILD_ORDER: i32 = crate::ai_kinds::ORDER_BUILD;
+const BUILD_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_BUILD;
 
 #[cfg(test)]
 mod stack_tests {

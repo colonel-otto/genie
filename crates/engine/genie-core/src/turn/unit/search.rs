@@ -5,8 +5,8 @@ use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::turn::unit::Unit;
-use crate::turn::view::{Context, OwnerView};
 use crate::turn::world::{Releaser, ResourceWorld, closest_resource_of};
+use crate::unit_ai::world_view::{Context, OwnerView};
 use crate::unit_ai::{GenieError, Notify};
 
 impl Unit {
@@ -46,7 +46,8 @@ impl Unit {
         let at = *c.spatial.get(building).ok_or(GenieError::unsupported(
             "a builder's building without a place",
         ))?;
-        let entry = crate::tasks::drop_site(c.drop_sites, built, master.class, c.civ);
+        let entry =
+            crate::unit_ai::task_finder::drop_site(c.drop_sites, built, master.class, c.civ);
         let los = site.line_of_sight;
         let held = if REACH_FLOOR <= los { los } else { REACH_LOW };
         let reach = if held <= REACH_CAP { held } else { REACH_CAP };
@@ -221,7 +222,7 @@ impl Unit {
             state: t.life.state,
             player: tp,
             amount: t.life.amount,
-            allied: crate::tasks::allied(own, c.player, tp, true),
+            allied: crate::unit_ai::task_finder::allied(own, c.player, tp, true),
             top_action: t.top_action_kind(),
             drop_site: false,
         };
@@ -346,7 +347,7 @@ impl Unit {
     /// ([`crate::unit_ai::Surroundings::units`]): its attackers and the callers of its damage
     /// notifies, from its own list or another player's, each with its master's class, state, its
     /// unit AI's target and its footprint's squared gap to the unit's (`FUN_14118f8c0`).
-    pub(in crate::turn) fn named_units(
+    pub(crate) fn named_units(
         &self,
         c: &Context<'_>,
         view: &OwnerView<'_>,
@@ -406,7 +407,12 @@ impl Unit {
                 master: u.life.master_id,
                 kind: m.kind,
                 main: u.annex_of,
-                allied: crate::tasks::allied(view.relations, view.player, owner, true),
+                allied: crate::unit_ai::task_finder::allied(
+                    view.relations,
+                    view.player,
+                    owner,
+                    true,
+                ),
             });
         }
         Ok(seen)

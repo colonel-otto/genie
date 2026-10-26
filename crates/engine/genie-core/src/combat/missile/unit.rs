@@ -3,8 +3,8 @@
 use crate::combat::volley::Fired;
 use crate::math::rng::Stream;
 use crate::turn::unit::{Unit, missed_passes};
-use crate::turn::view::Context;
 use crate::turn::world::{forget_resource, victim_of};
+use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{ACTION_EXECUTED, GenieError};
 
 impl Unit {

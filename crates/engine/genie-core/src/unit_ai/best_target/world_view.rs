@@ -1,7 +1,7 @@
 //! What `bestUnitToAttack` reads of the unit whose AI searches, of its arguments and of the
 //! world ([`Battlefield`]).
 
-use crate::best_target::Candidate;
+use crate::unit_ai::best_target::Candidate;
 
 /// The order history's window (`DAT_142efe420`, 60000 ms as a float).
 pub(super) const ORDER_WINDOW: f32 = crate::math::image::best_target::ORDER_WINDOW;
@@ -49,7 +49,7 @@ pub struct Searcher {
     pub targeting: (i32, i32),
     /// The order history's weights ([`order_weights`]).
     ///
-    /// [`order_weights`]: crate::best_target::statistics::order_weights
+    /// [`order_weights`]: crate::unit_ai::best_target::statistics::order_weights
     pub weights: [f32; 12],
     /// The AI's retarget entries' targets (`+0x1e0`).
     pub retries: Vec<i32>,

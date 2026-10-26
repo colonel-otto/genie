@@ -134,7 +134,9 @@ impl UnitAi {
         if !computer && held_by_group {
             return true;
         }
-        computer && self.current_order == crate::ai_kinds::ORDER_EXPLORE && attacker.owner != 0
+        computer
+            && self.current_order == crate::unit_ai::ai_kinds::ORDER_EXPLORE
+            && attacker.owner != 0
     }
 
     /// [`UnitAi::damaged`]'s step 4's search, `bestUnitToAttack` into
@@ -427,7 +429,7 @@ impl UnitAi {
             return Ok(BREAK);
         }
         match self.current_order {
-            crate::ai_kinds::ORDER_SCOUT => Err(GenieError::unsupported(
+            crate::unit_ai::ai_kinds::ORDER_SCOUT => Err(GenieError::unsupported(
                 "a scout that finds no undiscovered tile (the player's slot 0x2e8 with 0x211)",
             )),
             AUTO_SCOUT_ORDER => {

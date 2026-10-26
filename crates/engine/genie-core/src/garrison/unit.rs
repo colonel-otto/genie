@@ -7,9 +7,9 @@ use crate::movement::Me;
 use crate::movement::move_to::MoveTo;
 use crate::pathing::Pathing;
 use crate::sprite::Graphic;
-use crate::tasks::{Actor, DropSite};
 use crate::turn::unit::{Unit, give_load};
-use crate::turn::view::Context;
+use crate::unit_ai::task_finder::{Actor, DropSite};
+use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{GenieError, UnitAi};
 
 impl Unit {
@@ -62,7 +62,8 @@ impl Unit {
                     enter.range,
                 )?;
                 // FUN_141663dc0 with allies, or Gaia's
-                view.allied = tp == 0 || crate::tasks::allied(c.relations, c.player, tp, true);
+                view.allied =
+                    tp == 0 || crate::unit_ai::task_finder::allied(c.relations, c.player, tp, true);
                 (Some(view), walking, meeting)
             }
             None => (None, (0.0, 0.0), Ok(([0.0; 2], 0))),
@@ -132,7 +133,7 @@ impl Unit {
                 // FUN_140a867b0 on the unit inside: notify 0x1fa and its set_state(1), then the
                 // update's
                 self.post_own(
-                    crate::ai_kinds::NOTIFY_ACTION_COMPLETED,
+                    crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
                     [crate::garrison::ENTER_ACTION, 0, 0],
                 )?;
                 self.entered(&mut w)?;
@@ -299,7 +300,7 @@ impl Unit {
         enter.state = crate::garrison::ENTERED;
         self.shows_standing_sprite(w.masters, w.graphics, w.sprite_rng)?;
         self.post_own(
-            crate::ai_kinds::NOTIFY_ACTION_FAILED,
+            crate::unit_ai::ai_kinds::NOTIFY_ACTION_FAILED,
             [crate::garrison::ENTER_ACTION, 0, 0],
         )
     }
@@ -349,7 +350,7 @@ impl Unit {
             attribute_95: w.attributes.get(95).copied().unwrap_or(0.0),
             civ: w.civ,
         };
-        if crate::tasks::drops_at(w.drop_sites, bm.id, &actor)
+        if crate::unit_ai::task_finder::drops_at(w.drop_sites, bm.id, &actor)
             && 0.0 < self.life.amount
             && bm.kind == crate::orders::BUILDING
         {
@@ -394,7 +395,7 @@ impl Unit {
         }
         self.go_inside(building, (masters, me, bm), w)?;
         self.post_own(
-            crate::ai_kinds::NOTIFY_ACTION_COMPLETED,
+            crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
             [crate::garrison::ENTER_ACTION, 0, 0],
         )?;
         self.entered(w)?;

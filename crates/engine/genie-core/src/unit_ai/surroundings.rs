@@ -301,7 +301,7 @@ pub struct UnitSeen {
     /// An annex's main building (`+0xbb8`).
     pub main: Option<i32>,
     /// The unit's owner counts its owner as its own or an ally (`FUN_141663d90` with the ally
-    /// flag, [`crate::tasks::allied`]).
+    /// flag, [`crate::unit_ai::task_finder::allied`]).
     pub allied: bool,
 }
 

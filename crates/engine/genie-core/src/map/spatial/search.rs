@@ -463,7 +463,7 @@ impl Spatial {
         Ok(best.unwrap_or((-1, -1.0)))
     }
 
-    /// `bestUnitToAttack` (`FUN_140c44680`, [`crate::best_target::best_unit_to_attack`]) over
+    /// `bestUnitToAttack` (`FUN_140c44680`, [`crate::unit_ai::best_target::best_unit_to_attack`]) over
     /// the relation lists its search `found` (each record's id in order), with the unit AI's
     /// `memory`: `attack` reads the unit and the objects, the paths (slot 0x3d0) are `reach`'s.
     ///
@@ -476,13 +476,13 @@ impl Spatial {
         memory: crate::unit_ai::Memory<'_>,
         attack: &mut dyn crate::unit_ai::AttackPicker,
         reach: &mut Reach<'_>,
-    ) -> Result<crate::best_target::Choice, GenieError> {
+    ) -> Result<crate::unit_ai::best_target::Choice, GenieError> {
         let me = attack.searcher(memory)?;
         let lists: [Vec<i32>; 5] = std::array::from_fn(|k| found[k].iter().map(|r| r.id).collect());
         let mut field = AttackField {
             picker: attack,
             reach,
         };
-        crate::best_target::best_unit_to_attack(&me, &ask.ask(), &lists, &mut field)
+        crate::unit_ai::best_target::best_unit_to_attack(&me, &ask.ask(), &lists, &mut field)
     }
 }

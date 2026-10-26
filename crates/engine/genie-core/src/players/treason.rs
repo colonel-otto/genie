@@ -45,7 +45,7 @@ impl Turns {
     /// or outside the regicide rule ([`crate::settings::Settings::regicide`]) it fails with the
     /// interface's error. Else the gold goes straight off attribute 3 (the local player's
     /// statistics and the event 0x91 are not simulation); then for each player from 1 not the
-    /// player's own or allied (`FUN_141663dc0` without allies, [`crate::tasks::allied`]) its
+    /// player's own or allied (`FUN_141663dc0` without allies, [`crate::unit_ai::task_finder::allied`]) its
     /// first king in its live list (`FUN_141166ab0`), or what the king is inside, gives each
     /// player from 1 the player counts as its own or allied a flare at its place (that player's
     /// slot 0x1c0 with master 697, [`Turns::remains`]); the sound and the minimap's mark
@@ -64,7 +64,7 @@ impl Turns {
         self.players[p].resources[GOLD] = gold - cost;
         let n = self.players.len();
         for i in 1..n {
-            if crate::tasks::allied(&self.players[p].relations, p, i, false) {
+            if crate::unit_ai::task_finder::allied(&self.players[p].relations, p, i, false) {
                 continue;
             }
             let Some(king) = self.players[i]
@@ -79,7 +79,7 @@ impl Turns {
                 None => king.position,
             };
             for j in 1..n {
-                if crate::tasks::allied(&self.players[p].relations, p, j, false) {
+                if crate::unit_ai::task_finder::allied(&self.players[p].relations, p, j, false) {
                     self.remains(j, FLARE4, at, None)?;
                     self.made_new_object(j)?;
                 }

@@ -345,8 +345,8 @@ impl UnitAi {
             && self.current_order == ATTACK_ORDER
             && let (Some(n), Some(c)) = (new, current)
             && c.state == 2
-            && crate::best_target::category(n.master, n.class)
-                != crate::best_target::category(c.master, c.class)
+            && crate::unit_ai::best_target::category(n.master, n.class)
+                != crate::unit_ai::best_target::category(c.master, c.class)
         {
             return Ok(9);
         }

@@ -34,8 +34,6 @@
 
 pub use genie_error::{ErrorKind, GenieError, GenieResult};
 
-pub mod ai_kinds;
-pub mod best_target;
 pub mod checkpoint;
 pub mod combat;
 pub mod construction;
@@ -57,7 +55,6 @@ pub mod players;
 pub mod production;
 pub mod settings;
 pub mod sprite;
-pub mod tasks;
 pub mod technology;
 pub mod trace;
 pub mod turn;

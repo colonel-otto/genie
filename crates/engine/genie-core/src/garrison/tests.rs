@@ -1776,7 +1776,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     let ai = ship.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (crate::ai_kinds::ORDER_UNLOAD, 0x26d, 200)
+        (crate::unit_ai::ai_kinds::ORDER_UNLOAD, 0x26d, 200)
     );
     // the villager inside stays there
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));

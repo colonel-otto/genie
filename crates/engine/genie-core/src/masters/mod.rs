@@ -24,7 +24,7 @@ use self::values::{
     set_sprite,
 };
 #[cfg(test)]
-use crate::tasks::{Actor, Diplomacy, TaskTarget};
+use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget};
 
 /// One task of a master's task list (`RGE_Task`), with the memory offsets the task finder reads
 /// (the save's names; the `.dat`'s in brackets where they differ).

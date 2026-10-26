@@ -6,8 +6,8 @@ use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::sprite::Graphic;
 use crate::turn::unit::{UNPACKED_TREBUCHET, Unit};
-use crate::turn::view::Context;
 use crate::turn::world::{Releaser, change_hands};
+use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{AiMove, GenieError};
 
 impl Unit {
@@ -125,7 +125,7 @@ impl Unit {
     /// then `+0x924` goes 0. The local player's sound and its capture notice (`FUN_1414c3380`)
     /// are not simulation. Not modelled: a siege weapon's (class 13) drop of the units it carries
     /// (`FUN_14120f800` with `FUN_141192d10`).
-    pub(in crate::turn) fn take_by_sight(
+    pub(crate) fn take_by_sight(
         &mut self,
         c: &mut Context<'_>,
         new: usize,
@@ -603,13 +603,13 @@ pub(crate) enum Step {
 /// with them.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Captured {
-    pub(in crate::turn) new: usize,
-    pub(in crate::turn) main: bool,
-    pub(in crate::turn) also: Vec<i32>,
+    pub(crate) new: usize,
+    pub(crate) main: bool,
+    pub(crate) also: Vec<i32>,
     /// The object is a building: its slot 0x70 (`FUN_1411cd860`) is the caller's, whole
     /// ([`crate::turn::Turns::building_changes_hands`]); `main` says whether the new owner has
     /// its master.
-    pub(in crate::turn) building: bool,
+    pub(crate) building: bool,
 }
 
 /// A repairer's player's attributes as its repair pays from them ([`crate::construction::repair::Payer`]):

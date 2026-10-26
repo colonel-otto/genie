@@ -15,6 +15,8 @@
 use crate::GenieError;
 use crate::masters::{Master, Task};
 
+pub(crate) mod world;
+
 /// A building's master type (`'P'`).
 const BUILDING: u8 = 80;
 

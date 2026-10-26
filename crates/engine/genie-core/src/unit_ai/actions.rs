@@ -32,7 +32,7 @@ impl UnitAi {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
         if order != -1 {
             self.state_position = [at.position[0], at.position[1]];
-            if order == crate::ai_kinds::ORDER_SCOUT {
+            if order == crate::unit_ai::ai_kinds::ORDER_SCOUT {
                 return Err(GenieError::unsupported(
                     "a failed action on the scout order (the player's slot 0x2e8 with 0x211)",
                 ));

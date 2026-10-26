@@ -2,14 +2,14 @@
 //! unit AI's queue, several of them at their offsets around the order's point, and the work
 //! command it gives (object slot 37, `FUN_14106ff70`, through slot 0x128 `FUN_141211b80` and slot
 //! 0x7e8 `FUN_141227190`): the unit takes the master and the task the task finder picks for the
-//! target ([`crate::tasks`]), and the task's action replaces its action list. The slice builds
+//! target ([`crate::unit_ai::task_finder`]), and the task's action replaces its action list. The slice builds
 //! the Hunt action ([`crate::gathering::hunt`]); other actions, orders to points and unit groups are not
 //! modelled yet.
 
 use crate::masters::Master;
-use crate::tasks::TaskTarget;
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::GenieError;
+use crate::unit_ai::task_finder::TaskTarget;
 
 mod actions;
 mod attack;
@@ -537,20 +537,20 @@ fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, GenieError> 
 
 /// `FUN_141658e20` over a player's drop-site table (`table`), civ and object tracker at `at` for
 /// a load of `held` from a worker of `class`: of the buildings the table gives
-/// ([`crate::tasks::table_drop_buildings`]), the objects of each master's done list in the
+/// ([`crate::unit_ai::task_finder::table_drop_buildings`]), the objects of each master's done list in the
 /// tracker in turn (`FUN_14104f600`, the master itself the key) that `look` holds (their state
 /// and place) in state 2, the nearest by the squared distance of the centres (the first of
 /// equals; none from [`TABLE_DROP_FAR`] on).
 pub(crate) fn nearest_table_site(
     (table, civ, tracker): (
-        &[crate::tasks::DropSite],
+        &[crate::unit_ai::task_finder::DropSite],
         u8,
         &crate::players::tracker::Tracker,
     ),
     (at, held, class): ([f32; 2], i16, i16),
     look: impl Fn(i32) -> Option<(u8, [f32; 3])>,
 ) -> Option<i32> {
-    let buildings = crate::tasks::table_drop_buildings(table, held, class, civ);
+    let buildings = crate::unit_ai::task_finder::table_drop_buildings(table, held, class, civ);
     let mut best = (None, TABLE_DROP_FAR);
     for m in buildings {
         for &id in tracker.list(i32::from(m)) {

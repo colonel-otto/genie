@@ -4,9 +4,9 @@
 use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
-use crate::tasks::Diplomacy;
 use crate::turn::{Releaser, Turns, Unit, World};
 use crate::unit_ai::GenieError;
+use crate::unit_ai::task_finder::Diplomacy;
 
 impl Turns {
     /// Slot 0x178 on the object an action of `by` takes as its target: a building's
@@ -94,7 +94,7 @@ impl Turns {
     /// with a target the world holds (`FUN_1415417a0`), its unit AI remembers `order` and
     /// `action` on it ([`crate::unit_ai::UnitAi::remember_order`]) at the world's time, with the
     /// unit's place and the target's (slot 0x520) and the target's attack category by its master
-    /// ([`crate::best_target::category`]: its own, else its owner's). An order on a point (no
+    /// ([`crate::unit_ai::best_target::category`]: its own, else its owner's). An order on a point (no
     /// target) records nothing.
     pub(crate) fn remember_order(
         &mut self,
@@ -120,7 +120,7 @@ impl Turns {
             time: self.world_time,
             position,
             target,
-            category: crate::best_target::category(t.life.master_id, class),
+            category: crate::unit_ai::best_target::category(t.life.master_id, class),
             target_position: t.position,
         };
         if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {

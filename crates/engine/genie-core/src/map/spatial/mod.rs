@@ -43,15 +43,15 @@ const LIVESTOCK_CLASS: i32 = 58;
 /// The caller's reachability check of a found object (slot 0x3d0 within a range).
 pub type Reach<'a> = dyn FnMut(i32, f32) -> Result<bool, GenieError> + 'a;
 
-/// `bestUnitToAttack`'s world ([`crate::best_target::Battlefield`]): the unit AI's picker for its
+/// `bestUnitToAttack`'s world ([`crate::unit_ai::best_target::Battlefield`]): the unit AI's picker for its
 /// reads and tests, the search's reachability for its paths (slot 0x3d0).
 struct AttackField<'p, 'r> {
     picker: &'p mut dyn crate::unit_ai::AttackPicker,
     reach: &'p mut Reach<'r>,
 }
 
-impl crate::best_target::Battlefield for AttackField<'_, '_> {
-    fn thing(&mut self, id: i32) -> Result<Option<crate::best_target::Thing>, GenieError> {
+impl crate::unit_ai::best_target::Battlefield for AttackField<'_, '_> {
+    fn thing(&mut self, id: i32) -> Result<Option<crate::unit_ai::best_target::Thing>, GenieError> {
         self.picker.thing(id)
     }
 
@@ -76,7 +76,7 @@ impl crate::best_target::Battlefield for AttackField<'_, '_> {
         id: i32,
         distance: f32,
         category: i32,
-    ) -> Result<crate::best_target::Candidate, GenieError> {
+    ) -> Result<crate::unit_ai::best_target::Candidate, GenieError> {
         self.picker.candidate(id, distance, category)
     }
 

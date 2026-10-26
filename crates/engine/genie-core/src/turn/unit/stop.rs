@@ -5,8 +5,8 @@ use crate::masters::Masters;
 use crate::math::rng::{Stream, Well512};
 use crate::sprite::Graphic;
 use crate::turn::unit::Unit;
-use crate::turn::view::{AiWork, Context};
 use crate::turn::world::Releaser;
+use crate::unit_ai::world_view::{AiWork, Context};
 use crate::unit_ai::{Effect, GenieError};
 
 impl Unit {
@@ -23,7 +23,7 @@ impl Unit {
     /// [`Unit::stop_action`] on the parts of the world it changes: the targets its actions let
     /// go and the foundations its Build leaves (`by` the unit, [`Unit::clear_own_actions`]), its
     /// masters and sprites, and the Sprite stream.
-    pub(in crate::turn) fn stop_with(
+    pub(crate) fn stop_with(
         &mut self,
         (releases, builder_leaves): (&mut Vec<(i32, Releaser)>, &mut Vec<i32>),
         by: Releaser,
@@ -41,7 +41,7 @@ impl Unit {
     /// The action list's clearing (`FUN_140a98620`) as the unit's own commands and stops run it
     /// ([`Unit::clear_own_actions`]); an action the slice does not hold has a teardown it cannot
     /// run.
-    pub(in crate::turn) fn tear_down_actions(
+    pub(crate) fn tear_down_actions(
         &mut self,
         releases: &mut Vec<(i32, Releaser)>,
         builder_leaves: &mut Vec<i32>,
@@ -197,7 +197,7 @@ impl Unit {
     }
 
     /// Its unit AI's effects, in order.
-    pub(in crate::turn) fn apply(
+    pub(crate) fn apply(
         &mut self,
         effects: Vec<Effect>,
         class: Option<i16>,

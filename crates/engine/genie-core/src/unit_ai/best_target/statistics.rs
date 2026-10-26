@@ -1,7 +1,7 @@
 //! `bestUnitToAttack`'s statistics ([`Statistics`]): the entries, an object's add, the scores,
 //! the ranks and the sort, and the order history's weights.
 
-use crate::best_target::ORDER_WINDOW;
+use crate::unit_ai::best_target::ORDER_WINDOW;
 
 /// The statistics' table holds at most this many objects (`FUN_140c66590`: `+0x1668` below
 /// 0x80).
@@ -40,7 +40,7 @@ pub struct Entry {
     pub distance: f32,
     /// `+0x10`: its attack category ([`category`]).
     ///
-    /// [`category`]: crate::best_target::category
+    /// [`category`]: crate::unit_ai::best_target::category
     pub category: i32,
     /// `+0x14`: the kill-time score.
     pub kill_score: f32,

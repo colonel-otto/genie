@@ -6,9 +6,9 @@ use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::fly::Fly;
 use crate::turn::unit::{NO_DYING_SPRITE, Unit};
-use crate::turn::view::Context;
 use crate::turn::world::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::unit_ai::GenieError;
+use crate::unit_ai::world_view::Context;
 
 impl Unit {
     /// The unit's explore (slot 0x398, `FUN_141084db0` with its argument 4 set) to the point at

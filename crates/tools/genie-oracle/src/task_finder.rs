@@ -4,7 +4,7 @@ use crate::masters::MasterTable;
 use crate::{Error, work_masters};
 use genie_rec::de;
 
-/// What the task finder (`genie_core::tasks`) reads of a save: every player's masters as the work
+/// What the task finder (`genie_core::unit_ai::task_finder`) reads of a save: every player's masters as the work
 /// command reads them, every object's state, holding and flags, the players' relations and their
 /// attribute 95.
 #[derive(Debug)]
@@ -20,7 +20,7 @@ pub struct FinderWorld {
     /// Every player's civ.
     pub civs: Vec<u8>,
     /// The drop-site table.
-    pub drop_sites: Vec<genie_core::tasks::DropSite>,
+    pub drop_sites: Vec<genie_core::unit_ai::task_finder::DropSite>,
 }
 
 /// One object as the task finder reads it.
@@ -50,7 +50,7 @@ pub struct FinderObject {
     pub position: [f32; 3],
 }
 
-impl genie_core::tasks::Diplomacy for FinderWorld {
+impl genie_core::unit_ai::task_finder::Diplomacy for FinderWorld {
     /// `FUN_141663dc0`: one's own player counts; Gaia never does; else the relation 0 does, and
     /// 4 with the ally flag. Relation 1 counts only under allied victory (`FUN_1415e8e10`), which
     /// the slice does not model.
@@ -68,8 +68,8 @@ impl genie_core::tasks::Diplomacy for FinderWorld {
         }
     }
 
-    fn drops_at(&self, building: i16, actor: &genie_core::tasks::Actor<'_>) -> bool {
-        genie_core::tasks::drops_at(&self.drop_sites, building, actor)
+    fn drops_at(&self, building: i16, actor: &genie_core::unit_ai::task_finder::Actor<'_>) -> bool {
+        genie_core::unit_ai::task_finder::drops_at(&self.drop_sites, building, actor)
     }
 }
 
@@ -77,7 +77,11 @@ impl FinderWorld {
     /// The finder's view of object `id`, with its master from its player's masters; an annex
     /// stands for its main building (the finder's step, `+0xbb8`), `steps` times.
     #[must_use]
-    pub fn target_up(&self, id: i32, steps: usize) -> Option<genie_core::tasks::TaskTarget<'_>> {
+    pub fn target_up(
+        &self,
+        id: i32,
+        steps: usize,
+    ) -> Option<genie_core::unit_ai::task_finder::TaskTarget<'_>> {
         let mut id = id;
         for _ in 0..steps {
             match self.objects.get(&id)?.annex_of {
@@ -86,7 +90,7 @@ impl FinderWorld {
             }
         }
         let o = self.objects.get(&id)?;
-        Some(genie_core::tasks::TaskTarget {
+        Some(genie_core::unit_ai::task_finder::TaskTarget {
             id,
             master: self.masters.get(o.player)?.get(o.master)?,
             player: o.player,
@@ -102,15 +106,15 @@ impl FinderWorld {
 
     /// The finder's target: an annex stands for its main building.
     #[must_use]
-    pub fn target(&self, id: i32) -> Option<genie_core::tasks::TaskTarget<'_>> {
+    pub fn target(&self, id: i32) -> Option<genie_core::unit_ai::task_finder::TaskTarget<'_>> {
         self.target_up(id, 1)
     }
 
     /// The finder's view of unit `id` as the actor.
     #[must_use]
-    pub fn actor(&self, id: i32) -> Option<genie_core::tasks::Actor<'_>> {
+    pub fn actor(&self, id: i32) -> Option<genie_core::unit_ai::task_finder::Actor<'_>> {
         let o = self.objects.get(&id)?;
-        Some(genie_core::tasks::Actor {
+        Some(genie_core::unit_ai::task_finder::Actor {
             id,
             master: self.masters.get(o.player)?.get(o.master)?,
             player: o.player,

@@ -4,10 +4,10 @@
 use crate::combat::damage::Victim;
 use crate::map::spatial::Spatial;
 use crate::masters::Master;
-use crate::tasks::Diplomacy;
 use crate::turn::unit::Unit;
 use crate::turn::world::World;
 use crate::turn::{BUILDING_KIND, Turns};
+use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::{GenieError, Notify};
 
 impl Turns {

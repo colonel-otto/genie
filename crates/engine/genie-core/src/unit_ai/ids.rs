@@ -71,9 +71,9 @@ pub(super) const BOAR_STEP: u32 = 6;
 pub(super) const BOAR_OFFSET: i32 = 3;
 pub(super) const AI_MOVE_RANGE: f32 = 0.5;
 /// The move order and action values (`0x2c6`, `0x262`), which moves set.
-pub const MOVE_ORDER: i32 = crate::ai_kinds::ORDER_MOVEMENT;
+pub const MOVE_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_MOVEMENT;
 /// `0x321`: `AUTO_SCOUT`'s order.
-pub const AUTO_SCOUT_ORDER: i32 = crate::ai_kinds::ORDER_AUTO_SCOUT;
+pub const AUTO_SCOUT_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_AUTO_SCOUT;
 /// `0x2c2`: the stop order ("I have a stop order.", after "SO Call 6"), which `AUTO_SCOUT` gives a
 /// unit already scouting.
 pub const STOP_ORDER: i32 = 0x2c2;
@@ -138,7 +138,7 @@ pub(super) const fn order_move(o: &QueuedOrder) -> AiMove {
 /// The run away order (`0x2c3`, "I have a runAway order").
 pub(super) const RUN_AWAY_ORDER: i32 = 0x2c3;
 /// The repair order (`0x2ce`).
-pub(super) const REPAIR_ORDER: i32 = crate::ai_kinds::ORDER_REPAIR;
+pub(super) const REPAIR_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_REPAIR;
 /// The second value of the order on a target (`0x325`), which shares `0x2db`'s case: the way
 /// back to work after a drop-off (`FUN_140c41ab0`).
 pub(crate) const ORDER_ON_TARGET_2: i32 = 0x325;
@@ -418,7 +418,7 @@ pub(crate) const fn alert_owner(computer: bool) -> Result<(), GenieError> {
     Ok(())
 }
 
-/// `AskForHelp`'s helper that passes every test ([`crate::turn::view::UnitView::helper_free`]):
+/// `AskForHelp`'s helper that passes every test ([`crate::unit_ai::world_view::UnitView::helper_free`]):
 /// its reach to the attacker (`FUN_14104c220` within its weapon range), its own
 /// `bestUnitToAttack` (`FUN_140c44680` from its place) and its `AttackObject` (slot 0xb8, any)
 /// on the nearer of that and the attacker, which run as the helper's, are not modelled.
