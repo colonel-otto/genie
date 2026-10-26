@@ -24,8 +24,8 @@
       "function": "Attack::update",
       "line": 63,
       "cyclomatic": 61.0,
-      "coverage": 64.91228070175438,
-      "crap": 221.74041675441293,
+      "coverage": 72.80701754385966,
+      "crap": 135.82215243016742,
       "crate": "genie-core"
     },
     {
@@ -218,15 +218,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/gathering/drop_off.rs",
-      "function": "Unit::gather_after_drop",
-      "line": 24,
-      "cyclomatic": 39.0,
-      "coverage": 0.0,
-      "crap": 1560.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/gathering/drop_sites.rs",
       "function": "drop_site_search",
       "line": 51,
@@ -245,66 +236,12 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/gathering/gather/unit.rs",
-      "function": "Unit::build_drop_off",
-      "line": 23,
-      "cyclomatic": 15.0,
-      "coverage": 0.0,
-      "crap": 240.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gathering/gather/unit.rs",
-      "function": "Unit::gather_update",
-      "line": 122,
-      "cyclomatic": 52.0,
-      "coverage": 0.0,
-      "crap": 2756.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gathering/gather/update.rs",
-      "function": "GatherAction::update",
-      "line": 61,
-      "cyclomatic": 41.0,
-      "coverage": 49.152542372881356,
-      "crap": 261.9914353463596,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gathering/hunt/unit.rs",
-      "function": "Unit::hunt_after_drop",
-      "line": 154,
-      "cyclomatic": 54.0,
-      "coverage": 19.58041958041958,
-      "crap": 1570.6065535032228,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/gathering/hunt/update.rs",
-      "function": "HuntAction::update",
-      "line": 20,
-      "cyclomatic": 56.0,
-      "coverage": 20.51282051282051,
-      "crap": 1630.9519715436877,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/groups/steer/detour.rs",
-      "function": "World::round_to_place",
-      "line": 248,
-      "cyclomatic": 10.0,
-      "coverage": 0.0,
-      "crap": 110.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/map/spatial/search.rs",
       "function": "Spatial::closest_object",
       "line": 349,
       "cyclomatic": 49.0,
-      "coverage": 52.0,
-      "crap": 314.531392,
+      "coverage": 56.00000000000001,
+      "crap": 253.52678399999994,
       "crate": "genie-core"
     },
     {
@@ -384,8 +321,8 @@
       "function": "Unit::update",
       "line": 13,
       "cyclomatic": 43.0,
-      "coverage": 87.12871287128714,
-      "crap": 46.94278274018951,
+      "coverage": 88.11881188118812,
+      "crap": 46.101105405119476,
       "crate": "genie-core"
     },
     {
@@ -618,8 +555,8 @@
       "function": "find_task",
       "line": 397,
       "cyclomatic": 91.0,
-      "coverage": 81.67539267015707,
-      "crap": 141.9550011761125,
+      "coverage": 83.7696335078534,
+      "crap": 126.40525807667794,
       "crate": "genie-core"
     },
     {

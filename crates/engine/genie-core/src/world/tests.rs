@@ -10676,3 +10676,462 @@ fn a_queued_unit_goes_to_the_least_loaded_building_with_room() {
     assert_eq!(least_loaded(&[0, 0], &[3.0, 1.0], None), None);
     assert_eq!(least_loaded(&[], &[], None), None);
 }
+
+/// [`forage_world`]'s forager on bush 600 (the unit AI's gather command), its last move at its
+/// place, the load's mesh built.
+fn foraging() -> World {
+    let mut t = forage_world();
+    t.players[1].objects[0].mover.as_mut().unwrap().moved_at = [29.5, 89.5, 0.0];
+    t.gather_command(1, 0, 600).unwrap();
+    t.build_mesh();
+    t
+}
+
+/// `n` of the forager's whole updates (50 ms each), up to the first after which `stop` holds.
+fn forage_until(t: &mut World, n: usize, stop: impl Fn(&World) -> bool) {
+    for _ in 0..n {
+        let _ = in_update(t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
+        if stop(t) {
+            return;
+        }
+    }
+}
+
+/// The forager's Gather, as its update runs it (`0x140a8e1d0`): it walks to its bush (state 4),
+/// arrives (6) and works (7) until it holds its master's capacity of 10 berries; then it carries
+/// them to its town centre (8, the centre its second target), whose drop gives the player 10
+/// food, and walks back to the bush (4), arrives and works again.
+#[test]
+fn a_forager_fills_up_carries_its_berries_home_and_comes_back() {
+    let mut t = foraging();
+    let mut states = vec![4];
+    for _ in 0..1200 {
+        forage_until(&mut t, 1, |_| false);
+        let v = &t.players[1].objects[0];
+        let g = v.gather.unwrap();
+        if states.last() != Some(&g.state) {
+            states.push(g.state);
+            if g.state == crate::gathering::gather::DROP {
+                assert_eq!((v.life.attribute_type, v.life.amount), (17, 10.0));
+                assert_eq!((g.target, g.carry_to), (600, 700));
+            }
+        }
+    }
+    assert_eq!(states, [4, 6, 7, 8, 4, 6, 7]);
+    assert_eq!(t.players[1].resources[0], 10.0);
+    let g = t.players[1].objects[0].gather.unwrap();
+    assert_eq!((g.target, g.carry_to), (600, -1));
+}
+
+/// A bush that dies under its forager (past state 6) is let go (its worker leaves) and the
+/// Gather searches (state 3): the unit AI hears 0x202 with the gather action and the target
+/// type 7.
+#[test]
+fn a_forager_whose_bush_dies_lets_it_go_and_asks_for_a_search() {
+    let mut t = foraging();
+    let working = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) == Some(7);
+    forage_until(&mut t, 200, working);
+    assert_eq!(t.players[0].objects[0].workers, 1);
+    t.players[0].objects[0].life.state = 7;
+    forage_until(&mut t, 1, |_| false);
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.gather.map(|g| (g.state, g.target)), Some((3, -1)));
+    assert_eq!(t.players[0].objects[0].workers, 0);
+    let heard: Vec<_> =
+        v.ai.as_ref()
+            .unwrap()
+            .notifies
+            .iter()
+            .map(|n| (n.kind, n.p[0], n.p[1]))
+            .collect();
+    assert_eq!(
+        heard,
+        [(
+            crate::unit_ai::REQUIRES_SEARCH,
+            crate::unit_ai::GATHER_ACTION,
+            7
+        )]
+    );
+}
+
+/// A forager whose bush went while it carried its load drops the load (the player's food) and,
+/// without a target, takes the nearest bush its unit AI's search finds (`ClosestResourceObject`
+/// of the Gather's target type's group, 1 for bushes, within its sight plus 5: bush 601 beside
+/// the centre, state 4); with none it walks back to where it worked to search again (state 11).
+#[test]
+fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
+    let carrying = |near: bool| {
+        let mut t = foraging();
+        for masters in &mut t.masters {
+            let bush = masters.get_mut(59).unwrap();
+            (bush.auto_gather, bush.gather_group) = (true, 1);
+            masters.get_mut(120).unwrap().line_of_sight = 4.0;
+        }
+        t.players[1].objects[0].ai.as_mut().unwrap().target_type = -1;
+        if near {
+            t.players[0].objects[1].position = [25.5, 89.5, 0.0];
+            let p = *t.spatial.get(601).unwrap();
+            t.spatial.insert(
+                601,
+                Placed {
+                    position: [25.5, 89.5, 0.0],
+                    ..p
+                },
+            );
+        }
+        let carries = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) == Some(8);
+        forage_until(&mut t, 800, carries);
+        let _ = t.players[0].objects.remove(0);
+        t.spatial.remove(600);
+        let dropped = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) != Some(8);
+        forage_until(&mut t, 400, dropped);
+        assert_eq!(t.players[1].resources[0], 10.0);
+        t.players[1].objects[0].gather.map(|g| (g.state, g.target))
+    };
+    assert_eq!(carrying(true), Some((4, 601)));
+    assert_eq!(carrying(false), Some((11, -1)));
+}
+
+/// [`foraging`] up to the forager's drop at its town centre without a target (bush 600 gone
+/// on the way, `setup` run before), after which the Gather's state follows.
+fn dropped_without_a_bush(setup: impl FnOnce(&mut World)) -> World {
+    let mut t = foraging();
+    let carries = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) == Some(8);
+    forage_until(&mut t, 800, carries);
+    let _ = t.players[0].objects.remove(0);
+    t.spatial.remove(600);
+    setup(&mut t);
+    let dropped = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) != Some(8);
+    forage_until(&mut t, 400, dropped);
+    assert_eq!(t.players[1].resources[0], 10.0);
+    t
+}
+
+/// After the drop without a target and nothing found: a Gather without its point idles for a
+/// human player (state 2, its targets and point cleared, the centre let go) and is done for a
+/// computer player; with orders queued (on a target the world holds) the unit AI ends its
+/// order and the Gather is done. An order on a target gone leaves the queue first.
+#[test]
+fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
+    let pointless = |t: &mut World| {
+        t.players[1].objects[0].gather.as_mut().unwrap().point = [-1.0; 3];
+    };
+    let t = dropped_without_a_bush(pointless);
+    let g = t.players[1].objects[0].gather.unwrap();
+    assert_eq!(
+        (g.state, g.target, g.carry_to, g.point),
+        (2, -1, -1, [-1.0; 3])
+    );
+    assert_eq!(t.players[1].objects[1].workers, 0);
+    let t = dropped_without_a_bush(|t| {
+        pointless(t);
+        t.players[1].computer = true;
+    });
+    assert!(t.players[1].objects[0].gather.is_none());
+    let order = |target| crate::unit_ai::QueuedOrder {
+        issuer: 1,
+        order: 0x2c5,
+        priority: 100,
+        target,
+        target_owner: 0,
+        point: [36.5, 89.5, 0.0],
+        range: 0.0,
+        shown: [36.5, 89.5],
+        ready: true,
+        target_type: 7,
+    };
+    // the Gather's state 8 after the deposit, its bush gone, two orders queued
+    let mut t = foraging();
+    let _ = t.players[0].objects.remove(0);
+    t.spatial.remove(600);
+    let v = &mut t.players[1].objects[0];
+    v.gather.as_mut().unwrap().target = -1;
+    v.ai.as_mut().unwrap().orders = vec![order(600), order(601)];
+    in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        unit.gather_after_drop(c, others)
+    })
+    .unwrap();
+    let v = &t.players[1].objects[0];
+    assert!(v.gather.is_none());
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        ai.orders.iter().map(|o| o.target).collect::<Vec<_>>(),
+        [601]
+    );
+    assert_eq!((ai.current_order, ai.current_action), (-1, -1));
+}
+
+/// The forager's Gather update alone (`gather_update`, 50 ms).
+fn gather_step(t: &mut World) -> Result<(), GenieError> {
+    in_update(t, (1, 0), 50, |unit, c, others| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        unit.gather_update(c, others, me)
+    })
+}
+
+/// What follows the Gather's update ([`Unit::gather_next`]) for the forager on bush 600 with
+/// its town centre 700: the end lets both go and removes the Gather; a target the update changed
+/// lets the old one go; a build command asks for the Gather's target to be built after the update
+/// (a second in one update is not modelled); the reseed after the walk back to the farm, whether
+/// it arrived.
+#[test]
+fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
+    use crate::gathering::gather::Next;
+    type Followed = (Result<(), GenieError>, Vec<i32>, Option<i32>, Option<bool>);
+    let follow = |next: Next, old: (i32, i32), built: Option<i32>| -> (World, Followed) {
+        let mut t = foraging();
+        t.players[1].objects[0].gather.as_mut().unwrap().carry_to = 700;
+        let seen = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+            let by = unit.releaser(c);
+            c.build_command = built;
+            let r = unit.gather_next(c, others, next, old, by);
+            let released = c.releases.drain(..).map(|(id, _)| id).collect();
+            Ok((r, released, c.build_command.take(), c.reseed.take()))
+        })
+        .unwrap();
+        (t, seen)
+    };
+    let (t, seen) = follow(Next::Done, (600, 700), None);
+    assert_eq!(seen, (Ok(()), vec![600, 700], None, None));
+    assert!(t.players[1].objects[0].gather.is_none());
+    let (t, seen) = follow(Next::Stay, (601, -1), None);
+    assert_eq!(seen, (Ok(()), vec![601], None, None));
+    assert!(t.players[1].objects[0].gather.is_some());
+    let (_, seen) = follow(Next::Stay, (600, 702), None);
+    assert_eq!(seen, (Ok(()), vec![702], None, None));
+    let (_, seen) = follow(Next::Build, (600, 700), None);
+    assert_eq!(seen, (Ok(()), vec![], Some(600), None));
+    let (_, (r, ..)) = follow(Next::Build, (600, 700), Some(5));
+    assert_eq!(r.unwrap_err().reason(), "two build commands in one update");
+    let (_, seen) = follow(Next::Reseed { arrived: true }, (600, 700), None);
+    assert_eq!(seen, (Ok(()), vec![], None, Some(true)));
+}
+
+/// The Gather's other states (`0x140a8e1d0`): done, it goes and lets its bush go; the search's
+/// wait (case 2) at its end asks the unit AI again (0x202) and waits 10 seconds more; the wait
+/// after a failed walk (case 3) at its end walks back to the Gather's point to search there
+/// (state 11).
+#[test]
+fn the_gather_s_update_ends_asks_again_and_walks_back() {
+    use crate::gathering::gather::{DONE, SEARCH, WALK, WALK_BACK};
+    let set = |state, timer| {
+        let mut t = foraging();
+        let g = t.players[1].objects[0].gather.as_mut().unwrap();
+        (g.state, g.timer) = (state, timer);
+        t
+    };
+    let mut t = set(DONE, 0.0);
+    assert_eq!(t.players[0].objects[0].workers, 1);
+    gather_step(&mut t).unwrap();
+    assert!(t.players[1].objects[0].gather.is_none());
+    assert_eq!(t.players[0].objects[0].workers, 0);
+    let mut t = set(SEARCH, -0.02);
+    gather_step(&mut t).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.gather.map(|g| g.timer), Some(-10.0));
+    let heard: Vec<i32> =
+        v.ai.as_ref()
+            .unwrap()
+            .notifies
+            .iter()
+            .map(|n| n.kind)
+            .collect();
+    assert_eq!(heard, [crate::unit_ai::REQUIRES_SEARCH]);
+    let mut t = set(SEARCH, -0.2);
+    gather_step(&mut t).unwrap();
+    assert!((t.players[1].objects[0].gather.unwrap().timer + 0.15).abs() < 1e-6);
+    let mut t = set(WALK, -0.02);
+    gather_step(&mut t).unwrap();
+    assert_eq!(
+        t.players[1].objects[0].gather.map(|g| g.state),
+        Some(WALK_BACK)
+    );
+}
+
+/// The Build's drop-off (`set_state(8)` from its search, [`Unit::build_drop_off`]) of the
+/// villager building foundation 10028 while it carries `held`, its town centre a done drop site
+/// of the table (resources 0 to 3 and berries): Ok with the Build's state, its site and range,
+/// the centre's workers and what the unit AI heard.
+fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
+    let mut t = forage_world();
+    let p = *t.spatial.get(700).unwrap();
+    let site = Placed {
+        position: [30.0, 88.0, 0.0],
+        radius: [1.0, 1.0],
+        class: 80,
+        master: 70,
+        ..p
+    };
+    t.spatial.insert(10028, site);
+    let _ = t.build_command(1, 0, 10028).unwrap();
+    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 109);
+    t.players[1].tracker.add(700, k);
+    t.players[1].tracker.complete(700, k);
+    t.drop_sites[0].resource_types = vec![0, 1, 2, 3];
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = held;
+    in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        unit.build_drop_off(c, others, me)
+    })
+    .unwrap();
+    let v = &t.players[1].objects[0];
+    let b = v.build.unwrap();
+    let heard =
+        v.ai.as_ref()
+            .unwrap()
+            .notifies
+            .iter()
+            .map(|n| n.kind)
+            .collect();
+    (
+        b.state,
+        b.site,
+        b.drop_range,
+        t.players[1].objects[2].workers,
+        heard,
+    )
+}
+
+/// The Build's drop-off: a load the table's town centre takes makes it the Build's site (taken,
+/// one worker) with the range of the task it gives (the forager's Gather on berries, 0.25; none
+/// for stone: the Build task's, 0); an empty builder walks back to its foundation (state 4); a
+/// load no drop site takes leaves no site and tells the unit AI (0x203).
+#[test]
+fn a_loaded_builder_s_drop_off_finds_its_town_centre() {
+    use crate::construction::build::DROP;
+    assert_eq!(build_drop_off_with((17, 6.0)), (DROP, 700, 0.25, 1, vec![]));
+    assert_eq!(build_drop_off_with((2, 6.0)), (DROP, 700, 0.0, 1, vec![]));
+    assert_eq!(build_drop_off_with((-1, 0.0)), (4, -1, 0.0, 0, vec![]));
+    assert_eq!(
+        build_drop_off_with((5, 6.0)),
+        (4, -1, 0.0, 0, vec![crate::unit_ai::NO_DROP_SITE])
+    );
+}
+
+/// A hunter back from its drop-off without a deer (`hunt.target` -1, the deer it hunted let
+/// go): both deer seen by player 1, the hunter with a sight of 4, the mesh built. `setup` changes
+/// the hunter before [`Unit::hunt_after_drop`] runs.
+fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
+    let mut t = hunt_world();
+    t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
+    t.spatial.unit_diplomacy = vec![vec![1, 4], vec![4, 1]];
+    for masters in &mut t.masters {
+        let m = masters.get_mut(122).unwrap();
+        (m.line_of_sight, m.search_radius) = (4.0, 4.0);
+    }
+    t.hunt_command(1, 0, 500).unwrap();
+    t.build_mesh();
+    let mut r = crate::vision::registry::Registry::new(2, 65);
+    for (id, x) in [(500, 32.5), (501, 36.5)] {
+        r.entries.entry(id).or_default().mask = 1 << 1;
+        r.update_unit(id, 0, [x, 89.5], [0.2, 0.2], 9, 0, 1 << 1)
+            .unwrap();
+    }
+    let sight = t.spatial.sight.as_mut().unwrap();
+    sight.registry = Some(r);
+    for id in [500, 501] {
+        let deer = Seer {
+            player: 0,
+            master: 65,
+            los: 2.0,
+            state: 2,
+            explored: false,
+            building: None,
+            umv: 0,
+            capture: 0,
+            kind: 70,
+        };
+        sight.add_seer(id, deer);
+    }
+    t.players[0].objects[0].workers = 0;
+    let v = &mut t.players[1].objects[0];
+    let at = v.position;
+    v.mover.as_mut().unwrap().moved_at = at;
+    v.hunt.as_mut().unwrap().target = -1;
+    v.ai.as_mut().unwrap().target_type = -1;
+    setup(v);
+    in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        unit.hunt_after_drop(c, others)
+    })
+    .unwrap();
+    t
+}
+
+/// The hunt's state, target and drop site after [`hunted_without_a_deer`], and the two deer's
+/// workers.
+fn hunt_after(t: &World) -> (Option<(u8, i32, i32)>, [i32; 2]) {
+    let h = t.players[1].objects[0].hunt;
+    let deer = &t.players[0].objects;
+    (
+        h.map(|h| (h.state, h.target, h.carry_to)),
+        [deer[0].workers, deer[1].workers],
+    )
+}
+
+/// Without a deer after the drop the hunter's `ClosestObject` over its search (class 9, every
+/// relation) finds the nearer deer, which the hunt takes and attacks (`FUN_140ac7a00`,
+/// `LAB_140ac9509`'s other way).
+#[test]
+fn a_hunter_without_its_deer_after_the_drop_takes_the_closest_one() {
+    let t = hunted_without_a_deer(|_| ());
+    assert_eq!(
+        hunt_after(&t),
+        (Some((crate::gathering::hunt::ATTACK, 500, -1)), [1, 0])
+    );
+}
+
+/// A queued order on a target the world still holds ends the hunt after the drop, so the unit AI
+/// runs it; one on a target gone leaves the queue (`FUN_140c5de60`) and the search runs.
+#[test]
+fn a_hunter_with_a_queued_order_after_the_drop_ends_its_hunt() {
+    let order = |target: i32| crate::unit_ai::QueuedOrder {
+        issuer: 1,
+        order: 0x2c9,
+        priority: 100,
+        target,
+        target_owner: 0,
+        point: [36.5, 89.5, 0.0],
+        range: 0.0,
+        shown: [36.5, 89.5],
+        ready: true,
+        target_type: 9,
+    };
+    let held = hunted_without_a_deer(|v| v.ai.as_mut().unwrap().orders = vec![order(501)]);
+    assert_eq!(hunt_after(&held), (None, [0, 0]));
+    let gone = hunted_without_a_deer(|v| v.ai.as_mut().unwrap().orders = vec![order(999)]);
+    assert_eq!(
+        gone.players[1].objects[0].ai.as_ref().unwrap().orders.len(),
+        0
+    );
+    assert_eq!(
+        hunt_after(&gone),
+        (Some((crate::gathering::hunt::ATTACK, 500, -1)), [1, 0])
+    );
+}
+
+/// A hunt of class 10 searches nothing after the drop, and a wood search finds no tree: either
+/// walks back to its point to search again (`set_state(11)`).
+#[test]
+fn a_hunter_that_finds_nothing_after_the_drop_walks_to_its_point() {
+    for class in [10, 15] {
+        let t = hunted_without_a_deer(|v| v.hunt.as_mut().unwrap().target_class = class);
+        assert_eq!(
+            hunt_after(&t),
+            (Some((crate::gathering::hunt::WALK_SEARCH, -1, -1)), [0, 0]),
+            "class {class}"
+        );
+        let h = t.players[1].objects[0].hunt.unwrap();
+        assert_eq!(h.point, [32.5, 89.5, 0.0]);
+    }
+}

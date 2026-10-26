@@ -156,72 +156,100 @@ impl Unit {
         c: &mut Context<'_>,
         others: &mut [Self],
     ) -> Result<(), GenieError> {
+        let _ = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::world::HUNTER_MASTER)?;
+        if self.hunt.as_ref().expect("the caller's hunt").target != -1 {
+            return self.hunt_back_to_target(c);
+        }
+        if self.hunt_drop_orders(c)? {
+            return Ok(());
+        }
+        let (found, kind) = self.hunt_next_search(c, others)?;
+        if found == -1 {
+            return self.hunt_found_nothing(c, kind);
+        }
+        self.hunt_take_found(c, others, found)
+    }
+
+    /// [`Unit::hunt_after_drop`] with a target: the drop site goes (`FUN_140a7a190` with none)
+    /// and the hunt walks back to it (`set_state(4)`, [`crate::gathering::hunt::HuntAction::chase`]
+    /// with the hunter's engagement and arms). A chase that starts arrived, or fails, is not
+    /// modelled.
+    fn hunt_back_to_target(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let hunt = self.hunt.as_ref().expect("the caller's hunt");
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::HUNTER_MASTER)?;
-        if hunt.target != -1 {
-            // back to the target: the drop site goes (FUN_140a7a190 with none), set_state(4)
-            let v = c.victim.as_deref().ok_or(GenieError::unsupported(
-                "a hunt's target the slice does not hold live",
-            ))?;
-            let quarry = crate::gathering::hunt::Quarry {
-                id: v.id,
-                position: v.position,
-                class: v.class,
-                kind: v.kind,
-                state: v.state,
-                player: v.player,
-                amount: v.amount,
-                allied: v.allied[0],
-                top_action: None,
-                drop_site: false,
-            };
-            let (me_at, them) = (
-                c.spatial
-                    .get_known(self.id)?
-                    .ok_or(GenieError::unsupported("a hunter without a place"))?,
-                c.spatial
-                    .get_known(v.id)?
-                    .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
-            );
-            let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
-            let engagement = crate::combat::attack::engagement(
-                self.ai.as_ref(),
-                speed,
-                master,
-                me_at,
-                them,
-                c.world_time,
-            )?;
-            let moving = hunt
-                .task
-                .walk_sprite_id(self.life.attribute_type, self.life.amount);
-            let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
-            let hunt = self.hunt.as_mut().expect("the caller's hunt");
-            let site = std::mem::replace(&mut hunt.carry_to, -1);
-            let by = self.releaser(c);
-            if site != -1 {
-                c.releases.push((site, by));
-            }
-            let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
-                return Err(GenieError::unsupported(
-                    "a hunter without its hunt or movement state",
-                ));
-            };
-            if hunt.chase(&quarry, c.player, &engagement, arms, mover)? {
-                return Err(GenieError::unsupported(
-                    "a hunt's Attack whose MoveTo starts arrived after its drop-off",
-                ));
-            }
-            if hunt.state == crate::gathering::hunt::FAILED {
-                return Err(GenieError::unsupported(
-                    "a hunt failing on its target after its drop-off",
-                ));
-            }
-            return Ok(());
+        let v = c.victim.as_deref().ok_or(GenieError::unsupported(
+            "a hunt's target the slice does not hold live",
+        ))?;
+        let quarry = crate::gathering::hunt::Quarry {
+            id: v.id,
+            position: v.position,
+            class: v.class,
+            kind: v.kind,
+            state: v.state,
+            player: v.player,
+            amount: v.amount,
+            allied: v.allied[0],
+            top_action: None,
+            drop_site: false,
+        };
+        let (me_at, them) = (
+            c.spatial
+                .get_known(self.id)?
+                .ok_or(GenieError::unsupported("a hunter without a place"))?,
+            c.spatial
+                .get_known(v.id)?
+                .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
+        );
+        let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let engagement = crate::combat::attack::engagement(
+            self.ai.as_ref(),
+            speed,
+            master,
+            me_at,
+            them,
+            c.world_time,
+        )?;
+        let moving = hunt
+            .task
+            .walk_sprite_id(self.life.attribute_type, self.life.amount);
+        let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
+        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let site = std::mem::replace(&mut hunt.carry_to, -1);
+        let by = self.releaser(c);
+        if site != -1 {
+            c.releases.push((site, by));
         }
+        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+            return Err(GenieError::unsupported(
+                "a hunter without its hunt or movement state",
+            ));
+        };
+        if hunt.chase(&quarry, c.player, &engagement, arms, mover)? {
+            return Err(GenieError::unsupported(
+                "a hunt's Attack whose MoveTo starts arrived after its drop-off",
+            ));
+        }
+        if hunt.state == crate::gathering::hunt::FAILED {
+            return Err(GenieError::unsupported(
+                "a hunt failing on its target after its drop-off",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The unit AI's queued orders after the drop: the orders (gather, hunt, on a target) whose
+    /// target is gone (the world does not hold it, or its sight sees it past state 5) leave
+    /// (`FUN_140c5de60`); with orders left the AI's order and action clear (`FUN_140c64b60`,
+    /// `FUN_140c64b50`) and the hunt ends (`set_state(1)`; its update returns 1 and the action
+    /// list removes it, its teardown letting the drop site go): its unit AI runs the queued
+    /// order. True when it ends.
+    fn hunt_drop_orders(&mut self, c: &mut Context<'_>) -> Result<bool, GenieError> {
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
@@ -236,17 +264,31 @@ impl Unit {
         };
         ai.orders
             .retain(|o| !(matches!(o.order, 0x2c5 | 0x2c9 | 0x2db) && gone(o.target)));
-        if !ai.orders.is_empty() {
-            // the AI's order and action clear (FUN_140c64b60, FUN_140c64b50), the hunt ends
-            // (set_state 1; its update returns 1 and the action list removes it): its unit AI
-            // runs the queued order
-            ai.end_order_and_action()?;
-            let mut hunt = self.hunt.take().expect("the caller's hunt");
-            hunt.tear_down(self.mover.as_mut())?;
-            // the base teardown lets the drop site go (its target is none by now)
-            self.hunt_release(c, [hunt.target, hunt.carry_to]);
-            return Ok(());
+        if ai.orders.is_empty() {
+            return Ok(false);
         }
+        ai.end_order_and_action()?;
+        let mut hunt = self.hunt.take().expect("the caller's hunt");
+        hunt.tear_down(self.mover.as_mut())?;
+        self.hunt_release(c, [hunt.target, hunt.carry_to]);
+        Ok(true)
+    }
+
+    /// The search after the drop by the target class (the AI's target's, else the hunt's
+    /// `+0x68`) the civilian's slot 0x1b0 knows (`FUN_140c1c4f0`): of a kind, the unit AI's
+    /// `ClosestResourceObject` (slot 0x80, at most 2 workers for wood, no drop site, state 2, no
+    /// point; the probe of 4533's call); a hunt of class 10 searches nothing; any other class
+    /// `ClosestObject` ([`Unit::hunt_closest_object`]). The object found (-1 for none) and the
+    /// kind.
+    fn hunt_next_search(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+    ) -> Result<(i32, i8), GenieError> {
+        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let ai = self.ai.as_ref().ok_or(GenieError::unsupported(
+            "a hunt without a unit AI after its drop-off",
+        ))?;
         let class = if ai.target_type == -1 {
             i32::from(hunt.target_class)
         } else {
@@ -259,104 +301,144 @@ impl Unit {
         }
         let kind = crate::unit_ai::civilian_kind(class);
         let found = if kind == -1 && hunt.target_class == 10 {
-            // a hunt of class 10 searches nothing
             -1
         } else if kind == -1 {
-            if self.my_pasture != -1 {
-                return Err(GenieError::unsupported(
-                    "a hunter tending a pasture (FUN_1411c7670)",
-                ));
-            }
-            let mover = self.mover.as_ref().ok_or(crate::world::HUNTER_UNMOVING)?;
-            let radius =
-                crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
-            let search = Search {
-                at: [self.position[0], self.position[1]],
-                radius,
-                classes: &crate::unit_ai::CIVILIAN_CARED,
-                size: master.radius,
-                pick: crate::unit_ai::Pick::Closest {
-                    group: class,
-                    relation: -1,
-                    state: -1,
-                    master: -1,
-                    workers: if class == 49 { 1 } else { -1 },
-                    spared: -1,
-                    reach: true,
-                },
-                memory: crate::unit_ai::Memory::default(),
-            };
-            let me = Me {
-                id: self.id,
-                position: self.position,
-                group: self.group.id,
-                action_state: hunt.state,
-            };
-            let mut plan = Planning {
-                pathing: c.pathing,
-                now: c.world_time,
-                computer: c.computer,
-                object: c.streams.get(Stream::Object),
-                construction_rate: c.construction_rate,
-                groups: c.groups,
-            };
-            let master_id = self.life.master_id;
-            let mut reach = |id: i32, range: f32| {
-                mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
-            };
-            let mut no_attack = crate::unit_ai::NoAttack;
-            let foreign = c.foreign;
-            let moving = |id: i32| herded(others, foreign, id);
-            let shuns = |_: &Placed| -> Result<bool, GenieError> {
-                Err(GenieError::unsupported(
-                    "a class-10 searcher in a hunt's search",
-                ))
-            };
-            let farm = |id: i32| {
-                others
-                    .iter()
-                    .find(|u| u.id == id)
-                    .or_else(|| foreign.find(id).map(|(_, u)| u))
-                    .map(|u| (u.workers, u.pasture))
-            };
-            let result = spatial.search(
-                self.id,
-                c.player,
-                &search,
-                &mut no_attack,
-                &mut reach,
-                &moving,
-                &shuns,
-                &farm,
-            )?;
-            // FUN_140c63e20's alert: enemies found set the alert mode and its time again
-            ai.alert(result, c.dt_seconds);
-            result.id
+            self.hunt_closest_object(c, others, class)?
         } else {
-            // the unit AI's ClosestResourceObject (slot 0x80) of the kind, at most 2 workers for
-            // wood, no drop site, state 2, no point (the probe of 4533's call)
             let cap = if kind == 0 { 2 } else { -1 };
             self.resource_search(c, others, kind as u8, cap)?
         };
-        if found == -1 {
-            // LAB_140ac9509 with nothing found: a computer player's hunt of a kind but wood
-            // would end (set_state 1); one with its point walks there to search again
-            // (set_state 11, its second target kept); without a point it would wait
-            // (set_state 2)
-            if c.computer && kind != 0 {
-                return Err(GenieError::unsupported(
-                    "a computer player's hunt that found nothing after its drop-off (set_state 1)",
-                ));
-            }
-            let hunt = self.hunt.as_mut().expect("the caller's hunt");
-            if hunt.point[0] == -1.0 || hunt.point[1] == -1.0 {
-                return Err(GenieError::unsupported(
-                    "a hunt without a point that found nothing after its drop-off (set_state 2)",
-                ));
-            }
-            let mover = self.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
-            return hunt.search_walk(mover);
+        Ok((found, kind))
+    }
+
+    /// `ClosestObject` (`FUN_140c488b0`) after the drop for a class of no kind: every relation,
+    /// below one worker for class 49, reached, over the unit AI's search (`FUN_140c63e20`: its
+    /// sight plus a tile, at least its search radius, plus the civilian's growth); its alert
+    /// follows the enemies found. A unit in a pasture (`FUN_1411c7670`) and a class-10 searcher
+    /// are not modelled. The object found, -1 for none.
+    fn hunt_closest_object(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &[Self],
+        class: i32,
+    ) -> Result<i32, GenieError> {
+        if self.my_pasture != -1 {
+            return Err(GenieError::unsupported(
+                "a hunter tending a pasture (FUN_1411c7670)",
+            ));
         }
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::world::HUNTER_MASTER)?;
+        let mover = self.mover.as_ref().ok_or(crate::world::HUNTER_UNMOVING)?;
+        let radius =
+            crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
+        let search = Search {
+            at: [self.position[0], self.position[1]],
+            radius,
+            classes: &crate::unit_ai::CIVILIAN_CARED,
+            size: master.radius,
+            pick: crate::unit_ai::Pick::Closest {
+                group: class,
+                relation: -1,
+                state: -1,
+                master: -1,
+                workers: if class == 49 { 1 } else { -1 },
+                spared: -1,
+                reach: true,
+            },
+            memory: crate::unit_ai::Memory::default(),
+        };
+        let me = Me {
+            id: self.id,
+            position: self.position,
+            group: self.group.id,
+            action_state: self.hunt.as_ref().expect("the caller's hunt").state,
+        };
+        let spatial: &Spatial = c.spatial;
+        let mut plan = Planning {
+            pathing: c.pathing,
+            now: c.world_time,
+            computer: c.computer,
+            object: c.streams.get(Stream::Object),
+            construction_rate: c.construction_rate,
+            groups: c.groups,
+        };
+        let master_id = self.life.master_id;
+        let mut reach = |id: i32, range: f32| {
+            mover.reaches_object(&me, spatial, &mut plan, id, range, master_id)
+        };
+        let mut no_attack = crate::unit_ai::NoAttack;
+        let foreign = c.foreign;
+        let moving = |id: i32| herded(others, foreign, id);
+        let shuns = |_: &Placed| -> Result<bool, GenieError> {
+            Err(GenieError::unsupported(
+                "a class-10 searcher in a hunt's search",
+            ))
+        };
+        let farm = |id: i32| {
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .or_else(|| foreign.find(id).map(|(_, u)| u))
+                .map(|u| (u.workers, u.pasture))
+        };
+        let result = spatial.search(
+            self.id,
+            c.player,
+            &search,
+            &mut no_attack,
+            &mut reach,
+            &moving,
+            &shuns,
+            &farm,
+        )?;
+        // FUN_140c63e20's alert: enemies found set the alert mode and its time again
+        let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
+            "a hunt without a unit AI after its drop-off",
+        ))?;
+        ai.alert(result, c.dt_seconds);
+        Ok(result.id)
+    }
+
+    /// Nothing found after the drop (`LAB_140ac9509`): a computer player's hunt of a kind but
+    /// wood would end (`set_state(1)`), not modelled; a hunt with its point walks there to search
+    /// again (`set_state(11)`, its second target kept,
+    /// [`crate::gathering::hunt::HuntAction::search_walk`]); one without would wait
+    /// (`set_state(2)`), not modelled.
+    fn hunt_found_nothing(&mut self, c: &Context<'_>, kind: i8) -> Result<(), GenieError> {
+        if c.computer && kind != 0 {
+            return Err(GenieError::unsupported(
+                "a computer player's hunt that found nothing after its drop-off (set_state 1)",
+            ));
+        }
+        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        if hunt.point[0] == -1.0 || hunt.point[1] == -1.0 {
+            return Err(GenieError::unsupported(
+                "a hunt without a point that found nothing after its drop-off (set_state 2)",
+            ));
+        }
+        let mover = self.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
+        hunt.search_walk(mover)
+    }
+
+    /// The object `found` becomes the hunt's target (slot 0x48,
+    /// [`crate::gathering::hunt::HuntAction::retarget`] with the hunter's engagement and arms,
+    /// the arrived sprite when it starts there), which takes it (its workers count one more; one
+    /// of its own player's directly, never listed). A farm found is not modelled. A hunt that
+    /// fails at once takes the standing sprite (slot 0x68 with `FUN_140ac5210`'s: the unit
+    /// carries nothing now).
+    fn hunt_take_found(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+        found: i32,
+    ) -> Result<(), GenieError> {
+        let master = c
+            .masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::world::HUNTER_MASTER)?;
         let foreign = c.foreign;
         let (owner, t) = match others.iter().find(|u| u.id == found) {
             Some(t) => (c.player, t),
@@ -453,12 +535,27 @@ impl Unit {
                 c.takes.push((found, by));
             }
         }
-        if hunt.state == crate::gathering::hunt::FAILED
-            && let Some(m) = self.mover.as_mut()
-        {
+        self.hunt_failed_sprite(c)
+    }
+
+    /// A hunt that failed at once after its retarget: the unit shows standing, and a unit with
+    /// a sprite takes its master's standing sprite (none in the data file is not modelled).
+    fn hunt_failed_sprite(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        let failed = self
+            .hunt
+            .as_ref()
+            .is_some_and(|h| h.state == crate::gathering::hunt::FAILED);
+        if !failed {
+            return Ok(());
+        }
+        if let Some(m) = self.mover.as_mut() {
             m.shows_standing();
         }
-        if hunt.state == crate::gathering::hunt::FAILED && self.sprite.is_some() {
+        if self.sprite.is_some() {
+            let master = c
+                .masters
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(crate::world::HUNTER_MASTER)?;
             let standing =
                 c.graphics
                     .get(&master.standing_sprite)

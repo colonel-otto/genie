@@ -583,3 +583,39 @@ fn a_way_round_that_ends_farther_than_the_gap_falls_short() {
     assert!(ends_farther(&Path::default(), [3.0, 0.0, 4.0], 4.9));
     assert!(!ends_farther(&Path::default(), [3.0, 0.0, 4.0], 5.0));
 }
+
+/// The way round's third try: records on the slot and on the step toward it, the member's way
+/// goes to the group's place (5, 8) by the short pather. That place lies farther from the slot
+/// than the member does: while the group stands the member stops there instead (no path, its
+/// failures cleared, the slot in state 3); while it moves the member walks the way, its own
+/// move's goal that place.
+#[test]
+fn a_member_with_its_slot_and_step_held_goes_round_to_the_group() {
+    let run = |moving: bool| {
+        let mut t = world();
+        widen(&mut t, 1.2);
+        t.spatial.insert(50, post(10.0, 5.0));
+        t.spatial.insert(51, post(6.0, 5.0));
+        let g = t.groups.get_mut(1).unwrap();
+        g.motion.position[0] = [5.0, 0.0, 8.0];
+        if moving {
+            g.motion.velocity = [0.0, 0.0, 0.9];
+        }
+        t.steer_to_slot(1, 0, 0, &[11]).unwrap();
+        t
+    };
+    let t = run(false);
+    assert_eq!(mover(&t, 10).paths.len(), 0);
+    assert_eq!(state(&t, 0), 3);
+    let own = t.groups.get(1).unwrap().members[0].specific_move;
+    assert_eq!((own.active, own.consecutive_move_failures), (0, 0));
+    let t = run(true);
+    let m = mover(&t, 10);
+    assert_eq!(
+        m.paths[0].points.last().map(|p| [p[0], p[2]]),
+        Some([5.0, 8.0])
+    );
+    let own = t.groups.get(1).unwrap().members[0].specific_move;
+    assert_eq!((own.active, own.goal), (1, [5.0, 0.0, 8.0]));
+    assert_eq!(state(&t, 0), 0);
+}

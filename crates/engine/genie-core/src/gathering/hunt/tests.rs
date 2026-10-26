@@ -933,6 +933,197 @@ fn a_herder_slaughters_its_animal_once_it_stands_or_walks_after_it() {
     );
 }
 
+/// One update (`0x140ac7a00`) by the hunt's state: a computer player's and a state without a
+/// case are not modelled; a walk whose target went on the way walks to the point (state 11); a
+/// walk that gave up waits, then walks there; a walk under way steps on, or asks again once its
+/// target left the `MoveTo`'s point; a lead and a face on nothing search; a gather without a
+/// target carries its load off (full) or searches.
+#[test]
+fn a_hunt_s_update_runs_the_step_of_its_state() {
+    use crate::movement::tests::WalkRig;
+    let update = |h: &mut HuntAction, rig: &mut WalkRig, computer: bool, held: f32| {
+        let mut strike = crate::combat::attack::tests::Rig::new(Victim::default());
+        let (mut kind, mut held) = (0, held);
+        let mut gather = herder(&mut kind, &mut held);
+        let state = h.state;
+        let r = h.update(
+            rig.walk(state),
+            computer,
+            &mut strike.strike(),
+            &mut gather,
+            None,
+        );
+        (r, gather.searches)
+    };
+    let mut rig = WalkRig::on_the_path();
+    let reason = |r: Result<bool, crate::GenieError>| r.unwrap_err().reason();
+    let (r, _) = update(&mut hunting(10028), &mut rig, true, 0.0);
+    assert_eq!(reason(r), "a computer player's hunt (FUN_140fde4f0)");
+    let mut h = HuntAction {
+        state: 99,
+        ..hunting(10028)
+    };
+    let (r, _) = update(&mut h, &mut rig, false, 0.0);
+    assert_eq!(
+        reason(r),
+        "a Hunt action in a state the slice does not model"
+    );
+    // the target lost on the way
+    let walking = |target, timer, move_to| HuntAction {
+        state: WALK,
+        timer,
+        move_to: Some(move_to),
+        point: [35.5, 88.5, 0.0],
+        ..hunting(target)
+    };
+    let mut h = walking(-1, 0.0, MoveTo::Moving);
+    assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), false));
+    assert_eq!((h.state, h.move_to), (WALK_SEARCH, Some(MoveTo::Start)));
+    // a walk that gave up waits its time, then walks to the point
+    let mut h = walking(10028, -1.0, MoveTo::Failed);
+    assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), false));
+    assert_eq!((h.state, h.timer), (WALK, -1.0 + 0.1));
+    let mut h = walking(10028, -0.05, MoveTo::Failed);
+    assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), false));
+    assert_eq!((h.state, h.timer), (WALK_SEARCH, 0.0));
+    // a walk under way to the house at the MoveTo's point steps on; off it, it asks again
+    let mut h = walking(10028, 0.0, MoveTo::Moving);
+    assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), false));
+    assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Moving)));
+    rig.mover.move_to_point = Some([35.0, 88.0, 0.0]);
+    let mut h = walking(10028, 0.0, MoveTo::Moving);
+    assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), false));
+    assert_eq!((h.state, h.move_to), (WALK, Some(MoveTo::Start)));
+    // a lead without a target and a face on an empty target search
+    for state in [LEAD, FACE] {
+        let mut h = HuntAction {
+            state,
+            ..hunting(-1)
+        };
+        assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), true));
+        assert_eq!(h.state, SEARCH, "state {state}");
+    }
+    // a gather without a target: empty it searches, loaded it is full
+    let mut h = HuntAction {
+        target: -1,
+        ..hunting(-1)
+    };
+    assert_eq!(update(&mut h, &mut rig, false, 0.0), (Ok(false), true));
+    assert_eq!(h.state, SEARCH);
+    let mut h = hunting(-1);
+    assert_eq!(update(&mut h, &mut rig, false, 5.0), (Ok(true), false));
+    assert_eq!(h.state, GATHER);
+}
+
+/// State 12's Attack and its end (`0x140ac7a00` case 0xb): under way (code 0) the hunt stays;
+/// ended (code 1) on its target the hunt walks to it, without one it searches, and on a predator
+/// of a unit AI with orders queued under the game's setting it would end (not modelled); failed
+/// (3) it tells the caller, whose search for the next tree follows; its target inside another (4)
+/// goes and the hunt walks to its point. A hunt in state 12 without its Attack is not modelled.
+#[test]
+fn a_hunt_s_attack_ends_into_a_walk_a_search_or_its_point() {
+    use crate::combat::attack::tests::{Rig, own_attack};
+    use crate::movement::tests::WalkRig;
+    let sheep = || Victim {
+        id: 10028,
+        class: LIVESTOCK,
+        player: 1,
+        state: 2,
+        position: [30.0, 88.0, 0.0],
+        ..Victim::default()
+    };
+    let attack = |h: &mut HuntAction, state, victim, queue_empty, ends| {
+        let mut a = own_attack(10028, state, 1.0);
+        (a.sub_action, a.seen) = (true, [30.0, 88.0, 0.0]);
+        a.arms.idle_sprite = Some(Graphic {
+            id: 1,
+            frames: 10,
+            facets: 8,
+            speed_multiplier: 1.0,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags: 0,
+        });
+        h.attack = Some(a);
+        let mut rig = WalkRig::on_the_path();
+        let mut struck = Rig::new(victim);
+        let mut strike = struck.strike();
+        strike.queue_empty = queue_empty;
+        let (mut kind, mut held) = (-1, 0.0);
+        let mut gather = herder(&mut kind, &mut held);
+        gather.predator_hunts_end = ends;
+        let r = h.update(rig.walk(ATTACK), false, &mut strike, &mut gather, None);
+        (r, gather.searches, gather.attack_failed, gather.let_go)
+    };
+    let fresh = |target| HuntAction {
+        state: ATTACK,
+        ..hunting(target)
+    };
+    let mut h = fresh(10028);
+    assert_eq!(
+        attack(&mut h, 14, sheep(), true, false),
+        (Ok(false), false, false, None)
+    );
+    assert_eq!((h.state, h.attack.map(|a| a.state)), (ATTACK, Some(14)));
+    let done = crate::combat::attack::DONE;
+    let mut h = fresh(10028);
+    assert_eq!(
+        attack(&mut h, done, sheep(), true, false),
+        (Ok(false), false, false, None)
+    );
+    assert_eq!(
+        (h.state, h.walk_range, h.move_to.is_some()),
+        (WALK, OWN_LIVESTOCK_RANGE, true)
+    );
+    let mut h = fresh(-1);
+    assert_eq!(
+        attack(&mut h, done, sheep(), true, false),
+        (Ok(false), true, false, None)
+    );
+    assert_eq!((h.state, h.attack), (SEARCH, None));
+    let wolf = Victim {
+        class: PREDATOR,
+        ..sheep()
+    };
+    let (r, ..) = attack(&mut fresh(10028), done, wolf, false, true);
+    assert_eq!(
+        r.unwrap_err().reason(),
+        "a hunt that ends with its Attack on a predator (set_state 1)"
+    );
+    let mut h = fresh(10028);
+    let failed = crate::combat::attack::FAILED;
+    assert_eq!(
+        attack(&mut h, failed, sheep(), true, false),
+        (Ok(false), false, true, None)
+    );
+    assert_eq!(h.state, ATTACK);
+    let inside = Victim {
+        inside: true,
+        ..sheep()
+    };
+    let mut h = fresh(10028);
+    assert_eq!(
+        attack(&mut h, done, inside, true, false),
+        (Ok(false), false, false, Some(10028))
+    );
+    assert_eq!((h.state, h.target), (WALK_SEARCH, -1));
+    let mut rig = WalkRig::on_the_path();
+    let mut struck = Rig::new(sheep());
+    let (mut kind, mut held) = (-1, 0.0);
+    let mut gather = herder(&mut kind, &mut held);
+    let r = fresh(10028).update(
+        rig.walk(ATTACK),
+        false,
+        &mut struck.strike(),
+        &mut gather,
+        None,
+    );
+    assert_eq!(
+        r.unwrap_err().reason(),
+        "a Hunt in state 12 without its Attack"
+    );
+}
+
 /// `set_state(6)` on livestock (`0x140ac60e0` case 6): the hunter's own live animal more
 /// than 3 tiles from its drop site and nearer than 30 is led there (`set_state(10)`, an
 /// animal that stands sent first), and once led it is led on however far; a nearer or a
