@@ -2573,3 +2573,57 @@ fn a_move_of_a_whole_group_keeps_it() {
     };
     assert!(t.move_order(1, &[11, 12, 13], &at_12).is_err());
 }
+
+/// The Gather's slot 0x48 on a building (`0x140a903a0`, [`World::retarget_gather`]): its
+/// player's farm in state 2 (class 49) it takes, walking there; its player's farm foundation
+/// (the task finder's build), a building at work (packing) and an annex whose main building is
+/// gone are not modelled; another building it does not take (false), so the work command makes
+/// a new action.
+#[test]
+fn a_gather_takes_a_farm_but_no_other_building() {
+    let mut t = crate::world::tests::forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    t.masters[1] =
+        crate::objects::masters::Masters::new(t.masters[1].iter().cloned().chain([Master {
+            id: 50,
+            kind: BUILDING,
+            class: crate::gathering::gather::FARM_CLASS,
+            radius: [1.5, 1.5],
+            ..Master::default()
+        }]));
+    let farm = |id, state, annex_of| Unit {
+        id,
+        position: [26.5, 89.5, 0.0],
+        annex_of,
+        life: crate::objects::lifecycle::Lifecycle {
+            state,
+            master_id: 50,
+            ..crate::objects::lifecycle::Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    t.players[1].objects.push(farm(800, 2, None));
+    t.players[1].objects.push(farm(801, 0, None));
+    t.players[1].objects.push(farm(802, 2, Some(4444)));
+    let world = t.clone();
+    assert_eq!(t.retarget_gather(1, 0, 800), Ok(true));
+    let g = t.players[1].objects[0].gather.unwrap();
+    assert_eq!((g.target, g.state, g.point), (800, 4, [26.5, 89.5, 0.0]));
+    assert_eq!(
+        (
+            t.players[0].objects[0].workers,
+            t.players[1].objects[3].workers
+        ),
+        (0, 1)
+    );
+    let mut t = world.clone();
+    assert!(t.retarget_gather(1, 0, 801).is_err());
+    assert!(t.retarget_gather(1, 0, 802).is_err());
+    t.players[1].objects[3].unmodelled_action = Some(GenieError::unsupported("a pack"));
+    assert!(t.retarget_gather(1, 0, 800).is_err());
+    let mut t = world;
+    assert_eq!(t.retarget_gather(1, 0, 700), Ok(false));
+    assert!(t.retarget_gather(1, 0, 4444).is_err());
+}

@@ -261,7 +261,7 @@ fn a_dead_objects_unit_ai_draws_nothing() {
 
 /// The masters of MarvinBlue/426048731's player 2 that its BUILD at tick 679 uses, shortened
 /// from build 158041's save and `.dat`.
-fn builder_masters() -> Masters {
+pub(crate) fn builder_masters() -> Masters {
     use crate::objects::masters::{Master, Masters, Task};
     let task = |action_type, object_group| Task {
         action_type,
@@ -352,7 +352,7 @@ fn builder_masters() -> Masters {
 
 /// A flat map of terrain 0 that the first terrain restriction lets anything stand on, every
 /// tile seen by every player: BUILD's placement test passes anywhere free.
-fn placeable(t: &mut World) {
+pub(crate) fn placeable(t: &mut World) {
     let (w, h) = (120, 120);
     let n = (w * h) as usize;
     t.spatial.map = [w, h];
@@ -1487,7 +1487,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
 /// A world of player 1's villager 9175 (master 83, which has no Build task) beside its
 /// house's foundation 10028 (master 70, state 0, no build points yet), with the unit AI's
 /// queue `orders`.
-fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World {
+pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World {
     let villager = Unit {
         id: 9175,
         position: [29.5, 89.5, 0.0],
@@ -1870,6 +1870,1021 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
         (10031, 4, false, [34.0, 88.0, 0.0])
     );
     assert_eq!(t.players[1].objects[1].construction.unwrap().builders, 0);
+}
+
+/// The work command on the player's foundation (`FUN_14106ff70`, the factory's case 0x65, then
+/// `FUN_140aadd80`): the villager (83) becomes the builder 118 of its swap group, takes the
+/// foundation (one worker), tells its unit AI order 702 with action 602 on it and walks to it
+/// (state 4, its `MoveTo` starting: the footprints lie 0.3 apart) with the task's range, work
+/// value and the builder's work rate.
+#[test]
+fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
+    let mut t = sent_off_world(vec![]);
+    let work = crate::orders::Work {
+        target: 10028,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.master_id, 118);
+    assert_eq!(v.top_action_kind(), Some(crate::construction::build::BUILD));
+    let b = v.build.unwrap();
+    assert_eq!(
+        (
+            b.target,
+            b.state,
+            b.walk_target,
+            b.point,
+            b.move_to,
+            b.added
+        ),
+        (
+            10028,
+            4,
+            10028,
+            [30.0, 88.0, 0.0],
+            Some(MoveTo::Start),
+            false
+        )
+    );
+    assert_eq!(
+        b.task,
+        BuildTask {
+            range: 0.0,
+            work_value: 0.0,
+            work_rate: 1.0,
+            resource: -1,
+            id: 0,
+        }
+    );
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (BUILD_ORDER, crate::unit_ai::BUILD_ACTION, 10028)
+    );
+    assert_eq!(t.players[1].objects[1].workers, 1);
+}
+
+/// The work command again on the Build's own foundation (`FUN_140ab1b30`): a Build at work
+/// (state 6) keeps on; one counted among the builders that waits (state 5) leaves them and
+/// walks again (state 4), its `MoveTo` arrived where the footprints touch.
+#[test]
+fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() {
+    let mut t = sent_off_world(vec![]);
+    let work = crate::orders::Work {
+        target: 10028,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    t.players[1].objects[0].build.as_mut().unwrap().state = 6;
+    t.order_work(1, 0, &work).unwrap();
+    assert_eq!(t.players[1].objects[0].build.map(|b| b.state), Some(6));
+    {
+        let b = t.players[1].objects[0].build.as_mut().unwrap();
+        (b.state, b.added, b.move_to) = (5, true, None);
+    }
+    t.players[1].objects[1]
+        .construction
+        .as_mut()
+        .unwrap()
+        .builders = 1;
+    t.players[1].objects[0].position = [29.0, 88.0, 0.0];
+    t.order_work(1, 0, &work).unwrap();
+    let b = t.players[1].objects[0].build.unwrap();
+    assert_eq!(
+        (b.state, b.added, b.move_to, b.target),
+        (4, false, Some(MoveTo::Arrived), 10028)
+    );
+    assert_eq!(
+        t.players[1].objects[1].construction.map(|k| k.builders),
+        Some(0)
+    );
+    // the same unit's work command on itself does nothing
+    let before = t.players[1].objects[0].clone();
+    t.order_work(
+        1,
+        0,
+        &crate::orders::Work {
+            target: 9175,
+            ..work
+        },
+    )
+    .unwrap();
+    assert_eq!(t.players[1].objects[0], before);
+}
+
+/// The work command on another foundation of the player's while building (`FUN_140ab0300`):
+/// a counted builder leaves the first foundation's builders, lets it go and takes the new
+/// one, walking to it again (state 4).
+#[test]
+fn a_work_command_on_another_foundation_moves_the_build_there() {
+    let mut t = sent_off_world(vec![]);
+    let other = Unit {
+        id: 10031,
+        position: [34.0, 88.0, 0.0],
+        ..t.players[1].objects[1].clone()
+    };
+    t.players[1].objects.push(other);
+    let work = |target| crate::orders::Work {
+        target,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work(10028)).unwrap();
+    {
+        let b = t.players[1].objects[0].build.as_mut().unwrap();
+        (b.state, b.added) = (5, true);
+    }
+    t.players[1].objects[1]
+        .construction
+        .as_mut()
+        .unwrap()
+        .builders = 1;
+    t.order_work(1, 0, &work(10031)).unwrap();
+    let b = t.players[1].objects[0].build.unwrap();
+    assert_eq!(
+        (b.target, b.state, b.added, b.point, b.walk_target),
+        (10031, 4, false, [34.0, 88.0, 0.0], 10031)
+    );
+    let site = |i: usize| {
+        let o = &t.players[1].objects[i];
+        (o.workers, o.construction.map(|k| k.builders))
+    };
+    assert_eq!((site(1), site(2)), ((0, Some(0)), (1, Some(0))));
+    assert_eq!(
+        t.players[1].objects[0]
+            .ai
+            .as_ref()
+            .map(|ai| ai.current_target),
+        Some(10031)
+    );
+}
+
+/// The unit AI's queued order on a target (`FUN_140c5c170` case `0x2db`): the unit's work
+/// command on its foundation at the foundation's place (the villager becomes the builder and
+/// starts the Build), then the tail with the order the work gave the AI (the build order) and
+/// the queued order's priority. An order on the unit itself works on nothing but still takes
+/// the tail; one on a target that is gone, or for a unit without a unit AI, is not modelled.
+#[test]
+fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
+    use crate::unit_ai::QueuedOrder;
+    let order = |target| QueuedOrder {
+        issuer: 1,
+        order: 0x2db,
+        priority: 3,
+        target,
+        target_owner: 1,
+        point: [0.0; 3],
+        range: 0.0,
+        shown: [0.0; 2],
+        ready: true,
+        target_type: 80,
+    };
+    let mut t = sent_off_world(vec![]);
+    t.order_on_target(1, 0, order(10028)).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.master_id, 118);
+    assert_eq!(v.build.map(|b| (b.target, b.state)), Some((10028, 4)));
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.order_priority, ai.current_target),
+        (BUILD_ORDER, 3, 10028)
+    );
+    let mut t = sent_off_world(vec![]);
+    t.order_on_target(1, 0, order(9175)).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.build, None);
+    assert_eq!(
+        v.ai.as_ref()
+            .map(|ai| (ai.current_order, ai.order_priority)),
+        Some((-1, 3))
+    );
+    assert!(t.order_on_target(1, 0, order(4444)).is_err());
+    t.players[1].objects[0].ai = None;
+    assert!(t.order_on_target(1, 0, order(9175)).is_err());
+}
+
+/// [`sent_off_world`] with its villager the forager 120 (a Gather task on class 7 for food,
+/// dropping at the town centre 109, as the drop-site table has it), Gaia's berry bushes 600 and
+/// 601 (master 59, class 7) and player 1's town centre 700, all placed on [`placeable`]'s map;
+/// the villager can move.
+pub(crate) fn forage_world() -> World {
+    let mut t = sent_off_world(vec![]);
+    for masters in &mut t.masters {
+        let forager = Master {
+            id: 120,
+            capacity: 10,
+            drop_sites: vec![109],
+            tasks: vec![crate::objects::masters::Task {
+                id: 2,
+                action_type: crate::gathering::gather::GATHER,
+                object_group: 7,
+                attribute_type: 17,
+                work_range: 0.25,
+                work_val1: 0.31,
+                ..crate::objects::masters::Task::default()
+            }],
+            ..masters.get(83).unwrap().clone()
+        };
+        let bush = Master {
+            id: 59,
+            kind: 30,
+            class: 7,
+            radius: [0.5, 0.5],
+            ..Master::default()
+        };
+        let centre = Master {
+            id: 109,
+            kind: 80,
+            class: 3,
+            radius: [2.0, 2.0],
+            ..Master::default()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([forager, bush, centre]));
+    }
+    let resource = |id, x| Unit {
+        id,
+        position: [x, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 1.0,
+            master_id: 59,
+            attribute_type: 17,
+            amount: 125.0,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    t.players[0].objects = vec![resource(600, 32.5), resource(601, 36.5)];
+    t.players[1].objects.push(Unit {
+        id: 700,
+        position: [20.0, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 2400.0,
+            master_id: 109,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    });
+    t.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
+    t.players[1].objects[0].life.master_id = 120;
+    t.spatial = Spatial::with_tiles(
+        [120, 120],
+        crate::map::spatial::Tiles::new(120, 120, vec![4; 120 * 120]),
+    );
+    placeable(&mut t);
+    if let Some(terrain) = t.spatial.terrain.as_mut() {
+        // the walker's restriction 7 lets it stand anywhere
+        terrain.restrictions = vec![vec![1.0]; 8];
+    }
+    let placed = |x: f32, class, player, master, radius| Placed {
+        position: [x, 89.5, 0.0],
+        radius,
+        class,
+        player,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(9175, placed(29.5, 4, 1, 83, [0.2, 0.2]));
+    t.spatial.insert(600, placed(32.5, 7, 0, 59, [0.5, 0.5]));
+    t.spatial.insert(601, placed(36.5, 7, 0, 59, [0.5, 0.5]));
+    t.spatial.insert(700, placed(20.0, 3, 1, 109, [2.0, 2.0]));
+    // the drop-site table: villagers drop berries at the town centre
+    t.drop_sites = vec![DropSite {
+        building: 109,
+        worker_class: 4,
+        targets: vec![crate::unit_ai::task_finder::DropTarget {
+            class: 7,
+            workers: -1,
+            state: -1,
+            attribute: 17,
+        }],
+        ..DropSite::default()
+    }];
+    t
+}
+
+/// The work command on Gaia's berry bush (the factory's case 5, `FUN_140a97e00`): the forager's
+/// Gather takes the bush (one worker), the unit
+/// AI hears order 0x2c5 with action 0x261 on it and the Gather walks to it (state 4) with the
+/// task's range. The command on the other bush while it walks (slot 0x48, `0x140a903a0`) moves
+/// the Gather there: the first bush is let go, the second taken.
+#[test]
+fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
+    let mut t = forage_world();
+    let work = |target| crate::orders::Work {
+        target,
+        point: [32.5, 89.5, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work(600)).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.master_id, 120);
+    assert_eq!(v.top_action_kind(), Some(crate::gathering::gather::GATHER));
+    let g = v.gather.unwrap();
+    assert_eq!(
+        (
+            g.target,
+            g.carry_to,
+            g.state,
+            g.point,
+            g.walk_range,
+            g.task.id
+        ),
+        (600, -1, 4, [32.5, 89.5, 0.0], 0.25, 2)
+    );
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (
+            crate::unit_ai::ai_kinds::ORDER_GATHER,
+            crate::unit_ai::GATHER_ACTION,
+            600
+        )
+    );
+    let workers = |t: &World| {
+        (
+            t.players[0].objects[0].workers,
+            t.players[0].objects[1].workers,
+        )
+    };
+    assert_eq!(workers(&t), (1, 0));
+    t.order_work(1, 0, &work(601)).unwrap();
+    let g = t.players[1].objects[0].gather.unwrap();
+    assert_eq!((g.target, g.state, g.point), (601, 4, [36.5, 89.5, 0.0]));
+    assert_eq!(workers(&t), (0, 1));
+    assert_eq!(
+        t.players[1].objects[0]
+            .ai
+            .as_ref()
+            .map(|ai| ai.current_target),
+        Some(601)
+    );
+    // at work on it (state 7) the same command keeps the Gather as it is
+    t.players[1].objects[0].gather.as_mut().unwrap().state = 7;
+    let before = t.players[1].objects[0].gather;
+    t.order_work(1, 0, &work(601)).unwrap();
+    assert_eq!(t.players[1].objects[0].gather, before);
+    assert_eq!(workers(&t), (0, 1));
+}
+
+/// The unit AI's gather command (`FUN_141085030`, forced): a new Gather on the bush replaces
+/// the forager's actions without the unit AI's notify (the AI set its order itself); the command on the other bush while the Gather on the same task is on
+/// top retargets it (slot 0x48): the first bush let go, the second taken.
+#[test]
+fn the_unit_ai_s_gather_command_starts_a_gather_or_retargets_its_own() {
+    let mut t = forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.master_id, 120);
+    let g = v.gather.unwrap();
+    assert_eq!((g.target, g.state, g.task.id), (600, 4, 2));
+    assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(-1));
+    t.gather_command(1, 0, 601).unwrap();
+    assert_eq!(t.players[1].objects[0].gather.map(|g| g.target), Some(601));
+    assert_eq!(
+        (
+            t.players[0].objects[0].workers,
+            t.players[0].objects[1].workers
+        ),
+        (0, 1)
+    );
+    // an object the world does not hold fails the command
+    assert!(t.gather_command(1, 0, 4444).is_err());
+}
+
+/// A loaded forager's work command on its own town centre, a drop site of its master: the task
+/// finder's drop-off gives the Gather task for what it carries, and the Gather started on the
+/// centre carries the load there (`0x140a8b3a0`: state 8, the centre its second target, no
+/// target or point); the centre, taken as the target and again as the second target, then let
+/// go as the first, counts one worker. A Gather at work on its bush sent there (slot 0x48 on a
+/// building that is no farm answers 0) starts the same new Gather.
+#[test]
+fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
+    let work = crate::orders::Work {
+        target: 700,
+        point: [20.0, 89.5, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    let loaded = || {
+        let mut t = forage_world();
+        let v = &mut t.players[1].objects[0];
+        (v.life.attribute_type, v.life.amount) = (17, 6.0);
+        t
+    };
+    let carries = |t: &World| {
+        let v = &t.players[1].objects[0];
+        let g = v.gather.unwrap();
+        (
+            (g.target, g.carry_to, g.state, g.point),
+            (v.life.attribute_type, v.life.amount),
+            t.players[1].objects[2].workers,
+        )
+    };
+    let carrying = ((-1, 700, 8, [-1.0; 3]), (17, 6.0), 1);
+    let mut t = loaded();
+    t.order_work(1, 0, &work).unwrap();
+    assert_eq!(carries(&t), carrying);
+    let mut t = loaded();
+    t.gather_command(1, 0, 600).unwrap();
+    t.players[1].objects[0].gather.as_mut().unwrap().state = 7;
+    t.order_work(1, 0, &work).unwrap();
+    assert_eq!(carries(&t), carrying);
+    assert_eq!(t.players[0].objects[0].workers, 0);
+}
+
+/// A move toward an object while gathering (`FUN_140a97730`, the Gather's slot 0x40,
+/// `0x140a8b740`): the Gather takes the move; toward the other bush it walks to the move's point
+/// (state 15) without a target, the first bush let go. Loaded and moved toward its town centre,
+/// a drop site, it carries the load there (state 8, the centre its second target, taken).
+#[test]
+fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
+    let mut t = forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    t.players[1].objects[0].gather.as_mut().unwrap().state = 7;
+    let point = [36.0, 89.0, 0.0];
+    assert_eq!(t.move_to_object_with(1, 0, 601, point, false), Ok(true));
+    let g = t.players[1].objects[0].gather.unwrap();
+    assert_eq!(
+        (g.target, g.carry_to, g.state, g.point, g.walk_to),
+        (-1, -1, 15, point, Some(point))
+    );
+    assert_eq!(
+        (
+            t.players[0].objects[0].workers,
+            t.players[0].objects[1].workers
+        ),
+        (0, 0)
+    );
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    assert_eq!(
+        t.move_to_object_with(1, 0, 700, [20.0, 89.5, 0.0], false),
+        Ok(true)
+    );
+    let g = t.players[1].objects[0].gather.unwrap();
+    assert_eq!(
+        (g.target, g.carry_to, g.state, g.point),
+        (-1, 700, 8, [-1.0; 3])
+    );
+    assert_eq!(t.players[1].objects[2].workers, 1);
+    // a move toward the drop site it already carries to changes nothing
+    let before = t.players[1].objects[0].clone();
+    assert_eq!(
+        t.move_to_object_with(1, 0, 700, [20.0, 89.5, 0.0], false),
+        Ok(true)
+    );
+    assert_eq!(t.players[1].objects[0], before);
+    assert_eq!(t.players[1].objects[2].workers, 1);
+}
+
+/// `UNIT_ORDER`'s drop-off 6 of a loaded forager without an action (`FUN_14161e370`, then
+/// [`World::drop_off_unasked`]): its master drops at the town centre, so it seeks its drop site
+/// from itself (`FUN_1411671e0`: its zone, the planner; by the squared distance) and works on the
+/// nearer of the player's two centres in state 2, its Gather carrying the load there. A master
+/// dropping at the dock (45) too searches without a seeker; with no drop site found it does
+/// nothing.
+#[test]
+fn a_drop_off_order_takes_a_forager_to_its_nearest_drop_site() {
+    let mut t = forage_world();
+    let far = Unit {
+        id: 701,
+        position: [60.0, 89.5, 0.0],
+        ..t.players[1].objects[2].clone()
+    };
+    t.players[1].objects.push(far);
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    let world = t.clone();
+    t.unit_order(1, &[9175], 6).unwrap();
+    let v = &t.players[1].objects[0];
+    let g = v.gather.expect("a Gather to the drop site");
+    assert_eq!((g.carry_to, g.state), (700, 8));
+    assert_eq!(t.players[1].objects[2].workers, 1);
+    // dropping at the dock too: the search without a seeker finds the same centre
+    let mut t = world.clone();
+    for masters in &mut t.masters {
+        masters.get_mut(120).unwrap().drop_sites = vec![45, 109];
+    }
+    t.unit_order(1, &[9175], 6).unwrap();
+    assert_eq!(
+        t.players[1].objects[0]
+            .gather
+            .map(|g| (g.carry_to, g.state)),
+        Some((700, 8))
+    );
+    // no centre standing (state 2): no drop site, no table entry for berries by class
+    let mut t = world;
+    for i in [2, 3] {
+        t.players[1].objects[i].life.state = 1;
+    }
+    t.unit_order(1, &[9175], 6).unwrap();
+    assert_eq!(t.players[1].objects[0].gather, None);
+}
+
+/// The Empire Wars start (`BaseWorld::update`'s first update) under the farm setting: the idle
+/// forager standing on its player's farm 800 works it (the first of class 49 on its tile), its
+/// Gather on the farm at the farm's place; the foundation, the town centre and the farm take
+/// nothing. A villager with orders waits; a fishing ship without a fish trap under it, and the
+/// pass without the farm setting, are not modelled.
+#[test]
+fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
+    let mut t = forage_world();
+    t.settings.walkable_farms = true;
+    for masters in &mut t.masters {
+        masters
+            .get_mut(120)
+            .unwrap()
+            .tasks
+            .push(crate::objects::masters::Task {
+                id: 3,
+                action_type: crate::gathering::gather::GATHER,
+                object_group: 49,
+                attribute_type: 0,
+                work_range: 0.25,
+                ..crate::objects::masters::Task::default()
+            });
+        let farm = Master {
+            id: 50,
+            kind: 80,
+            class: 49,
+            radius: [1.5, 1.5],
+            ..Master::default()
+        };
+        let fishing = Master {
+            id: 13,
+            class: 21,
+            ..masters.get(120).unwrap().clone()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([farm, fishing]));
+    }
+    t.players[1].objects.push(Unit {
+        id: 800,
+        position: [29.5, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 480.0,
+            master_id: 50,
+            attribute_type: 0,
+            amount: 175.0,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    });
+    t.spatial.insert(
+        800,
+        Placed {
+            position: [29.5, 89.5, 0.0],
+            radius: [1.5, 1.5],
+            class: 49,
+            player: 1,
+            master: 50,
+            obstruction_type: 0,
+            buildable_on: 0,
+            tall: false,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    let world = t.clone();
+    t.start_work(1).unwrap();
+    let g = t.players[1].objects[0].gather.expect("the farm's Gather");
+    assert_eq!((g.target, g.task.id, g.point), (800, 3, [29.5, 89.5, 0.0]));
+    assert_eq!(t.players[1].objects[3].workers, 1);
+    let others = |t: &World| {
+        t.players[1].objects[1..]
+            .iter()
+            .map(Unit::top_action_kind)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(others(&t), [None, None, None]);
+    // a villager with an order in its queue waits for it
+    let mut t = world.clone();
+    t.players[1].objects[0]
+        .ai
+        .as_mut()
+        .unwrap()
+        .orders
+        .push(crate::unit_ai::QueuedOrder {
+            issuer: 1,
+            order: crate::unit_ai::MOVE_ORDER,
+            priority: 100,
+            target: -1,
+            target_owner: -1,
+            point: [10.0, 10.0, 0.0],
+            range: 0.0,
+            shown: [10.0, 10.0],
+            ready: true,
+            target_type: -1,
+        });
+    t.start_work(1).unwrap();
+    assert_eq!(t.players[1].objects[0].gather, None);
+    // a fishing ship finds no fish trap on its tile
+    let mut t = world.clone();
+    t.players[1].objects[0].life.master_id = 13;
+    assert!(t.start_work(1).is_err());
+    let mut t = world;
+    t.settings.walkable_farms = false;
+    assert!(t.start_work(1).is_err());
+}
+
+/// The forager's unit AI run outside its update giving `effects` ([`World::run_unit_ai`]):
+/// they apply in order ([`Unit::apply`], then the orders [`World::finish_object`] runs).
+fn with_effects(t: &mut World, effects: Vec<crate::unit_ai::Effect>) -> Result<(), GenieError> {
+    t.run_unit_ai((1, 0), move |_, _, _, _, _| Ok(effects))
+}
+
+/// The unit AI's explore (slot 0x398, `FUN_141084db0`) of the idle forager: a new Explore to
+/// the point at its height walks there (state 11, its `MoveTo` starting); a point off the map's
+/// quarter for the Explore on top makes it wait (state 3), its walk stopped, and ask its unit
+/// AI for a point (notify 0x202 with the explore's action). An Explore replacing a Gather is
+/// not modelled.
+#[test]
+fn the_unit_ai_s_explore_walks_to_its_point_or_asks_for_one() {
+    use crate::movement::explore::{EXPLORE_ACTION, WAIT, WALK, WANTS_POINT};
+    use crate::unit_ai::Effect;
+    let mut t = forage_world();
+    with_effects(&mut t, vec![Effect::Explore([40.0, 90.0])]).unwrap();
+    let e = t.players[1].objects[0].explore.unwrap();
+    assert_eq!((e.state, e.point), (WALK, [40.0, 90.0, 0.0]));
+    assert!(e.move_to.is_some());
+    with_effects(&mut t, vec![Effect::Explore([-1.0, 90.0])]).unwrap();
+    let v = &t.players[1].objects[0];
+    let e = v.explore.unwrap();
+    assert_eq!((e.state, e.move_to), (WAIT, None));
+    let notifies = &v.ai.as_ref().unwrap().notifies;
+    assert_eq!(
+        notifies.last().map(|n| (n.kind, n.p)),
+        Some((WANTS_POINT, [EXPLORE_ACTION, 0, 0]))
+    );
+    let mut t = forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    assert!(with_effects(&mut t, vec![Effect::Explore([40.0, 90.0])]).is_err());
+}
+
+/// The unit AI's move to an object (slot 0x348, `FUN_141086440`): the forager's Gather goes (its
+/// bush let go), a `MoveTo` to the other bush replaces it within the range given; the unit AI's
+/// cap of its last human order (slot 0x300) and its works follow in order: a work on the bush
+/// (slot 0x7e8 with the carried-resource test) starts a Gather there.
+#[test]
+fn the_unit_ai_s_moves_and_works_apply_in_order() {
+    use crate::unit_ai::Effect;
+    let mut t = forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    t.players[1].objects[0].last_human_order = 900;
+    with_effects(
+        &mut t,
+        vec![
+            Effect::CapHumanOrder(300),
+            Effect::MoveToObject {
+                target: 601,
+                state: 2,
+                range: 0.5,
+            },
+        ],
+    )
+    .unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!((v.gather, v.last_human_order), (None, 300));
+    assert!(v.move_to.is_some());
+    assert_eq!(t.players[0].objects[0].workers, 0);
+    with_effects(
+        &mut t,
+        vec![Effect::WorkOn {
+            target: 601,
+            point: [36.5, 89.5, 0.0],
+        }],
+    )
+    .unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.gather.map(|g| (g.target, g.state)), Some((601, 4)));
+    assert_eq!(v.move_to, None);
+    // a unit that does not move cannot be moved to an object
+    t.players[1].objects[0].mover = None;
+    assert!(
+        with_effects(
+            &mut t,
+            vec![Effect::MoveToObject {
+                target: 600,
+                state: 2,
+                range: 0.5,
+            }],
+        )
+        .is_err()
+    );
+}
+
+/// The unit AI's hunt and build commands and its order on a target, as its effects give them
+/// after the run: `HuntObject` hunts the deer (the hunt command, `FUN_1412151f0`); `BuildObject`
+/// sends the villager to build its foundation (the build command, slot 0x380, as the builder);
+/// `OrderOnTarget` works on the foundation with the order's priority. A tail after an order the
+/// AI did not take, and an AI move of a master the slice does not have, are not modelled; a
+/// restored patrol without one saved does nothing, and the stop stops.
+#[test]
+fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
+    use crate::unit_ai::{AfterOrder, AiMove, Effect, QueuedOrder};
+    let mut t = hunt_world();
+    with_effects(&mut t, vec![Effect::HuntObject(500)]).unwrap();
+    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.target), Some(500));
+    with_effects(&mut t, vec![Effect::Stop]).unwrap();
+    assert_eq!(t.players[1].objects[0].top_action_kind(), None);
+    let mut t = sent_off_world(vec![]);
+    with_effects(&mut t, vec![Effect::BuildObject(10028)]).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.life.master_id, 118);
+    assert_eq!(v.build.map(|b| b.target), Some(10028));
+    let mut t = sent_off_world(vec![]);
+    let order = QueuedOrder {
+        issuer: 1,
+        order: 0x2db,
+        priority: 3,
+        target: 10028,
+        target_owner: 1,
+        point: [0.0; 3],
+        range: 0.0,
+        shown: [0.0; 2],
+        ready: true,
+        target_type: 80,
+    };
+    with_effects(&mut t, vec![Effect::OrderOnTarget(order)]).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.build.map(|b| b.target), Some(10028));
+    assert_eq!(v.ai.as_ref().map(|ai| ai.order_priority), Some(3));
+    let mut t = sent_off_world(vec![]);
+    let after = AfterOrder {
+        busy: false,
+        group: None,
+    };
+    assert!(with_effects(&mut t, vec![Effect::AfterOrder(after)]).is_err());
+    assert!(
+        with_effects(
+            &mut t,
+            vec![Effect::OrderOnTarget(order), Effect::OrderOnTarget(order)]
+        )
+        .is_err()
+    );
+    let mut t = sent_off_world(vec![]);
+    t.players[1].objects[0].life.master_id = 4444;
+    let walk = AiMove {
+        point: [20.0, 20.0, 0.0],
+        range: 0.0,
+        force: false,
+        walk: false,
+    };
+    assert!(with_effects(&mut t, vec![Effect::Move(walk)]).is_err());
+    let mut t = sent_off_world(vec![]);
+    let before = t.players[1].objects[0].clone();
+    with_effects(&mut t, vec![Effect::RestorePatrol]).unwrap();
+    assert_eq!(t.players[1].objects[0], before);
+}
+
+/// The base handler's case 0x216 from the forager's side ([`UnitSide::off_footprint`],
+/// `FUN_1411566b0` with 0): with the forager's height and class, its player, the foundation by
+/// its master and the Gather's bush as the action's target; without the foundation placed no
+/// spot, placed at (30, 88) the flood's first empty tile beside its footprint, (30, 89).
+///
+/// [`UnitSide::off_footprint`]: crate::unit_ai::UnitSide::off_footprint
+#[test]
+fn a_unit_sent_off_a_foundation_finds_the_spot_beside_it() {
+    let mut t = forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    let mut found = None;
+    t.run_unit_ai((1, 0), |_, _, side, _, _| {
+        found = Some(side.off_footprint(10028, [1.0, 1.0])?);
+        Ok(Vec::new())
+    })
+    .unwrap();
+    let off = found.unwrap();
+    assert_eq!(
+        (off.spot, off.class, off.player, off.computer),
+        (None, 4, 1, false)
+    );
+    assert_eq!(
+        off.site.map(|s| (s.id, s.master, s.owner)),
+        Some((10028, 70, 1))
+    );
+    assert_eq!(
+        off.action_target.map(|s| (s.id, s.master, s.owner)),
+        Some((600, 59, 0))
+    );
+    t.spatial.insert(
+        10028,
+        Placed {
+            position: [30.0, 88.0, 0.0],
+            radius: [1.0, 1.0],
+            class: 3,
+            player: 1,
+            master: 70,
+            obstruction_type: 2,
+            buildable_on: 0,
+            tall: true,
+            speed: 0.0,
+            unknown: None,
+            obstruction: None,
+        },
+    );
+    let mut found = None;
+    t.run_unit_ai((1, 0), |_, _, side, _, _| {
+        found = Some(side.off_footprint(10028, [1.0, 1.0])?);
+        Ok(Vec::new())
+    })
+    .unwrap();
+    assert_eq!(found.unwrap().spot, Some([30.5, 89.5]));
+}
+
+/// The auto scout's search from the forager's side ([`UnitSide::seek_unexplored`]): on a map
+/// its player explored whole, neither the area about its town centre nor the unit AI's own
+/// search (slot 0x90) finds a tile.
+///
+/// [`UnitSide::seek_unexplored`]: crate::unit_ai::UnitSide::seek_unexplored
+#[test]
+fn an_explored_map_leaves_the_auto_scout_nothing_to_seek() {
+    let mut t = forage_world();
+    let mut found = Some(None);
+    t.run_unit_ai((1, 0), |ai, _, side, _, rng| {
+        found = Some(side.seek_unexplored(ai, rng)?);
+        Ok(Vec::new())
+    })
+    .unwrap();
+    assert_eq!(found, Some(None));
+}
+
+/// [`sent_off_world`] with its villager the hunter 122 (task 110 on class 9 within 0.5,
+/// dropping at the town centre 109), Gaia's deer 500 and 501 (master 65, class 9) and player 1's
+/// town centre 700, all placed; the villager can move.
+pub(crate) fn hunt_world() -> World {
+    let mut t = sent_off_world(vec![]);
+    for masters in &mut t.masters {
+        let hunter = Master {
+            id: 122,
+            drop_sites: vec![109],
+            tasks: vec![crate::objects::masters::Task {
+                action_type: 110,
+                object_group: 9,
+                work_range: 0.5,
+                ..crate::objects::masters::Task::default()
+            }],
+            ..masters.get(83).unwrap().clone()
+        };
+        let deer = Master {
+            id: 65,
+            kind: 70,
+            class: 9,
+            radius: [0.4, 0.4],
+            ..Master::default()
+        };
+        let centre = Master {
+            id: 109,
+            kind: 80,
+            class: 3,
+            radius: [2.0, 2.0],
+            ..Master::default()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([hunter, deer, centre]));
+    }
+    let deer = |id, x| Unit {
+        id,
+        position: [x, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 5.0,
+            master_id: 65,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    t.players[0].objects = vec![deer(500, 32.5), deer(501, 36.5)];
+    t.players[1].objects.push(Unit {
+        id: 700,
+        position: [20.0, 89.5, 0.0],
+        life: Lifecycle {
+            state: 2,
+            hp: 2400.0,
+            master_id: 109,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    });
+    let placed = |x: f32, class, player, master, radius| Placed {
+        position: [x, 89.5, 0.0],
+        radius,
+        class,
+        player,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(9175, placed(29.5, 4, 1, 122, [0.2, 0.2]));
+    t.spatial.insert(500, placed(32.5, 9, 0, 65, [0.4, 0.4]));
+    t.spatial.insert(501, placed(36.5, 9, 0, 65, [0.4, 0.4]));
+    t.spatial.insert(700, placed(20.0, 3, 1, 109, [2.0, 2.0]));
+    let v = &mut t.players[1].objects[0];
+    v.life.master_id = 122;
+    v.mover = Some(crate::gathering::hunt::tests::walker());
+    t
+}
+
+/// The work command on the other deer while hunting the first on the same task (the Hunt's slot
+/// 9, `0x140ac97c0`): the Hunt takes it and starts over on it (its Attack walking there), the
+/// first deer let go and the second taken; the unit AI hears the hunt order on it.
+#[test]
+fn a_work_command_on_another_deer_moves_the_hunt_there() {
+    let mut t = hunt_world();
+    t.hunt_command(1, 0, 500).unwrap();
+    let work = crate::orders::Work {
+        target: 501,
+        point: [36.5, 89.5, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    let v = &t.players[1].objects[0];
+    let h = v.hunt.unwrap();
+    assert_eq!((h.target, h.carry_to, h.target_class), (501, -1, 9));
+    assert_eq!(
+        (h.state, h.attack.map(|a| a.target)),
+        (crate::gathering::hunt::ATTACK, Some(501))
+    );
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (crate::unit_ai::HUNT_ORDER, crate::unit_ai::HUNT_ACTION, 501)
+    );
+    assert_eq!(
+        (
+            t.players[0].objects[0].workers,
+            t.players[0].objects[1].workers
+        ),
+        (0, 1)
+    );
+}
+
+/// A move toward an object while hunting (the Hunt's slot 0x40, `FUN_140ac52c0`): toward the
+/// other deer it walks to the move's point (state 15) and lets the first go; loaded and moved
+/// toward its town centre, a drop site, it carries the load there (state 8, the centre its second
+/// target, taken).
+#[test]
+fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
+    let mut t = hunt_world();
+    t.hunt_command(1, 0, 500).unwrap();
+    let point = [36.0, 89.0, 0.0];
+    assert_eq!(t.move_to_object_with(1, 0, 501, point, false), Ok(true));
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!(
+        (h.target, h.carry_to, h.state, h.point),
+        (-1, -1, 15, point)
+    );
+    assert_eq!(
+        (
+            t.players[0].objects[0].workers,
+            t.players[0].objects[1].workers
+        ),
+        (0, 0)
+    );
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (15, 6.0);
+    assert_eq!(
+        t.move_to_object_with(1, 0, 700, [20.0, 89.5, 0.0], false),
+        Ok(true)
+    );
+    let h = t.players[1].objects[0].hunt.unwrap();
+    assert_eq!(
+        (h.target, h.carry_to, h.state, h.point, h.target_class),
+        (-1, 700, 8, [-1.0; 3], 3)
+    );
+    assert_eq!(t.players[1].objects[2].workers, 1);
 }
 
 /// The unit AI's repair order on the player's damaged house (`0x2ce`, slot 0x378 forced,
@@ -3150,6 +4165,129 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
     let (units, allied) = gate_units(&s, 27745, &[27746, 27747]).unwrap();
     assert_eq!((units, allied), (vec![1, 3], 1));
     assert!(gate_units(&s, 27745, &[27746]).is_err());
+}
+
+/// The player's gate toggle (`FUN_14162f8c0`) on records/425906646's gate 27745 (annexes 27746
+/// and 27747): the open gate (master 88) becomes its `transform_unit`, the shut 91 (a height),
+/// which kills the moving soldier between its posts and takes the world time plus 1 as its last
+/// move time; the shut one opens again (no height) without either. A gate without a
+/// `transform_unit` stays; one with masters of its own is not modelled.
+#[test]
+fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
+    let gate_master = |id, transform_unit, height| Master {
+        id,
+        kind: 80,
+        class: 39,
+        height,
+        hit_points: 1650,
+        // a gate moves (its master's slot 0xe8): its last move time is the mover's
+        moving: Some(crate::gathering::hunt::tests::walker().stats),
+        building: Some(crate::objects::masters::BuildingMaster {
+            transform_unit,
+            stack_unit: -1,
+            head_unit: -1,
+            foundation_terrain: -1,
+            tech: -1,
+            annexes: [-1; 4],
+            ..crate::objects::masters::BuildingMaster::default()
+        }),
+        ..Master::default()
+    };
+    let soldier = Master {
+        id: 4,
+        kind: 70,
+        class: 6,
+        ..Master::default()
+    };
+    let unit = |id, master, x: f32, annex_of| Unit {
+        id,
+        position: [x, 20.0, 0.0],
+        annex_of,
+        life: Lifecycle {
+            master_id: master,
+            state: 2,
+            hp: 10.0,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    };
+    let mut gate = unit(27745, 88, 20.0, None);
+    gate.gate = Some(Gate::default());
+    gate.mover = Some(crate::gathering::hunt::tests::walker());
+    let mut t = World::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![
+            Player::default(),
+            Player {
+                objects: vec![
+                    gate,
+                    unit(27746, 88, 18.5, Some(27745)),
+                    unit(27747, 88, 21.5, Some(27745)),
+                    unit(1, 4, 19.6, None),
+                ],
+                ..Player::default()
+            },
+        ],
+    );
+    t.world_time = 400;
+    t.masters = vec![
+        Masters::default(),
+        Masters::new([
+            gate_master(88, 91, 0.0),
+            gate_master(91, 88, 2.0),
+            gate_master(92, -1, 0.0),
+            soldier,
+        ]),
+    ];
+    t.spatial = Spatial::with_tiles(
+        [40, 40],
+        crate::map::spatial::Tiles::new(40, 40, vec![1; 1600]),
+    );
+    t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
+    let placed = |x: f32, class, speed, kind| Placed {
+        position: [x, 20.0, 0.0],
+        radius: [0.2, 0.2],
+        class,
+        player: 1,
+        master: 0,
+        obstruction_type: kind,
+        buildable_on: 0,
+        tall: true,
+        speed,
+        unknown: None,
+        obstruction: Some(crate::map::spatial::Obstruction { kind, class: 2 }),
+    };
+    t.spatial.insert(27745, placed(20.0, 39, 0.0, 2));
+    t.spatial.insert(27746, placed(18.5, 39, 0.0, 2));
+    t.spatial.insert(27747, placed(21.5, 39, 0.0, 2));
+    t.spatial.insert(1, placed(19.6, 6, 0.8, 5));
+    let state = |t: &World| {
+        let g = &t.players[1].objects[0];
+        (
+            g.life.master_id,
+            g.mover.as_ref().map(|m| m.last_move),
+            t.players[1].objects[3].life.hp,
+        )
+    };
+    t.toggle_gate(1, 0).unwrap();
+    assert_eq!(state(&t), (91, Some(401), 0.0));
+    t.players[1].objects[3].life.hp = 10.0;
+    t.world_time = 500;
+    t.toggle_gate(1, 0).unwrap();
+    assert_eq!(state(&t), (88, Some(401), 10.0));
+    t.players[1].objects[0].life.master_id = 92;
+    t.toggle_gate(1, 0).unwrap();
+    assert_eq!(t.players[1].objects[0].life.master_id, 92);
+    t.players[1].objects[0].gate = Some(Gate {
+        other_masters: true,
+        ..Gate::default()
+    });
+    assert!(t.toggle_gate(1, 0).is_err());
 }
 
 #[test]

@@ -231,3 +231,105 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
     assert!(!with(&|m| m.weapon_range = 0.6));
     assert!(!with(&|m| m.weapon_range = f32::NAN));
 }
+
+/// What the statistics read of a candidate (`FUN_140c44680`'s reads): soldier 123 (master 4,
+/// attack 6 of class 4, reload 2) of player 1 reads player 2's unit 50 (master 5, class 6,
+/// attack 3, 40 hit points, no armor, standing): armed by its attacks, the soldier's range,
+/// 6 damage a hit, its reload, the candidate's distance and category as given; not the
+/// seeker's target, not a conversion. An object the world does not hold is not modelled.
+#[test]
+fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
+    use crate::unit_ai::AttackPicker;
+    let master = |id, class, weapons| crate::objects::masters::Master {
+        id,
+        kind: 70,
+        class,
+        radius: [0.3, 0.3],
+        weapons,
+        reload: 2.0,
+        // no terrain defense bonus: the damage reads no terrain
+        terrain_bonus: -1,
+        ..crate::objects::masters::Master::default()
+    };
+    let unit = |id, x, master_id| Unit {
+        id,
+        position: [x, 10.0, 0.0],
+        life: crate::objects::lifecycle::Lifecycle {
+            master_id,
+            state: 2,
+            hp: 40.0,
+            ..crate::objects::lifecycle::Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let me = unit(123, 10.0, 4);
+    let enemy = Player {
+        objects: vec![unit(50, 12.0, 5)],
+        ..Player::default()
+    };
+    let (gaia, after) = (Player::default(), [enemy]);
+    let before = [gaia];
+    let every = [
+        Masters::default(),
+        Masters::new([master(4, 6, vec![(4, 6)])]),
+        Masters::new([master(5, 6, vec![(4, 3)])]),
+    ];
+    let spatial = Spatial::new([120, 120]);
+    let attacker = crate::unit_ai::Attacker {
+        ai_type: 13,
+        player: 1,
+        computer: false,
+        state: 2,
+        held: -1,
+        top_action: None,
+        master: 4,
+        kind: 70,
+        class: 6,
+        attack_priority: 0,
+        missile: -1,
+        range: 0.5,
+        min_range: 0.0,
+        charge_type: 0,
+        area_effect: 0.0,
+        blast_level: 0,
+        los: 4.0,
+        position: [10.0, 10.0, 0.0],
+        radius: [0.3, 0.3],
+        speed: 1.0,
+        scenario: false,
+        firepower: 0.0,
+        capture: 0,
+    };
+    let mut picker = WorldPicker {
+        attacker: &attacker,
+        seeker: None,
+        me: 123,
+        player: 1,
+        others: &[],
+        foreign: Foreign {
+            before: &before,
+            after: &after,
+            left: None,
+        },
+        spatial: &spatial,
+        every: &every,
+        restriction: -1,
+        unit: &me,
+        attributes: &[],
+        relations: &[0, 0, 0],
+        ai_settings: crate::world::player::AiSettings::default(),
+        now: 0,
+        mode_680: 0,
+    };
+    let c = picker.candidate(50, 1.4, 2).unwrap();
+    assert_eq!(
+        (c.id, c.distance, c.category, c.class, c.speed),
+        (50, 1.4, 2, 6, 0.0)
+    );
+    assert_eq!(
+        (c.armed, c.reach, c.damage, c.hp, c.reload),
+        (true, 0.5, 6.0, 40.0, 2.0)
+    );
+    assert_eq!((c.workable, c.current), (false, false));
+    assert!(picker.candidate(77, 1.4, 2).is_err());
+}

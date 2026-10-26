@@ -365,4 +365,4 @@ pub struct Recycling {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
