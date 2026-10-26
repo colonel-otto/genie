@@ -1,0 +1,527 @@
+//! The forced replay (FD-008): its steps, its continuous run, the old pather's answers and the
+//! game's state in a save.
+
+use crate::masters::MasterTable;
+use crate::{
+    Decoder, Dumps, Error, SavedStep, command_phase_from_save, compare_players, frames,
+    ghost_pool_from_dump, groups, hunted_origins, inside_lists_from_dump, mesh_from_dump,
+    mesh_owners_from_dump, recycle_pools_from_dump, registry_from_dump, run, run_from_save, slice,
+    tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit, watch_at_load,
+};
+use genie_core::GenieError;
+use genie_core::turn::Turns;
+use genie_rec::de;
+use genie_save::Header;
+
+/// The old short pather's result and path for one call ([`old_pather_paths`]).
+pub type PatherAnswer = (u8, Vec<[f32; 2]>);
+
+/// The old short pather's answers (slot 0x3e8, [`genie_core::hull_path::HullPather::find`]) in
+/// the world of the slice started from the tick oracle's save at tick `start_tick` with `dumps`,
+/// for each call (the unit, its place then, the target, the range): the pather's result and path.
+/// Each unit stands at its place for its call. Dev only: a check of the pather against the game's
+/// own calls (`load_oracle/probes/_obspath.py`), whose world is the save's but for the units the
+/// update moved before the call.
+pub fn old_pather_paths(
+    save: &[u8],
+    recording: &[u8],
+    start_tick: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+    calls: &[(i32, [f32; 2], i32, f32)],
+) -> Result<Vec<Result<PatherAnswer, GenieError>>, Error> {
+    let mut turns = turns_from_save(save, recording, start_tick, masters, dumps)?;
+    let mut out = Vec::new();
+    for &(id, from, target, range) in calls {
+        let Some(unit) = turns
+            .players
+            .iter()
+            .flat_map(|p| &p.objects)
+            .find(|u| u.id == id)
+        else {
+            out.push(Err(GenieError::unsupported(
+                "a caller the save does not hold",
+            )));
+            continue;
+        };
+        let Some(mover) = unit.mover.as_ref() else {
+            out.push(Err(GenieError::unsupported("a caller that does not move")));
+            continue;
+        };
+        let (mask, radius) = (mover.stats.restriction_mask, mover.stats.radius[0]);
+        let z = turns.spatial.get(id).map_or(0.0, |p| p.position[2]);
+        turns.spatial.set_position(id, [from[0], from[1], z]);
+        let Some(to) = turns
+            .spatial
+            .get(target)
+            .map(|p| [p.position[0], p.position[1]])
+        else {
+            out.push(Err(GenieError::unsupported(
+                "a target the save does not hold",
+            )));
+            continue;
+        };
+        let mut pather =
+            genie_core::hull_path::HullPather::new(&turns.spatial, id, target, mask, radius);
+        out.push(
+            pather
+                .find(from, to, target, range)
+                .map(|(r, p)| (r, p.points)),
+        );
+    }
+    Ok(out)
+}
+
+/// What one forced replay step found ([`forced_ticks`]): the slice started from the game's save
+/// after `start`, run `ticks` updates, against the game's save after `start + ticks`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TickReport {
+    /// The save the step starts from.
+    pub start: usize,
+    /// How many updates it ran.
+    pub ticks: usize,
+    /// What differs, by player: the objects that ran modelled (an object that froze, or every
+    /// object of a player that stopped, is left out: its reason is in `unsupported`) and the
+    /// player's sight.
+    pub differences: Vec<(u32, String)>,
+    /// What the slice could not model: the player, the object (None for the player's stop), the
+    /// update and why.
+    pub unsupported: Vec<(u32, Option<i32>, u32, GenieError)>,
+    /// The players' attributes past the resources that differ, apart from the differences (the
+    /// slice does not keep every statistic yet): the player, the attribute, the slice's value
+    /// and the game's (their f32 bits).
+    pub attributes: Vec<(u32, usize, u32, u32)>,
+}
+
+/// One step of the forced replay (FD-008, CONTINUE.md): genie-core from the game's own save after
+/// update `start` (`save`, with that save's mesh and registry dumps), `ticks` updates, compared
+/// with the game's save after `start + ticks` (`after`) for every player. Every step starts from
+/// the game's state, so the frame seed and every object, a frozen one too, are the game's again:
+/// nothing the slice gets wrong carries into the next step. Dev only: the saves and dumps come
+/// from the tick oracle, which genie-core never reads.
+pub fn forced_ticks(
+    save: &[u8],
+    after: &[u8],
+    recording: &[u8],
+    start: usize,
+    ticks: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<TickReport, Error> {
+    let turns = run_from_save(save, recording, start, ticks, masters, dumps)?;
+    let mut report = TickReport {
+        start,
+        ticks,
+        ..TickReport::default()
+    };
+    let saved = SavedStep::of(after, masters)?;
+    compare_players(&turns, &saved, None, &mut report)?;
+    if let Some(g) = saved.game.groups.as_ref() {
+        for d in groups::group_differences(&turns.groups, g, false) {
+            report
+                .differences
+                .push((group_owner(&turns, &saved.game, &d), d));
+        }
+    }
+    Ok(report)
+}
+
+/// The command phase of the update after save `start` against the game's state at its end
+/// (`after`, the tick oracle's `snapshot_at` at `0x141552990`, with the process globals dumped
+/// there when given): every player's objects and the world's unit groups, as [`forced_ticks`]
+/// reports them. Dev only.
+///
+/// # Errors
+///
+/// When a save or the recording does not parse.
+pub fn command_phase(
+    save: &[u8],
+    (after, after_globals): (&[u8], Option<&str>),
+    recording: &[u8],
+    start: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<TickReport, Error> {
+    let turns = command_phase_from_save(save, recording, start, masters, dumps)?;
+    let mut report = TickReport {
+        start,
+        ticks: 1,
+        ..TickReport::default()
+    };
+    let mut saved = SavedStep::of(after, masters)?;
+    compare_players(&turns, &saved, None, &mut report)?;
+    if let (Some(text), Some(g)) = (after_globals, saved.game.groups.as_mut()) {
+        groups::globals_from_dump(text, g);
+    }
+    if let Some(g) = saved.game.groups.as_ref() {
+        for d in groups::group_differences(&turns.groups, g, after_globals.is_some()) {
+            report
+                .differences
+                .push((group_owner(&turns, &saved.game, &d), d));
+        }
+    }
+    Ok(report)
+}
+
+/// The forced replay's continuous mode (FD-008, CONTINUE.md): genie-core from the game's save
+/// after `start` (with its dumps), then `ticks` updates, each compared with the game's save after
+/// it (`save_after(update)`, which may end the run early with None) and then forced to the game's
+/// state where the slice did not model it or got it wrong ([`genie_core::turn::Turns::force`]: the
+/// frame seed, the frozen and the differing objects, a stopped player, the sight, and what the
+/// game's dumps after the update hold, `dump_after(update, extension)`: the tiles' object lists
+/// (`tiles`) and the recycled missiles (`pools`), whose differences are Gaia's). The objects the
+/// slice gets right keep their own state, the saved and the unsaved, from tick to tick. One report
+/// per update, each with that update's own differences, and where the run's time went. The saves
+/// are parsed on rayon's pool while the run goes on, at most `window` ahead of it. Dev only.
+#[allow(clippy::too_many_arguments)]
+pub fn forced_run(
+    start_save: &[u8],
+    recording: &[u8],
+    start: usize,
+    ticks: usize,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+    save_after: &(dyn Fn(usize) -> Option<Vec<u8>> + Sync),
+    dump_after: &dyn Fn(usize, &str) -> Option<String>,
+    window: usize,
+) -> Result<(Vec<TickReport>, Times), Error> {
+    let chapter = de::chapters(start_save)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let mut turns = slice(&header, masters);
+    if let Some(text) = dumps.mesh {
+        let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
+        turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
+    }
+    if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
+        sight.registry = Some(registry_from_dump(text)?);
+    }
+    if let Some(text) = dumps.tiles {
+        let _ = turns.spatial.force_tile_lists(&tile_lists_from_dump(text)?);
+    }
+    if let Some(text) = dumps.pools {
+        turns.recycling.missiles = recycle_pools_from_dump(text)?;
+        turns.recycling.ghosts = ghost_pool_from_dump(text)?;
+    }
+    if let Some(text) = dumps.inside {
+        let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
+    }
+    if let Some(text) = dumps.globals {
+        groups::globals_from_dump(text, &mut turns.groups);
+    }
+    watch_at_load(&mut turns);
+    let played = de::chapters(recording)?[0];
+    let start_header = played.header()?;
+    hunted_origins(&mut turns, &start_header);
+    let updates = start + 1;
+    turns.ticks = updates as u32;
+    let all = frames(&played, updates + ticks)?;
+    let mut decoder = Decoder::default();
+    decoder.prime(&all[..updates.min(all.len())], &sections);
+    let mut reports = Vec::new();
+    // the game's saves after each update, parsed on rayon's pool while the run goes on, at most
+    // `window` ahead of it; the pool is shared by every run going on at once
+    let window = window.max(1);
+    let ahead = Ahead::new();
+    let parse = |i: usize| save_after(start + i + 1).map(|save| SavedStep::of(&save, masters));
+    let mut times = Times::default();
+    rayon::in_place_scope(|tasks| {
+        let (ahead, parse) = (&ahead, &parse);
+        let ask = |i: usize| {
+            if i < ticks {
+                tasks.spawn(move |_| ahead.put(i, parse(i)));
+            }
+        };
+        (0..window).for_each(ask);
+        let mut run_all = || -> Result<(), Error> {
+            for k in 0..ticks {
+                let Some(frame) = all.get(updates + k) else {
+                    break;
+                };
+                let clock = std::time::Instant::now();
+                let taken = ahead.take(k);
+                ask(k + window);
+                let Some(after) = taken else {
+                    break;
+                };
+                let after = after?;
+                times.parse += clock.elapsed();
+                let clock = std::time::Instant::now();
+                run(
+                    &mut turns,
+                    &mut decoder,
+                    std::slice::from_ref(frame),
+                    &sections,
+                );
+                times.run += clock.elapsed();
+                let clock = std::time::Instant::now();
+                let mut report = TickReport {
+                    start: start + k,
+                    ticks: 1,
+                    ..TickReport::default()
+                };
+                let tick = turns.ticks;
+                compare_players(&turns, &after, Some(tick), &mut report)?;
+                let tiles = dump_after(start + k + 1, "tiles")
+                    .map(|text| tile_lists_from_dump(&text))
+                    .transpose()?;
+                if let Some(t) = tiles.as_ref() {
+                    for d in tile_order_differences(&turns.spatial, t) {
+                        report.differences.push((0, d));
+                    }
+                }
+                // each player's ghosts, in the list's order, by what the save holds of them
+                for (p, game) in after.ghosts.iter().enumerate() {
+                    let slice = turns.players.get(p).map_or(&[][..], |q| &q.ghosts[..]);
+                    let key = |g: &genie_core::ghost::Ghost| {
+                        (
+                            g.id,
+                            g.original_id,
+                            g.state,
+                            g.cant_see,
+                            g.position.map(f32::to_bits),
+                        )
+                    };
+                    let (a, b): (Vec<_>, Vec<_>) = (
+                        slice.iter().map(key).collect(),
+                        game.iter().map(key).collect(),
+                    );
+                    if a != b {
+                        let only = |x: &Vec<_>, y: &Vec<_>| -> Vec<_> {
+                            x.iter().filter(|e| !y.contains(*e)).copied().collect()
+                        };
+                        let (sl, gm) = (only(&a, &b), only(&b, &a));
+                        let what = if sl.is_empty() && gm.is_empty() {
+                            format!("ghosts in another order: slice {a:?}, the game {b:?}")
+                        } else {
+                            format!("ghosts the slice's alone {sl:?}, the game's alone {gm:?}")
+                        };
+                        report.differences.push((p as u32, what));
+                    }
+                }
+                let pools_text = dump_after(start + k + 1, "pools");
+                let pool = pools_text
+                    .as_deref()
+                    .map(recycle_pools_from_dump)
+                    .transpose()?;
+                let ghost_pool = pools_text
+                    .as_deref()
+                    .map(ghost_pool_from_dump)
+                    .transpose()?;
+                if let Some(game_pool) = pool.as_ref()
+                    && *game_pool != turns.recycling.missiles
+                {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "recycled missiles slice {:?}, the game {game_pool:?}",
+                            turns.recycling.missiles
+                        ),
+                    ));
+                }
+                if let Some(game_pool) = ghost_pool.as_ref()
+                    && *game_pool != turns.recycling.ghosts
+                {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "recycled ghosts slice {:?}, the game {game_pool:?}",
+                            turns.recycling.ghosts
+                        ),
+                    ));
+                }
+                // the world's next reusable id, which ghosts and missiles take
+                if turns.recycling.next_id != after.game.next_reusable_id {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "next reusable id slice {} game {}",
+                            turns.recycling.next_id, after.game.next_reusable_id
+                        ),
+                    ));
+                }
+                // the world's unit groups, by their owners; the process globals the tick
+                // oracle dumped beside the save are the game's
+                let mut after = after;
+                let globals = dump_after(start + k + 1, "globals");
+                if let (Some(text), Some(g)) = (globals.as_deref(), after.game.groups.as_mut()) {
+                    groups::globals_from_dump(text, g);
+                }
+                let group_differences = after
+                    .game
+                    .groups
+                    .as_ref()
+                    .map(|g| groups::group_differences(&turns.groups, g, globals.is_some()))
+                    .unwrap_or_default();
+                let groups_differ = !group_differences.is_empty();
+                for d in group_differences {
+                    report
+                        .differences
+                        .push((group_owner(&turns, &after.game, &d), d));
+                }
+                // the next frame seed: a free run draws the game's
+                if turns.frame_seed != after.game.frame_seed {
+                    report.differences.push((
+                        0,
+                        format!(
+                            "frame seed slice {} game {}",
+                            turns.frame_seed, after.game.frame_seed
+                        ),
+                    ));
+                }
+                times.compare += clock.elapsed();
+                let clock = std::time::Instant::now();
+                let SavedStep {
+                    objects,
+                    mut seen,
+                    terrain,
+                    mut game,
+                    ..
+                } = after;
+                game.tile_lists = tiles;
+                game.missile_pool = pool;
+                game.ghost_pool = ghost_pool;
+                // the groups take the game's state only where they differ
+                if !groups_differ {
+                    game.groups = None;
+                }
+                // what the slice got wrong takes the game's state too: each update's differences are
+                // its own, not an earlier update's carried on
+                game.resync = report
+                    .differences
+                    .iter()
+                    .filter_map(|(_, d)| d.split(':').next().and_then(|o| o.parse::<i32>().ok()))
+                    .collect();
+                if report
+                    .differences
+                    .iter()
+                    .any(|(_, d)| d.starts_with("player "))
+                {
+                    game.sight = Some((
+                        std::mem::take(&mut seen.maps),
+                        std::mem::take(&mut seen.unified),
+                    ));
+                }
+                for (p, id, why) in turns.force(&game) {
+                    report.unsupported.push((p as u32, Some(id), tick, why));
+                }
+                // a parsed save's state is dropped on the pool: its drop costs the run as much as
+                // its forcing
+                let gone = (game, objects, seen, terrain);
+                tasks.spawn(move |_| drop(gone));
+                times.force += clock.elapsed();
+                reports.push(report);
+            }
+            Ok(())
+        };
+        run_all()
+    })?;
+    Ok((reports, times))
+}
+
+/// The player a group difference (`group ID: …`) goes with: the group's owner in the game or the
+/// slice, Gaia for the world's list and counter.
+pub(super) fn group_owner(
+    turns: &Turns,
+    game: &genie_core::turn::GameState,
+    difference: &str,
+) -> u32 {
+    let id = difference
+        .strip_prefix("group ")
+        .and_then(|d| d.split(':').next())
+        .and_then(|d| d.parse::<i32>().ok());
+    let owner = id.and_then(|id| {
+        game.groups
+            .as_ref()
+            .and_then(|g| g.get(id))
+            .or_else(|| turns.groups.get(id))
+            .map(|g| g.owner)
+    });
+    owner
+        .filter(|&o| (o as usize) < turns.players.len())
+        .unwrap_or(0)
+}
+
+/// The game's saves parsed ahead of a forced run ([`forced_run`]): the pool's tasks put them by
+/// index, the run takes them in order.
+pub(super) struct Ahead<T> {
+    pub(super) parsed: std::sync::Mutex<std::collections::BTreeMap<usize, T>>,
+    pub(super) ready: std::sync::Condvar,
+}
+
+impl<T> Ahead<T> {
+    pub(super) const fn new() -> Self {
+        Self {
+            parsed: std::sync::Mutex::new(std::collections::BTreeMap::new()),
+            ready: std::sync::Condvar::new(),
+        }
+    }
+
+    /// A task's parse of index `k`.
+    pub(super) fn put(&self, k: usize, v: T) {
+        let _ = self.parsed.lock().expect("a parse panicked").insert(k, v);
+        self.ready.notify_all();
+    }
+
+    /// The run takes index `k`, waiting until it is parsed.
+    pub(super) fn take(&self, k: usize) -> T {
+        let mut parsed = self.parsed.lock().expect("a parse panicked");
+        loop {
+            if let Some(v) = parsed.remove(&k) {
+                return v;
+            }
+            parsed = self.ready.wait(parsed).expect("a parse panicked");
+        }
+    }
+}
+
+/// Where a forced run's time went ([`forced_run`]): waiting for the game's saves to be parsed
+/// (the parse of a batch runs on every core while the run waits), the slice's updates, the
+/// comparisons (with the dumps' reading) and the forcing.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Times {
+    /// Waiting for the parsed saves.
+    pub parse: std::time::Duration,
+    /// The slice's updates.
+    pub run: std::time::Duration,
+    /// The comparisons with the game's saves and dumps.
+    pub compare: std::time::Duration,
+    /// The forcing.
+    pub force: std::time::Duration,
+}
+
+/// The game's state in a save as the slice's units ([`genie_core::turn::GameState`]).
+pub(super) fn game_state(
+    header: &Header,
+    masters: Option<&MasterTable>,
+) -> genie_core::turn::GameState {
+    let world = &header.world.base_world;
+    let mut game = genie_core::turn::GameState {
+        frame_seed: world.current_frame_random_seed,
+        next_reusable_id: world.next_reusable_object_id,
+        game_state: u32::from(world.temp_game_state),
+        groups: groups::unit_groups(world).ok(),
+        ..Default::default()
+    };
+    for p in header.players() {
+        let civ = p.world_player().base.civ_id;
+        game.players.push(
+            p.live_objects()
+                .map(|o| unit(o, p.objects(), &world.path, civ, masters))
+                .collect(),
+        );
+        let attributes = &p.world_player().base.attributes;
+        let r = |i: usize| attributes.get(i).copied().unwrap_or_default();
+        game.resources.push([r(0), r(1), r(2), r(3)]);
+        game.attributes.push(attributes.clone());
+        game.pending_debit.push(p.world_player().base.pending_debit);
+        let base = &p.world_player().base;
+        game.statuses.push((
+            base.game_status,
+            base.resigned & 2 == 0 && base.resigned != 0,
+        ));
+        let techs = &p.world_player().tech_tree.tech_player_tree;
+        game.techs.push(techs.iter().map(tech_state).collect());
+    }
+    game
+}

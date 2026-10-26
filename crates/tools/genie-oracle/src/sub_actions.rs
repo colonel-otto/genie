@@ -1,0 +1,490 @@
+//! A saved unit's reload, sprite and Attack, its Build and Fly tasks, a building's production
+//! and gather point, and the default task an object's first update starts.
+
+use crate::masters::{DefaultAction, MasterTable};
+use crate::{combat_master, core_task};
+use genie_core::GenieError;
+use genie_core::artifact::ARTIFACT_TYPE;
+use genie_core::masters::ACTION_FACTORY_TYPES;
+use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
+
+/// A saved unit's reload (the Strike's): its `mReloadStinger` plus its master's
+/// `speed_of_attack` less its `mReloadPowerup`; None without a combat master.
+pub(super) fn saved_reload(
+    object: &genie_save::Object,
+    s: &RgeStaticObject,
+    objects: &PlayerObjects,
+) -> Option<f32> {
+    let c = object.combat()?;
+    let master = objects
+        .masters
+        .iter()
+        .flatten()
+        .map(|m| &m.master)
+        .find(|m| m.static_part().is_some_and(|ms| ms.id() == s.master_obj))?;
+    let rc = &master
+        .tribe_master_combat_object
+        .as_deref()?
+        .rge_master_combat_object;
+    Some(c.reload_stinger + (rc.speed_of_attack - c.reload_powerup))
+}
+
+/// The unit's current sprite as the save holds it: the node of its sprite list
+/// (`temp_load_sprite_list`, `FUN_1413b87c0`) that shows its sprite (`+0x18`), an animated one
+/// (type 2) with its frame and clock, a static one (type 1) with its frame; None without one or
+/// for a graphic the table lacks.
+pub(super) fn saved_sprite(
+    s: &RgeStaticObject,
+    graphics: &std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
+) -> Option<genie_core::sprite::ActiveSprite> {
+    let list = s.active_sprite_list.as_deref()?;
+    let graphic = graphics.get(&s.sprite).copied()?;
+    let nodes = || {
+        list.sprite_type_list
+            .iter()
+            .filter_map(|e| e.type_.as_deref())
+    };
+    let Some(node) = nodes()
+        .filter_map(|n| n.rge_active_animated_sprite.as_deref())
+        .find(|a| a.rge_active_sprite.sprite_id as i16 == s.sprite)
+    else {
+        let node = nodes()
+            .filter_map(|n| n.rge_active_sprite.as_deref())
+            .find(|a| a.sprite_id as i16 == s.sprite)?;
+        return Some(genie_core::sprite::ActiveSprite::at_rest(
+            graphic, node.frame,
+        ));
+    };
+    Some(genie_core::sprite::ActiveSprite {
+        graphic,
+        frame: node.rge_active_sprite.frame,
+        interval: node.animate_interval,
+        last: node.animate_last,
+        last_frame: node.last_frame as i16,
+        changed: node.frame_changed != 0,
+        looped: node.frame_looped != 0,
+        animate: node.animate_flag,
+        speed: node.last_speed_value,
+    })
+}
+
+/// A saved Attack sub-action (type 9, `FUN_140a7c880`): its target, state, timer, ranges, point,
+/// the target's last place (`+0xa4`..), a hit still to land (`+0x9e`), its `MoveTo` (in states 5
+/// and 11 with that `MoveTo`'s point), and its sprites
+/// and frames. The load restores the sprites at `+0x70`, `+0x80` and `+0x88` from the second to
+/// fourth saved ids (the first goes to `+0x68`); the second attack sprite (`+0x78`) and the
+/// swing's times (`+0xb0`, `+0xb4`) are not saved, and a loaded Attack starts without them.
+pub(super) fn saved_attack(
+    sub: &genie_save::generated::world::Action,
+    graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
+    move_to_state: &dyn Fn(u8) -> Result<genie_core::move_to::MoveTo, GenieError>,
+    run_sprite: i16,
+) -> Result<genie_core::attack::Attack, GenieError> {
+    use genie_core::move_to::MOVE_TO;
+    let b = sub
+        .base()
+        .ok_or(GenieError::unsupported("a saved Attack without its base"))?;
+    let a = sub
+        .rge_action_by_type
+        .as_deref()
+        .and_then(|t| t.rge_action_attack.as_deref())
+        .ok_or(GenieError::unsupported(
+            "a saved Attack without its own part",
+        ))?;
+    let graphics = graphics.ok_or(GenieError::unsupported(
+        "a saved Attack without the sprites' table",
+    ))?;
+    let g = |id: u16| {
+        let id = id as i16;
+        (0 <= id).then(|| graphics.get(&id).copied()).flatten()
+    };
+    // states 5 and 11 walk their MoveTo to a point: its own (`+0x38`..`+0x40`)
+    let goto = match b.sub_actions.entries().next() {
+        Some((MOVE_TO, s2)) if matches!(b.state, 5 | 11) => s2
+            .base()
+            .map_or([-1.0; 3], |m| [m.target_x, m.target_y, m.target_z]),
+        _ => [-1.0; 3],
+    };
+    let (move_to, move_wait) = match b.sub_actions.entries().next() {
+        None => (None, genie_core::move_to::MoveWait::default()),
+        Some((MOVE_TO, s2)) => (
+            Some(move_to_state(s2.base().map_or(0, |b| b.state))?),
+            // its wait (`+0x6c`, `+0x70`, `+0x74`)
+            s2.rge_action_by_type
+                .as_deref()
+                .and_then(|t| t.rge_action_move_to.as_deref())
+                .map_or_else(genie_core::move_to::MoveWait::default, |m| {
+                    genie_core::move_to::MoveWait {
+                        state: m.movement_wait_state,
+                        timer: m.timer,
+                        delay: f32::from_bits(m.k_default_wait_time),
+                    }
+                }),
+        ),
+        Some(_) => {
+            return Err(GenieError::unsupported(
+                "a saved Attack with another sub-action",
+            ));
+        }
+    };
+    Ok(genie_core::attack::Attack {
+        target: b.target_id,
+        target2: b.target2_id,
+        state: b.state,
+        timer: b.timer,
+        range: a.range,
+        min_range: a.min_range,
+        point: [b.target_x, b.target_y, b.target_z],
+        seen: [
+            a.last_target_position_x,
+            a.last_target_position_y,
+            a.last_target_position_z,
+        ],
+        move_to,
+        move_wait,
+        goto,
+        pending: a.need_to_attack != 0,
+        swing: 0.0,
+        rest: 0.0,
+        arms: genie_core::attack::Arms {
+            move_sprite: g(a.short_val),
+            sprite: g(a.short_val_2),
+            second_sprite: None,
+            idle_sprite: g(a.short_val_3),
+            idle_attack_sprite: g(a.short_val_4),
+            missile: a.missile_id,
+            fire_frame: a.frame_delay,
+            interrupt_frame: a.interrupt_animation_at_frame,
+        },
+        sub_action: b.sub_action_value != 0,
+        repaths: b.target_moved_state != 0,
+        // `+0x68`, its MoveTo's sprite
+        runs: 0 <= run_sprite && a.short_val as i16 == run_sprite,
+        same_owner: a.was_same_owner != 0,
+    })
+}
+
+/// A builder's Build task (the game's Build action keeps a pointer to it, in its master's saved
+/// task list or, for a master that saves none, in the `.dat`'s): its work range (task `+0x30`)
+/// and work value (`+0x28`), with the master's work rate (its action part's `work_rate`).
+pub(super) fn build_task(
+    objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+    master: i16,
+) -> Result<genie_core::build::BuildTask, GenieError> {
+    let m = objects.master(master).ok_or(GenieError::unsupported(
+        "a builder whose master is not saved",
+    ))?;
+    let work_rate = combat_master(m)
+        .map(|c| c.rge_master_action_object.work_rate)
+        .ok_or(GenieError::unsupported(
+            "a builder master without an action part",
+        ))?;
+    let (range, work_value, resource, id) = build_range(objects, civ, masters, m, master)?;
+    Ok(genie_core::build::BuildTask {
+        range,
+        work_value,
+        work_rate,
+        resource,
+        id,
+    })
+}
+
+/// A bird master's Fly task: its saved task list's, else the `.dat`'s.
+pub(super) fn fly_task(
+    objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+    master: i16,
+) -> Result<genie_core::masters::Task, GenieError> {
+    let fly = genie_core::fly::FLY;
+    let saved = objects
+        .master(master)
+        .and_then(|m| m.rge_master.as_deref())
+        .and_then(|r| r.rge_master_action_object.as_deref())
+        .and_then(|a| a.tasks.as_deref());
+    if let Some(tasks) = saved {
+        return tasks
+            .list
+            .iter()
+            .find(|e| e.task.action_type == fly)
+            .map(|e| core_task(&e.task))
+            .ok_or(GenieError::unsupported(
+                "a bird whose master has no Fly task",
+            ));
+    }
+    masters
+        .and_then(|t| t.work(civ, objects.dat_master(master)))
+        .and_then(|w| w.tasks.iter().find(|t| t.action_type == fly))
+        .copied()
+        .ok_or(GenieError::unsupported(
+            "a bird whose Fly task is not in the data file",
+        ))
+}
+
+/// The work range and value of a builder master's Build task.
+pub(super) fn build_range(
+    objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+    m: &Master,
+    master: i16,
+) -> Result<(f32, f32, i16, i16), GenieError> {
+    let saved = m.tribe_master_combat_object.as_deref().and_then(|c| {
+        c.rge_master_combat_object
+            .rge_master_action_object
+            .tasks
+            .as_deref()
+    });
+    let build = genie_core::build::BUILD;
+    if let Some(tasks) = saved {
+        return tasks
+            .list
+            .iter()
+            .find(|e| e.task.action_type == build)
+            .map(|e| {
+                (
+                    e.task.work_range,
+                    e.task.work_val1,
+                    e.task.attribute_type,
+                    e.task.id,
+                )
+            })
+            .ok_or(GenieError::unsupported(
+                "a builder whose master has no Build task",
+            ));
+    }
+    masters
+        .and_then(|t| t.work(civ, objects.dat_master(master)))
+        .and_then(|w| w.tasks.iter().find(|t| t.action_type == build))
+        .map(|t| (t.work_range, t.work_val1, t.attribute_type, t.id))
+        .ok_or(GenieError::unsupported(
+            "a builder whose Build task is not in the data file",
+        ))
+}
+
+/// A saved building's production (`TRIBE_Building_Object`'s queue, its production list's action
+/// and its local lists, `FUN_1411df160`): every slot of the queue (`mProductionQueueSize` of them,
+/// the stale ones past the count too) with its count, total and enabled flag; the load numbers the
+/// slots' serials from 0 and leaves the building's next serial (`+0xcd8`) at the slot count; the
+/// change counter (`+0xc00`) and `+0xc01` start at 0. The action: a unit's make action or a
+/// research, each with its state and `+0x60` (the base's `subActionValue`). `Ok(None)`: a building
+/// without slots, action or local lists.
+pub(super) fn production(
+    object: &genie_save::Object,
+) -> Result<Option<genie_core::production::Production>, GenieError> {
+    use genie_core::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+    let Some(building) = object.tribe_building_object.as_deref() else {
+        return Ok(None);
+    };
+    let slots: Vec<Entry> = building
+        .production_queue
+        .iter()
+        .enumerate()
+        .map(|(k, e)| {
+            let c = &e.production_queue_costs;
+            let word = |k: usize| [c[k], c[k + 1], c[k + 2], c[k + 3]];
+            let cost = |j: usize| {
+                (
+                    i32::from_le_bytes(word(8 * j)),
+                    f32::from_le_bytes(word(8 * j + 4)),
+                )
+            };
+            Entry {
+                master: e.production_queue_master_unit_id,
+                count: e.production_queue_unit_count,
+                tech: e.production_queue_tech_id,
+                costs: [cost(0), cost(1), cost(2)],
+                serial: k as i64,
+                button: e.production_queue_button_location_id,
+                train_time: e.production_queue_train_time,
+            }
+        })
+        .collect();
+    let action = match building.production_queue_actions.entries().next() {
+        None => None,
+        Some((102, action)) => {
+            let make = action
+                .tribe_action_make_obj
+                .as_deref()
+                .ok_or(GenieError::unsupported(
+                    "a saved make action without its part",
+                ))?;
+            let base = action.base().ok_or(GenieError::unsupported(
+                "a saved make action without its base",
+            ))?;
+            Some(Making::Unit(MakeObj {
+                state: base.state,
+                paid: base.sub_action_value != 0,
+                master: make.obj_id,
+                progress: make.work_done,
+                unique_id: make.unique_id,
+                button: make.button_location_id,
+                train_time: make.train_time,
+            }))
+        }
+        Some((103, action)) => {
+            let tech = action
+                .tribe_action_make_tech
+                .as_deref()
+                .ok_or(GenieError::unsupported(
+                    "a saved research action without its part",
+                ))?;
+            let base = action.base().ok_or(GenieError::unsupported(
+                "a saved research action without its base",
+            ))?;
+            Some(Making::Research(MakeTech {
+                state: base.state,
+                paid: base.sub_action_value != 0,
+                tech: tech.tech_id,
+                master: tech.unique_id,
+                progress: tech.m_research_progress,
+            }))
+        }
+        Some(_) => {
+            return Err(GenieError::unsupported(
+                "a saved production action other than making a unit",
+            ));
+        }
+    };
+    let (disabled, available, researched) = (&building.value, &building.value_2, &building.value_3);
+    if slots.is_empty()
+        && action.is_none()
+        && disabled.is_empty()
+        && available.is_empty()
+        && researched.is_empty()
+    {
+        return Ok(None);
+    }
+    let next_serial = slots.len() as i64;
+    Ok(Some(Production {
+        queue: Queue {
+            slots,
+            count: building.production_queue_count,
+            total: building.production_queue_total_units,
+            enabled: building.production_queue_enabled != 0,
+            changes: 0,
+            waiting: false,
+            next_serial,
+        },
+        action,
+        disabled_techs: disabled.clone(),
+        researched_techs: researched.clone(),
+        available_units: available.clone(),
+    }))
+}
+
+/// A building's gather point, if it has one (`gather_point_exists`).
+pub(super) fn gather_point(object: &genie_save::Object) -> Option<genie_core::turn::GatherPoint> {
+    let b = object
+        .tribe_building_object
+        .as_deref()
+        .filter(|b| b.gather_point_exists != 0)?;
+    Some(genie_core::turn::GatherPoint {
+        point: [b.gather_point_x, b.gather_point_y, b.gather_point_z],
+        target: b.gather_point_target,
+        target_master: b.gather_point_target_master,
+    })
+}
+
+/// A default task's action the slice models.
+pub(super) enum DefaultStart {
+    /// The Artifact action (type 107, livestock's).
+    Artifact(genie_core::artifact::Artifact),
+    /// A bird's Fly (type 10) with its task.
+    Fly(genie_core::masters::Task),
+    /// A farm's or fish trap's Make (type 21).
+    Make,
+}
+
+/// What an object's first update starts of its master's default task (`RGE_Action_Object::update`,
+/// 0x14106ac90): only action objects (types 40 and up) have one. The default task is game data:
+/// the table's, from the `.dat`, or the object's own master's. The slice models the Artifact action
+/// (type 107, the default task of livestock) and a bird's Fly (type 10); any other default task is
+/// reported.
+pub(super) fn default_task(
+    object: &genie_save::Object,
+    s: &RgeStaticObject,
+    objects: &PlayerObjects,
+    civ: u8,
+    masters: Option<&MasterTable>,
+) -> Result<Option<DefaultStart>, GenieError> {
+    if !is_action_object(object) {
+        return Ok(None);
+    }
+    let action = match s.own_master() {
+        Some(_) => match own_default_task(s) {
+            Some(-1) | None => DefaultAction::None,
+            Some(_) => {
+                return Err(GenieError::unsupported(
+                    "the default task of an object's own master",
+                ));
+            }
+        },
+        None => masters
+            .ok_or(GenieError::unsupported(
+                "no master table: the default task is unknown",
+            ))?
+            .default_action(civ, objects.dat_master(s.master_obj))
+            .ok_or(GenieError::unsupported("a master the table does not have"))?,
+    };
+    match action {
+        DefaultAction::None => Ok(None),
+        DefaultAction::Type(ARTIFACT_TYPE) => Ok(Some(DefaultStart::Artifact(
+            genie_core::artifact::Artifact::new(s.owner == 0),
+        ))),
+        DefaultAction::Type(genie_core::fly::FLY) => {
+            fly_task(objects, civ, masters, s.master_obj).map(|t| Some(DefaultStart::Fly(t)))
+        }
+        DefaultAction::Type(genie_core::make::MAKE) => Ok(Some(DefaultStart::Make)),
+        // the action list's factory (`FUN_140aca4b0`, then the RGE one `FUN_140a97e00`) makes
+        // no action of the other types: the default task starts nothing (wild animals' Explore,
+        // type 6)
+        DefaultAction::Type(t) if !ACTION_FACTORY_TYPES.contains(&t) => Ok(None),
+        DefaultAction::Type(_) => Err(GenieError::unsupported(
+            "a default task other than the Artifact action",
+        )),
+        DefaultAction::NoSuchTask => Err(GenieError::unsupported(
+            "a default task id that names no task",
+        )),
+    }
+}
+
+/// Whether the object runs `RGE_Action_Object::update`: types 40 (action), 50 (combat), 60
+/// (missile), 70 (tribe combat) and 80 (building).
+pub(super) fn is_action_object(object: &genie_save::Object) -> bool {
+    object.combat().is_some()
+        || object.rge_object.as_deref().is_some_and(|r| {
+            r.rge_action_object.is_some()
+                || r.rge_combat_object.is_some()
+                || r.rge_missile_object.is_some()
+        })
+}
+
+/// The default task id of an object's own action master, if it has one.
+pub(super) fn own_default_task(s: &RgeStaticObject) -> Option<i16> {
+    let tribe = |c: &genie_save::generated::world::OwnTribeMasterCombatObject| {
+        c.own_rge_master_combat_object
+            .own_rge_master_action_object
+            .default_task
+    };
+    None.or_else(|| {
+        s.rge_master_action_object
+            .as_deref()
+            .map(|a| a.default_task)
+    })
+    .or_else(|| {
+        s.rge_master_missile_object.as_deref().map(|m| {
+            m.own_rge_master_combat_object
+                .own_rge_master_action_object
+                .default_task
+        })
+    })
+    .or_else(|| s.tribe_master_combat_object.as_deref().map(tribe))
+    .or_else(|| {
+        s.tribe_master_building_object
+            .as_deref()
+            .map(|b| tribe(&b.own_tribe_master_combat_object))
+    })
+}

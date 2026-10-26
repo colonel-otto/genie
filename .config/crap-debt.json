@@ -1820,6 +1820,69 @@
       "crate": "genie-oracle"
     },
     {
+      "file": "crates/tools/genie-oracle/src/checked_rows.rs",
+      "function": "MoveRow::same",
+      "line": 300,
+      "cyclomatic": 12.0,
+      "coverage": 0.0,
+      "crap": 156.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/checked_rows.rs",
+      "function": "PathData::same",
+      "line": 278,
+      "cyclomatic": 17.0,
+      "coverage": 0.0,
+      "crap": 306.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/command_args.rs",
+      "function": "frames",
+      "line": 21,
+      "cyclomatic": 9.0,
+      "coverage": 0.0,
+      "crap": 90.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/decoder.rs",
+      "function": "Decoder::command",
+      "line": 133,
+      "cyclomatic": 38.0,
+      "coverage": 15.09433962264151,
+      "crap": 921.8470683853114,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/forced_replay.rs",
+      "function": "command_phase",
+      "line": 137,
+      "cyclomatic": 7.0,
+      "coverage": 0.0,
+      "crap": 56.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/forced_replay.rs",
+      "function": "forced_run",
+      "line": 177,
+      "cyclomatic": 19.0,
+      "coverage": 0.0,
+      "crap": 380.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/forced_replay.rs",
+      "function": "forced_ticks",
+      "line": 102,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-oracle"
+    },
+    {
       "file": "crates/tools/genie-oracle/src/groups.rs",
       "function": "globals_from_dump",
       "line": 261,
@@ -1829,291 +1892,48 @@
       "crate": "genie-oracle"
     },
     {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "Decoder::command",
-      "line": 3763,
-      "cyclomatic": 38.0,
-      "coverage": 13.793103448275861,
-      "crap": 963.1096805937101,
+      "file": "crates/tools/genie-oracle/src/header_runs.rs",
+      "function": "blocks_per_tick",
+      "line": 242,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
       "crate": "genie-oracle"
     },
     {
       "file": "crates/tools/genie-oracle/src/lib.rs",
       "function": "Error::fmt",
-      "line": 113,
+      "line": 174,
       "cyclomatic": 12.0,
       "coverage": 0.0,
       "crap": 156.0,
       "crate": "genie-oracle"
     },
     {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "FinderWorld::allied",
-      "line": 6381,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "FinderWorld::target_up",
-      "line": 6404,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "MoveRow::same",
-      "line": 4927,
-      "cyclomatic": 12.0,
-      "coverage": 0.0,
-      "crap": 156.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "PathData::same",
-      "line": 4905,
-      "cyclomatic": 17.0,
-      "coverage": 0.0,
-      "crap": 306.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "blocks_per_tick",
-      "line": 4548,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "command_phase",
-      "line": 5590,
-      "cyclomatic": 7.0,
-      "coverage": 0.0,
-      "crap": 56.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "compare_players",
-      "line": 5977,
-      "cyclomatic": 22.0,
-      "coverage": 0.0,
-      "crap": 506.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "default_task",
-      "line": 1946,
-      "cyclomatic": 15.0,
-      "coverage": 0.0,
-      "crap": 240.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "forced_run",
-      "line": 5630,
-      "cyclomatic": 19.0,
-      "coverage": 0.0,
-      "crap": 380.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "forced_ticks",
-      "line": 5555,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "frames",
-      "line": 3705,
-      "cyclomatic": 9.0,
-      "coverage": 0.0,
-      "crap": 90.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "from_save",
-      "line": 6169,
-      "cyclomatic": 20.0,
-      "coverage": 0.0,
-      "crap": 420.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "ghost_pool_from_dump",
-      "line": 5285,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "master_facets",
-      "line": 2834,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "mesh_from_dump",
-      "line": 6283,
-      "cyclomatic": 21.0,
-      "coverage": 0.0,
-      "crap": 462.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "mover",
-      "line": 694,
-      "cyclomatic": 18.0,
-      "coverage": 0.0,
-      "crap": 342.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "moving_stats",
-      "line": 3148,
-      "cyclomatic": 11.0,
-      "coverage": 0.0,
-      "crap": 132.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "production",
-      "line": 1814,
-      "cyclomatic": 14.0,
-      "coverage": 0.0,
-      "crap": 210.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "recycle_pools_from_dump",
-      "line": 5263,
-      "cyclomatic": 9.0,
-      "coverage": 0.0,
-      "crap": 90.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "registry_from_dump",
-      "line": 5352,
-      "cyclomatic": 25.0,
-      "coverage": 0.0,
-      "crap": 650.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
+      "file": "crates/tools/genie-oracle/src/map_and_sight.rs",
       "function": "resource_differences",
-      "line": 3652,
+      "line": 393,
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
       "crate": "genie-oracle"
     },
     {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "saved_actions",
-      "line": 903,
-      "cyclomatic": 101.0,
-      "coverage": 0.0,
-      "crap": 10302.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "saved_attack",
-      "line": 1617,
-      "cyclomatic": 11.0,
-      "coverage": 0.0,
-      "crap": 132.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "saved_move_to_point",
-      "line": 881,
-      "cyclomatic": 12.0,
-      "coverage": 0.0,
-      "crap": 156.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "slice",
-      "line": 2361,
-      "cyclomatic": 12.0,
-      "coverage": 0.0,
-      "crap": 156.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
+      "file": "crates/tools/genie-oracle/src/map_and_sight.rs",
       "function": "spatial",
-      "line": 3394,
+      "line": 133,
       "cyclomatic": 14.0,
       "coverage": 0.0,
       "crap": 210.0,
       "crate": "genie-oracle"
     },
     {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "unit",
-      "line": 258,
-      "cyclomatic": 8.0,
-      "coverage": 0.0,
-      "crap": 72.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "unit_terrain",
-      "line": 6693,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
+      "file": "crates/tools/genie-oracle/src/map_and_sight.rs",
       "function": "visibility_differences",
-      "line": 3604,
+      "line": 345,
       "cyclomatic": 9.0,
       "coverage": 0.0,
       "crap": 90.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "wonder_time",
-      "line": 2629,
-      "cyclomatic": 7.0,
-      "coverage": 0.0,
-      "crap": 56.0,
       "crate": "genie-oracle"
     },
     {
@@ -2123,6 +1943,186 @@
       "cyclomatic": 9.0,
       "coverage": 0.0,
       "crap": 90.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/movers.rs",
+      "function": "mover",
+      "line": 148,
+      "cyclomatic": 18.0,
+      "coverage": 0.0,
+      "crap": 342.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/movers.rs",
+      "function": "saved_move_to_point",
+      "line": 335,
+      "cyclomatic": 12.0,
+      "coverage": 0.0,
+      "crap": 156.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/pathing_inputs.rs",
+      "function": "mesh_from_dump",
+      "line": 17,
+      "cyclomatic": 21.0,
+      "coverage": 0.0,
+      "crap": 462.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/pathing_inputs.rs",
+      "function": "unit_terrain",
+      "line": 79,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/save_objects.rs",
+      "function": "ghost_pool_from_dump",
+      "line": 205,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/save_objects.rs",
+      "function": "recycle_pools_from_dump",
+      "line": 183,
+      "cyclomatic": 9.0,
+      "coverage": 0.0,
+      "crap": 90.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/save_objects.rs",
+      "function": "registry_from_dump",
+      "line": 272,
+      "cyclomatic": 25.0,
+      "coverage": 0.0,
+      "crap": 650.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/save_runs.rs",
+      "function": "compare_players",
+      "line": 17,
+      "cyclomatic": 22.0,
+      "coverage": 0.0,
+      "crap": 506.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/save_runs.rs",
+      "function": "from_save",
+      "line": 215,
+      "cyclomatic": 20.0,
+      "coverage": 0.0,
+      "crap": 420.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/saved_masters.rs",
+      "function": "master_facets",
+      "line": 13,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/saved_masters.rs",
+      "function": "moving_stats",
+      "line": 329,
+      "cyclomatic": 11.0,
+      "coverage": 0.0,
+      "crap": 132.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/saved_unit.rs",
+      "function": "unit",
+      "line": 17,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/setup.rs",
+      "function": "slice",
+      "line": 62,
+      "cyclomatic": 12.0,
+      "coverage": 0.0,
+      "crap": 156.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/setup.rs",
+      "function": "wonder_time",
+      "line": 330,
+      "cyclomatic": 7.0,
+      "coverage": 0.0,
+      "crap": 56.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/sub_actions.rs",
+      "function": "default_task",
+      "line": 406,
+      "cyclomatic": 15.0,
+      "coverage": 0.0,
+      "crap": 240.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/sub_actions.rs",
+      "function": "production",
+      "line": 274,
+      "cyclomatic": 14.0,
+      "coverage": 0.0,
+      "crap": 210.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/sub_actions.rs",
+      "function": "saved_attack",
+      "line": 77,
+      "cyclomatic": 11.0,
+      "coverage": 0.0,
+      "crap": 132.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/task_finder.rs",
+      "function": "FinderWorld::allied",
+      "line": 57,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/task_finder.rs",
+      "function": "FinderWorld::target_up",
+      "line": 80,
+      "cyclomatic": 8.0,
+      "coverage": 0.0,
+      "crap": 72.0,
+      "crate": "genie-oracle"
+    },
+    {
+      "file": "crates/tools/genie-oracle/src/top_actions.rs",
+      "function": "saved_actions",
+      "line": 18,
+      "cyclomatic": 101.0,
+      "coverage": 0.0,
+      "crap": 10302.0,
       "crate": "genie-oracle"
     },
     {

@@ -1,0 +1,349 @@
+//! A saved moving object's movement: its masters' animated and moving parts, its path levels,
+//! its movement state and its `MoveTo`'s point.
+
+use crate::masters::MasterTable;
+use crate::{combat_master, master_facets};
+use genie_core::GenieError;
+use genie_save::generated::world::{
+    Master, Path, PathData, PlayerObjects, RgeMasterAnimatedObject, RgeStaticObject,
+};
+
+pub(super) fn vec3(b: &[u8; 12]) -> genie_core::fmath::Vec3 {
+    let f = |i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
+    [f(0), f(4), f(8)]
+}
+
+/// The animated part of a player's master, which holds its speed (`mMaxSpeed`, master `+0x740`).
+pub(super) fn animated_master(m: &Master) -> Option<&RgeMasterAnimatedObject> {
+    let combat = m.tribe_master_combat_object.as_deref().or_else(|| {
+        m.tribe_master_building_object
+            .as_deref()
+            .map(|b| &b.tribe_master_combat_object)
+    });
+    if let Some(c) = combat {
+        let moving = &c
+            .rge_master_combat_object
+            .rge_master_action_object
+            .rge_master_moving_object;
+        return Some(&moving.rge_master_animated_object);
+    }
+    let r = m.rge_master.as_deref()?;
+    None.or(r.rge_master_animated_object.as_deref())
+        .or_else(|| {
+            r.rge_master_moving_object
+                .as_deref()
+                .map(|m| &m.rge_master_animated_object)
+        })
+        .or_else(|| {
+            r.rge_master_action_object
+                .as_deref()
+                .map(|a| &a.rge_master_moving_object.rge_master_animated_object)
+        })
+        .or_else(|| {
+            r.rge_master_combat_object.as_deref().map(|c| {
+                &c.rge_master_action_object
+                    .rge_master_moving_object
+                    .rge_master_animated_object
+            })
+        })
+        .or_else(|| {
+            r.rge_master_missile_object.as_deref().map(|m| {
+                &m.rge_master_combat_object
+                    .rge_master_action_object
+                    .rge_master_moving_object
+                    .rge_master_animated_object
+            })
+        })
+}
+
+/// The moving part of a saved master, when its class has one.
+pub(super) fn moving_master(
+    m: &Master,
+) -> Option<&genie_save::generated::world::RgeMasterMovingObject> {
+    let combat = m.tribe_master_combat_object.as_deref().or_else(|| {
+        m.tribe_master_building_object
+            .as_deref()
+            .map(|b| &b.tribe_master_combat_object)
+    });
+    if let Some(c) = combat {
+        return Some(
+            &c.rge_master_combat_object
+                .rge_master_action_object
+                .rge_master_moving_object,
+        );
+    }
+    let r = m.rge_master.as_deref()?;
+    None.or(r.rge_master_moving_object.as_deref())
+        .or_else(|| {
+            r.rge_master_action_object
+                .as_deref()
+                .map(|a| &a.rge_master_moving_object)
+        })
+        .or_else(|| {
+            r.rge_master_combat_object
+                .as_deref()
+                .map(|c| &c.rge_master_action_object.rge_master_moving_object)
+        })
+        .or_else(|| {
+            r.rge_master_missile_object.as_deref().map(|m| {
+                &m.rge_master_combat_object
+                    .rge_master_action_object
+                    .rge_master_moving_object
+            })
+        })
+}
+
+/// One saved level of path data, with its path's waypoints from the world's path table.
+pub(super) fn path_level(
+    d: &PathData,
+    paths: &[Path],
+) -> Result<genie_core::movement::PathData, GenieError> {
+    // a level without a path (id -1) holds none: a bird's top level
+    let path = match d.path_id {
+        -1 => None,
+        id => Some(
+            paths
+                .iter()
+                .find(|p| p.idvalue == id)
+                .ok_or(GenieError::unsupported(
+                    "path data whose path is not in the world's table",
+                ))?,
+        ),
+    };
+    Ok(genie_core::movement::PathData {
+        level: d.waypoint_level,
+        linked_type: d.linked_path_type,
+        points: path.map_or_else(Vec::new, |p| p.m_waypoints.iter().map(vec3).collect()),
+        has_path: path.is_some(),
+        path_flags: path.map_or(0, |p| p.flags_m_bits),
+        waypoint: d.waypoint,
+        state: d.state,
+        range: d.range,
+        target: d.target_id,
+        pause_time: f32::from_bits(d.pause_time),
+        flags: d.flags_m_bits,
+        length: path.map_or(0.0, |p| p.path_length_value),
+        created: path.map_or(0, |p| p.creation_time_value),
+        continue_counter: d.continue_counter,
+        repath_time: d.repath_time,
+        ignore: path.map_or_else(Vec::new, |p| {
+            p.data
+                .iter()
+                .take(p.number_ignore_units.max(0) as usize)
+                .map(|&id| id as i32)
+                .collect()
+        }),
+        ignored: Vec::new(),
+    })
+}
+
+/// A moving object's movement state from the save: orientation, velocity data and path data (the
+/// save lists the levels top first; the game walks the last), and from its master and the `.dat`
+/// its speed, turning and radii. `None` for an object that does not move (types below 30).
+///
+/// The top speed is the master's speed times the saved sprite's speed factor when that is above 0
+/// (`FUN_14114d1d0`); slot 65's other terms (`+0xa08`, `+0xa2c`, `+0xb38`, a followed object) are
+/// not read yet. moveForward's factor `+0x878` is not in the save; every moving object of
+/// MarvinBlue/426048731 holds 1.0 at tick 680 (the tick oracle).
+pub(super) fn mover(
+    object: &genie_save::Object,
+    s: &RgeStaticObject,
+    objects: &PlayerObjects,
+    paths: &[Path],
+    civ: u8,
+    masters: Option<&MasterTable>,
+) -> Result<Option<genie_core::movement::Mover>, GenieError> {
+    use genie_core::movement::{MoveStats, Mover, Velocity};
+    let Some(m) = object.moving_part() else {
+        return Ok(None);
+    };
+    if m.future_path_data.is_some() {
+        return Err(GenieError::unsupported("saved future path data"));
+    }
+    // an object with its own master (a copy, say a captured animal's) moves by its own values
+    let (radius, restriction, base, turn, flags, standing, sprite_facets) =
+        match (s.own_master(), s.own_animated_master()) {
+            (Some(own), Some(animated)) => (
+                [own.radius_x, own.radius_y, own.radius_z],
+                own.terrain_restriction_mask_id,
+                animated.max_speed,
+                s.own_moving_master()
+                    .map(|m| (m.turn_speed, m.temp_move_sprite, m.temp_run_sprite)),
+                own.object_flags,
+                own.sprite_num,
+                // an own master copy (a captured animal's) shows its master's sprites
+                masters.and_then(|t| {
+                    let master = objects.master(s.master_obj)?;
+                    master_facets(master, master.static_part()?, t)
+                }),
+            ),
+            (Some(_), None) => {
+                return Err(GenieError::unsupported(
+                    "a moving object's own master without an animated part",
+                ));
+            }
+            (None, _) => {
+                let master = objects.master(s.master_obj).ok_or(GenieError::unsupported(
+                    "a moving object whose master is not saved",
+                ))?;
+                let placement = master.static_part().ok_or(GenieError::unsupported(
+                    "a moving master without a static part",
+                ))?;
+                let base = animated_master(master)
+                    .ok_or(GenieError::unsupported(
+                        "a moving master without an animated part",
+                    ))?
+                    .max_speed;
+                (
+                    [placement.radius_x, placement.radius_y, placement.radius_z],
+                    placement.terrain_restriction_mask_id,
+                    base,
+                    moving_master(master)
+                        .map(|m| (m.turn_speed, m.move_sprite_id, m.run_sprite_id)),
+                    placement.object_flags,
+                    placement.idle_sprite_id,
+                    masters.and_then(|t| master_facets(master, placement, t)),
+                )
+            }
+        };
+    let table = masters.ok_or(GenieError::unsupported(
+        "no master table: turning is unknown",
+    ))?;
+    // without a sprite (−1: the empty town-centre annex 890, say) no factor
+    let factor = if s.sprite == -1 {
+        0.0
+    } else {
+        table.sprite_speed(s.sprite).ok_or(GenieError::unsupported(
+            "a sprite the data file does not have",
+        ))?
+    };
+    let speed = if 0.0 < factor { base * factor } else { base };
+    let turning =
+        table
+            .turning(civ, objects.dat_master(s.master_obj))
+            .ok_or(GenieError::unsupported(
+                "a moving master the data file does not have",
+            ))?;
+    let (turn_speed, walking, running) = turn.ok_or(GenieError::unsupported(
+        "a moving master without a moving part",
+    ))?;
+    // the top speed with a sprite: the master's speed times the sprite's factor above 0
+    let with = |sprite: i16| {
+        let f = table.sprite_speed(sprite).unwrap_or(0.0);
+        if 0.0 < f { base * f } else { base }
+    };
+    let walk_speed = with(walking);
+    let run_speed = if 0 <= running {
+        with(running)
+    } else {
+        walk_speed
+    };
+    let facets = table.graphics.get(&walking).map(|g| g.facets);
+    let velocity = (m.have_movement == 1).then(|| Velocity {
+        velocity: m.velocity.as_ref().map_or([0.0; 3], vec3),
+        acceleration: m.acceleration.as_ref().map_or([0.0; 3], vec3),
+    });
+    let mut levels = m
+        .temp_path_data
+        .iter()
+        .rev()
+        .map(|d| path_level(d, paths))
+        .collect::<Result<Vec<_>, _>>()?;
+    loaded_ignored(&mut levels, &s.temp_int);
+    Ok(Some(Mover {
+        forward: vec3(&m.orientation_forward_value),
+        right: vec3(&m.orientation_right_value),
+        velocity,
+        paths: levels,
+        factor: 1.0,
+        stats: MoveStats {
+            fly_mode: table
+                .fly_mode(civ, objects.dat_master(s.master_obj))
+                .unwrap_or(0),
+            speed,
+            turn_rate: genie_core::movement::turn_rate(turn_speed, facets),
+            turn_radius: 0.0,
+            turn_radius_speed: f32::MAX,
+            radius,
+            restriction: usize::try_from(restriction)
+                .map_err(|_| GenieError::unsupported("a negative terrain restriction"))?,
+            restriction_mask: usize::try_from(restriction)
+                .ok()
+                .and_then(|r| table.terrain.masks().get(r))
+                .copied()
+                .ok_or(GenieError::unsupported(
+                    "a terrain restriction the data file does not have",
+                ))?,
+            turn_time: turn_speed,
+            move_algorithm: turning.move_algorithm,
+            min_collision: turning.min_collision_size_multiplier,
+            fast_turn: flags & 2 != 0,
+            walk_speed,
+            run_speed,
+            stand_speed: with(standing),
+            facets: sprite_facets,
+            weapon_range: objects
+                .master(s.master_obj)
+                .and_then(combat_master)
+                .map_or(0.0, |c| c.weapon_range),
+        },
+        waiting: m.waiting_to_move_value,
+        wait_delays: m.number_wait_delays,
+        attack_moving: m.attack_moving != 0,
+        last_move: m.last_move_time_value,
+        // the save's x, height, y
+        moved_at: {
+            let f = |i: usize| {
+                let b = &m.position_value;
+                f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]])
+            };
+            [f(0), f(8), f(4)]
+        },
+        substitute_count: m.consecutive_substitute_count,
+        ignore_units: s.temp_int.clone(),
+        // the save's userDefinedWaypoints, in the game's layout (x, height, y)
+        user_waypoints: m.user_defined_waypoints.iter().map(vec3).collect(),
+        last_turn: m.turn_towards_time,
+        angle: m.angle,
+        move_to_point: saved_move_to_point(object),
+        speed_stopped: false,
+        pauses: Vec::new(),
+        in_the_way: Vec::new(),
+        // the current sprite's, which the unit's update takes from its sprite
+        sprite_facets: None,
+    }))
+}
+
+/// A loaded unit's paths' ignore units (`+0x450`), which the save does not hold: a level below
+/// the top whose path was made in the top path's tick took the unit's own (`+0x670`,
+/// `FUN_140f9b7a0` after the short pather).
+pub(super) fn loaded_ignored(levels: &mut [genie_core::movement::PathData], units: &[i32]) {
+    let Some((top, below)) = levels.split_last_mut() else {
+        return;
+    };
+    if top.points.is_empty() {
+        return;
+    }
+    for level in below.iter_mut().filter(|l| l.created == top.created) {
+        level.ignored = units.to_vec();
+    }
+}
+
+/// The point of the `MoveTo` a saved unit walks with to a target object: its top action when that
+/// is a `MoveTo`, else the top action's first sub-action (or that Attack's own first one), when
+/// that `MoveTo` has a target (its `target_x`..`target_z`).
+pub(super) fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3]> {
+    let (top_kind, top) = object.actions()?.entries().next()?;
+    if top_kind == genie_core::move_to::MOVE_TO {
+        let b = top.base()?;
+        return (b.target_id != -1).then_some([b.target_x, b.target_y, b.target_z]);
+    }
+    let (mut kind, mut sub) = top.base()?.sub_actions.entries().next()?;
+    // a Hunt's Attack walks with a MoveTo of its own
+    if kind == genie_core::attack::ATTACK {
+        (kind, sub) = sub.base()?.sub_actions.entries().next()?;
+    }
+    let b = sub.base()?;
+    (kind == genie_core::move_to::MOVE_TO && b.target_id != -1)
+        .then_some([b.target_x, b.target_y, b.target_z])
+}

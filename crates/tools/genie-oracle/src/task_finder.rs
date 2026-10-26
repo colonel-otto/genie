@@ -1,0 +1,199 @@
+//! What the task finder reads of a save ([`FinderWorld`]).
+
+use crate::masters::MasterTable;
+use crate::{Error, work_masters};
+use genie_rec::de;
+
+/// What the task finder (`genie_core::tasks`) reads of a save: every player's masters as the work
+/// command reads them, every object's state, holding and flags, the players' relations and their
+/// attribute 95.
+#[derive(Debug)]
+pub struct FinderWorld {
+    /// Every player's masters.
+    pub masters: Vec<genie_core::masters::Masters>,
+    /// The objects by id.
+    pub objects: std::collections::HashMap<i32, FinderObject>,
+    /// `relation[i]` of each player (`player+0x260`).
+    pub relations: Vec<Vec<u8>>,
+    /// Every player's attribute 95.
+    pub attribute_95: Vec<f32>,
+    /// Every player's civ.
+    pub civs: Vec<u8>,
+    /// The drop-site table.
+    pub drop_sites: Vec<genie_core::tasks::DropSite>,
+}
+
+/// One object as the task finder reads it.
+#[derive(Clone, Copy, Debug)]
+pub struct FinderObject {
+    /// Its player.
+    pub player: usize,
+    /// Its master.
+    pub master: i16,
+    /// Its state.
+    pub state: u8,
+    /// What it holds: the attribute and the amount.
+    pub held: (i16, f32),
+    /// Its hit points.
+    pub hp: f32,
+    /// Its most hit points.
+    pub max_hp: f32,
+    /// It may be attacked.
+    pub attackable: bool,
+    /// The pasture it is in, −1 for none.
+    pub pasture: i32,
+    /// The main building of an annex (`+0xbb8`), if it is one.
+    pub annex_of: Option<i32>,
+    /// Its top action's type, if it has one.
+    pub top_action: Option<i16>,
+    /// Its place.
+    pub position: [f32; 3],
+}
+
+impl genie_core::tasks::Diplomacy for FinderWorld {
+    /// `FUN_141663dc0`: one's own player counts; Gaia never does; else the relation 0 does, and
+    /// 4 with the ally flag. Relation 1 counts only under allied victory (`FUN_1415e8e10`), which
+    /// the slice does not model.
+    fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
+        if from == to {
+            return true;
+        }
+        if to == 0 {
+            return false;
+        }
+        match self.relations.get(from).and_then(|r| r.get(to)) {
+            Some(0) => true,
+            Some(4) => with_ally,
+            _ => false,
+        }
+    }
+
+    fn drops_at(&self, building: i16, actor: &genie_core::tasks::Actor<'_>) -> bool {
+        genie_core::tasks::drops_at(&self.drop_sites, building, actor)
+    }
+}
+
+impl FinderWorld {
+    /// The finder's view of object `id`, with its master from its player's masters; an annex
+    /// stands for its main building (the finder's step, `+0xbb8`), `steps` times.
+    #[must_use]
+    pub fn target_up(&self, id: i32, steps: usize) -> Option<genie_core::tasks::TaskTarget<'_>> {
+        let mut id = id;
+        for _ in 0..steps {
+            match self.objects.get(&id)?.annex_of {
+                Some(main) => id = main,
+                None => break,
+            }
+        }
+        let o = self.objects.get(&id)?;
+        Some(genie_core::tasks::TaskTarget {
+            id,
+            master: self.masters.get(o.player)?.get(o.master)?,
+            player: o.player,
+            state: o.state,
+            held: o.held,
+            hp: o.hp,
+            max_hp: o.max_hp,
+            attackable: o.attackable,
+            pasture: o.pasture,
+            top_action: o.top_action,
+        })
+    }
+
+    /// The finder's target: an annex stands for its main building.
+    #[must_use]
+    pub fn target(&self, id: i32) -> Option<genie_core::tasks::TaskTarget<'_>> {
+        self.target_up(id, 1)
+    }
+
+    /// The finder's view of unit `id` as the actor.
+    #[must_use]
+    pub fn actor(&self, id: i32) -> Option<genie_core::tasks::Actor<'_>> {
+        let o = self.objects.get(&id)?;
+        Some(genie_core::tasks::Actor {
+            id,
+            master: self.masters.get(o.player)?.get(o.master)?,
+            player: o.player,
+            held: o.held,
+            attribute_95: self.attribute_95.get(o.player).copied().unwrap_or(0.0),
+            civ: self.civs.get(o.player).copied().unwrap_or(0),
+        })
+    }
+}
+
+/// The task finder's inputs from a save, with the `.dat`'s values for what the save does not hold
+/// and the table's drop sites (`dropsites.json`, [`drop_sites`]).
+///
+/// [`drop_sites`]: crate::game_tables::drop_sites
+pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Error> {
+    let chapter = de::chapters(save)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let masters = sections
+        .iter()
+        .map(|p| work_masters(p.objects(), p.world_player().base.civ_id, table))
+        .collect();
+    let mut objects = std::collections::HashMap::new();
+    for (player, section) in sections.iter().enumerate() {
+        for o in section.live_objects().chain(section.sleeping_objects()) {
+            let Some(s) = o.static_part() else { continue };
+            let combat = o.combat();
+            let powerup = |f: fn(&genie_save::generated::world::TribeCombatObject) -> f32| {
+                combat.map_or(0.0, f)
+            };
+            let master_hp = section
+                .objects()
+                .master(s.master_obj)
+                .and_then(|m| m.static_part())
+                .map_or(0.0, |m| f32::from(m.read_temp_6));
+            let _ = objects.insert(
+                s.id,
+                FinderObject {
+                    player,
+                    master: s.master_obj,
+                    state: s.object_state,
+                    held: (s.attribute_type_held, s.attribute_amount_held),
+                    hp: s.hp
+                        + (powerup(|c| c.hitpoints_max_powerup) - powerup(|c| c.hitpoints_powerup)),
+                    max_hp: master_hp + powerup(|c| c.hitpoints_max_powerup),
+                    attackable: s.unit_attackable_flag != 0,
+                    pasture: s.parent_pasture_id,
+                    annex_of: o
+                        .tribe_building_object
+                        .as_deref()
+                        .map(|b| b.mupt_linked_object_references_linked_owner_id)
+                        .filter(|&owner| owner != -1),
+                    top_action: o
+                        .actions()
+                        .and_then(|a| a.entries().next())
+                        .map(|(kind, _)| kind),
+                    position: [s.t_x, s.t_y, s.t_z],
+                },
+            );
+        }
+    }
+    Ok(FinderWorld {
+        masters,
+        objects,
+        relations: sections
+            .iter()
+            .map(|p| p.world_player().base.relation.clone())
+            .collect(),
+        attribute_95: sections
+            .iter()
+            .map(|p| {
+                p.world_player()
+                    .base
+                    .attributes
+                    .get(95)
+                    .copied()
+                    .unwrap_or(0.0)
+            })
+            .collect(),
+        civs: sections
+            .iter()
+            .map(|p| p.world_player().base.civ_id)
+            .collect(),
+        drop_sites: table.drop_sites.clone(),
+    })
+}

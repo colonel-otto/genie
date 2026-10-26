@@ -29,7 +29,6 @@
   "crates/formats/genie-rec/src/player.rs": 898,
   "crates/formats/genie-rec/src/unit.rs": 1348,
   "crates/formats/genie-scx/src/format.rs": 1383,
-  "crates/formats/genie-scx/src/triggers.rs": 955,
-  "crates/tools/genie-oracle/src/lib.rs": 6987
+  "crates/formats/genie-scx/src/triggers.rs": 955
  }
 }
