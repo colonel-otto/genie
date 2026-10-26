@@ -1,0 +1,140 @@
+//! The world's unit groups ([`UnitGroups`]), an object's link to its group and the group
+//! every listed unit is in.
+
+use crate::group::UnitGroup;
+
+/// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2
+/// from the object's setup (`FUN_141196df0`) and in every object of a save in no group.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GroupLink {
+    /// `mGroupID`: the group's id, -1 for none.
+    pub id: i32,
+    /// `mGroupFlag`.
+    pub flag: i32,
+}
+
+impl Default for GroupLink {
+    fn default() -> Self {
+        Self { id: -1, flag: -2 }
+    }
+}
+
+/// The world's unit groups (`mNumberUnitGroups`, `mUnitGroupCounter`, `FUN_141536ef0`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UnitGroups {
+    /// The groups in the world list's order.
+    pub groups: Vec<UnitGroup>,
+    /// The id the next group takes (`mUnitGroupCounter`, `world+0x5c`).
+    pub counter: i32,
+    /// The commands that ran the order splitter so far (`DAT_143f10134`, a process global no
+    /// save holds): each group a command forms or orders takes it as `mDifferentiatorID`, then it
+    /// counts up. A group's load raises it past the group's (`FUN_14101d350`).
+    pub commands: i32,
+    /// The scratch array of a group's unit types (`DAT_143f23b70`, 50 words, a process global):
+    /// each count of a sub-formation's unit types (`FUN_1410116c0`) writes its types from the
+    /// front and copies the whole array into the group's `mUnitTypes`, so the words past the
+    /// types are an earlier count's. Empty is all zero, as the process starts.
+    pub unit_types_scratch: Vec<u32>,
+}
+
+impl UnitGroups {
+    /// The long pather's list for a unit in group `group` (`FUN_140f9eb70`: `+0x6d0`, the group
+    /// by id `FUN_14152ff40`, then `FUN_14100bbe0` with 255): None for no group (-1) or one the
+    /// world does not hold.
+    #[must_use]
+    pub fn group_units(&self, group: i32) -> Option<Vec<i32>> {
+        /// The long pather's list holds this many (`0xff`).
+        const LOWERED: usize = 255;
+        self.get(group)
+            .map(|g| self.differentiator_units(g, LOWERED))
+    }
+
+    /// `FUN_14100bbe0` of group `group` with `cap`: the members of each group of its
+    /// differentiator groups the world holds (by id), in order, at most `cap`.
+    #[must_use]
+    pub fn differentiator_units(&self, group: &UnitGroup, cap: usize) -> Vec<i32> {
+        let mut out = Vec::new();
+        for &id in &group.differentiator_groups {
+            let Some(g) = self.get(id as i32) else {
+                continue;
+            };
+            for m in &g.members {
+                out.push(m.id);
+                if cap <= out.len() {
+                    return out;
+                }
+            }
+        }
+        out
+    }
+
+    /// A command ran the order splitter to its end (`DAT_143f10134` up by one): MOVE
+    /// (`FUN_140e67800`) every time, INTERACT (`FUN_140e68b90`) with a unit and a single unit
+    /// held, FOLLOW (`FUN_14161c920`) with its target, BUILD (`FUN_140e7a400`) past its
+    /// placement tests, after the groups took the old count as their differentiator; the shelter
+    /// garrison (`FUN_141621220`) once per group its splitter makes. WORK (2), PATROL (0x15,
+    /// 0x21, 0x22, `FUN_14161b970`), `FORM_FORMATION` (0x17, `FUN_14161dba0`), command 0x1f
+    /// (`FUN_140e67150`) and REPAIR (0x6e, `FUN_140e7da90`) count too; make-way
+    /// (`FUN_140f88750`) would, but returns at once while `DAT_143f01836` is 0, as nothing
+    /// writes it.
+    pub const fn count_command(&mut self) {
+        self.commands = self.commands.wrapping_add(1);
+    }
+
+    /// The group of id `id` (`FUN_14152ff40`): none for -1.
+    #[must_use]
+    pub fn get(&self, id: i32) -> Option<&UnitGroup> {
+        if id == -1 {
+            return None;
+        }
+        self.groups.iter().find(|g| g.id == id)
+    }
+
+    /// The group of id `id`, to change (`FUN_14152ff40`).
+    pub fn get_mut(&mut self, id: i32) -> Option<&mut UnitGroup> {
+        if id == -1 {
+            return None;
+        }
+        self.groups.iter_mut().find(|g| g.id == id)
+    }
+
+    /// A new group at the world list's end with the next id (`FUN_14152efc0` with 1: the
+    /// constructor, `FUN_141039640`'s id, then the count and the counter up by one); its state
+    /// is the constructor's ([`UnitGroup::new`]) and `owner`'s, which the order's handler sets
+    /// (`+0xdc`).
+    pub fn create(&mut self, owner: u32) -> &mut UnitGroup {
+        let id = self.counter;
+        self.counter += 1;
+        let at = self.groups.len();
+        let mut g = UnitGroup::new(id);
+        g.owner = owner;
+        self.groups.push(g);
+        &mut self.groups[at]
+    }
+}
+
+/// The group that every listed unit is in (`FUN_14152ece0`), from each unit's group link
+/// (`group_of`, None for a unit the world does not hold, which is passed over): -1 for an empty
+/// list, for a unit in no group, for two groups, and when the first unit is gone (the others
+/// are then compared with no group).
+pub fn common_group(ids: &[i32], group_of: impl Fn(i32) -> Option<i32>) -> i32 {
+    let Some(&first) = ids.first() else {
+        return -1;
+    };
+    let first_held = group_of(first).is_some();
+    let mut common = -1;
+    for &id in ids {
+        let Some(group) = group_of(id) else {
+            continue;
+        };
+        if group == -1 {
+            return -1;
+        }
+        if id == first && first_held {
+            common = group;
+        } else if common != group {
+            return -1;
+        }
+    }
+    common
+}
