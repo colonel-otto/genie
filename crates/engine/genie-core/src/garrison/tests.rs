@@ -1163,15 +1163,15 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
             obstruction: None,
         },
     );
-    let member = |id| crate::group::Member {
+    let member = |id| crate::groups::Member {
         id,
-        ..crate::group::Member::default()
+        ..crate::groups::Member::default()
     };
-    t.groups.groups.push(crate::group::UnitGroup {
+    t.groups.groups.push(crate::groups::UnitGroup {
         id: 7,
         owner: 1,
         members: vec![member(401), member(400)],
-        ..crate::group::UnitGroup::default()
+        ..crate::groups::UnitGroup::default()
     });
     let idx = t.players[1].objects.len() - 1;
     let garrison = Task {

@@ -184,7 +184,7 @@ pub fn run_from_save(
 pub fn saved_groups(
     save: &[u8],
     globals: Option<&str>,
-) -> Result<genie_core::group::UnitGroups, Error> {
+) -> Result<genie_core::groups::UnitGroups, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
     let mut g = groups::unit_groups(&header.world.base_world).map_err(Error::Unmodelled)?;

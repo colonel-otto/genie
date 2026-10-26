@@ -219,7 +219,7 @@ pub struct Planning<'a> {
     pub construction_rate: f32,
     /// The world's unit groups as they are now, which the long pather reads for a unit in a
     /// group (its group's differentiator units, `FUN_140f9eb70`).
-    pub groups: &'a crate::group::UnitGroups,
+    pub groups: &'a crate::groups::UnitGroups,
 }
 
 impl Planning<'_> {

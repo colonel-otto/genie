@@ -439,7 +439,7 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
         .map(|&(id, master, [x, y])| Unit {
             id,
             position: [x, y, 0.0],
-            group: crate::group::GroupLink {
+            group: crate::groups::GroupLink {
                 id: if members.contains(&id) { 5 } else { -1 },
                 flag: -2,
             },
@@ -481,16 +481,16 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
         crate::masters::Masters::new([master(4, 3), master(83, 0)]),
     ];
     if !members.is_empty() {
-        t.groups.groups.push(crate::group::UnitGroup {
+        t.groups.groups.push(crate::groups::UnitGroup {
             id: 5,
             members: members
                 .iter()
-                .map(|&id| crate::group::Member {
+                .map(|&id| crate::groups::Member {
                     id,
-                    ..crate::group::Member::default()
+                    ..crate::groups::Member::default()
                 })
                 .collect(),
-            ..crate::group::UnitGroup::default()
+            ..crate::groups::UnitGroup::default()
         });
     }
     t
@@ -703,13 +703,13 @@ fn the_loose_units_of_a_move_or_an_interact_leave_their_groups() {
     // two groups' members ordered alone: both loose
     let two = || {
         let mut t = soldiers(&units, &[11]);
-        t.groups.groups.push(crate::group::UnitGroup {
+        t.groups.groups.push(crate::groups::UnitGroup {
             id: 6,
-            members: vec![crate::group::Member {
+            members: vec![crate::groups::Member {
                 id: 12,
-                ..crate::group::Member::default()
+                ..crate::groups::Member::default()
             }],
-            ..crate::group::UnitGroup::default()
+            ..crate::groups::UnitGroup::default()
         });
         t.players[1].objects[1].group.id = 6;
         t
@@ -1855,9 +1855,9 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
 /// `FUN_1410395a0`: the old list goes, the new one is copied whole, an empty one too.
 #[test]
 fn a_group_s_differentiator_groups_are_the_list_given() {
-    let mut g = crate::group::UnitGroup {
+    let mut g = crate::groups::UnitGroup {
         differentiator_groups: vec![1, 2, 3],
-        ..crate::group::UnitGroup::default()
+        ..crate::groups::UnitGroup::default()
     };
     set_differentiator_groups(&mut g, &[7, 8]);
     assert_eq!(g.differentiator_groups, [7, 8]);

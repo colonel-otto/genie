@@ -223,8 +223,9 @@ impl Turns {
         }
         if 1 < list.len() {
             let entries: Vec<i32> = list.iter().map(|u| u.unwrap_or(-1)).collect();
-            let group =
-                crate::group::common_group(&entries, |id| self.object(id).map(|(_, u)| u.group.id));
+            let group = crate::groups::common_group(&entries, |id| {
+                self.object(id).map(|(_, u)| u.group.id)
+            });
             if self
                 .groups
                 .get(group)

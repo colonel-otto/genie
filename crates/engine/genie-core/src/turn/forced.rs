@@ -46,7 +46,7 @@ pub struct GameState {
     /// The world's pool of recycled ghosts, when the oracle dumped it.
     pub ghost_pool: Option<Vec<i32>>,
     /// The world's unit groups, when the slice's differ.
-    pub groups: Option<crate::group::UnitGroups>,
+    pub groups: Option<crate::groups::UnitGroups>,
 }
 
 impl Turns {

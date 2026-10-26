@@ -346,7 +346,7 @@ impl Mover {
         &mut self,
         me: &Me,
         dt: f32,
-        (world, groups): (&Spatial, Option<&crate::group::UnitGroups>),
+        (world, groups): (&Spatial, Option<&crate::groups::UnitGroups>),
         pathing: Option<&mut Pathing>,
         goal: Goal<'_>,
         (now, computer): (u32, bool),

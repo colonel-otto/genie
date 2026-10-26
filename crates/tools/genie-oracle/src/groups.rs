@@ -1,12 +1,12 @@
 //! The world's unit groups from a save (FD-036): genie-save's generated reader of the build into
-//! genie-core's [`genie_core::group`] state, and the field-by-field differences of two such
+//! genie-core's [`genie_core::groups`] state, and the field-by-field differences of two such
 //! states, which the forced replay reports.
 //!
 //! The mapping is the only place that knows the build's save layout of a group: a later build
 //! with another layout maps into the same state here.
 
 use genie_core::GenieError;
-use genie_core::group::{
+use genie_core::groups::{
     Formation, FormationLine, GroupCommand, GroupOrder, LinePoint, Member, Motion, PointLine, Slot,
     SpecificMove, TargetData, UnitGroup, UnitGroups, UnitTypeStatistic,
 };

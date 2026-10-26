@@ -6951,7 +6951,7 @@ fn scout_attack_on(
     let masters = Masters::new([scout]);
     let every = [Masters::new([wolf]), masters.clone()];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
-    let groups = crate::group::UnitGroups::default();
+    let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -7130,7 +7130,7 @@ fn attack_by(
     let masters = Masters::new(std::iter::once(who).chain(also));
     let every = [Masters::new([wolf]), masters.clone()];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
-    let groups = crate::group::UnitGroups::default();
+    let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -7306,7 +7306,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
     let masters = Masters::new([scout.clone()]);
     let every = [Masters::new([wolf]), masters.clone()];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
-    let groups = crate::group::UnitGroups::default();
+    let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());

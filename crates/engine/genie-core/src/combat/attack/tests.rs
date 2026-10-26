@@ -1543,7 +1543,7 @@ fn a_swing_with_a_second_sprite_draws_which_one_it_shows() {
         let mut world = world_with(7, 0, 6, at);
         let mut mover = soldier_mover(0.0);
         let mut pathing = crate::pathing::Pathing::default();
-        let groups = crate::group::UnitGroups::default();
+        let groups = crate::groups::UnitGroups::default();
         let mut walk = walk_in(&mut mover, &mut world);
         walk.plan = Some(crate::movement::Planning {
             pathing: &mut pathing,

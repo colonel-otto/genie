@@ -43,7 +43,7 @@ pub mod delete;
 pub mod facing;
 pub mod garrison;
 pub mod gathering;
-pub mod group;
+pub mod groups;
 pub mod lifecycle;
 pub mod lines;
 pub mod map;

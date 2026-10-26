@@ -147,7 +147,7 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
     let world = world();
     let mut pathing = Pathing::default();
     let mut object = Well512::default();
-    let groups = crate::group::UnitGroups::default();
+    let groups = crate::groups::UnitGroups::default();
     let mut plan = Planning {
         pathing: &mut pathing,
         now: 16360,
@@ -191,7 +191,7 @@ fn the_drop_off_walker_s_start_is_blocked_in_terrain_its_mask_lacks() {
         let mut pathing = Pathing::default();
         pathing.start_mesh(16);
         let mut object = Well512::default();
-        let groups = crate::group::UnitGroups::default();
+        let groups = crate::groups::UnitGroups::default();
         let mut plan = Planning {
             pathing: &mut pathing,
             now: 0,
@@ -266,7 +266,7 @@ fn a_big_unit_s_short_path_takes_the_old_pather() {
     let world = walled(0.6);
     let mut pathing = Pathing::default();
     let mut object = Well512::default();
-    let groups = crate::group::UnitGroups::default();
+    let groups = crate::groups::UnitGroups::default();
     let mut plan = Planning {
         pathing: &mut pathing,
         now: 100,
@@ -501,7 +501,7 @@ fn a_big_unit_s_path_request_takes_the_old_pather_with_the_walk_s_kept_hits() {
     };
     let mut pathing = Pathing::default();
     let mut object = Well512::default();
-    let groups = crate::group::UnitGroups::default();
+    let groups = crate::groups::UnitGroups::default();
     let mut plan = Planning {
         pathing: &mut pathing,
         now: 100,
@@ -568,7 +568,7 @@ fn the_reach_test_starts_where_the_unit_last_moved_to() {
     );
     let mut pathing = Pathing::default();
     let mut object = Well512::default();
-    let groups = crate::group::UnitGroups::default();
+    let groups = crate::groups::UnitGroups::default();
     let mut plan = Planning {
         pathing: &mut pathing,
         now: 0,
@@ -1260,7 +1260,7 @@ fn a_long_plan_reaches_its_waypoint_stops_short_or_ends_at_a_band() {
         let mut pathing = Pathing::default();
         pathing.start_mesh(120);
         let mut object = Well512::default();
-        let groups = crate::group::UnitGroups::default();
+        let groups = crate::groups::UnitGroups::default();
         let plan = Planning {
             pathing: &mut pathing,
             now: 0,
@@ -1353,7 +1353,7 @@ pub(crate) struct WalkRig {
     pub(crate) world: Spatial,
     pathing: Pathing,
     object: Well512,
-    groups: crate::group::UnitGroups,
+    groups: crate::groups::UnitGroups,
 }
 
 impl WalkRig {
@@ -1367,7 +1367,7 @@ impl WalkRig {
             world: tiled_world(vec![4; 120 * 120]),
             pathing,
             object: Well512::default(),
-            groups: crate::group::UnitGroups::default(),
+            groups: crate::groups::UnitGroups::default(),
         }
     }
 
@@ -1907,21 +1907,21 @@ fn two_members_of_one_group_rank_by_their_places_in_it() {
         group: 4,
         action_state: 0,
     };
-    let groups = |ids: &[i32]| crate::group::UnitGroups {
-        groups: vec![crate::group::UnitGroup {
+    let groups = |ids: &[i32]| crate::groups::UnitGroups {
+        groups: vec![crate::groups::UnitGroup {
             id: 4,
             members: ids
                 .iter()
-                .map(|&id| crate::group::Member {
+                .map(|&id| crate::groups::Member {
                     id,
-                    ..crate::group::Member::default()
+                    ..crate::groups::Member::default()
                 })
                 .collect(),
-            ..crate::group::UnitGroup::default()
+            ..crate::groups::UnitGroup::default()
         }],
-        ..crate::group::UnitGroups::default()
+        ..crate::groups::UnitGroups::default()
     };
-    let pauses = |w: &Spatial, me: &Me, gs: Option<&crate::group::UnitGroups>| {
+    let pauses = |w: &Spatial, me: &Me, gs: Option<&crate::groups::UnitGroups>| {
         let m = builder_9177();
         let position = vector(m.moved_at);
         let waypoint = m.paths[0].point(1);
@@ -1934,7 +1934,7 @@ fn two_members_of_one_group_rank_by_their_places_in_it() {
     assert_eq!(pauses(&w, &me, Some(&first)), [(9175, DT)]);
     let second = groups(&[9175, 9177]);
     assert_eq!(pauses(&w, &me, Some(&second)), []);
-    let none = crate::group::UnitGroups::default();
+    let none = crate::groups::UnitGroups::default();
     assert_eq!(pauses(&w, &me, Some(&none)), []);
     w.set_gait(9175, Some(walker(None)));
     let loose = Me { group: -1, ..me };

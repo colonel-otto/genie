@@ -44,7 +44,7 @@ pub(crate) struct DropWorld<'a> {
     pub world_time: u32,
     pub computer: bool,
     pub construction_rate: f32,
-    pub groups: &'a crate::group::UnitGroups,
+    pub groups: &'a crate::groups::UnitGroups,
 }
 
 /// A unit command a unit AI's update gave that the caller runs after it ([`Context::works`]).
@@ -262,7 +262,7 @@ pub(in crate::turn) struct UnitView<'u> {
     /// The planners and the mesh, which a reach test walks.
     pub(in crate::turn) pathing: &'u mut Pathing,
     /// The world's unit groups, which a reach test's long path reads.
-    pub(in crate::turn) groups: &'u crate::group::UnitGroups,
+    pub(in crate::turn) groups: &'u crate::groups::UnitGroups,
     /// The Object stream, which a reach test's new path draws from.
     pub(in crate::turn) object: &'u mut Well512,
     /// The Sprite stream, which a new sprite draws from.

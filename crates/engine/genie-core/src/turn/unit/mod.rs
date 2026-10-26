@@ -99,8 +99,8 @@ pub struct Unit {
     pub capture_flag: u8,
     /// An annex's main building (`+0xbb8`, the save's linked owner).
     pub annex_of: Option<i32>,
-    /// Its unit group, if any ([`crate::group::GroupLink`]).
-    pub group: crate::group::GroupLink,
+    /// Its unit group, if any ([`crate::groups::GroupLink`]).
+    pub group: crate::groups::GroupLink,
     /// `mHitpointsPowerup` and `mHitpointsMaxPowerup` (`+0xa38`, `+0xa3c`), which the task finder
     /// adds to the hit points.
     pub hp_powerups: [f32; 2],

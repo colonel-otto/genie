@@ -323,8 +323,8 @@ pub struct Turns {
     pub effects: Vec<Vec<crate::technology::EffectCommand>>,
     /// The market's prices (`+0x868`.., saved).
     pub market: crate::players::market::Market,
-    /// The world's unit groups ([`crate::group`]).
-    pub groups: crate::group::UnitGroups,
+    /// The world's unit groups ([`crate::groups`]).
+    pub groups: crate::groups::UnitGroups,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
     pub dt_seconds: f32,
     /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).

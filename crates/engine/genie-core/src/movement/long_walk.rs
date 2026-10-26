@@ -60,7 +60,7 @@ pub(crate) struct LongWalker<'a> {
     pub(crate) moves: bool,
     pub(crate) ignore_units: &'a [i32],
     /// For a walker in a group the world holds (`+0x6d0`, `FUN_14152ff40`), its group's
-    /// differentiator units (`FUN_14100bbe0` with 255, [`crate::group::UnitGroups::group_units`]).
+    /// differentiator units (`FUN_14100bbe0` with 255, [`crate::groups::UnitGroups::group_units`]).
     pub(crate) group_units: Option<Vec<i32>>,
 }
 

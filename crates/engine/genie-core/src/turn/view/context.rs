@@ -31,7 +31,7 @@ pub(crate) struct Context<'a> {
     /// The planners and the mesh, which a walker's path request uses.
     pub(crate) pathing: &'a mut Pathing,
     /// The world's unit groups, which a walker's long path reads.
-    pub(crate) groups: &'a crate::group::UnitGroups,
+    pub(crate) groups: &'a crate::groups::UnitGroups,
     /// The owner's construction rate (attribute 195).
     pub(crate) construction_rate: f32,
     /// The owner's masters, which an attack reads.

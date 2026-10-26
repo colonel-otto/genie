@@ -488,7 +488,7 @@ pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), G
 /// `setDifferentiatorGroups` (`FUN_1410395a0`): group `g`'s differentiator groups (`+0x108`,
 /// count `+0x110`) are `list` instead. The routine's false for an allocation that failed cannot
 /// come: `operator new` (`FUN_142a8bd2c`) throws rather than return none.
-fn set_differentiator_groups(g: &mut crate::group::UnitGroup, list: &[u32]) {
+fn set_differentiator_groups(g: &mut crate::groups::UnitGroup, list: &[u32]) {
     g.differentiator_groups.clear();
     g.differentiator_groups.extend_from_slice(list);
 }

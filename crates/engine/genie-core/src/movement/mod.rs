@@ -542,7 +542,7 @@ fn pause_rank(
     (player, computer): (usize, bool),
     (id, other): (i32, &Placed),
     world: &Spatial,
-    groups: Option<&crate::group::UnitGroups>,
+    groups: Option<&crate::groups::UnitGroups>,
 ) -> Option<bool> {
     let mine = world.gait(me.id).map_or(0, |g| g.human_order);
     let theirs = world.gait(id).map_or(0, |g| g.human_order);

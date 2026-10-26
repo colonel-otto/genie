@@ -264,7 +264,7 @@ impl Turns {
     }
 
     /// MOVE's groups (`FUN_140e67800`'s loop over the splitter's groups): the group all of a
-    /// split group's units are in (`FUN_14152ece0`, [`crate::group::common_group`]) takes the
+    /// split group's units are in (`FUN_14152ece0`, [`crate::groups::common_group`]) takes the
     /// order when it holds just them, the splitter keeping it ([`Turns::keep_group`]; with a
     /// target the world holds, `FUN_140fd9f40`'s range test, not modelled); one the world does not
     /// hold takes nothing; else a new group of the split's owner (`FUN_14152efc0`) takes them
@@ -287,7 +287,7 @@ impl Turns {
         for units in split.groups.clone() {
             let units = &units[..];
             let common =
-                crate::group::common_group(units, |id| self.object(id).map(|(_, u)| u.group.id));
+                crate::groups::common_group(units, |id| self.object(id).map(|(_, u)| u.group.id));
             let new = if common == -1 {
                 true
             } else {
@@ -323,7 +323,7 @@ impl Turns {
                 g.differentiator_id = commands;
             }
             if order.control {
-                self.lock_formation(id, crate::group::formation::LINE)?;
+                self.lock_formation(id, crate::groups::formation::LINE)?;
             }
             // a queued MOVE's new group first takes its first unit's target, not queued and
             // direct (0x140e67b5d..0x140e67cb1)

@@ -63,7 +63,7 @@ pub struct ObjectRow {
     /// `mReloadWorldtime` (when it may attack again).
     pub volley: Option<(u8, u32)>,
     /// Its unit group (`mGroupID`, `mGroupFlag`).
-    pub group: genie_core::group::GroupLink,
+    pub group: genie_core::groups::GroupLink,
     /// A building's production action (its make action or research): its state, which the
     /// checkpoint's word 9 reads as the building's action state, and its progress.
     pub making: Option<(u8, f32)>,

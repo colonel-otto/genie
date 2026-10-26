@@ -150,7 +150,7 @@ impl Turns {
         let mut listed: Vec<i32> = Vec::new();
         for units in split.groups.clone() {
             let common =
-                crate::group::common_group(&units, |id| self.object(id).map(|(_, u)| u.group.id));
+                crate::groups::common_group(&units, |id| self.object(id).map(|(_, u)| u.group.id));
             let kept = match common {
                 -1 => None,
                 id => match self.groups.get(id) {
@@ -188,7 +188,7 @@ impl Turns {
             for &[x, z] in before {
                 g.add_waypoint(x, z, true);
             }
-            let leg = crate::group::CommandMoveTo {
+            let leg = crate::groups::CommandMoveTo {
                 range: 0.0,
                 leg: patrol,
                 forget_target: true,

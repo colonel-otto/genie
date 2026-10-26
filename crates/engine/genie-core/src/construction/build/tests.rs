@@ -324,7 +324,7 @@ fn a_builder_on_an_annex_counts_among_its_main_building_s_builders() {
         world: &mut Spatial,
     ) {
         let (mut pathing, mut object) = (Pathing::default(), crate::math::rng::Well512::default());
-        let groups = crate::group::UnitGroups::default();
+        let groups = crate::groups::UnitGroups::default();
         let site = Site {
             id: 10029,
             life,

@@ -254,7 +254,7 @@ pub(super) fn group_lets_idle(group: Option<GroupState>) -> bool {
 pub struct GroupState {
     /// Its current command (`+0x3a8`) is not -1.
     pub commanded: bool,
-    /// `IsIdle` (`FUN_141017ad0`, [`crate::group::UnitGroup::is_idle`]).
+    /// `IsIdle` (`FUN_141017ad0`, [`crate::groups::UnitGroup::is_idle`]).
     pub idle: bool,
     /// It patrols: its top path's flags bit 0 (`FUN_141017c40`) or its flags bit 11
     /// (`FUN_141017c30`).

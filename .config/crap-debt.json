@@ -272,7 +272,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/formation/column_line.rs",
+      "file": "crates/engine/genie-core/src/groups/formation/column_line.rs",
       "function": "column_line_slots",
       "line": 89,
       "cyclomatic": 46.0,
@@ -281,7 +281,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion/request.rs",
+      "file": "crates/engine/genie-core/src/groups/motion/request.rs",
       "function": "link",
       "line": 246,
       "cyclomatic": 18.0,
@@ -290,7 +290,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion/request.rs",
+      "file": "crates/engine/genie-core/src/groups/motion/request.rs",
       "function": "request",
       "line": 26,
       "cyclomatic": 45.0,
@@ -299,7 +299,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion/step.rs",
+      "file": "crates/engine/genie-core/src/groups/motion/step.rs",
       "function": "pass",
       "line": 89,
       "cyclomatic": 20.0,
@@ -308,7 +308,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion/step.rs",
+      "file": "crates/engine/genie-core/src/groups/motion/step.rs",
       "function": "reached",
       "line": 164,
       "cyclomatic": 15.0,
@@ -317,7 +317,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/motion/walk.rs",
+      "file": "crates/engine/genie-core/src/groups/motion/walk.rs",
       "function": "steer",
       "line": 16,
       "cyclomatic": 34.0,
@@ -326,7 +326,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/steer/detour.rs",
+      "file": "crates/engine/genie-core/src/groups/steer/detour.rs",
       "function": "Turns::way_round",
       "line": 54,
       "cyclomatic": 53.0,
@@ -335,7 +335,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/update/awake.rs",
+      "file": "crates/engine/genie-core/src/groups/update/awake.rs",
       "function": "Turns::after_motion",
       "line": 154,
       "cyclomatic": 18.0,
@@ -344,7 +344,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/update/awake.rs",
+      "file": "crates/engine/genie-core/src/groups/update/awake.rs",
       "function": "Turns::awake_update",
       "line": 36,
       "cyclomatic": 17.0,
@@ -353,7 +353,7 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/group/update/awake.rs",
+      "file": "crates/engine/genie-core/src/groups/update/awake.rs",
       "function": "Turns::turn_formation",
       "line": 217,
       "cyclomatic": 10.0,

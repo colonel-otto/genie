@@ -423,7 +423,7 @@ impl Mover {
     pub(super) fn avoid(
         &self,
         me: &Me,
-        (world, groups): (&Spatial, Option<&crate::group::UnitGroups>),
+        (world, groups): (&Spatial, Option<&crate::groups::UnitGroups>),
         hits: &[i32],
         projected: Vec3,
         dt: f32,
