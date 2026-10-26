@@ -1,0 +1,269 @@
+//! A combat object's passive abilities: `FUN_1412072f0`, which `TRIBE_Combat_Object::update`
+//! (`0x141208440`) runs on every combat unit and building (types 70 and 80) after
+//! `RGE_Combat_Object::update`, with what that one returned (the object leaves its list); a
+//! building's update (`TRIBE_Building_Object::update`) runs its production after it. The routine
+//! walks the object's master's task list (`+0x788`) in order and acts on four action types
+//! (`+0xe`):
+//!
+//! - 151 ([`GENERATE`]): the player's attribute named by the task's `attribute_type3` (`+0x24`)
+//!   grows by the world's dt times the task's `work_val1` times the player's attribute named by
+//!   its `attribute_type2` (`+0x22`), through the player's store of what it made and did not give
+//!   yet (`player+0x658`, [`crate::turn::Player::generated`]): once that reaches 1 it is given
+//!   (the player's slot 0xf8) and starts again at 0. A combat unit (or building) with the task's
+//!   `combat_level_flag` bit 1 (bit 2) generates always; else a combat unit whose top action
+//!   works (its state 7) on a target of the task's class, and a built building. The Feitoria,
+//!   the castles, the King of the Hill monument, the Keshik and some villagers have it.
+//! - 152 ([`MOVEMENT_DAMAGE`]): while it moves, a combat unit hits the enemies about it on a
+//!   timer (`+0x9a4`, `mMovementDamageTimer`): each on the tiles within the task's `work_range`
+//!   that is not its player's ally nor Gaia's and is close enough loses the task's `work_val1`
+//!   hit points (its slot 0xb0), the timer takes the task's `work_val2` and the hit's player
+//!   hears of it (its slot 0x2e8 with 0x201); one left below 1 hit point has 0.
+//! - 159 ([`TERRAIN_LOOK`]): the object takes the task's look while it stands on a terrain of
+//!   the task's ([`terrain_mask`]): its own sprites (`+0x8a9` set, `+0x960`..`+0x988`, [`Look`]),
+//!   which its sprite slots then show ([`crate::sprite::standing`] and the others), its walk's
+//!   distance factor (`+0x878`, the task's `work_val1`) and its attack timer's rate (`+0x87c`,
+//!   its `work_val2`); off it, its master's and 1.
+//! - 161 ([`REMOVAL_REWARD`], `FUN_14120b5f0`): a dead object that leaves its list issues its
+//!   player an `ADD_ATTRIBUTE` command for each such task within 1e-7 of range ([`Reward`]).
+//!
+//! The `.dat` of build 158041 has only 151 tasks (its current build adds 159 for the longboats,
+//! Nessie and the snake), and the civilisations' bonuses add more to their gatherers' masters,
+//! which the save then holds (`mObjectTaskFlags` bit 0): the Portuguese foragers' wood, the
+//! Poles' stone miners' gold, the Shu lumberjacks' food. The routine runs whatever the masters
+//! hold.
+
+use crate::GenieError;
+use crate::damage::Victim;
+use crate::fmath;
+use crate::masters::Task;
+use crate::turn::Turns;
+
+mod generation;
+mod looks_and_rewards;
+mod movement_damage;
+
+pub use self::generation::{TopWork, WorkTarget, generated, generates, store};
+pub use self::looks_and_rewards::{look, reward, terrain_mask};
+pub use self::movement_damage::{Bystander, Hitter, finish, movement_damage_due, reach, struck};
+
+/// The action type of a generation task (151): the Feitoria's trickle and the like.
+pub const GENERATE: i16 = 0x97;
+/// The action type of a movement damage task (152).
+pub const MOVEMENT_DAMAGE: i16 = 0x98;
+/// The action type of a terrain look task (159).
+pub const TERRAIN_LOOK: i16 = 0x9f;
+/// The action type of a removal reward task (161).
+pub const REMOVAL_REWARD: i16 = 0xa1;
+
+/// The object types the routine runs on: a combat unit (`'F'`) and a building (`'P'`).
+const COMBAT_KIND: u8 = 70;
+const BUILDING_KIND: u8 = 80;
+
+/// The top action types a generation task's test passes (`FUN_140a7be70`): the Attack (9),
+/// type 7, the Gather (5) and the Hunt (0x6e).
+const WORKING_ACTIONS: [i16; 4] = [9, 7, 5, 0x6e];
+/// The action state of an action at work (`+0x18`).
+const WORKING: u8 = 7;
+
+/// The building classes a movement damage hits (`0x141207ae8`, decoded 0x33 and 0x36); it hits
+/// any object of another type.
+const STRUCK_BUILDING_CLASSES: [i16; 2] = [0x33, 0x36];
+/// The blast level from which an object is reached whatever the hitter's level (`+0x62b`).
+const ALWAYS_REACHED: u8 = 2;
+
+/// Hit points below which an object counts dead, and the store's give threshold
+/// (`DAT_14330eb8c`).
+const ONE: f32 = crate::image::abilities::ONE;
+/// The range below which a removal reward task pays (`DAT_142eb0c60`).
+const EPSILON: f32 = crate::image::abilities::EPSILON;
+
+/// What the routine keeps on its object. The constructor's values are the default: no timer,
+/// rate 1 and the master's look.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Abilities {
+    /// `+0x9a4`, `mMovementDamageTimer` (saved): the seconds before a movement damage task hits
+    /// again.
+    pub movement_damage_timer: f32,
+    /// `+0x87c`: the rate the attack timer (`+0x91c`) runs down at (`RGE_Combat_Object::update`,
+    /// `0x14107e28e`).
+    pub attack_rate: f32,
+    /// `+0x8a9` set, with the sprites at `+0x960`..`+0x988`: a terrain look task's look; None
+    /// while the object shows its master's (not saved: the constructor clears `+0x8a9`).
+    pub look: Option<Look>,
+}
+
+impl Default for Abilities {
+    fn default() -> Self {
+        Self {
+            movement_damage_timer: 0.0,
+            attack_rate: 1.0,
+            look: None,
+        }
+    }
+}
+
+/// The sprites a terrain look task gives its object (graphic ids; None for a null sprite), which
+/// the object's sprite slots show while `+0x8a9` is set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Look {
+    /// `+0x960`, the task's carrying sprite (`+0x58`): slot 0x798's standing sprite.
+    pub standing: Option<i16>,
+    /// `+0x968`, the task's moving sprite (`+0x40`): slot 0x7c8's walking sprite.
+    pub walking: Option<i16>,
+    /// `+0x970`, the task's working sprite (`+0x50`): slot 0x898's attack sprite.
+    pub attacking: Option<i16>,
+    /// `+0x978`, the task's proceeding sprite (`+0x48`): slot 0x7d0's running sprite.
+    pub running: Option<i16>,
+    /// `+0x980`, the sprite the task's gathering sound event id names (`+0x60`): slot 0x7a0's
+    /// dying sprite.
+    pub dying: Option<i16>,
+    /// `+0x988`, the sprite its deposit sound event id names (`+0x78`): slot 0x7a8's undead
+    /// sprite.
+    pub undead: Option<i16>,
+}
+
+/// The `ADD_ATTRIBUTE` command a removal reward task issues (`FUN_14120b5f0`: the player's slot
+/// 0x360, `FUN_141616500` -> `FUN_140e618e0`, command type 5 into the command queue,
+/// `FUN_140e6e180`): the attribute (its low byte goes into the command) and the amount, which
+/// the command carries as a float.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Reward {
+    /// The player the command is for (`player+0x718`).
+    pub player: usize,
+    /// The task's `attribute_type3` (`+0x24`).
+    pub attribute: i16,
+    /// The amount, truncated (`CVTTSS2SI`).
+    pub amount: i32,
+}
+
+/// The routine's test of the object's hit points (`COMISS 1.0, hp` / `JBE`): at least 1 (or a
+/// NaN) takes the living path, else the dead one.
+#[must_use]
+pub fn alive(hp: f32) -> bool {
+    fmath::at_most_or_unordered(ONE, hp)
+}
+
+/// The action types the routine acts on.
+pub const ACTIONS: [i16; 4] = [GENERATE, MOVEMENT_DAMAGE, TERRAIN_LOOK, REMOVAL_REWARD];
+
+/// What the routine reads of the object's master (`+0xa0`: its own one, else its player's).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Own {
+    /// The master's id (`+0x58`).
+    id: i16,
+    /// Its type (`+0x8`).
+    kind: u8,
+    /// Its `area_effect_level` (`+0x830`).
+    blast_level: u8,
+    /// Its radii (`+0x5d8`, `+0x5dc`).
+    radius: [f32; 2],
+}
+
+/// The objects of the world a movement damage may reach whose update is still to write them
+/// back (the caller's): the target of the hitter's own attack and the objects of its blast.
+#[derive(Debug)]
+pub struct Pending<'a> {
+    /// The target of its attack, read before its update.
+    pub victim: Option<&'a mut Victim>,
+    /// The objects its blast reached.
+    pub blasted: &'a mut [Victim],
+}
+
+impl Pending<'_> {
+    /// The pending object `id`.
+    fn get(&mut self, id: i32) -> Option<&mut Victim> {
+        if let Some(v) = self.victim.as_deref_mut().filter(|v| v.id == id) {
+            return Some(v);
+        }
+        self.blasted.iter_mut().find(|v| v.id == id)
+    }
+}
+
+impl Turns {
+    /// `FUN_1412072f0` on the object `id`, the one at `i` of player `p`'s list, as player
+    /// `owner`'s (its owner after its update: the new one when the update handed it over),
+    /// once its combat update returned `leaves`. Only its master's tasks of the four types
+    /// count ([`ACTIONS`]); an object of a master of another type than 70 or 80, or without one
+    /// the slice has, has none. On a living object ([`alive`]) they act in their order
+    /// ([`Turns::generate`], [`Turns::movement_damage`], [`Turns::terrain_look`]); on a dead one
+    /// that leaves, its removal reward tasks within 1e-7 of range (`COMISS`/`JBE`: a NaN is not)
+    /// issue their commands, which are returned: in a recording's replay the recording's own
+    /// commands bring them.
+    ///
+    /// # Errors
+    ///
+    /// What the slice does not model of a task's action ([`Turns::generate`],
+    /// [`Turns::movement_damage`]).
+    pub(crate) fn abilities(
+        &mut self,
+        (id, p, i): (i32, usize, usize),
+        owner: usize,
+        leaves: bool,
+        pending: &mut Pending<'_>,
+    ) -> Result<Vec<Reward>, GenieError> {
+        let i = match self.players[p].objects.get(i) {
+            Some(u) if u.id == id => i,
+            _ => match self.place(id) {
+                Some(crate::order::Place::Live(q, j)) if q == p => j,
+                _ => return Ok(Vec::new()),
+            },
+        };
+        let unit = &self.players[p].objects[i];
+        let Some(master) = unit
+            .own_master
+            .as_deref()
+            .or_else(|| self.masters.get(p).and_then(|m| m.get(unit.life.master_id)))
+            .filter(|m| matches!(m.kind, COMBAT_KIND | BUILDING_KIND))
+        else {
+            return Ok(Vec::new());
+        };
+        let tasks: Vec<Task> = master
+            .tasks
+            .iter()
+            .filter(|t| ACTIONS.contains(&t.action_type))
+            .copied()
+            .collect();
+        if tasks.is_empty() {
+            return Ok(Vec::new());
+        }
+        let own = Own {
+            id: master.id,
+            kind: master.kind,
+            blast_level: master.blast_level,
+            radius: master.radius,
+        };
+        let mut rewards = Vec::new();
+        if !alive(unit.life.hp) {
+            if !leaves {
+                return Ok(rewards);
+            }
+            for task in &tasks {
+                if task.action_type == REMOVAL_REWARD && task.work_range < EPSILON {
+                    let multiplier = usize::try_from(task.attribute_type2)
+                        .ok()
+                        .and_then(|a| self.players[owner].attribute(a));
+                    let cost = self
+                        .masters
+                        .get(owner)
+                        .and_then(|m| m.get(own.id))
+                        .map_or(&[][..], |m| &m.cost[..]);
+                    rewards.push(reward(task, owner, multiplier, cost));
+                }
+            }
+            return Ok(rewards);
+        }
+        for task in &tasks {
+            match task.action_type {
+                GENERATE => self.generate((p, i), owner, own, task, pending)?,
+                MOVEMENT_DAMAGE => self.movement_damage((p, i), owner, own, task, pending)?,
+                // the terrain mask's throw ends the game
+                TERRAIN_LOOK if !self.terrain_look((p, i), task) => return Ok(rewards),
+                _ => {}
+            }
+        }
+        Ok(rewards)
+    }
+}
+
+#[cfg(test)]
+mod tests;
