@@ -1496,27 +1496,27 @@
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/player.rs",
+      "file": "crates/formats/genie-rec/src/player/history.rs",
       "function": "HistoryEvent::read_from",
-      "line": 794,
+      "line": 135,
       "cyclomatic": 7.0,
       "coverage": 0.0,
       "crap": 56.0,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/player.rs",
+      "file": "crates/formats/genie-rec/src/player/history.rs",
       "function": "HistoryInfo::read_from",
-      "line": 725,
+      "line": 66,
       "cyclomatic": 38.0,
       "coverage": 97.82608695652173,
       "crap": 38.014835209994246,
       "crate": "genie-rec"
     },
     {
-      "file": "crates/formats/genie-rec/src/player.rs",
+      "file": "crates/formats/genie-rec/src/player/reader.rs",
       "function": "Player::read_from",
-      "line": 84,
+      "line": 22,
       "cyclomatic": 193.0,
       "coverage": 83.21917808219177,
       "crap": 369.01687398140734,

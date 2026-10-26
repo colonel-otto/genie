@@ -8,7 +8,6 @@
   "crates/engine/genie-core/src/turn/view/side.rs": 1055,
   "crates/engine/genie-core/src/world_player.rs": 871,
   "crates/formats/genie-dat/src/tech_tree.rs": 739,
-  "crates/formats/genie-lang/src/lib.rs": 863,
-  "crates/formats/genie-rec/src/player.rs": 898
+  "crates/formats/genie-lang/src/lib.rs": 863
  }
 }
