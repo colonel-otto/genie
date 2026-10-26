@@ -1,0 +1,316 @@
+//! The node lists: a node added, closed, costed and linked; the manager's line tests; the path
+//! built back from its end.
+
+use crate::GenieError;
+use crate::fmath::sqrt;
+use crate::hull_path::{EPSILON, HullPather, LINE_HITS, Node, Point, Waypoints};
+use crate::spatial::Hit;
+
+impl HullPather<'_> {
+    // The node lists.
+
+    /// `MShortPather::emptyLists` (`FUN_140f8c300`): list `l`'s nodes go.
+    pub(super) fn empty(&mut self, l: usize) {
+        self.nodes[l].next = None;
+        self.closed[l].clear();
+    }
+
+    /// `MShortPather::closeAllOpenNodes` (`FUN_140f8c130`): list `l`'s open nodes close, and every
+    /// closed node forgets its hull point.
+    pub(super) fn close_all(&mut self, l: usize) {
+        let mut n = self.nodes[l].next;
+        while let Some(i) = n {
+            self.closed[l].push(i);
+            n = self.nodes[i].next;
+        }
+        self.nodes[l].next = None;
+        for &i in &self.closed[l] {
+            self.nodes[i].hull = -1;
+            self.nodes[i].vertex = -1;
+        }
+    }
+
+    /// `MShortPather::moveToClosedList` (`FUN_140f8ce00`).
+    pub(super) fn close(&mut self, l: usize, i: usize) {
+        let (prev, next) = (self.nodes[i].prev, self.nodes[i].next);
+        if let Some(p) = prev {
+            self.nodes[p].next = next;
+        }
+        if let Some(n) = next {
+            self.nodes[n].prev = prev;
+        }
+        self.closed[l].push(i);
+    }
+
+    /// `MShortPather::addNode` (`FUN_140f8aa10`): a node at `at` from `parent` (its cost the
+    /// parent's plus the step; its distance to `goal`, 0 without), on list `l`: into the open list
+    /// in order of cost plus distance, or straight into the closed list. An open node replaces an
+    /// open one of the same hull point (`by_place`: within [`EPSILON`] of the same place) that
+    /// costs more, which closes; it is not made when such a node costs no more, nor when a closed
+    /// node does (`by_place`: of the closed list but its last).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn add_node(
+        &mut self,
+        l: usize,
+        open: bool,
+        parent: Option<usize>,
+        at: Point,
+        goal: Option<Point>,
+        hull: i32,
+        vertex: i32,
+        direction: i32,
+        by_place: bool,
+    ) -> Option<usize> {
+        let (cost, to_goal) = self.node_costs(parent, at, goal);
+        let mut after: Option<usize> = None;
+        if open && (by_place || (0 <= hull && 0 <= vertex)) {
+            let same = |n: &Node| {
+                if by_place {
+                    (at[0] - n.at[0]).abs() < EPSILON && (at[1] - n.at[1]).abs() < EPSILON
+                } else {
+                    n.hull == hull && n.vertex == vertex
+                }
+            };
+            let mut n = self.nodes[l].next;
+            let mut replaced = false;
+            while let Some(i) = n {
+                let node = self.nodes[i];
+                if same(&node) {
+                    if node.cost <= cost {
+                        return None;
+                    }
+                    // the worse node closes, and the closed list is not searched
+                    self.close(l, i);
+                    replaced = true;
+                    break;
+                }
+                if after.is_none() && to_goal + cost < node.cost + node.to_goal {
+                    after = node.prev;
+                }
+                n = node.next;
+            }
+            // the place test leaves the closed list's last node out
+            let closed = if by_place {
+                &self.closed[l][..self.closed[l].len().saturating_sub(1)]
+            } else {
+                &self.closed[l][..]
+            };
+            if !replaced
+                && closed.iter().any(|&i| {
+                    let node = &self.nodes[i];
+                    same(node) && node.cost <= cost
+                })
+            {
+                return None;
+            }
+        }
+        Some(self.link_node(
+            l,
+            open,
+            after,
+            Node {
+                at,
+                parent,
+                next: None,
+                prev: None,
+                to_goal,
+                cost,
+                hull,
+                vertex,
+                direction,
+            },
+        ))
+    }
+
+    /// `addNode` for a node nothing can refuse: one straight into the closed list, or an open one
+    /// without a hull point and not by place, for which `addNode` searches no list. The game's
+    /// callers test its answer for null, which then catches only a failed allocation (the roots
+    /// of `FindShortPath` and `pathWithinHull`, `FindShortPath`'s crossing node).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn add_unrefused(
+        &mut self,
+        l: usize,
+        open: bool,
+        parent: Option<usize>,
+        at: Point,
+        goal: Option<Point>,
+        hull: i32,
+        direction: i32,
+    ) -> usize {
+        let (cost, to_goal) = self.node_costs(parent, at, goal);
+        self.link_node(
+            l,
+            open,
+            None,
+            Node {
+                at,
+                parent,
+                next: None,
+                prev: None,
+                to_goal,
+                cost,
+                hull,
+                vertex: -1,
+                direction,
+            },
+        )
+    }
+
+    /// A node's cost (the parent's plus the step, 0 without a parent) and its distance to `goal`
+    /// (0 without one), as `addNode` reckons them.
+    pub(super) fn node_costs(
+        &self,
+        parent: Option<usize>,
+        at: Point,
+        goal: Option<Point>,
+    ) -> (f32, f32) {
+        let cost = parent.map_or(0.0, |p| {
+            let q = self.nodes[p];
+            sqrt((q.at[1] - at[1]) * (q.at[1] - at[1]) + (q.at[0] - at[0]) * (q.at[0] - at[0]))
+                + q.cost
+        });
+        let to_goal = goal.map_or(0.0, |g| {
+            sqrt((at[1] - g[1]) * (at[1] - g[1]) + (at[0] - g[0]) * (at[0] - g[0]))
+        });
+        (cost, to_goal)
+    }
+
+    /// `addNode`'s end: the node into the closed list, or into the open list after `after` or,
+    /// without, after the open nodes whose cost plus distance is smaller.
+    pub(super) fn link_node(
+        &mut self,
+        l: usize,
+        open: bool,
+        after: Option<usize>,
+        node: Node,
+    ) -> usize {
+        let (cost, to_goal) = (node.cost, node.to_goal);
+        let i = self.nodes.len();
+        self.nodes.push(node);
+        if !open {
+            self.closed[l].push(i);
+            return i;
+        }
+        let mut s = after.unwrap_or(l);
+        if after.is_none() {
+            while let Some(n) = self.nodes[s].next {
+                if self.nodes[n].cost + self.nodes[n].to_goal < to_goal + cost {
+                    s = n;
+                } else {
+                    break;
+                }
+            }
+        }
+        let next = self.nodes[s].next;
+        self.nodes[i].next = next;
+        self.nodes[s].next = Some(i);
+        self.nodes[i].prev = Some(s);
+        if let Some(n) = next {
+            self.nodes[n].prev = Some(i);
+        }
+        i
+    }
+
+    // The world's tests.
+
+    /// The manager's line test (`FUN_141052b90`, then `FUN_141052350` with flags 0x40) with the
+    /// pather's buffer, ignore list and include list: Spatial's pather query, which leaves every
+    /// moving record out, or an included one that moves ([`HullPather::included_movers`]).
+    pub(super) fn blocked(&self, a: Point, b: Point) -> Result<bool, GenieError> {
+        if self
+            .world
+            .pather_blocked(a, b, self.buffer, self.mask, &self.ignore)?
+        {
+            return Ok(true);
+        }
+        Ok(!self.included_movers(a, b)?.is_empty())
+    }
+
+    /// The records the walk `a` -> `b` meets, at most [`LINE_HITS`] (`FUN_141052b90`, then
+    /// `FUN_141051900` with flags 0x40), with the pather's buffer, ignore list and include list:
+    /// Spatial's pather query and the included objects that move
+    /// ([`HullPather::included_movers`]). The callers read how many and which, not their order.
+    pub(super) fn hits(&self, a: Point, b: Point) -> Result<Vec<Hit>, GenieError> {
+        let mut hits = self
+            .world
+            .pather_hits(a, b, self.buffer, self.mask, &self.ignore)?;
+        for id in self.included_movers(a, b)? {
+            if let Some(p) = self.world.get(id) {
+                hits.push(Hit {
+                    id,
+                    bounds: p.bounds(),
+                });
+            }
+        }
+        hits.truncate(LINE_HITS);
+        Ok(hits)
+    }
+
+    /// The included objects (`FindShortPath`'s arguments 13 and 14) that move, but the ignored
+    /// ones, whose records the walk `a` -> `b` meets: the line tests leave a moving record (its
+    /// `+3` bit 0x10) out only when the include list does not hold it (`FUN_141051e00`, before
+    /// the ignore list). Spatial's pather query leaves every moving record out; its line query
+    /// (flags 0x10) tests the same records alike, the buffer the grow, and leaves none out, at
+    /// most [`LINE_HITS`] a call: what it lists goes into its ignore list until a call lists
+    /// fewer.
+    pub(super) fn included_movers(&self, a: Point, b: Point) -> Result<Vec<i32>, GenieError> {
+        let movers: Vec<i32> = self
+            .include
+            .iter()
+            .copied()
+            .filter(|id| {
+                !self.ignore.contains(id) && self.world.gait(*id).is_some_and(|g| g.moving)
+            })
+            .collect();
+        let mut met = Vec::new();
+        if movers.is_empty() {
+            return Ok(met);
+        }
+        let grow = self.buffer.unwrap_or(0.0);
+        let mut skip = self.ignore.clone();
+        loop {
+            let hits = self.world.line_hits(a, b, grow, false, &skip)?;
+            let full = LINE_HITS <= hits.len();
+            for id in hits {
+                if movers.contains(&id) && !met.contains(&id) {
+                    met.push(id);
+                }
+                if !skip.contains(&id) {
+                    skip.push(id);
+                }
+            }
+            if !full || met.len() == movers.len() {
+                return Ok(met);
+            }
+        }
+    }
+
+    /// `MShortPather::buildPath` (`FUN_140f8bcd0`): from `end` back, a node that sees its
+    /// grandparent skips its parent; then the nodes from the first into `path`.
+    pub(super) fn build_path(
+        &mut self,
+        path: &mut Waypoints,
+        end: usize,
+    ) -> Result<(), GenieError> {
+        let mut cur = Some(end);
+        while let Some(c) = cur {
+            let Some(p) = self.nodes[c].parent else {
+                break;
+            };
+            let Some(gp) = self.nodes[p].parent else {
+                break;
+            };
+            if self.blocked(self.nodes[c].at, self.nodes[gp].at)? {
+                cur = Some(p);
+            } else {
+                self.nodes[c].parent = Some(gp);
+            }
+        }
+        let mut n = Some(end);
+        while let Some(i) = n {
+            path.insert(0, self.nodes[i].at);
+            n = self.nodes[i].parent;
+        }
+        Ok(())
+    }
+}
