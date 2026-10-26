@@ -1,6 +1,6 @@
 //! A building's tile links (the map tile's `+0x19` bits) and its UMV extent entry.
 
-use crate::visibility::{ANCHOR, EDGE, Extent, LINKED, STEP, Visibility};
+use crate::vision::visibility::{ANCHOR, EDGE, Extent, LINKED, STEP, Visibility};
 
 impl Visibility {
     // The map's building links (`RGE_Map`).

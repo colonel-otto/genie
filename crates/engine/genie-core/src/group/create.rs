@@ -616,8 +616,9 @@ mod tests {
             });
         }
         // the members' searches find nothing: an empty registry, no relations
-        let mut v = crate::visibility::Visibility::new(20, 20, vec![], vec![], vec![], 0, vec![]);
-        v.registry = Some(crate::registry::Registry::new(2, 65));
+        let mut v =
+            crate::vision::visibility::Visibility::new(20, 20, vec![], vec![], vec![], 0, vec![]);
+        v.registry = Some(crate::vision::registry::Registry::new(2, 65));
         t.spatial.sight = Some(v);
         t.spatial.relations = vec![vec![0, 0], vec![0, 0]];
         t.spatial.unit_diplomacy = vec![vec![1, 2], vec![0, 1]];

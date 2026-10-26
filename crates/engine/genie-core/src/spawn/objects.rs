@@ -12,7 +12,7 @@ use crate::spawn::{
 use crate::sprite::ActiveSprite;
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::{GenieError, factory_type};
-use crate::visibility::{Seer, capture_kind};
+use crate::vision::visibility::{Seer, capture_kind};
 
 impl Turns {
     /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`

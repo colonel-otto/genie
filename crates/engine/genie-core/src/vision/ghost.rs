@@ -16,8 +16,8 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::registry::MASK;
 use crate::turn::Turns;
+use crate::vision::registry::MASK;
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
 pub const GHOST_MASTER: i16 = 243;
@@ -627,7 +627,7 @@ mod tests {
     use super::*;
     use crate::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
-    use crate::visibility::{Seer, Visibility};
+    use crate::vision::visibility::{Seer, Visibility};
 
     /// A gold mine's master (it leaves ghosts), a house's and the ghosts' own.
     const MINE: i16 = 66;

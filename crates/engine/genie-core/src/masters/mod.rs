@@ -355,7 +355,7 @@ pub struct Master {
     pub disabled: bool,
     /// `+0x682`, `create_doppelganger_on_death`: 2 leaves ghosts of an object of it for the
     /// players who explored its tile but do not see it, at its death and once they lose sight
-    /// of it ([`crate::ghost`]).
+    /// of it ([`crate::vision::ghost`]).
     pub ghost_on_death: u8,
     /// The placement terrains (`+0x5f2`..`+0x5f8`, the `.dat`'s `placement_side_terrain` and
     /// `placement_terrain`, −1 for none): the two side terrains, then the two terrains

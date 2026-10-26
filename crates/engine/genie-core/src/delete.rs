@@ -429,7 +429,8 @@ impl Turns {
                     self.players[owner].add_attribute(kind, -amount)?;
                 }
             }
-            if master.ghost_on_death == crate::ghost::LEAVES_GHOSTS && self.game_state != 2 {
+            if master.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS && self.game_state != 2
+            {
                 self.ghosts_at_death(owner, id)?;
             }
         }

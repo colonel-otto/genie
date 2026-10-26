@@ -83,7 +83,7 @@ pub(in crate::turn) struct Context<'a> {
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
     pub(in crate::turn) made: Vec<Unit>,
-    /// The objects whose master leaves ghosts that died in this update ([`crate::ghost`]), the
+    /// The objects whose master leaves ghosts that died in this update ([`crate::vision::ghost`]), the
     /// caller's.
     pub(in crate::turn) ghost_deaths: Vec<i32>,
     /// The buildings whose construction started in this update: their owner watches them
@@ -168,7 +168,7 @@ pub(in crate::turn) struct Context<'a> {
     pub(in crate::turn) scenario: bool,
     /// The game mode's descriptor flag `+0x9c` ([`standard_mode`]) and each player's computer
     /// flag and `mAllowCapturingGaiaUnits`, which a takeover by sight reads
-    /// ([`crate::visibility::sight_taker`]).
+    /// ([`crate::vision::visibility::sight_taker`]).
     pub(in crate::turn) standard: bool,
     pub(in crate::turn) sight_takers: &'a [(bool, bool)],
     /// The owner's object tracker, which a completion's first part (`FUN_1411c6bd0`) moves a

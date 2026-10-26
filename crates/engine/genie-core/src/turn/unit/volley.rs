@@ -12,7 +12,7 @@ use crate::turn::unit::Unit;
 use crate::turn::view::Context;
 use crate::turn::world::Releaser;
 use crate::unit_ai::{ACTION_EXECUTED, GenieError, Notify};
-use crate::visibility::{Seer, capture_kind};
+use crate::vision::visibility::{Seer, capture_kind};
 
 impl Unit {
     /// The unit's own part of its hit, written back: what a retaliation or reflected damage left

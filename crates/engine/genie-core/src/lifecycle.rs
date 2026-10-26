@@ -156,7 +156,7 @@ impl Lifecycle {
     /// random facet, draws it (`rand15 × facets / 0x7fff`, at most the last; the facet, `+0xe`, is
     /// not held). The storage the caller checks, and the players' fog ghosts of a master whose
     /// fog visibility is 2 (`FUN_14118e990`, for players that explored the tile but do not see
-    /// it) are the caller's too ([`crate::ghost`]); the statistics and the sounds are not held.
+    /// it) are the caller's too ([`crate::vision::ghost`]); the statistics and the sounds are not held.
     /// The visible-resource lists (`FUN_1411980b0`) are the caller's
     /// ([`crate::turn::forget_resource`]).
     fn die(&mut self, object: &mut Well512) -> Result<(), GenieError> {

@@ -3,7 +3,7 @@
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{Error, ObjectRow, game_state, header_objects, moving_speed, placement, saved_ghosts};
-use genie_core::visibility::{
+use genie_core::vision::visibility::{
     BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
     capture_kind,
 };
@@ -104,7 +104,7 @@ pub(super) fn tile_differences(
 pub(super) struct SavedStep {
     pub(super) objects: Vec<Vec<ObjectRow>>,
     /// Each player's ghosts (type 25) in its list's order.
-    pub(super) ghosts: Vec<Vec<genie_core::ghost::Ghost>>,
+    pub(super) ghosts: Vec<Vec<genie_core::vision::ghost::Ghost>>,
     pub(super) seen: Visibility,
     pub(super) width: usize,
     pub(super) terrain: Vec<(u8, u8, i16)>,

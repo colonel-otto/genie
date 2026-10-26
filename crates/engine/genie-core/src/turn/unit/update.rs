@@ -139,7 +139,7 @@ impl Unit {
             // the static set_state's ghosts (FUN_14118e990), the caller's
             if c.masters
                 .and_then(|m| m.get(self.life.master_id))
-                .is_some_and(|m| m.ghost_on_death == crate::ghost::LEAVES_GHOSTS)
+                .is_some_and(|m| m.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS)
             {
                 c.ghost_deaths.push(self.id);
             }

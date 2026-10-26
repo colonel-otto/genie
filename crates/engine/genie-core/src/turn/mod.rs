@@ -46,7 +46,6 @@ pub(crate) use crate::turn::world::{
     farm_bonus, forget_resource, refund_of, released, storage_leaves, victim_of,
 };
 
-mod explored;
 mod forced;
 mod gates;
 mod object_step;
@@ -336,7 +335,7 @@ pub struct Turns {
     pub history_period: i32,
     /// Each player's `mAllowCapturingGaiaUnits` (`player+0x670`, saved; false for a player it
     /// lacks): a computer player takes Gaia's objects over by seeing them in the game modes
-    /// outside the standard ones ([`crate::visibility::sight_taker`]).
+    /// outside the standard ones ([`crate::vision::visibility::sight_taker`]).
     pub allow_gaia_capture: Vec<bool>,
     /// `mLocalPlayerIndex` (`world+0x6b0`, saved): the player whose view the game shows, a
     /// recording's point of view. Its masters stand for a building's in a train location's test

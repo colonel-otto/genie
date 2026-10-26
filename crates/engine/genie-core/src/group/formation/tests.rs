@@ -180,15 +180,15 @@ fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
                 ..crate::masters::Master::default()
             },
             crate::masters::Master {
-                id: crate::ghost::GHOST_MASTER,
-                kind: crate::ghost::GHOST,
+                id: crate::vision::ghost::GHOST_MASTER,
+                kind: crate::vision::ghost::GHOST,
                 formation_category: 1,
                 ..crate::masters::Master::default()
             },
         ]);
     }
     t.players[1].kind = 1;
-    t.players[1].ghosts = vec![crate::ghost::Ghost {
+    t.players[1].ghosts = vec![crate::vision::ghost::Ghost {
         id: -1,
         original: None,
         original_id: -1,
@@ -456,8 +456,8 @@ fn an_unreachable_slot_moves_to_the_reachable_cell_its_unit_finds() {
 }
 
 /// A ghost of id `id` at (`x`, `y`) in its player's doppelganger list.
-pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::ghost::Ghost {
-    crate::ghost::Ghost {
+pub(crate) fn ghost_at(id: i32, x: f32, y: f32) -> crate::vision::ghost::Ghost {
+    crate::vision::ghost::Ghost {
         id,
         original: None,
         original_id: -1,
@@ -496,8 +496,8 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
         ));
         for masters in &mut t.masters {
             let ghost = crate::masters::Master {
-                id: crate::ghost::GHOST_MASTER,
-                kind: crate::ghost::GHOST,
+                id: crate::vision::ghost::GHOST_MASTER,
+                kind: crate::vision::ghost::GHOST,
                 terrain_restriction: 1,
                 ..crate::masters::Master::default()
             };

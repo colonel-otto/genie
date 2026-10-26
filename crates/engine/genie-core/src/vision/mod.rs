@@ -11,6 +11,12 @@
 use crate::GenieError;
 use crate::turn::Turns;
 
+pub(crate) mod explored;
+pub mod ghost;
+pub mod los_tables;
+pub mod registry;
+pub mod visibility;
+
 /// The visible bit no tile has that every player's mask carries.
 pub const NO_TILE: u64 = 1 << 29;
 /// The explored bit no tile has that every player's explored mask carries.

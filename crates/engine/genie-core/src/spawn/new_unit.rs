@@ -10,7 +10,7 @@ use crate::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
 use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::{ACTION_COMPLETED, GenieError, NewObject, Notify, UnitAi, factory_type};
-use crate::visibility::{Seer, capture_kind};
+use crate::vision::visibility::{Seer, capture_kind};
 
 impl Turns {
     /// `FUN_140ad0240`: the unit of `master` spawns beside the building at `i`. The spawn point

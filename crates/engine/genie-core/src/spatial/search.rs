@@ -1,14 +1,14 @@
 //! A position's change, the sight check and the unit AI's searches: the closest object and the
 //! best unit to attack.
 
-use crate::registry::Record;
 use crate::spatial::{
     AttackField, CLOSEST_RANGE, ClosestChecks, FARMER_CLASS, FISH_TRAP, FarmLook, Filter,
     LIVESTOCK_CLASS, PASTURE_CLASS, PASTURES, Placed, QUERY_HITS, Reach, SEARCH_REUSE_SQUARED,
     Spatial, TESTED_KINDS, TRAPPERS, players_seen, record_meets_segment, tile_record_id,
 };
 use crate::unit_ai::{Found, GenieError, Pick, Search};
-use crate::visibility::Visibility;
+use crate::vision::registry::Record;
+use crate::vision::visibility::Visibility;
 
 impl Spatial {
     /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, the
@@ -144,7 +144,7 @@ impl Spatial {
     }
 
     /// A unit AI's search ([`Search`]) for object `me` of `player` (`FUN_140c63e20`): the query
-    /// over the player's registry ([`crate::registry::Registry::visible_units`]) unless the
+    /// over the player's registry ([`crate::vision::registry::Registry::visible_units`]) unless the
     /// [`SearchCache`] holds near the place (`fresh` false: the last answer stands); then its
     /// [`Pick`], an attack by `attack`'s tests of the objects found and its choice among them. A query that reads nothing leaves the last answer too (and so is not fresh). A
     /// query near a frozen object, or a last answer the slice has not got, fails. `shuns`

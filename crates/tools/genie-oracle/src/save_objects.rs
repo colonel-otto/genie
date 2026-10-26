@@ -8,7 +8,7 @@ use crate::{
 };
 use genie_core::GenieError;
 use genie_core::turn::Turns;
-use genie_core::visibility::Visibility;
+use genie_core::vision::visibility::Visibility;
 use genie_rec::de;
 use genie_save::Header;
 use genie_save::generated::world::RgeStaticObject;
@@ -209,7 +209,7 @@ pub fn ghost_pool_from_dump(text: &str) -> Result<Vec<i32>, Error> {
         let words: Vec<&str> = line.split_whitespace().collect();
         match words[..] {
             ["pool", k, _] => kind = Some(k.parse::<i32>().map_err(|_| Error::BadPoolDump)?),
-            [id, _] if kind == Some(i32::from(genie_core::ghost::GHOST)) => {
+            [id, _] if kind == Some(i32::from(genie_core::vision::ghost::GHOST)) => {
                 ghosts.push(id.parse::<i32>().map_err(|_| Error::BadPoolDump)?);
             }
             [_, _] if kind.is_some() => {}
@@ -269,8 +269,8 @@ pub(super) fn tile_order_differences(
 /// a `registry PLAYERS CLASSES` line, a `list PLAYER CLASS COUNT CAPACITY` line before each list's
 /// `rec ID DIST OWNER X Y RX RY` lines (the floats as hex bits), then `mask ID HEX SLOTS...` per
 /// combat object (its record's index in each player's list of its class, -1 for none).
-pub fn registry_from_dump(text: &str) -> Result<genie_core::registry::Registry, Error> {
-    use genie_core::registry::{Entry, Record, Registry};
+pub fn registry_from_dump(text: &str) -> Result<genie_core::vision::registry::Registry, Error> {
+    use genie_core::vision::registry::{Entry, Record, Registry};
     let bad = || Error::BadRegistryDump;
     let mut lines = text.lines();
     let head: Vec<&str> = lines.next().ok_or_else(bad)?.split_whitespace().collect();
@@ -307,7 +307,7 @@ pub fn registry_from_dump(text: &str) -> Result<genie_core::registry::Registry, 
                     ry: bits(w[7])?,
                 });
             }
-            Some("mask") if w.len() == 3 + genie_core::registry::SLOTS => {
+            Some("mask") if w.len() == 3 + genie_core::vision::registry::SLOTS => {
                 let mut entry = Entry {
                     mask: u64::from_str_radix(w[2], 16).map_err(|_| bad())?,
                     ..Entry::default()

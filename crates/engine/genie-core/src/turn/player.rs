@@ -157,11 +157,11 @@ pub struct Player {
     pub sharing: bool,
     /// `commodity_volumn_delta` (`+0x140c`, saved): the lot a market trade moves (100).
     pub commodity_volume: i32,
-    /// The objects whose ghosts the player's list follows (`+0x78`, [`crate::ghost`]): not
+    /// The objects whose ghosts the player's list follows (`+0x78`, [`crate::vision::ghost`]): not
     /// saved; the load builds it ([`Turns::build_watched`]).
-    pub watched: Vec<crate::ghost::Watched>,
+    pub watched: Vec<crate::vision::ghost::Watched>,
     /// The player's ghosts (its doppelganger list `+0x40`), in the list's order.
-    pub ghosts: Vec<crate::ghost::Ghost>,
+    pub ghosts: Vec<crate::vision::ghost::Ghost>,
     /// Its history (`+0xdb8`, saved, [`crate::history`]).
     pub history: crate::history::History,
     /// Its object tracker (`+0x18`, [`crate::tracker`]): not saved; the load files the objects

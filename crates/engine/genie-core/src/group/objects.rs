@@ -14,7 +14,7 @@ pub(crate) enum WorldObject<'a> {
     /// An object of player `.0`'s live or sleeping list.
     Unit(usize, &'a crate::turn::Unit),
     /// A ghost of player `.0`'s doppelganger list (type 25, its master `243`).
-    Ghost(usize, &'a crate::ghost::Ghost),
+    Ghost(usize, &'a crate::vision::ghost::Ghost),
 }
 
 impl WorldObject<'_> {
@@ -25,11 +25,11 @@ impl WorldObject<'_> {
         }
     }
 
-    /// Its master's id (`+0xa0`'s): a ghost's is its player's [`crate::ghost::GHOST_MASTER`].
+    /// Its master's id (`+0xa0`'s): a ghost's is its player's [`crate::vision::ghost::GHOST_MASTER`].
     pub(crate) const fn master_id(&self) -> i16 {
         match *self {
             Self::Unit(_, u) => u.life.master_id,
-            Self::Ghost(..) => crate::ghost::GHOST_MASTER,
+            Self::Ghost(..) => crate::vision::ghost::GHOST_MASTER,
         }
     }
 

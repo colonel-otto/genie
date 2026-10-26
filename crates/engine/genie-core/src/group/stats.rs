@@ -774,7 +774,7 @@ mod tests {
             vec![0, 4, 1, 4],
             vec![0, 3, 4, 1],
         ];
-        let mut r = crate::registry::Registry::new(4, 65);
+        let mut r = crate::vision::registry::Registry::new(4, 65);
         for (id, owner, at, class) in [
             (20, 2, [6.0, 5.0], 6),
             (21, 2, [5.0, 6.0], 6),
@@ -784,7 +784,7 @@ mod tests {
             r.update_unit(id, owner, at, [0.2, 0.2], class, 0, 1 << 1)
                 .unwrap();
         }
-        let mut v = crate::visibility::Visibility::new(
+        let mut v = crate::vision::visibility::Visibility::new(
             20,
             20,
             Vec::new(),

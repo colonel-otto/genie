@@ -25,7 +25,7 @@ pub(crate) fn farm_bonus(attributes: &[f32]) -> [f32; 3] {
 /// master of `create_doppelganger_on_death` 2 leaves its owner's watched list
 /// (`FUN_141091310`).
 ///
-/// [`Visibility::forget_resource`]: crate::visibility::Visibility::forget_resource
+/// [`Visibility::forget_resource`]: crate::vision::visibility::Visibility::forget_resource
 pub(crate) fn forget_resource(
     spatial: &mut Spatial,
     master: Option<&Master>,

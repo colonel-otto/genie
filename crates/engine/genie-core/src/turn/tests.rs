@@ -19,7 +19,7 @@ use crate::turn::world::{
     task_target_with, wait_progress,
 };
 use crate::unit_ai::{BUILD_ORDER, GenieError, Notify, OWNER_CHANGED, UnitAi};
-use crate::visibility::{Seer, capture_kind};
+use crate::vision::visibility::{Seer, capture_kind};
 
 fn player(objects: Vec<Option<UnitAi>>) -> Player {
     Player {
@@ -366,11 +366,11 @@ fn placeable(t: &mut Turns) {
     t.spatial.terrain = Some(terrain);
     let players = t.players.len();
     let seen = (0..players).fold(0u64, |b, p| b | (1 << p) | (1 << (32 + p)));
-    t.spatial.sight = Some(crate::visibility::Visibility::new(
+    t.spatial.sight = Some(crate::vision::visibility::Visibility::new(
         w,
         h,
         (0..players)
-            .map(|_| crate::visibility::VisibleMap {
+            .map(|_| crate::vision::visibility::VisibleMap {
                 counts: vec![0; n],
                 explored: 0,
             })
@@ -927,7 +927,7 @@ fn a_unit_joins_and_leaves_a_pasture_s_workers() {
 #[test]
 fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
     use crate::masters::{Master, Masters};
-    use crate::visibility::{VisibleResource, VisibleResources};
+    use crate::vision::visibility::{VisibleResource, VisibleResources};
     let object = |id, master, x, y| Unit {
         id,
         position: [x, y, 0.0],
@@ -1020,7 +1020,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
 fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
     use crate::lifecycle::MasterData;
     use crate::masters::{Master, Masters};
-    use crate::visibility::VisibleResources;
+    use crate::vision::visibility::VisibleResources;
     let dead = |id, class, state, master| Unit {
         id,
         position: [10.5, 10.5, 0.0],
@@ -1095,7 +1095,7 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
 #[test]
 fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
     use crate::masters::{Master, Masters};
-    use crate::visibility::{VisibleResource, VisibleResources};
+    use crate::vision::visibility::{VisibleResource, VisibleResources};
     let made = |id, master| Unit {
         id,
         position: [20.75, 30.25, 0.0],
@@ -3213,9 +3213,9 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
         recyclable: true,
         ..Master::default()
     }])];
-    t.players[0].watched.push(crate::ghost::Watched {
+    t.players[0].watched.push(crate::vision::ghost::Watched {
         id: 9,
-        cell: crate::ghost::Cell::Tile(0),
+        cell: crate::vision::ghost::Cell::Tile(0),
         bits: 0,
     });
     let game = GameState {
@@ -3694,11 +3694,11 @@ fn hands_masters() -> Vec<Masters> {
 fn hands_world(id: i32, p: usize, class: i16, master: i16, los: f32) -> Spatial {
     let n = 40 * 40;
     let mut s = Spatial::new([40, 40]);
-    let mut v = crate::visibility::Visibility::new(
+    let mut v = crate::vision::visibility::Visibility::new(
         40,
         40,
         (0..3)
-            .map(|_| crate::visibility::VisibleMap {
+            .map(|_| crate::vision::visibility::VisibleMap {
                 counts: vec![-1; n],
                 explored: 0,
             })
@@ -3708,7 +3708,7 @@ fn hands_world(id: i32, p: usize, class: i16, master: i16, los: f32) -> Spatial 
         0,
         vec![false; 3],
     );
-    let mut r = crate::registry::Registry::new(3, 65);
+    let mut r = crate::vision::registry::Registry::new(3, 65);
     r.entries.entry(id).or_default().mask = 1 << p;
     r.update_unit(id, p as u8, [10.5, 10.5], [0.2, 0.2], class, 0, 1 << p)
         .unwrap();
@@ -5071,9 +5071,9 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
     t.masters = vec![table.clone(), table.clone(), table];
     t.spatial = hands_world(7, 0, 1, 1378, 4.0);
     t.players[0].attributes[4] = 5.0;
-    t.players[0].watched.push(crate::ghost::Watched {
+    t.players[0].watched.push(crate::vision::ghost::Watched {
         id: 7,
-        cell: crate::ghost::Cell::Tile(10 * 40 + 10),
+        cell: crate::vision::ghost::Cell::Tile(10 * 40 + 10),
         bits: 0,
     });
     t.spatial.unit_diplomacy = vec![vec![1, 4, 4], vec![4, 1, 4], vec![4, 4, 1]];

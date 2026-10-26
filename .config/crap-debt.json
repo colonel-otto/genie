@@ -94,7 +94,7 @@
     {
       "file": "crates/engine/genie-core/src/delete.rs",
       "function": "Turns::built_building_dies",
-      "line": 459,
+      "line": 460,
       "cyclomatic": 12.0,
       "coverage": 0.0,
       "crap": 156.0,
@@ -170,15 +170,6 @@
       "cyclomatic": 41.0,
       "coverage": 49.152542372881356,
       "crap": 261.9914353463596,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/ghost.rs",
-      "function": "Turns::update_ghost",
-      "line": 493,
-      "cyclomatic": 26.0,
-      "coverage": 35.13513513513514,
-      "crap": 210.4910271849644,
       "crate": "genie-core"
     },
     {
@@ -971,6 +962,15 @@
       "cyclomatic": 53.0,
       "coverage": 74.50980392156863,
       "crap": 99.52338090176477,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/vision/ghost.rs",
+      "function": "Turns::update_ghost",
+      "line": 493,
+      "cyclomatic": 26.0,
+      "coverage": 35.13513513513514,
+      "crap": 210.4910271849644,
       "crate": "genie-core"
     },
     {

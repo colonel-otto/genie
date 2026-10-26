@@ -243,12 +243,12 @@ impl Turns {
         }
         for (q, player) in self.players.iter().enumerate() {
             if let Some(g) = player.ghosts.iter().find(|g| g.id == id) {
-                let m = self.master_of(q, crate::ghost::GHOST_MASTER)?;
+                let m = self.master_of(q, crate::vision::ghost::GHOST_MASTER)?;
                 return Ok(Some(Bystander {
                     id,
                     player: q,
                     allied: allied(q),
-                    kind: crate::ghost::GHOST,
+                    kind: crate::vision::ghost::GHOST,
                     class: m.class,
                     state: g.state,
                     blast_defense: m.blast_defense,
@@ -269,7 +269,7 @@ impl Turns {
         damage: f32,
         pending: &mut Pending<'_>,
     ) -> Result<(), GenieError> {
-        if b.kind == crate::ghost::GHOST {
+        if b.kind == crate::vision::ghost::GHOST {
             return Ok(());
         }
         if let Some(v) = pending.get(b.id) {

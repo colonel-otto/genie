@@ -1768,8 +1768,15 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let units = [(11, 4, [30.0, 30.0])];
     let mut t = soldiers(&units, &[]);
     t.spatial = crate::spatial::Spatial::new([40, 40]);
-    let sight =
-        crate::visibility::Visibility::new(40, 40, vec![], vec![u64::MAX; 1600], vec![], 0, vec![]);
+    let sight = crate::vision::visibility::Visibility::new(
+        40,
+        40,
+        vec![],
+        vec![u64::MAX; 1600],
+        vec![],
+        0,
+        vec![],
+    );
     t.spatial.sight = Some(sight);
     let walker = crate::hunt::tests::walker();
     let sheep_master = Master {
@@ -2421,8 +2428,9 @@ fn searchable(mut t: Turns) -> Turns {
     ));
     s.relations = vec![vec![0, 3], vec![0, 0]];
     s.unit_diplomacy = vec![vec![1, 4], vec![0, 1]];
-    let mut v = crate::visibility::Visibility::new(60, 60, vec![], vec![], vec![], 0, vec![]);
-    v.registry = Some(crate::registry::Registry::new(2, 65));
+    let mut v =
+        crate::vision::visibility::Visibility::new(60, 60, vec![], vec![], vec![], 0, vec![]);
+    v.registry = Some(crate::vision::registry::Registry::new(2, 65));
     s.sight = Some(v);
     t.spatial = s;
     t

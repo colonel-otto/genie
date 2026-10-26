@@ -23,7 +23,7 @@
 //! every object probed) and the line-of-sight powerup (`+0xad4`, unsaved, 0 after a load).
 
 use crate::GenieError;
-use crate::registry::{MASK, Registry};
+use crate::vision::registry::{MASK, Registry};
 use std::collections::BTreeMap;
 
 mod building_links;

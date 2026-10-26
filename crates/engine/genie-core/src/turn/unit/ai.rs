@@ -29,13 +29,13 @@ impl Unit {
         }
         // RGE_Combat_Object::update after the actions: the object's sight mask; a changed mask of
         // an object others take over by seeing it (`+0x924` 1) gives it to the first player that
-        // sees it ([`crate::visibility::sight_taker`]) when that one has its master
+        // sees it ([`crate::vision::visibility::sight_taker`]) when that one has its master
         let mut captured = captured;
         if after.is_none()
             && self.combat
             && let Some(mask) = c.spatial.combat_sight(self.id)?
             && let Some(q) =
-                crate::visibility::sight_taker(mask, c.player, c.standard, c.sight_takers)
+                crate::vision::visibility::sight_taker(mask, c.player, c.standard, c.sight_takers)
             && c.every_masters
                 .get(q)
                 .is_some_and(|m| m.get(self.life.master_id).is_some())

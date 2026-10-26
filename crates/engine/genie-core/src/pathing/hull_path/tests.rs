@@ -216,7 +216,7 @@ fn find_short_path_removes_its_tile_records_but_on_its_quick_only_exit() {
         classes[y * 20 + 8] = 1;
     }
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
-    w.sight = Some(crate::visibility::Visibility::new(
+    w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
         Vec::new(),
@@ -599,7 +599,7 @@ fn a_tile_s_obstructions_and_its_building_s_go_into_the_hulls() {
     classes[9 * 20 + 9] = 1;
     classes[3 * 20 + 3] = 1;
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
-    let mut v = crate::visibility::Visibility::new(
+    let mut v = crate::vision::visibility::Visibility::new(
         20,
         20,
         Vec::new(),
@@ -654,7 +654,7 @@ fn the_area_s_runs_of_blocked_tiles_make_one_hull_each() {
     tiles.mark_for_test(7, 5, 0x4000 | 0x500);
     tiles.mark_for_test(8, 5, 0x4000 | 0x200);
     let mut w = Spatial::with_tiles([20, 20], tiles);
-    w.sight = Some(crate::visibility::Visibility::new(
+    w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
         Vec::new(),
@@ -848,7 +848,7 @@ fn walled(wall_x: usize, unit: [f32; 2]) -> Spatial {
         classes[y * 20 + wall_x] = 1;
     }
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
-    w.sight = Some(crate::visibility::Visibility::new(
+    w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
         Vec::new(),
@@ -1065,7 +1065,7 @@ fn a_node_beyond_the_area_grows_it_once() {
         classes[y * 20 + 6] = 1;
     }
     let mut w = Spatial::with_tiles([20, 20], Tiles::new(20, 20, classes));
-    w.sight = Some(crate::visibility::Visibility::new(
+    w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
         Vec::new(),

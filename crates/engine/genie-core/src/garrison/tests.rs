@@ -1066,11 +1066,11 @@ pub(crate) fn sized_world(w: i32, h: i32) -> Turns {
     terrain.set_elevations(vec![0; n]);
     t.spatial.terrain = Some(terrain);
     let seen = (0..4).fold(0u64, |b, p| b | (1 << p) | (1 << (32 + p)));
-    t.spatial.sight = Some(crate::visibility::Visibility::new(
+    t.spatial.sight = Some(crate::vision::visibility::Visibility::new(
         w,
         h,
         (0..4)
-            .map(|_| crate::visibility::VisibleMap {
+            .map(|_| crate::vision::visibility::VisibleMap {
                 counts: vec![0; n],
                 explored: 0,
             })

@@ -135,8 +135,8 @@ fn villager(x: f32, y: f32) -> Placed {
 
 #[test]
 fn a_search_near_the_last_reads_its_answer_until_a_unit_ai_lets_it_go() {
-    use crate::registry::Registry;
     use crate::unit_ai::{Pick, Search};
+    use crate::vision::registry::Registry;
     let mut s = Spatial::new([120, 120]);
     // player 2 counts player 1 its enemy (3)
     s.relations = vec![vec![0, 3, 3], vec![0, 0, 3], vec![0, 3, 0]];

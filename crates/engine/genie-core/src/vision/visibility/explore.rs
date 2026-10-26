@@ -1,8 +1,8 @@
 //! `explore_terrain` and `unexplore_terrain` over a circle and a rectangle, and the reveal of
 //! a rectangle.
 
-use crate::los_tables::{CENTRED, OFFSET};
-use crate::visibility::{ANCHOR, LINKED, MOST, Visibility};
+use crate::vision::los_tables::{CENTRED, OFFSET};
+use crate::vision::visibility::{ANCHOR, LINKED, MOST, Visibility};
 
 impl Visibility {
     // The visible map's routines (`RGE_Visible_Map`).

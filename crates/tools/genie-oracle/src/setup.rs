@@ -455,7 +455,7 @@ pub fn history(h: &genie_save::generated::world::History) -> genie_core::history
     }
 }
 
-pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::ghost::Ghost> {
+pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::vision::ghost::Ghost> {
     section
         .objects()
         .doppleganger_objects
@@ -468,7 +468,7 @@ pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::ghost
                 .rge_doppleganger_object
                 .as_deref()?;
             let original = d.long_val as i32;
-            Some(genie_core::ghost::Ghost {
+            Some(genie_core::vision::ghost::Ghost {
                 id: s.id,
                 original: (original != -1).then_some(original),
                 original_id: original,

@@ -15,7 +15,7 @@ impl Turns {
     ///
     /// An object of a master the slice does not have.
     ///
-    /// [`VisibleResources::add`]: crate::visibility::VisibleResources::add
+    /// [`VisibleResources::add`]: crate::vision::visibility::VisibleResources::add
     pub(crate) fn process_new_tiles(&mut self, p: usize) -> Result<(), GenieError> {
         let Some(sight) = self.spatial.sight.as_ref() else {
             return Ok(());

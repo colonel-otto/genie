@@ -278,7 +278,7 @@ pub fn forced_run(
                 // each player's ghosts, in the list's order, by what the save holds of them
                 for (p, game) in after.ghosts.iter().enumerate() {
                     let slice = turns.players.get(p).map_or(&[][..], |q| &q.ghosts[..]);
-                    let key = |g: &genie_core::ghost::Ghost| {
+                    let key = |g: &genie_core::vision::ghost::Ghost| {
                         (
                             g.id,
                             g.original_id,

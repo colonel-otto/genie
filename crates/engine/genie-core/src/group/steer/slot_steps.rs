@@ -245,7 +245,7 @@ impl Turns {
     /// the motion step's). Then, for an object of an id from 0 below type 80 whose top speed
     /// (slot 0x208) is 0 (`UCOMISS` with `JP`: not a NaN) and whose radius on x or y is above
     /// 0.5 (`COMISS` with `JA`, then `JBE`), its tiles link to its new place (`FUN_140f73900`,
-    /// [`crate::visibility::Visibility::link_building`]). The moved records of the objects
+    /// [`crate::vision::visibility::Visibility::link_building`]). The moved records of the objects
     /// fastened to a combat object (`+0x8b0`..`+0x8f0`), which the slice does not hold, are a
     /// unit's none.
     ///

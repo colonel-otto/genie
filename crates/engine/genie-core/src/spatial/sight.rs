@@ -3,7 +3,7 @@
 
 use crate::spatial::{BLOCKED, Placed, Spatial};
 use crate::unit_ai::GenieError;
-use crate::visibility::Visibility;
+use crate::vision::visibility::Visibility;
 
 impl Spatial {
     /// The Artifact action's owner search (`FUN_140aabc40`) for the animal `me`: the objects on
@@ -211,14 +211,14 @@ impl Spatial {
 
     /// `FUN_141663500`, the player's tile test: what player `player` knows of tile (`x`, `y`).
     /// 0xf when it sees the tile (its visible mask `+0x2a8` meets the unified map's word under
-    /// [`crate::registry::MASK`]), or when the word is revealed to all (bit 29,
+    /// [`crate::vision::registry::MASK`]), or when the word is revealed to all (bit 29,
     /// [`crate::vision::NO_TILE`]) and the player explored it (its explored mask `+0x2a0` meets
     /// the word under the mask) or the word is explored by all (bit 61); else 0x80 when it
     /// explored it or the word is explored by all; else 0, also off the map. None without the
     /// players' sight.
     #[must_use]
     pub fn tile_sight(&self, player: usize, x: i32, y: i32) -> Option<u8> {
-        use crate::registry::MASK;
+        use crate::vision::registry::MASK;
         use crate::vision::{NO_TILE, NO_TILE_EXPLORED};
         let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
             return Some(0);
@@ -265,7 +265,7 @@ impl Spatial {
 
     /// `FUN_141285350`, the visible map's tile test (`InfluenceMap` and the scout map read it):
     /// 0xf when player `player`'s visible mask (`+0x2a8`) meets the unified map's word at tile
-    /// (`x`, `y`) under [`crate::registry::MASK`], else 0x80 when its explored mask (`+0x2a0`)
+    /// (`x`, `y`) under [`crate::vision::registry::MASK`], else 0x80 when its explored mask (`+0x2a0`)
     /// does, else 0, also off the map (the visible map's own size, `+0x20`, `+0x24`, the map's).
     /// The revealed bits 29 and 61 lie outside the mask. None without the players' sight.
     #[must_use]
@@ -273,7 +273,7 @@ impl Spatial {
         let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
             return Some(0);
         };
-        let word = word & crate::registry::MASK;
+        let word = word & crate::vision::registry::MASK;
         let [seen, explored] = self.vision(player);
         Some(if seen & word != 0 {
             0xf
@@ -286,7 +286,7 @@ impl Spatial {
 
     /// `FUN_140c68a00`, a unit's tile test (`FUN_141285280` reads the unified map's word, its
     /// player the unit's `+0x138`): 0xf when player `player`'s visible mask (`+0x2a8`) meets the
-    /// word at tile (`x`, `y`) under [`crate::registry::MASK`], else 0x80 when its explored mask
+    /// word at tile (`x`, `y`) under [`crate::vision::registry::MASK`], else 0x80 when its explored mask
     /// (`+0x2a0`) does, else 0. The game reads the word unchecked; its three callers
     /// (`FUN_140ab79e0`, `FUN_140c567c0`, `FUN_140c26f60`) pass an object's tile, which the
     /// position setter holds on the map, so off the map is 0 here. None without the players'
@@ -296,7 +296,7 @@ impl Spatial {
         let Some(word) = Self::unified_word(self.sight.as_ref()?, x, y) else {
             return Some(0);
         };
-        let word = word & crate::registry::MASK;
+        let word = word & crate::vision::registry::MASK;
         let [seen, explored] = self.vision(player);
         Some(if seen & word != 0 {
             0xf

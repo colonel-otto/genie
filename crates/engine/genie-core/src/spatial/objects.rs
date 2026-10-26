@@ -211,7 +211,7 @@ impl Spatial {
         if x < 0 || y < 0 || v.width <= x || v.height <= y {
             return false;
         }
-        let word = v.unified[(y * v.width + x) as usize] & crate::registry::MASK;
+        let word = v.unified[(y * v.width + x) as usize] & crate::vision::registry::MASK;
         let [seen, explored] = self.vision(player);
         word & seen != 0 && word & explored != 0
     }

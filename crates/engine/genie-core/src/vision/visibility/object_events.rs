@@ -2,7 +2,7 @@
 //! construction's start and completion.
 
 use crate::GenieError;
-use crate::visibility::Visibility;
+use crate::vision::visibility::Visibility;
 
 /// `RGE_Combat_Object::update`'s takeover by sight (`0x14107dfb0`, once the registry took a
 /// changed `mask` of an object with `+0x924` 1, [`Visibility::combat_sight`]): the players from

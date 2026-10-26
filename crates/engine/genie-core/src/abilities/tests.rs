@@ -501,11 +501,11 @@ fn rewards(t: &mut Turns, p: usize, id: i32, leaves: bool) -> Vec<Reward> {
 
 /// The players' sight with `id` a building of player `p` that is `built`.
 fn building_sight(t: &mut Turns, p: usize, id: i32, built: bool) {
-    let map = || crate::visibility::VisibleMap {
+    let map = || crate::vision::visibility::VisibleMap {
         counts: vec![0; 400],
         explored: 0,
     };
-    let mut v = crate::visibility::Visibility::new(
+    let mut v = crate::vision::visibility::Visibility::new(
         20,
         20,
         vec![map(), map(), map()],
@@ -516,13 +516,13 @@ fn building_sight(t: &mut Turns, p: usize, id: i32, built: bool) {
     );
     v.add_seer(
         id,
-        crate::visibility::Seer {
+        crate::vision::visibility::Seer {
             player: p,
             master: 1021,
             los: 6.0,
             state: 2,
             explored: true,
-            building: Some(crate::visibility::BuildingSight {
+            building: Some(crate::vision::visibility::BuildingSight {
                 built,
                 started: true,
             }),

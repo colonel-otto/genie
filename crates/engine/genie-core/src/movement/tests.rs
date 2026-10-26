@@ -218,7 +218,7 @@ fn walled(radius: f32) -> Spatial {
         classes[y * 20 + 6] = 1;
     }
     let mut w = Spatial::with_tiles([20, 20], crate::spatial::Tiles::new(20, 20, classes));
-    w.sight = Some(crate::visibility::Visibility::new(
+    w.sight = Some(crate::vision::visibility::Visibility::new(
         20,
         20,
         Vec::new(),

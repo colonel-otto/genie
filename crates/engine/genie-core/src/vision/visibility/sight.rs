@@ -1,8 +1,8 @@
 //! An object's sight on and off (slots 0x1d0 and 0x1d8), and after its move, its state's and
 //! its master's change.
 
-use crate::registry::MASK;
-use crate::visibility::{CIRCLE_MASTER, EDGE, MARKET, Seer, Visibility, tile_of};
+use crate::vision::registry::MASK;
+use crate::vision::visibility::{CIRCLE_MASTER, EDGE, MARKET, Seer, Visibility, tile_of};
 
 impl Visibility {
     /// Slot 0x1d0: the object's sight comes, on its owner's map: a circle of its line of sight, or

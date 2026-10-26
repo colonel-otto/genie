@@ -824,7 +824,7 @@ fn ready_to_attack_on_a_target_out_of_sight_fails_or_waits() {
     let at = [11.0, 10.0, 0.0];
     for (stance, fails) in [(0, false), (2, true)] {
         let mut world = world_with(7, 2, 6, at);
-        world.sight = Some(crate::visibility::Visibility::new(
+        world.sight = Some(crate::vision::visibility::Visibility::new(
             16,
             16,
             Vec::new(),
@@ -859,13 +859,13 @@ fn ready_to_attack_on_a_target_out_of_sight_fails_or_waits() {
 }
 
 /// The players' sight over a 16×16 map: every tile revealed and explored (seen), or none.
-fn sight(seen: bool) -> crate::visibility::Visibility {
+fn sight(seen: bool) -> crate::vision::visibility::Visibility {
     let word = if seen {
         crate::vision::NO_TILE | crate::vision::NO_TILE_EXPLORED
     } else {
         0
     };
-    crate::visibility::Visibility::new(
+    crate::vision::visibility::Visibility::new(
         16,
         16,
         Vec::new(),

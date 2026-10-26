@@ -285,9 +285,9 @@ pub fn slice_from_header(header: &Header, masters: Option<&MasterTable>) -> Turn
 pub(super) fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
     let mut turns = slice(header, masters);
     if let Some(sight) = turns.spatial.sight.as_mut() {
-        sight.registry = Some(genie_core::registry::Registry::new(
+        sight.registry = Some(genie_core::vision::registry::Registry::new(
             header.players().len(),
-            genie_core::registry::CLASSES,
+            genie_core::vision::registry::CLASSES,
         ));
     }
     // the hunted animals' origins are their places in this very save

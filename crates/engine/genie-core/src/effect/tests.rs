@@ -575,10 +575,10 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
         };
         t.masters = vec![Masters::new([stone])];
         t.load_trackers();
-        let mut v = crate::visibility::Visibility::new(
+        let mut v = crate::vision::visibility::Visibility::new(
             w,
             h,
-            vec![crate::visibility::VisibleMap {
+            vec![crate::vision::visibility::VisibleMap {
                 counts: vec![0; n],
                 explored: 0,
             }],
@@ -587,7 +587,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             0,
             vec![false],
         );
-        let seer = crate::visibility::Seer {
+        let seer = crate::vision::visibility::Seer {
             player: 0,
             master: 50,
             los: 2.0,
@@ -699,7 +699,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
             },
         );
     }
-    let mut v = crate::visibility::Visibility::new(
+    let mut v = crate::vision::visibility::Visibility::new(
         10,
         10,
         Vec::new(),
@@ -708,7 +708,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         0,
         Vec::new(),
     );
-    let seer = crate::visibility::Seer {
+    let seer = crate::vision::visibility::Seer {
         player: 0,
         master: 4,
         los: 2.0,

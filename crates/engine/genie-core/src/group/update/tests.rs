@@ -72,7 +72,7 @@ fn world() -> Turns {
         vec![0, 4, 1, 4],
         vec![0, 2, 4, 1],
     ];
-    s.sight = Some(crate::visibility::Visibility::new(
+    s.sight = Some(crate::vision::visibility::Visibility::new(
         8,
         8,
         Vec::new(),
