@@ -308,18 +308,18 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/movement.rs",
+      "file": "crates/engine/genie-core/src/movement/new_path.rs",
       "function": "Mover::ignore_list",
-      "line": 2342,
+      "line": 141,
       "cyclomatic": 17.0,
       "coverage": 54.83870967741935,
       "crap": 43.61931455808802,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/movement.rs",
+      "file": "crates/engine/genie-core/src/movement/request.rs",
       "function": "Mover::request",
-      "line": 1720,
+      "line": 28,
       "cyclomatic": 94.0,
       "coverage": 37.29903536977492,
       "crap": 2272.10280446317,

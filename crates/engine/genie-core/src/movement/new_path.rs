@@ -1,0 +1,420 @@
+//! A new level's path: no path, its link under the walked level, the short pather's ignore list
+//! and a blocked start.
+
+use crate::fmath::Vec3;
+use crate::hull_path::HullPather;
+use crate::movement::{
+    CONTINUE, LONG_PATHER, Me, Mover, PathData, Planning, RANGE_FLOOR, SHORT_PATHER, SPLIT,
+    STUCK_PAUSE, Step, Walker, footprint_gap_squared, owner_number, short_path_including, split,
+    tile_plan_for,
+};
+use crate::spatial::{Placed, Spatial};
+use crate::tile_path::{Path, Request};
+use crate::{GenieError, fmath, short_path};
+
+impl Mover {
+    /// The new level's path is no path (`0x141150f00` after the plans, fewer than two points or
+    /// no length): the level marks its waypoint reached and the step starts again, or it waits at
+    /// the end of its path (state 5); at its last waypoint while it may still try (its continue
+    /// counter, `FUN_140f95bf0` with 0) the unit pauses for `STUCK_PAUSE` and stops; the exits
+    /// that stop the unit otherwise are not modelled.
+    pub(super) fn no_path(
+        &mut self,
+        found: bool,
+        target: Option<&Placed>,
+        to_end: f32,
+    ) -> Result<Step, GenieError> {
+        let top_has_more = self.top_has_more();
+        if target.is_some() && self.paths[0].flags & 4 != 0 {
+            // FUN_140f9b4d0(level, 2, 0): bit 2 goes off the level and on for its parents
+            self.paths[0].flags &= !4;
+            for parent in &mut self.paths[1..] {
+                parent.flags |= 4;
+            }
+        }
+        let level = &mut self.paths[0];
+        if !found || level.range < to_end {
+            if level.points.len() as i32 - 1 <= level.waypoint {
+                if 0 < level.continue_counter {
+                    // the unit pauses itself (slot 0x5f0, the walked level's `+0x34`) and stops
+                    // (slot 0x5d0); the step returns 0
+                    level.pause_time = STUCK_PAUSE;
+                    self.stop()?;
+                    return Ok(Step::Paused);
+                }
+                if level.path_flags & 1 != 0 || self.attack_moving {
+                    return Err(GenieError::unsupported(
+                        "a looping level without a path pauses the unit",
+                    ));
+                }
+                if 1 < level.level || !top_has_more {
+                    return Err(GenieError::unsupported(
+                        "a level without a path stops the unit",
+                    ));
+                }
+                level.state = 5;
+                return Ok(Step::Again);
+            }
+        } else if level.path_flags & 1 == 0 {
+            return Err(GenieError::unsupported(
+                "a found path without length stops the unit",
+            ));
+        }
+        level.flags |= 1;
+        Ok(Step::Again)
+    }
+
+    /// The new level goes under the walked one (`0x141150f00` from `0x141153b0c`): the walked
+    /// level waits (state 0, its tries back to 10). A top level's plan becomes a level of its own
+    /// in state 2 (`FUN_140f9b800`, level 1), whose stretches the step serves next; any other path
+    /// is walked at once (`FUN_140f9b7c0`, level 0, state 3) after its long stretches got a
+    /// midpoint each (`FUN_140f9b8f0`), linked to the walked level as found (1) or not (2).
+    pub(super) fn link(
+        &mut self,
+        mut new: PathData,
+        mut path: Path,
+        found: bool,
+        partial: bool,
+        planned: bool,
+        solid: bool,
+    ) -> Step {
+        let level = &mut self.paths[0];
+        level.state = 0;
+        level.continue_counter = CONTINUE;
+        new.range = level.range;
+        new.target = level.target;
+        new.waypoint = 1;
+        if level.level == 2 && planned {
+            new.length = path.length;
+            new.points = path.points;
+            new.state = 2;
+            new.level = 1;
+            new.linked_type = if found { 1 } else { 2 };
+            self.paths.insert(0, new);
+            return if SHORT_PATHER || LONG_PATHER {
+                Step::Again
+            } else {
+                Step::Walk
+            };
+        }
+        let mut i = path.points.len() as i32 - 1;
+        while 0 < i {
+            let (a, b) = (path.points[i as usize], path.points[i as usize - 1]);
+            let mut d = fmath::sub(a, b);
+            d[1] = 0.0;
+            if SPLIT < d[0] * d[0] + 0.0 + d[2] * d[2] {
+                split(&mut path, i - 1);
+            }
+            i -= 1;
+        }
+        new.length = path.length;
+        new.points = path.points;
+        new.state = 3;
+        new.level = 0;
+        new.linked_type = if !found || partial { 2 } else { 1 };
+        if !solid {
+            // the walked level lets its path go (FUN_140f95b70): it holds none (path id -1),
+            // which reads as no points, flags, length or time
+            let level = &mut self.paths[0];
+            level.has_path = false;
+            level.points.clear();
+            level.path_flags = 0;
+            level.length = 0.0;
+            level.created = 0;
+        }
+        self.paths.insert(0, new);
+        Step::Walk
+    }
+
+    /// The objects the short pather ignores (`FUN_14114ece0`, its path from the unit, `line` the two
+    /// points its arguments 3 to 6 give the start test): the
+    /// unit, its target, the unit's own list but itself when its top path was made this update
+    /// (`+0x858`'s path at `+0x8`), and, for a standing unit with a target whose action is in
+    /// state 8 (a drop-off), the workers standing within its radius and a tenth (the records
+    /// `FUN_141051900` finds; one whose current path level's path was made this update is
+    /// passed, [`crate::spatial::Gait::path_made`]) of the classes 2, 4,
+    /// 19 and 21 (or whose slot 0x4f0 says so: 0 for a combat object, a task of action type 0x99
+    /// on the master for a building of the classes 3, 27, 39, 49 and 52), when the
+    /// unit's start is blocked (`FUN_140fa0110`: [`short_path::Pather::start_blocked`] along
+    /// `line` with its radius, its weapon range and the target's radii, no shape ignored), allied with the unit and farther from the target than the unit's radius
+    /// squared.
+    pub(super) fn ignore_list(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        target: Option<&Placed>,
+        target_id: i32,
+        line: ([f32; 2], [f32; 2]),
+    ) -> Result<Vec<i32>, GenieError> {
+        let now = plan.now;
+        let mut list = vec![me.id];
+        if target.is_some() {
+            list.push(target_id);
+        }
+        // the unit's own list but itself, when the walked level's top path (`FUN_140f960f0`: a
+        // level holding a path) was made this update; before the drop-off workers
+        if self
+            .paths
+            .last()
+            .is_some_and(|top| top.has_path && top.created == now)
+        {
+            list.extend(self.ignore_units.iter().filter(|&&id| id != me.id));
+        }
+        // the query runs for a unit that does not move (slot 0x5c8); a hit counts only with a
+        // target and the unit's action in state 8
+        if let Some(t) = target
+            && !self.is_moving()
+            && me.action_state == 8
+        {
+            let grow = self.stats.radius[0] + RANGE_FLOOR;
+            // the query's point: slot 0x520, +0x824
+            let [x, y, _] = self.moved_at;
+            let rect = [x, y, x, y];
+            world.check_known_records([x - grow, y - grow, x + grow, y + grow])?;
+            let owner = world.get(me.id).map(|p| p.player);
+            let r = self.stats.radius[0];
+            let skip = [me.id, target_id];
+            for id in world.obstruction_candidates(rect, grow, &skip) {
+                let Some(p) = world.get(id) else { continue };
+                let gait = world.gait(id);
+                if gait.is_some_and(|g| g.moving) {
+                    continue;
+                }
+                // a worker whose path is this update's walks: it is passed
+                if gait.and_then(|g| g.path_made) == Some(now) {
+                    continue;
+                }
+                // slot 0x4f0: a building's master with a task of action type 0x99
+                // (FUN_1415c60b0), 0 for anything else
+                let worker_building = matches!(p.class, 3 | 27 | 39 | 49 | 52)
+                    && world
+                        .task_0x99
+                        .get(p.player)
+                        .is_some_and(|m| m.contains(&p.master));
+                if !matches!(p.class, 2 | 4 | 19 | 21) && !worker_building {
+                    continue;
+                }
+                // FUN_140fa0110 runs for each such hit: its temporary shapes leave the mesh's
+                // free list reversed each time, so it is not run once for all
+                if !self.start_blocked(world, plan, t, line)? {
+                    continue;
+                }
+                let allied = owner.is_some_and(|o| {
+                    let relations = world.relations.get(p.player).map_or(&[][..], |r| &r[..]);
+                    crate::tasks::allied(relations, p.player, o, true)
+                });
+                let gap = footprint_gap_squared(p.position, p.radius, t.position, t.radius);
+                if !allied || gap <= r * r {
+                    continue;
+                }
+                list.push(id);
+            }
+        }
+        Ok(list)
+    }
+
+    /// `FUN_140fa0110`: whether the unit's start is blocked on its way along `line` (its arguments
+    /// 3 to 6, in fixed point by truncation), with its radius, its weapon range (slot 0x230) and
+    /// the target's radii (`FUN_140faa170`, [`short_path::Pather::start_blocked`]).
+    pub(super) fn start_blocked(
+        &self,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        target: &Placed,
+        (from, to): ([f32; 2], [f32; 2]),
+    ) -> Result<bool, GenieError> {
+        // CVTTSS2SI into a 64-bit register, its low 32 bits kept
+        let fixed = |f: f32| crate::checkpoint::cvttss2si_64(f * short_path::TO_FIXED) as i32;
+        let query = short_path::Query {
+            from: [fixed(from[0]), fixed(from[1])],
+            to: [fixed(to[0]), fixed(to[1])],
+            radius: self.stats.radius[0],
+            target_size: target.radius,
+            range: self.stats.weapon_range,
+            blocked: u64::from(self.stats.restriction_mask ^ 0xff),
+        };
+        let tiles = world.tiles();
+        let words = |x: u32, y: u32| tiles.word(x as i32, y as i32).unwrap_or(0);
+        let (mesh, pather) = plan
+            .pathing
+            .mesh_and_pather()
+            .ok_or(GenieError::unsupported(
+                "a start test without the game's mesh",
+            ))?;
+        Ok(pather.start_blocked(mesh, &words, &query))
+    }
+
+    /// After a short path (`FUN_140f9e540`) for the new level: when the top path (`FUN_140f960f0`
+    /// of the walked level) was made this tick, the new path takes the unit's ignore units
+    /// (`FUN_140f9b7a0`).
+    pub(super) fn give_ignored(&self, new: &mut PathData, now: u32) {
+        if self.paths.last().is_some_and(|t| t.created == now) {
+            new.ignored.clone_from(&self.ignore_units);
+        }
+    }
+
+    /// The short pather (`FUN_140f9e540`) from the unit to `to` with the ignore and include
+    /// lists `lists`, the owner's number for the player ([`short_path_including`]), into `out`;
+    /// returns its result (0 in range, 1 reached, 2 partial, 3 blocked, 4 invalid).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn short_path(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: Vec3,
+        range: f32,
+        target: i32,
+        lists: (&[i32], &[i32]),
+        out: &mut Path,
+    ) -> Result<u8, GenieError> {
+        let walker = self.walker(me.id);
+        // from +0x824: the motion step's `local_18c8`, the reach test's start (FUN_14114fea0)
+        short_path_including(
+            walker,
+            [self.moved_at[0], self.moved_at[1]],
+            world,
+            plan,
+            (to, range, target),
+            lists,
+            owner_number(world, me.id),
+            out,
+        )
+    }
+
+    /// What the planners read of this unit ([`Walker`]).
+    pub(crate) const fn walker(&self, id: i32) -> Walker {
+        Walker {
+            id,
+            radius: self.stats.radius[0],
+            restriction: self.stats.restriction,
+            mask: self.stats.restriction_mask,
+        }
+    }
+    /// The tile pathfinder (`FUN_140f7c530`) from the unit to `to`, appended to `out`, smoothed
+    /// with the obstruction manager's segment test for the unit (the records of the smoothing's
+    /// ignore list ignored, [`Pathing::smoothing_ignore`]); None without a planner. The planner reads the first byte of the target's record
+    /// (`+0x658`): 3, a box, for the obstruction types 2, 10, 11 and 13 (`FUN_141056460`).
+    ///
+    /// [`Pathing::smoothing_ignore`]: crate::pathing::Pathing::smoothing_ignore
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn tile_plan(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: Vec3,
+        radii: f32,
+        range: f32,
+        target: Option<&Placed>,
+        out: &mut Path,
+    ) -> Result<Option<u8>, GenieError> {
+        // the smoothing's ignore list: the unit and the level's target object (the planner's
+        // argument 12, the object the world holds)
+        let level_target = self
+            .paths
+            .first()
+            .map(|l| l.target)
+            .filter(|&t| t != -1 && world.get(t).is_some());
+        // from +0x824, the motion step's `local_18c8`
+        tile_plan_for(
+            self.walker(me.id),
+            [self.moved_at[0], self.moved_at[1]],
+            level_target,
+            world,
+            plan,
+            (to, radii, range),
+            target,
+            out,
+        )
+    }
+
+    /// Slot 0x3d8 of the unit (`FUN_14114ffc0` -> `FUN_140fa0370` without a target object):
+    /// whether it can walk to within `range` of the point `to` (x, y on the map), as
+    /// [`Mover::reach_test`] decides. `master` is the unit's master's id.
+    pub fn reaches(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: [f32; 2],
+        range: f32,
+        master: i16,
+    ) -> Result<bool, GenieError> {
+        self.reach_test(me, world, plan, to, None, range, master)
+    }
+
+    /// Slot 0x3d0 of the unit (`FUN_14114fea0` -> `FUN_140fa0370` with the target object): whether
+    /// it can walk to within `range` of object `target` (its place for the target's slot 0x520),
+    /// as [`Mover::reach_test`] decides; a target that is gone is not reached.
+    pub fn reaches_object(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        target: i32,
+        range: f32,
+        master: i16,
+    ) -> Result<bool, GenieError> {
+        let Some(t) = world.get_known(target)? else {
+            return Ok(false);
+        };
+        let to = [t.position[0], t.position[1]];
+        self.reach_test(me, world, plan, to, Some((target, t)), range, master)
+    }
+
+    /// Slot 0x3e8 of the unit (`FUN_14114f790`): the length of its short path to object `target`
+    /// within `range`: the obstruction manager's old short pather ([`HullPather::find`], with the
+    /// unit's place, radius and terrain mask, ignoring the unit and the target) when it finds a
+    /// path within range or none is needed (its result below 2); None for another result or a
+    /// target that is gone. The manager's temporary tile records go after
+    /// ([`Spatial::clear_tile_records`]).
+    pub fn short_reach(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        target: i32,
+        range: f32,
+    ) -> Result<Option<f32>, GenieError> {
+        let Some(t) = world.get_known(target)? else {
+            return Ok(None);
+        };
+        let to = [t.position[0], t.position[1]];
+        let mask = self.stats.restriction_mask;
+        let mut pather = HullPather::new(world, me.id, target, mask, self.stats.radius[0]);
+        let (result, path) = pather.find([me.position[0], me.position[1]], to, target, range)?;
+        // the slot removes the manager's temporary tile records after (FUN_1410561f0)
+        world.clear_tile_records();
+        Ok((result < 2).then(|| path.length()))
+    }
+
+    /// The length of the tile planner's path (`FUN_140f7c530` with the radii `radii`, range 0, no
+    /// closed tiles, the tile search for a human player, no smoothing) from the unit to `to`, and
+    /// the planner's result; None without a planner for the unit's restriction.
+    pub fn plan_length(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: [f32; 2],
+        radii: f32,
+    ) -> Result<Option<(u8, f32)>, GenieError> {
+        let full = !plan.computer;
+        let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) else {
+            return Ok(None);
+        };
+        let req = Request {
+            from: [me.position[0], me.position[1]],
+            to,
+            radii,
+            range: 0.0,
+            closed: Vec::new(),
+            full,
+        };
+        let mut path = Path::default();
+        let found = planner.plan::<GenieError>(&req, false, &mut path, None)?;
+        path.measure();
+        Ok(Some((found.code(), path.length)))
+    }
+}

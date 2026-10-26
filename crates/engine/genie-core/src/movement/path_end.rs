@@ -1,0 +1,510 @@
+//! The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses.
+
+use crate::fmath::Vec3;
+use crate::movement::{
+    Avoided, EPSILON, LONG_PATH_MOVER, LongWalker, Me, Mover, PUSHED, PathAsk, PathData, Planning,
+    REACH_NEAR, REACH_SHORT, USER_WAYPOINT_MIDDLE, WIDE_CLASS, WIDE_MASTER, WIDE_RANGE,
+    footprint_gap, footprint_gap_squared, lowered_units, overlap, pause_rank, point_or_zero,
+    point_or_zero_of, vector,
+};
+use crate::spatial::{Placed, Spatial};
+use crate::tile_path::{Path, Request};
+use crate::{GenieError, fmath};
+
+impl Mover {
+    /// `FUN_140fa0370`: both ends lie on the map. With a planner for its restriction, the tile
+    /// planner (`FUN_140f7c530` without the tile search, closed tiles or smoothing; the radii are
+    /// the unit's and the target's, the range 3 more for a target of master 45 or class 33) must
+    /// reach the goal or its range (result 0 or 1). Then a unit with a footprint and a height
+    /// (`FUN_141194060` with 1) no more than 10 tiles from the goal asks the short pather
+    /// (`FUN_140f9e540` with its ignore list, `FUN_14114ece0`, no include list, and its argument
+    /// 12 the test's 11th: 0 from slot 0x3d8, the caller's from slot 0x3d0, which genie's callers
+    /// give as 0; the old pather would keep its last area and hulls for 1), whose path to the
+    /// goal or into the range (a result below 2) answers yes. Otherwise a goal at least a tile from the unit's
+    /// footprint (the squared gap, to the target's footprint for a target, at least 1) is the long
+    /// pather's to answer ([`crate::long_path::reaches`], from the unit's tile to the goal's, the
+    /// planner's other arguments unset: no path, the reach within a tile, no player's objects); a
+    /// nearer one is not reached. `master` is the unit's master's id (42 moves for the long
+    /// pather without a speed).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn reach_test(
+        &self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        to: [f32; 2],
+        target: Option<(i32, &Placed)>,
+        range: f32,
+        master: i16,
+    ) -> Result<bool, GenieError> {
+        // FUN_14114fea0 and FUN_14114ffc0 hand the unit's +0x824 (x, height, y) as the start
+        let [x, y, height_at] = self.moved_at;
+        let [w, h] = world.map;
+        // COMISS 0, v; JA and COMISS v, size; JNC (0x140fa03f1..0x140fa0459): a NaN passes
+        let on_map = |px: f32, py: f32| {
+            fmath::at_most_or_unordered(0.0, px)
+                && fmath::at_most_or_unordered(0.0, py)
+                && fmath::below_or_unordered(px, w as f32)
+                && fmath::below_or_unordered(py, h as f32)
+        };
+        if !on_map(x, y) || !on_map(to[0], to[1]) {
+            return Ok(false);
+        }
+        let radius = self.stats.radius;
+        let ground = [radius[0], radius[1]];
+        let (target_id, target_radius) = target.map_or((-1, 0.0), |(id, t)| (id, t.radius[0]));
+        let bonus = target.is_some_and(|(_, t)| t.master == WIDE_MASTER || t.class == WIDE_CLASS);
+        let mut path = Path::default();
+        if let Some(planner) = plan.pathing.planner(self.stats.restriction, world.tiles()) {
+            let req = Request {
+                from: [x, y],
+                to,
+                radii: radius[0] + target_radius,
+                range: if bonus { range + WIDE_RANGE } else { range },
+                closed: Vec::new(),
+                full: false,
+            };
+            let found = planner.plan::<GenieError>(&req, false, &mut path, None)?;
+            if 1 < found.code() {
+                return Ok(false);
+            }
+        }
+        let solid = 0.0 < radius[2] && 0.0 < radius[0] && 0.0 < radius[1];
+        let (dx, dy) = (to[0] - x, to[1] - y);
+        if solid && fmath::sqrt(dx * dx + 0.0 + dy * dy) <= REACH_SHORT {
+            let goal = [to[0], 0.0, to[1]];
+            // FUN_140fa0370 hands the start test both vectors' first two floats: x and the
+            // height, the unit's (`+0x824`) and the target's (slot 0x520), not x and y
+            let height = target.map_or(0.0, |(_, t)| t.position[2]);
+            let line = ([x, height_at], [to[0], height]);
+            let ignore =
+                self.ignore_list(me, world, plan, target.map(|(_, t)| t), target_id, line)?;
+            let lists = (&ignore[..], &[][..]);
+            if self.short_path(me, world, plan, goal, range, target_id, lists, &mut path)? < 2 {
+                return Ok(true);
+            }
+        }
+        let long_target = if let Some((_, t)) = target {
+            let gap2 = footprint_gap_squared(me.position, ground, t.position, t.radius);
+            if gap2 < REACH_NEAR {
+                return Ok(false);
+            }
+            let gap = footprint_gap(me.position, ground, t.position, t.radius);
+            Some(crate::long_path::LongTarget::new(
+                t.position, t.radius, gap, gap2,
+            ))
+        } else {
+            let gap = |d: f32, r: f32| {
+                let g = d.abs() - r;
+                if 0.0 <= g { g } else { 0.0 }
+            };
+            // the gap from the unit's place (its decoded x and y), not +0x824
+            let [px, py, _] = me.position;
+            let (gx, gy) = (gap(to[0] - px, radius[0]), gap(to[1] - py, radius[1]));
+            if gx * gx + gy * gy < REACH_NEAR {
+                return Ok(false);
+            }
+            None
+        };
+        // FUN_140f9eb70 lowers the tall counts under its list (FUN_140f60440): the unit and its
+        // ignore units that wait or move, or its group's differentiator units, then the target
+        let walker = LongWalker {
+            id: me.id,
+            position: me.position,
+            radius: ground,
+            mask: self.stats.restriction_mask,
+            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            ignore_units: &self.ignore_units,
+            group_units: plan.groups.group_units(me.group),
+        };
+        let lowered = lowered_units(&walker, world, target.map(|(id, _)| id))
+            .into_iter()
+            .filter_map(|id| world.get(id))
+            .filter(|p| p.tall)
+            .map(|p| [p.position[0] as i32, p.position[1] as i32])
+            .collect();
+        let req = crate::long_path::LongRequest {
+            from: [
+                crate::checkpoint::cvttss2si(x),
+                crate::checkpoint::cvttss2si(y),
+            ],
+            to: [
+                crate::checkpoint::cvttss2si(to[0]),
+                crate::checkpoint::cvttss2si(to[1]),
+            ],
+            range,
+            target: long_target,
+            moves: self.stats.speed != 0.0 || master == LONG_PATH_MOVER,
+            mask: self.stats.restriction_mask,
+            computer: plan.computer,
+            lowered,
+            within_range: false,
+            near_player: false,
+            allies: world.get(me.id).map_or(0, |p| world.allies_of(p.player)),
+        };
+        crate::long_path::reaches(world.tiles(), world.map, &req)
+    }
+
+    /// The test before a non-quiet `MoveTo`'s path end follows its moved target (`0x140aa2a70` in
+    /// state 4): the top path (`FUN_140f960f0`) and the walked level's own path, that level being
+    /// level 0, are both held, and the level's current waypoint (`FUN_140f9bcd0`) is the top
+    /// path's last point (`FUN_140f95fb0`, compared x, y, z). A top path of one point, where the
+    /// game compares with its static point, is not modelled.
+    pub fn walks_to_path_end(&self) -> Result<bool, GenieError> {
+        let Some(level) = self
+            .paths
+            .first()
+            .filter(|l| l.level == 0 && !l.points.is_empty())
+        else {
+            return Ok(false);
+        };
+        let Some(top) = self.top_path() else {
+            return Ok(false);
+        };
+        let [.., _, last] = top.as_slice() else {
+            return Err(GenieError::unsupported(
+                "a top path of one point (FUN_140f95fb0)",
+            ));
+        };
+        Ok(point_or_zero_of(level, level.waypoint) == *last)
+    }
+
+    /// A non-quiet `MoveTo`'s path end follows its target to `point` (`0x140aa2a70` after the line
+    /// test): the walked level's current waypoint (`FUN_140f9b890` at its index) and the top
+    /// path's last point take it (the paths' layout, [`vector`]); bits 1 and 0 go off the walked
+    /// level (`FUN_140f9b4d0` twice).
+    pub fn follow_path_end(&mut self, point: [f32; 3]) {
+        let point = vector(point);
+        if let Some(level) = self.paths.first_mut() {
+            if let Some(w) = usize::try_from(level.waypoint)
+                .ok()
+                .and_then(|i| level.points.get_mut(i))
+            {
+                *w = point;
+            }
+            level.flags &= !3;
+        }
+        if let Some(last) = self.paths.last_mut().and_then(|l| l.points.last_mut()) {
+            *last = point;
+        }
+    }
+
+    /// The path of the top level (`FUN_140f960f0`): the last level's, or the walked level's when
+    /// it has no parent; None when that level holds no path.
+    pub(super) fn top_path(&self) -> Option<&Vec<Vec3>> {
+        self.paths
+            .last()
+            .map(|l| &l.points)
+            .filter(|p| !p.is_empty())
+    }
+
+    /// The path request of a `MoveTo` without its unit AI's say ([`Mover::request_path_asked`]
+    /// with [`PathAsk::default`]).
+    pub fn request_path(
+        &mut self,
+        from: [f32; 3],
+        goal: [f32; 3],
+        range: f32,
+        target: i32,
+        now: u32,
+    ) {
+        self.request_path_asked(from, goal, range, target, now, PathAsk::default());
+    }
+
+    /// Slot 0x540 (`FUN_14114e0f0`) with a path record, no target and range 0: the future path
+    /// data (`+0x860`, none held) and the path data (`+0x858`) reset (`FUN_140f98e80`: its parents
+    /// go, its repath time stays), then the record's path, its first waypoint 1: `planned` as
+    /// level 2 to plan (state 2, `FUN_140f9b800`), else as level 0 walking it (state 3,
+    /// `FUN_140f9b7c0`). The path keeps a new record's flags (6), its `length` and its creation
+    /// time `now`.
+    pub(crate) fn take_record_path(
+        &mut self,
+        points: Vec<Vec3>,
+        length: f32,
+        now: u32,
+        planned: bool,
+    ) {
+        let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
+        self.paths = vec![PathData {
+            level: if planned { 2 } else { 0 },
+            points,
+            has_path: true,
+            path_flags: 6,
+            length,
+            created: now,
+            waypoint: 1,
+            state: if planned { 2 } else { 3 },
+            repath_time,
+            ..PathData::without_path()
+        }];
+    }
+
+    /// The path request of a `MoveTo` (`FUN_14114e410`): one level of path data, the top (level
+    /// 2), in state 2: the next motion step plans the path to walk. Its path (a new one, flags 6,
+    /// made `now`) runs from the unit (`from`, `x, y, z` on the map; `FUN_140f95a50`) through the
+    /// unit's own waypoints, which go (slot 0x450), to the goal unless that is less than 1e-7
+    /// from the last point on the ground (`FUN_140f95a10` each, which leaves out a point equal to
+    /// the one before). A saved patrol's waypoint ([`PathAsk::resume`]) leaves out the unit's
+    /// place and the goal and the level walks on from that waypoint; a path still empty then
+    /// runs from the unit to the goal on the ground (height 0). The path loops with
+    /// [`PathAsk::patrol`] (its flags' bit 0), goes back and forth with
+    /// [`PathAsk::back_and_forth`] (bit 1); an attack move does not loop and sets `+0x7fb`, which
+    /// none clears ([`PathAsk::attack_move`]). A unit with future path data (`+0x860`) goes
+    /// another way, which the slice does not model (it holds none).
+    pub fn request_path_asked(
+        &mut self,
+        from: [f32; 3],
+        goal: [f32; 3],
+        range: f32,
+        target: i32,
+        now: u32,
+        ask: PathAsk,
+    ) {
+        let start = vector(from);
+        let mut path = Path::default();
+        if ask.resume == -1 {
+            let _ = path.insert(0, start);
+        }
+        for &w in &self.user_waypoints {
+            let _ = path.push(w);
+        }
+        self.clear_user_waypoints();
+        if ask.resume == -1 {
+            let end = vector(goal);
+            let last = point_or_zero(&path, path.points.len() as i32 - 1);
+            let mut d = fmath::sub(end, last);
+            d[1] = 0.0;
+            if EPSILON < fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]) {
+                let _ = path.push(end);
+            }
+        }
+        if path.points.is_empty() {
+            let _ = path.insert(0, start);
+            let _ = path.push([goal[0], 0.0, goal[1]]);
+        }
+        // a new path's flags are 6 (FUN_14152eea0); bit 0 by the patrol, cleared again by an
+        // attack move, then bit 1 by the back and forth. The walked level, if any, is reset for
+        // it (FUN_140f98e80: its repath time stays)
+        let mut path_flags = if ask.patrol { 6 | 1 } else { 6 & !1 };
+        match ask.attack_move {
+            Some(true) => {
+                path_flags &= !1;
+                self.attack_moving = true;
+            }
+            Some(false) => self.attack_moving = false,
+            None => {}
+        }
+        path_flags = if ask.back_and_forth {
+            path_flags | 2
+        } else {
+            path_flags & !2
+        };
+        let repath_time = self.paths.first().map_or(0.0, |l| l.repath_time);
+        self.paths = vec![PathData {
+            level: 2,
+            points: path.points,
+            path_flags,
+            waypoint: if ask.resume == -1 { 1 } else { ask.resume },
+            state: 2,
+            range,
+            target,
+            repath_time,
+            ..PathData::new(now)
+        }];
+    }
+
+    /// Slot 0x448 (`FUN_14114e920`): a waypoint of the unit's own at `x`, `y` and height `z`,
+    /// held as (x, height, y); an x or y less than 1e-7 above a whole number (`floorf`, `COMISS`,
+    /// `JBE`: not a NaN) moves to that tile's middle. Its array's growth (5, then twice) fails only
+    /// without memory.
+    pub fn add_user_waypoint(&mut self, x: f32, y: f32, z: f32) {
+        let snap = |v: f32| {
+            let whole = libm::floorf(v);
+            if (v - whole).abs() < EPSILON {
+                whole + USER_WAYPOINT_MIDDLE
+            } else {
+                v
+            }
+        };
+        self.user_waypoints.push([snap(x), z, snap(y)]);
+    }
+
+    /// Slot 0x450 (`FUN_141070ce0`): the unit's own waypoints go (their count `+0x7fc` 0).
+    pub fn clear_user_waypoints(&mut self) {
+        self.user_waypoints.clear();
+    }
+
+    /// The unit vector on the ground from `from` to `to` (slot 194, `0x14114f210`); the forward
+    /// vector when the two are less than 1e-7 apart or on the same point.
+    pub(crate) fn direction_to(&self, from: Vec3, to: Vec3) -> Vec3 {
+        if from[0] != to[0] || from[2] != to[2] {
+            let x = to[0] - from[0];
+            let z = to[2] - from[2];
+            let length = fmath::sqrt(x * x + 0.0 + z * z);
+            // COMISS eps, length; JBE at 0x14114f2aa: a NaN length divides too
+            if fmath::at_most_or_unordered(EPSILON, length) {
+                return [x / length, 0.0, z / length];
+            }
+        }
+        self.forward
+    }
+
+    /// Where this tick's speed would take the unit along `direction` (slot 199, `0x141161860`)
+    /// from where it last moved to (`+0x824`, [`Mover::moved_at`]): the forward speed after one
+    /// more step of acceleration, capped by the top speed (COMISS/JA, then JC: a NaN speed stays).
+    pub(crate) fn projected(&self, direction: Vec3, dt: f32) -> Vec3 {
+        let position = vector(self.moved_at);
+        let Some(v) = &self.velocity else {
+            return position;
+        };
+        let mut next = fmath::add(v.velocity, fmath::scale(dt, v.acceleration));
+        if self.stats.speed < next[2] || next[2] <= 0.0 {
+            next[2] = self.stats.speed;
+        }
+        fmath::add(position, fmath::scale(dt * next[2], direction))
+    }
+
+    /// [`Mover::avoid`]'s first loop's test of the hit `id` (`other` its record): kept unless
+    /// the step shrinks its overlap with the unit's box (`FUN_1411615a0`); then when the walked
+    /// path ignores it and it moved before the top path was made (or the top path is this
+    /// update's and the step overlaps it more than [`PUSHED`] of the radius), or it moved after
+    /// the walked path was made (or at the same time and outranks the unit: a higher player, or
+    /// the same and a higher id).
+    pub(super) fn keeps_hit(
+        &self,
+        me: &Me,
+        player: usize,
+        (id, other): (i32, &Placed),
+        projected: Vec3,
+        world: &Spatial,
+        now: u32,
+    ) -> bool {
+        let level = &self.paths[0];
+        let top = self.paths.last().filter(|l| !l.points.is_empty());
+        let [rx, ry, _] = self.stats.radius;
+        let o = vector(other.position);
+        let now_overlap = overlap(vector(me.position), [rx, ry], o, other.radius);
+        let next_overlap = overlap(projected, [rx, ry], o, other.radius);
+        let last_move = world.gait(id).map_or(0, |g| g.last_move);
+        let mut pushed = false;
+        if let Some(top) = top.filter(|_| now_overlap <= next_overlap) {
+            if top.created == now && rx * PUSHED < next_overlap && level.ignored.contains(&id) {
+                pushed = true;
+            }
+            if top.created < now && level.ignored.contains(&id) {
+                pushed = last_move < top.created;
+            }
+        }
+        let outranks = player < other.player || (player == other.player && me.id < id);
+        let outranks = level.created < last_move || (outranks && level.created == last_move);
+        !(next_overlap < now_overlap || (!pushed && !outranks))
+    }
+
+    /// The walk's avoidance of what its step hits (`0x141150f00`, after `FUN_14114cc60`). The first
+    /// loop keeps a hit the unit must go round: none whose overlap with the unit's box the step
+    /// shrinks (`FUN_1411615a0`); else one in the walked path's ignore units (`FUN_140f98d20`)
+    /// that moved before the top path was made, or one that moved after the walked path was made
+    /// (or at the same time and outranks the unit: a higher player, or the same and a higher id).
+    /// A step whose one hit is the walked level's target counts its waypoint reached (the
+    /// caller's, [`Avoided::at_target`]), that hit kept or not. A kept hit (its place in the
+    /// include list and its temporary shape `FUN_141054fe0`, [`include_kept`]; the step's slide
+    /// `FUN_141159220` and the re-plan, [`Mover::go_round`]) is the caller's.
+    /// Then, on the walked level's first two waypoints (or the third of a path more
+    /// than 500 old), each hit the unit outranks pauses for `dt` when its own pause is shorter: a
+    /// human walker outranks another player's unit, or one of its own ordered at another time,
+    /// whose last human order (`+0x650`) is older; else, between two members of one unit group
+    /// (`+0x6d0`, not −1), the earlier member (`FUN_1410175f0`'s index in the group's list, −1
+    /// for none) outranks, and a group the world does not hold (`FUN_14152ff40`, `groups`)
+    /// pauses neither; else the lower id (slot 0x5f8) outranks. A Gaia unit is outranked by any
+    /// non-Gaia walker; the pause itself (slot 0x5f0) is the caller's. The paths' hash sets
+    /// (`+0x18`, `FUN_140f96120`) are empty in this game (the probe `path_sets.py`).
+    ///
+    /// [`include_kept`]: crate::movement::long_walk::include_kept
+    pub(super) fn avoid(
+        &self,
+        me: &Me,
+        (world, groups): (&Spatial, Option<&crate::group::UnitGroups>),
+        hits: &[i32],
+        projected: Vec3,
+        dt: f32,
+        (now, computer): (u32, bool),
+    ) -> Result<Avoided, GenieError> {
+        let level = &self.paths[0];
+        let player = world
+            .get(me.id)
+            .ok_or(GenieError::unsupported("a walker without a place"))?
+            .player;
+        // a hit the world holds no object of (a map edge's record) is passed over
+        let met = |id: i32| -> Result<Option<(i32, &Placed)>, GenieError> {
+            let id = world.annex_of(id).unwrap_or(id);
+            Ok(world.get_known(id)?.map(|p| (id, p)))
+        };
+        let mut target_hit = false;
+        let mut kept = Vec::new();
+        for &hit in hits {
+            let Some((id, other)) = met(hit)? else {
+                continue;
+            };
+            if 0 <= level.target && id == level.target {
+                target_hit = true;
+            }
+            if self.keeps_hit(me, player, (id, other), projected, world, now) {
+                kept.push(id);
+            }
+        }
+        // FUN_141159220 slides the projected step out of the hits of no speed of classes 3, 27,
+        // 39 and 52 (buildings, walls, gates): only the kept hits' re-plan reads the slid point,
+        // and with no kept hit the slide changes nothing
+        if hits.len() == 1 && target_hit {
+            return Ok(Avoided {
+                kept,
+                pauses: Vec::new(),
+                at_target: true,
+            });
+        }
+        if !kept.is_empty() {
+            return Ok(Avoided {
+                kept,
+                pauses: Vec::new(),
+                at_target: false,
+            });
+        }
+        let mut pauses = Vec::new();
+        if level.waypoint < 2 || (level.waypoint < 3 && level.created.wrapping_add(500) < now) {
+            for &hit in hits {
+                let Some((id, other)) = met(hit)? else {
+                    continue;
+                };
+                if 0 <= level.target && id == level.target {
+                    continue;
+                }
+                if (player == 0 || other.player != 0)
+                    && pause_rank(me, (player, computer), (id, other), world, groups) != Some(true)
+                {
+                    continue;
+                }
+                // slot 0x528's walked level, paused for dt more when its pause is shorter
+                if let Some(p) = self.pause_of(world, id).filter(|&p| p < dt) {
+                    pauses.push((id, p + dt));
+                }
+            }
+        }
+        Ok(Avoided {
+            kept,
+            pauses,
+            at_target: false,
+        })
+    }
+
+    /// The pause of unit `id`'s walked level as slot 0x5f0 leaves it: the last this walk gave it
+    /// (the game's call writes it at once, a later pass of the same step reads it), else the
+    /// world's ([`crate::spatial::Gait::pause`]).
+    pub(super) fn pause_of(&self, world: &Spatial, id: i32) -> Option<f32> {
+        self.pauses
+            .iter()
+            .rev()
+            .find(|&&(i, _)| i == id)
+            .map(|&(_, p)| p)
+            .or_else(|| world.gait(id).and_then(|g| g.pause))
+    }
+}
