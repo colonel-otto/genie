@@ -2,11 +2,11 @@
 //! update's tail.
 
 use crate::math::fmath::at_most_or_unordered;
-use crate::turn::Turns;
-use crate::world_player::{
+use crate::players::world_player::{
     BUILDING_TYPE, COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE,
     SECOND, attribute, get, set,
 };
+use crate::turn::Turns;
 
 impl Turns {
     /// The trickles of player `p`: each of attributes 230 to 233 above 0 (`COMISS` with 0,
@@ -23,7 +23,7 @@ impl Turns {
     }
 
     /// The food of player `p`'s mills' livestock: over the ids its tracker files under the mill
-    /// (master 68, [`crate::tracker::Tracker::list`]), each object the world holds whose type is
+    /// (master 68, [`crate::players::tracker::Tracker::list`]), each object the world holds whose type is
     /// a building's sums its livestock (`mLivestockSummation`, `+0xc28`, in the list's order from
     /// 0); food grows by attribute 254 over 60 times (`time` times logf(sum / 200 + 1))
     /// ([`crate::math::fmath::log`]), with its statistic and its sharing ([`Turns::add_resource`]),

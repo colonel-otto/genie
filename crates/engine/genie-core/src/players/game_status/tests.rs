@@ -113,8 +113,8 @@ fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
     t.defeat_event(1);
     assert_eq!(
         t.players[1].history.events,
-        [crate::history::Event {
-            kind: crate::history::DEFEAT,
+        [crate::players::history::Event {
+            kind: crate::players::history::DEFEAT,
             time_slice: 4,
             world_time: 5_000,
             data1: 3.0,

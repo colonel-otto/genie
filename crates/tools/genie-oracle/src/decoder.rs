@@ -285,7 +285,7 @@ impl Decoder {
                 });
             }
             Packet::TribeGiveAttributes(c) => {
-                let gift = |attribute, amount, fee| genie_core::tribute::Gift {
+                let gift = |attribute, amount, fee| genie_core::players::tribute::Gift {
                     attribute,
                     amount,
                     fee,

@@ -843,15 +843,15 @@ mod stack_tests {
             8759,
             Built {
                 attributes: vec![(134, 1.0)],
-                history: Some(crate::history::CASTLE_BUILT),
+                history: Some(crate::players::history::CASTLE_BUILT),
                 ..Built::default()
             },
         )
         .unwrap();
         assert_eq!(
             t.players[1].history.events,
-            [crate::history::Event {
-                kind: crate::history::CASTLE_BUILT,
+            [crate::players::history::Event {
+                kind: crate::players::history::CASTLE_BUILT,
                 time_slice: 1,
                 world_time: 912_000,
                 data1: 1.0,

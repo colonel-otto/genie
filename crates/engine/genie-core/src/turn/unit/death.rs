@@ -254,7 +254,7 @@ impl Unit {
         };
         let part = completion.first_part(construction)?;
         // its tracker part (FUN_14104eac0): the foundation leaves the pending lists
-        let k = crate::tracker::key(c.masters, c.lines, self.life.master_id);
+        let k = crate::players::tracker::key(c.masters, c.lines, self.life.master_id);
         c.tracker.complete(self.id, k);
         c.attribute_adds.extend(part.attributes);
         if part.pasture {

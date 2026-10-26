@@ -37,7 +37,7 @@ impl Turns {
     /// else a building (an annex its main building, but a gate's), with its count
     /// ([`Turns::garrisoned`]). With it, each object of the target's owner's tracker under the
     /// master the target's line stands for (`FUN_140fdd6c0`, `FUN_140fdd6f0`, [`UnitLines::base`];
-    /// `FUN_14104f960`, [`crate::tracker::Tracker::list`]), in the tracker's order, within
+    /// `FUN_14104f960`, [`crate::players::tracker::Tracker::list`]), in the tracker's order, within
     /// [`NEARBY`] of the target (`FUN_14118f8c0`, the squared footprint gap; `COMISS`/`JC`: a NaN
     /// is out): one of a type below 80 is a transport, one not a gate (class 39) and no annex
     /// (`+0xbb8`) a building, and each one in reach pushes its count, the gates and annexes

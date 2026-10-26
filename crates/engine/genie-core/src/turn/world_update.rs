@@ -155,7 +155,7 @@ impl Turns {
             self.pathing.tiles_changed(self.spatial.take_changes());
             // the player's groups (BaseWorld::update at 0x141551796), then its own update (slot
             // 0x100 at 0x1415518f0): the world player's or Gaia's
-            // ([`crate::world_player`]), then WorldPlayerBase::update: its plans start over
+            // ([`crate::players::world_player`]), then WorldPlayerBase::update: its plans start over
             // (`+0x67c`), then its objects update (FUN_141166550 on its list)
             if let Err(e) = self.update_groups(p) {
                 self.stop_player(p, e);
@@ -227,7 +227,7 @@ impl Turns {
                         // that object's update waits for the next tick; the player's remove and
                         // add (slots 0x2d8, 0x2d0) file it last in the tracker
                         let asleep = player.objects.swap_remove(i);
-                        let k = crate::tracker::key(
+                        let k = crate::players::tracker::key(
                             self.masters.get(p),
                             &self.lines,
                             asleep.life.master_id,
@@ -282,9 +282,11 @@ impl Turns {
                         // owner's add (slot 0x2d0), each tracker by its own masters
                         for u in &moved {
                             let m = u.life.master_id;
-                            let old = crate::tracker::key(self.masters.get(p), &self.lines, m);
+                            let old =
+                                crate::players::tracker::key(self.masters.get(p), &self.lines, m);
                             self.players[p].tracker.remove(u.id, old);
-                            let k = crate::tracker::key(self.masters.get(new), &self.lines, m);
+                            let k =
+                                crate::players::tracker::key(self.masters.get(new), &self.lines, m);
                             self.players[new].tracker.add(u.id, k);
                         }
                         self.players[new].objects.extend(moved);

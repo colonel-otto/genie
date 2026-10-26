@@ -168,7 +168,7 @@ mod tests {
         if market {
             t.players[1].tracker.add(
                 7,
-                crate::tracker::Key {
+                crate::players::tracker::Key {
                     master: 84,
                     class: 3,
                     pending: false,

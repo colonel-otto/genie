@@ -3,12 +3,12 @@
 
 use crate::GenieError;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered};
-use crate::turn::Turns;
-use crate::world_player::{
+use crate::players::world_player::{
     ALIVE_STORE_MODE, BUILDING_CLASS, COMPUTER_TYPE, GAIA_TYPE, HUMAN_TYPE, KING, PACKED_CLASS,
     PERCENT, POPULATION_STORAGE, SECOND, TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS,
     WONDER, attribute, get, set,
 };
+use crate::turn::Turns;
 
 impl Turns {
     /// Player `p`'s slot 0x100 up to `WorldPlayerBase::update`. Gaia (`WorldPlayerGaia::update`)
@@ -39,7 +39,7 @@ impl Turns {
     }
 
     /// One pass of the world player's loop, `time` its update time before the step:
-    /// - the history's update with the `.dat`'s period ([`crate::history::History::update`]);
+    /// - the history's update with the `.dat`'s period ([`crate::players::history::History::update`]);
     /// - attribute 22: 100 when every player explored the map from the start
     ///   ([`crate::settings::Settings::explored_all`]), else the explored share
     ///   ([`Turns::explored_share`]) times 100;
@@ -78,7 +78,7 @@ impl Turns {
             return Ok(());
         }
         self.defeat_check(p)?;
-        if self.players[p].game_status == crate::game_status::PLAYING {
+        if self.players[p].game_status == crate::players::game_status::PLAYING {
             self.trickles(p);
             self.mill_food(p, time);
         }
@@ -111,7 +111,7 @@ impl Turns {
     ///
     /// An object of a master the slice does not have; the status setter's.
     ///
-    /// [`VictoryTimes::running`]: crate::world_player::VictoryTimes::running
+    /// [`VictoryTimes::running`]: crate::players::world_player::VictoryTimes::running
     pub fn defeat_check(&mut self, p: usize) -> Result<(), GenieError> {
         let mut stays = self.players[p].victory_times.running();
         if !stays {
@@ -131,12 +131,12 @@ impl Turns {
                 player.sudden_death_eliminable = true;
             }
         }
-        if self.players[p].game_status == crate::game_status::LOST {
+        if self.players[p].game_status == crate::players::game_status::LOST {
             return Ok(());
         }
         let kingless = self.settings.regicide() && self.players[p].tracker.list(KING).is_empty();
         if !stays || kingless {
-            self.set_status(p, crate::game_status::LOST)?;
+            self.set_status(p, crate::players::game_status::LOST)?;
             set(&mut self.players[p].attributes, attribute::SURVIVAL, 0.0);
         }
         Ok(())

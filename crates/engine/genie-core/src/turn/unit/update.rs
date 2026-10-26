@@ -680,7 +680,7 @@ impl Unit {
                 // the completion's first part's tracker part (FUN_1411c6bd0 ->
                 // FUN_14104eac0); the foundation is the builder's player's
                 if let Some(u) = others.iter_mut().find(|u| u.id == target) {
-                    let k = crate::tracker::key(c.masters, c.lines, u.life.master_id);
+                    let k = crate::players::tracker::key(c.masters, c.lines, u.life.master_id);
                     c.tracker.complete(target, k);
                     // its set_state(2)'s standing sprite (FUN_1411dbb70)
                     if let Some(m) = c.masters.and_then(|m| m.get(u.life.master_id)) {

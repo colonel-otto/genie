@@ -172,8 +172,8 @@ pub(crate) struct Context<'a> {
     pub(in crate::turn) standard: bool,
     pub(in crate::turn) sight_takers: &'a [(bool, bool)],
     /// The owner's object tracker, which a completion's first part (`FUN_1411c6bd0`) moves a
-    /// building in, and the unit lines its keys read ([`crate::tracker`]).
-    pub(crate) tracker: &'a mut crate::tracker::Tracker,
+    /// building in, and the unit lines its keys read ([`crate::players::tracker`]).
+    pub(crate) tracker: &'a mut crate::players::tracker::Tracker,
     pub(crate) lines: &'a crate::lines::UnitLines,
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.

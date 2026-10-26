@@ -1,7 +1,7 @@
 use super::*;
-use crate::game_status::{LOST, PLAYING};
 use crate::masters::{BuildingMaster, Master, Masters};
-use crate::tracker::Key;
+use crate::players::game_status::{LOST, PLAYING};
+use crate::players::tracker::Key;
 use crate::turn::{Player, Unit};
 use crate::vision::visibility::{Visibility, VisibleMap};
 

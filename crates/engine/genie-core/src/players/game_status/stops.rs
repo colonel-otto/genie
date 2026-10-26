@@ -1,11 +1,11 @@
 //! A defeated player's objects stop (`FUN_141613ed0`): each object's stop and its top action's
 //! halt by kind.
 
-use crate::game_status::{
+use crate::math::rng::Stream;
+use crate::players::game_status::{
     FISHING_BOAT, KEEPING_TYPES, KEPT_ACTION, LIVESTOCK, TRADE_ACTION, TRADE_CART,
     UNSTOPPED_BUILDINGS, VILLAGER,
 };
-use crate::math::rng::Stream;
 use crate::turn::{Releaser, Turns};
 use crate::unit_ai::{Effect, GenieError};
 

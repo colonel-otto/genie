@@ -112,8 +112,8 @@ pub(super) fn take_building(
     if 0 < t.player && ONE > t.hp {
         let (ap, q) = (src.player, t.player);
         let event = match t.master_id {
-            crate::turn::CASTLE => Some(crate::history::CASTLE_DESTROYED),
-            crate::turn::WONDER => Some(crate::history::WONDER_DESTROYED),
+            crate::turn::CASTLE => Some(crate::players::history::CASTLE_DESTROYED),
+            crate::turn::WONDER => Some(crate::players::history::WONDER_DESTROYED),
             _ => None,
         };
         let mut adds = Vec::new();

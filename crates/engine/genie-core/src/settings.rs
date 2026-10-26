@@ -168,7 +168,7 @@ impl Settings {
     }
 
     /// `FUN_1412fc110`: the game's last age, `mEndingAge` or 5 for 0. A tech tree's unit of a
-    /// later age than the one before it is not in the tree ([`crate::world_player`]).
+    /// later age than the one before it is not in the tree ([`crate::players::world_player`]).
     #[must_use]
     pub const fn last_age(&self) -> i32 {
         if self.ending_age == 0 {

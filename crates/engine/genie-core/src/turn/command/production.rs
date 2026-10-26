@@ -25,7 +25,7 @@ impl Turns {
     /// ones) but the population's needs its amount times the count (`COMISS`, `JA`: a NaN
     /// passes); at one still short, or for a master below type 70, nothing is queued. In game
     /// mode 16, while the player's attribute 6 is at most 1, a military master (its key's `+9`,
-    /// [`crate::tracker::Key::military`]) is queued one at a time: with the player's flag
+    /// [`crate::players::tracker::Key::military`]) is queued one at a time: with the player's flag
     /// (`+0x1378`) set nothing is, else the flag sets and the amount is 1 (even with no room).
     /// Then unit by unit the building with room and the least load takes it (the last one's
     /// pick first, replaced by one whose load is below: `COMISS`, `JBE`, a NaN never wins; with
@@ -290,7 +290,7 @@ impl Turns {
     /// [`crate::production::pay`]), the count lowered while the player cannot (at one, nothing
     /// is queued); attribute 80 (the queued units) grows by the master's population times the
     /// count (slot 0xf8); the player's tracker counts them and places each
-    /// ([`crate::tracker::Tracker::place`]; `FUN_140a4f570` per unit is the local player's
+    /// ([`crate::players::tracker::Tracker::place`]; `FUN_140a4f570` per unit is the local player's
     /// statistics). They join the last entry when it is of the same master and button and its
     /// costs are the ones a unit costs now (`FUN_1411c81a0`,
     /// [`crate::production::master_costs`]); else a new entry ([`Turns::new_entry`]) records

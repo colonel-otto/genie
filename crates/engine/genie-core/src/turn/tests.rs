@@ -5628,7 +5628,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     b.razed.push(crate::combat::damage::Razed {
         attacker_player: 1,
         owner: 2,
-        event: Some(crate::history::CASTLE_DESTROYED),
+        event: Some(crate::players::history::CASTLE_DESTROYED),
         adds: vec![(1, 43, 1.0), (2, 155, 1.0), (1, 170, 650.0)],
     });
     t.set_victim(&v).unwrap();
@@ -5645,7 +5645,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     assert_eq!([attacker[170], owner[152]], [1300.0, 650.0]);
     let event = t.players[1]
         .history
-        .event_of_kind(crate::history::CASTLE_DESTROYED)
+        .event_of_kind(crate::players::history::CASTLE_DESTROYED)
         .unwrap();
     assert_eq!(event.data1, 2.0);
 }
@@ -7008,7 +7008,7 @@ fn scout_attack_on(
             civ: 0,
             ai_settings: AiSettings::default(),
             drop_sites: &[],
-            tracker: &crate::tracker::Tracker::default(),
+            tracker: &crate::players::tracker::Tracker::default(),
             mode_680: 0,
             carry_rule: false,
         };
@@ -7187,7 +7187,7 @@ fn attack_by(
             civ: 0,
             ai_settings: AiSettings::default(),
             drop_sites: &[],
-            tracker: &crate::tracker::Tracker::default(),
+            tracker: &crate::players::tracker::Tracker::default(),
             mode_680: 0,
             carry_rule: false,
         };
@@ -7363,7 +7363,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
         civ: 0,
         ai_settings: AiSettings::default(),
         drop_sites: &[],
-        tracker: &crate::tracker::Tracker::default(),
+        tracker: &crate::players::tracker::Tracker::default(),
         mode_680: 0,
         carry_rule: false,
     };

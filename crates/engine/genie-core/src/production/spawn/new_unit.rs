@@ -22,7 +22,7 @@ impl Turns {
     /// building without a gather point (`+0xc30` 0) spawns the unit idle, its spot facing nothing;
     /// one whose unit AI holds a command queue (slot 0x218) is not modelled.
     ///
-    /// The player's tracker lets its queue place go ([`crate::tracker::Tracker::unplace`], the
+    /// The player's tracker lets its queue place go ([`crate::players::tracker::Tracker::unplace`], the
     /// counter one less).
     ///
     /// Not held: its facet and angle, its powerup offset, the building's `+0xc1c` group (unsaved), the game's events

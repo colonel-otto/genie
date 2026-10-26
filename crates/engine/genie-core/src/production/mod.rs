@@ -4,7 +4,7 @@
 //! research's (`TRIBE_Action_Make_Tech`). The building's update makes and runs that action after
 //! its combat update (`FUN_1411e7dc0`, [`crate::production::spawn`]); QUEUE's building part is
 //! `FUN_1411cbc40` ([`crate::turn`]); the cancels are `FUN_1411d66b0`, `FUN_1411d61e0` and
-//! `FUN_1411cff00` ([`crate::game_status`]).
+//! `FUN_1411cff00` ([`crate::players::game_status`]).
 //!
 //! The queue is a buffer of 0x30-byte slots (`+0xbe8`, room for `+0xbf0`), the first `+0xbf2`
 //! of them its entries: a master or a technology and how many of it. An entry that empties goes:

@@ -305,7 +305,7 @@ pub(in crate::turn) struct UnitView<'u> {
     pub(in crate::turn) ai_settings: crate::turn::player::AiSettings,
     pub(in crate::turn) drop_sites: &'u [DropSite],
     /// The owner's object tracker, whose done lists the drop-site table's search reads.
-    pub(in crate::turn) tracker: &'u crate::tracker::Tracker,
+    pub(in crate::turn) tracker: &'u crate::players::tracker::Tracker,
     /// The game's setting at `+0x680` ([`Turns::mode_680`]), which a hit's source carries.
     pub(in crate::turn) mode_680: i32,
     /// The game's carry rule ([`crate::settings::Settings::carry_rule`]), which a hunt's start

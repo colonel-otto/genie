@@ -162,7 +162,8 @@ impl Turns {
         player.objects[i] = unit;
         // each made object's add to its player (slot 0x2d0) filed it in the tracker
         for m in &made {
-            let k = crate::tracker::key(self.masters.get(p), &self.lines, m.life.master_id);
+            let k =
+                crate::players::tracker::key(self.masters.get(p), &self.lines, m.life.master_id);
             player.tracker.add(m.id, k);
         }
         player.objects.extend(made);

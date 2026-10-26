@@ -37,7 +37,7 @@ impl Turns {
     /// `from`'s id takes slot 0x98 keeping it and copies `to` into it (a building's research
     /// buttons, `FUN_1411c78f0`, are the interface's). Then the sleeping objects reading `from`
     /// take slot 0x98. Upgrades to 0x67f and 0x6a1 move the tracker's list of `from` to `to`'s
-    /// (`FUN_14104fd10`, [`crate::tracker::Tracker::move_all`]). In modes −1 and 3 two masters of
+    /// (`FUN_14104fd10`, [`crate::players::tracker::Tracker::move_all`]). In modes −1 and 3 two masters of
     /// one type end with `from` taking `to`'s values ([`Master::copy_from`]; the masters' slot
     /// 0xa8, their graphics' loading, is not simulation).
     pub(crate) fn upgrade_objects(

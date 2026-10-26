@@ -146,7 +146,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 ghosts: saved_ghosts(p),
                 history: history(&p.world_player().history),
                 // the load files the objects (Turns::load_trackers, once the masters are in)
-                tracker: genie_core::tracker::Tracker::default(),
+                tracker: genie_core::players::tracker::Tracker::default(),
                 // +0x1378 is not saved
                 one_military_queued: false,
                 update_time: p.world_player().update_time,
@@ -158,7 +158,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 escrow: p.world_player().base.escrow,
                 escrow_percentage: p.world_player().base.escrow_percentage,
                 sudden_death_eliminable: p.world_player().sudden_death_can_be_eliminated != 0,
-                victory_times: genie_core::world_player::VictoryTimes {
+                victory_times: genie_core::players::world_player::VictoryTimes {
                     // the world's load resets every player's (FUN_140c90040), then a wonder's
                     // action in state 7 sets its time (its load, FUN_140ae8fa0)
                     wonder: wonder_time(p),
@@ -407,8 +407,8 @@ pub(super) const fn ai_settings(
 /// events in the list's order (the load links each after the last), and the running totals'
 /// low 16 bits into the zeroed ints.
 #[must_use]
-pub fn history(h: &genie_save::generated::world::History) -> genie_core::history::History {
-    genie_core::history::History {
+pub fn history(h: &genie_save::generated::world::History) -> genie_core::players::history::History {
+    genie_core::players::history::History {
         entries: h
             .history
             .iter()
@@ -418,7 +418,7 @@ pub fn history(h: &genie_save::generated::world::History) -> genie_core::history
         events: h
             .events
             .iter()
-            .map(|e| genie_core::history::Event {
+            .map(|e| genie_core::players::history::Event {
                 kind: e.temp_event,
                 time_slice: e.temp_time_slice,
                 world_time: e.temp_world_time,

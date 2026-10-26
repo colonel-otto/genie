@@ -18,7 +18,7 @@ impl Turns {
     /// ([`Turns::update_dependents`]); researched at a location with a button, it counts in
     /// attribute 0x15 and its listed costs (`FUN_1413d4a00`, the amounts summed) in attribute
     /// 0x63. Last, an age (101 to 103) adds its event to the player's history (`FUN_141560ae0`
-    /// with 0, 1 or 2, [`crate::history::History::add_event`]), which the AI's age time reads.
+    /// with 0, 1 or 2, [`crate::players::history::History::add_event`]), which the AI's age time reads.
     /// Not held: the local player's statistics and achievements (`FUN_1409644a0` among them).
     /// Not modelled: a research paid in relics (`FUN_1413d0e70`), an effect the slice cannot run without its
     /// building ([`Turns::research_effect_known`]) and the civ's disabled technologies
@@ -57,9 +57,9 @@ impl Turns {
             owner.add_attribute(RESEARCH_SPENT, spent)?;
         }
         let age = match t {
-            101 => Some(crate::history::FEUDAL_AGE),
-            102 => Some(crate::history::CASTLE_AGE),
-            103 => Some(crate::history::IMPERIAL_AGE),
+            101 => Some(crate::players::history::FEUDAL_AGE),
+            102 => Some(crate::players::history::CASTLE_AGE),
+            103 => Some(crate::players::history::IMPERIAL_AGE),
             _ => None,
         };
         if let Some(kind) = age {

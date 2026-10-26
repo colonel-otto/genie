@@ -1,7 +1,7 @@
 //! The game's end and the players' status: RESIGN, the status setter with its defeat event
 //! and the world's victory check.
 
-use crate::game_status::{
+use crate::players::game_status::{
     BATTLE_ROYALE, Count, DEFEAT_IDS, KILLS_OF, LOST, PLAYING, STOP_AFTER_MS, WON,
 };
 use crate::turn::Turns;
@@ -121,7 +121,7 @@ impl Turns {
         }
         let now = self.world_time;
         self.players[p].history.add_event(
-            crate::history::DEFEAT,
+            crate::players::history::DEFEAT,
             f32::from(killer),
             most as f32,
             0,

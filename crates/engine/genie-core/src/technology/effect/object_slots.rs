@@ -35,10 +35,10 @@ impl Turns {
     /// order (a queued unit's place holds −1, which no object has).
     pub(super) fn tracked_class(&self, p: usize, class: i16) -> (Vec<i32>, Vec<i32>) {
         let t = &self.players[p].tracker;
-        let key = i32::from(class) + crate::tracker::CLASS_KEY;
+        let key = i32::from(class) + crate::players::tracker::CLASS_KEY;
         (
             t.list(key).to_vec(),
-            t.list(key + crate::tracker::PENDING).to_vec(),
+            t.list(key + crate::players::tracker::PENDING).to_vec(),
         )
     }
 
@@ -84,7 +84,7 @@ impl Turns {
                 .map_or(master.id, |s| s.id);
             pending = player
                 .tracker
-                .list(i32::from(key) + crate::tracker::PENDING)
+                .list(i32::from(key) + crate::players::tracker::PENDING)
                 .to_vec();
         }
         (done, pending)

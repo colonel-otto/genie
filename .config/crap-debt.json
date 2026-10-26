@@ -146,15 +146,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/diplomacy.rs",
-      "function": "Turns::notify_of_relation",
-      "line": 184,
-      "cyclomatic": 31.0,
-      "coverage": 0.0,
-      "crap": 992.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/garrison/let_out.rs",
       "function": "Turns::came_out",
       "line": 211,
@@ -596,6 +587,15 @@
       "crate": "genie-core"
     },
     {
+      "file": "crates/engine/genie-core/src/players/diplomacy.rs",
+      "function": "Turns::notify_of_relation",
+      "line": 184,
+      "cyclomatic": 31.0,
+      "coverage": 0.0,
+      "crap": 992.0,
+      "crate": "genie-core"
+    },
+    {
       "file": "crates/engine/genie-core/src/production/spawn/gather_walk.rs",
       "function": "Turns::gather",
       "line": 158,
@@ -796,7 +796,7 @@
     {
       "file": "crates/engine/genie-core/src/turn/object_step.rs",
       "function": "Turns::finish_object",
-      "line": 181,
+      "line": 182,
       "cyclomatic": 128.0,
       "coverage": 51.91740412979351,
       "crap": 1949.3091016301337,
@@ -942,8 +942,8 @@
       "function": "Turns::tick_with",
       "line": 131,
       "cyclomatic": 38.0,
-      "coverage": 70.58823529411765,
-      "crap": 74.73926317932015,
+      "coverage": 70.93023255813954,
+      "crap": 73.47250556554766,
       "crate": "genie-core"
     },
     {

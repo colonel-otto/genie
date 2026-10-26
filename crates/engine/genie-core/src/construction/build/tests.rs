@@ -1015,7 +1015,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
 /// 165 as other buildings do, but as an annex.
 #[test]
 fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
-    use crate::history::{CASTLE_BUILT, WONDER_BUILT};
+    use crate::players::history::{CASTLE_BUILT, WONDER_BUILT};
     use crate::spatial::Tiles;
     use crate::terrain::{Terrain, TerrainKind};
     fn complete(id: i16, cost: Vec<(i16, i16, bool)>, main: bool) -> Built {

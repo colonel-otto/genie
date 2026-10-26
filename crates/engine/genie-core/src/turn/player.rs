@@ -103,7 +103,7 @@ pub struct Player {
     /// `prod_queue_on` (`+0x1358`, saved): GAME 9 sets it; nothing in the simulation reads it.
     pub production_queue_on: u8,
     /// `diplomacy[i]` (`+0xe12`, saved, 9 entries): the stance toward player i a diplomacy change
-    /// set (1 or 2 enemy, 3 neutral, 4 or 5 ally; [`crate::diplomacy`]).
+    /// set (1 or 2 enemy, 3 neutral, 4 or 5 ally; [`crate::players::diplomacy`]).
     pub diplomacy: Vec<u8>,
     /// The settings a computer player's GAME 0xb sets (`+0x608`..`+0x670`, saved).
     pub ai_settings: AiSettings,
@@ -121,14 +121,14 @@ pub struct Player {
     pub freezes: Vec<(u32, i32, GenieError)>,
     /// A command the slice could not model stopped the whole player: its objects freeze.
     pub stopped: bool,
-    /// `game_status` (`+0x89`, saved): playing, won or lost ([`crate::game_status`]).
+    /// `game_status` (`+0x89`, saved): playing, won or lost ([`crate::players::game_status`]).
     pub game_status: u8,
     /// `+0x8b` (saved with `+0x8c` as its bit 1): the player resigned (slot 3, RESIGN).
     pub resigned: bool,
     /// `+0x8c`: its resignation was a drop from the game.
     pub dropped: bool,
     /// `allied_victory` (`+0x2d0`, saved, a byte GAME 5 sets): its allies' victory counts as its
-    /// own while it is not 0; the teams count it only at 1 ([`crate::diplomacy`]).
+    /// own while it is not 0; the teams count it only at 1 ([`crate::players::diplomacy`]).
     pub allied_victory: u8,
     /// Its victory conditions' state (`player+0x68`'s `+0x20`, the save's `victory`): 2 when
     /// they are met (`FUN_1414f35d0`).
@@ -162,17 +162,17 @@ pub struct Player {
     pub watched: Vec<crate::vision::ghost::Watched>,
     /// The player's ghosts (its doppelganger list `+0x40`), in the list's order.
     pub ghosts: Vec<crate::vision::ghost::Ghost>,
-    /// Its history (`+0xdb8`, saved, [`crate::history`]).
-    pub history: crate::history::History,
-    /// Its object tracker (`+0x18`, [`crate::tracker`]): not saved; the load files the objects
+    /// Its history (`+0xdb8`, saved, [`crate::players::history`]).
+    pub history: crate::players::history::History,
+    /// Its object tracker (`+0x18`, [`crate::players::tracker`]): not saved; the load files the objects
     /// ([`Turns::load_trackers`]).
-    pub tracker: crate::tracker::Tracker,
+    pub tracker: crate::players::tracker::Tracker,
     /// `+0x1378` (not saved): in game mode 16 the player has a military unit queued while its
     /// attribute 6 is at most 1 (QUEUE sets it, `FUN_141614450`; a cancel clears it,
     /// `FUN_14161e370`).
     pub one_military_queued: bool,
     /// `mUpdateTime` (`+0x7a4`, saved): the seconds the world player's update has not yet run
-    /// its per-second loop for ([`crate::world_player`]); Gaia's stays 0.
+    /// its per-second loop for ([`crate::players::world_player`]); Gaia's stays 0.
     pub update_time: f32,
     /// Gaia's own `update_time` (`WorldPlayerGaia` `+0x1468`, saved): its update's seconds.
     pub gaia_update_time: f32,
@@ -185,8 +185,8 @@ pub struct Player {
     /// `mSuddenDeathCanBeEliminated` (`+0x1380`, saved): under the sudden death rule the player
     /// had a town centre, and loses without one.
     pub sudden_death_eliminable: bool,
-    /// The victory timers that keep a defeated player in the game ([`crate::world_player`]).
-    pub victory_times: crate::world_player::VictoryTimes,
+    /// The victory timers that keep a defeated player in the game ([`crate::players::world_player`]).
+    pub victory_times: crate::players::world_player::VictoryTimes,
 }
 
 /// An attribute the player does not have.

@@ -148,7 +148,7 @@ pub struct Unit {
     /// one off in each of its updates that passes whole seconds; the computer AI reads it.
     pub damaged_lately: u8,
     /// A building's `mLivestockSummation` (`+0xc28`, saved): the livestock inside it (their
-    /// master's `+0x610`, `FUN_1411cb850`), whose food a mill makes ([`crate::world_player`]).
+    /// master's `+0x610`, `FUN_1411cb850`), whose food a mill makes ([`crate::players::world_player`]).
     pub livestock_summation: f32,
     /// A pasture's livestock (`+0xb78`, saved as `livestockId`): the objects its completion put
     /// on its edges ([`crate::turn::Turns::setup_pasture`]), in the order it made them.

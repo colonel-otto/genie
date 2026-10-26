@@ -540,7 +540,11 @@ fn damage_share(hp: f32, hit_points: i16, class: i16) -> Result<u8, GenieError> 
 /// and place) in state 2, the nearest by the squared distance of the centres (the first of
 /// equals; none from [`TABLE_DROP_FAR`] on).
 pub(crate) fn nearest_table_site(
-    (table, civ, tracker): (&[crate::tasks::DropSite], u8, &crate::tracker::Tracker),
+    (table, civ, tracker): (
+        &[crate::tasks::DropSite],
+        u8,
+        &crate::players::tracker::Tracker,
+    ),
     (at, held, class): ([f32; 2], i16, i16),
     look: impl Fn(i32) -> Option<(u8, [f32; 3])>,
 ) -> Option<i32> {

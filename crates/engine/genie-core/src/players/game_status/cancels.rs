@@ -1,7 +1,7 @@
 //! A building's queue cancelled: the whole queue, its units and researches refunded, and
 //! `UNIT_ORDER`'s cancel of one, five or some.
 
-use crate::game_status::{
+use crate::players::game_status::{
     CURRENT_AGE, ONE_UNIT_AGE, ONE_UNIT_MODE, VILLAGER_FEMALE, VILLAGER_MALE,
 };
 use crate::production::{Making, refund, refund_research};
@@ -11,7 +11,7 @@ use crate::unit_ai::GenieError;
 impl Turns {
     /// `FUN_1411cff00`, the cancel of the whole queue of the building at `idx` of player `p`,
     /// entry by entry. A unit entry: each unit gets its refund ([`refund`]) and the tracker its
-    /// place back (the counter one less, [`crate::tracker::Tracker::unplace`]); attribute 80
+    /// place back (the counter one less, [`crate::players::tracker::Tracker::unplace`]); attribute 80
     /// lowers by the population times the count (slot 0xf8), and the tracker's counter by the
     /// count once more. A research entry, for a player with a tech tree: its count's refund
     /// ([`Turns::refund_researches`]). Then the interface's `+0xc02` (the local player's event
@@ -43,7 +43,7 @@ impl Turns {
 
     /// `count` units of a unit entry `e` of player `p` cancelled (`FUN_1411cff00`,
     /// `FUN_1411d61e0`): each its refund ([`refund`]) and its tracker place (the counter one
-    /// less, [`crate::tracker::Tracker::unplace`]); then attribute 80 lowers by the population
+    /// less, [`crate::players::tracker::Tracker::unplace`]); then attribute 80 lowers by the population
     /// times the count (slot 0xf8 with −population × count).
     pub(super) fn cancel_units(
         &mut self,
@@ -356,7 +356,7 @@ impl Turns {
     /// `FUN_14161e370` case 4's tail after the cancel at the building at `idx` of player `p`:
     /// in game mode 16, with the player's attribute 6 at most 1 (`COMISS`, `JC`: a NaN is not),
     /// the master of the queue's slot at the unit index `index` (read as a slot's index, after
-    /// the cancel) keys a military class ([`crate::tracker::Key::military`]): the player's flag
+    /// the cancel) keys a military class ([`crate::players::tracker::Key::military`]): the player's flag
     /// of a military unit queued in that mode (`+0x1378`) clears. An index past the buffer
     /// reads heap memory the simulation does not hold: taken as no master.
     pub(crate) fn cancel_tail(

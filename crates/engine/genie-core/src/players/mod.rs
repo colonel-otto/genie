@@ -1,0 +1,12 @@
+//! The players beside their objects: their game status (playing, won, lost), diplomacy,
+//! tribute, treason, the market, their history, their object trackers, and the world player's
+//! own update.
+
+pub mod diplomacy;
+pub mod game_status;
+pub mod history;
+pub mod market;
+pub mod tracker;
+pub mod treason;
+pub mod tribute;
+pub mod world_player;

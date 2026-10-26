@@ -225,7 +225,7 @@ pub struct Razed {
     /// The building's owner (`+0x718`), the event's `data1`.
     pub owner: usize,
     /// A castle's (master 82) or a wonder's (276) destruction
-    /// ([`crate::history::CASTLE_DESTROYED`], [`crate::history::WONDER_DESTROYED`]).
+    /// ([`crate::players::history::CASTLE_DESTROYED`], [`crate::players::history::WONDER_DESTROYED`]).
     pub event: Option<u8>,
     /// The attribute adds: (player, attribute, amount).
     pub adds: Vec<(usize, i16, f32)>,

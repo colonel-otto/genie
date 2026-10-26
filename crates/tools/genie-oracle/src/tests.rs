@@ -305,7 +305,7 @@ fn a_tribute_packet_decodes_its_four_entries() {
         to: 5,
     }
     .encode();
-    let gift = |attribute, amount, fee| genie_core::tribute::Gift {
+    let gift = |attribute, amount, fee| genie_core::players::tribute::Gift {
         attribute,
         amount,
         fee,

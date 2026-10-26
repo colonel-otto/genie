@@ -202,7 +202,7 @@ impl Unit {
             );
         }
         // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0)
-        let k = crate::tracker::key(c.masters, c.lines, self.life.master_id);
+        let k = crate::players::tracker::key(c.masters, c.lines, self.life.master_id);
         c.tracker.complete(self.id, k);
         // its set_state(2) took its annexes along first (FUN_1411dbb70)
         for annex in c.spatial.annexes_of(self.id) {

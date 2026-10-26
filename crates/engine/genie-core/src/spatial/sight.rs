@@ -53,7 +53,7 @@ impl Spatial {
         let out = |o: usize| {
             game_status
                 .get(o)
-                .is_some_and(|&s| s != crate::game_status::PLAYING)
+                .is_some_and(|&s| s != crate::players::game_status::PLAYING)
         };
         // a frozen unit that could count (of the combat type and a class that counts) may have
         // moved onto the tiles

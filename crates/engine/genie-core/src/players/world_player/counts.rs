@@ -1,11 +1,11 @@
 //! The counts the update reads: the town centres, the trainable and the upgradable masters,
 //! and where a master trains.
 
-use crate::turn::Turns;
-use crate::world_player::{
+use crate::players::world_player::{
     AGES, BUILDABLE_TOWN_CENTRE, BUILDER, BUILDING_CLASS, RESEARCHED, TOWN_CENTRES, TreeQuery,
     attribute, full_tree_civ, get,
 };
+use crate::turn::Turns;
 
 impl Turns {
     /// `FUN_141658970`: player `p`'s first built town centre (state 2) among the ids its tracker
@@ -39,7 +39,7 @@ impl Turns {
     #[must_use]
     pub fn town_centre_count(&self, p: usize) -> i32 {
         let tracker = &self.players[p].tracker;
-        let pending = tracker.list(TOWN_CENTRES[0] + crate::tracker::PENDING);
+        let pending = tracker.list(TOWN_CENTRES[0] + crate::players::tracker::PENDING);
         TOWN_CENTRES
             .iter()
             .flat_map(|&k| tracker.list(k).iter())
@@ -95,9 +95,9 @@ impl Turns {
     /// centres are fewer than attribute 218. genie's masters keep `+0x5f0` and `+0x5f1` as
     /// booleans ([`Turns::trainable_count`]).
     ///
-    /// [`TechTree::link`]: crate::world_player::tech_tree::TechTree::link
-    /// [`TechTree::tech`]: crate::world_player::tech_tree::TechTree::tech
-    /// [`TechTree`]: crate::world_player::tech_tree::TechTree
+    /// [`TechTree::link`]: crate::players::world_player::tech_tree::TechTree::link
+    /// [`TechTree::tech`]: crate::players::world_player::tech_tree::TechTree::tech
+    /// [`TechTree`]: crate::players::world_player::tech_tree::TechTree
     #[must_use]
     pub fn upgradable_count(&self, p: usize, building: i16) -> i16 {
         let Some(masters) = self.masters.get(p) else {

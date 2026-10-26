@@ -218,7 +218,7 @@ pub enum Command {
         /// The player who receives (`+0x2c`).
         to: usize,
         /// The four entries.
-        gifts: [crate::tribute::Gift; 4],
+        gifts: [crate::players::tribute::Gift; 4],
     },
     /// `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b), `do_command`'s cases: the player trades
     /// `times` lots (`+0x6`) of the commodity `attribute` (`+0x4`'s low byte: food, wood or

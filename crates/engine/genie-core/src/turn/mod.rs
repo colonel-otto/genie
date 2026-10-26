@@ -303,7 +303,7 @@ pub struct Turns {
     /// clear in game mode 13, which a game's start has.
     pub start_work_due: bool,
     /// The world's `+0x844`: the relics (master 0x11d) an effect's spawn made (`FUN_1416136f0`),
-    /// which the relic victory's countdown reads (not modelled, [`crate::game_status`]); not
+    /// which the relic victory's countdown reads (not modelled, [`crate::players::game_status`]); not
     /// saved here, 0 at a load.
     pub spawned_relics: i32,
     /// The world's game state (`+0x88`, the save's `tempGameState`): 1 once the game is over.
@@ -322,7 +322,7 @@ pub struct Turns {
     /// `.dat`'s.
     pub effects: Vec<Vec<crate::technology::EffectCommand>>,
     /// The market's prices (`+0x868`.., saved).
-    pub market: crate::market::Market,
+    pub market: crate::players::market::Market,
     /// The world's unit groups ([`crate::group`]).
     pub groups: crate::group::UnitGroups,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
@@ -330,7 +330,7 @@ pub struct Turns {
     /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).
     pub dt: u32,
     /// The history period (`world+0x8b8`, `time_slice`): the `.dat`'s, which the world reads
-    /// after its constructor's [`HISTORY_PERIOD`] ([`crate::history::History::update`]).
+    /// after its constructor's [`HISTORY_PERIOD`] ([`crate::players::history::History::update`]).
     pub history_period: i32,
     /// Each player's `mAllowCapturingGaiaUnits` (`player+0x670`, saved; false for a player it
     /// lacks): a computer player takes Gaia's objects over by seeing them in the game modes
@@ -338,11 +338,11 @@ pub struct Turns {
     pub allow_gaia_capture: Vec<bool>,
     /// `mLocalPlayerIndex` (`world+0x6b0`, saved): the player whose view the game shows, a
     /// recording's point of view. Its masters stand for a building's in a train location's test
-    /// (`FUN_141263610` through `FUN_140c88440`, [`crate::world_player`]).
+    /// (`FUN_141263610` through `FUN_140c88440`, [`crate::players::world_player`]).
     pub local_player: usize,
     /// The game's tech tree table and its civilisations' unique units, which the defeat check's
-    /// count of the units a building will train reads ([`crate::world_player::TechTree`]).
-    pub tech_tree: crate::world_player::TechTree,
+    /// count of the units a building will train reads ([`crate::players::world_player::TechTree`]).
+    pub tech_tree: crate::players::world_player::TechTree,
     /// `allianceLocked` (`world+0xc`, saved): GAME's diplomacy and allied victory change nothing
     /// while it is not 0.
     pub alliance_locked: i32,

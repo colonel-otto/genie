@@ -167,13 +167,15 @@ pub(super) fn trade(player: u8, attribute: u16, times: u16, buy: bool) -> Option
 
 /// The world's market as the save holds it: the save names the int net trades `*_price_delta`
 /// (their bits) and the swings `old_*_price_adj`.
-pub(super) fn market(w: &genie_save::generated::world::World) -> genie_core::market::Market {
-    let commodity = |price: f32, trades: f32, swing: f32| genie_core::market::Commodity {
+pub(super) fn market(
+    w: &genie_save::generated::world::World,
+) -> genie_core::players::market::Market {
+    let commodity = |price: f32, trades: f32, swing: f32| genie_core::players::market::Commodity {
         price,
         trades: trades.to_bits().cast_signed(),
         swing,
     };
-    genie_core::market::Market {
+    genie_core::players::market::Market {
         min_price: w.world_min_price,
         max_price: w.world_max_price,
         food: commodity(w.world_food_price, w.food_price_delta, w.old_food_price_adj),

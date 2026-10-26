@@ -101,8 +101,8 @@ pub(super) fn completion_counts(
     // the castle's and the wonder's history event (0x1411dd094), the counts (slot 0xf8 with
     // 1.0, 0x14330eb8c)
     let history = match master.id {
-        CASTLE => Some(crate::history::CASTLE_BUILT),
-        WONDER => Some(crate::history::WONDER_BUILT),
+        CASTLE => Some(crate::players::history::CASTLE_BUILT),
+        WONDER => Some(crate::players::history::WONDER_BUILT),
         _ => None,
     };
     match master.id {
@@ -262,7 +262,7 @@ impl Construction {
             "a completion of a master that is no building",
         ))?;
         if done.attribute_204 {
-            return Err(crate::diplomacy::REVEAL_UNITS);
+            return Err(crate::players::diplomacy::REVEAL_UNITS);
         }
         // FUN_1411c6bd0 (its build points are its build time already: FUN_1411cc430 wrote them)
         let first = done.first_part(site.construction)?;

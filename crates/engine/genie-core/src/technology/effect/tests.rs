@@ -1229,11 +1229,11 @@ fn an_age_adds_its_event_to_the_history() {
     assert_eq!(t.players[0].techs[102].state, 3);
     assert_eq!(
         t.players[0].history.events,
-        [crate::history::Event {
-            kind: crate::history::CASTLE_AGE,
+        [crate::players::history::Event {
+            kind: crate::players::history::CASTLE_AGE,
             time_slice: 20,
             world_time: 612_345,
-            ..crate::history::Event::default()
+            ..crate::players::history::Event::default()
         }]
     );
 }
