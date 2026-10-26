@@ -12,15 +12,15 @@
 //! Build action with its walk), then its unit AI. An object whose update returns 1 leaves: the
 //! last object takes its slot and updates there in the same tick.
 //!
-//! The module's files: the commands and their dispatch (`command`), an object and its update
-//! (`unit`), a player (`player`), the views a unit's update reads the world through (`view`), the
-//! lookups and releases across the players (`world`).
+//! The module's files: the world as the header save holds it (`setup`), one world update
+//! (`world_update`), one object's step (`object_step`) with what it reads and writes (`context`),
+//! a player (`player`), the game options (`settings`), the checkpoint's state block
+//! (`checkpoint`) and the forced replay (`forced`).
 //!
 //! [`Mover::step_velocity`]: crate::movement::Mover::step_velocity
 
 pub mod checkpoint;
 pub(crate) mod context;
-pub(crate) mod lookups;
 pub(crate) mod player;
 
 use crate::GenieError;

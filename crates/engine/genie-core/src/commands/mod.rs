@@ -5,6 +5,7 @@
 
 use crate::GenieError;
 use crate::orders::{Interact, MoveOrder};
+use crate::world::Turns;
 
 mod builders;
 mod building_commands;
@@ -459,3 +460,18 @@ pub(crate) const NO_BUILD_TASK: GenieError =
 const CASTLE_AGE: i16 = 0x66;
 /// The game mode (`0x10`) in which a Castle Age queued marks the world's treaty monitor.
 const CASTLE_AGE_MODE: i32 = 0x10;
+
+impl Turns {
+    /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
+    /// that is the player's own, or any while players may order each other's units
+    /// ([`crate::world::settings::Settings::cheats_enabled`]); −1 for the others.
+    pub(crate) fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
+        units
+            .iter()
+            .map(|&id| match self.object(id) {
+                Some((p, _)) if p == player || self.settings.cheats_enabled => id,
+                _ => -1,
+            })
+            .collect()
+    }
+}

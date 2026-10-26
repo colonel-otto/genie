@@ -33,7 +33,6 @@ pub(crate) use self::world_map::WorldMap;
 use crate::GenieError;
 #[cfg(test)]
 use crate::objects::lifecycle::Lifecycle;
-#[cfg(test)]
 use crate::world::Turns;
 
 /// A unit smaller than this on both axes (`DAT_142f5d120`) steps by twice its radius plus
@@ -116,6 +115,30 @@ pub enum Tested {
         /// The object it reports blocks for good, which ends the spot.
         stays: bool,
     },
+}
+
+impl Turns {
+    /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,
+    /// `0x1411a58b0`, slot 0x60's `FUN_141193a10`): its height the ground's by the master's fly
+    /// mode; without the map's elevations the height stays.
+    pub(crate) fn on_ground(&self, p: usize, master: i16, at: [f32; 3]) -> [f32; 3] {
+        let fly_mode = self
+            .masters
+            .get(p)
+            .and_then(|m| m.get(master))
+            .map_or(0, |m| m.fly_mode);
+        self.spatial
+            .terrain
+            .as_ref()
+            .and_then(|t| t.ground(at[0], at[1]).ok())
+            .map_or(at, |g| {
+                [
+                    at[0],
+                    at[1],
+                    crate::combat::missile::grounded(at[2], g, false, fly_mode),
+                ]
+            })
+    }
 }
 
 #[cfg(test)]

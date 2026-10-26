@@ -1,4 +1,5 @@
-//! A new object on the ground, the command check's units and the mule cart's searches.
+//! The mule cart: the resources a finished cart searches (its completion, `FUN_1411c6bd0`'s
+//! tail) and its unit AI's own search (slot 0x1e8), then the work command toward the one it found.
 
 use crate::GenieError;
 use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
@@ -9,41 +10,6 @@ use crate::unit_ai::world_view::Foreign;
 use crate::world::Turns;
 
 impl Turns {
-    /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,
-    /// `0x1411a58b0`, slot 0x60's `FUN_141193a10`): its height the ground's by the master's fly
-    /// mode; without the map's elevations the height stays.
-    pub(crate) fn on_ground(&self, p: usize, master: i16, at: [f32; 3]) -> [f32; 3] {
-        let fly_mode = self
-            .masters
-            .get(p)
-            .and_then(|m| m.get(master))
-            .map_or(0, |m| m.fly_mode);
-        self.spatial
-            .terrain
-            .as_ref()
-            .and_then(|t| t.ground(at[0], at[1]).ok())
-            .map_or(at, |g| {
-                [
-                    at[0],
-                    at[1],
-                    crate::combat::missile::grounded(at[2], g, false, fly_mode),
-                ]
-            })
-    }
-
-    /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
-    /// that is the player's own, or any while players may order each other's units
-    /// ([`crate::world::settings::Settings::cheats_enabled`]); −1 for the others.
-    pub(crate) fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
-        units
-            .iter()
-            .map(|&id| match self.object(id) {
-                Some((p, _)) if p == player || self.settings.cheats_enabled => id,
-                _ => -1,
-            })
-            .collect()
-    }
-
     /// A mule cart's completion (`FUN_1411c6bd0`'s tail, a building whose master has a task of
     /// action type 0x99, [`crate::construction::build::Built::cart`]) with a unit AI: with no current target a
     /// human player's runs its AI's slot 0x1e8 ([`Turns::cart_work_search`]; the game mode's
