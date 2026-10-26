@@ -1,7 +1,7 @@
 //! The views a unit's update and its unit AI read the world through ([`UnitView`],
 //! [`Context`], [`Foreign`], [`OwnerView`], the pickers).
 
-use crate::map::spatial::{Placed, Spatial};
+use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::objects::masters::Masters;
 use crate::objects::sprite::Graphic;
@@ -17,18 +17,13 @@ mod unit_view;
 mod world_picker;
 
 pub(crate) use self::commands::town_centre;
-use self::world_picker::NOT_HELD;
+pub(crate) use self::world_picker::NOT_HELD;
 #[cfg(test)]
 use self::world_picker::attacks;
 pub(crate) use self::world_picker::{WorldPicker, patrol_information};
 #[cfg(test)]
 use crate::unit_ai::UnitAi;
 pub(crate) use crate::world::context::{Context, ObjectOutputs};
-
-/// The villagers a villager's attack command switches to by its task swap group (its player's
-/// master table's entries at `+0x298` and `+0x928`).
-const VILLAGER_MALE: i16 = 83;
-const VILLAGER_FEMALE: i16 = 293;
 
 /// What a tick's update of one object needs from the world.
 /// What a hunt's drop-off ([`Unit::drop_off_in`]) reads besides its unit: the owner's masters,
@@ -227,18 +222,6 @@ impl<'a> OwnerView<'a> {
             ai_settings: q.ai_settings,
         }
     }
-}
-
-/// What [`UnitView::hunt_now`] hunts by ([`UnitView::hunt_plan`]): the task, the master the
-/// unit switches to (none to keep its own), its own master, the quarry and the target's place.
-///
-/// [`UnitView::hunt_now`]: crate::unit_ai::world_view::UnitView::hunt_now
-struct HuntPlan<'u> {
-    task: crate::objects::masters::Task,
-    switch: Option<&'u crate::objects::masters::Master>,
-    own: &'u crate::objects::masters::Master,
-    quarry: crate::gathering::hunt::Quarry,
-    them: Placed,
 }
 
 /// A unit and the world as its unit AI asks them while it runs, the AI taken out of the unit

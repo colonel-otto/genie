@@ -7,6 +7,7 @@ use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;
+use crate::unit_ai::world_view::UnitView;
 
 /// What `ClosestResourceObject` reads of the world, as the unit's update or its unit AI sees it.
 pub(crate) struct ResourceWorld<'a, 'b> {
@@ -196,4 +197,62 @@ pub(crate) fn herded(others: &[Unit], foreign: Foreign<'_>, id: i32) -> bool {
                     .as_ref()
                     .is_some_and(|a| a.goal.is_some_and(|g| g[0] != -1.0))
         })
+}
+
+impl UnitView<'_> {
+    /// The unit AI's `ClosestResourceObject` while it runs
+    /// ([`crate::unit_ai::UnitSide::closest_resource`]): what it found, with its place and class.
+    pub(crate) fn closest_gatherable(
+        &mut self,
+        search: crate::unit_ai::ResourceSearch,
+    ) -> Result<Option<crate::unit_ai::Gatherable>, GenieError> {
+        let mut w = ResourceWorld {
+            player: self.player,
+            spatial: self.spatial,
+            zones: self.zones,
+            foreign: self.foreign,
+            every: self.every,
+            masters: self.masters,
+            plan: Planning {
+                pathing: self.pathing,
+                now: self.world_time,
+                computer: self.computer,
+                object: self.object,
+                construction_rate: self.construction_rate,
+                groups: self.groups,
+            },
+        };
+        let (id, _) = closest_resource_of(
+            self.unit,
+            &mut w,
+            self.others,
+            (search.kind, search.cap, search.site),
+            (search.current, search.min_state, search.point),
+        )?;
+        if id == -1 {
+            return Ok(None);
+        }
+        let (owner, u) = self
+            .others
+            .iter()
+            .find(|u| u.id == id)
+            .map(|u| (self.player, u))
+            .or_else(|| self.foreign.find(id))
+            .ok_or(GenieError::unsupported(
+                "a resource found that the slice does not hold",
+            ))?;
+        let class = self
+            .every
+            .get(owner)
+            .and_then(|m| m.get(u.life.master_id))
+            .ok_or(GenieError::unsupported(
+                "a resource found of a master the slice lacks",
+            ))?
+            .class;
+        Ok(Some(crate::unit_ai::Gatherable {
+            id,
+            position: u.position,
+            class,
+        }))
+    }
 }

@@ -12,6 +12,10 @@
 //! (`+0x20`, `+0x30`) unset and keeps the foundation's id at `+0x68` instead.
 
 use crate::objects::masters::Task;
+use crate::unit_ai::GenieError;
+use crate::unit_ai::task_finder::Actor;
+use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
+use crate::unit_ai::world_view::{AiStart, UnitView, Wait};
 
 /// The action type (`+0x8`, 0x9a).
 pub const WAIT_SOLIDIFY: i16 = 0x9a;
@@ -60,6 +64,59 @@ impl WaitSolidify {
     /// Its `set_state` (slot 0x80, `FUN_140ae8b60`): the state, nothing else.
     pub const fn set_state(&mut self, state: u8) {
         self.state = state;
+    }
+}
+
+impl UnitView<'_> {
+    /// The unit AI's wait for a foundation while it runs ([`crate::unit_ai::UnitSide::wait_solidify`]):
+    /// the task the unit's slot 0x820 finds on `target` (any action type, with the master switch)
+    /// gives the wait the caller makes after the update ([`AiStart::Wait`]); false without one.
+    pub(crate) fn start_wait_now(&mut self, target: i32) -> Result<bool, GenieError> {
+        let unit = &*self.unit;
+        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let find = |id: i32| {
+            if id == unit.id {
+                return Some((player, unit));
+            }
+            others
+                .iter()
+                .find(|u| u.id == id)
+                .map(|u| (player, u))
+                .or_else(|| foreign.find(id))
+        };
+        let (Some(t), Some(general)) = (
+            task_target_with(target, 1, &find, self.every)?,
+            task_target_with(target, 2, &find, self.every)?,
+        ) else {
+            return Ok(false);
+        };
+        let (masters, own) = self
+            .masters
+            .and_then(|m| Some((m, m.get(unit.life.master_id)?)))
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            civ: self.civ,
+        };
+        let dip = SideWorld {
+            player,
+            relations: self.relations,
+            foreign,
+            drop_sites: self.drop_sites,
+        };
+        let Some((task, switch)) = task_search(masters, &actor, &t, &general, -1, &dip)? else {
+            return Ok(false);
+        };
+        self.starts.push(AiStart::Wait(Wait {
+            target,
+            task,
+            switch: switch.map(|m| m.id),
+        }));
+        Ok(true)
     }
 }
 

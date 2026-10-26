@@ -24,6 +24,7 @@ mod drop_off;
 mod placing;
 mod states;
 mod turn_entries;
+mod unit_ai_side;
 mod update;
 mod walk_ends;
 

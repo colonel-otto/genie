@@ -3,9 +3,9 @@
 
 mod carts;
 
+pub(crate) use crate::combat::victims::victim_of;
 #[cfg(test)]
 pub(crate) use crate::combat::victims::{is_trebuchet, paid_cost};
-pub(crate) use crate::combat::victims::{victim_in, victim_of};
 #[cfg(test)]
 pub(in crate::world) use crate::gathering::closest_resource::search_origin;
 pub(crate) use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of, herded};

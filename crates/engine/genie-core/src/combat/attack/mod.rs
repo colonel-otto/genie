@@ -21,6 +21,7 @@ mod hits;
 mod ready_to_attack;
 mod sprites;
 mod states;
+mod unit_ai_side;
 mod update;
 mod walk_and_swing;
 mod work_slots;

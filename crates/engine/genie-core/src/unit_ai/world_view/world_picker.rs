@@ -23,7 +23,7 @@ pub(super) const HARMLESS_RANGE: f32 = crate::math::image::unit_ai::HARMLESS_RAN
 
 /// An object the unit AI found or names that the slice does not hold (another player's it does
 /// not keep).
-pub(super) const NOT_HELD: GenieError =
+pub(crate) const NOT_HELD: GenieError =
     GenieError::unsupported("a found object the slice does not hold");
 
 /// What `bestUnitToAttack` reads of the world for the unit whose AI runs
