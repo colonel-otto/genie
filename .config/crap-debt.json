@@ -866,45 +866,45 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/turn/view.rs",
+      "file": "crates/engine/genie-core/src/turn/view/side.rs",
       "function": "UnitView::call_for_help",
-      "line": 1734,
+      "line": 154,
       "cyclomatic": 18.0,
       "coverage": 0.0,
       "crap": 342.0,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/turn/view.rs",
+      "file": "crates/engine/genie-core/src/turn/view/side.rs",
+      "function": "UnitView::off_footprint",
+      "line": 64,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/turn/view/side.rs",
+      "function": "UnitView::seek_unexplored",
+      "line": 629,
+      "cyclomatic": 6.0,
+      "coverage": 0.0,
+      "crap": 42.0,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/turn/view/unit_view.rs",
       "function": "UnitView::helper_free",
-      "line": 716,
+      "line": 52,
       "cyclomatic": 19.0,
       "coverage": 65.67164179104478,
       "crap": 33.6038142989663,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/turn/view.rs",
-      "function": "UnitView::off_footprint",
-      "line": 1644,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/view.rs",
-      "function": "UnitView::seek_unexplored",
-      "line": 2209,
-      "cyclomatic": 6.0,
-      "coverage": 0.0,
-      "crap": 42.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/turn/view.rs",
+      "file": "crates/engine/genie-core/src/turn/view/world_picker.rs",
       "function": "WorldPicker::candidate",
-      "line": 1340,
+      "line": 370,
       "cyclomatic": 8.0,
       "coverage": 0.0,
       "crap": 72.0,
