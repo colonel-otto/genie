@@ -5,7 +5,6 @@
   "crates/engine/genie-core/src/repair.rs": 775,
   "crates/engine/genie-core/src/turn/unit/update.rs": 1706,
   "crates/engine/genie-core/src/turn/view/side.rs": 1055,
-  "crates/formats/genie-dat/src/tech_tree.rs": 739,
-  "crates/formats/genie-lang/src/lib.rs": 863
+  "crates/formats/genie-dat/src/tech_tree.rs": 739
  }
 }

@@ -1,0 +1,248 @@
+//! The three file formats: DLLs, INI files and HD Edition's key-value files, read and
+//! written, with the escapes of the text formats.
+
+use crate::{LangFile, LoadError};
+use byteorder::{LE, ReadBytesExt};
+use encoding_rs::{UTF_16LE, WINDOWS_1252};
+use encoding_rs_io::DecodeReaderBytesBuilder;
+use genie_support::StringKey;
+use pelite::pe32::{Pe, PeFile};
+use pelite::resources::Name;
+use std::io;
+use std::io::{BufRead, BufReader, Read, Write};
+
+impl LangFile {
+    /// Reads a language file from a .DLL.
+    /// This function eagerly loads all the strings into memory.
+    ///
+    /// Returns `Err(e)` where `e` is a `LoadError` if an error occurs while
+    /// loading the file.
+    pub(super) fn read_dll(&mut self, mut input: impl Read) -> Result<(), LoadError> {
+        let mut bytes = vec![];
+        let _ = input.read_to_end(&mut bytes)?;
+        let pe = PeFile::from_bytes(&bytes)?;
+        self.load_pe_file(pe)
+    }
+
+    /// TODO specify
+    pub(super) fn load_pe_file(&mut self, pe: PeFile<'_>) -> Result<(), LoadError> {
+        for root_dir_entry in pe.resources()?.root()?.entries() {
+            if root_dir_entry.name() == Ok(Name::Id(6))
+                && let Some(directory) = root_dir_entry.entry()?.dir()
+            {
+                self.load_pe_directory(directory)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// TODO specify
+    pub(super) fn load_pe_directory(
+        &mut self,
+        directory: pelite::resources::Directory<'_>,
+    ) -> Result<(), LoadError> {
+        for entry in directory.entries() {
+            let base_index = if let Name::Id(n) = entry.name()? {
+                (n - 1) * 16
+            } else {
+                continue;
+            };
+            if let Some(subdir) = entry.entry()?.dir() {
+                for data_entry in subdir.entries() {
+                    if let Some(data) = data_entry.entry()?.data() {
+                        self.load_pe_data(base_index, data.bytes()?)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// TODO specify
+    // The cursor runs over the in-memory `data` slice and never past its end (the slice index
+    // below would panic first), so its u64 position fits in a usize.
+    #[allow(clippy::cast_possible_truncation)]
+    pub(super) fn load_pe_data(&mut self, mut index: u32, data: &[u8]) -> Result<(), LoadError> {
+        use std::io::{Cursor, Seek, SeekFrom};
+        let mut cursor = Cursor::new(data);
+        while (cursor.position() as usize) < data.len() {
+            // The length is a count of UTF-16 code units.
+            let units = cursor.read_u16::<LE>()?;
+            let len = usize::from(units) * 2;
+            if len == 0 {
+                index += 1;
+                continue;
+            }
+            let start = cursor.position() as usize;
+            let (string, _enc, failed) = UTF_16LE.decode(&data[start..start + len]);
+            if !failed {
+                // A later string with the same index replaces the earlier one.
+                let _ = self.0.insert(StringKey::from(index), string.to_string());
+            }
+            let _ = cursor.seek(SeekFrom::Current(i64::from(units) * 2))?;
+            index += 1;
+        }
+        Ok(())
+    }
+
+    /// Reads a language file from a .INI file, like the ones used by Voobly and
+    /// the aoc-language-ini mod.
+    ///
+    /// This function eagerly loads all the strings into memory.
+    /// At this time, the encoding of the language.ini file is assumed to be
+    /// Windows codepage 1252.
+    ///
+    /// Returns `Err(e)` where `e` is a `LoadError` if an error occurs while
+    /// loading the file.
+    pub(super) fn read_ini(&mut self, input: impl Read) -> Result<(), LoadError> {
+        let input = DecodeReaderBytesBuilder::new()
+            .encoding(Some(WINDOWS_1252))
+            .build(input);
+        let input = BufReader::new(input);
+        for line in input.lines() {
+            self.load_ini_line(&line?)?;
+        }
+        Ok(())
+    }
+
+    /// Parses a single line from an ini language file.
+    ///
+    /// The key value pair stored in the line is inserted to `self`, if parsed
+    /// successfully.
+    /// A `LoadError` is returned if an error occurs while parsing.
+    ///
+    /// Returns a `LoadError` if an error occurs while reading the line.
+    pub(super) fn load_ini_line(&mut self, line: &str) -> Result<(), LoadError> {
+        if line.starts_with(';') {
+            return Ok(());
+        }
+
+        let mut split = line.splitn(2, '=');
+        let Some(id) = split.next() else {
+            return Ok(());
+        };
+        let Some(value) = split.next() else {
+            return Ok(());
+        };
+
+        let id: u32 = id.parse()?;
+        let value = unescape(value.chars(), false);
+        // A later line with the same ID replaces the earlier one.
+        let _ = self.0.insert(StringKey::from(id), value);
+        Ok(())
+    }
+
+    /// Reads a language file from an HD Edition-style key-value file.
+    ///
+    /// This function loads eagerly all the strings into memory.
+    pub(super) fn read_keyval(&mut self, input: impl Read) -> Result<(), LoadError> {
+        let input = BufReader::new(input);
+        for line in input.lines() {
+            self.load_keyval_line(&line?);
+        }
+        Ok(())
+    }
+
+    /// Parses an HD Edition string line.
+    ///
+    /// The key value pair stored in the line is inserted to `self`, if parsed
+    /// successfully. Lines that do not parse are skipped.
+    ///
+    /// This is incomplete, unquoting and un-escaping is not yet done.
+    pub(super) fn load_keyval_line(&mut self, line: &str) {
+        let line = line.trim();
+        if line.starts_with("//") || line.is_empty() {
+            return;
+        }
+
+        let mut iter = line.chars();
+        let id: String = iter
+            .by_ref()
+            .take_while(|&c| !char::is_whitespace(c))
+            .collect();
+        let string_key = StringKey::from(id);
+
+        // TODO unquoting and un-escaping
+        let mut iter = iter.skip_while(|&c| char::is_whitespace(c));
+        let value = if iter.next() == Some('"') {
+            unescape(iter, true)
+        } else {
+            return;
+        };
+        // A later line with the same key replaces the earlier one.
+        let _ = self.0.insert(string_key, value);
+    }
+
+    /// Writes this language file to an output writer using the ini format.
+    ///
+    /// Only numeric keys are written; the format has no named keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    pub fn write_to_ini<W: Write>(&self, output: &mut W) -> io::Result<()> {
+        // TODO warning if there are string ids
+        for (id, string) in self.iter().filter(|(id, _)| id.is_numeric()) {
+            output.write_all(format!("{}={}\n", id, escape(string, false)).as_bytes())?;
+        }
+        Ok(())
+    }
+
+    /// Writes this language file to an output writer using the key-value
+    /// format.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing to `output` fails.
+    pub fn write_to_keyval<W: Write>(&self, output: &mut W) -> io::Result<()> {
+        for (id, string) in self {
+            output.write_all(format!("{} \"{}\"\n", id, escape(string, true)).as_bytes())?;
+        }
+        Ok(())
+    }
+}
+
+// TODO specify
+pub(super) fn unescape(escaped: impl Iterator<Item = char>, quoted: bool) -> String {
+    let mut unescaped = String::new();
+    let mut prev = 'x'; // Innocuous character
+    for c in escaped {
+        // NOTE this does not support escapes like "\\n", which should
+        // print out "\n" literally, instead we get "\" followed by a newline.
+        // Could be solved by making `prev` an Option
+        match (prev, c) {
+            ('\\', '\\') => unescaped.push('\\'),
+            ('\\', 'n') => unescaped.push('\n'),
+            ('\\', 'r') => unescaped.push('\r'),
+            ('\\', 't') => unescaped.push('\t'),
+            ('\\', '"') if quoted => unescaped.push('"'),
+            (_, '"') if quoted => break,
+            (_, '\\') => {} // Might be escape, wait for one more
+            ('\\', c) => {
+                // Previous character was escape,
+                // but this is not part of a sequence
+                unescaped.push('\\');
+                unescaped.push(c);
+            }
+            (_, c) => unescaped.push(c),
+        }
+        prev = c;
+    }
+    unescaped
+}
+
+// TODO specify
+pub(super) fn escape(source: &str, quoted: bool) -> String {
+    let mut escaped = String::new();
+    for c in source.chars() {
+        match c {
+            '\\' => escaped.push_str(r"\\"),
+            '\n' => escaped.push_str(r"\n"),
+            '\r' => escaped.push_str(r"\r"),
+            '\t' => escaped.push_str(r"\t"),
+            '"' if quoted => escaped.push_str(r#"\""#),
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}

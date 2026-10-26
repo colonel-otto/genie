@@ -1091,45 +1091,45 @@
       "crate": "genie-hki"
     },
     {
-      "file": "crates/formats/genie-lang/src/lib.rs",
+      "file": "crates/formats/genie-lang/src/formats.rs",
       "function": "LangFile::load_pe_data",
-      "line": 256,
+      "line": 65,
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
       "crate": "genie-lang"
     },
     {
-      "file": "crates/formats/genie-lang/src/lib.rs",
+      "file": "crates/formats/genie-lang/src/formats.rs",
       "function": "LangFile::load_pe_directory",
-      "line": 231,
+      "line": 40,
       "cyclomatic": 11.0,
       "coverage": 0.0,
       "crap": 132.0,
       "crate": "genie-lang"
     },
     {
-      "file": "crates/formats/genie-lang/src/lib.rs",
+      "file": "crates/formats/genie-lang/src/formats.rs",
       "function": "LangFile::load_pe_file",
-      "line": 219,
+      "line": 28,
       "cyclomatic": 8.0,
       "coverage": 0.0,
       "crap": 72.0,
       "crate": "genie-lang"
     },
     {
-      "file": "crates/formats/genie-lang/src/lib.rs",
+      "file": "crates/formats/genie-lang/src/formats.rs",
       "function": "escape",
-      "line": 826,
+      "line": 235,
       "cyclomatic": 8.0,
       "coverage": 0.0,
       "crap": 72.0,
       "crate": "genie-lang"
     },
     {
-      "file": "crates/formats/genie-lang/src/lib.rs",
+      "file": "crates/formats/genie-lang/src/formats.rs",
       "function": "unescape",
-      "line": 797,
+      "line": 206,
       "cyclomatic": 11.0,
       "coverage": 0.0,
       "crap": 132.0,
