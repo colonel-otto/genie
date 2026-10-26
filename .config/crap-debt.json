@@ -533,63 +533,63 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/spawn.rs",
+      "file": "crates/engine/genie-core/src/spawn/gather_walk.rs",
       "function": "Turns::gather",
-      "line": 2541,
+      "line": 158,
       "cyclomatic": 20.0,
       "coverage": 46.15384615384615,
       "crap": 82.44879380974058,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/spawn.rs",
+      "file": "crates/engine/genie-core/src/spawn/gather_walk.rs",
       "function": "Turns::gather_move",
-      "line": 2406,
+      "line": 23,
       "cyclomatic": 12.0,
       "coverage": 32.72727272727273,
       "crap": 55.8409135987979,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/spawn.rs",
+      "file": "crates/engine/genie-core/src/spawn/new_unit.rs",
       "function": "Turns::hand_queue",
-      "line": 1731,
+      "line": 121,
       "cyclomatic": 12.0,
       "coverage": 0.0,
       "crap": 156.0,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/spawn.rs",
+      "file": "crates/engine/genie-core/src/spawn/new_unit.rs",
+      "function": "Turns::spawn",
+      "line": 33,
+      "cyclomatic": 19.0,
+      "coverage": 19.718309859154928,
+      "crap": 205.7913335996938,
+      "crate": "genie-core"
+    },
+    {
+      "file": "crates/engine/genie-core/src/spawn/objects.rs",
       "function": "Turns::plain_object",
-      "line": 2134,
+      "line": 143,
       "cyclomatic": 29.0,
       "coverage": 79.13669064748201,
       "crap": 36.637400912043,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/spawn.rs",
-      "function": "Turns::spawn",
-      "line": 1649,
-      "cyclomatic": 19.0,
-      "coverage": 12.307692307692308,
-      "crap": 262.4398652708238,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/spawn.rs",
+      "file": "crates/engine/genie-core/src/spawn/placement_test.rs",
       "function": "build_placement",
-      "line": 680,
+      "line": 195,
       "cyclomatic": 72.0,
       "coverage": 73.33333333333333,
       "crap": 170.30400000000006,
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/spawn.rs",
+      "file": "crates/engine/genie-core/src/spawn/search.rs",
       "function": "spawn_point",
-      "line": 137,
+      "line": 41,
       "cyclomatic": 78.0,
       "coverage": 53.125,
       "crap": 704.6326904296875,
