@@ -5,9 +5,9 @@ use crate::GenieError;
 use crate::players::game_status::{
     BATTLE_ROYALE, Count, DEFEAT_IDS, KILLS_OF, LOST, PLAYING, STOP_AFTER_MS, WON,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// The relations of players `a` and `b` each way (`player+0x260`).
     pub(super) fn relations(&self, a: usize, b: usize) -> (u8, u8) {
         let r = |x: usize, y: usize| {
@@ -41,7 +41,7 @@ impl Turns {
     /// RESIGN (`FUN_140d25af0`): the comm player resigns (its flags are the comm handler's);
     /// once every comm player of its world player has (one each in the slice's games), the
     /// world player's slot 3 (`FUN_1416610f0`): `+0x8c` takes the drop, `+0x8b` is set and the
-    /// status becomes lost ([`Turns::set_status`]); its message is the interface's.
+    /// status becomes lost ([`World::set_status`]); its message is the interface's.
     pub(crate) fn resign(&mut self, player: usize, dropped: bool) -> Result<(), GenieError> {
         let p = self.players.get_mut(player).ok_or(GenieError::unsupported(
             "RESIGN of a player the slice does not have",
@@ -53,7 +53,7 @@ impl Turns {
 
     /// The status setter (slot 1, `FUN_141639860`) of player `p`: `FUN_1416768e0` takes the new
     /// status unless the player resigned (a defeat it always takes). A defeat without a
-    /// resignation (the world player's defeat check, [`Turns::defeat_check`]) then posts the
+    /// resignation (the world player's defeat check, [`World::defeat_check`]) then posts the
     /// interface's event 6 (`FUN_140c898a0`), the local player's comm message
     /// (`FUN_140d3c710`) and, with a comm handler in session (`DAT_143e8d7d0`'s `+0x388`), marks
     /// the player's comm players defeated or dropped in the game object (`+0xb1c`, `+0xb13`)
@@ -62,9 +62,9 @@ impl Turns {
     /// lost while the game goes on reveals the map to the player (`FUN_1412847b0`, with no lobby
     /// settings object or its setting `FUN_141300cd0`, as the playback holds it,
     /// [`Spatial::reveal_to`]); the battle royale's is not modelled. A lost player's objects stop
-    /// ([`Turns::stop_everything`]) once the game is a minute old; its fealty (`+0x12f8`) would
+    /// ([`World::stop_everything`]) once the game is a minute old; its fealty (`+0x12f8`) would
     /// give its resources and units away while the game goes on, which is not modelled. A
-    /// newly lost player's history takes its defeat ([`Turns::defeat_event`]).
+    /// newly lost player's history takes its defeat ([`World::defeat_event`]).
     pub(crate) fn set_status(&mut self, p: usize, status: u8) -> Result<(), GenieError> {
         let old = self.players[p].game_status;
         if status != old && (!self.players[p].resigned || status == LOST) {
@@ -149,7 +149,7 @@ impl Turns {
     /// The world's victory check after every update (`TRIBE_World` slot 0x68, `FUN_1415c9480`):
     /// its relic and wonder countdowns (`world+0x840`..`+0x8d9`) are not modelled; its tail
     /// (`FUN_14152e3d0` with 1, 0) counts the players by their own victory
-    /// ([`Turns::own_victory`]). Someone won: the game is over (game state 1) and those still
+    /// ([`World::own_victory`]). Someone won: the game is over (game state 1) and those still
     /// playing lose (`FUN_141666590`). Else under the conquest victory, one side left with
     /// someone lost, or nobody playing: the game is over and those still playing win
     /// (`FUN_1416778c0`; the world's `+0x8c`, 1, is not held).

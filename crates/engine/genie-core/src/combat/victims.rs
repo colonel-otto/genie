@@ -8,10 +8,10 @@ use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::task_finder::world::World;
-use crate::world::{BUILDING_KIND, Turns};
+use crate::unit_ai::task_finder::world::TaskWorld;
+use crate::world::{BUILDING_KIND, World};
 
-impl Turns {
+impl World {
     /// What a hit of an attacker of player `attacker` reads of the object `id` ([`Victim`]): an
     /// object the slice holds, live or asleep (the world's table holds both, and a blast walks
     /// the tiles' lists of both), with its relations to the attacker's player and whether its
@@ -26,7 +26,7 @@ impl Turns {
                 .map(|u| (p, u))
         })?;
         let master = self.masters.get(p)?.get(u.life.master_id)?;
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
@@ -138,9 +138,9 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// An attack's hit on its target, written back: its hit points, what it holds, its charge
-    /// and powerups, its damage notify (500), its kill ([`Turns::killed`]); a struck building's
+    /// and powerups, its damage notify (500), its kill ([`World::killed`]); a struck building's
     /// `damaged_lately_timer` and its annexes' hit points (`+0xbc0`..), then each razing
     /// ([`crate::combat::damage::Razed`]: the history event of the attacker's player, the attribute adds
     /// in their order).
@@ -281,7 +281,7 @@ impl Turns {
     }
 
     /// `FUN_1412005b0` on the object `id` killed for player `killer` (a movement damage's,
-    /// [`crate::combat::abilities`]): the counts of [`Turns::killed`] by its master (its own one, else
+    /// [`crate::combat::abilities`]): the counts of [`World::killed`] by its master (its own one, else
     /// its player's).
     ///
     /// # Errors

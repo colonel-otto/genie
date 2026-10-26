@@ -164,7 +164,7 @@ pub struct Foundation {
     pub class: i16,
     /// The master's `defense_terrain_bonus` (`+0x820`).
     pub terrain_bonus: i16,
-    /// The game's setting `FUN_140ec0cd0` reads at `+0x680` ([`crate::world::Turns::mode_680`]):
+    /// The game's setting `FUN_140ec0cd0` reads at `+0x680` ([`crate::world::World::mode_680`]):
     /// at 1 a foundation without a snow layer goes into the layer, not the terrain.
     pub mode_680: i32,
 }

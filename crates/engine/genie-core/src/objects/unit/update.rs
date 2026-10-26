@@ -1256,7 +1256,7 @@ impl Unit {
                     release_own(others, c.masters, target, by)?;
                 } else {
                     // another player's (Gaia's deer, a neighbour's sheep): its slot 0x180 after
-                    // this update ([`Turns::release`]), as the other teardowns' releases
+                    // this update ([`World::release`]), as the other teardowns' releases
                     self.hunt_release(c, [target]);
                 }
             }
@@ -1717,7 +1717,7 @@ impl Unit {
             after: None,
         };
         // a builder's work found in its Build's update (slot 0x7e8 from case 0xdf) runs inside the
-        // action update; the caller gives it (`Turns::order_work`) and then runs the rest of this
+        // action update; the caller gives it (`World::order_work`) and then runs the rest of this
         // update ([`Unit::ai_part`])
         if c.work_order.is_some() || !c.completions.is_empty() || c.transport_unload {
             c.ai_resume = Some(resume);

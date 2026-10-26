@@ -350,12 +350,12 @@ pub enum Effect {
     /// The AI's move (slot 0x130), which the unit takes (its slot 0x340).
     Move(AiMove),
     /// Slot 0x148 (`FUN_140c4d0d0`) forced: the unit's slot 0x340 to the point, which the caller
-    /// runs after the update ([`crate::world::Turns::move_aside`]).
+    /// runs after the update ([`crate::world::World::move_aside`]).
     MoveAside(AiMove),
     /// `FUN_140c41e50`: the unit's last human order time (`+0x650`) is at most this.
     CapHumanOrder(u32),
     /// The queued order on a target (`0x2db`) the AI took: the unit's slot 0x128 on the target,
-    /// then the order's priority becomes the AI's (the caller's, `Turns::order_on_target`).
+    /// then the order's priority becomes the AI's (the caller's, `World::order_on_target`).
     OrderOnTarget(QueuedOrder),
     /// The full update's tail that reads what the order on a target before it gave the AI
     /// ([`UnitAi::after_order`], the caller's once it ran the order).
@@ -366,11 +366,11 @@ pub enum Effect {
     Explore([f32; 2]),
     /// `HuntObject`'s unit part (`FUN_140c4e220`): the unit's `stopAction` (the AI's slot 0xb0 with
     /// 1, slot 0x3c0), then its hunt command on the target (object slot 0x360,
-    /// `FUN_1412151f0`, forced; the caller's, `Turns::hunt_command`, after the update).
+    /// `FUN_1412151f0`, forced; the caller's, `World::hunt_command`, after the update).
     HuntObject(i32),
     /// `GatherObject`'s unit part (slot 0xd0, `FUN_140c4dd50`, forced): the unit's gather command
     /// on the target (object slot 0x368, `FUN_141085030`, forced; the caller's,
-    /// `Turns::gather_command`, after the update).
+    /// `World::gather_command`, after the update).
     GatherObject(i32),
     /// The AI's move to an object (slot 0x138, `FUN_140c55490`, with its fourth argument 1): the
     /// unit's slot 0x348 (`FUN_141086440`, forced) replaces its actions (`FUN_140a98620`) with a
@@ -387,7 +387,7 @@ pub enum Effect {
     },
     /// `BuildObject`'s unit part (the AI's slot 0xf0, `FUN_140c47d80`): the unit's build command
     /// (slot 0x380) on the foundation, which the caller runs after the update in the order the AI
-    /// gave it with its hunts, gathers and works (`Turns::build_command`); the AI's part, the
+    /// gave it with its hunts, gathers and works (`World::build_command`); the AI's part, the
     /// build action and the foundation as its target, is done at once ([`UnitAi::build_object`]).
     BuildObject(i32),
     /// The unit's ownership change (its slot 0x70, `FUN_14120f800` for a combat unit,
@@ -395,7 +395,7 @@ pub enum Effect {
     /// it (`FUN_140c1e410`); the unit runs it as it applies the effects.
     ChangeOwner(usize),
     /// The unit's slot 0x7e8 (`FUN_141227190`) on object `target` at `point`, with the
-    /// carried-resource test, any task and `+0xa14` 0 (the caller's, `Turns::order_work`, after
+    /// carried-resource test, any task and `+0xa14` 0 (the caller's, `World::order_work`, after
     /// the update with the AI's hunts and gathers in their order).
     WorkOn {
         /// The object.
@@ -406,7 +406,7 @@ pub enum Effect {
     /// The villager's case 0x21c ([`OTHER_LOAD`]) with the drop-site table's building for its load
     /// ([`UnitSide::table_drop_site`]): the unit's slot 0x128 on it at its place, then its unit
     /// AI's order back to the target its top action had before (slot 0x190), if any (the
-    /// caller's, `Turns::drop_elsewhere`).
+    /// caller's, `World::drop_elsewhere`).
     DropElsewhere {
         /// The drop site.
         site: i32,

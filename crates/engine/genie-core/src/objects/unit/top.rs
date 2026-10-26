@@ -32,7 +32,7 @@ impl Unit {
     /// [`Unit::lists_taker`]). A building's (`FUN_1411dba70`) first lists the taker among its attacking
     /// units (`+0xce0`, [`Unit::attacking_units`]; once per take). Then the base take
     /// (`FUN_14119d3e0`): its worker count (`+0x644`) rises, to at most 550, and a live object flagged
-    /// to sleep drops the flags (a sleeping one's wake is [`crate::world::Turns::take`]'s). The
+    /// to sleep drops the flags (a sleeping one's wake is [`crate::world::World::take`]'s). The
     /// building's wake from semi-asleep (`+0xc98`) after it never runs here: only the building's
     /// load (`FUN_1411df160` -> `FUN_1411ddd20`) sets that flag, from the save's
     /// `temp_semi_asleep`, which no saved building of the 158041 recordings has (1473 headers

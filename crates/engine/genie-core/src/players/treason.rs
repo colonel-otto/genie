@@ -3,10 +3,10 @@
 //! them.
 //!
 //! 158041: the castle test `FUN_14160ffb0`; the treason `FUN_141620400`; the flare is the
-//! player's slot 0x1c0 with master 697 ([`Turns::remains`]).
+//! player's slot 0x1c0 with master 697 ([`World::remains`]).
 
 use crate::GenieError;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The castle (`0x52`), and the building of the content mode 1 (`0xd1`) that stands for it
 /// (`FUN_140fe0ec0`).
@@ -23,9 +23,9 @@ const TREASON_COST: f32 = crate::math::image::treason::TREASON_COST;
 const TREASON_DISCOUNT_COST: f32 = crate::math::image::treason::TREASON_DISCOUNT_COST;
 const DISCOUNT: usize = 197;
 
-impl Turns {
+impl World {
     /// `FUN_14160ffb0`: player `p` has a castle (0x52; 0xd1 with the loaded world's content mode
-    /// `+0x6b4` at 1, which a load leaves at the game's, [`Turns::mode_680`]): a master it has
+    /// `+0x6b4` at 1, which a load leaves at the game's, [`World::mode_680`]): a master it has
     /// (`FUN_140b26630`) with at least one in its tracker's done list (`FUN_14104eea0`).
     #[must_use]
     pub fn has_treason_building(&self, p: usize) -> bool {
@@ -48,7 +48,7 @@ impl Turns {
     /// player's own or allied (`FUN_141663dc0` without allies, [`crate::unit_ai::task_finder::allied`]) its
     /// first king in its live list (`FUN_141166ab0`), or what the king is inside, gives each
     /// player from 1 the player counts as its own or allied a flare at its place (that player's
-    /// slot 0x1c0 with master 697, [`Turns::remains`]); the sound and the minimap's mark
+    /// slot 0x1c0 with master 697, [`World::remains`]); the sound and the minimap's mark
     /// (`FUN_140c7d6c0`, the game's `+0xa78`) are the interface's, as the local player's message.
     pub(crate) fn treason(&mut self, p: usize) -> Result<(), GenieError> {
         let discount = self.players[p].attribute(DISCOUNT).unwrap_or(0.0);
@@ -97,7 +97,7 @@ mod tests {
     use crate::world::Player;
 
     /// Gaia and three players; player 1 holds 500 gold and is allied with 3.
-    fn world() -> Turns {
+    fn world() -> World {
         let player = |p: usize| Player {
             attributes: vec![0.0; 300],
             relations: (0..4)
@@ -105,7 +105,7 @@ mod tests {
                 .collect(),
             ..Player::default()
         };
-        let mut t = Turns::new(0, 1, 0, vec![0; 4], (0..4).map(player).collect());
+        let mut t = World::new(0, 1, 0, vec![0; 4], (0..4).map(player).collect());
         t.players[1].resources[GOLD] = 500.0;
         t
     }
@@ -137,7 +137,7 @@ mod tests {
     }
 
     /// The flare's master (697, animated, no hit points) for every player.
-    fn with_flares(t: &mut Turns) {
+    fn with_flares(t: &mut World) {
         let flare = crate::objects::masters::Master {
             id: FLARE4,
             kind: crate::objects::masters::master_type::ANIMATED,
@@ -177,7 +177,7 @@ mod tests {
         ];
         t.players[3].objects = vec![king(30, [1.0, 1.0, 0.0], None)];
         t.treason(1).unwrap();
-        let flares = |t: &Turns, p: usize| -> Vec<(i32, [f32; 3])> {
+        let flares = |t: &World, p: usize| -> Vec<(i32, [f32; 3])> {
             t.players[p]
                 .objects
                 .iter()

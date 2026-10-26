@@ -6,7 +6,7 @@ use crate::groups::{GroupCommand, SpecificMove, UnitGroup};
 use crate::movement::PathData;
 use crate::orders::Place;
 use crate::pathing::tile_path::Path;
-use crate::world::Turns;
+use crate::world::World;
 
 /// A group whose top speed is below this does not move (`commandMoveTo`, `DAT_142eb0c60`); nor is
 /// a path shorter than it one.
@@ -106,7 +106,7 @@ impl UnitGroup {
     }
 }
 
-impl Turns {
+impl World {
     /// `allHordeUnits` (`FUN_141008e50`): no member the world holds is of a master above type 69
     /// with a formation category (`+0x8bc`).
     ///
@@ -123,7 +123,7 @@ impl Turns {
         self.horde_units_only(g)
     }
 
-    /// [`Turns::all_horde_units`] of group `g`.
+    /// [`World::all_horde_units`] of group `g`.
     ///
     /// # Errors
     ///
@@ -147,8 +147,8 @@ impl Turns {
     /// names the task on the target (slot 0x130, `FUN_14106b8b0`: none without one). A group of
     /// horde units moves as a horde (`commandHorde`, `FUN_141010180`, not modelled); any other
     /// notes whether the command was queued (`+0x13d`, [`crate::groups::UnitGroup::replaces_queue`]) and,
-    /// without a task, moves ([`Turns::command_move_to`] with its target forgotten); a move begun
-    /// stops the members (`stopAllUnits` with 0, [`Turns::stop_all_units`]), and flags bit 17
+    /// without a task, moves ([`World::command_move_to`] with its target forgotten); a move begun
+    /// stops the members (`stopAllUnits` with 0, [`World::stop_all_units`]), and flags bit 17
     /// clears. True when the move began. A task on a target is not modelled.
     ///
     /// # Errors
@@ -202,10 +202,10 @@ impl Turns {
         Ok(moved)
     }
 
-    /// [`Turns::command_move_to`]'s queue: a queued move joins the group's command queue (direct
+    /// [`World::command_move_to`]'s queue: a queued move joins the group's command queue (direct
     /// as its flag; a group without a command that is told directly hibernates) and is not taken
     /// (`Some(false)`); an indirect move while commands are queued joins the queue too, which is
-    /// approved and run ([`Turns::check_queued_orders`], `Some(true)`). None: the move runs now.
+    /// approved and run ([`World::check_queued_orders`], `Some(true)`). None: the move runs now.
     ///
     /// # Errors
     ///
@@ -256,7 +256,7 @@ impl Turns {
     /// the command queue ([`UnitGroup::queue_command`], approved with `direct`) and, for a group
     /// without a command, `direct` makes it hibernate (`+0x13c` 1); false. A move behind queued
     /// commands without `direct` joins them unapproved, the approved ones go
-    /// ([`UnitGroup::approve_queued`]) and the queue runs ([`Turns::check_queued_orders`]); true.
+    /// ([`UnitGroup::approve_queued`]) and the queue runs ([`World::check_queued_orders`]); true.
     /// Else a group whose last command was not queued empties its command queue
     /// ([`UnitGroup::clear_command_queue`]); `forget_target` clears its target (`mCurrentTarget`:
     /// -1 and type -1, its place, range, radius and retargeting byte 0); its rams are not
@@ -275,7 +275,7 @@ impl Turns {
     /// or at most [`EPSILON`] of length (`COMISS`/`JC` at 0x141010e2a: a NaN length keeps it) it
     /// is none. The group's path data resets ([`PathData`]'s `FUN_140f98e80`) and takes it
     /// (`FUN_140f9b800`: range, target, waypoint 1, state 2) as waypoint level 2 (that level even
-    /// without a path); the members stop ([`Turns::stop_all_units`]) and the unit AIs of those
+    /// without a path); the members stop ([`World::stop_all_units`]) and the unit AIs of those
     /// the world's table holds, sleeping ones too, drop their notifies at the world's time
     /// (`FUN_140c5dc10`); the target's place is the point, the command [`MOVE_COMMAND`]. With
     /// motion flags bit 1 clear and no patrol the formation follows (`UpdateDesiredPositions`: a
@@ -284,7 +284,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A horde, a queued command the queue cannot run ([`Turns::check_queued_orders`]),
+    /// A horde, a queued command the queue cannot run ([`World::check_queued_orders`]),
     /// or what the members' stop and the formation do not model.
     ///
     /// # Panics
@@ -430,7 +430,7 @@ impl Turns {
     /// 0x7d: the attack, `FUN_14100f7f0`) ends the run; any other is dropped. The run also ends
     /// when the next command differs from its first (the queue's end counts as -1). Then, when
     /// an approved command ran and none ended the run, the group moves to the last command of the
-    /// run ([`Turns::command_move_to`] with its range, the target forgotten, `direct`); the
+    /// run ([`World::command_move_to`] with its range, the target forgotten, `direct`); the
     /// hibernating group wakes as above.
     ///
     /// # Errors
@@ -529,7 +529,7 @@ impl Turns {
 
     /// `stopAllUnits` (`FUN_14103a0d0`) of group `group`: each member the world holds with an
     /// action (slot 0x530, `actionType`, not -1), or every one with `all`, stops (slot 0x148,
-    /// [`Turns::object_stop`]; slot 0x560: its movement stands and its path level resets) and its
+    /// [`World::object_stop`]; slot 0x560: its movement stands and its path level resets) and its
     /// own move clears (active 0, path and reason -1, the rest 0).
     ///
     /// # Errors
@@ -588,7 +588,7 @@ impl Turns {
     }
 }
 
-/// [`Turns::command_move_to`]'s path flags: a patrol leg sets bit 0 and, when the group's place
+/// [`World::command_move_to`]'s path flags: a patrol leg sets bit 0 and, when the group's place
 /// `from` lies at least [`PATROL_LEG_REACH`] from `to` on the ground (`COMISS`/`JBE`: a NaN
 /// too), bit 1; any other move clears bit 0 and sets bit 1.
 fn move_path_flags(from: [f32; 3], to: [f32; 3], leg: bool) -> u32 {
@@ -606,7 +606,7 @@ fn move_path_flags(from: [f32; 3], to: [f32; 3], leg: bool) -> u32 {
     }
 }
 
-/// [`Turns::command_move_to`]'s new path level (`FUN_140f98e80`'s reset keeping the repath time,
+/// [`World::command_move_to`]'s new path level (`FUN_140f98e80`'s reset keeping the repath time,
 /// then `FUN_140f9b800`): with a path its points, flags, length, creation time, range, target,
 /// waypoint 1 and state 2; waypoint level 2 either way.
 fn move_level(
@@ -648,7 +648,7 @@ mod tests {
     /// Player 1's unit 7 (master 4: type 70, category 1, no action, no unit AI) in group 1 at
     /// the origin, its top speed 1, its motion flags bit 1 set (no formation follows), at world
     /// time 50.
-    fn moving_world() -> Turns {
+    fn moving_world() -> World {
         let mut u = Unit {
             id: 7,
             ..Unit::default()
@@ -661,7 +661,7 @@ mod tests {
                 ..Player::default()
             },
         ];
-        let mut t = Turns::new(50, 0, 0, vec![0, 0], players);
+        let mut t = World::new(50, 0, 0, vec![0, 0], players);
         let master = Master {
             id: 4,
             kind: 70,

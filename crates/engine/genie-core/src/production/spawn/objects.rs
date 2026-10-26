@@ -14,9 +14,9 @@ use crate::production::spawn::{
 };
 use crate::unit_ai::factory_type;
 use crate::vision::visibility::{Seer, capture_kind};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_1411d12d0` for a unit of `made` beside the building at `i` of player `p`, `toward`
     /// the point the search faces (its gather point's, or the command's): [`spawn_point`] with
     /// the walls at the building's corners (class 27 on both tiles beside each) and the master's
@@ -79,10 +79,10 @@ impl Turns {
     }
 
     /// `FUN_1411a4e90`: the remains a dying sprite's end leaves for player `p`: the master's slot
-    /// 0x40 makes an object of `master` at the dead object's place `at` ([`Turns::plain_object`]
+    /// 0x40 makes an object of `master` at the dead object's place `at` ([`World::plain_object`]
     /// facing the dead object's facet, `FUN_14119d490` and `FUN_14114d780`). It joins the owner's
-    /// list and updates later in the same tick. Remains of type 80 ([`Turns::new_building`]),
-    /// of type 70 (a combat unit, [`Turns::combat_object`]: a placeholder villager's death spawn,
+    /// list and updates later in the same tick. Remains of type 80 ([`World::new_building`]),
+    /// of type 70 (a combat unit, [`World::combat_object`]: a placeholder villager's death spawn,
     /// masters 1875 and 1876, is a villager) and the plain objects' types are modelled; not held:
     /// the remains' sprite.
     pub(crate) fn remains(
@@ -318,8 +318,8 @@ impl Turns {
 
     /// FLARE's objects (`0x140e7bfd0`): with `players` at most the world's players, each player
     /// from 1 below `players` makes a flare (master 274, its slot 0x1c0 `FUN_14162ce00` with the
-    /// footprint left alone: the master's slot 0x40 as [`Turns::remains`] makes it, then
-    /// [`Turns::made_new_object`]) at
+    /// footprint left alone: the master's slot 0x40 as [`World::remains`] makes it, then
+    /// [`World::made_new_object`]) at
     /// `target`'s place, or at `point` on the ground when `target` is −1 or gone; its workers
     /// (`+0x644`) are 0. Not held: the sender's flare's workers 1 when the local player is among
     /// the recipients (`+0x11`..), a computer player's AI memory of it (`+0x7a8`'s `+0xbc00`),
@@ -350,7 +350,7 @@ impl Turns {
 
     /// The flare a hit on player `p`'s object makes for it (`FUN_14120c0a0`: the player's slot
     /// 0x1c0 with master 112, `FUN_14162ce00` with the footprint left alone, as FLARE's,
-    /// [`Turns::remains`] then [`Turns::made_new_object`]) at the attacker's place `at`; from a
+    /// [`World::remains`] then [`World::made_new_object`]) at the attacker's place `at`; from a
     /// trebuchet (`doubled`) its amount (`+0x310`, which runs down as its time) doubles.
     ///
     /// # Errors
@@ -375,7 +375,7 @@ impl Turns {
 
     /// A death spawn or the remains of a building master: its slot 0x40 (`FUN_14123d1a0`) makes a
     /// building at `at` (`FUN_1411ac5c0` with 1, so its init `FUN_1411de5f0`): the building's
-    /// factory and constructor as any new building's ([`Turns::make_building`], with the unit AI
+    /// factory and constructor as any new building's ([`World::make_building`], with the unit AI
     /// its class gets, [`factory_type`]). Not held: the dead object's `+0x6a8` and its facet
     /// (`FUN_14119d490`).
     ///

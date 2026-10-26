@@ -20,7 +20,7 @@ use crate::ownership::artifact::Artifact;
 use crate::ownership::capture::LIVESTOCK;
 use crate::ownership::change::change_hands;
 use crate::unit_ai::task_finder::world::{
-    SideWorld, World, task_search, task_target_with, wait_progress,
+    SideWorld, TaskWorld, task_search, task_target_with, wait_progress,
 };
 use crate::unit_ai::task_finder::{Actor, Diplomacy};
 use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
@@ -57,7 +57,7 @@ fn building() -> UnitAi {
 
 #[test]
 fn the_turn_rotates_and_only_the_turn_player_updates() {
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -104,7 +104,7 @@ fn the_turn_rotates_and_only_the_turn_player_updates() {
 
 #[test]
 fn the_frame_seed_chains_through_two_world_draws() {
-    let mut t = Turns::new(0, 29910, 0, vec![0], vec![player(vec![])]);
+    let mut t = World::new(0, 29910, 0, vec![0], vec![player(vec![])]);
     t.tick(10);
     // SeedAll(29910); s1 = World.rand15 = 19550 (see rng); SeedAll(19550); World.rand15
     let mut s = Streams::default();
@@ -128,8 +128,8 @@ fn artifacts_of_every_player_start_updating_in_the_second_tick() {
             ..Player::default()
         },
     ];
-    let mut t = Turns::new(0, 1, 0, vec![0, 0], players);
-    let state = |t: &Turns, p: usize| t.players[p].objects[0].artifact.unwrap().state;
+    let mut t = World::new(0, 1, 0, vec![0, 0], players);
+    let state = |t: &World, p: usize| t.players[p].objects[0].artifact.unwrap().state;
     t.tick(50);
     assert_eq!((state(&t, 0), state(&t, 1)), (6, 6));
     t.tick(50);
@@ -141,7 +141,7 @@ fn an_unsupported_unit_stops_and_is_recorded() {
     let mut odd = building();
     // a unit-AI type the slice does not model
     odd.ai_type = 99;
-    let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![Some(odd)])]);
+    let mut t = World::new(0, 1, 0, vec![0], vec![player(vec![Some(odd)])]);
     t.tick(10);
     t.tick(10);
     assert_eq!(
@@ -176,11 +176,11 @@ fn live(id: i32) -> Unit {
     }
 }
 
-fn ids(t: &Turns) -> Vec<i32> {
+fn ids(t: &World) -> Vec<i32> {
     t.players[0].objects.iter().map(|o| o.id).collect()
 }
 
-fn retarget(t: &Turns) -> Vec<u32> {
+fn retarget(t: &World) -> Vec<u32> {
     t.players[0]
         .objects
         .iter()
@@ -192,7 +192,7 @@ fn retarget(t: &Turns) -> Vec<u32> {
 fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick() {
     // RGE_Object_List::update: the dead building leaves in its fourth update; the last object
     // takes its slot and updates there, so it draws before the object behind the slot
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         0,
@@ -208,7 +208,7 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
     assert_eq!(ids(&t), [3, 2]);
     // the same ticks with the two live buildings in that order from the start: their timers
     // fall due in the fourth tick, so its draws depend only on the order
-    let mut reordered = Turns::new(
+    let mut reordered = World::new(
         0,
         29910,
         0,
@@ -227,7 +227,7 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
 #[test]
 fn a_dead_objects_unit_ai_draws_nothing() {
     let one = |objects| {
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             29910,
             0,
@@ -352,7 +352,7 @@ fn builder_masters() -> Masters {
 
 /// A flat map of terrain 0 that the first terrain restriction lets anything stand on, every
 /// tile seen by every player: BUILD's placement test passes anywhere free.
-fn placeable(t: &mut Turns) {
+fn placeable(t: &mut World) {
     let (w, h) = (120, 120);
     let n = (w * h) as usize;
     t.spatial.map = [w, h];
@@ -419,7 +419,7 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -470,7 +470,7 @@ fn a_flare_at_a_point_stands_on_the_ground() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 1, 0, vec![0, 0, 0], vec![player(), player(), player()]);
+    let mut t = World::new(0, 1, 0, vec![0, 0, 0], vec![player(), player(), player()]);
     placeable(&mut t);
     if let Some(terrain) = t.spatial.terrain.as_mut() {
         terrain.set_elevations(vec![4; 120 * 120]);
@@ -498,7 +498,7 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 1, 0, vec![0, 0, 0], vec![player(), player(), player()]);
+    let mut t = World::new(0, 1, 0, vec![0, 0, 0], vec![player(), player(), player()]);
     placeable(&mut t);
     let flare = Master {
         id: 112,
@@ -523,14 +523,14 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
 /// `at` and 300 food, on a 120-tile map, its masters `livestock_masters` of the two livestock
 /// (moving, one hit point, a turning idle sprite of 16 facets with a random first one, 100 food
 /// held).
-fn pasture_game(at: [f32; 3], livestock: f32, livestock_masters: &[i16]) -> Turns {
+fn pasture_game(at: [f32; 3], livestock: f32, livestock_masters: &[i16]) -> World {
     use crate::objects::masters::master_type::{BUILDING, MOVING};
     use crate::objects::sprite::Graphic;
     let player = || Player {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 1, 0, vec![0, 0], vec![player(), player()]);
+    let mut t = World::new(0, 1, 0, vec![0, 0], vec![player(), player()]);
     t.spatial = Spatial::new([120, 120]);
     placeable(&mut t);
     t.players[1].attributes[289] = livestock;
@@ -642,7 +642,7 @@ fn a_completed_pasture_puts_its_livestock_on_its_edges() {
 fn a_pasture_puts_one_animal_a_tile_on_the_map() {
     let mut t = pasture_game([20.0, 20.0, 0.0], 16.0, &[1899, 1900]);
     t.setup_pasture(1, 50).unwrap();
-    let tiles = |t: &Turns| {
+    let tiles = |t: &World| {
         let mut v: Vec<(i32, i32)> = t.players[1].objects[1..]
             .iter()
             .map(|u| (u.position[0] as i32, u.position[1] as i32))
@@ -752,7 +752,7 @@ fn a_dying_livestock_shows_its_dying_sprite() {
 
 /// [`pasture_game`] with its three livestock made and player 1's villager 60 (class 4, radius
 /// 0.2) at `at`, the owner's [`crate::gathering::pasture::PASTURE_WORKERS`] `room`.
-fn tended_pasture(at: [f32; 3], room: f32) -> Turns {
+fn tended_pasture(at: [f32; 3], room: f32) -> World {
     let mut t = pasture_game([20.0, 20.0, 0.0], 3.0, &[1899, 1900]);
     t.setup_pasture(1, 50).unwrap();
     t.players[1].attributes[290] = room;
@@ -788,8 +788,8 @@ fn tended_pasture(at: [f32; 3], room: f32) -> Turns {
 /// 290, else none; a unit of another player gets none. Slot 0x780 sums the livestock's workers.
 #[test]
 fn a_villager_tends_the_nearest_livestock_with_room() {
-    let livestock = |t: &Turns| t.players[1].objects[0].livestock.clone();
-    let place = |t: &Turns, id: i32| t.object(id).unwrap().1.position;
+    let livestock = |t: &World| t.players[1].objects[0].livestock.clone();
+    let place = |t: &World, id: i32| t.object(id).unwrap().1.position;
     let t = tended_pasture([20.0, 20.0, 0.0], 2.0);
     let ids = livestock(&t);
     let near = place(&t, ids[0]);
@@ -806,7 +806,7 @@ fn a_villager_tends_the_nearest_livestock_with_room() {
         .collect();
     gaps.sort_by(|a, b| a.0.total_cmp(&b.0));
     let by_gap: Vec<i32> = gaps.iter().map(|g| g.1).collect();
-    let worked = |t: &mut Turns, id: i32, n: i32| t.object_mut(id).unwrap().1.workers = n;
+    let worked = |t: &mut World, id: i32, n: i32| t.object_mut(id).unwrap().1.workers = n;
     worked(&mut t, by_gap[0], 1);
     assert_eq!(t.pasture_pick(50, 1, villager), Ok(by_gap[1]));
     worked(&mut t, by_gap[1], 1);
@@ -947,7 +947,7 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
         },
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         1,
@@ -1045,7 +1045,7 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
         },
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         1,
@@ -1082,7 +1082,7 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
         v.resources[p].add(501, 0, 10.5, 10.5);
         v.resources[p].add(502, 1, 10.5, 10.5);
     }
-    let held = |t: &Turns| -> Vec<(usize, usize)> {
+    let held = |t: &World| -> Vec<(usize, usize)> {
         let v = t.spatial.sight.as_ref().unwrap();
         (0..2)
             .map(|p| (v.resources[p].lists[0].len(), v.resources[p].lists[1].len()))
@@ -1114,7 +1114,7 @@ fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
         },
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         1,
@@ -1271,7 +1271,7 @@ fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
 
 /// Player 1's two idle villagers (9175 at the house's place, 9181 away), its resources and
 /// the builders' masters, the house placeable: the BUILD tests' world.
-fn build_world() -> Turns {
+fn build_world() -> World {
     let villager = |id, master, x, y| Unit {
         id,
         position: [x, y, 0.0],
@@ -1292,7 +1292,7 @@ fn build_world() -> Turns {
         }),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -1436,7 +1436,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         }),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -1487,7 +1487,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
 /// A world of player 1's villager 9175 (master 83, which has no Build task) beside its
 /// house's foundation 10028 (master 70, state 0, no build points yet), with the unit AI's
 /// queue `orders`.
-fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> Turns {
+fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World {
     let villager = Unit {
         id: 9175,
         position: [29.5, 89.5, 0.0],
@@ -1536,7 +1536,7 @@ fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> Turns {
         my_pasture: -1,
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -1574,7 +1574,7 @@ fn slot_0x820_s_search_takes_the_own_task_else_the_first_master_of_the_swap_grou
     let site = task_target_with(10028, 1, &find, &t.masters)
         .unwrap()
         .unwrap();
-    let world = World {
+    let world = TaskWorld {
         players: &t.players,
         drop_sites: &[],
     };
@@ -1604,7 +1604,7 @@ fn slot_0x820_s_search_takes_the_own_task_else_the_first_master_of_the_swap_grou
     assert_eq!(search(&alone), None);
 }
 
-/// The task finder's target (`Turns::task_target`'s reading): an annex stands for its main
+/// The task finder's target (`World::task_target`'s reading): an annex stands for its main
 /// building, once per step; an object not held is none.
 #[test]
 fn a_task_target_reads_an_annex_as_its_main_building() {
@@ -1773,7 +1773,7 @@ fn the_work_on_an_annex_goes_to_its_main_building_after_its_annexes_start() {
 /// The world of [`sent_off_world`] with the house built and damaged (300 of its 550 hit
 /// points), the villager a builder (118) with a Repair task on any object (work value 0.5) and
 /// a weapon range of 0.5.
-fn repair_world() -> Turns {
+fn repair_world() -> World {
     let mut t = sent_off_world(vec![]);
     let v = &mut t.players[1].objects[0];
     v.life.master_id = 118;
@@ -1933,7 +1933,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
 
 /// The world of [`sent_off_world`] with the queue `orders`, the house built and whole, taking
 /// villagers in with room for `room`, both placed and the villager moving.
-fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> Turns {
+fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
     let mut t = sent_off_world(orders);
     let house = &mut t.players[1].objects[1];
     house.life.state = 2;
@@ -2028,7 +2028,7 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
 }
 
 /// [`enter_world`] whose villager is a sheep under its Artifact, the house taking herdables in.
-fn livestock_enter_world() -> Turns {
+fn livestock_enter_world() -> World {
     let mut t = enter_world(vec![], 5);
     let sheep = Master {
         id: 594,
@@ -2337,7 +2337,7 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
     );
     assert_eq!(now.players[1].attributes, later.players[1].attributes);
     assert_eq!(now.streams, later.streams);
-    let taken = |t: &Turns| t.object(10028).map(|(_, f)| f.clone());
+    let taken = |t: &World| t.object(10028).map(|(_, f)| f.clone());
     assert_eq!(taken(&now), taken(&later));
 }
 
@@ -2515,7 +2515,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
     // phase, so player 2's units, on their turn, get the draws after them (a computer's
     // BUILD here: it needs no builder that can build it)
     let world = |objects: Vec<Unit>| {
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             29910,
             1,
@@ -2606,7 +2606,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
         }),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -2635,7 +2635,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
     let ai = streams.get(Stream::Ai);
     let (eight, seven) = (ai.rand15() % 1500 + 2250, ai.rand15() % 1500 + 2250);
     let next = 750 + ai.rand15() % 500;
-    let timeout = |t: &Turns, i: usize| {
+    let timeout = |t: &World, i: usize| {
         t.players[0].objects[i]
             .ai
             .as_ref()
@@ -2660,7 +2660,7 @@ fn an_unmodelled_action_stops_its_player_unless_the_object_dies_first() {
         ..Unit::default()
     };
     let run = |unit| {
-        let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![])]);
+        let mut t = World::new(0, 1, 0, vec![0], vec![player(vec![])]);
         t.players[0].objects.push(unit);
         t.tick(10);
         t.players[0].unsupported.clone()
@@ -2715,7 +2715,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
         default_artifact: true,
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -2764,7 +2764,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     };
     let mut attributes = vec![0.0; 100];
     attributes[crate::gathering::make::FARM_FOOD] = 175.0;
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -2827,7 +2827,7 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
         damaged_lately: 2,
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -2846,7 +2846,7 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
         building: Some(crate::objects::masters::BuildingMaster::default()),
         ..Master::default()
     }])];
-    let timer = |t: &Turns| t.players[0].objects[0].damaged_lately;
+    let timer = |t: &World| t.players[0].objects[0].damaged_lately;
     t.tick(500);
     assert_eq!(timer(&t), 2);
     t.tick(2600);
@@ -2941,7 +2941,7 @@ fn an_order_resets_its_units_sleeping_ones_too() {
         sleeping: vec![unit(2)],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+    let mut t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
     t.reset_order_units(&[2, 9, 1]);
     for u in t.players[1].objects.iter().chain(&t.players[1].sleeping) {
         let ai = u.ai.as_ref().unwrap();
@@ -2982,7 +2982,7 @@ fn only_a_standing_unlocked_transforming_gate_lets_an_ally_pass() {
         attributes: vec![0.0; 250],
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -3034,7 +3034,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         attributes: vec![0.0; 250],
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -3080,7 +3080,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
             obstruction: Some(record),
         },
     );
-    let blocked = |t: &Turns| {
+    let blocked = |t: &World| {
         t.spatial
             .tiles()
             .word(9, 10)
@@ -3207,7 +3207,7 @@ fn the_forced_replay_takes_the_game_s_state_for_what_froze() {
 }
 
 /// The forced replay's removal of a frozen object the game no longer holds is the leave of an
-/// object whose update returned 1 ([`Turns::leave_world`]): its owner's watched list lets it go
+/// object whose update returned 1 ([`World::leave_world`]): its owner's watched list lets it go
 /// (`FUN_141091310`) and a recyclable master's missile goes to the pool of type 60.
 #[test]
 fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
@@ -3252,10 +3252,10 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
 }
 
 /// A player with the villagers' masters (a population of one each) and room for more.
-fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> Turns {
+fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
     let mut attributes = vec![0.0; 250];
     (attributes[4], attributes[11], attributes[32]) = (5.0, 4.0, 10.0);
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         0,
@@ -3394,7 +3394,7 @@ fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
         amount,
         button: -1,
     };
-    let total = |t: &Turns, k: usize| {
+    let total = |t: &World, k: usize| {
         t.players[0].objects[k]
             .production
             .as_ref()
@@ -3554,7 +3554,7 @@ fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
     two.tick_with(104, &[queue(9, 83, 3)]);
     let mut one = one_player(vec![centre(9)], [100.0, 0.0, 0.0, 0.0]);
     one.tick_with(104, &[queue(9, 83, 1)]);
-    let queued = |t: &Turns| {
+    let queued = |t: &World| {
         t.players[0].objects[0]
             .production
             .as_ref()
@@ -3982,7 +3982,7 @@ fn an_ownership_change_without_the_master_writes_the_records_alone() {
 #[test]
 fn a_gaia_archer_a_player_sees_goes_to_that_player() {
     let world = |masters: Vec<Masters>, computer: bool, mode: i32| {
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,
@@ -4057,7 +4057,7 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
 /// A world for the teardowns: player 1 holds the sheep 20 (master 705), the bird 30 (96),
 /// the villager 40 (83) and town centres 9149 and 9150 (109, one worker each); player 2 (an
 /// ally) holds the foundation 10028 (70) with one builder.
-fn teardown_world() -> Turns {
+fn teardown_world() -> World {
     let walker = crate::gathering::hunt::tests::walker();
     let unit = |id, master| Unit {
         id,
@@ -4102,7 +4102,7 @@ fn teardown_world() -> Turns {
         }),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -4148,7 +4148,7 @@ fn teardown_world() -> Turns {
 /// lets its town centre go and its `MoveTo`'s stops the sheep; the Fly's (`FUN_140a84750`)
 /// gives the bird its top speed as its animation speed, then its `MoveTo`'s stops it; the
 /// Enter's lets its building go; a counted builder's Build leaves another player's
-/// foundation's builders (`Turns::leave_builders`) and lets it go; a wait for a foundation
+/// foundation's builders (`World::leave_builders`) and lets it go; a wait for a foundation
 /// goes.
 #[test]
 fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
@@ -4266,7 +4266,7 @@ fn a_built_building_s_storage_leaves_its_owner_and_its_store() {
 /// 60 (master 48, type 70, one worker, a unit AI that counts the hunter 41 among its attackers);
 /// player 1 holds the villagers 40 (gathering the tree), 41 (hunting the boar) and 42 (a counted
 /// builder of its foundation 10028, one builder, one worker), each with hit points 0.
-fn deaths_world() -> Turns {
+fn deaths_world() -> World {
     let dead = |id| Unit {
         id,
         position: [10.5, 10.5, 0.0],
@@ -4373,7 +4373,7 @@ fn deaths_world() -> Turns {
         ..Unit::default()
     };
     // player 1's turn: the boar's unit AI keeps its attackers
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         1,
@@ -4608,7 +4608,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
 /// already it walks there and takes nothing new.
 #[test]
 fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -4673,7 +4673,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     t.spatial.insert(40, placed(10.5, 0.2, 4, 83));
     t.spatial.insert(9149, placed(20.0, 2.0, 52, 109));
     let others = [tc];
-    let drop_off = |hunter: &mut Unit, t: &mut Turns| {
+    let drop_off = |hunter: &mut Unit, t: &mut World| {
         let world = DropWorld {
             masters: Some(&masters),
             spatial: &t.spatial,
@@ -4725,7 +4725,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
         ),
         (None, None)
     );
-    let workers = |t: &Turns| {
+    let workers = |t: &World| {
         t.players[1]
             .objects
             .iter()
@@ -4834,7 +4834,7 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
         combat: true,
         ..unit(id, master)
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -4879,13 +4879,13 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
         },
     ]);
     t.masters = vec![table.clone(), table.clone(), table.clone(), table];
-    let by = |t: &Turns, p, i| t.releaser(p, i);
+    let by = |t: &World, p, i| t.releaser(p, i);
     let (enemy, other, ally) = (by(&t, 2, 0), by(&t, 2, 1), by(&t, 3, 0));
     for taker in [enemy, other, enemy, ally] {
         t.take(10028, taker);
         t.take(10029, taker);
     }
-    let site = |t: &Turns| t.players[1].objects[0].clone();
+    let site = |t: &World| t.players[1].objects[0].clone();
     assert_eq!(site(&t).attacking_units, [40, 41, 40]);
     assert_eq!(site(&t).workers, 4);
     assert_eq!(t.players[1].objects[1].attacking_units, Vec::<i32>::new());
@@ -5072,7 +5072,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         ai: None,
         ..hands_unit(500, 83)
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -5189,7 +5189,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         ai: None,
         ..hands_unit(500, 83)
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -5283,7 +5283,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         ai: None,
         ..hands_unit(500, 83)
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -5379,7 +5379,7 @@ fn the_standard_modes_are_all_but_the_scenario_ones() {
 /// counts one more and gains flags 1, 2 and 32.
 #[test]
 fn an_object_changing_hands_takes_its_storage_and_class_counts_along() {
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -5434,7 +5434,7 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
         ..Player::default()
     };
     let world = |attacker_kind| {
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,
@@ -5470,7 +5470,7 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
         attacker_player,
         to_gaia: false,
     };
-    let counts = |t: &Turns| [226, 227, 228, 229].map(|i| t.players[1].attributes[i]);
+    let counts = |t: &World| [226, 227, 228, 229].map(|i| t.players[1].attributes[i]);
     // Gaia's wolf: an animal, Gaia's type
     let mut t = world(1);
     t.killed(1, 0, by(50, 0)).unwrap();
@@ -5506,7 +5506,7 @@ fn a_killed_sheep_goes_to_gaia() {
         ai: Some(UnitAi::default()),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -5565,7 +5565,7 @@ fn a_killed_sheep_goes_to_gaia() {
 }
 
 /// A hit on player 2's castle 30 (master 82, 650 stone paid) with its annexes 31 and 32:
-/// `Turns::victim` reads its annexes from the world's links, its main building for an annex,
+/// `World::victim` reads its annexes from the world's links, its main building for an annex,
 /// its paid cost and that it is no trebuchet. The write-back of a razing hit (`FUN_1411cea90`):
 /// the castle's `damaged_lately_timer`, its annexes' hit points, its kill (`FUN_1412005b0`: a
 /// building's class counts no kill, both players count it against the other and its cost),
@@ -5588,7 +5588,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         attributes: vec![0.0; 500],
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -5971,7 +5971,7 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         },
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -6126,7 +6126,7 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
         }),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -6228,7 +6228,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         }),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -6261,7 +6261,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         (37, g(37, 9)),
         (112, g(112, 9)),
     ]);
-    let looks = |t: &Turns| -> Vec<(i32, u8, f32, Option<i32>)> {
+    let looks = |t: &World| -> Vec<(i32, u8, f32, Option<i32>)> {
         t.players[1]
             .objects
             .iter()
@@ -6429,7 +6429,7 @@ fn the_attack_timer_runs_down_at_the_object_s_rate() {
         },
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -6506,7 +6506,7 @@ fn building_short_of_its_build_time_dies(state: u8) {
         my_pasture: -1,
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -7512,7 +7512,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
     let mut masters = builder_masters();
     let house = masters.get_mut(70).unwrap();
     house.moving = Some(house_moves());
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -7594,7 +7594,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
         let house = masters.get_mut(70).unwrap();
         house.standing_sprite = 588;
         house.moving = Some(house_moves());
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             29910,
             1,
@@ -7704,7 +7704,7 @@ fn farm_masters() -> Masters {
 
 /// Player 1's farmer 9175 back at its farm spot (30.5, 88.5), its walk back (state 0xf2)
 /// ended; the player holds 100 wood.
-fn reseed_world() -> Turns {
+fn reseed_world() -> World {
     let task = crate::gathering::hunt::HuntTask {
         id: 2,
         range: 0.25,
@@ -7756,7 +7756,7 @@ fn reseed_world() -> Turns {
         }),
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -7854,7 +7854,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
         ready: false,
         ..crate::unit_ai::QueuedOrder::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         29910,
         1,
@@ -7957,7 +7957,7 @@ fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
         [("command", "Unmodelled")]
     );
     let task = GenieError::unsupported("a default task the slice does not model");
-    let mut t = Turns::new(0, 1, 0, vec![0], vec![player(vec![])]);
+    let mut t = World::new(0, 1, 0, vec![0], vec![player(vec![])]);
     t.players[0].objects.push(Unit {
         id: 5,
         unmodelled_action: Some(task),
@@ -8041,7 +8041,7 @@ fn a_unit_s_human_order_count_down_is_the_walk_s_view_at_once() {
 fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_update() {
     let mut t = livestock_enter_world();
     // the sheep out of reach of the house, standing, so that its Enter walks
-    let place = |t: &mut Turns, at: [f32; 3]| {
+    let place = |t: &mut World, at: [f32; 3]| {
         let v = &mut t.players[1].objects[0];
         v.position = at;
         let m = v.mover.as_mut().unwrap();
@@ -8100,7 +8100,7 @@ fn livestock_inside_gets_its_default_artifact_and_loses_it_by_turns() {
 }
 
 /// `TRIBE_Command::do_command`'s case 0x66 checks BUILD's builders before its handler
-/// ([`Turns::command_check`]): another player's becomes −1, and a human's BUILD left without one
+/// ([`World::command_check`]): another player's becomes −1, and a human's BUILD left without one
 /// is refused, placing and paying nothing (429712917's player 8 in update 96, its BUILD naming
 /// player 5's villagers 9618 and 9620). With one of its own the foundation goes down, and only
 /// that one builds.
@@ -8195,12 +8195,12 @@ fn archer_masters(hit_chance: i16, max_volley: u8, spread: f32) -> Masters {
 /// A flat 40-tile map: player 1's archer 123 at (10, 10) in its Attack's READY on Gaia's deer 50
 /// at (13, 10); its swing fires at frame 5 of 0.1 s. The masters as [`archer_masters`]; the next
 /// reusable id −1.
-fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Turns {
+fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> World {
     use crate::garrison::tests::{unit, walker};
     let mut players: Vec<Player> = (0..2).map(|_| Player::default()).collect();
     players[0].relations = vec![0, 3];
     players[1].relations = vec![3, 0];
-    let mut t = Turns::new(0, 29910, 1, vec![0; 2], players);
+    let mut t = World::new(0, 29910, 1, vec![0; 2], players);
     t.spatial = Spatial::new([40, 40]);
     let mut terrain = crate::map::terrain::Terrain::new(
         40,
@@ -8268,7 +8268,7 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Turns {
 }
 
 /// The missiles in player 1's list: id, master, place.
-fn missiles(t: &Turns) -> Vec<(i32, i16, [f32; 3])> {
+fn missiles(t: &World) -> Vec<(i32, i16, [f32; 3])> {
     t.players[1]
         .objects
         .iter()
@@ -8278,7 +8278,7 @@ fn missiles(t: &Turns) -> Vec<(i32, i16, [f32; 3])> {
 }
 
 /// The deer's hit points in [`archer_world`].
-fn deer_hp(t: &Turns) -> f32 {
+fn deer_hp(t: &World) -> f32 {
     t.players[0].objects[0].life.hp
 }
 
@@ -8495,7 +8495,7 @@ fn a_new_missile_s_sprite_draws_as_a_new_object_s() {
 /// a smart missile and a projectile of type 1.
 #[test]
 fn the_missile_chain_s_unmodelled_cases_stop_the_player_with_their_reason() {
-    type Change = fn(&mut Turns);
+    type Change = fn(&mut World);
     let cases: [(Change, &str); 7] = [
         (
             |t| {

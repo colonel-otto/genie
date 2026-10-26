@@ -1,4 +1,4 @@
-//! The construction's entries outside a builder's update ([`crate::world::Turns`]): a
+//! The construction's entries outside a builder's update ([`crate::world::World`]): a
 //! building's work and completion, its storage's leave, the built object's stacking and its
 //! new objects.
 
@@ -10,7 +10,7 @@ use crate::construction::build::{
 use crate::objects::masters::Master;
 use crate::orders::Place;
 
-impl crate::world::Turns {
+impl crate::world::World {
     /// What a built building's storage gave its owner leaves (`FUN_1411e63f0`, then
     /// `FUN_1411e6580`, [`crate::objects::lifecycle::death_parts::storage_leaves`]) outside its update.
     ///
@@ -32,8 +32,8 @@ impl crate::world::Turns {
 
     /// The completion's first part (`FUN_1411c6bd0`, [`Completion::first_part`]) of the
     /// foundation `id` of `owner` outside its update: its owner gains its attributes, a pasture
-    /// fills ([`crate::world::Turns::setup_pasture`]), then a mule cart's search runs from state 0
-    /// ([`crate::world::Turns::cart_search`]).
+    /// fills ([`crate::world::World::setup_pasture`]), then a mule cart's search runs from state 0
+    /// ([`crate::world::World::cart_search`]).
     ///
     /// # Errors
     ///
@@ -78,7 +78,7 @@ impl crate::world::Turns {
 
     /// The construction's start (`FUN_1411e5670`, [`Construction::begin`]) of the foundation
     /// `id` of `owner` outside its update: a desolid one starts, its missiles per volley are its
-    /// master's, and its owner watches it ([`crate::world::Turns::watch_started`]).
+    /// master's, and its owner watches it ([`crate::world::World::watch_started`]).
     ///
     /// # Errors
     ///
@@ -138,15 +138,15 @@ pub(crate) fn held(
     }
 }
 
-impl crate::world::Turns {
+impl crate::world::World {
     /// `FUN_1411cc430` outside a builder's update, `amount` seconds on the building `id`: first
     /// each annex (`+0xbc0`..`+0xbd8`) of a building type that is desolid starts
-    /// (`FUN_1411cd0d0`, [`crate::world::Turns::clear_foundations_under`], then `FUN_1411e5670`,
-    /// [`crate::world::Turns::construction_starts`]), then while the building is an annex of a
+    /// (`FUN_1411cd0d0`, [`crate::world::World::clear_foundations_under`], then `FUN_1411e5670`,
+    /// [`crate::world::World::construction_starts`]), then while the building is an annex of a
     /// main building in state 0 with at least 1 hit point (COMISS: a NaN too) the work goes to
     /// the main building, whose annexes start alike. A building in state 0 with at least 1 hit
     /// point (a NaN not) starts if desolid and takes the work ([`Construction::add_work`]); one
-    /// that reaches its build time completes (`set_state(2)`, [`crate::world::Turns::set_state`]).
+    /// that reaches its build time completes (`set_state(2)`, [`crate::world::World::set_state`]).
     ///
     /// # Errors
     ///
@@ -195,9 +195,9 @@ impl crate::world::Turns {
     }
 
     /// The building `id`'s `set_state(2)` from state 0 outside a builder's update, after its
-    /// annexes' (`FUN_1411dbb70`; [`crate::world::Turns::set_state`] runs them first): the
+    /// annexes' (`FUN_1411dbb70`; [`crate::world::World::set_state`] runs them first): the
     /// completion ([`Construction::complete`]), then what it leaves its owner
-    /// ([`crate::world::Turns::built`]).
+    /// ([`crate::world::World::built`]).
     ///
     /// # Errors
     ///
@@ -263,12 +263,12 @@ impl crate::world::Turns {
     /// What a completion leaves the owner `p` of the building `id` ([`Built`]), in the game's
     /// order: its history event (the owner's id, `+0x718`, as `data1`; the game records it
     /// between the storage's attributes and the counts, which it does not read), the attributes
-    /// it gains, a pasture's livestock ([`crate::world::Turns::setup_pasture`]), a mule cart's
+    /// it gains, a pasture's livestock ([`crate::world::World::setup_pasture`]), a mule cart's
     /// search (`FUN_1411c6bd0`'s tail), the watch of
     /// a construction that started (`FUN_1411e5670`), the stack unit
-    /// ([`crate::world::Turns::stack_unit`]), the technology (`FUN_1413cdcd0`,
-    /// [`crate::world::Turns::research_built`]) and the destroy of a building that disappears
-    /// when built (slot 0xd0, [`crate::world::Turns::destroy`]).
+    /// ([`crate::world::World::stack_unit`]), the technology (`FUN_1413cdcd0`,
+    /// [`crate::world::World::research_built`]) and the destroy of a building that disappears
+    /// when built (slot 0xd0, [`crate::world::World::destroy`]).
     ///
     /// # Errors
     ///
@@ -311,7 +311,7 @@ impl crate::world::Turns {
 
     /// The stack unit (`+0x986`) of the completed building `building` of player `p`
     /// (`FUN_1411dbb70`'s block): its owner's slot 0x1c0 makes it at the building's place with
-    /// its flag ([`crate::world::Turns::make_new_object`]); a new building takes the old one's
+    /// its flag ([`crate::world::World::make_new_object`]); a new building takes the old one's
     /// command queue (the old unit AI's slot 0x218, its orders not empty, then slot 0x1f8: the
     /// new one's slot 0x208 per order, `FUN_140c15d00`) and its gather point (`+0xc30`..: a
     /// target that is the old building names the new one; a target the world no longer holds
@@ -414,16 +414,16 @@ impl crate::world::Turns {
 
     /// The player's slot 0x1c0 (`FUN_14162ce00`) for `master` at `at`: the master's slot 0x40
     /// makes the object (none for a master the player has not got, `FUN_141666a60`); with its
-    /// flag its footprint is cleared with `param_6` ([`crate::world::Turns::clear_footprint`]) and
-    /// a building is worked 10000 seconds at once ([`crate::world::Turns::work_building`]: a stack
+    /// flag its footprint is cleared with `param_6` ([`crate::world::World::clear_footprint`]) and
+    /// a building is worked 10000 seconds at once ([`crate::world::World::work_building`]: a stack
     /// unit completes there); a master that gathers by itself joins the visible-resource lists
-    /// ([`crate::world::Turns::made_new_object`]). The editor's part (mode 4) never runs in a game.
+    /// ([`crate::world::World::made_new_object`]). The editor's part (mode 4) never runs in a game.
     /// Its id.
     ///
     /// # Errors
     ///
-    /// What the parts do not model ([`crate::world::Turns::combat_object`],
-    /// [`crate::world::Turns::plain_object`], [`crate::world::Turns::make_building`]).
+    /// What the parts do not model ([`crate::world::World::combat_object`],
+    /// [`crate::world::World::plain_object`], [`crate::world::World::make_building`]).
     pub(crate) fn make_new_object(
         &mut self,
         p: usize,

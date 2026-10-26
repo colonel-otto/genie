@@ -41,7 +41,7 @@ pub(crate) struct Context<'a> {
     /// The target of the unit's attack, read before its update and written back after it, and
     /// the objects about a unit with an area effect, which its blast may reach.
     pub(crate) victim: Option<&'a mut Victim>,
-    /// The unit AI's current target as its target block reads it ([`Turns::seen`]).
+    /// The unit AI's current target as its target block reads it ([`World::seen`]).
     pub(crate) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
     pub(crate) blasted: Vec<Victim>,
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
@@ -54,11 +54,11 @@ pub(crate) struct Context<'a> {
     /// What a built building's death takes from its owner before its combat part's refund: the
     /// counts of the monastery, the wonder and the castle (slot 0xf8, then slot 0xf0 with 0 for
     /// a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no
-    /// other building of the master stands ([`Turns::withdraw_tech`]).
+    /// other building of the master stands ([`World::withdraw_tech`]).
     pub(crate) building_death: Option<BuildingDeath>,
     /// The pauses the unit's walk gave units it met ([`Mover::pauses`]).
     pub(crate) pauses: Vec<(i32, f32)>,
-    /// The gate's update asked its player to open or shut it ([`Turns::toggle_gate`], the
+    /// The gate's update asked its player to open or shut it ([`World::toggle_gate`], the
     /// caller's after the update).
     pub(crate) gate_toggle: bool,
     /// The unit's update stopped before its unit AI for the caller's work order
@@ -70,17 +70,17 @@ pub(crate) struct Context<'a> {
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
     /// caller's ([`crate::ownership::capture::Captured::building`]).
     pub(crate) building_handover: bool,
-    /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
-    /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
+    /// The objects the unit's actions let go (slot 0x180, [`World::release`]) and take (slot
+    /// 0x178, [`World::take`]) in other players' lists, which the caller applies after the hit's
     /// write-backs.
     pub(crate) releases: Vec<(i32, Releaser)>,
     pub(crate) takes: Vec<(i32, Releaser)>,
     /// The foundations a counted builder's Build leaves as the unit's action list goes
     /// ([`Unit::clear_own_actions`], `FUN_140aadbf0`): the building `FUN_140aaddb0` gives counts one
-    /// builder less ([`Turns::leave_builders`]), the caller's before the releases.
+    /// builder less ([`World::leave_builders`]), the caller's before the releases.
     pub(crate) builder_leaves: Vec<i32>,
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
-    /// building: the caller runs the group's removeUnit ([`Turns::remove_unit`]).
+    /// building: the caller runs the group's removeUnit ([`World::remove_unit`]).
     pub(crate) left_group: Option<(i32, i32)>,
     /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
     /// list after it and update later in the same tick.
@@ -89,39 +89,39 @@ pub(crate) struct Context<'a> {
     /// caller's.
     pub(crate) ghost_deaths: Vec<i32>,
     /// The buildings whose construction started in this update: their owner watches them
-    /// ([`Turns::watch_started`]), the caller's.
+    /// ([`World::watch_started`]), the caller's.
     pub(crate) started: Vec<i32>,
     /// The buildings that died in this update: their owner's watched list lets them go
     /// (`FUN_141091310`), the caller's.
     pub(crate) unwatched: Vec<i32>,
     /// The annexes a building's `set_state` (`FUN_1411dbb70`) took to its own state (slot 0xa0
-    /// on each, before its own parts), the caller's after the update ([`Turns::set_state`]).
+    /// on each, before its own parts), the caller's after the update ([`World::set_state`]).
     pub(crate) annex_states: Vec<(i32, u8)>,
     /// The annexes a dying building let go (the static update's death, `0x14118ad50`), each with
     /// the hit points it takes: its `+0xbb8` clears, the caller's after the update.
     pub(crate) released_annexes: Vec<(i32, f32)>,
     /// The objects a builder's footprint clearing deletes (the Build's `set_state(7)`,
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
-    /// update ([`Turns::clear_object`]).
+    /// update ([`World::clear_object`]).
     pub(crate) cleared: Vec<crate::construction::build::Cleared>,
     /// The tracker's promotions (`FUN_14104fb20`) of the owner's units whose master changed
     /// while the unit AI ran (the unit, its old master, its new one), the caller's after the
-    /// update ([`Turns::track_promote`]).
+    /// update ([`World::track_promote`]).
     pub(crate) promotions: Vec<(i32, i16, i16)>,
     /// The flares a hit on a player's object has that player make (master 112, its slot 0x1c0)
     /// at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's
-    /// after the update ([`Turns::make_flare`]).
+    /// after the update ([`World::make_flare`]).
     pub(crate) flares: Vec<(usize, [f32; 3], bool)>,
     /// The foundations another player's marks lie on, which a builder's `set_state(7)` removes
     /// when their owner is human ([`crate::construction::build::BuildStep::removes`]), the caller's after the
-    /// update ([`Turns::remove_building`]).
+    /// update ([`World::remove_building`]).
     pub(crate) site_removals: Vec<i32>,
     /// The units on a foundation's footprint its builder's test met (the foundation, them):
-    /// the caller sends off those the test would ([`Turns::evacuate`]).
+    /// the caller sends off those the test would ([`World::evacuate`]).
     pub(crate) evacuations: Vec<(i32, Vec<i32>)>,
     /// The world's reusable ids and pools.
     pub(crate) recycling: &'a mut Recycling,
-    /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
+    /// The game's setting at `+0x680` is 1 ([`World::mode_680`]).
     pub(crate) mode_1: bool,
     /// The owner's attributes, which a gatherer's productivity reads.
     pub(crate) attributes: &'a [f32],
@@ -161,7 +161,7 @@ pub(crate) struct Context<'a> {
     pub(crate) keep_distance_chances: &'a [u8],
     /// Some player's attribute 204 is not 0, which a building's completion reads.
     pub(crate) attribute_204: bool,
-    /// [`Turns::mode_680`].
+    /// [`World::mode_680`].
     pub(crate) mode_680: i32,
     /// The game's carry rule ([`crate::world::settings::Settings::carry_rule`]), which a hunt's start
     /// reads.
@@ -184,26 +184,26 @@ pub(crate) struct Context<'a> {
     /// completed, [`crate::construction::build::Built::history`]), which the caller adds after it.
     pub(crate) history_events: Vec<u8>,
     /// The technologies the owner researches from the object's update (a completed building's),
-    /// which the caller completes after the attributes ([`Turns::complete_research`]).
+    /// which the caller completes after the attributes ([`World::complete_research`]).
     pub(crate) techs_done: Vec<i16>,
     /// The pastures the object's update completed, whose livestock the caller makes after the
-    /// attributes ([`Turns::setup_pasture`]).
+    /// attributes ([`World::setup_pasture`]).
     pub(crate) pastures: Vec<i32>,
     /// The mule carts the object's update completed, whose search for resources the caller runs
-    /// after it ([`Turns::cart_search`]).
+    /// after it ([`World::cart_search`]).
     pub(crate) carts: Vec<(i32, u8)>,
     /// The buildings the object's update completed with a stack unit or that disappear when
-    /// built: the caller makes the stack unit ([`Turns::stack_unit`]) before the technologies
+    /// built: the caller makes the stack unit ([`World::stack_unit`]) before the technologies
     /// and destroys the building (slot 0xd0) after them.
     pub(crate) completions: Vec<(i32, Option<crate::construction::build::StackUnit>, bool)>,
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
-    /// which the caller gives after the update ([`Turns::order_work`]).
+    /// which the caller gives after the update ([`World::order_work`]).
     pub(crate) work_order: Option<crate::orders::Work>,
     /// The Transport's unload in its state 6 (`FUN_140aa3ba0`), which the caller runs after the
-    /// actions and before the unit AI part ([`Turns::transport_unload`]).
+    /// actions and before the unit AI part ([`World::transport_unload`]).
     pub(crate) transport_unload: bool,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
-    /// runs after the update ([`Turns::order_on_target`]), and the full update's tail that reads
+    /// runs after the update ([`World::order_on_target`]), and the full update's tail that reads
     /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
     pub(crate) order_on_target: Option<(
         crate::unit_ai::QueuedOrder,
@@ -214,19 +214,19 @@ pub(crate) struct Context<'a> {
     /// later one's stop tears down the action an earlier one made.
     pub(crate) works: Vec<AiWork>,
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
-    /// ([`Turns::build_object`]).
+    /// ([`World::build_object`]).
 
     /// The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on
-    /// a target not built yet), which the caller runs after the update ([`Turns::build_command`]).
+    /// a target not built yet), which the caller runs after the update ([`World::build_command`]).
     pub(crate) build_command: Option<i32>,
     /// A Gather's walk back to reseed ended (state 0xf2, whether it arrived), which the caller
-    /// reseeds after the update ([`Turns::reseed_after_walk`]).
+    /// reseeds after the update ([`World::reseed_after_walk`]).
     pub(crate) reseed: Option<bool>,
     /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
-    /// runs after the update ([`Turns::move_aside`]).
+    /// runs after the update ([`World::move_aside`]).
     pub(crate) move_aside: Vec<AiMove>,
     /// The transports an Enter's `set_state(4)` sent to where they meet the unit (slot 0x340),
-    /// which the caller moves after the update ([`Turns::move_transport`]'s move).
+    /// which the caller moves after the update ([`World::move_transport`]'s move).
     pub(crate) transport_moves: Vec<(i32, [f32; 3])>,
     /// Another player's transport or building the unit entered, with what its volleys gain: the
     /// caller adds them and the unit to its list after the update.
@@ -236,7 +236,7 @@ pub(crate) struct Context<'a> {
     pub(crate) starts: Vec<AiStart>,
     /// The work a builder gave an annex whose main building takes it (the foundation, the
     /// seconds; [`crate::construction::build::Worked::Main`]), which the caller runs after the update
-    /// ([`Turns::work_building`]).
+    /// ([`World::work_building`]).
     pub(crate) main_works: Vec<(i32, f32)>,
     /// What a repair changed of another player's objects ([`RepairWrite`]), which the caller
     /// writes after the update.
@@ -244,7 +244,7 @@ pub(crate) struct Context<'a> {
     /// The owner's diplomacy (`player+0x260`), which the unit's task search reads.
     pub(crate) relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
-    /// update ([`Turns::lead_herd`]).
+    /// update ([`World::lead_herd`]).
     pub(crate) leads: Option<(i32, i32)>,
     /// The map's zone maps, which an auto scout's search reads.
     pub(crate) zones: &'a mut crate::pathing::zones::Zones,
@@ -253,7 +253,7 @@ pub(crate) struct Context<'a> {
 }
 
 /// What an object's step gathered in its Context for the world to apply after it
-/// ([`crate::world::Turns::finish_object`]): the Context's fields of the same meaning; the left
+/// ([`crate::world::World::finish_object`]): the Context's fields of the same meaning; the left
 /// group carries the unit's id.
 pub(crate) struct ObjectOutputs {
     /// [`Context`]'s `attribute_adds`.

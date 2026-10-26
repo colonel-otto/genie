@@ -6,25 +6,25 @@ use crate::commands::{FOUNDATION_GONE, NO_BUILD_TASK};
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
-use crate::unit_ai::task_finder::world::{World, task_search, task_target_with};
+use crate::unit_ai::task_finder::world::{TaskWorld, task_search, task_target_with};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
 use crate::unit_ai::world_view::Wait;
 use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER};
-use crate::world::{STATIC_TYPES_END, Turns};
+use crate::world::{STATIC_TYPES_END, World};
 
-impl Turns {
-    /// BUILD's builders (the cost was paid with the foundation, [`Turns::found`]; the pending
-    /// debit came before, [`Turns::debit_listed`]), the handler's last loop: each unit of the
+impl World {
+    /// BUILD's builders (the cost was paid with the foundation, [`World::found`]; the pending
+    /// debit came before, [`World::debit_listed`]), the handler's last loop: each unit of the
     /// packet the world holds (`FUN_1415417a0`: any player's, asleep or not), in the packet's
     /// order, of a master of type 30 and up that moves (its slot 0xe8; COMISS: a NaN speed too),
     /// or any unit of a queued BUILD: its ignore list empties (`FUN_141197da0`); with a unit AI,
     /// a queued BUILD, or one that `commits` while the AI holds an order not ready
     /// (`FUN_140c4dfa0`), goes into its queue as the build order (slot 0x30 into slot 0x28:
-    /// [`Turns::queue_build`], issued by the unit's own player); else its slot 0x128 on the
+    /// [`World::queue_build`], issued by the unit's own player); else its slot 0x128 on the
     /// foundation with 1: a static object's (types below 40, `FUN_141071bd0`) does nothing; a
-    /// combat object's empties its unit AI's queue first ([`Turns::empty_queue_for_work`]); a unit's
-    /// takes the Build ([`Turns::build_task`], [`Turns::build_directly`]), another player's
-    /// whatever task its slot 0x7e8 finds on the foundation ([`Turns::order_work`]). A unit the world no
+    /// combat object's empties its unit AI's queue first ([`World::empty_queue_for_work`]); a unit's
+    /// takes the Build ([`World::build_task`], [`World::build_directly`]), another player's
+    /// whatever task its slot 0x7e8 finds on the foundation ([`World::order_work`]). A unit the world no
     /// longer holds is passed over. A committing BUILD's queue then takes the readiness pass with
     /// 0 (`FUN_140c42b60`, [`crate::orders::readiness`]): every queued order is ready.
     pub(crate) fn task_builders(
@@ -136,7 +136,7 @@ impl Turns {
             pasture: -1,
             top_action: None,
         };
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
@@ -195,9 +195,9 @@ impl Turns {
     /// The queue path of a builder at `idx` of player `q` (slot 0x30 into slot 0x28): its
     /// ignore list empties (`FUN_141197da0`) and its unit AI's queue takes the build order on
     /// `foundation` (of `master`, player `fp`'s) at `position`, issued by `q`, priority 100, the
-    /// point shown, ready, as the game's saves hold it ([`Turns::build_order`] runs it).
+    /// point shown, ready, as the game's saves hold it ([`World::build_order`] runs it).
     ///
-    /// [`Turns::build_order`]: crate::world::Turns::build_order
+    /// [`World::build_order`]: crate::world::World::build_order
     pub(crate) fn queue_build(
         &mut self,
         q: usize,
@@ -230,7 +230,7 @@ impl Turns {
     }
 
     /// The direct path of a builder at `idx` of player `q`, slot 0x128 on `foundation` (player
-    /// `fp`'s) at `position` with what [`Turns::build_task`] found: its ignore list empties
+    /// `fp`'s) at `position` with what [`World::build_task`] found: its ignore list empties
     /// (`FUN_141197da0`), the town-bell record (slot 0x7e8 with task filter −1), then the work
     /// command (`FUN_14106ff70`): the master changes, the Build takes its foundation, the unit
     /// AI's notify, the action list clears and holds the Build.
@@ -278,8 +278,8 @@ impl Turns {
 
     /// The unit's slot 0x388 (`FUN_141226fc0`) after its unit AI's update, with what it found
     /// there ([`Wait`]): slot 0x820's switch to the master its swap group gave (slot 0x90 with 0,
-    /// [`Turns::change_master`]; a villager's candidates are of its own type, never a
-    /// building's), the action list cleared (`FUN_140a98620`, [`Turns::clear_actions`]; a wait
+    /// [`World::change_master`]; a villager's candidates are of its own type, never a
+    /// building's), the action list cleared (`FUN_140a98620`, [`World::clear_actions`]; a wait
     /// it held goes too, its teardown the base one's) and the new wait in it (slot 0x808,
     /// `FUN_14106e990`: the wait's slot 0x70 with no action and its start both do nothing).
     pub(crate) fn wait_for_foundation(
@@ -299,9 +299,9 @@ impl Turns {
     }
 
     /// The unit's build command (slot 0x380, `FUN_14120d410`, forced) on `foundation`: a Build on
-    /// top takes the foundation (its slot 0x48, [`Turns::build_take`]); without one its slot
+    /// top takes the foundation (its slot 0x48, [`World::build_take`]); without one its slot
     /// 0x820 with any action type and the switch ([`task_search`] on the foundation and its main
-    /// building; the switch, slot 0x90 with 0, [`Turns::change_master`]) finds a task, and a
+    /// building; the switch, slot 0x90 with 0, [`World::change_master`]) finds a task, and a
     /// Build action on it (`FUN_140aad4e0` with that task, whatever its type) replaces the
     /// unit's actions. The foundation's master's class and its place, for the unit AI. A
     /// foundation that is gone or without a task (slot 0x380's 0) is not modelled.
@@ -333,7 +333,7 @@ impl Turns {
             .masters
             .get(player)
             .ok_or(GenieError::unsupported("a build order: no master table"))?;
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };

@@ -8,7 +8,7 @@ use genie_core::commands::Command;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_core::world::checkpoint::{ObjectState, TopAction, player_block};
-use genie_core::world::{Player, Turns};
+use genie_core::world::{Player, World};
 use genie_rec::de;
 use genie_save::{Header, PlayerSection};
 
@@ -63,7 +63,7 @@ pub fn trace_commands(on: bool) {
 
 /// Run the slice over `frames`, each tick with its commands.
 pub(super) fn run(
-    turns: &mut Turns,
+    turns: &mut World,
     decoder: &mut Decoder,
     frames: &[Frame<'_>],
     sections: &[PlayerSection<'_>],
@@ -277,14 +277,14 @@ pub fn blocks_per_tick(
 /// save's dumps add. For a check of a player-level update against the tick oracle's next save
 /// (the world player's, [`genie_core::players::world_player`]). Dev only.
 #[must_use]
-pub fn slice_from_header(header: &Header, masters: Option<&MasterTable>) -> Turns {
+pub fn slice_from_header(header: &Header, masters: Option<&MasterTable>) -> World {
     slice(header, masters)
 }
 
 /// The slice as the recording's header load leaves it: [`slice`] with the objects-in-sight
 /// registry empty, every object's mask 0, as the game's load makes it, and the hunted animals'
 /// unit AI fields their load made.
-pub(super) fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
+pub(super) fn header_slice(header: &Header, masters: Option<&MasterTable>) -> World {
     let mut turns = slice(header, masters);
     if let Some(sight) = turns.spatial.sight.as_mut() {
         sight.registry = Some(genie_core::vision::registry::Registry::new(
@@ -298,9 +298,9 @@ pub(super) fn header_slice(header: &Header, masters: Option<&MasterTable>) -> Tu
     turns
 }
 
-/// The ghosts' watched lists as the game's load builds them ([`Turns::build_watched`]), once the
+/// The ghosts' watched lists as the game's load builds them ([`World::build_watched`]), once the
 /// slice holds its registry; what it cannot build stops every player.
-pub(super) fn watch_at_load(turns: &mut Turns) {
+pub(super) fn watch_at_load(turns: &mut World) {
     if let Err(e) = turns.build_watched() {
         for p in &mut turns.players {
             let _ = p.unsupported.get_or_insert_with(|| (0, 0, e.clone()));
@@ -315,7 +315,7 @@ pub fn header_run(
     recording: &[u8],
     ticks: usize,
     masters: Option<&MasterTable>,
-) -> Result<Turns, Error> {
+) -> Result<World, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let sections = header.players();

@@ -10,7 +10,7 @@ use crate::GenieError;
 use crate::construction::build::held;
 use crate::objects::masters::Master;
 use crate::orders::Place;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The classes no delete takes (`DAT_142f925c0`, and `FUN_14120f620`'s own test): livestock,
 /// class 42, artifacts and class 60.
@@ -41,13 +41,13 @@ const BEING_CAPTURED: u8 = 2;
 const SPARED_CLASS: i16 = 42;
 pub(crate) const LIVESTOCK: i16 = 58;
 
-impl Turns {
+impl World {
     /// `CANCEL_BUILD` for `player` on object `id`: the object must exist and be the player's,
     /// unless the setting `+0x1074` lets players order each other's ([`crate::world::settings::Settings::cheats_enabled`])
     /// or its owner lost and the two are allies both ways (`FUN_14162ef10`). `FUN_1416257c0`
     /// then wants its deletion enabled (`+0x687`), a master of type 70 or more, a class other
     /// than [`UNDELETABLE`]'s and a capture flag (`+0x924`) other than 2; the object's slot 0x8b8
-    /// follows ([`Turns::delete_unit`], [`Turns::delete_building`]). The bypass of the
+    /// follows ([`World::delete_unit`], [`World::delete_building`]). The bypass of the
     /// disable-verification cheat (`+0xb12`) is not held.
     ///
     /// # Errors
@@ -83,7 +83,7 @@ impl Turns {
     /// its list's order: a desolid foundation (type 80, `+0xc60`) other than it whose owner sees
     /// and explored the tile ([`crate::map::spatial::Spatial::sees_and_explored`]) and whose box
     /// overlaps its own (on each axis the gap below the two radii summed) is removed
-    /// ([`Turns::remove_building`]) and its `mROOAlreadyCalled` (`+0x686`) set.
+    /// ([`World::remove_building`]) and its `mROOAlreadyCalled` (`+0x686`) set.
     pub(crate) fn clear_foundations_under(&mut self, id: i32) -> Result<(), GenieError> {
         const AROUND: i32 = 5;
         let Some(site) = self.spatial.get(id).copied() else {
@@ -161,14 +161,14 @@ impl Turns {
         Ok(())
     }
 
-    /// A building's slot 0x8b8 (`FUN_1411cd780`, then `FUN_1411ccbb0`, [`Turns::remove_building`]):
+    /// A building's slot 0x8b8 (`FUN_1411cd780`, then `FUN_1411ccbb0`, [`World::remove_building`]):
     /// it wakes; a foundation
     /// (below state 2) with at least 1 hit point gives its owner back the share of its paid cost
     /// (`+0x880`: each entry with a resource and the paid flag, slot 0xf8) its build time has
     /// still to go (`(build time - build points) / build time`, at most 1), all of it while no
     /// builder started it (`+0xc60`); then its hit points go to 0, and such a foundation is
-    /// destroyed at once ([`Turns::destroy_foundation`]); master 621 clears its owner's treaty
-    /// zones first ([`Turns::clear_treaty_zones`]). Not held: the deleted marks (`+0xa0c`, `+0xc`, `+0xb9c`), the
+    /// destroyed at once ([`World::destroy_foundation`]); master 621 clears its owner's treaty
+    /// zones first ([`World::clear_treaty_zones`]). Not held: the deleted marks (`+0xa0c`, `+0xc`, `+0xb9c`), the
     /// semi-asleep list (`+0xc98`), the killer (`+0x690`) and a computer player's AI event (slot
     /// 0x380).
     fn delete_building(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
@@ -180,8 +180,8 @@ impl Turns {
         self.remove_building(owner, id)
     }
 
-    /// `FUN_1411ccbb0`, the core of a building's delete ([`Turns::delete_building`]) and of a
-    /// construction start's clearing ([`Turns::clear_foundations_under`]): the building wakes,
+    /// `FUN_1411ccbb0`, the core of a building's delete ([`World::delete_building`]) and of a
+    /// construction start's clearing ([`World::clear_foundations_under`]): the building wakes,
     /// a foundation's paid cost comes back by the share its build time has still to go, its hit
     /// points go to 0 and a desolid foundation is destroyed at once.
     pub(crate) fn remove_building(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
@@ -220,19 +220,19 @@ impl Turns {
         Ok(())
     }
 
-    /// A foundation's destroy (slot 0xd0, [`Turns::destroy`]) from its delete.
+    /// A foundation's destroy (slot 0xd0, [`World::destroy`]) from its delete.
     fn destroy_foundation(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
         self.destroy(owner, id)
     }
 
     /// Slot 0xd0 of object `id` of player `owner`, by its master's type. A building's
     /// (`FUN_1411cfb30`): in state 2 what its storage gave its owner leaves
-    /// ([`Turns::storage_leaves`]); a town-centre foundation (621) while its owner has no town
+    /// ([`World::storage_leaves`]); a town-centre foundation (621) while its owner has no town
     /// centre (`FUN_1416597e0`, the player's object tracker for masters 109 and 444; the slice
-    /// asks its live lists) clears its owner's treaty zones ([`Turns::clear_treaty_zones`]);
+    /// asks its live lists) clears its owner's treaty zones ([`World::clear_treaty_zones`]);
     /// then the action object's. The action object's (types 40 to
     /// 79 and the buildings, `FUN_14106c420`): its action list goes (`FUN_140a98620`,
-    /// [`Turns::clear_actions`]), then the base destroy ([`Turns::base_destroy`]). A building's
+    /// [`World::clear_actions`]), then the base destroy ([`World::base_destroy`]). A building's
     /// owner's watched list lets it go last (`FUN_141091310`). Not held: the semi-asleep flag
     /// (`+0xc98`, `FUN_14107db90`), `+0xca4` and the log lines.
     ///
@@ -284,14 +284,14 @@ impl Turns {
     }
 
     /// `FUN_1416597e0(owner, 0)`: the owner's tracker files a town centre the world holds
-    /// ([`Turns::town_centre_at`]).
+    /// ([`World::town_centre_at`]).
     fn has_town_centre(&self, owner: usize) -> bool {
         self.town_centre_at(owner, 0).is_some()
     }
 
     /// The base destroy (`FUN_14118f1e0`) of object `id` of player `owner`: below state 7 its
     /// hit points go to 0, it wakes (`FUN_14119deb0` with 0) and goes to state 7 (slot 0xa0,
-    /// [`Turns::set_state`]). An object inside another would leave it first (slot 0x1a8): not
+    /// [`World::set_state`]). An object inside another would leave it first (slot 0x1a8): not
     /// modelled. Not held: the special-object list (`+0x30c` bit 0, `FUN_141677380`) and the log
     /// line.
     pub(crate) fn base_destroy(&mut self, owner: usize, id: i32) -> Result<(), GenieError> {
@@ -314,8 +314,8 @@ impl Turns {
     /// Slot 0xa0 of object `id` of player `owner` to `new`, a state of 3 or more (2 for a
     /// building's completion), outside the
     /// object's own update, by its master's type: a building's (`FUN_1411dbb70`,
-    /// [`Turns::building_set_state`]), a combat object's of type 70 (`FUN_14121cc40`,
-    /// [`Turns::combat_set_state`]), else the base one ([`Turns::base_set_state`]).
+    /// [`World::building_set_state`]), a combat object's of type 70 (`FUN_14121cc40`,
+    /// [`World::combat_set_state`]), else the base one ([`World::base_set_state`]).
     ///
     /// # Errors
     ///
@@ -334,11 +334,11 @@ impl Turns {
 
     /// The building's `set_state` (`FUN_1411dbb70`) to a state of 3 or more: its annexes first
     /// (`+0xbc0`..`+0xbd8`, each a building: their own slot 0xa0 with the same state); a
-    /// foundation (state 0) then runs the completion's first part ([`Turns::completion_part`],
+    /// foundation (state 0) then runs the completion's first part ([`World::completion_part`],
     /// `FUN_1411c6bd0`) and, still in state 0 and going to a state from 1 to 6, its
-    /// construction's start (`FUN_1411e5670`, [`Turns::construction_starts`]); a built building
-    /// going to state 3 dies ([`Turns::built_building_dies`], which ends in the combat object's
-    /// `set_state`); any other goes to the combat object's ([`Turns::combat_set_state`]).
+    /// construction's start (`FUN_1411e5670`, [`World::construction_starts`]); a built building
+    /// going to state 3 dies ([`World::built_building_dies`], which ends in the combat object's
+    /// `set_state`); any other goes to the combat object's ([`World::combat_set_state`]).
     fn building_set_state(
         &mut self,
         owner: usize,
@@ -374,7 +374,7 @@ impl Turns {
     /// The combat object's `set_state` (`FUN_14121cc40`) to a state of 3 or more: from below 3
     /// its death's part ([`crate::objects::lifecycle::death_parts::combat_dies`]); to state 3 from 2 its owner's attributes
     /// lose its paid cost ([`crate::objects::lifecycle::death_parts::refund_of`]: 98 and 164, a building 98 and 165, each at
-    /// least 0); then the base `set_state` ([`Turns::base_set_state`]).
+    /// least 0); then the base `set_state` ([`World::base_set_state`]).
     fn combat_set_state(
         &mut self,
         owner: usize,
@@ -413,7 +413,7 @@ impl Turns {
     /// object's update: a lower state than its own changes nothing; from below 3 the storage of
     /// flags 2 and 16 leaves its owner (`FUN_1411a56c0` with 0) and, while the world's game state
     /// is not 2, a master of fog visibility 2 leaves its ghosts (`FUN_14118e990`,
-    /// [`Turns::ghosts_at_death`], before the state changes); from below 4 to above 6 it leaves
+    /// [`World::ghosts_at_death`], before the state changes); from below 4 to above 6 it leaves
     /// the visible-resource lists (`FUN_1411980b0`, [`crate::objects::lifecycle::death_parts::forget_resource`]); its sight
     /// follows ([`crate::map::spatial::Spatial::sight_state`]); from below 7 to 7 the storage of flag
     /// 32 leaves its owner; then the state, and a sleeping object wakes unless the state is 2 or
@@ -535,7 +535,7 @@ mod tests {
 
     /// Gaia and two players: player 1's villager 10, house foundation 11 (build time 25, cost 25
     /// wood paid) and sheep 12, and player 2's villager 20.
-    fn game(progress: f32, desolid: bool) -> Turns {
+    fn game(progress: f32, desolid: bool) -> World {
         let house = Unit {
             id: 11,
             construction: Some(Construction {
@@ -551,7 +551,7 @@ mod tests {
             }),
             ..Unit::default()
         };
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,
@@ -627,7 +627,7 @@ mod tests {
         t.delete(1, 10).unwrap();
         t.delete(1, 20).unwrap();
         t.delete(1, 12).unwrap();
-        let hp = |t: &Turns, p: usize, i: usize| t.players[p].objects[i].life.hp;
+        let hp = |t: &World, p: usize, i: usize| t.players[p].objects[i].life.hp;
         assert_eq!(
             (hp(&t, 1, 0), hp(&t, 2, 0), hp(&t, 1, 2)),
             (0.0, 25.0, 25.0)
@@ -671,7 +671,7 @@ mod tests {
     /// one the delete is any building's; with one the zones are not held.
     #[test]
     fn a_deleted_town_centre_foundation_clears_no_zones_without_a_treaty() {
-        let town_centre = |t: &mut Turns| {
+        let town_centre = |t: &mut World| {
             for m in &mut t.masters {
                 let mut tc = m.get(70).unwrap().clone();
                 tc.id = TOWN_CENTRE_621;
@@ -801,9 +801,9 @@ mod clearing_tests {
     }
 
     /// Gaia holding `gaia` (live) and `asleep`, player 1 holding `own`, on a 20 by 20 map.
-    fn world(gaia: Vec<Unit>, asleep: Vec<Unit>, own: Vec<Unit>) -> Turns {
+    fn world(gaia: Vec<Unit>, asleep: Vec<Unit>, own: Vec<Unit>) -> World {
         let ms = masters();
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,
@@ -927,7 +927,7 @@ mod clearing_tests {
             t.masters[0].get_mut(m).unwrap().storage =
                 vec![(4, 2.0, 2), (5, 3.0, 16), (7, 1.0, 32), (-1, 9.0, 2)];
         }
-        let at = |t: &Turns| [4, 5, 7].map(|i| t.players[0].attributes[i]);
+        let at = |t: &World| [4, 5, 7].map(|i| t.players[0].attributes[i]);
         t.players[0].attributes[4..8].copy_from_slice(&[10.0, 10.0, 10.0, 10.0]);
         t.players[0].objects[0].life.state = 2;
         // the same state, then a lower one: nothing

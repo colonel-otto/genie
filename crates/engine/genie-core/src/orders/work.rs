@@ -7,14 +7,14 @@ use crate::objects::masters::Master;
 use crate::orders::{
     ATTACK_TASK, BUILDING, GARRISON, MASTER_84, MASTER_1808, VILLAGER, Work, own_order_target,
 };
-use crate::unit_ai::task_finder::world::World;
+use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, enabled};
 use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER, MOVE_ORDER};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_1412067f0` before slot 0x7e8's work command, for a villager or master 1808 and a
-    /// target the world holds: the town-bell record ([`Turns::record_town_bell`]); then, with the
+    /// target the world holds: the town-bell record ([`World::record_town_bell`]); then, with the
     /// garrison filter (3), the flag goes on for a building in state 2 of the player or an ally
     /// whose master takes villagers (`garrison_type` bit 0), with any other filter it goes off.
     /// The UI's flag for the viewing player's building (`+0x1874`) is not held.
@@ -35,7 +35,7 @@ impl Turns {
         };
         let takes = if filter == GARRISON {
             let tm = self.master_of(tp, t.life.master_id)?;
-            let world = World {
+            let world = TaskWorld {
                 players: &self.players,
                 drop_sites: &self.drop_sites,
             };
@@ -179,7 +179,7 @@ impl Turns {
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
@@ -272,7 +272,7 @@ impl Turns {
                 attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
                 civ: owner.civ,
             };
-            let world = World {
+            let world = TaskWorld {
                 players: &self.players,
                 drop_sites: &self.drop_sites,
             };
@@ -524,7 +524,7 @@ impl Turns {
     /// mode 0); without one, a master with a task swap group (`+0x7b8` not 0) tries each of its
     /// player's masters by id of the same class, type and group, its own too, with any filter;
     /// the first with a task gives it, and with `change` the unit takes that master (slot 0x90,
-    /// [`Turns::change_master`], or [`Turns::transform_building`] for a building) though it be its
+    /// [`World::change_master`], or [`World::transform_building`] for a building) though it be its
     /// own. None: no task. The terrain under the point, which only a task for a terrain reads, is
     /// not passed.
     ///
@@ -548,7 +548,7 @@ impl Turns {
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };

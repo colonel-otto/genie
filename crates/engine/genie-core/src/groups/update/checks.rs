@@ -9,12 +9,12 @@ use crate::groups::update::{
     TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_141007ca0`: the units the group keeps apart (`+0x458`, the save's `objId`, size
     /// `+0x468`), in order. One the world does not hold leaves the list (`FUN_140a63bd0`); one
-    /// that may not be interrupted (slot 0x2d0 with 1, [`Turns::may_interrupt`]) stays. One whose
+    /// that may not be interrupted (slot 0x2d0 with 1, [`World::may_interrupt`]) stays. One whose
     /// unit AI attacks (its action 600) looks for the target of a member's top action (slot
     /// 0x190: the action's target id when not negative, `FUN_140a78450`) nearest it (the
     /// footprints' squared gap, `FUN_14118f8c0`) within its reach squared (`MAXSS` of its slot
@@ -96,7 +96,7 @@ impl Turns {
 
     /// Slot 0x2d0 with 1 of `object`: false for an object below type 40 (a ghost's, a static,
     /// animated or moving object's `FUN_141071d80`); an action object's (`FUN_14106d170`) is
-    /// false while its group (`+0x6d0`, by id) is held and not at rest ([`Turns::at_rest`],
+    /// false while its group (`+0x6d0`, by id) is held and not at rest ([`World::at_rest`],
     /// `FUN_141007a50`) or its unit AI has queued orders (`+0x18`), else whether its top action
     /// may be interrupted ([`crate::objects::unit::Unit::interruptible`]).
     ///
@@ -187,11 +187,11 @@ impl Turns {
 
     /// `FUN_1410176b0` of group `group`: whether its target is still to act on. None without
     /// members (or a group the world does not hold). A relic's pick-up (132) and delivery (136)
-    /// ask their own ([`Turns::relic_pickup_pending`], `FUN_141017c70`;
-    /// [`Turns::relic_delivery_pending`], `FUN_141017850`). Otherwise the target (`+0x3c0`) the
+    /// ask their own ([`World::relic_pickup_pending`], `FUN_141017c70`;
+    /// [`World::relic_delivery_pending`], `FUN_141017850`). Otherwise the target (`+0x3c0`) the
     /// world holds, in a state up to 2 (0 for a build, 101), inside no other object
     /// (`FUN_141188da0`), of a player the owner does not count an ally (`FUN_141663d90` with the
-    /// ally flag; a build skips this) and seen by the owner ([`Turns::sees_object`],
+    /// ally flag; a build skips this) and seen by the owner ([`World::sees_object`],
     /// `FUN_141188ea0`).
     ///
     /// # Errors
@@ -225,7 +225,7 @@ impl Turns {
 
     /// `FUN_141017c70`: a member the world holds with a unit AI whose order is `0x2db` or whose
     /// action is `0x277`, on a group still picking up a relic (132), whose master's tasks
-    /// ([`Turns::has_task`]) pick up relics (132) and its target (the unit AI's, `+0x48`) is a
+    /// ([`World::has_task`]) pick up relics (132) and its target (the unit AI's, `+0x48`) is a
     /// relic (its master's class `0x2a`), or deliver them (136) and its target is a relic or
     /// none the world holds.
     pub(super) fn relic_pickup_pending(&self, g: &UnitGroup) -> Result<bool, GenieError> {
@@ -254,7 +254,7 @@ impl Turns {
         Ok(false)
     }
 
-    /// `FUN_141017850`: as [`Turns::relic_pickup_pending`], on a group still delivering a relic
+    /// `FUN_141017850`: as [`World::relic_pickup_pending`], on a group still delivering a relic
     /// (136): the target is a monastery (master 104) and the member's master's tasks deliver or
     /// pick up relics.
     pub(super) fn relic_delivery_pending(&self, g: &UnitGroup) -> Result<bool, GenieError> {
@@ -413,7 +413,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// As [`Turns::show_standing`].
+    /// As [`World::show_standing`].
     pub(crate) fn show_walking(&mut self, id: i32) -> Result<bool, GenieError> {
         self.show_sprite(id, Shown::Walking)
     }
@@ -426,7 +426,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// As [`Turns::show_standing`], a trade cart aside.
+    /// As [`World::show_standing`], a trade cart aside.
     pub(crate) fn show_running(&mut self, id: i32) -> Result<bool, GenieError> {
         self.show_sprite(id, Shown::Running)
     }

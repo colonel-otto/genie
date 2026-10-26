@@ -2,9 +2,9 @@
 
 use crate::GenieError;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint, ResearchAt};
-use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, Turns};
+use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, World};
 
-impl Turns {
+impl World {
     /// SET GATHER POINT's handler ([`Command::GatherPoint`]).
     ///
     /// [`Command::GatherPoint`]: crate::commands::Command::GatherPoint
@@ -148,7 +148,7 @@ impl Turns {
     /// count of buildings it lists (`+0x8` as a short) below 1 is refused; the packet's building
     /// (`+4`), when the world holds it, must be the player's own, or any while players may order
     /// each other's (the setting `+0x1074`), and listed alone it must be held; with more listed,
-    /// the listed ones (`+0x11..`) as the unit commands' ([`Turns::command_check`]). None for a
+    /// the listed ones (`+0x11..`) as the unit commands' ([`World::command_check`]). None for a
     /// refused one, else the list with −1 for the ones left out. The packet's size tests are the
     /// decoder's, and the world's `+0xb12` cheat is not held.
     pub(crate) fn research_check(&self, player: usize, r: &ResearchAt) -> Option<Vec<i32>> {
@@ -179,8 +179,8 @@ impl Turns {
     /// `FUN_1411d0e90`, and the shared kind's every building, `FUN_1411c3fd0`, are not modelled);
     /// a building of master type 80 alive (state 2) whose master is among the technology's
     /// locations, with the technology in state 1 or repeatable, and without a top action of
-    /// 0x7b to 0x7d (`FUN_141227a00`), queues it ([`Turns::queue_research`]); queued, its unit AI
-    /// takes the action value 0x26c. A technology of `linkedTechs.json` ([`Turns::linked_techs`],
+    /// 0x7b to 0x7d (`FUN_141227a00`), queues it ([`World::queue_research`]); queued, its unit AI
+    /// takes the action value 0x26c. A technology of `linkedTechs.json` ([`World::linked_techs`],
     /// the game settings' table `FUN_140f39f40` looks up) is not modelled (`FUN_140f3a0f0`,
     /// `FUN_140f39e80`). Not held: the interface's view and selection (`FUN_140e6de20`), the
     /// local player's statistics flag. Not modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
@@ -282,7 +282,7 @@ impl Turns {
 
     /// `FUN_1411d70f0` for the building at `i` of `player`: one research, five with `shift`
     /// unless the technology allows only one at a time or its effect upgrades a unit, queued by
-    /// the building's part with no master and no button ([`Turns::queue_at`]). True when any
+    /// the building's part with no master and no button ([`World::queue_at`]). True when any
     /// was queued. The game settings' instant technologies (`FUN_140f39f40`'s `+0x20`, which
     /// `FUN_1413cdcd0` researches at once) are linked ones, which RESEARCH refuses before.
     pub(crate) fn queue_research(

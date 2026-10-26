@@ -21,11 +21,11 @@ struct HuntPlan<'u> {
 }
 
 impl<'u> UnitView<'u> {
-    /// `HuntObject`'s unit part at once ([`Turns::hunt_command`] in the view): the stopAction
+    /// `HuntObject`'s unit part at once ([`World::hunt_command`] in the view): the stopAction
     /// (the actions go, and in state 2 the master's standing sprite, slot 0x68), then the hunt
     /// command: slot 0x820's task with any filter and the switch ([`task_search`]; the switch,
     /// slot 0x90 with 0, [`crate::orders::switch_master`], its owner's part after the update) and a
-    /// Hunt on it ([`Turns::start_hunt`]'s: the target taken, slot 0x178; the actions cleared;
+    /// Hunt on it ([`World::start_hunt`]'s: the target taken, slot 0x178; the actions cleared;
     /// [`crate::gathering::hunt::HuntAction::start`] with the target as it stands, its master among the
     /// unit's drop sites, the engagement and arms; an Attack that starts arrived shows the idle
     /// sprite; a load to its own drop site takes the target as the second and lets it go as the

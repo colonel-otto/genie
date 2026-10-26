@@ -41,7 +41,7 @@ pub struct Settings {
     /// regicide), read as an int (`FUN_141324b60` on `+0x18` reads `+0x18 + 0x7c`).
     pub sub_game_mode_flag: i32,
     /// `mFullTechTreeEnabled` (`+0x63`): a civilisation's own technologies of a mode other than
-    /// 1 are disabled like another civilisation's ([`crate::world::Turns::update_dependents`]).
+    /// 1 are disabled like another civilisation's ([`crate::world::World::update_dependents`]).
     pub full_tech_tree: bool,
     /// `mWalkableFarms` (`+0x69`): farmers walk their farm's stops (a farm's Gather of four
     /// stops), and a Gather's `set_state(7)` leaves `mGatherX`, `mGatherY` at −1.
@@ -62,7 +62,7 @@ pub struct Settings {
     /// the slice holds no treaty.
     pub treaty_length: u32,
     /// `mTeamsLocked` (`+0x64`): the world's teams stay as the game began
-    /// ([`crate::world::Turns::resolve_teams`]).
+    /// ([`crate::world::World::resolve_teams`]).
     pub teams_locked: bool,
     /// `mStartingAge` (`+0x3c`): 0 the mode's default, 2 to 6 the ages.
     pub starting_age: i32,

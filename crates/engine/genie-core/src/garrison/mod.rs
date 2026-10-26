@@ -43,7 +43,7 @@ use crate::objects::masters::{Master, Masters, Task};
 #[cfg(test)]
 use crate::orders::GARRISON;
 #[cfg(test)]
-use crate::world::Turns;
+use crate::world::World;
 
 /// The squared footprint gap past which a garrison order sends no unit (`FUN_141621220` with 0:
 /// no limit).

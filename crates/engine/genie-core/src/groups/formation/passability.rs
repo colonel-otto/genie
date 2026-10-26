@@ -6,7 +6,7 @@ use crate::groups::formation::{RIGHT_ANGLE, find_point_from_front, transform_slo
 use crate::groups::{Formation, Slot, UnitGroup};
 use crate::math::fmath::{Vec3, scale, sub};
 use crate::math::image::group::{FARTHEST, SLOT_NUDGE_X, SLOT_NUDGE_Z};
-use crate::world::Turns;
+use crate::world::World;
 use crate::world::checkpoint::cvttss2si;
 
 /// The passability's box starts at this (`DAT_142eea788`) on its low sides, 0 on its high ones.
@@ -36,7 +36,7 @@ pub(super) const SLOT_NUDGE: [[f32; 2]; 5] = [
     [0.0, 0.25],
 ];
 
-impl Turns {
+impl World {
     /// `FormationTransform` (`FUN_14103a1f0`) of `formation` for group `g`, `column_to_line`
     /// (`param_4`) a line laid out after a column: nothing without slots in use. The group's yaw
     /// from the canon forward (x, or -x about faced) and the formation's last one
@@ -51,8 +51,8 @@ impl Turns {
     /// transform (2) from the target's original place, all counting. A turn of more than
     /// [`RIGHT_ANGLE`] with fewer than two sub-formations takes the units anew: every slot of
     /// the array loses its unit and its filled mark and the slots take their units (from the
-    /// previous column, [`Turns::from_previous_column`], for `column_to_line`, else the closest,
-    /// [`Turns::populate_slots`]). Then the slots' passability ([`Turns::passable_slots`]).
+    /// previous column, [`World::from_previous_column`], for `column_to_line`, else the closest,
+    /// [`World::populate_slots`]). Then the slots' passability ([`World::passable_slots`]).
     /// Returns whether the slots took their units anew (`*param_3`).
     ///
     /// # Errors
@@ -157,9 +157,9 @@ impl Turns {
     }
 
     /// `FormationTransform`'s passability (`FUN_14103a1f0` after the transform) of `formation`
-    /// for group `g`, tested with the object of the group's lead ([`Turns::lead_object`], the
+    /// for group `g`, tested with the object of the group's lead ([`World::lead_object`], the
     /// lead -1 the world's object -1), else that of the first active slot's unit the world's
-    /// table holds ([`Turns::world_object`], an empty slot's -1 too; none: nothing). The slots' places are their transform positions
+    /// table holds ([`World::world_object`], an empty slot's -1 too; none: nothing). The slots' places are their transform positions
     /// (`+0x1c`, the save's `mTransformPosition`). At the first active slot whose place's tile
     /// the tester cannot stand on (`FUN_141185690`, [`crate::map::spatial::Spatial::standable`] with
     /// its master's terrain mask): the active slot nearest the group's place (3D) must be
@@ -327,7 +327,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::passable_slots`]'s reach of the active slots from the group's `position`: a
+    /// [`World::passable_slots`]'s reach of the active slots from the group's `position`: a
     /// slot the line to which hits a record (the members ignored) is unreachable; the reachable
     /// and the unreachable slots' indices, in the slots' order.
     ///
@@ -362,7 +362,7 @@ impl Turns {
         Ok((reachable, unreachable))
     }
 
-    /// [`Turns::passable_slots`]'s breadth-first search of an unreachable slot's unit from its
+    /// [`World::passable_slots`]'s breadth-first search of an unreachable slot's unit from its
     /// cell `start` through the cells it can stand on (`unit_mask`), x+1, x-1, y+1, y-1 in turn,
     /// for a reachable cell: one holding fewer than five slots takes it (counted: its tile and
     /// its count before), a fuller one has the searching cell take its place (one slot, pointing
@@ -423,7 +423,7 @@ impl Turns {
         None
     }
 
-    /// [`Turns::passable_slots`]'s step once more of a found cell (tile `found`) that is not the
+    /// [`World::passable_slots`]'s step once more of a found cell (tile `found`) that is not the
     /// nearest slot's: the way its cell points, when that cell lies on the grid, holds at most
     /// five and the line from the unit (`unit_at`) to its middle is clear (the members ignored),
     /// the slot takes it (counted); the tile the slot takes, or none when the cell pointed to is
@@ -469,7 +469,7 @@ impl Turns {
     }
 }
 
-/// [`Turns::passable_slots`]'s grid over the box, a byte per tile (`w` by `h` from the tile
+/// [`World::passable_slots`]'s grid over the box, a byte per tile (`w` by `h` from the tile
 /// (`ox`, `oz`)): bit 0 a reachable slot's cell, bits 1 to 5 the slots it holds, bits 6 and 7
 /// the way to the nearest slot.
 pub(super) struct PassGrid {

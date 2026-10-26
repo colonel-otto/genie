@@ -9,11 +9,11 @@ use crate::orders::{
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::task_finder::world::World;
+use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::{HUNT_ACTION, MOVE_ORDER};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// One unit of MOVE: an object that does not move ignores an order not queued. The unit's
     /// ignore list empties (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the
     /// order's `others` (`FUN_14118c790`). An order that is queued, or neither direct nor to a
@@ -38,7 +38,7 @@ impl Turns {
                 "a move of a unit the slice does not hold live",
             ));
         };
-        // the command's check (`FUN_140e553f0`, [`Turns::checked_units`]) dropped another
+        // the command's check (`FUN_140e553f0`, [`World::checked_units`]) dropped another
         // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
         // other's units ([`crate::world::settings::Settings::cheats_enabled`]): such a unit takes the
         // move as its own player's, the issuer only queuing it
@@ -132,7 +132,7 @@ impl Turns {
 
     /// `FUN_14106d340` on a move of the unit at `idx` to `point`: a unit with a unit AI
     /// (`FUN_140c5dc10` clears its notifies with the world time) lets its head action take the
-    /// point ([`Turns::head_takes_move`]) unless it stops after a kill (`FUN_140c41c10`); else a
+    /// point ([`World::head_takes_move`]) unless it stops after a kill (`FUN_140c41c10`); else a
     /// `MoveTo` to the point replaces its actions. True when the action took it.
     pub(crate) fn move_to_point(
         &mut self,
@@ -185,7 +185,7 @@ impl Turns {
 
     /// The unit's slot 0x340 from its unit AI's move off a footprint (slot 0x148,
     /// [`crate::objects::unit::Unit::ai_move_with`]); then what its actions let go: a counted builder
-    /// leaves its building ([`Turns::leave_builders`]), the targets go ([`Turns::release`]).
+    /// leaves its building ([`World::leave_builders`]), the targets go ([`World::release`]).
     pub(crate) fn move_aside(
         &mut self,
         player: usize,
@@ -227,12 +227,12 @@ impl Turns {
     /// Without a target the world holds (none, or one gone) the work command goes to the point,
     /// and a computer's class 54 packs instead. Neither action is held. A villager drops its
     /// town-bell flag (`FUN_1412067f0`); then the work command. A villager on a pasture (1893,
-    /// 1897) whose livestock's workers (slot 0x780, [`Turns::livestock_workers`]) are below its
+    /// 1897) whose livestock's workers (slot 0x780, [`World::livestock_workers`]) are below its
     /// owner's [`crate::gathering::pasture::PASTURE_WORKERS`] (COMISS, JBE) works the livestock
-    /// [`Turns::pasture_pick`] gives at its place with the order's flags (slot 0x7e8 again) and
+    /// [`World::pasture_pick`] gives at its place with the order's flags (slot 0x7e8 again) and
     /// then tends the pasture; none given ends the order there; a full pasture has its unit AI
     /// take a search (slot 0x38: 0x202 with the hunt action, class 49 and −1). Any other unit
-    /// leaves the pasture it tends ([`Turns::tend_pasture`], `FUN_141189ca0`).
+    /// leaves the pasture it tends ([`World::tend_pasture`], `FUN_141189ca0`).
     pub(crate) fn order_work(
         &mut self,
         player: usize,
@@ -299,7 +299,7 @@ impl Turns {
         self.tend_pasture(player, idx, tends)
     }
 
-    /// [`Turns::order_work`]'s reach against `target` (the world's player holding the order's
+    /// [`World::order_work`]'s reach against `target` (the world's player holding the order's
     /// target) when the unit `id` is not allied with it: [`work_reach`] of the gap between the
     /// two's places; none against an ally's target or none.
     pub(super) fn order_reach(
@@ -310,7 +310,7 @@ impl Turns {
         target: Option<usize>,
         master: &Master,
     ) -> Result<Option<(bool, bool)>, GenieError> {
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
@@ -331,10 +331,10 @@ impl Turns {
         })
     }
 
-    /// [`Turns::order_work`]'s pasture after the work command: the pasture the unit then tends
+    /// [`World::order_work`]'s pasture after the work command: the pasture the unit then tends
     /// (−1 for none), or none when the order ends there (no livestock given). A villager ordered
     /// onto a pasture (1893, 1897) with room for workers works the livestock
-    /// [`Turns::pasture_pick`] gives and tends the pasture; a full one has its unit AI take a
+    /// [`World::pasture_pick`] gives and tends the pasture; a full one has its unit AI take a
     /// search.
     pub(super) fn work_pasture(
         &mut self,
@@ -392,7 +392,7 @@ impl Turns {
     }
 
     /// Slot 0x138 (`FUN_141216f10`) without a target, outside slot 0x128's work command (the
-    /// unit's `+0xa14` 1): [`Turns::move_point_order_with`].
+    /// unit's `+0xa14` 1): [`World::move_point_order_with`].
     pub(crate) fn move_point_order(
         &mut self,
         player: usize,
@@ -405,7 +405,7 @@ impl Turns {
     /// Slot 0x138 (`FUN_141216f10`) without a target, the no-task end of a work command on a
     /// point: a villager drops its town-bell flag (not held otherwise), the unit AI's order queue
     /// empties (`FUN_140c5e010`) while the unit's `+0xa14` (`a14`) is set, then the move to the
-    /// point ([`Turns::move_to_point`], `FUN_14106d340`). `+0xa14` is 1 but inside slot 0x128
+    /// point ([`World::move_to_point`], `FUN_14106d340`). `+0xa14` is 1 but inside slot 0x128
     /// (`FUN_141211b80`), which holds it at its argument while its work command runs.
     pub(crate) fn move_point_order_with(
         &mut self,

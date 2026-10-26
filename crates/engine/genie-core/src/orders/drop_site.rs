@@ -5,18 +5,18 @@ use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `UNIT_ORDER`'s drop-off of a carrying unit without a gather action on top
     /// (`FUN_14161e370`'s case 8, past the Gather, Hunt and Build): a master with drop sites
-    /// (`FUN_14109e210`: one not below 0) searches them from the unit ([`Turns::ordered_drop_site`]);
+    /// (`FUN_14109e210`: one not below 0) searches them from the unit ([`World::ordered_drop_site`]);
     /// with none found, or without drop sites, the drop-site table's nearest building for the
-    /// resource it holds from its class ([`Turns::table_drop_site`]); with none, nothing. A unit
+    /// resource it holds from its class ([`World::table_drop_site`]); with none, nothing. A unit
     /// (type 70 and up) then works on it (slot 0x7e8 at (−1, −1, −1): no carried-resource test,
     /// the task filter 110 for a load of meat, wood or food, kinds 15, 1 and 0, else 5;
-    /// [`Turns::order_work`]) and, for the drop-off 8 (`way_back`), queues its way back to work
-    /// ([`Turns::queue_way_back`]).
+    /// [`World::order_work`]) and, for the drop-off 8 (`way_back`), queues its way back to work
+    /// ([`World::queue_way_back`]).
     pub(super) fn drop_off_unasked(
         &mut self,
         p: usize,
@@ -133,10 +133,10 @@ impl Turns {
 
     /// The Build's `set_state(8)` as `UNIT_ORDER`'s drop-off (slot 0x78) gives it to the builder
     /// at (`p`, `idx`): a counted builder leaves its foundation's builders first
-    /// ([`Turns::leave_builders`]); a builder that carries something (`+0x310` above 0, COMISS:
-    /// not a NaN) searches the drop-site table ([`Turns::table_drop_site`] for what it carries
+    /// ([`World::leave_builders`]); a builder that carries something (`+0x310` above 0, COMISS:
+    /// not a NaN) searches the drop-site table ([`World::table_drop_site`] for what it carries
     /// and its class) and its slot 0x820 the task on the site found (any action type, no switch,
-    /// [`Turns::find_work_task`]: its range, else the Build task's); then
+    /// [`World::find_work_task`]: its range, else the Build task's); then
     /// [`crate::construction::build::BuildAction::set_drop`], whose second targets the world releases and
     /// takes and whose notify 0x203 goes to the unit AI.
     pub(crate) fn build_drop_off_now(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
@@ -215,7 +215,7 @@ impl Turns {
     /// (`p`, `idx`) with the drop-site table's building `site` (`FUN_141658e20`) and the target
     /// its top action had (`back`, slot 0x190: the action's target id, `+0x30`, that the world
     /// holds): it works on the site at its place (slot 0x128: the carried-resource test, any task,
-    /// `+0xa14` 0, [`Turns::order_work`]); with a target its unit AI then queues the order on it
+    /// `+0xa14` 0, [`World::order_work`]); with a target its unit AI then queues the order on it
     /// (slot 0x30: `0x2db` issued by the unit, the target's master as its type and its owner's
     /// number, its place, range 0, priority 100, ready, neither at once nor in front).
     ///

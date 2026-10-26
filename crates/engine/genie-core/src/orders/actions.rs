@@ -8,10 +8,10 @@ use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::task_finder::world::World;
-use crate::world::Turns;
+use crate::unit_ai::task_finder::world::TaskWorld;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// Slot 0x178 on the object an action of `by` takes as its target: a building's
     /// (`FUN_1411dba70`) first lists an unallied taker of a foundation with a stack unit
     /// ([`Unit::taken`]); then the base take (`FUN_14119d3e0`): its worker count (`+0x644`)
@@ -21,7 +21,7 @@ impl Turns {
     pub(crate) fn take(&mut self, id: i32, by: Releaser) {
         match self.place(id) {
             Some(Place::Live(p, i)) => {
-                let world = World {
+                let world = TaskWorld {
                     players: &self.players,
                     drop_sites: &self.drop_sites,
                 };
@@ -67,7 +67,7 @@ impl Turns {
             }
             None => return Ok(()),
         };
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
@@ -135,7 +135,7 @@ impl Turns {
     /// The action list's clearing (`FUN_140a98620`) of object `idx` of player `player`: each
     /// action's teardown ([`Unit::clear_own_actions`]), then what they leave to the world: a
     /// counted builder leaves its building (`FUN_140aadbf0` before its base teardown,
-    /// [`Turns::leave_builders`]), then the targets go (slot 0x180, [`Turns::release`]). A
+    /// [`World::leave_builders`]), then the targets go (slot 0x180, [`World::release`]). A
     /// building's production is a list of its own, which stays.
     pub(crate) fn clear_actions(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
         let by = self.releaser(player, idx);
@@ -157,7 +157,7 @@ impl Turns {
     /// `TRANSFORM_OBJECT` (`RGE_Command::do_command` case 0x29): the object `id`, the player's
     /// (another player's is refused, the cheat flag `+0xb12` aside), of the trophy master
     /// (1649) takes one of the trophies 1650 to 1653 the player has (`FUN_141659d20`): slot 0x90
-    /// with 0, the building's ([`Turns::transform_building`]).
+    /// with 0, the building's ([`World::transform_building`]).
     pub(crate) fn transform_object(
         &mut self,
         player: usize,
@@ -177,7 +177,7 @@ impl Turns {
         self.transform_building(p, idx, master)
     }
 
-    /// A building's slot 0x90 (`FUN_1411e6d90`, with 0 from each caller): [`Turns::change_master`],
+    /// A building's slot 0x90 (`FUN_1411e6d90`, with 0 from each caller): [`World::change_master`],
     /// then in state 2 its build points (`+0xc50`) take the new master's build time (its first
     /// train location's time, 0 without one). The slice holds them in the building's
     /// construction record.
@@ -200,9 +200,9 @@ impl Turns {
 
     /// The player's gate toggle (`FUN_14162f8c0`, from its slots 0x340 and 0x338): a gate of its
     /// player's masters, without masters of its own ([`crate::world::Gate::other_masters`]),
-    /// changes to its master's `transform_unit` (slot 0x90, [`Turns::transform_building`]). A
+    /// changes to its master's `transform_unit` (slot 0x90, [`World::transform_building`]). A
     /// gate that shut (the new master's height above 0) kills the units in it (slot 0xd8 on
-    /// those its count finds, [`Turns::shut_in_gate`]) and takes the world time plus 1 as its
+    /// those its count finds, [`World::shut_in_gate`]) and takes the world time plus 1 as its
     /// last move time (`+0x870`).
     pub(crate) fn toggle_gate(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &self.players[player].objects[idx];

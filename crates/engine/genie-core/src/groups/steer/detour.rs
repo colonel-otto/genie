@@ -7,10 +7,10 @@ use crate::groups::steer::{
     ROUND_STILL, ROUND_TIMER,
 };
 use crate::math::fmath::{Vec3, at_most_or_unordered};
-use crate::world::Turns;
+use crate::world::World;
 use crate::{GenieError, math::fmath};
 
-impl Turns {
+impl World {
     /// The way round a record on the line to the slot (`0x141026867`..`0x1410277e5`), for member
     /// `index` (`id`) of group `group` in slot `slot`, `gap` the ground distance to it. A new path
     /// record (`FUN_14152eea0`: flags 6, made at the world's time) takes the first way that
@@ -44,7 +44,7 @@ impl Turns {
     /// as its path data, the walked level reset: as level 0 walking it (state 3,
     /// `FUN_140f9b7c0`), or, planned, as level 2 to plan (state 2, `FUN_140f9b800`), range 0, no
     /// target, its repath time kept; its own move takes the record (reason 0, the goal, timer and
-    /// distance [`ROUND_TIMER`], [`Turns::set_specific_move`]). Either way the slot takes state 0,
+    /// distance [`ROUND_TIMER`], [`World::set_specific_move`]). Either way the slot takes state 0,
     /// the member stops (slot 0x5d0) and its failures count one more. Not held: the record's id
     /// (the own move's `mPathID`, -1 here: the slice holds the path in the member's path data).
     ///
@@ -262,7 +262,7 @@ impl Turns {
         Ok(())
     }
 
-    /// The way round's short pather ([`Turns::way_round`], `FUN_140f9e540` with the record) for
+    /// The way round's short pather ([`World::way_round`], `FUN_140f9e540` with the record) for
     /// `walker` (of a `computer` player or not) from `from` to `to`, range 0, no target, `ignore`
     /// its ignore list; the record measured after (`FUN_140f95a60`). Its result.
     pub(super) fn round_short(

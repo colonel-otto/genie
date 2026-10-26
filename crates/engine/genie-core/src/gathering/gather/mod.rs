@@ -265,7 +265,7 @@ pub enum Next {
     /// sites).
     Search,
     /// State 0xf2's walk ended (`0x140a8e1d0` case 0xf1): the caller reseeds the farm
-    /// ([`crate::world::Turns::reseed`], `FUN_140a8aa60`, which sends the gatherer to build it);
+    /// ([`crate::world::World::reseed`], `FUN_140a8aa60`, which sends the gatherer to build it);
     /// without a reseed (the interface's event 0x7f, 0x9c for a gatherer not a villager, when it
     /// has a farm spot) a walk that arrived leaves a computer player's gatherer done
     /// (`set_state(1)`), a human's idle (`set_state(2)`), and a failed walk idles both

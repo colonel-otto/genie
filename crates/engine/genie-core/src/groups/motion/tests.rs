@@ -19,7 +19,7 @@ fn a_top_target_below_minus_one_is_none() {
         objects: vec![held(7), held(-3)],
         ..Player::default()
     };
-    let t = Turns::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+    let t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
     assert_eq!(t.top_target_object(&hunter(7)), 7);
     assert_eq!(t.top_target_object(&hunter(-3)), -1);
     assert_eq!(t.top_target_object(&hunter(9)), -1);
@@ -262,7 +262,7 @@ impl Fixture {
             construction_rate: 0.0,
             groups: &self.groups,
         };
-        let mut world = World {
+        let mut world = StepWorld {
             spatial: &self.spatial,
             plan: &mut plan,
             dt: 0.1,

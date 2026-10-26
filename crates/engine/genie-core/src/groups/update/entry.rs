@@ -5,14 +5,14 @@ use crate::GenieError;
 use crate::groups::WorldObject;
 use crate::groups::command::MOVE_COMMAND;
 use crate::groups::update::{ATTACK, BUILD, DELIVER_RELIC, NO_COMMAND, PICK_UP_RELIC, REPAIR};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// The groups player `p` owns update before its objects (`BaseWorld::update` calls them at
     /// `0x141551796`, then the player's own update, slot 0x100 at `0x1415518f0`, which updates
-    /// its objects): `BUnitGroup::update` ([`Turns::group_update`]) for each group of the
+    /// its objects): `BUnitGroup::update` ([`World::group_update`]) for each group of the
     /// world's list the player owns; a group whose update returns 0 goes
-    /// ([`Turns::delete_group`]), any other runs its vtable slot 8 (`FUN_141040b50`). A stopped
+    /// ([`World::delete_group`]), any other runs its vtable slot 8 (`FUN_141040b50`). A stopped
     /// player's groups wait with it.
     ///
     /// # Errors
@@ -57,9 +57,9 @@ impl Turns {
     /// A group whose update returned 0 goes (`BaseWorld::update` at `0x1415517a6`): the world's
     /// list loses it (and its count, `world+0x58`, one), then its destructor (`FUN_141006d10` ->
     /// `FUN_140fe1920`) runs. Each member the world holds whose link names the group leaves it
-    /// (`+0x6d0` -1); one that is idle ([`Turns::member_idle`], `FUN_141017f00`) stands (slot
+    /// (`+0x6d0` -1); one that is idle ([`World::member_idle`], `FUN_141017f00`) stands (slot
     /// 0x560, [`crate::movement::Mover::stand`]) and shows its standing sprite (slot 0x660,
-    /// [`Turns::show_standing`]). The rest of the destructor frees the group's memory (its
+    /// [`World::show_standing`]). The rest of the destructor frees the group's memory (its
     /// command queue emptied by `FUN_14102bb40` first); the destroyed id it hands the spectator
     /// stream (`FUN_141778770`) and its lookup of the group's target (the object, or a target
     /// group's first member, whose answer it drops) are no game state. Nothing for a group the
@@ -98,14 +98,14 @@ impl Turns {
 
     /// `BUnitGroup::update` (`FUN_14103d910`) of group `group`: true keeps the group, false (the
     /// routine's 0) has the world delete it. Flags bit 13 clears; the units the group keeps apart
-    /// are checked ([`Turns::keep_apart`], `FUN_141007ca0`); a member the world does not hold,
+    /// are checked ([`World::keep_apart`], `FUN_141007ca0`); a member the world does not hold,
     /// without a unit AI (a ghost has none), below 1 hit point (`COMISS` then `JA`: not a NaN) or
-    /// of another player leaves the group (`removeUnit` with target -1, [`Turns::remove_unit`])
+    /// of another player leaves the group (`removeUnit` with target -1, [`World::remove_unit`])
     /// and then stops (slot 0x5d0 on the object the world holds, [`crate::movement::Mover::
     /// stop`]); any such leave sets flags bit 16. A hibernating group (`mHibernating`, `+0x13c`)
-    /// runs its own check ([`Turns::hibernating_update`]) and, unless that deletes it, stays
+    /// runs its own check ([`World::hibernating_update`]) and, unless that deletes it, stays
     /// asleep (true) without motion flags bit 1; with it, and for an awake group, the update
-    /// goes on ([`Turns::awake_update`]).
+    /// goes on ([`World::awake_update`]).
     ///
     /// # Errors
     ///
@@ -134,7 +134,7 @@ impl Turns {
     }
 
     /// The members' check of `BUnitGroup::update` (`0x14103d9c0`..`0x14103daf7`): see
-    /// [`Turns::group_update`]. A member that left takes its index with it, so the next member
+    /// [`World::group_update`]. A member that left takes its index with it, so the next member
     /// is checked at the same index.
     pub(super) fn drop_lost_members(&mut self, group: i32) -> Result<(), GenieError> {
         let mut removed = false;
@@ -169,8 +169,8 @@ impl Turns {
     }
 
     /// A hibernating group's check (`0x14103db22`..`0x14103dd5b`): false deletes the group;
-    /// else the queued commands run (`checkQueuedOrders`, [`Turns::check_queued_orders`]) when
-    /// [`Turns::hibernation`] asks for them.
+    /// else the queued commands run (`checkQueuedOrders`, [`World::check_queued_orders`]) when
+    /// [`World::hibernation`] asks for them.
     pub(super) fn hibernating_update(&mut self, group: i32) -> Result<bool, GenieError> {
         let Some(runs_queue) = self.hibernation(group)? else {
             return Ok(false);
@@ -183,7 +183,7 @@ impl Turns {
 
     /// What a hibernating group does by its current command (`+0x3a8`): None deletes it, else
     /// whether its queued commands run. Commands 132 and 136 (a relic's pick-up and delivery)
-    /// and 9 (an attack) wait while the group's target is pending ([`Turns::target_pending`],
+    /// and 9 (an attack) wait while the group's target is pending ([`World::target_pending`],
     /// `FUN_1410176b0`); otherwise (the command's name logged, `FUN_1410171d0`) the queued
     /// commands run. A repair (106) waits while its target is below its master's hit points
     /// (`COMISS` then `JNC`: a NaN waits too) and its owner and the group's count each other as

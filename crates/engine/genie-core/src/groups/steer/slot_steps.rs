@@ -8,11 +8,11 @@ use crate::groups::steer::{
     BUILDING_KIND, CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, MOVES, SLOT_REACH,
 };
 use crate::math::fmath::{Vec3, at_most_or_unordered, below_or_unordered};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_141025fb0` for a slot whose time is past (`0x1410263e4`..`0x1410267c5`): true when
-    /// it ends the routine (slot state 2 or 3). See [`Turns::steer_to_slot`].
+    /// it ends the routine (slot state 2 or 3). See [`World::steer_to_slot`].
     pub(super) fn slot_due(
         &mut self,
         group: i32,
@@ -114,7 +114,7 @@ impl Turns {
     }
 
     /// The steering of a member on a clear line to its slot (`0x1410277eb`..`0x141027bff`):
-    /// see [`Turns::steer_to_slot`]. `gap` is the ground distance to the slot.
+    /// see [`World::steer_to_slot`]. `gap` is the ground distance to the slot.
     pub(super) fn steer_member(
         &mut self,
         group: i32,

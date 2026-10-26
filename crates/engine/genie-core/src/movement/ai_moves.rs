@@ -46,7 +46,7 @@ impl Unit {
     }
 
     /// The unit's slot 0x340 (`FUN_141216c50`) on a move to `m.point` its unit AI gives it (also
-    /// its move off a footprint, [`crate::world::Turns::move_aside`]), the unit of `class` of
+    /// its move off a footprint, [`crate::world::World::move_aside`]), the unit of `class` of
     /// player `player`. An unpacked trebuchet (class 54) packs instead (its Pack action,
     /// `FUN_140ad4ff0` through slot 0x808), which is not modelled; a packed one (class 51) whose
     /// head action packs or unpacks (types `0x7c`, `0x7d`) does nothing, and the slice holds no such
@@ -336,7 +336,7 @@ pub(crate) enum PointMove {
     /// if any, which the caller releases.
     Taken(Option<i32>),
     /// A Repair answered 1 (`FUN_140ad9700`): it walks to the point; the target it let go, and
-    /// the target whose repairers a counted repairer left ([`crate::world::Turns::leave_builders`]).
+    /// the target whose repairers a counted repairer left ([`crate::world::World::leave_builders`]).
     Repairs(Option<i32>, Option<i32>),
     /// The Transport answers 1 (`0x140aa3e40`): it sails to the point, which the caller runs
     /// with the map ([`Unit::transport_sail`]).

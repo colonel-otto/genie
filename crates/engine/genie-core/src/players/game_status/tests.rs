@@ -33,7 +33,7 @@ fn queue(entries: &[Entry]) -> Queue {
 
 /// Gaia and two players; player 1's town centre (class 3) makes a villager its queue paid
 /// 46 food for, a minute and more into the game.
-fn game() -> Turns {
+fn game() -> World {
     let mut attributes = vec![0.0; 250];
     (attributes[80], attributes[81]) = (1.0, 1.0);
     let tc = Unit {
@@ -61,7 +61,7 @@ fn game() -> Turns {
         relations: vec![0, 0, 3],
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         61_000,
         1,
         0,
@@ -129,7 +129,7 @@ fn a_defeat_names_the_player_with_the_most_of_its_own_attribute() {
     assert_eq!(t.players[2].history.events, []);
 }
 
-/// Slot 0x38 of the actions with their own ([`Turns::halt_other`]), each true: the Gather
+/// Slot 0x38 of the actions with their own ([`World::halt_other`]), each true: the Gather
 /// idles (state 2), the Build and the Repair halt (state 2), the Attack ends (state 1, its
 /// animation at speed 1, standing) and the Artifact checks again (state 6); a kind it does
 /// not model is refused.
@@ -455,7 +455,7 @@ fn a_cancel_of_all_goes_on_into_villagers_and_stops_at_a_research() {
 /// Player 1's town centre researching technology 22 three times over (one entry), the
 /// research running with `progress` done: each paid 50 gold, and the `.dat` lists 20 wood
 /// the building pays (flag 2).
-fn researching(progress: f32) -> Turns {
+fn researching(progress: f32) -> World {
     use crate::technology::{Cost, Location, TechDef, TechState};
     let mut t = game();
     let entry = Entry {

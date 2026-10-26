@@ -6,15 +6,15 @@ use crate::orders::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
-    /// PATROL (0x15): the command's check (`FUN_140e55590`, [`Turns::command_check`]: of the
+impl World {
+    /// PATROL (0x15): the command's check (`FUN_140e55590`, [`World::command_check`]: of the
     /// first 60 ids, 500 for a computer player, one the world lacks or another player's becomes
     /// −1, and a human player's command left with none is refused), then `FUN_140e69cc0`: the
     /// waypoints (1 to 10, the decoder's), those first ids, the gone ones null (`FUN_140e6b750`),
     /// the analytics record (`FUN_1409648c0`, no simulation state) and the order
-    /// ([`Turns::patrol_order`]).
+    /// ([`World::patrol_order`]).
     pub(crate) fn patrol(
         &mut self,
         player: usize,
@@ -33,12 +33,12 @@ impl Turns {
         self.patrol_order(&ids[..ids.len().min(cap)], waypoints, reset)
     }
 
-    /// `ATTACK_MOVE` (0x21): the command's check (`FUN_140e54490`, [`Turns::command_check`], as
+    /// `ATTACK_MOVE` (0x21): the command's check (`FUN_140e54490`, [`World::command_check`], as
     /// PATROL's), then `FUN_140e66200`: with `+0x9` it takes the first waypoint out of the local
     /// player's list of attack-move points (`FUN_140e640a0`, the interface's: no simulation
     /// state); the first 60 ids (500 for a computer player) go, gone ones null
     /// (`FUN_140e6b750`), with the waypoints (1 to 10, the decoder's) and the analytics record
-    /// (`FUN_1409648c0`) to `FUN_14161b970` without a target ([`Turns::sweep_order`]).
+    /// (`FUN_1409648c0`) to `FUN_14161b970` without a target ([`World::sweep_order`]).
     ///
     /// # Errors
     ///
@@ -65,18 +65,18 @@ impl Turns {
     /// first each listed unit's AI (the gone entries count in the list) takes an idle timer of
     /// 0 and an adjusted idle timeout and secondary timer of [`patrol_timeout`]; with `reset`
     /// (`+0x8`) its saved patrol goes (`zeroPatrolInformation`). The splitter (`FUN_140fd9ae0`, no
-    /// Ctrl, [`Turns::split`]) parts the units. Each of its groups: a new group of the split's
-    /// owner (`FUN_14152efc0`) takes them ([`Turns::add_to_group`]), its statistics and its
-    /// place ([`Turns::group_statistics`], [`Turns::set_initial_position`]), unless they are a
-    /// group the world holds whole, which the splitter keeps ([`Turns::keep_group`]); one the
+    /// Ctrl, [`World::split`]) parts the units. Each of its groups: a new group of the split's
+    /// owner (`FUN_14152efc0`) takes them ([`World::add_to_group`]), its statistics and its
+    /// place ([`World::group_statistics`], [`World::set_initial_position`]), unless they are a
+    /// group the world holds whole, which the splitter keeps ([`World::keep_group`]); one the
     /// world does not hold takes nothing. Each listed group (60 at most, `DAT_143f152b8`) takes
     /// the command count as its differentiator, the waypoints its place passes ([`waypoints_from`])
     /// but the last as its own (`FUN_14100f6b0`, the target forgotten) and a patrol's leg to the
-    /// last ([`Turns::command_move_to`]: range 0, the target forgotten, direct). Then every
+    /// last ([`World::command_move_to`]: range 0, the target forgotten, direct). Then every
     /// listed group lists them all (`FUN_1410395a0`) and the command count goes on. Each loose
-    /// unit last ([`Turns::patrol_unit`]).
+    /// unit last ([`World::patrol_unit`]).
     ///
-    /// [`Turns::patrol_unit`]: crate::world::Turns::patrol_unit
+    /// [`World::patrol_unit`]: crate::world::World::patrol_unit
     pub(crate) fn patrol_order(
         &mut self,
         ids: &[i32],
@@ -92,7 +92,7 @@ impl Turns {
         self.sweep_order(ids, waypoints, sweep)
     }
 
-    /// [`Turns::sweep_order`]'s first step of an attack move: each listed unit's AI, sleeping
+    /// [`World::sweep_order`]'s first step of an attack move: each listed unit's AI, sleeping
     /// or not, resets as for an order.
     pub(super) fn reset_for_attack_move(&mut self, ids: &[i32]) {
         for &id in ids {
@@ -107,7 +107,7 @@ impl Turns {
         }
     }
 
-    /// [`Turns::sweep_order`]'s timers: each listed unit's AI idles from 0 to its place's patrol
+    /// [`World::sweep_order`]'s timers: each listed unit's AI idles from 0 to its place's patrol
     /// timeout ([`patrol_timeout`]), its patrol zeroed with `reset`.
     pub(super) fn start_patrol_timers(&mut self, ids: &[i32], reset: bool) {
         let dt = self.dt;
@@ -124,11 +124,11 @@ impl Turns {
         }
     }
 
-    /// `FUN_14161b970` without a target for PATROL ([`Turns::patrol_order`]) and `ATTACK_MOVE`: an
+    /// `FUN_14161b970` without a target for PATROL ([`World::patrol_order`]) and `ATTACK_MOVE`: an
     /// attack move first resets each listed unit's AI as for an order (`FUN_141631040`,
     /// [`crate::unit_ai::UnitAi::reset_for_order`]); then as PATROL's, but that a group's move
     /// to the last waypoint holds (`commandMoveTo` with `param_6` 0, `param_8` 1) and each loose
-    /// unit's is [`Turns::sweep_unit`]'s.
+    /// unit's is [`World::sweep_unit`]'s.
     ///
     /// # Errors
     ///
@@ -287,7 +287,7 @@ impl Turns {
     /// is not held. Of the waypoints its place passes ([`waypoints_from`]) none leaves it there;
     /// else each but the last becomes its own (slot 0x448 at its height) and it moves to the last
     /// (slot 0x340: range 0, forced for a patrol only, walking): of type 70 or 80 through
-    /// `FUN_141216c50` ([`Turns::move_aside`]; type 50 and 60 run `FUN_1410866e0` without its
+    /// `FUN_141216c50` ([`World::move_aside`]; type 50 and 60 run `FUN_1410866e0` without its
     /// class test, which only masters of type 70 meet), types 30 and 40 not at all
     /// (`FUN_14106d330`). Its unit AI takes the patrol order (an attack move's `0x2dd`) and the
     /// move action (`FUN_140c64b60` with 1, `FUN_140c64b50`) and no target at the command's last

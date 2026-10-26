@@ -8,12 +8,12 @@ use crate::garrison::{
 };
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
-    /// The work command's Enter (its action type 3, [`Turns::new_enter`]), the unit AI hearing of
+impl World {
+    /// The work command's Enter (its action type 3, [`World::new_enter`]), the unit AI hearing of
     /// it (slot 0x828: the enter order and action, the target with its class and the work's
-    /// point), then its install ([`Turns::install_enter`]).
+    /// point), then its install ([`World::install_enter`]).
     pub(crate) fn start_enter(
         &mut self,
         player: usize,
@@ -41,9 +41,9 @@ impl Turns {
     /// Slot 0x3a0 (`FUN_1410847e0`, the enter command) of the unit at `idx` of `player` on
     /// `target`, `forced` its third argument: a target the world does not hold is false;
     /// unforced, a unit entering the target already (its top action an Enter on it) is true.
-    /// Slot 0x820 ([`Turns::find_work_task`]) looks for a task on the target with the garrison
+    /// Slot 0x820 ([`World::find_work_task`]) looks for a task on the target with the garrison
     /// filter (3) and the switch (the unit takes the master that gave it, slot 0x90): none is
-    /// false; else its Enter ([`Turns::enter_with`]): true.
+    /// false; else its Enter ([`World::enter_with`]): true.
     ///
     /// # Errors
     ///
@@ -72,8 +72,8 @@ impl Turns {
     }
 
     /// The unit's enter command its unit AI gave ([`crate::unit_ai::world_view::EnterOrder`]), after the
-    /// update: the master switch (slot 0x90 with 0, [`Turns::change_master`]), then the Enter
-    /// ([`Turns::enter_with`]).
+    /// update: the master switch (slot 0x90 with 0, [`World::change_master`]), then the Enter
+    /// ([`World::enter_with`]).
     ///
     /// # Errors
     ///
@@ -90,10 +90,10 @@ impl Turns {
         self.enter_with(player, idx, order.target, &order.task, order.under_artifact)
     }
 
-    /// The enter command's Enter on `task` (`FUN_140a855d0`, [`Turns::new_enter`]): under an
+    /// The enter command's Enter on `task` (`FUN_140a855d0`, [`World::new_enter`]): under an
     /// Artifact on top (`under_artifact`, read before the task search) it would become the
     /// Artifact's sub-action, which is not modelled; else the action list empties and the Enter
-    /// is installed (slot 0x808, [`Turns::install_enter`]).
+    /// is installed (slot 0x808, [`World::install_enter`]).
     ///
     /// # Errors
     ///
@@ -112,7 +112,7 @@ impl Turns {
 
     /// The Enter's constructor (`FUN_140a855d0`) on `target` with `task`: its target, an annex
     /// its main building; the point [`meeting`] gives at the target's height
-    /// ([`Turns::enter_meeting`]); it takes the target (slot 0x178). With the target and its
+    /// ([`World::enter_meeting`]); it takes the target (slot 0x178). With the target and its
     /// class.
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting
@@ -151,8 +151,8 @@ impl Turns {
     /// The Enter's install (slot 0x808): the action list empties and the Enter starts (slot 5,
     /// `FUN_140a86f20`): a unit inside an object (`set_state(13)`) and a target without room
     /// (`FUN_140a864d0`, `set_state(11)`) are not modelled; else its `set_state(4)`
-    /// ([`EnterAction::walk_again`]): a unit in reach enters at once ([`Turns::enter_now`]),
-    /// else it walks, a transport to the point first ([`Turns::move_transport`]).
+    /// ([`EnterAction::walk_again`]): a unit in reach enters at once ([`World::enter_now`]),
+    /// else it walks, a transport to the point first ([`World::move_transport`]).
     pub(super) fn install_enter(
         &mut self,
         player: usize,
@@ -164,10 +164,10 @@ impl Turns {
         self.install_enter_as(player, idx, target, action, task, false)
     }
 
-    /// [`Turns::install_enter`], or with `sub` the Enter as the sub-action of the Artifact on top
+    /// [`World::install_enter`], or with `sub` the Enter as the sub-action of the Artifact on top
     /// (`FUN_1410847e0`): the Artifact's sub-action goes (`FUN_140a98e20`,
     /// [`crate::ownership::artifact::Artifact::hold_enter`]: an Enter lets its target go, slot 0x180
-    /// ([`Turns::release`]), and a walking `MoveTo`'s teardown stops the unit) and the Enter
+    /// ([`World::release`]), and a walking `MoveTo`'s teardown stops the unit) and the Enter
     /// starts in its list (`FUN_140a977e0`), the Artifact's update running it from then on.
     pub(super) fn install_enter_as(
         &mut self,
@@ -298,7 +298,7 @@ impl Turns {
     /// The transport's part of the Enter's `set_state(4)` with code 1: its slot 0x3d8
     /// (`FUN_14114ffc0`) asks whether it reaches within 1 of the point's tile (the point
     /// truncated, [`crate::movement::Mover::reaches`]); then its slot 0x340 (`FUN_141216c50`:
-    /// [`Turns::move_aside`], range 0, forced, running) moves it to the point at its height. One
+    /// [`World::move_aside`], range 0, forced, running) moves it to the point at its height. One
     /// that cannot reach it is [`UNREACHED`].
     pub(crate) fn move_transport(
         &mut self,
@@ -323,7 +323,7 @@ impl Turns {
         self.ship_move(transport, to)
     }
 
-    /// The transport's slot 0x340 (`FUN_141216c50`, [`Turns::move_aside`]: range 0, forced,
+    /// The transport's slot 0x340 (`FUN_141216c50`, [`World::move_aside`]: range 0, forced,
     /// running) to `to`, where it meets an entering unit.
     pub(crate) fn ship_move(&mut self, ship: i32, to: [f32; 3]) -> Result<(), GenieError> {
         let Some(crate::orders::Place::Live(p, i)) = self.place(ship) else {

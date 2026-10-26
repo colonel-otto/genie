@@ -8,7 +8,7 @@ use crate::{
 };
 use genie_core::GenieError;
 use genie_core::vision::visibility::Visibility;
-use genie_core::world::Turns;
+use genie_core::world::World;
 use genie_rec::de;
 use genie_save::Header;
 use genie_save::generated::world::RgeStaticObject;
@@ -380,7 +380,7 @@ pub fn turns_from_save(
     start_tick: usize,
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
-) -> Result<Turns, Error> {
+) -> Result<World, Error> {
     let mut turns = run_from_save(save, recording, start_tick, 0, masters, dumps)?;
     turns.sync_world();
     Ok(turns)

@@ -16,7 +16,7 @@
 use crate::GenieError;
 use crate::construction::build::BuildAction;
 use crate::orders::Place;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The snap's half tile and its step up (`FUN_141123ac0`).
 const HALF: f32 = crate::math::image::wall::HALF;
@@ -184,15 +184,15 @@ pub fn share(i: usize, capable: usize, placed: usize) -> Option<usize> {
     }
 }
 
-impl Turns {
+impl World {
     /// `BUILD_WALL` ([`Wall`]) for its player: a target other than −1, a master the player has not
     /// got or not a building does nothing, and so does a human's line without a builder that can
-    /// build it ([`Turns::builds`]). The foundations go down tile by tile (the placement
-    /// test with the explored test on, then the payment's, [`Turns::found`]); then each builder
+    /// build it ([`World::builds`]). The foundations go down tile by tile (the placement
+    /// test with the explored test on, then the payment's, [`World::found`]); then each builder
     /// the command check holds, sorted by its footprint's distance to the line's last tile
     /// (squared, the farthest first), takes its foundation ([`share`]) directly
-    /// ([`Turns::build_task`], [`Turns::build_directly`]) or, on the queue path, a build order on
-    /// each foundation ([`Turns::queue_build`]). Not held: the interface's view
+    /// ([`World::build_task`], [`World::build_directly`]) or, on the queue path, a build order on
+    /// each foundation ([`World::queue_build`]). Not held: the interface's view
     /// (`FUN_140e6e140`); a committing line's queue path ends in the readiness pass with 0
     /// (`FUN_140c42b60` at 0x140e7be4b, [`crate::orders::readiness`]). Not modelled: the
     /// population test of a master without `+0x5f0` (as for BUILD), more builders than the game's
@@ -239,9 +239,9 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::build_wall`]'s foundations, tile by tile along the line's segments: each tile
+    /// [`World::build_wall`]'s foundations, tile by tile along the line's segments: each tile
     /// snapped for a building of `radius` that passes the placement test (with the explored test
-    /// on) gets a foundation ([`Turns::found`]) while the player affords one; the foundations'
+    /// on) gets a foundation ([`World::found`]) while the player affords one; the foundations'
     /// ids and places.
     ///
     /// # Errors
@@ -275,7 +275,7 @@ impl Turns {
         Ok(placed)
     }
 
-    /// [`Turns::build_wall`]'s builders the command check holds, sorted by their footprints'
+    /// [`World::build_wall`]'s builders the command check holds, sorted by their footprints'
     /// squared distance to the line's last tile, the farthest first (the game's insertion sort).
     ///
     /// # Errors
@@ -306,10 +306,10 @@ impl Turns {
         Ok(sorted)
     }
 
-    /// [`Turns::build_wall`]'s builder `id` and its foundation (`foundation` at `at`, its share
-    /// of `placed`): directly ([`Turns::build_task`], [`Turns::build_directly`]) without a unit
+    /// [`World::build_wall`]'s builder `id` and its foundation (`foundation` at `at`, its share
+    /// of `placed`): directly ([`World::build_task`], [`World::build_directly`]) without a unit
     /// AI, or off the queue path (a queued line, or a committing one with an order not ready);
-    /// else a build order on each foundation ([`Turns::queue_build`]), a committing line's
+    /// else a build order on each foundation ([`World::queue_build`]), a committing line's
     /// readiness pass with 0 after.
     ///
     /// # Errors

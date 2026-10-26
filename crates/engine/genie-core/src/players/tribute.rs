@@ -4,7 +4,7 @@
 
 use crate::GenieError;
 use crate::math::fmath::maxss;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count
 /// of the market, 84, or of 1647 above 0).
@@ -47,7 +47,7 @@ pub fn settle(have: f32, gift: Gift) -> (f32, f32) {
     (given, given + extra)
 }
 
-impl Turns {
+impl World {
     /// `FUN_1416259e0`: player `p` may pay tribute, its tracker counting a market or a 1647
     /// (`FUN_140b26630`: a master the player has, `FUN_141659d20`, else none; the count of its
     /// done list, `FUN_14104eea0`).
@@ -60,7 +60,7 @@ impl Turns {
     }
 
     /// `FUN_140e7d040`: player `from` gives player `to` its `gifts` ([`settle`]), unless the two
-    /// are one or `from` has no market ([`Turns::pays_tribute`]). For each resource entry the
+    /// are one or `from` has no market ([`World::pays_tribute`]). For each resource entry the
     /// receiver gains the amount and the giver loses it with the fee (the player's slot 0xf8,
     /// `FUN_141616820`, with 0 and 1: no gathered totals); the giver counts it in attributes 53
     /// and 450 + `to` and with the fee in 175, the receiver in 171 and 475 + `from`; then the
@@ -145,13 +145,13 @@ mod tests {
 
     /// Players 1 and 2, each with 600 attributes and 500 of each resource, player 1 a market
     /// (master 84) when `market`.
-    fn world(market: bool) -> Turns {
+    fn world(market: bool) -> World {
         let player = || Player {
             resources: [500.0; 4],
             attributes: vec![0.0; 600],
             ..Player::default()
         };
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,

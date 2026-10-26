@@ -60,7 +60,7 @@ impl UnitAi {
     /// `BuildObject` (slot 0xf0, `FUN_140c47d80`) on foundation `target`, `force`d or off the
     /// build action value (`0x25a`): the unit's build command (slot 0x380), which the caller runs
     /// after the update in its order ([`Effect::BuildObject`]; one that does not take is not
-    /// modelled, `Turns::build_command`), then the build action value (the last keeping the old)
+    /// modelled, `World::build_command`), then the build action value (the last keeping the old)
     /// and the foundation as the target at its place with its class as the world holds it, else
     /// class −1 at (0, 0, 0) (the target and class before becoming the last). True when it builds.
     ///
@@ -321,7 +321,7 @@ impl UnitAi {
     /// Slot 0x230's case for the order on a target (`0x2db`, `0x325`): on a target the world holds,
     /// the unit's slot 0x128 on it at its place, then the tail with the order value the AI holds
     /// after it ("the order the work gave"), both the caller's ([`Effect::OrderOnTarget`],
-    /// `Turns::order_on_target`). On a gone target: without its type (`+0x30` −1), the move to
+    /// `World::order_on_target`). On a gone target: without its type (`+0x30` −1), the move to
     /// the order's point within its range (slot 0x130, forced and walking) and, taken, the tail
     /// with the order on a target. With its type (the class of that master of the target's
     /// owner `+0x10`, `FUN_14152fe40`, [`UnitSide::master_class`]; without an owner the type is

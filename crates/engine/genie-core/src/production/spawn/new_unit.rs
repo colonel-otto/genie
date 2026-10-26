@@ -12,12 +12,12 @@ use crate::production::IN_PRODUCTION;
 use crate::production::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
 use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi, factory_type};
 use crate::vision::visibility::{Seer, capture_kind};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_140ad0240`: the unit of `master` spawns beside the building at `i`. The spawn point
     /// ([`spawn_point`], from `FUN_140ace630`), then the master's slot 0x40 at the building's
-    /// height (the ground's then, [`Turns::combat_object`]). Then attribute 81 lowers by its
+    /// height (the ground's then, [`World::combat_object`]). Then attribute 81 lowers by its
     /// population, the building notifies its unit AI 506
     /// with 619, and the gather point's work comes (`FUN_140ace9c0`): `+0x7f9` (waiting to move)
     /// set, the work command on the gather point's target at the point (slot 0x128 with 1). A

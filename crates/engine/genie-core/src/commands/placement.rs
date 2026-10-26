@@ -2,9 +2,9 @@
 //! builders, the placement test and the payment.
 
 use crate::GenieError;
-use crate::world::{FARM, RICE_FARM, Turns};
+use crate::world::{FARM, RICE_FARM, World};
 
-impl Turns {
+impl World {
     /// BUILD's first step (`FUN_140e7a400`): a farm (master 50) whose point's tile (truncated) is
     /// mangrove shallows or forest (terrains 54, 55, `FUN_1413fc100`) or a rice farm's (63 to 67,
     /// `FUN_1413fc220`) is a rice farm (1187); a point off the map keeps the farm.
@@ -43,7 +43,7 @@ impl Turns {
     }
 
     /// BUILD's builders' test (`FUN_140e7a400` after the pending debit): a human player's BUILD
-    /// needs one unit of the packet that can build the master ([`Turns::builds`]; one the world
+    /// needs one unit of the packet that can build the master ([`World::builds`]; one the world
     /// holds, `FUN_140e6bad0`, follows from it), else it places nothing; a computer's passes.
     pub(crate) fn build_has_builder(
         &self,
@@ -94,7 +94,7 @@ impl Turns {
         self.placement_code_beside(player, master, at, human, &[])
     }
 
-    /// [`Turns::placement_code`] whose scan passes over the objects `own` (the test's `p12` and
+    /// [`World::placement_code`] whose scan passes over the objects `own` (the test's `p12` and
     /// its annexes).
     pub(crate) fn placement_code_beside(
         &self,

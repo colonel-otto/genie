@@ -4,15 +4,15 @@ use crate::GenieError;
 use crate::orders::{
     Interact, MAX_UNGROUPED, MOVING, Split, Splittable, centroid, splits_together,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// INTERACT (`0x140e68b90`) to its units, after their unit AIs reset. The splitter
-    /// ([`Turns::loose_units`]) leaves the units out of any group; several of a human player
-    /// whose box ([`Turns::order_spread`]) is narrow enough take places around the order's point
+    /// ([`World::loose_units`]) leaves the units out of any group; several of a human player
+    /// whose box ([`World::order_spread`]) is narrow enough take places around the order's point
     /// at their offsets from their centroid (the loop of `LAB_140e6920a`), any other each the
     /// point itself (the loop of `LAB_140e69a3c`), in the splitter's order
-    /// ([`Turns::interact_unit`]). A single unit the world does not hold takes nothing.
+    /// ([`World::interact_unit`]). A single unit the world does not hold takes nothing.
     pub(crate) fn interact(
         &mut self,
         player: usize,
@@ -51,13 +51,13 @@ impl Turns {
         Ok(())
     }
 
-    /// The units of an order that move alone ([`Turns::split`] without Ctrl held); a group it
+    /// The units of an order that move alone ([`World::split`] without Ctrl held); a group it
     /// makes is not modelled.
     pub(crate) fn loose_units(&mut self, units: &[i32]) -> Result<Vec<i32>, GenieError> {
         self.loose_units_kept(units, &|_| true)
     }
 
-    /// [`Turns::loose_units`] where, after the sort, `kept` drops units (the garrison command's
+    /// [`World::loose_units`] where, after the sort, `kept` drops units (the garrison command's
     /// test, `FUN_140fd9ae0` for command `0x2713`).
     pub(crate) fn loose_units_kept(
         &mut self,
@@ -274,7 +274,7 @@ impl Turns {
     }
 
     /// The loose units of a MOVE or an INTERACT of `player` leave their groups (`FUN_14102c160`
-    /// with 0 on the group of each one's `+0x6d0` the world holds, [`Turns::leave_group_of`]),
+    /// with 0 on the group of each one's `+0x6d0` the world holds, [`World::leave_group_of`]),
     /// in order. With more than one loose unit of a player whose lobby entry is not a computer's
     /// (`FUN_140d61870`) the routine's target is -1 (MOVE `FUN_140e67800` at `0x140e67e5d`,
     /// INTERACT `FUN_140e68b90` at `0x140e6913c`); else it is the order's target object's id

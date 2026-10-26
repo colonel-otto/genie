@@ -7,9 +7,9 @@ use crate::objects::lifecycle::seconds;
 use crate::objects::unit::Step;
 use crate::ownership::capture::Captured;
 use crate::unit_ai::unit::AiResume;
-use crate::world::{PlayerFrame, Turns};
+use crate::world::{PlayerFrame, World};
 
-impl Turns {
+impl World {
     /// One world update of `dt` game milliseconds without commands.
     pub fn tick(&mut self, dt: u32) {
         self.tick_with(dt, &[]);
@@ -19,7 +19,7 @@ impl Turns {
     /// `RGE_Command__do_commands`, before `FUN_141552990`): the update's count and the world's
     /// time go on by `dt`, the streams take the frame seed and `commands` run; no player updates.
     /// For a check of the commands against the game's state there (the tick oracle's
-    /// `snapshot_at` at `0x141552990`); [`Turns::tick_with`] runs it first.
+    /// `snapshot_at` at `0x141552990`); [`World::tick_with`] runs it first.
     pub fn command_phase(&mut self, dt: u32, commands: &[Command]) {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
@@ -124,7 +124,7 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// One world update of `dt` game milliseconds, with the commands recorded in it.
     ///
     /// # Panics
@@ -258,7 +258,7 @@ impl Turns {
                         // the old owner's list loses them (FUN_1411664a0, the last in each
                         // place; the loop goes on past the first) and the new owner's gains
                         // them (FUN_141616200), each with its attributes
-                        // ([`Turns::hand_over_attributes`])
+                        // ([`World::hand_over_attributes`])
                         let mut moved = Vec::new();
                         if main {
                             moved.push(player.objects.swap_remove(i));
@@ -345,7 +345,7 @@ impl Turns {
         let _ = self.streams.set_last_randoms();
         // World::update's last step (0x1415e9266), whatever dt: the world's slot 0x78 with 1
         // (FUN_1415e92b0): the players' masks again and the town centres' flares
-        // (FUN_141552df0, [`Turns::rebuild_vision`]); its UI refresh is not simulation. Masks the
+        // (FUN_141552df0, [`World::rebuild_vision`]); its UI refresh is not simulation. Masks the
         // slice cannot rebuild leave every player's sight in doubt, as after the load
         if let Err(e) = self.rebuild_vision() {
             for p in 0..self.players.len() {

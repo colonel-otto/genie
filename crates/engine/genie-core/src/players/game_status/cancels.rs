@@ -6,17 +6,17 @@ use crate::players::game_status::{
     CURRENT_AGE, ONE_UNIT_AGE, ONE_UNIT_MODE, VILLAGER_FEMALE, VILLAGER_MALE,
 };
 use crate::production::{Making, refund, refund_research};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_1411cff00`, the cancel of the whole queue of the building at `idx` of player `p`,
     /// entry by entry. A unit entry: each unit gets its refund ([`refund`]) and the tracker its
     /// place back (the counter one less, [`crate::players::tracker::Tracker::unplace`]); attribute 80
     /// lowers by the population times the count (slot 0xf8), and the tracker's counter by the
     /// count once more. A research entry, for a player with a tech tree: its count's refund
-    /// ([`Turns::refund_researches`]). Then the interface's `+0xc02` (the local player's event
+    /// ([`World::refund_researches`]). Then the interface's `+0xc02` (the local player's event
     /// 0x7d) is left; the entries go, the production list's action goes
-    /// ([`Turns::end_production_action`]), the change counter grows and the total is 0.
+    /// ([`World::end_production_action`]), the change counter grows and the total is 0.
     pub(crate) fn cancel_queue(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let Some(production) = self.players[p].objects[idx].production.as_ref() else {
             return Ok(());
@@ -115,14 +115,14 @@ impl Turns {
     /// `idx` of player `p`: the entry of the `index`-th unit
     /// ([`crate::production::Queue::entry_of_unit`]; none past the last unit) is cancelled.
     /// A unit entry with `all` (the command's `+0x1d`) gives up to five of its kind back
-    /// ([`Turns::cancel_five`]); without, one unit ([`Turns::give_back_one`]). A research entry,
+    /// ([`World::cancel_five`]); without, one unit ([`World::give_back_one`]). A research entry,
     /// for a player with a tech tree: for the first unit the list's first action (the research)
     /// loses its progress (`+0x70`) and the technology its work done; then one research, five
-    /// with `all`, goes ([`Turns::cancel_some`] with the entry and its technology). Otherwise
+    /// with `all`, goes ([`World::cancel_some`] with the entry and its technology). Otherwise
     /// (one unit, or a research entry of a player without a tech tree, which gives nothing
     /// back) the entry's count, the total and the change counter lower, an emptied entry going
     /// ([`crate::production::Queue::close`]), and for the first unit (index 0) the production
-    /// list's action goes ([`Turns::end_production_action`]; the interface's `+0xc02` and the
+    /// list's action goes ([`World::end_production_action`]; the interface's `+0xc02` and the
     /// local player's event 0x7d are left).
     pub(crate) fn cancel_queued(
         &mut self,
@@ -211,7 +211,7 @@ impl Turns {
     /// `index`-th unit of the queue of the building at `idx` of player `p`: while the entry at
     /// `e` is a unit entry with units of the first entry's master or of a villager's (83, 293:
     /// the two sexes count as one kind), at most what is left of five go
-    /// ([`Turns::cancel_some`] with its master, from `index`). When the entry at `e` is then a
+    /// ([`World::cancel_some`] with its master, from `index`). When the entry at `e` is then a
     /// research's, or `e` is past the last entry, `e` steps back one; the loop ends once five
     /// went, the queue is empty, or the entry at `e` is a research's, empty or of another
     /// kind. A step back from the first entry reads before the buffer in the game (heap memory
@@ -223,7 +223,7 @@ impl Turns {
         index: u32,
         e: usize,
     ) -> Result<(), GenieError> {
-        fn queue(t: &Turns, p: usize, idx: usize) -> &crate::production::Queue {
+        fn queue(t: &World, p: usize, idx: usize) -> &crate::production::Queue {
             &t.players[p].objects[idx]
                 .production
                 .as_ref()
@@ -278,13 +278,13 @@ impl Turns {
     /// `FUN_1411d61e0`, the cancel of `count` of master `master` (or of technology `tech`, not
     /// −1) in the queue of the building at `idx` of player `p`, from entry `from` (held to the
     /// last). A research: the entry at `from` gives back what its researches paid
-    /// ([`Turns::refund_researches`], its count at most the entry's). A unit: the first entry
+    /// ([`World::refund_researches`], its count at most the entry's). A unit: the first entry
     /// at `from` or before it of that master (none: nothing) gives back its units, at most its
-    /// count ([`Turns::cancel_units`]), and the tracker's counter lowers by the count once more.
+    /// count ([`World::cancel_units`]), and the tracker's counter lowers by the count once more.
     /// The entry's count, the total and the change counter lower; an emptied entry goes
     /// ([`crate::production::Queue::close`]; a research's leaves the train times in their
     /// slots). For the first entry the production list's action goes
-    /// ([`Turns::end_production_action`]; the interface's `+0xc02` and the local player's event
+    /// ([`World::end_production_action`]; the interface's `+0xc02` and the local player's event
     /// 0x7d are left) unless a villager's entry went, the cancel did not start at the first
     /// unit, and a villager's entry with units followed it (the make action goes on for the
     /// other sex).

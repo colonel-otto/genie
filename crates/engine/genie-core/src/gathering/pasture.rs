@@ -7,7 +7,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::master_type::BUILDING;
 use crate::technology::Attributes;
-use crate::world::Turns;
+use crate::world::World;
 use crate::world::checkpoint::cvttss2si;
 
 /// The livestock a pasture holds (`DAT_143f51db0`, which the static constructor `FUN_140174900`
@@ -20,7 +20,7 @@ pub const PASTURE_FOOD: i16 = 288;
 /// The owner's attribute of the livestock a pasture holds.
 pub const PASTURE_LIVESTOCK: i16 = 289;
 
-/// The owner's attribute of the workers a pasture's livestock take ([`Turns::pasture_pick`]).
+/// The owner's attribute of the workers a pasture's livestock take ([`World::pasture_pick`]).
 pub const PASTURE_WORKERS: i16 = 290;
 
 /// The edges lie this far inside the pasture's ground radius (`DAT_142e7f384`).
@@ -60,11 +60,11 @@ pub fn edge_points(at: [f32; 3], radius_x: f32) -> Vec<[f32; 2]> {
 }
 
 /// A draw of the Object stream modulo `n` (`CDQE` then `DIV`: the draw is at most 0x7fff).
-fn draw_below(turns: &mut Turns, n: usize) -> usize {
+fn draw_below(turns: &mut World, n: usize) -> usize {
     turns.streams.get(Stream::Object).rand15() as usize % n
 }
 
-impl Turns {
+impl World {
     /// `FUN_1411c8410` on player `p`'s pasture `id`: the points along its edges ([`edge_points`]
     /// with its master's ground radius on x), its owner's [`PASTURE_LIVESTOCK`] cut to an integer
     /// (CVTTSS2SI) as the count and [`PASTURE_FOOD`] over it (DIVSS) as each one's food. Up to
@@ -73,7 +73,7 @@ impl Turns {
     /// map (`FUN_140f5ec30`) or on a tile whose objects (its list, `+0x28`) hold a livestock
     /// master of this pasture (`+0x790`) goes, and a draw picks another (0x1fb2); none left ends
     /// it. On the point the owner's slot 0x1c0 makes the master at the pasture's height
-    /// ([`Turns::make_new_object`], no footprint): the point goes, the pasture lists it
+    /// ([`World::make_new_object`], no footprint): the point goes, the pasture lists it
     /// ([`crate::objects::unit::Unit::livestock`]), its state is 2 (slot 0xa0 with 2: it is already), no
     /// unit targets it (`+0x689` 0, [`crate::objects::unit::Unit::untargetable`]), it is the pasture's
     /// (`+0x790`) and holds its food (`+0x310`); its current sprite with a random first facet

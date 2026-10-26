@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::motion::{
     CLOSE, CONTINUE, EPSILON, LAST_TRIES, Lead, LeadGroup, NEAR, NEW_PATH_FLAGS, PATROL_PAUSE,
-    Pass, SHORT_LENGTH, SHORT_REACH, STUCK_PAUSE, World, ground, hold, point, reset_level,
+    Pass, SHORT_LENGTH, SHORT_REACH, STUCK_PAUSE, StepWorld, ground, hold, point, reset_level,
 };
 use crate::map::spatial::Placed;
 use crate::movement::{LongWalker, PathData, long_path_for, short_path_for, tile_plan_for};
@@ -26,7 +26,7 @@ pub(super) enum Stage {
 pub(super) fn request(
     motion: &mut Motion,
     lead: &Lead,
-    world: &mut World<'_, '_>,
+    world: &mut StepWorld<'_, '_>,
     budget: bool,
     target: Option<&Placed>,
     target_gap2: f32,

@@ -16,7 +16,7 @@ fn a_larger_slots_array_drops_the_transform_marks() {
 /// A 20 by 20 map of terrain class 1 but class 2 on `blocked`, masters 4 and 5 (category 1)
 /// and 6 (category 3), and player 1's `units` (id, master, x, y) on it and on the
 /// obstruction manager, all in group 1 at the origin facing x.
-pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usize)]) -> Turns {
+pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usize)]) -> World {
     use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
     use crate::map::terrain::{Terrain, TerrainKind};
     let objects: Vec<crate::objects::unit::Unit> = units
@@ -35,7 +35,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         objects: objects.clone(),
         ..crate::world::Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         0,
         0,
@@ -655,7 +655,7 @@ fn a_grid_cell_counts_its_slots_in_bits_1_to_5() {
 }
 
 /// One statistic of category 1 holding `units`, all of master 4, spacing 1.
-fn one_statistic(t: &mut Turns, units: &[i32]) {
+fn one_statistic(t: &mut World, units: &[i32]) {
     let mut unit_types = vec![0u32; 50];
     unit_types[0] = 4;
     let mut counts = vec![0u32; 50];
@@ -736,7 +736,7 @@ fn level(points: &[Vec3], waypoint: i32, flags: u32) -> PathData {
 
 /// Player 1 (minimum column distance 10, column-to-line 5) with unit 7 of a soldier master
 /// (type 70, category 1) in group 1 at the origin along `paths` (walked first).
-fn type_world(paths: Vec<PathData>) -> Turns {
+fn type_world(paths: Vec<PathData>) -> World {
     let mut u = crate::objects::unit::Unit {
         id: 7,
         ..crate::objects::unit::Unit::default()
@@ -751,7 +751,7 @@ fn type_world(paths: Vec<PathData>) -> Turns {
         },
         ..crate::world::Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         0,
         0,
@@ -779,7 +779,7 @@ fn type_world(paths: Vec<PathData>) -> Turns {
     t
 }
 
-fn own(t: &Turns) -> i32 {
+fn own(t: &World) -> i32 {
     t.own_formation_type(t.groups.get(1).unwrap()).unwrap()
 }
 

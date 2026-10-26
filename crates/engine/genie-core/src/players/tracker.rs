@@ -298,7 +298,7 @@ impl Tracker {
     }
 }
 
-impl crate::world::Turns {
+impl crate::world::World {
     /// [`key`] of player `p`'s master `master`.
     #[must_use]
     pub fn tracker_key(&self, p: usize, master: i16) -> Key {
@@ -616,9 +616,9 @@ mod tests {
         assert_eq!(t.list(118), [1]);
     }
 
-    fn world() -> crate::world::Turns {
+    fn world() -> crate::world::World {
         use crate::objects::unit::Unit;
-        use crate::world::{Player, Turns};
+        use crate::world::{Player, World};
         let unit = |id: i32, master: i16, progress: Option<f32>| {
             let mut u = Unit {
                 id,
@@ -649,7 +649,7 @@ mod tests {
             sleeping: vec![unit(15, 83, None)],
             ..Player::default()
         };
-        let mut t = Turns::new(0, 0, 0, vec![0; 2], vec![Player::default(), player]);
+        let mut t = World::new(0, 0, 0, vec![0; 2], vec![Player::default(), player]);
         t.masters = vec![masters(), masters()];
         t.lines = lines();
         t

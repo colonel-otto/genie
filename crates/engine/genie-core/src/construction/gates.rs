@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::map::spatial::Spatial;
-use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, Turns};
+use crate::world::{GATE_COUNT_CAP, GATE_EPSILON, GATE_GROW, GATE_QUERY_RECORDS, World};
 
 /// The units in gate `gate` (`FUN_1411d0570`): the obstruction manager's query from its first
 /// annex to its second (`+0xbc0`, `+0xbc8`) with flags 0x10, the gate and its annexes ignored
@@ -71,7 +71,7 @@ pub(crate) fn gate_units(
     Ok((units, allied))
 }
 
-impl Turns {
+impl World {
     /// Player `q`'s gate list (`+0x1360`, `FUN_141616200` adds to its front): its live objects
     /// of class 39 whose master transforms ([`crate::objects::masters::BuildingMaster::transform_unit`]),
     /// newest first.
@@ -115,7 +115,7 @@ impl Turns {
     /// `BaseWorld::update` before player `p` updates (not Gaia): the gates of each player `q`
     /// that is `p` or counts `p` an ally and is counted one by it, unless `q`'s are open already
     /// (`open`, the update's flags), open for `p` (`q`'s slot 0x318, `FUN_14162faf0`): each gate
-    /// `p` may pass ([`Turns::gate_passes`]) loses its record, its tiles' marks and its mesh shape
+    /// `p` may pass ([`World::gate_passes`]) loses its record, its tiles' marks and its mesh shape
     /// (`FUN_141055b40`), so `p`'s units walk and plan through it.
     pub(crate) fn open_gates(&mut self, p: usize, open: &mut [bool]) -> Result<(), GenieError> {
         if p == 0 {

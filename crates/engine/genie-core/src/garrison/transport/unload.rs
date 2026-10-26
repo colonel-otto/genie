@@ -10,7 +10,7 @@ use crate::world::checkpoint::cvttss2si;
 
 /// The transports' parts that reach the world: the unload command's install, the unload and the
 /// units put ashore.
-impl crate::world::Turns {
+impl crate::world::World {
     /// What the Transport of player `p`'s object at `i` reads of it ([`Ship`]): its place, its
     /// master's radii, whether an object is inside it, the map's size and whether it has speed.
     pub(super) fn ship(&self, p: usize, i: usize) -> Result<Ship, GenieError> {
@@ -29,7 +29,7 @@ impl crate::world::Turns {
     /// `i`, after the unit AI that gave it: a Transport on top (type 12, `FUN_140a7be70`) is told
     /// to work at the unit's own place ("Telling existing action to work": slot 9 with the unit
     /// itself as its object, [`TransportAction::work`]); else the actions go (`FUN_140a98620`,
-    /// [`crate::world::Turns::clear_actions`]) and a Transport at the unit's place
+    /// [`crate::world::World::clear_actions`]) and a Transport at the unit's place
     /// ([`TransportAction::new`]) replaces them (slot 0x808: its slot 0x70, the base's, does
     /// nothing; the list's add starts it, [`TransportAction::start`]), then takes the work order
     /// at `to` from the unit itself.
@@ -118,7 +118,7 @@ impl crate::world::Turns {
 
     /// The unload of the Transport of player `p`'s object at `i` in its update's state 6
     /// (`FUN_140aa3ba0`, [`TransportStep::unload`]): the units inside go ashore in the zone of
-    /// the point's tile ([`Shore::zone`]; any zone without a point) ([`Turns::unload_all`]).
+    /// the point's tile ([`Shore::zone`]; any zone without a point) ([`World::unload_all`]).
     /// With none ashore the point moves ([`retry_point`], the Action stream) and the Transport
     /// sails there to unload (`set_state(4)`, then `+0x68`) when a draw found land, else the
     /// owner hears 0x207 (no unload there); with some ashore and more inside the owner hears
@@ -204,10 +204,10 @@ impl crate::world::Turns {
     }
 
     /// `FUN_141191b40`: the objects inside the transport at (`p`, `i`) go ashore in `zone` (−1
-    /// for any), from the last in: each where a drop location is free ([`Turns::drop_location`])
+    /// for any), from the last in: each where a drop location is free ([`World::drop_location`])
     /// about the last spot one took (the first: the transport's place and radii), else about the
     /// spot before, and so on back; one that finds none stays inside, and so does every one
-    /// after it (the spots are used up). A unit put ashore ([`Turns::come_ashore`]) makes its
+    /// after it (the spots are used up). A unit put ashore ([`World::come_ashore`]) makes its
     /// place, with its master's radii, the next spot (up to 29). Returns how many went ashore,
     /// a byte.
     pub(super) fn unload_all(&mut self, p: usize, i: usize, zone: u32) -> Result<u8, GenieError> {
@@ -368,7 +368,7 @@ impl crate::world::Turns {
 
     /// `FUN_141191b40`'s put ashore of the unit `id` (of master `made`) from the transport at
     /// (`p`, `i`) at `spot`: it takes the transport's place (its place's fields), leaves it (slot
-    /// 0x1a8) for the spot at the transport's height (slot 0x58, [`Turns::leave_container`]); its
+    /// 0x1a8) for the spot at the transport's height (slot 0x58, [`World::leave_container`]); its
     /// `+0x688`, its box (`+0x6fc`..`+0x704`) and its sprites' places (`FUN_141189d50`), the
     /// interface's, are not held; its unit AI's state position (`+0x1ac`, `+0x1b0`) becomes the
     /// spot. A siege tower's (class 13) unload is not modelled.

@@ -6,10 +6,10 @@ use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
-use crate::world::Turns;
+use crate::world::World;
 use crate::world::context::Context;
 
-/// Slot 0x180 (`Turns::release`) on an object of the unit's own live list, from inside the unit's
+/// Slot 0x180 (`World::release`) on an object of the unit's own live list, from inside the unit's
 /// update ([`released`]; the releaser's own player is allied).
 pub(crate) fn release_own(
     others: &mut [Unit],
@@ -88,7 +88,7 @@ pub(crate) fn released(
     Ok(())
 }
 
-impl Turns {
+impl World {
     /// The leave of object `gone`, out of player `p`'s live list already (its list's update that
     /// returned 1, `FUN_14116b5e0`): its player's remove (slot 0x2d8) takes it out of the tracker,
     /// it leaves the visible-resource lists ([`forget_resource`]), a combat object's destructor
@@ -115,7 +115,7 @@ impl Turns {
     }
 
     /// `TRIBE_Combat_Object::update`'s regeneration ([`Unit::regenerate`]) of the object in
-    /// `slot` ([`Turns::live_slot`]), a combat object or building (types 70 and 80) by its own
+    /// `slot` ([`World::live_slot`]), a combat object or building (types 70 and 80) by its own
     /// master, else its player's.
     pub(crate) fn regenerate_object(&mut self, slot: (usize, usize, i32), dt_seconds: f32) {
         let Some((p, i)) = self.live_slot(slot) else {
@@ -135,7 +135,7 @@ impl Turns {
     }
 
     /// `TRIBE_Combat_Object::update`'s hit point powerup check ([`Unit::clamp_hp_powerup`]) of the
-    /// object in `slot` ([`Turns::live_slot`]), a combat object or building (types 70 and 80).
+    /// object in `slot` ([`World::live_slot`]), a combat object or building (types 70 and 80).
     pub(crate) fn clamp_object_powerup(&mut self, slot: (usize, usize, i32)) {
         let Some((p, i)) = self.live_slot(slot) else {
             return;
@@ -152,7 +152,7 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// Slot 0x5f0 (`FUN_141158b90`): the unit's walked level, if it has one, pauses for `pause`
     /// seconds; the world's view of it follows.
     pub(crate) fn pause(&mut self, id: i32, pause: f32) {

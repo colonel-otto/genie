@@ -7,12 +7,12 @@ use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::Foreign;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// A mule cart's completion (`FUN_1411c6bd0`'s tail, a building whose master has a task of
     /// action type 0x99, [`crate::construction::build::Built::cart`]) with a unit AI: with no current target a
-    /// human player's runs its AI's slot 0x1e8 ([`Turns::cart_work_search`]; the game mode's
+    /// human player's runs its AI's slot 0x1e8 ([`World::cart_work_search`]; the game mode's
     /// test, `FUN_140c87f20` not 4, holds in every recording probed), all of it inside the
     /// completion's `set_state(state)`; then a cart with a target moves to it (slot 0x138 at the
     /// target's place).
@@ -56,8 +56,8 @@ impl Turns {
     }
 
     /// The mule cart's own search for resources, its unit AI's slot 0x1e8 (`FUN_140c16240`) for
-    /// the cart at `idx` of player `p`: [`Turns::cart_find`], then [`Turns::cart_work`]. The
-    /// completion runs it ([`Turns::cart_search`]), and so does the Empire Wars start
+    /// the cart at `idx` of player `p`: [`World::cart_find`], then [`World::cart_work`]. The
+    /// completion runs it ([`World::cart_search`]), and so does the Empire Wars start
     /// ([`crate::orders::start_work`]).
     pub(crate) fn cart_work_search(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let found = self.cart_find(p, idx)?;

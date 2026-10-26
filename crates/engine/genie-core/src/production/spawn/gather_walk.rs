@@ -6,9 +6,9 @@ use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::orders::Work;
 use crate::production::spawn::{BUILDING, VILLAGER};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_140ace9c0` with a gather point without a target, and an unloaded unit's move
     /// (`FUN_1411e7220`): the unit waits to move (slot 0x2a0 with 1) and takes slot 0x128
     /// (`FUN_141211b80`) with no target at the point (z 0; its `+0xa14` `notified`: 1 for a new
@@ -87,7 +87,7 @@ impl Turns {
     /// command queue location (its slot 0x218): the new unit waits to move (slot 0x2a0 with 1,
     /// `+0x7f9`) and takes the work command on the target at the point (slot 0x128: z 0, its
     /// `+0xa14` 1, no carry test, any task). A target that is gone is looked for again
-    /// ([`Turns::lost_gather_target`]); one on the building itself (a garrison) and a building
+    /// ([`World::lost_gather_target`]); one on the building itself (a garrison) and a building
     /// target (slot 0x7e8) are not modelled.
     /// `FUN_140ace9c0`'s search for a gather point's target that is gone: the closest (by its
     /// centre, the first of equals) of Gaia's live objects of the class of Gaia's master the
@@ -150,12 +150,12 @@ impl Turns {
 
     /// The new unit's walk to the gather point of its building `building` (`FUN_140ace9c0` with a
     /// point or a target): a point is a move; a target that is gone is looked for again
-    /// ([`Turns::lost_gather_target`]). The unit waits to move (slot 0x2a0 with 1); on a building
-    /// its own task list's garrison finder (filter 3, [`Turns::garrison_task_found`]) decides: a
+    /// ([`World::lost_gather_target`]). The unit waits to move (slot 0x2a0 with 1); on a building
+    /// its own task list's garrison finder (filter 3, [`World::garrison_task_found`]) decides: a
     /// task found is worked at once (slot 0x7e8 with filter 3, outside slot 0x128: `+0xa14` 1);
     /// else, and for any other target, slot 0x128 works it (`notified`, any task). An unloaded
     /// unit's caller goes to slot 0x128 at once (`finder` clear). A gather point on its own
-    /// building takes the unit in at once ([`Turns::enter_forced`]) while the building holds
+    /// building takes the unit in at once ([`World::enter_forced`]) while the building holds
     /// fewer than 10 or fewer than its capacity.
     pub(crate) fn gather(
         &mut self,

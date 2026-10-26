@@ -1,13 +1,13 @@
 //! GAME (0x67): `TRIBE_Command::do_command`'s case (`0x140e77b00`), which lets a player's
 //! sub-command for another player through only with the game's cheats, and its switch on the
-//! sub-command (`FUN_140e7c330`, [`Turns::game`]).
+//! sub-command (`FUN_140e7c330`, [`World::game`]).
 //!
 //! 158041: the switch `FUN_140e7c330`; the world player's lookup `FUN_14152fe40`; the cases'
 //! handlers are named at each.
 
 use crate::GenieError;
 use crate::gathering::farm_queue::{FARM, PASTURE};
-use crate::world::Turns;
+use crate::world::World;
 
 /// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -80,7 +80,7 @@ impl GameCommand {
     }
 }
 
-impl Turns {
+impl World {
     /// `do_command`'s gate of GAME (`0x140e77b00` case 0x67; the packet's length, at least 0x14,
     /// is the decoder's): with the issuing player in the world, a sub-command other than 1, 4
     /// and 0xf for another player runs only with the game's cheats
@@ -96,39 +96,39 @@ impl Turns {
             || self.settings.cheats_enabled
     }
 
-    /// GAME (0x67): `do_command`'s gate ([`Turns::game_allowed`]), then `FUN_140e7c330`'s switch
+    /// GAME (0x67): `do_command`'s gate ([`World::game_allowed`]), then `FUN_140e7c330`'s switch
     /// on the sub-command ([`sub`]). Each case of a player looks it up first (`FUN_14152fe40`);
     /// one outside the world would be a null the game dereferences, which a recording that
     /// played on never holds: the case does nothing.
     ///
-    /// - 0, diplomacy: with `allianceLocked` 0 ([`Turns::alliance_locked`]) the player's slot
+    /// - 0, diplomacy: with `allianceLocked` 0 ([`World::alliance_locked`]) the player's slot
     ///   0x30 toward the player at `+0xa` with the relation at `+0x10`
-    ///   ([`Turns::set_diplomacy`]).
+    ///   ([`World::set_diplomacy`]).
     /// - 1, the game speed: the options' `+0x65` (`mSpeedLocked`) unset, `+0xc` clamped to the
     ///   speed table's (`FUN_141324bd0`: 1.0 up to 2.0 in a game of several players, 8.0 alone)
     ///   goes to the game timer (`FUN_140d7a450`, its `+0x10`) and the options' `mGameSpeed`
     ///   (`+0x44`), with a chat line. A playback's update time is the recording's (the
     ///   timer's multiplier only paces the updates), so nothing the simulation reads changes.
     /// - 4, the quick-build cheat: with the game's cheats the game's `+0xc14` takes the player
-    ///   at `+8` ([`Turns::instant_work`]); not 0, the work actions would do their work at once,
+    ///   at `+8` ([`World::instant_work`]); not 0, the work actions would do their work at once,
     ///   which they do not model: the player stops ([`CHEAT`]).
     /// - 5, allied victory: with `allianceLocked` 0 the player's `+0x2d0` takes the byte at
-    ///   `+0xa` (`FUN_1416765b0`), then the world's teams ([`Turns::resolve_teams`]).
+    ///   `+0xa` (`FUN_1416765b0`), then the world's teams ([`World::resolve_teams`]).
     /// - 6, a cheat code (`FUN_1415c92c0`): nothing without the game's cheats; with them the
     ///   world's `+0x818` sets and the cheat runs (`FUN_1415c62c0`), not modelled ([`CHEAT`]).
     /// - 9: the player's `prod_queue_on` (`+0x1358`) takes the byte at `+0xa`; then each of its
     ///   live buildings (master type 80) with an interface reason (`+0xc02`, not held) posts the
     ///   interface's event 0x7d and clears it.
     /// - 0xa, Treason: with a castle (`FUN_14160ffb0`) the pending debit of gold lowers by 400
-    ///   (`FUN_141630ef0`), then the treason runs ([`Turns::treason`]).
+    ///   (`FUN_141630ef0`), then the treason runs ([`World::treason`]).
     /// - 0xb, an AI setting: for a computer player (`FUN_141659cf0`: type 3) the setting `+0xa`
-    ///   takes `+0x10` ([`Turns::set_ai_setting`]).
+    ///   takes `+0x10` ([`World::set_ai_setting`]).
     /// - 0xd, 0xe, 0x15, 0x16: the mill's queue buys or gives back `+0xa` farms (0x32) or
-    ///   pastures (0x761) ([`Turns::queue_farms`], [`Turns::unqueue_farms`]).
+    ///   pastures (0x761) ([`World::queue_farms`], [`World::unqueue_farms`]).
     /// - 0x10, 0x13: `autoFarmQueue` (`+0x1424`, `FUN_14163a5f0`) or `autoFishTrapQueue`
     ///   (`+0x1425`, `FUN_14163a610`) flips.
     /// - 0x11, 0x12: the dock's queue buys or gives back `+0xa` fish traps
-    ///   ([`Turns::queue_fish_traps`], [`Turns::unqueue_fish_traps`]).
+    ///   ([`World::queue_fish_traps`], [`World::unqueue_fish_traps`]).
     /// - 0x14: the offensive posture (`+0x71c`, slot 0xa0 `FUN_14163a630`, Gaia's too) flips
     ///   between 0 and 1.
     pub(crate) fn game(&mut self, g: &GameCommand) -> Result<(), GenieError> {
@@ -203,9 +203,9 @@ impl Turns {
     }
 
     /// `FUN_140e7c330`'s queue cases on player `p`: the mill's queue buys or gives back `+0xa`
-    /// farms (0xd, 0xe) or pastures (0x15, 0x16) ([`Turns::queue_farms`],
-    /// [`Turns::unqueue_farms`]), the dock's fish traps (0x11, 0x12, [`Turns::queue_fish_traps`],
-    /// [`Turns::unqueue_fish_traps`]); `autoFarmQueue` (0x10, `+0x1424`) or `autoFishTrapQueue`
+    /// farms (0xd, 0xe) or pastures (0x15, 0x16) ([`World::queue_farms`],
+    /// [`World::unqueue_farms`]), the dock's fish traps (0x11, 0x12, [`World::queue_fish_traps`],
+    /// [`World::unqueue_fish_traps`]); `autoFarmQueue` (0x10, `+0x1424`) or `autoFishTrapQueue`
     /// (0x13, `+0x1425`) flips.
     ///
     /// # Errors
@@ -250,7 +250,7 @@ impl Turns {
     /// flag `value == 1` (6, 7; 8 tests the low byte), `value != 1` (0xb) or `value != 0` (0xe,
     /// 0x10, 0x12, 0x13); 0xd the value as a float (`CVTSI2SS` of the zero-extended 32 bits),
     /// 0xf and 0x11 the value as it is. 0x13 is `mAllowCapturingGaiaUnits` (`+0x670`,
-    /// [`Turns::allow_gaia_capture`]). Another setting changes nothing.
+    /// [`World::allow_gaia_capture`]). Another setting changes nothing.
     pub(crate) fn set_ai_setting(&mut self, p: usize, setting: i16, value: u32) {
         let byte = value as u8;
         if setting == 0x13 {
@@ -298,13 +298,13 @@ mod tests {
     use crate::world::Player;
 
     /// Gaia and three players with 300 attributes each.
-    fn world() -> Turns {
+    fn world() -> World {
         let player = || Player {
             attributes: vec![0.0; 300],
             diplomacy: vec![0; 9],
             ..Player::default()
         };
-        Turns::new(
+        World::new(
             0,
             1,
             0,
@@ -382,7 +382,7 @@ mod tests {
             costing(FISH_TRAP, 100),
         ]);
         t.masters = vec![Masters::new([]), masters];
-        let wood = |t: &Turns| t.players[1].resources[1];
+        let wood = |t: &World| t.players[1].resources[1];
         t.game(&game(1, sub::FARM_QUEUE, 1, 2, 0)).unwrap();
         assert_eq!((t.players[1].farm_queue, wood(&t)), (2, 880.0));
         t.game(&game(1, sub::PASTURE_QUEUE, 1, 1, 0)).unwrap();
@@ -481,7 +481,7 @@ mod tests {
         t.settings.cheats_enabled = true;
         t.game(&game(1, sub::AI_SETTING, 1, 1, 30)).unwrap();
         assert_eq!(t.players[1].dodge_chance, 0);
-        let set = |t: &mut Turns, setting: i16, value: u32| {
+        let set = |t: &mut World, setting: i16, value: u32| {
             t.game(&game(1, sub::AI_SETTING, 2, setting, value))
                 .unwrap();
         };

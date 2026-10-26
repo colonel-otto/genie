@@ -6,7 +6,7 @@ use crate::combat::abilities::{
 };
 use crate::combat::damage::Victim;
 use crate::objects::masters::Task;
-use crate::world::Turns;
+use crate::world::World;
 use crate::{GenieError, math::fmath};
 
 /// A movement damage task's timer (`+0x9a4`, `0x141207758`): above 0 (not a NaN) it runs down by
@@ -127,14 +127,14 @@ pub fn finish(v: &mut Victim) -> bool {
     false
 }
 
-impl Turns {
+impl World {
     /// A movement damage task of the object at `(p, i)` as `owner`'s ([`movement_damage_due`]):
     /// once due, a combat unit (its master of type 70) that moves (slot 0x5c8, `FUN_1411583d0`:
     /// its velocity's length above 0) hits each object on the tiles of [`reach`], row by row,
     /// each tile's list in order, that it strikes ([`struck`]): the object loses the task's
     /// `work_val1` (slot 0xb0, [`crate::combat::damage::lose`]), the timer takes the task's `work_val2`,
     /// and one left below 1 hit point ends the hit ([`finish`]): a combat unit (type 70) counts
-    /// killed by the owner (`FUN_1412005b0`, [`Turns::count_kill`]). A ghost on a tile is struck
+    /// killed by the owner (`FUN_1412005b0`, [`World::count_kill`]). A ghost on a tile is struck
     /// as an object of type 25 of its viewer, of the ghost master, in its state; the hit points
     /// it loses are not held. Not held: the alerts the hit's player hears (its slot 0x2e8 with
     /// 0x201, `FUN_14162dab0`: the human player's alerts and a computer player's AI), as for a
@@ -144,7 +144,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// An object on a tile the slice does not hold, and what [`Turns::count_kill`] does not
+    /// An object on a tile the slice does not hold, and what [`World::count_kill`] does not
     /// model.
     pub(super) fn movement_damage(
         &mut self,

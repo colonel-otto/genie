@@ -2,12 +2,12 @@
 
 use crate::GenieError;
 use crate::production::spawn::{Near, PlaceMap};
-use crate::world::Turns;
+use crate::world::World;
 
 /// The map as the spawn's placement test reads it: the terrain, the players' sight and the
 /// objects with what their units and masters say.
 pub(crate) struct WorldMap<'a> {
-    pub(crate) turns: &'a Turns,
+    pub(crate) turns: &'a World,
 }
 
 impl PlaceMap for WorldMap<'_> {
@@ -47,7 +47,7 @@ impl PlaceMap for WorldMap<'_> {
     }
 
     fn explored(&self, player: usize, x: i32, y: i32) -> bool {
-        // without the sight the spawn stops before (Turns::spawn)
+        // without the sight the spawn stops before (World::spawn)
         self.turns.spatial.explored(player, x, y).unwrap_or(false)
     }
 

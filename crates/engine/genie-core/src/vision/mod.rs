@@ -9,7 +9,7 @@
 //! 158041: the rebuild `FUN_141552df0`; the attribute setter `FUN_141616820` (attributes 50, 183).
 
 use crate::GenieError;
-use crate::world::Turns;
+use crate::world::World;
 
 pub(crate) mod explored;
 pub mod ghost;
@@ -51,7 +51,7 @@ pub const fn own_masks(p: usize, ended: bool) -> [u64; 2] {
     masks
 }
 
-impl Turns {
+impl World {
     /// `FUN_141552df0`: every player's masks again. A player's own bits first (the ended ones for
     /// a player who won or lost); then for every player past Gaia, with its allied vision on, the
     /// bits of each other player past Gaia it and who both count each other as allies (relation
@@ -114,7 +114,7 @@ impl Turns {
             }
         }
         self.spatial.vision = masks;
-        // the flares (slot 0x1c0 with master 697, [`Turns::remains`]), in the players' order, each
+        // the flares (slot 0x1c0 with master 697, [`World::remains`]), in the players' order, each
         // town centre in its owner's list order; each flared player is recorded
         for (p, q, at) in flares {
             self.remains(p, FLARE4, at, None)?;
@@ -137,14 +137,14 @@ mod tests {
     /// Gaia and two teams of two (players 1 and 3 against 2 and 4), every player's allied
     /// vision on: each sees with its team's bits, as records/425906646's players do after the
     /// game's header load (`0xaa` for 1, 3, 5, 7 in its 4v4).
-    fn teams() -> Turns {
+    fn teams() -> World {
         let player = |relations: Vec<u8>| Player {
             relations,
             allied_vision: true,
             attributes: vec![0.0; 250],
             ..Player::default()
         };
-        Turns::new(
+        World::new(
             0,
             1,
             0,
@@ -221,7 +221,7 @@ mod tests {
             .map(|_| crate::objects::masters::Masters::new([flare.clone()]))
             .collect();
         t.next_object_id = 100;
-        let flares = |t: &Turns| -> Vec<(i32, [f32; 3])> {
+        let flares = |t: &World| -> Vec<(i32, [f32; 3])> {
             t.players[2]
                 .objects
                 .iter()

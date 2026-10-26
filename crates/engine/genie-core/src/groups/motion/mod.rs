@@ -6,7 +6,7 @@
 use crate::groups::Motion;
 use crate::math::fmath::{self, Vec3};
 use crate::movement::Walker;
-use crate::world::Turns;
+use crate::world::World;
 
 mod levels;
 mod request;
@@ -17,7 +17,7 @@ use self::levels::{ground, looping_next, point, reset_level, set_flag};
 pub(in crate::groups) use self::levels::{hold, passes_waypoint};
 use self::request::request;
 use self::step::Pass;
-pub(crate) use self::step::{World, path_step};
+pub(crate) use self::step::{StepWorld, path_step};
 pub(in crate::groups) use self::walk::moved_vector;
 use self::walk::{SHORT_IGNORED, steer};
 #[cfg(test)]
@@ -96,7 +96,7 @@ impl LeadGroup {
     }
 }
 
-impl Turns {
+impl World {
     /// Slot 0x280 (`FUN_141082d60`): the id of the object the unit's top action targets
     /// (`FUN_140a78450`: an id above -1 that the world holds), else -1.
     pub(crate) fn top_target_object(&self, u: &crate::objects::unit::Unit) -> i32 {
@@ -215,9 +215,9 @@ impl Motion {
     }
 }
 
-impl Turns {
+impl World {
     /// `FUN_1410465d0`: the object the world's table holds for `motion`'s lead (`+0xc4`,
-    /// [`Turns::world_object`]). The constructor's lead -1 finds the object of id -1, a
+    /// [`World::world_object`]). The constructor's lead -1 finds the object of id -1, a
     /// recyclable master's (a missile or a ghost), while one is in a player's list.
     pub(crate) fn lead_object(&self, motion: &Motion) -> Option<crate::groups::WorldObject<'_>> {
         self.world_object(motion.lead)

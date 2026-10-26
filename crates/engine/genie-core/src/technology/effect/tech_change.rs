@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::technology::effect::{ONE, RESEARCH_SPENT, RESEARCHED, ROUND, TECHS_RESEARCHED};
-use crate::world::Turns;
+use crate::world::World;
 
 /// The modes of `FUN_1415c3f20`'s technology change (kind 8) that change a cost, with the
 /// resource and the cost modifier's mode (`DAT_142ed71b0`'s map: 0 to 3 set food, wood, stone,
@@ -36,15 +36,15 @@ pub(super) const STATE_RESEARCHED: f32 = crate::math::image::effect::STATE_RESEA
 /// −1.0 (`DAT_14330ec20`): a research time without a `.dat` location, and a set's "none".
 pub(super) const NO_TIME: f32 = crate::math::image::effect::NO_TIME;
 
-impl Turns {
+impl World {
     /// `FUN_1415c3f20`'s technology change (kind 8, its `0x6f` case) for player `p`'s technology
     /// `tech` by `mode` and `v` at location `location` (below 1: every location; past the
     /// technology's locations a new one is added, a copy of the last with no building): a cost
-    /// mode changes a cost ([`Turns::tech_cost`]); 4 sets the location's building to a master the
+    /// mode changes a cost ([`World::tech_cost`]); 4 sets the location's building to a master the
     /// player has, 5 its button; 9 the stacking, 10 the research cap; 12 the state; 18 the
     /// effect override (an already researched technology's new effect would run at once, from
     /// the world's effect table, not held); the research time modes ([`tech_time_mode`]) change
-    /// the time ([`Turns::research_time`]) and update the dependents. The icon (6), name (7),
+    /// the time ([`World::research_time`]) and update the dependents. The icon (6), name (7),
     /// description (8) and hotkey (11) overrides are the interface's. A technology past the
     /// player's tree changes nothing (the game also reads its one past the end, not modelled).
     pub(super) fn modify_tech(
@@ -143,7 +143,7 @@ impl Turns {
     }
 
     /// `FUN_1413cdcd0` with `param_3` 1 (kind 8's state 3) for player `p`'s technology `t`: one in
-    /// state 0 to 2 completes as [`Turns::complete_research`] (the civ's disabled technologies are
+    /// state 0 to 2 completes as [`World::complete_research`] (the civ's disabled technologies are
     /// not asked); any other gives its effect again and counts in attributes 0x15 and 0x63 (its
     /// listed costs) whatever its location, its state left.
     pub(super) fn force_research(&mut self, p: usize, t: usize) -> Result<bool, GenieError> {
@@ -170,7 +170,7 @@ impl Turns {
     /// without one): mode 2 adds `(v − 1) × time` rounded half away from 1 (in 16 bits), mode 0
     /// sets it so the time is `v` (none for −1, which leaves 0), any other adds `v` (in 16 bits).
     /// A technology in state 1 whose work done reaches its new time completes
-    /// ([`Turns::complete_research`]), but for a set to −1. The game walks a copy of the
+    /// ([`World::complete_research`]), but for a set to −1. The game walks a copy of the
     /// locations.
     pub(super) fn research_time(
         &mut self,

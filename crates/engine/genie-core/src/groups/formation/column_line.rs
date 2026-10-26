@@ -7,7 +7,7 @@ use crate::groups::formation::{
 use crate::groups::layout::{clear_line, reset_line};
 use crate::groups::{Formation, Slot, UnitGroup};
 use crate::math::fmath::{Vec3, add, scale, sub};
-use crate::world::Turns;
+use crate::world::World;
 use crate::world::checkpoint::cvttss2si;
 
 /// What createColumnLine reads of one sub-formation's statistic.
@@ -51,7 +51,7 @@ pub(super) fn sizes(count: i32, by_line: bool) -> (i32, i32) {
     }
 }
 
-/// The slots of createColumnLine (`FUN_141012280`, [`Turns::create_column_line`])
+/// The slots of createColumnLine (`FUN_141012280`, [`World::create_column_line`])
 /// up to its transform: the group's sub-formations (its unit types, by category 0 to 5) laid
 /// out in lines on `formation`, `world_time` the slots' time. `column` lays a column (the column
 /// ratio set, type 1), else a line (type 2, staggered 7, flanked 8). Returns false for a group
@@ -300,11 +300,11 @@ pub(crate) fn column_line_slots(
     true
 }
 
-impl Turns {
+impl World {
     /// createColumnLine (`FUN_141012280`) of `formation` for group `g`: a column (`column`, the
     /// column ratio 2 and line ratio -1) or a line (ratios -1 and 2), staggered or flanked;
     /// false without members. Its slots ([`column_line_slots`]), then the transform and the
-    /// units ([`Turns::lay_units`]) with the column-to-line flag (0x141013d20..0x141013d3a): a
+    /// units ([`World::lay_units`]) with the column-to-line flag (0x141013d20..0x141013d3a): a
     /// line (2, 7 or 8) whose group's previous formation is a column (1). The game reads that
     /// type through the
     /// previous formation's pointer, which `UpdateDesiredPositions` sets whenever it lays a

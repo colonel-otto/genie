@@ -179,7 +179,7 @@ impl Construction {
         let c = &mut *site.construction;
         if c.desolid {
             // FUN_1411cd0d0: the desolid foundations it overlaps go after the builder's update
-            // (Turns::clear_foundations_under), then FUN_1411e5670
+            // (World::clear_foundations_under), then FUN_1411e5670
             world.started(site.id);
             if Self::begin(site.id, c, site.mover.as_deref_mut(), world, pathing, now)?
                 && let (Some(f), Some(m)) = (site.firepower.as_deref_mut(), site.completion.master)

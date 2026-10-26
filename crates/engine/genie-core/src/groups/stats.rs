@@ -4,7 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::create::FormationUnit;
-use crate::world::Turns;
+use crate::world::World;
 
 /// A group whose `mGroupFlags` bit 9 is set moves at its slowest member's speed divided by this
 /// (`FUN_14100bcb0`, `DAT_142ed66b4`).
@@ -44,13 +44,13 @@ struct MemberView {
     attacking: bool,
 }
 
-impl Turns {
+impl World {
     /// `FUN_14100bcb0` with `far` (`param_2`): the statistics start over (the centroid, the
     /// largest radius and range, the spacing sums and the searches' objects at 0, the smallest
     /// radius, range and ranged range at `f32::MAX`); each member the world holds then, in the
-    /// members' order, lists the objects its unit AI's search finds ([`Turns::member_objects`]);
-    /// with `far`, one far from its slot ([`Turns::far_from_slot`]) leaves the group (`removeUnit`
-    /// with target -1, [`Turns::remove_unit`]) and, when it left, stops (slot 0x5d0) and the next
+    /// members' order, lists the objects its unit AI's search finds ([`World::member_objects`]);
+    /// with `far`, one far from its slot ([`World::far_from_slot`]) leaves the group (`removeUnit`
+    /// with target -1, [`World::remove_unit`]) and, when it left, stops (slot 0x5d0) and the next
     /// member takes its index; either way it counts in no statistic. Any other
     /// adds its place (slot 0x520) to the centroid and its radius ([`FormationUnit`]) to the
     /// spacing, and takes part in the largest and smallest radius, the slowest speed (slot
@@ -61,11 +61,11 @@ impl Turns {
     /// positions' desired length the members' count times the spacing; the motion's top speed is
     /// the slowest member's (divided by [`SLOW_GROUP_FACTOR`] with flags bit 9), the seconds not
     /// under attack 0 when a member is under attack, else they grow by the update's time; a
-    /// member inside another object stops ([`Turns::stop_if_inside`]); each sub-formation's
+    /// member inside another object stops ([`World::stop_if_inside`]); each sub-formation's
     /// spacing is twice its widest unit's radius and its attack range its units' largest against
-    /// the group's target ([`Turns::range_against`]), its units looked up in the world's table;
+    /// the group's target ([`World::range_against`]), its units looked up in the world's table;
     /// with the motion flags' bit 1 the formation type follows
-    /// ([`Turns::calc_formation_type`]). Without one the smallest radius, the spacing and the
+    /// ([`World::calc_formation_type`]). Without one the smallest radius, the spacing and the
     /// smallest ranges are 0.
     ///
     /// Not modelled: `+0x478` (a member's `+0x30c`; the group holds no such field), a charge's
@@ -78,7 +78,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::group_statistics`] up to the formation type: true when that follows (motion
+    /// [`World::group_statistics`] up to the formation type: true when that follows (motion
     /// flags bit 1).
     ///
     /// # Panics
@@ -142,7 +142,7 @@ impl Turns {
         Ok(g.motion.flags >> 1 & 1 != 0)
     }
 
-    /// [`Turns::statistics_only`]'s member loop: each member's view in the members' order with the
+    /// [`World::statistics_only`]'s member loop: each member's view in the members' order with the
     /// index it has then, and the objects of their searches.
     fn member_views(
         &mut self,
@@ -208,7 +208,7 @@ impl Turns {
         Ok((views, objects))
     }
 
-    /// [`Turns::statistics_only`]'s sub-formations: each one with units gets its attack range
+    /// [`World::statistics_only`]'s sub-formations: each one with units gets its attack range
     /// against `target` and its spacing.
     fn sub_formation_stats(&mut self, group: i32, target: i32) -> Result<(), GenieError> {
         let g = self.groups.get(group).expect("the caller holds the group");
@@ -249,9 +249,9 @@ impl Turns {
     /// `CalcFormationType` (`FUN_14100b940`): the members' unit AIs' formation types (`+0x1d4`,
     /// those below 9) counted, the most common the type (the first of equals); one below 3 unlocks
     /// the group (`mFormationLockedType` 0) and makes its formation anew
-    /// ([`Turns::update_desired_positions`] with -1), the members' stances its state and their
-    /// formation types 0 ([`Turns::stances_state`]); a higher one locks the group to it
-    /// ([`Turns::lock_formation`]).
+    /// ([`World::update_desired_positions`] with -1), the members' stances its state and their
+    /// formation types 0 ([`World::stances_state`]); a higher one locks the group to it
+    /// ([`World::lock_formation`]).
     ///
     /// # Panics
     ///
@@ -300,14 +300,14 @@ impl Turns {
     /// `LockFormation` (`FUN_141024e70`) of group `group` to type `kind`: a group without a
     /// spacing yet (`mDesiredSpacing` 0) takes its held members' widest radius twice
     /// ([`FormationUnit`]); a column or a line (1, 2) unlocks it (`mFormationLockedType` 0) to
-    /// its own choice ([`Turns::update_desired_positions`] with -1), any other type locks it to
+    /// its own choice ([`World::update_desired_positions`] with -1), any other type locks it to
     /// that type and lays it; then the members' stances give its state and their formation
-    /// types are the lock's ([`Turns::stances_state`]). The analytics event it sends (each
+    /// types are the lock's ([`World::stances_state`]). The analytics event it sends (each
     /// member's master counted, `FUN_140986b60`) changes nothing in the world.
     ///
     /// # Errors
     ///
-    /// What [`Turns::update_desired_positions`] does not
+    /// What [`World::update_desired_positions`] does not
     /// model.
     ///
     /// # Panics
@@ -607,7 +607,7 @@ impl Turns {
 /// missile, TRIBE combat and building), whose slot 0x230 is `FUN_14108d960`.
 const COMBAT_KINDS: [u8; 4] = [50, 60, 70, 80];
 
-/// [`Turns::statistics_only`]'s totals: the group's statistics reset, then the members' views
+/// [`World::statistics_only`]'s totals: the group's statistics reset, then the members' views
 /// added up (centroid, radii, ranges, attack times), `objects` its search list; the members
 /// counted, the slowest speed and whether any member is under attack.
 fn member_totals(
@@ -694,11 +694,11 @@ mod tests {
     #[test]
     fn a_ready_charge_of_type_6_adds_its_charge_event_to_the_range() {
         let mut t = searched_world();
-        let charging = |t: &mut Turns, charge_type: i16, charge_target: i16| {
+        let charging = |t: &mut World, charge_type: i16, charge_target: i16| {
             let m = t.masters[1].get_mut(4).unwrap();
             (m.charge_type, m.charge_target, m.charge_event) = (charge_type, charge_target, 2);
         };
-        let range = |t: &Turns, target: Option<i32>| {
+        let range = |t: &World, target: Option<i32>| {
             let me = t.world_object(10).unwrap();
             t.range_against(me, target.and_then(|id| t.world_object(id)))
                 .unwrap()
@@ -717,7 +717,7 @@ mod tests {
     /// Player 1's soldier 10 (master 4, class 6) at (5, 5) in group 1; player 2 (its enemy)
     /// holds 20 at (6, 5) and 21 (state 3) at (5, 6); player 3 (neutral) holds 30 (class 6) at
     /// (4, 5) and 31 (class 4, a villager) at (5, 4); every one of them in player 1's sight.
-    fn searched_world() -> Turns {
+    fn searched_world() -> World {
         let unit = |id: i32, master: i16, x: f32, y: f32| {
             let mut u = Unit {
                 id,
@@ -750,7 +750,7 @@ mod tests {
                 ..Player::default()
             },
         ];
-        let mut t = Turns::new(0, 0, 0, vec![0; 4], players);
+        let mut t = World::new(0, 0, 0, vec![0; 4], players);
         let master = |id: i16, class: i16| Master {
             id,
             kind: 70,
@@ -971,7 +971,7 @@ mod tests {
             });
             t
         };
-        let ids = |t: &Turns| -> Vec<i32> {
+        let ids = |t: &World| -> Vec<i32> {
             t.groups
                 .get(1)
                 .unwrap()

@@ -95,7 +95,7 @@ impl WorldObject<'_> {
     }
 }
 
-impl crate::world::Turns {
+impl crate::world::World {
     /// `FUN_1415417a0` of `id`: the object the world's table holds for it ([`WorldObject`]),
     /// none for `i32::MIN` (the routine's own test) and for an id no list holds. Only the
     /// negative half holds ghosts.
@@ -117,7 +117,7 @@ impl crate::world::Turns {
     }
 }
 
-/// A unit's sub-formation in its group (`FUN_141011300`, `Turns::unit_category` for a held
+/// A unit's sub-formation in its group (`FUN_141011300`, `World::unit_category` for a held
 /// object), from its master's type, `hero_flag` (`+0x8d9`) and formation category
 /// (`+0x8bc`): none below type 70 (unsigned); a combat master (70) with a hero flag of bit 0 or
 /// 4 but not both 4 and 7 is 5; categories 1 to 4 are themselves, 0 and 5 are 5, 6 is 0, any

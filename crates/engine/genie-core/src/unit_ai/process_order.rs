@@ -23,7 +23,7 @@ impl UnitAi {
     ///   order's point ([`UnitAi::defend_point`]), else slot 0x170 on the target
     ///   ([`UnitAi::defend_object`]), within the order's range.
     /// - `0x2be`, the build: slot 0xf0 on the foundation and the tail, which the caller runs
-    ///   ([`Effect::OrderOnTarget`], `Turns::build_order`).
+    ///   ([`Effect::OrderOnTarget`], `World::build_order`).
     /// - `0x2bf`, `0x2c0`, `0x2ce`, the heal, conversion and repair: slots 0xe0, 0xd8 and 0xe8
     ///   ([`UnitAi::work_object`]) through the unit's commands ([`UnitCommand`]).
     /// - `0x2c1`, the explore, `0x2da`, the scout, and `0x321`, the auto scout: slot 0x100 to the

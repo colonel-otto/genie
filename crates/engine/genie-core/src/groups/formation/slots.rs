@@ -6,7 +6,7 @@ use crate::groups::formation::{BOX, COLUMN};
 use crate::groups::{Formation, UnitGroup, sub_formation};
 use crate::math::fmath::{Vec3, sub};
 use crate::math::image::group::FARTHEST;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The capacity of `ClosestUnit`'s list of the units the slots took (`DAT_143f20710`, 0x118
 /// bytes).
@@ -20,9 +20,9 @@ pub(super) const ASSIGNMENT_CELLS: usize = ASSIGNMENT_SIDE * ASSIGNMENT_SIDE;
 /// ... and the taken marks 80 bytes (`DAT_143f1fb00`).
 pub(super) const ASSIGNMENT_MARKS: usize = 80;
 
-impl Turns {
+impl World {
     /// `FUN_141011300` of `object` (`param_1`, as the world's table gives it,
-    /// [`Turns::world_object`]): -1 for none (a null object), else its master's sub-formation
+    /// [`World::world_object`]): -1 for none (a null object), else its master's sub-formation
     /// ([`sub_formation`], -1 for none); a ghost's master (type 25) has none.
     ///
     /// The routine's target (`param_2`) enters only the rams' rule: a target of type 80 and a
@@ -105,10 +105,10 @@ impl Turns {
     /// `FUN_141009760` of `formation` for group `g` without the settings' flag `DAT_143f01834`
     /// (the world's saved `mUseFeatureFlags` being 1, which `World::load_world` hands to
     /// `FUN_140ecabe0`; 0 in every recording of this build), with which the game takes the
-    /// feature's assignment instead ([`Turns::assign_slots_by_variance`]; the slice holds
+    /// feature's assignment instead ([`World::assign_slots_by_variance`]; the slice holds
     /// neither the flag nor that routine's process-global costs yet). The transformed active
     /// slots in use take the closest units of their sub-formation and type
-    /// ([`Turns::closest_unit`]), none taken twice. Two orders are measured first, as the sum of
+    /// ([`World::closest_unit`]), none taken twice. Two orders are measured first, as the sum of
     /// the ground distances (slot to unit) and the count found: the slots in order, and the same
     /// with the first slot's unit of that order barred from the first slot that finds one (whose
     /// unit then takes its place in the list). The second wins unless the first is shorter or
@@ -216,15 +216,15 @@ impl Turns {
         Ok(())
     }
 
-    /// The feature's assignment (`FUN_14100a0c0`, [`Turns::populate_slots`] with the settings'
+    /// The feature's assignment (`FUN_14100a0c0`, [`World::populate_slots`] with the settings'
     /// flag) of `formation`'s slots in use to group `g`'s members, `n` of them:
     ///
     /// - The costs (`costs`, the process global `DAT_143f161e0` of 70 × 70 floats that only this
     ///   routine reads and writes, all 0 as the process starts; grown to that when shorter): for
-    ///   each member the world holds ([`Turns::world_object`]), slot by slot, the squared distance from where it last
+    ///   each member the world holds ([`World::world_object`]), slot by slot, the squared distance from where it last
     ///   moved to (slot 0x518, as slot 0x520) to the slot's place (`+0x1c`), summed x, height,
     ///   y; [`FARTHEST`] for a slot not transformed or not active, of another sub-formation
-    ///   ([`Turns::unit_category`]) or, before both, of another master. A member's row starts at
+    ///   ([`World::unit_category`]) or, before both, of another master. A member's row starts at
     ///   its index times `n`, so with more slots than members a row runs into the next one's,
     ///   which overwrites it; a member the world does not hold leaves its row as it was.
     /// - The preferences: each member's slots by cost, each the cheapest not yet taken (the
@@ -356,7 +356,7 @@ impl Turns {
     ///
     /// # Panics
     ///
-    /// Never for [`Turns::from_previous_column`]'s order, a permutation of the places (the game
+    /// Never for [`World::from_previous_column`]'s order, a permutation of the places (the game
     /// reads past one that lacks a place).
     pub(super) fn populate_in_order(
         &self,
@@ -411,9 +411,9 @@ impl Turns {
     /// `FUN_141009060`: a line (not a column or a box) after a column (`previous`) takes its
     /// units line by line from the middle out: with a whole number of lines transformed (the
     /// transformed slots a multiple of the width), each line's places run from its middle
-    /// (left of it for an even width) alternately right and left ([`Turns::populate_in_order`]
+    /// (left of it for an even width) alternately right and left ([`World::populate_in_order`]
     /// over width times depth); else the slots take the closest units
-    /// ([`Turns::populate_slots`]). Nothing without a previous column.
+    /// ([`World::populate_slots`]). Nothing without a previous column.
     ///
     /// # Errors
     ///
@@ -469,11 +469,11 @@ impl Turns {
     }
 
     /// createColumnLine's end (`FUN_141012280` after its layout), and the phalanx's and the
-    /// box's (`after_column` false): the transform ([`Turns::formation_transform`]); unless it
+    /// box's (`after_column` false): the transform ([`World::formation_transform`]); unless it
     /// took the units anew, every slot of the array loses its unit and its filled mark, and the
     /// units take their slots: after a column with slots transformed, the line keeps the
-    /// column's order ([`Turns::from_previous_column`]), else the closest
-    /// ([`Turns::populate_slots`]).
+    /// column's order ([`World::from_previous_column`]), else the closest
+    /// ([`World::populate_slots`]).
     ///
     /// # Errors
     ///
@@ -497,7 +497,7 @@ impl Turns {
     }
 }
 
-/// [`Turns::assign_slots_by_variance`]'s preferences: for each of the `n` members (rows of `n`
+/// [`World::assign_slots_by_variance`]'s preferences: for each of the `n` members (rows of `n`
 /// cells in `costs`) its `s` slots from the cheapest on, the first untaken one winning a tie.
 pub(super) fn slot_preferences(costs: &[f32], n: usize, s: usize) -> Vec<i32> {
     let mut preferences = vec![-1i32; ASSIGNMENT_CELLS];
@@ -520,7 +520,7 @@ pub(super) fn slot_preferences(costs: &[f32], n: usize, s: usize) -> Vec<i32> {
     preferences
 }
 
-/// [`Turns::assign_slots_by_variance`]'s variance of one pairing: of the pairs (`members`,
+/// [`World::assign_slots_by_variance`]'s variance of one pairing: of the pairs (`members`,
 /// `slots`) with neither −1, the mean squared gap of their costs to `mean` (the sum over the
 /// group's size).
 pub(super) fn pairs_variance(

@@ -21,7 +21,7 @@ pub(super) enum Pass {
 }
 
 /// The world as `BMotion`'s path step reads it.
-pub(crate) struct World<'w, 'p> {
+pub(crate) struct StepWorld<'w, 'p> {
     pub(crate) spatial: &'w Spatial,
     pub(crate) plan: &'w mut Planning<'p>,
     pub(crate) dt: f32,
@@ -54,7 +54,7 @@ pub(crate) fn path_step(
     motion: &mut Motion,
     group: &GroupView,
     lead: &Lead,
-    world: &mut World<'_, '_>,
+    world: &mut StepWorld<'_, '_>,
     budget: bool,
 ) -> Result<bool, GenieError> {
     if motion.paths.is_empty() {
@@ -90,7 +90,7 @@ pub(super) fn pass(
     motion: &mut Motion,
     group: &GroupView,
     lead: &Lead,
-    world: &mut World<'_, '_>,
+    world: &mut StepWorld<'_, '_>,
     budget: bool,
 ) -> Result<Pass, GenieError> {
     let spatial = world.spatial;

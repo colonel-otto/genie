@@ -7,28 +7,28 @@ use crate::groups::update::{
     ATTACK, DIFFERENTIATORS, FRONT_AHEAD, NO_COMMAND, OTHER_COMMANDS, RELAYOUT_SPACING, TURN_LIMIT,
 };
 use crate::math::fmath::Vec3;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `BUnitGroup::update` from `0x14103dd65` on, for an awake group (or a hibernating one
     /// whose motion has flags bit 1). Without queued commands: when the group keeps every member
-    /// apart (`+0x468` equal to the member count), its target is not pending ([`Turns::
+    /// apart (`+0x468` equal to the member count), its target is not pending ([`World::
     /// target_pending`]), it walks no patrol (the top path's flags bit 0) and flags bit 11 is
     /// clear, each kept-apart unit leaves (`removeUnit` with target -1; one that is no member
     /// leaves the list instead, `FUN_140a63bd0`). The statistics' far flag is no queued command
     /// and motion flags bit 1 clear. With flags bit 18 the lead is the member nearest the
-    /// target's place ([`Turns::nearest_to_target`]); a lead found has the motion update with 0
-    /// ([`Turns::motion_update`]), then without motion flags bit 1 the statistics
-    /// ([`Turns::group_statistics`]) and the centroid (`+0x144`) as the motion's position and
+    /// target's place ([`World::nearest_to_target`]); a lead found has the motion update with 0
+    /// ([`World::motion_update`]), then without motion flags bit 1 the statistics
+    /// ([`World::group_statistics`]) and the centroid (`+0x144`) as the motion's position and
     /// new position (`+0x8`, `+0x38`), and bit 18 clears. Then the group goes (false) without
     /// members; without a queued command or a current one but with a formation, it goes when
     /// every slot is in state 3 (or it has none). With a member held and flags bit 16 the
     /// statistics run; with flags bit 6 the group goes; the lead is again the member nearest the
     /// target, and without a held lead (`FUN_1410465d0`) the group goes. A held lead re-places
-    /// the group ([`Turns::set_initial_position`]) when motion flags bit 1 is set, flags bit 10
+    /// the group ([`World::set_initial_position`]) when motion flags bit 1 is set, flags bit 10
     /// is clear and the formation is not a horde (kind 0), or flags bit 15 is set (which then
     /// clears); the sub-formations without units go. Then `BMotion`'s update, with a budget
-    /// while flags bit 8 is clear, and the rest ([`Turns::after_motion`]).
+    /// while flags bit 8 is clear, and the rest ([`World::after_motion`]).
     ///
     /// # Errors
     ///
@@ -75,7 +75,7 @@ impl Turns {
         self.after_motion(group, far, forward)
     }
 
-    /// [`Turns::awake_update`] without queued commands: when the group keeps every member apart
+    /// [`World::awake_update`] without queued commands: when the group keeps every member apart
     /// (`+0x468` equal to the member count), its target is not pending, it walks no patrol and
     /// flags bit 11 is clear, each kept-apart unit leaves (`removeUnit` with target −1; one that
     /// is no member leaves the list instead, `FUN_140a63bd0`). The statistics' far flag: no
@@ -104,8 +104,8 @@ impl Turns {
         Ok(g.command_queue.is_empty() && g.motion.flags & 2 == 0)
     }
 
-    /// [`Turns::awake_update`] with flags bit 18: the lead is the member nearest the target's
-    /// place ([`Turns::nearest_to_target`]); a lead found has the motion update with 0, then
+    /// [`World::awake_update`] with flags bit 18: the lead is the member nearest the target's
+    /// place ([`World::nearest_to_target`]); a lead found has the motion update with 0, then
     /// without motion flags bit 1 the statistics (`far`) and the centroid as the motion's
     /// position and new position, and bit 18 clears.
     ///
@@ -130,20 +130,20 @@ impl Turns {
     }
 
     /// `BUnitGroup::update` after `BMotion`'s update (`0x14103e017` on), `forward` the motion's
-    /// forward before it. With flags bit 8 the formation turns ([`Turns::turn_formation`]). The
+    /// forward before it. With flags bit 8 the formation turns ([`World::turn_formation`]). The
     /// member count is kept; without flags bit 16 the statistics run (far as before), and bit 16
     /// clears; the group's log (`FUN_141015370`) holds no state. The differentiator groups'
     /// members (`DAT_143f15860`, at most `0x8c`: [`crate::groups::UnitGroups::differentiator_units`])
     /// are only read by the members' moves below. Each formation line's attack range is its members' least
-    /// ([`Turns::line_ranges`]); the relayout is chosen ([`Turns::relayout_choice`]) and the
-    /// current command updates ([`Turns::command_update`], which may delete the group or let it
+    /// ([`World::line_ranges`]); the relayout is chosen ([`World::relayout_choice`]) and the
+    /// current command updates ([`World::command_update`], which may delete the group or let it
     /// hibernate). Without a member held there is no relayout; else the formation is laid out
     /// anew (`UpdateDesiredPositions(-1)`). An awake group's motion test (`FUN_141046600`) is
     /// unread, flags bit 9 clears, and a formation with slots moves its members to them
-    /// ([`Turns::members_to_slots`], with the differentiator groups' members listed). Then
-    /// the members' own moves ([`Turns::specific_moves_step`]), the order queue's due orders go
-    /// (`FUN_14100d940`, [`Turns::drop_due_orders`], when it has any), and the idle timer
-    /// ([`Turns::idle_timer_step`]). The debug drawing (`DAT_143f15a9c`) and the owner's
+    /// ([`World::members_to_slots`], with the differentiator groups' members listed). Then
+    /// the members' own moves ([`World::specific_moves_step`]), the order queue's due orders go
+    /// (`FUN_14100d940`, [`World::drop_due_orders`], when it has any), and the idle timer
+    /// ([`World::idle_timer_step`]). The debug drawing (`DAT_143f15a9c`) and the owner's
     /// computer test (`FUN_141659cf0`, its answer unread) hold no state. True while the group has
     /// members.
     ///
@@ -206,13 +206,13 @@ impl Turns {
     /// The formation's turn (`0x14103e037`..`0x14103e37b`, flags bit 8): when the motion turned
     /// more than π/4 from `forward` (the angle `FUN_14087e650` in size; `COMISS` then `JA`, a NaN
     /// does not), or motion flags bit 1 or flags bit 14 is set, the stored positions lose their
-    /// points (`FUN_14102bae0`), the group moves to its front ([`Turns::move_position_to_front`],
-    /// 100 ahead; [`Turns::front_by_centroid`] when the walked level holds no path, its id
+    /// points (`FUN_14102bae0`), the group moves to its front ([`World::move_position_to_front`],
+    /// 100 ahead; [`World::front_by_centroid`] when the walked level holds no path, its id
     /// `+0x20` -1), lays its formation out anew (`UpdateDesiredPositions(-1)`) whose slots lose
-    /// their units and take them again (`FUN_141041810`, [`Turns::populate_slots`]), and flags
+    /// their units and take them again (`FUN_141041810`, [`World::populate_slots`]), and flags
     /// bit 14 clears. Then the walked levels below the top go (`FUN_1410481f0`), `BMotion`'s
     /// update runs again with a budget, the formation transforms at the new place
-    /// ([`Turns::formation_transform`], `param_4` 0) and flags bit 8 clears. The debug drawing
+    /// ([`World::formation_transform`], `param_4` 0) and flags bit 8 clears. The debug drawing
     /// (`DAT_143f15a9c`) holds no state.
     pub(super) fn turn_formation(&mut self, group: i32, forward: Vec3) -> Result<(), GenieError> {
         if self.turns_formation(group, forward) {
@@ -366,7 +366,7 @@ impl Turns {
     /// kind 6 (`FUN_1410163f0` later), else sets flags bit 7 for a total spacing (`+0x47c`) of
     /// at most 6 (`COMISS` then `JBE`: a NaN too), else relays out. Flags bit 7 with a spacing
     /// above 6 relays out and clears bits 7 and 1; then flags bit 1 with a spacing above 6 and an
-    /// idle group ([`Turns::is_idle`]) relays out and clears bit 1.
+    /// idle group ([`World::is_idle`]) relays out and clears bit 1.
     pub(super) fn relayout_choice(&mut self, group: i32, count: usize) -> (bool, bool) {
         let idle = self.is_idle(group);
         let g = self.groups.get_mut(group).expect("held");
@@ -397,7 +397,7 @@ impl Turns {
 /// The idle timer's span (`FUN_14102d370`'s `% 0x2ee`, its division at `0x14102d395`).
 pub const IDLE_SPAN: u32 = 750;
 
-/// [`Turns::awake_update`]'s end before the motion: the group goes without members, and without
+/// [`World::awake_update`]'s end before the motion: the group goes without members, and without
 /// a queued command or a current one when its formation has every slot in state 3 (or has none).
 pub(super) fn awake_group_ends(g: &UnitGroup) -> bool {
     if g.members.is_empty() {

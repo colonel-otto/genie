@@ -7,13 +7,13 @@ use crate::groups::update::{
     ATTACK, CLOSE, FOLLOW, FOLLOW_SHARE, IDLE_LIMIT, IDLE_SPAN, NO_COMMAND, OTHER_COMMANDS,
 };
 use crate::groups::{SpecificMove, UnitGroup};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// The current command's update (`0x14103e5f7`..`0x14103e865`): false deletes the group. No
-    /// command does nothing; a move ([`Turns::move_update`], `FUN_141041420`) that finished
+    /// command does nothing; a move ([`World::move_update`], `FUN_141041420`) that finished
     /// hibernates the group (`+0x13c` 1) while commands are queued, else deletes it. A follow (2)
-    /// with its target held and a lead (the member nearest the target's place, [`Turns::
+    /// with its target held and a lead (the member nearest the target's place, [`World::
     /// nearest_to_target`]) moves the group to the target (`commandMoveTo` with the target's x
     /// and y, the range half the lead's master's line of sight, at once) when the target is
     /// that range or more (`COMISS` then `JC`: a NaN is not) from where the group's target was
@@ -103,10 +103,10 @@ impl Turns {
     /// nothing. Then, off a patrol (the top path's flags bit 0) and with flags bit 11 clear,
     /// without queued commands but with a formation whose slots' array exists: the units of the
     /// slots in state 3 leave the group (`removeUnit` with the group's target); some left and
-    /// some not: the rest move to their places ([`Turns::move_to_desired_positions`]) and the
+    /// some not: the rest move to their places ([`World::move_to_desired_positions`]) and the
     /// update ends. With a path walked (the walked level's path, `+0x18`, holding points) it
     /// goes on; without, a formation none of whose slots was in state 3 locks to its kind
-    /// ([`Turns::lock_formation`], `FUN_141024e70`) and the command ends (-1); else the command
+    /// ([`World::lock_formation`], `FUN_141024e70`) and the command ends (-1); else the command
     /// ends. Any other group without a path walked ends its command. Then flags bit 2 clears, bit
     /// 5 sets and the members move to their places; finished: no path walked and not the
     /// patrol's case.
@@ -211,7 +211,7 @@ impl Turns {
     }
 
     /// `FUN_141041420`'s end (`0x1410416dc`): flags bit 2 clears, bit 5 sets, the members move
-    /// to their places ([`Turns::move_to_desired_positions`] with a move and no target); the
+    /// to their places ([`World::move_to_desired_positions`] with a move and no target); the
     /// move finished when no path is walked and it was no patrol.
     pub(super) fn move_members_on(
         &mut self,
@@ -229,7 +229,7 @@ impl Turns {
     /// for command `command` on target `target` (the group update's are a move and -1); its log
     /// lines aside. Nothing without a formation or its slots' array (`FUN_140fd75d0` lets go of
     /// the formation's reference). For each slot with a unit (`-1` none) the world holds that is
-    /// free ([`Turns::member_idle`], `FUN_141017f00`): one in its place (slot state 3) on an
+    /// free ([`World::member_idle`], `FUN_141017f00`): one in its place (slot state 3) on an
     /// attack (9) on a held target takes the target (slot 0x128 with its x and y); any other
     /// gets a path to the slot.
     ///
@@ -281,11 +281,11 @@ impl Turns {
     }
 
     /// The members' own moves past the slots' (`0x14103efc4`..`0x14103f355`): each member whose
-    /// move is active (`mSpecificMoves[i]`) and that is free ([`Turns::member_idle`]) and held:
+    /// move is active (`mSpecificMoves[i]`) and that is free ([`World::member_idle`]) and held:
     /// one moved aside (reason 2) stops (slot 0x5d0), shows standing (slot 0x660), counts its
     /// timer down by the update's seconds (`FUN_1415300e0`) and, once at most 0 (`COMISS` then
     /// `JC`: a NaN keeps it), drops its move (active 0, path and reason -1, the rest 0) and stands
-    /// (slot 0x560). Any other steps (slot 0x608, [`Turns::member_step`]): once the step is done
+    /// (slot 0x560). Any other steps (slot 0x608, [`World::member_step`]): once the step is done
     /// (not 0) its move is dropped; else it shows its walking sprite (slot 0x658) and its move's
     /// distance loses the ground distance from its last position to where it last moved to
     /// (slot 0x520), which becomes its last position.
@@ -415,9 +415,9 @@ impl Turns {
         }
     }
 
-    /// The idle timer (`0x14103f370`..`0x14103f3a3`): an idle group ([`Turns::is_idle`]) adds
+    /// The idle timer (`0x14103f370`..`0x14103f3a3`): an idle group ([`World::is_idle`]) adds
     /// the update's milliseconds (`world+0x7c`) to its timer (`+0x3e4`, wrapping), and past
-    /// [`IDLE_LIMIT`] (unsigned) draws it anew ([`Turns::reset_idle_timer`]); a group that is not
+    /// [`IDLE_LIMIT`] (unsigned) draws it anew ([`World::reset_idle_timer`]); a group that is not
     /// idle draws it anew.
     pub(super) fn idle_timer_step(&mut self, group: i32) {
         if self.is_idle(group) {
@@ -431,7 +431,7 @@ impl Turns {
         self.reset_idle_timer(group);
     }
 
-    /// The update's milliseconds (`world+0x7c`), of which [`Turns::dt_seconds`] (`world+0x164`)
+    /// The update's milliseconds (`world+0x7c`), of which [`World::dt_seconds`] (`world+0x164`)
     /// is [`crate::objects::lifecycle::seconds`]: the round trip gives the milliseconds back exactly for
     /// any update below 2^22 of them.
     pub(super) fn dt_ms(&self) -> u32 {
@@ -439,7 +439,7 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// `FUN_141017630`: a member of group `group` the world holds (false for a group it does not
     /// hold).
     #[must_use]

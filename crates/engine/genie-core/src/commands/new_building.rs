@@ -10,11 +10,11 @@ use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
-use crate::world::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, Turns};
+use crate::world::{BUILDING_COST, BUILDING_KIND, FARM, GATE, Gate, PASTURE_1889, World};
 
-impl Turns {
+impl World {
     /// The new foundation of BUILD and of `BUILD_WALL`'s tiles (the master's slot 0x108,
-    /// [`Turns::make_building`]), then the player pays the master's cost (each entry flagged
+    /// [`World::make_building`]), then the player pays the master's cost (each entry flagged
     /// paid). Its id and position.
     pub(crate) fn found(
         &mut self,
@@ -40,7 +40,7 @@ impl Turns {
         Ok(made)
     }
 
-    /// [`Turns::make_building`]'s combat setup (`FUN_14121df60`): its class counters
+    /// [`World::make_building`]'s combat setup (`FUN_14121df60`): its class counters
     /// (`FUN_141226060`), its powerup offset (`+0xa54`, the Object stream's "setup" draw) and,
     /// for a building with a train location (an entry of `+0x898` other than −1), its paid cost
     /// in attribute 247 (slot 0xf8).
@@ -70,7 +70,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::make_building`]'s static init (`FUN_1411a45a0`): the storage entries of flags 1, 2
+    /// [`World::make_building`]'s static init (`FUN_1411a45a0`): the storage entries of flags 1, 2
     /// and 32 go to the owner (`FUN_141193860`); returns the last entry of flag 0, which the
     /// building holds (`FUN_141193710`; none: −1 and 0).
     pub(super) fn building_storage(
@@ -101,7 +101,7 @@ impl Turns {
     /// their init: the static, animated, moving and combat setups, then the constructor
     /// `FUN_1411de5f0`) of `master` for `player` at `position`, the ground's height: its id
     /// (`mNextObjectId`), its unit AI of the given type if its class gets one, the setups' draws
-    /// with its master's standing sprite current ([`Turns::setup_draws`]: the angle it faces), its
+    /// with its master's standing sprite current ([`World::setup_draws`]: the angle it faces), its
     /// movement state ([`Mover::new_object`]), the combat setup's class counters
     /// ([`count_class`]), its powerup offset (the Object stream's "setup" draw)
     /// and a building with a train location its paid cost (attribute 247); the static init's
@@ -109,15 +109,15 @@ impl Turns {
     /// The constructor: masters 50 and 1889 on snow keep their snow (`+0xc61` 2); a master
     /// neither of classes 51, 54 nor 357, 1188, nor an annex (`+0x9b8` −1) takes its build time
     /// as a foundation (a build time above 0: hit points 1, a farm's terrain,
-    /// [`Turns::construction_terrain`]; build points 0), the others are built already (build
+    /// [`World::construction_terrain`]; build points 0), the others are built already (build
     /// points their train time, their master's hit points); one with build points 0 and a
     /// build time above 0, not of classes 51 or 54, turns desolid (`FUN_1411cf770`: no record,
-    /// its tiles unlinked); its footprint is cleared ([`Turns::clear_footprint`]); each annex
+    /// its tiles unlinked); its footprint is cleared ([`World::clear_footprint`]); each annex
     /// slot (`+0x990`) of a master the player has makes its annex the same way at the slot's
     /// offset (`+0x998`, `+0x9a8`), depth first, linked to the building (`+0xbb8`), out of its
     /// owner's watched list unless the building is a gate (39), desolid when its master is tall,
     /// its own footprint cleared; `+0xcd0` notes mangrove or rice terrain under it
-    /// (`FUN_141188db0`); last its owner watches it (`FUN_1411cc980`, [`Turns::watch_started`]).
+    /// (`FUN_141188db0`); last its owner watches it (`FUN_1411cc980`, [`World::watch_started`]).
     /// Not held: the construction sprite and its facets, the world's `+0x154`, slot 0x840's
     /// `+0xba0` and `+0xbf8`, and the wonder's `FUN_1411665c0`.
     ///

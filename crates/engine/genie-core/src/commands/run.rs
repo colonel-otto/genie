@@ -1,12 +1,12 @@
-//! A command's run in the command phase ([`Turns::run`]), a human player's order and the
+//! A command's run in the command phase ([`World::run`]), a human player's order and the
 //! order units' reset.
 
 use crate::GenieError;
 use crate::commands::{Command, Order, QueueAt, ResearchAt};
 use crate::math::rng::Stream;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// Run a command in the command phase. Where the slice does not model what the command does to
     /// the issuing player's units, that player's lane stops.
     pub(crate) fn run(&mut self, command: &Command) {
@@ -395,7 +395,7 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// `FUN_140e6cfc0`: each of an order's units (INTERACT, MOVE, RETREAT) the world holds,
     /// sleeping ones too (`FUN_1415417a0`), with a unit AI resets it for the order
     /// ([`UnitAi::reset_for_order`]), in list order.

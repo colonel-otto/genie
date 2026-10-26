@@ -9,15 +9,15 @@ use crate::players::game_status::{
     UNSTOPPED_BUILDINGS, VILLAGER,
 };
 use crate::unit_ai::Effect;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_141613ed0`: a defeated player's objects in its live list's order. A villager, a
     /// fishing boat and an explorer (unit AI action `0x2bd` or 605) empty their ignore lists
-    /// (`FUN_141197da0`), stop (slot 0x148, [`Turns::object_stop`]) and stand (slot 0x560:
+    /// (`FUN_141197da0`), stop (slot 0x148, [`World::object_stop`]) and stand (slot 0x560:
     /// the stop of their movement, slot 0x5d0, and their walked level's reset,
     /// `FUN_140f98e80`); a building stops but for a few masters (`FUN_1411e6290`) and gives
-    /// back its queue ([`Turns::cancel_queue`]); every unit AI's orders go (`FUN_140c5e010`). The
+    /// back its queue ([`World::cancel_queue`]); every unit AI's orders go (`FUN_140c5e010`). The
     /// slice holds no unit groups (`+0x6d0`).
     pub(super) fn stop_everything(&mut self, p: usize) -> Result<(), GenieError> {
         use crate::movement::explore::EXPLORE_ACTION;
@@ -54,7 +54,7 @@ impl Turns {
 
     /// The object stop (slot 0x148, `FUN_14108c050`; a building's `FUN_1411e6290`) of the object
     /// at `idx` of player `p`: the action object's stop (`FUN_14106fa60`): its top action's
-    /// slot 0x38 ([`Turns::halt_top_action`]); the action list goes ([`Turns::clear_actions`])
+    /// slot 0x38 ([`World::halt_top_action`]); the action list goes ([`World::clear_actions`])
     /// unless that answered true for a unit that is no trade cart with goods; then a unit AI of
     /// a class other than 58 whose action value is not `0x2c2` and whose top action is no trade
     /// (0x6f) with a load stops (slot 0xb0 with 0: the order ends, and stopAction, slot 0x3c0)
@@ -113,11 +113,11 @@ impl Turns {
     /// without one, or for a `MoveTo`, an Explore or an Enter (the base's, `FUN_140a7bbe0`). A
     /// human player's Hunt (`FUN_140ac79b0`) goes to state 2 (`0x140ac60e0` case 2): its
     /// sub-actions go, the unit stands with the hunt's sprite (slot 0x68 with
-    /// `FUN_140ac5210`'s), its target goes (slot 0x68 with none, [`Turns::release`]) and its
+    /// `FUN_140ac5210`'s), its target goes (slot 0x68 with none, [`World::release`]) and its
     /// second target (`FUN_140a7a190` with none), its point and timer clear; then the pasture it
     /// tends lets it go (`FUN_141189ca0` with −1), and the answer is true. The Fly (Bird), the
     /// missile's, the Make and the wait for a foundation keep the base's too; the Gather, the
-    /// Build, the Attack and the Artifact halt ([`Turns::halt_other`]).
+    /// Build, the Attack and the Artifact halt ([`World::halt_other`]).
     pub(super) fn halt_top_action(&mut self, p: usize, idx: usize) -> Result<bool, GenieError> {
         let computer = self.players[p].computer;
         let by = self.releaser(p, idx);
@@ -183,8 +183,8 @@ impl Turns {
 
     /// Slot 0x38 of the top actions with their own besides the Hunt's, each true: the Gather's
     /// (`FUN_140a8e1b0`, [`crate::gathering::gather::GatherAction::halt`]: its target and second target go,
-    /// [`Turns::release`]), the Build's (`FUN_140ab0350`, [`crate::construction::build::BuildAction::halt`]:
-    /// a counted builder leaves its foundation's builders, [`Turns::leave_builders`], before the
+    /// [`World::release`]), the Build's (`FUN_140ab0350`, [`crate::construction::build::BuildAction::halt`]:
+    /// a counted builder leaves its foundation's builders, [`World::leave_builders`], before the
     /// rest; the foundation goes), the Attack's (`FUN_140a82ac0`,
     /// [`crate::combat::attack::Attack::halt`]) and the Artifact's (`FUN_140aad1a0`,
     /// [`crate::ownership::artifact::Artifact::stop`]). The Gather, the Build and the Artifact show the
@@ -224,7 +224,7 @@ impl Turns {
         Ok(true)
     }
 
-    /// [`Turns::halt_other`] of a Gather: it halts with `standing` (the task's
+    /// [`World::halt_other`] of a Gather: it halts with `standing` (the task's
     /// carrying one while it carries at least 1 of the task's resource); its target and second
     /// target go, released by `by`. `standing` is the master's standing sprite.
     pub(super) fn halt_gather(
@@ -257,7 +257,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::halt_other`] of a Build: a counted builder leaves its foundation's builders, the
+    /// [`World::halt_other`] of a Build: a counted builder leaves its foundation's builders, the
     /// unit stands, and the foundation and the second target go, released by `by`.
     pub(super) fn halt_build(
         &mut self,
@@ -281,7 +281,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::halt_other`] of a Repair (`FUN_140adaa00`): `set_state(2)`, a counted repairer
+    /// [`World::halt_other`] of a Repair (`FUN_140adaa00`): `set_state(2)`, a counted repairer
     /// out of its target's repairers, the standing sprite; the target stays.
     pub(super) fn halt_repair(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
@@ -293,7 +293,7 @@ impl Turns {
         self.standing_sprite(p, idx)
     }
 
-    /// [`Turns::halt_other`] of an Artifact: its sub-actions and its target go (released by
+    /// [`World::halt_other`] of an Artifact: its sub-actions and its target go (released by
     /// `by`, the Enter's first), a walking animal stops, and it stands.
     pub(super) fn halt_artifact(
         &mut self,

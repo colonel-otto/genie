@@ -6,7 +6,7 @@
 //! to 0. Nothing else changes the prices.
 
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
-use crate::world::Turns;
+use crate::world::World;
 use crate::world::checkpoint::cvttss2si;
 
 /// The commodities: food, wood and stone (the commands' only ones) and the ore (attribute
@@ -135,7 +135,7 @@ impl Market {
     }
 }
 
-impl Turns {
+impl World {
     /// The market fee's attribute of player `p` (78, read without a bound check; 0 past the
     /// player's attributes).
     fn fee(&self, p: usize) -> f32 {
@@ -147,7 +147,7 @@ impl Turns {
     /// hold (`COMISS`, `JC`: a NaN does not), or a price at most 0 (`JBE`), ends the sales. The
     /// price falls ([`Market::trade`]), then the lot's worth at the old price less the fee
     /// (attribute 78 times it), plus 0.5, truncated, comes in as gold (the player's slot 0xf8
-    /// with 1 and 1: the gold counts as gathered too, [`Turns::add_resource`]) and the lot goes
+    /// with 1 and 1: the gold counts as gathered too, [`World::add_resource`]) and the lot goes
     /// (slot 0xf8 with 0 and 1). Not held: the statistics (`FUN_141778560`) and the local
     /// player's telemetry (`FUN_14097daf0`).
     pub(crate) fn sell(&mut self, p: usize, attribute: u8, times: u16) {
@@ -284,7 +284,7 @@ mod tests {
 
     /// Player 1 with 100 of each resource, a commodity volume of 100, a fee of 0.3 and the
     /// market above.
-    fn trading() -> Turns {
+    fn trading() -> World {
         let mut attributes = vec![0.0; 250];
         attributes[FEE] = 0.3;
         let player = Player {
@@ -293,7 +293,7 @@ mod tests {
             commodity_volume: 100,
             ..Player::default()
         };
-        let mut t = Turns::new(0, 1, 0, vec![0; 2], vec![Player::default(), player]);
+        let mut t = World::new(0, 1, 0, vec![0; 2], vec![Player::default(), player]);
         t.market = market();
         t
     }

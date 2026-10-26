@@ -5,9 +5,9 @@ use crate::players::world_player::{
     AGES, BUILDABLE_TOWN_CENTRE, BUILDER, BUILDING_CLASS, RESEARCHED, TOWN_CENTRES, TreeQuery,
     attribute, full_tree_civ, get,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_141658970`: player `p`'s first built town centre (state 2) among the ids its tracker
     /// files under masters 109 and 444 (`FUN_14104f560`, `FUN_14104f4b0`: the first list, then
     /// the second), the objects the world holds.
@@ -50,11 +50,11 @@ impl Turns {
 
     /// `FUN_141625a20`'s count with no object (its fifth argument 0): the masters of player `p`,
     /// by id, of type 70 and up that the player has (`+0x5f0` not 0), that train at `building`
-    /// ([`Turns::trains_at`]) and whose `+0x5f1` has no bit 0; for each, the limited units'
+    /// ([`World::trains_at`]) and whose `+0x5f1` has no bit 0; for each, the limited units'
     /// test of its linked master (`FUN_140c7e1f0`) with `+0x5f1`'s bit 3 (`FUN_1416116c0`,
     /// `FUN_141611520`). With `building` 118 (a builder), attribute 48 at 0 and the town centre
     /// 621 neither had nor its `+0x5f1` set, one more when the town centres
-    /// ([`Turns::town_centre_count`]) are fewer than attribute 218. genie's masters keep `+0x5f0`
+    /// ([`World::town_centre_count`]) are fewer than attribute 218. genie's masters keep `+0x5f0`
     /// and `+0x5f1` as booleans ([`crate::objects::masters::Master::available`],
     /// [`crate::objects::masters::Master::disabled`]), a set one as 1: the limit bits 1 to 3 are none, and
     /// the limited units' tests not reached.
@@ -84,7 +84,7 @@ impl Turns {
     }
 
     /// `FUN_141610470`'s count with its fifth argument 1: the masters of player `p`, by id, of
-    /// type 70 and up that train at `building` ([`Turns::trains_at`]): one with `+0x5f1`'s bit
+    /// type 70 and up that train at `building` ([`World::trains_at`]): one with `+0x5f1`'s bit
     /// 1 or 2 counts; any other counts when the tech tree ([`TechTree`]) of the player's
     /// civilisation (the full tech tree's, `FUN_140c7e6f0`, under it) has it at the building
     /// within the ages (unless it is the civilisation's unique unit under the full tech tree:
@@ -93,7 +93,7 @@ impl Turns {
     /// ([`TechTree::tech`]) is none of the player's or researched. With `building` 118,
     /// attribute 48 at 0 and the town centre 621 had with no `+0x5f1`, one more when the town
     /// centres are fewer than attribute 218. genie's masters keep `+0x5f0` and `+0x5f1` as
-    /// booleans ([`Turns::trainable_count`]).
+    /// booleans ([`World::trainable_count`]).
     ///
     /// [`TechTree::link`]: crate::players::world_player::tech_tree::TechTree::link
     /// [`TechTree::tech`]: crate::players::world_player::tech_tree::TechTree::tech
@@ -177,7 +177,7 @@ impl Turns {
 
     /// `FUN_141263610`: master `m` trains at `building`: one of its train locations (`+0x898`)
     /// is `building`, or the building's stack unit (`+0x986`) when the local player's master of
-    /// it ([`Turns::local_player`], `FUN_140c88440`) is of class 3, disappears when built
+    /// it ([`World::local_player`], `FUN_140c88440`) is of class 3, disappears when built
     /// (`+0x984`) and has one (0 or more). A master without train locations trains nowhere.
     #[must_use]
     pub fn trains_at(&self, m: &crate::objects::masters::Master, building: i16) -> bool {

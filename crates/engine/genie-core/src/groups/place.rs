@@ -7,7 +7,7 @@ use crate::groups::Motion;
 use crate::groups::formation::on_map;
 use crate::groups::motion::moved_vector;
 use crate::math::fmath::{self, Vec3, cross, normalize};
-use crate::world::Turns;
+use crate::world::World;
 
 /// The spiral's steps (`FUN_141007630`'s table from `DAT_142f49460` and `DAT_142f49480`), x and y:
 /// up y, up x, down y, down x.
@@ -88,16 +88,16 @@ impl Motion {
     }
 }
 
-impl Turns {
+impl World {
     /// `SetInitialPosition` (`FUN_141039990`) of group `group`, as its `DAT_1439e60e4` (1, which
     /// nothing writes) has it: the stored positions lose their points, the group stands, at once
     /// and as its new position, on the first clear point round its centroid
-    /// ([`Turns::clear_spot`]), faces as its members do ([`Turns::set_initial_orientation`]), and
+    /// ([`World::clear_spot`]), faces as its members do ([`World::set_initial_orientation`]), and
     /// its flags take bit 10.
     ///
     /// # Errors
     ///
-    /// What [`Turns::clear_spot`] does not model.
+    /// What [`World::clear_spot`] does not model.
     ///
     /// # Panics
     ///
@@ -184,7 +184,7 @@ impl Turns {
     /// # Panics
     ///
     /// When the world does not hold `group`: the game's routine gets the group itself, and its
-    /// caller ([`Turns::set_initial_position`]) holds it.
+    /// caller ([`World::set_initial_position`]) holds it.
     pub fn set_initial_orientation(&mut self, group: i32) {
         let g = self
             .groups
@@ -218,12 +218,12 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// `movePositionToFront` (`FUN_141025a20`) of group `group`, `ahead` (`param_2`, 100 in the
     /// update) the distance of the point ahead along the group's forward. The group's place is
     /// its own, or with motion flags bit 1 the members' centre (slot 0x520, summed over the
     /// members the world holds, over the members' count). A flanked group (locked type 8) whose
-    /// lead's object ([`Turns::lead_object`]) moves and could stand there among the members (slot
+    /// lead's object ([`World::lead_object`]) moves and could stand there among the members (slot
     /// 0x270, [`crate::map::spatial::Spatial::point_clear_among`], with [`FRONT_SHARE`] of its radius;
     /// an object that does not move cannot) stands there. Else the members within the spacing ([`FRONT_SHARE`] of it but for a
     /// staggered lock, type 7) of the line along the forward through that place (on the
@@ -235,7 +235,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// The lead's master, restriction or the map's terrain missing ([`Turns::master_mask`]),
+    /// The lead's master, restriction or the map's terrain missing ([`World::master_mask`]),
     /// and its point test near a record whose place the slice does not know.
     ///
     /// # Panics
@@ -414,10 +414,10 @@ mod tests {
 
     /// A 20 by 20 map of terrain class 1, its objects on the obstruction manager, and group 1 of
     /// them at (10, 10) facing x, spacing 2, two stored points.
-    fn front_world(units: Vec<crate::objects::unit::Unit>) -> Turns {
+    fn front_world(units: Vec<crate::objects::unit::Unit>) -> World {
         use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
         use crate::map::terrain::{Terrain, TerrainKind};
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,
@@ -487,7 +487,7 @@ mod tests {
         t
     }
 
-    fn placed(t: &Turns) -> (Vec3, Vec3, usize) {
+    fn placed(t: &World) -> (Vec3, Vec3, usize) {
         let g = &t.groups.groups[0];
         (
             g.motion.position[0],
@@ -574,7 +574,7 @@ mod tests {
         mover.moved_at = lead.position;
         lead.mover = Some(mover);
         let units = vec![lead, unit(11, 10.2, 10.1)];
-        let flanked = |t: &mut Turns| {
+        let flanked = |t: &mut World| {
             t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
             t.groups.groups[0].motion.lead = 10;
         };
@@ -597,7 +597,7 @@ mod tests {
     #[test]
     fn a_flanked_group_tests_the_world_s_object_of_its_lead_id() {
         let units = vec![unit(10, 15.0, 10.5), unit(11, 10.2, 10.1)];
-        let flanked = |t: &mut Turns| {
+        let flanked = |t: &mut World| {
             t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
             t.groups.groups[0].members.truncate(2);
         };

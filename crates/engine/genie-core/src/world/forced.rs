@@ -6,7 +6,7 @@ use crate::combat::volley::same_members;
 use crate::movement::Mover;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::Unit;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The game's state after a tick, for the oracle's forced replay (dev only: the oracle reads it
 /// from the tick oracle's saves, genie-core never reads the game): the frame seed and every
@@ -50,7 +50,7 @@ pub struct GameState {
     pub groups: Option<crate::groups::UnitGroups>,
 }
 
-impl Turns {
+impl World {
     /// The objects' inside lists in the game's order (`+0x2f8`, the tick oracle's dump): each
     /// container listed takes the order when it holds the same objects. Returns how many did.
     pub fn force_garrisons(&mut self, lists: &[(i32, Vec<i32>)]) -> usize {

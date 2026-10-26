@@ -112,7 +112,7 @@ fn an_attack_takes_its_master_s_sprites_but_its_task_s() {
 /// fourth entry change nothing.
 #[test]
 fn a_population_set_moves_each_storage_entry_to_the_new_value() {
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         0,
         0,
@@ -156,7 +156,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         u.life.inside = inside;
         u
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         0,
         0,
@@ -195,7 +195,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
     for id in 1..=3 {
         t.give_record(id, &master);
     }
-    let record = |t: &Turns, id| t.spatial.get(id).and_then(|p| p.obstruction);
+    let record = |t: &World, id| t.spatial.get(id).and_then(|p| p.obstruction);
     let wall = Some(crate::map::spatial::Obstruction { kind: 2, class: 2 });
     assert_eq!(
         [record(&t, 1), record(&t, 2), record(&t, 3)],
@@ -277,7 +277,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         objects: vec![villager(9175, 25.0), villager(9177, 10.0)],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.masters = vec![Masters::new([Master {
         id: 83,
         kind: 70,
@@ -321,7 +321,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
 
 /// A unit of `master` with `hp` hit points.
 /// A building's construction whose build points reached its build time: built, so the load
-/// completes it in its player's tracker ([`Turns::load_trackers`]).
+/// completes it in its player's tracker ([`World::load_trackers`]).
 fn built() -> crate::construction::build::Construction {
     crate::construction::build::Construction {
         progress: 1.0,
@@ -370,7 +370,7 @@ fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
         objects: vec![unit_of(1, 4, 30.0), unit_of(2, 5, 30.0)],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.masters = vec![Masters::new([
         combat(4, 6, 60),
         combat(5, 6, 60),
@@ -412,7 +412,7 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
         objects: vec![tower, archer],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let mut tower_master = combat(79, 52, 1020);
     tower_master.kind = 80;
     tower_master.reload = 2.0;
@@ -447,7 +447,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
         objects: vec![main, annex, foundation],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let building = |id, hit_points, head_unit, annexes| Master {
         id,
         kind: 80,
@@ -484,7 +484,7 @@ fn a_team_effect_reaches_the_mutual_allies() {
         relations,
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         0,
         0,
@@ -533,7 +533,7 @@ fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
         attributes: vec![0.0; 40],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let mut house = combat(70, 3, 550);
     house.storage = vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)];
     t.masters = vec![Masters::new([house])];
@@ -554,7 +554,7 @@ fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
 fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     let (w, h) = (20, 20);
     let n = (w * h) as usize;
-    let sight = |t: &Turns| {
+    let sight = |t: &World| {
         let map = &t.spatial.sight.as_ref().unwrap().maps[0];
         map.counts.iter().filter(|&&c| c > 0).count()
     };
@@ -564,7 +564,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
             attributes: vec![0.0; 40],
             ..Player::default()
         };
-        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 0, 0, vec![0], vec![player]);
         let stone = Master {
             id: 50,
             kind: 10,
@@ -676,7 +676,7 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
         sleeping: vec![unit_of(2, 4, 30.0)],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let mut m = combat(4, 6, 60);
     (m.death_sprite, m.death_spawns) = (7, [0, 9]);
     (m.build_time, m.obstruction_type, m.obstruction_class) = (33, 5, 2);
@@ -768,7 +768,7 @@ fn a_speed_change_reaches_the_units_movement() {
         objects: vec![walker],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let mut villager = combat(4, 4, 25);
     villager.max_speed = 0.8;
     villager.moving = Some(stats);
@@ -801,7 +801,7 @@ fn the_resource_commands_set_add_and_multiply_an_attribute() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.players[0].attributes[69] = 2.0;
     t.do_effect(0, &[attribute(1, 78, 0, -1, 0.15)], None)
         .unwrap();
@@ -839,7 +839,7 @@ fn a_farm_food_change_grows_the_farms_food() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let mut master = combat(50, 49, 480);
     master.kind = 80;
     t.masters = vec![Masters::new([master])];
@@ -865,7 +865,7 @@ fn the_resource_commands_side_effects() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         0,
         0,
@@ -900,7 +900,7 @@ fn the_resource_commands_side_effects() {
 
 /// A technology at the barracks (master 12, 30 seconds in the `.dat`) in state 1 with 20
 /// seconds of work done.
-fn barracks_tech() -> Turns {
+fn barracks_tech() -> World {
     use crate::technology::{Location, TechDef, TechState};
     let state = TechState {
         state: 1,
@@ -919,7 +919,7 @@ fn barracks_tech() -> Turns {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.techs = vec![TechDef {
         required: [-1; 6],
         locations: vec![(12, 30)],
@@ -1049,11 +1049,11 @@ fn a_technology_change_s_location_stacking_and_effect_override() {
 
 /// Kind 3 (`FUN_14160e410`, mode −1): the old master takes the new one's values but keeps its
 /// id, class, availability and disabling (`Master::copy_from`); its objects first take the
-/// new one through their slot 0x98 ([`Turns::upgrade_object`]).
+/// new one through their slot 0x98 ([`World::upgrade_object`]).
 #[test]
 fn an_upgrade_copies_the_new_master_into_the_old() {
     let player = Player::default();
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let mut militia = combat(74, 6, 40);
     militia.available = true;
     let mut man_at_arms = combat(75, 6, 45);
@@ -1093,7 +1093,7 @@ fn spawns_and_cost_entries() {
         objects: vec![centre],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let mut tc = combat(109, 80, 2400);
     tc.kind = 80;
     let mut serjeant = combat(1658, 6, 60);
@@ -1121,7 +1121,7 @@ fn spawns_and_cost_entries() {
 /// 203 to 206 need the effect's object, which a research has not.
 #[test]
 fn the_object_kinds_without_an_object_do_nothing() {
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![Player::default()]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![Player::default()]);
     t.masters = vec![Masters::new([combat(82, 52, 4800)])];
     for kind in 200..=206 {
         t.do_effect(0, &[attribute(kind, 82, -1, 8, 770.0)], None)
@@ -1138,7 +1138,7 @@ fn the_object_kinds_without_an_object_do_nothing() {
 /// is disabled; master 0x26d is never enabled in game mode 11.
 #[test]
 fn the_enable_command_sets_available_unless_disabled() {
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![Player::default()]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![Player::default()]);
     let mut locked = combat(5, 6, 10);
     locked.disabled = true;
     t.masters = vec![Masters::new([
@@ -1183,7 +1183,7 @@ fn a_research_whose_effect_needs_its_building_stops() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let def = |effect| TechDef {
         required: [-1; 6],
         effect_id: 7,
@@ -1217,7 +1217,7 @@ fn an_age_adds_its_event_to_the_history() {
         attributes: vec![0.0; 300],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.techs = vec![
         TechDef {
             required: [-1; 6],
@@ -1265,7 +1265,7 @@ fn a_dependent_technology_done_already_completes_with_its_requirement() {
         techs: vec![TechState::default(), free.clone(), free.clone(), free],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.techs = vec![def(-1, 0), def(0, 1), def(1, 1), def(0, 2)];
     assert_eq!(t.complete_research(0, 0, None), Ok(true));
     let states: Vec<i16> = t.players[0].techs.iter().map(|s| s.state).collect();
@@ -1291,7 +1291,7 @@ fn the_full_tech_tree_disables_a_civ_s_own_technologies_but_those_of_mode_1() {
             techs: vec![TechState::default(); 5],
             ..Player::default()
         };
-        let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 0, 0, vec![0], vec![player]);
         t.settings.full_tech_tree = full_tech_tree;
         t.techs = vec![
             def(-1, 0, 0),
@@ -1326,7 +1326,7 @@ fn the_technology_commands_disable_and_adjust_costs() {
         techs: vec![state(1), state(3), state(0), state(1)],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     let kind = |k: i16| TechDef {
         kind: k,
         costs: [
@@ -1386,7 +1386,7 @@ fn the_disable_command_reads_its_id_s_low_16_bits() {
         techs: vec![state(0), state(0), state(0)],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.techs = vec![TechDef::default(); 3];
     let disable = |d: f32| EffectCommand {
         kind: b'f',
@@ -1412,7 +1412,7 @@ fn a_cost_change_past_the_i32_range_adds_nothing() {
         techs: vec![TechState::default()],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.techs = vec![TechDef {
         costs: [
             Cost {
@@ -1466,7 +1466,7 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         }],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 0, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 0, 0, vec![0], vec![player]);
     t.techs = vec![TechDef {
         required: [-1; 6],
         ..TechDef::default()

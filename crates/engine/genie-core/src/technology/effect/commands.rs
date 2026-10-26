@@ -6,7 +6,7 @@ use crate::technology::EffectCommand;
 use crate::technology::effect::{
     COST_ATTRIBUTES, Change, FARM_FOOD, TECH_COST, TECH_DISABLE, TECH_TIME, kind,
 };
-use crate::world::Turns;
+use crate::world::World;
 
 /// Which players a block of the base's kinds reaches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,7 +37,7 @@ impl Party {
     }
 }
 
-impl Turns {
+impl World {
     /// The players party `party` reaches from player `p`: for a relation, each player past Gaia
     /// (`FUN_14152fdd0`, from 1, the player itself when it counts itself so) whose and to whom
     /// the relations (`+0x260`, `FUN_141667f50`) are the party's, in order.
@@ -63,9 +63,9 @@ impl Turns {
     /// `TRIBE_Effects::do_effect` (`FUN_141462440`) of an effect's commands `effect` (the
     /// effect's id names them in the game's table; its 0x318 makes the spawns count in the local
     /// player's statistics, which are not simulation) for player `p` with the effect's object `object` (none for a research's): first its
-    /// technology commands in order, the cost modifier (`'e'`, [`Turns::tech_cost`]), the disable
-    /// command (`'f'`, an id other than −1, [`Turns::disable_tech`]) and the research time
-    /// modifier (`'g'`, [`Turns::research_time`]); then the base's ([`Turns::base_effect`]).
+    /// technology commands in order, the cost modifier (`'e'`, [`World::tech_cost`]), the disable
+    /// command (`'f'`, an id other than −1, [`World::disable_tech`]) and the research time
+    /// modifier (`'g'`, [`World::research_time`]); then the base's ([`World::base_effect`]).
     pub(crate) fn do_effect(
         &mut self,
         p: usize,
@@ -93,8 +93,8 @@ impl Turns {
     /// `RGE_Effects::do_effect` (`FUN_140ec2ac0`): each command by its kind ([`kind`]), for the
     /// players of its block ([`Party`]); a kind it does not know (the technology commands among
     /// them) does nothing. The command's third argument's low byte is the attribute of a change
-    /// (slot 0x148, [`Turns::modify_attribute`]). After the commands, the player's change of the
-    /// farms' food (resource 0x24) grows the food its farms hold ([`Turns::farm_food`]), by the
+    /// (slot 0x148, [`World::modify_attribute`]). After the commands, the player's change of the
+    /// farms' food (resource 0x24) grows the food its farms hold ([`World::farm_food`]), by the
     /// last such command's value before and amount.
     pub(super) fn base_effect(
         &mut self,
@@ -130,8 +130,8 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::base_effect`]'s attribute changes (kinds 0, 4 and 5 of a block): set and add by
-    /// slot 0x148 ([`Turns::modify_attribute`]) for each player of the block; multiply too, but
+    /// [`World::base_effect`]'s attribute changes (kinds 0, 4 and 5 of a block): set and add by
+    /// slot 0x148 ([`World::modify_attribute`]) for each player of the block; multiply too, but
     /// a cost attribute by a negative amount (`COMISS` 0, d; `JBE`: not a NaN) changes the cost
     /// entries instead, except in Gaia's block (`FUN_141666ee0`).
     pub(super) fn attribute_command(
@@ -161,8 +161,8 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::base_effect`]'s resource changes: kind 1 by the amount the effect's player's
-    /// attribute `c` scales ([`Turns::scaled_amount`]; the own block's farm food is noted in
+    /// [`World::base_effect`]'s resource changes: kind 1 by the amount the effect's player's
+    /// attribute `c` scales ([`World::scaled_amount`]; the own block's farm food is noted in
     /// `farms`, its value before and the amount, else a resource below 0 is skipped), kind 6 a
     /// multiply of a resource 0 or above; each for the block's players.
     pub(super) fn resource_command(
@@ -194,7 +194,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::base_effect`]'s master commands for the block's players: the enable (a master 0
+    /// [`World::base_effect`]'s master commands for the block's players: the enable (a master 0
     /// or above; the own block's with its one-object flag and the effect's object), the upgrade
     /// (the own block's with the effect's object), the spawn and the technology change.
     pub(super) fn master_command(

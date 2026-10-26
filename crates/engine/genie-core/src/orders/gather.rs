@@ -6,11 +6,11 @@ use crate::gathering::hunt::{HuntAction, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::task_finder::world::World;
+use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::unit_ai::{HUNT_ACTION, HUNT_ORDER};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// The Gather's slot 0x48 (`0x140a903a0`) on the work command's new target
     /// ([`crate::gathering::gather::GatherAction::retarget`]): false when it does not take it, for a building
     /// (type 80 without object flag 0x20) other than a farm, so the work command makes a new
@@ -196,8 +196,8 @@ impl Turns {
 
     /// The Hunt's slot 0x40 from a move toward the object `target` ([`HuntAction::take_move`])
     /// with `point`: true when it takes it. The target it had goes (slot 0x68 with none:
-    /// [`Turns::release`]), and a drop site it carries its load to becomes its second target
-    /// (`FUN_140a7a190`: [`Turns::take`]).
+    /// [`World::release`]), and a drop site it carries its load to becomes its second target
+    /// (`FUN_140a7a190`: [`World::take`]).
     ///
     /// [`HuntAction::take_move`]: crate::gathering::hunt::HuntAction::take_move
     pub(crate) fn hunt_take_move(
@@ -251,7 +251,7 @@ impl Turns {
             "a hunt's target the slice does not hold",
         ))?;
         let t_master = self.master_of(tp, t.life.master_id)?;
-        let world = World {
+        let world = TaskWorld {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };

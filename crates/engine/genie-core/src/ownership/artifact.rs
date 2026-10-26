@@ -12,8 +12,8 @@ use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_o
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the
-/// old target, when the world holds it, lets the unit go (its slot 0x180, `Turns::release`) and
-/// a new one in a state below 7 takes it (its slot 0x178, `Turns::take`), in that order.
+/// old target, when the world holds it, lets the unit go (its slot 0x180, `World::release`) and
+/// a new one in a state below 7 takes it (its slot 0x178, `World::take`), in that order.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Targets {
     /// The old target it let go.

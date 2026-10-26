@@ -82,12 +82,12 @@ pub(crate) fn unit(id: i32, master: i16, hp: f32) -> Unit {
 
 /// Gaia and three players; players 1 and 2 allied both ways, player 3 an enemy. Player 1
 /// holds town centre 100, ship 200 and gate 300 (an annex of the town centre).
-fn garrison_world() -> Turns {
+fn garrison_world() -> World {
     let mut players: Vec<Player> = (0..4).map(|_| Player::default()).collect();
     players[1].relations = vec![1, 0, 0, 3];
     players[2].relations = vec![1, 0, 0, 3];
     players[3].relations = vec![1, 3, 3, 0];
-    let mut t = Turns::new(0, 0, 0, vec![0; 4], players);
+    let mut t = World::new(0, 0, 0, vec![0; 4], players);
     t.masters = (0..4).map(|_| garrison_masters()).collect();
     t.players[1].objects.push(unit(100, TC, 2400.0));
     t.players[1].objects.push(unit(200, SHIP, 100.0));
@@ -840,7 +840,7 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
     // FUN_14120eb10
     let mut t = garrison_world();
     let takes =
-        |t: &Turns, b, p, m, others, unchecked| t.takes_in_as(b, p, m, others, unchecked).unwrap();
+        |t: &World, b, p, m, others, unchecked| t.takes_in_as(b, p, m, others, unchecked).unwrap();
     assert!(takes(&t, 100, 1, VILLAGER, true, true));
     assert!(takes(&t, 100, 1, VILLAGER, true, false));
     // a master the player does not have, a building the world does not hold
@@ -882,7 +882,7 @@ fn a_building_takes_a_unit_in_by_its_player_state_hit_points_room_and_garrison_t
 fn a_transport_takes_a_combat_unit_with_a_task_on_its_class_and_room() {
     // FUN_14120eb10's object-flag-0 branch: FUN_1415c9240 with 3 and the transport's class
     let mut t = garrison_world();
-    let takes = |t: &Turns, m, unchecked| t.takes_in_as(200, 1, m, true, unchecked);
+    let takes = |t: &World, m, unchecked| t.takes_in_as(200, 1, m, true, unchecked);
     assert_eq!(takes(&t, VILLAGER, false), Ok(true));
     assert_eq!(takes(&t, ARCHER, true), Ok(false));
     let mut v = unit(1000, VILLAGER, 25.0);
@@ -931,7 +931,7 @@ fn a_room_test_counts_the_unit_and_what_it_holds_or_one_for_none() {
     // FUN_1412169b0: slot 0x498 of the building plus that of the unit and 1
     let mut t = garrison_world();
     t.players[1].objects.push(unit(1000, VILLAGER, 25.0));
-    let room = |t: &Turns, unit| {
+    let room = |t: &World, unit| {
         let (bp, b) = t.object(200).unwrap();
         t.has_room(bp, b, unit).unwrap()
     };
@@ -969,7 +969,7 @@ fn unload_picks_the_units_its_flag_names_of_any_player() {
         u.life.inside = (p != 3).then_some(100);
         t.players[p].objects.push(u);
     }
-    let picks = |t: &Turns, flag, param| {
+    let picks = |t: &World, flag, param| {
         [1000, 1001, 1002, 2000]
             .into_iter()
             .filter(|&id| {
@@ -1023,12 +1023,12 @@ fn standing() -> crate::movement::MoveStats {
 
 /// [`garrison_world`] on a flat 20×20 map every player sees, the town centre at (10, 10)
 /// with its footprint on the map, the villager master able to stand beside it.
-pub(crate) fn let_out_world() -> Turns {
+pub(crate) fn let_out_world() -> World {
     sized_world(20, 20)
 }
 
 /// [`let_out_world`] on a map of `w` × `h` tiles.
-pub(crate) fn sized_world(w: i32, h: i32) -> Turns {
+pub(crate) fn sized_world(w: i32, h: i32) -> World {
     let mut t = garrison_world();
     let mut masters = garrison_masters();
     if let Some(tc) = masters.get_mut(TC) {
@@ -1189,7 +1189,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
 }
 
 /// Puts unit `id` of player `p` and master `m` inside the town centre.
-pub(crate) fn inside_tc(t: &mut Turns, p: usize, id: i32, m: i16) {
+pub(crate) fn inside_tc(t: &mut World, p: usize, id: i32, m: i16) {
     let mut u = unit(id, m, 25.0);
     u.position = [10.0, 10.0, 0.0];
     u.life.inside = Some(100);
@@ -1270,7 +1270,7 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
     }]));
     t.masters = (0..4).map(|_| masters.clone()).collect();
     t.players[1].objects.push(unit(400, 59, 10.0));
-    let takes = |t: &Turns, b, p, m| {
+    let takes = |t: &World, b, p, m| {
         let (bp, bu) = t.object(b).unwrap();
         t.ai_takes(bp, bu, p, m)
     };
@@ -1284,7 +1284,7 @@ fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
 }
 
 /// A villager of player `p` with a unit AI and speed at (`x`, `y`).
-pub(crate) fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
+pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
     let mut v = unit(id, m, 25.0);
     v.position = [at[0], at[1], 0.0];
     v.ai = Some(crate::unit_ai::UnitAi {
@@ -1340,7 +1340,7 @@ pub(crate) fn walker(t: &mut Turns, p: usize, id: i32, m: i16, at: [f32; 2]) {
 }
 
 /// A building of player 1 of master `m` (radius 2) at `at`, `annex_of` its main building.
-pub(crate) fn building_at(t: &mut Turns, id: i32, m: i16, at: [f32; 2], annex_of: Option<i32>) {
+pub(crate) fn building_at(t: &mut World, id: i32, m: i16, at: [f32; 2], annex_of: Option<i32>) {
     let mut b = unit(id, m, 2400.0);
     b.position = [at[0], at[1], 0.0];
     b.annex_of = annex_of;
@@ -1364,7 +1364,7 @@ pub(crate) fn building_at(t: &mut Turns, id: i32, m: i16, at: [f32; 2], annex_of
 }
 
 /// Player 1's tracker files `ids` under master `m`'s key, done, in that order.
-pub(crate) fn tracked(t: &mut Turns, m: i16, ids: &[i32]) {
+pub(crate) fn tracked(t: &mut World, m: i16, ids: &[i32]) {
     let k = t.tracker_key(1, m);
     for &id in ids {
         t.players[1].tracker.add(id, k);
@@ -1463,7 +1463,7 @@ fn a_garrison_through_the_unit_ais_queues_their_enter_orders() {
 }
 
 /// [`let_out_world`] with ship 200 at (`x`, `y`) on the map.
-fn ship_at(t: &mut Turns, at: [f32; 2]) {
+fn ship_at(t: &mut World, at: [f32; 2]) {
     let ship = t.object_mut(200).expect("the ship").1;
     ship.position = [at[0], at[1], 0.0];
     t.spatial.insert(
@@ -1495,7 +1495,7 @@ fn a_garrison_into_a_transport_pairs_the_units_whose_class_has_the_flags() {
     walker(&mut t, 1, 1001, ARCHER, [6.5, 5.5]);
     t.garrison_order(1, &[1000, 1001, 200], 200, true, false)
         .unwrap();
-    let orders = |t: &Turns, id| {
+    let orders = |t: &World, id| {
         t.object(id).unwrap().1.ai.as_ref().map(|ai| {
             ai.orders
                 .iter()
@@ -1526,7 +1526,7 @@ fn a_garrison_into_a_transport_pairs_the_units_whose_class_has_the_flags() {
 /// (terrain 2) from y = 18 on, every terrain passable for restriction 0; the villager's
 /// garrison task on transports (class 20) has range 1; ship 200 (speed 1.1, type 70) at
 /// `ship` and villager 1000 at `at`, each where it last moved to its place.
-fn shore_world(at: [f32; 2], ship: [f32; 2]) -> Turns {
+fn shore_world(at: [f32; 2], ship: [f32; 2]) -> World {
     let mut t = sized_world(40, 40);
     for m in &mut t.masters {
         if let Some(v) = m.get_mut(VILLAGER) {
@@ -1661,7 +1661,7 @@ fn a_villager_meets_a_sailing_transport_where_it_sails() {
 /// east of it, with the planners and zone maps of land units (restriction 0) and ships
 /// (restriction 1). The ship 200 (a transport's unit AI, type 11; speed 1.1) floats at
 /// `ship` with villager 1000 inside; the streams are seeded.
-fn coast_world(ship: [f32; 2]) -> Turns {
+fn coast_world(ship: [f32; 2]) -> World {
     let mut t = sized_world(30, 20);
     let sails = crate::movement::MoveStats {
         speed: 1.1,
@@ -1732,7 +1732,7 @@ fn coast_world(ship: [f32; 2]) -> Turns {
 /// The first place about `center` within `radius` (`find_drop_location`'s draws on a copy of
 /// the Object stream) where a unit of radius 0.2 stands on the land (x 15 and up) and clear
 /// of the ship.
-fn ashore(t: &mut Turns, center: [f32; 2], radius: f32) -> [f32; 2] {
+fn ashore(t: &mut World, center: [f32; 2], radius: f32) -> [f32; 2] {
     let mut r = t.streams.get(crate::math::rng::Stream::Object).clone();
     let gap = radius + (0.2 + 0.01);
     let along = |r: u32, c: f32| ((r as f32 * (radius + radius)) / 32767.0 - radius) + c;
@@ -1982,7 +1982,7 @@ fn seek_shelter_sends_the_players_villagers_and_checked_units_to_its_buildings()
     walker(&mut t, 2, 2000, VILLAGER, [5.5, 6.5]);
     walker(&mut t, 1, 1001, ARCHER, [6.5, 5.5]);
     t.seek_shelter(1, &[1000, 2000, 1001, 4242]).unwrap();
-    let enter = |t: &Turns, id| t.object(id).unwrap().1.enter.map(|e| e.target);
+    let enter = |t: &World, id| t.object(id).unwrap().1.enter.map(|e| e.target);
     assert_eq!(enter(&t, 1000), Some(100));
     // the ally's villager was dropped by the check; the archer is no villager
     assert_eq!((enter(&t, 2000), enter(&t, 1001)), (None, None));

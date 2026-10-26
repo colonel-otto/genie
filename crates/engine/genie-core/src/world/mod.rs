@@ -155,7 +155,7 @@ pub(crate) const CASTLES: i16 = 134;
 pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 
 /// What every object of a player reads of all players while that player's objects update
-/// ([`Turns::player_frame`]).
+/// ([`World::player_frame`]).
 pub(in crate::world) struct PlayerFrame {
     /// Each player's attribute 97.
     attribute_97: Vec<f32>,
@@ -248,7 +248,7 @@ pub(crate) const fn villager(draw: u64) -> i16 {
 
 /// World state the slice carries from tick to tick. All of it is in the header save.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Turns {
+pub struct World {
     /// The world's time in milliseconds (`world_time`).
     pub world_time: u32,
     /// `world+0x7d0`.
@@ -335,7 +335,7 @@ pub struct Turns {
     /// while it is not 0.
     pub alliance_locked: i32,
     /// The world's teams (`+0x984`..`+0x9a0`, `playerTeams[i]`, saved as bytes): player i's
-    /// team at i − 1, 1 alone ([`Turns::resolve_teams`]).
+    /// team at i − 1, 1 alone ([`World::resolve_teams`]).
     pub teams: [i32; 8],
     /// The game's `+0xc14` (`FUN_140c884c0`, saved as a byte): the player of the quick-build
     /// cheat (GAME 4), 0 without; while it is not 0 every work is done at once, which the work

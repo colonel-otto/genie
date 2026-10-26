@@ -16,7 +16,7 @@ impl UnitView<'_> {
     /// repair's action type (`0x6a`) and the switch ([`task_search`] on the target and its main
     /// building, the new master's list first) finds a task: a new Repair on it
     /// (`FUN_140ad7fa0`) replaces the unit's actions (slot 0x808): 1; none: 0. The caller makes
-    /// the switches and the Repair after the update ([`RepairOrder`], [`Turns::repair_order`]).
+    /// the switches and the Repair after the update ([`RepairOrder`], [`World::repair_order`]).
     pub(super) fn repair_command(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (self.player, self.others, self.foreign);
@@ -95,7 +95,7 @@ impl UnitView<'_> {
     /// and the switch ([`task_search`] on the target and its main building) finds a task, whose
     /// Enter (`FUN_140a855d0`) replaces the unit's actions (an Artifact on top would take it as
     /// its sub-action): 1; none: 0. The caller makes the switch and the Enter after the update
-    /// ([`EnterOrder`], [`Turns::enter_order`]).
+    /// ([`EnterOrder`], [`World::enter_order`]).
     pub(super) fn enter_command(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
         let (player, others, foreign) = (self.player, self.others, self.foreign);

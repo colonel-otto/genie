@@ -8,20 +8,20 @@ use crate::technology::effect::{
     ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, RESEARCH_SPENT,
     RESEARCHED, TECH_DISABLE, TECHS_RESEARCHED, kind,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_1413cdcd0` for player `p`'s technology `t` (`param_3` 0) researched at a building of
     /// master `building`: a technology not in state 0 to 2 is not done (the game's overrides
     /// are not held). Else it takes state 3, gives its effect (its override's, else its own;
-    /// [`Turns::do_effect`]) and updates the technologies that depend on it
-    /// ([`Turns::update_dependents`]); researched at a location with a button, it counts in
+    /// [`World::do_effect`]) and updates the technologies that depend on it
+    /// ([`World::update_dependents`]); researched at a location with a button, it counts in
     /// attribute 0x15 and its listed costs (`FUN_1413d4a00`, the amounts summed) in attribute
     /// 0x63. Last, an age (101 to 103) adds its event to the player's history (`FUN_141560ae0`
     /// with 0, 1 or 2, [`crate::players::history::History::add_event`]), which the AI's age time reads.
     /// Not held: the local player's statistics and achievements (`FUN_1409644a0` among them).
     /// Not modelled: a research paid in relics (`FUN_1413d0e70`), an effect the slice cannot run without its
-    /// building ([`Turns::research_effect_known`]) and the civ's disabled technologies
+    /// building ([`World::research_effect_known`]) and the civ's disabled technologies
     /// (`FUN_140ea93a0`; such a technology is never available to be researched).
     pub(crate) fn complete_research(
         &mut self,
@@ -103,7 +103,7 @@ impl Turns {
     }
 
     /// A completed building's technology `t` for player `p` (the end of `FUN_1411dbb70`'s
-    /// `set_state(2)`): [`Turns::complete_research`] with `param_3` 0 and no building, so the
+    /// `set_state(2)`): [`World::complete_research`] with `param_3` 0 and no building, so the
     /// technology's first location decides its statistics; a technology beyond the player's tree
     /// is not researched.
     pub(crate) fn research_built(&mut self, p: usize, t: i16) -> Result<(), GenieError> {
@@ -122,7 +122,7 @@ impl Turns {
     /// After a built building of `master` died (`FUN_1411dbb70`): unless another of player `p`'s
     /// live objects of the master stands (state 2, `FUN_141166ab0`), the master's technology
     /// `tech` in a state above 0 turns to 0 and its dependents are updated (`FUN_1413d4ec0`, then
-    /// `FUN_1413cce70`, [`Turns::update_dependents`]).
+    /// `FUN_1413cce70`, [`World::update_dependents`]).
     pub(crate) fn withdraw_tech(
         &mut self,
         p: usize,
@@ -157,7 +157,7 @@ impl Turns {
     /// mode; else with fewer of
     /// its requirements researched than it needs it turns to 0 (from above 0), with them all to
     /// 1 (from below 1) unless its research is done already (its work done reaching a
-    /// location's time), which completes it ([`Turns::complete_research`]). Each such technology, and each in
+    /// location's time), which completes it ([`World::complete_research`]). Each such technology, and each in
     /// state 2, counts; none counted sets attribute 39 to 1 where it is 0. The game's lists hold
     /// the dependents by id, as the `.dat`'s requirements give them.
     pub(crate) fn update_dependents(&mut self, p: usize, t: usize) -> Result<(), GenieError> {

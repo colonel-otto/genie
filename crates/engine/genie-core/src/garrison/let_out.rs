@@ -7,9 +7,9 @@ use crate::garrison::{
 };
 use crate::objects::masters::Master;
 use crate::orders::{BUILDING, Work};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// The player and live index of the unit `id` inside a building or a transport, whoever's
     /// it is.
     pub(crate) fn live_inside(&self, id: i32) -> Result<(usize, usize), GenieError> {
@@ -23,7 +23,7 @@ impl Turns {
 
     /// `FUN_1411e7220`: the unit `id` (any player's, with its own player's masters and orders)
     /// leaves the building at `building` of player `player` toward `point`, when a spot beside
-    /// it is free ([`Turns::spot_beside`], toward the point, or the building's gather point when
+    /// it is free ([`World::spot_beside`], toward the point, or the building's gather point when
     /// not on itself): it takes the spot at the building's
     /// height (`FUN_14119d610`), leaves the building (slot 0x1a8, `FUN_141213120`: the
     /// building's slot 0x1c8, `FUN_1411d6ad0` -> `FUN_141217910`, takes its share off the
@@ -32,15 +32,15 @@ impl Turns {
     /// go, slot 0x1d8 with 5) and goes on the map there (slot 0x58: its tile's list, its
     /// obstruction record, the mesh, its sight). With a gather point (`+0xc30` 1) not on the
     /// building and no point, it then goes to work on the gather point's target when the world
-    /// holds it (its unit AI forgets its target, `FUN_140c5e1e0`; [`Turns::gather`]); else, or
-    /// with a point, it moves there ([`Turns::gather_move`] after the same forgetting). False
+    /// holds it (its unit AI forgets its target, `FUN_140c5e1e0`; [`World::gather`]); else, or
+    /// with a point, it moves there ([`World::gather_move`] after the same forgetting). False
     /// when no spot is free. With neither a point nor a gather point its unit AI stops, forgets
     /// its target and takes its stance again (slots 0xb0 and 0x1c0). Not modelled: the work given
     /// (slot 0x128 with a target), a gather point of kind 0xff,
     /// class 42's and livestock's counts in a building of a player with `+0x88`, a siege
     /// building's (class 13) slot 0x1b0; not held: the building's villager count (`+0xba8`) and
     /// raider count (`+0xc2c`, which the building's slot 0x1c8 `FUN_1411d6ad0` lowers for a unit
-    /// of type 70 whose `+0x9a0` runs: such a unit inside is refused, [`Turns::garrisoned`]), its
+    /// of type 70 whose `+0x9a0` runs: such a unit inside is refused, [`World::garrisoned`]), its
     /// sound (slot 0x4c0), its garrison sprite. Its work command (slot 0x128) has `+0xa14` 0: the
     /// unit AI keeps its notifies and its queued orders.
     pub(crate) fn let_out(
@@ -202,7 +202,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::let_out`]'s end once the unit stands at its spot: the work given, the gather
+    /// [`World::let_out`]'s end once the unit stands at its spot: the work given, the gather
     /// point, the stop and stance, or the move to the point.
     ///
     /// # Errors
@@ -277,14 +277,14 @@ impl Turns {
         Ok(true)
     }
 
-    /// [`Turns::let_out`] for a unit that is not inside an object (a new unit an effect could not
+    /// [`World::let_out`] for a unit that is not inside an object (a new unit an effect could not
     /// take in, `FUN_1416136f0`): slot 0x1a8 does nothing, then slot 0x58 moves it from where it
     /// stands to the spot `at` (`new_position`: its tile's list, its obstruction record, the mesh,
-    /// its sight moved), then [`Turns::came_out`].
+    /// its sight moved), then [`World::came_out`].
     ///
     /// # Errors
     ///
-    /// A unit without a place, and what [`Turns::came_out`] does not model.
+    /// A unit without a place, and what [`World::came_out`] does not model.
     pub(super) fn let_out_from_the_map(
         &mut self,
         up: usize,

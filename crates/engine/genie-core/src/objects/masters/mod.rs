@@ -198,7 +198,7 @@ pub struct Master {
     pub copy_id: i16,
     /// `+0x260`, the `.dat`'s `base_id` (the master load `FUN_1411319f0` turns 768 into 420 and
     /// 770 into 691): the master whose availability says whether the player can make this one
-    /// (`FUN_141663f80`, [`crate::world::Turns::can_make`]); an upgrade's copy keeps it.
+    /// (`FUN_141663f80`, [`crate::world::World::can_make`]); an upgrade's copy keeps it.
     pub base_id: i16,
     /// `+0x410`.
     pub class: i16,

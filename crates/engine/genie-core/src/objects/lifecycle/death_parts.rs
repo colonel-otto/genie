@@ -131,7 +131,7 @@ pub(crate) struct BuiltDeath {
 /// [`BuiltDeath`] of the building `u` of `master`: the monastery (104), the wonder (276) and the
 /// castle (82) count one less in attributes 52, 42 and 134 (slot 0xf8 with −1, then slot 0xf0
 /// with 0 below 0); its master's technology (`+0x98c`) goes when no other building of the master
-/// stands ([`Turns::withdraw_tech`]). A foundation terrain stays. Not modelled: a computer
+/// stands ([`World::withdraw_tech`]). A foundation terrain stays. Not modelled: a computer
 /// player's (`FUN_1411e7ca0`), one with a pasture or its workers (`+0xcb8`), units inside, the
 /// terrain 1 a foundation terrain of 28 lays at the death (`FUN_1411ce250`). Not held: its
 /// linked objects (`+0xb78`, none held), `+0xca4` and the snow decal (`FUN_1413b9e20`).
@@ -140,7 +140,7 @@ pub(crate) struct BuiltDeath {
 ///
 /// What it does not model.
 ///
-/// [`Turns::withdraw_tech`]: crate::world::Turns::withdraw_tech
+/// [`World::withdraw_tech`]: crate::world::World::withdraw_tech
 pub(crate) fn built_death(
     u: &mut Unit,
     master: &Master,

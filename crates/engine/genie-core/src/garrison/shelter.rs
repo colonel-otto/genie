@@ -9,7 +9,7 @@ use crate::garrison::{
 };
 use crate::movement::footprint_gap_squared;
 use crate::orders::{BUILDING, GARRISON, Work};
-use crate::world::Turns;
+use crate::world::World;
 
 /// The shelters `FUN_141621220` sends units to: the buildings (its `param_3`), the transports
 /// (`param_4`), and the count list (`param_5`) its pairs index by their shelter's index, a
@@ -22,26 +22,26 @@ pub(crate) struct Shelters {
     pub buildings: Vec<i32>,
     /// The transports.
     pub transports: Vec<i32>,
-    /// The counts ([`Turns::garrisoned`], slot 0x498).
+    /// The counts ([`World::garrisoned`], slot 0x498).
     pub counts: Vec<i32>,
 }
 /// A building takes units in only above this share of its master's hit points (`FUN_14120eb10`,
 /// in doubles).
 pub(super) const LEAST_HP_SHARE: f64 = crate::math::image::garrison::LEAST_HP_SHARE;
 
-impl Turns {
+impl World {
     /// `UNIT_ORDER`'s garrison (action 5) on `target`, which the world holds (`FUN_140e7f200`; the
     /// UI's sound for it, `FUN_1409648c0`, is not held): `FUN_14161e370` lists the order's units
     /// (the ids the world holds of a type 70 or more), then the shelters ([`Shelters`]). Without
     /// `nearby` (the packet's `+0x1e`) the target alone: one of a type below 80 a transport,
     /// else a building (an annex its main building, but a gate's), with its count
-    /// ([`Turns::garrisoned`]). With it, each object of the target's owner's tracker under the
+    /// ([`World::garrisoned`]). With it, each object of the target's owner's tracker under the
     /// master the target's line stands for (`FUN_140fdd6c0`, `FUN_140fdd6f0`, [`UnitLines::base`];
     /// `FUN_14104f960`, [`crate::players::tracker::Tracker::list`]), in the tracker's order, within
     /// [`NEARBY`] of the target (`FUN_14118f8c0`, the squared footprint gap; `COMISS`/`JC`: a NaN
     /// is out): one of a type below 80 is a transport, one not a gate (class 39) and no annex
     /// (`+0xbb8`) a building, and each one in reach pushes its count, the gates and annexes
-    /// left out too. Then [`Turns::shelter`] (`param_6` 0) with the unit AI's queue when
+    /// left out too. Then [`World::shelter`] (`param_6` 0) with the unit AI's queue when
     /// `through_ai` (the packet's `+0x1d`).
     ///
     /// [`UnitLines::base`]: crate::objects::lines::UnitLines::base
@@ -94,13 +94,13 @@ impl Turns {
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`), after the command's check (`FUN_140e558b0`): of
     /// the first 60 `ids` (500 for a computer player), an id the world does not hold, and another
     /// player's unit unless players may order each other's ([`crate::world::settings::Settings::cheats_enabled`],
-    /// `+0x1074`), are dropped ([`Turns::checked_units`]); with every id dropped the command does
+    /// `+0x1074`), are dropped ([`World::checked_units`]); with every id dropped the command does
     /// nothing. Of the others, the villagers (class 4 of type 70) and the units of master 1808
     /// seek shelter (a villager of master 1808 is listed twice) in the player's buildings that
     /// take villagers: in the player's object order, those of type 80 in state 2, not inside
     /// another (`+0x2f0`, `FUN_141188da0`), whose master's `garrison_type` has bit 0
-    /// (`FUN_1411ccb60` with 1), each with its count ([`Turns::garrisoned`]); then
-    /// [`Turns::shelter`] (`FUN_141622450`).
+    /// (`FUN_1411ccb60` with 1), each with its count ([`World::garrisoned`]); then
+    /// [`World::shelter`] (`FUN_141622450`).
     pub(crate) fn seek_shelter(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
         let cap = if self.players[player].computer {
             COMPUTER_IDS
@@ -150,7 +150,7 @@ impl Turns {
 
     /// `FUN_14161e370`'s shelters near `target` (of player `tp` and master `master`, its
     /// `param_9`): the objects of `tp`'s tracker under the master `master`'s line stands for, in
-    /// the tracker's order ([`Turns::garrison_order`]).
+    /// the tracker's order ([`World::garrison_order`]).
     pub(crate) fn shelters_near(
         &self,
         tp: usize,
@@ -195,7 +195,7 @@ impl Turns {
 
     /// `FUN_141621220`: each of `units` pairs with each building of `shelters` (type 80) whose
     /// master has a capacity (`obj_max`) and takes the unit's master's copy in
-    /// ([`Turns::takes_in`]), and with each transport of a unit whose master's class has a flag
+    /// ([`World::takes_in`]), and with each transport of a unit whose master's class has a flag
     /// of 0x10002 ([`class_has_flags`]) when the commanding player's master of the unit's master
     /// id has a task of action 3 on the transport's class ([`has_garrison_task`]), within the reach
     /// (`near`, `param_6`: [`TOWN_BELL_REACH`], else [`FAR`]; `COMISS`/`JBE`: a NaN is out); a
@@ -206,7 +206,7 @@ impl Turns {
     /// (the list holds what its caller pushed, in its own order: an index into it need not be
     /// its shelter's), which each taker raises. The shelters go in a hash map by id
     /// (`FUN_1415f0c40`), whose order ([`crate::math::msvc::unordered_map_order`]) the next part
-    /// follows ([`Turns::shelter_in`]). Not modelled: the groups the splitter forms.
+    /// follows ([`World::shelter_in`]). Not modelled: the groups the splitter forms.
     pub(crate) fn shelter(
         &mut self,
         player: usize,
@@ -309,7 +309,7 @@ impl Turns {
 
     /// `FUN_140c40e00`: a unit AI's test of the building `b` of player `bp` for its unit of
     /// player `player` and master `master`: none for an object below type 70, else whether it
-    /// takes the unit in ([`Turns::takes_in`], with 1 and 1).
+    /// takes the unit in ([`World::takes_in`], with 1 and 1).
     pub(super) fn ai_takes(
         &self,
         bp: usize,
@@ -323,9 +323,9 @@ impl Turns {
         self.takes_in(b.id, player, master)
     }
 
-    /// One shelter's part of [`Turns::shelter`]: the order splitter (`FUN_140fd9dc0` with
+    /// One shelter's part of [`World::shelter`]: the order splitter (`FUN_140fd9dc0` with
     /// command `0x2713`) on its units, which keeps those whose unit AI's test passes
-    /// ([`Turns::ai_takes`]); then each loose unit (not in a group, `+0x6d0`; in state 2 or 6 or
+    /// ([`World::ai_takes`]); then each loose unit (not in a group, `+0x6d0`; in state 2 or 6 or
     /// less, of a type 70 or more) takes slot 0x7e8 on the shelter at its place with task
     /// filter 3, or, `through_ai` (`param_7`) and with a unit AI, the unit AI's slot 0x30 (into
     /// slot 0x28, `FUN_140c55c90`: not immediate, behind) queues the enter order (`0x2cd`) on

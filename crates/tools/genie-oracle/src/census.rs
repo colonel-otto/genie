@@ -296,7 +296,7 @@ pub fn header_run(
     masters: Option<&MasterTable>,
     last: usize,
     before: &mut dyn FnMut(usize),
-) -> Result<genie_core::world::Turns, Error> {
+) -> Result<genie_core::world::World, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let sections = header.players();

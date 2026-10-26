@@ -230,7 +230,7 @@ mod tests {
     use super::*;
     use crate::commands::Command;
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
-    use crate::world::{Player, Turns};
+    use crate::world::{Player, World};
     use std::fmt::Write;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
@@ -313,12 +313,12 @@ mod tests {
         lines
     }
 
-    fn one(objects: Vec<Unit>) -> Turns {
+    fn one(objects: Vec<Unit>) -> World {
         let player = Player {
             objects,
             ..Player::default()
         };
-        Turns::new(0, 1, 0, vec![0], vec![player])
+        World::new(0, 1, 0, vec![0], vec![player])
     }
 
     /// Each step names its stream, the draw count, the raw value and the engine's line that

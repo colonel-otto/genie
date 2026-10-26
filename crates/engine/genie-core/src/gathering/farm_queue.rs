@@ -10,7 +10,7 @@
 
 use crate::GenieError;
 use crate::production::{cost_test, pay, refund_master};
-use crate::world::Turns;
+use crate::world::World;
 
 /// A queue takes a purchase only below this count (`0x28`).
 pub const QUEUE_LIMIT: i32 = 40;
@@ -46,9 +46,9 @@ enum Queue {
     FishTraps,
 }
 
-impl Turns {
+impl World {
     /// `FUN_141617130`: player `p` buys `count` of master `master` (the farm 0x32 or the pasture
-    /// 0x761) for its mill's queue ([`Turns::buy_ahead`]).
+    /// 0x761) for its mill's queue ([`World::buy_ahead`]).
     pub(crate) fn queue_farms(
         &mut self,
         p: usize,
@@ -59,13 +59,13 @@ impl Turns {
     }
 
     /// `FUN_141616540`: player `p` buys `count` fish traps (199) for its dock's queue
-    /// ([`Turns::buy_ahead`]).
+    /// ([`World::buy_ahead`]).
     pub(crate) fn queue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, GenieError> {
         self.buy_ahead(p, count, FISH_TRAP, Queue::FishTraps)
     }
 
     /// `FUN_141630f10`: player `p` takes back `count` of master `master` from its mill's queue
-    /// ([`Turns::give_back`]).
+    /// ([`World::give_back`]).
     pub(crate) fn unqueue_farms(
         &mut self,
         p: usize,
@@ -76,7 +76,7 @@ impl Turns {
     }
 
     /// `FUN_1416308f0`: player `p` takes back `count` fish traps from its dock's queue
-    /// ([`Turns::give_back`]).
+    /// ([`World::give_back`]).
     pub(crate) fn unqueue_fish_traps(&mut self, p: usize, count: i32) -> Result<bool, GenieError> {
         self.give_back(p, count, FISH_TRAP, Queue::FishTraps)
     }
@@ -151,7 +151,7 @@ impl Turns {
     /// `FUN_141663f80`: player `p` can make master `master` (one it has): the master its base
     /// id names (`+0x260`; for a building heading a stack, `+0x9b8`, the head's base id, none
     /// when the player lacks the head) is available (`+0x5f0`); the town centre 621 also while the
-    /// town centres standing ([`Turns::town_centre_count`]) are fewer than attribute 218
+    /// town centres standing ([`World::town_centre_count`]) are fewer than attribute 218
     /// (`CVTSI2SS`, `COMISS`). A base id the player lacks makes none (the game reads its table's
     /// slot unchecked; the `.dat`'s masters name their own).
     #[must_use]
@@ -188,7 +188,7 @@ impl Turns {
     }
 
     /// `FUN_141658b40`: the farm a reseeding villager of player `p` makes: the farm (0x32) when
-    /// the player can make it ([`Turns::can_make`]) and it is of the farm class, else the pasture
+    /// the player can make it ([`World::can_make`]) and it is of the farm class, else the pasture
     /// (0x761) so; else none.
     #[must_use]
     pub fn reseed_master(&self, p: usize) -> Option<i16> {
@@ -204,24 +204,24 @@ impl Turns {
 
     /// `FUN_140a8aa60`: player `p`'s gatherer at `idx` reseeds its farm at its farm spot
     /// (`mFarmX`, `mFarmY`; none at −1). A villager (class 4) with the automatic farm queue
-    /// (`+0x1424`) or farms queued (`+0x141c`) makes the farm [`Turns::reseed_master`] names; any
+    /// (`+0x1424`) or farms queued (`+0x141c`) makes the farm [`World::reseed_master`] names; any
     /// other gatherer, with the automatic fish trap queue (`+0x1425`) or fish traps queued
     /// (`+0x1420`), makes a fish trap when it is a fishing ship (class 21); else none. (For the
     /// farm the game looks the spot's terrain up, `FUN_140f690e0`, `FUN_1413fbec0`,
     /// `FUN_1413fc220`, `FUN_1413fc100`, and drops the answers: the master stays.) The master's
     /// placement test (slot 0x50 with the explored test on, `p6` 1, whatever the player; for a
     /// farm its scan passes over the gather's target and that building's annexes, `p12`,
-    /// [`Turns::placement_code_beside`]) must pass. With the automatic queue the player pays one
+    /// [`World::placement_code_beside`]) must pass. With the automatic queue the player pays one
     /// when it can without the population (`FUN_141618db0`, `FUN_14162fb60` with 1: [`cost_test`],
     /// [`pay`]), else it takes one from the queue, which must hold one (else the interface's
     /// event 0x7e); without the automatic queue it takes one from the queue. The master's slot
-    /// 0x108 makes the foundation there ([`Turns::make_building`], its unit AI by
+    /// 0x108 makes the foundation there ([`World::make_building`], its unit AI by
     /// [`crate::unit_ai::factory_type`]), the queue loses the one it gave (`FUN_14163c5b0`,
     /// `FUN_14163c590`: only while above 0); the target's workers (slot 0x790, a building's
     /// `+0xcb8`, which only a pasture fills: a farm's is empty, and a pasture's gather is not
     /// modelled) would build it too; then the gatherer's ignore list empties (`FUN_141197da0`)
-    /// and its slot 0x128 sends it to build the foundation at the spot ([`Turns::build_task`],
-    /// [`Turns::build_directly`]). True when the foundation was made.
+    /// and its slot 0x128 sends it to build the foundation at the spot ([`World::build_task`],
+    /// [`World::build_directly`]). True when the foundation was made.
     pub(crate) fn reseed(&mut self, p: usize, idx: usize) -> Result<bool, GenieError> {
         let unit = &self.players[p].objects[idx];
         let Some(gather) = unit.gather else {
@@ -312,7 +312,7 @@ impl Turns {
     }
 
     /// State 0xf2's end (`0x140a8e1d0` case 0xf1, [`crate::gathering::gather::Next::Reseed`]) of player
-    /// `p`'s gatherer at `idx`, its walk `arrived` or failed: the reseed ([`Turns::reseed`]);
+    /// `p`'s gatherer at `idx`, its walk `arrived` or failed: the reseed ([`World::reseed`]);
     /// without one (the interface's event 0x7f, 0x9c for a gatherer not a villager, aside) the
     /// Gather is done or idles ([`crate::gathering::gather::GatherAction::after_reseed`]: standing with
     /// `FUN_140a8b6b0`'s sprite, the targets it lets go released).
@@ -383,13 +383,13 @@ mod tests {
 
     /// Gaia and player 1 holding `wood`, with the farm (60 wood), the pasture (100 wood, its
     /// food entry unpaid) and the fish trap (100 wood).
-    fn world(wood: f32) -> Turns {
+    fn world(wood: f32) -> World {
         let player = Player {
             attributes: vec![0.0; 300],
             resources: [0.0, wood, 0.0, 0.0],
             ..Player::default()
         };
-        let mut t = Turns::new(0, 1, 0, vec![0; 2], vec![Player::default(), player]);
+        let mut t = World::new(0, 1, 0, vec![0; 2], vec![Player::default(), player]);
         let masters = Masters::new([
             master(FARM, vec![(1, 60, true)]),
             master(PASTURE, vec![(1, 100, true), (0, 50, false)]),

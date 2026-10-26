@@ -36,7 +36,7 @@ use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::math::fmath;
 use crate::objects::masters::Task;
-use crate::world::Turns;
+use crate::world::World;
 
 mod generation;
 mod looks_and_rewards;
@@ -179,21 +179,21 @@ impl Pending<'_> {
     }
 }
 
-impl Turns {
+impl World {
     /// `FUN_1412072f0` on the object `id`, the one at `i` of player `p`'s list, as player
     /// `owner`'s (its owner after its update: the new one when the update handed it over),
     /// once its combat update returned `leaves`. Only its master's tasks of the four types
     /// count ([`ACTIONS`]); an object of a master of another type than 70 or 80, or without one
     /// the slice has, has none. On a living object ([`alive`]) they act in their order
-    /// ([`Turns::generate`], [`Turns::movement_damage`], [`Turns::terrain_look`]); on a dead one
+    /// ([`World::generate`], [`World::movement_damage`], [`World::terrain_look`]); on a dead one
     /// that leaves, its removal reward tasks within 1e-7 of range (`COMISS`/`JBE`: a NaN is not)
     /// issue their commands, which are returned: in a recording's replay the recording's own
     /// commands bring them.
     ///
     /// # Errors
     ///
-    /// What the slice does not model of a task's action ([`Turns::generate`],
-    /// [`Turns::movement_damage`]).
+    /// What the slice does not model of a task's action ([`World::generate`],
+    /// [`World::movement_damage`]).
     pub(crate) fn abilities(
         &mut self,
         (id, p, i): (i32, usize, usize),

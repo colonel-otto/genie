@@ -4,7 +4,7 @@ use crate::combat::abilities::{
     BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, WORKING, WORKING_ACTIONS,
 };
 use crate::objects::masters::Task;
-use crate::world::Turns;
+use crate::world::World;
 use crate::{GenieError, math::fmath};
 
 /// What a generation task's test reads of the object's top action (`FUN_140a986f0`): its type
@@ -95,7 +95,7 @@ pub fn store(amount: f32, out: i16, stores: &mut [f32]) -> Option<f32> {
     Some(amount)
 }
 
-impl Turns {
+impl World {
     /// A generation task of the object at `(p, i)` as `owner`'s ([`generates`], [`generated`],
     /// [`store`]): what reaches the store's threshold goes to the player (slot 0xf8 with 1 and 1,
     /// as a load's, [`crate::gathering::gather::unit::give_load`]); the statistics (`FUN_14097daf0`, the local

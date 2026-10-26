@@ -1,4 +1,4 @@
-//! The world as the header save holds it ([`Turns::new`]): the next object id, the
+//! The world as the header save holds it ([`World::new`]): the next object id, the
 //! planners and the shape mesh the game's load builds.
 
 use crate::map::spatial::Spatial;
@@ -6,9 +6,9 @@ use crate::math::rng::Streams;
 use crate::movement::Mover;
 use crate::pathing::Pathing;
 use crate::world::player::Player;
-use crate::world::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, Turns};
+use crate::world::{HISTORY_PERIOD, PLANNED_MASTERS, Recycling, World};
 
-impl Turns {
+impl World {
     /// The world's next object id (`FUN_14152fd70`) for a new object of `master` for `player`: it
     /// counts on, and the id goes to the trace ([`crate::trace::new_object`]).
     #[track_caller]
@@ -69,7 +69,7 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// `World::load_world`'s planners (`FUN_140f7d310`): the restrictions of Gaia's masters 83
     /// (the villager's) and 535 (the galley's), each unless one of the same values has one; any
     /// other restriction finds none (its units walk without the tile pathfinder).

@@ -8,7 +8,7 @@ use crate::groups::formation::{
 use crate::groups::{Formation, UnitGroup};
 use crate::math::fmath::{Vec3, add, sub};
 use crate::movement::PathData;
-use crate::world::Turns;
+use crate::world::World;
 
 /// `FUN_140f96030`: the walked level's top ancestor (the paths are walked first), none for a
 /// level without a parent.
@@ -44,7 +44,7 @@ pub(super) fn measured_path(paths: &[PathData]) -> Option<&PathData> {
         .or_else(|| paths.first().filter(|w| w.has_path))
 }
 
-impl Turns {
+impl World {
     /// The type `UpdateDesiredPositions` (`FUN_14103fd00`) chooses itself for group
     /// `g` (given none and its lock -1 or 0): a line (2), unless its path (the top level's, else the
     /// walked level's, [`measured_path`]) makes it a column (1): off the last high waypoint
@@ -55,7 +55,7 @@ impl Turns {
     /// the path's last point (the origin for a path of fewer than two points); the game tests a
     /// current column against the one and any other type against the other first, which the
     /// outcome does not depend on. Flags bit 2 (`MinAutoDistanceLock`) make it a line, a group of horde units
-    /// only ([`Turns::horde_units_only`]) a horde (0).
+    /// only ([`World::horde_units_only`]) a horde (0).
     ///
     /// # Errors
     ///
@@ -107,11 +107,11 @@ impl Turns {
 
     /// The type `UpdateDesiredPositions` (`FUN_14103fd00`) lays group `g` out in for the type
     /// `given`: the given one, else (-1) the group's lock (`mFormationLockedType`), or with a
-    /// lock of -1 or 0 its own choice ([`Turns::own_formation_type`]).
+    /// lock of -1 or 0 its own choice ([`World::own_formation_type`]).
     ///
     /// # Errors
     ///
-    /// As [`Turns::own_formation_type`].
+    /// As [`World::own_formation_type`].
     pub fn formation_type(&self, g: &UnitGroup, given: i32) -> Result<i32, GenieError> {
         Ok(if given != -1 {
             given
@@ -124,14 +124,14 @@ impl Turns {
 
     /// `UpdateDesiredPositions` (`FUN_14103fd00`) of group `group` with the type `given` (-1 for
     /// none): nothing without members. A group without a formation gets an empty one
-    /// ([`Formation::new`]); the type is [`Turns::formation_type`]'s. A type other
+    /// ([`Formation::new`]); the type is [`World::formation_type`]'s. A type other
     /// than the formation's, or a given one, makes the formation the previous one and a new one
     /// the current. A formation not yet of the type with a slot per member is laid out: a line,
     /// staggered or flanked line or a column by createColumnLine
-    /// ([`Turns::create_column_line`]), a phalanx and a box by their own
-    /// ([`Turns::create_phalanx`], [`Turns::create_box`]), each with its transform and units; a
-    /// horde and a user defined formation from the members' places ([`Turns::create_horde`],
-    /// [`Turns::create_udf`]) and then transformed ([`Turns::formation_transform`], `param_4`
+    /// ([`World::create_column_line`]), a phalanx and a box by their own
+    /// ([`World::create_phalanx`], [`World::create_box`]), each with its transform and units; a
+    /// horde and a user defined formation from the members' places ([`World::create_horde`],
+    /// [`World::create_udf`]) and then transformed ([`World::formation_transform`], `param_4`
     /// 0); a formation already laid out, or of a type the switch does not know (6), is only
     /// transformed.
     ///

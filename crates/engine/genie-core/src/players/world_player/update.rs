@@ -8,14 +8,14 @@ use crate::players::world_player::{
     PERCENT, POPULATION_STORAGE, SECOND, TOWER_CLASS, UNKEPT_HIGH, UNKEPT_LOW, UNPACKED_CLASS,
     WONDER, attribute, get, set,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// Player `p`'s slot 0x100 up to `WorldPlayerBase::update`. Gaia (`WorldPlayerGaia::update`)
     /// adds the update's seconds to its own update time. A world player adds them to
     /// `mUpdateTime` (`ADDSS` of `world+0x164` and the time) and, while it is at least a second
     /// (`COMISS` with 1, `JC` ends the loop, also for a NaN), takes a second off and runs the
-    /// second's work ([`Turns::world_player_second`]) with the time before the step.
+    /// second's work ([`World::world_player_second`]) with the time before the step.
     ///
     /// # Errors
     ///
@@ -42,16 +42,16 @@ impl Turns {
     /// - the history's update with the `.dat`'s period ([`crate::players::history::History::update`]);
     /// - attribute 22: 100 when every player explored the map from the start
     ///   ([`crate::world::settings::Settings::explored_all`]), else the explored share
-    ///   ([`Turns::explored_share`]) times 100;
+    ///   ([`World::explored_share`]) times 100;
     /// - attribute 44: attribute 20 less (attribute 19 less attribute 11), 0 when that is below 0
     ///   (`COMISS` 0 with it, `JBE`: a NaN stays);
     /// - for a human or computer player (`FUN_141663f30`: type 1 or 3) the defeat check
-    ///   ([`Turns::defeat_check`]), then, while it plays, the trickles ([`Turns::trickles`]) and
-    ///   the mills' food ([`Turns::mill_food`]).
+    ///   ([`World::defeat_check`]), then, while it plays, the trickles ([`World::trickles`]) and
+    ///   the mills' food ([`World::mill_food`]).
     ///
     /// # Errors
     ///
-    /// The defeat check's ([`Turns::defeat_check`]).
+    /// The defeat check's ([`World::defeat_check`]).
     pub(super) fn world_player_second(&mut self, p: usize, time: f32) -> Result<(), GenieError> {
         let (world_time, period) = (self.world_time, self.history_period);
         let player = &mut self.players[p];
@@ -98,14 +98,14 @@ impl Turns {
 
     /// The defeat check of player `p` (`0x14163b72b`). The player stays in the game while one of
     /// its victory timers runs ([`VictoryTimes::running`]) or else one of its objects, in its
-    /// list's order, keeps it ([`Turns::keeps_alive`]). Under the sudden death rule
+    /// list's order, keeps it ([`World::keeps_alive`]). Under the sudden death rule
     /// ([`crate::world::settings::Settings::sudden_death`]), asked only for a player that stays, its
-    /// first built town centre ([`Turns::first_town_centre`]) decides once the player had one
+    /// first built town centre ([`World::first_town_centre`]) decides once the player had one
     /// (`mSuddenDeathCanBeEliminated`, `+0x1380`, which the first one found sets). A player not
     /// yet lost then loses when it does not stay, or when it stays without a king (master 434 in
     /// its tracker, `FUN_14104eea0`) under the regicide rule
     /// ([`crate::world::settings::Settings::regicide`]): the status setter takes 2
-    /// ([`Turns::set_status`]) and attribute 45 is cleared.
+    /// ([`World::set_status`]) and attribute 45 is cleared.
     ///
     /// # Errors
     ///
@@ -150,7 +150,7 @@ impl Turns {
     ///   and 60 do not;
     /// - classes 3 and 52 (buildings, towers) keep it in state 2 when the player can train or
     ///   will be able to train there (`FUN_141625a20` and `FUN_141610470`'s counts,
-    ///   [`Turns::trainable_count`], [`Turns::upgradable_count`], summed as shorts);
+    ///   [`World::trainable_count`], [`World::upgradable_count`], summed as shorts);
     /// - any other class keeps it in state 2, and classes 51 and 54 (the packed and unpacked
     ///   siege) in state 0;
     /// - whatever the class, a wonder (master 276) not in state 0 keeps it in the scenario modes

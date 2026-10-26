@@ -424,7 +424,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// only objects of a type below 30, never a building), then its slot 0x820 with any action
     /// type (`0xffff`) and the switch ([`task_search`] on the target and its main building);
     /// with a task the new wait replaces the unit's actions, which the caller makes after the
-    /// update ([`Wait`], [`Turns::wait_for_foundation`]).
+    /// update ([`Wait`], [`World::wait_for_foundation`]).
     fn command(&mut self, command: crate::unit_ai::UnitCommand) -> Result<bool, GenieError> {
         match command {
             crate::unit_ai::UnitCommand::Repair(target) => self.repair_command(target),

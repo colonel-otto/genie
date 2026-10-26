@@ -16,7 +16,7 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         },
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,

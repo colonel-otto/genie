@@ -6,12 +6,12 @@ use crate::players::world_player::{
     BUILDING_TYPE, COMPUTER_TYPE, EARLY_SCOUTING_MS, GAIA_TYPE, LIVESTOCK_SCALE, MILL, MINUTE,
     SECOND, attribute, get, set,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// The trickles of player `p`: each of attributes 230 to 233 above 0 (`COMISS` with 0,
     /// `JBE` skips a NaN) adds its sixtieth to food, wood, stone and gold in turn, through the
-    /// attribute add with its statistic and its sharing ([`Turns::add_resource`] with 1 and 1).
+    /// attribute add with its statistic and its sharing ([`World::add_resource`] with 1 and 1).
     pub fn trickles(&mut self, p: usize) {
         for kind in 0..4 {
             let rate = get(&self.players[p].attributes, attribute::TRICKLES + kind);
@@ -26,7 +26,7 @@ impl Turns {
     /// (master 68, [`crate::players::tracker::Tracker::list`]), each object the world holds whose type is
     /// a building's sums its livestock (`mLivestockSummation`, `+0xc28`, in the list's order from
     /// 0); food grows by attribute 254 over 60 times (`time` times logf(sum / 200 + 1))
-    /// ([`crate::math::fmath::log`]), with its statistic and its sharing ([`Turns::add_resource`]),
+    /// ([`crate::math::fmath::log`]), with its statistic and its sharing ([`World::add_resource`]),
     /// also when that is 0. `time` is the update time before the loop's step.
     pub fn mill_food(&mut self, p: usize, time: f32) {
         let mut sum = 0.0;
@@ -52,7 +52,7 @@ impl Turns {
     /// `kind` (food, wood, stone, gold: 0 to 3) of player `p`, with `stat` (its fourth argument)
     /// and `share` (its fifth): with `stat` 1 the gathered total grows first (166 to 168; gold:
     /// any `stat` but 0 adds to attribute 49 unchecked, then 1 adds to 169), then the resource
-    /// ([`Turns::add_attribute_base`]). The resource panel's event when a resource crosses 100
+    /// ([`World::add_attribute_base`]). The resource panel's event when a resource crosses 100
     /// (`FUN_140c898a0` 0x80) is the interface's. The kinds 50, 183 and 196 and the others are
     /// not resources: their branches are [`crate::world::Player::add_attribute`]'s.
     pub fn add_resource(&mut self, p: usize, kind: usize, amount: f32, stat: u8, share: bool) {
@@ -79,7 +79,7 @@ impl Turns {
     /// NaN) falls to it, or to 0 when the resource is below 0. With `share`, a player who shares
     /// its gathered resources (`+0x1426`, [`crate::world::Player::sharing`]) gives each resource
     /// to the players, in order, it counts as allies and who count it as theirs
-    /// ([`Turns::shares_with`]): their slot 0xf8 with `stat` and no sharing. Attribute 11's peak
+    /// ([`World::shares_with`]): their slot 0xf8 with `stat` and no sharing. Attribute 11's peak
     /// (`+0x6fc`, unsaved) is not held; no resource add reaches it.
     pub(super) fn add_attribute_base(
         &mut self,

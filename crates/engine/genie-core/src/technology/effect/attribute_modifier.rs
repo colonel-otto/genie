@@ -5,12 +5,12 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::masters::{AttributeWorld, Master, master_type};
 use crate::technology::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// Slot 0x148 (`FUN_1416121b0`) of player `p`: the hooks before (`FUN_141614f40` with 0),
     /// the change of attribute `attribute` by `v` on master `unit` or on the masters and
-    /// objects of class `class` ([`Turns::change_attribute`]), the hooks after (with 1). A master
+    /// objects of class `class` ([`World::change_attribute`]), the hooks after (with 1). A master
     /// it reaches whose loader left the changed value unfilled ([`Master::unloaded_for`]) stops it
     /// first.
     pub(crate) fn modify_attribute(
@@ -39,7 +39,7 @@ impl Turns {
     /// (`FUN_141217ac0`) and take them again after (`FUN_14120b910`), as the change may move
     /// them. The objects' abilities (`+0x928`, `+0x930`, `FUN_14107da40` and `FUN_14107b830`) are
     /// not held: none taken. After a change of a sprite ([`shows_sprite`]) each object of the
-    /// master or class shows it ([`Turns::show_changed_sprite`]).
+    /// master or class shows it ([`World::show_changed_sprite`]).
     pub(super) fn effect_hooks(
         &mut self,
         p: usize,
@@ -184,9 +184,9 @@ impl Turns {
     }
 
     /// `FUN_14165a000` of player `p`: a master `unit` within the player's table changes alone
-    /// ([`Turns::change_master_attribute`]; a null slot changes nothing); else with a class, the
-    /// objects the tracker files under it ([`Turns::tracked_class`]: each that runs its slot,
-    /// [`Turns::change_object`], a building also its annexes of the class, but those with
+    /// ([`World::change_master_attribute`]; a null slot changes nothing); else with a class, the
+    /// objects the tracker files under it ([`World::tracked_class`]: each that runs its slot,
+    /// [`World::change_object`], a building also its annexes of the class, but those with
     /// annexes of their own), the pending ones, then each master of the class, by id.
     pub(super) fn change_attribute(
         &mut self,
@@ -244,7 +244,7 @@ impl Turns {
         Ok(())
     }
 
-    /// The masters of player `p` slot 0x148 changes ([`Turns::change_attribute`]): master `unit`
+    /// The masters of player `p` slot 0x148 changes ([`World::change_attribute`]): master `unit`
     /// within the table (none for a null slot), else those of class `class`, by id.
     pub(super) fn reached_masters(&self, p: usize, unit: i16, class: i16) -> Vec<i16> {
         let Some(masters) = self.masters.get(p) else {
@@ -264,7 +264,7 @@ impl Turns {
     }
 
     /// `FUN_14165a400` with no object (`param_6` −1) of player `p`'s master `unit`: its objects
-    /// the tracker files under it ([`Turns::tracked_master`]) each run their slot, but an obstruction
+    /// the tracker files under it ([`World::tracked_master`]) each run their slot, but an obstruction
     /// type's change to another type and a height's change (32) take the object's obstruction
     /// record off first (`FUN_14165b510` -> `FUN_141189670`), and a hero status (40) on one from
     /// type 70 on runs its slot and is kept too; for a building master its pending objects
@@ -382,7 +382,7 @@ impl Turns {
     }
 
     /// Player `p`'s master `id` takes the change (its slot 0x18, 0x20 or 0x28), then the values
-    /// the slice derives from it follow ([`Master::follow`], [`Turns::master_followers`]).
+    /// the slice derives from it follow ([`Master::follow`], [`World::master_followers`]).
     pub(super) fn change_one_master(
         &mut self,
         p: usize,

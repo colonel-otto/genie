@@ -13,7 +13,7 @@ mod stops;
 mod victory;
 
 #[cfg(test)]
-use crate::world::Turns;
+use crate::world::World;
 
 /// The player still plays.
 pub const PLAYING: u8 = 0;

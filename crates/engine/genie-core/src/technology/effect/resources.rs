@@ -3,12 +3,12 @@
 
 use crate::GenieError;
 use crate::objects::masters::master_type;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):
 /// the player's `allied_LOS_Enable` (`+0x2cc`) takes 1, the world's masks are rebuilt (its slot
-/// 0x78, [`Turns::rebuild_vision`]) and the player's map files every tile its masks reach as new
-/// ([`Turns::refill_tiles`], `FUN_141285cb0`).
+/// 0x78, [`World::rebuild_vision`]) and the player's map files every tile its masks reach as new
+/// ([`World::refill_tiles`], `FUN_141285cb0`).
 pub(super) const ALLIED_VISION: i16 = 0x32;
 /// The attribute that shares every player's sight (0xb7): the masks are rebuilt.
 pub(super) const SHARED_VISION: i16 = 0xb7;
@@ -24,12 +24,12 @@ pub(super) const FARM_EXPONENT: i16 = 31;
 /// 1897, 1893), in that order.
 pub(super) const FARMS: [i16; 4] = [50, 1187, 1897, 1893];
 
-impl Turns {
+impl World {
     /// Slot 0x1b0 (`FUN_141620c70`) of player `p` on resource `attribute` with `amount`: every
     /// live combat unit's and building's volleys lose the shares of the units inside, the
     /// attribute changes (`FUN_141661160`: `mode` 0 sets it, slot 0xf0
-    /// [`Turns::set_player_attribute`]; any other adds to it, slot 0xf8 with no statistics,
-    /// [`Turns::add_player_attribute`]; the local player's statistics are not simulation), and
+    /// [`World::set_player_attribute`]; any other adds to it, slot 0xf8 with no statistics,
+    /// [`World::add_player_attribute`]; the local player's statistics are not simulation), and
     /// the volleys take the shares again. A change of resource 0x20 would not run in the screen's
     /// mode 4 (a playback's is not) or with the game's `+0x668` set (not held: taken unset).
     pub(super) fn modify_resource(
@@ -49,7 +49,7 @@ impl Turns {
     }
 
     /// Slot 0x1b8 (`FUN_141620e30`) of player `p` on resource `attribute` by `v`: as
-    /// [`Turns::modify_resource`], the attribute set to its value times `v` (`FUN_1416614c0`).
+    /// [`World::modify_resource`], the attribute set to its value times `v` (`FUN_1416614c0`).
     pub(super) fn multiply_resource(
         &mut self,
         p: usize,
@@ -63,7 +63,7 @@ impl Turns {
     }
 
     /// `FUN_141217ac0` (`after` false) or `FUN_14120b910` on each of player `p`'s live combat
-    /// units and buildings ([`Turns::garrison_volleys`]).
+    /// units and buildings ([`World::garrison_volleys`]).
     pub(super) fn all_garrison_volleys(&mut self, p: usize, after: bool) -> Result<(), GenieError> {
         let ids: Vec<i32> = self.players[p].objects.iter().map(|u| u.id).collect();
         for id in ids {
@@ -98,8 +98,8 @@ impl Turns {
     }
 
     /// Slot 0xf0 (`FUN_14162d610`) of player `p`: attribute `attribute` takes `v`
-    /// ([`Turns::store_attribute`]), with its side effects: 0x32 turns the allied vision on
-    /// first ([`Turns::allied_vision_on`]); 0xc4 changes nothing for a player above 0 and spreads
+    /// ([`World::store_attribute`]), with its side effects: 0x32 turns the allied vision on
+    /// first ([`World::allied_vision_on`]); 0xc4 changes nothing for a player above 0 and spreads
     /// to the others at most 0 ([`SPREAD_ATTRIBUTE`]); 0xb7 rebuilds the masks after; 0x21 above 0
     /// calls the scripts' `EffectFunction<v>` (the XS runtime is not modelled).
     pub(crate) fn set_player_attribute(
@@ -170,7 +170,7 @@ impl Turns {
 
     /// Attribute 0x32's side effect: player `p`'s allied vision (`+0x2cc`) on, the masks rebuilt
     /// (the world's slot 0x78, `FUN_1415e92b0`) and its tile list refilled
-    /// ([`Turns::refill_tiles`], `FUN_141285cb0`).
+    /// ([`World::refill_tiles`], `FUN_141285cb0`).
     pub(super) fn allied_vision_on(&mut self, p: usize) -> Result<(), GenieError> {
         self.players[p].allied_vision = true;
         self.rebuild_vision()?;
@@ -181,7 +181,7 @@ impl Turns {
     /// `FUN_141615270` after player `p`'s change of the farms' food (from `before`, by `amount`):
     /// with attribute 31 at least 0 (`COMISS`, `JC`: not a NaN), each object the tracker files
     /// under the farm masters ([`FARMS`], their done objects, in that order,
-    /// [`Turns::tracked_key`]) from type 40 on with an action (its Make) has the food still to make (`+0x44`) grow: with `held` its food
+    /// [`World::tracked_key`]) from type 40 on with an action (its Make) has the food still to make (`+0x44`) grow: with `held` its food
     /// (`+0x310`) and `f = held + still to make`, it takes `(f / before)^exponent × amount + f −
     /// held` (`powf`, here libm's).
     pub(super) fn farm_food(

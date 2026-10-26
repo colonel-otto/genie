@@ -1,17 +1,17 @@
 //! The world player's own update (`WorldPlayer::update`, `0x14163b100`, slot 0x100) and Gaia's
 //! (`WorldPlayerGaia::update`, `0x141681cd0`, its slot 0x100). `BaseWorld::update` runs a
 //! player's slot 0x100 after its groups (`0x1415518f0`); both end in `WorldPlayerBase::update`
-//! (`0x141677450`: the plans, the objects, `Process_New_Tiles`), which [`Turns::tick_with`] runs
-//! between [`Turns::update_world_player`] and [`Turns::world_player_tail`].
+//! (`0x141677450`: the plans, the objects, `Process_New_Tiles`), which [`World::tick_with`] runs
+//! between [`World::update_world_player`] and [`World::world_player_tail`].
 //!
 //! Gaia's update only adds the update's seconds (`world+0x164`) to its own `update_time`
 //! (`+0x1468`); the world player's `mUpdateTime` (`+0x7a4`) of Gaia stays 0. The world player's
 //! update adds them to `mUpdateTime` and runs a loop once for each whole second of it
-//! ([`Turns::world_player_second`]): the history, the explored share (attribute 22), the kill
+//! ([`World::world_player_second`]): the history, the explored share (attribute 22), the kill
 //! ratio (attribute 44), the defeat check of a human or computer player and, while the player
 //! plays, its resource trickles (attributes 230 to 233) and its mills' food (attribute 254).
 //! After `WorldPlayerBase::update` its scout map takes the tiles its map explored
-//! ([`Turns::world_player_tail`]).
+//! ([`World::world_player_tail`]).
 //!
 //! Not simulation, not held: the local player's farm and fish trap queues sent as commands once
 //! after a load (`+0x1427`, `FUN_140e74d70`, `FUN_140e74e10`: GAME 0x10 and 0x13, which a
@@ -30,10 +30,10 @@
 //! world player's attribute add (slot 0xf8) `FUN_141616820` and its base's `FUN_14165d040`, the
 //! scout map's set `FUN_140f4d5e0`.
 //!
-//! [`Turns::tick_with`]: crate::world::Turns::tick_with
-//! [`Turns::update_world_player`]: crate::world::Turns::update_world_player
-//! [`Turns::world_player_second`]: crate::world::Turns::world_player_second
-//! [`Turns::world_player_tail`]: crate::world::Turns::world_player_tail
+//! [`World::tick_with`]: crate::world::World::tick_with
+//! [`World::update_world_player`]: crate::world::World::update_world_player
+//! [`World::world_player_second`]: crate::world::World::world_player_second
+//! [`World::world_player_tail`]: crate::world::World::world_player_tail
 
 use crate::math::fmath::below_or_unordered;
 
@@ -44,7 +44,7 @@ mod update;
 
 pub use self::tech_tree::{TechTree, TreeBuilding, TreeQuery, TreeUnit, UniqueUnit};
 #[cfg(test)]
-use crate::world::Turns;
+use crate::world::World;
 
 /// One second (`DAT_14330eb8c`): the loop's step.
 const SECOND: f32 = crate::math::image::world_player::SECOND;
@@ -96,7 +96,7 @@ const AGES: [i32; 3] = [101, 102, 103];
 /// A technology's state once researched.
 const RESEARCHED: i16 = 3;
 /// `FUN_140c7e6f0`: the civilisation the full tech tree reads, by the game's tagged value at
-/// `+0x680` ([`crate::world::Turns::mode_680`]): 18 for 1, 59 for 2, else 0.
+/// `+0x680` ([`crate::world::World::mode_680`]): 18 for 1, 59 for 2, else 0.
 const fn full_tree_civ(mode_680: i32) -> i32 {
     match mode_680 {
         1 => 0x12,

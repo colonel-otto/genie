@@ -223,7 +223,7 @@ pub struct AnnexStart<'a> {
 /// The main building an annex's work goes to: its construction and hit points as they stand,
 /// from which the work's result follows. The work itself (the annexes' starts on the way, the
 /// main building's start, work and completion) is the caller's after the builder's update
-/// ([`crate::world::Turns::work_building`] on the annex, [`Worked::Main`]).
+/// ([`crate::world::World::work_building`] on the annex, [`Worked::Main`]).
 #[derive(Clone, Copy, Debug)]
 pub struct MainWork {
     /// Its construction.
@@ -241,7 +241,7 @@ pub struct Completion<'a> {
     pub annexed: bool,
     /// Some player's attribute 204 is not 0 (`FUN_14152bcb0`).
     pub attribute_204: bool,
-    /// The game's setting at `+0x680` ([`crate::world::Turns::mode_680`]).
+    /// The game's setting at `+0x680` ([`crate::world::World::mode_680`]).
     pub mode_680: i32,
     /// The owner's attributes 237, 238 and 239 (`player+0x768`..`+0x778`): a farm's bonus when
     /// built, its amount, its resource and a master near which it is given
@@ -270,10 +270,10 @@ pub struct FirstPart {
     /// The attributes its owner gains, in order.
     pub attributes: Vec<(i16, f32)>,
     /// The building's master has a task of action type 0x99 and the building a unit AI: its
-    /// search for resources follows ([`crate::world::Turns::cart_search`]).
+    /// search for resources follows ([`crate::world::World::cart_search`]).
     pub cart: bool,
     /// A pasture (1893, 1897) whose build points reached its build time: its livestock follow
-    /// after the attributes (`FUN_1411c8410`, [`crate::world::Turns::setup_pasture`]).
+    /// after the attributes (`FUN_1411c8410`, [`crate::world::World::setup_pasture`]).
     pub pasture: bool,
 }
 
@@ -373,7 +373,7 @@ pub struct Built {
     /// state the building had before the completion (`set_state(2)` puts it in 2 after).
     pub cart: Option<u8>,
     /// Its stack unit (`+0x986`), which its owner's slot 0x1c0 makes in its place (the
-    /// caller's, [`crate::world::Turns::stack_unit`]).
+    /// caller's, [`crate::world::World::stack_unit`]).
     pub stack: Option<StackUnit>,
     /// Its master disappears when built (`+0x984`): its destroy (slot 0xd0) ends the
     /// completion, after its technology (the caller's).
@@ -561,10 +561,10 @@ pub struct BuildStep {
     /// carries (`FUN_14119d310` with −1 and 0): the caller's.
     pub dropped: Option<(i16, f32)>,
     /// The seconds of work an annex's main building takes ([`Worked::Main`]): the caller's
-    /// after the update ([`crate::world::Turns::work_building`] on the foundation).
+    /// after the update ([`crate::world::World::work_building`] on the foundation).
     pub main_work: Option<f32>,
     /// The foundation another player's marks lie on (`set_state(7)`'s `FUN_1411d4b80`), which
-    /// goes when its owner is human (`FUN_1411ccbb0`, [`crate::world::Turns::remove_building`]):
+    /// goes when its owner is human (`FUN_1411ccbb0`, [`crate::world::World::remove_building`]):
     /// the caller's after the update.
     pub removes: Option<i32>,
     /// The drop-off searches again (`set_state(8)`, [`BuildAction::set_drop`] with the caller's
@@ -667,7 +667,7 @@ mod stack_tests {
     use crate::objects::lifecycle::{Class, Lifecycle};
     use crate::objects::masters::{BuildingMaster, Masters};
     use crate::objects::unit::Unit;
-    use crate::world::{Player, Turns};
+    use crate::world::{Player, World};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train
     /// time `bt`, hit points `hp`, an annex of `head`, with `annexes` at their offsets.
@@ -756,7 +756,7 @@ mod stack_tests {
 
     /// Player 1 with the town-centre foundation 8759 at (54, 147), built to its last 0.01
     /// seconds, its record on the map; the next id 8768.
-    fn world() -> Turns {
+    fn world() -> World {
         let ms = masters();
         let foundation = Unit {
             id: 8759,
@@ -783,7 +783,7 @@ mod stack_tests {
             my_pasture: -1,
             ..Unit::default()
         };
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,

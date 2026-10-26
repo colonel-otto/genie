@@ -9,7 +9,7 @@ use crate::{
     tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit, watch_at_load,
 };
 use genie_core::GenieError;
-use genie_core::world::Turns;
+use genie_core::world::World;
 use genie_rec::de;
 use genie_save::Header;
 
@@ -171,7 +171,7 @@ pub fn command_phase(
 /// The forced replay's continuous mode (FD-008, CONTINUE.md): genie-core from the game's save
 /// after `start` (with its dumps), then `ticks` updates, each compared with the game's save after
 /// it (`save_after(update)`, which may end the run early with None) and then forced to the game's
-/// state where the slice did not model it or got it wrong ([`genie_core::world::Turns::force`]: the
+/// state where the slice did not model it or got it wrong ([`genie_core::world::World::force`]: the
 /// frame seed, the frozen and the differing objects, a stopped player, the sight, and what the
 /// game's dumps after the update hold, `dump_after(update, extension)`: the tiles' object lists
 /// (`tiles`) and the recycled missiles (`pools`), whose differences are Gaia's). The objects the
@@ -427,7 +427,7 @@ pub fn forced_run(
 /// The player a group difference (`group ID: …`) goes with: the group's owner in the game or the
 /// slice, Gaia for the world's list and counter.
 pub(super) fn group_owner(
-    turns: &Turns,
+    turns: &World,
     game: &genie_core::world::GameState,
     difference: &str,
 ) -> u32 {

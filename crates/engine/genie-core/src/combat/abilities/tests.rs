@@ -410,7 +410,7 @@ use crate::objects::unit::Unit;
 use crate::world::Player;
 
 /// Gaia and two enemies, the world's dt half a second, a 20 by 20 map.
-fn world() -> Turns {
+fn world() -> World {
     let player = |relations: Vec<u8>| Player {
         attributes: vec![0.0; 600],
         generated: vec![0.0; 600],
@@ -422,7 +422,7 @@ fn world() -> Turns {
         player(vec![3, 0, 3]),
         player(vec![3, 3, 0]),
     ];
-    let mut t = Turns::new(0, 1, 0, vec![0; 3], players);
+    let mut t = World::new(0, 1, 0, vec![0; 3], players);
     t.dt_seconds = 0.5;
     t.spatial = Spatial::new([20, 20]);
     t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
@@ -431,7 +431,7 @@ fn world() -> Turns {
 }
 
 /// Master `id` of `kind` and `class` with `tasks`, given to every player.
-fn give_master(t: &mut Turns, id: i16, kind: u8, class: i16, tasks: Vec<Task>) {
+fn give_master(t: &mut World, id: i16, kind: u8, class: i16, tasks: Vec<Task>) {
     let m = Master {
         id,
         kind,
@@ -450,7 +450,7 @@ fn give_master(t: &mut Turns, id: i16, kind: u8, class: i16, tasks: Vec<Task>) {
 
 /// Object `id` of master `m` with `hp` hit points at (`x`, `y`) in player `p`'s list, placed
 /// on its tile.
-fn put(t: &mut Turns, p: usize, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
+fn put(t: &mut World, p: usize, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
     let mut u = Unit {
         id,
         position: [x, y, 0.0],
@@ -481,13 +481,13 @@ fn put(t: &mut Turns, p: usize, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
 
 /// The abilities of object `id` of player `p` as `p`'s, nothing pending, which issue no
 /// command.
-fn run(t: &mut Turns, p: usize, id: i32) {
+fn run(t: &mut World, p: usize, id: i32) {
     assert_eq!(rewards(t, p, id, false), Vec::new());
 }
 
 /// The abilities of object `id` of player `p` as `p`'s, nothing pending: the commands they
 /// issue.
-fn rewards(t: &mut Turns, p: usize, id: i32, leaves: bool) -> Vec<Reward> {
+fn rewards(t: &mut World, p: usize, id: i32, leaves: bool) -> Vec<Reward> {
     let i = t.players[p]
         .objects
         .iter()
@@ -501,7 +501,7 @@ fn rewards(t: &mut Turns, p: usize, id: i32, leaves: bool) -> Vec<Reward> {
 }
 
 /// The players' sight with `id` a building of player `p` that is `built`.
-fn building_sight(t: &mut Turns, p: usize, id: i32, built: bool) {
+fn building_sight(t: &mut World, p: usize, id: i32, built: bool) {
     let map = || crate::vision::visibility::VisibleMap {
         counts: vec![0; 400],
         explored: 0,
@@ -564,7 +564,7 @@ fn a_built_feitoria_trickles_food_through_its_player_s_store() {
 }
 
 /// A Keshik of player 1 attacking object 77 in state 7.
-fn keshik(t: &mut Turns) {
+fn keshik(t: &mut World) {
     give_master(t, 1228, 70, 12, vec![keshik_gold()]);
     put(t, 1, 60, 1228, 100.0, [5.5, 5.5]);
     let attack = crate::combat::attack::Attack {
@@ -651,7 +651,7 @@ fn a_keshik_reads_its_target_as_its_update_left_it() {
 
 /// A combat unit of master 9 at (5.5, 5.5) moving east, with a movement damage of range 2,
 /// 5 hit points and a timer of 3 s.
-fn trampler(t: &mut Turns) {
+fn trampler(t: &mut World) {
     let trample = Task {
         work_range: 2.0,
         work_val1: 5.0,
@@ -679,7 +679,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
     put(&mut t, 1, 30, 4, 30.0, [5.5, 6.5]);
     put(&mut t, 0, 40, 4, 30.0, [4.5, 5.5]);
     run(&mut t, 1, 10);
-    let hp = |t: &Turns, id| t.object(id).unwrap().1.life.hp;
+    let hp = |t: &World, id| t.object(id).unwrap().1.life.hp;
     assert_eq!(hp(&t, 20), 25.0);
     assert_eq!(hp(&t, 21), 30.0);
     assert_eq!(hp(&t, 30), 30.0);
@@ -743,7 +743,7 @@ fn a_movement_damage_on_the_pending_target_hits_it_as_the_update_left_it() {
 
 /// The map's terrain: every tile of terrain 1 but (5, 6) of terrain 2, whose flag byte has
 /// 32 (deep water).
-fn waters(t: &mut Turns) {
+fn waters(t: &mut World) {
     let mut tiles = vec![(1u8, 255u8, -1i16); 400];
     tiles[6 * 20 + 5] = (2, 255, -1);
     let kind = |flags| crate::map::terrain::TerrainKind {

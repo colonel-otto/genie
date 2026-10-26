@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
-use crate::world::Turns;
+use crate::world::World;
 
 /// A unit's radius in a formation where its master has no full footprint (`FUN_141025920`,
 /// `DAT_142e7f384`).
@@ -122,7 +122,7 @@ impl UnitGroup {
 }
 
 impl UnitGroup {
-    /// [`Turns::leave_statistic`]'s part on the group, for unit `id` of sub-formation `category`
+    /// [`World::leave_statistic`]'s part on the group, for unit `id` of sub-formation `category`
     /// (None for a unit the world does not hold): it leaves the first statistic of that category
     /// (none for -1), or, for a unit the world does not hold, the first statistic that holds it
     /// (`FUN_14102c320`: its units close up and its unit types are counted again,
@@ -154,7 +154,7 @@ impl UnitGroup {
     }
 }
 
-impl Turns {
+impl World {
     /// `removeUnit` (`FUN_14102c160`) of unit `id` from group `group`, `target` (`param_3`) the
     /// object its sub-formation is reckoned against (`FUN_141011300`'s rams rule, which no code
     /// enables) and `keep_moving` (`param_4`): false for a unit not a member. A member the world
@@ -163,7 +163,7 @@ impl Turns {
     /// own moves close up; `mSecondsSinceAttacking` keeps its places (the last member's value
     /// goes to the spare ones). It leaves its sub-formation's statistic (`FUN_14102c480`); a
     /// lead that leaves gives way to the member nearest the target (`FUN_141016870`,
-    /// [`Turns::nearest_to_target`]); the flags take `0x10002`.
+    /// [`World::nearest_to_target`]); the flags take `0x10002`.
     ///
     /// # Errors
     ///
@@ -232,9 +232,9 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// `FUN_14102c480` of unit `id` and group `group`'s statistics: for an object the world's
-    /// table holds ([`Turns::world_object`]) its sub-formation ([`Turns::unit_category`]; -1:
+    /// table holds ([`World::world_object`]) its sub-formation ([`World::unit_category`]; -1:
     /// false) and the first statistic of it (none: false), which the unit leaves; for one it
     /// does not hold, the first statistic that held it ([`UnitGroup`]'s
     /// `drop_from_statistic`, `FUN_14102c320`). The routine's target (`param_4`) enters only the
@@ -305,13 +305,13 @@ pub(crate) fn count_unit_types(
     stat.number_unit_types = n as i32;
 }
 
-impl Turns {
+impl World {
     /// `AddUnit` (`FUN_1410083c0` with `param_4` 0) of unit `id` to group `group`: false for an
-    /// object the world's table does not hold ([`Turns::world_object`]), of no sub-formation
-    /// ("Invalid formation category", [`Turns::unit_category`]) or when the group holds
+    /// object the world's table does not hold ([`World::world_object`]), of no sub-formation
+    /// ("Invalid formation category", [`World::unit_category`]) or when the group holds
     /// [`MAX_MEMBERS`] already; true when it is a member already. Else the members' arrays make
     /// room ([`UnitGroup::resize_members`]); a unit in another group the world holds leaves it
-    /// ([`Turns::remove_unit`]); the unit's group link names the group (`+0x6d0`), its unit AI
+    /// ([`World::remove_unit`]); the unit's group link names the group (`+0x6d0`), its unit AI
     /// drops the actions and orders of [`CLEARED_ACTIONS`] and [`CLEARED_ORDERS`]
     /// (`FUN_140c64b50` and `FUN_140c64b60` with -1) and empties its order queue
     /// (`FUN_140c5e010`); it joins the members with no move of its own (active 0, path and
@@ -321,7 +321,7 @@ impl Turns {
     ///
     /// The routine's target (`param_3`), which it hands to `removeUnit` and to its second
     /// `FUN_141011300`, enters only the rams' rule, which never holds
-    /// ([`Turns::unit_category`]): the port takes none.
+    /// ([`World::unit_category`]): the port takes none.
     ///
     /// # Panics
     ///
@@ -410,11 +410,11 @@ mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
-    use crate::world::{Player, Turns};
+    use crate::world::{Player, World};
 
     /// Group 1 of player 1's units 10, 11 (master 4, category 1) and 12 (master 6, category 3),
     /// their seconds since attacking 1, 2 and 3, 11 the lead and walking.
-    fn three() -> Turns {
+    fn three() -> World {
         let unit = |id: i32, master: i16, x: f32| {
             let mut u = Unit {
                 id,
@@ -440,7 +440,7 @@ mod tests {
             objects: vec![unit(10, 4, 1.0), walking, unit(12, 6, 3.0)],
             ..Player::default()
         };
-        let mut t = Turns::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
+        let mut t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
         let master = |id: i16, category: u8| Master {
             id,
             kind: 70,

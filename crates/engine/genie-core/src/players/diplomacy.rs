@@ -12,7 +12,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::master_type;
-use crate::world::Turns;
+use crate::world::World;
 use crate::world::checkpoint::cvttss2si;
 
 /// The reveal of a player's units of a kind to the others (its attribute 204 not 0,
@@ -77,16 +77,16 @@ pub const fn unit_kind(p: usize, q: usize, relation: u8) -> i32 {
     }
 }
 
-impl Turns {
+impl World {
     /// Slot 0x30 (`FUN_141639690`) of player `p` toward player `other` with the command's
     /// relation `relation`: 0 makes the stance an ally's (4), 1 a neutral's (3), 3 and 4 an
     /// enemy's (2); another does nothing, as a player outside the world. A stance other than the
-    /// one held (`+0xe12` at the other's number) is set ([`Turns::set_stance`]); the interface's
+    /// one held (`+0xe12` at the other's number) is set ([`World::set_stance`]); the interface's
     /// event 8 aside, the world's sight masks are made again (its slot 0x78 with 0,
-    /// [`Turns::rebuild_vision`]), both players' tile lists empty (`FUN_141661030`) and refill
-    /// with the tiles their masks reach ([`Turns::refill_tiles`]). Then, whether or not it
-    /// changed, the world's teams ([`Turns::resolve_teams`]) and the revealed units
-    /// ([`Turns::reveal_units`]).
+    /// [`World::rebuild_vision`]), both players' tile lists empty (`FUN_141661030`) and refill
+    /// with the tiles their masks reach ([`World::refill_tiles`]). Then, whether or not it
+    /// changed, the world's teams ([`World::resolve_teams`]) and the revealed units
+    /// ([`World::reveal_units`]).
     pub(crate) fn set_diplomacy(
         &mut self,
         p: usize,
@@ -120,7 +120,7 @@ impl Turns {
     }
 
     /// `FUN_1416397d0`: player `p`'s stance toward `q` takes `stance`; one that makes a relation
-    /// ([`relation_of_stance`]) sets it ([`Turns::set_relation`]).
+    /// ([`relation_of_stance`]) sets it ([`World::set_relation`]).
     pub(crate) fn set_stance(&mut self, p: usize, q: usize, stance: u8) -> Result<(), GenieError> {
         let diplomacy = &mut self.players[p].diplomacy;
         if diplomacy.len() <= q {
@@ -133,7 +133,7 @@ impl Turns {
     /// `FUN_141676b80`: player `p`'s relation toward `q` (`+0x260`, which the walk's and the
     /// queries' copies follow) and what its queries make of `q`'s objects (`+0x278`,
     /// [`unit_kind`]); then each of its live objects, in the list's order, hears of it (slot
-    /// 0x120, [`Turns::notify_of_relation`]; the list's count is read again after each).
+    /// 0x120, [`World::notify_of_relation`]; the list's count is read again after each).
     pub(crate) fn set_relation(
         &mut self,
         p: usize,
@@ -172,7 +172,7 @@ impl Turns {
     ///
     /// The combat object's, with a relation other than an ally's: a unit inside an object of
     /// `q` leaves it, a building's toward no point (`FUN_1411e7220` with −1, −1,
-    /// [`Turns::let_out`]), a siege tower's (class 13) as its unload; then a siege tower lets out
+    /// [`World::let_out`]), a siege tower's (class 13) as its unload; then a siege tower lets out
     /// the units of `q` inside it, from the last. One that finds no spot would leave it and be
     /// destroyed (slots 0x1a8 and 0xd0), which the unload's own errors stand for.
     ///
@@ -353,14 +353,14 @@ mod tests {
     use crate::world::Player;
 
     /// Gaia and three players, all enemies, with the walk's and the queries' copies.
-    fn world() -> Turns {
+    fn world() -> World {
         let player = |p: usize| Player {
             attributes: vec![0.0; 300],
             relations: (0..4).map(|q| if q == p { 0 } else { 3 }).collect(),
             diplomacy: vec![0; 9],
             ..Player::default()
         };
-        let mut t = Turns::new(0, 1, 0, vec![0; 4], (0..4).map(player).collect());
+        let mut t = World::new(0, 1, 0, vec![0; 4], (0..4).map(player).collect());
         t.spatial.relations = t.players.iter().map(|p| p.relations.clone()).collect();
         t.spatial.unit_diplomacy = (0..4)
             .map(|p| (0..4).map(|q| unit_kind(p, q, 3)).collect())
@@ -450,7 +450,7 @@ mod tests {
             allied_victory: 1,
             ..Player::default()
         };
-        let mut t = Turns::new(0, 1, 0, vec![0; 9], (0..9).map(|_| player()).collect());
+        let mut t = World::new(0, 1, 0, vec![0; 9], (0..9).map(|_| player()).collect());
         // pairs (1, 2), (3, 4), (5, 6), (7, 8), each allied both ways
         for (a, b) in [(1, 2), (3, 4), (5, 6), (7, 8)] {
             for (x, y) in [(a, b), (b, a)] {

@@ -3,10 +3,10 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::orders::{AUTO_SCOUT_CLASS, BUILDING, Place, lock_gate, set_stance};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
-    /// `UNIT_AI_STATE` (`do_command` case 0x12): the check ([`Turns::command_check`]), then
+impl World {
+    /// `UNIT_AI_STATE` (`do_command` case 0x12): the check ([`World::command_check`]), then
     /// `FUN_140e6a7c0` over its first 60 ids (500 for a computer player): each object the world
     /// holds (any player's the check let through) with a unit AI takes the stance `state` (slot
     /// 0x1c0, [`set_stance`]), but not stances 1 and 2 for classes 54 and 51 (and, the siege AI's
@@ -188,16 +188,16 @@ impl Turns {
     }
 
     /// STOP (0x01, `RGE_Command::do_command` case 1) of the player's units `ids`: the command's
-    /// check ([`Turns::command_check`]), the lookup ([`Turns::lookup`]), then `FUN_14161e200`. First
+    /// check ([`World::command_check`]), the lookup ([`World::lookup`]), then `FUN_14161e200`. First
     /// each unit AI resets as for an order (`FUN_141631040`, the loop of `FUN_140e6cfc0`:
     /// [`crate::unit_ai::UnitAi::reset_for_order`]). Several entries (a gone unit's null among
     /// them) that are exactly one unit group's members (`FUN_14152ec80`, the group's size
     /// `+0xe4`) stop as the group: each unit AI's order queue empties and its idle timer takes its
     /// adjusted timeout, then the group's stop (`FUN_1410110c0`), which is not modelled. Else each
     /// unit leaves the unit group the world holds of its link (`FUN_14102c160` with -1 and 0,
-    /// [`Turns::remove_unit`]), its unit AI's order queue empties (`FUN_140c5e010`) and its idle
+    /// [`World::remove_unit`]), its unit AI's order queue empties (`FUN_140c5e010`) and its idle
     /// timer takes its adjusted timeout (`+0x160` = `+0x164`), its ignore list empties
-    /// (`FUN_141197da0`), the object stops (slot 0x148, [`Turns::object_stop`]) and its movement
+    /// (`FUN_141197da0`), the object stops (slot 0x148, [`World::object_stop`]) and its movement
     /// stands (slot 0x560, `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked
     /// level).
     pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
@@ -298,7 +298,7 @@ impl Turns {
     }
 
     /// stopAction (slot 0x3c0, `FUN_14108c160`) in the command phase: the action list empties
-    /// (`FUN_140a98620`, [`Turns::clear_actions`]) and a unit in state 2 takes its standing
+    /// (`FUN_140a98620`, [`World::clear_actions`]) and a unit in state 2 takes its standing
     /// sprite (slot 0x798, then slot 0x68) where the slice holds its sprite.
     pub(crate) fn command_stop(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         if self.players[p].objects[idx].unmodelled_action.is_some() {

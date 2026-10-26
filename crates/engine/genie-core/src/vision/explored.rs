@@ -1,9 +1,9 @@
 //! `Process_New_Tiles` at the end of a player's update and a new object's visible resources.
 
 use crate::GenieError;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `Process_New_Tiles` (`FUN_1412899a0`, the end of `WorldPlayerBase::update`): on each tile
     /// player `p`'s map explored since its last update, in order, each object (the tile's list,
     /// in its order) of a master that gathers by itself (`enable_auto_gather`, `+0x681`) joins

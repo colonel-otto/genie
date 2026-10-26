@@ -33,7 +33,7 @@ pub(crate) use self::world_map::WorldMap;
 use crate::GenieError;
 #[cfg(test)]
 use crate::objects::lifecycle::Lifecycle;
-use crate::world::Turns;
+use crate::world::World;
 
 /// A unit smaller than this on both axes (`DAT_142f5d120`) steps by twice its radius plus
 /// `GAP` (`DAT_142eb5690`).
@@ -78,9 +78,9 @@ pub(crate) const START_RIGHT_Z: f32 = crate::math::image::spawn::START_RIGHT_Z;
 /// `+0x30`, `FUN_140c12300`).
 const CURRENT_AGE: i16 = 6;
 
-/// How a new plain object ([`Turns::plain_object`]) that moves faces.
+/// How a new plain object ([`World::plain_object`]) that moves faces.
 ///
-/// [`Turns::plain_object`]: crate::world::Turns::plain_object
+/// [`World::plain_object`]: crate::world::World::plain_object
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Facing {
     /// Its drawn angle (the moving setup's, `FUN_141141640`).
@@ -117,7 +117,7 @@ pub enum Tested {
     },
 }
 
-impl Turns {
+impl World {
     /// A new object of player `p`'s `master` placed at `at` (the static `new_position`,
     /// `0x1411a58b0`, slot 0x60's `FUN_141193a10`): its height the ground's by the master's fly
     /// mode; without the map's elevations the height stays.

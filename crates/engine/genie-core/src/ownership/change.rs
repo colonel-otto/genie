@@ -9,13 +9,13 @@ use crate::objects::unit::Unit;
 use crate::ownership::capture::LIVESTOCK;
 use crate::unit_ai::OWNER_CHANGED;
 use crate::world::player::Player;
-use crate::world::{BUILDING_KIND, Turns};
+use crate::world::{BUILDING_KIND, World};
 
-impl Turns {
+impl World {
     /// Slot 0x70 ([`change_hands`]) to Gaia of the object at `j` of player `q`, from outside its
     /// update: once Gaia has its master it leaves `q`'s list (`FUN_141630930`, the last object
     /// in its place) for the end of Gaia's (`FUN_14167f670` -> `FUN_141616200`) with its
-    /// attributes ([`Turns::hand_over_attributes`]). Its only callers give livestock, which
+    /// attributes ([`World::hand_over_attributes`]). Its only callers give livestock, which
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
     pub(crate) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
@@ -64,20 +64,20 @@ impl Turns {
     /// - in state 2 the old owner loses its master's storage of flag 4 and a held attribute 4
     ///   (slot 0xf8, the amount's sign flipped, `DAT_142e88e80`);
     /// - a foundation's (state 0) footprint leaves the old owner's map (slot 0x1d8);
-    /// - its action list and production list go (`FUN_140a98620`, [`Turns::clear_actions`],
-    ///   [`Turns::end_production_action`]), then its whole queue ([`Turns::cancel_queue`]);
+    /// - its action list and production list go (`FUN_140a98620`, [`World::clear_actions`],
+    ///   [`World::end_production_action`]), then its whole queue ([`World::cancel_queue`]);
     /// - a watched one leaves the old owner's watched list;
     /// - the combat object's slot 0x70 (`FUN_14120f800`, [`change_hands`]; the lists' moves and the
-    ///   attributes as [`Turns::give_gaia`] does them), unless the new owner lacks its master;
+    ///   attributes as [`World::give_gaia`] does them), unless the new owner lacks its master;
     /// - built (its build time at most its build points: `COMISS`, a NaN is not), it completes in
     ///   the new owner's tracker (`FUN_14104eac0`);
     /// - a watched one joins the new owner's watched list at its tile (`FUN_141090430`);
     /// - a foundation's footprint comes on the new owner's map (slot 0x1d0);
     /// - in state 2 its master's stack unit (`+0x986`; 1889's on rice terrain 1893) comes at its
-    ///   place (the master's slot 0x40, [`Turns::remains`]) and its master's technology is
-    ///   researched ([`Turns::research_built`]); then its owner gains the storage of flags 4 and 8
+    ///   place (the master's slot 0x40, [`World::remains`]) and its master's technology is
+    ///   researched ([`World::research_built`]); then its owner gains the storage of flags 4 and 8
     ///   and a held attribute 4;
-    /// - the units inside leave it toward no point, from the last ([`Turns::let_out`] with −1, −1,
+    /// - the units inside leave it toward no point, from the last ([`World::let_out`] with −1, −1,
     ///   `DAT_14330ec20`); one that finds no spot leaves and is destroyed (slots 0x1a8, 0xd0);
     /// - below state 3 its record and mesh shape come again (`FUN_141056460`);
     /// - its gather point goes (`+0xc30`..`+0xc44`).
@@ -157,7 +157,7 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` leaving its old owner's
+    /// [`World::building_changes_hands`]'s foundation (state 0) `placed` leaving its old owner's
     /// map (slot 0x1d8).
     pub(crate) fn foundation_sight_off(
         &mut self,
@@ -169,7 +169,7 @@ impl Turns {
         }
     }
 
-    /// [`Turns::building_changes_hands`]'s foundation (state 0) `placed` coming on its new
+    /// [`World::building_changes_hands`]'s foundation (state 0) `placed` coming on its new
     /// owner's map (slot 0x1d0).
     pub(crate) fn foundation_sight_on(
         &mut self,
@@ -181,7 +181,7 @@ impl Turns {
         }
     }
 
-    /// [`Turns::building_changes_hands`] below state 3: the building's record and mesh shape of
+    /// [`World::building_changes_hands`] below state 3: the building's record and mesh shape of
     /// `master`'s obstruction come again (`FUN_141056460`).
     pub(crate) fn record_again(&mut self, id: i32, master: &Master) {
         let record = crate::map::spatial::Obstruction {
@@ -197,7 +197,7 @@ impl Turns {
         }
     }
 
-    /// [`Turns::building_changes_hands`]'s annexes of `id` of a building type first, each leaving
+    /// [`World::building_changes_hands`]'s annexes of `id` of a building type first, each leaving
     /// the old owner's watched list and changing hands (depth first).
     ///
     /// # Errors
@@ -225,9 +225,9 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::building_changes_hands`]'s combat object's slot 0x70 (`FUN_14120f800`,
+    /// [`World::building_changes_hands`]'s combat object's slot 0x70 (`FUN_14120f800`,
     /// [`change_hands`]) on building `id` (player `old`'s `idx`): when it changes, it moves to
-    /// `new`'s objects with its attributes ([`Turns::hand_over_attributes`]) and trackers; the
+    /// `new`'s objects with its attributes ([`World::hand_over_attributes`]) and trackers; the
     /// owner it then has.
     ///
     /// # Errors
@@ -263,10 +263,10 @@ impl Turns {
         })
     }
 
-    /// [`Turns::building_changes_hands`] of a building in state 2 with its `owner`: its master's
+    /// [`World::building_changes_hands`] of a building in state 2 with its `owner`: its master's
     /// stack unit (`+0x986`; 1889's on rice terrain 1893) comes at its place (the master's slot
-    /// 0x40, [`Turns::remains`]) and its master's technology is researched
-    /// ([`Turns::research_built`]).
+    /// 0x40, [`World::remains`]) and its master's technology is researched
+    /// ([`World::research_built`]).
     ///
     /// # Errors
     ///
@@ -294,8 +294,8 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::building_changes_hands`]'s units inside building `id` leave it toward no point,
-    /// from the last ([`Turns::let_out`] with −1, −1, `DAT_14330ec20`); one that finds no spot
+    /// [`World::building_changes_hands`]'s units inside building `id` leave it toward no point,
+    /// from the last ([`World::let_out`] with −1, −1, `DAT_14330ec20`); one that finds no spot
     /// leaves and is destroyed (slots 0x1a8, 0xd0).
     ///
     /// # Errors
@@ -424,7 +424,7 @@ pub(crate) fn change_hands(
     Ok(true)
 }
 
-/// [`Turns::building_changes_hands`] of a building in state 2: its old owner `p` loses its
+/// [`World::building_changes_hands`] of a building in state 2: its old owner `p` loses its
 /// master's storage of flag 4 and a `held` attribute 4 (slot 0xf8, the `amount`'s sign
 /// flipped, `DAT_142e88e80`).
 ///
@@ -448,7 +448,7 @@ pub(crate) fn lose_built_storage(
     Ok(())
 }
 
-/// [`Turns::building_changes_hands`] of a building in state 2: its new owner `p` gains its
+/// [`World::building_changes_hands`] of a building in state 2: its new owner `p` gains its
 /// master's storage of flags 4 and 8 and a `held` attribute 4 (its `amount`).
 ///
 /// # Errors

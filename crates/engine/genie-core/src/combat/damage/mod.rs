@@ -231,7 +231,7 @@ pub struct Razed {
     pub adds: Vec<(usize, i16, f32)>,
 }
 
-/// What a killing hit leaves for the caller ([`crate::world::Turns`]'s write-back).
+/// What a killing hit leaves for the caller ([`crate::world::World`]'s write-back).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Kill {
     /// The object that killed it.
@@ -344,9 +344,9 @@ pub struct Attacker {
     /// `mHitSomethingValidForChargeAttack` (`+0x8a8`), which its hits set.
     pub charge_hit: bool,
     /// Its attack powerup (`+0xa24`) and the game's setting `+0x680`
-    /// ([`crate::world::Turns::mode_680`]: at 1 a hit may do no damage).
+    /// ([`crate::world::World::mode_680`]: at 1 a hit may do no damage).
     pub attack_powerup: f32,
-    /// The game's setting `+0x680` ([`crate::world::Turns::mode_680`]).
+    /// The game's setting `+0x680` ([`crate::world::World::mode_680`]).
     pub mode_680: i32,
     /// Its player and whether its master has a task of action type 0x9a (a kill bonus,
     /// `FUN_1415c6510`).

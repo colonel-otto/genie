@@ -26,7 +26,7 @@ impl Unit {
     /// is shut (its master's height above [`GATE_EPSILON`]) and locked, it counts the units in it
     /// ([`Unit::gate_count`]): a shut, unlocked gate with one of an ally (its player counting the
     /// unit's an ally) in it opens (its player's slot 0x340, `FUN_14162f7e0`: a gate of a height
-    /// of at least 1, [`Turns::toggle_gate`]) and its close timer is 0; an open one (a height
+    /// of at least 1, [`World::toggle_gate`]) and its close timer is 0; an open one (a height
     /// below the epsilon) with nothing in it starts its close timer at 0.5 s, or runs it down by
     /// the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height of at most 0).
     pub(crate) fn gate_update(

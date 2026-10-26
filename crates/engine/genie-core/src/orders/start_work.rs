@@ -11,17 +11,17 @@
 //! `ClosestResourceObject` (slot 0x80, [`crate::gathering::gather_search::closest_resource_at`]: no drop
 //! site, any workers, the least distance wins, the first group at a tie). Slot 0x140
 //! (`FUN_141070c90`) then gives the unit its work on the target at the target's place
-//! ([`Turns::order_work`], slot 0x7e8; `+0x888`, the work's count, is not held). Any other
+//! ([`World::order_work`], slot 0x7e8; `+0x888`, the work's count, is not held). Any other
 //! object that is a building (master type 80) whose master has a task of action type 0x99 (a
 //! mule cart), may be interrupted as above and has a unit AI runs that AI's slot 0x1e8, the
-//! cart's own search for resources ([`Turns::cart_work_search`]).
+//! cart's own search for resources ([`World::cart_work_search`]).
 
 use crate::GenieError;
 use crate::gathering::gather_search::{self, Candidate};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::orders::Work;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The game mode that puts the villagers to work at the start (`+0x34` 13, Empire Wars).
 pub const EMPIRE_WARS: i32 = 13;
@@ -60,7 +60,7 @@ const fn start_of(class: i16, building: bool, cart_task: bool) -> Option<Start> 
     None
 }
 
-impl Turns {
+impl World {
     /// The pass for player `p` ([`crate::orders::start_work`]).
     ///
     /// # Errors

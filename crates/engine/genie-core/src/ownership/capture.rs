@@ -147,7 +147,7 @@ impl Unit {
 
     /// The ownership change (slot 0x70, [`change_hands`]) of the unit, from its owner to `new`:
     /// false when `new` has not its master. A building's (`FUN_1411cd860`) is the caller's after
-    /// the update, whole ([`Captured::building`], [`crate::world::Turns::building_changes_hands`]),
+    /// the update, whole ([`Captured::building`], [`crate::world::World::building_changes_hands`]),
     /// whether or not `new` has its master.
     pub(crate) fn change_owner(
         &mut self,
@@ -269,7 +269,7 @@ pub(crate) struct Captured {
     pub(crate) main: bool,
     pub(crate) also: Vec<i32>,
     /// The object is a building: its slot 0x70 (`FUN_1411cd860`) is the caller's, whole
-    /// ([`crate::world::Turns::building_changes_hands`]); `main` says whether the new owner has
+    /// ([`crate::world::World::building_changes_hands`]); `main` says whether the new owner has
     /// its master.
     pub(crate) building: bool,
 }

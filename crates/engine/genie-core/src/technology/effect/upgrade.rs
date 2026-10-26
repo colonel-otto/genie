@@ -7,11 +7,11 @@ use crate::objects::masters::{Master, master_type};
 use crate::objects::unit::Unit;
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// Slot 0x1a0 (`FUN_14160e410`) of player `p`: master `from` upgrades to `to` by `mode`
-    /// ([`Turns::upgrade_objects`]), with the volleys' hooks around it (the abilities, `+0x930`,
+    /// ([`World::upgrade_objects`]), with the volleys' hooks around it (the abilities, `+0x930`,
     /// are not held).
     pub(super) fn upgrade_master(
         &mut self,
@@ -30,7 +30,7 @@ impl Turns {
     /// table, mode 2 with the effect's `object` gives that object a master of its own
     /// (`FUN_141186d10`, a copy of the one it reads) where slot 0xa8 lets it
     /// ([`crate::technology::upgrade::upgradable`]), runs its slot 0x98 to `to` keeping its master
-    /// ([`Turns::upgrade_object`]) and copies `to` into its own master (slot 8). Any other mode
+    /// ([`World::upgrade_object`]) and copies `to` into its own master (slot 8). Any other mode
     /// goes through the live objects in order: one reading `from` takes its slot 0x98 (its master
     /// kept in modes −1 and 3), or past its use a master of its own and its old death spawn's
     /// copy (`FUN_141201d50`); one reading `from`'s dead unit master (`+0x5e4`, when `to`'s
@@ -160,11 +160,11 @@ impl Turns {
     /// list's order), up to attribute 234's count of buildings when above 0, in a playback (the
     /// screen's mode is not 4). Each object: a male villager (0x53) draws its sex from the Player
     /// stream ("SpawnObject": `r % 100` above 49 a female, 0x125); the owner's slot 0x1c0 makes
-    /// it at the building's place with its flag ([`Turns::make_new_object`]); its slot 0x1a0 takes
+    /// it at the building's place with its flag ([`World::make_new_object`]); its slot 0x1a0 takes
     /// it into the building where the building has room for one more (slot 0x198,
-    /// [`Turns::has_room`]); unless the player's attribute 283 is above 0 it comes out at once
-    /// toward no point (`FUN_1411e7220`, [`Turns::let_out`]); a relic (0x11d) counts in the
-    /// world's `+0x844` ([`Turns::spawned_relics`]). The local player's statistics of effect
+    /// [`World::has_room`]); unless the player's attribute 283 is above 0 it comes out at once
+    /// toward no point (`FUN_1411e7220`, [`World::let_out`]); a relic (0x11d) counts in the
+    /// world's `+0x844` ([`World::spawned_relics`]). The local player's statistics of effect
     /// 0x318's spawns are not simulation.
     pub(super) fn spawn_at(
         &mut self,

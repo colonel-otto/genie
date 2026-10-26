@@ -8,10 +8,10 @@ use crate::orders::{
     ignore_unit,
 };
 use crate::unit_ai::MOVE_ORDER;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
-    /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`Turns::command_check`]), then
+impl World {
+    /// FOLLOW (0x14): the command's check (`FUN_140e54c50`, [`World::command_check`]), then
     /// `FUN_140e66a60`: a target the world does not hold does nothing; the first 60 ids (500 for
     /// a computer player) go, gone ones null (`FUN_140e6b750`), to `FUN_14161c920`. Its unit AI
     /// resets (`FUN_141631040`) are the caller's ([`crate::world`]). The splitter
@@ -20,7 +20,7 @@ impl Turns {
     /// `FUN_140fd9f40`). The command count goes on. Several loose units leave their unit groups
     /// (`FUN_14102c160` with −1) and, when the box of those that move is narrow enough
     /// ([`follow_spread`]), each moves to its offset from their mean added to the target's place
-    /// ([`Turns::follow_offset`]); else each follows the target ([`Turns::follow_unit`]).
+    /// ([`World::follow_offset`]); else each follows the target ([`World::follow_unit`]).
     pub(crate) fn follow(
         &mut self,
         player: usize,
@@ -80,7 +80,7 @@ impl Turns {
     /// world holds of its link (`FUN_14102c160` with −1 and 0), and its unit AI takes the defend
     /// order (`0x2bd`) on `target` at once (slot 0x30 -> slot 0x28 with Immediate set and inFront
     /// clear, [`crate::unit_ai::UnitAi::take_order_now_with`], run outside the unit's update by
-    /// [`Turns::run_unit_ai`]): issued by the unit's owner, on the target with its master as the
+    /// [`World::run_unit_ai`]): issued by the unit's owner, on the target with its master as the
     /// target type and its owner, at the target's place, within [`GUARD_RANGE`], priority 100. Of
     /// the record's last three fields the call writes only the first's low byte (1, the shown x:
     /// its upper bytes are the stack's, not held); the stack slots it leaves as the other two hold
@@ -146,7 +146,7 @@ impl Turns {
     }
 
     /// Unit `id` leaves the unit group the world holds of its link (`FUN_14102c160` with `target`
-    /// and 0, [`Turns::remove_unit`]); a unit the world does not hold or in no group, nothing.
+    /// and 0, [`World::remove_unit`]); a unit the world does not hold or in no group, nothing.
     pub(crate) fn leave_group_of(&mut self, id: i32, target: i32) -> Result<(), GenieError> {
         let link = self.object(id).map_or(-1, |(_, u)| u.group.id);
         if link != -1 {
@@ -171,7 +171,7 @@ impl Turns {
     /// A follower's start (`FUN_14161c920`, both loops): its ignore list empties
     /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the other loose units
     /// ([`ignore_unit`]); its place in the live list. A sleeping object is of a type below 30
-    /// (only slot 0x180 puts one to sleep), which [`Turns::follower`] passed over.
+    /// (only slot 0x180 puts one to sleep), which [`World::follower`] passed over.
     pub(super) fn follower_start(
         &mut self,
         loose: &[i32],
@@ -200,9 +200,9 @@ impl Turns {
 
     /// FOLLOW's loose unit `loose[i]` (`FUN_14161c920`'s loop for units that do not move at
     /// their offsets): it leaves its unit group (`FUN_14102c160` with the target's id); one that
-    /// does not move takes nothing ([`Turns::follower`]); else it starts
-    /// ([`Turns::follower_start`]) and moves to the target at its place (slot 0x138,
-    /// [`Turns::move_to_object_with`], z 0). Its unit AI takes the follow order and action
+    /// does not move takes nothing ([`World::follower`]); else it starts
+    /// ([`World::follower_start`]) and moves to the target at its place (slot 0x138,
+    /// [`World::move_to_object_with`], z 0). Its unit AI takes the follow order and action
     /// (`FUN_140c64b60` with 1, `FUN_140c64b50`) only when no action of its took the move; then
     /// the target with its class (none without a footprint) at its place (`FUN_140c64be0`).
     /// Slot 0x2d8's walk and show targets and `+0x888` are not held.
@@ -233,10 +233,10 @@ impl Turns {
     }
 
     /// FOLLOW's loose unit `loose[i]` at its offset (`FUN_14161c920`'s loop after the box): one
-    /// that moves ([`Turns::follower`]) starts ([`Turns::follower_start`]) and goes to its place
+    /// that moves ([`World::follower`]) starts ([`World::follower_start`]) and goes to its place
     /// less `mean` plus the target's, held on the map ([`follow_axis`]): slot 0x138 (z 0) to the
     /// target there when its master has a footprint, else to the point
-    /// ([`Turns::move_point_order_with`]). Its unit AI takes the move order and action
+    /// ([`World::move_point_order_with`]). Its unit AI takes the move order and action
     /// (`FUN_140c64b60` with 1, `FUN_140c64b50`) and the target (none without a footprint) at
     /// that place (`FUN_140c64be0`). Slot 0x2d8's walk and show targets are not held.
     pub(super) fn follow_offset(
@@ -274,7 +274,7 @@ impl Turns {
     }
 
     /// Slot 0x138 to `target` outside slot 0x128's work command (the unit's `+0xa14` 1):
-    /// [`Turns::move_to_object_with`].
+    /// [`World::move_to_object_with`].
     pub(crate) fn move_to_object(
         &mut self,
         player: usize,
@@ -291,12 +291,12 @@ impl Turns {
     /// AI's order queue empties (`FUN_140c5e010`); then `FUN_14106d340`: unless the unit is its own
     /// target, its unit AI's notifies go with the world time (`FUN_140c5dc10`) and, but after a
     /// kill it stops on (`FUN_140c41c10`), its current action's slot 0x40 may take the target and
-    /// `point` (a Hunt's, [`Turns::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
+    /// `point` (a Hunt's, [`World::hunt_take_move`]; an Artifact's, `FUN_140aaca30`, would: not
     /// modelled; a `MoveTo`'s or an Explore's never); else a `MoveTo` to the target
     /// (`FUN_140aa0df0`: no range, so slot 0x268's, [`crate::movement::move_to::object_range`]; the
     /// walking sprite) takes the target it holds
     /// (slot 0x178, [`crate::movement::move_to::holds_object`]) and replaces its actions (slot 0x808, the
-    /// old ones' teardowns let their targets go, [`Turns::clear_actions`]; then its start,
+    /// old ones' teardowns let their targets go, [`World::clear_actions`]; then its start,
     /// [`MoveToAction::to_object`]). Its `command_flag` (`+0x888`) is not held.
     ///
     /// [`MoveToAction::to_object`]: crate::movement::move_to::MoveToAction::to_object
@@ -384,12 +384,12 @@ impl Turns {
     /// The head action's slot 0x40 (`FUN_140a97730`) on a move of the unit at `idx` to `point`,
     /// toward the object `target` if any: true when the action takes the move. Without a target
     /// it is the unit's own [`crate::objects::unit::Unit::head_takes_point`], whose released target goes
-    /// here ([`Turns::release`]). Toward an object, an empty list takes nothing, nor does the
+    /// here ([`World::release`]). Toward an object, an empty list takes nothing, nor does the
     /// base slot (`FUN_140a78490`) of a `MoveTo`, an Explore, a Build (0x140aade60), an Attack,
     /// an Enter, a Fly, a missile, a Make or a wait for a foundation. The Artifact's
-    /// (`FUN_140aaca30`) always takes it ([`Turns::artifact_take_object`]); the Hunt's
-    /// (`0x140ac52c0`, [`Turns::hunt_take_move`]) and the Gather's (`0x140a8b740`,
-    /// [`Turns::gather_take_move`]) decide themselves.
+    /// (`FUN_140aaca30`) always takes it ([`World::artifact_take_object`]); the Hunt's
+    /// (`0x140ac52c0`, [`World::hunt_take_move`]) and the Gather's (`0x140a8b740`,
+    /// [`World::gather_take_move`]) decide themselves.
     pub(super) fn head_takes_move(
         &mut self,
         player: usize,

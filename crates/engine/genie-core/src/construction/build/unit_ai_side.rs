@@ -9,7 +9,7 @@ use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_wit
 use crate::unit_ai::world_view::UnitView;
 
 impl UnitView<'_> {
-    /// The build command at once ([`Turns::build_command`]'s path without a Build on top, which
+    /// The build command at once ([`World::build_command`]'s path without a Build on top, which
     /// a stop before it leaves none): slot 0x820 with any action type and the switch
     /// ([`task_search`] on the foundation and its main building) finds a task; the switch (slot
     /// 0x90 with 0: the actions go, then the master's unit part, [`crate::orders::switch_master`];

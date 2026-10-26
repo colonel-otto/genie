@@ -10,7 +10,7 @@ use crate::GenieError;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::TaskTarget;
-use crate::world::Turns;
+use crate::world::World;
 
 mod actions;
 mod attack;
@@ -70,7 +70,7 @@ pub struct MoveOrder {
     /// `+0x15`: the last human order time is set.
     pub human: bool,
     /// `+0x12` (`cade_api`'s `controlHeld`): the splitter makes each unit it may group a group of
-    /// its own ([`Turns::split`]).
+    /// its own ([`World::split`]).
     pub control: bool,
 }
 
@@ -94,7 +94,7 @@ const VILLAGER: i16 = 4;
 const CLASS_51: i16 = 51;
 const CLASS_54: i16 = 54;
 
-/// [`Turns::order_work`]'s Pack or Unpack (each through slot 0x808): against a target out of
+/// [`World::order_work`]'s Pack or Unpack (each through slot 0x808): against a target out of
 /// the unit's `reach` ([`work_reach`]) class 54 packs (`FUN_140ad4ff0`), within it class 51
 /// unpacks (`FUN_140ae58a0`); without a reach, a computer's class 54 packs when the order has
 /// no target the world holds (`targetless`).
@@ -118,7 +118,7 @@ const MASTER_1893: i16 = 1893;
 /// names.
 const PASTURE_CLASS: i16 = 49;
 const MASTER_1897: i16 = 1897;
-/// The range of GUARD's defend order (`DAT_142eb3634`, [`Turns::guard`]).
+/// The range of GUARD's defend order (`DAT_142eb3634`, [`World::guard`]).
 const GUARD_RANGE: f32 = crate::math::image::order::GUARD_RANGE;
 /// A building's master type (`'P'`); types below 30 do not move.
 pub(crate) const BUILDING: u8 = 80;
@@ -283,7 +283,7 @@ const TROPHIES: std::ops::RangeInclusive<i16> = 1650..=1653;
 const WAYPOINT_APART: f32 = crate::math::image::order::WAYPOINT_APART;
 const WAYPOINT_APART_LOW: f32 = crate::math::image::order::WAYPOINT_APART_LOW;
 
-impl Turns {
+impl World {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {
         self.players.iter().enumerate().find_map(|(p, player)| {
             if let Some(i) = player.objects.iter().position(|u| u.id == id) {
@@ -296,7 +296,7 @@ impl Turns {
 
     /// The live slot of object `id` when its own update knows it, `(p, i)`: that slot while it
     /// still holds the object (the game's update works on the object itself, not its id), else
-    /// the live slot [`Turns::place`] finds.
+    /// the live slot [`World::place`] finds.
     pub(crate) fn live_slot(&self, (p, i, id): (usize, usize, i32)) -> Option<(usize, usize)> {
         let held = self.players.get(p).and_then(|player| player.objects.get(i));
         if held.is_some_and(|u| u.id == id) {
@@ -364,7 +364,7 @@ impl Turns {
 /// first, one not ready becomes ready, and with `drop_ready` one already ready leaves the queue
 /// (the orders after it move up). With `drop_ready` (1: after MOVE's and INTERACT's order that
 /// is neither queued nor direct) the pass ends in the unit's stop (its slot 0x148, a tail jump at
-/// 0x140c42cd4), which the caller runs ([`Turns::object_stop`]); with 0 (BUILD's and
+/// 0x140c42cd4), which the caller runs ([`World::object_stop`]); with 0 (BUILD's and
 /// `BUILD_WALL`'s) every order is ready after it.
 pub(crate) fn readiness(orders: &mut Vec<crate::unit_ai::QueuedOrder>, drop_ready: bool) {
     let mut i = orders.len();

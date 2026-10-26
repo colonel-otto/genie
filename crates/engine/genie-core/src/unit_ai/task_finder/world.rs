@@ -9,12 +9,12 @@ use crate::unit_ai::world_view::Foreign;
 use crate::world::player::Player;
 
 /// The players' relations and the drop sites, as the task finder reads them.
-pub(crate) struct World<'a> {
+pub(crate) struct TaskWorld<'a> {
     pub(crate) players: &'a [Player],
     pub(crate) drop_sites: &'a [DropSite],
 }
 
-impl Diplomacy for World<'_> {
+impl Diplomacy for TaskWorld<'_> {
     /// [`crate::unit_ai::task_finder::allied`] with `from`'s diplomacy.
     fn allied(&self, from: usize, to: usize, with_ally: bool) -> bool {
         let relations = self.players.get(from).map_or(&[][..], |p| &p.relations[..]);
@@ -80,7 +80,7 @@ pub(crate) fn state_of(id: i32, others: &[Unit], foreign: Foreign<'_>) -> Option
 
 /// What the task finder reads of object `id`, as `find` holds the objects (with their owners)
 /// and `every` the players' masters; an annex stands for its main building (`+0xbb8`), `steps`
-/// times (`Turns::task_target`'s reading). None when `find` does not hold it.
+/// times (`World::task_target`'s reading). None when `find` does not hold it.
 pub(crate) fn task_target_with<'a>(
     id: i32,
     steps: usize,
@@ -124,7 +124,7 @@ pub(crate) fn task_target_with<'a>(
 /// it. The task, with the master that gave it when the swap group did: with its `param_7` the
 /// routine switches the unit to that master (slot 0x90 with 0), its own too, which is the
 /// caller's. None: no task. The terrain under the target's place, which only a task for a
-/// terrain reads, is not passed (as `Turns::find_work_task`, the same routine's port in
+/// terrain reads, is not passed (as `World::find_work_task`, the same routine's port in
 /// `crate::orders`, which this module cannot call).
 pub(crate) fn task_search<'m>(
     masters: &'m Masters,

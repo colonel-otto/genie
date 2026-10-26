@@ -3,9 +3,9 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::orders::BUILDING;
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// The work command's Attack (its task of action type 7, the factory `FUN_140a97e00` case 7):
     /// the unit AI takes action 600 (`FUN_140c64b50`) and the target (an annex its main building,
     /// `FUN_141189b20`) at its place (`FUN_140c64c10`); the Attack (`FUN_140a7c210`, sub-action 0:
@@ -314,10 +314,10 @@ impl Turns {
 
     /// An action's slot 0x68 base (`FUN_140a7a230`) for the unit at `idx`: its target `old` (−1
     /// for none) becomes `new`. The same target changes nothing. A different old target the
-    /// world still holds is let go (slot 0x180, [`Turns::release`]) unless the action is a
+    /// world still holds is let go (slot 0x180, [`World::release`]) unless the action is a
     /// sub-action (`quiet`, `+0x60`); a new target in state 7 or more is not taken, and the
     /// action is left without one; else it is taken (slot 0x178 with the action's type,
-    /// [`Turns::take`]) unless `quiet`. Returns the action's target id (`+0x30`) after it.
+    /// [`World::take`]) unless `quiet`. Returns the action's target id (`+0x30`) after it.
     pub(crate) fn retarget_action(
         &mut self,
         player: usize,

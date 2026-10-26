@@ -4,16 +4,16 @@ use crate::GenieError;
 use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNT_TARGET_GONE, NO_HUNT_TASK, Place};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `HuntObject`'s unit part (`FUN_140c4e220`, [`crate::unit_ai::Effect::HuntObject`], after the
     /// unit's update): its stopAction (slot 0x3c0: the action list cleared,
-    /// [`Turns::clear_actions`], and in state 2 the standing sprite), then its hunt command (object
+    /// [`World::clear_actions`], and in state 2 the standing sprite), then its hunt command (object
     /// slot 0x360, `FUN_1412151f0`, forced): with no action left slot 0x820 finds the task
-    /// ([`Turns::find_work_task`] with any filter and the master switch) and a new Hunt on it,
+    /// ([`World::find_work_task`] with any filter and the master switch) and a new Hunt on it,
     /// whatever its action type or requirement (`FUN_140ac2dd0`), replaces the unit's actions
-    /// ([`Turns::start_hunt`] without the unit AI's notify: `HuntObject` set the AI itself). A
+    /// ([`World::start_hunt`] without the unit AI's notify: `HuntObject` set the AI itself). A
     /// target the world does not hold or no task would fail the command, which the unit AI took
     /// as done: not modelled.
     pub(crate) fn hunt_command(
@@ -52,12 +52,12 @@ impl Turns {
 
     /// The unit's gather command (object slot 0x368, `FUN_141085030`) forced on `target`, as the
     /// unit AI's `GatherObject` runs it ([`crate::unit_ai::Effect::GatherObject`], after the
-    /// unit's update): slot 0x820 finds the task ([`Turns::find_work_task`] with any filter and
+    /// unit's update): slot 0x820 finds the task ([`World::find_work_task`] with any filter and
     /// the master switch);
     /// the unit's top Gather on the task found takes the target (its slot 0x48 with the target's
-    /// place, [`Turns::retarget_gather`]; what it answers the command passes over); else a new
+    /// place, [`World::retarget_gather`]; what it answers the command passes over); else a new
     /// Gather on the task replaces the unit's actions (`FUN_140a88310`, `FUN_140a98620`, slot
-    /// 0x808: [`Turns::start_gather`] without the unit AI's notify), whatever the task's action
+    /// 0x808: [`World::start_gather`] without the unit AI's notify), whatever the task's action
     /// type (a farm's foundation: the builder's Build task). A target the world does not hold or
     /// no task would fail the command, which the unit AI took as done: not modelled.
     pub(crate) fn gather_command(
@@ -175,7 +175,7 @@ impl Turns {
     }
 
     /// The work command's Repair (its task of action type 106, the factory `FUN_140aca4b0` case
-    /// 0x6a, [`Turns::new_repair`]); the unit AI's notify (`FUN_14106e4e0` kind 0x6a: the repair
+    /// 0x6a, [`World::new_repair`]); the unit AI's notify (`FUN_14106e4e0` kind 0x6a: the repair
     /// order 0x2ce and action 0x26a, the target with its class, the work's point); the install
     /// (slot 0x808) clears the action list and holds the Repair.
     pub(super) fn start_repair(
@@ -214,9 +214,9 @@ impl Turns {
     }
 
     /// The unit's repair command its unit AI gave ([`crate::unit_ai::world_view::RepairOrder`]), after the
-    /// update: the Repair on top takes the target ([`Turns::repair_retarget`]); else the master
-    /// switches (slot 0x90 with 0, [`Turns::change_master`]), then a Repair on the task found
-    /// ([`Turns::new_repair`]) replaces the unit's actions (`FUN_140a98620`, slot 0x808).
+    /// update: the Repair on top takes the target ([`World::repair_retarget`]); else the master
+    /// switches (slot 0x90 with 0, [`World::change_master`]), then a Repair on the task found
+    /// ([`World::new_repair`]) replaces the unit's actions (`FUN_140a98620`, slot 0x808).
     ///
     /// # Errors
     ///
@@ -249,7 +249,7 @@ impl Turns {
         Ok(())
     }
 
-    /// The work command's target for the Repair the unit runs ([`Turns::repair_retarget`]); the
+    /// The work command's target for the Repair the unit runs ([`World::repair_retarget`]); the
     /// work command then tells the unit AI (slot 0x828: order 0x2ce, action 0x26a, the target
     /// with its class, the work's point).
     pub(super) fn retake_repair(
@@ -287,7 +287,7 @@ impl Turns {
     /// changes nothing while it faces it (state 6), nor for a computer player's repairer walking
     /// to it (4); else slot 0x68 takes the target (`FUN_140ada470`: a repairer counted among
     /// another target's repairers leaves them; the base lets the old one go and takes the new,
-    /// [`Turns::retarget_action`]) at its place (a ship's meeting point is not modelled,
+    /// [`World::retarget_action`]) at its place (a ship's meeting point is not modelled,
     /// [`crate::construction::repair::SHIP_REPAIR`]) and `set_state(4)` walks to it again (a still counted
     /// repairer leaves the repairers, the `MoveTo` goes: the unit stops). The slot answers 1.
     /// With the target's class.
@@ -373,7 +373,7 @@ impl Turns {
         Ok(())
     }
 
-    /// The Build's slot 0x48 (`FUN_140ab1b30`) on `target` ([`Turns::retake_build`]'s part
+    /// The Build's slot 0x48 (`FUN_140ab1b30`) on `target` ([`World::retake_build`]'s part
     /// before the notify): returns the target's master class.
     pub(crate) fn build_take(
         &mut self,
@@ -439,8 +439,8 @@ impl Turns {
 
     /// The Build's slot 0x68 (`FUN_140ab0300`) of the builder at `idx`, its target `old` and
     /// whether it is counted among the builders (`added`, `+0x68`), on `new` (−1 for none): a
-    /// counted Build of another target leaves the builders ([`Turns::leave_builders`]) and is no
-    /// longer counted; then the base ([`Turns::retarget_action`]) takes the target. Returns the
+    /// counted Build of another target leaves the builders ([`World::leave_builders`]) and is no
+    /// longer counted; then the base ([`World::retarget_action`]) takes the target. Returns the
     /// Build's target after it.
     pub(crate) fn build_set_target(
         &mut self,
@@ -477,7 +477,7 @@ impl Turns {
     }
 
     /// The builder count: the building `FUN_140aaddb0` gives for the foundation `id` a Build
-    /// counted its builder among ([`Turns::counted_building`]; a Repair's target the same,
+    /// counted its builder among ([`World::counted_building`]; a Repair's target the same,
     /// `FUN_140ad9050`) counts one less (`+0x9e8`: a building's in its construction record, a
     /// unit's its own); none once the world no longer holds `id`.
     pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {

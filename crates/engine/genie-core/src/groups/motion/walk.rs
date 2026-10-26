@@ -3,13 +3,13 @@
 
 use crate::groups::Motion;
 use crate::groups::motion::{
-    EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, World, ground,
+    EPSILON, GroupView, Lead, NEAR, PULL_DISTANCE, PULL_KEEP, PULL_SHARE, Pass, StepWorld, ground,
     hold, passes_waypoint, path_step, point, reset_level, set_flag,
 };
 use crate::map::spatial::Placed;
 use crate::math::fmath::Vec3;
 use crate::movement::{Planning, footprint_gap};
-use crate::world::Turns;
+use crate::world::World;
 use crate::{GenieError, math::fmath};
 
 /// The walk of the walked level (`LAB_14104b6b4`): see [`path_step`].
@@ -17,7 +17,7 @@ pub(super) fn steer(
     motion: &mut Motion,
     group: &GroupView,
     lead: &Lead,
-    world: &World<'_, '_>,
+    world: &StepWorld<'_, '_>,
     target: Option<&Placed>,
 ) -> Result<Pass, GenieError> {
     let spatial = world.spatial;
@@ -173,7 +173,7 @@ pub(super) fn steer(
     Ok(Pass::Done(true))
 }
 
-impl Turns {
+impl World {
     /// `BMotion`'s update (`FUN_14104a090`) of group `group`, `budget` its `param_2`: the path
     /// step for the group's lead ([`path_step`]), then the velocity along the vectors
     /// ([`Motion::integrate`]). The group update calls it only with a lead the world holds, a
@@ -219,7 +219,7 @@ impl Turns {
                 construction_rate: 0.0,
                 groups: &self.groups,
             };
-            let mut world = World {
+            let mut world = StepWorld {
                 spatial: &self.spatial,
                 plan: &mut plan,
                 dt: self.dt_seconds,

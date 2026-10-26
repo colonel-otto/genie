@@ -539,7 +539,7 @@ pub(crate) struct EnterWorld<'a> {
     /// adds.
     pub firepower: f32,
     /// The unit group the unit was a member of (`+0x6d0`): the caller runs the group's removeUnit
-    /// (`FUN_14102c160` with the building and 0, [`crate::world::Turns::remove_unit`]) when the
+    /// (`FUN_14102c160` with the building and 0, [`crate::world::World::remove_unit`]) when the
     /// world holds it (`FUN_14152ff40`).
     pub left_group: Option<i32>,
 }

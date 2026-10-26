@@ -16,7 +16,7 @@
 
 use crate::GenieError;
 use crate::vision::registry::MASK;
-use crate::world::Turns;
+use crate::world::World;
 use crate::world::checkpoint::cvttss2si;
 
 /// The ghosts' master in every player's list (`player+0x28`'s entry 243, "DOPL").
@@ -102,7 +102,7 @@ pub struct Ghost {
     pub state: u8,
 }
 
-impl Turns {
+impl World {
     /// The vision mask of player `p` (`player+0x2a8`, [`crate::vision`]).
     fn vision_mask(&self, p: usize) -> u64 {
         self.spatial.vision(p)[0]
@@ -208,7 +208,7 @@ impl Turns {
         self.watches_building_at(p, id, true)
     }
 
-    /// [`Turns::watches_building`], with the annex link made (`linked`) or, during a load before
+    /// [`World::watches_building`], with the annex link made (`linked`) or, during a load before
     /// the rehook, not yet: then an annex passes too.
     fn watches_building_at(&self, p: usize, id: i32, linked: bool) -> bool {
         let Some((_, u)) = self.object(id) else {
@@ -225,7 +225,7 @@ impl Turns {
     }
 
     /// A building whose construction started (`FUN_1411e5670`): its owner watches it
-    /// ([`Turns::watches_building`]).
+    /// ([`World::watches_building`]).
     pub(crate) fn watch_started(&mut self, p: usize, id: i32) -> Result<(), GenieError> {
         if !self.watches_building(p, id) {
             return Ok(());
@@ -241,12 +241,12 @@ impl Turns {
     /// The watched lists the game's load builds, which no save holds: each player's objects in
     /// the load's order (its live list, then its sleeping list) join their owner's list, an
     /// object whose master leaves ghosts once it is dead (`FUN_14119df60`, at its tile) and a
-    /// building its owner watches ([`Turns::watches_building`]; the load constructor
+    /// building its owner watches ([`World::watches_building`]; the load constructor
     /// `FUN_1411ac170`, at what it follows, an annex's link not known yet); then the rehook lets
     /// every annex but a gate's go (`TRIBE_Building_Object::rehook`). A building's mask is empty
     /// at a load.
     pub fn build_watched(&mut self) -> Result<(), GenieError> {
-        // each id's object as [`Turns::object`] finds it (the first player in order, its live list
+        // each id's object as [`World::object`] finds it (the first player in order, its live list
         // before its sleeping list), looked up once: the loop changes only the watched lists
         let mut first: std::collections::HashMap<i32, (usize, bool, usize)> =
             std::collections::HashMap::new();
@@ -317,8 +317,8 @@ impl Turns {
     /// `FUN_14118e990`, at the death of object `id` (the static `set_state` 3, while the game
     /// state is not 2): for an id of 0 and up whose master leaves ghosts (`+0x682` 2), every
     /// player who explored its tile but does not see it, Gaia aside, gets a ghost of it
-    /// ([`Turns::make_ghost`]), in the players' order; the first bit past the players ends it.
-    /// Then its owner's list watches it at its tile ([`Turns::watch`]).
+    /// ([`World::make_ghost`]), in the players' order; the first bit past the players ends it.
+    /// Then its owner's list watches it at its tile ([`World::watch`]).
     pub(crate) fn ghosts_at_death(&mut self, _owner: usize, id: i32) -> Result<(), GenieError> {
         let Some((p, u)) = self.object(id) else {
             return Ok(());
@@ -367,7 +367,7 @@ impl Turns {
     /// recyclable master, else the next object id (`FUN_14152fd70`). It links its original
     /// (`FUN_14108f9b0`: its id, owner, master and, for a master of type 50 and up, its UMV
     /// entry; an original past state 6 is forgotten, its master kept), joins its tile's list and
-    /// its viewer's ghosts after the twin check ([`Turns::check_twins`]). Both callers pass an
+    /// its viewer's ghosts after the twin check ([`World::check_twins`]). Both callers pass an
     /// object they hold, so the link's branch for no original (`param_2` 0) is not reached.
     pub(crate) fn make_ghost(
         &mut self,
@@ -575,7 +575,7 @@ impl Turns {
 
     /// The watched list of player `p` after the player loop (`FUN_1410905e0`): an entry whose
     /// bits changed, of an object the world still holds, gives a ghost to every player, but its
-    /// owner, who saw the cell and no longer does ([`Turns::make_ghost`], at the object's place),
+    /// owner, who saw the cell and no longer does ([`World::make_ghost`], at the object's place),
     /// in the players' order, and takes the new bits; the last entry whose object is gone leaves
     /// the list (the last entry taking its place). A computer player's AI then hears of its ghost
     /// (its slot 0x2e8 with notify 0x20d), which is not modelled.
@@ -677,9 +677,9 @@ mod tests {
 
     /// Gaia and two players on a 4×4 map, each with its masters, Gaia's mine 5 at (1.5, 2.5)
     /// and player 1's house 9 at (2.5, 1.5) (its footprint's UMV entry 1).
-    fn world(recyclable: bool) -> Turns {
+    fn world(recyclable: bool) -> World {
         let players = (0..3).map(|_| Player::default()).collect();
-        let mut t = Turns::new(0, 0, 0, vec![0; 3], players);
+        let mut t = World::new(0, 0, 0, vec![0; 3], players);
         t.masters = (0..3).map(|_| masters(recyclable)).collect();
         t.players[0]
             .objects
@@ -708,7 +708,7 @@ mod tests {
         t
     }
 
-    fn set_tile(t: &mut Turns, x: usize, y: usize, bits: u64) {
+    fn set_tile(t: &mut World, x: usize, y: usize, bits: u64) {
         t.spatial.sight.as_mut().unwrap().unified[y * 4 + x] = bits;
     }
 
@@ -1001,7 +1001,7 @@ mod tests {
         });
         t.players[1].sleeping.push(foundation);
         t.build_watched().unwrap();
-        let ids = |t: &Turns, p: usize| {
+        let ids = |t: &World, p: usize| {
             t.players[p]
                 .watched
                 .iter()

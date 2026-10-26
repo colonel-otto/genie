@@ -9,14 +9,14 @@ use crate::{
     tile_lists_from_dump, visibility_differences, watch_at_load,
 };
 use genie_core::commands::Command;
-use genie_core::world::{Player, Turns};
+use genie_core::world::{Player, World};
 use genie_rec::de;
 use genie_save::Header;
 
 /// Every player's objects and sight after a run against the game's save `after`; with `tick`,
 /// only the freezes of that update count, else all. A frozen object's differences are left out.
 pub(super) fn compare_players(
-    turns: &Turns,
+    turns: &World,
     after: &SavedStep,
     tick: Option<u32>,
     report: &mut TickReport,
@@ -173,7 +173,7 @@ pub fn run_from_save(
     ticks: usize,
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
-) -> Result<Turns, Error> {
+) -> Result<World, Error> {
     from_save(save, recording, start_tick, ticks, masters, dumps, false)
 }
 
@@ -196,7 +196,7 @@ pub fn saved_groups(
 }
 
 /// The slice from a save after the command phase of the next update alone
-/// ([`genie_core::world::Turns::command_phase`]), for a check against the game's save taken
+/// ([`genie_core::world::World::command_phase`]), for a check against the game's save taken
 /// there (the tick oracle's `snapshot_at` at `0x141552990`). Dev only.
 ///
 /// # Errors
@@ -208,7 +208,7 @@ pub fn command_phase_from_save(
     start_tick: usize,
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
-) -> Result<Turns, Error> {
+) -> Result<World, Error> {
     from_save(save, recording, start_tick, 1, masters, dumps, true)
 }
 
@@ -221,7 +221,7 @@ pub(super) fn from_save(
     masters: Option<&MasterTable>,
     dumps: Dumps<'_>,
     commands_only: bool,
-) -> Result<Turns, Error> {
+) -> Result<World, Error> {
     let chapter = de::chapters(save)?[0];
     let header = chapter.header()?;
     let sections = header.players();
@@ -274,7 +274,7 @@ pub(super) fn from_save(
 /// made with the unit: `FUN_140c11920`): the origin is the animal's place at the recording's
 /// start (`start`, the recording's header save, whose load made the AI), the leash its master's
 /// last task of action type 6's work range (the unit's `+0xb74`, `FUN_141206d50`).
-pub(super) fn hunted_origins(turns: &mut Turns, start: &Header) {
+pub(super) fn hunted_origins(turns: &mut World, start: &Header) {
     let places: std::collections::BTreeMap<i32, [f32; 3]> = start
         .players()
         .iter()

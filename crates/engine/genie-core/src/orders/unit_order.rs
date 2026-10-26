@@ -5,13 +5,13 @@ use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::orders::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// An animal's Artifact takes a move to the object `target` (its slot 8, `FUN_140aaca30`,
     /// [`crate::ownership::artifact::Artifact::take_object`]): its old target is let go (slot 0x180,
-    /// [`Turns::release`]), then the target, in a state below 7, taken (slot 0x178,
-    /// [`Turns::take`]); livestock (class 58) goes to a building within 1, to the town centre
+    /// [`World::release`]), then the target, in a state below 7, taken (slot 0x178,
+    /// [`World::take`]); livestock (class 58) goes to a building within 1, to the town centre
     /// (master 109) at its point; a `MoveTo` it walked goes, whose teardown stops the unit (slot
     /// 0x5d0).
     pub(crate) fn artifact_take_object(
@@ -64,8 +64,8 @@ impl Turns {
     }
 
     /// A hunt's own livestock `sheep` sent to the drop site `site` (`0x140ac60e0` case 6): the
-    /// animal's slot 0x138 to the site ([`Turns::move_to_object`]), then `FUN_140ac4c60` from it
-    /// ([`Turns::herd_from`]).
+    /// animal's slot 0x138 to the site ([`World::move_to_object`]), then `FUN_140ac4c60` from it
+    /// ([`World::herd_from`]).
     ///
     /// # Errors
     ///
@@ -157,8 +157,8 @@ impl Turns {
 
     /// `UNIT_ORDER`'s action 4 (`FUN_14161e370` case 4) to the objects `ids`: each the world
     /// holds (any player's) that is a building in state 2 cancels the `index`-th unit of its
-    /// queue ([`Turns::cancel_queued`], `all` the command's `+0x1d`), then game mode 16's tail
-    /// ([`Turns::cancel_tail`]).
+    /// queue ([`World::cancel_queued`], `all` the command's `+0x1d`), then game mode 16's tail
+    /// ([`World::cancel_tail`]).
     pub(crate) fn cancel_order(
         &mut self,
         ids: &[i32],
@@ -187,9 +187,9 @@ impl Turns {
     /// a type above 39 that carries something (`+0x310` above 0). For 7 and 8 a top Hunt (110),
     /// Gather (5) or Build (101) gives it its drop-off (slot 0x78, [`HuntAction::drop_off_asked`],
     /// then `set_state(8)`: [`Unit::drop_off_in`], [`Unit::gather_drop_off_in`],
-    /// [`Turns::build_drop_off_now`]); for 8 one without a target or a point records its work for
+    /// [`World::build_drop_off_now`]); for 8 one without a target or a point records its work for
     /// the town bell first (`FUN_141206a20`) and queues the way back after (`FUN_141205ac0`). For
-    /// 6, and a unit without one of these actions: [`Turns::drop_off_unasked`] (the way back for
+    /// 6, and a unit without one of these actions: [`World::drop_off_unasked`] (the way back for
     /// 8 alone).
     ///
     /// [`HuntAction::drop_off_asked`]: crate::gathering::hunt::HuntAction::drop_off_asked

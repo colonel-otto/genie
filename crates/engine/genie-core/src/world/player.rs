@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::objects::unit::Unit;
-use crate::world::Turns;
+use crate::world::World;
 
 /// A player's settings for the groups an order's splitter forms ([`Player::formations`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -25,7 +25,7 @@ pub struct Formations {
 /// (`FUN_140e7c330`'s inner switch), each saved (`WorldPlayerBase::save`, `FUN_14166b820`) and
 /// read by its unit AIs. The two chances it sets too are [`Player::dodge_chance`] and
 /// [`Player::keep_distance_chance`], and `mAllowCapturingGaiaUnits` is
-/// [`crate::world::Turns::allow_gaia_capture`].
+/// [`crate::world::World::allow_gaia_capture`].
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AiSettings {
     /// `easiest_reaction_percentage` (`+0x608`, setting 3).
@@ -158,14 +158,14 @@ pub struct Player {
     /// `commodity_volumn_delta` (`+0x140c`, saved): the lot a market trade moves (100).
     pub commodity_volume: i32,
     /// The objects whose ghosts the player's list follows (`+0x78`, [`crate::vision::ghost`]): not
-    /// saved; the load builds it ([`Turns::build_watched`]).
+    /// saved; the load builds it ([`World::build_watched`]).
     pub watched: Vec<crate::vision::ghost::Watched>,
     /// The player's ghosts (its doppelganger list `+0x40`), in the list's order.
     pub ghosts: Vec<crate::vision::ghost::Ghost>,
     /// Its history (`+0xdb8`, saved, [`crate::players::history`]).
     pub history: crate::players::history::History,
     /// Its object tracker (`+0x18`, [`crate::players::tracker`]): not saved; the load files the objects
-    /// ([`Turns::load_trackers`]).
+    /// ([`World::load_trackers`]).
     pub tracker: crate::players::tracker::Tracker,
     /// `+0x1378` (not saved): in game mode 16 the player has a military unit queued while its
     /// attribute 6 is at most 1 (QUEUE sets it, `FUN_141614450`; a cancel clears it,
@@ -177,7 +177,7 @@ pub struct Player {
     /// Gaia's own `update_time` (`WorldPlayerGaia` `+0x1468`, saved): its update's seconds.
     pub gaia_update_time: f32,
     /// `escrow` (`+0x6dc`, saved): what a computer player's income set aside of food, wood,
-    /// stone and gold ([`Turns::add_resource`]).
+    /// stone and gold ([`World::add_resource`]).
     pub escrow: [f32; 4],
     /// `escrow_percentage` (`+0x6ec`, saved): the shares of its income a computer player sets
     /// aside.
@@ -216,7 +216,7 @@ impl crate::technology::Attributes for Player {
     }
 }
 
-impl Turns {
+impl World {
     /// A command or a pass the slice does not model for player `p`: the player stops
     /// ([`Player::stop`]), and a subscriber hears why ([`crate::trace`]).
     pub(crate) fn stop_player(&mut self, p: usize, why: GenieError) {

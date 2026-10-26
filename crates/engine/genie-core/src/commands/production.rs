@@ -8,19 +8,19 @@ use crate::objects::masters::Masters;
 use crate::production::Production;
 use crate::world::player::POPULATION;
 use crate::world::{
-    BUILDING_KIND, COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, Turns, VILLAGER, VILLAGER_ANY,
+    BUILDING_KIND, COMPUTER_QUEUE_LIMIT, ONE_UNIT_GAME, QUEUE_LIMIT, VILLAGER, VILLAGER_ANY, World,
     villager,
 };
 
-impl Turns {
+impl World {
     /// QUEUE, the player's part (`FUN_141614450`) after the packet's check of its buildings
-    /// (`do_command`'s case 0x81, [`Turns::command_check`]: an id the world lacks, or another
+    /// (`do_command`'s case 0x81, [`World::command_check`]: an id the world lacks, or another
     /// player's without cheats, goes; a human's packet left with none is refused). Nothing for
     /// a master the player lacks (`FUN_141659d20`). Of the first 60 buildings (500 for a computer
     /// player) those the master is available to (`+0x5f0`) or that list it themselves (`+0xd30`,
     /// `FUN_1411c8fd0`) take part, at most 60: each has its room (15, a computer player's 2, less
     /// its queued total `+0xbf4`; the sum of those above 0 holds the amount) and its load
-    /// ([`Turns::production_load`]). The amount is lowered while the player cannot pay that many:
+    /// ([`World::production_load`]). The amount is lowered while the player cannot pay that many:
     /// each cost entry of the costed master ([`crate::production::costed`]; an annex's paid
     /// ones) but the population's needs its amount times the count (`COMISS`, `JA`: a NaN
     /// passes); at one still short, or for a master below type 70, nothing is queued. In game
@@ -31,7 +31,7 @@ impl Turns {
     /// pick first, replaced by one whose load is below: `COMISS`, `JBE`, a NaN never wins; with
     /// none at the start, the most room), its room one less and its load the unit's train time
     /// there ([`crate::production::train_time`]); last, each building's part
-    /// ([`Turns::queue_at`]) with its count, the packet's master and button. Not modelled: a
+    /// ([`World::queue_at`]) with its count, the packet's master and button. Not modelled: a
     /// building that cannot train the unit (`FUN_141263610`, which reads the local player's
     /// masters), the limited units (`FUN_1416116c0`, `FUN_141611520`, the master's `+0x5f1`
     /// bits 2 and 4).
@@ -159,7 +159,7 @@ impl Turns {
     /// RESEARCH's building (`0x140e7e270`): the packet's (`+4`, a building or none); with more
     /// than one listed (`+0x8` as a short; at most 60, 500 for a computer player,
     /// `FUN_140e6b250`), each listed one the world holds (`+0x11..`, `FUN_140e6bad0`) whose load
-    /// ([`Turns::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
+    /// ([`World::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
     /// takes its place. −1 for none.
     pub(crate) fn least_loaded(&self, player: usize, r: &ResearchAt) -> i32 {
         let load = |id: i32| match self.place(id) {
@@ -247,7 +247,7 @@ impl Turns {
     /// (0x53), whose sex the Action stream draws for each: the routine queues the rest first,
     /// one by one, then this one (the last drawn is queued first). A building whose total
     /// (`+0xbf4`) is above 14 refuses (its event 0x84 is the interface's); the count is held
-    /// to the room of 15. Units: [`Turns::queue_units`]; researches: [`Turns::queue_techs`].
+    /// to the room of 15. Units: [`World::queue_units`]; researches: [`World::queue_techs`].
     /// True when any was queued.
     pub(crate) fn queue_at(
         &mut self,
@@ -293,7 +293,7 @@ impl Turns {
     /// ([`crate::players::tracker::Tracker::place`]; `FUN_140a4f570` per unit is the local player's
     /// statistics). They join the last entry when it is of the same master and button and its
     /// costs are the ones a unit costs now (`FUN_1411c81a0`,
-    /// [`crate::production::master_costs`]); else a new entry ([`Turns::new_entry`]) records
+    /// [`crate::production::master_costs`]); else a new entry ([`World::new_entry`]) records
     /// them, with the master's train time at the building and button
     /// ([`crate::production::train_time`]) for a combat master.
     pub(crate) fn queue_units(
@@ -357,7 +357,7 @@ impl Turns {
     /// (`FUN_14162fd90`: [`crate::technology::TechState::pay`] with the repeat test) until one cannot
     /// be. The paid ones join the last entry when it is of the same technology and its costs
     /// are the ones it lists now (`FUN_1411c81a0` -> `FUN_1413d4a00`,
-    /// [`crate::technology::TechState::listed_costs`]); else a new entry ([`Turns::new_entry`]); the
+    /// [`crate::technology::TechState::listed_costs`]); else a new entry ([`World::new_entry`]); the
     /// technology's researches queued (`+0x58`) grow by them.
     pub(super) fn queue_techs(
         &mut self,
@@ -427,9 +427,9 @@ impl Turns {
     }
 
     /// `FUN_1411cbc40`'s new entry at the building at `i` of `player`: a full buffer grows by
-    /// ten first, each old slot's costs filled anew ([`Turns::entry_costs`]); the slot after
+    /// ten first, each old slot's costs filled anew ([`World::entry_costs`]); the slot after
     /// the last takes the master, the count, the technology, the button and the next serial,
-    /// its costs [`Turns::entry_costs`], and the train time `time` when given (a research and a
+    /// its costs [`World::entry_costs`], and the train time `time` when given (a research and a
     /// master that is not a combat master leave the slot's); the total, the entries and the
     /// change counter grow.
     pub(super) fn new_entry(
@@ -508,7 +508,7 @@ impl Turns {
     }
 }
 
-/// [`Turns::queue`]'s building for its next unit, an index into `rooms` and `loads`: the last
+/// [`World::queue`]'s building for its next unit, an index into `rooms` and `loads`: the last
 /// one's `pick` first (none: the first with room), replaced by each with room and a load below
 /// its (`COMISS`, `JBE`: a comparison with a NaN replaces nothing); with none, the one with the
 /// most room, the first of equals; none without room.

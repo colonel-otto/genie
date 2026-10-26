@@ -9,7 +9,7 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
         id,
         ..Unit::default()
     };
-    let t = Turns::new(
+    let t = World::new(
         0,
         1,
         0,
@@ -59,7 +59,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         },
         ..Unit::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -213,7 +213,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
         ..Unit::default()
     };
     let world = || {
-        let mut t = Turns::new(
+        let mut t = World::new(
             0,
             1,
             0,
@@ -433,7 +433,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
 /// A world of player 1's soldiers (master 4, formation category 3) and villagers (master 83,
 /// category 0) at `units`' places, auto formations on with an influence of 3 tiles, and one
 /// group of id 5 holding `members`.
-fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
+fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
     let objects = units
         .iter()
         .map(|&(id, master, [x, y])| Unit {
@@ -451,7 +451,7 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
             ..Unit::default()
         })
         .collect();
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -802,7 +802,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
         },
         ..Unit::default()
     });
-    let building = |t: &Turns| {
+    let building = |t: &World| {
         let b = &t.players[1].objects[1];
         (b.gate.unwrap().locked, b.mover.as_ref().unwrap().last_move)
     };
@@ -1104,7 +1104,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
     ids.extend([30, 11, 12]);
     t.auto_scout(1, &ids).unwrap();
     let order =
-        |t: &Turns, p: usize, i: usize| t.players[p].objects[i].ai.as_ref().unwrap().current_order;
+        |t: &World, p: usize, i: usize| t.players[p].objects[i].ai.as_ref().unwrap().current_order;
     assert_eq!(order(&t, 2, 0), crate::unit_ai::AUTO_SCOUT_ORDER);
     assert_eq!(order(&t, 1, 0), -1);
     assert_eq!(order(&t, 1, 1), -1);
@@ -1163,7 +1163,7 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
         },
         ..Unit::default()
     });
-    let stance = |t: &Turns, p: usize| t.players[p].objects[0].ai.as_ref().unwrap().stance;
+    let stance = |t: &World, p: usize| t.players[p].objects[0].ai.as_ref().unwrap().stance;
     t.unit_ai_state(1, &[11, 30], 2).unwrap();
     assert_eq!((stance(&t, 1), stance(&t, 2)), (2, 0));
     t.settings.cheats_enabled = true;
@@ -1330,7 +1330,7 @@ fn a_follow_offset_stays_on_the_map() {
 
 /// Player 1's soldiers 11 and 12 (moving, each with a unit AI) and player 2's 30 at (40, 20),
 /// a master with a footprint of class 6; auto formations off, a map of 120 tiles.
-fn followers() -> Turns {
+fn followers() -> World {
     let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
     let mut t = soldiers(&units, &[]);
     t.players[1].formations.auto = false;
@@ -1513,7 +1513,7 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
     };
     t.players[1].objects = vec![building(60, None), building(70, Some(60))];
     t.leave_builders(70).unwrap();
-    let builders = |t: &Turns, i: usize| t.players[1].objects[i].construction.unwrap().builders;
+    let builders = |t: &World, i: usize| t.players[1].objects[i].construction.unwrap().builders;
     assert_eq!((builders(&t, 0), builders(&t, 1)), (1, 2));
     t.leave_builders(60).unwrap();
     t.leave_builders(99).unwrap();
@@ -1570,7 +1570,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     };
     t.players[0].objects = vec![deer(40, 2, 1), deer(41, 2, 0), deer(42, 7, 0)];
     let workers =
-        |t: &Turns| -> Vec<i32> { t.players[0].objects.iter().map(|u| u.workers).collect() };
+        |t: &World| -> Vec<i32> { t.players[0].objects.iter().map(|u| u.workers).collect() };
     assert_eq!(t.retarget_action(1, 0, 40, 40, false), Ok(40));
     assert_eq!(workers(&t), [1, 0, 0]);
     assert_eq!(t.retarget_action(1, 0, 40, 41, true), Ok(41));
@@ -1647,7 +1647,7 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     assert_eq!(t.build_set_target(1, 0, (60, true), 61), Ok(61));
     let build = t.players[1].objects[0].build.unwrap();
     assert_eq!((build.target, build.added), (61, false));
-    let site = |t: &Turns, i: usize| {
+    let site = |t: &World, i: usize| {
         let u = &t.players[1].objects[i];
         (u.construction.unwrap().builders, u.workers)
     };
@@ -1893,7 +1893,7 @@ fn a_target_is_in_reach_within_the_weapon_range_and_not_below_the_least() {
 
 /// Player 1's soldier 10 (master 4, ranges 2 to 5) at (10, 10) and player 2's unit 20 at
 /// (`x`, 10), the two enemies, each with a unit AI in state 2.
-fn soldier_and_enemy(x: f32, class: i16) -> Turns {
+fn soldier_and_enemy(x: f32, class: i16) -> World {
     let unit = |id, master, x: f32| Unit {
         id,
         position: [x, 10.0, 0.0],
@@ -1910,7 +1910,7 @@ fn soldier_and_enemy(x: f32, class: i16) -> Turns {
         relations,
         ..crate::world::Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         0,
         1,
         0,
@@ -2152,7 +2152,7 @@ fn a_patrol_passes_over_a_waypoint_within_a_tile_of_the_last() {
 
 /// Player 1's soldiers of `soldiers`, each walking and with a unit AI off any order, at a
 /// world dt of 100 ms.
-fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
+fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
     let mut t = soldiers(units, members);
     t.dt = 100;
     for u in &mut t.players[1].objects {
@@ -2403,7 +2403,7 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
 }
 
 /// [`patrollers`]' two soldiers near each other in a world whose statistics search works.
-fn two_patrollers() -> Turns {
+fn two_patrollers() -> World {
     searchable(patrollers(
         &[(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])],
         &[],
@@ -2411,7 +2411,7 @@ fn two_patrollers() -> Turns {
 }
 
 /// `t` on a 60 by 60 map of open land, its sight's registry for the searches.
-fn searchable(mut t: Turns) -> Turns {
+fn searchable(mut t: World) -> World {
     // the group's statistics search the members' surroundings
     let mut s = crate::map::spatial::Spatial::with_tiles(
         [60, 60],

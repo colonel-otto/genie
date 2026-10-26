@@ -6,26 +6,26 @@ use crate::garrison::{
     WHOLE_SHARE_CLASS,
 };
 use crate::orders::BUILDING;
-use crate::world::Turns;
+use crate::world::World;
 
 /// UNLOAD's point without one (`DAT_14330ec20`).
 pub(super) const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 /// UNLOAD's order range (`DAT_14330eb8c`).
 pub(super) const UNLOAD_RANGE: f32 = crate::math::image::garrison::UNLOAD_RANGE;
 
-impl Turns {
+impl World {
     /// UNLOAD (`FUN_14161f410`) of player `player`'s objects `ids` (each alive, at least 1 hit
     /// point; `COMISS`/`JC`: a NaN is):
     /// - A unit inside a building leaves it toward the point (with its sound, no work), its
     ///   orders gone and, of type 70 and up, no longer under the town bell.
     /// - A unit (below type 80) inside a transport (type 70 or more) or, with `flag` 3, the unit
-    ///   `unit_type` names inside this one, goes ashore ([`Turns::drop_out`]).
+    ///   `unit_type` names inside this one, goes ashore ([`World::drop_out`]).
     /// - A siege unit (class 13) unloads its own way (`FUN_141225c40`, a siege tower's order 800),
     ///   which is not modelled ([`SIEGE_UNLOAD`]).
-    /// - Any other unit takes the unload order at the point ([`Turns::unload_order`]): a transport
+    /// - Any other unit takes the unload order at the point ([`World::unload_order`]): a transport
     ///   sails there and unloads (its Transport, [`crate::garrison::transport`]), any other walks there.
     /// - A building lets the units inside it out, from the last to come in, those `flag` and
-    ///   `unit_type` pick ([`unload_picks`]): each through [`Turns::let_out`], toward the point
+    ///   `unit_type` pick ([`unload_picks`]): each through [`World::let_out`], toward the point
     ///   (or its unit AI's command queue location, which is not modelled); each one out has its
     ///   order queue emptied (`FUN_140c5e010`); a unit (type 70) out is no longer under the town
     ///   bell (`+0x9dc`).
@@ -89,13 +89,13 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::unload`] of unit `id` inside building `c`: it leaves toward `point`
+    /// [`World::unload`] of unit `id` inside building `c`: it leaves toward `point`
     /// (`FUN_1411e7220` with no work and its sound); a combat unit is no longer under the town
     /// bell (`+0x9dc`), and its unit AI's orders go (`FUN_140c5e010`).
     ///
     /// # Errors
     ///
-    /// A building outside the live lists, and what [`Turns::let_out`] does not model.
+    /// A building outside the live lists, and what [`World::let_out`] does not model.
     pub(super) fn leave_building(
         &mut self,
         c: i32,
@@ -122,14 +122,14 @@ impl Turns {
         Ok(())
     }
 
-    /// [`Turns::unload`] of player `player`'s building `idx`: the units inside it come out from
+    /// [`World::unload`] of player `player`'s building `idx`: the units inside it come out from
     /// the last to come in, those `flag` and `unit_type` pick ([`unload_picks`]), each through
-    /// [`Turns::let_out`] toward `point` (with `sound`), its order queue emptied
+    /// [`World::let_out`] toward `point` (with `sound`), its order queue emptied
     /// (`FUN_140c5e010`) and, a unit (type 70), no longer under the town bell (`+0x9dc`).
     ///
     /// # Errors
     ///
-    /// An unload toward the building's command queue location, and what [`Turns::let_out`] does
+    /// An unload toward the building's command queue location, and what [`World::let_out`] does
     /// not model.
     pub(super) fn unload_building(
         &mut self,
@@ -183,10 +183,10 @@ impl Turns {
     /// with a container of type 70 or more) or, without one (flag 3), the unit `named` when it
     /// is inside this one (`FUN_1415417a0`; one the world does not hold, or elsewhere, stays):
     /// the unit inside, in state 2, goes ashore where a drop location about the holder is free
-    /// ([`Turns::drop_location`] about the holder's place within twice its master's radii, in any
+    /// ([`World::drop_location`] about the holder's place within twice its master's radii, in any
     /// zone; `last` the command's): it takes the holder's place (`FUN_14119d610`), leaves it
     /// (slot 0x1a8) for the place at the holder's height (slot 0x58,
-    /// [`Turns::leave_container`]), takes its own stance again at its place (its unit AI's slot
+    /// [`World::leave_container`]), takes its own stance again at its place (its unit AI's slot
     /// 0x1c0 with `+0x1a9`, [`crate::orders::set_stance`]) and, of a type above 69, is no longer
     /// under the town bell (`+0x9dc`). Without a free place the interface's message 0x85 is all.
     pub(super) fn drop_out(
@@ -303,7 +303,7 @@ impl Turns {
     /// `FUN_141625590`) on the player's objects `ids` (another player's only while players may
     /// order each other's, [`crate::world::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is not held): a building
     /// lets out, from the last in, each unit inside of type 70 or more that is a villager (class
-    /// 4) or of master 1808, back to its work ([`Turns::back_to_work`]).
+    /// 4) or of master 1808, back to its work ([`World::back_to_work`]).
     pub(crate) fn go_back_to_work(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
         for id in self.checked_units(player, ids) {
             let Some((p, _)) = self.object(id) else {
@@ -344,8 +344,8 @@ impl Turns {
     /// target class, the unit AI takes the action (`FUN_140c64b50`) and the unit tells it to
     /// search (notify 0x202 with the action, the class and the old target). From a building the
     /// unit then leaves it toward the record's point with the object to work on
-    /// ([`Turns::let_out`], `FUN_1411e7220` with its sound); outside it goes back
-    /// ([`Turns::back_outside`]). Once out or back it is no longer under the town bell
+    /// ([`World::let_out`], `FUN_1411e7220` with its sound); outside it goes back
+    /// ([`World::back_outside`]). Once out or back it is no longer under the town bell
     /// (`+0x9dc`; `+0xa14` takes 1, not held). True when it went.
     ///
     /// [`TownBell::back_to_work`]: crate::orders::town_bell::TownBell::back_to_work

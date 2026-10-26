@@ -177,12 +177,12 @@ const REACH: f32 = crate::garrison::TOWN_BELL_REACH;
 /// A record's point on neither axis (`DAT_14330ec20`).
 const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 
-impl crate::world::Turns {
+impl crate::world::World {
     /// `TOWN_BELL` (0x7f, `do_command`): the object `id` (none for −1, `FUN_140e6bad0`) of the
     /// commanding `player`, or of any player while players may order each other's
     /// ([`crate::world::settings::Settings::cheats_enabled`], `FUN_1412ffe00`; the cheat `+0xb12` is not held),
-    /// rings its owner's bell (`activate`, [`crate::world::Turns::ring_town_bell`]) or ends it
-    /// ([`crate::world::Turns::end_town_bell`]). A special object's (`+0x30c` bit 0) UI flag is
+    /// rings its owner's bell (`activate`, [`crate::world::World::ring_town_bell`]) or ends it
+    /// ([`crate::world::World::end_town_bell`]). A special object's (`+0x30c` bit 0) UI flag is
     /// not simulation.
     pub(crate) fn town_bell(
         &mut self,
@@ -208,8 +208,8 @@ impl crate::world::Turns {
     /// inside another (`FUN_141188da0`) within [`REACH`] of it (`FUN_14118f8c0`; `COMISS`/`JC`:
     /// a NaN gap is out) are the units, a villager (class 4 of type 70) or master 1808, else
     /// the buildings (type 80) that take villagers (`garrison_type` bit 0, `FUN_1411ccb60`), each
-    /// with its count ([`crate::world::Turns::garrisoned`]) and its bell flag (`+0x9dc`) set (its
-    /// sound, slot 0x4c0, is not simulation); then [`crate::world::Turns::shelter`] with the
+    /// with its count ([`crate::world::World::garrisoned`]) and its bell flag (`+0x9dc`) set (its
+    /// sound, slot 0x4c0, is not simulation); then [`crate::world::World::shelter`] with the
     /// reach (`param_6` 1), no transports, not through the unit AIs.
     pub(crate) fn ring_town_bell(&mut self, owner: usize, tc: i32) -> Result<(), GenieError> {
         let Some((_, t)) = self.object(tc) else {
@@ -256,7 +256,7 @@ impl crate::world::Turns {
     /// in a state below 3 that takes villagers (`FUN_1411ccb60` with 1) and holds its bell flag
     /// (`+0x9dc`) drops the flag; within [`REACH`] of the centre (`COMISS`/`JC`: a NaN gap is
     /// out) it lets each unit inside of type 70 or more that is a villager (class 4) or of master
-    /// 1808 back to work, from the last in ([`crate::world::Turns::back_to_work`]; its sound, slot
+    /// 1808 back to work, from the last in ([`crate::world::World::back_to_work`]; its sound, slot
     /// 0x4c0, is not simulation). Then every unit its owner's tracker files under class 4
     /// (`FUN_14104f8f0`) and master 1808 (`FUN_14104f960`), in that order, not inside another
     /// (`+0x2f0`) goes back to work from where it is.
@@ -294,7 +294,7 @@ impl crate::world::Turns {
     /// `ALL_BACK_TO_WORK` (`do_command` 0x8c; another player's object only while players may
     /// order each other's, [`crate::world::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is
     /// not held): `FUN_141617420` for the owner of object `id`, as the bell's end
-    /// ([`crate::world::Turns::end_town_bell`]) without its flags: each of the owner's live
+    /// ([`crate::world::World::end_town_bell`]) without its flags: each of the owner's live
     /// objects, in the list's order, in state 2, not inside another (`+0x2f0`), of type 80, that
     /// takes villagers (`FUN_1411ccb60` with 1) and is within [`REACH`] of the object
     /// (`COMISS`/`JC`: a NaN gap is out) lets its villagers and units of master 1808 out back to
@@ -336,7 +336,7 @@ impl crate::world::Turns {
 
     /// The building at `idx` of player `owner` lets each unit inside of type 70 or more that is a
     /// villager (class 4) or of master 1808 back to work, from the last in
-    /// ([`crate::world::Turns::back_to_work`]; its sound, slot 0x4c0, is not simulation).
+    /// ([`crate::world::World::back_to_work`]; its sound, slot 0x4c0, is not simulation).
     fn workers_out(&mut self, owner: usize, idx: usize) -> Result<(), GenieError> {
         let mut i = self.players[owner].objects[idx].garrison.len();
         while 0 < i {
@@ -379,7 +379,7 @@ impl crate::world::Turns {
     /// `FUN_1412081e0`'s part for a unit outside a building (its `param_2` null), after the
     /// records' lookup: with its bell flag (`+0x9dc`) and the record's point not −1 on either
     /// axis (`UCOMISS`/`JP`/`JZ`: only an exact −1 stops it, a NaN goes on), it goes there: with
-    /// no object to work on, slot 0x340 (`FUN_141216c50`, [`crate::world::Turns::move_aside`]) to
+    /// no object to work on, slot 0x340 (`FUN_141216c50`, [`crate::world::World::move_aside`]) to
     /// the point on the ground, range 0, forced, not walking; else slot 0x7e8 on the object at
     /// the point with the carried-resource test, any task, `+0xa14` 0. Then it is no longer under
     /// the town bell (`+0xa14` takes 1, not held). True when it went.
@@ -559,9 +559,9 @@ mod tests {
         use crate::garrison::tests::{
             ARCHER, VILLAGER, inside_tc, let_out_world, sized_world, tracked, walker,
         };
-        use crate::world::Turns;
+        use crate::world::World;
 
-        fn enter(t: &Turns, id: i32) -> Option<i32> {
+        fn enter(t: &World, id: i32) -> Option<i32> {
             t.object(id).unwrap().1.enter.map(|e| e.target)
         }
 
@@ -625,7 +625,7 @@ mod tests {
             assert!(!t.object(100).unwrap().1.town_bell.flag);
             let v = t.object(1000).unwrap().1;
             assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
-            let goal = |t: &Turns, id: i32| {
+            let goal = |t: &World, id: i32| {
                 let u = t.object(id).unwrap().1;
                 (u.move_to.and_then(|m| m.goal), u.town_bell.flag)
             };

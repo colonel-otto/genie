@@ -2,7 +2,7 @@
 
 use crate::combat::abilities::{Look, ONE, Reward};
 use crate::objects::masters::Task;
-use crate::world::Turns;
+use crate::world::World;
 
 /// A terrain look task's terrain mask (`0x141207501`, a `std::bitset<8>`): a terrain below 0
 /// is the mask of its negation's low byte, 1 to 8 sets the bit of that less 1, above 8 none.
@@ -79,7 +79,7 @@ pub fn reward(
     }
 }
 
-impl Turns {
+impl World {
     /// A terrain look task of the object at `(p, i)` (`0x141207501`): its walk's distance factor
     /// (`+0x878`, [`crate::movement::Mover::factor`]) and its attack timer's rate (`+0x87c`) go
     /// back to 1 and its look to its master's, then on a tile of the task's terrains

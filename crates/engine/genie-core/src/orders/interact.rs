@@ -6,11 +6,11 @@ use crate::orders::{
     CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
     offset_point, readiness, set_differentiator_groups,
 };
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// One unit of INTERACT: an object that does not move takes the order at once (slot 0x128,
-    /// [`Turns::order_at_once`]) and, the order queued, goes on as a mover does. Its ignore list empties
+    /// [`World::order_at_once`]) and, the order queued, goes on as a mover does. Its ignore list empties
     /// (`FUN_141197da0`), it waits to move (slot 0x2a0 with 1) and lists the order's other units
     /// (`FUN_14118c790`). With a centroid its point is its offset from it added to the order's,
     /// kept `EDGE` inside the map. A unit without a unit AI, or of an order that is not queued and
@@ -35,7 +35,7 @@ impl Turns {
                 "an order to a unit the slice does not hold live",
             ));
         };
-        // the command's check (`FUN_140e55250`, [`Turns::checked_units`]) dropped another
+        // the command's check (`FUN_140e55250`, [`World::checked_units`]) dropped another
         // player's unit (its id -1) unless the game setting `+0x1074` lets players order each
         // other's units ([`crate::world::settings::Settings::cheats_enabled`]); the lookup itself has
         // no owner test (`FUN_140e6b750`): such a unit takes the order as its own player's, the
@@ -209,10 +209,10 @@ impl Turns {
 
     /// MOVE (`FUN_140e67800`) to its units, after their unit AIs reset. One unit takes the order
     /// at the point (the loop of `LAB_140e6838c`). Several go through the splitter
-    /// ([`Turns::loose_units`]); those of a human player whose box ([`centroid`]'s) is narrow
+    /// ([`World::loose_units`]); those of a human player whose box ([`centroid`]'s) is narrow
     /// enough each take a cell of a grid around the point ([`grid_point`], the loop after the
     /// box), any others the point itself, in the splitter's order, each listing the others in its
-    /// ignore list ([`Turns::move_unit`]).
+    /// ignore list ([`World::move_unit`]).
     ///
     /// [`centroid`]: crate::orders::points::centroid
     pub(crate) fn move_order(
@@ -265,15 +265,15 @@ impl Turns {
 
     /// MOVE's groups (`FUN_140e67800`'s loop over the splitter's groups): the group all of a
     /// split group's units are in (`FUN_14152ece0`, [`crate::groups::common_group`]) takes the
-    /// order when it holds just them, the splitter keeping it ([`Turns::keep_group`]; with a
+    /// order when it holds just them, the splitter keeping it ([`World::keep_group`]; with a
     /// target the world holds, `FUN_140fd9f40`'s range test, not modelled); one the world does not
     /// hold takes nothing; else a new group of the split's owner (`FUN_14152efc0`) takes them
-    /// ([`Turns::add_to_group`]), its statistics ([`Turns::group_statistics`]) and its place
-    /// ([`Turns::set_initial_position`]). Each listed group (60 at most) takes the command count
+    /// ([`World::add_to_group`]), its statistics ([`World::group_statistics`]) and its place
+    /// ([`World::set_initial_position`]). Each listed group (60 at most) takes the command count
     /// as its differentiator, with Ctrl held locks its formation to a line
-    /// ([`Turns::lock_formation`] with 2) and takes the command ([`Turns::group_command`]); a new
+    /// ([`World::lock_formation`] with 2) and takes the command ([`World::group_command`]); a new
     /// group of a queued MOVE first takes a command on its first unit's target
-    /// ([`Turns::first_unit_target`]), not queued and direct. Then every
+    /// ([`World::first_unit_target`]), not queued and direct. Then every
     /// listed group lists them all as its differentiator groups (`setDifferentiatorGroups`,
     /// `FUN_1410395a0`).
     pub(super) fn move_groups(
@@ -350,7 +350,7 @@ impl Turns {
     /// AI, names its target (`+0x48`, `FUN_140c4cc40`); the object the world holds for it
     /// (`FUN_1415417a0`) gives its id and its place (x, y). The unit AI's retarget flag
     /// (`FUN_140c4ee90`, `+0x1d6` 0), the command's seventh argument, is read only by a command
-    /// on a target ([`Turns::group_command`] does not take one).
+    /// on a target ([`World::group_command`] does not take one).
     pub(super) fn first_unit_target(&self, units: &[i32]) -> Option<(i32, [f32; 2])> {
         let (_, first) = units.iter().find_map(|&id| self.object(id))?;
         let ai = first.ai.as_ref()?;

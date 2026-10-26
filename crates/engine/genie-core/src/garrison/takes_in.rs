@@ -5,8 +5,8 @@ use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, COMBAT_KIND, LEAST_HP_SHARE, 
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::task_finder::world::World;
-use crate::world::Turns;
+use crate::unit_ai::task_finder::world::TaskWorld;
+use crate::world::World;
 
 /// `FUN_1411205e0`: whether a master's class (`+0x410`, the short `MOVSX` widens) has one of
 /// `flags` in the class-flags table: a class below 0 or not below the table's count
@@ -72,9 +72,9 @@ pub const fn is_garrison_task(task: &Task) -> bool {
     task.action_type == GARRISON && task.object_group == BUILDING_CLASS
 }
 
-impl Turns {
+impl World {
     /// Slot 0x198 of a building (`FUN_1412169b0`) `b` of player `bp` for `unit`: its count
-    /// ([`Turns::garrisoned`]) plus the unit and what it holds (1 and its own count; 1 for no
+    /// ([`World::garrisoned`]) plus the unit and what it holds (1 and its own count; 1 for no
     /// unit) within its master's capacity (`obj_max`).
     pub(crate) fn has_room(
         &self,
@@ -91,8 +91,8 @@ impl Turns {
     }
 }
 
-impl Turns {
-    /// `FUN_14120eb10(building, player, master, 1, 1)` ([`Turns::takes_in_as`]).
+impl World {
+    /// `FUN_14120eb10(building, player, master, 1, 1)` ([`World::takes_in_as`]).
     pub(crate) fn takes_in(
         &self,
         building: i32,
@@ -112,7 +112,7 @@ impl Turns {
     /// (an annex asks its main building, `+0xbb8`), above [`LEAST_HP_SHARE`] of its master's hit
     /// points, with a capacity (`obj_max`), the unit's master with a garrison task on buildings
     /// and of a kind the building's `garrison_type` takes ([`garrison_type_takes`]). Either then
-    /// needs room for one more (slot 0x198 with no unit, [`Turns::has_room`]) unless `unchecked`
+    /// needs room for one more (slot 0x198 with no unit, [`World::has_room`]) unless `unchecked`
     /// (`param_5` not 0).
     pub(crate) fn takes_in_as(
         &self,
@@ -129,7 +129,7 @@ impl Turns {
             return Ok(false);
         };
         if bp != player {
-            let world = World {
+            let world = TaskWorld {
                 players: &self.players,
                 drop_sites: &self.drop_sites,
             };

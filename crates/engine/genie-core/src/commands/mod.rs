@@ -1,11 +1,11 @@
-//! The commands ([`Command`]) and their dispatch ([`Turns::run`]): the handlers of the
+//! The commands ([`Command`]) and their dispatch ([`World::run`]): the handlers of the
 //! players' orders, the buildings' placement and the production queue's.
 //!
-//! [`Turns::run`]: crate::world::Turns::run
+//! [`World::run`]: crate::world::World::run
 
 use crate::GenieError;
 use crate::orders::{Interact, MoveOrder};
-use crate::world::Turns;
+use crate::world::World;
 
 mod builders;
 mod building_commands;
@@ -41,7 +41,7 @@ pub enum Command {
     /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` at `position`
     /// (state 0, hit points 1), with a unit AI of the given type if its class gets one; `Err` when
     /// the slice cannot tell. The player pays the master's cost, and each builder, in packet order,
-    /// takes the master it builds with and starts a Build action (`Turns::masters`). The slice
+    /// takes the master it builds with and starts a Build action (`World::masters`). The slice
     /// takes the placement as given: the recording's game accepted it.
     Build {
         /// The player who places it.
@@ -68,13 +68,13 @@ pub enum Command {
     BuildWall(wall::Wall),
     /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects of `ids` that takes
     /// a gather point (its master garrisons, `+0x5d4`, or its player trains a unit there,
-    /// `FUN_141625a20`'s count with no object, [`Turns::trainable_count`]) takes `point` and
+    /// `FUN_141625a20`'s count with no object, [`World::trainable_count`]) takes `point` and
     /// `target` with its master, or with `own` itself (`FUN_1411c7ff0`); a target of −1 at
     /// (−1, −1) clears it, and its unit AI's command queue empties (slot 0x210). The ids of
     /// other players' objects are left out (the game setting `+0x1074` that lets them is not
     /// modelled), as is the exists byte's value 0xff (`+0xc30`, which keeps the target).
     ///
-    /// [`Turns::trainable_count`]: crate::world::Turns::trainable_count
+    /// [`World::trainable_count`]: crate::world::World::trainable_count
     GatherPoint {
         /// The player whose objects take it.
         player: usize,
@@ -91,9 +91,9 @@ pub enum Command {
     },
     /// QUEUE (0x81, the player's queue `FUN_141614450`, the building's `FUN_1411cbc40`): `amount`
     /// units of master `unit` at one building with the train button `button`
-    /// ([`Turns::queue`]).
+    /// ([`World::queue`]).
     ///
-    /// [`Turns::queue`]: crate::world::Turns::queue
+    /// [`World::queue`]: crate::world::World::queue
     Queue {
         /// The player who queues.
         player: usize,
@@ -107,10 +107,10 @@ pub enum Command {
         button: i32,
     },
     /// RESEARCH (0x65, `0x140e7e270`): the technology `tech` at the building `building`
-    /// ([`Turns::research`]). `count` (`+0x8`) counts the buildings the packet lists, `target`
+    /// ([`World::research`]). `count` (`+0x8`) counts the buildings the packet lists, `target`
     /// (`+0xc`) is −1 for a research to run, and `shift` (`+0x10`) asks for five at once.
     ///
-    /// [`Turns::research`]: crate::world::Turns::research
+    /// [`World::research`]: crate::world::World::research
     Research {
         /// The player who researches.
         player: usize,
@@ -136,14 +136,14 @@ pub enum Command {
         why: GenieError,
     },
     /// GAME (0x67): `do_command`'s case and its switch on the sub-command (`0x140e7c330`,
-    /// [`Turns::game`]).
+    /// [`World::game`]).
     ///
-    /// [`Turns::game`]: crate::world::Turns::game
+    /// [`World::game`]: crate::world::World::game
     Game(game::GameCommand),
     /// `BUILDING_COMMAND_QUEUE` (0x2d, `0x140e64310`): the objects `ids` (at most a human
-    /// player's 60) queue a step to `target` (−1 for none) or `point` ([`Turns::command_queue`]).
+    /// player's 60) queue a step to `target` (−1 for none) or `point` ([`World::command_queue`]).
     ///
-    /// [`Turns::command_queue`]: crate::world::Turns::command_queue
+    /// [`World::command_queue`]: crate::world::World::command_queue
     CommandQueue {
         /// The player.
         player: usize,
@@ -156,9 +156,9 @@ pub enum Command {
     },
     /// `GO_BACK_TO_WORK` (0x80 with one object, `+4`; 0x86 with a list, its count at `+4`, the ids
     /// from `+8`): the player's buildings let their villagers back out to work
-    /// ([`Turns::go_back_to_work`]).
+    /// ([`World::go_back_to_work`]).
     ///
-    /// [`Turns::go_back_to_work`]: crate::world::Turns::go_back_to_work
+    /// [`World::go_back_to_work`]: crate::world::World::go_back_to_work
     GoBackToWork {
         /// The player.
         player: usize,
@@ -166,9 +166,9 @@ pub enum Command {
         ids: Vec<i32>,
     },
     /// `ALL_BACK_TO_WORK` (0x8c, the object at `+4`): its owner's buildings near it let their
-    /// villagers out to work and the others go back ([`Turns::all_back_to_work`]).
+    /// villagers out to work and the others go back ([`World::all_back_to_work`]).
     ///
-    /// [`Turns::all_back_to_work`]: crate::world::Turns::all_back_to_work
+    /// [`World::all_back_to_work`]: crate::world::World::all_back_to_work
     AllBackToWork {
         /// The player.
         player: usize,
@@ -176,9 +176,9 @@ pub enum Command {
         id: i32,
     },
     /// `TOWN_BELL` (0x7f, `do_command` case 0x7f): the town centre `id` rings its owner's bell
-    /// (`activate`) or ends it ([`Turns::town_bell`]).
+    /// (`activate`) or ends it ([`World::town_bell`]).
     ///
-    /// [`Turns::town_bell`]: crate::world::Turns::town_bell
+    /// [`World::town_bell`]: crate::world::World::town_bell
     TownBell {
         /// The player.
         player: usize,
@@ -188,9 +188,9 @@ pub enum Command {
         activate: bool,
     },
     /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
-    /// ([`Turns::delete`]).
+    /// ([`World::delete`]).
     ///
-    /// [`Turns::delete`]: crate::world::Turns::delete
+    /// [`World::delete`]: crate::world::World::delete
     Delete {
         /// The player.
         player: usize,
@@ -199,9 +199,9 @@ pub enum Command {
     },
     /// FLARE (0x73, `0x140e7bfd0`): every player from 1 below `players` (`+0x10`, at most the
     /// world's) gets a flare at `target`'s place (`+4`, −1 for none) or at `point` (`+8`, `+0xc`)
-    /// ([`Turns::flare`]).
+    /// ([`World::flare`]).
     ///
-    /// [`Turns::flare`]: crate::world::Turns::flare
+    /// [`World::flare`]: crate::world::World::flare
     Flare {
         /// The player who sent it.
         player: usize,
@@ -213,9 +213,9 @@ pub enum Command {
         players: u8,
     },
     /// GIVE ATTRIBUTES (0xc4, `FUN_140e7d040`): the player's tribute to player `to`
-    /// ([`Turns::tribute`]).
+    /// ([`World::tribute`]).
     ///
-    /// [`Turns::tribute`]: crate::world::Turns::tribute
+    /// [`World::tribute`]: crate::world::World::tribute
     Tribute {
         /// The player who gives.
         player: usize,
@@ -226,11 +226,11 @@ pub enum Command {
     },
     /// `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b), `do_command`'s cases: the player trades
     /// `times` lots (`+0x6`) of the commodity `attribute` (`+0x4`'s low byte: food, wood or
-    /// stone; the decoder drops another) at the market ([`Turns::sell`], [`Turns::buy`]). The
+    /// stone; the decoder drops another) at the market ([`World::sell`], [`World::buy`]). The
     /// market building (`+0x8`) is not read. Not held: the interface's view (`FUN_140e6de20`).
     ///
-    /// [`Turns::buy`]: crate::world::Turns::buy
-    /// [`Turns::sell`]: crate::world::Turns::sell
+    /// [`World::buy`]: crate::world::World::buy
+    /// [`World::sell`]: crate::world::World::sell
     Trade {
         /// The player who trades.
         player: usize,
@@ -242,9 +242,9 @@ pub enum Command {
         buy: bool,
     },
     /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
-    /// ([`Turns::gate`]).
+    /// ([`World::gate`]).
     ///
-    /// [`Turns::gate`]: crate::world::Turns::gate
+    /// [`World::gate`]: crate::world::World::gate
     Gate {
         /// The player.
         player: usize,
@@ -252,11 +252,11 @@ pub enum Command {
         id: i32,
     },
     /// UNLOAD (0x6f, `FUN_14161f410`): the units `ids` (a building, the units inside it; a unit
-    /// inside one, itself) let units out ([`Turns::unload`]) toward `point` (−1, −1 for none),
+    /// inside one, itself) let units out ([`World::unload`]) toward `point` (−1, −1 for none),
     /// those `flag` and `unit_type` pick (`FUN_14118a610`); `sound` (`+0x18`) plays the
     /// building's.
     ///
-    /// [`Turns::unload`]: crate::world::Turns::unload
+    /// [`World::unload`]: crate::world::World::unload
     Unload {
         /// The player.
         player: usize,
@@ -272,9 +272,9 @@ pub enum Command {
         sound: bool,
     },
     /// `TRANSFORM_OBJECT` (0x29, `RGE_Command::do_command`'s case): the player's object `id`
-    /// takes the master `master` ([`Turns::transform_object`]).
+    /// takes the master `master` ([`World::transform_object`]).
     ///
-    /// [`Turns::transform_object`]: crate::world::Turns::transform_object
+    /// [`World::transform_object`]: crate::world::World::transform_object
     TransformObject {
         /// The player.
         player: usize,
@@ -284,9 +284,9 @@ pub enum Command {
         master: i16,
     },
     /// RESIGN (0x0b, `FUN_140d25af0`): the comm player `player` resigns, or drops (`dropped`)
-    /// ([`Turns::resign`]).
+    /// ([`World::resign`]).
     ///
-    /// [`Turns::resign`]: crate::world::Turns::resign
+    /// [`World::resign`]: crate::world::World::resign
     Resign {
         /// The comm player (the world player of the same number in the slice's games).
         player: usize,
@@ -294,9 +294,9 @@ pub enum Command {
         dropped: bool,
     },
     /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
-    /// auto scout order, or the stop order when it scouts already ([`Turns::auto_scout`]).
+    /// auto scout order, or the stop order when it scouts already ([`World::auto_scout`]).
     ///
-    /// [`Turns::auto_scout`]: crate::world::Turns::auto_scout
+    /// [`World::auto_scout`]: crate::world::World::auto_scout
     AutoScout {
         /// The player.
         player: usize,
@@ -304,9 +304,9 @@ pub enum Command {
         ids: Vec<i32>,
     },
     /// STOP (0x01, `FUN_14161e200`): the units `ids` (at most 60, the decoder's) stop
-    /// ([`Turns::stop_command`]).
+    /// ([`World::stop_command`]).
     ///
-    /// [`Turns::stop_command`]: crate::world::Turns::stop_command
+    /// [`World::stop_command`]: crate::world::World::stop_command
     Stop {
         /// The player whose units stop.
         player: usize,
@@ -315,9 +315,9 @@ pub enum Command {
     },
     /// PATROL (0x15, `FUN_140e69cc0`): the units `ids` (the packet's count at `+0x4`, the ids
     /// from `+0x5c`) patrol through `waypoints` (1 to 10, their count at `+0xb`, x from `+0xc`, y
-    /// from `+0x34`); `reset` (`+0x8`) drops their unit AIs' saved patrols ([`Turns::patrol`]).
+    /// from `+0x34`); `reset` (`+0x8`) drops their unit AIs' saved patrols ([`World::patrol`]).
     ///
-    /// [`Turns::patrol`]: crate::world::Turns::patrol
+    /// [`World::patrol`]: crate::world::World::patrol
     Patrol {
         /// The player whose units patrol.
         player: usize,
@@ -332,9 +332,9 @@ pub enum Command {
     /// ids from `+0x5c`) attack-move through `waypoints` (1 to 10, their count at `+0xb`, x from
     /// `+0xc`, y from `+0x34`); `reset` (`+0x8`) drops their unit AIs' saved patrols, `queued`
     /// (`+0x9`) and `ignore_pending` (`+0xa`) send the order through the unit AIs' queues
-    /// ([`Turns::attack_move`]).
+    /// ([`World::attack_move`]).
     ///
-    /// [`Turns::attack_move`]: crate::world::Turns::attack_move
+    /// [`World::attack_move`]: crate::world::World::attack_move
     AttackMove {
         /// The player whose units attack-move.
         player: usize,
@@ -350,9 +350,9 @@ pub enum Command {
         ignore_pending: bool,
     },
     /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): the villagers of `ids` (at most 60, the decoder's)
-    /// seek shelter in the player's buildings ([`Turns::seek_shelter`]).
+    /// seek shelter in the player's buildings ([`World::seek_shelter`]).
     ///
-    /// [`Turns::seek_shelter`]: crate::world::Turns::seek_shelter
+    /// [`World::seek_shelter`]: crate::world::World::seek_shelter
     SeekShelter {
         /// The player whose units seek shelter.
         player: usize,
@@ -360,9 +360,9 @@ pub enum Command {
         ids: Vec<i32>,
     },
     /// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
-    /// take the stance `state` ([`Turns::unit_ai_state`]).
+    /// take the stance `state` ([`World::unit_ai_state`]).
     ///
-    /// [`Turns::unit_ai_state`]: crate::world::Turns::unit_ai_state
+    /// [`World::unit_ai_state`]: crate::world::World::unit_ai_state
     UnitAiState {
         /// The player whose units take it.
         player: usize,
@@ -372,12 +372,12 @@ pub enum Command {
         state: u8,
     },
     /// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
-    /// decoder's) take the order `action` ([`Turns::unit_order`]) with the object `target`
+    /// decoder's) take the order `action` ([`World::unit_order`]) with the object `target`
     /// (`tId`, `+8`, which action 5 reads) and the flags `+0x1d`, `+0x1e`; `human` (`+0x20`) sets
     /// their last human order time first. Its point, `qId` and `param` are not read by the
     /// actions modelled.
     ///
-    /// [`Turns::unit_order`]: crate::world::Turns::unit_order
+    /// [`World::unit_order`]: crate::world::World::unit_order
     UnitOrder {
         /// The player whose units take it.
         player: usize,
@@ -461,7 +461,7 @@ const CASTLE_AGE: i16 = 0x66;
 /// The game mode (`0x10`) in which a Castle Age queued marks the world's treaty monitor.
 const CASTLE_AGE_MODE: i32 = 0x10;
 
-impl Turns {
+impl World {
     /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
     /// that is the player's own, or any while players may order each other's units
     /// ([`crate::world::settings::Settings::cheats_enabled`]); −1 for the others.

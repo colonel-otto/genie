@@ -52,7 +52,7 @@ fn slot(unit: i32, x: f32, y: f32) -> Slot {
 /// standing sprite 6, walking sprite 7 and running sprite 8 (the slice's graphics hold none,
 /// nor the units' sprites); a 32 by 32
 /// map of the terrain class bit 2 (in the walker's mask) at the world's time 100 and an update of 69 ms.
-fn world() -> Turns {
+fn world() -> World {
     let players = vec![
         Player::default(),
         Player {
@@ -60,7 +60,7 @@ fn world() -> Turns {
             ..Player::default()
         },
     ];
-    let mut t = Turns::new(0, 0, 0, vec![0; 2], players);
+    let mut t = World::new(0, 0, 0, vec![0; 2], players);
     t.world_time = 100;
     t.dt_seconds = DT;
     let master = Master {
@@ -99,7 +99,7 @@ fn world() -> Turns {
 }
 
 /// The members' master and movement with radius `r` on the ground.
-fn widen(t: &mut Turns, r: f32) {
+fn widen(t: &mut World, r: f32) {
     for m in &mut t.masters {
         let mut all: Vec<Master> = m.iter().cloned().collect();
         for a in &mut all {
@@ -132,15 +132,15 @@ fn post(x: f32, y: f32) -> Placed {
     }
 }
 
-fn unit(t: &Turns, id: i32) -> &Unit {
+fn unit(t: &World, id: i32) -> &Unit {
     t.object(id).unwrap().1
 }
 
-fn mover(t: &Turns, id: i32) -> &crate::movement::Mover {
+fn mover(t: &World, id: i32) -> &crate::movement::Mover {
     unit(t, id).mover.as_ref().unwrap()
 }
 
-fn state(t: &Turns, slot: usize) -> i32 {
+fn state(t: &World, slot: usize) -> i32 {
     t.groups
         .get(1)
         .unwrap()

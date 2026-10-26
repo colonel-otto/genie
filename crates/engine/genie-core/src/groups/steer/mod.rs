@@ -10,7 +10,7 @@ mod to_slots;
 #[cfg(test)]
 use crate::groups::SpecificMove;
 #[cfg(test)]
-use crate::world::Turns;
+use crate::world::World;
 
 /// A member this near its slot on the ground is in place (`DAT_142eb0c60`, `0x14102629e`).
 const EPSILON: f32 = crate::math::image::group::EPSILON;

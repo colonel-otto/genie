@@ -3,7 +3,7 @@
 
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{CONSTRUCTION_RATE, groups, market, spatial, unit, work_masters};
-use genie_core::world::{Player, Turns};
+use genie_core::world::{Player, World};
 use genie_save::{Header, PlayerSection};
 
 /// A player's saved state of one technology (`Tech_Player_Tree`).
@@ -59,7 +59,7 @@ pub(super) fn tech_state(
 ///
 /// [`header_slice`]: crate::header_runs::header_slice
 /// [`simulate_word9`]: crate::header_runs::simulate_word9
-pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
+pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> World {
     let victory = &header.world.base_world.victory_conditions;
     let players = header
         .players()
@@ -141,11 +141,11 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 posture: 0,
                 dodge_chance: p.world_player().chance_to_dodge_missiles,
                 keep_distance_chance: p.world_player().chance_for_archers_to_maintain_distance,
-                // the load builds the watched lists (Turns::build_watched)
+                // the load builds the watched lists (World::build_watched)
                 watched: Vec::new(),
                 ghosts: saved_ghosts(p),
                 history: history(&p.world_player().history),
-                // the load files the objects (Turns::load_trackers, once the masters are in)
+                // the load files the objects (World::load_trackers, once the masters are in)
                 tracker: genie_core::players::tracker::Tracker::default(),
                 // +0x1378 is not saved
                 one_military_queued: false,
@@ -169,7 +169,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
         })
         .collect();
     let world = &header.world.base_world;
-    let mut turns = Turns::new(
+    let mut turns = World::new(
         world.world_time,
         world.current_frame_random_seed,
         world.player_turn.max(0) as usize,
@@ -492,7 +492,7 @@ pub(super) fn saved_ghosts(section: &PlayerSection<'_>) -> Vec<genie_core::visio
 /// its enter (`FUN_14120b790`, [`genie_core::garrison::share`]), which the load does not restore
 /// (`FUN_14121ec90` sets the master's volley fire). A share the slice does not model leaves the
 /// building unmodelled.
-pub(super) fn garrison_firepower(turns: &mut Turns) {
+pub(super) fn garrison_firepower(turns: &mut World) {
     for (p, player) in turns.players.iter_mut().enumerate() {
         let Some(masters) = turns.masters.get(p) else {
             continue;

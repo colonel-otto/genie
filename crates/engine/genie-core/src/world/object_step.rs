@@ -1,4 +1,4 @@
-//! One object's step with its context ([`Turns::run_object`]), what follows it and a unit
+//! One object's step with its context ([`World::run_object`]), what follows it and a unit
 //! AI run outside its update.
 
 use crate::GenieError;
@@ -10,15 +10,15 @@ use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork, Foreign};
 use crate::world::context::{Context, ObjectOutputs};
 use crate::world::{
-    BuildingDeath, LEAVES_ITS_LIST, PlayerFrame, Turns, scenario_mode, standard_mode,
+    BuildingDeath, LEAVES_ITS_LIST, PlayerFrame, World, scenario_mode, standard_mode,
 };
 
-impl Turns {
+impl World {
     /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI
     /// for a command): object `i` of player `p` leaves its list, `f` gets it, the Context and the
     /// rest of the list; it comes back with the objects it made (each filed in its owner's
     /// tracker). Returns `f`'s result (an error of the sight's registry first), what the Context
-    /// gathered for the world ([`Turns::finish_object`]) and the victim of its attack.
+    /// gathered for the world ([`World::finish_object`]) and the victim of its attack.
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object<R>(
         &mut self,
@@ -173,7 +173,7 @@ impl Turns {
         (result, out, victim)
     }
 
-    /// What follows an object's step ([`Turns::run_object`]): what its Context gathered, applied
+    /// What follows an object's step ([`World::run_object`]): what its Context gathered, applied
     /// in the order the game's update makes them (the gate, the annexes' and main buildings'
     /// work, the completions, the attributes, the deaths and remains, the regeneration, passive
     /// abilities and production of a full update, the unit AI's works, moves, waits and order on
@@ -619,9 +619,9 @@ impl Turns {
     }
 
     /// Runs `f` on the unit AI of object `i` of player `p` outside its update (a command's
-    /// immediate order, `FUN_140c55c90`): the object's step ([`Turns::run_object`]) whose only
+    /// immediate order, `FUN_140c55c90`): the object's step ([`World::run_object`]) whose only
     /// part is the AI's run with what it reads of the world ([`Unit::run_ai`]), then what that
-    /// gathered ([`Turns::finish_object`] without the update's own parts).
+    /// gathered ([`World::finish_object`] without the update's own parts).
     ///
     /// # Errors
     ///

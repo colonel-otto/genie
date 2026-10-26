@@ -137,10 +137,10 @@ pub struct Unit {
     /// master's `+0x610`, `FUN_1411cb850`), whose food a mill makes ([`crate::players::world_player`]).
     pub livestock_summation: f32,
     /// A pasture's livestock (`+0xb78`, saved as `livestockId`): the objects its completion put
-    /// on its edges ([`crate::world::Turns::setup_pasture`]), in the order it made them.
+    /// on its edges ([`crate::world::World::setup_pasture`]), in the order it made them.
     pub livestock: Vec<i32>,
     /// A pasture's workers (`+0xcb8`, saved as `pastureWorkerId`): the units that tend it
-    /// ([`crate::world::Turns::tend_pasture`]), in the order they came.
+    /// ([`crate::world::World::tend_pasture`]), in the order they came.
     pub pasture_workers: Vec<i32>,
     /// A building's `+0xc54`: the frame its BUILD command chose (`FUN_140e7a400`, the packet's
     /// `+0x1c`), which its standing sprite takes once built; 0 from its constructor and the load.
@@ -225,7 +225,7 @@ pub struct Unit {
     /// (`FUN_141188db0`), which master 1889's completion reads.
     pub rice: bool,
     /// A building's `+0xcb0` (`FUN_1411c5f70`): the id of the object its completion's stack unit
-    /// made ([`crate::world::Turns::stack_unit`]); None before (the save does not hold it).
+    /// made ([`crate::world::World::stack_unit`]); None before (the save does not hold it).
     pub stack_made: Option<i32>,
     /// A building's own store (`+0xae0`, `FUN_1411abad0`'s map by attribute): what its storage
     /// entries of mode 16 put in at its completion and take out at its death

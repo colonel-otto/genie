@@ -7,9 +7,9 @@ use crate::objects::lifecycle::death_parts::clear_look_of;
 use crate::objects::masters::Master;
 use crate::unit_ai::Notify;
 use crate::vision::visibility::{BuildingSight, Seer, capture_kind};
-use crate::world::Turns;
+use crate::world::World;
 
-impl Turns {
+impl World {
     /// `FUN_14123bb20`'s sending off (with `DAT_1439e60e2` 1) of the units on `foundation`'s
     /// footprint: each of type 30 or more in state 2 whose top action is not on the foundation,
     /// that stands (`FUN_14114f740`: Gaia's of classes 9 and 10, or not walking, its animation
@@ -81,7 +81,7 @@ impl Turns {
     /// `FUN_14123bb20`'s owner's units of a formation category (`+0x8bc`) on `foundation`'s
     /// footprint (master radii `radius`), in the tiles' order: the farthest free spot beside the
     /// footprint from the first of them (`FUN_1411566b0` with 1, [`Spatial::spot_off`]); then, with
-    /// one, `FUN_1416123a0`: the order splitter on them ([`Turns::loose_units`]: a unit group it
+    /// one, `FUN_1416123a0`: the order splitter on them ([`World::loose_units`]: a unit group it
     /// forms, its group move `FUN_14100efd0`, is not modelled) and each unit it leaves loose takes
     /// the action of moving off a footprint (`0x2bf`) and moves to the spot at its own height
     /// (slot 0x138 without a target); last each of them whose unit AI's action is not `0x2bf` gets
@@ -185,7 +185,7 @@ impl Turns {
     /// The footprint clearing (`FUN_1415c3620` with `param_7` 0) of a new building of `master`
     /// of `player` at `at`: the building constructor's (`FUN_1411de5f0`, `trees` false) and a new
     /// object's (`FUN_14162ce00` with its flag, `trees` true). The objects it takes
-    /// ([`crate::construction::build::footprint_clearing`]), each in the tiles' order: [`Turns::clear_object`].
+    /// ([`crate::construction::build::footprint_clearing`]), each in the tiles' order: [`World::clear_object`].
     /// Nothing for a master the player has not got.
     ///
     /// # Errors
@@ -246,8 +246,8 @@ impl Turns {
     }
 
     /// An object the footprint clearing deletes ([`crate::construction::build::Cleared`]): a wall first goes
-    /// through the building's delete core (`FUN_1411ccbb0`, [`Turns::remove_building`]), then
-    /// its destroy (slot 0xd0, [`Turns::destroy`]). The builder's clearing (`roo_done`) dropped
+    /// through the building's delete core (`FUN_1411ccbb0`, [`World::remove_building`]), then
+    /// its destroy (slot 0xd0, [`World::destroy`]). The builder's clearing (`roo_done`) dropped
     /// its record in the Build's update already (`FUN_141189670`): `+0x686` is set
     /// (`FUN_141189b60` with 1).
     ///

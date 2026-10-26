@@ -45,16 +45,16 @@ pub(crate) struct DropWorld<'a> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum AiWork {
     /// `HuntObject`'s unit part on the target: the stop, then the hunt command
-    /// ([`Turns::hunt_command`]).
+    /// ([`World::hunt_command`]).
     Hunt(i32),
-    /// `GatherObject`'s gather command on the target ([`Turns::gather_command`]).
+    /// `GatherObject`'s gather command on the target ([`World::gather_command`]).
     Gather(i32),
-    /// The unit's slot 0x7e8 on an object at a point ([`Turns::order_work`]).
+    /// The unit's slot 0x7e8 on an object at a point ([`World::order_work`]).
     Work(crate::orders::Work),
-    /// `BuildObject`'s unit part: the build command on the foundation ([`Turns::build_command`]).
+    /// `BuildObject`'s unit part: the build command on the foundation ([`World::build_command`]).
     Build(i32),
     /// The villager's case 0x21c: its load to the drop-site table's building
-    /// ([`Turns::drop_elsewhere`]).
+    /// ([`World::drop_elsewhere`]).
     DropElsewhere(i32, Option<i32>),
 }
 
@@ -77,7 +77,7 @@ pub(crate) struct RepairWrite {
 /// ([`crate::unit_ai::UnitSide::wait_solidify`]): the foundation, the task its slot 0x820 found
 /// on it and the master the search switches the unit to (slot 0x90; None when its own master's
 /// list gave the task). The caller makes them the unit's after the update
-/// ([`Turns::wait_for_foundation`]).
+/// ([`World::wait_for_foundation`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Wait {
     pub(crate) target: i32,
@@ -87,7 +87,7 @@ pub(crate) struct Wait {
 
 /// The unit's repair command (slot 0x378, `FUN_141217c00`) as its unit AI gave it
 /// ([`UnitView::repair_command`]), which the caller makes after the update
-/// ([`Turns::repair_order`]).
+/// ([`World::repair_order`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RepairOrder {
     /// The Repair on top takes the target (its slot 0x48, `FUN_140adb480`).
@@ -103,7 +103,7 @@ pub(crate) enum RepairOrder {
 
 /// The unit's enter command (slot 0x3a0, `FUN_1410847e0`, forced) as its unit AI gave it
 /// ([`UnitView::enter_command`]), which the caller makes after the update
-/// ([`Turns::enter_order`]): the master the task search's swap group gave (slot 0x90 with 0),
+/// ([`World::enter_order`]): the master the task search's swap group gave (slot 0x90 with 0),
 /// then the Enter on the task found into the target (an annex: its main building, the Enter's
 /// target), under an Artifact on top or not.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -118,13 +118,13 @@ pub(crate) struct EnterOrder {
 /// An action the unit AI gave its unit while it ran, made after the update.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum AiStart {
-    /// A wait for a foundation ([`Wait`], [`Turns::wait_for_foundation`]).
+    /// A wait for a foundation ([`Wait`], [`World::wait_for_foundation`]).
     Wait(Wait),
-    /// A repair ([`RepairOrder`], [`Turns::repair_order`]).
+    /// A repair ([`RepairOrder`], [`World::repair_order`]).
     Repair(RepairOrder),
-    /// An enter ([`EnterOrder`], [`Turns::enter_order`]).
+    /// An enter ([`EnterOrder`], [`World::enter_order`]).
     Enter(EnterOrder),
-    /// An unload command at a point (slot 0x3a8, [`Turns::transport_order`]).
+    /// An unload command at a point (slot 0x3a8, [`World::transport_order`]).
     Transport([f32; 3]),
 }
 
@@ -284,7 +284,7 @@ pub(crate) struct UnitView<'u> {
     pub(crate) drop_sites: &'u [DropSite],
     /// The owner's object tracker, whose done lists the drop-site table's search reads.
     pub(crate) tracker: &'u crate::players::tracker::Tracker,
-    /// The game's setting at `+0x680` ([`Turns::mode_680`]), which a hit's source carries.
+    /// The game's setting at `+0x680` ([`World::mode_680`]), which a hit's source carries.
     pub(crate) mode_680: i32,
     /// The game's carry rule ([`crate::world::settings::Settings::carry_rule`]), which a hunt's start
     /// reads.

@@ -8,10 +8,10 @@ use crate::groups::steer::{
     MOVES,
 };
 use crate::math::fmath::{Vec3, below_or_unordered};
-use crate::world::Turns;
+use crate::world::World;
 use crate::{GenieError, math::fmath};
 
-impl Turns {
+impl World {
     /// The members' moves to their slots (`0x14103e8e8`..`0x14103efba`) of group `group`, whose
     /// formation has slots; `differentiators` the differentiator groups' members the update
     /// listed (`DAT_143f15860`, `DAT_143f15a90`).
@@ -32,7 +32,7 @@ impl Turns {
     /// (`FUN_1415300e0`), and with the timer and the move's distance both above 0 (`COMISS`
     /// with `JNC`, then `JC`: a NaN keeps it) the member waits this update; else it stands and its
     /// move ends the same way. A member in a slot that does not wait steers to it
-    /// ([`Turns::steer_to_slot`], `FUN_141025fb0`). A member in no slot stops (slot 0x5d0) when it
+    /// ([`World::steer_to_slot`], `FUN_141025fb0`). A member in no slot stops (slot 0x5d0) when it
     /// moves (slot 0x5c8), has no `MoveTo` in its action list (slot 0x538 with 1) and its top
     /// action is not in state 4, 5 or 11 (slot 0x2b0). The member's id in `DAT_143cc29a8` is the
     /// log's.
@@ -196,9 +196,9 @@ impl Turns {
     /// - In place (the gap at most 1e-7, `COMISS` with `JC`: not a NaN) and in slot state 3:
     ///   the member's failures (`+0x1c` of its own move) clear, and the end.
     /// - More than 10 failures: the member's own move becomes a move aside
-    ///   ([`Turns::set_specific_move`], reason 2, its place, [`ASIDE_TIMER`]), it stops (slot
+    ///   ([`World::set_specific_move`], reason 2, its place, [`ASIDE_TIMER`]), it stops (slot
     ///   0x5d0) and the group's flags take bit 9; the end without the goal.
-    /// - A member that is not free ([`Turns::member_idle`]) stops as one in no slot does, its
+    /// - A member that is not free ([`World::member_idle`]) stops as one in no slot does, its
     ///   failures clear and a slot in state 1 or 2 takes state 3; the end without the goal. A
     ///   free one in a slot of state 3 whose group moves or waits for a path (`FUN_141046600`,
     ///   `FUN_141046640`) has the slot take state 0.
@@ -207,13 +207,13 @@ impl Turns {
     ///   long pather (`FUN_140f9eb70`, from the unit's tile, range 0) for a unit without a
     ///   footprint and a height (`FUN_141194060` with 1), else the short pather (`FUN_140f9e540`,
     ///   range 0, the members ignored); a way found (the short pather's result not 3 or 4) puts
-    ///   the unit on the slot ([`Turns::place_member`], slot 0x58) facing the group's forward
+    ///   the unit on the slot ([`World::place_member`], slot 0x58) facing the group's forward
     ///   (slot 0x568 with the group's up). Either way the slot takes state 3. In state 2 or 3 the
-    ///   member shows its standing sprite (slot 0x660, [`Turns::show_standing`]), faces the
+    ///   member shows its standing sprite (slot 0x660, [`World::show_standing`]), faces the
     ///   group's forward again when it was put, its failures clear, and the end without the
     ///   goal.
-    /// - Then the line to the slot ([`Turns::line_clear`] with [`CLEARANCE`], the update's list
-    ///   ignored): one that meets a record is the way round ([`Turns::way_round`]). A clear line steers
+    /// - Then the line to the slot ([`World::line_clear`] with [`CLEARANCE`], the update's list
+    ///   ignored): one that meets a record is the way round ([`World::way_round`]). A clear line steers
     ///   the unit: the direction to the slot (slot 0x610), the turn from its forward (slot 0x618
     ///   with dt, [`crate::movement::Mover::turn_dt`]) and the yaw (slot 0x5c0), where its speed
     ///   takes it this update (slot 0x638) and the slot's state from that
@@ -222,12 +222,12 @@ impl Turns {
     ///   top path (`FUN_141046500`) is a patrol (flags bit 0) nor its walked level holds points.
     ///   Else by the gap and the radius (master `+0x5d8`; `COMISS` with `SETNC`, then `JC`: a NaN
     ///   is neither): between the radius and five radii, the unit's top speed (slot 0x208) and
-    ///   its walking sprite (slot 0x658, [`Turns::show_walking`]); within the radius, the group's
+    ///   its walking sprite (slot 0x658, [`World::show_walking`]); within the radius, the group's
     ///   top speed (`+0xbc`) and the walking sprite; farther, the group's flags take bit 9, and
     ///   from five tiles on (or a NaN) the top speed and the walking sprite (bit 9 again), nearer
     ///   the top speed times 1.2 from three tiles on (or a NaN), below three
     ///   `speed + ((speed × 1.2 − speed) × gap) / 3`, with its running sprite (slot 0x650,
-    ///   [`Turns::show_running`]) or else its walking one. The speed is slot 0x598's
+    ///   [`World::show_running`]) or else its walking one. The speed is slot 0x598's
     ///   ([`crate::movement::Mover::set_speed`]).
     /// - The goal: the unit AI's `state_position` (`+0x1ac`, `+0x1b0`) takes the slot's x and y.
     ///

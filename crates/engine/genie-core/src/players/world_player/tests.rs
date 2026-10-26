@@ -27,13 +27,13 @@ fn human() -> Player {
 }
 
 /// Gaia and three humans, at world time 10 s, one second's update ahead.
-fn world() -> Turns {
+fn world() -> World {
     let gaia = Player {
         kind: GAIA_TYPE,
         attributes: attributes(),
         ..Player::default()
     };
-    let mut t = Turns::new(
+    let mut t = World::new(
         10_000,
         1,
         0,

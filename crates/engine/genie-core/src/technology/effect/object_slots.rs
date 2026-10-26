@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::objects::masters::{Master, Masters, master_type};
 use crate::objects::unit::Unit;
 use crate::technology::effect::Change;
-use crate::world::Turns;
+use crate::world::World;
 
 /// The resources the population attribute (110) moves an object's storage of (`FUN_1412163c0`):
 /// headroom (4), and current population (11) and 19, which hold its magnitude.
@@ -19,7 +19,7 @@ pub(super) const OBJECT_HP_CAP: f32 = 32767.0;
 /// A multiply's rounding (`DAT_142e7f384`, 0.5).
 pub(super) const ROUND: f32 = crate::math::image::effect::ROUND;
 
-impl Turns {
+impl World {
     /// What the masters' setters read of the world for player `p` ([`AttributeWorld`]): the
     /// sprite table (the `.dat`'s graphics), no handicap (`player+0x668`, not held: none in the
     /// games probed) and the player's `+0x648` unset (not held: 0 for every player probed).
@@ -92,7 +92,7 @@ impl Turns {
     }
 }
 
-impl Turns {
+impl World {
     /// `FUN_14165bae0` and the objects' slots 0x78, 0x80, 0x88 (by `change`) on object `id` of
     /// player `p`: nothing for an object the world lacks (or one with a master of its own,
     /// `FUN_141188bc0`, which the slice does not hold: none taken to have one); else its type's

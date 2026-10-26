@@ -1,7 +1,7 @@
 //! An object's upgrade to another master: slot 0x98 (`FUN_141201a60` for a combat object,
 //! `FUN_1411c4660` for a building), down the classes' overrides (`FUN_14107cb70`,
 //! `FUN_14106a530`, `FUN_14114cb80`) to the static object's `FUN_141186580`, as the upgrade of
-//! its master runs it (`FUN_141657d10`, [`Turns::upgrade_objects`]); and the damage sprites'
+//! its master runs it (`FUN_141657d10`, [`World::upgrade_objects`]); and the damage sprites'
 //! check (`FUN_1411859a0`), which the static part runs around the hit points' change.
 
 use crate::GenieError;
@@ -10,7 +10,7 @@ use crate::objects::masters::{Master, Task, master_type};
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::Place;
-use crate::world::Turns;
+use crate::world::World;
 
 /// A master's hit points this near 0 give no share (`ABS(x) <= 1.1920929e-07`).
 const NO_HIT_POINTS: f32 = f32::EPSILON;
@@ -185,7 +185,7 @@ fn class_changes(new: Option<&Master>, old: Option<&Master>) -> bool {
     }
 }
 
-impl Turns {
+impl World {
     /// Slot 0x98 of player `p`'s object at `place`, whose master `old` upgrades to `new`; with
     /// `keep` (the upgrade's modes −1 and 3, whose master then copies `new`) its master stays.
     /// In the game's order, outermost class first:
@@ -198,7 +198,7 @@ impl Turns {
     ///   0x8a8 rebuilds what the object keeps of `new`'s tasks, which the slice reads from the
     ///   master;
     /// - an action object (`FUN_14106a530`): each action takes `new`'s task of its type, class
-    ///   and target (`FUN_140a97970`, [`Turns::actions_take_master`]); without `keep` a top
+    ///   and target (`FUN_140a97970`, [`World::actions_take_master`]); without `keep` a top
     ///   action of a type `new` has no task for stops the object (slot 0x148);
     /// - a moving object (`FUN_14114cb80`) showing `old`'s walking or running sprite shows
     ///   `new`'s;
@@ -786,7 +786,7 @@ mod tests {
             objects: vec![house, object(11, 70, 4, 0.0), object(12, 1403, 2, 1.0)],
             ..crate::world::Player::default()
         };
-        let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
         t.masters = vec![Masters::new([
             old,
             new,
@@ -843,7 +843,7 @@ mod tests {
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
-        let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
         t.masters = vec![Masters::new([old, new])];
         t.players[0].attributes[37] = 1.0;
         t.upgrade_objects(0, 83, 6, 0, None).unwrap();

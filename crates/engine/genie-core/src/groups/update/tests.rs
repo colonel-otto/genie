@@ -2,7 +2,7 @@ use crate::groups::{Member, UnitGroup, UnitGroups};
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
-use crate::world::{Player, Turns};
+use crate::world::{Player, World};
 
 /// A unit of master 4 at (`x`, `y`) in state 2 with 50 hit points and a unit AI.
 fn soldier(id: i32, x: f32, y: f32) -> Unit {
@@ -26,7 +26,7 @@ fn soldier(id: i32, x: f32, y: f32) -> Unit {
 /// Player 1 holds soldiers 10, 11 and 12 (master 4: a combat unit of class 6, 60 hit
 /// points, line of sight 4, radius 0.2) in group 1; player 2, its enemy, holds 20 at (3, 3)
 /// and player 3, its ally, 30 at (4, 4). An 8 by 8 map whose tiles player 1 sees none of.
-fn world() -> Turns {
+fn world() -> World {
     let players = vec![
         Player::default(),
         Player {
@@ -46,7 +46,7 @@ fn world() -> Turns {
             ..Player::default()
         },
     ];
-    let mut t = Turns::new(0, 0, 0, vec![0; 4], players);
+    let mut t = World::new(0, 0, 0, vec![0; 4], players);
     let master = Master {
         id: 4,
         kind: 70,
@@ -101,7 +101,7 @@ fn world() -> Turns {
 }
 
 /// Player `p` sees tile (`x`, `y`) (`seen`) or only explored it.
-fn light(t: &mut Turns, p: usize, x: usize, y: usize, seen: bool) {
+fn light(t: &mut World, p: usize, x: usize, y: usize, seen: bool) {
     let v = t.spatial.sight.as_mut().unwrap();
     v.unified[y * 8 + x] |= if seen { 1 << p } else { 1 << (32 + p) };
 }
@@ -136,7 +136,7 @@ fn lost_members_leave_the_group_and_stop() {
     let g = t.groups.get(1).unwrap();
     assert_eq!(g.members.iter().map(|m| m.id).collect::<Vec<_>>(), [10]);
     assert_eq!(g.flags & 0x1_0000, 0x1_0000);
-    let unit = |t: &Turns, id| t.object(id).unwrap().1.clone();
+    let unit = |t: &World, id| t.object(id).unwrap().1.clone();
     assert_eq!(unit(&t, 10).group.id, 1);
     for id in [11, 12, 13] {
         assert_eq!(unit(&t, id).group.id, -1, "{id}");
@@ -160,7 +160,7 @@ fn lost_members_leave_the_group_and_stop() {
 #[test]
 fn a_hibernating_group_waits_runs_its_queue_or_goes() {
     let mut t = world();
-    let set = |t: &mut Turns, command: i32, target: i32, queued: bool| {
+    let set = |t: &mut World, command: i32, target: i32, queued: bool| {
         let g = t.groups.get_mut(1).unwrap();
         g.current_command = command;
         g.current_target.target = target;
@@ -214,7 +214,7 @@ fn a_hibernating_group_waits_runs_its_queue_or_goes() {
 #[test]
 fn a_target_is_pending_while_seen_and_no_ally_s() {
     let mut t = world();
-    let target = |t: &mut Turns, command: i32, id: i32| {
+    let target = |t: &mut World, command: i32, id: i32| {
         let g = t.groups.get_mut(1).unwrap();
         g.current_command = command;
         g.current_target.target = id;
@@ -280,7 +280,7 @@ fn relic_carriers_keep_their_command_pending() {
         tasks,
         ..Master::default()
     };
-    let set_masters = |t: &mut Turns, tasks: Vec<Task>| {
+    let set_masters = |t: &mut World, tasks: Vec<Task>| {
         t.masters = vec![Masters::new([monk(tasks), relic.clone(), monastery.clone()]); 4];
     };
     let mut r = soldier(40, 6.0, 6.0);
@@ -288,7 +288,7 @@ fn relic_carriers_keep_their_command_pending() {
     let mut m = soldier(41, 7.0, 7.0);
     m.life.master_id = 104;
     t.players[0].objects.extend([r, m]);
-    let ai = |t: &mut Turns, order: i32, action: i32, target: i32| {
+    let ai = |t: &mut World, order: i32, action: i32, target: i32| {
         let a = t.players[1].objects[0].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
@@ -327,7 +327,7 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     let mut t = world();
     assert!(t.member_idle(10).unwrap());
     assert!(!t.member_idle(99).unwrap());
-    let ai = |t: &mut Turns, order: i32, action: i32| {
+    let ai = |t: &mut World, order: i32, action: i32| {
         let a = t.players[1].objects[0].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
@@ -464,7 +464,7 @@ fn a_deleted_group_lets_its_members_go() {
     t.players[1].objects[2].group.id = 7;
     t.delete_group(1).unwrap();
     assert!(t.groups.get(1).is_none());
-    let unit = |t: &Turns, id| t.object(id).unwrap().1.clone();
+    let unit = |t: &World, id| t.object(id).unwrap().1.clone();
     assert_eq!([10, 11, 12].map(|id| unit(&t, id).group.id), [-1, -1, 7]);
     assert!(unit(&t, 10).mover.unwrap().speed_stopped);
     assert!(!unit(&t, 11).mover.unwrap().speed_stopped);
@@ -489,8 +489,8 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     walker.stats.run_speed = 1.5;
     walker.stats.stand_speed = 0.1;
     t.players[1].objects[0].mover = Some(walker);
-    let speed = |t: &Turns| t.object(10).unwrap().1.mover.as_ref().unwrap().stats.speed;
-    let master = |t: &mut Turns, class: i16, sprites: [i16; 3]| {
+    let speed = |t: &World| t.object(10).unwrap().1.mover.as_ref().unwrap().stats.speed;
+    let master = |t: &mut World, class: i16, sprites: [i16; 3]| {
         let m = Master {
             id: 4,
             kind: 70,
@@ -645,7 +645,7 @@ fn each_line_takes_its_units_least_range() {
 #[test]
 fn the_relayout_follows_the_count_and_the_spacing() {
     let mut t = world();
-    let set = |t: &mut Turns, flags: u32, spacing: f32| {
+    let set = |t: &mut World, flags: u32, spacing: f32| {
         let g = t.groups.get_mut(1).unwrap();
         g.flags = flags;
         g.total_spacing = spacing;
@@ -1118,7 +1118,7 @@ fn the_lead_is_the_member_nearest_the_targets_place() {
         objects: vec![at(10, 5.0, 5.0), at(11, 2.0, 1.0), at(12, 1.0, 2.0)],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 1, 0, vec![0], vec![player]);
     let member = |id| Member {
         id,
         ..Member::default()
@@ -1148,7 +1148,7 @@ fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
         objects: vec![held],
         ..Player::default()
     };
-    let mut t = Turns::new(0, 1, 0, vec![0], vec![player]);
+    let mut t = World::new(0, 1, 0, vec![0], vec![player]);
     let member = |id| Member {
         id,
         ..Member::default()
