@@ -3,6 +3,7 @@
 # the threshold a function is a risk to change: give it tests, or split it into named
 # functions (a closure's branches count nowhere, so moving them into one only hides them).
 threshold = 30
+
 # The generated sources (their generators carry the clippy allow lists too) and the test
 # modules kept in files of their own.
 exclude = [
@@ -13,3 +14,7 @@ exclude = [
     "src/image.rs",
     "src/**/tests.rs",
 ]
+
+# Enable duplicates scanning
+[duplicates]
+enabled = true
