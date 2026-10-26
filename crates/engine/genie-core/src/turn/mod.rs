@@ -8,7 +8,7 @@
 //!
 //! A player's update walks its live list in order (`RGE_Object_List::update`, `0x141166550`). Each
 //! object moves by its velocity ([`Mover::step_velocity`]), runs its static state step
-//! ([`crate::lifecycle::Lifecycle`]), then its actions (the livestock default action, a builder's
+//! ([`crate::objects::lifecycle::Lifecycle`]), then its actions (the livestock default action, a builder's
 //! Build action with its walk), then its unit AI. An object whose update returns 1 leaves: the
 //! last object takes its slot and updates there in the same tick.
 //!
@@ -20,22 +20,21 @@
 
 pub(crate) mod context;
 pub(crate) mod player;
-pub(crate) mod unit;
 pub(crate) mod world;
 
 use crate::GenieError;
 pub use crate::commands::game::GameCommand;
 pub use crate::commands::{Command, GatherPoint, Order};
 use crate::map::spatial::Spatial;
-use crate::masters::Masters;
 use crate::math::rng::Streams;
+use crate::objects::masters::Masters;
+use crate::objects::sprite::Graphic;
+pub(crate) use crate::objects::unit::EnterWorld;
+pub use crate::objects::unit::Unit;
+pub(crate) use crate::objects::unit::{PointMove, annexes_of, give_load};
 use crate::pathing::Pathing;
-use crate::sprite::Graphic;
 pub(crate) use crate::turn::player::NO_ATTRIBUTE;
 pub use crate::turn::player::{AiSettings, Formations, Player};
-pub(crate) use crate::turn::unit::EnterWorld;
-pub use crate::turn::unit::Unit;
-pub(crate) use crate::turn::unit::{PointMove, annexes_of, give_load};
 pub(crate) use crate::turn::world::{
     DEAD_COPY_TYPES, Releaser, World, built_death, combat_dies, count_class, drop_site_search,
     farm_bonus, forget_resource, refund_of, released, storage_leaves, victim_of,
@@ -162,7 +161,7 @@ pub(crate) const MONASTERIES: i16 = 52;
 pub(crate) const WONDERS: i16 = 42;
 pub(crate) const CASTLES: i16 = 134;
 /// The foundation terrain a building's death covers with terrain 1 (`FUN_1411dbb70`: `0x1c`).
-const RESTORED_FOUNDATION: i16 = 28;
+pub(crate) const RESTORED_FOUNDATION: i16 = 28;
 
 /// What every object of a player reads of all players while that player's objects update
 /// ([`Turns::player_frame`]).
@@ -187,7 +186,7 @@ pub(in crate::turn) struct PlayerFrame {
 /// ([`Unit::building_died`]): the count attribute it lowers, and its master with the master's
 /// technology.
 ///
-/// [`Unit::building_died`]: crate::turn::unit::Unit::building_died
+/// [`Unit::building_died`]: crate::objects::unit::Unit::building_died
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BuildingDeath {
     pub(crate) count: Option<i16>,
@@ -216,7 +215,7 @@ pub(crate) const PETARD: i16 = 440;
 pub(crate) const VILLAGER_CLASS: i16 = 4;
 /// The building masters `FUN_140fde180` counts as drop sites besides the drop-site table's:
 /// 562, 584 and 621 (`0x232` plus the bits of `0x800000000400001`), 68, 1808, 50, 1187 and 199.
-const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
+pub(crate) const DROP_SITE_MASTERS: [i16; 8] = [562, 584, 621, 68, 1808, 50, 1187, 199];
 /// A building's queue holds at most 15 units (`FUN_1411cbc40`).
 pub(crate) const QUEUE_LIMIT: usize = 15;
 /// A computer player's QUEUE fills a building's queue to at most 2 (`FUN_141614450`).
@@ -229,15 +228,15 @@ pub(crate) const ONE_UNIT_GAME: i32 = 0x10;
 pub(crate) const SEARCH_AGAIN: f32 = -10.0;
 /// `FUN_140ac4670`'s first argument when a hunt's target went on the walk to it, or its `MoveTo`
 /// failed (`DAT_142eb9430`): the hunt searches within this of its point.
-const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH_WITHIN;
+pub(crate) const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH_WITHIN;
 /// `FUN_140ac4670`'s second argument when a hunt's Attack failed (`DAT_14330ebb8`): the tree
 /// found counts within this of the unit.
-const TREE_NEAR: f32 = crate::math::image::hunt::TREE_NEAR;
+pub(crate) const TREE_NEAR: f32 = crate::math::image::hunt::TREE_NEAR;
 /// The notify "Action %d has been invalidated or requires a search." (0x202) with the action's
 /// value: a Build waiting without work posts it ([`BUILD_ACTION`]), a searching Hunt too.
 pub(crate) const SEARCH_NEEDED: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
-const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;
+pub(crate) const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;
 /// A building attacks with a firepower above this (`FUN_14120ea30`).
 pub(crate) const ARMED_FIREPOWER: f32 = crate::math::image::turn::ARMED_FIREPOWER;
 
@@ -283,8 +282,8 @@ pub struct Turns {
     pub graphics: std::collections::BTreeMap<i16, Graphic>,
     /// The game's drop-site table (`dropsites.json`).
     pub drop_sites: Vec<DropSite>,
-    /// The game's unit lines (`unitlines.json`, [`crate::lines`]); empty when not loaded.
-    pub lines: crate::lines::UnitLines,
+    /// The game's unit lines (`unitlines.json`, [`crate::objects::lines`]); empty when not loaded.
+    pub lines: crate::objects::lines::UnitLines,
     /// The game's linked technologies (`linkedTechs.json`, the table at the game settings'
     /// `+0x18` that `FUN_140f39f40` looks up), by technology; empty when not loaded.
     pub linked_techs: std::collections::BTreeMap<i16, crate::technology::Linked>,

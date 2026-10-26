@@ -11,7 +11,7 @@
 //! base one (`FUN_140a73fc0`), which lets no target go: the constructor leaves the base's target
 //! (`+0x20`, `+0x30`) unset and keeps the foundation's id at `+0x68` instead.
 
-use crate::masters::Task;
+use crate::objects::masters::Task;
 
 /// The action type (`+0x8`, 0x9a).
 pub const WAIT_SOLIDIFY: i16 = 0x9a;

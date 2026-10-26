@@ -1,7 +1,7 @@
 //! What the attribute setters share: the caps, the truncations, the sprite and class amounts,
 //! the damage sprites' and train locations' entries.
 
-use crate::masters::{DamageGraphic, TrainLocation, attribute};
+use crate::objects::masters::{DamageGraphic, TrainLocation, attribute};
 
 /// 32767.0 (`DAT_142eb69cc`): a capped add or multiply holds hit points and carry capacity
 /// below it.

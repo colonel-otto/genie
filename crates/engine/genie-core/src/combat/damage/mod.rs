@@ -169,7 +169,7 @@ pub struct Victim {
     pub master_hp: i16,
     /// Its master's tasks of action type 0xa0 ([`BONUS_DAMAGE`]), in their order: the damage its
     /// hits add by hit points ([`bonus_damage`]).
-    pub bonus_tasks: Vec<crate::masters::Task>,
+    pub bonus_tasks: Vec<crate::objects::masters::Task>,
     /// Its own attack (a retaliation's): its values as a hit's source and its master's weapons
     /// (class, amount).
     pub source: Attacker,

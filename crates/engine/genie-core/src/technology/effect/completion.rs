@@ -2,7 +2,7 @@
 //! it, a built building's technologies, the cost modifier and the disable and enable commands.
 
 use crate::GenieError;
-use crate::masters::master_type;
+use crate::objects::masters::master_type;
 use crate::technology::EffectCommand;
 use crate::technology::effect::{
     ATTRIBUTE_39, MODE_TESTED_MASTER, MODE_WITHOUT_0X26D, REENABLED_KIND, RESEARCH_SPENT,

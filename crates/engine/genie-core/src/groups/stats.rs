@@ -671,7 +671,7 @@ fn member_totals(
 
 /// Slot 0x230 of an object of `master`: a combat object's weapon range (`+0x828`,
 /// `FUN_14108d960`), any other's 0 (`FUN_14106ff50`).
-pub(crate) fn weapon_range(master: &crate::masters::Master) -> f32 {
+pub(crate) fn weapon_range(master: &crate::objects::masters::Master) -> f32 {
     if COMBAT_KINDS.contains(&master.kind) {
         master.weapon_range
     } else {
@@ -683,7 +683,7 @@ pub(crate) fn weapon_range(master: &crate::masters::Master) -> f32 {
 mod tests {
     use super::*;
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
-    use crate::masters::{Master, Masters};
+    use crate::objects::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
 
     /// Slot 0x238 (`FUN_14108d9b0`): the weapon range, plus `charge_event` for a ready charge of

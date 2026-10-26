@@ -228,7 +228,7 @@ impl Watch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lifecycle::{Class, Lifecycle, MasterData};
+    use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
     use crate::turn::{Command, Player, Turns};
     use std::fmt::Write;
     use std::sync::{Arc, Mutex};

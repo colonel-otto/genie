@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::garrison::{BUILDING_CLASS, CLASS_FLAGS, COMBAT_KIND, LEAST_HP_SHARE, TRANSPORTED};
-use crate::masters::Task;
+use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
 use crate::turn::{Turns, World};
 use crate::unit_ai::task_finder::Diplomacy;

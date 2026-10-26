@@ -2,9 +2,9 @@
 //! foundation, annexes and garrison, and the attributes and storage it moves.
 
 use crate::map::spatial::Spatial;
-use crate::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters};
+use crate::objects::unit::{LIVESTOCK, Unit};
 use crate::turn::player::Player;
-use crate::turn::unit::{LIVESTOCK, Unit};
 use crate::turn::world::count_class;
 use crate::turn::{BUILDING_KIND, Turns};
 use crate::unit_ai::{GenieError, OWNER_CHANGED};
@@ -86,7 +86,7 @@ impl Turns {
     ///
     /// # Errors
     ///
-    /// A building asleep ([`crate::turn::unit::HANDS_LEFT`]), and what the parts do not model.
+    /// A building asleep ([`crate::objects::unit::HANDS_LEFT`]), and what the parts do not model.
     pub(crate) fn building_changes_hands(
         &mut self,
         old: usize,
@@ -96,7 +96,7 @@ impl Turns {
     ) -> Result<(), GenieError> {
         self.annexes_change_hands(old, id, new)?;
         let Some(crate::orders::Place::Live(_, idx)) = self.place(id) else {
-            return Err(crate::turn::unit::HANDS_LEFT);
+            return Err(crate::objects::unit::HANDS_LEFT);
         };
         let u = &self.players[old].objects[idx];
         let master = match u.own_master.as_deref() {

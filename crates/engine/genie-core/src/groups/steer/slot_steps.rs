@@ -126,7 +126,7 @@ impl Turns {
         let to = g.current_formation.as_ref().expect("a formation").slots[slot].transform_position;
         let dt = self.dt_seconds;
         let (_, u) = self.object_mut(id).expect("the member is held");
-        let facets = u.sprite.map(|s| crate::facing::SpriteFacets {
+        let facets = u.sprite.map(|s| crate::objects::facing::SpriteFacets {
             count: s.graphic.facets,
             flag_1: s.graphic.flags & 2 != 0,
         });

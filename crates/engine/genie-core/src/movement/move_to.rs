@@ -353,12 +353,12 @@ pub struct MoveStep {
 /// mule cart's); any other's (`FUN_14106a6d0`) is 0. A `MoveTo` to a point (`FUN_140aa0d30`)
 /// keeps its range.
 #[must_use]
-pub fn object_range(range: f32, master: Option<&crate::masters::Master>) -> f32 {
+pub fn object_range(range: f32, master: Option<&crate::objects::masters::Master>) -> f32 {
     if range != 0.0 {
         return range;
     }
     let cart = master.is_some_and(|m| {
-        m.kind == crate::masters::master_type::BUILDING
+        m.kind == crate::objects::masters::master_type::BUILDING
             && m.tasks
                 .iter()
                 .any(|t| t.action_type == crate::construction::build::CART_TASK)
@@ -602,7 +602,7 @@ mod tests {
     /// stays.
     #[test]
     fn a_move_to_an_object_without_a_range_takes_a_mule_cart_s() {
-        use crate::masters::{Master, Task, master_type::BUILDING};
+        use crate::objects::masters::{Master, Task, master_type::BUILDING};
         let cart_task = Task {
             action_type: crate::construction::build::CART_TASK,
             ..Task::default()

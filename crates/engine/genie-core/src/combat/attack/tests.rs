@@ -360,7 +360,7 @@ fn soldier_mover(speed: f32) -> Mover {
             walk_speed: speed,
             stand_speed: speed,
             run_speed: speed,
-            facets: Some(crate::facing::SpriteFacets {
+            facets: Some(crate::objects::facing::SpriteFacets {
                 count: 8,
                 flag_1: true,
             }),
@@ -1263,11 +1263,11 @@ fn an_attack_walks_with_the_unit_s_running_or_walking_slot() {
         .into_iter()
         .map(|id| (id, g(id)))
         .collect();
-    let master = crate::masters::Master {
+    let master = crate::objects::masters::Master {
         move_sprite: 10,
         run_sprite: 11,
         attack_sprite: 12,
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
     let a = arms(&master, &graphics, [-1; 4], -1);
     assert_eq!(a.move_sprite.map(|s| s.id), Some(11));

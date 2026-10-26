@@ -279,7 +279,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-        task: &crate::masters::Task,
+        task: &crate::objects::masters::Task,
         notify: Option<([f32; 3], bool)>,
     ) -> Result<(), GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unsupported(

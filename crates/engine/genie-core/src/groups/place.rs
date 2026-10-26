@@ -427,12 +427,14 @@ mod tests {
                 ..crate::turn::Player::default()
             }],
         );
-        t.masters = vec![crate::masters::Masters::new([crate::masters::Master {
-            id: 4,
-            radius: [0.4, 0.4],
-            terrain_restriction: 0,
-            ..crate::masters::Master::default()
-        }])];
+        t.masters = vec![crate::objects::masters::Masters::new([
+            crate::objects::masters::Master {
+                id: 4,
+                radius: [0.4, 0.4],
+                terrain_restriction: 0,
+                ..crate::objects::masters::Master::default()
+            },
+        ])];
         t.spatial = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![1; 400]));
         let kind = TerrainKind {
             shown: true,

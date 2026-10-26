@@ -91,7 +91,7 @@ impl Mover {
     /// The facets of the unit's current sprite ([`Mover::sprite_facets`]), else its master's when
     /// every sprite it shows has the same.
     #[must_use]
-    pub fn facets(&self) -> Option<crate::facing::SpriteFacets> {
+    pub fn facets(&self) -> Option<crate::objects::facing::SpriteFacets> {
         self.sprite_facets.or(self.stats.facets)
     }
 
@@ -149,7 +149,7 @@ impl Mover {
     /// Slot 184 (`FUN_141163140`): the yaw by `turn` about the up axis: the forward vector turns
     /// and is renormalised, then takes its place with the up axis (slot 173,
     /// [`Mover::set_orientation`], which takes the forward vector's facet, `FUN_14119d0c0`); the
-    /// angle becomes the facet's (`FUN_14114d780`, [`crate::facing`]) of `facets`, the current
+    /// angle becomes the facet's (`FUN_14114d780`, [`crate::objects::facing`]) of `facets`, the current
     /// sprite's (the right vector the routine turns too, slot 173 rebuilds).
     ///
     /// # Errors
@@ -158,7 +158,7 @@ impl Mover {
     pub(crate) fn yaw(
         &mut self,
         turn: f32,
-        facets: Option<crate::facing::SpriteFacets>,
+        facets: Option<crate::objects::facing::SpriteFacets>,
     ) -> Result<(), GenieError> {
         let m = fmath::rotation(turn, UP);
         let forward = fmath::normalize(fmath::rotate(&m, self.forward));
@@ -166,8 +166,8 @@ impl Mover {
         let facets = facets.ok_or(GenieError::unsupported(
             "the yaw of a unit whose sprites differ in their facets",
         ))?;
-        let facet = crate::facing::facet_of_forward(forward, facets);
-        self.angle = crate::facing::angle_of_facet(facet, facets);
+        let facet = crate::objects::facing::facet_of_forward(forward, facets);
+        self.angle = crate::objects::facing::angle_of_facet(facet, facets);
         Ok(())
     }
 

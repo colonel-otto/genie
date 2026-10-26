@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::garrison::{
     COMBAT_KIND, NO_POINT, SIEGE_CLASS, SIEGE_UNLOAD, WHOLE_SHARE_CLASS, attack_rate, share,
 };
-use crate::masters::Master;
+use crate::objects::masters::Master;
 use crate::orders::{BUILDING, Work};
 use crate::turn::Turns;
 

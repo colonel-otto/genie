@@ -363,12 +363,12 @@ pub struct Master {
     pub placement: [i16; 4],
     /// The death sprite (`+0x480`, −1 for none) and the death spawns (`+0x5e4`, `+0x5e6`, −1 for
     /// none), and what a dead object's steps read of the master
-    /// ([`crate::lifecycle::MasterData`]), for a new object's [`crate::lifecycle::Lifecycle`].
+    /// ([`crate::objects::lifecycle::MasterData`]), for a new object's [`crate::objects::lifecycle::Lifecycle`].
     pub death_sprite: i16,
     /// The death spawns (`+0x5e4`, `+0x5e6`, −1 for none).
     pub death_spawns: [i16; 2],
     /// What a dead object's steps read of the master.
-    pub life: Option<crate::lifecycle::MasterData>,
+    pub life: Option<crate::objects::lifecycle::MasterData>,
     /// What a combat master's attack reads: its standing sprite (`+0x470`), its attack sprite
     /// (`+0x7f8`, `fight_sprite_id`), a second attack sprite
     /// (`+0x878`, the `.dat`'s `attack_graphic2`), `missile_id`, `fire_missile_at_frame`,

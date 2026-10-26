@@ -1,8 +1,8 @@
 //! The town bell, a kept attack, the garrison task and the work command and its task.
 
 use crate::gathering::hunt::{HUNT, HuntTask};
-use crate::masters::Master;
 use crate::math::rng::Stream;
+use crate::objects::masters::Master;
 use crate::orders::{
     ATTACK_TASK, BUILDING, GARRISON, MASTER_84, MASTER_1808, VILLAGER, Work, own_order_target,
 };
@@ -205,7 +205,7 @@ impl Turns {
         &mut self,
         player: usize,
         idx: usize,
-        task: &crate::masters::Task,
+        task: &crate::objects::masters::Task,
     ) -> Result<(), GenieError> {
         let food = |k: i16| k == 0 || (15..=17).contains(&k);
         let class = self
@@ -231,7 +231,7 @@ impl Turns {
     }
 
     /// The work command (slot 37, `FUN_14106ff70`) of a unit on a target object: the master and
-    /// task of [`crate::masters::Masters::work_master`] (the master changes, slot 0x90), the task's
+    /// task of [`crate::objects::masters::Masters::work_master`] (the master changes, slot 0x90), the task's
     /// requirement, then the task's action from the action list's factory (slot 0x10), the unit
     /// AI's notify (slot 0x828) and the install (slot 0x808).
     pub(super) fn work_command(
@@ -534,7 +534,7 @@ impl Turns {
         target: i32,
         filter: i16,
         change: bool,
-    ) -> Result<Option<crate::masters::Task>, GenieError> {
+    ) -> Result<Option<crate::objects::masters::Task>, GenieError> {
         let unit = &self.players[player].objects[idx];
         let own = self.master_of(player, unit.life.master_id)?;
         let owner = &self.players[player];
@@ -562,7 +562,7 @@ impl Turns {
                 filter,
                 &world,
             )
-            .map(Option::<&crate::masters::Task>::copied)
+            .map(Option::<&crate::objects::masters::Task>::copied)
         };
         if let Some(task) = find(own, filter)? {
             return Ok(Some(task));

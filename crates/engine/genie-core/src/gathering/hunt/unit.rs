@@ -3,7 +3,7 @@
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
-use crate::turn::unit::Unit;
+use crate::objects::unit::Unit;
 use crate::turn::world::herded;
 use crate::turn::{SEARCH_AGAIN, SEARCH_NEEDED};
 use crate::unit_ai::world_view::{Context, DropWorld};

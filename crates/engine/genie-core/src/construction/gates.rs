@@ -73,7 +73,7 @@ pub(crate) fn gate_units(
 
 impl Turns {
     /// Player `q`'s gate list (`+0x1360`, `FUN_141616200` adds to its front): its live objects
-    /// of class 39 whose master transforms ([`crate::masters::BuildingMaster::transform_unit`]),
+    /// of class 39 whose master transforms ([`crate::objects::masters::BuildingMaster::transform_unit`]),
     /// newest first.
     pub(crate) fn gate_list(&self, q: usize) -> Vec<usize> {
         let masters = self.masters.get(q);

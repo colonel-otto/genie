@@ -6,7 +6,7 @@
 //! the Hunt action ([`crate::gathering::hunt`]); other actions, orders to points and unit groups are not
 //! modelled yet.
 
-use crate::masters::Master;
+use crate::objects::masters::Master;
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::TaskTarget;

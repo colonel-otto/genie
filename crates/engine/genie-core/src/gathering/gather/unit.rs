@@ -3,7 +3,7 @@
 use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
-use crate::turn::unit::{Unit, second_target_checked};
+use crate::objects::unit::{Unit, second_target_checked};
 use crate::turn::world::state_of;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::world_view::{Context, DropWorld};

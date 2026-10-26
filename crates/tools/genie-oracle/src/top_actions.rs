@@ -20,9 +20,9 @@ pub(super) fn saved_actions(
     s: &RgeStaticObject,
     objects: &PlayerObjects,
     work: impl Fn(i16) -> Result<genie_core::construction::build::BuildTask, GenieError>,
-    fly_task: impl Fn(i16) -> Result<genie_core::masters::Task, GenieError>,
-    task_at: impl Fn(i16, i16) -> Result<genie_core::masters::Task, GenieError>,
-    graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
+    fly_task: impl Fn(i16) -> Result<genie_core::objects::masters::Task, GenieError>,
+    task_at: impl Fn(i16, i16) -> Result<genie_core::objects::masters::Task, GenieError>,
+    graphics: Option<&std::collections::BTreeMap<i16, genie_core::objects::sprite::Graphic>>,
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
     use genie_core::construction::build::{BUILD, BuildAction, MoveTo};

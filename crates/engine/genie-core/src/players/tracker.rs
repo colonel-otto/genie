@@ -31,8 +31,8 @@
 //! a key it lacks: `FUN_14104dd80`, `FUN_141050ae0`), a class's `FUN_14104f8f0`, the lists'
 //! erase `FUN_140a63bd0` (order kept).
 
-use crate::lines::UnitLines;
-use crate::masters::Masters;
+use crate::objects::lines::UnitLines;
+use crate::objects::masters::Masters;
 
 /// A pending key is its done key + this (a master's + 90000, a class's + 90900).
 pub const PENDING: i32 = 90_000;
@@ -397,8 +397,8 @@ impl crate::turn::Turns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lines::UnitLine;
-    use crate::masters::{BuildingMaster, Master};
+    use crate::objects::lines::UnitLine;
+    use crate::objects::masters::{BuildingMaster, Master};
 
     fn building(id: i16, class: i16, stack: i16, head: i16, annex: i16) -> Master {
         Master {

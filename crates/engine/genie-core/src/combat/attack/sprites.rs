@@ -4,7 +4,7 @@ use crate::GenieError;
 use crate::combat::attack::{Arms, RELOAD_MS, Strike};
 use crate::math::rng::Well512;
 use crate::movement::Mover;
-use crate::sprite::{ActiveSprite, Graphic};
+use crate::objects::sprite::{ActiveSprite, Graphic};
 
 /// The sprites a swing of a unit (its terrain look `look`, its master `master`) takes before its
 /// Attack's own ([`SwingSprites`]): its look's attack sprite while it shows its look, its
@@ -12,7 +12,7 @@ use crate::sprite::{ActiveSprite, Graphic};
 #[must_use]
 pub fn swing_sprites(
     look: Option<&crate::combat::abilities::Look>,
-    master: &crate::masters::Master,
+    master: &crate::objects::masters::Master,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
 ) -> SwingSprites {
     let g = |id: i16| (0 <= id).then(|| graphics.get(&id).copied()).flatten();
@@ -51,7 +51,10 @@ pub(super) fn set_attack_timer(s: &mut Strike<'_>, t: f32) {
 
 /// `FUN_14120c0a0`'s test of `master`: it has a volley missile or a charge projectile its player
 /// has (`masters`), so its hits go through its volley even without a missile.
-pub(crate) fn volleys(master: &crate::masters::Master, masters: &crate::masters::Masters) -> bool {
+pub(crate) fn volleys(
+    master: &crate::objects::masters::Master,
+    masters: &crate::objects::masters::Masters,
+) -> bool {
     let has = |id: Option<i16>| id.and_then(|id| masters.get(id)).is_some();
     has(master.volley_missile) || has(master.charge_projectile)
 }
@@ -97,8 +100,8 @@ pub(crate) fn set_sprite(sprite: &mut Option<ActiveSprite>, g: Graphic, rng: &mu
 }
 
 /// `FUN_141162db0`: the unit at `at` turns to face `to` with its sprites' facets, at once for a
-/// unit without a turn time ([`crate::facing::face`]), else a facet a turn time
-/// ([`crate::facing::turn_toward`] by the world time); returns whether it faces. The facets are
+/// unit without a turn time ([`crate::objects::facing::face`]), else a facet a turn time
+/// ([`crate::objects::facing::turn_toward`] by the world time); returns whether it faces. The facets are
 /// its current sprite's ([`Mover::facets`]).
 pub(crate) fn face_target(
     mover: &mut Mover,
@@ -111,10 +114,10 @@ pub(crate) fn face_target(
     ))?;
     let (at, to) = ([at[0], at[1]], [to[0], to[1]]);
     if mover.stats.turn_time == 0.0 {
-        mover.angle = crate::facing::face(at, mover.angle, to, Some(facets));
+        mover.angle = crate::objects::facing::face(at, mover.angle, to, Some(facets));
         return Ok(true);
     }
-    let (angle, last, faces) = crate::facing::turn_toward(
+    let (angle, last, faces) = crate::objects::facing::turn_toward(
         at,
         mover.angle,
         to,

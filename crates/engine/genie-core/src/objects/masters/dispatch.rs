@@ -1,7 +1,7 @@
 //! The attribute setters by master type (slots 0x18, 0x20 and 0x28), the master copy (slot 8),
 //! the loader's defaults and the selected entries.
 
-use crate::masters::{
+use crate::objects::masters::{
     AttributeWorld, DamageGraphic, Master, TrainLocation, attribute, master_type,
 };
 
@@ -90,7 +90,7 @@ impl Master {
     /// from the default. None when the master holds it.
     #[must_use]
     pub fn unloaded_for(&self, attribute: u8) -> Option<&'static str> {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         let moving = self.moving.as_ref();
         match attribute {
             a::MOVEMENT_SPEED | a::STANDING_GRAPHIC | a::WALKING_GRAPHIC | a::RUNNING_GRAPHIC

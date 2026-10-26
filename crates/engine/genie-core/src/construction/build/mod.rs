@@ -11,11 +11,11 @@
 //! and ends the builder's work (state 224); a builder whose unit AI holds queued orders then lets
 //! the Build end (state 1) and the AI runs its queue.
 
-use crate::lifecycle::Lifecycle;
 use crate::map::spatial::Obstruction;
-use crate::masters::Master;
 use crate::movement::move_to::MoveWait;
 pub use crate::movement::move_to::{MoveTo, Walk};
+use crate::objects::lifecycle::Lifecycle;
+use crate::objects::masters::Master;
 use crate::unit_ai::{GenieError, UnitAi};
 
 mod clearing;
@@ -246,7 +246,7 @@ pub struct Completion<'a> {
     /// ([`Completion::first_part`]).
     pub farm_bonus: [f32; 3],
     /// The owner's masters, whose table `FUN_141659d20` reads.
-    pub masters: Option<&'a crate::masters::Masters>,
+    pub masters: Option<&'a crate::objects::masters::Masters>,
     /// The owner is a computer player (`FUN_141659cf0`).
     pub computer: bool,
     /// The building has a unit AI (`+0x6b0`): a mule cart's.
@@ -402,10 +402,10 @@ pub struct StackUnit {
 /// 0x28 (`FUN_1413ba880`) sets that sprite's node to the frame its BUILD command chose
 /// (`+0xc54`, [`crate::turn::Unit::build_frame`]; slot 9 with it, [`ActiveSprite::set_frame`]).
 pub(crate) fn show_built(
-    sprite: &mut Option<crate::sprite::ActiveSprite>,
+    sprite: &mut Option<crate::objects::sprite::ActiveSprite>,
     master: &Master,
     frame: u8,
-    graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+    graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     sprite_rng: &mut crate::math::rng::Well512,
 ) {
     let standing = (0 <= master.standing_sprite)
@@ -422,7 +422,7 @@ pub(crate) fn show_built(
 #[cfg(test)]
 mod built_sprite_tests {
     use super::*;
-    use crate::sprite::{ActiveSprite, Graphic};
+    use crate::objects::sprite::{ActiveSprite, Graphic};
 
     /// The completion's sprite (`FUN_1411dbb70`): the foundation's construction sprite gives way
     /// to the master's standing one (slot 0x68), whose node takes the BUILD command's frame
@@ -661,9 +661,9 @@ const BUILD_ORDER: i32 = crate::unit_ai::ai_kinds::ORDER_BUILD;
 #[cfg(test)]
 mod stack_tests {
     use super::*;
-    use crate::lifecycle::{Class, Lifecycle};
     use crate::map::spatial::{Placed, Tiles};
-    use crate::masters::{BuildingMaster, Masters};
+    use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::{BuildingMaster, Masters};
     use crate::turn::{Player, Turns, Unit};
 
     /// A building master of `id`: class 3, radius `r`, height `z`, obstruction `kind`, train

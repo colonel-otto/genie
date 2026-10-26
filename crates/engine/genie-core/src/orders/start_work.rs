@@ -73,7 +73,7 @@ impl Turns {
             let unit = &self.players[p].objects[i];
             let master = self.master_of(p, unit.life.master_id)?;
             let class = master.class;
-            let building = master.kind == crate::masters::master_type::BUILDING;
+            let building = master.kind == crate::objects::masters::master_type::BUILDING;
             let cart_task = building
                 && self.has_task(
                     p,

@@ -4,7 +4,7 @@
 //! for every party, and what they reach: the player's attribute modifier (slots 0x150, 0x158,
 //! 0x160 -> slot 0x148, `FUN_1416121b0`: the hooks `FUN_141614f40` around `FUN_14165a000`, the
 //! objects' slots 0x78, 0x80, 0x88 and the masters' 0x18, 0x20, 0x28 of
-//! [`crate::masters`]), the resource commands (slots 0x1b0, 0x1b8, the player's attribute set
+//! [`crate::objects::masters`]), the resource commands (slots 0x1b0, 0x1b8, the player's attribute set
 //! and add), the technology changes (`'e'`, `'f'`, `'g'`, kind 8), the enables, upgrades,
 //! spawns and cost entries. The objects' parts an upgrade, a spawn and the objects' own masters
 //! need are the objects' routines, which this file leaves to them.

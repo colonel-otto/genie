@@ -120,7 +120,7 @@ fn a_stop_idles_the_gather_and_lets_its_targets_go() {
         walk_to: Some([5.0, 6.0, 0.0]),
         ..GatherAction::new(task(), &farm(), false, rate()).unwrap()
     };
-    let stand = crate::sprite::Graphic {
+    let stand = crate::objects::sprite::Graphic {
         id: 4,
         frames: 1,
         facets: 1,
@@ -441,7 +441,7 @@ fn a_gatherer_turning_over_time_faces_its_target_later() {
     };
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.stats.turn_time = 1.0;
-    mover.stats.facets = Some(crate::facing::SpriteFacets {
+    mover.stats.facets = Some(crate::objects::facing::SpriteFacets {
         count: 16,
         flag_1: true,
     });
@@ -706,7 +706,7 @@ fn a_gatherer_walks_to_its_target_and_faces_it_on_arrival() {
 /// gives way to the task's, and the unit shows its working sprite.
 #[test]
 fn a_gatherer_facing_its_target_works_it() {
-    let working = crate::sprite::Graphic {
+    let working = crate::objects::sprite::Graphic {
         id: 7,
         frames: 10,
         facets: 8,

@@ -868,7 +868,7 @@ fn a_building_master_s_setters_fall_back_on_the_combat_master_s() {
 /// speeds by its sprites' factors, its turn time and its facets.
 #[test]
 fn a_moving_master_s_derived_values_follow_its_attributes() {
-    let graphic = |id, speed_multiplier, facets| crate::sprite::Graphic {
+    let graphic = |id, speed_multiplier, facets| crate::objects::sprite::Graphic {
         id,
         frames: 10,
         facets,
@@ -930,7 +930,7 @@ fn a_moving_master_s_derived_values_follow_its_attributes() {
     m.follow(attribute::RUNNING_GRAPHIC, &graphics, None);
     assert_eq!(
         m.moving.unwrap().facets,
-        Some(crate::facing::SpriteFacets {
+        Some(crate::objects::facing::SpriteFacets {
             count: 8,
             flag_1: false
         })

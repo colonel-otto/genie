@@ -30,21 +30,21 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
             },
         ],
     );
-    let tree = crate::masters::Master {
+    let tree = crate::objects::masters::Master {
         id: 349,
         class: 15,
         radius: [0.5, 0.5],
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
-    let villager = crate::masters::Master {
+    let villager = crate::objects::masters::Master {
         id: 83,
         class: 4,
         line_of_sight: 4.0,
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
     t.masters = vec![
-        crate::masters::Masters::new([tree.clone()]),
-        crate::masters::Masters::new([villager, tree]),
+        crate::objects::masters::Masters::new([tree.clone()]),
+        crate::objects::masters::Masters::new([villager, tree]),
     ];
     let g = GatherPoint {
         point: [21.0, 21.0, 0.0],

@@ -1,5 +1,5 @@
 use super::*;
-use crate::masters::{BuildingMaster, Master, Masters};
+use crate::objects::masters::{BuildingMaster, Master, Masters};
 use crate::players::game_status::{LOST, PLAYING};
 use crate::players::tracker::Key;
 use crate::turn::{Player, Unit};

@@ -20,7 +20,7 @@
 //!   hears of it (its slot 0x2e8 with 0x201); one left below 1 hit point has 0.
 //! - 159 ([`TERRAIN_LOOK`]): the object takes the task's look while it stands on a terrain of
 //!   the task's ([`terrain_mask`]): its own sprites (`+0x8a9` set, `+0x960`..`+0x988`, [`Look`]),
-//!   which its sprite slots then show ([`crate::sprite::standing`] and the others), its walk's
+//!   which its sprite slots then show ([`crate::objects::sprite::standing`] and the others), its walk's
 //!   distance factor (`+0x878`, the task's `work_val1`) and its attack timer's rate (`+0x87c`,
 //!   its `work_val2`); off it, its master's and 1.
 //! - 161 ([`REMOVAL_REWARD`], `FUN_14120b5f0`): a dead object that leaves its list issues its
@@ -34,8 +34,8 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::masters::Task;
 use crate::math::fmath;
+use crate::objects::masters::Task;
 use crate::turn::Turns;
 
 mod generation;

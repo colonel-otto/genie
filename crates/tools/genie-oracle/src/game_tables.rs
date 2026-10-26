@@ -43,13 +43,13 @@ impl std::error::Error for UnitLinesError {}
 /// The game's unit lines (`resources/_common/dat/unitlines.json`) as `FUN_140fde680` reads each
 /// entry of `UnitLines`: `LineID` (an int), `IDChain` (an array of ints), `Building` (a bool,
 /// false when absent) and `Identifier` (a string or an array of strings). A key an entry leaves
-/// out stays out ([`genie_core::lines::UnitLines::build`] skips the entry); a file without
+/// out stays out ([`genie_core::objects::lines::UnitLines::build`] skips the entry); a file without
 /// `UnitLines` holds none.
 ///
 /// # Errors
 ///
 /// A file that is not JSON, or a value of another kind than the game reads.
-pub fn unit_lines(json: &str) -> Result<Vec<genie_core::lines::UnitLine>, UnitLinesError> {
+pub fn unit_lines(json: &str) -> Result<Vec<genie_core::objects::lines::UnitLine>, UnitLinesError> {
     let v: serde_json::Value = serde_json::from_str(json).map_err(UnitLinesError::Json)?;
     let Some(entries) = v.get("UnitLines").and_then(serde_json::Value::as_array) else {
         return Ok(Vec::new());
@@ -91,7 +91,7 @@ pub fn unit_lines(json: &str) -> Result<Vec<genie_core::lines::UnitLine>, UnitLi
                     .collect::<Result<Vec<_>, _>>()?,
                 Some(name) => vec![text(i, name)?],
             };
-            Ok(genie_core::lines::UnitLine {
+            Ok(genie_core::objects::lines::UnitLine {
                 line,
                 chain,
                 building,

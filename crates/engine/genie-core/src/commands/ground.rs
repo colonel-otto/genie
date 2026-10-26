@@ -2,7 +2,7 @@
 //! clearing and its place.
 
 use crate::map::spatial::Placed;
-use crate::masters::Master;
+use crate::objects::masters::Master;
 use crate::turn::Turns;
 use crate::turn::world::clear_look_of;
 use crate::unit_ai::{GenieError, Notify};

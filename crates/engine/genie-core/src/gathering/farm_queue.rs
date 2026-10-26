@@ -166,7 +166,7 @@ impl Turns {
             return false;
         };
         let mut base = m.base_id;
-        if based.kind == crate::masters::master_type::BUILDING
+        if based.kind == crate::objects::masters::master_type::BUILDING
             && let Some(head) = based.building.as_ref().map(|b| b.head_unit)
             && head != -1
         {
@@ -256,7 +256,7 @@ impl Turns {
             if self
                 .object(gather.target)
                 .and_then(|(q, t)| self.master_of(q, t.life.master_id).ok())
-                .is_some_and(|m| m.kind == crate::masters::master_type::BUILDING)
+                .is_some_and(|m| m.kind == crate::objects::masters::master_type::BUILDING)
             {
                 let mut k = 0;
                 while k < own.len() {
@@ -368,7 +368,7 @@ impl Turns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::masters::{Master, Masters, master_type};
+    use crate::objects::masters::{Master, Masters, master_type};
     use crate::turn::Player;
 
     /// A master of type 70 costing `cost` (attribute, amount, paid).
@@ -458,11 +458,11 @@ mod tests {
             class,
             base_id: base,
             available,
-            building: Some(crate::masters::BuildingMaster {
+            building: Some(crate::objects::masters::BuildingMaster {
                 head_unit: head,
                 stack_unit: -1,
                 annexes: [-1; 4],
-                ..crate::masters::BuildingMaster::default()
+                ..crate::objects::masters::BuildingMaster::default()
             }),
             ..Master::default()
         }

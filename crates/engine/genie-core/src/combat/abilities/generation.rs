@@ -3,7 +3,7 @@
 use crate::combat::abilities::{
     BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, WORKING, WORKING_ACTIONS,
 };
-use crate::masters::Task;
+use crate::objects::masters::Task;
 use crate::turn::Turns;
 use crate::{GenieError, math::fmath};
 

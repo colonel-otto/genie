@@ -41,7 +41,7 @@ impl Turns {
             pathing: Pathing::default(),
             graphics: std::collections::BTreeMap::default(),
             drop_sites: Vec::new(),
-            lines: crate::lines::UnitLines::default(),
+            lines: crate::objects::lines::UnitLines::default(),
             linked_techs: std::collections::BTreeMap::new(),
             settings: crate::settings::Settings::default(),
             start_work_due: false,

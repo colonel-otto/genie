@@ -1,8 +1,8 @@
 //! A unit's move, to a point or aside, a work order, its reach and a point's move order.
 
 use crate::combat::attack::gaps;
-use crate::masters::Master;
 use crate::math::rng::Stream;
+use crate::objects::masters::Master;
 use crate::orders::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,

@@ -9,7 +9,7 @@ use crate::combat::attack::{
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{Goal, MoveTo, Walk};
-use crate::sprite::ActiveSprite;
+use crate::objects::sprite::ActiveSprite;
 
 impl Attack {
     /// The update of an Attack whose target is gone (its target −1 after [`Attack::lost`]): the

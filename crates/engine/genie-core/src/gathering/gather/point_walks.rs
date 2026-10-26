@@ -11,7 +11,7 @@ use crate::gathering::gather::{
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, MoveWait, Walk};
-use crate::sprite::ActiveSprite;
+use crate::objects::sprite::ActiveSprite;
 
 /// Whether a gatherer of `master` whose Gather has the target class `target_type` waits for
 /// another farm where another would search (`set_state(0xf3)`, `0x140a8e1d0`): the farmers'
@@ -228,7 +228,7 @@ impl GatherAction {
         arrived: bool,
         computer: bool,
         mover: Option<&mut Mover>,
-        stand: Option<crate::sprite::Graphic>,
+        stand: Option<crate::objects::sprite::Graphic>,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
     ) -> Result<[i32; 2], GenieError> {
@@ -277,7 +277,10 @@ impl GatherAction {
 
     /// The sprite the gatherer stands with (`FUN_140a8b6b0`): the task's carrying sprite while
     /// it carries at least 1 of the task's resource, else its master's standing sprite.
-    pub(super) const fn stand_sprite(&self, g: &Gatherer<'_>) -> Option<crate::sprite::Graphic> {
+    pub(super) const fn stand_sprite(
+        &self,
+        g: &Gatherer<'_>,
+    ) -> Option<crate::objects::sprite::Graphic> {
         let r = self.task.resource;
         match g.sprites.carrying {
             Some(c) if r != -1 && *g.held_kind == r && 1 <= *g.held as i32 => Some(c),

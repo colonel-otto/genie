@@ -6,7 +6,7 @@ use crate::garrison::{
     ENTER, ENTER_ACTION, ENTER_ORDER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, NO_MASTERS,
     UNPLACED, UNREACHED, Walking, enter_view, ship_reaches,
 };
-use crate::masters::Task;
+use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
 use crate::turn::Turns;
 

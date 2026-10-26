@@ -6,7 +6,7 @@ use crate::combat::damage::Victim;
 use crate::construction::build::Walk;
 use crate::map::spatial::Placed;
 use crate::movement::{Me, footprint_gap_squared};
-use crate::turn::unit::Unit;
+use crate::objects::unit::Unit;
 use crate::turn::world::{
     Releaser, SideWorld, task_search, task_target_with, victim_in, victim_of,
 };
@@ -53,7 +53,7 @@ impl UnitView<'_> {
         &self,
         owner: usize,
         u: &Unit,
-        m: &crate::masters::Master,
+        m: &crate::objects::masters::Master,
         attacker: i32,
     ) -> Result<bool, GenieError> {
         let (others, foreign, player) = (self.others, self.foreign, self.player);
@@ -135,7 +135,7 @@ impl UnitView<'_> {
         &mut self,
         target: i32,
         t: &Placed,
-        master: &crate::masters::Master,
+        master: &crate::objects::masters::Master,
         ai: &UnitAi,
     ) -> Result<(), GenieError> {
         let mark = |id: i32, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
@@ -239,7 +239,7 @@ impl UnitView<'_> {
     pub(super) fn ready_at_start(
         &mut self,
         attack: &mut crate::combat::attack::Attack,
-        master: &crate::masters::Master,
+        master: &crate::objects::masters::Master,
         ai: &UnitAi,
     ) -> Result<Vec<(i32, [i32; 3])>, GenieError> {
         let mut victim = self
@@ -296,7 +296,7 @@ impl UnitView<'_> {
             ai_order: Some(ai.current_order),
             ai_type: Some(ai.ai_type),
             computer: self.computer,
-            armed: crate::turn::unit::armed(master, unit.firepower),
+            armed: crate::objects::unit::armed(master, unit.firepower),
             volley_under_way: unit.next_volley != 0,
             let_go: None,
             forgets: false,
@@ -326,8 +326,8 @@ impl<'u> UnitView<'u> {
     /// What the teardowns and the switch do not model.
     pub(super) fn switch_unit_master(
         &mut self,
-        own: &crate::masters::Master,
-        next: &crate::masters::Master,
+        own: &crate::objects::masters::Master,
+        next: &crate::objects::masters::Master,
     ) -> Result<(), GenieError> {
         let unit = &mut *self.unit;
         let by = Releaser {
@@ -360,7 +360,7 @@ impl<'u> UnitView<'u> {
     pub(super) fn target_visible(
         &self,
         t: &Placed,
-        t_master: &crate::masters::Master,
+        t_master: &crate::objects::masters::Master,
     ) -> Result<bool, GenieError> {
         let (tx, ty) = (t.position[0] as i32, t.position[1] as i32);
         Ok(self.spatial.sees_tile(self.player, tx, ty)
@@ -372,8 +372,8 @@ impl<'u> UnitView<'u> {
     /// when the player has it.
     pub(super) fn villager_swap(
         &self,
-        master: &crate::masters::Master,
-    ) -> Option<&'u crate::masters::Master> {
+        master: &crate::objects::masters::Master,
+    ) -> Option<&'u crate::objects::masters::Master> {
         if master.class != 4 {
             return None;
         }

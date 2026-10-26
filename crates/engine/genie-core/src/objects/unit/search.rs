@@ -1,10 +1,10 @@
 //! The searches for more work and for resources, and the objects its unit AI names.
 
 use crate::map::spatial::Spatial;
-use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
-use crate::turn::unit::Unit;
+use crate::objects::masters::Master;
+use crate::objects::unit::Unit;
 use crate::turn::world::{Releaser, ResourceWorld, closest_resource_of};
 use crate::unit_ai::world_view::{Context, OwnerView};
 use crate::unit_ai::{GenieError, Notify};
@@ -21,7 +21,7 @@ impl Unit {
     /// [`crate::gathering::gather_search::closest_resource`]) names the target, the found object when it
     /// names none, and slot 0x7e8 works it at its place (the work flag 1 only logged, any task,
     /// no carried-resource test, `+0xa14` as it stands outside slot 0x128: 1; the caller's).
-    pub(in crate::turn) fn more_work(
+    pub(crate) fn more_work(
         &self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -158,7 +158,7 @@ impl Unit {
     /// farther than it from the unit (the same 3D distance) does not count. The hunt takes it
     /// (slot 0x48: [`crate::gathering::hunt::HuntAction::retarget`], the new target taken). True when it
     /// found one.
-    pub(in crate::turn) fn hunt_tree_search(
+    pub(crate) fn hunt_tree_search(
         &mut self,
         c: &mut Context<'_>,
         others: &[Self],
@@ -296,7 +296,7 @@ impl Unit {
     /// [`crate::gathering::gather_search::closest_resource_at`]): the site's place, its master's radii and
     /// line of sight, and whether the search starts from its footprint (the site's tile in the
     /// unit's zone of its restriction, or a dock: masters 45 and 2172, `0x140c49d17`).
-    pub(in crate::turn) fn resource_search_from(
+    pub(crate) fn resource_search_from(
         &self,
         c: &mut Context<'_>,
         others: &[Self],

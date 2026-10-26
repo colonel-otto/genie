@@ -3,14 +3,14 @@
 use crate::commands::GatherPoint;
 use crate::construction::build::{BuildAction, Construction};
 use crate::gathering::hunt::{HuntAction, HuntSprites};
-use crate::lifecycle::Lifecycle;
-use crate::masters::Master;
 use crate::movement::Mover;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::lifecycle::Lifecycle;
+use crate::objects::masters::Master;
+use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::ownership::artifact::Artifact;
 use crate::production::Production;
-use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::{Gate, WONDER};
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{GenieError, UnitAi};
@@ -26,14 +26,12 @@ pub(crate) use self::owner::PaidAttributes;
 pub(crate) use self::owner::PointMove;
 pub(crate) use self::owner::{Captured, HANDS_LEFT, LIVESTOCK, POPULATION, Step};
 pub(crate) use crate::combat::volley::{Aimed, armed, same_members};
-pub(in crate::turn) use crate::construction::building_update::blasts_at_death;
+pub(crate) use crate::construction::building_update::blasts_at_death;
 #[cfg(test)]
-pub(in crate::turn) use crate::construction::building_update::{
-    farm_stage_terrain, regeneration_rate,
-};
+pub(crate) use crate::construction::building_update::{farm_stage_terrain, regeneration_rate};
 pub(crate) use crate::garrison::unit::EnterWorld;
 pub(crate) use crate::gathering::gather::unit::give_load;
-pub(in crate::turn) use crate::unit_ai::unit::AiResume;
+pub(crate) use crate::unit_ai::unit::AiResume;
 
 /// A dying sprite the `.dat` does not have.
 const NO_DYING_SPRITE: GenieError =
@@ -213,7 +211,7 @@ pub struct Unit {
     pub default_task: Option<GenieError>,
     /// The Fly task its master's default task starts once its action list is empty (a bird at
     /// a game's start, before its first update).
-    pub default_fly: Option<crate::masters::Task>,
+    pub default_fly: Option<crate::objects::masters::Task>,
     /// Its master's default task is a Make, which starts once its action list is empty in
     /// state 2 (a farm or fish trap before its first update as a built building), with the task
     /// its master holds then.
@@ -264,7 +262,7 @@ pub struct Unit {
 }
 
 /// The sprite a hunt's walk shows ([`crate::gathering::hunt::walk_sprite`]) from its task's sprites.
-pub(in crate::turn) fn hunt_walk_sprite(
+pub(crate) fn hunt_walk_sprite(
     hunt: &HuntAction,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
     life: &Lifecycle,
@@ -318,7 +316,7 @@ pub(crate) const fn second_target_checked(
 
 /// `RGE_Action_Object::update` (`0x14106ac90`): the action list of an object past state 2 goes
 /// (`FUN_140a98620`), the Wonder's (master 276, `0x61b0` raw) only past state 5.
-pub(in crate::turn) const fn loses_actions(life: &Lifecycle) -> bool {
+pub(crate) const fn loses_actions(life: &Lifecycle) -> bool {
     let last = if life.master_id == WONDER { 5 } else { 2 };
     last < life.state
 }

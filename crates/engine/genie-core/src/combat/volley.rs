@@ -1,14 +1,14 @@
 //! A unit's strikes back and its volleys: the missiles it fires and launches.
 
 use crate::combat::damage::Victim;
-use crate::lifecycle::{Class, Lifecycle};
 use crate::map::spatial::Placed;
-use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
-use crate::sprite::ActiveSprite;
+use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::masters::Master;
+use crate::objects::sprite::ActiveSprite;
+use crate::objects::unit::Unit;
 use crate::turn::ARMED_FIREPOWER;
-use crate::turn::unit::Unit;
 use crate::turn::world::Releaser;
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{ACTION_EXECUTED, GenieError, Notify};
@@ -350,14 +350,14 @@ impl Unit {
                 let _ = c.streams.get(Stream::Object).rand15();
             }
         }
-        let facets = standing.map(|g| crate::facing::SpriteFacets {
+        let facets = standing.map(|g| crate::objects::facing::SpriteFacets {
             count: g.facets,
             flag_1: g.flags & 2 != 0,
         });
         let mut angle = 0.0;
-        if let Some(f) = facets.filter(|_| crate::facing::draws_angle(facets)) {
+        if let Some(f) = facets.filter(|_| crate::objects::facing::draws_angle(facets)) {
             let r = c.streams.get(Stream::Object).rand15();
-            angle = crate::facing::drawn_angle(r, f);
+            angle = crate::objects::facing::drawn_angle(r, f);
         }
         let mut mover = Mover {
             forward: [1.0, 0.0, 0.0],

@@ -432,7 +432,7 @@ impl Turns {
     }
 
     /// The update's milliseconds (`world+0x7c`), of which [`Turns::dt_seconds`] (`world+0x164`)
-    /// is [`crate::lifecycle::seconds`]: the round trip gives the milliseconds back exactly for
+    /// is [`crate::objects::lifecycle::seconds`]: the round trip gives the milliseconds back exactly for
     /// any update below 2^22 of them.
     pub(super) fn dt_ms(&self) -> u32 {
         (self.dt_seconds * 1000.0).round() as u32

@@ -3,17 +3,17 @@
 use crate::combat::attack::Strike;
 use crate::construction::build::{Builder, Completion, Site};
 use crate::gathering::hunt::{Gatherer, HuntSprites};
-use crate::lifecycle::Class;
 use crate::map::spatial::Spatial;
-use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, Mover, footprint_gap_squared};
-use crate::ownership::artifact::{Artifact, Handover};
-use crate::turn::unit::{
+use crate::objects::lifecycle::Class;
+use crate::objects::masters::Master;
+use crate::objects::unit::{
     AiResume, Aimed, Captured, Step, Unit, armed, give_load, hunt_walk_sprite, loses_actions,
     second_target_checked,
 };
+use crate::ownership::artifact::{Artifact, Handover};
 use crate::turn::world::{
     clear_look_of, farm_bonus, forget_resource, nearest_drop_site, release_own, state_of,
     victim_of, wait_progress,
@@ -29,7 +29,7 @@ use crate::unit_ai::{
 };
 
 impl Unit {
-    pub(in crate::turn) fn update(
+    pub(crate) fn update(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -52,7 +52,7 @@ impl Unit {
         }
         // the yaw and the facing read the current sprite's facets
         if let (Some(m), Some(s)) = (self.mover.as_mut(), self.sprite) {
-            m.sprite_facets = Some(crate::facing::SpriteFacets {
+            m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
                 count: s.graphic.facets,
                 flag_1: s.graphic.flags & 2 != 0,
             });
@@ -182,11 +182,11 @@ impl Unit {
                     "a dead object of a master the slice does not have",
                 ))?;
             if kind < 80 && 0 <= self.life.remains {
-                // its facet (`+0xe`) as its angle left it ([`crate::facing::facet_of_angle`])
+                // its facet (`+0xe`) as its angle left it ([`crate::objects::facing::facet_of_angle`])
                 let facet = self
                     .mover
                     .as_ref()
-                    .map(|m| crate::facing::facet_of_angle(m.angle, m.stats.facets).0);
+                    .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
                 c.remains = Some((self.life.remains, self.position, facet));
             }
         }
@@ -205,7 +205,7 @@ impl Unit {
             let facet = self
                 .mover
                 .as_ref()
-                .map(|m| crate::facing::facet_of_angle(m.angle, m.stats.facets).0);
+                .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
             c.remains = Some((spawn, self.position, facet));
         }
         // the animated object's update (0x141071880): its sprite's clock at its animation speed,

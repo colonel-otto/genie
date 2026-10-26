@@ -9,7 +9,7 @@ use crate::combat::attack::{
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait, Walk};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
-use crate::sprite::{ActiveSprite, Graphic};
+use crate::objects::sprite::{ActiveSprite, Graphic};
 
 impl Attack {
     /// The constructor (`FUN_140a7c210`) on `target`: the range and least range of `e`, its
@@ -261,7 +261,7 @@ impl Attack {
 /// master's sprites ([`arms_looking`] without a terrain look).
 #[must_use]
 pub fn arms(
-    master: &crate::masters::Master,
+    master: &crate::objects::masters::Master,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
     sprites: [i16; 4],
     moving: i16,
@@ -273,12 +273,12 @@ pub fn arms(
 /// (the hunt's walking sprite from Hunt's `set_state` 12, the task's moving one from the task
 /// factory, none from the attack command), else the unit's running sprite (slot 0x7d0), else its
 /// walking one (slot 0x7c8; both its terrain look's while it has one, `look`,
-/// [`crate::sprite::running`]); the task's proceeding sprite (else the master's attack sprite,
+/// [`crate::objects::sprite::running`]); the task's proceeding sprite (else the master's attack sprite,
 /// `+0x7f8`), the master's second attack sprite and standing sprite, missile, firing and
 /// interrupting frames.
 #[must_use]
 pub fn arms_looking(
-    master: &crate::masters::Master,
+    master: &crate::objects::masters::Master,
     look: Option<&crate::combat::abilities::Look>,
     graphics: &std::collections::BTreeMap<i16, Graphic>,
     sprites: [i16; 4],
@@ -288,8 +288,8 @@ pub fn arms_looking(
     let slot = |id: Option<i16>| id.and_then(g);
     Arms {
         move_sprite: g(moving)
-            .or_else(|| slot(crate::sprite::running(master, look)))
-            .or_else(|| slot(crate::sprite::walking(master, look, false))),
+            .or_else(|| slot(crate::objects::sprite::running(master, look)))
+            .or_else(|| slot(crate::objects::sprite::walking(master, look, false))),
         sprite: g(sprites[1]).or_else(|| g(master.attack_sprite)),
         second_sprite: g(master.attack_sprite2),
         idle_sprite: g(master.standing_sprite),
@@ -305,7 +305,7 @@ pub fn arms_looking(
 pub fn engagement(
     ai: Option<&crate::unit_ai::UnitAi>,
     speed: f32,
-    master: &crate::masters::Master,
+    master: &crate::objects::masters::Master,
     me: &crate::map::spatial::Placed,
     them: &crate::map::spatial::Placed,
     world_time: u32,

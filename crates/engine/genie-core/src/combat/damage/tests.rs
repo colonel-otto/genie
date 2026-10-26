@@ -239,15 +239,17 @@ fn a_hit_point_share_reads_the_powerups_and_the_master() {
 /// share lacking with `attribute_type4`), and the sum is at least 0.
 #[test]
 fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
-    let task = |object_group: i16, object_id: i16, range: f32, lacking: i16| crate::masters::Task {
-        action_type: BONUS_DAMAGE,
-        object_group,
-        object_id,
-        work_range: range,
-        attribute_type4: lacking,
-        work_val1: 2.0,
-        work_val2: 0.25,
-        ..crate::masters::Task::default()
+    let task = |object_group: i16, object_id: i16, range: f32, lacking: i16| {
+        crate::objects::masters::Task {
+            action_type: BONUS_DAMAGE,
+            object_group,
+            object_id,
+            work_range: range,
+            attribute_type4: lacking,
+            work_val1: 2.0,
+            work_val2: 0.25,
+            ..crate::objects::masters::Task::default()
+        }
     };
     let (mut sheep, mut hunter) = (sheep(), hunter());
     sheep.hp = 7.0;
@@ -264,7 +266,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
         task(-1, 705, 0.0, 0),
         task(3, 0, 0.0, 0),
         task(-1, 9, 0.0, 0),
-        crate::masters::Task {
+        crate::objects::masters::Task {
             action_type: 0xa1,
             ..task(-1, -1, 0.0, 0)
         },
@@ -278,7 +280,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     tc.class = 51;
     assert_eq!(bonus_damage(&hunter, &tc), 8.0);
     // no step, no target hit points, or a negative sum: 0
-    hunter.bonus_tasks = vec![crate::masters::Task {
+    hunter.bonus_tasks = vec![crate::objects::masters::Task {
         work_val2: 0.0,
         ..task(-1, -1, 0.0, 0)
     }];
@@ -287,7 +289,7 @@ fn bonus_damage_counts_whole_steps_of_a_hit_point_share() {
     sheep.hp = 0.0;
     assert_eq!(bonus_damage(&hunter, &sheep), 0.0);
     sheep.hp = 7.0;
-    hunter.bonus_tasks = vec![crate::masters::Task {
+    hunter.bonus_tasks = vec![crate::objects::masters::Task {
         work_val1: -3.0,
         ..task(-1, -1, 0.0, 0)
     }];
@@ -322,12 +324,12 @@ fn a_combat_object_shows_its_attack_armor_and_range() {
     far.kind = 50;
     assert_eq!(shown_attack(&far, &none), 6);
     // the bonus against its attack's target
-    v.bonus_tasks = vec![crate::masters::Task {
+    v.bonus_tasks = vec![crate::objects::masters::Task {
         action_type: BONUS_DAMAGE,
         attribute_type4: 0,
         work_val1: 1.5,
         work_val2: 0.5,
-        ..crate::masters::Task::default()
+        ..crate::objects::masters::Task::default()
     }];
     let at_sheep = Shown {
         target: Some(&sheep),

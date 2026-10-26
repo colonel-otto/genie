@@ -1,11 +1,11 @@
 //! A unit's explore, its stopped mover, the default task's fly and the deaths.
 
 use crate::construction::build::{Completion, Construction};
-use crate::lifecycle::Class;
-use crate::masters::Master;
 use crate::math::rng::Stream;
 use crate::movement::fly::Fly;
-use crate::turn::unit::{NO_DYING_SPRITE, Unit};
+use crate::objects::lifecycle::Class;
+use crate::objects::masters::Master;
+use crate::objects::unit::{NO_DYING_SPRITE, Unit};
 use crate::turn::world::{built_death, combat_dies, farm_bonus, refund_of};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Context;
@@ -17,7 +17,7 @@ impl Unit {
     /// it had go, `FUN_140a98620`, and the new one starts, `FUN_140a977e0`). A `MoveTo` of the
     /// Explore that goes stops the unit (its teardown, slot 0x5d0); other actions it would
     /// replace are not modelled.
-    pub(in crate::turn) fn explore_to(
+    pub(crate) fn explore_to(
         &mut self,
         point: [f32; 2],
         c: &mut Context<'_>,
@@ -47,7 +47,7 @@ impl Unit {
     /// with the explore's action value to the unit AI, and the standing sprite (slot 0x68 with
     /// the master's `+0x470`) where the slice holds the unit's sprite. `Set_state` 2's slots are
     /// not modelled.
-    pub(in crate::turn) fn explore_owner(
+    pub(crate) fn explore_owner(
         &mut self,
         owner: crate::movement::explore::Owner,
         c: &mut Context<'_>,
@@ -88,7 +88,7 @@ impl Unit {
     }
 
     /// Slot 0x5d0 of a unit whose `MoveTo` went.
-    pub(in crate::turn) fn stop_mover(&mut self) -> Result<(), GenieError> {
+    pub(crate) fn stop_mover(&mut self) -> Result<(), GenieError> {
         self.mover
             .as_mut()
             .ok_or(crate::turn::WALKER_UNMOVING)?
@@ -98,7 +98,7 @@ impl Unit {
     /// A stop since the last look cleared the animation speed (`+0x7b8`, [`Mover::speed_stopped`]).
     ///
     /// [`Mover::speed_stopped`]: crate::movement::Mover::speed_stopped
-    pub(in crate::turn) fn take_stopped_speed(&mut self) {
+    pub(crate) fn take_stopped_speed(&mut self) {
         if let Some(m) = self.mover.as_mut().filter(|m| m.speed_stopped) {
             m.speed_stopped = false;
             self.anim_speed = Some(0.0);
@@ -108,10 +108,10 @@ impl Unit {
     /// The default task's Fly ([`crate::movement::fly::Fly::start`]): a player's bird (its task's
     /// `+0x15`, not held) is not modelled; a master of fly mode 1 lifts the bird to the fly
     /// height (slot 0x58, the position setter: its tile stays, so do its counts).
-    pub(in crate::turn) fn start_fly(
+    pub(crate) fn start_fly(
         &mut self,
         c: &mut Context<'_>,
-        task: crate::masters::Task,
+        task: crate::objects::masters::Task,
     ) -> Result<(), GenieError> {
         if c.player != 0 {
             return Err(GenieError::unsupported(
@@ -150,11 +150,7 @@ impl Unit {
     /// takes from its owner's attributes; then the base one's (`FUN_14119d710`, whose storage and
     /// sight are the caller's). An animated or moving object (types 20 to 69) shows its
     /// master's dying sprite. Not held: the particles and the sounds.
-    pub(in crate::turn) fn died(
-        &mut self,
-        c: &mut Context<'_>,
-        before: u8,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn died(&mut self, c: &mut Context<'_>, before: u8) -> Result<(), GenieError> {
         let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             if self.life.dying_sprite.is_some() {
                 return Err(GenieError::unsupported(
@@ -190,7 +186,7 @@ impl Unit {
             // from its angle again)
             if self.life.class == Class::Animated
                 && self.life.dying_sprite.is_some()
-                && let Some(id) = crate::sprite::dying(master, None)
+                && let Some(id) = crate::objects::sprite::dying(master, None)
             {
                 let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
                 crate::combat::attack::set_sprite(
@@ -212,9 +208,9 @@ impl Unit {
             let built = self
                 .construction
                 .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
-            crate::sprite::building_death(master, look, built.progress)
+            crate::objects::sprite::building_death(master, look, built.progress)
         } else {
-            crate::sprite::dying(master, look)
+            crate::objects::sprite::dying(master, look)
         };
         if let Some(id) = shown {
             let g = c.graphics.get(&id).copied().ok_or(NO_DYING_SPRITE)?;
@@ -230,7 +226,7 @@ impl Unit {
     /// construction's start (`FUN_1411e5670`, [`Construction::begin`]: a desolid one gets its
     /// record and sight, its missiles per volley its master's; its owner watches it, the
     /// caller's).
-    pub(in crate::turn) fn foundation_died(
+    pub(crate) fn foundation_died(
         &mut self,
         c: &mut Context<'_>,
         master: &Master,

@@ -61,7 +61,7 @@ fn stats() -> MoveStats {
         walk_speed: 1.0,
         stand_speed: 1.0,
         run_speed: 1.0,
-        facets: Some(crate::facing::SpriteFacets {
+        facets: Some(crate::objects::facing::SpriteFacets {
             count: 16,
             flag_1: true,
         }),
@@ -641,15 +641,18 @@ fn a_yaw_turns_forward_and_right_and_takes_the_facet_s_angle() {
     let mut m = builder_9177();
     m.forward = [1.0, 0.0, 0.0];
     m.right = [0.0, 0.0, -1.0];
-    let facets = crate::facing::SpriteFacets {
+    let facets = crate::objects::facing::SpriteFacets {
         count: 16,
         flag_1: true,
     };
     m.yaw(-std::f32::consts::FRAC_PI_2, Some(facets)).unwrap();
     assert!(m.forward[0].abs() < 1e-6 && (m.forward[2] - 1.0).abs() < 1e-6);
     assert_eq!(m.right, fmath::normalize(fmath::cross(UP, m.forward)));
-    let facet = crate::facing::facet_of_forward(m.forward, facets);
-    assert_eq!(m.angle, crate::facing::angle_of_facet(facet, facets));
+    let facet = crate::objects::facing::facet_of_forward(m.forward, facets);
+    assert_eq!(
+        m.angle,
+        crate::objects::facing::angle_of_facet(facet, facets)
+    );
     let before = m.angle;
     assert!(m.yaw(0.1, None).is_err());
     assert_eq!(m.angle, before);

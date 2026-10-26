@@ -42,15 +42,15 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         vec![0, 0],
         vec![crate::turn::Player::default(), player],
     );
-    let master = |id: i16, category: u8| crate::masters::Master {
+    let master = |id: i16, category: u8| crate::objects::masters::Master {
         id,
         kind: 70,
         formation_category: category,
         terrain_restriction: 0,
         radius: [0.2, 0.2],
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
-    let masters = crate::masters::Masters::new([master(4, 1), master(5, 1), master(6, 3)]);
+    let masters = crate::objects::masters::Masters::new([master(4, 1), master(5, 1), master(6, 3)]);
     t.masters = vec![masters.clone(), masters];
     let mut classes = vec![1u8; 400];
     for &(x, y) in blocked {
@@ -164,26 +164,26 @@ fn the_point_from_the_front_runs_along_the_stored_positions() {
 fn a_unit_s_category_is_its_masters_and_none_for_a_null_object_or_a_ghost() {
     let mut t = slot_world(&[(10, 4, 1.0, 0.0), (35, 35, 2.0, 0.0)], &[]);
     for masters in &mut t.masters {
-        *masters = crate::masters::Masters::new([
-            crate::masters::Master {
+        *masters = crate::objects::masters::Masters::new([
+            crate::objects::masters::Master {
                 id: 4,
                 kind: 70,
                 formation_category: 1,
                 hero_flag: 0x10,
-                ..crate::masters::Master::default()
+                ..crate::objects::masters::Master::default()
             },
-            crate::masters::Master {
+            crate::objects::masters::Master {
                 id: 35,
                 kind: 70,
                 class: 13,
                 formation_category: 2,
-                ..crate::masters::Master::default()
+                ..crate::objects::masters::Master::default()
             },
-            crate::masters::Master {
+            crate::objects::masters::Master {
                 id: crate::vision::ghost::GHOST_MASTER,
                 kind: crate::vision::ghost::GHOST,
                 formation_category: 1,
-                ..crate::masters::Master::default()
+                ..crate::objects::masters::Master::default()
             },
         ]);
     }
@@ -495,13 +495,14 @@ fn the_passability_tests_with_the_world_s_object_of_the_lead_id() {
             vec![vec![1.0, 0.0], vec![0.0, 1.0]],
         ));
         for masters in &mut t.masters {
-            let ghost = crate::masters::Master {
+            let ghost = crate::objects::masters::Master {
                 id: crate::vision::ghost::GHOST_MASTER,
                 kind: crate::vision::ghost::GHOST,
                 terrain_restriction: 1,
-                ..crate::masters::Master::default()
+                ..crate::objects::masters::Master::default()
             };
-            *masters = crate::masters::Masters::new(masters.iter().cloned().chain([ghost]));
+            *masters =
+                crate::objects::masters::Masters::new(masters.iter().cloned().chain([ghost]));
         }
         if ghost {
             t.players[1].ghosts = vec![ghost_at(-1, 1.0, 1.0)];
@@ -757,11 +758,11 @@ fn type_world(paths: Vec<PathData>) -> Turns {
         vec![0, 0],
         vec![crate::turn::Player::default(), player],
     );
-    let masters = crate::masters::Masters::new([crate::masters::Master {
+    let masters = crate::objects::masters::Masters::new([crate::objects::masters::Master {
         id: 4,
         kind: 70,
         formation_category: 1,
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     }]);
     t.masters = vec![masters.clone(), masters];
     let mut g = UnitGroup::new(1);
@@ -844,10 +845,10 @@ fn a_lock_or_a_given_type_overrides_the_groups_own_choice() {
     let mut t = type_world(far);
     t.groups.groups[0].flags |= 4;
     assert_eq!(own(&t), LINE);
-    t.masters[1] = crate::masters::Masters::new([crate::masters::Master {
+    t.masters[1] = crate::objects::masters::Masters::new([crate::objects::masters::Master {
         id: 4,
         kind: 70,
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     }]);
     assert_eq!(own(&t), HORDE);
     let g = t.groups.get(1).unwrap().clone();

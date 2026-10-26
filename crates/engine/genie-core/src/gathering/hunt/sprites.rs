@@ -4,7 +4,7 @@
 use crate::combat::attack::set_sprite;
 use crate::gathering::hunt::HuntTask;
 use crate::movement::move_to::MoveTo;
-use crate::sprite::Graphic;
+use crate::objects::sprite::Graphic;
 
 /// `FUN_140ac5210`, the sprite a hunter stands with: the task's carrying sprite while it holds a
 /// whole unit or more of the task's resource and the sprite exists, else its master's standing
@@ -72,7 +72,7 @@ pub struct HuntSprites {
 impl HuntTask {
     /// The hunt's view of master task `t`.
     #[must_use]
-    pub const fn of(t: &crate::masters::Task) -> Self {
+    pub const fn of(t: &crate::objects::masters::Task) -> Self {
         Self {
             id: t.id,
             range: t.work_range,
@@ -119,7 +119,7 @@ pub const fn walk_sprite(
 #[derive(Debug)]
 pub struct Shown<'a> {
     /// The unit's sprite.
-    pub sprite: &'a mut Option<crate::sprite::ActiveSprite>,
+    pub sprite: &'a mut Option<crate::objects::sprite::ActiveSprite>,
     /// The Sprite stream.
     pub rng: &'a mut crate::math::rng::Well512,
     /// The `MoveTo`'s sprite.

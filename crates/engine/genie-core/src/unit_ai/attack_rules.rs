@@ -22,7 +22,7 @@ pub struct Converter<'a> {
     /// Its owner's attributes (`player+0x100`, count `+0x90`).
     pub attributes: &'a [f32],
     /// Its master's tasks (`+0x788`).
-    pub tasks: &'a [crate::masters::Task],
+    pub tasks: &'a [crate::objects::masters::Task],
 }
 
 /// What the conversion test reads of the object: its owner, its master's class, id and hero

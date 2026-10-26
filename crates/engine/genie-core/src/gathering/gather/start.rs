@@ -11,7 +11,7 @@ use crate::gathering::hunt::HuntTask;
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, MoveWait};
-use crate::sprite::ActiveSprite;
+use crate::objects::sprite::ActiveSprite;
 
 /// What the constructor reads to time a farm's stops: the gatherer's work rate (its master's
 /// `+0x798` plus its powerup, slot 0x6e8), its capacity (`+0x61c`) and the player's attribute the
@@ -450,7 +450,7 @@ impl GatherAction {
     pub(crate) fn halt(
         &mut self,
         mover: Option<&mut Mover>,
-        stand: Option<crate::sprite::Graphic>,
+        stand: Option<crate::objects::sprite::Graphic>,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
     ) -> Result<[i32; 2], GenieError> {

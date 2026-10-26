@@ -6,7 +6,7 @@ use crate::construction::build::{
     SITE_GONE, STARTED, Site, StackUnit, WONDER, WONDERS_BUILT, Worked,
 };
 use crate::map::spatial::Spatial;
-use crate::masters::Master;
+use crate::objects::masters::Master;
 use crate::pathing::Pathing;
 use crate::turn::{CASTLE, CASTLES, MONASTERIES, MONASTERY, WONDERS};
 use crate::unit_ai::GenieError;
@@ -53,7 +53,7 @@ pub(super) fn lay_foundation(
     world: &mut Spatial,
     placed: &crate::map::spatial::Placed,
     master: &Master,
-    building: &crate::masters::BuildingMaster,
+    building: &crate::objects::masters::BuildingMaster,
     stack_master: i16,
     mode_680: i32,
 ) -> Result<(), GenieError> {
@@ -94,7 +94,7 @@ pub(super) fn lay_foundation(
 /// shorts. The castle's and the wonder's history event (0x1411dd094), returned.
 pub(super) fn completion_counts(
     master: &Master,
-    building: &crate::masters::BuildingMaster,
+    building: &crate::objects::masters::BuildingMaster,
     main: bool,
     attributes: &mut Vec<(i16, f32)>,
 ) -> Option<u8> {

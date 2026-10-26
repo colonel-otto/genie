@@ -2,7 +2,7 @@
 
 use crate::masters::MasterTable;
 use crate::vec3;
-use genie_core::lifecycle::{Class, Lifecycle, MasterData};
+use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_save::generated::world::{PlayerObjects, RgeStaticObject};
 
 /// The object's lifecycle fields. An object with its own master takes every master value from it;

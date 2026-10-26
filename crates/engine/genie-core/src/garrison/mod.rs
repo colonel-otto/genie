@@ -37,9 +37,9 @@ pub(crate) use self::walk_in::{SIEGE_CLASS, SIEGE_UNLOAD};
 #[cfg(test)]
 use self::walk_in::{WAIT, WALK};
 #[cfg(test)]
-use crate::masters::{Master, Masters, Task};
-#[cfg(test)]
 use crate::movement::move_to::{MoveTo, Walk};
+#[cfg(test)]
+use crate::objects::masters::{Master, Masters, Task};
 #[cfg(test)]
 use crate::orders::GARRISON;
 #[cfg(test)]

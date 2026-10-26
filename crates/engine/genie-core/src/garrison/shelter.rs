@@ -44,7 +44,7 @@ impl Turns {
     /// left out too. Then [`Turns::shelter`] (`param_6` 0) with the unit AI's queue when
     /// `through_ai` (the packet's `+0x1d`).
     ///
-    /// [`UnitLines::base`]: crate::lines::UnitLines::base
+    /// [`UnitLines::base`]: crate::objects::lines::UnitLines::base
     pub(crate) fn garrison_order(
         &mut self,
         player: usize,

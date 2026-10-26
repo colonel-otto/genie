@@ -3,10 +3,11 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::lifecycle::seconds;
-use crate::turn::unit::{AiResume, Step, Unit};
+use crate::objects::lifecycle::seconds;
+use crate::objects::unit;
+use crate::objects::unit::{AiResume, Step, Unit};
 use crate::turn::{
-    BuildingDeath, LEAVES_ITS_LIST, PlayerFrame, Turns, scenario_mode, standard_mode, unit,
+    BuildingDeath, LEAVES_ITS_LIST, PlayerFrame, Turns, scenario_mode, standard_mode,
 };
 use crate::unit_ai::world_view::{AiStart, AiWork, Context, Foreign, ObjectOutputs};
 

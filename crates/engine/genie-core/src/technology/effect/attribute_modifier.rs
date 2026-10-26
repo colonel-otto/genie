@@ -2,8 +2,8 @@
 //! masters' change and what their objects and an Attack follow of it.
 
 use crate::GenieError;
-use crate::masters::{AttributeWorld, Master, master_type};
 use crate::math::rng::Stream;
+use crate::objects::masters::{AttributeWorld, Master, master_type};
 use crate::technology::effect::{CAPPED, Change, has_actions, shows_sprite, within_table};
 use crate::turn::Turns;
 
@@ -129,7 +129,7 @@ impl Turns {
         id: i32,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
@@ -157,7 +157,7 @@ impl Turns {
                 crate::combat::attack::set_sprite(&mut u.sprite, graphic, rng);
             } else {
                 // a sprite the slice does not hold is taken to be another one
-                let _ = crate::sprite::ActiveSprite::start(graphic, rng);
+                let _ = crate::objects::sprite::ActiveSprite::start(graphic, rng);
             }
             return Ok(());
         }
@@ -279,7 +279,7 @@ impl Turns {
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         let master = self.master_of(p, unit)?.clone();
         let (done, pending) = self.tracked_master(p, &master);
         let mut kept = Vec::new();
@@ -416,7 +416,7 @@ impl Turns {
     /// dying sprite and death spawns, their construction's hit points, build time and record,
     /// their sight's line of sight and their tile's height test.
     pub(super) fn master_followers(&mut self, p: usize, id: i16, attribute: u8) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         let Some(master) = self.masters.get(p).and_then(|m| m.get(id)).cloned() else {
             return;
         };
@@ -477,11 +477,11 @@ impl Turns {
 /// the master is of a combat type (70 and up).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MasterSprites {
-    pub(crate) moving: Option<crate::sprite::Graphic>,
-    pub(crate) attack: Option<crate::sprite::Graphic>,
-    pub(crate) standing: Option<crate::sprite::Graphic>,
-    pub(crate) idle_attack: Option<crate::sprite::Graphic>,
-    pub(crate) second: Option<crate::sprite::Graphic>,
+    pub(crate) moving: Option<crate::objects::sprite::Graphic>,
+    pub(crate) attack: Option<crate::objects::sprite::Graphic>,
+    pub(crate) standing: Option<crate::objects::sprite::Graphic>,
+    pub(crate) idle_attack: Option<crate::objects::sprite::Graphic>,
+    pub(crate) second: Option<crate::objects::sprite::Graphic>,
     pub(crate) combat: bool,
 }
 
@@ -494,7 +494,7 @@ pub(crate) fn follow_master(
     task: Option<[i16; 4]>,
     sprites: &MasterSprites,
 ) {
-    let of_task = |s: Option<crate::sprite::Graphic>, i: usize| {
+    let of_task = |s: Option<crate::objects::sprite::Graphic>, i: usize| {
         task.zip(s).is_some_and(|(t, s)| t[i] == s.id)
     };
     if arms.move_sprite.is_some() && !of_task(arms.move_sprite, 0) {

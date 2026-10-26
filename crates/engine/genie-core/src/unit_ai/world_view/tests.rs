@@ -4,9 +4,9 @@ use super::*;
 /// (or none above 0) is +0.
 #[test]
 fn the_attacks_sum_is_the_positive_ones() {
-    let m = |weapons: Vec<(i16, i16)>| crate::masters::Master {
+    let m = |weapons: Vec<(i16, i16)>| crate::objects::masters::Master {
         weapons,
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
     assert_eq!(
         attacks(&m(vec![(4, 6), (3, -2), (11, 1)])).to_bits(),
@@ -21,22 +21,22 @@ fn the_attacks_sum_is_the_positive_ones() {
 /// The villager 123 (player 1) tests player 2's unit 50 of `master`: harmless when its
 /// master has object flag 0x10, is its own copy and shows an attack below 5 (4 only below 60
 /// hit points), no melee armor and a range of at most 0.5.
-fn harmless(master: crate::masters::Master) -> bool {
+fn harmless(master: crate::objects::masters::Master) -> bool {
     let me = Unit {
         id: 123,
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 83,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
     let enemy = Player {
         objects: vec![Unit {
             id: 50,
-            life: crate::lifecycle::Lifecycle {
+            life: crate::objects::lifecycle::Lifecycle {
                 master_id: master.id,
                 state: 2,
-                ..crate::lifecycle::Lifecycle::default()
+                ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
         }],
@@ -103,20 +103,20 @@ fn harmless(master: crate::masters::Master) -> bool {
 /// footprint gap, the first of a tie; −1 for none, None for a ward without a unit AI.
 #[test]
 fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
-    let master = |id, radius| crate::masters::Master {
+    let master = |id, radius| crate::objects::masters::Master {
         id,
         kind: 70,
         radius,
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
     let unit = |id, x, master_id, ai: Option<UnitAi>| Unit {
         id,
         position: [x, 10.0, 0.0],
         ai,
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -201,7 +201,7 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
 
 #[test]
 fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
-    let villager = crate::masters::Master {
+    let villager = crate::objects::masters::Master {
         id: 83,
         copy_id: 83,
         kind: 70,
@@ -211,10 +211,10 @@ fn a_villager_fights_back_a_weak_attacker_of_its_own_master() {
         weapons: vec![(4, 3), (21, 6)],
         armors: vec![(4, 0), (3, 0)],
         weapon_range: 0.0,
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
     assert!(harmless(villager.clone()));
-    let with = |f: &dyn Fn(&mut crate::masters::Master)| {
+    let with = |f: &dyn Fn(&mut crate::objects::masters::Master)| {
         let mut m = villager.clone();
         f(&mut m);
         harmless(m)

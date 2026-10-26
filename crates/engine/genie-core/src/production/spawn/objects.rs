@@ -1,15 +1,15 @@
 //! A spot beside a building, the remains a death leaves, a plain object, the flares and a
 //! building a death makes.
 
-use crate::lifecycle::{Class, Lifecycle};
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::sprite::ActiveSprite;
 use crate::production::spawn::{
     BUILDING, Facing, NOT_MOVING, Placing, Site, TRIBE_COMBAT, WALL, WorldMap, corner_tiles,
     placement, spawn_point,
 };
-use crate::sprite::ActiveSprite;
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::{GenieError, factory_type};
 use crate::vision::visibility::{Seer, capture_kind};
@@ -23,7 +23,7 @@ impl Turns {
         &self,
         p: usize,
         i: usize,
-        made: &crate::masters::Master,
+        made: &crate::objects::masters::Master,
         toward: Option<[f32; 2]>,
     ) -> Result<[f32; 2], GenieError> {
         let building = &self.players[p].objects[i];
@@ -101,17 +101,17 @@ impl Turns {
             if let Some(facet) = facet {
                 let standing = self.graphics.get(&made.standing_sprite).copied();
                 let own = standing.map_or(
-                    crate::facing::SpriteFacets {
+                    crate::objects::facing::SpriteFacets {
                         count: 0,
                         flag_1: false,
                     },
-                    |g| crate::facing::SpriteFacets {
+                    |g| crate::objects::facing::SpriteFacets {
                         count: g.facets,
                         flag_1: g.flags & 2 != 0,
                     },
                 );
                 if let Some(m) = self.players[p].objects[new].mover.as_mut() {
-                    m.angle = crate::facing::angle_of_facet(facet, own);
+                    m.angle = crate::objects::facing::angle_of_facet(facet, own);
                 }
             }
             return Ok(());
@@ -144,7 +144,7 @@ impl Turns {
         &mut self,
         p: usize,
         master: i16,
-        made: &crate::masters::Master,
+        made: &crate::objects::masters::Master,
         at: [f32; 3],
         facing: Facing,
     ) -> Result<usize, GenieError> {
@@ -177,16 +177,16 @@ impl Turns {
                 let _ = self.streams.get(Stream::Object).rand15();
             }
         }
-        let facets = standing.map(|g| crate::facing::SpriteFacets {
+        let facets = standing.map(|g| crate::objects::facing::SpriteFacets {
             count: g.facets,
             flag_1: g.flags & 2 != 0,
         });
         let mut angle = 0.0;
         let moving = if 30 <= made.kind {
             // the moving setup's angle draw (FUN_141141640, "setup" line 0x2c3)
-            let drawn = if crate::facing::draws_angle(facets) {
+            let drawn = if crate::objects::facing::draws_angle(facets) {
                 let r = self.streams.get(Stream::Object).rand15();
-                facets.map(|f| crate::facing::drawn_angle(r, f))
+                facets.map(|f| crate::objects::facing::drawn_angle(r, f))
             } else {
                 None
             };
@@ -199,11 +199,11 @@ impl Turns {
                     let facet = facet.ok_or(GenieError::unsupported(
                         "moving remains of an object without a facet the slice holds",
                     ))?;
-                    let own = facets.unwrap_or(crate::facing::SpriteFacets {
+                    let own = facets.unwrap_or(crate::objects::facing::SpriteFacets {
                         count: 0,
                         flag_1: false,
                     });
-                    crate::facing::angle_of_facet(facet, own)
+                    crate::objects::facing::angle_of_facet(facet, own)
                 }
             };
             Some(made.moving.ok_or(GenieError::unsupported(
@@ -383,7 +383,7 @@ impl Turns {
     pub(super) fn new_building(
         &mut self,
         p: usize,
-        made: &crate::masters::Master,
+        made: &crate::objects::masters::Master,
         at: [f32; 3],
     ) -> Result<(), GenieError> {
         if self.players[p].computer {

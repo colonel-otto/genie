@@ -4,8 +4,8 @@
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
 use crate::garrison::{EnterAction, EnterTarget, SIEGE_CLASS};
-use crate::masters::{Master, Masters};
 use crate::movement::footprint_gap_squared;
+use crate::objects::masters::{Master, Masters};
 use crate::orders::BUILDING;
 
 /// How near the point a transport must reach for an Enter (slot 0x3d8's range), and the range up

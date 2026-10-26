@@ -111,7 +111,7 @@ impl Spatial {
         obstructs: bool,
         look: &dyn Fn(i32) -> Option<crate::construction::build::ClearLook>,
     ) -> Result<Vec<i32>, GenieError> {
-        use crate::masters::master_type::BUILDING;
+        use crate::objects::masters::master_type::BUILDING;
         let [sx, sy, _] = site.position;
         let [rx, ry] = site.radius;
         self.check_known([sx - rx, sy - ry, sx + rx, sy + ry])?;

@@ -4,7 +4,7 @@
 use crate::masters::{DefaultAction, MasterTable};
 use crate::{combat_master, core_task};
 use genie_core::GenieError;
-use genie_core::masters::ACTION_FACTORY_TYPES;
+use genie_core::objects::masters::ACTION_FACTORY_TYPES;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
@@ -35,8 +35,8 @@ pub(super) fn saved_reload(
 /// for a graphic the table lacks.
 pub(super) fn saved_sprite(
     s: &RgeStaticObject,
-    graphics: &std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
-) -> Option<genie_core::sprite::ActiveSprite> {
+    graphics: &std::collections::BTreeMap<i16, genie_core::objects::sprite::Graphic>,
+) -> Option<genie_core::objects::sprite::ActiveSprite> {
     let list = s.active_sprite_list.as_deref()?;
     let graphic = graphics.get(&s.sprite).copied()?;
     let nodes = || {
@@ -51,11 +51,11 @@ pub(super) fn saved_sprite(
         let node = nodes()
             .filter_map(|n| n.rge_active_sprite.as_deref())
             .find(|a| a.sprite_id as i16 == s.sprite)?;
-        return Some(genie_core::sprite::ActiveSprite::at_rest(
+        return Some(genie_core::objects::sprite::ActiveSprite::at_rest(
             graphic, node.frame,
         ));
     };
-    Some(genie_core::sprite::ActiveSprite {
+    Some(genie_core::objects::sprite::ActiveSprite {
         graphic,
         frame: node.rge_active_sprite.frame,
         interval: node.animate_interval,
@@ -76,7 +76,7 @@ pub(super) fn saved_sprite(
 /// swing's times (`+0xb0`, `+0xb4`) are not saved, and a loaded Attack starts without them.
 pub(super) fn saved_attack(
     sub: &genie_save::generated::world::Action,
-    graphics: Option<&std::collections::BTreeMap<i16, genie_core::sprite::Graphic>>,
+    graphics: Option<&std::collections::BTreeMap<i16, genie_core::objects::sprite::Graphic>>,
     move_to_state: &dyn Fn(u8) -> Result<genie_core::movement::move_to::MoveTo, GenieError>,
     run_sprite: i16,
 ) -> Result<genie_core::combat::attack::Attack, GenieError> {
@@ -197,7 +197,7 @@ pub(super) fn fly_task(
     civ: u8,
     masters: Option<&MasterTable>,
     master: i16,
-) -> Result<genie_core::masters::Task, GenieError> {
+) -> Result<genie_core::objects::masters::Task, GenieError> {
     let fly = genie_core::movement::fly::FLY;
     let saved = objects
         .master(master)
@@ -393,7 +393,7 @@ pub(super) enum DefaultStart {
     /// The Artifact action (type 107, livestock's).
     Artifact(genie_core::ownership::artifact::Artifact),
     /// A bird's Fly (type 10) with its task.
-    Fly(genie_core::masters::Task),
+    Fly(genie_core::objects::masters::Task),
     /// A farm's or fish trap's Make (type 21).
     Make,
 }

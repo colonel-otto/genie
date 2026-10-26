@@ -1,7 +1,7 @@
 //! A player's masters by id ([`Masters`]) and the work command's choice of master and task.
 
 use crate::GenieError;
-use crate::masters::{Master, Masters, Task};
+use crate::objects::masters::{Master, Masters, Task};
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget, find_task};
 
 impl Masters {

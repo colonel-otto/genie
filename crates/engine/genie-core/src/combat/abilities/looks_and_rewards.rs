@@ -1,7 +1,7 @@
 //! The terrain look tasks (action type 159) and the removal reward tasks (161).
 
 use crate::combat::abilities::{Look, ONE, Reward};
-use crate::masters::Task;
+use crate::objects::masters::Task;
 use crate::turn::Turns;
 
 /// A terrain look task's terrain mask (`0x141207501`, a `std::bitset<8>`): a terrain below 0

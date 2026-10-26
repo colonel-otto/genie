@@ -2,7 +2,7 @@ use super::*;
 
 /// No sprite shown: a test hunt's walk.
 fn shown<'a>(
-    sprite: &'a mut Option<crate::sprite::ActiveSprite>,
+    sprite: &'a mut Option<crate::objects::sprite::ActiveSprite>,
     rng: &'a mut crate::math::rng::Well512,
 ) -> Shown<'a> {
     Shown {
@@ -95,7 +95,7 @@ pub(crate) fn walker() -> Mover {
             walk_speed: 1.0,
             stand_speed: 1.0,
             run_speed: 1.0,
-            facets: Some(crate::facing::SpriteFacets {
+            facets: Some(crate::objects::facing::SpriteFacets {
                 count: 16,
                 flag_1: true,
             }),

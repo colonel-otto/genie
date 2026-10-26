@@ -58,7 +58,7 @@ pub fn facing_offset(at: [f32; 3], facing: Facing, other: [f32; 3]) -> f32 {
         return 0.0;
     }
     let n = if 7 < facing.facets { facing.facets } else { 8 };
-    crate::facing::offset_in_facets(
+    crate::objects::facing::offset_in_facets(
         other[0] - at[0],
         other[1] - at[1],
         facing.angle,

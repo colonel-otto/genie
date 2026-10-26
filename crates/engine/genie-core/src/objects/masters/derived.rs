@@ -1,8 +1,8 @@
 //! The values the slice derives from a master after a change ([`Master::follow`]): the
 //! sprites' speed and facets, a moving unit's values.
 
-use crate::masters::{Master, master_type};
 use crate::movement::MoveStats;
+use crate::objects::masters::{Master, master_type};
 
 /// A sprite's speed factor (the `.dat` graphic's `speed_multiplier`): the master's speed times
 /// it when above 0, else the master's speed (as the masters' loader derives
@@ -10,7 +10,7 @@ use crate::movement::MoveStats;
 pub(super) fn sprite_speed(
     base: f32,
     sprite: i16,
-    graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+    graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
 ) -> f32 {
     let factor = graphics.get(&sprite).map_or(0.0, |g| g.speed_multiplier);
     if 0.0 < factor { base * factor } else { base }
@@ -24,8 +24,8 @@ impl Master {
     #[must_use]
     pub fn sprite_facets(
         &self,
-        graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
-    ) -> Option<crate::facing::SpriteFacets> {
+        graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
+    ) -> Option<crate::objects::facing::SpriteFacets> {
         let mut sprites = vec![self.standing_sprite, self.standing_sprite_2.unwrap_or(-1)];
         if master_type::MOVING <= self.kind {
             sprites.extend([self.move_sprite, self.run_sprite]);
@@ -40,7 +40,7 @@ impl Master {
             .into_iter()
             .filter(|&id| 0 <= id)
             .filter_map(|id| graphics.get(&id))
-            .map(|g| crate::facing::SpriteFacets {
+            .map(|g| crate::objects::facing::SpriteFacets {
                 count: g.facets,
                 flag_1: g.flags & 2 != 0,
             });
@@ -56,10 +56,10 @@ impl Master {
         &self,
         stats: &mut MoveStats,
         attribute: u8,
-        graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+        graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
         terrain: Option<&crate::map::terrain::Terrain>,
     ) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::SIZE_X | a::SIZE_Y | a::SIZE_Z => {
                 stats.radius = [self.radius[0], self.radius[1], self.height];
@@ -108,10 +108,10 @@ impl Master {
     pub fn follow(
         &mut self,
         attribute: u8,
-        graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+        graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
         terrain: Option<&crate::map::terrain::Terrain>,
     ) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::SIZE_X | a::SIZE_Y | a::SIZE_Z => {
                 self.tall = 0.0 < self.height;

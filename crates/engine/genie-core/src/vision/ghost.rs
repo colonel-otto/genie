@@ -625,7 +625,7 @@ impl Turns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::masters::{Master, Masters};
+    use crate::objects::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
     use crate::vision::visibility::{Seer, Visibility};
 

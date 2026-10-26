@@ -9,7 +9,7 @@ use crate::combat::attack::{
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, Walk};
-use crate::sprite::ActiveSprite;
+use crate::objects::sprite::ActiveSprite;
 
 impl Attack {
     /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows

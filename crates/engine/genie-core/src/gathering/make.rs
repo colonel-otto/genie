@@ -9,7 +9,7 @@
 //! still to make starts at the player's farm food (attribute 36) or fish trap food (88); once it
 //! is made and the farmers took the last of it, the farm's slot 0xd8 sets its hit points to 0.
 
-use crate::masters::Task;
+use crate::objects::masters::Task;
 
 /// The action type (`+0x8`, 0x15).
 pub const MAKE: i16 = 21;

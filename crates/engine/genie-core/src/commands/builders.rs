@@ -92,7 +92,7 @@ impl Turns {
     /// empty their unit AI's order queue (`FUN_140c5e010`); the action object's
     /// (`FUN_14106c590`, types 40 to 60) goes straight to the work.
     pub(super) fn empty_queue_for_work(&mut self, q: usize, idx: usize, kind: u8) {
-        if crate::masters::master_type::COMBAT <= kind
+        if crate::objects::masters::master_type::COMBAT <= kind
             && let Some(ai) = self.players[q].objects[idx].ai.as_mut()
         {
             ai.orders.clear();
@@ -105,7 +105,7 @@ impl Turns {
     /// whose action would be replaced, without a Build task for it or with one not enabled, is
     /// not modelled.
     ///
-    /// [`Masters::work_master`]: crate::masters::Masters::work_master
+    /// [`Masters::work_master`]: crate::objects::masters::Masters::work_master
     pub(crate) fn build_task(
         &self,
         q: usize,

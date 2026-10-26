@@ -1,11 +1,11 @@
 //! Captures and ownership changes, the unit AI's moves and a move to an object.
 
 use crate::construction::build::BUILD;
-use crate::masters::Masters;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::move_to::{MoveTo, MoveToAction};
-use crate::sprite::Graphic;
-use crate::turn::unit::{UNPACKED_TREBUCHET, Unit};
+use crate::objects::masters::Masters;
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::{UNPACKED_TREBUCHET, Unit};
 use crate::turn::world::{Releaser, change_hands};
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{AiMove, GenieError};
@@ -20,7 +20,7 @@ impl Unit {
     /// the others taken; the lists' moves, the storage and the class counters are the caller's.
     /// The new owner's computer AI part (`FUN_140aab130`), the local player's sound and
     /// statistics are not held.
-    pub(in crate::turn) fn capture(
+    pub(crate) fn capture(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -38,7 +38,7 @@ impl Unit {
     }
 
     /// The master class the world files the captured object under.
-    pub(in crate::turn) fn placed_class(&self, c: &Context<'_>) -> Result<i16, GenieError> {
+    pub(crate) fn placed_class(&self, c: &Context<'_>) -> Result<i16, GenieError> {
         c.spatial
             .get(self.id)
             .map(|p| p.class)
@@ -59,7 +59,7 @@ impl Unit {
     /// that is not a number keeps it).
     ///
     /// [`Artifact::stop`]: crate::ownership::artifact::Artifact::stop
-    pub(in crate::turn) fn capture_stop(
+    pub(crate) fn capture_stop(
         &mut self,
         c: &mut Context<'_>,
         class: i16,
@@ -108,7 +108,7 @@ impl Unit {
     /// whole change is the caller's even without the new owner's master.
     ///
     /// [`Effect::ChangeOwner`]: crate::unit_ai::Effect::ChangeOwner
-    pub(in crate::turn) fn ai_change_owner(
+    pub(crate) fn ai_change_owner(
         &mut self,
         new: usize,
         c: &mut Context<'_>,
@@ -149,7 +149,7 @@ impl Unit {
     /// false when `new` has not its master. A building's (`FUN_1411cd860`) is the caller's after
     /// the update, whole ([`Captured::building`], [`crate::turn::Turns::building_changes_hands`]),
     /// whether or not `new` has its master.
-    pub(in crate::turn) fn change_owner(
+    pub(crate) fn change_owner(
         &mut self,
         c: &mut Context<'_>,
         new: usize,
@@ -158,7 +158,7 @@ impl Unit {
             .own_master
             .as_deref()
             .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
-        if master.is_some_and(|m| m.kind == crate::masters::master_type::BUILDING) {
+        if master.is_some_and(|m| m.kind == crate::objects::masters::master_type::BUILDING) {
             c.building_handover = true;
             return Ok(c
                 .every_masters
@@ -176,7 +176,7 @@ impl Unit {
 
     /// The unit's slot 0x340 on its unit AI's move ([`Unit::ai_move_with`]), what it lets go and
     /// the standing sprite of a `MoveTo` that fails at its start into the context `c`.
-    pub(in crate::turn) fn ai_move(
+    pub(crate) fn ai_move(
         &mut self,
         m: AiMove,
         class: i16,
@@ -375,7 +375,7 @@ impl Unit {
     /// [`crate::movement::move_to::holds_object`]), then replaces its action list (`FUN_140a98620`,
     /// [`Unit::clear_own_actions`]: the old actions' teardowns let their targets go) and starts
     /// ([`MoveToAction::to_object`]).
-    pub(in crate::turn) fn move_to_object(
+    pub(crate) fn move_to_object(
         &mut self,
         (target, state): (i32, u8),
         range: f32,
@@ -508,7 +508,7 @@ pub(crate) const LIVESTOCK: i16 = 58;
 
 /// The siege class (`-0xe9f` raw), whose ownership change drops the units it carries
 /// (`FUN_14120f800`).
-pub(in crate::turn) const SIEGE_CLASS: i16 = 13;
+pub(crate) const SIEGE_CLASS: i16 = 13;
 
 /// The ownership changes the slice does not model: a building's (its slot 0x70,
 /// `FUN_1411cd860`: its annexes', its production queue's and researches', its garrison's, its
@@ -522,15 +522,15 @@ pub(crate) const HANDS_LEFT: GenieError = GenieError::unsupported(
 
 /// The trade action's type (slot 0x438), whose load keeps a captured unit's unit AI going
 /// (`FUN_14108c050`).
-pub(in crate::turn) const TRADE_ACTION: i32 = 0x6f;
+pub(crate) const TRADE_ACTION: i32 = 0x6f;
 
 /// The unit AI's action that a capture's stop leaves alone (`FUN_14108c050`).
-pub(in crate::turn) const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
+pub(crate) const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
 
 /// `FUN_140aab570`'s scan after a livestock's capture: Gaia's livestock in state 2 whose tile
 /// the new owner sees (`FUN_141663500`), within 3 tiles of `at` (x outer, y inner); each is taken
 /// in turn, with its own scan. Two on one tile would need the tile's object list order.
-pub(in crate::turn) fn scan_livestock(
+pub(crate) fn scan_livestock(
     c: &mut Context<'_>,
     others: &mut [Unit],
     at: [f32; 3],

@@ -10,6 +10,8 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 
+pub(crate) mod death_parts;
+
 /// What the dead-object steps read from an object's master that the header save does not hold;
 /// they come from the `.dat`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

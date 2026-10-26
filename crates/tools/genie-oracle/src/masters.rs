@@ -3,8 +3,8 @@
 //! and the default task's action. They are game data, which patches and DLCs change, so they come
 //! from the `.dat` of the recording's game, never from constants.
 
-use genie_core::lifecycle::MasterData;
-use genie_core::masters as work;
+use genie_core::objects::lifecycle::MasterData;
+use genie_core::objects::masters as work;
 use genie_dat::de::DatFile;
 use std::collections::HashMap;
 
@@ -82,7 +82,7 @@ fn sound_event(event: u32, sound: i16, sounds: &[genie_dat::de::Sound]) -> i32 {
     }
 }
 
-/// A `.dat` task as the task finder reads it (`genie_core::masters::Task`), with the world's
+/// A `.dat` task as the task finder reads it (`genie_core::objects::masters::Task`), with the world's
 /// sound table its sound events read ([`sound_event`]).
 fn dat_task(t: &genie_dat::de::Task, sounds: &[genie_dat::de::Sound]) -> work::Task {
     work::Task {
@@ -394,7 +394,7 @@ pub struct MasterTable {
     /// Each sprite's speed factor (the `.dat` graphic's `speed_multiplier`, sprite `+0xc`).
     sprite_speed: HashMap<i16, f32>,
     /// What the sprite clock reads of each graphic.
-    pub graphics: std::collections::BTreeMap<i16, genie_core::sprite::Graphic>,
+    pub graphics: std::collections::BTreeMap<i16, genie_core::objects::sprite::Graphic>,
     /// The terrain table.
     pub terrain: TerrainTable,
     /// The drop-site table (`dropsites.json` beside the `.dat`, [`crate::drop_sites`]); empty
@@ -405,7 +405,7 @@ pub struct MasterTable {
     pub linked_techs: std::collections::BTreeMap<i16, genie_core::technology::Linked>,
     /// The unit lines (`unitlines.json` beside the `.dat`, [`crate::unit_lines`]) as the file
     /// holds them; empty when not loaded (the game then builds tables of no line).
-    pub unit_lines: Vec<genie_core::lines::UnitLine>,
+    pub unit_lines: Vec<genie_core::objects::lines::UnitLine>,
     /// The technologies, by id.
     pub techs: Vec<genie_core::technology::TechDef>,
     /// The effects' commands, by id (the world's effect table).
@@ -579,7 +579,7 @@ impl MasterTable {
                 let g = g.as_ref()?;
                 Some((
                     id as i16,
-                    genie_core::sprite::Graphic {
+                    genie_core::objects::sprite::Graphic {
                         id: id as i16,
                         frames: g.frame_count,
                         facets: g.angle_count,
@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn unit_lines_read_each_entrys_keys_as_the_builder_does() {
-        use genie_core::lines::UnitLine;
+        use genie_core::objects::lines::UnitLine;
         // two entries of the 158041 file, one without its chain, one with an array of names
         let json = r#"{"Hint": "LineIDs have to be between (-400, -199).", "UnitLines": [
             {"Name": "Wall Line", "Identifier": "stone-wall-line", "Building": true,

@@ -1,6 +1,6 @@
 //! The static, animated, moving and action masters' setters.
 
-use crate::masters::{
+use crate::objects::masters::{
     AttributeWorld, MISSILE_SPEED_CAP, Master, ROUND, SPEED_CAP, VALID_OBSTRUCTIONS, add_short,
     add_sprite, attribute, insert_damage_graphic, low8, low16, master_type, multiply_short,
     resize_damage_graphics, select_entry, set_sprite,
@@ -10,7 +10,7 @@ impl Master {
     /// `FUN_141126400`, the static master's slot 0x18.
     pub(super) fn set_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si_64;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = low16(v),
             a::LINE_OF_SIGHT => self.line_of_sight = v,
@@ -69,7 +69,7 @@ impl Master {
     /// [`Master::set_static`]'s flags and levels (`FUN_141126400`): available, disabled, the
     /// interface kind, the combat level, the interaction and minimap modes.
     pub(super) fn set_static_level(&mut self, attribute: u8, v: f32) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             // the save's byte, which the slice holds as its test against 0
             a::AVAILABLE_UNIT_FLAG => self.available = low8(v) != 0,
@@ -86,7 +86,7 @@ impl Master {
     /// undead, each a sprite the world's table holds.
     pub(super) fn set_static_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::STANDING_GRAPHIC => set_sprite(&mut self.standing_sprite, cvttss2si(v), world),
             a::STANDING_GRAPHIC_2 => {
@@ -104,7 +104,7 @@ impl Master {
     /// percent and apply mode, the selection (at most the last) and the count.
     pub(super) fn set_damage_graphic(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::DAMAGE_GRAPHIC => {
                 if let Some(g) = self.damage_graphic_mut() {
@@ -140,7 +140,7 @@ impl Master {
     /// `FUN_141126af0`, the static master's slot 0x20.
     pub(super) fn add_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si_64;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = add_short(self.hit_points, v, world.capped),
             a::LINE_OF_SIGHT => self.line_of_sight += v,
@@ -187,7 +187,7 @@ impl Master {
     /// [`Master::add_static`]'s sprites (`FUN_141126af0`): standing, second standing, dying and
     /// undead, each its id plus the amount ([`add_sprite`]).
     pub(super) fn add_static_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::STANDING_GRAPHIC => add_sprite(&mut self.standing_sprite, v, world),
             a::STANDING_GRAPHIC_2 => {
@@ -205,7 +205,7 @@ impl Master {
     /// percent and apply mode, the selection and the count, each from the selected entry.
     pub(super) fn add_damage_graphic(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::DAMAGE_GRAPHIC => {
                 if let Some(g) = self.damage_graphic_mut() {
@@ -243,7 +243,7 @@ impl Master {
 
     /// `FUN_1411271e0`, the static master's slot 0x28.
     pub(super) fn multiply_static(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => self.hit_points = multiply_short(self.hit_points, v, world.capped),
             a::LINE_OF_SIGHT => self.line_of_sight *= v,
@@ -322,7 +322,7 @@ impl Master {
     /// `FUN_1410e1c00`, the moving master's slot 0x18.
     pub(super) fn set_moving(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed = v,
             a::WALKING_GRAPHIC => set_sprite(&mut self.move_sprite, cvttss2si(v), world),
@@ -336,7 +336,7 @@ impl Master {
 
     /// `FUN_1410e1da0`, the moving master's slot 0x20.
     pub(super) fn add_moving(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed += v,
             a::WALKING_GRAPHIC => add_sprite(&mut self.move_sprite, v, world),

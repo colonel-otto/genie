@@ -10,7 +10,7 @@ use genie_rec::de;
 #[derive(Debug)]
 pub struct FinderWorld {
     /// Every player's masters.
-    pub masters: Vec<genie_core::masters::Masters>,
+    pub masters: Vec<genie_core::objects::masters::Masters>,
     /// The objects by id.
     pub objects: std::collections::HashMap<i32, FinderObject>,
     /// `relation[i]` of each player (`player+0x260`).

@@ -14,7 +14,7 @@
 //! value, and the buffer's regrowth by ten copies them with the rest.
 
 use crate::GenieError;
-use crate::masters::{Master, Masters, TrainLocation};
+use crate::objects::masters::{Master, Masters, TrainLocation};
 
 pub mod spawn;
 
@@ -1020,7 +1020,7 @@ mod tests {
     /// no attribute.
     #[test]
     fn listed_costs_move_what_the_player_lacks_to_gold() {
-        use crate::masters::BuildingMaster;
+        use crate::objects::masters::BuildingMaster;
         let building = |id, head, stack, cost| Master {
             id,
             kind: 80,

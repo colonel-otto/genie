@@ -1,9 +1,9 @@
 //! What the task finder reads of the world: the relations, the drop sites, a wait's progress,
 //! a target's state and the search of slot 0x820.
 
-use crate::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters};
+use crate::objects::unit::Unit;
 use crate::turn::player::Player;
-use crate::turn::unit::Unit;
 use crate::unit_ai::GenieError;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::world_view::Foreign;
@@ -133,7 +133,7 @@ pub(crate) fn task_search<'m>(
     general: &TaskTarget<'_>,
     filter: i16,
     dip: &impl Diplomacy,
-) -> Result<Option<(crate::masters::Task, Option<&'m Master>)>, GenieError> {
+) -> Result<Option<(crate::objects::masters::Task, Option<&'m Master>)>, GenieError> {
     let own = actor.master;
     let find = |list: &Master, filter: i16| {
         crate::unit_ai::task_finder::find_task(
@@ -145,7 +145,7 @@ pub(crate) fn task_search<'m>(
             filter,
             dip,
         )
-        .map(Option::<&crate::masters::Task>::copied)
+        .map(Option::<&crate::objects::masters::Task>::copied)
     };
     if let Some(task) = find(own, filter)? {
         return Ok(Some((task, None)));

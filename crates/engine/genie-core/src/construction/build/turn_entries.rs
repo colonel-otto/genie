@@ -6,7 +6,7 @@ use crate::construction::build::{
     BUILDING_TYPE, Built, CLASS_39, Completion, Construction, Site, StackUnit, WorkChain,
     show_built,
 };
-use crate::masters::Master;
+use crate::objects::masters::Master;
 use crate::orders::Place;
 use crate::unit_ai::GenieError;
 

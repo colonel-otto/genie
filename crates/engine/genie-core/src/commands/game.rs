@@ -329,7 +329,7 @@ mod tests {
     /// list.
     #[test]
     fn diplomacy_allied_victory_and_treason_for_the_command_s_player() {
-        use crate::masters::{Master, Masters};
+        use crate::objects::masters::{Master, Masters};
         let mut t = world();
         t.alliance_locked = 1;
         t.game(&game(1, sub::DIPLOMACY, 1, 2, 0)).unwrap();
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn the_queue_sub_commands_buy_and_give_back_for_their_player() {
         use crate::gathering::farm_queue::FISH_TRAP;
-        use crate::masters::{Master, Masters, master_type};
+        use crate::objects::masters::{Master, Masters, master_type};
         let costing = |id, wood| Master {
             id,
             kind: master_type::COMBAT,

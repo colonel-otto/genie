@@ -1,7 +1,7 @@
 //! The TRIBE combat and building masters' setters: the costs, the charge, the sprites and the
 //! train locations.
 
-use crate::masters::{
+use crate::objects::masters::{
     AttributeWorld, Master, ROUND, add_sprite, attribute, cost_resource, id_of,
     insert_train_location, low8, low16, resize_train_locations, select_entry, set_sprite,
 };
@@ -21,7 +21,7 @@ impl Master {
     /// `FUN_1412661d0`, the combat master's slot 0x18.
     pub(super) fn set_tribe_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::HERO_STATUS => self.hero_flag = low8(v),
             a::TRAIN_LOCATION
@@ -86,7 +86,7 @@ impl Master {
     /// event, its type and its projectile.
     pub(super) fn set_charge(&mut self, attribute: u8, v: f32) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::MAXIMUM_CHARGE => self.max_charge = v,
             a::RECHARGE_RATE => self.recharge_rate = v,
@@ -101,7 +101,7 @@ impl Master {
     /// garrison and second attack, each a sprite the world's table holds.
     pub(super) fn set_tribe_sprite(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::SPECIAL_GRAPHIC => set_sprite(&mut self.special_sprite, cvttss2si(v), world),
             a::IDLE_ATTACK_GRAPHIC => {
@@ -118,7 +118,7 @@ impl Master {
     /// location, button, hotkey and time, the selection (at most the last) and the count.
     pub(super) fn set_train_attribute(&mut self, attribute: u8, v: f32) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::TRAIN_LOCATION => {
                 if let Some(t) = self.train_location_mut() {
@@ -161,7 +161,7 @@ impl Master {
     /// counts as −1.
     pub(super) fn add_tribe_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::HERO_STATUS => self.hero_flag = self.hero_flag.wrapping_add(low8(v)),
             a::SHOWN_PIERCE_ARMOR => {
@@ -230,7 +230,7 @@ impl Master {
         v: f32,
         world: &AttributeWorld<'_>,
     ) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::SHOWN_PIERCE_ARMOR => {
                 self.shown.pierce_armor = self.shown.pierce_armor.wrapping_mul(low16(v));
@@ -281,7 +281,7 @@ impl Master {
     /// `FUN_14123d310`, the building master's slot 0x18. Its six sprites (85 to 90) go to a copy
     /// of the field (the game's local), which changes nothing; its sounds are the interface's.
     pub(super) fn set_building(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::BUILDING_ICON_OVERRIDE => self.building_facet = low16(v),
             a::GARRISON_TYPE => {
@@ -307,7 +307,7 @@ impl Master {
 
     /// `FUN_14123d530`, the building master's slot 0x20, as [`Master::set_building`].
     pub(super) fn add_building(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::BUILDING_ICON_OVERRIDE => {
                 self.building_facet = self.building_facet.wrapping_add(low16(v));

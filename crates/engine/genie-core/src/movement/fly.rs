@@ -4,10 +4,10 @@
 //! the `MoveTo` ends; then it rests for its task's wait time, or picks the next flight at once.
 
 use crate::GenieError;
-use crate::masters::Task;
 use crate::math::fmath::{cos, sin};
 use crate::math::rng::Well512;
 use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::objects::masters::Task;
 
 /// The Fly action's type, which word 9 adds.
 pub const FLY: i16 = 10;

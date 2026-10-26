@@ -92,7 +92,7 @@ impl Turns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lifecycle::Lifecycle;
+    use crate::objects::lifecycle::Lifecycle;
     use crate::turn::{Player, Unit};
 
     /// Gaia and three players; player 1 holds 500 gold and is allied with 3.
@@ -137,14 +137,14 @@ mod tests {
 
     /// The flare's master (697, animated, no hit points) for every player.
     fn with_flares(t: &mut Turns) {
-        let flare = crate::masters::Master {
+        let flare = crate::objects::masters::Master {
             id: FLARE4,
-            kind: crate::masters::master_type::ANIMATED,
+            kind: crate::objects::masters::master_type::ANIMATED,
             standing_sprite: -1,
-            ..crate::masters::Master::default()
+            ..crate::objects::masters::Master::default()
         };
         t.masters = (0..t.players.len())
-            .map(|_| crate::masters::Masters::new([flare.clone()]))
+            .map(|_| crate::objects::masters::Masters::new([flare.clone()]))
             .collect();
     }
 

@@ -24,7 +24,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-        task: &crate::masters::Task,
+        task: &crate::objects::masters::Task,
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), GenieError> {

@@ -1,13 +1,13 @@
 //! A made unit's spawn, the command queue it takes, its unit AI and the combat unit's
 //! constructor.
 
-use crate::lifecycle::{Class, Lifecycle};
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::lifecycle::{Class, Lifecycle};
+use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::production::IN_PRODUCTION;
 use crate::production::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
-use crate::sprite::{ActiveSprite, Graphic};
 use crate::turn::{Turns, Unit};
 use crate::unit_ai::{ACTION_COMPLETED, GenieError, NewObject, Notify, UnitAi, factory_type};
 use crate::vision::visibility::{Seer, capture_kind};
@@ -177,7 +177,7 @@ impl Turns {
         &self,
         p: usize,
         master: i16,
-        made: &crate::masters::Master,
+        made: &crate::objects::masters::Master,
         position: [f32; 3],
     ) -> Result<NewObject, GenieError> {
         let owner = &self.players[p];
@@ -213,18 +213,18 @@ impl Turns {
     pub(crate) fn setup_draws(
         &mut self,
         standing: Graphic,
-    ) -> (ActiveSprite, crate::facing::SpriteFacets, f32) {
+    ) -> (ActiveSprite, crate::objects::facing::SpriteFacets, f32) {
         if standing.flags & 4 != 0 && 1 < standing.facets {
             let _ = self.streams.get(Stream::Object).rand15();
         }
         let sprite = ActiveSprite::start(standing, self.streams.get(Stream::Sprite));
-        let facets = crate::facing::SpriteFacets {
+        let facets = crate::objects::facing::SpriteFacets {
             count: standing.facets,
             flag_1: standing.flags & 2 != 0,
         };
-        let angle = if crate::facing::draws_angle(Some(facets)) {
+        let angle = if crate::objects::facing::draws_angle(Some(facets)) {
             let r = self.streams.get(Stream::Object).rand15();
-            crate::facing::drawn_angle(r, facets)
+            crate::objects::facing::drawn_angle(r, facets)
         } else {
             0.0
         };
@@ -235,7 +235,7 @@ impl Turns {
         &mut self,
         p: usize,
         master: i16,
-        made: &crate::masters::Master,
+        made: &crate::objects::masters::Master,
         position: [f32; 3],
     ) -> Result<usize, GenieError> {
         if self.players[p].computer {

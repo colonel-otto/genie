@@ -3,12 +3,12 @@
 
 use crate::combat::damage::Victim;
 use crate::construction::build::{Completion, Construction, Site};
-use crate::lifecycle::Lifecycle;
 use crate::map::spatial::Spatial;
-use crate::masters::Master;
 use crate::math::rng::{Stream, Well512};
-use crate::sprite::Graphic;
-use crate::turn::unit::{Unit, annexes_of};
+use crate::objects::lifecycle::Lifecycle;
+use crate::objects::masters::Master;
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::{Unit, annexes_of};
 use crate::turn::world::{farm_bonus, victim_of};
 use crate::turn::{
     BUILDING_TERRAIN, EJECT_SHARE, GATE_CLOSE_DELAY, GATE_EPSILON, GATE_SHUT_HEIGHT, MONASTERY,
@@ -475,7 +475,7 @@ impl Unit {
     /// Sprite stream ("Update"); above 0x3fff it shows the other (`FUN_141189760` with the other
     /// index and 0x7fff: `+0x78c` takes the index, slot 0x68 the master's sprite of that index,
     /// [`crate::combat::attack::set_sprite`], and the list's slot 0x28 puts its node back to its first
-    /// frame, [`crate::sprite::ActiveSprite::reset_frame`]).
+    /// frame, [`crate::objects::sprite::ActiveSprite::reset_frame`]).
     pub(crate) fn idle_swap(
         &mut self,
         master: &Master,

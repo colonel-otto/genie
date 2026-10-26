@@ -641,7 +641,7 @@ fn move_level(
 mod tests {
     use super::*;
     use crate::groups::{GroupCommand, Member, UnitGroups};
-    use crate::masters::{Master, Masters};
+    use crate::objects::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
 
     /// Player 1's unit 7 (master 4: type 70, category 1, no action, no unit AI) in group 1 at

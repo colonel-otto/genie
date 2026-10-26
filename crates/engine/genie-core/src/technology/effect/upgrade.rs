@@ -2,8 +2,8 @@
 //! kinds and a negative cost's entries.
 
 use crate::GenieError;
-use crate::masters::{Master, master_type};
 use crate::math::rng::Stream;
+use crate::objects::masters::{Master, master_type};
 use crate::technology::EffectCommand;
 use crate::technology::effect::kind;
 use crate::turn::{Turns, Unit};

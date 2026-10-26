@@ -3,8 +3,8 @@
 
 use crate::GenieError;
 use crate::movement::Mover;
+use crate::objects::unit::{Unit, same_members};
 use crate::turn::Turns;
-use crate::turn::unit::{Unit, same_members};
 use crate::turn::world::forget_resource;
 
 /// The game's state after a tick, for the oracle's forced replay (dev only: the oracle reads it

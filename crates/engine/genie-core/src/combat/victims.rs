@@ -3,8 +3,8 @@
 
 use crate::combat::damage::Victim;
 use crate::map::spatial::Spatial;
-use crate::masters::Master;
-use crate::turn::unit::Unit;
+use crate::objects::masters::Master;
+use crate::objects::unit::Unit;
 use crate::turn::world::World;
 use crate::turn::{BUILDING_KIND, Turns};
 use crate::unit_ai::task_finder::Diplomacy;

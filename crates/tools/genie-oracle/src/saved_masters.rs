@@ -6,7 +6,7 @@ use crate::{animated_master, combat_master, moving_master};
 use genie_core::GenieError;
 use genie_save::generated::world::{Master, PlayerObjects, RgeStaticObject};
 
-/// The facets every sprite a live object of a saved master shows ([`genie_core::facing::SpriteFacets`]):
+/// The facets every sprite a live object of a saved master shows ([`genie_core::objects::facing::SpriteFacets`]):
 /// its standing, second standing, walking, running and attack sprites and its tasks' four, those
 /// the data file has, all of one count and bit 1 of the sequence flags; None when they differ or
 /// it has none. The dying sprite shows once the object is dead, where nothing turns it.
@@ -14,7 +14,7 @@ pub(super) fn master_facets(
     m: &Master,
     s: &genie_save::generated::world::RgeMasterStaticObject,
     table: &MasterTable,
-) -> Option<genie_core::facing::SpriteFacets> {
+) -> Option<genie_core::objects::facing::SpriteFacets> {
     let mut sprites = vec![s.idle_sprite_id, s.idle2_sprite_id];
     if let Some(mv) = moving_master(m) {
         sprites.extend([mv.move_sprite_id, mv.run_sprite_id]);
@@ -32,7 +32,7 @@ pub(super) fn master_facets(
         .into_iter()
         .filter(|&id| 0 <= id)
         .filter_map(|id| table.graphics.get(&id))
-        .map(|g| genie_core::facing::SpriteFacets {
+        .map(|g| genie_core::objects::facing::SpriteFacets {
             count: g.facets,
             flag_1: g.flags & 2 != 0,
         });
@@ -77,7 +77,7 @@ pub(super) fn task_at(
     masters: Option<&MasterTable>,
     master: i16,
     index: i16,
-) -> Result<genie_core::masters::Task, GenieError> {
+) -> Result<genie_core::objects::masters::Task, GenieError> {
     let i = usize::try_from(index)
         .map_err(|_| GenieError::unsupported("a saved action without its task"))?;
     let saved = objects
@@ -102,8 +102,10 @@ pub(super) fn task_at(
         ))
 }
 
-pub(super) const fn core_task(t: &genie_save::generated::world::Task) -> genie_core::masters::Task {
-    genie_core::masters::Task {
+pub(super) const fn core_task(
+    t: &genie_save::generated::world::Task,
+) -> genie_core::objects::masters::Task {
+    genie_core::objects::masters::Task {
         id: t.id,
         action_type: t.action_type,
         object_group: t.object_group,
@@ -138,10 +140,10 @@ pub(super) fn work_masters(
     objects: &PlayerObjects,
     civ: u8,
     table: &MasterTable,
-) -> genie_core::masters::Masters {
+) -> genie_core::objects::masters::Masters {
     let task = core_task;
     let saved = objects.masters.iter().flatten().map(|m| &m.master);
-    genie_core::masters::Masters::new(saved.filter_map(|m| {
+    genie_core::objects::masters::Masters::new(saved.filter_map(|m| {
         let s = m.static_part()?;
         // the `.dat` values of the master it copies (an upgraded one's), under its own id
         let mut work = table.work(civ, s.copy_id())?.clone();
@@ -288,7 +290,7 @@ pub(super) fn work_masters(
         work.damage_graphics = s
             .damage_sprite
             .iter()
-            .map(|d| genie_core::masters::DamageGraphic {
+            .map(|d| genie_core::objects::masters::DamageGraphic {
                 sprite: d.temp_id,
                 percent: d.sprite_info_damage_percent,
                 apply_mode: d.sprite_info_flag,
@@ -298,7 +300,7 @@ pub(super) fn work_masters(
         work.train_locations = combat.map_or_else(Vec::new, |c| {
             c.train_location
                 .iter()
-                .map(|t| genie_core::masters::TrainLocation {
+                .map(|t| genie_core::objects::masters::TrainLocation {
                     location: t.train_location_id,
                     time: t.train_time,
                     button: t.button_location_id,

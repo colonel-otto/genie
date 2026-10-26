@@ -2,7 +2,7 @@
 //! setters and the side effects of allied vision and the farms' food.
 
 use crate::GenieError;
-use crate::masters::master_type;
+use crate::objects::masters::master_type;
 use crate::turn::Turns;
 
 /// The attribute that turns the allied vision on (`FUN_141616820`'s and `FUN_14162d610`'s 0x32):

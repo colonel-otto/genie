@@ -211,14 +211,14 @@ mod tests {
     fn every_update_ends_with_the_masks_rebuilt_and_new_town_centres_flared() {
         let mut t = teams();
         t.players[2].attributes[REVEAL_CENTRES] = 5.0;
-        let flare = crate::masters::Master {
+        let flare = crate::objects::masters::Master {
             id: FLARE4,
-            kind: crate::masters::master_type::ANIMATED,
+            kind: crate::objects::masters::master_type::ANIMATED,
             standing_sprite: -1,
-            ..crate::masters::Master::default()
+            ..crate::objects::masters::Master::default()
         };
         t.masters = (0..t.players.len())
-            .map(|_| crate::masters::Masters::new([flare.clone()]))
+            .map(|_| crate::objects::masters::Masters::new([flare.clone()]))
             .collect();
         t.next_object_id = 100;
         let flares = |t: &Turns| -> Vec<(i32, [f32; 3])> {
@@ -236,10 +236,10 @@ mod tests {
         t.players[1].objects.push(crate::turn::Unit {
             id: 50,
             position: [7.0, 8.0, 0.0],
-            life: crate::lifecycle::Lifecycle {
+            life: crate::objects::lifecycle::Lifecycle {
                 master_id: TOWN_CENTRE,
                 state: 2,
-                ..crate::lifecycle::Lifecycle::default()
+                ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..crate::turn::Unit::default()
         });

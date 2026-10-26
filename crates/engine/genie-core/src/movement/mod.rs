@@ -185,7 +185,7 @@ pub struct MoveStats {
     pub fast_turn: bool,
     /// The facets the facing routines read of the unit's current sprite: the master's, when
     /// every sprite it shows has the same count and bit 1 (None otherwise, or without sprites).
-    pub facets: Option<crate::facing::SpriteFacets>,
+    pub facets: Option<crate::objects::facing::SpriteFacets>,
     /// The master's weapon range (slot 0x230, `+0x828`; 0 for an object without combat values),
     /// which the drop-off walker's start test reads (`FUN_140fa0110`).
     pub weapon_range: f32,
@@ -231,7 +231,7 @@ pub struct Mover {
     /// `+0x7ec`, `turn_towards_time`: the world time in seconds of its last facet step toward a
     /// target (`FUN_141162db0`).
     pub last_turn: f32,
-    /// `+0x7e8`: where the unit faces, radians 0 to 2π ([`crate::facing`]).
+    /// `+0x7e8`: where the unit faces, radians 0 to 2π ([`crate::objects::facing`]).
     pub angle: f32,
     /// The point of the `MoveTo` the unit walks with (`+0x38`..`+0x40`), when it walks to a target
     /// object: where the target stood when the `MoveTo` last asked for a path, which its check of
@@ -252,7 +252,7 @@ pub struct Mover {
     /// 1), which the yaw and the facing read: the sprite the slice holds as the unit's update
     /// starts ([`crate::turn::Unit`]'s), or a new unit's standing sprite; None for neither (the
     /// master's [`MoveStats::facets`] then).
-    pub sprite_facets: Option<crate::facing::SpriteFacets>,
+    pub sprite_facets: Option<crate::objects::facing::SpriteFacets>,
 }
 
 /// The moving unit, as the motion step needs it besides its [`Mover`].

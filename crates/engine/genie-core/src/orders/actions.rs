@@ -1,8 +1,8 @@
 //! Taking and releasing targets, the order record, actions cleared, transformations, gates
 //! and master switches.
 
-use crate::masters::Master;
 use crate::math::rng::Stream;
+use crate::objects::masters::Master;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
 use crate::turn::{Releaser, Turns, Unit, World};
 use crate::unit_ai::GenieError;
@@ -324,7 +324,7 @@ impl Turns {
 pub(crate) struct SwitchWorld<'a> {
     pub(crate) spatial: &'a mut crate::map::spatial::Spatial,
     pub(crate) pathing: &'a mut crate::pathing::Pathing,
-    pub(crate) graphics: &'a std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+    pub(crate) graphics: &'a std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     pub(crate) sprite: &'a mut crate::math::rng::Well512,
 }
 
@@ -442,7 +442,7 @@ pub(crate) fn switch_master(
             if unit.sprite.is_some() {
                 crate::combat::attack::set_sprite(&mut unit.sprite, g, world.sprite);
             } else {
-                let _ = crate::sprite::ActiveSprite::start(g, world.sprite);
+                let _ = crate::objects::sprite::ActiveSprite::start(g, world.sprite);
             }
         }
         switched.promoted = true;

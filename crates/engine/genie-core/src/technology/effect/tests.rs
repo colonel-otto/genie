@@ -1,5 +1,5 @@
 use super::*;
-use crate::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters};
 use crate::turn::{Player, Unit};
 
 /// A combat unit's charge after its master's maximum charge changes (`FUN_1412163c0`'s
@@ -40,7 +40,7 @@ fn an_object_has_actions_while_it_holds_one() {
 /// master's idle attack and second attack sprites replace its own.
 #[test]
 fn an_attack_takes_its_master_s_sprites_but_its_task_s() {
-    let g = |id| crate::sprite::Graphic {
+    let g = |id| crate::objects::sprite::Graphic {
         id,
         frames: 10,
         facets: 1,
@@ -221,7 +221,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
 fn an_effect_spawns_its_villagers_at_each_built_town_centre() {
     use crate::garrison::tests::{TC, VILLAGER, let_out_world};
     let mut t = let_out_world();
-    let standing = crate::sprite::Graphic {
+    let standing = crate::objects::sprite::Graphic {
         id: 300,
         frames: 10,
         facets: 1,
@@ -452,11 +452,11 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
         kind: 80,
         class: 3,
         hit_points,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: -1,
             head_unit,
             annexes,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..Master::default()
     };
@@ -667,7 +667,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
 /// seer's line of sight; another master's objects and a master the player lacks keep theirs.
 #[test]
 fn an_object_s_copies_of_its_master_follow_its_change() {
-    use crate::masters::attribute as a;
+    use crate::objects::masters::attribute as a;
     let mut site = unit_of(1, 4, 30.0);
     site.construction = Some(built());
     let player = Player {
@@ -831,7 +831,7 @@ fn a_farm_food_change_grows_the_farms_food() {
         state: 1,
         remaining: 100.0,
         total: 175.0,
-        task: crate::masters::Task::default(),
+        task: crate::objects::masters::Task::default(),
     });
     let player = Player {
         objects: vec![farm],

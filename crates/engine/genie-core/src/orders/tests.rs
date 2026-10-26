@@ -53,9 +53,9 @@ fn a_damage_share_is_the_whole_less_the_hit_points_share() {
 fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
     let goose = Unit {
         id: 28766,
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 1243,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -69,7 +69,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
             ..crate::turn::Player::default()
         }],
     );
-    t.masters = vec![crate::masters::Masters::new([Master {
+    t.masters = vec![crate::objects::masters::Masters::new([Master {
         id: 1243,
         class: 58,
         ..Master::default()
@@ -93,14 +93,14 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
     let pen = |id, x: f32, state| Unit {
         id,
         position: [x, 10.0, 0.0],
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 1897,
             state,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
-    t.masters[0] = crate::masters::Masters::new([
+    t.masters[0] = crate::objects::masters::Masters::new([
         t.masters[0].get(1243).unwrap().clone(),
         Master {
             id: 1897,
@@ -156,12 +156,12 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let villager = Unit {
         id: 10,
         position: [10.0, 10.0, 0.0],
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 83,
             state: 2,
             attribute_type: 1,
             amount: 5.0,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         mover: Some(crate::gathering::hunt::tests::walker()),
         build: Some(crate::construction::build::BuildAction {
@@ -185,9 +185,9 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let foundation = Unit {
         id: 600,
         position: [5.0, 10.0, 0.0],
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 70,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         construction: Some(crate::construction::build::Construction {
             progress: 1.0,
@@ -205,10 +205,10 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
     let mill = Unit {
         id: 503,
         position: [15.0, 10.0, 0.0],
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 68,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -223,7 +223,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
                 ..crate::turn::Player::default()
             }],
         );
-        t.masters = vec![crate::masters::Masters::new([
+        t.masters = vec![crate::objects::masters::Masters::new([
             Master {
                 id: 83,
                 kind: 70,
@@ -318,7 +318,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
 fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
-    use crate::sprite::Graphic;
+    use crate::objects::sprite::Graphic;
     let standing = Graphic {
         id: 300,
         frames: 10,
@@ -357,7 +357,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     soldier.weapon_range = 0.0;
     soldier.reload = 2.0;
     soldier.moving = Some(walker.stats);
-    t.masters[0] = crate::masters::Masters::new([Master {
+    t.masters[0] = crate::objects::masters::Masters::new([Master {
         id: 126,
         kind: 70,
         class: 10,
@@ -366,11 +366,11 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     t.players[0].objects.push(Unit {
         id: 50,
         position: [10.4, 10.0, 0.0],
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 126,
             state: 2,
             hp: 25.0,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     });
@@ -393,7 +393,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
     let mut rng = Well512::default();
     let unit = &mut t.players[1].objects[0];
     unit.mover = Some(walker);
-    unit.sprite = Some(crate::sprite::ActiveSprite::start(
+    unit.sprite = Some(crate::objects::sprite::ActiveSprite::start(
         Graphic {
             id: 302,
             ..standing
@@ -408,10 +408,10 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
     });
-    let task = crate::masters::Task {
+    let task = crate::objects::masters::Task {
         action_type: ATTACK_TASK,
         sprites: [-1; 4],
-        ..crate::masters::Task::default()
+        ..crate::objects::masters::Task::default()
     };
     t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
         .unwrap();
@@ -443,10 +443,10 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
                 id: if members.contains(&id) { 5 } else { -1 },
                 flag: -2,
             },
-            life: crate::lifecycle::Lifecycle {
+            life: crate::objects::lifecycle::Lifecycle {
                 master_id: master,
                 state: 2,
-                ..crate::lifecycle::Lifecycle::default()
+                ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
         })
@@ -477,8 +477,8 @@ fn soldiers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> Turns {
         ..Master::default()
     };
     t.masters = vec![
-        crate::masters::Masters::new([]),
-        crate::masters::Masters::new([master(4, 3), master(83, 0)]),
+        crate::objects::masters::Masters::new([]),
+        crate::objects::masters::Masters::new([master(4, 3), master(83, 0)]),
     ];
     if !members.is_empty() {
         t.groups.groups.push(crate::groups::UnitGroup {
@@ -646,7 +646,7 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
     t.settings.cheats_enabled = true;
     t.players.push(crate::turn::Player::default());
     t.player_time.push(0);
-    t.masters.push(crate::masters::Masters::new([]));
+    t.masters.push(crate::objects::masters::Masters::new([]));
     let walker = crate::gathering::hunt::tests::walker();
     if let Some(m) = t.masters[1].get_mut(83) {
         m.moving = Some(walker.stats);
@@ -778,8 +778,8 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     let mut t = soldiers(&units, &[]);
     t.world_time = 400;
     t.players.push(crate::turn::Player::default());
-    t.masters.push(crate::masters::Masters::new([]));
-    t.masters[1] = crate::masters::Masters::new([
+    t.masters.push(crate::objects::masters::Masters::new([]));
+    t.masters[1] = crate::objects::masters::Masters::new([
         Master {
             id: 4,
             kind: 70,
@@ -795,10 +795,10 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
         id: 50,
         gate: Some(crate::turn::Gate::default()),
         mover: Some(crate::gathering::hunt::tests::walker()),
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 79,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     });
@@ -834,7 +834,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
         volley_fire: f32::from(build_time / 15),
         ..Master::default()
     };
-    t.masters[1] = crate::masters::Masters::new([master(TROPHY, 10), master(1650, 30)]);
+    t.masters[1] = crate::objects::masters::Masters::new([master(TROPHY, 10), master(1650, 30)]);
     let trophy = |state| Unit {
         id: 60,
         firepower: 7.0,
@@ -849,11 +849,11 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
             sprite_override: false,
             started: true,
         }),
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: TROPHY,
             state,
             hp: 50.0,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -985,12 +985,12 @@ fn the_readiness_pass_readies_the_unready_and_drops_the_ready() {
 /// are one); an attack task (7 or 9) turns a unit's retargeting off unless it is a villager.
 #[test]
 fn the_carried_resource_test_drops_another_resource_and_stops_a_soldier_s_retargeting() {
-    let task = |action_type, attribute_type| crate::masters::Task {
+    let task = |action_type, attribute_type| crate::objects::masters::Task {
         action_type,
         attribute_type,
-        ..crate::masters::Task::default()
+        ..crate::objects::masters::Task::default()
     };
-    let run = |master: i16, held: (i16, f32), task: crate::masters::Task| {
+    let run = |master: i16, held: (i16, f32), task: crate::objects::masters::Task| {
         let mut t = soldiers(&[(11, master, [20.0, 20.0])], &[]);
         for (id, class) in [(83, 4), (4, 6)] {
             if let Some(m) = t.masters[1].get_mut(id) {
@@ -1072,8 +1072,8 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
         ..Master::default()
     };
     t.masters
-        .push(crate::masters::Masters::new([scout.clone()]));
-    t.masters[1] = crate::masters::Masters::new([
+        .push(crate::objects::masters::Masters::new([scout.clone()]));
+    t.masters[1] = crate::objects::masters::Masters::new([
         scout,
         Master {
             id: 4,
@@ -1090,10 +1090,10 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
         id,
         position: [20.0, 20.0, 0.0],
         ai: Some(ai.clone()),
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 448,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1145,20 +1145,21 @@ fn a_stance_reaches_another_player_s_unit_only_under_the_setting() {
     let units = [(11, 4, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
     t.players.push(crate::turn::Player::default());
-    t.masters.push(crate::masters::Masters::new([Master {
-        id: 4,
-        kind: 70,
-        class: 54,
-        ..Master::default()
-    }]));
+    t.masters
+        .push(crate::objects::masters::Masters::new([Master {
+            id: 4,
+            kind: 70,
+            class: 54,
+            ..Master::default()
+        }]));
     t.players[1].objects[0].ai = Some(crate::unit_ai::UnitAi::default());
     t.players[2].objects.push(Unit {
         id: 30,
         ai: Some(crate::unit_ai::UnitAi::default()),
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 4,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     });
@@ -1216,11 +1217,11 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     let mut unit = Unit {
         id: 7,
         position: [5.0, 5.0, 0.0],
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             hp: 20.0,
             master_id: 4,
             inside: Some(100),
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1335,7 +1336,7 @@ fn followers() -> Turns {
     t.players[1].formations.auto = false;
     t.spatial.map = [120, 120];
     let walker = crate::gathering::hunt::tests::walker();
-    t.masters[1] = crate::masters::Masters::new([Master {
+    t.masters[1] = crate::objects::masters::Masters::new([Master {
         id: 4,
         kind: 70,
         moving: Some(walker.stats),
@@ -1351,20 +1352,21 @@ fn followers() -> Turns {
         });
     }
     t.players.push(crate::turn::Player::default());
-    t.masters.push(crate::masters::Masters::new([Master {
-        id: 5,
-        kind: 70,
-        class: 6,
-        radius: [0.5, 0.5],
-        ..Master::default()
-    }]));
+    t.masters
+        .push(crate::objects::masters::Masters::new([Master {
+            id: 5,
+            kind: 70,
+            class: 6,
+            radius: [0.5, 0.5],
+            ..Master::default()
+        }]));
     t.players[2].objects.push(Unit {
         id: 30,
         position: [40.0, 20.0, 0.0],
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 5,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     });
@@ -1483,7 +1485,7 @@ fn a_follow_of_another_player_s_unit_does_nothing() {
 fn a_builder_leaves_the_main_building_of_an_annex() {
     let units = [(11, 4, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
-    t.masters[1] = crate::masters::Masters::new([Master {
+    t.masters[1] = crate::objects::masters::Masters::new([Master {
         id: 79,
         kind: BUILDING,
         ..Master::default()
@@ -1503,9 +1505,9 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
         id,
         annex_of,
         construction: Some(construction),
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 79,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1550,7 +1552,7 @@ fn a_unit_s_own_queued_order_names_its_target() {
 fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
     let units = [(11, 4, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
-    t.masters[0] = crate::masters::Masters::new([Master {
+    t.masters[0] = crate::objects::masters::Masters::new([Master {
         id: 66,
         kind: 70,
         ..Master::default()
@@ -1559,10 +1561,10 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
         id,
         workers,
         combat: true,
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 66,
             state,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1586,7 +1588,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
 fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
     let units = [(11, 4, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
-    t.masters[1] = crate::masters::Masters::new([
+    t.masters[1] = crate::objects::masters::Masters::new([
         Master {
             id: 4,
             kind: 70,
@@ -1612,9 +1614,9 @@ fn a_build_s_new_target_leaves_the_old_foundation_s_builders() {
             started: true,
         }),
         workers: 1,
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 79,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1665,7 +1667,7 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
         class,
         ..Master::default()
     };
-    t.masters[1] = crate::masters::Masters::new([
+    t.masters[1] = crate::objects::masters::Masters::new([
         master(4, 70, 6),
         master(42, 70, 42),
         master(58, 70, LIVESTOCK),
@@ -1673,12 +1675,12 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
     ]);
     let unit = |id, master, amount| Unit {
         id,
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: master,
             hp: 10.0,
             amount,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1711,12 +1713,12 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
 fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
     let units = [(11, 83, [20.0, 20.0])];
     let mut t = soldiers(&units, &[]);
-    let task = |action_type, object_id| crate::masters::Task {
+    let task = |action_type, object_id| crate::objects::masters::Task {
         action_type,
         object_group: -1,
         object_id,
         work_val1: 1.0,
-        ..crate::masters::Task::default()
+        ..crate::objects::masters::Task::default()
     };
     let villager = |id, tasks| Master {
         id,
@@ -1727,7 +1729,7 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
         tasks,
         ..Master::default()
     };
-    t.masters[1] = crate::masters::Masters::new([
+    t.masters[1] = crate::objects::masters::Masters::new([
         villager(83, vec![task(5, 53)]),
         villager(118, vec![task(101, -1)]),
         Master {
@@ -1741,11 +1743,11 @@ fn slot_0x820_takes_the_first_master_of_the_swap_group_with_a_task() {
     t.players[1].objects[0].life.hp = 25.0;
     t.players[1].objects.push(Unit {
         id: 60,
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 70,
             state: 0,
             hp: 550.0,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     });
@@ -1787,7 +1789,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         moving: Some(walker.stats),
         ..Master::default()
     };
-    t.masters[1] = crate::masters::Masters::new([
+    t.masters[1] = crate::objects::masters::Masters::new([
         sheep_master.clone(),
         Master {
             id: 4,
@@ -1797,15 +1799,16 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
         },
     ]);
     t.players.push(crate::turn::Player::default());
-    t.masters.push(crate::masters::Masters::new([sheep_master]));
+    t.masters
+        .push(crate::objects::masters::Masters::new([sheep_master]));
     let sheep = |id, x: f32, y: f32| Unit {
         id,
         position: [x, y, 0.0],
         mover: Some(walker.clone()),
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: 594,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1895,10 +1898,10 @@ fn soldier_and_enemy(x: f32, class: i16) -> Turns {
         id,
         position: [x, 10.0, 0.0],
         ai: Some(crate::unit_ai::UnitAi::default()),
-        life: crate::lifecycle::Lifecycle {
+        life: crate::objects::lifecycle::Lifecycle {
             master_id: master,
             state: 2,
-            ..crate::lifecycle::Lifecycle::default()
+            ..crate::objects::lifecycle::Lifecycle::default()
         },
         ..Unit::default()
     };
@@ -1928,9 +1931,9 @@ fn soldier_and_enemy(x: f32, class: i16) -> Turns {
         ..Master::default()
     };
     t.masters = vec![
-        crate::masters::Masters::new([]),
-        crate::masters::Masters::new([master(4, class)]),
-        crate::masters::Masters::new([master(5, 6)]),
+        crate::objects::masters::Masters::new([]),
+        crate::objects::masters::Masters::new([master(4, class)]),
+        crate::objects::masters::Masters::new([master(5, 6)]),
     ];
     for (id, player, x) in [(10, 1, 10.0), (20, 2, x)] {
         t.spatial.insert(

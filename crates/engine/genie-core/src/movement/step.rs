@@ -74,7 +74,7 @@ impl Mover {
         at: [f32; 3],
         now: u32,
         angle: f32,
-        sprite_facets: Option<crate::facing::SpriteFacets>,
+        sprite_facets: Option<crate::objects::facing::SpriteFacets>,
     ) -> Self {
         Self {
             forward: [1.0, 0.0, 0.0],

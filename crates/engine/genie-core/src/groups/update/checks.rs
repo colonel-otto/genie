@@ -453,13 +453,13 @@ impl Turns {
         {
             return Err(e);
         }
-        // the slots of a combat object read its terrain look ([`crate::sprite::standing`]); a
+        // the slots of a combat object read its terrain look ([`crate::objects::sprite::standing`]); a
         // trade cart's goods are passed above
         let look = u.abilities.look.as_ref();
         let sprite = match shown {
-            Shown::Standing => crate::sprite::standing(master, look, false),
-            Shown::Walking => crate::sprite::walking(master, look, false),
-            Shown::Running => crate::sprite::running(master, look),
+            Shown::Standing => crate::objects::sprite::standing(master, look, false),
+            Shown::Walking => crate::objects::sprite::walking(master, look, false),
+            Shown::Running => crate::objects::sprite::running(master, look),
         };
         let Some(sprite) = sprite else {
             return Ok(false);

@@ -1,9 +1,9 @@
 //! An object's leave of the world and its release by the action that held it (slot 0x180); the
 //! update's regeneration and hit point check, and a walk's pause.
 
-use crate::masters::Masters;
+use crate::objects::masters::Masters;
+use crate::objects::unit::Unit;
 use crate::turn::Turns;
-use crate::turn::unit::Unit;
 use crate::turn::world::{count_class, forget_resource};
 use crate::unit_ai::{GenieError, Notify};
 
@@ -42,7 +42,7 @@ pub(crate) struct Releaser {
 
 /// The first master type whose slot 0x180 is not the static object's (`FUN_141197d00`, types 10
 /// and 15): the animated object's (`FUN_141071ea0`, types 20 to 40) only counts a worker less.
-pub(super) const ANIMATED_TYPE: u8 = 20;
+pub(crate) const ANIMATED_TYPE: u8 = 20;
 
 /// Slot 0x180 on object `u` of master type `kind`, let go by `by`: the static object's
 /// (`FUN_141197d00`, types 10 and 15) counts a worker less and a static one without workers
@@ -94,7 +94,7 @@ impl Turns {
     /// owner's watched list (`FUN_141091310`), a recyclable master's missile goes to the pool of
     /// type 60 (the world's `+0x1d8`), and it leaves the mesh. Every step runs; returns the
     /// world's leave of the place that the slice does not model.
-    pub(in crate::turn) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
+    pub(crate) fn leave_world(&mut self, p: usize, gone: &Unit) -> Result<(), GenieError> {
         self.track_remove(p, gone.id, gone.life.master_id);
         let master = self.masters.get(p).and_then(|m| m.get(gone.life.master_id));
         forget_resource(&mut self.spatial, master, gone.id, gone.position);
@@ -115,11 +115,7 @@ impl Turns {
     /// `TRIBE_Combat_Object::update`'s regeneration ([`Unit::regenerate`]) of the object in
     /// `slot` ([`Turns::live_slot`]), a combat object or building (types 70 and 80) by its own
     /// master, else its player's.
-    pub(in crate::turn) fn regenerate_object(
-        &mut self,
-        slot: (usize, usize, i32),
-        dt_seconds: f32,
-    ) {
+    pub(crate) fn regenerate_object(&mut self, slot: (usize, usize, i32), dt_seconds: f32) {
         let Some((p, i)) = self.live_slot(slot) else {
             return;
         };
@@ -138,7 +134,7 @@ impl Turns {
 
     /// `TRIBE_Combat_Object::update`'s hit point powerup check ([`Unit::clamp_hp_powerup`]) of the
     /// object in `slot` ([`Turns::live_slot`]), a combat object or building (types 70 and 80).
-    pub(in crate::turn) fn clamp_object_powerup(&mut self, slot: (usize, usize, i32)) {
+    pub(crate) fn clamp_object_powerup(&mut self, slot: (usize, usize, i32)) {
         let Some((p, i)) = self.live_slot(slot) else {
             return;
         };

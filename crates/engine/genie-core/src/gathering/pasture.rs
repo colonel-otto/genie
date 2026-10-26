@@ -5,8 +5,8 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::masters::master_type::BUILDING;
 use crate::math::rng::Stream;
+use crate::objects::masters::master_type::BUILDING;
 use crate::technology::Attributes;
 use crate::turn::Turns;
 

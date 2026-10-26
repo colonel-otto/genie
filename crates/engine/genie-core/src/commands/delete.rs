@@ -8,7 +8,7 @@
 
 use crate::GenieError;
 use crate::construction::build::held;
-use crate::masters::Master;
+use crate::objects::masters::Master;
 use crate::orders::Place;
 use crate::turn::Turns;
 
@@ -519,7 +519,7 @@ mod tests {
     use super::*;
     use crate::construction::build::Construction;
     use crate::map::spatial::Obstruction;
-    use crate::masters::{Master, Masters};
+    use crate::objects::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
 
     /// Gaia and two players: player 1's villager 10, house foundation 11 (build time 25, cost 25
@@ -688,9 +688,9 @@ mod tests {
 #[cfg(test)]
 mod clearing_tests {
     use super::*;
-    use crate::lifecycle::{Class, Lifecycle};
     use crate::map::spatial::{Placed, Spatial, Tiles};
-    use crate::masters::{Master, Masters};
+    use crate::objects::lifecycle::{Class, Lifecycle};
+    use crate::objects::masters::{Master, Masters};
     use crate::turn::{Player, Unit};
 
     /// A live object `id` of `master` at `x`, `y`, outside any pasture.
@@ -774,14 +774,14 @@ mod clearing_tests {
                 class: 11,
                 radius: [1.5, 1.5],
                 buildable_on: 1,
-                building: Some(crate::masters::BuildingMaster {
+                building: Some(crate::objects::masters::BuildingMaster {
                     stack_unit: -1,
                     foundation_terrain: -1,
                     tech: -1,
                     annexes: [-1; 4],
                     head_unit: -1,
                     transform_unit: -1,
-                    ..crate::masters::BuildingMaster::default()
+                    ..crate::objects::masters::BuildingMaster::default()
                 }),
                 ..Master::default()
             },

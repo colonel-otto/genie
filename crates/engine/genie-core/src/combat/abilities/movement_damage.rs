@@ -5,7 +5,7 @@ use crate::combat::abilities::{
     ALWAYS_REACHED, BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, STRUCK_BUILDING_CLASSES,
 };
 use crate::combat::damage::Victim;
-use crate::masters::Task;
+use crate::objects::masters::Task;
 use crate::turn::Turns;
 use crate::{GenieError, math::fmath};
 

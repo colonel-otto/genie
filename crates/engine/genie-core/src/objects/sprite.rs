@@ -14,9 +14,9 @@
 //! (never).
 
 use crate::combat::abilities::Look;
-use crate::masters::Master;
 use crate::math::fmath;
 use crate::math::rng::Well512;
+use crate::objects::masters::Master;
 
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -551,10 +551,10 @@ mod tests {
             run_sprite: 11,
             attack_sprite: 12,
             build_time: 50,
-            building: Some(crate::masters::BuildingMaster {
+            building: Some(crate::objects::masters::BuildingMaster {
                 destruction_sprite: 389,
                 construction_sprite: -1,
-                ..crate::masters::BuildingMaster::default()
+                ..crate::objects::masters::BuildingMaster::default()
             }),
             ..Master::default()
         }
@@ -592,13 +592,13 @@ mod tests {
 
     #[test]
     fn a_loaded_trade_cart_shows_its_trade_task_s_carrying_sprite() {
-        let trade = crate::masters::Task {
+        let trade = crate::objects::masters::Task {
             action_type: 0x6f,
             object_id: 0x54,
             sprites: [1, 2, 3, 4],
-            ..crate::masters::Task::default()
+            ..crate::objects::masters::Task::default()
         };
-        let other = crate::masters::Task {
+        let other = crate::objects::masters::Task {
             object_id: 0x55,
             sprites: [9; 4],
             ..trade

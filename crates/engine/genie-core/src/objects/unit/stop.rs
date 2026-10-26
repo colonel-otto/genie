@@ -1,10 +1,10 @@
 //! A unit's stops: its actions torn down or cleared, its standing sprite, an action's effects
 //! applied.
 
-use crate::masters::Masters;
 use crate::math::rng::{Stream, Well512};
-use crate::sprite::Graphic;
-use crate::turn::unit::Unit;
+use crate::objects::masters::Masters;
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::Unit;
 use crate::turn::world::Releaser;
 use crate::unit_ai::world_view::{AiWork, Context};
 use crate::unit_ai::{Effect, GenieError};
@@ -13,7 +13,7 @@ impl Unit {
     /// stopAction (slot 0x3c0, `FUN_14108c160`): the action list goes ([`Unit::clear_own_actions`])
     /// and a unit in state 2 takes its standing sprite (slot 0x68 with slot 0x798's,
     /// [`crate::combat::attack::set_sprite`]) where the slice holds its sprite.
-    pub(in crate::turn) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn stop_action(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite = c.streams.get(Stream::Sprite);
         let lets = (&mut c.releases, &mut c.builder_leaves);

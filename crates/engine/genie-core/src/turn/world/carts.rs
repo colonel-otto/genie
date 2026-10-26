@@ -2,8 +2,8 @@
 
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
+use crate::objects::unit::Unit;
 use crate::turn::Turns;
-use crate::turn::unit::Unit;
 use crate::turn::world::{ResourceWorld, closest_resource_of};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;

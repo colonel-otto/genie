@@ -283,7 +283,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
             .players()
             .first()
             .map_or(0, |p| p.objects().master_object_num);
-        turns.lines = genie_core::lines::UnitLines::build(gaia_masters, &table.unit_lines);
+        turns.lines = genie_core::objects::lines::UnitLines::build(gaia_masters, &table.unit_lines);
         turns.masters = header
             .players()
             .iter()
@@ -295,7 +295,7 @@ pub(super) fn slice(header: &Header, masters: Option<&MasterTable>) -> Turns {
                 .masters
                 .iter()
                 .skip(1)
-                .flat_map(genie_core::masters::Masters::iter)
+                .flat_map(genie_core::objects::masters::Masters::iter)
                 .filter(|m| m.kind == 70)
         };
         turns.spatial.fastest = all()

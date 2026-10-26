@@ -306,7 +306,7 @@ impl NewObject {
     /// human player's in the Dark Age with posture 0 ([`NewObject::computer`],
     /// [`NewObject::posture`], [`NewObject::age`] are the caller's).
     #[must_use]
-    pub fn of(position: [f32; 3], master: i16, made: &crate::masters::Master) -> Self {
+    pub fn of(position: [f32; 3], master: i16, made: &crate::objects::masters::Master) -> Self {
         Self {
             position,
             master,

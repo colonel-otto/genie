@@ -1,8 +1,8 @@
 //! A player ([`Player`]): its objects, attributes and formations, and the stop of its update.
 
 use crate::GenieError;
+use crate::objects::unit::Unit;
 use crate::turn::Turns;
-use crate::turn::unit::Unit;
 
 /// A player's settings for the groups an order's splitter forms ([`Player::formations`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

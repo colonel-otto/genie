@@ -230,15 +230,15 @@ fn a_priest_converts_by_its_faith_its_task_and_the_object() {
         a
     };
     let tasks = [
-        crate::masters::Task {
+        crate::objects::masters::Task {
             action_type: 0x68,
-            ..crate::masters::Task::default()
+            ..crate::objects::masters::Task::default()
         },
-        crate::masters::Task {
+        crate::objects::masters::Task {
             action_type: 0x68,
             object_group: 3,
             attribute_type4: 28,
-            ..crate::masters::Task::default()
+            ..crate::objects::masters::Task::default()
         },
     ];
     let monk = Converter {
@@ -3888,18 +3888,18 @@ fn a_new_siege_unit_takes_its_stance_from_its_class_and_owner() {
 /// its last task of action type 6 (0 without one).
 #[test]
 fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
-    let task = |action_type, work_range| crate::masters::Task {
+    let task = |action_type, work_range| crate::objects::masters::Task {
         action_type,
         work_range,
-        ..crate::masters::Task::default()
+        ..crate::objects::masters::Task::default()
     };
-    let made = crate::masters::Master {
+    let made = crate::objects::masters::Master {
         copy_id: 1240,
         class: 9,
         object_flags: 0x30,
         hero_flag: 4,
         tasks: vec![task(6, 2.0), task(7, 9.0), task(6, 3.5), task(5, 1.0)],
-        ..crate::masters::Master::default()
+        ..crate::objects::masters::Master::default()
     };
     let new = NewObject::of([1.0, 2.0, 3.0], 1239, &made);
     assert_eq!(
@@ -3915,7 +3915,7 @@ fn a_new_object_takes_its_hunt_range_from_its_master_s_last_task_of_type_6() {
             ..NewObject::default()
         }
     );
-    let none = NewObject::of([0.0; 3], 1, &crate::masters::Master::default());
+    let none = NewObject::of([0.0; 3], 1, &crate::objects::masters::Master::default());
     assert_eq!(none.hunt_range, 0.0);
 }
 

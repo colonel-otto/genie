@@ -97,7 +97,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-        task: &crate::masters::Task,
+        task: &crate::objects::masters::Task,
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), GenieError> {
@@ -151,7 +151,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-        task: &crate::masters::Task,
+        task: &crate::objects::masters::Task,
     ) -> Result<(crate::construction::repair::RepairAction, i32), GenieError> {
         let (tp, t) = self.object(target).ok_or(GenieError::unreachable(
             "a Repair's target the world does not hold",
@@ -183,7 +183,7 @@ impl Turns {
         player: usize,
         idx: usize,
         target: i32,
-        task: &crate::masters::Task,
+        task: &crate::objects::masters::Task,
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), GenieError> {

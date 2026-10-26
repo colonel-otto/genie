@@ -1,5 +1,5 @@
 use super::*;
-use crate::masters::BuildingMaster;
+use crate::objects::masters::BuildingMaster;
 use crate::turn::{Player, Unit};
 
 pub(crate) const TC: i16 = 109;

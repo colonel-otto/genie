@@ -42,7 +42,10 @@ impl GatherAction {
 
     /// The sprite the walks show (`FUN_140a8b660`, slot 0x68 with it): the task's carrying sprite
     /// while the unit carries at least 1 of the task's resource, else its moving one.
-    pub(super) const fn walk_sprite(&self, g: &Gatherer<'_>) -> Option<crate::sprite::Graphic> {
+    pub(super) const fn walk_sprite(
+        &self,
+        g: &Gatherer<'_>,
+    ) -> Option<crate::objects::sprite::Graphic> {
         walk_sprite(self.task.resource, *g.held_kind, *g.held, &g.sprites)
     }
 

@@ -45,7 +45,7 @@ pub struct Repaired {
 /// with the repairer's player).
 pub struct Payer<'a> {
     /// The repairer's player's masters.
-    pub masters: &'a crate::masters::Masters,
+    pub masters: &'a crate::objects::masters::Masters,
     /// The repairer's player's attributes.
     pub attributes: &'a mut dyn crate::technology::Attributes,
 }

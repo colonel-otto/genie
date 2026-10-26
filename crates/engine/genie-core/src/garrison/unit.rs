@@ -1,13 +1,13 @@
 //! A unit entering a building or a transport, and the transport's sail.
 
 use crate::map::spatial::Spatial;
-use crate::masters::{Master, Masters};
 use crate::math::rng::{Stream, Well512};
 use crate::movement::Me;
 use crate::movement::move_to::MoveTo;
+use crate::objects::masters::{Master, Masters};
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::{Unit, give_load};
 use crate::pathing::Pathing;
-use crate::sprite::Graphic;
-use crate::turn::unit::{Unit, give_load};
 use crate::unit_ai::task_finder::{Actor, DropSite};
 use crate::unit_ai::world_view::Context;
 use crate::unit_ai::{GenieError, UnitAi};

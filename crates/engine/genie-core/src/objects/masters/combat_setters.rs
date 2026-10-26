@@ -1,6 +1,6 @@
 //! The RGE combat and missile masters' setters: the armor and attack amounts.
 
-use crate::masters::{
+use crate::objects::masters::{
     AttributeWorld, Master, PERCENT, ROUND, add_sprite, attribute, class_amount, handicapped, low8,
     low16, set_sprite,
 };
@@ -16,7 +16,7 @@ impl Master {
     /// ([`handicapped`]) takes the amount times the factor.
     pub(super) fn set_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
         use crate::checkpoint::cvttss2si;
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR | a::ATTACK => self.set_class_amount(attribute, v, world),
             a::ATTACK_RELOAD_TIME => self.reload = v,
@@ -51,7 +51,7 @@ impl Master {
     /// ([`class_amount`]) replaces its class's; an attack class at 0 the handicap raises takes the
     /// amount times the factor.
     pub(super) fn set_class_amount(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
                 let (class, amount) = class_amount(v);
@@ -75,7 +75,7 @@ impl Master {
     /// `FUN_1410c16e0`, the RGE combat master's slot 0x20: an armor or attack amount adds to its
     /// class's (an attack class at 0 the handicap raises takes the amount times the factor).
     pub(super) fn add_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed += v,
             a::ARMOR | a::ATTACK => self.add_class_amount(attribute, v, world),
@@ -118,7 +118,7 @@ impl Master {
     /// ([`class_amount`]) adds to its class's; an attack class at 0 the handicap raises takes the
     /// amount times the factor.
     pub(super) fn add_class_amount(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
                 let (class, amount) = class_amount(v);
@@ -143,7 +143,7 @@ impl Master {
     /// percentage of its class's (`amount / 100 × value + 0.5`, truncated; an attack class at 0
     /// the handicap raises scales the amount by the factor first).
     pub(super) fn multiply_combat(&mut self, attribute: u8, v: f32, world: &AttributeWorld<'_>) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ROTATION_SPEED => self.turn_speed *= v,
             a::ARMOR | a::ATTACK => self.multiply_class_amount(attribute, v, world),
@@ -188,7 +188,7 @@ impl Master {
         v: f32,
         world: &AttributeWorld<'_>,
     ) {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::ARMOR => {
                 let (class, amount) = class_amount(v);

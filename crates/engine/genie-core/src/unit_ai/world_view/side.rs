@@ -920,8 +920,8 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// on top sails there, [`Unit::transport_sail`]), its releases and its standing sprite as
     /// the move after the update gives them.
     ///
-    /// [`Unit::ai_move_with`]: crate::turn::unit::Unit::ai_move_with
-    /// [`Unit::transport_sail`]: crate::turn::unit::Unit::transport_sail
+    /// [`Unit::ai_move_with`]: crate::objects::unit::Unit::ai_move_with
+    /// [`Unit::transport_sail`]: crate::objects::unit::Unit::transport_sail
     fn ai_move_now(&mut self, m: AiMove) -> Result<(), GenieError> {
         let class = self
             .masters
@@ -1018,7 +1018,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// it enters; else the top action's target ([`Unit::top_target`]); either while the world
     /// holds it.
     ///
-    /// [`Unit::top_target`]: crate::turn::unit::Unit::top_target
+    /// [`Unit::top_target`]: crate::objects::unit::Unit::top_target
     fn top_target_now(&mut self) -> Result<Option<i32>, GenieError> {
         let target = match self.starts.last() {
             Some(AiStart::Wait(_)) => return Ok(None),

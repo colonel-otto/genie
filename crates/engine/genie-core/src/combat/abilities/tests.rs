@@ -405,7 +405,7 @@ fn a_removal_reward_with_its_flag_pays_the_last_paid_cost_of_its_resource_times_
 }
 
 use crate::map::spatial::{Placed, Spatial};
-use crate::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters};
 use crate::turn::{Player, Unit};
 
 /// Gaia and two enemies, the world's dt half a second, a 20 by 20 map.
@@ -757,7 +757,7 @@ fn waters(t: &mut Turns) {
         vec![kind(0), kind(1), kind(0x21)],
         Vec::new(),
     ));
-    let g = |id| crate::sprite::Graphic {
+    let g = |id| crate::objects::sprite::Graphic {
         id,
         frames: 10,
         facets: 8,

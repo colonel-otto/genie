@@ -1,5 +1,5 @@
 use crate::groups::{Member, UnitGroup, UnitGroups};
-use crate::masters::{Master, Masters, Task};
+use crate::objects::masters::{Master, Masters, Task};
 use crate::turn::{Player, Turns, Unit};
 use crate::unit_ai::UnitAi;
 
@@ -517,7 +517,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
     t.show_standing(10).unwrap();
     assert_eq!(speed(&t), 0.1);
     // a held sprite needs the graphic
-    let graphic = crate::sprite::Graphic {
+    let graphic = crate::objects::sprite::Graphic {
         id: 1,
         frames: 1,
         facets: 8,
@@ -526,7 +526,7 @@ fn a_unit_shows_its_standing_walking_or_running_sprite() {
         replay_delay: 0.0,
         flags: 0,
     };
-    t.players[1].objects[0].sprite = Some(crate::sprite::ActiveSprite {
+    t.players[1].objects[0].sprite = Some(crate::objects::sprite::ActiveSprite {
         graphic,
         frame: 0,
         interval: 0.0,
@@ -1010,7 +1010,7 @@ fn due_orders_leave_the_queue() {
 #[test]
 fn the_idle_timer_counts_while_idle() {
     let mut t = world();
-    t.dt_seconds = crate::lifecycle::seconds(69);
+    t.dt_seconds = crate::objects::lifecycle::seconds(69);
     t.groups.get_mut(1).unwrap().idle_timer = 2931;
     t.idle_timer_step(1);
     assert_eq!(t.groups.get(1).unwrap().idle_timer, 3000);
@@ -1023,7 +1023,7 @@ fn the_idle_timer_counts_while_idle() {
     t.idle_timer_step(1);
     assert!(t.groups.get(1).unwrap().idle_timer < 750);
     for dt in 0..=100_000 {
-        t.dt_seconds = crate::lifecycle::seconds(dt);
+        t.dt_seconds = crate::objects::lifecycle::seconds(dt);
         assert_eq!(t.dt_ms(), dt);
     }
 }

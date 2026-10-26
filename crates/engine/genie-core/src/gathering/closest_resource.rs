@@ -2,9 +2,9 @@
 //! herded sheep.
 
 use crate::map::spatial::Spatial;
-use crate::masters::Masters;
 use crate::movement::{Me, Planning};
-use crate::turn::unit::Unit;
+use crate::objects::masters::Masters;
+use crate::objects::unit::Unit;
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;
 

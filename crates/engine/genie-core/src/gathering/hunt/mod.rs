@@ -8,7 +8,7 @@
 
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::movement::move_to::{MoveTo, MoveWait};
-use crate::sprite::Graphic;
+use crate::objects::sprite::Graphic;
 
 mod drop_off;
 mod gathering;

@@ -2,9 +2,9 @@
 //! and refund, a built building's death and storage, and the military and civilian counts.
 
 use crate::map::spatial::Spatial;
-use crate::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters};
+use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
-use crate::turn::unit::Unit;
 use crate::turn::{
     BuildingDeath, CASTLE, CASTLES, MONASTERIES, MONASTERY, RESTORED_FOUNDATION, WONDER, WONDERS,
 };
@@ -225,13 +225,13 @@ pub(crate) fn clear_look_of(
 
 /// The classes a combat object of which counts in its player's attribute 40
 /// (`FUN_141226060`).
-pub(in crate::turn) const MILITARY_CLASSES: [i16; 24] = [
+pub(crate) const MILITARY_CLASSES: [i16; 24] = [
     0, 6, 12, 13, 18, 22, 23, 24, 26, 28, 35, 36, 43, 44, 45, 46, 47, 50, 51, 53, 54, 55, 56, 57,
 ];
 /// The masters whose objects count in attribute 235 besides 40 (`FUN_141226060`).
-pub(in crate::turn) const MILITARY_235: [i16; 2] = [1663, 1697];
+pub(crate) const MILITARY_235: [i16; 2] = [1663, 1697];
 /// The classes that count in attribute 37 (`FUN_141226060`); the villagers' (4) too.
-pub(in crate::turn) const CIVILIAN_CLASSES: [i16; 4] = [2, 19, 20, 21];
+pub(crate) const CIVILIAN_CLASSES: [i16; 4] = [2, 19, 20, 21];
 
 /// `FUN_141226060`: a combat object (type 70 and up) of `master` counts `by` (1 or -1) in its
 /// player's `attributes` by its class: a military class (0, 6, 12, 13, 18, 22 to 24, 26, 28, 35,

@@ -198,7 +198,7 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
         class: FARM,
         ..Master::default()
     };
-    let masters = crate::masters::Masters::new([Master {
+    let masters = crate::objects::masters::Masters::new([Master {
         id: 68,
         ..Master::default()
     }]);
@@ -258,9 +258,9 @@ fn a_farm_s_bonus_wants_both_attributes_238_and_239() {
     );
     // a cart (a task of action type 0x99) with a unit AI searches
     let cart = Master {
-        tasks: vec![crate::masters::Task {
+        tasks: vec![crate::objects::masters::Task {
             action_type: CART_TASK,
-            ..crate::masters::Task::default()
+            ..crate::objects::masters::Task::default()
         }],
         ..Master::default()
     };
@@ -930,7 +930,7 @@ fn the_work_that_reaches_the_build_time_completes_the_building() {
         storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
         // a house's cost: 25 wood paid; the unpaid entry does not count
         cost: vec![(1, 25, true), (4, 5, false)],
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             adjacent_mode: 0,
             disappears_when_built: false,
             stack_unit: -1,
@@ -1045,7 +1045,7 @@ fn the_castle_the_wonder_and_the_monastery_count_their_completion() {
             kind: 80,
             class: 3,
             cost,
-            building: Some(crate::masters::BuildingMaster {
+            building: Some(crate::objects::masters::BuildingMaster {
                 adjacent_mode: 0,
                 disappears_when_built: false,
                 stack_unit: -1,
@@ -1474,7 +1474,7 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
             walk_speed: 1.0,
             stand_speed: 1.0,
             run_speed: 1.0,
-            facets: Some(crate::facing::SpriteFacets {
+            facets: Some(crate::objects::facing::SpriteFacets {
                 count: 16,
                 flag_1: true,
             }),

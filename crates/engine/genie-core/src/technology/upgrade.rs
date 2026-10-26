@@ -5,10 +5,10 @@
 //! check (`FUN_1411859a0`), which the static part runs around the hit points' change.
 
 use crate::GenieError;
-use crate::masters::{Master, Task, master_type};
 use crate::math::rng::{Stream, Well512};
+use crate::objects::masters::{Master, Task, master_type};
+use crate::objects::sprite::Graphic;
 use crate::orders::Place;
-use crate::sprite::Graphic;
 use crate::turn::{Turns, Unit};
 
 /// A master's hit points this near 0 give no share (`ABS(x) <= 1.1920929e-07`).
@@ -110,7 +110,7 @@ pub(crate) fn damage_sprites(
                 if u.sprite.is_some() {
                     crate::combat::attack::set_sprite(&mut u.sprite, graphic(e.sprite)?, sprite);
                 } else {
-                    let _ = crate::sprite::ActiveSprite::start(graphic(e.sprite)?, sprite);
+                    let _ = crate::objects::sprite::ActiveSprite::start(graphic(e.sprite)?, sprite);
                 }
             }
             _ => {}
@@ -125,7 +125,7 @@ pub(crate) fn damage_sprites(
         if u.sprite.is_some() {
             crate::combat::attack::set_sprite(&mut u.sprite, standing, sprite);
         } else {
-            let _ = crate::sprite::ActiveSprite::start(standing, sprite);
+            let _ = crate::objects::sprite::ActiveSprite::start(standing, sprite);
         }
     }
     let _ = SPRITE_PLACED;
@@ -555,7 +555,7 @@ impl Turns {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::masters::{BuildingMaster, DamageGraphic, Masters};
+    use crate::objects::masters::{BuildingMaster, DamageGraphic, Masters};
 
     /// An animated graphic of `frames` frames with a random first frame (flags 5).
     const fn graphic(id: i16) -> Graphic {
@@ -600,11 +600,11 @@ mod tests {
     fn object(id: i32, master: i16, state: u8, hp: f32) -> Unit {
         Unit {
             id,
-            life: crate::lifecycle::Lifecycle {
+            life: crate::objects::lifecycle::Lifecycle {
                 master_id: master,
                 state,
                 hp,
-                ..crate::lifecycle::Lifecycle::default()
+                ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
         }
@@ -676,7 +676,7 @@ mod tests {
         // mode 2: the entry's sprite, then the standing one when it goes
         let shown = building(70, 100, SPRITE_SHOWN, -1);
         let mut u = Unit {
-            sprite: Some(crate::sprite::ActiveSprite::start(
+            sprite: Some(crate::objects::sprite::ActiveSprite::start(
                 graphic(1070),
                 &mut sprite,
             )),
@@ -769,7 +769,7 @@ mod tests {
         };
         let mut house = object(10, 70, 2, 275.0);
         let mut sprites = Well512::default();
-        house.sprite = Some(crate::sprite::ActiveSprite::start(
+        house.sprite = Some(crate::objects::sprite::ActiveSprite::start(
             graphic(1070),
             &mut sprites,
         ));

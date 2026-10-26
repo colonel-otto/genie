@@ -12,7 +12,7 @@
 
 use crate::GenieError;
 use crate::checkpoint::cvttss2si;
-use crate::masters::master_type;
+use crate::objects::masters::master_type;
 use crate::turn::Turns;
 
 /// The reveal of a player's units of a kind to the others (its attribute 204 not 0,

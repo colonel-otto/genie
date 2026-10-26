@@ -2,7 +2,7 @@
 //! the combat unit's and the building's.
 
 use crate::GenieError;
-use crate::masters::{Master, Masters, master_type};
+use crate::objects::masters::{Master, Masters, master_type};
 use crate::technology::effect::Change;
 use crate::turn::{Turns, Unit};
 
@@ -23,9 +23,9 @@ impl Turns {
     /// sprite table (the `.dat`'s graphics), no handicap (`player+0x668`, not held: none in the
     /// games probed) and the player's `+0x648` unset (not held: 0 for every player probed).
     ///
-    /// [`AttributeWorld`]: crate::masters::AttributeWorld
+    /// [`AttributeWorld`]: crate::objects::masters::AttributeWorld
     pub(super) fn attribute_world(
-        graphics: &std::collections::BTreeMap<i16, crate::sprite::Graphic>,
+        graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
     ) -> impl Fn(i32) -> bool + '_ {
         move |id| i16::try_from(id).is_ok_and(|id| graphics.contains_key(&id))
     }
@@ -133,7 +133,7 @@ impl Turns {
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match attribute {
             a::HIT_POINTS => {
                 let (_, u) = self.object_mut(id).expect("found by the caller");
@@ -218,7 +218,7 @@ impl Turns {
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match (attribute, change) {
             (a::HERO_STATUS, Change::Set | Change::Add) => Ok(()),
             (a::MAXIMUM_CHARGE, _) => {
@@ -281,7 +281,7 @@ impl Turns {
         v: f32,
         attribute: u8,
     ) -> Result<(), GenieError> {
-        use crate::masters::attribute as a;
+        use crate::objects::masters::attribute as a;
         match (attribute, change) {
             (a::BUILDING_ICON_OVERRIDE, Change::Set) => Ok(()),
             (a::TRAIN_TIME, _) => {

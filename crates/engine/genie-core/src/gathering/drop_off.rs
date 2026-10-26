@@ -3,7 +3,7 @@
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
-use crate::turn::unit::Unit;
+use crate::objects::unit::Unit;
 use crate::turn::world::{Seeker, drop_site_search};
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::{Context, DropWorld};

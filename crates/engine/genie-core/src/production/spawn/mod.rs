@@ -30,7 +30,7 @@ use self::terrains::hill_fails;
 pub use self::terrains::{BuildSite, placement_terrains};
 pub(crate) use self::world_map::WorldMap;
 #[cfg(test)]
-use crate::lifecycle::Lifecycle;
+use crate::objects::lifecycle::Lifecycle;
 #[cfg(test)]
 use crate::turn::{GatherPoint, Turns, Unit};
 #[cfg(test)]

@@ -35,23 +35,23 @@ impl crate::technology::Attributes for Held {
 
 /// A house (70, class 3, 550 hit points, 25 wood) and a ram (35, class 13, 175 hit points,
 /// 160 wood, 75 gold) of the repairer's player.
-fn masters() -> crate::masters::Masters {
-    crate::masters::Masters::new([
-        crate::masters::Master {
+fn masters() -> crate::objects::masters::Masters {
+    crate::objects::masters::Masters::new([
+        crate::objects::masters::Master {
             id: 70,
             kind: 80,
             class: 3,
             hit_points: 550,
             cost: vec![(1, 25, true)],
-            ..crate::masters::Master::default()
+            ..crate::objects::masters::Master::default()
         },
-        crate::masters::Master {
+        crate::objects::masters::Master {
             id: 35,
             kind: 70,
             class: 13,
             hit_points: 175,
             cost: vec![(1, 160, true), (3, 75, true)],
-            ..crate::masters::Master::default()
+            ..crate::objects::masters::Master::default()
         },
     ])
 }

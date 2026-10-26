@@ -36,7 +36,7 @@ impl FormationUnit {
     /// The unit's radius in a formation (`FUN_141025920`): a master above type 69 with a footprint
     /// and a height (`FUN_141194060` with 1) has its spacing modifier (`+0x8b8`) times its radius
     /// on x (`+0x5d8`), any other [`DEFAULT_RADIUS`].
-    pub(crate) fn of(master: &crate::masters::Master) -> Self {
+    pub(crate) fn of(master: &crate::objects::masters::Master) -> Self {
         let full = 0.0 < master.height && 0.0 < master.radius[0] && 0.0 < master.radius[1];
         let radius = if 69 < master.kind && full {
             master.spacing_modifier * master.radius[0]
@@ -408,7 +408,7 @@ impl Turns {
 #[cfg(test)]
 mod tests {
     use crate::groups::{Member, UnitGroup, UnitGroups, UnitTypeStatistic};
-    use crate::masters::{Master, Masters};
+    use crate::objects::masters::{Master, Masters};
     use crate::turn::{Player, Turns, Unit};
 
     /// Group 1 of player 1's units 10, 11 (master 4, category 1) and 12 (master 6, category 3),

@@ -3,12 +3,12 @@
 use crate::combat::damage::Victim;
 use crate::construction::build::Walk;
 use crate::map::spatial::Spatial;
-use crate::masters::Masters;
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::{Me, Mover, Planning};
+use crate::objects::masters::Masters;
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::{AiResume, Unit};
 use crate::pathing::Pathing;
-use crate::sprite::Graphic;
-use crate::turn::unit::{AiResume, Unit};
 use crate::turn::world::Releaser;
 use crate::turn::{BuildingDeath, Recycling};
 use crate::unit_ai::task_finder::DropSite;
@@ -17,10 +17,10 @@ use crate::unit_ai::{AiMove, GenieError};
 
 pub(crate) struct Context<'a> {
     /// The tick's dt in milliseconds, and in seconds (`world+0x164`).
-    pub(in crate::turn) dt: u32,
+    pub(crate) dt: u32,
     pub(crate) dt_seconds: f32,
     /// The ticks so far, this one included.
-    pub(in crate::turn) tick: u32,
+    pub(crate) tick: u32,
     /// The owner's accumulated time when it has the turn: the full unit-AI update runs.
     pub(crate) turn: Option<u32>,
     pub(crate) world_time: u32,
@@ -43,30 +43,30 @@ pub(crate) struct Context<'a> {
     pub(crate) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
     pub(crate) blasted: Vec<Victim>,
     /// The unit was killed in its update (a retaliation), which the caller handles after it.
-    pub(in crate::turn) own_killed: Option<crate::combat::damage::Kill>,
+    pub(crate) own_killed: Option<crate::combat::damage::Kill>,
     /// What the unit's death leaves for the caller: the remains its dying sprite's end makes
     /// (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its
     /// owner takes back (attributes 98 and 164).
-    pub(in crate::turn) remains: Option<(i16, [f32; 3], Option<u8>)>,
-    pub(in crate::turn) refund: Vec<(i16, f32)>,
+    pub(crate) remains: Option<(i16, [f32; 3], Option<u8>)>,
+    pub(crate) refund: Vec<(i16, f32)>,
     /// What a built building's death takes from its owner before its combat part's refund: the
     /// counts of the monastery, the wonder and the castle (slot 0xf8, then slot 0xf0 with 0 for
     /// a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no
     /// other building of the master stands ([`Turns::withdraw_tech`]).
-    pub(in crate::turn) building_death: Option<BuildingDeath>,
+    pub(crate) building_death: Option<BuildingDeath>,
     /// The pauses the unit's walk gave units it met ([`Mover::pauses`]).
-    pub(in crate::turn) pauses: Vec<(i32, f32)>,
+    pub(crate) pauses: Vec<(i32, f32)>,
     /// The gate's update asked its player to open or shut it ([`Turns::toggle_gate`], the
     /// caller's after the update).
     pub(crate) gate_toggle: bool,
     /// The unit's update stopped before its unit AI for the caller's work order
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
-    pub(in crate::turn) ai_resume: Option<AiResume>,
+    pub(crate) ai_resume: Option<AiResume>,
     /// The player the unit's own AI gave it to (slot 0x70, [`Unit::ai_change_owner`]) and
     /// whether it has the unit's master: the update ends with the takeover ([`Step::Captured`]).
     pub(crate) taken_over: Option<(usize, bool)>,
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
-    /// caller's ([`crate::turn::unit::Captured::building`]).
+    /// caller's ([`crate::objects::unit::Captured::building`]).
     pub(crate) building_handover: bool,
     /// The objects the unit's actions let go (slot 0x180, [`Turns::release`]) and take (slot
     /// 0x178, [`Turns::take`]) in other players' lists, which the caller applies after the hit's
@@ -85,23 +85,23 @@ pub(crate) struct Context<'a> {
     pub(crate) made: Vec<Unit>,
     /// The objects whose master leaves ghosts that died in this update ([`crate::vision::ghost`]), the
     /// caller's.
-    pub(in crate::turn) ghost_deaths: Vec<i32>,
+    pub(crate) ghost_deaths: Vec<i32>,
     /// The buildings whose construction started in this update: their owner watches them
     /// ([`Turns::watch_started`]), the caller's.
     pub(crate) started: Vec<i32>,
     /// The buildings that died in this update: their owner's watched list lets them go
     /// (`FUN_141091310`), the caller's.
-    pub(in crate::turn) unwatched: Vec<i32>,
+    pub(crate) unwatched: Vec<i32>,
     /// The annexes a building's `set_state` (`FUN_1411dbb70`) took to its own state (slot 0xa0
     /// on each, before its own parts), the caller's after the update ([`Turns::set_state`]).
     pub(crate) annex_states: Vec<(i32, u8)>,
     /// The annexes a dying building let go (the static update's death, `0x14118ad50`), each with
     /// the hit points it takes: its `+0xbb8` clears, the caller's after the update.
-    pub(in crate::turn) released_annexes: Vec<(i32, f32)>,
+    pub(crate) released_annexes: Vec<(i32, f32)>,
     /// The objects a builder's footprint clearing deletes (the Build's `set_state(7)`,
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
     /// update ([`Turns::clear_object`]).
-    pub(in crate::turn) cleared: Vec<crate::construction::build::Cleared>,
+    pub(crate) cleared: Vec<crate::construction::build::Cleared>,
     /// The tracker's promotions (`FUN_14104fb20`) of the owner's units whose master changed
     /// while the unit AI ran (the unit, its old master, its new one), the caller's after the
     /// update ([`Turns::track_promote`]).
@@ -113,10 +113,10 @@ pub(crate) struct Context<'a> {
     /// The foundations another player's marks lie on, which a builder's `set_state(7)` removes
     /// when their owner is human ([`crate::construction::build::BuildStep::removes`]), the caller's after the
     /// update ([`Turns::remove_building`]).
-    pub(in crate::turn) site_removals: Vec<i32>,
+    pub(crate) site_removals: Vec<i32>,
     /// The units on a foundation's footprint its builder's test met (the foundation, them):
     /// the caller sends off those the test would ([`Turns::evacuate`]).
-    pub(in crate::turn) evacuations: Vec<(i32, Vec<i32>)>,
+    pub(crate) evacuations: Vec<(i32, Vec<i32>)>,
     /// The world's reusable ids and pools.
     pub(crate) recycling: &'a mut Recycling,
     /// The game's setting at `+0x680` is 1 ([`Turns::mode_680`]).
@@ -141,12 +141,12 @@ pub(crate) struct Context<'a> {
     /// The game's farm setting ([`crate::settings::Settings::walkable_farms`]).
     pub(crate) farm_stops: bool,
     /// The game's setting [`crate::settings::Settings::predator_hunts_end`].
-    pub(in crate::turn) predator_hunts_end: bool,
+    pub(crate) predator_hunts_end: bool,
     /// Every player's masters and attribute 97 (by player), for a capture.
     pub(crate) every_masters: &'a [Masters],
-    pub(in crate::turn) attribute_97: &'a [f32],
+    pub(crate) attribute_97: &'a [f32],
     /// Every player's game status (`+0x89`), which the Artifact's owner search reads.
-    pub(in crate::turn) game_status: &'a [u8],
+    pub(crate) game_status: &'a [u8],
     /// The player whose turn this tick is (`world+0x188`), every player's accumulated time
     /// (`world+0x18c`, as it stands when the object updates) and computer flag.
     pub(crate) player_turn: usize,
@@ -174,13 +174,13 @@ pub(crate) struct Context<'a> {
     /// The owner's object tracker, which a completion's first part (`FUN_1411c6bd0`) moves a
     /// building in, and the unit lines its keys read ([`crate::players::tracker`]).
     pub(crate) tracker: &'a mut crate::players::tracker::Tracker,
-    pub(crate) lines: &'a crate::lines::UnitLines,
+    pub(crate) lines: &'a crate::objects::lines::UnitLines,
     /// The attributes the owner gains from the object's update (a building it completed), which
     /// the caller adds after it.
     pub(crate) attribute_adds: Vec<(i16, f32)>,
     /// The events the owner's history records from the object's update (a castle or a wonder it
     /// completed, [`crate::construction::build::Built::history`]), which the caller adds after it.
-    pub(in crate::turn) history_events: Vec<u8>,
+    pub(crate) history_events: Vec<u8>,
     /// The technologies the owner researches from the object's update (a completed building's),
     /// which the caller completes after the attributes ([`Turns::complete_research`]).
     pub(crate) techs_done: Vec<i16>,
@@ -196,21 +196,21 @@ pub(crate) struct Context<'a> {
     pub(crate) completions: Vec<(i32, Option<crate::construction::build::StackUnit>, bool)>,
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`Turns::order_work`]).
-    pub(in crate::turn) work_order: Option<crate::orders::Work>,
+    pub(crate) work_order: Option<crate::orders::Work>,
     /// The Transport's unload in its state 6 (`FUN_140aa3ba0`), which the caller runs after the
     /// actions and before the unit AI part ([`Turns::transport_unload`]).
     pub(crate) transport_unload: bool,
     /// The unit AI's order on a target (`0x2db`) the unit took from its queue, which the caller
     /// runs after the update ([`Turns::order_on_target`]), and the full update's tail that reads
     /// what the order gave ([`crate::unit_ai::UnitAi::after_order`]).
-    pub(in crate::turn) order_on_target: Option<(
+    pub(crate) order_on_target: Option<(
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
     /// The unit AI's `HuntObject`s, `GatherObject`s and works (slot 0x7e8) in the order it gave
     /// them, whose unit parts the caller runs after the update in that order ([`AiWork`]): a
     /// later one's stop tears down the action an earlier one made.
-    pub(in crate::turn) works: Vec<AiWork>,
+    pub(crate) works: Vec<AiWork>,
     /// The foundation of the unit AI's `BuildObject`, which the caller builds after the update
     /// ([`Turns::build_object`]).
 
@@ -222,7 +222,7 @@ pub(crate) struct Context<'a> {
     pub(crate) reseed: Option<bool>,
     /// The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller
     /// runs after the update ([`Turns::move_aside`]).
-    pub(in crate::turn) move_aside: Vec<AiMove>,
+    pub(crate) move_aside: Vec<AiMove>,
     /// The transports an Enter's `set_state(4)` sent to where they meet the unit (slot 0x340),
     /// which the caller moves after the update ([`Turns::move_transport`]'s move).
     pub(crate) transport_moves: Vec<(i32, [f32; 3])>,
@@ -235,7 +235,7 @@ pub(crate) struct Context<'a> {
     /// The work a builder gave an annex whose main building takes it (the foundation, the
     /// seconds; [`crate::construction::build::Worked::Main`]), which the caller runs after the update
     /// ([`Turns::work_building`]).
-    pub(in crate::turn) main_works: Vec<(i32, f32)>,
+    pub(crate) main_works: Vec<(i32, f32)>,
     /// What a repair changed of another player's objects ([`RepairWrite`]), which the caller
     /// writes after the update.
     pub(crate) repair_writes: Vec<RepairWrite>,
@@ -243,7 +243,7 @@ pub(crate) struct Context<'a> {
     pub(crate) relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
     /// update ([`Turns::lead_herd`]).
-    pub(in crate::turn) leads: Option<(i32, i32)>,
+    pub(crate) leads: Option<(i32, i32)>,
     /// The map's zone maps, which an auto scout's search reads.
     pub(crate) zones: &'a mut crate::pathing::zones::Zones,
     /// The other players' lists, as they stand before the unit's update.
@@ -397,7 +397,7 @@ impl Context<'_> {
 
 impl Context<'_> {
     /// A walk and the Sprite stream, for an attacker's update.
-    pub(in crate::turn) fn walk_and_sprites<'b>(
+    pub(crate) fn walk_and_sprites<'b>(
         &'b mut self,
         mover: Option<&'b mut Mover>,
         me: Me,
@@ -452,7 +452,7 @@ impl Context<'_> {
     }
 
     /// A walk and another stream than the walk's Object stream.
-    pub(in crate::turn) fn walk_with<'b>(
+    pub(crate) fn walk_with<'b>(
         &'b mut self,
         mover: Option<&'b mut Mover>,
         me: Me,

@@ -2,12 +2,12 @@
 //! [`Context`], [`Foreign`], [`OwnerView`], the pickers).
 
 use crate::map::spatial::{Placed, Spatial};
-use crate::masters::Masters;
 use crate::math::rng::Well512;
+use crate::objects::masters::Masters;
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
-use crate::sprite::Graphic;
 use crate::turn::player::Player;
-use crate::turn::unit::Unit;
 use crate::turn::world::Releaser;
 use crate::unit_ai::task_finder::DropSite;
 
@@ -86,7 +86,7 @@ pub(crate) struct RepairWrite {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Wait {
     pub(crate) target: i32,
-    pub(crate) task: crate::masters::Task,
+    pub(crate) task: crate::objects::masters::Task,
     pub(crate) switch: Option<i16>,
 }
 
@@ -102,7 +102,7 @@ pub(crate) enum RepairOrder {
     Start {
         target: i32,
         switches: [Option<i16>; 2],
-        task: Option<crate::masters::Task>,
+        task: Option<crate::objects::masters::Task>,
     },
 }
 
@@ -115,7 +115,7 @@ pub(crate) enum RepairOrder {
 pub(crate) struct EnterOrder {
     pub(crate) target: i32,
     pub(crate) entered: i32,
-    pub(crate) task: crate::masters::Task,
+    pub(crate) task: crate::objects::masters::Task,
     pub(crate) switch: Option<i16>,
     pub(crate) under_artifact: bool,
 }
@@ -234,9 +234,9 @@ impl<'a> OwnerView<'a> {
 ///
 /// [`UnitView::hunt_now`]: crate::unit_ai::world_view::UnitView::hunt_now
 struct HuntPlan<'u> {
-    task: crate::masters::Task,
-    switch: Option<&'u crate::masters::Master>,
-    own: &'u crate::masters::Master,
+    task: crate::objects::masters::Task,
+    switch: Option<&'u crate::objects::masters::Master>,
+    own: &'u crate::objects::masters::Master,
     quarry: crate::gathering::hunt::Quarry,
     them: Placed,
 }

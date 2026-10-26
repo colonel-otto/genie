@@ -1,15 +1,15 @@
 //! The world as `bestUnitToAttack` and the attack tests read it ([`WorldPicker`]).
 
 use crate::map::spatial::Spatial;
-use crate::masters::Masters;
 use crate::movement::Mover;
-use crate::turn::unit::Unit;
+use crate::objects::masters::Masters;
+use crate::objects::unit::Unit;
 use crate::turn::world::victim_of;
 use crate::unit_ai::GenieError;
 use crate::unit_ai::world_view::Foreign;
 
 /// Slot 0x228 (`FUN_141084070`): the sum of master `m`'s attacks above 0 (`COMISS`), from +0.
-pub(super) fn attacks(m: &crate::masters::Master) -> f32 {
+pub(super) fn attacks(m: &crate::objects::masters::Master) -> f32 {
     m.weapons
         .iter()
         .filter(|w| 0 < w.1)
@@ -65,7 +65,10 @@ pub(crate) struct WorldPicker<'a> {
 impl WorldPicker<'_> {
     /// The object `id` (another player's, the owner's others or the unit itself) with its owner,
     /// its owner's attributes and its master (its own, else its owner's).
-    pub(super) fn held(&self, id: i32) -> Option<(usize, &Unit, &[f32], &crate::masters::Master)> {
+    pub(super) fn held(
+        &self,
+        id: i32,
+    ) -> Option<(usize, &Unit, &[f32], &crate::objects::masters::Master)> {
         let (q, u, attributes) = if id == self.me {
             (self.player, self.unit, self.attributes)
         } else if let Some(u) = self.others.iter().find(|u| u.id == id) {

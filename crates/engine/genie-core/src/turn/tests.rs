@@ -2,16 +2,16 @@ use super::*;
 use crate::checkpoint::TopAction;
 use crate::commands::{Command, GatherPoint, ResearchAt};
 use crate::construction::build::{BuildAction, BuildTask, Construction};
-use crate::lifecycle::seconds;
-use crate::lifecycle::{Class, Lifecycle, MasterData};
 use crate::map::spatial::{Placed, Spatial};
-use crate::masters::{Master, Masters};
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveTo;
+use crate::objects::lifecycle::seconds;
+use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
+use crate::objects::masters::{Master, Masters};
+use crate::objects::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::ownership::artifact::Artifact;
 use crate::turn::player::Player;
-use crate::turn::unit::{LIVESTOCK, Unit, give_load, loses_actions};
 use crate::turn::world::{
     SideWorld, World, change_hands, count_class, search_origin, storage_leaves, task_search,
     task_target_with, wait_progress,
@@ -254,7 +254,7 @@ fn a_dead_objects_unit_ai_draws_nothing() {
 /// The masters of MarvinBlue/426048731's player 2 that its BUILD at tick 679 uses, shortened
 /// from build 158041's save and `.dat`.
 fn builder_masters() -> Masters {
-    use crate::masters::{Master, Masters, Task};
+    use crate::objects::masters::{Master, Masters, Task};
     let task = |action_type, object_group| Task {
         action_type,
         object_group,
@@ -328,14 +328,14 @@ fn builder_masters() -> Masters {
             // built by the villagers (the builders' test, FUN_141262270)
             trained_at: vec![118],
             // a house's building part: no annexes, no stack unit, not an annex
-            building: Some(crate::masters::BuildingMaster {
+            building: Some(crate::objects::masters::BuildingMaster {
                 stack_unit: -1,
                 foundation_terrain: -1,
                 tech: -1,
                 annexes: [-1; 4],
                 head_unit: -1,
                 transform_unit: -1,
-                ..crate::masters::BuildingMaster::default()
+                ..crate::objects::masters::BuildingMaster::default()
             }),
             ..Master::default()
         },
@@ -469,7 +469,7 @@ fn a_flare_at_a_point_stands_on_the_ground() {
     }
     let flare = Master {
         id: 274,
-        kind: crate::masters::master_type::ANIMATED,
+        kind: crate::objects::masters::master_type::ANIMATED,
         standing_sprite: -1,
         ..Master::default()
     };
@@ -494,7 +494,7 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
     placeable(&mut t);
     let flare = Master {
         id: 112,
-        kind: crate::masters::master_type::ANIMATED,
+        kind: crate::objects::masters::master_type::ANIMATED,
         standing_sprite: -1,
         storage: vec![(12, 1.0, 0)],
         ..Master::default()
@@ -516,8 +516,8 @@ fn a_hit_s_flare_lasts_twice_as_long_from_a_trebuchet() {
 /// (moving, one hit point, a turning idle sprite of 16 facets with a random first one, 100 food
 /// held).
 fn pasture_game(at: [f32; 3], livestock: f32, livestock_masters: &[i16]) -> Turns {
-    use crate::masters::master_type::{BUILDING, MOVING};
-    use crate::sprite::Graphic;
+    use crate::objects::masters::master_type::{BUILDING, MOVING};
+    use crate::objects::sprite::Graphic;
     let player = || Player {
         attributes: vec![0.0; 300],
         ..Player::default()
@@ -725,7 +725,7 @@ fn a_dying_livestock_shows_its_dying_sprite() {
         let mut all: Vec<Master> = m.iter().cloned().collect();
         for a in all
             .iter_mut()
-            .filter(|a| a.kind == crate::masters::master_type::MOVING)
+            .filter(|a| a.kind == crate::objects::masters::master_type::MOVING)
         {
             a.death_sprite = 13171;
         }
@@ -926,7 +926,7 @@ fn a_unit_joins_and_leaves_a_pasture_s_workers() {
 /// masters that gather by themselves to its lists by group, at their places.
 #[test]
 fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
-    use crate::masters::{Master, Masters};
+    use crate::objects::masters::{Master, Masters};
     use crate::vision::visibility::{VisibleResource, VisibleResources};
     let object = |id, master, x, y| Unit {
         id,
@@ -1018,8 +1018,8 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
 /// is deleted (state 8 leaving its list, `FUN_14116b5e0`).
 #[test]
 fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
-    use crate::lifecycle::MasterData;
-    use crate::masters::{Master, Masters};
+    use crate::objects::lifecycle::MasterData;
+    use crate::objects::masters::{Master, Masters};
     use crate::vision::visibility::VisibleResources;
     let dead = |id, class, state, master| Unit {
         id,
@@ -1094,7 +1094,7 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
 /// players that explored its tile; one of another master joins none.
 #[test]
 fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
-    use crate::masters::{Master, Masters};
+    use crate::objects::masters::{Master, Masters};
     use crate::vision::visibility::{VisibleResource, VisibleResources};
     let made = |id, master| Unit {
         id,
@@ -1149,7 +1149,7 @@ fn a_new_resource_joins_the_lists_of_the_players_that_explored_its_tile() {
 /// `FUN_141226060`: the class counters by class and master.
 #[test]
 fn a_combat_object_counts_in_its_player_s_class_attributes() {
-    use crate::masters::Master;
+    use crate::objects::masters::Master;
     let counted = |class, id, task_by_group| {
         let mut a = vec![0.0f32; 240];
         let m = Master {
@@ -1188,7 +1188,7 @@ fn a_combat_object_counts_in_its_player_s_class_attributes() {
 /// loop, another sprite or a master without a second standing sprite draws nothing.
 #[test]
 fn an_idle_object_swaps_its_standing_sprite_on_a_high_draw() {
-    use crate::sprite::{ActiveSprite, Graphic};
+    use crate::objects::sprite::{ActiveSprite, Graphic};
     let g = |id| Graphic {
         id,
         frames: 10,
@@ -1547,11 +1547,11 @@ fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> Turns {
     t
 }
 
-fn task(action_type: i16) -> crate::masters::Task {
-    crate::masters::Task {
+fn task(action_type: i16) -> crate::objects::masters::Task {
+    crate::objects::masters::Task {
         action_type,
         object_group: -1,
-        ..crate::masters::Task::default()
+        ..crate::objects::masters::Task::default()
     }
 }
 
@@ -1777,7 +1777,7 @@ fn repair_world() -> Turns {
     for masters in &mut t.masters {
         let builder = masters.get_mut(118).unwrap();
         builder.weapon_range = 0.5;
-        builder.tasks.push(crate::masters::Task {
+        builder.tasks.push(crate::objects::masters::Task {
             id: 4,
             work_val1: 0.5,
             ..task(crate::construction::repair::REPAIR)
@@ -1896,7 +1896,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
                 let mut m = masters.get(83).unwrap().clone();
                 m.id = 156;
                 m.weapon_range = 0.5;
-                m.tasks.push(crate::masters::Task {
+                m.tasks.push(crate::objects::masters::Task {
                     id: 4,
                     work_val1: 0.5,
                     ..task(crate::construction::repair::REPAIR)
@@ -2027,11 +2027,11 @@ fn livestock_enter_world() -> Turns {
         kind: 70,
         class: 58,
         radius: [0.2, 0.2],
-        tasks: vec![crate::masters::Task {
+        tasks: vec![crate::objects::masters::Task {
             id: 1,
             action_type: crate::garrison::ENTER,
             object_group: 3,
-            ..crate::masters::Task::default()
+            ..crate::objects::masters::Task::default()
         }],
         moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
@@ -2437,11 +2437,11 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
     for masters in &mut later.masters {
         let hunter = Master {
             id: 122,
-            tasks: vec![crate::masters::Task {
+            tasks: vec![crate::objects::masters::Task {
                 action_type: 110,
                 object_group: 9,
                 work_range: 0.5,
-                ..crate::masters::Task::default()
+                ..crate::objects::masters::Task::default()
             }],
             ..masters.get(83).unwrap().clone()
         };
@@ -2680,12 +2680,12 @@ fn farm_master() -> Master {
         work_rate: 0.4,
         capacity: 15,
         default_task: Some(0),
-        tasks: vec![crate::masters::Task {
+        tasks: vec![crate::objects::masters::Task {
             action_type: crate::gathering::make::MAKE,
             attribute_type: crate::gathering::make::FARM_FOOD_KIND,
             attribute_type2: 0,
             work_val1: 1.0,
-            ..crate::masters::Task::default()
+            ..crate::objects::masters::Task::default()
         }],
         ..Master::default()
     }
@@ -2835,7 +2835,7 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
         kind: 80,
         class: 3,
         hit_points: 550,
-        building: Some(crate::masters::BuildingMaster::default()),
+        building: Some(crate::objects::masters::BuildingMaster::default()),
         ..Master::default()
     }])];
     let timer = |t: &Turns| t.players[0].objects[0].damaged_lately;
@@ -2993,9 +2993,9 @@ fn only_a_standing_unlocked_transforming_gate_lets_an_ally_pass() {
     let master = |id: i16, class: i16, transform_unit: i16| Master {
         id,
         class,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             transform_unit,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..Master::default()
     };
@@ -3043,9 +3043,9 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         class: 39,
         obstruction_type: 2,
         obstruction_class: 5,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             transform_unit: 63,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..Master::default()
     };
@@ -3266,7 +3266,7 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> Turns {
         id,
         kind: 70,
         available: true,
-        train_locations: vec![crate::masters::TrainLocation {
+        train_locations: vec![crate::objects::masters::TrainLocation {
             location: 109,
             time,
             button: 1,
@@ -4164,7 +4164,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         move_to: Some(MoveTo::Moving),
         goal: Some([12.0, 12.0, 0.0]),
         home: [10.0, 10.0],
-        task: crate::masters::Task::default(),
+        task: crate::objects::masters::Task::default(),
     });
     bird.mover.as_mut().unwrap().stats.speed = 1.3;
     t.clear_actions(1, 1).unwrap();
@@ -4184,7 +4184,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         move_wait: crate::movement::move_to::MoveWait::default(),
     });
     villager.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify::new(
-        crate::masters::Task::default(),
+        crate::objects::masters::Task::default(),
         10028,
     ));
     t.clear_actions(1, 2).unwrap();
@@ -4795,7 +4795,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
 /// goes, one in state 2 (or 6) stays.
 #[test]
 fn a_second_target_past_state_6_is_let_go_and_one_gone_dropped() {
-    use crate::turn::unit::second_target_checked;
+    use crate::objects::unit::second_target_checked;
     assert_eq!(second_target_checked(9149, true, Some(7)), (-1, Some(9149)));
     assert_eq!(second_target_checked(9149, true, Some(6)), (9149, None));
     assert_eq!(second_target_checked(9149, true, Some(2)), (9149, None));
@@ -4854,9 +4854,9 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
         id,
         kind: 80,
         class: 3,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             stack_unit,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..Master::default()
     };
@@ -5013,13 +5013,13 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         storage: vec![(4, 5.0, 4), (-1, 0.0, 0), (-1, 0.0, 0)],
         obstruction_type: 2,
         obstruction_class: 2,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: -1,
             foundation_terrain: -1,
             tech: -1,
             head_unit: -1,
             transform_unit: -1,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..master(1378, 1, 4.0)
     };
@@ -6076,13 +6076,13 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
         hit_points: 1650,
         standing_sprite: 1751,
         death_sprite: 1751,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: -1,
             foundation_terrain: -1,
             tech: -1,
             head_unit: -1,
             transform_unit: -1,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..Master::default()
     };
@@ -6091,7 +6091,7 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
         position: [124.5, 174.5, 0.0],
         pasture: -1,
         my_pasture: -1,
-        sprite: Some(crate::sprite::ActiveSprite::start(
+        sprite: Some(crate::objects::sprite::ActiveSprite::start(
             g,
             &mut Well512::default(),
         )),
@@ -6177,7 +6177,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         build_time: 70,
         standing_sprite: 1751,
         death_sprite,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             stack_unit: -1,
             foundation_terrain: -1,
             tech: -1,
@@ -6185,7 +6185,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
             transform_unit: -1,
             destruction_sprite,
             construction_sprite: -1,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..Master::default()
     };
@@ -6195,7 +6195,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         pasture: -1,
         my_pasture: -1,
         annex_of,
-        sprite: Some(crate::sprite::ActiveSprite::at_rest(g(1751, 0), 0)),
+        sprite: Some(crate::objects::sprite::ActiveSprite::at_rest(g(1751, 0), 0)),
         anim_speed: Some(0.0),
         life: Lifecycle {
             class: Class::Animated,
@@ -6319,7 +6319,7 @@ fn a_unit_regenerated_to_its_most_has_its_armor_back() {
 /// 2 or below 1.2e-7 in size nothing changes.
 #[test]
 fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
-    use crate::turn::unit::regeneration_rate;
+    use crate::objects::unit::regeneration_rate;
     let berserk = Master {
         id: 692,
         kind: 70,
@@ -6445,7 +6445,7 @@ fn a_building_short_of_its_build_time_that_dies_plays_its_destruction_sprite() {
 }
 
 fn building_short_of_its_build_time_dies(state: u8) {
-    use crate::sprite::{ActiveSprite, Graphic};
+    use crate::objects::sprite::{ActiveSprite, Graphic};
     let g = |id| Graphic {
         id,
         frames: 10,
@@ -6463,10 +6463,10 @@ fn building_short_of_its_build_time_dies(state: u8) {
         death_sprite: 2573,
         build_time: 50,
         hit_points: 1200,
-        building: Some(crate::masters::BuildingMaster {
+        building: Some(crate::objects::masters::BuildingMaster {
             destruction_sprite: 389,
             construction_sprite: -1,
-            ..crate::masters::BuildingMaster::default()
+            ..crate::objects::masters::BuildingMaster::default()
         }),
         ..Master::default()
     };
@@ -6763,7 +6763,7 @@ fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
     assert_eq!(u.move_to.map(|m| m.goal), Some(Some(AI_POINT)));
     let mut u = mover_unit(7);
     u.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify::new(
-        crate::masters::Task::default(),
+        crate::objects::masters::Task::default(),
         10028,
     ));
     assert_eq!(u.head_takes_point(AI_POINT, 1), Ok(PointMove::Declined));
@@ -6821,7 +6821,7 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         m.stats.speed = 1.4003;
         m.stats.walk_speed = 1.4003;
         m.stats.stand_speed = 0.737;
-        u.sprite = Some(crate::sprite::ActiveSprite::start(walking, rng));
+        u.sprite = Some(crate::objects::sprite::ActiveSprite::start(walking, rng));
         u.anim_speed = Some(1.0);
         u.move_to = Some(crate::movement::move_to::MoveToAction::to_point(
             [119.5, 172.5, 0.0],
@@ -6932,7 +6932,9 @@ fn scout_attack_on(
         id: 123,
         position: [10.0, 10.0, 0.0],
         mover: Some(walker),
-        sprite: Some(crate::sprite::ActiveSprite::start(standing, &mut rng)),
+        sprite: Some(crate::objects::sprite::ActiveSprite::start(
+            standing, &mut rng,
+        )),
         attack_timer: timer,
         attack: own,
         life: Lifecycle {
@@ -7110,7 +7112,9 @@ fn attack_by(
         id: 123,
         position: [10.0, 10.0, 0.0],
         mover: Some(walker),
-        sprite: Some(crate::sprite::ActiveSprite::start(standing, &mut rng)),
+        sprite: Some(crate::objects::sprite::ActiveSprite::start(
+            standing, &mut rng,
+        )),
         attack_timer: timer,
         attack: own,
         life: Lifecycle {
@@ -7649,12 +7653,12 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
     let facing = before.rand15();
     let _ = before.rand15();
     assert_eq!(t.streams.get(Stream::Object), &before);
-    let facets = crate::facing::SpriteFacets {
+    let facets = crate::objects::facing::SpriteFacets {
         count: 5,
         flag_1: true,
     };
     let foundation = t.players[1].objects.last().unwrap();
-    let angle = crate::facing::drawn_angle(facing, facets);
+    let angle = crate::objects::facing::drawn_angle(facing, facets);
     assert_ne!(angle, 0.0);
     assert_eq!(foundation.mover.as_ref().map(|m| m.angle), Some(angle));
     // without sequence flag 2 only the powerup offset's
@@ -7985,7 +7989,7 @@ fn a_fishing_ship_counts_a_near_drop_site_its_path_does_not_reach() {
 /// master none (427445417's p4 in update 16981, 427557935's p4 in 22813).
 #[test]
 fn a_farm_foundation_lays_its_stage_terrain() {
-    use crate::turn::unit::farm_stage_terrain;
+    use crate::objects::unit::farm_stage_terrain;
     assert_eq!(farm_stage_terrain(50, (false, 7), 0.0, 15), Some(29));
     assert_eq!(farm_stage_terrain(50, (false, 7), 7.5, 15), Some(30));
     assert_eq!(farm_stage_terrain(50, (false, 7), 15.0, 15), Some(31));
@@ -8217,7 +8221,7 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> Turns {
     walker(&mut t, 1, 123, 4, [10.0, 10.0]);
     let archer = &mut t.players[1].objects[0];
     if let Some(m) = archer.mover.as_mut() {
-        m.sprite_facets = Some(crate::facing::SpriteFacets {
+        m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
             count: 8,
             flag_1: false,
         });

@@ -17,7 +17,7 @@
 use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait};
-use crate::sprite::ActiveSprite;
+use crate::objects::sprite::ActiveSprite;
 
 mod point_walks;
 mod start;

@@ -272,7 +272,7 @@ impl crate::turn::Turns {
         &mut self,
         (p, i): (usize, usize),
         id: i32,
-        made: &crate::masters::Master,
+        made: &crate::objects::masters::Master,
         around: Around,
         zone: u32,
         last: &mut Option<[f32; 2]>,
@@ -376,7 +376,7 @@ impl crate::turn::Turns {
         &mut self,
         (p, i): (usize, usize),
         id: i32,
-        made: &crate::masters::Master,
+        made: &crate::objects::masters::Master,
         spot: [f32; 2],
     ) -> Result<(), GenieError> {
         let ship = &self.players[p].objects[i];

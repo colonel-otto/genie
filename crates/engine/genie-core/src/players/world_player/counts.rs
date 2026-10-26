@@ -55,8 +55,8 @@ impl Turns {
     /// `FUN_141611520`). With `building` 118 (a builder), attribute 48 at 0 and the town centre
     /// 621 neither had nor its `+0x5f1` set, one more when the town centres
     /// ([`Turns::town_centre_count`]) are fewer than attribute 218. genie's masters keep `+0x5f0`
-    /// and `+0x5f1` as booleans ([`crate::masters::Master::available`],
-    /// [`crate::masters::Master::disabled`]), a set one as 1: the limit bits 1 to 3 are none, and
+    /// and `+0x5f1` as booleans ([`crate::objects::masters::Master::available`],
+    /// [`crate::objects::masters::Master::disabled`]), a set one as 1: the limit bits 1 to 3 are none, and
     /// the limited units' tests not reached.
     #[must_use]
     pub fn trainable_count(&self, p: usize, building: i16) -> i16 {
@@ -180,7 +180,7 @@ impl Turns {
     /// it ([`Turns::local_player`], `FUN_140c88440`) is of class 3, disappears when built
     /// (`+0x984`) and has one (0 or more). A master without train locations trains nowhere.
     #[must_use]
-    pub fn trains_at(&self, m: &crate::masters::Master, building: i16) -> bool {
+    pub fn trains_at(&self, m: &crate::objects::masters::Master, building: i16) -> bool {
         if m.trained_at.is_empty() {
             return false;
         }

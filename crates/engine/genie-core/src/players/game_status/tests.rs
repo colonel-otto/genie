@@ -1,5 +1,5 @@
 use super::*;
-use crate::masters::{Master, Masters};
+use crate::objects::masters::{Master, Masters};
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
 use crate::turn::{Player, Unit};
 use crate::unit_ai::UnitAi;
@@ -205,7 +205,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
         ..Unit::default()
     });
     let mut attack = crate::combat::attack::tests::own_attack(-1, crate::combat::attack::DONE, 1.0);
-    attack.arms.idle_sprite = Some(crate::sprite::Graphic {
+    attack.arms.idle_sprite = Some(crate::objects::sprite::Graphic {
         id: 1,
         frames: 10,
         facets: 8,

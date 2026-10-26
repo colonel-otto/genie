@@ -2,9 +2,9 @@
 
 use crate::checkpoint::TopAction;
 use crate::construction::build::BUILD;
-use crate::masters::Master;
+use crate::objects::masters::Master;
+use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::turn::BUILDING_KIND;
-use crate::turn::unit::{TAKEN_OUT, Unit};
 use crate::unit_ai::GenieError;
 
 impl Unit {
@@ -48,7 +48,7 @@ impl Unit {
     }
 
     /// The target of its hunt, which it attacks or gathers from.
-    pub(in crate::turn) fn attack_target(&self) -> Option<i32> {
+    pub(crate) fn attack_target(&self) -> Option<i32> {
         self.hunt
             .map(|h| h.target)
             .or_else(|| self.gather.map(|g| g.target).filter(|&t| t != -1))
