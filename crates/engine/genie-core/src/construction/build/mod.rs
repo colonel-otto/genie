@@ -25,6 +25,7 @@ mod drop_off;
 pub(crate) mod more_work;
 mod placing;
 mod states;
+mod unit;
 mod unit_ai_side;
 mod update;
 mod walk_ends;
