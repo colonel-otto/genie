@@ -60,6 +60,9 @@ jobs:
       # its prose and the generated tables of its files and of the systems it uses, current
       # with the code (docs/ENGINE_SYSTEMS.md). Its tests run in the file-size job.
       - run: scripts/readmes.py crates/engine/genie-core/src --check
+      # scripts/effects.py: docs/EFFECTS.md, the inventory of what an object's update hands on
+      # (the world's outputs, the unit AI's effects, the hand-offs; FD-045), current with the code
+      - run: scripts/effects.py crates/engine/genie-core/src --check
 
   dependencies:
     name: Format crates do not depend on engine or tool crates
