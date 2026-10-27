@@ -58,15 +58,17 @@ impl UnitAi {
     }
 
     /// `BuildObject` (slot 0xf0, `FUN_140c47d80`) on foundation `target`, `force`d or off the
-    /// build action value (`0x25a`): the unit's build command (slot 0x380), which the caller runs
-    /// after the update in its order ([`Effect::BuildObject`]; one that does not take is not
-    /// modelled, `World::build_command`), then the build action value (the last keeping the old)
-    /// and the foundation as the target at its place with its class as the world holds it, else
-    /// class −1 at (0, 0, 0) (the target and class before becoming the last). True when it builds.
+    /// build action value (`0x25a`): the unit's build command (slot 0x380, forced as every
+    /// caller passes it), which the caller runs after the update in its order
+    /// ([`Effect::BuildObject`]); its 0 ([`UnitSide::builds`]: the foundation gone, no task)
+    /// leaves the AI as it was. Then the build action value (the last keeping the old) and the
+    /// foundation as the target at its place with its class as the world holds it, else class −1
+    /// at (0, 0, 0) (the target and class before becoming the last). True when it builds.
     ///
     /// # Errors
     ///
-    /// A foundation the slice cannot read.
+    /// A foundation the slice cannot read, and what the build command's task search does not
+    /// model.
     pub(crate) fn build_object(
         &mut self,
         target: i32,
@@ -75,7 +77,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action == BUILD_ACTION {
+        if (!force && self.current_action == BUILD_ACTION) || !side.builds(target)? {
             return Ok(false);
         }
         fx.push(Effect::BuildObject(target));

@@ -61,6 +61,16 @@ pub trait UnitSide {
         Err(WITHOUT_UNIT)
     }
 
+    /// The unit's build command's answer (slot 0x380, forced) on `foundation` before it runs:
+    /// false for a foundation the world does not hold or no task for it (its 0).
+    ///
+    /// # Errors
+    ///
+    /// A side without its unit, and what the task search does not model.
+    fn builds(&self, _foundation: i32) -> Result<bool, GenieError> {
+        Err(WITHOUT_UNIT)
+    }
+
     /// The unit's build command (slot 0x380, forced) on `foundation` run at once
     /// ([`Effect::BuildObject`]), ahead of a command that follows it in the same AI run (an
     /// attack command replacing the Build it makes).

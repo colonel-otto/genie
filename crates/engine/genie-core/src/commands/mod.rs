@@ -452,9 +452,6 @@ const ONE_UNIT_AGE: f32 = crate::math::image::turn::ONE_UNIT_AGE;
 /// A build order on a foundation the world no longer holds.
 pub(crate) const FOUNDATION_GONE: GenieError =
     GenieError::unsupported("a build order on a foundation that is gone");
-/// A build order whose unit has no task for its foundation (slot 0x380's 0).
-pub(crate) const NO_BUILD_TASK: GenieError =
-    GenieError::unsupported("a build order with no task for its foundation");
 
 /// Castle Age (`0x66`), whose RESEARCH marks the treaty monitor in [`CASTLE_AGE_MODE`].
 const CASTLE_AGE: i16 = 0x66;

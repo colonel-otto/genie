@@ -322,7 +322,7 @@ impl World {
                 AiWork::Hunt(target) => self.hunt_command(p, i, target),
                 AiWork::Gather(target) => self.gather_command(p, i, target),
                 AiWork::Work(work) => self.order_work(p, i, &work),
-                AiWork::Build(foundation) => self.build_command(p, i, foundation).map(|_| ()),
+                AiWork::Build(foundation) => self.build_command(p, i, foundation).map(drop),
                 AiWork::DropElsewhere(site, back) => self.drop_elsewhere(p, i, site, back),
             }?;
         }

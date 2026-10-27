@@ -4195,39 +4195,15 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
         ai.idle_timeout = 3000;
     }
     let draws = t.streams.get(Stream::Ai).draws;
-    // the unit AI runs the order (slot 0x230) and gives the build command
-    let mut fx = Vec::new();
-    {
-        let unit = &mut t.players[1].objects[0];
-        let ai = unit.ai.as_mut().unwrap();
-        let at = crate::unit_ai::Surroundings {
-            id: 9175,
-            // the foundation as the AI sees it
-            units: vec![crate::unit_ai::UnitSeen {
-                id: 10028,
-                class: 3,
-                position: [30.0, 88.0, 0.0],
-                ..crate::unit_ai::UnitSeen::default()
-            }],
-            ..crate::unit_ai::Surroundings::default()
-        };
-        let mut side =
-            |_: &crate::unit_ai::Search<'_>| -> Result<crate::unit_ai::Found, GenieError> {
-                Err(GenieError::unsupported("no search here"))
-            };
-        let r = ai
-            .process_order(
-                &order,
-                Some((&at, &mut side, false)),
-                None,
-                t.streams.get(Stream::Ai),
-                &mut fx,
-            )
-            .unwrap();
+    // the unit AI runs the order (slot 0x230) and gives the build command, which runs after it
+    t.run_unit_ai((1, 0), |ai, at, side, _, rng| {
+        let mut fx = Vec::new();
+        let r = ai.process_order(&order, Some((at, side, false)), None, rng, &mut fx)?;
         assert_eq!(r, 1);
-    }
-    assert_eq!(fx, [crate::unit_ai::Effect::BuildObject(10028)]);
-    let _ = t.build_command(1, 0, 10028).unwrap();
+        assert_eq!(fx, [crate::unit_ai::Effect::BuildObject(10028)]);
+        Ok(fx)
+    })
+    .unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
     assert!(v.build.is_some());
@@ -4244,6 +4220,61 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
     assert_eq!(ai.secondary_timer, 750);
     assert_ne!(ai.adjusted_idle_timeout, 750);
     assert_eq!(t.streams.get(Stream::Ai).draws, draws + 1);
+}
+
+/// Slot 0x380 (`FUN_14120d410`) answers 0 and does nothing for a foundation the world does not
+/// hold and for a unit without a task on it (its own master's list and its swap group's); the
+/// Gather's `set_state(6)` ignores that 0.
+#[test]
+fn a_build_command_without_its_foundation_or_a_task_does_nothing() {
+    let without_build_tasks = |t: &mut World| {
+        for id in [118, 212] {
+            let m = t.masters[1].get_mut(id).unwrap();
+            m.tasks.retain(|k| k.action_type != 101);
+        }
+    };
+    let mut t = sent_off_world(vec![]);
+    let before = t.players[1].objects[0].clone();
+    assert_eq!(t.build_command(1, 0, 99_999), Ok(false));
+    without_build_tasks(&mut t);
+    assert_eq!(t.build_command(1, 0, 10028), Ok(false));
+    assert_eq!(t.players[1].objects[0], before);
+    // with a task it builds as the builder 118
+    let mut t = sent_off_world(vec![]);
+    assert_eq!(t.build_command(1, 0, 10028), Ok(true));
+    assert_eq!(t.players[1].objects[0].life.master_id, 118);
+}
+
+/// The unit AI's view answers slot 0x380 before `BuildObject` takes the build
+/// (`UnitSide::builds`): 0 for a foundation the world does not hold or no task for it, 1 with a
+/// task or a Build on top (its slot 0x48), whatever the master's lists then hold.
+#[test]
+fn the_unit_ai_s_view_answers_the_build_command_before_it_runs() {
+    let answers = |t: &mut World, foundation| {
+        let mut answer = None;
+        t.run_unit_ai((1, 0), |_, _, side, _, _| {
+            answer = Some(side.builds(foundation)?);
+            Ok(Vec::new())
+        })
+        .unwrap();
+        answer.unwrap()
+    };
+    let mut t = sent_off_world(vec![]);
+    assert!(answers(&mut t, 10028));
+    assert!(!answers(&mut t, 99_999));
+    // the build command on top: a Build answers 1 without a task in the lists
+    assert_eq!(t.build_command(1, 0, 10028), Ok(true));
+    for id in [83, 118, 212] {
+        let m = t.masters[1].get_mut(id).unwrap();
+        m.tasks.retain(|k| k.action_type != 101);
+    }
+    assert!(answers(&mut t, 10028));
+    let mut t = sent_off_world(vec![]);
+    for id in [118, 212] {
+        let m = t.masters[1].get_mut(id).unwrap();
+        m.tasks.retain(|k| k.action_type != 101);
+    }
+    assert!(!answers(&mut t, 10028));
 }
 
 /// The build command at once from the unit AI's run (`UnitSide::build_now`: a requeued build

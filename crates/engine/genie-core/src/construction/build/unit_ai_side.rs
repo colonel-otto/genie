@@ -3,15 +3,108 @@
 //! foundation's footprint.
 
 use crate::GenieError;
+use crate::objects::masters::Master;
 use crate::objects::release::Releaser;
+use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
 
-impl UnitView<'_> {
+/// What slot 0x380 finds on a foundation without a Build on top ([`UnitView::build_found`]).
+struct BuildFound<'u> {
+    /// The task slot 0x820 found.
+    task: crate::objects::masters::Task,
+    /// The master the switch gives; None keeps the unit's own.
+    switch: Option<&'u Master>,
+    /// The unit's own master.
+    own: &'u Master,
+    /// The foundation's master.
+    site: &'u Master,
+    /// The foundation's place.
+    at: [f32; 3],
+}
+
+impl<'u> UnitView<'u> {
+    /// Slot 0x380's answer (forced) on `foundation` without its effects, which `BuildObject`
+    /// reads before it takes the build ([`crate::unit_ai::UnitSide::builds`]): 0 for a
+    /// foundation the world does not hold (`FUN_1415417a0`), 1 with a Build on top (its slot
+    /// 0x48), else whether slot 0x820 finds a task ([`UnitView::build_found`]).
+    pub(crate) fn builds_on(&self, foundation: i32) -> Result<bool, GenieError> {
+        if self.find_object(foundation).is_none() {
+            return Ok(false);
+        }
+        if self.unit.top_action_kind() == Some(crate::construction::build::BUILD) {
+            return Ok(true);
+        }
+        Ok(self.build_found(foundation)?.is_some())
+    }
+
+    /// Object `id` as slot 0x380 finds it (`FUN_1415417a0`): the unit, the player's live list,
+    /// another player's ([`crate::unit_ai::world_view::Foreign::find`]). The owner's sleeping
+    /// list holds only objects of a type below 30, never a building.
+    fn find_object(&self, id: i32) -> Option<(usize, &Unit)> {
+        if id == self.unit.id {
+            return Some((self.player, &*self.unit));
+        }
+        self.others
+            .iter()
+            .find(|u| u.id == id)
+            .map(|u| (self.player, u))
+            .or_else(|| self.foreign.find(id))
+    }
+
+    /// Slot 0x380's search without a Build on top: the foundation (None when the world does not
+    /// hold it), then slot 0x820 with any action type and the switch ([`task_search`] on the
+    /// foundation and its main building); None without a task.
+    fn build_found(&self, foundation: i32) -> Result<Option<BuildFound<'u>>, GenieError> {
+        let find = |id: i32| self.find_object(id);
+        let Some((fp, f)) = find(foundation) else {
+            return Ok(None);
+        };
+        let every: &'u [crate::objects::masters::Masters] = self.every;
+        let site = every
+            .get(fp)
+            .and_then(|m| m.get(f.life.master_id))
+            .ok_or(crate::world::OBJECT_MASTER)?;
+        let (Some(t), Some(general)) = (
+            task_target_with(foundation, 1, &find, self.every)?,
+            task_target_with(foundation, 2, &find, self.every)?,
+        ) else {
+            return Err(crate::commands::FOUNDATION_GONE);
+        };
+        let masters: &'u crate::objects::masters::Masters =
+            self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
+        let unit = &*self.unit;
+        let own = masters
+            .get(unit.life.master_id)
+            .ok_or(crate::world::UNIT_AI_MASTER)?;
+        let actor = Actor {
+            id: unit.id,
+            master: own,
+            player: self.player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
+            civ: self.civ,
+        };
+        let dip = SideWorld {
+            player: self.player,
+            relations: self.relations,
+            foreign: self.foreign,
+            drop_sites: self.drop_sites,
+        };
+        let found = task_search(masters, &actor, &t, &general, -1, &dip)?;
+        Ok(found.map(|(task, switch)| BuildFound {
+            task,
+            switch,
+            own,
+            site,
+            at: f.position,
+        }))
+    }
+
     /// The build command at once ([`World::build_command`]'s path without a Build on top, which
     /// a stop before it leaves none): slot 0x820 with any action type and the switch
-    /// ([`task_search`] on the foundation and its main building) finds a task; the switch (slot
+    /// ([`UnitView::build_found`]) finds a task, else nothing (slot 0x380's 0); the switch (slot
     /// 0x90 with 0: the actions go, then the master's unit part, [`crate::orders::switch_master`];
     /// its owner's part after the update); a Build on the task (`FUN_140aad4e0`, the footprints'
     /// gap, the task's range and work value, the builder's work rate with the unit's powerup)
@@ -22,51 +115,18 @@ impl UnitView<'_> {
         if self.unit.top_action_kind() == Some(BUILD) {
             return Err(crate::unit_ai::PENDING_BEFORE_ATTACK);
         }
+        let Some(BuildFound {
+            task,
+            switch,
+            own,
+            site,
+            at: f_at,
+        }) = self.build_found(foundation)?
+        else {
+            return Ok(());
+        };
+        let player = self.player;
         let unit = &*self.unit;
-        let (player, others, foreign) = (self.player, self.others, self.foreign);
-        let find = |id: i32| {
-            if id == unit.id {
-                return Some((player, unit));
-            }
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (player, u))
-                .or_else(|| foreign.find(id))
-        };
-        let (fp, f) = find(foundation).ok_or(crate::commands::FOUNDATION_GONE)?;
-        let site = self
-            .every
-            .get(fp)
-            .and_then(|m| m.get(f.life.master_id))
-            .ok_or(crate::world::OBJECT_MASTER)?;
-        let f_at = f.position;
-        let (Some(t), Some(general)) = (
-            task_target_with(foundation, 1, &find, self.every)?,
-            task_target_with(foundation, 2, &find, self.every)?,
-        ) else {
-            return Err(crate::commands::FOUNDATION_GONE);
-        };
-        let masters = self.masters.ok_or(crate::world::UNIT_AI_MASTER)?;
-        let own = masters
-            .get(unit.life.master_id)
-            .ok_or(crate::world::UNIT_AI_MASTER)?;
-        let actor = Actor {
-            id: unit.id,
-            master: own,
-            player,
-            held: (unit.life.attribute_type, unit.life.amount),
-            attribute_95: self.attributes.get(95).copied().unwrap_or(0.0),
-            civ: self.civ,
-        };
-        let dip = SideWorld {
-            player,
-            relations: self.relations,
-            foreign,
-            drop_sites: self.drop_sites,
-        };
-        let (task, switch) = task_search(masters, &actor, &t, &general, -1, &dip)?
-            .ok_or(crate::commands::NO_BUILD_TASK)?;
         let builder = switch.unwrap_or(own);
         let gap = crate::movement::footprint_gap(unit.position, builder.radius, f_at, site.radius);
         let build = BuildAction::start(

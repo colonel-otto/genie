@@ -441,6 +441,10 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
         }
     }
 
+    fn builds(&self, foundation: i32) -> Result<bool, GenieError> {
+        self.builds_on(foundation)
+    }
+
     fn build_now(&mut self, foundation: i32) -> Result<(), GenieError> {
         self.start_build_now(foundation)
     }

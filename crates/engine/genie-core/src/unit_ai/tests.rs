@@ -560,6 +560,9 @@ impl UnitSide for WaitSide {
     fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
         None
     }
+    fn builds(&self, _: i32) -> Result<bool, GenieError> {
+        Ok(true)
+    }
     fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
         Err(GenieError::unsupported("no search here"))
     }
@@ -782,11 +785,16 @@ struct ResourceSide {
     /// The foundation the builder's search finds and whether the unit reaches it (none: no
     /// search here).
     foundation: Option<(i32, bool)>,
+    /// The build command finds no task (slot 0x380's 0).
+    no_build_task: bool,
 }
 
 impl UnitSide for ResourceSide {
     fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
         None
+    }
+    fn builds(&self, _: i32) -> Result<bool, GenieError> {
+        Ok(!self.no_build_task)
     }
     fn closest(&mut self, _: &Search<'_>) -> Result<Found, GenieError> {
         self.closest
@@ -1040,6 +1048,48 @@ fn a_villager_searches_by_its_action() {
         let mut u = villager(action);
         assert!(run(&mut u, &mut ResourceSide::default(), false).0.is_err());
     }
+}
+
+/// `BuildObject` (slot 0xf0, `FUN_140c47d80`) whose build command answers 0 (slot 0x380: the
+/// foundation gone or no task for it) gives no command and leaves the AI as it was.
+#[test]
+fn a_build_object_whose_build_command_answers_0_changes_nothing() {
+    let at = Surroundings {
+        units: vec![UnitSeen {
+            id: 10028,
+            class: 3,
+            position: [7.0, 8.0, 0.0],
+            ..UnitSeen::default()
+        }],
+        ..Surroundings::default()
+    };
+    let mut side = ResourceSide {
+        no_build_task: true,
+        ..ResourceSide::default()
+    };
+    let mut u = UnitAi {
+        ai_type: CIVILIAN,
+        current_action: GATHER_ACTION,
+        current_target: 28202,
+        target_type: 9,
+        ..UnitAi::default()
+    };
+    let before = u.clone();
+    let mut fx = Vec::new();
+    assert_eq!(
+        u.build_object(10028, true, &at, &mut side, &mut fx),
+        Ok(false)
+    );
+    assert_eq!(fx, vec![]);
+    assert_eq!(u, before);
+    // with a task it builds
+    side.no_build_task = false;
+    assert_eq!(
+        u.build_object(10028, true, &at, &mut side, &mut fx),
+        Ok(true)
+    );
+    assert_eq!(fx, vec![Effect::BuildObject(10028)]);
+    assert_eq!((u.current_action, u.current_target), (BUILD_ACTION, 10028));
 }
 
 /// The villager's notify 0x202 on its gather (the 4v4's forager 31237 after update 10822):
@@ -7914,6 +7964,9 @@ struct ShipSide {
 impl UnitSide for ShipSide {
     fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
         None
+    }
+    fn builds(&self, _: i32) -> Result<bool, GenieError> {
+        Ok(true)
     }
     fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
         self.searched

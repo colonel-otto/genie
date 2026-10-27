@@ -2,7 +2,7 @@
 //! and the build command.
 
 use crate::GenieError;
-use crate::commands::{FOUNDATION_GONE, NO_BUILD_TASK};
+use crate::commands::FOUNDATION_GONE;
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
@@ -298,28 +298,27 @@ impl World {
         Ok(())
     }
 
-    /// The unit's build command (slot 0x380, `FUN_14120d410`, forced) on `foundation`: a Build on
-    /// top takes the foundation (its slot 0x48, [`World::build_take`]); without one its slot
-    /// 0x820 with any action type and the switch ([`task_search`] on the foundation and its main
-    /// building; the switch, slot 0x90 with 0, [`World::change_master`]) finds a task, and a
-    /// Build action on it (`FUN_140aad4e0` with that task, whatever its type) replaces the
-    /// unit's actions. The foundation's master's class and its place, for the unit AI. A
-    /// foundation that is gone or without a task (slot 0x380's 0) is not modelled.
+    /// The unit's build command (slot 0x380, `FUN_14120d410`, forced) on `foundation`: nothing
+    /// for a foundation the world does not hold (`FUN_1415417a0`); a Build on top takes it (its
+    /// slot 0x48, [`World::build_take`]); without one its slot 0x820 with any action type and
+    /// the switch ([`task_search`] on the foundation and its main building; the switch, slot
+    /// 0x90 with 0, [`World::change_master`]) finds a task, and a Build action on it
+    /// (`FUN_140aad4e0` with that task, whatever its type) replaces the unit's actions. True
+    /// when it builds (slot 0x380's 1); false for the foundation gone or no task (its 0, which
+    /// the Gather's `set_state(6)` ignores and `BuildObject` reads first,
+    /// [`crate::unit_ai::UnitSide::builds`]).
     pub(crate) fn build_command(
         &mut self,
         player: usize,
         idx: usize,
         foundation: i32,
-    ) -> Result<(i32, [f32; 3]), GenieError> {
+    ) -> Result<bool, GenieError> {
+        if self.object(foundation).is_none() {
+            return Ok(false);
+        }
         if self.players[player].objects[idx].top_action_kind() == Some(BUILD) {
-            let class = self.build_take(player, idx, foundation)?;
-            let f_at =
-                self.object(foundation)
-                    .map(|(_, f)| f.position)
-                    .ok_or(GenieError::unsupported(
-                        "a BuildObject on a foundation that is gone",
-                    ))?;
-            return Ok((class, f_at));
+            let _ = self.build_take(player, idx, foundation)?;
+            return Ok(true);
         }
         let gone = FOUNDATION_GONE;
         let (fp, f) = self.object(foundation).ok_or_else(|| gone.clone())?;
@@ -353,8 +352,9 @@ impl World {
         };
         // slot 0x820 with any action type (0xffff): whatever task it finds, the Build takes
         // (FUN_140aad4e0 on it), its type and its enablement unread
-        let (task, switch) =
-            task_search(masters, &actor, &t, &general, -1, &world)?.ok_or(NO_BUILD_TASK)?;
+        let Some((task, switch)) = task_search(masters, &actor, &t, &general, -1, &world)? else {
+            return Ok(false);
+        };
         let builder = switch.unwrap_or(actor.master);
         let gap = footprint_gap(unit.position, builder.radius, f_at, site.radius);
         let build = BuildAction::start(
@@ -369,13 +369,12 @@ impl World {
                 id: task.id,
             },
         );
-        let class = i32::from(site.class);
         if let Some(m) = switch.map(|m| m.id) {
             self.change_master(player, idx, m)?;
         }
         self.take(foundation, self.releaser(player, idx));
         self.clear_actions(player, idx)?;
         self.players[player].objects[idx].build = Some(build);
-        Ok((class, f_at))
+        Ok(true)
     }
 }
