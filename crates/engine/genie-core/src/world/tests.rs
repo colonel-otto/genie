@@ -5723,8 +5723,11 @@ fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
     else {
         panic!("a make action");
     };
-    assert_eq!(t.production_load(0, 0), 25.0 - make.progress);
-    assert_eq!(t.production_load(0, 1), 0.0);
+    assert_eq!(
+        t.production_load(0, &t.players[0].objects[0]),
+        25.0 - make.progress
+    );
+    assert_eq!(t.production_load(0, &t.players[0].objects[1]), 0.0);
     // the empty one takes the first, then the loaded one the second (25 above its load)
     t.tick_with(104, &[several(2)]);
     assert_eq!((total(&t, 0), total(&t, 1)), (2, 1));
@@ -5775,6 +5778,58 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
     assert!(alone.players[0].unsupported.is_none());
     assert_eq!(alone.players[0].resources, [200.0; 4]);
     assert!(alone.players[0].objects[0].production.is_none());
+}
+
+/// `FUN_141614450` with players ordering each other's (`+0x1074`): a building of another
+/// player takes part as its own, and its part (`FUN_1411cbc40`) queues and pays for its owner
+/// (`+0x138`); the cost check before reads the ordering player's stock. Without the setting the
+/// packet's check drops it.
+#[test]
+fn a_queue_at_another_player_s_building_queues_and_pays_for_its_owner() {
+    let two = |cheats| {
+        let mut t = one_player(vec![], [200.0; 4]);
+        let mut other = t.players[0].clone();
+        other.objects = vec![centre(10)];
+        other.resources = [100.0, 0.0, 0.0, 0.0];
+        t.players.push(other);
+        t.player_time.push(0);
+        t.masters.push(t.masters[0].clone());
+        t.settings.cheats_enabled = cheats;
+        t
+    };
+    let mut t = two(true);
+    t.tick_with(104, &[queue(10, 83, 1)]);
+    assert!(t.players.iter().all(|p| p.unsupported.is_none()));
+    assert_eq!(t.players[0].resources, [200.0; 4]);
+    assert_eq!(t.players[1].resources[0], 54.0);
+    let production = t.players[1].objects[0].production.as_ref().unwrap();
+    assert_eq!(production.queue.total, 1);
+    let mut t = two(false);
+    t.tick_with(104, &[queue(10, 83, 1)]);
+    assert_eq!(t.players[1].resources[0], 100.0);
+    assert!(t.players[1].objects[0].production.is_none());
+}
+
+/// `FUN_141614450` reads a listed object live or sleeping (`FUN_140e6b750`): a sleeping one the
+/// unit does not train at keeps room −1, and the town centre beside it takes the unit.
+#[test]
+fn a_queue_passes_over_a_sleeping_object_the_unit_does_not_train_at() {
+    let mut t = one_player(vec![centre(9)], [200.0; 4]);
+    let mut asleep = town_centre(11);
+    asleep.life.master_id = 99;
+    t.players[0].sleeping.push(asleep);
+    let both = Command::Queue {
+        player: 0,
+        buildings: vec![11, 9],
+        unit: 99,
+        amount: 2,
+        button: -1,
+    };
+    t.tick_with(104, &[both]);
+    assert!(t.players[0].unsupported.is_none());
+    let production = t.players[0].objects[0].production.as_ref().unwrap();
+    assert_eq!(production.queue.total, 2);
+    assert!(t.players[0].sleeping[0].production.is_none());
 }
 
 /// RESEARCH's building (`0x140e7e270`): with more than one listed, the least loaded of the

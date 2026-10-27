@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE, QueueAt, ResearchAt};
 use crate::math::rng::Stream;
 use crate::objects::masters::Masters;
+use crate::orders::Place;
 use crate::production::Production;
 use crate::world::player::POPULATION;
 use crate::world::{
@@ -40,7 +41,7 @@ impl World {
     ///
     /// # Errors
     ///
-    /// A building of another player (with cheats) or asleep, and what the parts do not model.
+    /// A sleeping object the unit trains at, and what the parts do not model.
     pub(crate) fn queue(&mut self, player: usize, q: &QueueAt) -> Result<(), GenieError> {
         let Some(ids) = self.command_check(player, &q.buildings) else {
             return Ok(());
@@ -58,22 +59,13 @@ impl World {
             .into_iter()
             .flatten()
         {
-            let crate::orders::Place::Live(p, i) = place else {
-                return Err(GenieError::unsupported(
-                    "QUEUE at a building the slice does not have",
-                ));
-            };
-            if p != player {
-                return Err(GenieError::unsupported(
-                    "QUEUE at a building the slice does not have",
-                ));
-            }
-            let listed = owner.objects[i]
+            let (_, building) = self.at(place);
+            let listed = building
                 .production
                 .as_ref()
                 .is_some_and(|p| p.available_units.contains(&q.unit));
             if unit.available || listed {
-                found.push(i);
+                found.push(place);
             }
         }
         found.truncate(60);
@@ -88,21 +80,19 @@ impl World {
         let mut rooms = Vec::with_capacity(found.len());
         let mut loads = Vec::with_capacity(found.len());
         let mut total_room = 0i32;
-        for &i in &found {
+        for &place in &found {
+            let (p, building) = self.at(place);
             // a building the unit does not train at keeps room −1 and load 0
-            if !self.trains_at(unit, owner.objects[i].life.master_id) {
+            if !self.trains_at(unit, building.life.master_id) {
                 rooms.push(-1);
                 loads.push(0.0);
                 continue;
             }
-            let total = owner.objects[i]
-                .production
-                .as_ref()
-                .map_or(0, |p| p.queue.total);
+            let total = building.production.as_ref().map_or(0, |p| p.queue.total);
             let room = per - i32::from(total);
             total_room += room.max(0);
             rooms.push(room);
-            loads.push(self.production_load(player, i));
+            loads.push(self.production_load(p, building));
         }
         let mut amount = i32::from(q.amount as i16).min(i32::from(total_room as i16));
         if 0 < amount {
@@ -141,7 +131,6 @@ impl World {
             self.players[player].one_military_queued = true;
             amount = 1;
         }
-        let owner = &self.players[player];
         let mut counts = vec![0u16; found.len()];
         let mut pick: Option<usize> = None;
         while 0 < amount {
@@ -151,17 +140,31 @@ impl World {
             };
             rooms[k] -= 1;
             counts[k] += 1;
-            let at = owner.objects[found[k]].life.master_id;
+            let at = self.at(found[k]).1.life.master_id;
             let time = crate::production::train_time(&unit.train_locations, at, q.button);
             loads[k] += f32::from(time);
             pick = Some(k);
         }
-        for (k, &i) in found.iter().enumerate() {
+        for (k, &place) in found.iter().enumerate() {
             if 0 < counts[k] {
-                let _ = self.queue_at(player, i, q.unit, counts[k], -1, q.button)?;
+                // the building's part works for its owner (`FUN_1411cbc40`'s `+0x138`)
+                let Place::Live(p, i) = place else {
+                    return Err(GenieError::unsupported(
+                        "QUEUE at a sleeping object the unit trains at",
+                    ));
+                };
+                let _ = self.queue_at(p, i, q.unit, counts[k], -1, q.button)?;
             }
         }
         Ok(())
+    }
+
+    /// The object at `place`, with its player.
+    fn at(&self, place: Place) -> (usize, &crate::objects::unit::Unit) {
+        match place {
+            Place::Live(p, i) => (p, &self.players[p].objects[i]),
+            Place::Sleeping(p, i) => (p, &self.players[p].sleeping[i]),
+        }
     }
 
     /// RESEARCH's building (`0x140e7e270`): the packet's (`+4`, a building or none); with more
@@ -170,9 +173,9 @@ impl World {
     /// ([`World::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
     /// takes its place. −1 for none.
     pub(crate) fn least_loaded(&self, player: usize, r: &ResearchAt) -> i32 {
-        let load = |id: i32| match self.place(id) {
-            Some(crate::orders::Place::Live(q, i)) => self.production_load(q, i),
-            _ => 0.0,
+        let load = |id: i32| {
+            self.object(id)
+                .map_or(0.0, |(q, u)| self.production_load(q, u))
         };
         let is_building = |id: i32| {
             self.object(id).is_some_and(|(q, u)| {
@@ -202,15 +205,14 @@ impl World {
         chosen.unwrap_or(-1)
     }
 
-    /// `FUN_1411d0e90`: the seconds of work the building at `i` of player `p` has queued: each
+    /// `FUN_1411d0e90`: the seconds of work `building` (live or sleeping) of player `p` has queued: each
     /// queue entry's count times its time (a unit's master's first train time, `+0x898`, in
     /// integers; a research's location at the building, `FUN_1413cbd20`, its time plus its
     /// adjustment, as floats), less the work done of its production list's action (a make's
     /// `+0x6c`, a research's `+0x70`).
     #[must_use]
-    pub(crate) fn production_load(&self, p: usize, i: usize) -> f32 {
+    pub(crate) fn production_load(&self, p: usize, building: &crate::objects::unit::Unit) -> f32 {
         let owner = &self.players[p];
-        let building = &owner.objects[i];
         let Some(production) = building.production.as_ref() else {
             return 0.0;
         };
