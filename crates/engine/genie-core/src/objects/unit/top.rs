@@ -209,6 +209,62 @@ impl Unit {
         })
     }
 
+    /// The sub-action of its top action as the slice models it, type and state: the `MoveTo`
+    /// (type 1) an action walks with, a Hunt's Attack (9) and an Artifact's Enter (3). None for
+    /// an action without one, or without an action.
+    #[must_use]
+    pub fn top_sub_action(&self) -> Option<TopAction> {
+        use crate::movement::move_to::{MOVE_TO, MoveTo};
+        let walking = |m: Option<MoveTo>| {
+            m.map(|m| TopAction {
+                kind: MOVE_TO,
+                state: m.number(),
+            })
+        };
+        if let Some(a) = self.artifact {
+            return walking(a.move_to).or_else(|| {
+                a.enter.map(|e| TopAction {
+                    kind: crate::garrison::ENTER,
+                    state: e.state,
+                })
+            });
+        }
+        if let Some(b) = self.build {
+            return walking(b.move_to);
+        }
+        if let Some(r) = self.repair {
+            return walking(r.move_to);
+        }
+        if self.move_to.is_some() {
+            return None;
+        }
+        if let Some(f) = self.fly {
+            return walking(f.move_to);
+        }
+        if let Some(h) = self.hunt {
+            return h
+                .attack
+                .map(|a| TopAction {
+                    kind: crate::combat::attack::ATTACK,
+                    state: a.state,
+                })
+                .or_else(|| walking(h.move_to));
+        }
+        if let Some(g) = self.gather {
+            return walking(g.move_to);
+        }
+        if let Some(a) = self.attack {
+            return walking(a.move_to);
+        }
+        if let Some(e) = self.explore {
+            return walking(e.move_to);
+        }
+        if let Some(e) = self.enter {
+            return walking(e.move_to);
+        }
+        self.transport.and_then(|t| walking(t.move_to))
+    }
+
     /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
     /// Artifact not moving to an object, a Fly, an Explore, a wait for a foundation, which keeps
     /// the foundation at `+0x68`); None without an action the slice holds.

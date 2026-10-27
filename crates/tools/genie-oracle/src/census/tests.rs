@@ -1,4 +1,6 @@
-use crate::census::{CensusEnd, Followed, census_run, header_divergence, header_divergences};
+use crate::census::{
+    CensusEnd, Followed, census_run, header_divergence, header_divergences, next_id_divergence,
+};
 use crate::fixtures::{combat_object, gaia, header, human, recording};
 use crate::{Error, header_slice, lane_block};
 use genie_rec::de::{Checkpoint, Op};
@@ -140,4 +142,29 @@ fn a_stopped_player_says_nothing_more() {
     let mut never = |_: usize| -> Option<Vec<u8>> { panic!("no save is read after the stop") };
     let followed = header_divergence(&rec, None, 1, (1, 3), &mut never).unwrap();
     assert!(matches!(followed, Followed::Stops(s) if s.update == 1));
+}
+
+/// The first update after which the world's next object id differs from the game's save, with
+/// both ids; none while they agree. A missing save is skipped, as is an update before `first`.
+#[test]
+fn the_next_object_id_leaves_the_game_s_at_its_first_differing_save() {
+    let save = quiet();
+    let rec = recording(&save, &syncs(3));
+    assert_eq!(
+        next_id_divergence(&rec, None, (1, 3), &mut same(&save)).unwrap(),
+        None
+    );
+    let mut ahead = quiet();
+    ahead.world.base_world.next_object_id = save.world.base_world.next_object_id + 1;
+    let start = save.world.base_world.next_object_id;
+    let mut games = |u: usize| Some(recording(if u < 3 { &save } else { &ahead }, &[]));
+    assert_eq!(
+        next_id_divergence(&rec, None, (1, 3), &mut games).unwrap(),
+        Some((3, start, start + 1))
+    );
+    let mut from_two = |u: usize| Some(recording(if u < 2 { &ahead } else { &save }, &[]));
+    assert_eq!(
+        next_id_divergence(&rec, None, (2, 3), &mut from_two).unwrap(),
+        None
+    );
 }

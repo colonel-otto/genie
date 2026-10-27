@@ -63,6 +63,12 @@ pub(crate) fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>,
                 .actions()
                 .and_then(|a| a.entries().next())
                 .map(|(_, action)| action.base().map_or(-1, |b| b.target_id)),
+            sub_action: object
+                .actions()
+                .and_then(|a| a.entries().next())
+                .and_then(|(_, action)| action.base())
+                .and_then(|b| b.sub_actions.entries().next())
+                .map(|(kind, sub)| (kind, sub.base().map_or(0, |b| b.state))),
             retarget: object
                 .combat()
                 .and_then(|c| c.unit_ai())

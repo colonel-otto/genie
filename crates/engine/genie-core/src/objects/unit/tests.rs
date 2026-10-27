@@ -211,3 +211,48 @@ fn the_top_action_s_object_is_its_target_unless_it_has_none() {
     };
     assert!(unmodelled.top_action_object().is_err());
 }
+
+/// The top action's sub-action: a Hunt's `MoveTo` with its state number, else its Attack; a
+/// Build's `MoveTo`; none for a `MoveTo` of its own or without an action.
+#[test]
+fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
+    use crate::movement::move_to::{MOVE_TO, MoveTo};
+    use crate::world::checkpoint::TopAction;
+    let walking = |state| TopAction {
+        kind: MOVE_TO,
+        state,
+    };
+    let mut hunt = crate::gathering::hunt::tests::hunting(7);
+    hunt.move_to = Some(MoveTo::Arrived);
+    let hunter = Unit {
+        hunt: Some(hunt),
+        ..Unit::default()
+    };
+    assert_eq!(hunter.top_sub_action(), Some(walking(1)));
+    let mut idle = hunt;
+    idle.move_to = None;
+    let resting = Unit {
+        hunt: Some(idle),
+        ..Unit::default()
+    };
+    assert_eq!(resting.top_sub_action(), None);
+    let mut build = crate::construction::build::BuildAction::start(
+        800,
+        [1.0, 2.0, 0.0],
+        0.0,
+        crate::construction::build::BuildTask {
+            range: 0.1,
+            work_value: 1.0,
+            work_rate: 1.0,
+            resource: -1,
+            id: -1,
+        },
+    );
+    build.move_to = Some(MoveTo::Moving);
+    let builder = Unit {
+        build: Some(build),
+        ..Unit::default()
+    };
+    assert_eq!(builder.top_sub_action(), Some(walking(4)));
+    assert_eq!(Unit::default().top_sub_action(), None);
+}

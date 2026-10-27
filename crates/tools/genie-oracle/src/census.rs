@@ -335,6 +335,51 @@ pub fn header_divergences(
     Ok(out)
 }
 
+/// The first update from `first` to `last` after which the world's next object id
+/// (`mNextObjectId`, the id the next new object takes) differs from the game's save (`save(u)`
+/// as for [`header_divergences`], a missing save skipped), with genie's and the game's id: an
+/// object made or not in that update shifts the ids of every later one. None while they agree.
+///
+/// # Errors
+///
+/// When the recording, its header or a save cannot be read.
+pub fn next_id_divergence(
+    recording: &[u8],
+    masters: Option<&MasterTable>,
+    (first, last): (usize, usize),
+    save: &mut dyn FnMut(usize) -> Option<Vec<u8>>,
+) -> Result<Option<(usize, i32, i32)>, Error> {
+    let chapter = de::chapters(recording)?[0];
+    let header = chapter.header()?;
+    let sections = header.players();
+    let mut turns = header_slice(&header, masters);
+    let mut decoder = Decoder::default();
+    for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
+        run(
+            &mut turns,
+            &mut decoder,
+            std::slice::from_ref(frame),
+            &sections,
+        );
+        let update = i + 1;
+        if update < first {
+            continue;
+        }
+        let Some(game) = save(update) else {
+            continue;
+        };
+        let game = de::chapters(&game)?[0]
+            .header()?
+            .world
+            .base_world
+            .next_object_id;
+        if turns.next_object_id != game {
+            return Ok(Some((update, turns.next_object_id, game)));
+        }
+    }
+    Ok(None)
+}
+
 /// The recording run from its header as the census runs it, to update `last`; `before` is called
 /// before each update with its number (1 the first), so a caller can listen to one update's
 /// trace ([`genie_core::trace`]). The engine as it stands after the run.

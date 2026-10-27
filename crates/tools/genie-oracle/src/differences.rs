@@ -108,6 +108,13 @@ pub fn object_field_differences(slice: &[ObjectRow], game: &[ObjectRow]) -> Vec<
                 format!("{:?}", g.action_target),
             );
         }
+        if s.action == g.action {
+            field(
+                "sub-action",
+                format!("{:?}", s.sub_action),
+                format!("{:?}", g.sub_action),
+            );
+        }
         field(
             "retarget",
             format!("{:?}", s.retarget),

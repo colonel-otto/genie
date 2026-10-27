@@ -39,6 +39,9 @@ pub struct ObjectRow {
     pub action: Option<(i16, u8)>,
     /// The top action's target (`+0x30`), where the slice holds the action.
     pub action_target: Option<i32>,
+    /// The top action's first sub-action, type and state (a `MoveTo`, a Hunt's Attack, an
+    /// Artifact's Enter).
+    pub sub_action: Option<(i16, u8)>,
     /// Its unit AI's retarget timer.
     pub retarget: Option<i32>,
     /// A moving object's orientation, velocity data and path data (the level it walks first).
@@ -330,6 +333,7 @@ impl Same for ObjectRow {
             && self.position.same(&other.position)
             && self.action == other.action
             && self.action_target == other.action_target
+            && self.sub_action == other.sub_action
             && self.retarget == other.retarget
             && self.movement.same(&other.movement)
             && self.construction.same(&other.construction)
@@ -386,6 +390,7 @@ impl ObjectRow {
             position: unit.position,
             action: top_action(unit).map(|a| (a.kind, a.state)),
             action_target: unit.top_target(),
+            sub_action: unit.top_sub_action().map(|a| (a.kind, a.state)),
             retarget: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
             movement: unit.mover.as_ref().map(|m| MoveRow {
                 forward: m.forward,
