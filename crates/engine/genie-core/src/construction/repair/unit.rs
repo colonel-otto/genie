@@ -5,124 +5,36 @@ use crate::construction::repair::payment::PaidAttributes;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::Me;
-use crate::objects::masters::Master;
+use crate::objects::masters::{Master, Masters};
 use crate::objects::release::release_own;
 use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
-use crate::unit_ai::world_view::RepairWrite;
+use crate::unit_ai::world_view::{Foreign, RepairWrite};
 use crate::world::context::Context;
 
 impl Unit {
-    /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it reads of its
-    /// target (in the unit's player's list or another player's), the repairers of the object
-    /// `FUN_140ad9050` gives (the target, an annex's main building), the unit's work rate and
-    /// quick path, and the target's repair over the objects it reaches (the target, an annex's
-    /// main building, a main building's annexes: [`crate::construction::repair::repair_building`],
-    /// [`crate::construction::repair::repair_unit`]) paid from the player's resources. Its changes go to the
-    /// unit's player's objects at once and to another player's after the update
-    /// ([`Context::repair_writes`]); the payments join the attribute adds.
-    #[allow(clippy::too_many_lines)]
+    /// The Repair's update ([`crate::construction::repair::RepairAction::update`]) with what it
+    /// reads of its target ([`repair_reads`]), the unit's work rate and quick path, and the
+    /// target's repair over the objects it reaches ([`crate::construction::repair::repair_building`],
+    /// [`crate::construction::repair::repair_unit`]) paid from the player's resources. Its changes
+    /// go to the objects ([`repair_write_back`]), the payments join the attribute adds, then what
+    /// the step leaves ([`Unit::after_repair_step`]).
     pub(crate) fn repair_part(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
         me: Me,
     ) -> Result<(), GenieError> {
-        use crate::construction::repair::{Repaired, Repairee};
         let Some(target) = self.repair.map(|r| r.target) else {
             return Ok(());
         };
-        let (player, foreign, every) = (c.player, c.foreign, c.every_masters);
-        let held = |id: i32| -> Option<(usize, &Self)> {
-            others
-                .iter()
-                .find(|u| u.id == id)
-                .map(|u| (player, u))
-                .or_else(|| foreign.find(id))
-        };
-        let master_of = |q: usize, u: &Self| -> Option<Master> {
-            u.own_master
-                .as_deref()
-                .or_else(|| every.get(q)?.get(u.life.master_id))
-                .cloned()
-        };
-        let own = master_of(player, self).ok_or(GenieError::missing_data("a repairer's master"))?;
-        // the target as the update reads it, and the object FUN_140ad9050 counts repairers in
-        let mut repairee = None;
-        let mut counted_in = None;
-        let mut set: Vec<Repaired> = Vec::new();
-        if target != -1
-            && let Some((q, t)) = held(target)
-        {
-            let tm =
-                master_of(q, t).ok_or(GenieError::missing_data("a repaired object's master"))?;
-            repairee = Some(Repairee {
-                state: t.life.state,
-                hp: t.life.hp,
-                owner: q,
-                allied: crate::unit_ai::task_finder::allied(c.relations, player, q, true),
-                position: t.position,
-                radius: tm.radius,
-                class: tm.class,
-                moves: 29 < tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
-            });
-            let building = tm.kind == 80;
-            let counting = if building {
-                t.annex_of.unwrap_or(target)
-            } else {
-                target
-            };
-            if let Some((_, k)) = held(counting) {
-                counted_in = Some((counting, k.repairers()));
-            }
-            // the objects the repair reaches
-            let main = if building { t.annex_of } else { None };
-            let head = main.unwrap_or(target);
-            let mut ids = vec![target];
-            if building {
-                if head != target {
-                    ids.push(head);
-                }
-                let mut annexes = c.spatial.annexes_of(head);
-                annexes.sort_unstable();
-                ids.extend(annexes.iter().copied().filter(|&a| a != target));
-            }
-            for id in ids {
-                let Some((oq, o)) = held(id) else {
-                    continue;
-                };
-                let om = master_of(oq, o)
-                    .ok_or(GenieError::missing_data("a repaired object's master"))?;
-                let attributes: &[f32] = if oq == player {
-                    c.attributes
-                } else {
-                    foreign.player(oq).map_or(&[][..], |p| &p.attributes[..])
-                };
-                let rate = |k: usize| attributes.get(k).copied().unwrap_or(0.0);
-                let annexes = if om.kind == 80 && o.annex_of.is_none() {
-                    let mut a = c.spatial.annexes_of(id);
-                    a.sort_unstable();
-                    a
-                } else {
-                    Vec::new()
-                };
-                set.push(Repaired {
-                    id,
-                    kind: om.kind,
-                    class: om.class,
-                    master: om.id,
-                    master_hp: om.hit_points,
-                    hp: o.life.hp,
-                    hp_powerups: o.hp_powerups,
-                    main: if om.kind == 80 { o.annex_of } else { None },
-                    annexes,
-                    cost_rates: [
-                        rate(crate::construction::repair::UNIT_REPAIR_COST),
-                        rate(crate::construction::repair::BUILDING_REPAIR_COST),
-                    ],
-                });
-            }
-        }
+        let own = repair_master(c.every_masters, c.player, self)
+            .ok_or(GenieError::missing_data("a repairer's master"))?;
+        let RepairReads {
+            repairee,
+            counted_in,
+            mut set,
+        } = repair_reads(c, others, target)?;
         let original = set.clone();
         let masters = c
             .masters
@@ -181,25 +93,23 @@ impl Unit {
         };
         let repair_action = self.repair.as_mut().expect("checked above");
         let step = repair_action.update(c.walk(self.mover.as_mut(), me), view)?;
-        // the repair's changes: the unit's player's objects at once, another player's after
-        for (now, was) in set.iter().zip(&original) {
-            if now == was {
-                continue;
-            }
-            if let Some(u) = others.iter_mut().find(|u| u.id == now.id) {
-                u.life.hp = now.hp;
-                u.hp_powerups = now.hp_powerups;
-            } else {
-                c.repair_writes.push(RepairWrite {
-                    id: now.id,
-                    hp: Some((now.hp, now.hp_powerups)),
-                    repairers: 0,
-                    restored: false,
-                });
-            }
-        }
+        repair_write_back(c, others, &set, &original);
         c.attribute_adds.extend(paid.adds);
-        // FUN_1412066a0: a target of a type above 69 has its armor back
+        self.after_repair_step(c, others, (target, target_kind, counted_in), step)
+    }
+
+    /// What the Repair's step leaves besides the repair (`step`; `target` of type `target_kind`,
+    /// `counted_in` the object whose repairers count the unit): a target of a type above 69 has
+    /// its armor back (`FUN_1412066a0`), the repairers change, the target is let go, the unit AI
+    /// hears the notifies, the unit stands, and the action's end lets the target it holds go.
+    /// Another player's objects take theirs after the update ([`Context::repair_writes`]).
+    fn after_repair_step(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+        (target, target_kind, counted_in): (i32, u8, Option<(i32, u8)>),
+        step: crate::construction::repair::RepairStep,
+    ) -> Result<(), GenieError> {
         if step.restored && 0x45 < target_kind {
             if let Some(u) = others.iter_mut().find(|u| u.id == target) {
                 u.armor_removed = [0; 2];
@@ -360,5 +270,164 @@ impl Unit {
             force: true,
             walk: false,
         })
+    }
+}
+
+/// What the Repair's update reads of its target ([`Unit::repair_part`]).
+struct RepairReads {
+    /// The target as the update reads it, None when the world holds no object of its id.
+    repairee: Option<crate::construction::repair::Repairee>,
+    /// The object `FUN_140ad9050` counts the repairers in (the target, an annex's main building)
+    /// and their count.
+    counted_in: Option<(i32, u8)>,
+    /// The objects the repair reaches ([`reached_ids`]), as the repair reads and changes them.
+    set: Vec<crate::construction::repair::Repaired>,
+}
+
+/// The object `id` of the unit's player's list `others` or of another player's, with its owner.
+fn held_object<'u>(
+    others: &'u [Unit],
+    player: usize,
+    foreign: Foreign<'u>,
+    id: i32,
+) -> Option<(usize, &'u Unit)> {
+    others
+        .iter()
+        .find(|u| u.id == id)
+        .map(|u| (player, u))
+        .or_else(|| foreign.find(id))
+}
+
+/// Object `u`'s master: its own (`+0x6c0`), else player `q`'s of its id.
+fn repair_master(every: &[Masters], q: usize, u: &Unit) -> Option<Master> {
+    u.own_master
+        .as_deref()
+        .or_else(|| every.get(q)?.get(u.life.master_id))
+        .cloned()
+}
+
+/// What the Repair's update reads of its `target` ([`RepairReads`]): nothing for a target the
+/// world does not hold.
+fn repair_reads(c: &Context<'_>, others: &[Unit], target: i32) -> Result<RepairReads, GenieError> {
+    use crate::construction::repair::Repairee;
+    let mut reads = RepairReads {
+        repairee: None,
+        counted_in: None,
+        set: Vec::new(),
+    };
+    let held = |id: i32| held_object(others, c.player, c.foreign, id);
+    let Some((q, t)) = held(target).filter(|_| target != -1) else {
+        return Ok(reads);
+    };
+    let tm = repair_master(c.every_masters, q, t)
+        .ok_or(GenieError::missing_data("a repaired object's master"))?;
+    reads.repairee = Some(Repairee {
+        state: t.life.state,
+        hp: t.life.hp,
+        owner: q,
+        allied: crate::unit_ai::task_finder::allied(c.relations, c.player, q, true),
+        position: t.position,
+        radius: tm.radius,
+        class: tm.class,
+        moves: 29 < tm.kind && tm.moving.as_ref().is_some_and(|m| 0.0 < m.speed),
+    });
+    let building = tm.kind == 80;
+    let counting = if building {
+        t.annex_of.unwrap_or(target)
+    } else {
+        target
+    };
+    if let Some((_, k)) = held(counting) {
+        reads.counted_in = Some((counting, k.repairers()));
+    }
+    for id in reached_ids(c.spatial, t, target, building) {
+        let Some(o) = held(id) else {
+            continue;
+        };
+        reads.set.push(repaired(c, o, id)?);
+    }
+    Ok(reads)
+}
+
+/// The objects a repair of `target` (`t`) reaches, in order: the target; for a building, an
+/// annex's main building, then the main building's annexes by id, the target left out.
+fn reached_ids(spatial: &Spatial, t: &Unit, target: i32, building: bool) -> Vec<i32> {
+    let mut ids = vec![target];
+    if building {
+        let head = t.annex_of.unwrap_or(target);
+        if head != target {
+            ids.push(head);
+        }
+        let mut annexes = spatial.annexes_of(head);
+        annexes.sort_unstable();
+        ids.extend(annexes.iter().copied().filter(|&a| a != target));
+    }
+    ids
+}
+
+/// Object `o` of player `oq` (id `id`) as the repair reads and changes it: its master's type,
+/// class, id and hit points, its hit points and powerups, a building's main building or annexes
+/// (sorted), and its owner's repair cost rates.
+fn repaired(
+    c: &Context<'_>,
+    (oq, o): (usize, &Unit),
+    id: i32,
+) -> Result<crate::construction::repair::Repaired, GenieError> {
+    let om = repair_master(c.every_masters, oq, o)
+        .ok_or(GenieError::missing_data("a repaired object's master"))?;
+    let attributes: &[f32] = if oq == c.player {
+        c.attributes
+    } else {
+        c.foreign.player(oq).map_or(&[][..], |p| &p.attributes[..])
+    };
+    let rate = |k: usize| attributes.get(k).copied().unwrap_or(0.0);
+    let annexes = if om.kind == 80 && o.annex_of.is_none() {
+        let mut a = c.spatial.annexes_of(id);
+        a.sort_unstable();
+        a
+    } else {
+        Vec::new()
+    };
+    Ok(crate::construction::repair::Repaired {
+        id,
+        kind: om.kind,
+        class: om.class,
+        master: om.id,
+        master_hp: om.hit_points,
+        hp: o.life.hp,
+        hp_powerups: o.hp_powerups,
+        main: if om.kind == 80 { o.annex_of } else { None },
+        annexes,
+        cost_rates: [
+            rate(crate::construction::repair::UNIT_REPAIR_COST),
+            rate(crate::construction::repair::BUILDING_REPAIR_COST),
+        ],
+    })
+}
+
+/// The repair's changes to the objects it reached (`set` against `original`): the unit's
+/// player's objects take their hit points at once, another player's after the update
+/// ([`Context::repair_writes`]).
+fn repair_write_back(
+    c: &mut Context<'_>,
+    others: &mut [Unit],
+    set: &[crate::construction::repair::Repaired],
+    original: &[crate::construction::repair::Repaired],
+) {
+    for (now, was) in set.iter().zip(original) {
+        if now == was {
+            continue;
+        }
+        if let Some(u) = others.iter_mut().find(|u| u.id == now.id) {
+            u.life.hp = now.hp;
+            u.hp_powerups = now.hp_powerups;
+        } else {
+            c.repair_writes.push(RepairWrite {
+                id: now.id,
+                hp: Some((now.hp, now.hp_powerups)),
+                repairers: 0,
+                restored: false,
+            });
+        }
     }
 }

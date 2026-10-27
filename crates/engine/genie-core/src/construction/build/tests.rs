@@ -1594,8 +1594,18 @@ fn a_builder_on_its_footprint_faces_it_then_walks_to_a_free_tile_beside_it() {
 /// 20 x 20 tiles where `prepare` adds what the test needs; without a planner.
 fn walk_update(
     build: &mut BuildAction,
+    who: (i16, [f32; 3], bool),
+    prepare: impl FnOnce(&mut Spatial),
+) -> (BuildStep, Spatial) {
+    walk_update_planned(build, who, prepare, None)
+}
+
+/// [`walk_update`] with the world's planners `pathing` (None: the walk has no planning).
+fn walk_update_planned(
+    build: &mut BuildAction,
     (class, at, computer): (i16, [f32; 3], bool),
     prepare: impl FnOnce(&mut Spatial),
+    pathing: Option<&mut Pathing>,
 ) -> (BuildStep, Spatial) {
     use crate::map::spatial::{Placed, Tiles};
     let mut world = Spatial::with_tiles([20, 20], Tiles::new(20, 20, vec![0; 400]));
@@ -1650,6 +1660,18 @@ fn walk_update(
     };
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = at;
+    let (mut object, groups) = (
+        crate::math::rng::Well512::default(),
+        crate::groups::UnitGroups::default(),
+    );
+    let plan = pathing.map(|pathing| crate::movement::Planning {
+        pathing,
+        now: 0,
+        computer,
+        object: &mut object,
+        construction_rate: 1.0,
+        groups: &groups,
+    });
     let step = build
         .update(
             Walk {
@@ -1662,7 +1684,7 @@ fn walk_update(
                 },
                 dt: 0.25,
                 world: &mut world,
-                plan: None,
+                plan,
             },
             Some(site),
             Builder {
@@ -1740,7 +1762,9 @@ fn a_builder_at_its_move_to_s_end_works_or_walks_again() {
 
 /// The update's case 3 on a failed `MoveTo` (3): a desolid foundation with another player's
 /// marks its owner sees goes (a human owner's, the caller's) and the Build halts; without
-/// the marks (and without a planner here) it waits (`set_state(3)`).
+/// the marks and without a planner it waits (`set_state(3)`); with a planner that finds the way
+/// from where the builder last moved to the foundation (`FUN_140f7c530` below 2) it walks again
+/// (`set_state(4)`).
 #[test]
 fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
     let failed = || BuildAction {
@@ -1750,12 +1774,104 @@ fn a_builder_whose_move_to_failed_waits_or_halts_on_marks() {
     let mut b = failed();
     let (step, _) = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |_| {});
     assert_eq!((b.state, step.removes), (IDLE, None));
+    let marked = |w: &mut Spatial| w.tiles_mut_for_test().mark_for_test(10, 10, 0x80_0000 << 3);
     let mut b = failed();
-    let (step, _) = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |w| {
-        w.tiles_mut_for_test().mark_for_test(10, 10, 0x80_0000 << 3);
-    });
+    let (step, _) = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), marked);
     // no players' sight in this world: its owner sees nothing, so it waits
     assert_eq!((b.state, step.removes), (IDLE, None));
+    // its owner, player 1, sees every tile (its own mask, bit 1)
+    let mut b = failed();
+    let (step, _) = walk_update(&mut b, (VILLAGER, [2.5, 2.5, 0.0], false), |w| {
+        marked(w);
+        w.sight = Some(crate::vision::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            vec![1 << 1; 400],
+            Vec::new(),
+            0,
+            Vec::new(),
+        ));
+    });
+    assert_eq!((b.state, step.removes), (HALTED, Some(10028)));
+    let mut pathing = Pathing::new([20, 20], vec![0; 400], vec![vec![1.0]; 8], 0);
+    pathing.start_mesh(20);
+    let mut b = failed();
+    let who = (VILLAGER, [2.5, 2.5, 0.0], false);
+    let (step, _) = walk_update_planned(&mut b, who, |_| {}, Some(&mut pathing));
+    assert_eq!(
+        (b.state, b.move_to, step.removes),
+        (MOVE, Some(MoveTo::Start), None)
+    );
+}
+
+/// The update's other cases (`0x140ab0370`): a Build done (case 0) returns 1; the walk to its
+/// point (states 223 and 11) starts its quiet `MoveTo` there; a villager's walk off the footprint
+/// that ended goes back to the foundation (`set_state(4)`); the walk to the action's point that
+/// ended or failed waits (`set_state(3)`); a state without a case does nothing.
+#[test]
+fn a_build_s_other_cases_end_walk_to_a_point_go_back_or_wait() {
+    use crate::map::spatial::Placed;
+    let start = || BuildAction::start(10028, [10.5, 10.5, 0.0], 5.0, TASK);
+    let who = (VILLAGER, [2.5, 2.5, 0.0], false);
+    let mut b = BuildAction {
+        state: DONE,
+        ..start()
+    };
+    let (step, _) = walk_update(&mut b, who, |_| {});
+    assert!(step.done);
+    let mut pathing = Pathing::new([20, 20], vec![0; 400], vec![vec![1.0]; 8], 0);
+    pathing.start_mesh(20);
+    for state in [CLEAR, WALK_POINT] {
+        let mut b = BuildAction {
+            state,
+            goal: Some([6.5, 2.5, 0.0]),
+            move_to: Some(MoveTo::Start),
+            ..start()
+        };
+        let _ = walk_update_planned(&mut b, who, |_| {}, Some(&mut pathing));
+        assert_eq!(b.move_to, Some(MoveTo::Moving), "state {state}");
+    }
+    let villager = |w: &mut Spatial| {
+        let me = Placed {
+            position: [2.5, 2.5, 0.0],
+            radius: [0.2, 0.2],
+            class: VILLAGER,
+            ..house()
+        };
+        w.insert(5, me);
+    };
+    let mut b = BuildAction {
+        state: CLEAR,
+        move_to: Some(MoveTo::Arrived),
+        ..start()
+    };
+    let _ = walk_update(&mut b, who, villager);
+    assert_eq!((b.state, b.move_to), (MOVE, Some(MoveTo::Start)));
+    for move_to in [Some(MoveTo::Arrived), Some(MoveTo::Failed), None] {
+        let mut b = BuildAction {
+            state: WALK_POINT,
+            move_to,
+            ..start()
+        };
+        let _ = walk_update(&mut b, who, |_| {});
+        assert_eq!(b.state, IDLE, "{move_to:?}");
+    }
+    let mut b = BuildAction {
+        state: 0,
+        ..start()
+    };
+    let (step, _) = walk_update(&mut b, who, |_| {});
+    assert_eq!(
+        (b, step),
+        (
+            BuildAction {
+                state: 0,
+                ..start()
+            },
+            BuildStep::default()
+        )
+    );
 }
 
 /// census v5's 240 stops "a foundation clears objects off its footprint": the Build's

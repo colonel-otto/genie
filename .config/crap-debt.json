@@ -74,114 +74,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/construction/build/drop_off.rs",
-      "function": "BuildAction::update_drop",
-      "line": 134,
-      "cyclomatic": 36.0,
-      "coverage": 73.46938775510205,
-      "crap": 60.20175267108092,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/build/more_work.rs",
-      "function": "Unit::more_work",
-      "line": 21,
-      "cyclomatic": 16.0,
-      "coverage": 0.0,
-      "crap": 272.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/build/unit.rs",
-      "function": "Unit::after_build_step",
-      "line": 258,
-      "cyclomatic": 20.0,
-      "coverage": 46.15384615384615,
-      "crap": 82.44879380974058,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/build/unit.rs",
-      "function": "Unit::build_search",
-      "line": 351,
-      "cyclomatic": 9.0,
-      "coverage": 0.0,
-      "crap": 90.0,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/build/unit.rs",
-      "function": "record_build_step",
-      "line": 498,
-      "cyclomatic": 13.0,
-      "coverage": 41.07142857142857,
-      "crap": 47.58314162718659,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/build/update.rs",
-      "function": "BuildAction::update",
-      "line": 67,
-      "cyclomatic": 78.0,
-      "coverage": 82.73809523809523,
-      "crap": 109.29358752429552,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/build/walk_ends.rs",
-      "function": "BuildAction::walk_failed",
-      "line": 71,
-      "cyclomatic": 17.0,
-      "coverage": 57.407407407407405,
-      "crap": 39.33058349845044,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/building_update.rs",
-      "function": "Unit::building_seconds",
-      "line": 243,
-      "cyclomatic": 21.0,
-      "coverage": 47.94520547945205,
-      "crap": 83.20435610783079,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/building_update.rs",
-      "function": "Unit::complete_on_update",
-      "line": 150,
-      "cyclomatic": 15.0,
-      "coverage": 16.455696202531644,
-      "crap": 146.19976310190472,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/building_update.rs",
-      "function": "Unit::gate_update",
-      "line": 32,
-      "cyclomatic": 15.0,
-      "coverage": 31.818181818181817,
-      "crap": 86.31620961682947,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/repair/action.rs",
-      "function": "RepairAction::step_walk",
-      "line": 202,
-      "cyclomatic": 14.0,
-      "coverage": 36.666666666666664,
-      "crap": 63.791259259259256,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/construction/repair/unit.rs",
-      "function": "Unit::repair_part",
-      "line": 25,
-      "cyclomatic": 40.0,
-      "coverage": 0.0,
-      "crap": 1640.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/garrison/let_out.rs",
       "function": "World::came_out",
       "line": 211,
@@ -276,8 +168,8 @@
       "function": "Mover::request",
       "line": 28,
       "cyclomatic": 94.0,
-      "coverage": 43.40836012861736,
-      "crap": 1695.4469016544454,
+      "coverage": 61.41479099678456,
+      "crap": 601.5961019049357,
       "crate": "genie-core"
     },
     {
@@ -591,8 +483,8 @@
       "function": "World::apply_ai_orders",
       "line": 320,
       "cyclomatic": 25.0,
-      "coverage": 57.333333333333336,
-      "crap": 73.54518518518518,
+      "coverage": 62.66666666666667,
+      "crap": 57.521481481481466,
       "crate": "genie-core"
     },
     {
@@ -600,8 +492,8 @@
       "function": "World::apply_object_writes",
       "line": 99,
       "cyclomatic": 18.0,
-      "coverage": 43.63636363636363,
-      "crap": 76.0152306536439,
+      "coverage": 61.81818181818181,
+      "crap": 36.03494515401954,
       "crate": "genie-core"
     },
     {

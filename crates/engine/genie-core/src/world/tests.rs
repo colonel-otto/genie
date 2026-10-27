@@ -2,7 +2,7 @@ use super::*;
 use crate::GenieError;
 use crate::commands::game::GameCommand;
 use crate::commands::{Command, GatherPoint, ResearchAt};
-use crate::construction::build::{BuildAction, BuildTask, Construction};
+use crate::construction::build::{BuildAction, BuildStep, BuildTask, Construction};
 use crate::construction::gates::gate_units;
 use crate::gathering::closest_resource::search_origin;
 use crate::gathering::gather::unit::give_load;
@@ -5090,13 +5090,10 @@ fn a_gate_counts_the_moving_units_between_its_posts() {
     assert!(gate_units(&s, 27745, &[27746]).is_err());
 }
 
-/// The player's gate toggle (`FUN_14162f8c0`) on records/425906646's gate 27745 (annexes 27746
-/// and 27747): the open gate (master 88) becomes its `transform_unit`, the shut 91 (a height),
-/// which kills the moving soldier between its posts and takes the world time plus 1 as its last
-/// move time; the shut one opens again (no height) without either. A gate without a
-/// `transform_unit` stays; one with masters of its own is not modelled.
-#[test]
-fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
+/// records/425906646's gate 27745 of player 1 (annexes 27746 and 27747, master 88: open, no
+/// height, its `transform_unit` the shut 91 of height 2; 92 transforms into nothing) at (20, 20)
+/// with the moving soldier 1 (player 1's object 3) between its posts, at world time 400.
+fn gate_world() -> World {
     let gate_master = |id, transform_unit, height| Master {
         id,
         kind: 80,
@@ -5189,6 +5186,17 @@ fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
     t.spatial.insert(27746, placed(18.5, 39, 0.0, 2));
     t.spatial.insert(27747, placed(21.5, 39, 0.0, 2));
     t.spatial.insert(1, placed(19.6, 6, 0.8, 5));
+    t
+}
+
+/// The player's gate toggle (`FUN_14162f8c0`) on records/425906646's gate 27745 (annexes 27746
+/// and 27747): the open gate (master 88) becomes its `transform_unit`, the shut 91 (a height),
+/// which kills the moving soldier between its posts and takes the world time plus 1 as its last
+/// move time; the shut one opens again (no height) without either. A gate without a
+/// `transform_unit` stays; one with masters of its own is not modelled.
+#[test]
+fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
+    let mut t = gate_world();
     let state = |t: &World| {
         let g = &t.players[1].objects[0];
         (
@@ -5211,6 +5219,89 @@ fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
         ..Gate::default()
     });
     assert!(t.toggle_gate(1, 0).is_err());
+}
+
+/// [`Unit::gate_update`] of [`gate_world`]'s gate as master `master` with its gate state `gate`:
+/// the gate's toggle it asks for, its state after, or the error.
+fn gate_update_of(
+    master: i16,
+    gate: Option<Gate>,
+    setup: impl FnOnce(&mut World),
+) -> Result<(bool, Option<Gate>), GenieError> {
+    let mut t = gate_world();
+    let g = &mut t.players[1].objects[0];
+    (g.life.master_id, g.gate) = (master, gate);
+    setup(&mut t);
+    let toggle = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        unit.gate_update(c, others)?;
+        Ok(std::mem::take(&mut c.gate_toggle))
+    })?;
+    Ok((toggle, t.players[1].objects[0].gate))
+}
+
+/// The gate's update (`FUN_1411e7730`): a shut (height 2), unlocked gate with an ally moving
+/// between its posts asks to open, its close timer 0; a locked one stays shut. An open gate (no
+/// height) with nothing in it starts its close timer at 0.5 s, runs it down by the world's dt
+/// (0.05 s), and at 0 asks to shut. Its first update clears every time it runs; a gate whose
+/// master transforms into nothing is passed over, and one without its gate state is not modelled.
+#[test]
+fn a_gate_opens_for_an_ally_inside_and_shuts_after_its_close_timer() {
+    let gate = |locked, close_timer| {
+        Some(Gate {
+            locked,
+            close_timer,
+            first_update: true,
+            ..Gate::default()
+        })
+    };
+    let ran = |locked, close_timer| {
+        Some(Gate {
+            first_update: false,
+            ..gate(locked, close_timer).unwrap()
+        })
+    };
+    assert_eq!(
+        gate_update_of(91, gate(false, 0.3), |_| ()),
+        Ok((true, ran(false, 0.0)))
+    );
+    assert_eq!(
+        gate_update_of(91, gate(true, 0.3), |_| ()),
+        Ok((false, ran(true, 0.3)))
+    );
+    // the soldier stands aside: nothing in the open gate
+    let aside = |t: &mut World| {
+        let p = *t.spatial.get(1).unwrap();
+        t.spatial.insert(
+            1,
+            Placed {
+                position: [20.0, 30.0, 0.0],
+                ..p
+            },
+        );
+    };
+    assert_eq!(
+        gate_update_of(88, gate(false, 0.0), aside),
+        Ok((false, ran(false, GATE_CLOSE_DELAY)))
+    );
+    assert_eq!(
+        gate_update_of(88, gate(false, 0.5), aside),
+        Ok((false, ran(false, 0.5 - 0.05)))
+    );
+    assert_eq!(
+        gate_update_of(88, gate(false, 0.05), aside),
+        Ok((true, ran(false, 0.0)))
+    );
+    // the soldier in the open gate holds its timer
+    assert_eq!(
+        gate_update_of(88, gate(false, 0.5), |_| ()),
+        Ok((false, ran(false, 0.5)))
+    );
+    assert_eq!(
+        gate_update_of(92, gate(false, 0.5), |_| ()),
+        Ok((false, gate(false, 0.5)))
+    );
+    let err = gate_update_of(91, None, |_| ()).unwrap_err();
+    assert_eq!(err.reason(), "a gate without its gate state");
 }
 
 #[test]
@@ -10953,11 +11044,10 @@ fn the_gather_s_update_ends_asks_again_and_walks_back() {
     );
 }
 
-/// The Build's drop-off (`set_state(8)` from its search, [`Unit::build_drop_off`]) of the
-/// villager building foundation 10028 while it carries `held`, its town centre a done drop site
-/// of the table (resources 0 to 3 and berries): Ok with the Build's state, its site and range,
-/// the centre's workers and what the unit AI heard.
-fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
+/// [`forage_world`]'s forager (player 1's object 0) building house 10028 (master 70, at (30, 88),
+/// player 1's object 2) by the build command; the town centre 700 is complete in its tracker
+/// and the drop-site table's town centre takes the four basic resources.
+fn house_builder() -> World {
     let mut t = forage_world();
     let p = *t.spatial.get(700).unwrap();
     let site = Placed {
@@ -10973,6 +11063,15 @@ fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
     t.players[1].tracker.add(700, k);
     t.players[1].tracker.complete(700, k);
     t.drop_sites[0].resource_types = vec![0, 1, 2, 3];
+    t
+}
+
+/// The Build's drop-off (`set_state(8)` from its search, [`Unit::build_drop_off`]) of the
+/// villager building foundation 10028 while it carries `held`, its town centre a done drop site
+/// of the table (resources 0 to 3 and berries): Ok with the Build's state, its site and range,
+/// the centre's workers and what the unit AI heard.
+fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
+    let mut t = house_builder();
     let v = &mut t.players[1].objects[0];
     (v.life.attribute_type, v.life.amount) = held;
     in_update(&mut t, (1, 0), 50, |unit, c, others| {
@@ -11134,4 +11233,826 @@ fn a_hunter_that_finds_nothing_after_the_drop_walks_to_its_point() {
         let h = t.players[1].objects[0].hunt.unwrap();
         assert_eq!(h.point, [32.5, 89.5, 0.0]);
     }
+}
+
+/// [`Unit::after_build_step`] of [`house_builder`]'s forager for `step`, with what the step leaves
+/// in its context: the objects let go, the work command and the attributes added; and the
+/// notifies its unit AI heard.
+fn after_build(t: &mut World, step: BuildStep) -> AfterBuild {
+    in_update(t, (1, 0), 50, |unit, c, others| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let by = unit.releaser(c);
+        unit.after_build_step(c, others, me, (10028, Some(70), by), step)?;
+        let released = c.releases.iter().map(|&(id, _)| id).collect();
+        let heard = unit.ai.as_ref().unwrap().notifies.iter();
+        Ok(AfterBuild {
+            released,
+            work: c.work_order.map(|w| (w.target, w.point)),
+            added: c.attribute_adds.clone(),
+            heard: heard.map(|n| (n.kind, n.p)).collect(),
+        })
+    })
+    .unwrap()
+}
+
+/// What [`after_build`] saw.
+#[derive(Debug, PartialEq)]
+struct AfterBuild {
+    released: Vec<i32>,
+    work: Option<(i32, [f32; 3])>,
+    added: Vec<(i16, f32)>,
+    heard: Vec<(i32, [i32; 3])>,
+}
+
+/// What a Build's step changes of its builder ([`Unit::after_build_step`]): the load dropped at
+/// the end of the work goes to the player (wood, and its gathered total) and the builder carries
+/// nothing; the animation stops and the second target goes; the action's end removes the Build
+/// and lets its foundation go, as does the release alone; the work on the building it built is a
+/// work command at its place; the search needed, a pasture built and the failure tell the unit
+/// AI; a drop-off searches the drop site for the load.
+#[test]
+fn a_build_step_s_changes_reach_the_builder() {
+    use crate::unit_ai::{ACTION_FAILED, BUILD_ACTION, PASTURE_BUILT};
+    let none = || AfterBuild {
+        released: vec![],
+        work: None,
+        added: vec![],
+        heard: vec![],
+    };
+    let house_workers = |t: &World| t.players[1].objects[1].workers;
+    let mut t = house_builder();
+    assert_eq!(house_workers(&t), 1);
+    let dropped = BuildStep {
+        dropped: Some((1, 5.0)),
+        ..BuildStep::default()
+    };
+    let added = vec![(1, 5.0), (167, 5.0)];
+    assert_eq!(after_build(&mut t, dropped), AfterBuild { added, ..none() });
+    let v = &t.players[1].objects[0];
+    assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
+    assert_eq!(t.players[1].resources[1], 5.0);
+    let mut t = house_builder();
+    let stopped = BuildStep {
+        anim_stopped: true,
+        site_let_go: Some(700),
+        ..BuildStep::default()
+    };
+    let released = vec![700];
+    assert_eq!(
+        after_build(&mut t, stopped),
+        AfterBuild { released, ..none() }
+    );
+    assert_eq!(t.players[1].objects[0].anim_speed, Some(0.0));
+    for (done, released) in [(true, false), (false, true)] {
+        let mut t = house_builder();
+        let step = BuildStep {
+            done,
+            released,
+            ..BuildStep::default()
+        };
+        assert_eq!(after_build(&mut t, step), none());
+        assert_eq!(house_workers(&t), 0);
+        assert_eq!(t.players[1].objects[0].build.is_none(), done);
+    }
+    let mut t = house_builder();
+    let told = BuildStep {
+        works_it: true,
+        notified: true,
+        failed: true,
+        pasture_made: Some(5),
+        ..BuildStep::default()
+    };
+    assert_eq!(
+        after_build(&mut t, told),
+        AfterBuild {
+            work: Some((10028, [30.0, 88.0, 0.0])),
+            heard: vec![
+                (SEARCH_NEEDED, [BUILD_ACTION, 0, 0]),
+                (PASTURE_BUILT, [BUILD_ACTION, 5, 0]),
+                (ACTION_FAILED, [BUILD_ACTION, 0, 0]),
+            ],
+            ..none()
+        }
+    );
+    let mut t = house_builder();
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    let drop_off = BuildStep {
+        drop_off: true,
+        ..BuildStep::default()
+    };
+    assert_eq!(after_build(&mut t, drop_off), none());
+    let b = t.players[1].objects[0].build.unwrap();
+    assert_eq!((b.state, b.site), (crate::construction::build::DROP, 700));
+}
+
+/// [`house_builder`]'s forager after it built town centre 700 (its Build's target, its `MoveTo`
+/// gone) on a map with a tile planner, its search for more work ([`Unit::build_search`]) run with
+/// `setup` first: the work command it found and the notifies its unit AI heard.
+fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
+    let mut t = house_builder();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    for masters in &mut t.masters {
+        let bush = masters.get_mut(59).unwrap();
+        (bush.auto_gather, bush.gather_group) = (true, 1);
+        masters.get_mut(120).unwrap().line_of_sight = 4.0;
+        masters.get_mut(109).unwrap().line_of_sight = 16.0;
+    }
+    t.drop_sites[0].auto_work = true;
+    let b = t.players[1].objects[0].build.as_mut().unwrap();
+    (b.target, b.move_to) = (700, None);
+    t.players[1].objects[2].workers = 1;
+    setup(&mut t);
+    let r = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let by = unit.releaser(c);
+        unit.build_search(c, others, (700, Some(109), by))?;
+        let heard = unit.ai.as_ref().unwrap().notifies.iter();
+        Ok((
+            c.work_order.take().map(|w| (w.target, w.point)),
+            heard.map(|n| n.kind).collect(),
+        ))
+    });
+    (t, r)
+}
+
+/// What [`built_the_centre`]'s search left: the work command (its target and point) and the
+/// notifies' kinds.
+type BuildSearched = Result<(Option<(i32, [f32; 3])>, Vec<i32>), GenieError>;
+
+/// The search for more work around the town centre a builder finished (`0x140ab0b43`,
+/// [`Unit::more_work`]): the table's entry for the centre (auto work) takes berries, within the
+/// centre's line of sight (16 tiles) the bush at 32.5 is the nearest, and the unit AI's
+/// `ClosestResourceObject` names it: the work command on it at its place. An entry without auto
+/// work, or a line of sight below the floor (the reach 4 tiles, short of the bushes), finds
+/// nothing: the Build waits without a target, lets the centre go and asks its unit AI for a
+/// search. A building the slice does not hold is not modelled.
+#[test]
+fn a_builder_finds_more_work_around_the_building_it_finished() {
+    let (t, found) = built_the_centre(|_| ());
+    assert_eq!(found, Ok((Some((600, [32.5, 89.5, 0.0])), vec![])));
+    assert_eq!(t.players[1].objects[0].build.map(|b| b.target), Some(700));
+    let off: fn(&mut World) = |t| t.drop_sites[0].auto_work = false;
+    let short: fn(&mut World) = |t| {
+        for masters in &mut t.masters {
+            masters.get_mut(109).unwrap().line_of_sight = 0.0;
+        }
+    };
+    for setup in [off, short] {
+        let (t, found) = built_the_centre(setup);
+        assert_eq!(found, Ok((None, vec![SEARCH_NEEDED])));
+        let b = t.players[1].objects[0].build.unwrap();
+        assert_eq!((b.state, b.target), (crate::construction::build::IDLE, -1));
+        assert_eq!(t.players[1].objects[2].workers, 0);
+    }
+    let mut t = house_builder();
+    let r = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let by = unit.releaser(c);
+        unit.build_search(c, others, (700, None, by))
+    });
+    assert_eq!(
+        r.unwrap_err().reason(),
+        "a builder's building the slice does not hold"
+    );
+}
+
+/// What a Build's step changes beside its builder (`record_build_step`, the caller's after the
+/// step): the cleared objects, the foundation another player's marks lie on, the occupants of the
+/// footprint, a construction that started (its owner watches it once: the flag clears), the work
+/// an annex's main building takes; and the completion, taken out of the step: the house leaves its
+/// pending tracker list for its done one and its owner gains what it brings (its history event,
+/// attributes, technology, pasture, cart, and the vanishing). A step of nothing changes nothing.
+#[test]
+fn a_build_step_s_changes_reach_the_world() {
+    use crate::construction::build::unit::record_build_step;
+    use crate::construction::build::{Built, Cleared};
+    use std::mem::take;
+    let recorded = |t: &mut World, step: &mut BuildStep| {
+        in_update(t, (1, 0), 50, |_, c, others| {
+            record_build_step(c, others, 10028, &[], step);
+            let built = (
+                take(&mut c.history_events),
+                take(&mut c.attribute_adds),
+                take(&mut c.techs_done),
+                take(&mut c.pastures),
+                take(&mut c.carts),
+                take(&mut c.completions),
+            );
+            Ok((
+                take(&mut c.cleared),
+                take(&mut c.site_removals),
+                take(&mut c.evacuations),
+                take(&mut c.started),
+                take(&mut c.main_works),
+                take(&mut c.annex_states),
+                built,
+            ))
+        })
+        .unwrap()
+    };
+    let mut t = house_builder();
+    let mut quiet = BuildStep::default();
+    let nothing = recorded(&mut t, &mut quiet);
+    assert_eq!(
+        nothing,
+        (
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            (vec![], vec![], vec![], vec![], vec![], vec![])
+        )
+    );
+    t.players[1].objects[1]
+        .construction
+        .as_mut()
+        .unwrap()
+        .started = true;
+    let cleared = Cleared {
+        id: 601,
+        wall: false,
+        record_goes: true,
+    };
+    let built = Built {
+        attributes: vec![(4, 5.0)],
+        history: Some(6),
+        tech: Some(7),
+        cart: Some(0),
+        stack: None,
+        vanishes: true,
+        started: false,
+        pasture: true,
+    };
+    let mut step = BuildStep {
+        cleared: vec![cleared],
+        removes: Some(4444),
+        occupants: vec![9175],
+        main_work: Some(2.5),
+        completed: Some(built),
+        ..BuildStep::default()
+    };
+    assert_eq!(
+        recorded(&mut t, &mut step),
+        (
+            vec![cleared],
+            vec![4444],
+            vec![(10028, vec![9175])],
+            vec![10028],
+            vec![(10028, 2.5)],
+            vec![],
+            (
+                vec![6],
+                vec![(4, 5.0)],
+                vec![7],
+                vec![10028],
+                vec![(10028, 0)],
+                vec![(10028, None, true)]
+            )
+        )
+    );
+    assert_eq!(step.completed, None);
+    let house = &t.players[1].objects[1];
+    assert!(!house.construction.unwrap().started);
+    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
+    assert!(t.players[1].tracker.list(k.master).contains(&10028));
+}
+
+/// What [`completed_house`]'s completion left: the attributes added and the constructions
+/// started.
+type Completed = (Vec<(i16, f32)>, Vec<i32>);
+
+/// [`house_builder`]'s house 10028 (player 1's object 1) with its build points at its build
+/// time, changed by `setup`, after its own update's completion test
+/// ([`Unit::complete_on_update`]): the attributes its owner gains and the constructions started.
+fn completed_house(setup: fn(&mut Unit)) -> (World, Completed) {
+    let mut t = house_builder();
+    let h = &mut t.players[1].objects[1];
+    let k = h.construction.as_mut().unwrap();
+    k.progress = f32::from(k.build_time);
+    setup(h);
+    let r = in_update(&mut t, (1, 1), 50, |unit, c, others| {
+        unit.complete_on_update(c, others)?;
+        Ok((
+            std::mem::take(&mut c.attribute_adds),
+            std::mem::take(&mut c.started),
+        ))
+    })
+    .unwrap();
+    (t, r)
+}
+
+/// A building in state 0 whose build points reached its build time completes in its own update
+/// (`0x1411c9000`, [`Unit::complete_on_update`]): the house goes to state 2, solid, into its
+/// owner's done tracker list; its owner gains the attributes its master gives, and its
+/// construction starts in the completion (its owner watches it). Short of its build time it
+/// stays a foundation, and an annex outside the walls' branch (class 27, master 70) waits for
+/// its main building.
+#[test]
+fn a_foundation_whose_build_points_reached_its_build_time_completes() {
+    let (t, r) = completed_house(|_| ());
+    assert_eq!(r, (vec![(98, 25.0), (165, 25.0)], vec![10028]));
+    let h = &t.players[1].objects[1];
+    let k = h.construction.unwrap();
+    assert_eq!((h.life.state, k.desolid, k.started), (2, false, false));
+    let key = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
+    assert_eq!(t.players[1].tracker.list(key.master), [10028]);
+    let short: fn(&mut Unit) = |h| h.construction.as_mut().unwrap().progress = 24.0;
+    let annex: fn(&mut Unit) = |h| (h.life.master_id, h.annex_of) = (109, Some(700));
+    for setup in [short, annex] {
+        let (t, r) = completed_house(setup);
+        assert_eq!(r, (vec![], vec![]));
+        assert_eq!(t.players[1].objects[1].life.state, 0);
+    }
+}
+
+/// [`house_builder`]'s town centre 700 (master 109: 2400 hit points, a garrison heal rate of 2)
+/// at world time 3000 with the forager (master 120: 25 hit points, at 10) inside, changed by
+/// `setup`, after the centre's whole seconds ([`Unit::building_seconds`]): the forager's hit
+/// points and the centre's garrison time.
+fn centre_seconds(setup: impl FnOnce(&mut World)) -> Result<(f32, u32), GenieError> {
+    use crate::objects::masters::BuildingMaster;
+    let mut t = house_builder();
+    for masters in &mut t.masters {
+        let centre = masters.get_mut(109).unwrap();
+        centre.hit_points = 2400;
+        centre.building = Some(BuildingMaster {
+            garrison_heal_rate: 2.0,
+            ..BuildingMaster::default()
+        });
+        masters.get_mut(120).unwrap().hit_points = 25;
+    }
+    t.world_time = 3000;
+    t.players[1].objects[2].garrison = vec![9175];
+    t.players[1].objects[0].life.hp = 10.0;
+    setup(&mut t);
+    in_update(&mut t, (1, 2), 50, |unit, c, others| {
+        unit.building_seconds(c, others)
+    })?;
+    let hp = t.players[1].objects[0].life.hp;
+    Ok((hp, t.players[1].objects[2].garrison_time))
+}
+
+/// A built building's whole seconds (`0x1411c9000`): since its garrison time, which moves on by
+/// them, the units inside below their master's hit points heal by its garrison heal rate; no
+/// whole second, a unit at its hit points, or a building not built heals nothing. Not modelled:
+/// a building at most a fifth of its hit points (it lets its garrison out), one attribute 255
+/// names, a unit inside whose raider countdown runs, and villagers inside repairing a damaged
+/// building.
+#[test]
+fn a_building_heals_its_garrison_each_whole_second() {
+    let reason = |r: Result<(f32, u32), GenieError>| r.unwrap_err().reason();
+    assert_eq!(centre_seconds(|_| ()), Ok((12.0, 3000)));
+    assert_eq!(centre_seconds(|t| t.world_time = 999), Ok((10.0, 0)));
+    assert_eq!(
+        centre_seconds(|t| t.players[1].objects[0].life.hp = 25.0),
+        Ok((25.0, 3000))
+    );
+    assert_eq!(
+        centre_seconds(|t| t.players[1].objects[2].life.state = 0),
+        Ok((10.0, 0))
+    );
+    assert_eq!(
+        reason(centre_seconds(|t| t.players[1].objects[2].life.hp = 480.0)),
+        "a damaged building lets its garrison out (a fifth of its hit points)"
+    );
+    assert_eq!(
+        reason(centre_seconds(|t| {
+            t.players[1].attributes.resize(256, 0.0);
+            t.players[1].attributes[255] = 109.0;
+        })),
+        "a building whose master attribute 255 names (FUN_1411c39b0)"
+    );
+    assert_eq!(
+        reason(centre_seconds(
+            |t| t.players[1].objects[0].raider_countdown = 1
+        )),
+        "a unit inside whose raider_build_countdown runs (FUN_1411e7220)"
+    );
+    let repairs = |t: &mut World| {
+        for masters in &mut t.masters {
+            let b = masters.get_mut(109).unwrap().building.as_mut().unwrap();
+            b.garrison_repair_rate = 1.0;
+        }
+        t.players[1].objects[2].life.hp = 2000.0;
+    };
+    assert_eq!(
+        reason(centre_seconds(repairs)),
+        "a building its villagers inside repair (FUN_1411d33e0)"
+    );
+}
+
+/// [`repair_world`] on [`open_map`] with the repairer 9175 (a mover) at `at` and the house
+/// 10028 at (30, 88) placed, the player holding 100 of each resource, the mesh built.
+fn repairing(at: [f32; 3]) -> World {
+    let mut t = repair_world();
+    open_map(&mut t);
+    t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
+    let placed = |position, class, master, radius| Placed {
+        position,
+        radius,
+        class,
+        player: 1,
+        master,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(9175, placed(at, 4, 118, [0.2, 0.2]));
+    t.spatial
+        .insert(10028, placed([30.0, 88.0, 0.0], 3, 70, [1.0, 1.0]));
+    let v = &mut t.players[1].objects[0];
+    v.position = at;
+    let mut mover = crate::gathering::hunt::tests::walker();
+    mover.moved_at = at;
+    v.mover = Some(mover);
+    t.players[1].resources = [100.0; 4];
+    t.build_mesh();
+    t
+}
+
+/// The work command on the house, then `n` of the repairer's repair parts
+/// ([`Unit::repair_part`], 50 ms each): the Repair's states in turn (None once it ended).
+fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
+    let work = crate::orders::Work {
+        target: 10028,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    let mut states = vec![t.players[1].objects[0].repair.map(|r| r.state)];
+    for _ in 0..n {
+        in_update(t, (1, 0), 50, |unit, c, others| {
+            let me = crate::movement::Me {
+                id: unit.id,
+                position: unit.position,
+                group: unit.group.id,
+                action_state: unit.top_action().map_or(0, |a| a.state),
+            };
+            unit.repair_part(c, others, me)
+        })
+        .unwrap();
+        let state = t.players[1].objects[0].repair.map(|r| r.state);
+        if states.last() != Some(&state) {
+            states.push(state);
+        }
+    }
+    states
+}
+
+/// A repairer that arrives out of the Repair's reach of the house (0.3 tiles off it) cannot
+/// repair: the reach test fails and the quick path finds no way closer, so the Repair fails
+/// (state 13), lets the house go, tells its unit AI (0x1f9 with the repair action) and ends; the
+/// house keeps its 300 hit points and nothing is paid. Moved within reach (its footprint touching
+/// the house's), the same work command repairs: it faces the house (6), joins its repairers
+/// and repairs (7), the house gaining hit points.
+#[test]
+fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
+    use crate::construction::repair::REPAIR_ACTION;
+    let mut t = repairing([29.5, 89.5, 0.0]);
+    assert_eq!(repair_for(&mut t, 10), [Some(4), Some(13), None]);
+    let house = &t.players[1].objects[1];
+    assert_eq!(
+        (house.life.hp, house.repairers(), house.workers),
+        (300.0, 0, 0)
+    );
+    let heard = &t.players[1].objects[0].ai.as_ref().unwrap().notifies;
+    assert_eq!(
+        heard.iter().map(|n| (n.kind, n.p)).collect::<Vec<_>>(),
+        [(crate::unit_ai::ACTION_FAILED, [REPAIR_ACTION, 0, 0])]
+    );
+    let at = [30.0, 89.2, 0.0];
+    let p = *t.spatial.get(9175).unwrap();
+    t.spatial.insert(9175, Placed { position: at, ..p });
+    let v = &mut t.players[1].objects[0];
+    v.position = at;
+    v.mover.as_mut().unwrap().moved_at = at;
+    assert_eq!(repair_for(&mut t, 400), [Some(4), Some(6), Some(7)]);
+    let house = &t.players[1].objects[1];
+    assert_eq!(
+        (house.life.hp, house.repairers(), house.workers),
+        (309.922_58, 1, 1)
+    );
+    assert_eq!(t.players[1].resources, [100.0; 4]);
+}
+
+/// The Repair's payment, its end and another player's target ([`Unit::repair_part`]): with a
+/// building repair cost (attribute 271) the repair pays the share of the building's costs its
+/// hit points make (the house's in wood, a castle's in stone); a repair that
+/// takes the house to its hit points ends (state 1, then the action goes) with the house's armor
+/// back, the house let go and out of its repairers, the unit AI told 0x1fa; an ally's house takes
+/// its hit points and its repairer after the update ([`Context::repair_writes`]).
+///
+/// [`Context::repair_writes`]: crate::world::context::Context
+#[test]
+fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
+    let near = [30.0, 89.2, 0.0];
+    let mut t = repairing(near);
+    t.players[1].attributes.resize(300, 0.0);
+    t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
+    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    assert_eq!(t.players[1].objects[1].life.hp, 302.424_4);
+    assert_eq!(t.players[1].resources, [100.0, 99.889_73, 100.0, 100.0]);
+    // a castle (650 stone, 4800 hit points) pays its share in stone
+    let mut t = repairing(near);
+    for masters in &mut t.masters {
+        let house = masters.get(70).unwrap().clone();
+        let castle = Master {
+            id: 82,
+            hit_points: 4800,
+            cost: vec![(2, 650, true)],
+            ..house
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([castle]));
+    }
+    let castle = &mut t.players[1].objects[1];
+    (castle.life.master_id, castle.life.hp) = (82, 3000.0);
+    let p = *t.spatial.get(10028).unwrap();
+    t.spatial.insert(10028, Placed { master: 82, ..p });
+    t.players[1].attributes.resize(300, 0.0);
+    t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
+    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    assert_eq!(t.players[1].objects[1].life.hp, 3_002.415_5);
+    assert_eq!(t.players[1].resources, [100.0, 100.0, 99.671_42, 100.0]);
+    let mut t = repairing(near);
+    let house = &mut t.players[1].objects[1];
+    (house.life.hp, house.armor_removed) = (549.0, [3, 4]);
+    let states = repair_for(&mut t, 100);
+    assert_eq!(states, [Some(4), Some(6), Some(7), Some(1), None]);
+    let house = &t.players[1].objects[1];
+    assert_eq!(
+        (
+            house.life.hp,
+            house.armor_removed,
+            house.repairers(),
+            house.workers
+        ),
+        (550.0, [0, 0], 0, 0)
+    );
+    let heard = &t.players[1].objects[0].ai.as_ref().unwrap().notifies;
+    assert_eq!(
+        heard.iter().map(|n| (n.kind, n.p)).collect::<Vec<_>>(),
+        [(0x1fa, [crate::construction::repair::REPAIR_ACTION, 0, 0])]
+    );
+    // player 0's house, the players allied: repaired, then repaired to full
+    let allied = |hp: f32| {
+        let mut t = repairing(near);
+        let mut house = t.players[1].objects.remove(1);
+        (house.life.hp, house.armor_removed, house.workers) = (hp, [3, 4], 0);
+        t.players[0].objects.push(house);
+        t.players[0].attributes = vec![0.0; 300];
+        t.spatial.relations = vec![vec![0, 0], vec![0, 0]];
+        for p in &mut t.players {
+            p.relations = vec![0, 0];
+        }
+        let p = *t.spatial.get(10028).unwrap();
+        t.spatial.insert(10028, Placed { player: 0, ..p });
+        let states = repair_for(&mut t, 100);
+        let h = &t.players[0].objects[0];
+        (states, h.life.hp, h.armor_removed, h.repairers(), h.workers)
+    };
+    assert_eq!(
+        allied(300.0),
+        (vec![Some(4), Some(6), Some(7)], 302.424_4, [3, 4], 1, 1)
+    );
+    assert_eq!(
+        allied(549.0),
+        (
+            vec![Some(4), Some(6), Some(7), Some(1), None],
+            550.0,
+            [0, 0],
+            0,
+            0
+        )
+    );
+}
+
+/// A repair of an annex (house 10028 of the main building 10029, both at 300 hit points) is its
+/// main building's (`FUN_1411d37d0`): the main building repairs its annexes by the amount first,
+/// then itself, so both gain it; the repairer counts among the main building's repairers
+/// (`FUN_140ad9050`).
+#[test]
+fn a_repair_of_an_annex_repairs_its_main_building_and_counts_there() {
+    let mut t = repairing([30.0, 89.2, 0.0]);
+    let mut main = t.players[1].objects[1].clone();
+    (main.id, main.position) = (10029, [34.0, 88.0, 0.0]);
+    t.players[1].objects.push(main);
+    t.players[1].objects[1].annex_of = Some(10029);
+    t.spatial.set_annex(10028, Some(10029));
+    let p = *t.spatial.get(10028).unwrap();
+    t.spatial.insert(
+        10029,
+        Placed {
+            position: [34.0, 88.0, 0.0],
+            ..p
+        },
+    );
+    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    let [annex, main] = [&t.players[1].objects[1], &t.players[1].objects[2]];
+    assert_eq!(
+        (
+            annex.life.hp,
+            main.life.hp,
+            annex.repairers(),
+            main.repairers()
+        ),
+        (302.424_4, 302.424_4, 0, 1)
+    );
+}
+
+/// [`repairing`] with a building repair cost and `n` repairers on the house (9175, then copies
+/// 9185 and 9195 at its east and west sides, all within reach), each repairing in turn: the
+/// house's hit points and the player's wood after 10 updates (every repairer at work) and after
+/// 100 more.
+fn repaired_by(n: usize) -> [(f32, f32); 2] {
+    let mut t = repairing([30.0, 89.2, 0.0]);
+    t.players[1].attributes.resize(300, 0.0);
+    t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
+    for (k, at) in [[31.2, 88.0, 0.0], [28.8, 88.0, 0.0]]
+        .into_iter()
+        .enumerate()
+        .take(n - 1)
+    {
+        let mut v = t.players[1].objects[0].clone();
+        (v.id, v.position) = (9185 + 10 * k as i32, at);
+        v.mover.as_mut().unwrap().moved_at = at;
+        let p = *t.spatial.get(9175).unwrap();
+        t.spatial.insert(v.id, Placed { position: at, ..p });
+        t.players[1].objects.push(v);
+    }
+    let repairers: Vec<usize> = std::iter::once(0).chain(2..=n).collect();
+    let work = crate::orders::Work {
+        target: 10028,
+        point: [30.0, 88.0, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    for &i in &repairers {
+        t.order_work(1, i, &work).unwrap();
+    }
+    let update = |t: &mut World| {
+        for &i in &repairers {
+            in_update(t, (1, i), 50, |unit, c, others| {
+                let me = crate::movement::Me {
+                    id: unit.id,
+                    position: unit.position,
+                    group: unit.group.id,
+                    action_state: unit.top_action().map_or(0, |a| a.state),
+                };
+                unit.repair_part(c, others, me)
+            })
+            .unwrap();
+        }
+    };
+    let seen = |t: &World| (t.players[1].objects[1].life.hp, t.players[1].resources[1]);
+    (0..10).for_each(|_| update(&mut t));
+    let before = seen(&t);
+    assert_eq!(usize::from(t.players[1].objects[1].repairers()), n);
+    (0..100).for_each(|_| update(&mut t));
+    [before, seen(&t)]
+}
+
+/// More repairers repair faster, but not in proportion (`0x140adaa20` case 6): each of `n`
+/// repairs `((n − 1) × 0.5 + 1) / n` of one's work, so two repair 1.5 times as fast as one and
+/// three twice as fast. The cost (`FUN_1411d37d0`: the building repair cost times the amount over
+/// the master's hit points, of the master's costs) follows the hit points repaired: more
+/// repairers pay more wood each second, the same for each hit point (the house's 25 wood over
+/// its 550 hit points).
+#[test]
+fn more_repairers_repair_faster_but_not_in_proportion_and_pay_by_the_hit_point() {
+    let gained = |[(hp0, wood0), (hp1, wood1)]: [(f32, f32); 2]| (hp1 - hp0, wood0 - wood1);
+    let one = gained(repaired_by(1));
+    let two = gained(repaired_by(2));
+    let three = gained(repaired_by(3));
+    assert_eq!(one, (2.499_389_6, 0.113_677_98));
+    assert_eq!(two, (3.747_558_6, 0.170_898_44));
+    assert_eq!(three, (4.998_779_3, 0.226_593_02));
+    let near = |a: f32, b: f32| (a - b).abs() < 1e-3;
+    assert!(near(two.0 / one.0, 1.5) && near(three.0 / one.0, 2.0));
+    for (hp, wood) in [one, two, three] {
+        assert!(
+            near(wood / hp, 25.0 / 550.0),
+            "{wood} wood for {hp} hit points"
+        );
+    }
+}
+
+/// A builder's whole Build of house 10028 ([`house_builder`] with the Build's work value 1, a
+/// tile planner and the builder's sprites of 8 facets) through its updates (`0x140ab0370`): it
+/// walks to the house (state 4, its `MoveTo` moving, then arrived), faces it (6) and works (7)
+/// a build point a second until the house's 25 complete it (state 2; the Build's 224); then its
+/// search for more work finds nothing around a house (no drop-site entry), so the Build waits
+/// without a target (3), lets the house go and asks its unit AI for a search (0x202).
+#[test]
+fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
+    let mut t = house_builder();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    let v = &mut t.players[1].objects[0];
+    let m = v.mover.as_mut().unwrap();
+    m.moved_at = v.position;
+    m.stats.facets = Some(crate::objects::facing::SpriteFacets {
+        count: 8,
+        flag_1: false,
+    });
+    v.build.as_mut().unwrap().task.work_value = 1.0;
+    let mut seen = Vec::new();
+    for n in 0..520 {
+        let _ = in_update(&mut t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
+        let b = t.players[1].objects[0].build.unwrap();
+        let house = t.players[1].objects[1].life.state;
+        let now = (b.state, b.move_to, house);
+        if seen.last().is_none_or(|&(_, last)| last != now) {
+            seen.push((n, now));
+        }
+    }
+    assert_eq!(
+        seen,
+        [
+            (0, (4, Some(MoveTo::Moving), 0)),
+            (8, (4, Some(MoveTo::Arrived), 0)),
+            (9, (6, None, 0)),
+            (10, (7, None, 0)),
+            (511, (224, None, 2)),
+            (512, (crate::construction::build::IDLE, None, 2)),
+        ]
+    );
+    let house = &t.players[1].objects[1];
+    assert_eq!(
+        (house.construction.unwrap().progress, house.workers),
+        (25.0, 0)
+    );
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.build.unwrap().target, -1);
+    let heard = v.ai.as_ref().unwrap().notifies.iter().map(|n| n.kind);
+    assert_eq!(heard.collect::<Vec<_>>(), [SEARCH_NEEDED]);
+}
+
+/// A loaded builder's drop-off through its updates (`0x140ab0370` case 7, then
+/// [`BuildAction::update`]'s state 4): from [`house_builder`]'s house it walks to the town centre
+/// its drop-off found (state 8, its quiet `MoveTo` moving, then arrived), gives the player its 6
+/// food there and carries nothing, lets the centre go and walks back to the house (4), faces it
+/// (6) and builds again (7).
+///
+/// [`BuildAction::update`]: crate::construction::build::BuildAction::update
+#[test]
+fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
+    let mut t = house_builder();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    let m = v.mover.as_mut().unwrap();
+    m.moved_at = v.position;
+    m.stats.facets = Some(crate::objects::facing::SpriteFacets {
+        count: 8,
+        flag_1: false,
+    });
+    in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        unit.build_drop_off(c, others, me)
+    })
+    .unwrap();
+    let mut seen = Vec::new();
+    for n in 0..350 {
+        let _ = in_update(&mut t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
+        let v = &t.players[1].objects[0];
+        let b = v.build.unwrap();
+        let now = (b.state, b.move_to, b.site, v.life.amount);
+        if seen.last().is_none_or(|&(_, last)| last != now) {
+            seen.push((n, now));
+        }
+    }
+    let drop = crate::construction::build::DROP;
+    assert_eq!(
+        seen,
+        [
+            (0, (drop, Some(MoveTo::Moving), 700, 6.0)),
+            (177, (drop, Some(MoveTo::Arrived), 700, 6.0)),
+            (178, (4, Some(MoveTo::Start), -1, 0.0)),
+            (179, (4, Some(MoveTo::Moving), -1, 0.0)),
+            (342, (4, Some(MoveTo::Arrived), -1, 0.0)),
+            (343, (6, None, -1, 0.0)),
+            (344, (7, None, -1, 0.0)),
+        ]
+    );
+    assert_eq!(t.players[1].resources[0], 6.0);
+    assert_eq!(t.players[1].objects[0].life.attribute_type, -1);
 }

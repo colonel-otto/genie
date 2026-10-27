@@ -25,7 +25,7 @@ mod drop_off;
 pub(crate) mod more_work;
 mod placing;
 mod states;
-mod unit;
+pub(crate) mod unit;
 mod unit_ai_side;
 mod update;
 mod walk_ends;
@@ -629,7 +629,7 @@ const DONE: u8 = 1;
 /// The last object state an action takes as its target (`FUN_140a7a230`: one above is refused).
 const LAST_TAKEN: u8 = 6;
 /// 3: the action waits without a target.
-const IDLE: u8 = 3;
+pub(crate) const IDLE: u8 = 3;
 /// `set_state(2)`: the unit's stop halted the Build (slot 0x38); its next update fails it.
 const HALTED: u8 = 2;
 /// 13 (`0xd`): the Build failed; its next update tells its unit AI and halts it.

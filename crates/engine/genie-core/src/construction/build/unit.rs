@@ -255,7 +255,7 @@ impl Unit {
     /// What the Build's step changes of the builder: the load dropped, its animation, the
     /// targets let go, the action's end, its notifies, its standing sprite, the work it takes
     /// next and its drop-off. `target` is the foundation, `built` its master.
-    fn after_build_step(
+    pub(crate) fn after_build_step(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -348,7 +348,7 @@ impl Unit {
     /// The Build's case 0xdf after the work: the builder's search for more work around the
     /// building it finished ([`Unit::more_work`]); without one the Build waits (`set_state(3)`
     /// without orders: notify 0x202, then the standing sprite) and lets the building go.
-    fn build_search(
+    pub(crate) fn build_search(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -495,7 +495,7 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 /// first: their owner watches each, `FUN_1411e5670`), the work an annex's main building takes,
 /// and the completion (taken out of the step) with its tracker part, its standing sprite and its
 /// annexes' state.
-fn record_build_step(
+pub(crate) fn record_build_step(
     c: &mut Context<'_>,
     others: &mut [Unit],
     target: i32,
