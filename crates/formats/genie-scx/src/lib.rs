@@ -365,4 +365,82 @@ mod genie_error_tests {
         );
         assert!(std::error::Error::source(&e).is_some());
     }
+
+    /// Each scenario error's kind and reason.
+    #[test]
+    fn each_scenario_error_has_its_kind_and_reason() {
+        use genie_error::ErrorKind::{InvalidInput, Io, Unsupported};
+        let unknown_id = "an id this reader does not know";
+        let cases: Vec<(Error, genie_error::ErrorKind, &str)> = vec![
+            (
+                Error::UnsupportedFormatVersionError(SCXVersion(*b"9.99")),
+                Unsupported,
+                "a scenario format version this reader does not take",
+            ),
+            (
+                Error::TooManyDisabledTechsError(21),
+                InvalidInput,
+                "more disabled technologies than the version takes",
+            ),
+            (
+                Error::CannotDisableUnitsError,
+                Unsupported,
+                "disabled units in a version without them",
+            ),
+            (
+                Error::TooManyDisabledBuildingsError(31, 30),
+                InvalidInput,
+                "more disabled buildings than the version takes",
+            ),
+            (
+                Error::CannotDisableBuildingsError,
+                Unsupported,
+                "disabled buildings in a version without them",
+            ),
+            (
+                DecodeStringError.into(),
+                InvalidInput,
+                "a string that does not decode",
+            ),
+            (
+                EncodeStringError.into(),
+                InvalidInput,
+                "a string that does not encode",
+            ),
+            (
+                DiplomaticStance::try_from(9).unwrap_err().into(),
+                InvalidInput,
+                unknown_id,
+            ),
+            (
+                DataSet::try_from(9).unwrap_err().into(),
+                InvalidInput,
+                unknown_id,
+            ),
+            (
+                StartingAge::try_from(99, 1.2).unwrap_err().into(),
+                InvalidInput,
+                unknown_id,
+            ),
+            (
+                ai::AIErrorCode::try_from(999).unwrap_err().into(),
+                InvalidInput,
+                unknown_id,
+            ),
+            (
+                num_enum::TryFromPrimitiveError::<VictoryState> { number: 99 }.into(),
+                InvalidInput,
+                unknown_id,
+            ),
+            (
+                Error::IoError(io::Error::other("x")),
+                Io,
+                "a read or write that failed",
+            ),
+        ];
+        for (error, kind, reason) in cases {
+            let e: genie_error::GenieError = error.into();
+            assert_eq!((e.kind(), e.reason()), (kind, reason));
+        }
+    }
 }

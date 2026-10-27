@@ -244,89 +244,11 @@ impl StaticUnitTypeAttributes {
     pub fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
         let mut unit_type = Self::default();
         let name_len = input.read_u16::<LE>()?;
-        unit_type.id = input.read_u16::<LE>()?.into();
-        unit_type.string_id = input.read_u16::<LE>()?.into();
-        unit_type.string_id2 = read_opt_u16(&mut input)?;
-        unit_type.unit_class = input.read_u16::<LE>()?;
-        unit_type.standing_sprite_1 = read_opt_u16(&mut input)?;
-        unit_type.standing_sprite_2 = read_opt_u16(&mut input)?;
-        unit_type.dying_sprite = read_opt_u16(&mut input)?;
-        unit_type.undead_sprite = read_opt_u16(&mut input)?;
-        unit_type.undead_flag = input.read_u8()?;
-        unit_type.hp = input.read_u16::<LE>()?;
-        unit_type.los = input.read_f32::<LE>()?;
-        unit_type.garrison_capacity = input.read_u8()?;
-        unit_type.radius = (
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-        );
-        unit_type.train_sound = read_opt_u16(&mut input)?;
-        unit_type.damage_sound = read_opt_u16(&mut input)?;
-        unit_type.death_spawn = read_opt_u16(&mut input)?;
-        unit_type.sort_number = input.read_u8()?;
-        unit_type.can_be_built_on = input.read_u8()? != 0;
-        unit_type.button_picture = read_opt_u16(&mut input)?;
-        unit_type.hide_in_scenario_editor = input.read_u8()? != 0;
-        unit_type.portrait_picture = read_opt_u16(&mut input)?;
-        unit_type.enabled = input.read_u8()? != 0;
-        unit_type.disabled = input.read_u8()? != 0;
-        unit_type.tile_req = (input.read_i16::<LE>()?, input.read_i16::<LE>()?);
-        unit_type.center_tile_req = (input.read_i16::<LE>()?, input.read_i16::<LE>()?);
-        unit_type.construction_radius = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
-        unit_type.elevation_flag = input.read_u8()? != 0;
-        unit_type.fog_flag = input.read_u8()? != 0;
-        unit_type.terrain_restriction_id = input.read_u16::<LE>()?;
-        unit_type.movement_type = input.read_u8()?;
-        unit_type.attribute_max_amount = input.read_u16::<LE>()?;
-        unit_type.attribute_rot = input.read_f32::<LE>()?;
-        unit_type.area_effect_level = input.read_u8()?;
-        unit_type.combat_level = input.read_u8()?;
-        unit_type.select_level = input.read_u8()?;
-        unit_type.map_draw_level = input.read_u8()?;
-        unit_type.unit_level = input.read_u8()?;
-        unit_type.multiple_attribute_mod = input.read_f32::<LE>()?;
-        unit_type.map_color = input.read_u8()?;
-        unit_type.help_string_id = input.read_u32::<LE>()?.into();
-        unit_type.help_page_id = input.read_u32::<LE>()?;
-        unit_type.hotkey_id = input.read_u32::<LE>()?;
-        unit_type.recyclable = input.read_u8()? != 0;
-        unit_type.track_as_resource = input.read_u8()? != 0;
-        unit_type.create_doppleganger = input.read_u8()? != 0;
-        unit_type.resource_group = input.read_u8()?;
-        unit_type.occlusion_mask = input.read_u8()?;
-        unit_type.obstruction_type = input.read_u8()?;
-        unit_type.selection_shape = input.read_u8()?;
-        unit_type.object_flags = if version < 11.55 {
-            0
-        } else {
-            input.read_u32::<LE>()?
-        };
-        unit_type.civilization = input.read_u8()?;
-        unit_type.attribute_piece = input.read_u8()?;
-        unit_type.outline_radius = (
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-        );
-        for _ in 0..3 {
-            let attr = UnitAttribute::read_from(&mut input)?;
-            if attr.attribute_type != 0xFFFF {
-                unit_type.attributes.push(attr);
-            }
-        }
-        unit_type.damage_sprites = {
-            let num_damage_sprites = input.read_u8()?;
-            let mut damage_sprites = vec![];
-            for _ in 0..num_damage_sprites {
-                damage_sprites.push(DamageSprite::read_from(&mut input)?);
-            }
-            damage_sprites
-        };
-        unit_type.selected_sound = read_opt_u16(&mut input)?;
-        unit_type.death_sound = read_opt_u16(&mut input)?;
-        unit_type.attack_reaction = input.read_u8()?;
-        unit_type.convert_terrain_flag = input.read_u8()?;
+        unit_type.read_identity(&mut input)?;
+        unit_type.read_sounds_and_placement(&mut input)?;
+        unit_type.read_levels(&mut input)?;
+        unit_type.read_resource_flags(&mut input, version)?;
+        unit_type.read_attributes(&mut input)?;
         unit_type.name = {
             // TODO use not-UTF8 for the name
             let mut bytes = vec![0; usize::from(name_len)];
@@ -336,6 +258,118 @@ impl StaticUnitTypeAttributes {
         unit_type.copy_id = input.read_u16::<LE>()?;
         unit_type.unit_group = input.read_u16::<LE>()?;
         Ok(unit_type)
+    }
+
+    /// The ids, the class, the sprites, the hit points, the line of sight, the garrison and the
+    /// radius.
+    fn read_identity(&mut self, mut input: impl Read) -> Result<()> {
+        self.id = input.read_u16::<LE>()?.into();
+        self.string_id = input.read_u16::<LE>()?.into();
+        self.string_id2 = read_opt_u16(&mut input)?;
+        self.unit_class = input.read_u16::<LE>()?;
+        self.standing_sprite_1 = read_opt_u16(&mut input)?;
+        self.standing_sprite_2 = read_opt_u16(&mut input)?;
+        self.dying_sprite = read_opt_u16(&mut input)?;
+        self.undead_sprite = read_opt_u16(&mut input)?;
+        self.undead_flag = input.read_u8()?;
+        self.hp = input.read_u16::<LE>()?;
+        self.los = input.read_f32::<LE>()?;
+        self.garrison_capacity = input.read_u8()?;
+        self.radius = (
+            input.read_f32::<LE>()?,
+            input.read_f32::<LE>()?,
+            input.read_f32::<LE>()?,
+        );
+        Ok(())
+    }
+
+    /// The sounds, the death spawn, the buttons, the editor flags, the tile and construction
+    /// sizes and the terrain and movement types.
+    fn read_sounds_and_placement(&mut self, mut input: impl Read) -> Result<()> {
+        self.train_sound = read_opt_u16(&mut input)?;
+        self.damage_sound = read_opt_u16(&mut input)?;
+        self.death_spawn = read_opt_u16(&mut input)?;
+        self.sort_number = input.read_u8()?;
+        self.can_be_built_on = input.read_u8()? != 0;
+        self.button_picture = read_opt_u16(&mut input)?;
+        self.hide_in_scenario_editor = input.read_u8()? != 0;
+        self.portrait_picture = read_opt_u16(&mut input)?;
+        self.enabled = input.read_u8()? != 0;
+        self.disabled = input.read_u8()? != 0;
+        self.tile_req = (input.read_i16::<LE>()?, input.read_i16::<LE>()?);
+        self.center_tile_req = (input.read_i16::<LE>()?, input.read_i16::<LE>()?);
+        self.construction_radius = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
+        self.elevation_flag = input.read_u8()? != 0;
+        self.fog_flag = input.read_u8()? != 0;
+        self.terrain_restriction_id = input.read_u16::<LE>()?;
+        self.movement_type = input.read_u8()?;
+        Ok(())
+    }
+
+    /// The attribute's amount and decay, the levels, the map colour and the help ids.
+    fn read_levels(&mut self, mut input: impl Read) -> Result<()> {
+        self.attribute_max_amount = input.read_u16::<LE>()?;
+        self.attribute_rot = input.read_f32::<LE>()?;
+        self.area_effect_level = input.read_u8()?;
+        self.combat_level = input.read_u8()?;
+        self.select_level = input.read_u8()?;
+        self.map_draw_level = input.read_u8()?;
+        self.unit_level = input.read_u8()?;
+        self.multiple_attribute_mod = input.read_f32::<LE>()?;
+        self.map_color = input.read_u8()?;
+        self.help_string_id = input.read_u32::<LE>()?.into();
+        self.help_page_id = input.read_u32::<LE>()?;
+        self.hotkey_id = input.read_u32::<LE>()?;
+        Ok(())
+    }
+
+    /// The resource flags, the occlusion, obstruction and selection, the object flags from
+    /// 11.55 on, the civilization and the outline.
+    fn read_resource_flags(&mut self, mut input: impl Read, version: f32) -> Result<()> {
+        self.recyclable = input.read_u8()? != 0;
+        self.track_as_resource = input.read_u8()? != 0;
+        self.create_doppleganger = input.read_u8()? != 0;
+        self.resource_group = input.read_u8()?;
+        self.occlusion_mask = input.read_u8()?;
+        self.obstruction_type = input.read_u8()?;
+        self.selection_shape = input.read_u8()?;
+        self.object_flags = if version < 11.55 {
+            0
+        } else {
+            input.read_u32::<LE>()?
+        };
+        self.civilization = input.read_u8()?;
+        self.attribute_piece = input.read_u8()?;
+        self.outline_radius = (
+            input.read_f32::<LE>()?,
+            input.read_f32::<LE>()?,
+            input.read_f32::<LE>()?,
+        );
+        Ok(())
+    }
+
+    /// The three attributes (type 0xFFFF none), the damage sprites, the selected and death
+    /// sounds, the attack reaction and the terrain conversion.
+    fn read_attributes(&mut self, mut input: impl Read) -> Result<()> {
+        for _ in 0..3 {
+            let attr = UnitAttribute::read_from(&mut input)?;
+            if attr.attribute_type != 0xFFFF {
+                self.attributes.push(attr);
+            }
+        }
+        self.damage_sprites = {
+            let num_damage_sprites = input.read_u8()?;
+            let mut damage_sprites = vec![];
+            for _ in 0..num_damage_sprites {
+                damage_sprites.push(DamageSprite::read_from(&mut input)?);
+            }
+            damage_sprites
+        };
+        self.selected_sound = read_opt_u16(&mut input)?;
+        self.death_sound = read_opt_u16(&mut input)?;
+        self.attack_reaction = input.read_u8()?;
+        self.convert_terrain_flag = input.read_u8()?;
+        Ok(())
     }
 
     /// Write this unit type to an output stream.
@@ -355,6 +389,20 @@ impl StaticUnitTypeAttributes {
     pub fn write_to(&self, mut output: impl Write, _version: f32) -> Result<()> {
         // TODO use not-UTF8 for the name
         output.write_u16::<LE>(self.name.len() as u16)?;
+        self.write_identity(&mut output)?;
+        self.write_sounds_and_placement(&mut output)?;
+        self.write_levels(&mut output)?;
+        self.write_resource_flags(&mut output)?;
+        self.write_attributes(&mut output)?;
+        output.write_all(self.name.as_bytes())?;
+        output.write_u16::<LE>(self.copy_id)?;
+        output.write_u16::<LE>(self.unit_group)?;
+        Ok(())
+    }
+
+    /// The ids, the class, the sprites, the hit points, the line of sight, the garrison and the
+    /// radius.
+    fn write_identity(&self, mut output: impl Write) -> Result<()> {
         output.write_u16::<LE>(self.id.into())?;
         output.write_i16::<LE>((&self.string_id).try_into().unwrap())?;
         write_opt_string_key(&mut output, self.string_id2.as_ref())?;
@@ -376,6 +424,12 @@ impl StaticUnitTypeAttributes {
         output.write_f32::<LE>(self.radius.0)?;
         output.write_f32::<LE>(self.radius.1)?;
         output.write_f32::<LE>(self.radius.2)?;
+        Ok(())
+    }
+
+    /// The sounds, the death spawn, the buttons, the editor flags, the tile and construction
+    /// sizes and the terrain and movement types.
+    fn write_sounds_and_placement(&self, mut output: impl Write) -> Result<()> {
         output.write_i16::<LE>(self.train_sound.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i16::<LE>(self.damage_sound.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_i16::<LE>(self.death_spawn.map_or(-1, |id| id.try_into().unwrap()))?;
@@ -399,6 +453,11 @@ impl StaticUnitTypeAttributes {
         output.write_u8(u8::from(self.fog_flag))?;
         output.write_u16::<LE>(self.terrain_restriction_id)?;
         output.write_u8(self.movement_type)?;
+        Ok(())
+    }
+
+    /// The attribute's amount and decay, the levels, the map colour and the help ids.
+    fn write_levels(&self, mut output: impl Write) -> Result<()> {
         output.write_u16::<LE>(self.attribute_max_amount)?;
         output.write_f32::<LE>(self.attribute_rot)?;
         output.write_u8(self.area_effect_level)?;
@@ -411,6 +470,12 @@ impl StaticUnitTypeAttributes {
         output.write_u32::<LE>((&self.help_string_id).try_into().unwrap())?;
         output.write_u32::<LE>(self.help_page_id)?;
         output.write_u32::<LE>(self.hotkey_id)?;
+        Ok(())
+    }
+
+    /// The resource flags, the occlusion, obstruction and selection, the object flags, the
+    /// civilization and the outline.
+    fn write_resource_flags(&self, mut output: impl Write) -> Result<()> {
         output.write_u8(u8::from(self.recyclable))?;
         output.write_u8(u8::from(self.track_as_resource))?;
         output.write_u8(u8::from(self.create_doppleganger))?;
@@ -424,6 +489,12 @@ impl StaticUnitTypeAttributes {
         output.write_f32::<LE>(self.outline_radius.0)?;
         output.write_f32::<LE>(self.outline_radius.1)?;
         output.write_f32::<LE>(self.outline_radius.2)?;
+        Ok(())
+    }
+
+    /// The three attribute slots, the damage sprites and their count, the selected and death
+    /// sounds, the attack reaction and the terrain conversion.
+    fn write_attributes(&self, mut output: impl Write) -> Result<()> {
         for index in 0..self.attributes.capacity() {
             match self.attributes.get(index) {
                 Some(attr) => attr.write_to(&mut output)?,
@@ -438,9 +509,95 @@ impl StaticUnitTypeAttributes {
         output.write_i16::<LE>(self.death_sound.map_or(-1, |id| id.try_into().unwrap()))?;
         output.write_u8(self.attack_reaction)?;
         output.write_u8(self.convert_terrain_flag)?;
-        output.write_all(self.name.as_bytes())?;
-        output.write_u16::<LE>(self.copy_id)?;
-        output.write_u16::<LE>(self.unit_group)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A unit type with a value in each section: two attributes, a damage sprite, sprites and
+    /// sounds, flags and a name.
+    fn archer() -> StaticUnitTypeAttributes {
+        let mut unit = StaticUnitTypeAttributes {
+            name: "Archer".to_owned(),
+            id: 4.into(),
+            string_id: StringKey::from(5084u32),
+            unit_class: 0,
+            standing_sprite_1: Some(1u16.into()),
+            hp: 30,
+            los: 6.0,
+            radius: (0.2, 0.2, 2.0),
+            train_sound: Some(SoundID::from(8u16)),
+            enabled: true,
+            terrain_restriction_id: 7,
+            attribute_rot: 0.5,
+            combat_level: 4,
+            help_string_id: StringKey::from(26084u32),
+            hotkey_id: 16084,
+            recyclable: true,
+            object_flags: 0x40,
+            outline_radius: (0.2, 0.2, 0.0),
+            damage_sprites: vec![DamageSprite {
+                sprite: SpriteID::from(3u16),
+                damage_percent: 25,
+                flag: 1,
+            }],
+            selected_sound: Some(SoundID::from(9u16)),
+            copy_id: 4,
+            unit_group: 4,
+            ..StaticUnitTypeAttributes::default()
+        };
+        unit.attributes.push(UnitAttribute {
+            attribute_type: 0,
+            amount: 1.0,
+            flag: 1,
+        });
+        unit.attributes.push(UnitAttribute {
+            attribute_type: 4,
+            amount: 0.5,
+            flag: 0,
+        });
+        unit
+    }
+
+    /// A unit type's bytes from 11.55 on (with its object flags) read back and written again
+    /// give the same bytes; the name ends the record but for the copy id and group.
+    #[test]
+    fn a_static_unit_type_writes_back_the_bytes_it_read() {
+        let mut bytes = vec![];
+        archer().write_to(&mut bytes, 12.0).unwrap();
+        let unit = StaticUnitTypeAttributes::read_from(bytes.as_slice(), 12.0).unwrap();
+        assert_eq!(
+            (
+                unit.name.as_str(),
+                unit.hp,
+                unit.object_flags,
+                unit.attributes.len()
+            ),
+            ("Archer", 30, 0x40, 2)
+        );
+        assert_eq!(unit.damage_sprites.len(), 1);
+        let mut again = vec![];
+        unit.write_to(&mut again, 12.0).unwrap();
+        assert_eq!(again, bytes);
+    }
+
+    /// Before 11.55 the record has no object flags: they read as 0.
+    #[test]
+    fn an_old_unit_type_has_no_object_flags() {
+        let unit = archer();
+        let mut bytes = vec![];
+        unit.write_to(&mut bytes, 12.0).unwrap();
+        // the object flags' four bytes follow the levels and seven bytes of flags and shapes
+        let mut head = vec![0, 0];
+        unit.write_identity(&mut head).unwrap();
+        unit.write_sounds_and_placement(&mut head).unwrap();
+        unit.write_levels(&mut head).unwrap();
+        let flags_at = head.len() + 7;
+        let old = [&bytes[..flags_at], &bytes[flags_at + 4..]].concat();
+        let read = StaticUnitTypeAttributes::read_from(old.as_slice(), 11.5).unwrap();
+        assert_eq!((read.object_flags, read.name.as_str()), (0, "Archer"));
     }
 }

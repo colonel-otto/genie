@@ -295,6 +295,21 @@ mod tests {
         assert_eq!(SHARED.raised_at(here).location(), here);
     }
 
+    /// Each kind's name in an error's text.
+    #[test]
+    fn each_kind_has_its_name() {
+        let names = [
+            (ErrorKind::Unsupported, "not modelled"),
+            (ErrorKind::Unreachable, "unreachable"),
+            (ErrorKind::MissingData, "missing data"),
+            (ErrorKind::InvalidInput, "invalid input"),
+            (ErrorKind::Io, "input or output"),
+        ];
+        for (kind, name) in names {
+            assert_eq!(kind.to_string(), name);
+        }
+    }
+
     #[test]
     fn errors_are_equal_by_kind_and_reason_alone() {
         let a = unsupported("a").with("id", 7);

@@ -246,3 +246,67 @@ pub(super) fn escape(source: &str, quoted: bool) -> String {
     }
     escaped
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LangFileType;
+    use std::fs::File;
+
+    /// The game's DLL's string tables: block n's strings take the ids from (n - 1) × 16 on.
+    #[test]
+    fn a_dll_s_string_tables_give_their_strings_by_id() {
+        let f = File::open("test/dlls/language_x1_p1.dll").unwrap();
+        let lang = LangFileType::Dll.read_from(f).unwrap();
+        assert_eq!(
+            lang.get(&StringKey::from(30177u32)).map(String::as_str),
+            Some(
+                "Turbo Random Map - Buildings create units faster, villagers gather faster, \
+                 build faster, and carry more."
+            )
+        );
+        assert_eq!(lang.len(), 29);
+    }
+
+    /// A string table block: an empty string only counts its id, a string that does not
+    /// decode as UTF-16 is left out, a later one with the same id replaces the earlier.
+    #[test]
+    fn a_string_block_counts_empty_strings_and_skips_bad_ones() {
+        let mut lang = LangFile::new();
+        let data = [
+            0, 0, 2, 0, b'h', 0, b'i', 0, 1, 0, 0x00, 0xd8, 1, 0, b'x', 0,
+        ];
+        lang.load_pe_data(16, &data).unwrap();
+        assert_eq!(lang.get(&StringKey::from(16u32)), None);
+        assert_eq!(
+            lang.get(&StringKey::from(17u32)).map(String::as_str),
+            Some("hi")
+        );
+        assert_eq!(lang.get(&StringKey::from(18u32)), None);
+        assert_eq!(
+            lang.get(&StringKey::from(19u32)).map(String::as_str),
+            Some("x")
+        );
+        lang.load_pe_data(19, &[1, 0, b'y', 0]).unwrap();
+        assert_eq!(
+            lang.get(&StringKey::from(19u32)).map(String::as_str),
+            Some("y")
+        );
+    }
+
+    /// The escapes of the text formats: backslash, newline, carriage return and tab, a quote
+    /// only in a quoted text; a quoted text ends at its closing quote; a backslash pair reads
+    /// as one backslash; a backslash before another letter stays.
+    #[test]
+    fn the_text_escapes_read_back_what_they_wrote() {
+        let text = "b\nc\rd\te\"f";
+        assert_eq!(escape(text, true), r#"b\nc\rd\te\"f"#);
+        assert_eq!(escape(text, false), r#"b\nc\rd\te"f"#);
+        assert_eq!(unescape(escape(text, true).chars(), true), text);
+        assert_eq!(escape("a\\b", false), r"a\\b");
+        assert_eq!(unescape(r"a\\".chars(), false), "a\\");
+        assert_eq!(unescape(r#"say "hi" there"#.chars(), true), "say ");
+        assert_eq!(unescape(r#"say "hi""#.chars(), false), r#"say "hi""#);
+        assert_eq!(unescape(r"\q\n".chars(), false), "\\q\n");
+    }
+}

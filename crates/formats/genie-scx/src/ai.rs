@@ -211,3 +211,37 @@ impl AIInfo {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An AI error's fixed-size record: the file name and description up to their first NUL
+    /// (an empty one reads as `<empty>`), the line and the error code; written back the same.
+    #[test]
+    fn an_ai_error_record_reads_and_writes_its_fields() {
+        let mut bytes = vec![0u8; 257 + 4 + 128 + 4];
+        bytes[..5].copy_from_slice(b"a.per");
+        bytes[257..261].copy_from_slice(&12i32.to_le_bytes());
+        bytes[261..264].copy_from_slice(b"bad");
+        bytes[389..].copy_from_slice(&7u32.to_le_bytes());
+        let info = AIErrorInfo::read_from(bytes.as_slice()).unwrap();
+        assert_eq!(
+            (
+                info.filename.as_str(),
+                info.line_number,
+                info.description.as_str(),
+                info.error_code
+            ),
+            ("a.per", 12, "bad", AIErrorCode::MissingArrow)
+        );
+        let mut out = vec![];
+        info.write_to(&mut out).unwrap();
+        assert_eq!(out, bytes);
+        bytes[..5].fill(0);
+        let unnamed = AIErrorInfo::read_from(bytes.as_slice()).unwrap();
+        assert_eq!(unnamed.filename, "<empty>");
+        bytes[389..].copy_from_slice(&27u32.to_le_bytes());
+        assert!(AIErrorInfo::read_from(bytes.as_slice()).is_err());
+    }
+}

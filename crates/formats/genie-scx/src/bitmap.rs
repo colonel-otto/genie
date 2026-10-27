@@ -133,3 +133,31 @@ impl Bitmap {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A bitmap with a size: its header, the info with its 256 colours and the rows of pixels
+    /// padded to 4 bytes; written back byte for byte. One without a size has no more.
+    #[test]
+    fn a_bitmap_writes_back_the_bytes_it_read() {
+        let mut bytes = vec![];
+        for word in [1u32, 2, 3] {
+            bytes.extend(word.to_le_bytes());
+        }
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend((0..40u8).map(|b| b.wrapping_mul(7)));
+        bytes.extend((0..1024u32).map(|i| u8::try_from(i % 251).unwrap()));
+        bytes.extend([9u8; 12]);
+        let bitmap = Bitmap::read_from(bytes.as_slice()).unwrap().unwrap();
+        assert_eq!(bitmap.info.colors.len(), 256);
+        assert_eq!(bitmap.pixels.len(), 12);
+        let mut out = vec![];
+        bitmap.write_to(&mut out).unwrap();
+        assert_eq!(out, bytes);
+        let mut empty = vec![];
+        Bitmap::write_empty(&mut empty).unwrap();
+        assert!(Bitmap::read_from(empty.as_slice()).unwrap().is_none());
+    }
+}

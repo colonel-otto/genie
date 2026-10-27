@@ -317,4 +317,24 @@ mod genie_error_tests {
         );
         assert!(std::error::Error::source(&e).is_some());
     }
+
+    /// An HD Edition string: the signature 0x0A60, the length and that many bytes; another
+    /// signature does not decode, a short one fails to read.
+    #[test]
+    fn an_hd_style_string_starts_with_its_signature() {
+        let bytes = [0x60, 0x0a, 2, 0, b'a', b'b'];
+        assert_eq!(
+            (&bytes[..]).read_hd_style_str().unwrap(),
+            Some("ab".to_owned())
+        );
+        let other = [0x61, 0x0a, 1, 0, b'a'];
+        assert!(matches!(
+            (&other[..]).read_hd_style_str(),
+            Err(ReadStringError::DecodeStringError(_))
+        ));
+        assert!(matches!(
+            (&bytes[..5]).read_hd_style_str(),
+            Err(ReadStringError::IoError(_))
+        ));
+    }
 }

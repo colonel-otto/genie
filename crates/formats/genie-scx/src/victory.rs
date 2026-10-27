@@ -418,3 +418,34 @@ impl VictoryInfo {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A points entry from version 2.0 on carries a second attribute and its amount; an older
+    /// one ends after the first amount. Each writes back the bytes it read.
+    #[test]
+    fn a_points_entry_writes_back_the_bytes_of_its_version() {
+        let mut bytes = vec![1u8, 2];
+        for word in [3i32, 4, 5, 6] {
+            bytes.extend(word.to_le_bytes());
+        }
+        bytes.extend([7u8, 8]);
+        bytes.extend(9.5f32.to_le_bytes());
+        let old = bytes.clone();
+        bytes.extend(10i32.to_le_bytes());
+        bytes.extend(11.5f32.to_le_bytes());
+        for (version, input) in [(1.0, &old), (2.0, &bytes)] {
+            let entry = VictoryPointEntry::read_from(input.as_slice(), version).unwrap();
+            let mut out = vec![];
+            entry.write_to(&mut out, version).unwrap();
+            assert_eq!(&out, input, "{version}");
+        }
+        let entry = VictoryPointEntry::read_from(old.as_slice(), 1.0).unwrap();
+        assert_eq!(
+            (entry.attribute1, entry.current_attribute_amount1),
+            (-1, 0.0)
+        );
+    }
+}

@@ -464,3 +464,32 @@ impl RandomMapElevation {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A map elevation's six words, read in file order and written back byte for byte.
+    #[test]
+    fn a_map_elevation_writes_back_its_six_words() {
+        let bytes: Vec<u8> = [30i32, 2, 5, 3, -1, 0]
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .collect();
+        let elevation = RandomMapElevation::read_from(&mut bytes.as_slice()).unwrap();
+        assert_eq!(
+            (
+                elevation.percent,
+                elevation.height,
+                elevation.clumps,
+                elevation.spacing,
+                elevation.base_terrain_type,
+                elevation.base_elevation
+            ),
+            (30, 2, 5, 3, -1, 0)
+        );
+        let mut out = vec![];
+        elevation.write_to(&mut out).unwrap();
+        assert_eq!(out, bytes);
+    }
+}

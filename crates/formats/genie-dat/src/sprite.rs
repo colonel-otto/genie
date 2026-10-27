@@ -264,36 +264,8 @@ impl Sprite {
     /// -1.
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut sprite = Self::default();
-        let mut name = [0u8; 21];
-        input.read_exact(&mut name)?;
-        sprite.name =
-            String::from_utf8(name.iter().copied().take_while(|b| *b != 0).collect()).unwrap();
-        let mut filename = [0u8; 13];
-        input.read_exact(&mut filename)?;
-        sprite.filename =
-            String::from_utf8(filename.iter().copied().take_while(|b| *b != 0).collect()).unwrap();
-        sprite.slp_id = {
-            let num = input.read_i32::<LE>()?;
-            if num == -1 {
-                None
-            } else {
-                Some(num.try_into().unwrap())
-            }
-        };
-        sprite.is_loaded = input.read_u8()? != 0;
-        sprite.force_player_color = match input.read_u8()? {
-            0xFF => None,
-            id => Some(id),
-        };
-        sprite.layer = input.read_u8()?;
-        sprite.color_table = input.read_u16::<LE>()?;
-        sprite.transparent_selection = input.read_u8()? != 0;
-        sprite.bounding_box = (
-            input.read_i16::<LE>()?,
-            input.read_i16::<LE>()?,
-            input.read_i16::<LE>()?,
-            input.read_i16::<LE>()?,
-        );
+        sprite.read_names(&mut input)?;
+        sprite.read_display(&mut input)?;
         let num_deltas = input.read_u16::<LE>()?;
         sprite.sound_id = read_opt_u16(&mut input)?;
         let attack_sounds_used = input.read_u8()? != 0;
@@ -336,22 +308,8 @@ impl Sprite {
         if !self.attack_sounds.is_empty() {
             assert_eq!(self.attack_sounds.len(), usize::from(self.num_angles));
         }
-        let mut name = [0u8; 21];
-        (&mut name[..]).write_all(self.name.as_bytes())?;
-        let mut filename = [0u8; 13];
-        (&mut filename[..]).write_all(self.filename.as_bytes())?;
-        output.write_all(&name)?;
-        output.write_all(&filename)?;
-        output.write_i32::<LE>(self.slp_id.map_or(-1, |v| v.try_into().unwrap()))?;
-        output.write_u8(u8::from(self.is_loaded))?;
-        output.write_u8(self.force_player_color.unwrap_or(0xFF))?;
-        output.write_u8(self.layer)?;
-        output.write_u16::<LE>(self.color_table)?;
-        output.write_u8(u8::from(self.transparent_selection))?;
-        output.write_i16::<LE>(self.bounding_box.0)?;
-        output.write_i16::<LE>(self.bounding_box.1)?;
-        output.write_i16::<LE>(self.bounding_box.2)?;
-        output.write_i16::<LE>(self.bounding_box.3)?;
+        self.write_names(output)?;
+        self.write_display(output)?;
 
         output.write_u16::<LE>(self.deltas.len().try_into().unwrap())?;
         output.write_i16::<LE>(self.sound_id.map_or(-1, |v| v.try_into().unwrap()))?;
@@ -373,5 +331,120 @@ impl Sprite {
             sound.write_to(output)?;
         }
         Ok(())
+    }
+
+    /// The name and file name in their fixed fields (to the first NUL) and the SLP id (-1
+    /// none).
+    fn read_names(&mut self, mut input: impl Read) -> Result<()> {
+        let mut name = [0u8; 21];
+        input.read_exact(&mut name)?;
+        self.name =
+            String::from_utf8(name.iter().copied().take_while(|b| *b != 0).collect()).unwrap();
+        let mut filename = [0u8; 13];
+        input.read_exact(&mut filename)?;
+        self.filename =
+            String::from_utf8(filename.iter().copied().take_while(|b| *b != 0).collect()).unwrap();
+        self.slp_id = {
+            let num = input.read_i32::<LE>()?;
+            if num == -1 {
+                None
+            } else {
+                Some(num.try_into().unwrap())
+            }
+        };
+        Ok(())
+    }
+
+    /// Whether it is loaded, the player colour it forces (0xFF none), the layer, the colour
+    /// table, the transparent selection and the bounding box.
+    fn read_display(&mut self, mut input: impl Read) -> Result<()> {
+        self.is_loaded = input.read_u8()? != 0;
+        self.force_player_color = match input.read_u8()? {
+            0xFF => None,
+            id => Some(id),
+        };
+        self.layer = input.read_u8()?;
+        self.color_table = input.read_u16::<LE>()?;
+        self.transparent_selection = input.read_u8()? != 0;
+        self.bounding_box = (
+            input.read_i16::<LE>()?,
+            input.read_i16::<LE>()?,
+            input.read_i16::<LE>()?,
+            input.read_i16::<LE>()?,
+        );
+        Ok(())
+    }
+
+    /// The name and file name in their fixed fields and the SLP id (-1 none).
+    fn write_names<W: Write>(&self, output: &mut W) -> Result<()> {
+        let mut name = [0u8; 21];
+        (&mut name[..]).write_all(self.name.as_bytes())?;
+        let mut filename = [0u8; 13];
+        (&mut filename[..]).write_all(self.filename.as_bytes())?;
+        output.write_all(&name)?;
+        output.write_all(&filename)?;
+        output.write_i32::<LE>(self.slp_id.map_or(-1, |v| v.try_into().unwrap()))?;
+        Ok(())
+    }
+
+    /// Whether it is loaded, the forced player colour (0xFF none), the layer, the colour table,
+    /// the transparent selection and the bounding box.
+    fn write_display<W: Write>(&self, output: &mut W) -> Result<()> {
+        output.write_u8(u8::from(self.is_loaded))?;
+        output.write_u8(self.force_player_color.unwrap_or(0xFF))?;
+        output.write_u8(self.layer)?;
+        output.write_u16::<LE>(self.color_table)?;
+        output.write_u8(u8::from(self.transparent_selection))?;
+        output.write_i16::<LE>(self.bounding_box.0)?;
+        output.write_i16::<LE>(self.bounding_box.1)?;
+        output.write_i16::<LE>(self.bounding_box.2)?;
+        output.write_i16::<LE>(self.bounding_box.3)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The names in their fixed fields of 21 and 13 bytes, the SLP id -1 for none; the display
+    /// settings with 0xFF for no forced colour; both read back.
+    #[test]
+    fn a_sprite_s_names_and_display_read_back() {
+        let sprite = Sprite {
+            name: "ARCHR_AN".to_owned(),
+            filename: "a.slp".to_owned(),
+            slp_id: None,
+            force_player_color: Some(2),
+            layer: 5,
+            bounding_box: (1, -2, 3, -4),
+            ..Sprite::default()
+        };
+        let mut bytes = vec![];
+        sprite.write_names(&mut bytes).unwrap();
+        assert_eq!(bytes.len(), 21 + 13 + 4);
+        assert_eq!(bytes[34..], [0xff; 4]);
+        sprite.write_display(&mut bytes).unwrap();
+        let mut read = Sprite::default();
+        let mut input = bytes.as_slice();
+        read.read_names(&mut input).unwrap();
+        read.read_display(&mut input).unwrap();
+        assert_eq!(input, []);
+        assert_eq!(
+            (
+                read.name.as_str(),
+                read.filename.as_str(),
+                read.slp_id,
+                read.force_player_color,
+                read.layer,
+                read.bounding_box
+            ),
+            ("ARCHR_AN", "a.slp", None, Some(2), 5, (1, -2, 3, -4))
+        );
+        let long = Sprite {
+            name: "x".repeat(22),
+            ..Sprite::default()
+        };
+        assert!(long.write_names(&mut vec![]).is_err());
     }
 }

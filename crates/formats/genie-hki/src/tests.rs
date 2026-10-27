@@ -242,3 +242,31 @@ fn test_keycode_to_bindings_map() -> anyhow::Result<()> {
     assert_eq!(Some(&hotkeys), map.get(&65));
     Ok(())
 }
+
+/// A hotkey file writes back what it read: each test file, written and read again, gives the
+/// same hotkeys.
+#[test]
+fn a_hotkey_file_writes_back_what_it_read() -> anyhow::Result<()> {
+    for name in ["aoc1", "aoc2", "aoc3", "hd0", "hd1", "wk"] {
+        let mut f = File::open(format!("test/files/{name}.hki"))?;
+        let info = HotkeyInfo::from(&mut f)?;
+        let mut out = vec![];
+        info.write_to(&mut out)?;
+        let again = HotkeyInfo::from(&mut out.as_slice())?;
+        assert_eq!(again, info, "{name}");
+    }
+    Ok(())
+}
+
+/// The keycodes a language file names: F1 to F9, F11 to F24 (F10 opens the menu) and the
+/// three mouse wheel and button codes 253 to 255; none for any other.
+#[test]
+fn a_keycode_s_string_id_names_the_function_keys_and_mouse_codes() {
+    let named: Vec<(i32, i32)> = (0..300)
+        .filter_map(|k| keycode_id(k).map(|id| (k, id)))
+        .collect();
+    let mut expected: Vec<(i32, i32)> = (112..=120).map(|k| (k, k + 19433)).collect();
+    expected.extend((122..=135).map(|k| (k, k + 19433)));
+    expected.extend([(253, 19712), (254, 19711), (255, 19710)]);
+    assert_eq!(named, expected);
+}

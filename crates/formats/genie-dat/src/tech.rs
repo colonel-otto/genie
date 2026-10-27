@@ -244,10 +244,38 @@ impl Tech {
     /// # Panics
     ///
     /// Panics if a string key is a name rather than a number.
-    // The format stores the string IDs and the name length as u16 (truncated, as before); the
-    // count of required techs is at most 6.
+    // The format stores the name length as u16 (truncated, as before).
     #[allow(clippy::cast_possible_truncation)]
     pub fn write_to(&self, mut output: impl Write) -> Result<()> {
+        self.write_requirements(&mut output)?;
+        output.write_u16::<LE>(self.civilization_id.map_into().unwrap_or(0xFFFF))?;
+        output.write_u16::<LE>(self.full_tech_mode)?;
+        output.write_u16::<LE>(self.location.map_into().unwrap_or(0xFFFF))?;
+        output.write_u16::<LE>(dll_id_u16(self.language_dll_name.as_ref()))?;
+        output.write_u16::<LE>(dll_id_u16(self.language_dll_description.as_ref()))?;
+        output.write_u16::<LE>(self.time)?;
+        output.write_u16::<LE>(self.time2)?;
+        output.write_u16::<LE>(self.type_)?;
+        output.write_u16::<LE>(self.icon_id.map_into().unwrap_or(0xFFFF))?;
+        output.write_u8(self.button_id)?;
+        output.write_u32::<LE>(match self.language_dll_help {
+            Some(StringKey::Num(id)) => id,
+            Some(_) => unreachable!("cannot use named string keys in dat files"),
+            None => 0xFFFF_FFFF,
+        })?;
+        output.write_u32::<LE>(self.help_page_id)?;
+        output.write_u32::<LE>(self.hotkey.map_into().unwrap_or(0xFFFF_FFFF))?;
+        let (encoded, _encoding, _failed) = WINDOWS_1252.encode(&self.name);
+        output.write_u16::<LE>(encoded.len() as u16)?;
+        output.write_all(encoded.as_ref())?;
+        Ok(())
+    }
+
+    /// The six required techs' slots (-1 for none), the three effects' (type 0xFFFF for none)
+    /// and the count of required techs.
+    // The count of required techs is at most 6.
+    #[allow(clippy::cast_possible_truncation)]
+    fn write_requirements(&self, mut output: impl Write) -> Result<()> {
         for i in 0..6 {
             match self.required_techs.get(i) {
                 Some(&id) => output.write_u16::<LE>(id.into())?,
@@ -265,35 +293,54 @@ impl Tech {
                 .write_to(&mut output)?,
             }
         }
-        output.write_u16::<LE>(self.required_techs.len() as u16)?;
-        output.write_u16::<LE>(self.civilization_id.map_into().unwrap_or(0xFFFF))?;
-        output.write_u16::<LE>(self.full_tech_mode)?;
-        output.write_u16::<LE>(self.location.map_into().unwrap_or(0xFFFF))?;
-        output.write_u16::<LE>(match self.language_dll_name {
-            Some(StringKey::Num(id)) => id as u16,
-            Some(_) => unreachable!("cannot use named string keys in dat files"),
-            None => 0xFFFF,
-        })?;
-        output.write_u16::<LE>(match self.language_dll_description {
-            Some(StringKey::Num(id)) => id as u16,
-            Some(_) => unreachable!("cannot use named string keys in dat files"),
-            None => 0xFFFF,
-        })?;
-        output.write_u16::<LE>(self.time)?;
-        output.write_u16::<LE>(self.time2)?;
-        output.write_u16::<LE>(self.type_)?;
-        output.write_u16::<LE>(self.icon_id.map_into().unwrap_or(0xFFFF))?;
-        output.write_u8(self.button_id)?;
-        output.write_u32::<LE>(match self.language_dll_help {
-            Some(StringKey::Num(id)) => id,
-            Some(_) => unreachable!("cannot use named string keys in dat files"),
-            None => 0xFFFF_FFFF,
-        })?;
-        output.write_u32::<LE>(self.help_page_id)?;
-        output.write_u32::<LE>(self.hotkey.map_into().unwrap_or(0xFFFF_FFFF))?;
-        let (encoded, _encoding, _failed) = WINDOWS_1252.encode(&self.name);
-        output.write_u16::<LE>(encoded.len() as u16)?;
-        output.write_all(encoded.as_ref())?;
-        Ok(())
+        output.write_u16::<LE>(self.required_techs.len() as u16)
+    }
+}
+
+/// A language string's id as the format's u16, 0xFFFF for none.
+///
+/// # Panics
+///
+/// Panics on a named string key, which a data file cannot hold.
+// The format stores the string IDs as u16 (truncated, as before).
+#[allow(clippy::cast_possible_truncation)]
+fn dll_id_u16(key: Option<&StringKey>) -> u16 {
+    match key {
+        Some(StringKey::Num(id)) => *id as u16,
+        Some(_) => unreachable!("cannot use named string keys in dat files"),
+        None => 0xFFFF,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A language string's id fits the format's u16, none is 0xFFFF.
+    #[test]
+    fn a_language_string_s_id_is_its_number() {
+        assert_eq!(dll_id_u16(Some(&StringKey::from(7198u32))), 7198);
+        assert_eq!(dll_id_u16(None), 0xFFFF);
+    }
+
+    /// A named string key has no place in a data file.
+    #[test]
+    #[should_panic(expected = "cannot use named string keys in dat files")]
+    fn a_named_string_key_cannot_be_written() {
+        let _ = dll_id_u16(Some(&StringKey::from("NAME")));
+    }
+
+    /// The requirements: six tech slots (-1 for none), three effect slots (type 0xFFFF for
+    /// none) and the count of required techs.
+    #[test]
+    fn a_tech_s_requirements_fill_their_slots() {
+        let tech = Tech::default();
+        let mut bytes = vec![];
+        tech.write_requirements(&mut bytes).unwrap();
+        assert_eq!(bytes[..12], [0xff; 12]);
+        let effect_len = (bytes.len() - 12 - 2) / 3;
+        assert_eq!(bytes[12..14], [0xff, 0xff]);
+        assert_eq!(bytes[12 + effect_len..14 + effect_len], [0xff, 0xff]);
+        assert_eq!(bytes[bytes.len() - 2..], [0, 0]);
     }
 }

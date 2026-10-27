@@ -111,248 +111,33 @@ impl TribeScen {
     ///
     /// Returns an error if reading fails, if a string cannot be decoded, or if a diplomatic
     /// stance or starting age is unknown.
-    // A sequential reader of the format's fields, in file order. The format stores the disabled
-    // counts as i32 (never negative in valid files); a guessed count is at most 20.
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_possible_wrap
-    )]
     pub fn read_from(mut input: impl Read) -> Result<Self> {
         let mut base = RGEScen::read_from(&mut input)?;
         let version = base.version;
-
-        let mut player_start_resources = vec![PlayerStartResources::default(); 16];
-
-        // Moved to RGEScen in 1.13
-        if version <= 1.13 {
-            for name in &mut base.player_names {
-                *name = input.read_str(256)?;
-            }
-
-            for (properties, start_resources) in base
-                .player_base_properties
-                .iter_mut()
-                .zip(player_start_resources.iter_mut())
-            {
-                properties.active = input.read_i32::<LE>()?;
-                *start_resources = PlayerStartResources::read_from(&mut input, version)?;
-                properties.player_type = input.read_i32::<LE>()?;
-                properties.civilization = input.read_i32::<LE>()?;
-                properties.posture = input.read_i32::<LE>()?;
-            }
-        } else {
-            for resources in &mut player_start_resources {
-                *resources = PlayerStartResources::read_from(&mut input, version)?;
-            }
-        }
-
-        if version >= 1.02 {
-            let sep = input.read_i32::<LE>()?;
-            debug_assert_eq!(sep, -99);
-        }
-
+        let player_start_resources = read_players(&mut input, &mut base)?;
+        read_separator(&mut input, version)?;
         let victory = VictoryInfo::read_from(&mut input)?;
         let victory_all_flag = input.read_i32::<LE>()? != 0;
-
-        let mp_victory_type = if version >= 1.13 {
-            input.read_i32::<LE>()?
-        } else {
-            4
-        };
-        let victory_score = if version >= 1.13 {
-            input.read_i32::<LE>()?
-        } else {
-            900
-        };
-        let victory_time = if version >= 1.13 {
-            input.read_i32::<LE>()?
-        } else {
-            9000
-        };
-
+        let (mp_victory_type, victory_score, victory_time) = read_mp_victory(&mut input, version)?;
         log::debug!("Victory values: {mp_victory_type} {victory_score} {victory_time}");
-
-        let mut diplomacy = vec![vec![DiplomaticStance::Neutral; 16]; 16];
-        for player_diplomacy in &mut diplomacy {
-            for stance in player_diplomacy.iter_mut() {
-                *stance = DiplomaticStance::try_from(input.read_i32::<LE>()?)?;
-            }
-        }
-
-        let mut legacy_victory_info = vec![vec![LegacyVictoryInfo::default(); 12]; 16];
-        for list in &mut legacy_victory_info {
-            for victory_info in list.iter_mut() {
-                *victory_info = LegacyVictoryInfo::read_from(&mut input)?;
-            }
-        }
-
-        if version >= 1.02 {
-            let sep = input.read_i32::<LE>()?;
-            debug_assert_eq!(sep, -99);
-        }
-
+        let diplomacy = read_diplomacy(&mut input)?;
+        let legacy_victory_info = read_legacy_victory_info(&mut input)?;
+        read_separator(&mut input, version)?;
         let mut allied_victory = vec![0i32; 16];
         for setting in &mut allied_victory {
             *setting = input.read_i32::<LE>()?;
         }
-
-        let (teams_locked, can_change_teams, random_start_locations, max_teams) = if version >= 1.24
-        {
-            (
-                input.read_i8()? != 0,
-                input.read_i8()? != 0,
-                input.read_i8()? != 0,
-                input.read_u8()?,
-            )
-        } else if f32_eq!(version, 1.23) {
-            (input.read_i32::<LE>()? != 0, true, true, 4)
-        } else {
-            (false, true, true, 4)
-        };
-
-        let mut num_disabled_techs = vec![0; 16];
-        let mut disabled_techs = vec![vec![]; 16];
-        let mut num_disabled_units = vec![0; 16];
-        let mut disabled_units = vec![vec![]; 16];
-        let mut num_disabled_buildings = vec![0; 16];
-        let mut disabled_buildings = vec![vec![]; 16];
-
-        if version >= 1.28 {
-            // Definitive Edition only stores the exact number of disabled techs/units/buildings.
-            input.read_i32_into::<LE>(&mut num_disabled_techs)?;
-            for (player_disabled_techs, &num) in
-                disabled_techs.iter_mut().zip(num_disabled_techs.iter())
-            {
-                *player_disabled_techs = vec![0; num as usize];
-                input.read_i32_into::<LE>(player_disabled_techs)?;
-            }
-
-            input.read_i32_into::<LE>(&mut num_disabled_units)?;
-            for (player_disabled_units, &num) in
-                disabled_units.iter_mut().zip(num_disabled_units.iter())
-            {
-                *player_disabled_units = vec![0; num as usize];
-                input.read_i32_into::<LE>(player_disabled_units)?;
-            }
-
-            input.read_i32_into::<LE>(&mut num_disabled_buildings)?;
-            for (player_disabled_buildings, &num) in disabled_buildings
-                .iter_mut()
-                .zip(num_disabled_buildings.iter())
-            {
-                *player_disabled_buildings = vec![0; num as usize];
-                input.read_i32_into::<LE>(player_disabled_buildings)?;
-            }
-        } else if version >= 1.18 {
-            // AoC and friends store up to 20 or 30 of each.
-            input.read_i32_into::<LE>(&mut num_disabled_techs)?;
-            for player_disabled_techs in &mut disabled_techs {
-                *player_disabled_techs = vec![0; 30];
-                input.read_i32_into::<LE>(player_disabled_techs)?;
-            }
-
-            input.read_i32_into::<LE>(&mut num_disabled_units)?;
-            for player_disabled_units in &mut disabled_units {
-                *player_disabled_units = vec![0; 30];
-                input.read_i32_into::<LE>(player_disabled_units)?;
-            }
-
-            input.read_i32_into::<LE>(&mut num_disabled_buildings)?;
-            let max_disabled_buildings = if version >= 1.25 { 30 } else { 20 };
-            for player_disabled_buildings in &mut disabled_buildings {
-                *player_disabled_buildings = vec![0; max_disabled_buildings];
-                input.read_i32_into::<LE>(player_disabled_buildings)?;
-            }
-        } else if version > 1.03 {
-            // Old scenarios only allowed disabling up to 20 techs per player.
-            for i in 0..16 {
-                let player_disabled_techs = &mut disabled_techs[i];
-                *player_disabled_techs = vec![0; 20];
-                input.read_i32_into::<LE>(player_disabled_techs)?;
-                // The number of disabled techs wasn't stored either, so we need to guess it!
-                num_disabled_techs[i] = player_disabled_techs
-                    .iter()
-                    .position(|val| *val <= 0)
-                    .map_or(0, |index| (index as i32) + 1);
-            }
-        } else {
-            // <= 1.03 did not support disabling anything
-        }
-
-        let combat_mode = if version > 1.04 {
-            input.read_i32::<LE>()?
-        } else {
-            0
-        };
-        let (naval_mode, all_techs) = if version >= 1.12 {
-            (input.read_i32::<LE>()?, input.read_i32::<LE>()? != 0)
-        } else {
-            (0, false)
-        };
-
-        let mut player_start_ages = vec![StartingAge::Default; 16];
-        if version > 1.05 {
-            for start_age in &mut player_start_ages {
-                *start_age = StartingAge::try_from(input.read_i32::<LE>()?, version)?;
-            }
-        }
-
+        let (teams_locked, can_change_teams, random_start_locations, max_teams) =
+            read_teams(&mut input, version)?;
+        let disabled = DisabledLists::read_from(&mut input, version)?;
+        let (combat_mode, naval_mode, all_techs) = read_modes(&mut input, version)?;
+        let player_start_ages = read_start_ages(&mut input, version)?;
         log::debug!("starting ages: {player_start_ages:?}");
-
-        if version >= 1.02 {
-            let sep = input.read_i32::<LE>()?;
-            debug_assert_eq!(sep, -99);
-        }
-
-        let view = if version >= 1.19 {
-            (input.read_i32::<LE>()?, input.read_i32::<LE>()?)
-        } else {
-            (-1, -1)
-        };
-
-        let map_type = if version >= 1.21 {
-            match input.read_i32::<LE>()? {
-                // HD Edition uses -2 instead of -1?
-                -2 | -1 => None,
-                id => Some(id),
-            }
-        } else {
-            None
-        };
-
-        let mut base_priorities = vec![0; 16];
-        if version >= 1.24 {
-            input.read_i8_into(&mut base_priorities)?;
-        }
-
-        let mut water_definition = None;
-        let mut color_mood = None;
-        let mut collide_and_correct = false;
-        let mut villager_force_drop = false;
-
-        if version >= 1.35 {
-            // Duplicated here from TriggerSystem … we can discard it because the TriggerSystem
-            // will read the same number later.
-            let _trigger_count = input.read_u32::<LE>()?;
-        }
-        if version >= 1.30 {
-            let _str_signature = input.read_u16::<LE>()?;
-            water_definition = input.read_u16_length_prefixed_str()?;
-        }
-
-        if version >= 1.32 {
-            let _str_signature = input.read_u16::<LE>()?;
-            color_mood = input.read_u16_length_prefixed_str()?;
-        }
-        if version >= 1.36 {
-            collide_and_correct = input.read_u8()? != 0;
-        }
-        if version >= 1.37 {
-            villager_force_drop = input.read_u8()? != 0;
-        }
-
+        read_separator(&mut input, version)?;
+        let view = read_view(&mut input, version)?;
+        let map_type = read_map_type(&mut input, version)?;
+        let base_priorities = read_base_priorities(&mut input, version)?;
+        let options = DeOptions::read_from(&mut input, version)?;
         Ok(Self {
             base,
             player_start_resources,
@@ -368,12 +153,12 @@ impl TribeScen {
             can_change_teams,
             random_start_locations,
             max_teams,
-            num_disabled_techs,
-            disabled_techs,
-            num_disabled_units,
-            disabled_units,
-            num_disabled_buildings,
-            disabled_buildings,
+            num_disabled_techs: disabled.num_techs,
+            disabled_techs: disabled.techs,
+            num_disabled_units: disabled.num_units,
+            disabled_units: disabled.units,
+            num_disabled_buildings: disabled.num_buildings,
+            disabled_buildings: disabled.buildings,
             combat_mode,
             naval_mode,
             all_techs,
@@ -381,10 +166,504 @@ impl TribeScen {
             view,
             map_type,
             base_priorities,
-            water_definition,
-            color_mood,
-            collide_and_correct,
-            villager_force_drop,
+            water_definition: options.water_definition,
+            color_mood: options.color_mood,
+            collide_and_correct: options.collide_and_correct,
+            villager_force_drop: options.villager_force_drop,
         })
+    }
+}
+
+/// The separator -99 the versions from 1.02 on put between sections.
+pub(super) fn read_separator(mut input: impl Read, version: f32) -> Result<()> {
+    if version >= 1.02 {
+        let sep = input.read_i32::<LE>()?;
+        debug_assert_eq!(sep, -99);
+    }
+    Ok(())
+}
+
+/// The players' starting resources; up to 1.13 (before the base held them) each player's name,
+/// then its activity, resources, type, civilization and posture, into `base`.
+fn read_players(mut input: impl Read, base: &mut RGEScen) -> Result<Vec<PlayerStartResources>> {
+    let version = base.version;
+    let mut player_start_resources = vec![PlayerStartResources::default(); 16];
+    // Moved to RGEScen in 1.13
+    if version <= 1.13 {
+        for name in &mut base.player_names {
+            *name = input.read_str(256)?;
+        }
+        for (properties, start_resources) in base
+            .player_base_properties
+            .iter_mut()
+            .zip(player_start_resources.iter_mut())
+        {
+            properties.active = input.read_i32::<LE>()?;
+            *start_resources = PlayerStartResources::read_from(&mut input, version)?;
+            properties.player_type = input.read_i32::<LE>()?;
+            properties.civilization = input.read_i32::<LE>()?;
+            properties.posture = input.read_i32::<LE>()?;
+        }
+    } else {
+        for resources in &mut player_start_resources {
+            *resources = PlayerStartResources::read_from(&mut input, version)?;
+        }
+    }
+    Ok(player_start_resources)
+}
+
+/// The multiplayer victory's type, score and time from 1.13 on; before, 4, 900 and 9000.
+fn read_mp_victory(mut input: impl Read, version: f32) -> Result<(i32, i32, i32)> {
+    if version >= 1.13 {
+        Ok((
+            input.read_i32::<LE>()?,
+            input.read_i32::<LE>()?,
+            input.read_i32::<LE>()?,
+        ))
+    } else {
+        Ok((4, 900, 9000))
+    }
+}
+
+/// Each player's stance toward each player, 16 by 16.
+fn read_diplomacy(mut input: impl Read) -> Result<Vec<Vec<DiplomaticStance>>> {
+    let mut diplomacy = vec![vec![DiplomaticStance::Neutral; 16]; 16];
+    for player_diplomacy in &mut diplomacy {
+        for stance in player_diplomacy.iter_mut() {
+            *stance = DiplomaticStance::try_from(input.read_i32::<LE>()?)?;
+        }
+    }
+    Ok(diplomacy)
+}
+
+/// Each player's 12 legacy victory entries.
+fn read_legacy_victory_info(mut input: impl Read) -> Result<Vec<Vec<LegacyVictoryInfo>>> {
+    let mut legacy_victory_info = vec![vec![LegacyVictoryInfo::default(); 12]; 16];
+    for list in &mut legacy_victory_info {
+        for victory_info in list.iter_mut() {
+            *victory_info = LegacyVictoryInfo::read_from(&mut input)?;
+        }
+    }
+    Ok(legacy_victory_info)
+}
+
+/// The teams' settings: locked, changeable, random start locations and the most teams from
+/// 1.24 on; 1.23 stores only the lock; before, unlocked, changeable, random and 4.
+fn read_teams(mut input: impl Read, version: f32) -> Result<(bool, bool, bool, u8)> {
+    if version >= 1.24 {
+        Ok((
+            input.read_i8()? != 0,
+            input.read_i8()? != 0,
+            input.read_i8()? != 0,
+            input.read_u8()?,
+        ))
+    } else if f32_eq!(version, 1.23) {
+        Ok((input.read_i32::<LE>()? != 0, true, true, 4))
+    } else {
+        Ok((false, true, true, 4))
+    }
+}
+
+/// The combat mode after 1.04, the naval mode and "All Techs" from 1.12 on; else 0, 0, off.
+fn read_modes(mut input: impl Read, version: f32) -> Result<(i32, i32, bool)> {
+    let combat_mode = if version > 1.04 {
+        input.read_i32::<LE>()?
+    } else {
+        0
+    };
+    let (naval_mode, all_techs) = if version >= 1.12 {
+        (input.read_i32::<LE>()?, input.read_i32::<LE>()? != 0)
+    } else {
+        (0, false)
+    };
+    Ok((combat_mode, naval_mode, all_techs))
+}
+
+/// Each player's starting age after 1.05; before, the game's default.
+fn read_start_ages(mut input: impl Read, version: f32) -> Result<Vec<StartingAge>> {
+    let mut player_start_ages = vec![StartingAge::Default; 16];
+    if version > 1.05 {
+        for start_age in &mut player_start_ages {
+            *start_age = StartingAge::try_from(input.read_i32::<LE>()?, version)?;
+        }
+    }
+    Ok(player_start_ages)
+}
+
+/// The initial view from 1.19 on; (-1, -1) before.
+fn read_view(mut input: impl Read, version: f32) -> Result<(i32, i32)> {
+    if version >= 1.19 {
+        Ok((input.read_i32::<LE>()?, input.read_i32::<LE>()?))
+    } else {
+        Ok((-1, -1))
+    }
+}
+
+/// The map type from 1.21 on, -1 and -2 none.
+fn read_map_type(mut input: impl Read, version: f32) -> Result<Option<i32>> {
+    if version >= 1.21 {
+        match input.read_i32::<LE>()? {
+            // HD Edition uses -2 instead of -1?
+            -2 | -1 => Ok(None),
+            id => Ok(Some(id)),
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+/// The players' base priorities from 1.24 on; 0 before.
+fn read_base_priorities(mut input: impl Read, version: f32) -> Result<Vec<i8>> {
+    let mut base_priorities = vec![0; 16];
+    if version >= 1.24 {
+        input.read_i8_into(&mut base_priorities)?;
+    }
+    Ok(base_priorities)
+}
+
+/// Definitive Edition's options.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct DeOptions {
+    water_definition: Option<String>,
+    color_mood: Option<String>,
+    collide_and_correct: bool,
+    villager_force_drop: bool,
+}
+
+impl DeOptions {
+    /// The options as `version` stores them: the water definition from 1.30 on, the colour
+    /// mood from 1.32 on, collide-and-correct from 1.36 on and the villagers' force drop from
+    /// 1.37 on.
+    fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
+        let mut options = Self::default();
+        if version >= 1.35 {
+            // Duplicated here from TriggerSystem … we can discard it because the TriggerSystem
+            // will read the same number later.
+            let _trigger_count = input.read_u32::<LE>()?;
+        }
+        if version >= 1.30 {
+            let _str_signature = input.read_u16::<LE>()?;
+            options.water_definition = input.read_u16_length_prefixed_str()?;
+        }
+        if version >= 1.32 {
+            let _str_signature = input.read_u16::<LE>()?;
+            options.color_mood = input.read_u16_length_prefixed_str()?;
+        }
+        if version >= 1.36 {
+            options.collide_and_correct = input.read_u8()? != 0;
+        }
+        if version >= 1.37 {
+            options.villager_force_drop = input.read_u8()? != 0;
+        }
+        Ok(options)
+    }
+}
+
+/// The disabled technologies, units and buildings per player, each with its count.
+struct DisabledLists {
+    num_techs: Vec<i32>,
+    techs: Vec<Vec<i32>>,
+    num_units: Vec<i32>,
+    units: Vec<Vec<i32>>,
+    num_buildings: Vec<i32>,
+    buildings: Vec<Vec<i32>>,
+}
+
+impl DisabledLists {
+    /// The lists as `version` stores them: from 1.28 on each count and that many ids; from 1.18
+    /// on the counts and 30 ids each (buildings 20 before 1.25); after 1.03 20 technologies
+    /// without a count (guessed); before, none.
+    fn read_from(mut input: impl Read, version: f32) -> Result<Self> {
+        let mut lists = Self {
+            num_techs: vec![0; 16],
+            techs: vec![vec![]; 16],
+            num_units: vec![0; 16],
+            units: vec![vec![]; 16],
+            num_buildings: vec![0; 16],
+            buildings: vec![vec![]; 16],
+        };
+        if version >= 1.28 {
+            // Definitive Edition only stores the exact number of disabled techs/units/buildings.
+            read_counted(&mut input, &mut lists.num_techs, &mut lists.techs)?;
+            read_counted(&mut input, &mut lists.num_units, &mut lists.units)?;
+            read_counted(&mut input, &mut lists.num_buildings, &mut lists.buildings)?;
+        } else if version >= 1.18 {
+            // AoC and friends store up to 20 or 30 of each.
+            read_fixed(&mut input, &mut lists.num_techs, &mut lists.techs, 30)?;
+            read_fixed(&mut input, &mut lists.num_units, &mut lists.units, 30)?;
+            let max_disabled_buildings = if version >= 1.25 { 30 } else { 20 };
+            read_fixed(
+                &mut input,
+                &mut lists.num_buildings,
+                &mut lists.buildings,
+                max_disabled_buildings,
+            )?;
+        } else if version > 1.03 {
+            read_guessed_techs(&mut input, &mut lists.num_techs, &mut lists.techs)?;
+        } else {
+            // <= 1.03 did not support disabling anything
+        }
+        Ok(lists)
+    }
+}
+
+/// The counts, then each list of its count's ids.
+// The format stores the counts as i32, never negative in valid files.
+#[allow(clippy::cast_sign_loss)]
+fn read_counted(mut input: impl Read, nums: &mut [i32], lists: &mut [Vec<i32>]) -> Result<()> {
+    input.read_i32_into::<LE>(nums)?;
+    for (list, &num) in lists.iter_mut().zip(nums.iter()) {
+        *list = vec![0; num as usize];
+        input.read_i32_into::<LE>(list)?;
+    }
+    Ok(())
+}
+
+/// The counts, then each list of `size` ids.
+fn read_fixed(
+    mut input: impl Read,
+    nums: &mut [i32],
+    lists: &mut [Vec<i32>],
+    size: usize,
+) -> Result<()> {
+    input.read_i32_into::<LE>(nums)?;
+    for list in lists {
+        *list = vec![0; size];
+        input.read_i32_into::<LE>(list)?;
+    }
+    Ok(())
+}
+
+/// Old scenarios' 20 technologies per player without a count: the guessed count is the place
+/// of the first id not above 0, plus one (0 when every id is above 0).
+// A guessed count is at most 20.
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+fn read_guessed_techs(
+    mut input: impl Read,
+    nums: &mut [i32],
+    lists: &mut [Vec<i32>],
+) -> Result<()> {
+    // Old scenarios only allowed disabling up to 20 techs per player.
+    for (num, list) in nums.iter_mut().zip(lists.iter_mut()) {
+        *list = vec![0; 20];
+        input.read_i32_into::<LE>(list)?;
+        // The number of disabled techs wasn't stored either, so we need to guess it!
+        *num = list
+            .iter()
+            .position(|val| *val <= 0)
+            .map_or(0, |index| (index as i32) + 1);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Little-endian words.
+    fn words(ws: &[i32]) -> Vec<u8> {
+        ws.iter().flat_map(|w| w.to_le_bytes()).collect()
+    }
+
+    /// The separator from 1.02 on; before, nothing.
+    #[test]
+    fn the_separator_stands_from_1_02_on() {
+        let bytes = words(&[-99]);
+        let mut input = bytes.as_slice();
+        read_separator(&mut input, 1.01).unwrap();
+        assert_eq!(input.len(), 4);
+        read_separator(&mut input, 1.02).unwrap();
+        assert_eq!(input, []);
+    }
+
+    /// The multiplayer victory from 1.13 on; before, type 4, score 900, time 9000.
+    #[test]
+    fn the_multiplayer_victory_reads_from_1_13_on() {
+        let bytes = words(&[1, 2, 3]);
+        assert_eq!(
+            read_mp_victory(bytes.as_slice(), 1.12).unwrap(),
+            (4, 900, 9000)
+        );
+        assert_eq!(read_mp_victory(bytes.as_slice(), 1.13).unwrap(), (1, 2, 3));
+    }
+
+    /// The teams: four bytes from 1.24 on, the lock's word in 1.23, the defaults before.
+    #[test]
+    fn the_teams_settings_follow_their_version() {
+        let bytes = [1u8, 0, 1, 8];
+        assert_eq!(
+            read_teams(bytes.as_slice(), 1.24).unwrap(),
+            (true, false, true, 8)
+        );
+        let lock = words(&[1]);
+        assert_eq!(
+            read_teams(lock.as_slice(), 1.23).unwrap(),
+            (true, true, true, 4)
+        );
+        assert_eq!(read_teams(&[][..], 1.22).unwrap(), (false, true, true, 4));
+    }
+
+    /// The combat mode after 1.04, the naval mode and "All Techs" from 1.12 on.
+    #[test]
+    fn the_modes_follow_their_version() {
+        let bytes = words(&[5, 6, 1]);
+        assert_eq!(read_modes(bytes.as_slice(), 1.04).unwrap(), (0, 0, false));
+        assert_eq!(read_modes(bytes.as_slice(), 1.05).unwrap(), (5, 0, false));
+        assert_eq!(read_modes(bytes.as_slice(), 1.12).unwrap(), (5, 6, true));
+    }
+
+    /// The starting ages after 1.05, each in its version's numbering; an unknown one fails.
+    #[test]
+    fn the_starting_ages_read_after_1_05() {
+        let mut ages = vec![2; 16];
+        ages[0] = 0;
+        let bytes = words(&ages);
+        assert_eq!(
+            read_start_ages(bytes.as_slice(), 1.05).unwrap(),
+            vec![StartingAge::Default; 16]
+        );
+        let read = read_start_ages(bytes.as_slice(), 1.24).unwrap();
+        assert_eq!(
+            (read[0], read[1]),
+            (StartingAge::DarkAge, StartingAge::CastleAge)
+        );
+        let read = read_start_ages(bytes.as_slice(), 1.25).unwrap();
+        assert_eq!(
+            (read[0], read[1]),
+            (StartingAge::Default, StartingAge::DarkAge)
+        );
+        assert!(read_start_ages(words(&[9; 16]).as_slice(), 1.25).is_err());
+    }
+
+    /// The view from 1.19 on, the map type from 1.21 on (-1 and -2 none), the base priorities
+    /// from 1.24 on.
+    #[test]
+    fn the_view_map_type_and_priorities_follow_their_version() {
+        let view = words(&[10, 20]);
+        assert_eq!(read_view(view.as_slice(), 1.18).unwrap(), (-1, -1));
+        assert_eq!(read_view(view.as_slice(), 1.19).unwrap(), (10, 20));
+        assert_eq!(read_map_type(words(&[7]).as_slice(), 1.20).unwrap(), None);
+        assert_eq!(
+            read_map_type(words(&[7]).as_slice(), 1.21).unwrap(),
+            Some(7)
+        );
+        for none in [-1, -2] {
+            assert_eq!(
+                read_map_type(words(&[none]).as_slice(), 1.21).unwrap(),
+                None
+            );
+        }
+        let priorities = [3u8; 16];
+        assert_eq!(
+            read_base_priorities(priorities.as_slice(), 1.23).unwrap(),
+            vec![0; 16]
+        );
+        assert_eq!(
+            read_base_priorities(priorities.as_slice(), 1.24).unwrap(),
+            vec![3; 16]
+        );
+    }
+
+    /// Definitive Edition's options: the trigger count from 1.35 on, the water definition from
+    /// 1.30 on, the colour mood from 1.32 on, the two flags from 1.36 and 1.37 on.
+    #[test]
+    fn the_de_options_follow_their_version() {
+        let string = |text: &str| {
+            let mut b = vec![0x60, 0x0a];
+            b.extend(u16::try_from(text.len()).unwrap().to_le_bytes());
+            b.extend(text.as_bytes());
+            b
+        };
+        assert_eq!(
+            DeOptions::read_from(&[][..], 1.29).unwrap(),
+            DeOptions::default()
+        );
+        let water = string("WATER");
+        assert_eq!(
+            DeOptions::read_from(water.as_slice(), 1.30).unwrap(),
+            DeOptions {
+                water_definition: Some("WATER".to_owned()),
+                ..DeOptions::default()
+            }
+        );
+        let mut all = words(&[4]);
+        all.extend(string("W"));
+        all.extend(string("MOOD"));
+        all.extend([1, 1]);
+        assert_eq!(
+            DeOptions::read_from(all.as_slice(), 1.37).unwrap(),
+            DeOptions {
+                water_definition: Some("W".to_owned()),
+                color_mood: Some("MOOD".to_owned()),
+                collide_and_correct: true,
+                villager_force_drop: true,
+            }
+        );
+    }
+
+    /// The disabled lists: from 1.28 on each count and that many ids; from 1.18 on the counts
+    /// and 30 ids each, buildings 20 before 1.25; after 1.03 the technologies alone, guessed;
+    /// before, none.
+    #[test]
+    fn the_disabled_lists_follow_their_version() {
+        let mut counts = vec![0; 16];
+        counts[0] = 2;
+        let mut exact = words(&counts);
+        exact.extend(words(&[101, 102]));
+        exact.extend(words(&[0; 16]));
+        exact.extend(words(&counts));
+        exact.extend(words(&[70, 71]));
+        let lists = DisabledLists::read_from(exact.as_slice(), 1.28).unwrap();
+        assert_eq!(
+            (&lists.techs[0], &lists.units[0], &lists.buildings[0]),
+            (&vec![101, 102], &vec![], &vec![70, 71])
+        );
+        for (version, buildings) in [(1.18, 20), (1.25, 30)] {
+            let mut fixed = vec![];
+            for size in [30, 30, buildings] {
+                fixed.extend(words(&counts));
+                fixed.extend(words(&vec![5; 16 * size]));
+            }
+            let lists = DisabledLists::read_from(fixed.as_slice(), version).unwrap();
+            assert_eq!(
+                (
+                    lists.num_units[0],
+                    lists.techs[0].len(),
+                    lists.buildings[15].len()
+                ),
+                (2, 30, buildings)
+            );
+        }
+        let old = words(&[[3, 4, -1].as_slice(), &[0; 17], &[0; 20 * 15]].concat());
+        let lists = DisabledLists::read_from(old.as_slice(), 1.04).unwrap();
+        assert_eq!((lists.num_techs[0], lists.num_techs[1]), (3, 1));
+        assert_eq!(lists.techs[0][..3], [3, 4, -1]);
+        let none = DisabledLists::read_from(&[][..], 1.03).unwrap();
+        assert!(none.techs.iter().all(Vec::is_empty));
+    }
+
+    /// The guessed count: the place of the first id not above 0, plus one; 0 when every id is
+    /// above 0.
+    #[test]
+    fn an_old_scenario_s_count_is_guessed_from_its_ids() {
+        let bytes = words(&[[1; 20].as_slice(), &[0; 20]].concat());
+        let mut nums = [9; 2];
+        let mut lists = [vec![], vec![]];
+        read_guessed_techs(bytes.as_slice(), &mut nums, &mut lists).unwrap();
+        assert_eq!(nums, [0, 1]);
+    }
+
+    /// The stances, 16 by 16; an unknown one fails.
+    #[test]
+    fn the_diplomacy_reads_each_stance() {
+        let mut stances = vec![0; 256];
+        stances[17] = 3;
+        let diplomacy = read_diplomacy(words(&stances).as_slice()).unwrap();
+        assert_eq!(
+            (diplomacy[0][0], diplomacy[1][1]),
+            (DiplomaticStance::Ally, DiplomaticStance::Enemy)
+        );
+        stances[5] = 7;
+        assert!(read_diplomacy(words(&stances).as_slice()).is_err());
     }
 }

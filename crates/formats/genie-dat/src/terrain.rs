@@ -419,19 +419,7 @@ impl Terrain {
             terrain.blend_priority = Some(input.read_i32::<LE>()?);
             terrain.blend_mode = Some(input.read_i32::<LE>()?);
         }
-        terrain.minimap_color_high = input.read_u8()?;
-        terrain.minimap_color_medium = input.read_u8()?;
-        terrain.minimap_color_low = input.read_u8()?;
-        terrain.minimap_color_cliff_lt = input.read_u8()?;
-        terrain.minimap_color_cliff_rt = input.read_u8()?;
-        terrain.passable_terrain_id = match input.read_u8()? {
-            0xFF => None,
-            id => Some(id),
-        };
-        terrain.impassable_terrain_id = match input.read_u8()? {
-            0xFF => None,
-            id => Some(id),
-        };
+        terrain.read_minimap(&mut input)?;
         terrain.animation = TerrainAnimation::read_from(&mut input)?;
         for _ in 0..19 {
             terrain
@@ -445,25 +433,40 @@ impl Terrain {
             terrain.borders.push(input.read_i16::<LE>()?);
         }
 
-        let mut terrain_objects = vec![TerrainObject::default(); 30];
-        for object in &mut terrain_objects {
-            object.object_id = input.read_u16::<LE>()?.into();
-        }
-        for object in &mut terrain_objects {
-            object.density = input.read_i16::<LE>()?;
-        }
-        for object in &mut terrain_objects {
-            object.placement_flag = input.read_i8()?;
-        }
-
-        let _num_terrain_objects = input.read_u16::<LE>()?;
-        // Why is num_terrain_objects always 0?
-        // terrain_objects.truncate(num_terrain_objects as usize);
-        terrain.terrain_objects = terrain_objects;
-
+        terrain.terrain_objects = read_terrain_objects(&mut input)?;
         let _padding = input.read_u16::<LE>()?;
 
         Ok(terrain)
+    }
+
+    /// The minimap's five colours and the passable and impassable terrains (0xFF none).
+    fn read_minimap(&mut self, mut input: impl Read) -> Result<()> {
+        self.minimap_color_high = input.read_u8()?;
+        self.minimap_color_medium = input.read_u8()?;
+        self.minimap_color_low = input.read_u8()?;
+        self.minimap_color_cliff_lt = input.read_u8()?;
+        self.minimap_color_cliff_rt = input.read_u8()?;
+        self.passable_terrain_id = match input.read_u8()? {
+            0xFF => None,
+            id => Some(id),
+        };
+        self.impassable_terrain_id = match input.read_u8()? {
+            0xFF => None,
+            id => Some(id),
+        };
+        Ok(())
+    }
+
+    /// The minimap's five colours and the passable and impassable terrains (0xFF none).
+    fn write_minimap<W: Write>(&self, output: &mut W) -> Result<()> {
+        output.write_u8(self.minimap_color_high)?;
+        output.write_u8(self.minimap_color_medium)?;
+        output.write_u8(self.minimap_color_low)?;
+        output.write_u8(self.minimap_color_cliff_lt)?;
+        output.write_u8(self.minimap_color_cliff_rt)?;
+        output.write_u8(self.passable_terrain_id.unwrap_or(0xFF))?;
+        output.write_u8(self.impassable_terrain_id.unwrap_or(0xFF))?;
+        Ok(())
     }
 
     /// Serialize this object to a binary output stream.
@@ -476,8 +479,6 @@ impl Terrain {
     ///
     /// Panics if there are not exactly `num_terrains` borders, or if the SLP ID or the terrain to
     /// draw does not fit the format's signed field.
-    // The format stores the count of terrain objects as a u16 (truncated, as before).
-    #[allow(clippy::cast_possible_truncation)]
     pub fn write_to<W: Write>(
         &self,
         output: &mut W,
@@ -494,13 +495,7 @@ impl Terrain {
         output.write_i32::<LE>(self.sound_id.map_or(-1, i32::from))?;
         output.write_i32::<LE>(self.blend_priority.unwrap_or(-1))?;
         output.write_i32::<LE>(self.blend_mode.unwrap_or(-1))?;
-        output.write_u8(self.minimap_color_high)?;
-        output.write_u8(self.minimap_color_medium)?;
-        output.write_u8(self.minimap_color_low)?;
-        output.write_u8(self.minimap_color_cliff_lt)?;
-        output.write_u8(self.minimap_color_cliff_rt)?;
-        output.write_u8(self.passable_terrain_id.unwrap_or(0xFF))?;
-        output.write_u8(self.impassable_terrain_id.unwrap_or(0xFF))?;
+        self.write_minimap(output)?;
         self.animation.write_to(output)?;
         for frame in &self.elevation_sprites {
             frame.write_to(output)?;
@@ -515,33 +510,58 @@ impl Terrain {
             output.write_i16::<LE>(*border)?;
         }
 
-        for index in 0..30 {
-            if let Some(object) = self.terrain_objects.get(index) {
-                output.write_u16::<LE>(object.object_id.into())?;
-            } else {
-                output.write_u16::<LE>(0)?;
-            }
-        }
-        for index in 0..30 {
-            if let Some(object) = self.terrain_objects.get(index) {
-                output.write_i16::<LE>(object.density)?;
-            } else {
-                output.write_i16::<LE>(0)?;
-            }
-        }
-        for index in 0..30 {
-            if let Some(object) = self.terrain_objects.get(index) {
-                output.write_i8(object.placement_flag)?;
-            } else {
-                output.write_i8(0)?;
-            }
-        }
-        output.write_u16::<LE>(self.terrain_objects.len() as u16)?;
-
+        write_terrain_objects(output, &self.terrain_objects)?;
         output.write_u16::<LE>(0)?; // padding
 
         Ok(())
     }
+}
+
+/// A terrain's 30 objects: their ids, densities and placement flags, each in a block, then a
+/// count the files hold as 0 (read past).
+fn read_terrain_objects(mut input: impl Read) -> Result<Vec<TerrainObject>> {
+    let mut terrain_objects = vec![TerrainObject::default(); 30];
+    for object in &mut terrain_objects {
+        object.object_id = input.read_u16::<LE>()?.into();
+    }
+    for object in &mut terrain_objects {
+        object.density = input.read_i16::<LE>()?;
+    }
+    for object in &mut terrain_objects {
+        object.placement_flag = input.read_i8()?;
+    }
+    let _num_terrain_objects = input.read_u16::<LE>()?;
+    // Why is num_terrain_objects always 0?
+    // terrain_objects.truncate(num_terrain_objects as usize);
+    Ok(terrain_objects)
+}
+
+/// A terrain's 30 object slots (0 past its objects) in three blocks, then their count.
+// The format stores the count of terrain objects as a u16 (truncated, as before).
+#[allow(clippy::cast_possible_truncation)]
+fn write_terrain_objects<W: Write>(output: &mut W, objects: &[TerrainObject]) -> Result<()> {
+    for index in 0..30 {
+        if let Some(object) = objects.get(index) {
+            output.write_u16::<LE>(object.object_id.into())?;
+        } else {
+            output.write_u16::<LE>(0)?;
+        }
+    }
+    for index in 0..30 {
+        if let Some(object) = objects.get(index) {
+            output.write_i16::<LE>(object.density)?;
+        } else {
+            output.write_i16::<LE>(0)?;
+        }
+    }
+    for index in 0..30 {
+        if let Some(object) = objects.get(index) {
+            output.write_i8(object.placement_flag)?;
+        } else {
+            output.write_i8(0)?;
+        }
+    }
+    output.write_u16::<LE>(objects.len() as u16)
 }
 
 impl TerrainBorder {
@@ -630,4 +650,60 @@ fn write_terrain_name<W: Write>(output: &mut W, name: &TerrainName) -> Result<()
     bytes[..name.len()].copy_from_slice(name.as_bytes());
     output.write_all(bytes)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A terrain's objects: 30 slots in three blocks (0 past the objects given), then their
+    /// count, which the reader passes over; read back, the 30 slots.
+    #[test]
+    fn a_terrain_s_objects_fill_thirty_slots() {
+        let objects = [TerrainObject {
+            object_id: 59.into(),
+            density: 3,
+            placement_flag: 1,
+        }];
+        let mut bytes = vec![];
+        write_terrain_objects(&mut bytes, &objects).unwrap();
+        assert_eq!(bytes.len(), 30 * 5 + 2);
+        assert_eq!(bytes[bytes.len() - 2..], [1, 0]);
+        let read = read_terrain_objects(bytes.as_slice()).unwrap();
+        assert_eq!(read.len(), 30);
+        assert_eq!(
+            (
+                u16::from(read[0].object_id),
+                read[0].density,
+                read[0].placement_flag
+            ),
+            (59, 3, 1)
+        );
+        assert_eq!((u16::from(read[1].object_id), read[29].density), (0, 0));
+    }
+
+    /// The minimap's colours and the passable and impassable terrains, 0xFF for none.
+    #[test]
+    fn a_terrain_s_minimap_reads_back_with_none_as_0xff() {
+        let terrain = Terrain {
+            minimap_color_high: 1,
+            minimap_color_cliff_rt: 5,
+            passable_terrain_id: Some(2),
+            impassable_terrain_id: None,
+            ..Terrain::default()
+        };
+        let mut bytes = vec![];
+        terrain.write_minimap(&mut bytes).unwrap();
+        assert_eq!(bytes, [1, 0, 0, 0, 5, 2, 0xff]);
+        let mut read = Terrain::default();
+        read.read_minimap(bytes.as_slice()).unwrap();
+        assert_eq!(
+            (
+                read.minimap_color_cliff_rt,
+                read.passable_terrain_id,
+                read.impassable_terrain_id
+            ),
+            (5, Some(2), None)
+        );
+    }
 }

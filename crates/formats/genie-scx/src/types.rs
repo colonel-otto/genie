@@ -576,4 +576,29 @@ mod genie_error_tests {
         );
         assert!(std::error::Error::source(&e).is_some());
     }
+
+    /// The victory conditions' ids 0 to 11 and any other kept as it is, both ways.
+    #[test]
+    fn a_victory_condition_s_id_reads_and_writes_both_ways() {
+        let named = [
+            VictoryCondition::Capture,
+            VictoryCondition::Create,
+            VictoryCondition::Destroy,
+            VictoryCondition::DestroyMultiple,
+            VictoryCondition::BringToArea,
+            VictoryCondition::BringToObject,
+            VictoryCondition::Attribute,
+            VictoryCondition::Explore,
+            VictoryCondition::CreateInArea,
+            VictoryCondition::DestroyAll,
+            VictoryCondition::DestroyPlayer,
+            VictoryCondition::Points,
+        ];
+        for (id, condition) in (0u8..).zip(named) {
+            assert_eq!(VictoryCondition::from(id), condition);
+            assert_eq!(u8::from(condition), id);
+        }
+        assert_eq!(VictoryCondition::from(12), VictoryCondition::Other(12));
+        assert_eq!(u8::from(VictoryCondition::Other(200)), 200);
+    }
 }
