@@ -1081,3 +1081,261 @@ fn a_heal_to_full_holds_the_master_s_hit_points() {
     let mut hp = f32::NAN;
     assert!(!heal_hp(&mut hp, &mut [0.0; 2], 60, 1.0));
 }
+
+/// The blast's ledger (`+0xbb8`): an annex keeps its damage on its main building among the
+/// targets, another building on itself, any other object on none; an annex whose main
+/// building is not among them fails. The values read through it: an annex its main building's
+/// share, defense and damage so far, a building the attacker's share and its own.
+#[test]
+fn a_blast_keeps_a_building_s_damage_on_it_or_its_main_building() {
+    use crate::combat::damage::blasts::{blast_ledger, ledger_values};
+    let mut main = house();
+    main.source.area_damage = 0.25;
+    main.blast_defense = 3;
+    main.building.as_mut().unwrap().blast_taken = 7.0;
+    let mut annex = Victim {
+        id: 501,
+        building: Some(Building {
+            main: Some(500),
+            blast_taken: 2.0,
+            ..Building::default()
+        }),
+        ..house()
+    };
+    let mut lamb = sheep();
+    let all = [&mut main, &mut annex, &mut lamb];
+    assert_eq!(blast_ledger(&all, 0), Ok(Some(0)));
+    assert_eq!(blast_ledger(&all, 1), Ok(Some(0)));
+    assert_eq!(blast_ledger(&all, 2), Ok(None));
+    let a = Attacker {
+        area_damage: 0.5,
+        ..Attacker::default()
+    };
+    assert_eq!(ledger_values(&all, 1, Some(0), &a), (0.25, 3, 7.0));
+    assert_eq!(ledger_values(&all, 0, Some(0), &a), (0.5, 3, 7.0));
+    assert_eq!(ledger_values(&all, 2, None, &a), (0.5, 0, 0.0));
+    let mut orphan = Victim {
+        building: Some(Building {
+            main: Some(999),
+            ..Building::default()
+        }),
+        ..house()
+    };
+    assert!(blast_ledger(&[&mut orphan], 0).is_err());
+}
+
+/// The square distance to an object's box: 0 inside it, the gaps past its radii beyond; none
+/// at or past the blast's radius; a NaN radius gives no gap on its axis.
+#[test]
+fn a_blast_measures_to_an_object_s_box_within_its_radius() {
+    use crate::combat::damage::blasts::blast_distance2;
+    let at = |x: f32, y: f32, radius| Victim {
+        position: [x, y, 0.0],
+        radius,
+        ..sheep()
+    };
+    let center = [10.0, 10.0, 0.0];
+    assert_eq!(
+        blast_distance2(&at(10.2, 10.0, [0.5, 0.5]), center, 1.0),
+        Some(0.0)
+    );
+    assert_eq!(
+        blast_distance2(&at(11.0, 10.0, [0.5, 0.5]), center, 1.0),
+        Some(0.25)
+    );
+    assert_eq!(
+        blast_distance2(&at(11.5, 10.0, [0.5, 0.5]), center, 1.0),
+        None
+    );
+    assert_eq!(
+        blast_distance2(&at(12.0, 10.5, [f32::NAN, 0.25]), center, 1.0),
+        Some(0.0625)
+    );
+}
+
+/// The blast's factor: an ally's `friendly_fire_damage` scales it; a melee blast falls off
+/// with the level's bit 6 only and not on `main`; a missile's falls off everywhere, but at
+/// distance 0 on a `main` building.
+#[test]
+fn a_blast_s_factor_takes_the_friendly_fire_and_the_falloff() {
+    use crate::combat::damage::blasts::blast_falloff;
+    let attacker = hunter();
+    let melee = Attacker {
+        blast_level: 2,
+        ..attacker.source
+    };
+    let mut enemy = Victim {
+        player: 2,
+        ..sheep()
+    };
+    let d2 = 0.25;
+    assert_eq!(
+        blast_falloff(&attacker, &melee, &enemy, (1.0, d2), false),
+        1.0
+    );
+    let falling = Attacker {
+        blast_level: 0x42,
+        ..melee
+    };
+    assert_eq!(
+        blast_falloff(&attacker, &falling, &enemy, (1.0, d2), false),
+        0.5
+    );
+    assert_eq!(
+        blast_falloff(&attacker, &falling, &enemy, (1.0, d2), true),
+        1.0
+    );
+    let missile = Attacker {
+        missile: 5,
+        ..melee
+    };
+    assert_eq!(
+        blast_falloff(&attacker, &missile, &enemy, (1.0, d2), true),
+        0.5
+    );
+    let mut main = Victim {
+        player: 2,
+        ..house()
+    };
+    assert_eq!(
+        blast_falloff(&attacker, &missile, &main, (1.0, d2), true),
+        1.0
+    );
+    main.kind = BUILDING;
+    assert_eq!(
+        blast_falloff(&attacker, &missile, &main, (1.0, d2), false),
+        0.5
+    );
+    enemy.player = 1;
+    enemy.armored.as_mut().unwrap().friendly_fire = 0.25;
+    assert_eq!(
+        blast_falloff(&attacker, &melee, &enemy, (1.0, d2), false),
+        0.25
+    );
+}
+
+/// A cone blast (bit 7) leaves out what lies past half a facet of the attacker's facing; a
+/// wide one (bit 5) what lies past its radius or 1.67 facets; a blast of no cone leaves out
+/// nothing; a cone blast of an attacker without a facing fails.
+#[test]
+fn a_cone_blast_leaves_out_what_lies_beside_its_facing() {
+    use crate::combat::damage::blasts::outside_cone;
+    let mut attacker = hunter();
+    attacker.position = [10.0, 10.0, 0.0];
+    let at = |x: f32, y: f32| Victim {
+        position: [x, y, 0.0],
+        ..sheep()
+    };
+    let (front, side, behind) = (at(11.0, 10.0), at(10.7, 10.7), at(9.0, 10.0));
+    let level = |blast_level| Attacker {
+        blast_level,
+        ..attacker.source
+    };
+    assert_eq!(
+        outside_cone(&attacker, &level(2), &behind, (1.0, 0.0)),
+        Ok(false)
+    );
+    assert!(outside_cone(&attacker, &level(0x82), &front, (1.0, 0.0)).is_err());
+    attacker.armored.as_mut().unwrap().facing = Some(Facing {
+        angle: 0.0,
+        facets: 8,
+    });
+    let narrow = level(0x82);
+    assert_eq!(
+        outside_cone(&attacker, &narrow, &front, (1.0, 0.0)),
+        Ok(false)
+    );
+    assert_eq!(
+        outside_cone(&attacker, &narrow, &side, (1.0, 0.0)),
+        Ok(true)
+    );
+    assert_eq!(
+        outside_cone(&attacker, &narrow, &behind, (1.0, 0.0)),
+        Ok(true)
+    );
+    let wide = level(0xa2);
+    assert_eq!(outside_cone(&attacker, &wide, &side, (1.0, 2.0)), Ok(false));
+    assert_eq!(outside_cone(&attacker, &wide, &side, (1.0, 0.5)), Ok(true));
+    assert_eq!(
+        outside_cone(&attacker, &wide, &behind, (1.0, 2.0)),
+        Ok(true)
+    );
+}
+
+/// A fixed blast damage takes the share's size alone; below 1 hit point the object has 0
+/// and holds nothing, a player's combat unit that had 1 counted killed by the attacker,
+/// Gaia's not; an attacker with a kill bonus task fails there.
+#[test]
+fn a_fixed_blast_damage_takes_its_size_and_kills_below_one() {
+    use crate::combat::damage::blasts::fixed_blast;
+    let attacker = hunter();
+    let mut t = Victim {
+        player: 2,
+        amount: 5.0,
+        ..sheep()
+    };
+    fixed_blast(&attacker, &attacker.source, &mut t, -5.0).unwrap();
+    assert_eq!((t.hp, t.killed), (9.0, None));
+    fixed_blast(&attacker, &attacker.source, &mut t, -20.0).unwrap();
+    assert_eq!((t.hp, t.amount), (0.0, 0.0));
+    assert_eq!(
+        t.killed.map(|k| (k.attacker, k.attacker_player)),
+        Some((10029, 1))
+    );
+    let mut gaia = Victim {
+        player: 0,
+        ..sheep()
+    };
+    fixed_blast(&attacker, &attacker.source, &mut gaia, -20.0).unwrap();
+    assert_eq!((gaia.hp, gaia.killed), (0.0, None));
+    let bonus = Attacker {
+        kill_bonus_tasks: true,
+        ..attacker.source
+    };
+    let mut t = Victim {
+        player: 2,
+        ..sheep()
+    };
+    assert!(fixed_blast(&attacker, &bonus, &mut t, -20.0).is_err());
+}
+
+/// The blast's hit takes the attacker's weapons at the factor; a building's loss goes onto
+/// its ledger. An annex passes its hit on to its main building, and its own loss (none) onto
+/// the main building's ledger.
+#[test]
+fn a_blast_s_hit_adds_a_building_s_loss_to_its_ledger() {
+    use crate::combat::damage::blasts::blast_hit;
+    let mut attacker = hunter();
+    let weapons = [(4, 10)];
+    let mut enemy = Victim {
+        player: 2,
+        ..sheep()
+    };
+    blast_hit(
+        &mut attacker,
+        &mut [&mut enemy],
+        0,
+        (&weapons, 0.5),
+        (None, 0.0),
+    )
+    .unwrap();
+    assert_eq!(enemy.hp, 9.0);
+    let mut main = house();
+    let mut annex = Victim {
+        id: 501,
+        building: Some(Building {
+            main: Some(500),
+            ..Building::default()
+        }),
+        ..house()
+    };
+    let mut all = [&mut main, &mut annex];
+    blast_hit(&mut attacker, &mut all, 0, (&weapons, 1.0), (Some(0), 0.0)).unwrap();
+    let lost = 550.0 - all[0].hp;
+    assert!(0.0 < lost);
+    assert_eq!(all[0].building.as_ref().map(|b| b.blast_taken), Some(lost));
+    blast_hit(&mut attacker, &mut all, 1, (&weapons, 1.0), (Some(0), 0.0)).unwrap();
+    assert_eq!(all[1].hp, 550.0);
+    assert!(all[0].hp < 550.0 - lost);
+    assert_eq!(all[0].building.as_ref().map(|b| b.blast_taken), Some(lost));
+}

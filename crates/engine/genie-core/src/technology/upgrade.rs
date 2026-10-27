@@ -232,7 +232,6 @@ impl World {
         keep: bool,
     ) -> Result<(), GenieError> {
         let kind = old.kind;
-        let id = self.object_at(place).id;
         if master_type::BUILDING <= kind {
             let (from, to) = (
                 old.building.as_ref().map_or(-1, |b| b.construction_sprite),
@@ -253,66 +252,124 @@ impl World {
             self.show_if(place, old.attack_sprite, new.attack_sprite)?;
         }
         if master_type::ACTION <= kind {
-            self.actions_take_master(place, old, new);
-            if !keep
-                && let Some(top) = self.object_at(place).top_action_kind()
-                && !new.tasks.iter().any(|t| t.action_type == top)
-                && let Place::Live(q, i) = place
-            {
-                self.object_stop(q, i)?;
-            }
+            self.upgrade_actions(place, (old, new), keep)?;
         }
         if master_type::MOVING <= kind {
-            let shows = |s: i16| {
-                self.object_at(place)
-                    .sprite
-                    .is_some_and(|a| 0 <= s && a.graphic.id == s)
-            };
-            if shows(old.move_sprite) {
-                if 0 <= new.move_sprite {
-                    self.show(place, new.move_sprite)?;
-                }
-            } else if shows(old.run_sprite) && 0 <= new.run_sprite {
-                self.show(place, new.run_sprite)?;
-            }
+            self.upgrade_moving_sprite(place, (old, new))?;
         }
         // the static object's part
         if !keep {
+            self.hand_in_load(p, place, old)?;
+        }
+        self.upgrade_sight(place, (old, new), keep);
+        self.upgrade_hit_points(place, (old, new))?;
+        if !keep {
+            self.object_at_mut(place).life.master_id = new.id;
             if master_type::COMBAT <= kind {
                 crate::objects::lifecycle::death_parts::count_class(
                     &mut self.players[p].attributes,
-                    old,
-                    -1.0,
+                    new,
+                    1.0,
                 );
             }
-            let u = self.object_at(place);
-            if master_type::COMBAT <= kind
-                && old.class == VILLAGER
-                && 0.0 < u.life.amount
-                && 0 <= u.life.attribute_type
-            {
-                let kind = if FOODS.contains(&u.life.attribute_type) {
-                    0
-                } else {
-                    u.life.attribute_type
-                };
-                let amount = u.life.amount;
-                let mut adds = Vec::new();
-                crate::gathering::gather::unit::give_load(
-                    (&self.spatial.relations, self.players[p].sharing),
-                    p,
-                    &mut adds,
-                    kind,
-                    amount,
-                )?;
-                for (k, v) in adds {
-                    self.players[p].add_attribute(k, v)?;
-                }
-                let u = self.object_at_mut(place);
-                u.life.attribute_type = -1;
-                u.life.amount = 0.0;
-            }
         }
+        if class_changed {
+            self.new_unit_ai(p, place, new)?;
+        }
+        Ok(())
+    }
+
+    /// The action object's part of an upgrade from `old` to `new` (`FUN_14106a530`): each action
+    /// takes `new`'s task of its type, class and target ([`World::actions_take_master`]); without
+    /// `keep` a top action of a type `new` has no task for stops the object (slot 0x148).
+    fn upgrade_actions(
+        &mut self,
+        place: Place,
+        (old, new): (&Master, &Master),
+        keep: bool,
+    ) -> Result<(), GenieError> {
+        self.actions_take_master(place, old, new);
+        if !keep
+            && let Some(top) = self.object_at(place).top_action_kind()
+            && !new.tasks.iter().any(|t| t.action_type == top)
+            && let Place::Live(q, i) = place
+        {
+            self.object_stop(q, i)?;
+        }
+        Ok(())
+    }
+
+    /// The moving object's part of an upgrade (`FUN_14114cb80`): an object showing `old`'s
+    /// walking sprite shows `new`'s (when it has one), else one showing `old`'s running sprite
+    /// shows `new`'s.
+    fn upgrade_moving_sprite(
+        &mut self,
+        place: Place,
+        (old, new): (&Master, &Master),
+    ) -> Result<(), GenieError> {
+        let shows = |s: i16| {
+            self.object_at(place)
+                .sprite
+                .is_some_and(|a| 0 <= s && a.graphic.id == s)
+        };
+        if shows(old.move_sprite) {
+            if 0 <= new.move_sprite {
+                self.show(place, new.move_sprite)?;
+            }
+        } else if shows(old.run_sprite) && 0 <= new.run_sprite {
+            self.show(place, new.run_sprite)?;
+        }
+        Ok(())
+    }
+
+    /// The static object's part of an upgrade from `old` without its master kept
+    /// (`FUN_141186580`): a combat object leaves its class counters
+    /// ([`crate::objects::lifecycle::death_parts::count_class`] with −1) and a villager's load
+    /// goes to its player (slot 0xf8 with 1 and 1, the foods as food).
+    fn hand_in_load(&mut self, p: usize, place: Place, old: &Master) -> Result<(), GenieError> {
+        let kind = old.kind;
+        if master_type::COMBAT <= kind {
+            crate::objects::lifecycle::death_parts::count_class(
+                &mut self.players[p].attributes,
+                old,
+                -1.0,
+            );
+        }
+        let u = self.object_at(place);
+        if master_type::COMBAT <= kind
+            && old.class == VILLAGER
+            && 0.0 < u.life.amount
+            && 0 <= u.life.attribute_type
+        {
+            let kind = if FOODS.contains(&u.life.attribute_type) {
+                0
+            } else {
+                u.life.attribute_type
+            };
+            let amount = u.life.amount;
+            let mut adds = Vec::new();
+            crate::gathering::gather::unit::give_load(
+                (&self.spatial.relations, self.players[p].sharing),
+                p,
+                &mut adds,
+                kind,
+                amount,
+            )?;
+            for (k, v) in adds {
+                self.players[p].add_attribute(k, v)?;
+            }
+            let u = self.object_at_mut(place);
+            u.life.attribute_type = -1;
+            u.life.amount = 0.0;
+        }
+        Ok(())
+    }
+
+    /// An upgrade's sight (`FUN_141186580`): an object in state 2 on the map, not inside
+    /// another, takes its sight off and on again with its line of sight moved by the change
+    /// from `old`'s to `new`'s (slots 0x1d8 and 0x1d0); without `keep` its seer takes `new`'s id.
+    fn upgrade_sight(&mut self, place: Place, (old, new): (&Master, &Master), keep: bool) {
+        let id = self.object_at(place).id;
         let u = self.object_at(place);
         if u.life.state == 2
             && u.life.inside.is_none()
@@ -337,6 +394,19 @@ impl World {
                 }
             }
         }
+    }
+
+    /// An upgrade's hit points and sprites (`FUN_141186580`): the hit points take their share of
+    /// `new`'s (`old`'s damage sprites at full hit points first, in state 2,
+    /// [`damage_sprites`]); showing `old`'s standing, second standing, dying or undead sprite
+    /// the object shows `new`'s; a combat object of two masters with charges takes the change
+    /// of the maximum (`+0x9e0`); in state 2 the damage sprites again with `new`.
+    fn upgrade_hit_points(
+        &mut self,
+        place: Place,
+        (old, new): (&Master, &Master),
+    ) -> Result<(), GenieError> {
+        let kind = old.kind;
         let u = self.object_at(place);
         let most = f32::from(old.hit_points);
         let share = if most.abs() <= NO_HIT_POINTS {
@@ -381,19 +451,6 @@ impl World {
         }
         if state == 2 {
             let _ = self.damage_sprites_at(place, new, held)?;
-        }
-        if !keep {
-            self.object_at_mut(place).life.master_id = new.id;
-            if master_type::COMBAT <= kind {
-                crate::objects::lifecycle::death_parts::count_class(
-                    &mut self.players[p].attributes,
-                    new,
-                    1.0,
-                );
-            }
-        }
-        if class_changed {
-            self.new_unit_ai(p, place, new)?;
         }
         Ok(())
     }
@@ -1006,5 +1063,249 @@ mod tests {
         let mut t = upgrade_world();
         t.upgrade_objects(0, 4, 5, 0, None).unwrap();
         assert_eq!(t.players[0].tracker.list(4), [10]);
+    }
+    /// A world of player 0 holding `objects`, its masters `masters`, its graphics `graphics`
+    /// (each animated) and 300 attributes.
+    fn one_player(objects: Vec<Unit>, masters: Vec<Master>, graphics: &[i16]) -> World {
+        let player = crate::world::Player {
+            objects,
+            attributes: vec![0.0; 300],
+            ..crate::world::Player::default()
+        };
+        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+        t.masters = vec![Masters::new(masters)];
+        t.graphics = graphics.iter().map(|&id| (id, graphic(id))).collect();
+        t
+    }
+
+    /// `FUN_14106a530`'s stop: without the master kept, a forager whose new master has no task
+    /// for its top Gather stops (the Gather goes); kept, or with a Gather task, it goes on.
+    #[test]
+    fn an_upgrade_stops_a_top_action_the_new_master_has_no_task_for() {
+        let mut t = crate::world::tests::forage_world();
+        t.gather_command(1, 0, 600).unwrap();
+        let old = t.masters[1].get(120).unwrap().clone();
+        let bare = Master {
+            id: 121,
+            tasks: Vec::new(),
+            ..old.clone()
+        };
+        let place = Place::Live(1, 0);
+        let mut kept = t.clone();
+        kept.upgrade_actions(place, (&old, &bare), true).unwrap();
+        assert!(kept.players[1].objects[0].gather.is_some());
+        let mut same = t.clone();
+        same.upgrade_actions(place, (&old, &old), false).unwrap();
+        assert!(same.players[1].objects[0].gather.is_some());
+        t.upgrade_actions(place, (&old, &bare), false).unwrap();
+        assert!(t.players[1].objects[0].gather.is_none());
+    }
+
+    /// `FUN_14114cb80`: an object showing the old master's walking sprite shows the new one's,
+    /// and keeps its sprite when the new master has none; one showing the running sprite shows
+    /// the new running sprite; any other sprite stays.
+    #[test]
+    fn an_upgrade_s_moving_object_shows_the_new_walking_or_running_sprite() {
+        let old = Master {
+            id: 4,
+            move_sprite: 100,
+            run_sprite: 101,
+            ..Master::default()
+        };
+        let new = Master {
+            id: 5,
+            move_sprite: 200,
+            run_sprite: 201,
+            ..Master::default()
+        };
+        let shown = |at: i16, new: &Master| {
+            let mut u = object(10, 4, 2, 10.0);
+            u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
+                graphic(at),
+                &mut Well512::default(),
+            ));
+            let mut t = one_player(vec![u], vec![old.clone()], &[100, 101, 102, 200, 201]);
+            t.upgrade_moving_sprite(Place::Live(0, 0), (&old, new))
+                .unwrap();
+            t.players[0].objects[0].sprite.map(|s| s.graphic.id)
+        };
+        assert_eq!(shown(100, &new), Some(200));
+        assert_eq!(shown(101, &new), Some(201));
+        assert_eq!(shown(102, &new), Some(102));
+        let walkless = Master {
+            move_sprite: -1,
+            ..new
+        };
+        assert_eq!(shown(100, &walkless), Some(100));
+    }
+
+    /// `FUN_141186580` without the master kept: a combat object leaves its class's counter; a
+    /// villager's load goes to its player (berries as food, wood as wood) and its hands empty;
+    /// another combat object, an empty load or one of no kind stays.
+    #[test]
+    fn an_upgrade_hands_a_villager_s_load_to_its_player() {
+        let villager = Master {
+            id: 83,
+            kind: master_type::COMBAT,
+            class: VILLAGER,
+            hit_points: 25,
+            ..Master::default()
+        };
+        let soldier = Master {
+            id: 4,
+            class: 6,
+            ..villager.clone()
+        };
+        let load = |master: &Master, kind, amount| {
+            let mut v = object(10, master.id, 2, 25.0);
+            (v.life.attribute_type, v.life.amount) = (kind, amount);
+            let mut t = one_player(vec![v], vec![master.clone()], &[]);
+            t.players[0].attributes[37] = 1.0;
+            t.hand_in_load(0, Place::Live(0, 0), master).unwrap();
+            let v = &t.players[0].objects[0];
+            (
+                (v.life.attribute_type, v.life.amount),
+                [t.players[0].resources[0], t.players[0].resources[1]],
+                t.players[0].attributes[37],
+            )
+        };
+        assert_eq!(load(&villager, 17, 10.0), ((-1, 0.0), [10.0, 0.0], 0.0));
+        assert_eq!(load(&villager, 1, 6.0), ((-1, 0.0), [0.0, 6.0], 0.0));
+        assert_eq!(load(&villager, 1, 0.0), ((1, 0.0), [0.0, 0.0], 0.0));
+        assert_eq!(load(&villager, -1, 6.0), ((-1, 6.0), [0.0, 0.0], 0.0));
+        assert_eq!(load(&soldier, 1, 6.0).0, (1, 6.0));
+    }
+
+    /// The upgrade's sight: an object in state 2 on the map takes its sight again with its line
+    /// of sight moved by the masters' change (a powerup of 1 kept: 5 to 7), its seer the new
+    /// master's id unless the master is kept; one inside another or not in state 2 keeps it.
+    #[test]
+    fn an_upgrade_moves_the_line_of_sight_by_the_masters_change() {
+        let old = Master {
+            id: 4,
+            line_of_sight: 4.0,
+            ..Master::default()
+        };
+        let new = Master {
+            id: 5,
+            line_of_sight: 6.0,
+            ..Master::default()
+        };
+        let sighted = |state: u8, inside: Option<i32>, keep: bool| {
+            let mut u = object(10, 4, state, 10.0);
+            u.position = [5.5, 5.5, 0.0];
+            u.life.inside = inside;
+            let mut t = one_player(vec![u], vec![old.clone()], &[]);
+            t.spatial = crate::map::spatial::Spatial::new([20, 20]);
+            t.spatial.insert(
+                10,
+                crate::map::spatial::Placed {
+                    position: [5.5, 5.5, 0.0],
+                    radius: [0.2, 0.2],
+                    class: 6,
+                    player: 0,
+                    master: 4,
+                    obstruction_type: 0,
+                    buildable_on: 0,
+                    tall: true,
+                    speed: 0.0,
+                    unknown: None,
+                    obstruction: None,
+                },
+            );
+            let map = || crate::vision::visibility::VisibleMap {
+                counts: vec![0; 400],
+                explored: 0,
+            };
+            let mut v = crate::vision::visibility::Visibility::new(
+                20,
+                20,
+                vec![map()],
+                vec![0; 400],
+                Vec::new(),
+                0,
+                vec![false],
+            );
+            v.add_seer(
+                10,
+                crate::vision::visibility::Seer {
+                    player: 0,
+                    master: 4,
+                    los: 5.0,
+                    state: 2,
+                    explored: true,
+                    building: None,
+                    umv: 0,
+                    capture: 0,
+                    kind: 70,
+                },
+            );
+            t.spatial.sight = Some(v);
+            t.upgrade_sight(Place::Live(0, 0), (&old, &new), keep);
+            let seer = t.spatial.sight.as_ref().and_then(|v| v.seer(10)).copied();
+            seer.map(|s| (s.los, s.master))
+        };
+        assert_eq!(sighted(2, None, false), Some((7.0, 5)));
+        assert_eq!(sighted(2, None, true), Some((7.0, 4)));
+        assert_eq!(sighted(2, Some(99), false), Some((5.0, 4)));
+        assert_eq!(sighted(4, None, false), Some((5.0, 4)));
+    }
+
+    /// The upgrade's hit points: the share of the old maximum carries to the new one (none
+    /// from a master of no hit points); the standing, second standing, dying and undead
+    /// sprites shown become the new master's; a combat object of two charged masters takes
+    /// the change of the maximum charge.
+    #[test]
+    fn an_upgrade_carries_the_hit_points_share_the_sprites_and_the_charge() {
+        let old = Master {
+            id: 4,
+            kind: master_type::COMBAT,
+            hit_points: 40,
+            standing_sprite: 300,
+            standing_sprite_2: Some(301),
+            death_sprite: 302,
+            undead_sprite: 303,
+            charge_type: 1,
+            max_charge: 2.0,
+            ..Master::default()
+        };
+        let new = Master {
+            id: 5,
+            hit_points: 60,
+            standing_sprite: 400,
+            standing_sprite_2: None,
+            death_sprite: 402,
+            undead_sprite: 403,
+            max_charge: 5.0,
+            ..old.clone()
+        };
+        let upgraded = |old: &Master, new: &Master, at: i16| {
+            let mut u = object(10, 4, 4, 20.0);
+            u.sprite = Some(crate::objects::sprite::ActiveSprite::start(
+                graphic(at),
+                &mut Well512::default(),
+            ));
+            let graphics = [300, 301, 302, 303, 304, 400, 402, 403];
+            let mut t = one_player(vec![u], vec![old.clone()], &graphics);
+            t.upgrade_hit_points(Place::Live(0, 0), (old, new)).unwrap();
+            let u = &t.players[0].objects[0];
+            (u.life.hp, u.sprite.map(|s| s.graphic.id), u.charge)
+        };
+        assert_eq!(upgraded(&old, &new, 300), (30.0, Some(400), 3.0));
+        // the second standing sprite becomes the new standing one when the new has none
+        assert_eq!(upgraded(&old, &new, 301).1, Some(400));
+        assert_eq!(upgraded(&old, &new, 302).1, Some(402));
+        assert_eq!(upgraded(&old, &new, 303).1, Some(403));
+        assert_eq!(upgraded(&old, &new, 304).1, Some(304));
+        let none = Master {
+            hit_points: 0,
+            ..old.clone()
+        };
+        assert_eq!(upgraded(&none, &new, 304).0, 0.0);
+        let uncharged = Master {
+            charge_type: 0,
+            ..new
+        };
+        assert_eq!(upgraded(&old, &uncharged, 304).2, 0.0);
     }
 }

@@ -9,7 +9,7 @@ use crate::map::spatial::{
 };
 use crate::unit_ai::{Found, Pick, Search};
 use crate::vision::registry::Record;
-use crate::vision::visibility::Visibility;
+use crate::vision::visibility::{Seer, Visibility};
 
 impl Spatial {
     /// `FormationTransform`'s line query (`FUN_141051900` with flags 0x40, any player, the
@@ -360,36 +360,18 @@ impl Spatial {
         found: &[Vec<Record>; 5],
         filter: Filter,
         reach: &mut Reach<'_>,
-        (moving, shuns, farm): ClosestChecks<'_>,
+        checks: ClosestChecks<'_>,
     ) -> Result<(i32, f32), GenieError> {
-        let class_10 = self.objects.get(&me).is_some_and(|m| m.class == 10);
-        let farmer = self
-            .objects
-            .get(&me)
-            .is_some_and(|m| m.class == FARMER_CLASS);
-        let trapper = self
-            .objects
-            .get(&me)
-            .is_some_and(|m| TRAPPERS.contains(&m.master));
-        // FUN_140c32b50: the relation argument 9 passes over, as a list
-        let spared = match filter.spared {
-            0 => Some(2),
-            1 => Some(3),
-            2 => Some(4),
-            3 => Some(1),
-            _ => None,
+        let at = self.objects.get(&me);
+        let searcher = Searcher {
+            class_10: at.is_some_and(|m| m.class == 10),
+            farmer: at.is_some_and(|m| m.class == FARMER_CLASS),
+            trapper: at.is_some_and(|m| TRAPPERS.contains(&m.master)),
         };
+        let spared = spared_list(filter.spared);
         let mut best: Option<(i32, f32)> = None;
         for (kind, records) in found.iter().enumerate() {
-            // the relation filter (`param_3`): 0 friends and itself, 1 neutrals, 2 enemies, 3
-            // itself, else any
-            let related = match filter.relation {
-                0 => matches!(kind, 1 | 2),
-                1 => kind == 3,
-                2 => kind == 4,
-                3 => kind == 1,
-                _ => true,
-            };
+            let related = related(filter.relation, kind);
             for record in records {
                 if record.id == me {
                     continue;
@@ -401,69 +383,13 @@ impl Spatial {
                 if 7 <= seer.state || !related || spared == Some(kind) {
                     continue;
                 }
-                if filter.group != -1 && i32::from(p.class) != filter.group {
-                    continue;
-                }
-                if filter.master != -1 && i32::from(p.master) != filter.master {
-                    continue;
-                }
-                if filter.state != -1 && i32::from(seer.state) != filter.state {
-                    continue;
-                }
-                if filter.workers != -1 {
-                    return Err(GenieError::unsupported(
-                        "ClosestObject's workers cap (+0x644)",
-                    ));
-                }
-                if filter.state == 0 {
-                    return Err(GenieError::unsupported("ClosestObject's unbuilt farm test"));
-                }
-                // a farm (class 49): not a pasture's livestock (`+0x790`); a pasture is not
-                // modelled; without a master asked for, one without workers that the unit
-                // gathers from (a fish trap for a fishing ship, any other for a villager)
-                if filter.group == PASTURE_CLASS {
-                    let (workers, parent) = farm(record.id).ok_or(GenieError::unsupported(
-                        "a found farm the slice does not hold",
-                    ))?;
-                    if parent != -1 {
-                        continue;
-                    }
-                    if PASTURES.contains(&p.master) {
-                        return Err(GenieError::unsupported(
-                            "ClosestObject over pastures (their workers and livestock)",
-                        ));
-                    }
-                    if filter.master == -1 {
-                        if 1 <= workers {
-                            continue;
-                        }
-                        if !trapper && p.master == FISH_TRAP {
-                            continue;
-                        }
-                        if !farmer && p.master != FISH_TRAP {
-                            continue;
-                        }
-                    }
-                }
-                if filter.group == LIVESTOCK_CLASS
-                    && ((p.player != player && seer.state == 2) || moving(record.id))
-                {
-                    continue;
-                }
-                if class_10 && shuns(p)? {
+                if !closest_kept(record.id, (seer, p), filter, (player, searcher), checks)? {
                     continue;
                 }
                 if filter.reach && !reach(record.id, CLOSEST_RANGE)? {
                     continue;
                 }
-                match best {
-                    Some((id, d)) if d <= record.distance => {
-                        if record.distance == d && record.id < id {
-                            best = Some((record.id, d));
-                        }
-                    }
-                    _ => best = Some((record.id, record.distance)),
-                }
+                best = nearer(best, record);
             }
         }
         // the distance starts at `DAT_14330ec20` (−1) without a find
@@ -491,5 +417,129 @@ impl Spatial {
             reach,
         };
         crate::unit_ai::best_target::best_unit_to_attack(&me, &ask.ask(), &lists, &mut field)
+    }
+}
+
+/// What `ClosestObject` reads of its searcher (`FUN_140c488b0`): of class 10 it passes the
+/// objects `shuns` names; a farmer takes farms, a trapper fish traps ([`farm_kept`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Searcher {
+    pub(super) class_10: bool,
+    pub(super) farmer: bool,
+    pub(super) trapper: bool,
+}
+
+/// `FUN_140c32b50`: the relation list `ClosestObject`'s argument 9 passes over: 0 the friends
+/// (list 2), 1 the neutrals (3), 2 the enemies (4), 3 itself (1); any other none.
+pub(super) const fn spared_list(spared: i32) -> Option<usize> {
+    match spared {
+        0 => Some(2),
+        1 => Some(3),
+        2 => Some(4),
+        3 => Some(1),
+        _ => None,
+    }
+}
+
+/// `ClosestObject`'s relation filter (`param_3`) on the relation list `kind`: 0 the friends and
+/// itself (lists 1 and 2), 1 the neutrals (3), 2 the enemies (4), 3 itself (1), any other all.
+pub(super) const fn related(relation: i32, kind: usize) -> bool {
+    match relation {
+        0 => matches!(kind, 1 | 2),
+        1 => kind == 3,
+        2 => kind == 4,
+        3 => kind == 1,
+        _ => true,
+    }
+}
+
+/// `ClosestObject`'s tests of the object `id` it found (its seer and its place `p`) past the
+/// relation: the [`Filter`]'s class, master and state; a farm ([`farm_kept`]); livestock
+/// (class 58) the searcher's player owns or not in state 2, and not `moving`; for a searcher of
+/// class 10, not what `shuns` names. A workers cap and the unbuilt farm test (a state of 0)
+/// are not modelled.
+pub(super) fn closest_kept(
+    id: i32,
+    (seer, p): (&Seer, &Placed),
+    filter: Filter,
+    (player, searcher): (usize, Searcher),
+    (moving, shuns, farm): ClosestChecks<'_>,
+) -> Result<bool, GenieError> {
+    if filter.group != -1 && i32::from(p.class) != filter.group {
+        return Ok(false);
+    }
+    if filter.master != -1 && i32::from(p.master) != filter.master {
+        return Ok(false);
+    }
+    if filter.state != -1 && i32::from(seer.state) != filter.state {
+        return Ok(false);
+    }
+    if filter.workers != -1 {
+        return Err(GenieError::unsupported(
+            "ClosestObject's workers cap (+0x644)",
+        ));
+    }
+    if filter.state == 0 {
+        return Err(GenieError::unsupported("ClosestObject's unbuilt farm test"));
+    }
+    if filter.group == PASTURE_CLASS && !farm_kept(id, p, filter, searcher, farm)? {
+        return Ok(false);
+    }
+    if filter.group == LIVESTOCK_CLASS && ((p.player != player && seer.state == 2) || moving(id)) {
+        return Ok(false);
+    }
+    if searcher.class_10 && shuns(p)? {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+/// A farm (class 49) `ClosestObject` found, as `farm` reads it: not a pasture's livestock
+/// (`+0x790`); a pasture is not modelled; without a master asked for, one without workers that
+/// the searcher gathers from (a fish trap for a trapper, any other for a farmer).
+pub(super) fn farm_kept(
+    id: i32,
+    p: &Placed,
+    filter: Filter,
+    searcher: Searcher,
+    farm: &FarmLook<'_>,
+) -> Result<bool, GenieError> {
+    let (workers, parent) = farm(id).ok_or(GenieError::unsupported(
+        "a found farm the slice does not hold",
+    ))?;
+    if parent != -1 {
+        return Ok(false);
+    }
+    if PASTURES.contains(&p.master) {
+        return Err(GenieError::unsupported(
+            "ClosestObject over pastures (their workers and livestock)",
+        ));
+    }
+    if filter.master == -1 {
+        if 1 <= workers {
+            return Ok(false);
+        }
+        if !searcher.trapper && p.master == FISH_TRAP {
+            return Ok(false);
+        }
+        if !searcher.farmer && p.master != FISH_TRAP {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// The nearer of the nearest so far, `best`, and `record`, by the search's distance; a tie
+/// goes to the lower id (a NaN distance so far gives way).
+pub(super) fn nearer(best: Option<(i32, f32)>, record: &Record) -> Option<(i32, f32)> {
+    match best {
+        Some((id, d)) if d <= record.distance => {
+            if record.distance == d && record.id < id {
+                Some((record.id, d))
+            } else {
+                best
+            }
+        }
+        _ => Some((record.id, record.distance)),
     }
 }

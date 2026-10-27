@@ -18,9 +18,37 @@ impl Unit {
         if let Some(resume) = c.ai_resume.take() {
             return self.ai_part(c, others, resume);
         }
+        let Some(leaves) = self.update_to_actions(c, others)? else {
+            return Ok(Step::Sleep);
+        };
+        let captured = self.update_actions(c, others)?;
+        let resume = AiResume {
+            captured,
+            leaves,
+            after: None,
+        };
+        // a builder's work found in its Build's update (slot 0x7e8 from case 0xdf) runs inside the
+        // action update; the caller gives it (`World::order_work`) and then runs the rest of this
+        // update ([`Unit::ai_part`])
+        if c.work_order.is_some() || !c.completions.is_empty() || c.transport_unload {
+            c.ai_resume = Some(resume);
+            return Ok(Step::Stay);
+        }
+        self.ai_part(c, others, resume)
+    }
+
+    /// `RGE_Static_Object::update` and the combat object's steps before the actions: the death
+    /// blast, the sleep ([`Unit::go_to_sleep`], None), the sprite's facets, a gate's and a
+    /// building's update, the stopped speed, the attack timers, the motion, the life step (what
+    /// the unit AI later reads of it), the animation and the actions past the unit's life.
+    pub(crate) fn update_to_actions(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+    ) -> Result<Option<Step>, GenieError> {
         self.death_blast(c)?;
         if self.go_to_sleep()? {
-            return Ok(Step::Sleep);
+            return Ok(None);
         }
         self.take_sprite_facets();
         self.gate_update(c, others)?;
@@ -32,6 +60,18 @@ impl Unit {
         let leaves = self.life_step(c)?;
         self.animate(c);
         self.actions_past_life(c)?;
+        Ok(Some(leaves))
+    }
+
+    /// `RGE_Action_Object::update`: the default task's start, then each action held in the
+    /// game's order (Artifact, Build, Repair, garrison, the wait for a foundation, a missile's
+    /// flight, `MoveTo`, Explore, Fly, Make, Gather, Hunt, Attack) and what follows them; the
+    /// Artifact's capture, which the unit AI's part reads.
+    pub(crate) fn update_actions(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+    ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let started = self.start_default_task(c)?;
         // The default action exists from tick 1 on, but its first update is in tick 2: fitted to
         // 16 checkpoints of idle players with livestock (workspace FD-008).
@@ -76,19 +116,7 @@ impl Unit {
             self.attack_part(c, me, own)?;
         }
         self.after_actions(c)?;
-        let resume = AiResume {
-            captured,
-            leaves,
-            after: None,
-        };
-        // a builder's work found in its Build's update (slot 0x7e8 from case 0xdf) runs inside the
-        // action update; the caller gives it (`World::order_work`) and then runs the rest of this
-        // update ([`Unit::ai_part`])
-        if c.work_order.is_some() || !c.completions.is_empty() || c.transport_unload {
-            c.ai_resume = Some(resume);
-            return Ok(Step::Stay);
-        }
-        self.ai_part(c, others, resume)
+        Ok(captured)
     }
 
     /// `RGE_Static_Object::update` (`0x14118ad50`): an object flagged to sleep (`+0x643`) drops

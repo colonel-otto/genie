@@ -137,3 +137,43 @@ fn after_its_actions_a_unit_takes_the_world_s_place_and_hands_its_pauses_on() {
         "a walk's unit in the way (notify 0x215) the action does not pass on"
     );
 }
+
+/// The update up to the actions: a forager goes on to its actions with its life step's answer;
+/// a static object flagged to sleep ends there (None).
+#[test]
+fn the_update_up_to_the_actions_ends_for_a_sleeper() {
+    let mut t = forage_world();
+    let step = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_to_actions(c, o)).unwrap();
+    assert!(step.is_some());
+    let bush = &mut t.players[0].objects[0];
+    bush.life.class = Class::Static;
+    bush.life.goto_sleep = true;
+    let step = in_update(&mut t, (0, 0), 50, |u, c, o| u.update_to_actions(c, o)).unwrap();
+    assert_eq!(step, None);
+    assert!(!t.players[0].objects[0].life.goto_sleep);
+}
+
+/// The actions' update: an idle forager runs none and captures nothing; a wait for a
+/// foundation the world does not hold ends; a Gather walks on to its bush.
+#[test]
+fn the_actions_update_runs_each_action_held() {
+    let mut t = forage_world();
+    let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
+    assert!(captured.is_none());
+    t.players[1].objects[0].wait_solidify =
+        Some(crate::construction::wait_solidify::WaitSolidify {
+            state: 0,
+            task: crate::objects::masters::Task::default(),
+            target: 99_999,
+        });
+    let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
+    assert!(captured.is_none());
+    assert_eq!(t.players[1].objects[0].wait_solidify, None);
+    t.gather_command(1, 0, 600).unwrap();
+    let before = t.players[1].objects[0].gather;
+    let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
+    assert!(captured.is_none());
+    let after = t.players[1].objects[0].gather;
+    assert_eq!(after.map(|g| g.target), Some(600));
+    assert_ne!(before, after);
+}

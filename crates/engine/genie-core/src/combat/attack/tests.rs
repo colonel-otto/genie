@@ -1939,3 +1939,177 @@ fn an_attack_s_walk_walks_waits_arrives_or_fails() {
         Err("an Attack in state 4 without its MoveTo")
     );
 }
+
+/// An Attack of the soldier at (10, 10) on target 7 (a victim of `player` and `class` in
+/// `state` at `at`, `seen` or not by the unit's player), in `attack_state`, its sub-action
+/// `sub` or its own; `f` runs on the Attack, its walk and its strike.
+fn on_target<R>(
+    (player, class, state, at): (usize, i16, u8, [f32; 3]),
+    seen: bool,
+    (attack_state, sub): (u8, bool),
+    f: impl FnOnce(&mut Attack, &mut Walk<'_>, &mut Strike<'_>) -> R,
+) -> (R, Attack) {
+    let mut world = world_with(7, player, class, at);
+    world.sight = Some(sight(seen));
+    let mut mover = soldier_mover(0.8);
+    let mut walk = walk_in(&mut mover, &mut world);
+    let mut rig = Rig::new(Victim {
+        id: 7,
+        state,
+        class,
+        player,
+        position: at,
+        ..Victim::default()
+    });
+    let mut s = rig.strike();
+    s.ai_order = Some(700);
+    let mut a = soldier_attack(7, 1.0, 0.0, at);
+    (a.state, a.seen, a.sub_action) = (attack_state, at, sub);
+    let r = f(&mut a, &mut walk, &mut s);
+    (r, a)
+}
+
+/// The update's start on a dead target: a unit's own Attack lets it go and ends with 5; a
+/// villager's sub-action on Gaia's target forgets it and its point and ends with 5; another
+/// unit's sub-action, or a villager's on a player's target, is not modelled.
+#[test]
+fn an_attack_whose_target_died_lets_it_go_and_ends() {
+    let dead = |player| (player, 6, 3, [11.0, 10.0, 0.0]);
+    let ((code, let_go), a) = on_target(dead(0), true, (READY, false), |a, w, s| {
+        s.ai_order = Some(-1);
+        (a.target_died(w, s).unwrap(), s.let_go)
+    });
+    assert_eq!((code, let_go, a.state), (5, Some(7), DONE));
+    let (code, a) = on_target(dead(0), true, (READY, true), |a, w, s| {
+        s.own.class = VILLAGER;
+        a.target_died(w, s).unwrap()
+    });
+    assert_eq!((code, a.target, a.point, a.state), (5, -1, [NONE; 3], DONE));
+    let (r, _) = on_target(dead(0), true, (READY, true), |a, w, s| {
+        a.target_died(w, s).unwrap_err().reason()
+    });
+    assert_eq!(
+        r,
+        "an Attack of a unit other than a villager whose target died"
+    );
+    let (r, _) = on_target(dead(2), true, (READY, true), |a, w, s| {
+        s.own.class = VILLAGER;
+        a.target_died(w, s).unwrap_err().reason()
+    });
+    assert_eq!(
+        r,
+        "a villager's Attack whose player-owned target died (its unit AI forgets it)"
+    );
+}
+
+/// A target that moved: where it was seen follows; seen, an Attack walking to where it saw
+/// it follows it (`set_state(4)`); out of sight, Gaia's unit fails, a player's unit with an
+/// order and an empty queue waits from state 4 and walks on in state 5; seen in state 4 it
+/// goes on.
+#[test]
+fn an_attack_on_a_moved_target_follows_waits_or_fails() {
+    let moved = (2, 6, 2, [13.0, 10.0, 0.0]);
+    let run = |state: u8, seen: bool, own_player: usize| {
+        on_target(moved, seen, (state, false), |a, w, s| {
+            a.seen = [12.0, 10.0, 0.0];
+            s.own.player = own_player;
+            let t = *w.world.get(7).unwrap();
+            a.target_moved(w, s, &t).unwrap()
+        })
+    };
+    let (code, a) = run(GOTO_SEEN, true, 1);
+    assert_eq!((code, a.state, a.seen), (Some(0), MOVE, [13.0, 10.0, 0.0]));
+    let (code, a) = run(MOVE, true, 1);
+    assert_eq!((code, a.state, a.seen), (None, MOVE, [13.0, 10.0, 0.0]));
+    let (code, a) = run(MOVE, false, 0);
+    assert_eq!((code, a.state), (Some(3), FAILED));
+    let (code, a) = run(MOVE, false, 1);
+    assert_eq!((code, a.state), (Some(0), GOTO_SEEN));
+    let (code, a) = run(GOTO_SEEN, false, 1);
+    assert_eq!((code, a.state), (None, GOTO_SEEN));
+}
+
+/// The update's ends before the state's step: a live target the unit's player counts as its
+/// own ends it with 1 (a unit's own Attack posting 0x1fb); a target inside another ends it
+/// with 4; a building that cannot attack ends it with 1; else the state's step follows.
+#[test]
+fn an_attack_ends_early_on_an_ally_a_hidden_target_or_disarmed() {
+    let live = (2, 6, 2, [11.0, 10.0, 0.0]);
+    let run = |f: fn(&mut Strike<'_>)| {
+        on_target(live, true, (MOVE, false), |a, w, s| {
+            f(s);
+            (a.ends_early(w, s, true).unwrap(), s.posted.clone())
+        })
+    };
+    let ((code, posted), a) = run(|s| s.victim.allied[0] = true);
+    assert_eq!(
+        (code, a.state, posted),
+        (Some(1), DONE, vec![(0x1fb, [600, 7, 0])])
+    );
+    let ((code, posted), a) = run(|s| s.victim.inside = true);
+    assert_eq!(
+        (code, a.state, posted),
+        (Some(4), DONE, vec![(0x1fb, [600, 7, 0])])
+    );
+    let ((code, _), _) = run(|s| (s.victim.inside, s.queue_empty) = (true, false));
+    assert_eq!(code, Some(4));
+    let ((code, posted), a) = run(|s| s.armed = false);
+    assert_eq!(
+        (code, a.state, posted),
+        (Some(1), DONE, vec![(0x1fb, [600, 7, 0])])
+    );
+    let ((code, posted), a) = run(|_| {});
+    assert_eq!((code, a.state, posted), (None, MOVE, vec![]));
+}
+
+/// State 6's step: ready in reach swings; ready on a dead tree ends with 5; a target out of
+/// reach is followed (`set_state(4)`).
+#[test]
+fn a_ready_attack_swings_ends_on_a_dead_tree_or_follows() {
+    let (code, a) = on_target(
+        (2, 6, 2, [11.0, 10.0, 0.0]),
+        true,
+        (READY, false),
+        |a, w, s| {
+            a.arms.sprite = Some(STANDING);
+            a.ready_step(w, s, true).unwrap()
+        },
+    );
+    assert_eq!((code, a.state), (0, SWING));
+    let (code, a) = on_target(
+        (0, TREE, 3, [11.0, 10.0, 0.0]),
+        true,
+        (READY, false),
+        |a, w, s| a.ready_step(w, s, false).unwrap(),
+    );
+    assert_eq!((code, a.state), (5, DONE));
+    let (code, a) = on_target(
+        (0, 6, 2, [15.0, 10.0, 0.0]),
+        true,
+        (READY, false),
+        |a, w, s| {
+            a.point = [NONE; 3];
+            a.ready_step(w, s, true).unwrap()
+        },
+    );
+    assert_eq!((code, a.state), (0, MOVE));
+}
+
+/// State 2's step after the kill: an animating swing sprite not yet looped keeps it; done, a
+/// unit's own Attack lets its target go, posts 0x1fb with 600 and 0x202, ends and returns 2.
+#[test]
+fn a_killing_attack_ends_once_its_swing_looped() {
+    let dead = (0, 6, 3, [11.0, 10.0, 0.0]);
+    let ((code, let_go, posted), a) = on_target(dead, true, (KILLED, false), |a, w, s| {
+        (a.killed_step(w, s).unwrap(), s.let_go, s.posted.clone())
+    });
+    assert_eq!(
+        (code, let_go, posted, a.target, a.state),
+        (2, Some(7), vec![(0x1fb, [600, 0, 0x202])], -1, DONE)
+    );
+    let (code, a) = on_target(dead, true, (KILLED, false), |a, w, s| {
+        *s.sprite = Some(ActiveSprite::start(STANDING, &mut Well512::default()));
+        a.killed_step(w, s).unwrap()
+    });
+    assert_eq!((code, a.state, a.target), (0, KILLED, 7));
+}

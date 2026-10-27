@@ -3230,3 +3230,63 @@ fn a_drop_off_order_fails_on_what_it_does_not_hold() {
     t.unit_order(1, &[9175, 12345], 7).unwrap();
     assert_eq!(t.players[1].objects[0], before);
 }
+
+/// The attack command's answer settled ([`super::attack`]'s `settle_command`): readyToAttack's
+/// failure first runs the animation at speed 1; the start's notifies go to the unit AI; a
+/// failure out of reach fails the Attack; a ready unit without a unit AI waits ready on its
+/// reload; a `MoveTo` started arrived shows the standing sprite at the standing speed; with
+/// none of them the Attack and the unit stay.
+#[test]
+fn an_attack_task_settles_what_its_command_answered() {
+    use crate::combat::attack::{Commanded, FAILED, READY};
+    use crate::combat::damage::Victim;
+    fn shown_sprite(t: &World) -> Option<i16> {
+        t.players[1].objects[0].sprite.map(|s| s.graphic.id)
+    }
+    let settled = |f: fn(&mut Commanded), ai: bool| {
+        let (mut t, task) = work_attack(0);
+        if !ai {
+            t.players[1].objects[0].ai = None;
+        }
+        t.players[1].objects[0].attack_timer = 0.5;
+        t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
+            .unwrap();
+        let unit = &mut t.players[1].objects[0];
+        let attack = unit.attack.take().expect("the soldier's Attack");
+        unit.anim_speed = Some(0.5);
+        let mut commanded = Commanded {
+            attack,
+            arrived: false,
+            posted: Vec::new(),
+            ready: false,
+            failed: false,
+            failed_first: false,
+        };
+        f(&mut commanded);
+        let start = attack::StartStrike {
+            standing: t.graphics[&300],
+            volleys: false,
+            reload: 2.0,
+            hit_chance: 100,
+            swing_sprites: crate::combat::attack::SwingSprites::default(),
+            computer: false,
+            world_time: 0,
+            own: Victim::default(),
+        };
+        let attack = t
+            .settle_command(1, 0, commanded, start, &mut Victim::default())
+            .unwrap();
+        let unit = &t.players[1].objects[0];
+        let notifies = unit.ai.as_ref().map(|ai| ai.notifies.len());
+        (attack, shown_sprite(&t), unit.anim_speed, notifies)
+    };
+    let (plain, sprite, speed, notifies) = settled(|_| {}, true);
+    assert_eq!((sprite, speed), (Some(300), Some(0.5)));
+    assert_eq!(settled(|c| c.failed_first = true, true).2, Some(1.0));
+    let posted = settled(|c| c.posted = vec![(0x1fd, [600, 0, 0])], true).3;
+    assert_eq!(posted, notifies.map(|n| n + 1));
+    assert_eq!(settled(|c| c.failed = true, true).0.state, FAILED);
+    assert_eq!(settled(|c| c.ready = true, false).0.state, READY);
+    let (arrived, sprite, speed, _) = settled(|c| c.arrived = true, true);
+    assert_eq!((arrived, sprite, speed), (plain, Some(300), Some(0.0)));
+}

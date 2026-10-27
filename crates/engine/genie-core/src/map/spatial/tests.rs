@@ -1145,3 +1145,188 @@ fn the_manager_keeps_the_last_ignore_list_set() {
     assert!(s.point_hit([0.05, 4.5], 0.1, &[], false).unwrap());
     assert!(!s.object_holds([0.05, 4.5], 0.1, &[], false).unwrap());
 }
+
+/// A `ClosestObject` filter that keeps everything: every argument −1, no reach test.
+const fn any_filter() -> Filter {
+    Filter {
+        group: -1,
+        relation: -1,
+        state: -1,
+        master: -1,
+        workers: -1,
+        spared: -1,
+        reach: false,
+    }
+}
+
+/// The sight of a combat unit of player 2 in `state`.
+const fn seer_in(state: u8) -> crate::vision::visibility::Seer {
+    crate::vision::visibility::Seer {
+        player: 2,
+        master: 0,
+        los: 4.0,
+        state,
+        explored: true,
+        building: None,
+        umv: 0,
+        capture: 0,
+        kind: 70,
+    }
+}
+
+/// `FUN_140c32b50` and `ClosestObject`'s relation filter: the list each relation number names
+/// (friends 2, neutrals 3, enemies 4, itself 1; none for another), and the lists a relation
+/// filter keeps (0 itself and the friends, 1 the neutrals, 2 the enemies, 3 itself, another all).
+#[test]
+fn closest_object_s_relation_numbers_name_its_lists() {
+    use crate::map::spatial::search::{related, spared_list};
+    assert_eq!(
+        [0, 1, 2, 3, -1, 4].map(spared_list),
+        [Some(2), Some(3), Some(4), Some(1), None, None]
+    );
+    let kept = |relation| (0..5).filter(|&k| related(relation, k)).collect::<Vec<_>>();
+    assert_eq!(
+        [kept(0), kept(1), kept(2), kept(3), kept(-1)],
+        [vec![1, 2], vec![3], vec![4], vec![1], vec![0, 1, 2, 3, 4]]
+    );
+}
+
+/// The nearest so far gives way to a nearer record, to an equally near one of a lower id and
+/// after a NaN distance; it stays before a farther record and an equally near one of a higher
+/// id.
+#[test]
+fn closest_object_keeps_the_nearest_record_and_on_a_tie_the_lower_id() {
+    use crate::map::spatial::search::nearer;
+    let record = |id, distance| Record {
+        id,
+        distance,
+        owner: 1,
+        x: 0.0,
+        y: 0.0,
+        rx: 0.5,
+        ry: 0.5,
+    };
+    assert_eq!(nearer(None, &record(5, 3.0)), Some((5, 3.0)));
+    assert_eq!(nearer(Some((5, 3.0)), &record(6, 2.0)), Some((6, 2.0)));
+    assert_eq!(nearer(Some((5, 3.0)), &record(4, 3.0)), Some((4, 3.0)));
+    assert_eq!(nearer(Some((5, 3.0)), &record(6, 3.0)), Some((5, 3.0)));
+    assert_eq!(nearer(Some((5, 3.0)), &record(4, 4.0)), Some((5, 3.0)));
+    assert_eq!(nearer(Some((5, f32::NAN)), &record(6, 4.0)), Some((6, 4.0)));
+}
+
+/// `ClosestObject`'s tests past the relation: the filter's class, master and state keep or
+/// pass an object; a workers cap and the unbuilt farm test fail; livestock counts when the
+/// searcher's player owns it or it is not in state 2, and not while it moves; a searcher of
+/// class 10 passes what it shuns.
+#[test]
+fn closest_object_keeps_what_its_filter_and_its_searcher_take() {
+    use crate::map::spatial::search::{Searcher, closest_kept};
+    let (still, moving) = (|_: i32| false, |_: i32| true);
+    let (takes, shuns) = (|_: &Placed| Ok(false), |_: &Placed| Ok(true));
+    let fails = |_: &Placed| Err(GenieError::unsupported("a test's shunning"));
+    let farm = |_: i32| None;
+    let checks: ClosestChecks<'_> = (&still, &takes, &farm);
+    let p = villager(1.0, 1.0);
+    let kept = |filter, p: &Placed, state, searcher, checks| {
+        closest_kept(7, (&seer_in(state), p), filter, (1, searcher), checks)
+    };
+    let plain = Searcher::default();
+    let with = |f: fn(&mut Filter)| {
+        let mut filter = any_filter();
+        f(&mut filter);
+        filter
+    };
+    assert!(kept(any_filter(), &p, 2, plain, checks).unwrap());
+    assert!(kept(with(|f| f.group = 4), &p, 2, plain, checks).unwrap());
+    assert!(!kept(with(|f| f.group = 3), &p, 2, plain, checks).unwrap());
+    assert!(!kept(with(|f| f.master = 5), &p, 2, plain, checks).unwrap());
+    assert!(!kept(with(|f| f.state = 3), &p, 2, plain, checks).unwrap());
+    assert_eq!(
+        kept(with(|f| f.workers = 1), &p, 2, plain, checks)
+            .unwrap_err()
+            .reason(),
+        "ClosestObject's workers cap (+0x644)"
+    );
+    assert_eq!(
+        kept(with(|f| f.state = 0), &p, 0, plain, checks)
+            .unwrap_err()
+            .reason(),
+        "ClosestObject's unbuilt farm test"
+    );
+    let livestock = with(|f| f.group = 58);
+    let mut sheep = Placed { class: 58, ..p };
+    assert!(!kept(livestock, &sheep, 2, plain, checks).unwrap());
+    assert!(kept(livestock, &sheep, 1, plain, checks).unwrap());
+    sheep.player = 1;
+    assert!(kept(livestock, &sheep, 2, plain, checks).unwrap());
+    assert!(!kept(livestock, &sheep, 2, plain, (&moving, &takes, &farm)).unwrap());
+    let wolf = Searcher {
+        class_10: true,
+        ..plain
+    };
+    assert!(kept(any_filter(), &p, 2, wolf, checks).unwrap());
+    assert!(!kept(any_filter(), &p, 2, wolf, (&still, &shuns, &farm)).unwrap());
+    assert!(kept(any_filter(), &p, 2, plain, (&still, &shuns, &farm)).unwrap());
+    assert!(kept(any_filter(), &p, 2, wolf, (&still, &fails, &farm)).is_err());
+}
+
+/// A farm `ClosestObject` found: a free one the searcher gathers from (a fish trap for a
+/// fishing ship, any other for a villager) counts; a worked one only with a master asked for;
+/// a pasture's livestock never; a pasture and a farm the caller does not hold fail.
+#[test]
+fn closest_object_takes_a_free_farm_its_searcher_gathers_from() {
+    use crate::map::spatial::search::{Searcher, closest_kept, farm_kept};
+    let filter = Filter {
+        group: 49,
+        ..any_filter()
+    };
+    let farm_of = |master| Placed {
+        class: 49,
+        master,
+        ..villager(1.0, 1.0)
+    };
+    let look = |id: i32| match id {
+        1 => Some((0, -1)),
+        2 => Some((1, -1)),
+        3 => Some((0, 9)),
+        _ => None,
+    };
+    let farmer = Searcher {
+        farmer: true,
+        ..Searcher::default()
+    };
+    let trapper = Searcher {
+        trapper: true,
+        ..Searcher::default()
+    };
+    let (farm, trap) = (farm_of(50), farm_of(FISH_TRAP));
+    assert!(farm_kept(1, &farm, filter, farmer, &look).unwrap());
+    assert!(!farm_kept(1, &farm, filter, trapper, &look).unwrap());
+    assert!(farm_kept(1, &trap, filter, trapper, &look).unwrap());
+    assert!(!farm_kept(1, &trap, filter, farmer, &look).unwrap());
+    assert!(!farm_kept(2, &farm, filter, farmer, &look).unwrap());
+    let asked = Filter {
+        master: 50,
+        ..filter
+    };
+    assert!(farm_kept(2, &farm, asked, Searcher::default(), &look).unwrap());
+    assert!(!farm_kept(3, &farm, filter, farmer, &look).unwrap());
+    assert_eq!(
+        farm_kept(1, &farm_of(PASTURES[0]), filter, farmer, &look)
+            .unwrap_err()
+            .reason(),
+        "ClosestObject over pastures (their workers and livestock)"
+    );
+    assert_eq!(
+        farm_kept(4, &farm, filter, farmer, &look)
+            .unwrap_err()
+            .reason(),
+        "a found farm the slice does not hold"
+    );
+    // through the tests past the relation: the worked farm passed, the free one kept
+    let (still, takes) = (|_: i32| false, |_: &Placed| Ok(false));
+    let checks: ClosestChecks<'_> = (&still, &takes, &look);
+    let s = seer_in(2);
+    assert!(closest_kept(1, (&s, &farm), filter, (1, farmer), checks).unwrap());
+    assert!(!closest_kept(2, (&s, &farm), filter, (1, farmer), checks).unwrap());
+}

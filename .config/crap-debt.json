@@ -11,48 +11,12 @@
       "crate": "genie-error"
     },
     {
-      "file": "crates/engine/genie-core/src/combat/attack/update.rs",
-      "function": "Attack::update",
-      "line": 63,
-      "cyclomatic": 61.0,
-      "coverage": 72.80701754385966,
-      "crap": 135.82215243016742,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/combat/damage/blasts.rs",
       "function": "blast",
       "line": 112,
-      "cyclomatic": 60.0,
-      "coverage": 73.41772151898735,
-      "crap": 127.62061419076379,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/map/spatial/search.rs",
-      "function": "Spatial::closest_object",
-      "line": 355,
-      "cyclomatic": 49.0,
-      "coverage": 56.00000000000001,
-      "crap": 253.52678399999994,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/objects/unit/update.rs",
-      "function": "Unit::update",
-      "line": 13,
-      "cyclomatic": 34.0,
-      "coverage": 97.05882352941177,
-      "crap": 34.029411764705884,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/orders/attack.rs",
-      "function": "World::start_attack",
-      "line": 126,
       "cyclomatic": 29.0,
-      "coverage": 83.33333333333334,
-      "crap": 32.893518518518505,
+      "coverage": 84.33734939759037,
+      "crap": 32.23140784942644,
       "crate": "genie-core"
     },
     {
@@ -71,15 +35,6 @@
       "cyclomatic": 72.0,
       "coverage": 75.83333333333333,
       "crap": 145.16700000000003,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/technology/upgrade.rs",
-      "function": "World::upgrade_object",
-      "line": 227,
-      "cyclomatic": 53.0,
-      "coverage": 76.3975155279503,
-      "crap": 89.9338772059682,
       "crate": "genie-core"
     },
     {

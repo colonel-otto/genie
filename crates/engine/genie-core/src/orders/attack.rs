@@ -212,6 +212,33 @@ impl World {
             self.streams.get(Stream::Sprite),
         );
         let mover = unit.mover.as_mut().ok_or(crate::world::ATTACKER_UNMOVING)?;
+        let commanded = Attack::command(
+            (target, &self.spatial),
+            &e,
+            arms,
+            (visible, aim.owner),
+            mover,
+        )?;
+        let mut attack = self.settle_command(player, idx, commanded, start, &mut victim)?;
+        attack.target2 = target;
+        self.players[player].objects[idx].attack = Some(attack);
+        self.take(target, self.releaser(player, idx));
+        Ok(())
+    }
+
+    /// The attack task's Attack of object `idx` of `player` as its command left it
+    /// ([`Attack::command`]): readyToAttack's failure before the start runs the animation at
+    /// speed 1; the start's notifies go to the unit AI; a unit that cannot move fails out of
+    /// reach ([`Attack::fail_at_start`]) or goes ready in it ([`ready_at_start`]); a `MoveTo`
+    /// that starts arrived shows the standing sprite at its speed (`0x140aa29e0`).
+    pub(super) fn settle_command(
+        &mut self,
+        player: usize,
+        idx: usize,
+        commanded: crate::combat::attack::Commanded,
+        start: StartStrike,
+        victim: &mut Victim,
+    ) -> Result<Attack, GenieError> {
         let crate::combat::attack::Commanded {
             mut attack,
             arrived,
@@ -219,13 +246,8 @@ impl World {
             ready,
             failed,
             failed_first,
-        } = Attack::command(
-            (target, &self.spatial),
-            &e,
-            arms,
-            (visible, aim.owner),
-            mover,
-        )?;
+        } = commanded;
+        let unit = &mut self.players[player].objects[idx];
         if failed_first {
             // readyToAttack's set_state(13) before the start's set_state(4)
             unit.anim_speed = Some(1.0);
@@ -251,7 +273,7 @@ impl World {
                 &mut self.spatial,
                 sprite_rng,
                 start,
-                &mut victim,
+                victim,
             )?;
         }
         if arrived {
@@ -267,10 +289,7 @@ impl World {
                 self.streams.get(Stream::Sprite),
             )?;
         }
-        attack.target2 = target;
-        unit.attack = Some(attack);
-        self.take(target, self.releaser(player, idx));
-        Ok(())
+        Ok(attack)
     }
 
     /// Where an attack task on `target` aims (`FUN_141189b20`): a building annex at its main
