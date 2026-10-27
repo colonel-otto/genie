@@ -6,3 +6,4 @@
 __pycache__
 /target-cov-core/
 /target-split/
+/mutants.out*/

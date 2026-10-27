@@ -1,0 +1,70 @@
+# Mutation testing (cargo-mutants, .cargo/mutants.toml): each changed function is mutated and
+# the tests must catch the mutant. The whole workspace holds about 42,000 mutants, too many for
+# one run, so CI mutates only the lines a push or a pull request changes (`--in-diff`); a run
+# by hand (workflow_dispatch) mutates one crate.
+name: cargo-mutants
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # Only a change that can change the result.
+    paths:
+      - ".cargo/mutants.toml"
+      - ".config/nextest.toml"
+      - ".github/workflows/mutants.yml"
+      - "Cargo.*"
+      - "crates/**"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "The crate to mutate whole (e.g. genie-rec)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cargo-mutants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants,cargo-nextest
+      - uses: Swatinem/rust-cache@v2
+      - name: The change's lines
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: git diff "$BASE" "$GITHUB_SHA" -- crates > change.diff
+      - name: Mutate the change
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          if [ -s change.diff ]; then
+            cargo mutants -vV --in-place --in-diff change.diff
+          else
+            echo "no change under crates/"
+          fi
+      - name: Mutate one crate
+        if: github.event_name == 'workflow_dispatch'
+        # the input through the environment, never into the script's text
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: cargo mutants -vV --in-place --package "$PACKAGE"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mutants-out
+          path: mutants.out
+          if-no-files-found: ignore
