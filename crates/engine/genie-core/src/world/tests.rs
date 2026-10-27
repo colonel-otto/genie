@@ -5583,6 +5583,7 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
         id,
         kind: 70,
         available: true,
+        trained_at: vec![109],
         train_locations: vec![crate::objects::masters::TrainLocation {
             location: 109,
             time,
@@ -5727,6 +5728,53 @@ fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
     // the empty one takes the first, then the loaded one the second (25 above its load)
     t.tick_with(104, &[several(2)]);
     assert_eq!((total(&t, 0), total(&t, 1)), (2, 1));
+}
+
+/// `FUN_141614450` gives a building room and load only where the unit trains (`FUN_141263610`,
+/// [`World::trains_at`]): a building of another master keeps room −1 and takes none.
+/// 427647190's players queued villagers at their trophy (master 1649, which trains none) and
+/// the game queued nothing there.
+#[test]
+fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
+    let trophy = |id| {
+        let mut u = town_centre(id);
+        u.life.master_id = 1649;
+        u
+    };
+    let with_trophy = |objects| {
+        let mut t = one_player(objects, [200.0; 4]);
+        let master = Master {
+            id: 1649,
+            kind: 80,
+            class: 3,
+            ..Master::default()
+        };
+        t.masters = vec![Masters::new(t.masters[0].iter().cloned().chain([master]))];
+        t
+    };
+    let total = |t: &World, k: usize| {
+        t.players[0].objects[k]
+            .production
+            .as_ref()
+            .map_or(0, |p| p.queue.total)
+    };
+    let both = Command::Queue {
+        player: 0,
+        buildings: vec![9, 10],
+        unit: 99,
+        amount: 3,
+        button: -1,
+    };
+    let mut t = with_trophy(vec![trophy(9), centre(10)]);
+    t.tick_with(104, &[both]);
+    assert!(t.players[0].unsupported.is_none());
+    assert_eq!((total(&t, 0), total(&t, 1)), (0, 3));
+    // the trophy alone: no room, nothing queued, nothing paid
+    let mut alone = with_trophy(vec![trophy(9)]);
+    alone.tick_with(104, &[queue(9, 83, 1)]);
+    assert!(alone.players[0].unsupported.is_none());
+    assert_eq!(alone.players[0].resources, [200.0; 4]);
+    assert!(alone.players[0].objects[0].production.is_none());
 }
 
 /// RESEARCH's building (`0x140e7e270`): with more than one listed, the least loaded of the

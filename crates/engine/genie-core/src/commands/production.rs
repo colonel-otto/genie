@@ -18,9 +18,10 @@ impl World {
     /// player's without cheats, goes; a human's packet left with none is refused). Nothing for
     /// a master the player lacks (`FUN_141659d20`). Of the first 60 buildings (500 for a computer
     /// player) those the master is available to (`+0x5f0`) or that list it themselves (`+0xd30`,
-    /// `FUN_1411c8fd0`) take part, at most 60: each has its room (15, a computer player's 2, less
-    /// its queued total `+0xbf4`; the sum of those above 0 holds the amount) and its load
-    /// ([`World::production_load`]). The amount is lowered while the player cannot pay that many:
+    /// `FUN_1411c8fd0`) take part, at most 60: each where the unit trains ([`World::trains_at`],
+    /// `FUN_141263610`) has its room (15, a computer player's 2, less its queued total
+    /// `+0xbf4`; the sum of those above 0 holds the amount) and its load
+    /// ([`World::production_load`]); any other has room −1 and takes none. The amount is lowered while the player cannot pay that many:
     /// each cost entry of the costed master ([`crate::production::costed`]; an annex's paid
     /// ones) but the population's needs its amount times the count (`COMISS`, `JA`: a NaN
     /// passes); at one still short, or for a master below type 70, nothing is queued. In game
@@ -31,10 +32,11 @@ impl World {
     /// pick first, replaced by one whose load is below: `COMISS`, `JBE`, a NaN never wins; with
     /// none at the start, the most room), its room one less and its load the unit's train time
     /// there ([`crate::production::train_time`]); last, each building's part
-    /// ([`World::queue_at`]) with its count, the packet's master and button. Not modelled: a
-    /// building that cannot train the unit (`FUN_141263610`, which reads the local player's
-    /// masters), the limited units (`FUN_1416116c0`, `FUN_141611520`, the master's `+0x5f1`
-    /// bits 2 and 4).
+    /// ([`World::queue_at`]) with its count, the packet's master and button. The limited units'
+    /// tests before the mode 16 check (`FUN_1416116c0`, `FUN_141611520`: an amount above the
+    /// master's `+0x5f0` lowered, none at 1) read the `+0x5f1` bits 1 and 2 of the unit or its
+    /// linked master; genie's masters keep `+0x5f1` as a boolean (the `.dat` holds 0 for every
+    /// master), so they pass ([`World::trainable_count`]).
     ///
     /// # Errors
     ///
@@ -87,6 +89,12 @@ impl World {
         let mut loads = Vec::with_capacity(found.len());
         let mut total_room = 0i32;
         for &i in &found {
+            // a building the unit does not train at keeps room −1 and load 0
+            if !self.trains_at(unit, owner.objects[i].life.master_id) {
+                rooms.push(-1);
+                loads.push(0.0);
+                continue;
+            }
             let total = owner.objects[i]
                 .production
                 .as_ref()
