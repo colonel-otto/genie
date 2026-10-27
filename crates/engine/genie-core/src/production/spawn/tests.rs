@@ -479,3 +479,86 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
     let mut t = world();
     assert!(t.spawn(1, 2, 59, 1.0).is_err());
 }
+
+/// Every candidate of `site`'s search for a unit of radius 0.5 (a step of 0.5, no gap), all
+/// blocked by objects that stay: each spot's first candidate in turn, and the error of the
+/// later rings.
+fn all_blocked(site: &Site) -> (Vec<[f32; 2]>, Result<[f32; 2], GenieError>) {
+    let mut tried = Vec::new();
+    let r = spawn_point(site, [0.5, 0.5], &mut |c| {
+        tried.push(c);
+        Ok(Tested::Blocked { stays: true })
+    });
+    (tried, r)
+}
+
+/// `FUN_1411d12d0` without a gather point: one pass over the eight segments of an open
+/// building's frame (left 8.5, right 11.5, bottom 8.5, top 11.5): the top side's left quarter
+/// and a half more (1), the left side's top part (2), the top's right part (3), the left's
+/// lower part (4), the right side's top half (5) and lower half (6), the bottom side's left
+/// half (7) and right half (8). Then the later rings, not modelled.
+#[test]
+fn a_spawn_search_without_a_gather_point_walks_the_eight_segments_once() {
+    let site = Site {
+        position: [10.0, 10.0, 0.0],
+        radius: [1.0, 1.0],
+        gather: None,
+        walls: [false; 4],
+    };
+    let (tried, r) = all_blocked(&site);
+    let top = [[8.5, 11.5], [9.0, 11.5], [9.5, 11.5]];
+    let left = [[8.5, 11.5], [8.5, 11.0], [8.5, 10.5]];
+    let top_right = [[9.75, 11.5], [10.25, 11.5], [10.75, 11.5], [11.25, 11.5]];
+    let left_low = [[8.5, 10.25], [8.5, 9.75], [8.5, 9.25], [8.5, 8.75]];
+    let right = [[11.5, 11.5], [11.5, 11.0]];
+    let right_low = [[11.5, 10.5], [11.5, 10.0], [11.5, 9.5], [11.5, 9.0]];
+    let bottom = [[8.5, 8.5], [9.0, 8.5]];
+    let bottom_right = [[9.5, 8.5], [10.0, 8.5], [10.5, 8.5], [11.0, 8.5]];
+    let segments: [&[[f32; 2]]; 8] = [
+        &top,
+        &left,
+        &top_right,
+        &left_low,
+        &right,
+        &right_low,
+        &bottom,
+        &bottom_right,
+    ];
+    assert_eq!(tried, segments.concat());
+    assert_eq!(
+        r,
+        Err(GenieError::unsupported(
+            "a spawn point beyond the building's sides (the search's later rings)"
+        ))
+    );
+}
+
+/// With a gather point away from the walled corners (top right, bottom left) the first pass
+/// tries nothing; the second takes the open top left corner's two segments (1, 2), then the
+/// bottom side from the right (9) and the right side from the bottom (10) as one segment.
+#[test]
+fn a_second_pass_between_walled_corners_tries_the_bottom_right_corner() {
+    let site = Site {
+        position: [10.0, 10.0, 0.0],
+        radius: [1.0, 1.0],
+        gather: Some([20.0, 5.0]),
+        walls: [false, true, false, true],
+    };
+    let (tried, r) = all_blocked(&site);
+    assert_eq!(
+        tried,
+        [
+            [8.5, 11.5],
+            [9.0, 11.5],
+            [9.5, 11.5],
+            [8.5, 11.5],
+            [8.5, 11.0],
+            [8.5, 10.5],
+            [11.5, 8.5],
+            [11.0, 8.5],
+            [11.5, 8.5],
+            [11.5, 9.0]
+        ]
+    );
+    assert!(r.is_err());
+}

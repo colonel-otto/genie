@@ -9555,9 +9555,31 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
     assert_eq!(promotions, [(123, 118, 83)]);
 }
 
-/// `AskForHelp`'s tests of the scout 124 (player 1, master 448, at (10.3, 10), its unit AI
-/// `helper`, its own Attack `own`) as a helper against Gaia's wolf 50, asked by the scout 123.
-fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bool {
+/// The scout 124 (player 1, master 448, at (10.3, 10), its unit AI `helper`, its own Attack
+/// `own`), a helper against Gaia's wolf 50 asked by the scout 123.
+fn helper_scout(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> Unit {
+    Unit {
+        id: 124,
+        position: [10.3, 10.0, 0.0],
+        attack: own,
+        ai: Some(helper),
+        life: Lifecycle {
+            master_id: 448,
+            state: 2,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    }
+}
+
+/// `AskForHelp`'s world: the scout 123's view (player 1, master 448, at (10, 10)) with the
+/// `helper` among its owner's other objects, Gaia's wolf 50 at (10.5, 10), and the lists the
+/// last search left (`searched`, none before any); `f` runs on the view.
+fn help_view<R>(
+    helper: Unit,
+    searched: Option<[Vec<crate::vision::registry::Record>; 5]>,
+    f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_>) -> R,
+) -> R {
     let scout = Master {
         id: 448,
         kind: 70,
@@ -9603,19 +9625,10 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
         ..Player::default()
     };
     let players = [gaia];
-    let helper_unit = Unit {
-        id: 124,
-        position: [10.3, 10.0, 0.0],
-        attack: own,
-        ai: Some(helper),
-        life: Lifecycle {
-            master_id: 448,
-            state: 2,
-            ..Lifecycle::default()
-        },
-        ..Unit::default()
-    };
-    let others = [helper_unit];
+    if let Some(lists) = searched {
+        spatial.set_searched(lists);
+    }
+    let others = [helper];
     let mut unit = Unit {
         id: 123,
         position: [10.0, 10.0, 0.0],
@@ -9625,7 +9638,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
         },
         ..Unit::default()
     };
-    let masters = Masters::new([scout.clone()]);
+    let masters = Masters::new([scout]);
     let every = [Masters::new([wolf]), masters.clone()];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
     let groups = crate::groups::UnitGroups::default();
@@ -9634,7 +9647,7 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
     let graphics = std::collections::BTreeMap::new();
-    let side = crate::unit_ai::world_view::UnitView {
+    let mut side = crate::unit_ai::world_view::UnitView {
         unit: &mut unit,
         attacker: crate::unit_ai::Attacker {
             ai_type: 13,
@@ -9695,7 +9708,17 @@ fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bo
         mode_680: 0,
         carry_rule: false,
     };
-    side.helper_free(1, &others[0], &scout, 50).unwrap()
+    f(&mut side)
+}
+
+/// `AskForHelp`'s helper test ([`UnitView::helper_free`]) of [`helper_scout`] against the wolf.
+///
+/// [`UnitView::helper_free`]: crate::unit_ai::world_view::UnitView::helper_free
+fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bool {
+    help_view(helper_scout(helper, own), None, |side| {
+        let scout = side.masters.and_then(|m| m.get(448)).unwrap().clone();
+        side.helper_free(1, &side.others[0], &scout, 50).unwrap()
+    })
 }
 
 /// `AskForHelp` (`FUN_140c42ce0`) asks only an idle helper in no group (no action value, action,
@@ -13455,4 +13478,68 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
     // the town centre's master is bare: only the gate changes it (any building of type 80
     // toggles its lock)
     assert_eq!(changed, [false, false, false, false, true, false, false]);
+}
+
+/// `AskForHelp`'s walk of the last search's own and friends' lists
+/// ([`UnitSide::call_for_help`] of the world's view): the asking unit passes itself; a live
+/// helper with a unit AI within 3 tiles that is free ([`helper_free`]) answers, which is not
+/// modelled; a busy, dead, unthinking or distant one does not. Without a search before it
+/// the registry's last answer is not held.
+///
+/// [`UnitSide::call_for_help`]: crate::unit_ai::UnitSide::call_for_help
+#[test]
+fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
+    use crate::unit_ai::UnitSide;
+    use crate::vision::registry::Record;
+    let idle = UnitAi {
+        ai_type: 13,
+        current_order: -1,
+        current_action: -1,
+        current_target: -1,
+        stance: 0,
+        ..UnitAi::default()
+    };
+    let record = |id, x| Record {
+        id,
+        distance: f32::MAX,
+        owner: 1,
+        x,
+        y: 10.0,
+        rx: 0.2,
+        ry: 0.2,
+    };
+    let lists = || {
+        [
+            Vec::new(),
+            vec![record(123, 10.0), record(124, 10.3)],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        ]
+    };
+    let call = |helper: Unit, searched| help_view(helper, searched, |side| side.call_for_help(50));
+    assert_eq!(
+        call(helper_scout(idle.clone(), None), Some(lists())),
+        crate::unit_ai::helper_answers()
+    );
+    let busy = UnitAi {
+        current_order: 700,
+        ..idle.clone()
+    };
+    assert_eq!(call(helper_scout(busy, None), Some(lists())), Ok(()));
+    let mut dead = helper_scout(idle.clone(), None);
+    dead.life.state = 3;
+    assert_eq!(call(dead, Some(lists())), Ok(()));
+    let mut unthinking = helper_scout(idle.clone(), None);
+    unthinking.ai = None;
+    assert_eq!(call(unthinking, Some(lists())), Ok(()));
+    let mut far = helper_scout(idle.clone(), None);
+    far.position = [14.0, 10.0, 0.0];
+    assert_eq!(call(far, Some(lists())), Ok(()));
+    assert_eq!(
+        call(helper_scout(idle, None), None),
+        Err(GenieError::unsupported(
+            "a search that reads the registry's last answer (before any query)"
+        ))
+    );
 }

@@ -2441,3 +2441,85 @@ fn a_unit_let_out_works_its_record_or_the_gather_point_s_target() {
     assert_eq!(v.ai.as_ref().map(|a| a.current_target), Some(-1));
     assert_eq!(v.top_action(), None);
 }
+
+/// Slot 0x120 of a building told its player's new relation ([`World::notify_of_relation`]):
+/// player 1's town centre 100 holding player 2's villager 2000 keeps it while they stay
+/// allies (relation 0) and lets it out toward no point once they are enemies (3); a
+/// relation toward a player with no unit inside lets nobody out. Told from the villager's
+/// side (its player's relation toward the building's owner), it leaves the same way.
+#[test]
+fn a_building_lets_out_the_units_of_a_player_no_longer_its_ally() {
+    let held = |t: &World| {
+        (
+            t.players[2].objects[0].life.inside,
+            t.players[1].objects[0].garrison.clone(),
+        )
+    };
+    let mut t = let_out_world();
+    inside_tc(&mut t, 2, 2000, VILLAGER);
+    t.notify_of_relation(1, 100, 2, 0).unwrap();
+    t.notify_of_relation(1, 100, 3, 3).unwrap();
+    assert_eq!(held(&t), (Some(100), vec![2000]));
+    t.notify_of_relation(1, 100, 2, 3).unwrap();
+    assert_eq!(held(&t), (None, vec![]));
+    let mut t = let_out_world();
+    inside_tc(&mut t, 2, 2000, VILLAGER);
+    t.notify_of_relation(2, 2000, 1, 0).unwrap();
+    assert_eq!(held(&t).0, Some(100));
+    t.notify_of_relation(2, 2000, 1, 3).unwrap();
+    assert_eq!(held(&t), (None, vec![]));
+}
+
+/// A siege tower (class 13) unloads on a new relation, not modelled: the unit inside one of
+/// the other player's, and the tower holding the other player's units, both stop there.
+#[test]
+fn a_siege_tower_s_unload_on_a_new_relation_is_not_modelled() {
+    let mut t = let_out_world();
+    for m in &mut t.masters {
+        if let Some(ship) = m.get_mut(SHIP) {
+            ship.class = 13;
+        }
+    }
+    inside_tc(&mut t, 2, 2000, VILLAGER);
+    t.players[2].objects[0].life.inside = Some(200);
+    t.players[1].objects[0].garrison.clear();
+    t.players[1].objects[1].garrison.push(2000);
+    let unload = Err(SIEGE_UNLOAD);
+    assert_eq!(t.notify_of_relation(2, 2000, 1, 3), unload);
+    assert_eq!(t.notify_of_relation(1, 200, 2, 3), unload);
+    assert_eq!(t.notify_of_relation(1, 200, 2, 0), Ok(()));
+}
+
+/// A human player's market (84), now an ally of a computer player, tells it of its tile (the
+/// computer's tile list); a computer's market, or a human ally, hears nothing.
+#[test]
+fn a_market_tells_a_computer_ally_of_its_tile() {
+    let market = |computer_ally: bool, own_computer: bool| {
+        let mut t = let_out_world();
+        for m in &mut t.masters {
+            let mut market = m.get(TC).unwrap().clone();
+            market.id = 84;
+            *m = Masters::new(m.iter().cloned().chain([market]));
+        }
+        t.players[1].objects[0].life.master_id = 84;
+        t.players[1].objects[0].position = [10.5, 12.5, 0.0];
+        t.players[2].computer = computer_ally;
+        t.players[1].computer = own_computer;
+        let mut v = crate::vision::visibility::Visibility::new(
+            20,
+            20,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            Vec::new(),
+        );
+        v.new_tiles = vec![Vec::new(); 4];
+        t.spatial.sight = Some(v);
+        t.notify_of_relation(1, 100, 2, 0).unwrap();
+        t.spatial.sight.unwrap().new_tiles[2].clone()
+    };
+    assert_eq!(market(true, false), [[10, 12]]);
+    assert_eq!(market(false, false), Vec::<[i32; 2]>::new());
+    assert_eq!(market(true, true), Vec::<[i32; 2]>::new());
+}

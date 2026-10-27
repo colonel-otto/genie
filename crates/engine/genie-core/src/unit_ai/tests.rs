@@ -10414,3 +10414,170 @@ fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
         ))
     );
 }
+
+/// A soldier's world for its retarget search: what `bestUnitToAttack` finds, and each search's
+/// place, reference distance, `any_class` and work state.
+struct RetargetSide {
+    soldier: SoldierSide,
+    searched: Vec<([f32; 2], f32, bool, bool)>,
+}
+
+impl RetargetSide {
+    const fn finding(found: i32) -> Self {
+        Self {
+            soldier: SoldierSide {
+                found,
+                attacks: Vec::new(),
+                patrol: None,
+                refuses: false,
+            },
+            searched: Vec::new(),
+        }
+    }
+}
+
+impl UnitSide for RetargetSide {
+    fn patrol_information(&self) -> Option<(PatrolPath, i32)> {
+        self.soldier.patrol_information()
+    }
+    fn closest(&mut self, search: &Search<'_>) -> Result<Found, GenieError> {
+        if let Pick::Attack { ask, .. } = &search.pick {
+            self.searched
+                .push((search.at, ask.distance, ask.any_class, ask.work_state));
+        }
+        self.soldier.closest(search)
+    }
+    fn attack(&mut self, target: i32, force: bool, ai: &UnitAi) -> Result<Attacked, GenieError> {
+        self.soldier.attack(target, force, ai)
+    }
+    fn set_under_attack(&mut self, under: bool) {
+        self.soldier.set_under_attack(under);
+    }
+    fn stop(&mut self) -> Result<(), GenieError> {
+        self.soldier.stop()
+    }
+    fn may_attack(&mut self, id: i32, s: &Seeker) -> Result<Option<(i16, [f32; 3])>, GenieError> {
+        self.soldier.may_attack(id, s)
+    }
+    fn seek_unexplored(
+        &mut self,
+        ai: &UnitAi,
+        rng: &mut Well512,
+    ) -> Result<Option<[i32; 2]>, GenieError> {
+        self.soldier.seek_unexplored(ai, rng)
+    }
+    fn seek_beyond_sight(&mut self, rng: &mut Well512) -> Result<Option<[i32; 2]>, GenieError> {
+        self.soldier.seek_beyond_sight(rng)
+    }
+    fn make_scout_map(&mut self) -> Result<(), GenieError> {
+        self.soldier.make_scout_map()
+    }
+}
+
+/// A soldier at (10, 10) on the attack order against `target` (−1 for none), among the
+/// world's objects: an enemy's sheep 25954 at (12, 10), its archer 30 (class 0), its house 40
+/// (class 3, type 80) and the house's annex 41 (main 40), and its trebuchet 42 (class 54, type
+/// 80) and farm 43 (class 49, type 80).
+fn retargeting(target: i32) -> (UnitAi, Surroundings) {
+    let u = UnitAi {
+        current_order: ATTACK_ORDER,
+        current_action: ATTACK_ACTION,
+        current_target: target,
+        ..idle(SOLDIER_AI)
+    };
+    let seen = |id, class: i16, kind: u8, main| UnitSeen {
+        id,
+        class,
+        owner: 2,
+        state: 2,
+        kind,
+        main,
+        position: [12.0, 10.0, 0.0],
+        ..UnitSeen::default()
+    };
+    let at = Surroundings {
+        id: 500,
+        class: 6,
+        player: 1,
+        position: [10.0, 10.0, 0.0],
+        los: 6.0,
+        units: vec![
+            seen(25954, 58, 70, None),
+            seen(30, 0, 70, None),
+            seen(40, 3, 80, None),
+            seen(41, 3, 80, Some(40)),
+            seen(42, 54, 80, None),
+            seen(43, 49, 80, None),
+        ],
+        ..Surroundings::default()
+    };
+    (u, at)
+}
+
+/// The retarget's search for a better target ([`UnitAi::retarget_search`]): from the current
+/// target's place within `RETARGET_REACH`, any class only for a building target and in the
+/// attack work state the checks read. On the attack order a find of another attack category
+/// than the live current target's ends it (9), as does any find without a building target.
+/// Without a target the search starts from the unit, without a reference distance, any class.
+#[test]
+fn a_retarget_search_ends_on_another_category_or_without_a_building_target() {
+    let (mut u, at) = retargeting(25954);
+    let mut side = RetargetSide::finding(30);
+    let plain = RetargetSearch {
+        building: false,
+        work_state: true,
+    };
+    let mut fx = Vec::new();
+    assert_eq!(
+        u.retarget_search(plain, false, &at, &mut side, &mut fx),
+        Ok(9)
+    );
+    assert_eq!(side.searched, [([12.0, 10.0], RETARGET_REACH, false, true)]);
+    assert_eq!((side.soldier.attacks.len(), fx.len()), (0, 0));
+    // the same category: no building target, so nothing more either
+    let mut side = RetargetSide::finding(25954);
+    assert_eq!(
+        u.retarget_search(plain, false, &at, &mut side, &mut fx),
+        Ok(9)
+    );
+    let (mut none, at) = retargeting(-1);
+    let mut side = RetargetSide::finding(-1);
+    assert_eq!(
+        none.retarget_search(plain, false, &at, &mut side, &mut fx),
+        Ok(9)
+    );
+    assert_eq!(side.searched, [([10.0, 10.0], 0.0, true, false)]);
+}
+
+/// With a building target the search goes on: a found building keeps the current target (10),
+/// but a trebuchet's classes, or a find for a farm target that is no farm; a found annex names
+/// its main building; a found object other than the current target is attacked (slot 0xb8,
+/// not any; 10), the current target itself is not (9). A computer player's unit in stance 0
+/// keeps its building target past the category test.
+#[test]
+fn a_retarget_search_with_a_building_target_attacks_what_it_finds() {
+    let building = RetargetSearch {
+        building: true,
+        work_state: false,
+    };
+    let attacked = |target, found, computer| {
+        let (mut u, at) = retargeting(target);
+        u.current_order = -1;
+        let mut side = RetargetSide::finding(found);
+        let r = u.retarget_search(building, computer, &at, &mut side, &mut Vec::new());
+        (r, side.soldier.attacks)
+    };
+    assert_eq!(attacked(40, 30, false), (Ok(10), vec![(30, true)]));
+    assert_eq!(attacked(40, 40, false), (Ok(10), vec![]));
+    assert_eq!(attacked(30, 41, false), (Ok(10), vec![]));
+    assert_eq!(attacked(43, 41, false), (Ok(10), vec![(40, true)]));
+    assert_eq!(attacked(40, 42, false), (Ok(10), vec![(42, true)]));
+    assert_eq!(attacked(43, 43, false), (Ok(10), vec![]));
+    assert_eq!(attacked(30, 30, false), (Ok(9), vec![]));
+    // on the attack order a computer's unit in stance 0 keeps its building target past the
+    // category test: the archer is attacked
+    let (mut u, at) = retargeting(40);
+    let mut side = RetargetSide::finding(30);
+    let r = u.retarget_search(building, true, &at, &mut side, &mut Vec::new());
+    assert_eq!((r, side.soldier.attacks), (Ok(10), vec![(30, true)]));
+}

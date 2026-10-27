@@ -257,6 +257,12 @@ impl Spatial {
         self.search_cache.borrow().last.clone()
     }
 
+    /// The lists a last search left, as a test sets them.
+    #[cfg(test)]
+    pub(crate) fn set_searched(&self, lists: [Vec<Record>; 5]) {
+        self.search_cache.borrow_mut().last = Some(lists);
+    }
+
     /// The search's pick of what it found ([`Spatial::search`]).
     #[allow(clippy::too_many_arguments)]
     pub(super) fn pick_found(

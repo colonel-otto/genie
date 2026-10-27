@@ -171,16 +171,13 @@ impl World {
     /// nothing (`FUN_141196990`, `FUN_14106d4e0`).
     ///
     /// The combat object's, with a relation other than an ally's: a unit inside an object of
-    /// `q` leaves it, a building's toward no point (`FUN_1411e7220` with −1, −1,
-    /// [`World::let_out`]), a siege tower's (class 13) as its unload; then a siege tower lets out
-    /// the units of `q` inside it, from the last. One that finds no spot would leave it and be
-    /// destroyed (slots 0x1a8 and 0xd0), which the unload's own errors stand for.
+    /// `q` leaves it ([`World::leave_foreign_holder`]); then a siege tower lets out the units
+    /// of `q` inside it, from the last. One that finds no spot would leave it and be destroyed
+    /// (slots 0x1a8 and 0xd0), which the unload's own errors stand for.
     ///
-    /// The building's, with an ally's relation: a market (84) of a player not a computer's tells
-    /// a computer player `q` of its tile (its tile list, `FUN_14165d500`), unless the lobby's
-    /// rule table (`FUN_14152fbb0`'s, key 1) says not; the table's settings of a scenario are not
-    /// held (taken as absent, the rule on). With another relation the units of `q` inside it,
-    /// from the last, leave it toward no point.
+    /// The building's, with an ally's relation: a market tells a computer ally of its tile
+    /// ([`World::market_tells`]). With another relation the units of `q` inside it, from the
+    /// last, leave it toward no point ([`World::let_out_foreign`]).
     pub(crate) fn notify_of_relation(
         &mut self,
         p: usize,
@@ -199,20 +196,7 @@ impl World {
         let inside = u.life.inside;
         let (position, garrison) = (u.position, u.garrison.clone());
         if relation != ALLY {
-            if let Some(holder) = inside
-                && let Some((hp, h)) = self.object(holder)
-                && hp == q
-            {
-                let holder_master = self.master_of(hp, h.life.master_id)?;
-                if holder_master.kind == master_type::BUILDING {
-                    let hi = self.live_index(hp, holder)?;
-                    if !self.let_out(hp, hi, id, [NO_POINT; 2], (None, true))? {
-                        self.destroy(p, id)?;
-                    }
-                } else if holder_master.class == SIEGE_CLASS {
-                    return Err(crate::garrison::SIEGE_UNLOAD);
-                }
-            }
+            self.leave_foreign_holder(p, id, q, inside)?;
             if class == SIEGE_CLASS
                 && garrison
                     .iter()
@@ -225,19 +209,75 @@ impl World {
             return Ok(());
         }
         if relation == ALLY {
-            if master_id == MARKET
-                && !self.players[p].computer
-                && i32::try_from(q).ok() != Some(id)
-                && self.players[q].computer
-                && let Some(v) = self.spatial.sight.as_mut()
-            {
-                let tile = [cvttss2si(position[0]), cvttss2si(position[1])];
-                if let Some(list) = v.new_tiles.get_mut(q) {
-                    list.push(tile);
-                }
+            if master_id == MARKET {
+                self.market_tells(p, id, q, position);
             }
             return Ok(());
         }
+        self.let_out_foreign(p, id, q, &garrison)
+    }
+
+    /// The combat object's part, with a relation other than an ally's: a unit `id` inside an
+    /// object of `q` (`inside`) leaves it, a building's toward no point (`FUN_1411e7220` with
+    /// −1, −1, [`World::let_out`]; finding no spot, it is destroyed), a siege tower's (class 13)
+    /// as its unload, not modelled.
+    fn leave_foreign_holder(
+        &mut self,
+        p: usize,
+        id: i32,
+        q: usize,
+        inside: Option<i32>,
+    ) -> Result<(), GenieError> {
+        let Some(holder) = inside else {
+            return Ok(());
+        };
+        let Some((hp, h)) = self.object(holder) else {
+            return Ok(());
+        };
+        if hp != q {
+            return Ok(());
+        }
+        let holder_master = self.master_of(hp, h.life.master_id)?;
+        if holder_master.kind == master_type::BUILDING {
+            let hi = self.live_index(hp, holder)?;
+            if !self.let_out(hp, hi, id, [NO_POINT; 2], (None, true))? {
+                self.destroy(p, id)?;
+            }
+        } else if holder_master.class == SIEGE_CLASS {
+            return Err(crate::garrison::SIEGE_UNLOAD);
+        }
+        Ok(())
+    }
+
+    /// A market (84) of player `p`, now an ally of `q`: a player not a computer's tells a
+    /// computer player `q` of its tile (its tile list, `FUN_14165d500`), unless the lobby's rule
+    /// table (`FUN_14152fbb0`'s, key 1) says not; the table's settings of a scenario are not
+    /// held (taken as absent, the rule on).
+    fn market_tells(&mut self, p: usize, id: i32, q: usize, position: [f32; 3]) {
+        if self.players[p].computer
+            || i32::try_from(q).ok() == Some(id)
+            || !self.players[q].computer
+        {
+            return;
+        }
+        if let Some(v) = self.spatial.sight.as_mut() {
+            let tile = [cvttss2si(position[0]), cvttss2si(position[1])];
+            if let Some(list) = v.new_tiles.get_mut(q) {
+                list.push(tile);
+            }
+        }
+    }
+
+    /// The building's part with a relation other than an ally's: the units of `q` inside the
+    /// building `id`, from the last, leave it toward no point; one that finds no spot is
+    /// destroyed.
+    fn let_out_foreign(
+        &mut self,
+        p: usize,
+        id: i32,
+        q: usize,
+        garrison: &[i32],
+    ) -> Result<(), GenieError> {
         let bi = self.live_index(p, id)?;
         for &g in garrison.iter().rev() {
             if self.object(g).is_some_and(|(gp, _)| gp == q)

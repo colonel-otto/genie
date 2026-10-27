@@ -67,7 +67,7 @@
     {
       "file": "crates/engine/genie-core/src/map/spatial/search.rs",
       "function": "Spatial::closest_object",
-      "line": 349,
+      "line": 355,
       "cyclomatic": 49.0,
       "coverage": 56.00000000000001,
       "crap": 253.52678399999994,
@@ -191,15 +191,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/players/diplomacy.rs",
-      "function": "World::notify_of_relation",
-      "line": 184,
-      "cyclomatic": 31.0,
-      "coverage": 0.0,
-      "crap": 992.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/production/spawn/gather_walk.rs",
       "function": "World::gather_move",
       "line": 25,
@@ -224,15 +215,6 @@
       "cyclomatic": 72.0,
       "coverage": 75.83333333333333,
       "crap": 145.16700000000003,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/production/spawn/search.rs",
-      "function": "spawn_point",
-      "line": 41,
-      "cyclomatic": 78.0,
-      "coverage": 58.75,
-      "crap": 505.03263281249997,
       "crate": "genie-core"
     },
     {
@@ -272,30 +254,12 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/unit_ai/retarget.rs",
-      "function": "UnitAi::retarget_search",
-      "line": 294,
-      "cyclomatic": 29.0,
-      "coverage": 0.0,
-      "crap": 870.0,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/unit_ai/task_finder/mod.rs",
       "function": "find_task",
       "line": 397,
       "cyclomatic": 91.0,
       "coverage": 83.7696335078534,
       "crap": 126.40525807667794,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai/world_view/side.rs",
-      "function": "UnitView::call_for_help",
-      "line": 74,
-      "cyclomatic": 18.0,
-      "coverage": 0.0,
-      "crap": 342.0,
       "crate": "genie-core"
     },
     {

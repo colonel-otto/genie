@@ -34,187 +34,227 @@ pub(super) fn try_spot(
 /// `FUN_1411d12d0`: the spawn point beside `site` for a unit of radii `unit`. The segments of
 /// the sides facing the gather point come first (the top side's left part, the left side's top
 /// part, the top's right part, the left's lower part; then the right side down; then the bottom
-/// side), each only where no wall closes its corner; a second pass tries every open side. Without
-/// a gather point there is one pass. The search's later rings (cases 11 to 18: the spots on the
-/// building's edge and the rings around it, `FUN_1411d0b20`) and its first test under
-/// `DAT_143f01833` (`FUN_1411c52f0`, probed 0) are not modelled.
+/// side), each only where no wall closes its corner; a second pass tries every open side
+/// ([`Frame::segments`]). Without a gather point there is one pass. The search's later rings
+/// (cases 11 to 18: the spots on the building's edge and the rings around it, `FUN_1411d0b20`)
+/// and its first test under `DAT_143f01833` (`FUN_1411c52f0`, probed 0) are not modelled.
 pub fn spawn_point(
     site: &Site,
     unit: [f32; 2],
     test: &mut dyn FnMut([f32; 2]) -> Result<Tested, GenieError>,
 ) -> Result<[f32; 2], GenieError> {
-    let [mut sx, mut sy] = unit;
-    if sx < SMALL && sy < SMALL {
-        sx = sx + sx + GAP;
-        sy = sy + sy + GAP;
-    }
-    let [bx, by] = site.radius;
-    let [x, y, _] = site.position;
-    let left = x - (bx + sx);
-    let right = x + bx + sx;
-    let top = y + by + sy;
-    let bottom = y - (by + sy);
-    let [left_top, right_top, right_bottom, left_bottom] = site.walls;
-    let [gx, gy] = site.gather.unwrap_or([NONE, NONE]);
-    let dx = (x - gx).abs();
-    let dy = (y - gy).abs();
-    let (no_x, no_y) = (gx == NONE, gy == NONE);
-    // a spot of a horizontal segment tries its point and the next one up (or down); a vertical
-    // segment's, the next one out
-    let up = |at| Spot {
-        at,
-        step: [0.0, sy],
-        dir: [0, 1],
-        count: 1,
-    };
-    let down = |at| Spot {
-        at,
-        step: [0.0, sy],
-        dir: [0, -1],
-        count: 1,
-    };
-    let out_left = |at| Spot {
-        at,
-        step: [sx, 0.0],
-        dir: [-1, 0],
-        count: 1,
-    };
-    let out_right = |at| Spot {
-        at,
-        step: [sx, 0.0],
-        dir: [1, 0],
-        count: 1,
-    };
+    let frame = Frame::new(site, unit);
     for pass in 1..=2 {
-        let second = pass == 2;
-        let mut tries: Vec<Spot> = Vec::new();
-        let mut run = |spots: &mut Vec<Spot>| -> Result<Option<[f32; 2]>, GenieError> {
-            for s in spots.drain(..) {
-                if let Some(p) = try_spot(&s, test)? {
-                    return Ok(Some(p));
-                }
-            }
-            Ok(None)
-        };
-        if !left_top {
-            // (1) the top side's left part
-            if no_y || second || ((y < gy && dx <= dy) && (no_x || gx < x)) {
-                let mut cx = left;
-                while cx < bx * SIDE_SHARE + bx + left {
-                    tries.push(up([cx, top]));
-                    cx += sx;
-                }
-                if let Some(p) = run(&mut tries)? {
-                    return Ok(p);
-                }
-            }
-            // (2) the left side's top part
-            if no_x || second || ((gx < x && dy < dx) && (no_y || y < gy)) {
-                let mut cy = top;
-                while top - (by * SIDE_SHARE + by) < cy {
-                    tries.push(out_left([left, cy]));
-                    cy -= sy;
-                }
-                if let Some(p) = run(&mut tries)? {
-                    return Ok(p);
-                }
-            }
-            // (3) the top side's right part
-            if !right_top && (no_y || second || (y < gy && dx <= dy)) {
-                let mut cx = bx * SIDE_SHARE + bx + left;
-                while cx < bx + bx + left + sx + sx {
-                    tries.push(up([cx, top]));
-                    cx += sx;
-                }
-                if let Some(p) = run(&mut tries)? {
-                    return Ok(p);
-                }
-            }
-            // (4) the left side's lower part
-            if !left_bottom && (no_x || second || (gx < x && dy < dx)) {
-                let mut cy = top - (by * SIDE_SHARE + by);
-                while top - (by + by + sy + sy) < cy {
-                    tries.push(out_left([left, cy]));
-                    cy -= sy;
-                }
-                if let Some(p) = run(&mut tries)? {
+        for segment in frame.segments(pass == 2) {
+            // a segment's spots are all made before its first is tried
+            let spots: Vec<Spot> = segment.iter().flat_map(|r| frame.spots(r)).collect();
+            for spot in &spots {
+                if let Some(p) = try_spot(spot, test)? {
                     return Ok(p);
                 }
             }
         }
-        if !right_top && (no_x || second || (x < gx && dy < dx)) {
-            // (5) the right side's top half
-            if no_y || second || y < gy {
-                let mut cy = top;
-                while top - by < cy {
-                    tries.push(out_right([right, cy]));
-                    cy -= sy;
-                }
-                if let Some(p) = run(&mut tries)? {
-                    return Ok(p);
-                }
-            }
-            // (6) its lower half
-            if !right_bottom {
-                let mut cy = top - by;
-                while top - (by + by + sy + sy) < cy {
-                    tries.push(out_right([right, cy]));
-                    cy -= sy;
-                }
-                if let Some(p) = run(&mut tries)? {
-                    return Ok(p);
-                }
-            }
-        }
-        let bottom_closed = left_bottom || (!no_y && !second && (y <= gy || dy < dx));
-        if !bottom_closed {
-            // (7) the bottom side's left half
-            if no_x || second || gx < x {
-                let mut cx = left;
-                while cx < left + bx {
-                    tries.push(down([cx, bottom]));
-                    cx += sx;
-                }
-                if let Some(p) = run(&mut tries)? {
-                    return Ok(p);
-                }
-            }
-            // (8) its right half
-            if !right_bottom {
-                let mut cx = left + bx;
-                while cx < bx + bx + sx + sx + left {
-                    tries.push(down([cx, bottom]));
-                    cx += sx;
-                }
-                if let Some(p) = run(&mut tries)? {
-                    return Ok(p);
-                }
-            }
-        }
-        // (9), (10): with the top right and bottom left corners walled, the second pass tries the
-        // bottom side from the right and the right side from the bottom
-        if !right_bottom && right_top && left_bottom && second {
-            let mut cx = right;
-            while right - bx < cx {
-                tries.push(down([cx, bottom]));
-                cx -= sx;
-            }
-            let mut cy = bottom;
-            while cy < bottom + by {
-                tries.push(out_right([right, cy]));
-                cy += sy;
-            }
-            if let Some(p) = run(&mut tries)? {
-                return Ok(p);
-            }
-        }
-        if no_x {
+        if frame.no_x {
             break;
         }
     }
     Err(GenieError::unsupported(
         "a spawn point beyond the building's sides (the search's later rings)",
     ))
+}
+
+/// Where a run's spots lie and which way each tries its next point: above the building (up),
+/// below it (down), left of it or right of it (out).
+#[derive(Clone, Copy)]
+enum Side {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+/// One run of a segment's spots on a side: from `start` by `step` while below `end` (`rising`)
+/// or above it, the other coordinate `fixed` (the side's line).
+#[derive(Clone, Copy)]
+struct Run {
+    side: Side,
+    start: f32,
+    step: f32,
+    end: f32,
+    rising: bool,
+    fixed: f32,
+}
+
+/// The frame about the building the search walks: the unit's step (its radii, a small unit's
+/// doubled plus [`GAP`]), the building's half sizes and centre, the frame's sides, the walled
+/// corners (left top, right top, right bottom, left bottom), and the gather point and its
+/// distances from the centre (the axes the gather point lacks: [`NONE`]).
+struct Frame {
+    step: [f32; 2],
+    half: [f32; 2],
+    centre: [f32; 2],
+    left: f32,
+    right: f32,
+    top: f32,
+    bottom: f32,
+    walls: [bool; 4],
+    gather: [f32; 2],
+    away: [f32; 2],
+    no_x: bool,
+    no_y: bool,
+}
+
+impl Frame {
+    /// The frame beside `site` for a unit of radii `unit`.
+    fn new(site: &Site, unit: [f32; 2]) -> Self {
+        let [mut sx, mut sy] = unit;
+        if sx < SMALL && sy < SMALL {
+            sx = sx + sx + GAP;
+            sy = sy + sy + GAP;
+        }
+        let [bx, by] = site.radius;
+        let [x, y, _] = site.position;
+        let [gx, gy] = site.gather.unwrap_or([NONE, NONE]);
+        Self {
+            step: [sx, sy],
+            half: [bx, by],
+            centre: [x, y],
+            left: x - (bx + sx),
+            right: x + bx + sx,
+            top: y + by + sy,
+            bottom: y - (by + sy),
+            walls: site.walls,
+            gather: [gx, gy],
+            away: [(x - gx).abs(), (y - gy).abs()],
+            no_x: gx == NONE,
+            no_y: gy == NONE,
+        }
+    }
+
+    /// The segments of one pass (the second tries every open side), in their order, each its
+    /// runs: the top left corner's four ([`Frame::top_left`]), the right side's two
+    /// ([`Frame::right_side`]), the bottom side's two ([`Frame::bottom_side`]); then, on the
+    /// second pass with the top right and bottom left corners walled, one segment of the bottom
+    /// side from the right (9) and the right side from the bottom (10).
+    fn segments(&self, second: bool) -> Vec<Vec<Run>> {
+        let [left_top, right_top, right_bottom, left_bottom] = self.walls;
+        let ([x, y], [gx, gy], [dx, dy]) = (self.centre, self.gather, self.away);
+        let mut out = Vec::new();
+        if !left_top {
+            self.top_left(second, &mut out);
+        }
+        if !right_top && (self.no_x || second || (x < gx && dy < dx)) {
+            self.right_side(second, &mut out);
+        }
+        let bottom_closed = left_bottom || (!self.no_y && !second && (y <= gy || dy < dx));
+        if !bottom_closed {
+            self.bottom_side(second, &mut out);
+        }
+        if !right_bottom && right_top && left_bottom && second {
+            let ([sx, sy], [bx, by]) = (self.step, self.half);
+            let (right, bottom) = (self.right, self.bottom);
+            out.push(vec![
+                run(Side::Down, (right, -sx, right - bx), false, bottom),
+                run(Side::Right, (bottom, sy, bottom + by), true, right),
+            ]);
+        }
+        out
+    }
+
+    /// Below an open top left corner: (1) the top side's left part, (2) the left side's top
+    /// part, (3) the top side's right part (without a wall at the top right), (4) the left
+    /// side's lower part (without one at the bottom left), each toward the gather point or on
+    /// the second pass.
+    fn top_left(&self, second: bool, out: &mut Vec<Vec<Run>>) {
+        let [_, right_top, _, left_bottom] = self.walls;
+        let ([x, y], [gx, gy], [dx, dy]) = (self.centre, self.gather, self.away);
+        let ([sx, sy], [bx, by]) = (self.step, self.half);
+        let (left, top) = (self.left, self.top);
+        let (no_x, no_y) = (self.no_x, self.no_y);
+        if no_y || second || ((y < gy && dx <= dy) && (no_x || gx < x)) {
+            let end = bx * SIDE_SHARE + bx + left;
+            out.push(vec![run(Side::Up, (left, sx, end), true, top)]);
+        }
+        if no_x || second || ((gx < x && dy < dx) && (no_y || y < gy)) {
+            let end = top - (by * SIDE_SHARE + by);
+            out.push(vec![run(Side::Left, (top, -sy, end), false, left)]);
+        }
+        if !right_top && (no_y || second || (y < gy && dx <= dy)) {
+            let (start, end) = (bx * SIDE_SHARE + bx + left, bx + bx + left + sx + sx);
+            out.push(vec![run(Side::Up, (start, sx, end), true, top)]);
+        }
+        if !left_bottom && (no_x || second || (gx < x && dy < dx)) {
+            let (start, end) = (top - (by * SIDE_SHARE + by), top - (by + by + sy + sy));
+            out.push(vec![run(Side::Left, (start, -sy, end), false, left)]);
+        }
+    }
+
+    /// The right side down: (5) its top half (toward a gather point above, or on the second
+    /// pass), (6) its lower half without a wall at the bottom right.
+    fn right_side(&self, second: bool, out: &mut Vec<Vec<Run>>) {
+        let [_, y] = self.centre;
+        let ([_, sy], [_, by]) = (self.step, self.half);
+        let (right, top) = (self.right, self.top);
+        if self.no_y || second || y < self.gather[1] {
+            out.push(vec![run(Side::Right, (top, -sy, top - by), false, right)]);
+        }
+        if !self.walls[2] {
+            let (start, end) = (top - by, top - (by + by + sy + sy));
+            out.push(vec![run(Side::Right, (start, -sy, end), false, right)]);
+        }
+    }
+
+    /// The bottom side: (7) its left half (toward a gather point on the left, or on the second
+    /// pass), (8) its right half without a wall at the bottom right.
+    fn bottom_side(&self, second: bool, out: &mut Vec<Vec<Run>>) {
+        let [x, _] = self.centre;
+        let ([sx, _], [bx, _]) = (self.step, self.half);
+        let (left, bottom) = (self.left, self.bottom);
+        if self.no_x || second || self.gather[0] < x {
+            out.push(vec![run(Side::Down, (left, sx, left + bx), true, bottom)]);
+        }
+        if !self.walls[2] {
+            let (start, end) = (left + bx, bx + bx + sx + sx + left);
+            out.push(vec![run(Side::Down, (start, sx, end), true, bottom)]);
+        }
+    }
+
+    /// A run's spots: from its start by its step while short of its end. A spot of a
+    /// horizontal run tries its point and the next one up (or down); a vertical run's, the next
+    /// one out.
+    fn spots(&self, r: &Run) -> Vec<Spot> {
+        let [sx, sy] = self.step;
+        let mut spots = Vec::new();
+        let mut c = r.start;
+        while if r.rising { c < r.end } else { r.end < c } {
+            let (at, step, dir) = match r.side {
+                Side::Up => ([c, r.fixed], [0.0, sy], [0, 1]),
+                Side::Down => ([c, r.fixed], [0.0, sy], [0, -1]),
+                Side::Left => ([r.fixed, c], [sx, 0.0], [-1, 0]),
+                Side::Right => ([r.fixed, c], [sx, 0.0], [1, 0]),
+            };
+            spots.push(Spot {
+                at,
+                step,
+                dir,
+                count: 1,
+            });
+            c += r.step;
+        }
+        spots
+    }
+}
+
+/// A run on `side` from `start` by `step` to `end` (rising or falling), on the line `fixed`.
+const fn run(side: Side, (start, step, end): (f32, f32, f32), rising: bool, fixed: f32) -> Run {
+    Run {
+        side,
+        start,
+        step,
+        end,
+        rising,
+        fixed,
+    }
 }
 
 /// The corners' tile pairs (`FUN_1411d12d0`'s wall checks, left top, right top, right bottom,
