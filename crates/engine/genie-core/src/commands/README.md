@@ -1,7 +1,8 @@
 # `commands`: the players' commands
 
 A command is a player's input, as a recording stores it. The tick runs its commands first, before
-any object updates. `World::run` (`run.rs`) dispatches each command to its handler.
+any object updates. `World::run` (`run.rs`) dispatches each command to its handler: the
+building commands, the unit commands and the players' each have their own dispatch there.
 
 - Orders to units (INTERACT, MOVE, FOLLOW, GUARD, STOP, PATROL and the others) go on to
   `orders/`.

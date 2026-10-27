@@ -4,12 +4,11 @@
 use crate::GenieError;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::Vec3;
+use crate::movement::request_plans::{NewPath, Way};
 use crate::movement::{
-    BUILDING_CLASS, CLOSE, CONTINUE, DETOUR, EPSILON, FAR, GATE, Goal, LONG, LONG_PATH_GROW,
-    LONG_PATH_MOVER, LONG_PATHER, LongWalker, Me, Mover, PathData, Planning, RANGE_FLOOR,
-    SHORT_PATHER, SHORT_REACH, Step, TARGET_SHORT_REACH, TILE_PATHER, TOWER_CLASS, TRADE_CART,
-    VILLAGER_CLASS, WALL_CLASS, cut_path, far_waypoint, footprint_gap, ground, ground_line,
-    long_path_for, may_plan, point_or_zero, short_range, too_short, vector,
+    BUILDING_CLASS, CONTINUE, EPSILON, GATE, Goal, LONG_PATH_GROW, LONG_PATH_MOVER, LongWalker, Me,
+    Mover, Planning, RANGE_FLOOR, SHORT_REACH, Step, TOWER_CLASS, TRADE_CART, VILLAGER_CLASS,
+    WALL_CLASS, cut_path, footprint_gap, ground, long_path_for, may_plan, point_or_zero, vector,
 };
 use crate::pathing::tile_path::Path;
 
@@ -34,346 +33,154 @@ impl Mover {
         plans: &mut u32,
         include: &[i32],
     ) -> Result<Step, GenieError> {
-        let Goal {
-            target,
-            gap,
-            to_end,
-        } = goal;
         // the request measures and plans from +0x824 (`pfVar14`, `local_18c8`), where the unit
         // last moved to
         let position = vector(self.moved_at);
-        let radius = self.stats.radius[0];
-        let ground_radius = [radius, self.stats.radius[1]];
+        if let Some(step) = self.in_reach(me, goal, position) {
+            return Ok(step);
+        }
+        let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
+        let trade_cart = world.get(me.id).is_some_and(|p| p.class == TRADE_CART);
+        if solid && !self.plan_allowed(me, world, plan, trade_cart, plans)? {
+            return Ok(Step::Paused);
+        }
+        if let Some(step) = self.spend_try()? {
+            return Ok(step);
+        }
+        // the unit stops waiting to move (slot 0x2a0); a new level with a new path
+        self.waiting = 0;
+        let mut np = NewPath::new(plan.now);
+        if solid {
+            let level = &self.paths[0];
+            let waypoint = level.point(level.waypoint);
+            let w = Way {
+                goal,
+                include,
+                position,
+                waypoint,
+                distance: ground(waypoint, position),
+                radius: self.stats.radius[0],
+                level: level.level,
+                range: level.range,
+                target_id: level.target,
+                trade_cart,
+            };
+            if let Some(step) = self.plan_solid(me, world, plan, &w, &mut np)? {
+                return Ok(step);
+            }
+        } else {
+            self.straight_way(position, &mut np);
+        }
+        if np.path.points.len() < 2 || np.path.length < EPSILON {
+            return self.no_path(np.found, goal.target, goal.to_end);
+        }
+        Ok(self.link(np.new, np.path, np.found, np.partial, np.planned, solid))
+    }
+
+    /// The request's first exits: a target within the level's range (at least
+    /// [`RANGE_FLOOR`]) puts the level in state 4; a unit on its waypoint marks the level
+    /// (flag 1, and 2 when away from the target's footprint by more than [`EPSILON`] or
+    /// without one). Both go again.
+    pub(super) fn in_reach(&mut self, me: &Me, goal: Goal<'_>, position: Vec3) -> Option<Step> {
+        let ground_radius = [self.stats.radius[0], self.stats.radius[1]];
         let level = &mut self.paths[0];
         let reach = if level.range <= 0.0 {
             RANGE_FLOOR
         } else {
             level.range
         };
-        if target.is_some() && gap <= reach {
+        if goal.target.is_some() && goal.gap <= reach {
             level.state = 4;
-            return Ok(Step::Again);
+            return Some(Step::Again);
         }
         let waypoint = level.point(level.waypoint);
-        if ground(position, waypoint) == 0.0 {
-            let away = target.is_none_or(|t| {
-                EPSILON < footprint_gap(me.position, ground_radius, t.position, t.radius)
-            });
-            if away {
-                level.flags |= 2;
-            }
-            level.flags |= 1;
-            return Ok(Step::Again);
+        if ground(position, waypoint) != 0.0 {
+            return None;
         }
-        let solid = self.stats.radius.iter().all(|&r| 0.0 < r);
-        let trade_cart = world.get(me.id).is_some_and(|p| p.class == TRADE_CART);
-        if solid {
-            // a trade cart plans only within its owner's budget (FUN_14165d6f0 on its wait
-            // delays); a fourth plan in one step, or no budget: the unit stops (slot 0x5d0),
-            // counts a wait delay (`+0x7fa`) and the step returns 0
-            let owner = world.get(me.id).map(|p| p.player);
-            let budget = owner.map(|o| plan.pathing.budget(o));
-            if !may_plan(trade_cart, budget, self.wait_delays, *plans) {
-                self.stop()?;
-                self.wait_delays = self.wait_delays.wrapping_add(1);
-                return Ok(Step::Paused);
-            }
-            // the owner's count of plans (player +0x67c, FUN_141663c50)
-            if let Some(o) = owner {
-                plan.pathing.count_plan(o);
-            }
-            *plans += 1;
-            self.wait_delays = 0;
+        let away = goal.target.is_none_or(|t| {
+            EPSILON < footprint_gap(me.position, ground_radius, t.position, t.radius)
+        });
+        if away {
+            level.flags |= 2;
         }
-        // the level spends a try unless its top path loops
+        level.flags |= 1;
+        Some(Step::Again)
+    }
+
+    /// Whether a solid unit may plan: a trade cart plans only within its owner's budget
+    /// (`FUN_14165d6f0` on its wait delays); a fourth plan in one step, or no budget, stops the
+    /// unit (slot 0x5d0) and counts a wait delay (`+0x7fa`), and the step returns 0. A plan
+    /// counts for the owner (player `+0x67c`, `FUN_141663c50`) and for the step, and the wait
+    /// delays start again.
+    fn plan_allowed(
+        &mut self,
+        me: &Me,
+        world: &Spatial,
+        plan: &mut Planning<'_>,
+        trade_cart: bool,
+        plans: &mut u32,
+    ) -> Result<bool, GenieError> {
+        let owner = world.get(me.id).map(|p| p.player);
+        let budget = owner.map(|o| plan.pathing.budget(o));
+        if !may_plan(trade_cart, budget, self.wait_delays, *plans) {
+            self.stop()?;
+            self.wait_delays = self.wait_delays.wrapping_add(1);
+            return Ok(false);
+        }
+        if let Some(o) = owner {
+            plan.pathing.count_plan(o);
+        }
+        *plans += 1;
+        self.wait_delays = 0;
+        Ok(true)
+    }
+
+    /// The level spends a try unless its top path loops or the unit moves to attack. Out of
+    /// tries: a level 2 short of its last waypoint gets its tries again and goes on (flag 1); a
+    /// lower level, or a top without more points, resets and gives up (`FUN_140f9b4b0`:
+    /// `FUN_140f98e80`, state 6; the unit stops, slot 0x5d0); else the level takes state 5.
+    pub(super) fn spend_try(&mut self) -> Result<Option<Step>, GenieError> {
         let top_loops = self
             .paths
             .last()
             .is_some_and(|t| !t.points.is_empty() && t.path_flags & 1 != 0);
-        if !top_loops && !self.attack_moving {
-            let top_has_more = self.top_has_more();
-            let level = &mut self.paths[0];
-            level.continue_counter -= 1;
-            if level.continue_counter < 1 {
-                if 1 < level.level || !top_has_more {
-                    if level.level == 2 && level.waypoint < level.points.len() as i32 - 1 {
-                        level.flags |= 1;
-                        level.continue_counter = CONTINUE;
-                        return Ok(Step::Again);
-                    }
-                    // FUN_140f9b4b0: the level resets (FUN_140f98e80) and takes state 6; the unit
-                    // stops (slot 0x5d0)
-                    self.reset_level();
-                    self.paths[0].state = 6;
-                    self.stop()?;
-                    return Ok(Step::GaveUp);
-                }
-                level.state = 5;
-                return Ok(Step::Again);
-            }
+        if top_loops || self.attack_moving {
+            return Ok(None);
         }
-        // the unit stops waiting to move (slot 0x2a0); a new level with a new path
-        self.waiting = 0;
-        let mut new = PathData::new(plan.now);
-        let mut path = Path::default();
-        // `local_19d0`, `bVar35`, `bVar6` and `bVar4`
-        let mut found = false;
-        let mut partial = false;
-        let mut planned = false;
-        let mut failed = false;
-        if solid {
-            let way = ground(waypoint, position);
-            // FUN_141158210 is 1 only on an `E` tile in game type 12
-            if plan.pathing.game_type == 12 {
-                return Err(GenieError::unsupported(
-                    "a path request in game type 12 (its tile escape)",
-                ));
+        let top_has_more = self.top_has_more();
+        let level = &mut self.paths[0];
+        level.continue_counter -= 1;
+        if 1 <= level.continue_counter {
+            return Ok(None);
+        }
+        if 1 < level.level || !top_has_more {
+            if level.level == 2 && level.waypoint < level.points.len() as i32 - 1 {
+                level.flags |= 1;
+                level.continue_counter = CONTINUE;
+                return Ok(Some(Step::Again));
             }
-            let (level_number, range, target_id) = {
-                let l = &self.paths[0];
-                (l.level, l.range, l.target)
-            };
-            if level_number == 2 && TILE_PATHER {
-                if self.planner_exists(world, plan) {
-                    let mut short_found = false;
-                    let mut target_moves = false;
-                    let mut target_radius = 0.0;
-                    if let Some(t) = target {
-                        target_moves = 0.0 < t.speed;
-                        if !target_moves {
-                            target_radius = t.radius[0];
-                        }
-                        if way <= TARGET_SHORT_REACH {
-                            let near = self.near_goal(way, gap, to_end);
-                            let line = ground_line(self.moved_at, waypoint);
-                            let ignore =
-                                self.ignore_list(me, world, plan, target, target_id, line)?;
-                            let r = self.short_path(
-                                me,
-                                world,
-                                plan,
-                                waypoint,
-                                short_range(near, range),
-                                target_id,
-                                (&ignore, include),
-                                &mut path,
-                            )?;
-                            path.measure();
-                            new.created = plan.now;
-                            self.give_ignored(&mut new, plan.now);
-                            if r != 1 || path.length <= EPSILON {
-                                failed = true;
-                                path.points.clear();
-                            } else {
-                                found = true;
-                                short_found = true;
-                            }
-                        }
-                    }
-                    if !short_found {
-                        let r = self
-                            .tile_plan(
-                                me,
-                                world,
-                                plan,
-                                waypoint,
-                                target_radius + radius,
-                                range,
-                                target,
-                                &mut path,
-                            )?
-                            .expect("the planner exists");
-                        if r != 3 && r != 4 && r != 0 {
-                            let level = &mut self.paths[0];
-                            if !(r == 2 && (level.level != 2 || level.flags & 8 != 0)) {
-                                planned = true;
-                                let last = point_or_zero(&path, path.points.len() as i32 - 1);
-                                let farther = way < ground(waypoint, last);
-                                if farther {
-                                    path.points.clear();
-                                }
-                                found = !farther;
-                                if !target_moves && !farther && level.level == 2 && r == 2 {
-                                    level.flags |= 8;
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // no planner: the straight way
-                    let _ = path.insert(0, position);
-                    let _ = path.push(waypoint);
-                    planned = true;
-                    found = true;
-                }
-                path.measure();
-                new.created = plan.now;
-            }
-            let near = self.near_goal(way, gap, to_end);
-            // `fVar41`: how far from the waypoint the short path ends
-            let mut end_gap = FAR;
-            let tail = if !found || path.points.len() < 3 {
-                if SHORT_PATHER && !failed && (way <= SHORT_REACH || near) {
-                    planned = false;
-                    path.points.clear();
-                    let line = ground_line(self.moved_at, waypoint);
-                    let ignore = self.ignore_list(me, world, plan, target, target_id, line)?;
-                    let r = self.short_path(
-                        me,
-                        world,
-                        plan,
-                        waypoint,
-                        short_range(near, range),
-                        target_id,
-                        (&ignore, include),
-                        &mut path,
-                    )?;
-                    path.measure();
-                    new.created = plan.now;
-                    self.give_ignored(&mut new, plan.now);
-                    let blocked = r == 3
-                        || r == 4
-                        || path.length <= EPSILON
-                            && (r != 0 || (1 < path.points.len() && EPSILON <= path.length));
-                    if blocked {
-                        // far from its end (LONG < to_end) the game tells the units ahead to
-                        // make way (FUN_140f8a230, FUN_140f88750), which return at once: their
-                        // switch is a zeroed byte of .data that nothing writes (0x143f01836)
-                    } else if path.length <= EPSILON {
-                        // in range of the waypoint: the new level is dropped
-                        let reach = if target.is_none() || 0.0 < range {
-                            range
-                        } else {
-                            RANGE_FLOOR
-                        };
-                        let level = &mut self.paths[0];
-                        if reach < gap {
-                            if level.waypoint == level.points.len() as i32 - 1
-                                && level.created == plan.now
-                            {
-                                // on the last waypoint of a path made this update: the unit
-                                // stops (slot 0x5d0), the level resets and takes state 6
-                                // (FUN_140f9b4b0) and the step returns 1
-                                self.stop()?;
-                                self.reset_level();
-                                self.paths[0].state = 6;
-                                return Ok(Step::GaveUp);
-                            }
-                            level.flags |= 1;
-                        } else {
-                            level.state = 4;
-                        }
-                        return Ok(Step::Again);
-                    } else {
-                        found = true;
-                        partial = r == 2;
-                        let last = point_or_zero(&path, path.points.len() as i32 - 1);
-                        end_gap = ground(waypoint, last);
-                    }
-                }
-                if found {
-                    too_short(&path)
-                } else if (way < CLOSE || gap < CLOSE)
-                    && self.close_in(me, waypoint, target_id, world)?
-                {
-                    // the close-in path: the straight way to the waypoint
-                    path.points.clear();
-                    let _ = path.push(position);
-                    let _ = path.push(waypoint);
-                    path.measure();
-                    new.created = plan.now;
-                    found = true;
-                    false
-                } else {
-                    // no path, or a blocked close-in one (LAB_141152ec1)
-                    true
-                }
-            } else {
-                too_short(&path)
-            };
-            if tail && LONG_PATHER && (trade_cart || SHORT_REACH < way) {
-                // LAB_141152ec1: a far waypoint takes the long pather
-                let far = far_waypoint(
-                    way,
-                    target.map(|t| {
-                        let gap = footprint_gap(me.position, ground_radius, t.position, t.radius);
-                        (gap, t.master)
-                    }),
-                );
-                if far {
-                    planned = false;
-                    let target = target.map(|t| (target_id, t));
-                    let Some((reached, farther)) =
-                        self.long_plan(me, world, plan, waypoint, way, range, target, &mut path)?
-                    else {
-                        return Ok(Step::Paused);
-                    };
-                    new.created = plan.now;
-                    found = reached;
-                    if let Some(end) = farther {
-                        end_gap = end;
-                    }
-                }
-            }
-            // a failed or short path: the tile pathfinder once more, on a path of its own
-            if (!found || too_short(&path)) && level_number == 2 && TILE_PATHER {
-                let mut target_radius = 0.0;
-                if let Some(t) = target.filter(|t| t.speed <= 0.0) {
-                    target_radius = t.radius[0];
-                }
-                let mut other = Path::default();
-                let r = self.tile_plan(
-                    me,
-                    world,
-                    plan,
-                    waypoint,
-                    target_radius + radius,
-                    range,
-                    target,
-                    &mut other,
-                )?;
-                if let Some(r) = r {
-                    let last = point_or_zero(&other, other.points.len() as i32 - 1);
-                    let end = ground(waypoint, last);
-                    if end <= way {
-                        if (r.wrapping_sub(1) < 2 || 4 < r) && end < end_gap {
-                            path.points.clear();
-                            for &p in &other.points {
-                                let _ = path.push(p);
-                            }
-                            planned = true;
-                            found = true;
-                            path.measure();
-                            new.created = plan.now;
-                            if path.length < LONG {
-                                path.points.clear();
-                                found = false;
-                            }
-                        }
-                    } else {
-                        path.points.clear();
-                    }
-                }
-            }
-            if !(path.length <= way * DETOUR || path.length <= LONG) {
-                new.repath_time = (plan.object.rand15() as f32 * 0.5) / 32767.0 + 2.0;
-            }
+            self.reset_level();
+            self.paths[0].state = 6;
+            self.stop()?;
+            return Ok(Some(Step::GaveUp));
+        }
+        level.state = 5;
+        Ok(Some(Step::Again))
+    }
+
+    /// A unit without a footprint: the straight way to its waypoint (to where it stands past
+    /// the level's last).
+    pub(super) fn straight_way(&self, position: Vec3, np: &mut NewPath) {
+        let level = &self.paths[0];
+        let _ = np.path.insert(0, position);
+        let to = if level.waypoint < level.points.len() as i32 {
+            level.point(level.waypoint)
         } else {
-            let level = &self.paths[0];
-            let _ = path.insert(0, position);
-            let to = if level.waypoint < level.points.len() as i32 {
-                level.point(level.waypoint)
-            } else {
-                position
-            };
-            let _ = path.push(to);
-            path.measure();
-            found = true;
-        }
-        if path.points.len() < 2 || path.length < EPSILON {
-            return self.no_path(found, target, to_end);
-        }
-        Ok(self.link(new, path, found, partial, planned, solid))
+            position
+        };
+        let _ = np.path.push(to);
+        np.path.measure();
+        np.found = true;
     }
 
     /// The long pather's plan for a far waypoint (`0x141150f00` at `LAB_141152f9c`): the new path

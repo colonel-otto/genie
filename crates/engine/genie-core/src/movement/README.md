@@ -10,7 +10,8 @@ A unit's movement has two steps in every update, and this folder holds both:
 `Mover` (`mod.rs`) holds a unit's movement state. The motion step has one file for each stage:
 
 - `step.rs`: the loop that runs the stages, and the velocity step.
-- `request.rs`: the path request to the planners.
+- `request.rs` and `request_plans.rs`: the path request to the planners (`request_plans.rs` the
+  planners of a unit with a footprint, one after the other).
 - `new_path.rs`: a new path level.
 - `walk.rs`: the walk, with its steering and its speed.
 - `waypoint.rs`: a reached waypoint and the next one.
@@ -55,6 +56,7 @@ If the object's action walks, the action runs the motion step. The planners that
 | [`path_end.rs`](path_end.rs) | The reach test, a `MoveTo`'s path end that follows its target, the top path and the pauses. |
 | [`path_points.rs`](path_points.rs) | Path points, the gaps between footprints and the position setter's tests. |
 | [`request.rs`](request.rs) | The motion step's path request: the long pather's plan, the walled-off stretches and the goal's reach. |
+| [`request_plans.rs`](request_plans.rs) | The path request's planners for a unit with a footprint: the tile pathfinder's first plan, the short pather's tail, the long pather for a far waypoint and the tile pathfinder again. |
 | [`step.rs`](step.rs) | The velocity step, a new object's setup, the position setter and the motion step's loop. |
 | [`tests.rs`](tests.rs) | Tests. |
 | [`unit.rs`](unit.rs) | The movement actions in a unit's update: the velocity step, the unit's own `MoveTo`, its Explore and a bird's Fly. |

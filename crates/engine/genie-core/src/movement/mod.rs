@@ -28,6 +28,7 @@ mod new_path;
 mod path_end;
 mod path_points;
 mod request;
+mod request_plans;
 mod step;
 mod unit;
 mod walk;

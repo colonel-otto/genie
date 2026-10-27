@@ -60,17 +60,8 @@
       "function": "World::research",
       "line": 189,
       "cyclomatic": 26.0,
-      "coverage": 63.095238095238095,
-      "crap": 59.97769544325667,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/commands/run.rs",
-      "function": "World::run",
-      "line": 12,
-      "cyclomatic": 81.0,
-      "coverage": 35.018050541516246,
-      "crap": 1881.313946599907,
+      "coverage": 64.28571428571429,
+      "crap": 56.794460641399404,
       "crate": "genie-core"
     },
     {
@@ -110,15 +101,6 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/movement/request.rs",
-      "function": "Mover::request",
-      "line": 28,
-      "cyclomatic": 94.0,
-      "coverage": 72.66881028938906,
-      "crap": 274.3978333810006,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/objects/unit/update.rs",
       "function": "Unit::update",
       "line": 13,
@@ -152,15 +134,6 @@
       "cyclomatic": 22.0,
       "coverage": 71.26436781609196,
       "crap": 33.484381999778265,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/orders/moves.rs",
-      "function": "World::move_unit",
-      "line": 24,
-      "cyclomatic": 21.0,
-      "coverage": 54.02298850574713,
-      "crap": 63.86085257014774,
       "crate": "genie-core"
     },
     {
@@ -287,15 +260,6 @@
       "cyclomatic": 53.0,
       "coverage": 75.77639751552795,
       "crap": 92.92711514034163,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai/best_target/choice.rs",
-      "function": "best_unit_to_attack",
-      "line": 139,
-      "cyclomatic": 95.0,
-      "coverage": 65.0,
-      "crap": 481.9468749999999,
       "crate": "genie-core"
     },
     {

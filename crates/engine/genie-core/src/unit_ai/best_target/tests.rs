@@ -1,4 +1,5 @@
 use super::*;
+use crate::unit_ai::best_target::choice::add_extra;
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
     Candidate {
@@ -378,4 +379,105 @@ fn the_categories_follow_the_classes_and_their_exceptions() {
     assert_eq!(category(1, 1), -1);
     assert_eq!(category(1, 63), -1);
     assert_eq!(category(1, -1), -1);
+}
+
+/// `bestUnitToAttack`'s extra objects ([`add_extra`]): each the world holds but
+/// the current target counts at its distance; one under the least range counts beyond the
+/// weapon range (its gap plus the weapon range plus 1), and not at all for a unit that does
+/// not move.
+#[test]
+fn an_extra_object_under_the_least_range_counts_beyond_the_weapon_range() {
+    let mut field = Field::default();
+    for (id, d) in [(40, 3.0), (41, 0.1), (42, 4.0)] {
+        let _ = field.things.insert(id, enemy(id, 0, d, 40.0));
+    }
+    let ask = Ask {
+        extra: vec![40, 41, 42, 43],
+        ..Ask::default()
+    };
+    let me = Searcher {
+        target: 42,
+        min_range: 0.2,
+        ..soldier()
+    };
+    let counted = |me: &Searcher, field: &mut Field| {
+        let mut st = Statistics::default();
+        add_extra(me, &ask, &mut st, field).unwrap();
+        st.entries
+            .iter()
+            .map(|e| (e.id, e.distance))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        counted(&me, &mut field),
+        [(40, 3.0), (41, 0.1_f32 + 0.5 + 1.0)]
+    );
+    let still = Searcher { speed: 0.0, ..me };
+    assert_eq!(counted(&still, &mut field), [(40, 3.0)]);
+}
+
+/// A gate answers at once only when nothing but walls and gates counts: with an enemy among
+/// them the choice goes on to the quick paths.
+#[test]
+fn a_gate_answers_at_once_only_among_walls() {
+    let mut field = Field::default();
+    let _ = field.things.insert(20, enemy(20, 27, 2.0, 100.0));
+    let _ = field.things.insert(22, enemy(22, 39, 3.0, 100.0));
+    let _ = field.things.insert(7, enemy(7, 0, 5.0, 40.0));
+    field.quick = vec![7];
+    let lists = [vec![], vec![], vec![], vec![], vec![20, 22, 7]];
+    let ask = Ask {
+        idle: true,
+        paths: 1,
+        any_class: true,
+        ..Ask::default()
+    };
+    let me = Searcher {
+        target_types: [-1, 27],
+        ..soldier()
+    };
+    let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
+    assert_eq!(c.target, 7);
+    assert!(field.asked.contains(&('q', 7)));
+}
+
+/// Outside an idle check the current target answers by its path when it moves and engages
+/// (without path checks at once); its path failing, the quick paths follow. An idle check
+/// takes no such shortcut.
+#[test]
+fn the_current_target_answers_by_its_path_outside_an_idle_check() {
+    let mut field = Field::default();
+    let _ = field.things.insert(7, enemy(7, 0, 3.0, 40.0));
+    let _ = field.things.insert(9, enemy(9, 0, 5.0, 40.0));
+    field.paths = vec![7];
+    let lists = [vec![], vec![], vec![], vec![], vec![7, 9]];
+    let ask = Ask {
+        paths: 1,
+        any_class: true,
+        ..Ask::default()
+    };
+    let me = Searcher {
+        target: 7,
+        ..soldier()
+    };
+    let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
+    assert_eq!((c.target, &field.asked[..]), (7, &[('p', 7)][..]));
+    field.asked.clear();
+    let at_once = Ask {
+        paths: 0,
+        ..ask.clone()
+    };
+    let c = best_unit_to_attack(&me, &at_once, &lists, &mut field).unwrap();
+    assert_eq!((c.target, field.asked.len()), (7, 0));
+    field.paths.clear();
+    field.quick = vec![9];
+    let c = best_unit_to_attack(&me, &ask, &lists, &mut field).unwrap();
+    assert_eq!(c.target, 9);
+    assert_eq!(field.asked[0], ('p', 7));
+    field.asked.clear();
+    let idle = Ask { idle: true, ..ask };
+    field.paths = vec![7];
+    let c = best_unit_to_attack(&me, &idle, &lists, &mut field).unwrap();
+    assert_eq!(c.target, 9);
+    assert!(!field.asked.contains(&('p', 7)));
 }

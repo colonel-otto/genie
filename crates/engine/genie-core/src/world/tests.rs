@@ -13027,3 +13027,432 @@ fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
     );
     assert_eq!(t.players.iter().map(|p| p.freezes.len()).sum::<usize>(), 0);
 }
+
+/// [`World::run`] on `command` against its handler called by hand on a copy (`by_hand`, whose
+/// error stops `player`'s lane): the same world after. Whether the command changed the world.
+fn routes(
+    t: &World,
+    command: &Command,
+    player: usize,
+    by_hand: impl FnOnce(&mut World) -> Result<(), GenieError>,
+) -> bool {
+    let mut ran = t.clone();
+    ran.run(command);
+    let mut hand = t.clone();
+    if let Err(e) = by_hand(&mut hand) {
+        hand.stop_player(player, e);
+    }
+    assert!(ran == hand, "{command:?}");
+    ran != *t
+}
+
+/// The command phase runs each unit command by its handler ([`World::run`]), on
+/// [`forage_world`]'s villager 9175 and town centre 700; an error stops the issuer's lane. A
+/// human player's `UNIT_ORDER` takes the world time as its units' last human order time first.
+#[test]
+fn the_command_phase_runs_each_unit_command_by_its_handler() {
+    let t = forage_world();
+    let v = vec![9175];
+    let way = vec![[40.5, 89.5]];
+    let sweep = crate::orders::Sweep {
+        patrol: false,
+        reset: true,
+        queued: false,
+        ignore_pending: false,
+    };
+    let unit_order = |action, human| Command::UnitOrder {
+        player: 1,
+        ids: v.clone(),
+        target: 700,
+        through_ai: true,
+        nearby: false,
+        action,
+        param: 0,
+        human,
+    };
+    let changed = [
+        routes(
+            &t,
+            &Command::Stop {
+                player: 1,
+                ids: v.clone(),
+            },
+            1,
+            |w| w.stop_command(1, &v),
+        ),
+        routes(
+            &t,
+            &Command::Patrol {
+                player: 1,
+                ids: v.clone(),
+                waypoints: way.clone(),
+                reset: true,
+            },
+            1,
+            |w| w.patrol(1, &v, &way, true),
+        ),
+        routes(
+            &t,
+            &Command::AttackMove {
+                player: 1,
+                ids: v.clone(),
+                waypoints: way.clone(),
+                reset: true,
+                queued: false,
+                ignore_pending: false,
+            },
+            1,
+            |w| w.attack_move(1, &v, &way, sweep),
+        ),
+        routes(
+            &t,
+            &Command::SeekShelter {
+                player: 1,
+                ids: v.clone(),
+            },
+            1,
+            |w| w.seek_shelter(1, &v),
+        ),
+        routes(
+            &t,
+            &Command::UnitAiState {
+                player: 1,
+                ids: v.clone(),
+                state: 1,
+            },
+            1,
+            |w| w.unit_ai_state(1, &v, 1),
+        ),
+        routes(
+            &t,
+            &Command::AutoScout {
+                player: 1,
+                ids: v.clone(),
+            },
+            1,
+            |w| w.auto_scout(1, &v),
+        ),
+        routes(
+            &t,
+            &Command::Unload {
+                player: 1,
+                ids: vec![700],
+                point: [24.5, 89.5],
+                flag: 0,
+                unit_type: -1,
+                sound: false,
+            },
+            1,
+            |w| w.unload(1, &[700], [24.5, 89.5], 0, -1, false),
+        ),
+        routes(
+            &t,
+            &Command::GoBackToWork {
+                player: 1,
+                ids: v.clone(),
+            },
+            1,
+            |w| w.go_back_to_work(1, &v),
+        ),
+        routes(
+            &t,
+            &Command::Delete {
+                player: 1,
+                id: 9175,
+            },
+            1,
+            |w| w.delete(1, 9175),
+        ),
+        routes(
+            &t,
+            &Command::TransformObject {
+                player: 1,
+                id: 9175,
+                master: 120,
+            },
+            1,
+            |w| w.transform_object(1, 9175, 120),
+        ),
+        routes(&t, &unit_order(5, false), 1, |w| {
+            w.garrison_order(1, &v, 700, true, false)
+        }),
+        routes(&t, &unit_order(4, false), 1, |w| {
+            w.cancel_order(&v, 0, true)
+        }),
+        routes(&t, &unit_order(9, true), 1, |w| {
+            w.human_order(&v);
+            w.unit_order(1, &v, 9)
+        }),
+    ];
+    assert_eq!(
+        changed,
+        [
+            true, true, true, false, true, false, false, false, true, false, false, false, true
+        ]
+    );
+}
+
+/// The command phase runs each player's command by its handler ([`World::run`]): a
+/// tribute, a resignation, a flare, a market trade (which cannot fail), a GAME sub-command
+/// (what the slice cannot model of it stops the player it is for) and an unmodelled command
+/// (its player stops).
+#[test]
+fn the_command_phase_runs_each_player_command_by_its_handler() {
+    use crate::players::tribute::Gift;
+    let t = forage_world();
+    let gifts = [Gift {
+        attribute: 0,
+        amount: 10.0,
+        fee: 0.0,
+    }; 4];
+    let game = |sub| GameCommand {
+        issuer: 1,
+        sub,
+        player: 0,
+        a: 0,
+        speed: 0.0,
+        value: 0,
+    };
+    let why = GenieError::unsupported("a command the slice does not model");
+    let changed = [
+        routes(
+            &t,
+            &Command::Tribute {
+                player: 1,
+                to: 0,
+                gifts,
+            },
+            1,
+            |w| w.tribute(1, 0, &gifts),
+        ),
+        routes(
+            &t,
+            &Command::Resign {
+                player: 1,
+                dropped: false,
+            },
+            1,
+            |w| w.resign(1, false),
+        ),
+        routes(
+            &t,
+            &Command::Flare {
+                player: 1,
+                target: -1,
+                point: [40.5, 89.5],
+                players: 2,
+            },
+            1,
+            |w| w.flare(-1, [40.5, 89.5], 2),
+        ),
+        routes(
+            &t,
+            &Command::Trade {
+                player: 1,
+                attribute: 1,
+                times: 1,
+                buy: true,
+            },
+            1,
+            |w| {
+                w.buy(1, 1, 1);
+                Ok(())
+            },
+        ),
+        routes(
+            &t,
+            &Command::Trade {
+                player: 1,
+                attribute: 1,
+                times: 1,
+                buy: false,
+            },
+            1,
+            |w| {
+                w.sell(1, 1, 1);
+                Ok(())
+            },
+        ),
+        routes(&t, &Command::Game(game(0)), 0, |w| w.game(&game(0))),
+        routes(
+            &t,
+            &Command::Unmodelled {
+                player: 1,
+                why: why.clone(),
+            },
+            1,
+            |_| Err(why.clone()),
+        ),
+    ];
+    assert_eq!(changed, [false, true, true, false, false, false, true]);
+    // with the game's cheats a cheat code is not modelled: it stops the player it is for, or
+    // its issuer for a player outside the game
+    let mut cheats = t;
+    cheats.settings.cheats_enabled = true;
+    let cheat = |player| GameCommand {
+        issuer: 1,
+        sub: crate::commands::game::sub::CHEAT,
+        player,
+        ..game(0)
+    };
+    assert!(routes(&cheats, &Command::Game(cheat(0)), 0, |w| w.game(&cheat(0))));
+    assert!(routes(&cheats, &Command::Game(cheat(9)), 1, |w| w.game(&cheat(9))));
+}
+
+/// An order of units runs after its command's check ([`World::run`]): a MOVE of the villager
+/// resets it for the order, takes the world time as its last human order time and moves it;
+/// a human player's MOVE left without a unit (Gaia's bush) does nothing, as does a FOLLOW of
+/// a target the world lacks; a GUARD takes the builders' check; without an order the run is
+/// not modelled (after the reset).
+#[test]
+fn the_command_phase_runs_an_order_after_its_check() {
+    use crate::commands::Order;
+    let t = forage_world();
+    let v = vec![9175];
+    let walk = crate::orders::MoveOrder {
+        target: -1,
+        point: [40.5, 89.5],
+        queued: false,
+        direct: false,
+        human: true,
+        control: false,
+    };
+    let order = |units: Vec<i32>, order| Command::Order {
+        player: 1,
+        units,
+        order,
+    };
+    assert!(routes(
+        &t,
+        &order(v.clone(), Some(Order::Move(walk))),
+        1,
+        |w| {
+            w.reset_order_units(&v);
+            w.human_order(&v);
+            w.move_order(1, &v, &walk)
+        }
+    ));
+    let none_left = order(vec![600], Some(Order::Move(walk)));
+    assert!(!routes(&t, &none_left, 1, |_| Ok(())));
+    let lost = order(v.clone(), Some(Order::Follow(4444)));
+    assert!(!routes(&t, &lost, 1, |_| Ok(())));
+    assert!(routes(
+        &t,
+        &order(v.clone(), Some(Order::Guard(700))),
+        1,
+        |w| {
+            w.reset_order_units(&v);
+            w.human_order(&v);
+            w.guard(1, &v, 700)
+        }
+    ));
+    assert!(routes(&t, &order(v.clone(), None), 1, |w| {
+        w.reset_order_units(&v);
+        Err(GenieError::unsupported("an order moves its units"))
+    }));
+}
+
+/// The command phase runs each building command by its handler ([`World::run`]) on
+/// [`forage_world`]'s town centre 700: a queue, a research after its buildings' check, a
+/// gather point, the command queue, a gate, the town bell and its all-back-to-work.
+#[test]
+fn the_command_phase_runs_each_building_command_by_its_handler() {
+    let t = forage_world();
+    let tc = vec![700];
+    let research = || ResearchAt {
+        building: 700,
+        count: 1,
+        buildings: tc.clone(),
+        tech: 22,
+        target: -1,
+        shift: false,
+    };
+    let queue = crate::commands::QueueAt {
+        buildings: tc.clone(),
+        unit: 83,
+        amount: 1,
+        button: 0,
+    };
+    let changed = [
+        routes(
+            &t,
+            &Command::Queue {
+                player: 1,
+                buildings: tc.clone(),
+                unit: 83,
+                amount: 1,
+                button: 0,
+            },
+            1,
+            |w| w.queue(1, &queue),
+        ),
+        routes(
+            &t,
+            &Command::Research {
+                player: 1,
+                building: 700,
+                count: 1,
+                buildings: tc.clone(),
+                tech: 22,
+                target: -1,
+                shift: false,
+            },
+            1,
+            |w| {
+                let Some(buildings) = w.research_check(1, &research()) else {
+                    return Ok(());
+                };
+                w.research(
+                    1,
+                    &ResearchAt {
+                        buildings,
+                        ..research()
+                    },
+                )
+            },
+        ),
+        routes(
+            &t,
+            &Command::GatherPoint {
+                player: 1,
+                ids: tc.clone(),
+                point: [30.5, 85.5],
+                target: -1,
+                target_master: -1,
+                own: false,
+            },
+            1,
+            |w| w.gather_point(1, &tc, [30.5, 85.5], (-1, -1), false),
+        ),
+        routes(
+            &t,
+            &Command::CommandQueue {
+                player: 1,
+                ids: tc.clone(),
+                target: -1,
+                point: [30.5, 85.5],
+            },
+            1,
+            |w| w.command_queue(1, &tc, -1, [30.5, 85.5]),
+        ),
+        routes(&t, &Command::Gate { player: 1, id: 700 }, 1, |w| {
+            w.gate(1, 700)
+        }),
+        routes(
+            &t,
+            &Command::TownBell {
+                player: 1,
+                id: 700,
+                activate: true,
+            },
+            1,
+            |w| w.town_bell(1, 700, true),
+        ),
+        routes(&t, &Command::AllBackToWork { player: 1, id: 700 }, 1, |w| {
+            w.all_back_to_work(1, 700)
+        }),
+    ];
+    // the town centre's master is bare: only the gate changes it (any building of type 80
+    // toggles its lock)
+    assert_eq!(changed, [false, false, false, false, true, false, false]);
+}

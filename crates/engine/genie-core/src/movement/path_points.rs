@@ -252,6 +252,7 @@ pub(super) enum Next {
 }
 
 /// Where the motion step goes on after a level's path request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Step {
     /// Back to the top of the step (`LAB_141151124`) for the level now walked.
     Again,

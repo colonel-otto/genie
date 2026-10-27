@@ -1,6 +1,7 @@
 use super::*;
 use crate::map::spatial::{Gait, Obstruction, Placed};
 use crate::movement::move_to::Walk;
+use crate::movement::request_plans::{NewPath, Way};
 
 const DT: f32 = 0.02;
 
@@ -2031,4 +2032,178 @@ fn a_resumed_patrol_s_path_is_its_waypoints_from_the_saved_one() {
         m.paths[0].points,
         vec![[22.0, 0.0, 21.0], [30.0, 0.0, 20.0]]
     );
+}
+
+/// [`builder_9177`]'s place as `Me`, at `position`.
+const fn me_9177(position: [f32; 3]) -> Me {
+    Me {
+        id: 9177,
+        position,
+        group: -1,
+        action_state: 0,
+    }
+}
+
+/// The path request's first exits ([`Mover::in_reach`]): a target within the walked level's
+/// range (at least `RANGE_FLOOR` for a range of 0) puts the level in state 4; a unit on its
+/// waypoint marks it reached (flag 1), and the waypoint itself (flag 2) without a target or
+/// away from the target's footprint. Both go again; elsewhere the request goes on.
+#[test]
+fn a_request_in_reach_of_its_target_or_on_its_waypoint_goes_again() {
+    let house = world_target();
+    let me = me_9177([28.0, 89.0, 0.0]);
+    let start = [28.0, 0.0, 89.0];
+    let near = Goal {
+        target: Some(&house),
+        gap: 0.1,
+        to_end: FAR,
+    };
+    let mut m = builder_9177();
+    assert_eq!(m.in_reach(&me, near, start), Some(Step::Again));
+    assert_eq!(m.paths[0].state, 4);
+    let mut m = builder_9177();
+    m.paths[0].range = 0.0;
+    let floor = Goal {
+        gap: RANGE_FLOOR,
+        ..near
+    };
+    assert_eq!(m.in_reach(&me, floor, start), Some(Step::Again));
+    assert_eq!(m.paths[0].state, 4);
+    let far = Goal {
+        target: None,
+        gap: FAR,
+        to_end: FAR,
+    };
+    let mut m = builder_9177();
+    assert_eq!(m.in_reach(&me, far, start), None);
+    assert_eq!((m.paths[0].state, m.paths[0].flags), (3, 0));
+    let waypoint = [30.0, 0.0, 88.0];
+    assert_eq!(m.in_reach(&me, far, waypoint), Some(Step::Again));
+    assert_eq!(m.paths[0].flags, 3);
+    let mut m = builder_9177();
+    let at_house = me_9177(house.position);
+    let on_house = Goal { gap: FAR, ..near };
+    assert_eq!(m.in_reach(&at_house, on_house, waypoint), Some(Step::Again));
+    assert_eq!(m.paths[0].flags, 1);
+}
+
+/// The request's try ([`Mover::spend_try`]): a try left goes on, one fewer; a looping top
+/// path or an attack move spends none. The last try of level 0 under a top with more points
+/// takes state 5; without more the level resets to state 6 and the unit stops (it gives up),
+/// as does a level 2 on its last waypoint; a level 2 short of it gets its tries again
+/// (`CONTINUE`) and goes on (flag 1).
+#[test]
+fn a_request_spends_a_try_and_gives_up_or_goes_on_without_more() {
+    let mut m = builder_9177();
+    assert_eq!(m.spend_try(), Ok(None));
+    assert_eq!(m.paths[0].continue_counter, 9);
+    let mut looping = builder_9177();
+    looping.paths[1].path_flags |= 1;
+    let mut attacking = builder_9177();
+    attacking.attack_moving = true;
+    for mut m in [looping, attacking] {
+        assert_eq!(m.spend_try(), Ok(None));
+        assert_eq!(m.paths[0].continue_counter, 10);
+    }
+    let last_try = || {
+        let mut m = builder_9177();
+        m.paths[0].continue_counter = 1;
+        m
+    };
+    let mut m = last_try();
+    m.paths[1].waypoint = 0;
+    assert_eq!(m.spend_try(), Ok(Some(Step::Again)));
+    assert_eq!(m.paths[0].state, 5);
+    let mut m = last_try();
+    assert_eq!(m.spend_try(), Ok(Some(Step::GaveUp)));
+    assert_eq!((m.paths.len(), m.paths[0].state), (1, 6));
+    assert!(m.speed_stopped);
+    let mut m = last_try();
+    m.paths[0].level = 2;
+    assert_eq!(m.spend_try(), Ok(Some(Step::GaveUp)));
+    let mut m = last_try();
+    m.paths[0].level = 2;
+    m.paths[0].waypoint = 0;
+    assert_eq!(m.spend_try(), Ok(Some(Step::Again)));
+    assert_eq!(
+        (m.paths[0].flags, m.paths[0].continue_counter),
+        (1, CONTINUE)
+    );
+}
+
+/// The request's way from where [`builder_9177`] last moved to (28, 89) to its waypoint
+/// (30, 88), toward `goal` within `range`.
+fn way_9177(goal: Goal<'_>, range: f32) -> Way<'_> {
+    Way {
+        goal,
+        include: &[],
+        position: [28.0, 0.0, 89.0],
+        waypoint: [30.0, 0.0, 88.0],
+        distance: ground([30.0, 0.0, 88.0], [28.0, 0.0, 89.0]),
+        radius: 0.2,
+        level: 0,
+        range,
+        target_id: -1,
+        trade_cart: false,
+    }
+}
+
+/// A short path of no length ([`Mover::waypoint_in_range`]): within the range (at least
+/// `RANGE_FLOOR` for a target and no range) the level takes state 4; beyond it the level goes
+/// on (flag 1), but on the last waypoint of a path made this update it resets to state 6 and
+/// the unit stops (it gives up).
+#[test]
+fn a_waypoint_in_range_ends_the_level_or_gives_up_on_a_fresh_path() {
+    let point = |gap| Goal {
+        target: None,
+        gap,
+        to_end: FAR,
+    };
+    let mut m = builder_9177();
+    assert_eq!(
+        m.waypoint_in_range(&way_9177(point(0.05), 0.1), 16360),
+        Ok(Step::Again)
+    );
+    assert_eq!(m.paths[0].state, 4);
+    let mut m = builder_9177();
+    assert_eq!(
+        m.waypoint_in_range(&way_9177(point(0.5), 0.1), 16000),
+        Ok(Step::Again)
+    );
+    assert_eq!((m.paths[0].state, m.paths[0].flags), (3, 1));
+    let mut m = builder_9177();
+    assert_eq!(
+        m.waypoint_in_range(&way_9177(point(0.5), 0.1), 16360),
+        Ok(Step::GaveUp)
+    );
+    assert_eq!((m.paths.len(), m.paths[0].state), (1, 6));
+    let house = world_target();
+    let target = Goal {
+        target: Some(&house),
+        gap: RANGE_FLOOR,
+        to_end: FAR,
+    };
+    let mut m = builder_9177();
+    assert_eq!(
+        m.waypoint_in_range(&way_9177(target, 0.0), 16360),
+        Ok(Step::Again)
+    );
+    assert_eq!(m.paths[0].state, 4);
+}
+
+/// A unit without a footprint takes the straight way ([`Mover::straight_way`]) to its
+/// waypoint, found; past the level's last waypoint the way has only its start.
+#[test]
+fn a_unit_without_a_footprint_takes_the_straight_way() {
+    let m = builder_9177();
+    let start = [28.0, 0.0, 89.0];
+    let mut np = NewPath::new(0);
+    m.straight_way(start, &mut np);
+    assert_eq!(np.path.points, [start, [30.0, 0.0, 88.0]]);
+    assert!(np.found);
+    let mut m = builder_9177();
+    m.paths[0].waypoint = 2;
+    let mut np = NewPath::new(0);
+    m.straight_way(start, &mut np);
+    assert_eq!((np.path.points, np.path.length), (vec![start], 0.0));
 }
