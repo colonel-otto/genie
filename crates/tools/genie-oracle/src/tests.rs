@@ -325,3 +325,38 @@ fn a_tribute_packet_decodes_its_four_entries() {
         })
     );
 }
+
+/// Each error says why the recording could not be compared.
+#[test]
+fn each_error_says_why() {
+    let texts = [
+        (Error::NoCheckpoint, "the recording has no checkpoint"),
+        (
+            Error::NoSuchPlayer(9),
+            "a checkpoint names player 9, not in the save",
+        ),
+        (
+            Error::CommandBeforeFirstSync,
+            "a command comes before the first sync",
+        ),
+        (Error::BadMeshDump, "the mesh dump has no mesh line"),
+        (Error::BadRegistryDump, "the registry dump is out of shape"),
+        (Error::BadTileDump, "the tile list dump is out of shape"),
+        (
+            Error::BadPoolDump,
+            "the recycled pools dump is out of shape",
+        ),
+        (Error::NoChapter, "the recording has no chapter"),
+        (Error::NoPlayer(3), "no player 3 in the save"),
+    ];
+    for (error, text) in texts {
+        assert_eq!(error.to_string(), text);
+    }
+    let unmodelled = Error::Unmodelled(GenieError::unsupported("a thing"));
+    assert!(unmodelled.to_string().starts_with("not modelled: "));
+    let truncated = de::truncated(4);
+    let text = truncated.to_string();
+    let rec = Error::from(truncated);
+    assert!(matches!(rec, Error::Rec(_)));
+    assert_eq!(rec.to_string(), text);
+}

@@ -163,7 +163,7 @@ pub fn unsupported_in(e: &binrw::Error) -> Option<(&'static str, usize)> {
 /// A part of the layout the generator does not derive yet (aoe2de-exe-re `layout`, helper kind
 /// `unsupported`): reading it fails with an [`UnsupportedFeature`] naming the part; it is never
 /// written.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Unsupported;
 
 impl BinRead for Unsupported {
@@ -196,8 +196,9 @@ impl BinWrite for Unsupported {
 ///
 /// The reader reports where the save's sections start (aoe2de-exe-re `layout`, overlay
 /// `positioned`). Writes the value only. binrw's own `PosValue` compares only with the bare
-/// value, so a struct holding it cannot derive `PartialEq`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// value, so a struct holding it cannot derive `PartialEq`. Its default is the value's at
+/// position 0 (for a test's save parts).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Positioned<T> {
     /// The stream position.
     pub pos: u64,

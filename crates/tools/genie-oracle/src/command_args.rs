@@ -336,3 +336,6 @@ pub(super) fn combat_master(
         })
     })
 }
+
+#[cfg(test)]
+mod tests;

@@ -468,3 +468,6 @@ pub(super) fn saved_movement(object: &genie_save::Object, paths: &[Path]) -> Opt
         last_turn: m.turn_towards_time,
     })
 }
+
+#[cfg(test)]
+mod tests;

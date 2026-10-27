@@ -9,6 +9,7 @@
     missing_copy_implementations,
     trivial_numeric_casts,
     clippy::cast_sign_loss,
+    clippy::default_trait_access,
     clippy::derive_partial_eq_without_eq,
     clippy::doc_markdown,
     clippy::float_cmp,
@@ -24,7 +25,7 @@ use binrw::binrw;
 
 /// Read by `FUN_140cba350` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Dependencies {
@@ -39,7 +40,7 @@ pub struct Dependencies {
 
 /// Read by `FUN_140ea28c0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct GameOptionsDlcs {
@@ -58,7 +59,7 @@ pub struct GameOptionsDlcs {
 
 /// Read by `FUN_1412d1a30` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct StarredCivilizationsIds {
@@ -73,7 +74,7 @@ pub struct StarredCivilizationsIds {
 
 /// Read by `FUN_1412d2de0` (`CivilizationChoice.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct PlayerCivilization {
@@ -91,7 +92,7 @@ pub struct PlayerCivilization {
 
 /// Read by `FUN_14131a930` (`GameOptionsPlayer.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct PlayerInfo {
@@ -164,7 +165,7 @@ pub struct PlayerInfo {
 
 /// Read by `FUN_140d074c0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct UniqueFile {
@@ -176,7 +177,7 @@ pub struct UniqueFile {
 
 /// Read by `FUN_140d45910` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct StandardMapPool {
@@ -190,7 +191,7 @@ pub struct StandardMapPool {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct GameOptionsEntry1 {
@@ -211,7 +212,7 @@ pub struct GameOptionsEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct GameOptionsEntry2 {
@@ -225,7 +226,7 @@ pub struct GameOptionsEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct GameOptionsEntry3 {
@@ -240,7 +241,7 @@ pub struct GameOptionsEntry3 {
 
 /// Read by `FUN_141305310` (`GameOptions.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, version: f32))]
 pub struct GameOptions {
@@ -556,7 +557,7 @@ pub struct GameOptions {
 
 /// Read by `FUN_1412ff850` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct GameOptionsRead {
@@ -572,7 +573,7 @@ pub struct GameOptionsRead {
 
 /// Read by `FUN_140edcb10` (`SaveGameFileHeader.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct SaveGameFileHeader {
@@ -612,7 +613,7 @@ pub struct SaveGameFileHeader {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TribePlayerTechEntry1 {
     /// game: `(tech_player_tree[index].mCostAmountOverride[j])`
@@ -627,7 +628,7 @@ pub struct TribePlayerTechEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TribePlayerTechEntry2 {
     /// game: `location.mResearchLocationID`
@@ -648,7 +649,7 @@ pub struct TribePlayerTechEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TechPlayerTree {
     /// HD Tech_Player_Tree::research_done (float, +0)
@@ -706,7 +707,7 @@ pub struct TechPlayerTree {
 
 /// Read by `FUN_1413c2a40` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribePlayerTech {
@@ -718,7 +719,7 @@ pub struct TribePlayerTech {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct HistoryEntry {
     /// game: `(history[i].civilian_pop)`
@@ -730,7 +731,7 @@ pub struct HistoryEntry {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct HistoryEvent {
     /// game: `temp->event`
@@ -755,7 +756,7 @@ pub struct HistoryEvent {
 
 /// Read by `FUN_141560f20` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct History {
@@ -915,6 +916,27 @@ pub struct TechTreeEntry1 {
     pub tech_tree_ages_node_type: u32,
 }
 
+impl Default for TechTreeEntry1 {
+    fn default() -> Self {
+        Self {
+            tech_tree_ages_age_id: Default::default(),
+            tech_tree_ages_age_status: Default::default(),
+            tech_tree_ages_number_dependent_buildings: Default::default(),
+            tech_tree_ages_dependent_building_ids: Default::default(),
+            tech_tree_ages_number_dependent_units: Default::default(),
+            tech_tree_ages_dependent_unit_ids: Default::default(),
+            tech_tree_ages_number_dependent_techs: Default::default(),
+            tech_tree_ages_dependent_tech_ids: Default::default(),
+            tech_tree_ages_age_preregs: [Default::default(); 84],
+            tech_tree_ages_num_building_levels: Default::default(),
+            tech_tree_ages_bld_per_zone: Default::default(),
+            tech_tree_ages_grp_len_per_zone: Default::default(),
+            tech_tree_ages_max_age_len: Default::default(),
+            tech_tree_ages_node_type: Default::default(),
+        }
+    }
+}
+
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
@@ -966,6 +988,27 @@ pub struct TechTreeEntry2 {
     pub tech_tree_buildings_inabling_tech_id: i32,
 }
 
+impl Default for TechTreeEntry2 {
+    fn default() -> Self {
+        Self {
+            tech_tree_buildings_building_id: Default::default(),
+            tech_tree_buildings_building_status: Default::default(),
+            tech_tree_buildings_number_dependent_buildings: Default::default(),
+            tech_tree_buildings_dependent_building_ids: Default::default(),
+            tech_tree_buildings_number_dependent_units: Default::default(),
+            tech_tree_buildings_dependent_unit_ids: Default::default(),
+            tech_tree_buildings_number_dependent_techs: Default::default(),
+            tech_tree_buildings_dependent_tech_ids: Default::default(),
+            tech_tree_buildings_building_preregs: [Default::default(); 84],
+            tech_tree_buildings_level_no: Default::default(),
+            tech_tree_buildings_dep_units_tech_per_ages: Default::default(),
+            tech_tree_buildings_num_unit_tech_zones_per_ages: Default::default(),
+            tech_tree_buildings_node_type: Default::default(),
+            tech_tree_buildings_inabling_tech_id: Default::default(),
+        }
+    }
+}
+
 #[binrw]
 #[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
@@ -1004,6 +1047,24 @@ pub struct TechTreeEntry3 {
     /// game: `(mTech_tree_units[cntr1].inabling_tech_id)`
     /// read at 0x1413ee632
     pub tech_tree_units_inabling_tech_id: i32,
+}
+
+impl Default for TechTreeEntry3 {
+    fn default() -> Self {
+        Self {
+            tech_tree_units_unit_id: Default::default(),
+            tech_tree_units_unit_status: Default::default(),
+            tech_tree_units_build_from: Default::default(),
+            tech_tree_units_unit_preregs: [Default::default(); 84],
+            tech_tree_units_grp_id: Default::default(),
+            tech_tree_units_number_dependent_units: Default::default(),
+            tech_tree_units_dependent_unit_ids: Default::default(),
+            tech_tree_units_level_no: Default::default(),
+            tech_tree_units_trigger_tech_id: Default::default(),
+            tech_tree_units_node_type: Default::default(),
+            tech_tree_units_inabling_tech_id: Default::default(),
+        }
+    }
 }
 
 #[binrw]
@@ -1054,9 +1115,29 @@ pub struct TechTreeEntry4 {
     pub tech_tree_techs_node_type: u32,
 }
 
+impl Default for TechTreeEntry4 {
+    fn default() -> Self {
+        Self {
+            tech_tree_techs_tech_id: Default::default(),
+            tech_tree_techs_tech_status: Default::default(),
+            tech_tree_techs_research_from: Default::default(),
+            tech_tree_techs_number_dependent_buildings: Default::default(),
+            tech_tree_techs_dependent_building_ids: Default::default(),
+            tech_tree_techs_number_dependent_units: Default::default(),
+            tech_tree_techs_dependent_units_ids: Default::default(),
+            tech_tree_techs_number_dependent_techs: Default::default(),
+            tech_tree_techs_dependent_tech_ids: Default::default(),
+            tech_tree_techs_tech_preregs: [Default::default(); 84],
+            tech_tree_techs_grp_id: Default::default(),
+            tech_tree_techs_level_no: Default::default(),
+            tech_tree_techs_node_type: Default::default(),
+        }
+    }
+}
+
 /// Read by `FUN_1413e9790` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TechTree {
@@ -1094,7 +1175,7 @@ pub struct TechTree {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(x_size_value: i32))]
 pub struct TribeInformationAIModuleEntry1 {
@@ -1106,7 +1187,7 @@ pub struct TribeInformationAIModuleEntry1 {
 
 /// Read by `FUN_140f4c080` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeInformationAIModule {
@@ -1132,7 +1213,7 @@ pub struct TribeInformationAIModule {
 
 /// Read by `FUN_1416b3320` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsActivationRecordVersion {
@@ -1144,7 +1225,7 @@ pub struct XsActivationRecordVersion {
 
 /// Read by `FUN_1416e41e0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsDataVersion {
@@ -1156,7 +1237,7 @@ pub struct XsDataVersion {
 
 /// Read by `FUN_1416e4530` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsDataVersion2 {
@@ -1168,7 +1249,7 @@ pub struct XsDataVersion2 {
 
 /// Read by `FUN_14174d040` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsVariableEntryVersion {
@@ -1180,7 +1261,7 @@ pub struct XsVariableEntryVersion {
 
 /// Read by `FUN_1416f1ee0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsFileEntryVersion {
@@ -1192,7 +1273,7 @@ pub struct XsFileEntryVersion {
 
 /// Read by `FUN_1416fcb10` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsFunctionEntryVersion {
@@ -1204,7 +1285,7 @@ pub struct XsFunctionEntryVersion {
 
 /// Read by `FUN_141734cf0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsSymbolTableVersion {
@@ -1216,7 +1297,7 @@ pub struct XsSymbolTableVersion {
 
 /// Read by `FUN_141735010` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsSymbolTableVersion2 {
@@ -1228,7 +1309,7 @@ pub struct XsSymbolTableVersion2 {
 
 /// Read by `FUN_14173ae90` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsSyscallEntryVersion {
@@ -1240,7 +1321,7 @@ pub struct XsSyscallEntryVersion {
 
 /// Read by `FUN_14174c300` (`xsvariableentry.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsVariableEntry {
@@ -1268,7 +1349,7 @@ pub struct XsVariableEntry {
 
 /// Read by `FUN_141739d30` (`xssyscallentry.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsSyscallEntry {
@@ -1298,7 +1379,7 @@ pub struct BxsSyscallEntry {
 
 /// Read by `FUN_141732ca0` (`xssymboltable.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsSymbol {
@@ -1321,7 +1402,7 @@ pub struct BxsSymbol {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsSymbolTableEntry1 {
@@ -1336,7 +1417,7 @@ pub struct BxsSymbolTableEntry1 {
 
 /// Read by `FUN_141733980` (`xssymboltable.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsSymbolTable {
@@ -1362,7 +1443,7 @@ pub struct BxsSymbolTable {
 
 /// Read by `FUN_14173fde0` (`xssyscallmodule.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsSyscallModule {
@@ -1431,7 +1512,7 @@ pub struct BxsSyscallModule {
 
 /// Read by `FUN_1416f0f00` (`xsfileentry.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsFileEntry {
@@ -1463,7 +1544,7 @@ pub struct XsFileEntry {
 
 /// Read by `FUN_14172bb40` (`xssource.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsSource {
@@ -1492,7 +1573,7 @@ pub struct BxsSource {
 
 /// Read by `FUN_14170c7d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsRuleEntryVersion {
@@ -1504,7 +1585,7 @@ pub struct XsRuleEntryVersion {
 
 /// Read by `FUN_14170ca50` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsRuleEntryVersion2 {
@@ -1516,7 +1597,7 @@ pub struct XsRuleEntryVersion2 {
 
 /// Read by `FUN_14170a7e0` (`xsruleentry.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsRuleEntry {
@@ -1555,7 +1636,7 @@ pub struct BxsRuleEntry {
 
 /// Read by `FUN_14170bcb0` (`xsruleentry.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsRuleGroupEntry {
@@ -1579,7 +1660,7 @@ pub struct BxsRuleGroupEntry {
 
 /// Read by `FUN_1417120a0` (`xsrulemodule.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsRuleModule {
@@ -1622,7 +1703,7 @@ pub struct BxsRuleModule {
 
 /// Read by `FUN_1416fb1d0` (`xsfunctionentry.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsFunctionEntry {
@@ -1661,7 +1742,7 @@ pub struct BxsFunctionEntry {
 
 /// Read by `FUN_141748b30` (`xsuserclassentry.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsUserClassEntry {
@@ -1682,7 +1763,7 @@ pub struct BxsUserClassEntry {
 
 /// Read by `FUN_1416e2ab0` (`xsdata.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsEvent {
@@ -1696,7 +1777,7 @@ pub struct BxsEvent {
 
 /// Read by `FUN_1416b25b0` (`xsactivationrecord.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsActivationRecord {
@@ -1725,7 +1806,7 @@ pub struct XsActivationRecord {
 
 /// Read by `FUN_1416db640` (`xsdata.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsBreakpoint {
@@ -1738,7 +1819,7 @@ pub struct BxsBreakpoint {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry1 {
     /// game: `mOutput[i]`
@@ -1756,7 +1837,7 @@ pub struct BxsDataEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry2 {
     /// game: `&(info->mName)`
@@ -1771,7 +1852,7 @@ pub struct BxsDataEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry3 {
     /// game: `&length2`
@@ -1784,7 +1865,7 @@ pub struct BxsDataEntry3 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry4 {
     /// game: `&length2`
@@ -1797,7 +1878,7 @@ pub struct BxsDataEntry4 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry5 {
     /// game: `&length2`
@@ -1810,7 +1891,7 @@ pub struct BxsDataEntry5 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry6 {
     /// game: `array->getNumber()`
@@ -1823,7 +1904,7 @@ pub struct BxsDataEntry6 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry7 {
     /// game: `array->getNumber()`
@@ -1836,7 +1917,7 @@ pub struct BxsDataEntry7 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BxsDataEntry8 {
     /// game: `&type`
@@ -1859,7 +1940,7 @@ pub struct BxsDataEntry8 {
 
 /// Read by `FUN_1416dbab0` (`xsdata.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsData {
@@ -2044,7 +2125,7 @@ pub struct BxsData {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsRuntimeEntry1 {
@@ -2059,7 +2140,7 @@ pub struct BxsRuntimeEntry1 {
 
 /// Read by `FUN_14171c470` (`xsruntime.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BxsRuntime {
@@ -2123,7 +2204,7 @@ pub struct BxsRuntime {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct WorldPlayerEntry1 {
     /// game: `diplomacy[i]`
@@ -2185,7 +2266,7 @@ pub struct WorldPlayerEntry1 {
 
 /// Read by `FUN_1415f1160` (`WorldPlayer.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct WorldPlayer {
@@ -2411,7 +2492,7 @@ pub struct WorldPlayer {
 
 /// Read by `FUN_141120780` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OverrideDescription {
@@ -2424,7 +2505,7 @@ pub struct OverrideDescription {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct RgeMasterStaticObjectEntry1 {
     /// game: `attribute_type_held[index]`
@@ -2439,7 +2520,7 @@ pub struct RgeMasterStaticObjectEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct RgeMasterStaticObjectEntry2 {
     /// game: `&tempId`
@@ -2455,7 +2536,7 @@ pub struct RgeMasterStaticObjectEntry2 {
 
 /// Read by `FUN_1411319f0` (`MasterStaticObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterStaticObject {
@@ -2614,7 +2695,7 @@ pub struct RgeMasterStaticObject {
 
 /// Read by `FUN_1410a9400` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterAnimatedObject {
@@ -2628,7 +2709,7 @@ pub struct RgeMasterAnimatedObject {
 
 /// Read by `FUN_1410e5440` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterMovingObject {
@@ -2657,7 +2738,7 @@ pub struct RgeMasterMovingObject {
 
 /// Read by `FUN_141062470` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Task {
@@ -2757,7 +2838,7 @@ pub struct Task {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TaskListEntry1 {
@@ -2772,7 +2853,7 @@ pub struct TaskListEntry1 {
 
 /// Read by `FUN_1411a8f80` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TaskList {
@@ -2787,7 +2868,7 @@ pub struct TaskList {
 
 /// Read by `FUN_1410a3510` (`MasterActionObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterActionObject {
@@ -2826,7 +2907,7 @@ pub struct RgeMasterActionObject {
 
 /// Read by `FUN_1410c8520` (`MasterCombatObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterCombatObject {
@@ -2928,7 +3009,7 @@ pub struct RgeMasterCombatObject {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TribeMasterCombatObjectEntry1 {
     /// game: `trainTime`
@@ -2947,7 +3028,7 @@ pub struct TribeMasterCombatObjectEntry1 {
 
 /// Read by `FUN_14126f2a0` (`TribeMasterCombatObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeMasterCombatObject {
@@ -3063,7 +3144,7 @@ pub struct TribeMasterCombatObject {
 
 /// Read by `FUN_1410d7320` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterMissileObject {
@@ -3086,7 +3167,7 @@ pub struct RgeMasterMissileObject {
 
 /// Read by `FUN_141665db0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, master_type: u8))]
 pub struct RgeMaster {
@@ -3115,7 +3196,7 @@ pub struct RgeMaster {
 
 /// Read by `FUN_1412439d0` (`TribeMasterBuildingObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeMasterBuildingObject {
@@ -3171,7 +3252,7 @@ pub struct TribeMasterBuildingObject {
 
 /// Read by `FUN_14162bef0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, master_type: u8))]
 pub struct Master {
@@ -3192,7 +3273,7 @@ pub struct Master {
 
 /// Read by `FUN_141282780` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeVisibleMap {
@@ -3215,7 +3296,7 @@ pub struct RgeVisibleMap {
 
 /// Read by `FUN_141289120` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct VisibleResourceRec {
@@ -3238,7 +3319,7 @@ pub struct VisibleResourceRec {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct VisibleResourceListSize {
     /// HD Visible_Resource_Manager::VR_ListSize\[i\]
@@ -3248,7 +3329,7 @@ pub struct VisibleResourceListSize {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, vr_list_used: i32))]
 pub struct VisibleResourceList {
@@ -3260,7 +3341,7 @@ pub struct VisibleResourceList {
 
 /// Read by `FUN_141287720` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct VisibleResourceManager {
@@ -3275,7 +3356,7 @@ pub struct VisibleResourceManager {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct OwnRgeMasterStaticObjectEntry1 {
     /// game: `attribute_type_held[index]`
@@ -3290,7 +3371,7 @@ pub struct OwnRgeMasterStaticObjectEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct OwnRgeMasterStaticObjectEntry2 {
     /// game: `temp_damage_sprite`
@@ -3309,7 +3390,7 @@ pub struct OwnRgeMasterStaticObjectEntry2 {
 
 /// Read by `FUN_14112c560` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnRgeMasterStaticObject {
@@ -3543,7 +3624,7 @@ pub struct OwnRgeMasterStaticObject {
 
 /// Read by `FUN_1410a9070` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnRgeMasterAnimatedObject {
@@ -3557,7 +3638,7 @@ pub struct OwnRgeMasterAnimatedObject {
 
 /// Read by `FUN_1410e3b00` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnRgeMasterMovingObject {
@@ -3610,7 +3691,7 @@ pub struct OwnRgeMasterMovingObject {
 
 /// Read by `FUN_1410a14e0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnRgeMasterActionObject {
@@ -3658,7 +3739,7 @@ pub struct OwnRgeMasterActionObject {
 
 /// Read by `FUN_1410c50b0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnRgeMasterCombatObject {
@@ -3764,7 +3845,7 @@ pub struct OwnRgeMasterCombatObject {
 
 /// Read by `FUN_1410d6760` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnRgeMasterMissileObject {
@@ -3792,7 +3873,7 @@ pub struct OwnRgeMasterMissileObject {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct OwnTribeMasterCombatObjectEntry1 {
     /// game: `trainTime`
@@ -3811,7 +3892,7 @@ pub struct OwnTribeMasterCombatObjectEntry1 {
 
 /// Read by `FUN_14126ae20` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnTribeMasterCombatObject {
@@ -3931,7 +4012,7 @@ pub struct OwnTribeMasterCombatObject {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct OwnTribeMasterBuildingObjectEntry1 {
     /// game: `linked_id[i]`
@@ -3947,7 +4028,7 @@ pub struct OwnTribeMasterBuildingObjectEntry1 {
 
 /// Read by `FUN_141240660` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnTribeMasterBuildingObject {
@@ -4037,7 +4118,7 @@ pub struct OwnTribeMasterBuildingObject {
 
 /// Read by `FUN_1413b0c50` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeActiveSprite {
@@ -4060,7 +4141,7 @@ pub struct RgeActiveSprite {
 
 /// Read by `FUN_1413b07d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeActiveAnimatedSprite {
@@ -4092,7 +4173,7 @@ pub struct RgeActiveAnimatedSprite {
 
 /// Read by `FUN_1413b8a90` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, sprite_type: u8))]
 pub struct ActiveSprite {
@@ -4129,7 +4210,7 @@ pub struct ActiveSprite {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct ActiveSpriteListEntry1 {
@@ -4144,7 +4225,7 @@ pub struct ActiveSpriteListEntry1 {
 
 /// Read by `FUN_1413b87c0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct ActiveSpriteList {
@@ -4156,7 +4237,7 @@ pub struct ActiveSpriteList {
 
 /// Read by `FUN_1408cb520` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Particle {
@@ -4202,7 +4283,7 @@ pub struct Particle {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct RgeStaticObjectEntry1 {
     /// game: `&attributeType`
@@ -4215,7 +4296,7 @@ pub struct RgeStaticObjectEntry1 {
 
 /// Read by `FUN_14119df60` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeStaticObject {
@@ -4462,7 +4543,7 @@ pub struct RgeStaticObject {
 
 /// Read by `FUN_141072310` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeAnimatedObject {
@@ -4476,7 +4557,7 @@ pub struct RgeAnimatedObject {
 
 /// Read by `FUN_140f97360` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct PathData {
@@ -4520,7 +4601,7 @@ pub struct PathData {
 
 /// Read by `FUN_14115d480` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMovingObject {
@@ -4630,7 +4711,7 @@ pub struct RgeMovingObject {
 
 /// Read by `FUN_140a7a2f0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeAction {
@@ -4680,7 +4761,7 @@ pub struct RgeAction {
 
 /// Read by `FUN_140a85700` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionEnter {
@@ -4694,7 +4775,7 @@ pub struct RgeActionEnter {
 
 /// Read by `FUN_140aa1240` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionMoveTo {
@@ -4717,7 +4798,7 @@ pub struct RgeActionMoveTo {
 
 /// Read by `FUN_140a88940` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionGather {
@@ -4761,7 +4842,7 @@ pub struct RgeActionGather {
 
 /// Read by `FUN_140a9a4d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionMissile {
@@ -4802,7 +4883,7 @@ pub struct RgeActionMissile {
 
 /// Read by `FUN_140a7c880` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionAttack {
@@ -4861,7 +4942,7 @@ pub struct RgeActionAttack {
 
 /// Read by `FUN_140a99480` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionMake {
@@ -4875,7 +4956,7 @@ pub struct RgeActionMake {
 
 /// Read by `FUN_140a916c0` (`ActionHeroPower.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ActionHeroPower {
@@ -4919,7 +5000,7 @@ pub struct ActionHeroPower {
 
 /// Read by `FUN_140a97a10` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, action_type: i16, num_players: usize))]
 pub struct RgeActionByType {
@@ -4957,7 +5038,7 @@ pub struct RgeActionByType {
 
 /// Read by `FUN_140aad670` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionBuild {
@@ -4971,7 +5052,7 @@ pub struct TribeActionBuild {
 
 /// Read by `FUN_140acb1e0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionMakeObj {
@@ -4997,7 +5078,7 @@ pub struct TribeActionMakeObj {
 
 /// Read by `FUN_140ad0840` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionMakeTech {
@@ -5020,7 +5101,7 @@ pub struct TribeActionMakeTech {
 
 /// Read by `FUN_140ab3b70` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionConvert {
@@ -5058,7 +5139,7 @@ pub struct TribeActionConvert {
 
 /// Read by `FUN_140ada4c0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionRepair {
@@ -5075,7 +5156,7 @@ pub struct TribeActionRepair {
 
 /// Read by `FUN_140aa8a10` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionArtifact {
@@ -5089,7 +5170,7 @@ pub struct TribeActionArtifact {
 
 /// Read by `FUN_140abc4d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionDiscoveryArtifact {
@@ -5103,7 +5184,7 @@ pub struct TribeActionDiscoveryArtifact {
 
 /// Read by `FUN_140ac3010` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionHunt {
@@ -5132,7 +5213,7 @@ pub struct TribeActionHunt {
 
 /// Read by `FUN_140adea70` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionTrade {
@@ -5164,7 +5245,7 @@ pub struct TribeActionTrade {
 
 /// Read by `FUN_140ae8fa0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionWonder {
@@ -5181,7 +5262,7 @@ pub struct TribeActionWonder {
 
 /// Read by `FUN_140abdba0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionGather {
@@ -5195,7 +5276,7 @@ pub struct TribeActionGather {
 
 /// Read by `FUN_140ac1bc0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionHousing {
@@ -5209,7 +5290,7 @@ pub struct TribeActionHousing {
 
 /// Read by `FUN_140ad5090` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionPack {
@@ -5229,7 +5310,7 @@ pub struct TribeActionPack {
 
 /// Read by `FUN_140ae59d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionUnpack {
@@ -5252,7 +5333,7 @@ pub struct TribeActionUnpack {
 
 /// Read by `FUN_140ad3080` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionOffboardTrade {
@@ -5269,7 +5350,7 @@ pub struct TribeActionOffboardTrade {
 
 /// Read by `FUN_140ae4820` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionUnitTransform {
@@ -5283,7 +5364,7 @@ pub struct TribeActionUnitTransform {
 
 /// Read by `FUN_140ae8220` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeActionWaitSolidify {
@@ -5297,7 +5378,7 @@ pub struct TribeActionWaitSolidify {
 
 /// Read by `FUN_140ac9b40` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, action_type: i16, num_players: usize))]
 pub struct Action {
@@ -5389,7 +5470,7 @@ pub struct Action {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ActionListEntry1 {
@@ -5403,7 +5484,7 @@ pub struct ActionListEntry1 {
 
 /// Read by `FUN_140a98850` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ActionList {
@@ -5415,7 +5496,7 @@ pub struct ActionList {
 
 /// Read by `FUN_14106ec00` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeActionObject {
@@ -5440,7 +5521,7 @@ pub struct RgeActionObject {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct RgeCombatObjectEntry1 {
     /// game: `taskId`
@@ -5456,7 +5537,7 @@ pub struct RgeCombatObjectEntry1 {
 
 /// Read by `FUN_141089880` (`CombatObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeCombatObject {
@@ -5523,7 +5604,7 @@ pub struct RgeCombatObject {
 
 /// Read by `FUN_140f961e0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Path {
@@ -5559,7 +5640,7 @@ pub struct Path {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct UnitAiModuleEntry1 {
     /// game: `(newOH->mOrder)`
@@ -5586,7 +5667,7 @@ pub struct UnitAiModuleEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct UnitAiModuleEntry2 {
     /// game: `targetID`
@@ -5599,7 +5680,7 @@ pub struct UnitAiModuleEntry2 {
 
 /// Read by `FUN_140c4efc0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct UnitAiModule {
@@ -5761,7 +5842,7 @@ pub struct UnitAiModule {
 
 /// Read by `FUN_140c1d860` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeElephantUnitAiModule {
@@ -5785,7 +5866,7 @@ pub struct TribeElephantUnitAiModule {
 
 /// Read by `FUN_140c1df80` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeTowerUnitAiModule {
@@ -5804,7 +5885,7 @@ pub struct TribeTowerUnitAiModule {
 
 /// Read by `FUN_140c1d3c0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeBuildingUnitAiModule {
@@ -5822,7 +5903,7 @@ pub struct TribeBuildingUnitAiModule {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TribeCombatObjectEntry1 {
     /// game: `attributeIdx`
@@ -5835,7 +5916,7 @@ pub struct TribeCombatObjectEntry1 {
 
 /// Read by `FUN_14121ec90` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeCombatObject {
@@ -6011,7 +6092,7 @@ pub struct TribeCombatObject {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TribeBuildingObjectEntry1 {
     /// game: `(mProductionQueue[i].mMasterUnitId)`
@@ -6036,7 +6117,7 @@ pub struct TribeBuildingObjectEntry1 {
 
 /// Read by `FUN_1411df160` (`TribeBuildingObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeBuildingObject {
@@ -6216,7 +6297,7 @@ pub struct TribeBuildingObject {
 
 /// Read by `FUN_14108dda0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeDopplegangerObject {
@@ -6248,7 +6329,7 @@ pub struct RgeDopplegangerObject {
 
 /// Read by `FUN_141140610` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeMissileObject {
@@ -6268,7 +6349,7 @@ pub struct RgeMissileObject {
 
 /// Read by `FUN_141165e30` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, object_type: u8, num_players: usize))]
 pub struct RgeObject {
@@ -6297,7 +6378,7 @@ pub struct RgeObject {
 
 /// Read by `FUN_141278040` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, object_type: u8, num_players: usize))]
 pub struct Object {
@@ -6314,7 +6395,7 @@ pub struct Object {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ObjectListEntry1 {
@@ -6328,7 +6409,7 @@ pub struct ObjectListEntry1 {
 
 /// Read by `FUN_141168280` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ObjectList {
@@ -6345,7 +6426,7 @@ pub struct ObjectList {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct PlayerMaster {
@@ -6365,7 +6446,7 @@ pub struct PlayerMaster {
 
 /// Read by `FUN_1416267a0` (`WorldPlayer.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct PlayerObjects {
@@ -6479,7 +6560,7 @@ pub struct PlayerObjects {
 
 /// Read by `FUN_14167b2d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ScenarioEditorPhantomPlayer {
@@ -6494,7 +6575,7 @@ pub struct ScenarioEditorPhantomPlayer {
 
 /// Read by `FUN_14167aca0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct HumanOrCoopPlayer {
@@ -6508,7 +6589,7 @@ pub struct HumanOrCoopPlayer {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct WorldPlayerGaiaEntry1 {
     /// game: `(creatures[index].growth_rate)`
@@ -6582,9 +6663,33 @@ pub struct WorldPlayerGaia {
     pub wolf_count: [u8; 40],
 }
 
+impl Default for WorldPlayerGaia {
+    fn default() -> Self {
+        Self {
+            world_player: Default::default(),
+            update_time: Default::default(),
+            update_nature: Default::default(),
+            creatures: Default::default(),
+            next_wolf_attack_update_time: Default::default(),
+            wolf_attack_update_interval: Default::default(),
+            wolf_attack_stop_time: Default::default(),
+            min_villager_distance: Default::default(),
+            tc_position_x: [Default::default(); 36],
+            tc_position_y: [Default::default(); 36],
+            wolf_current_player: Default::default(),
+            wolf_current_villager_list: [Default::default(); 40],
+            wolf_current_villager: Default::default(),
+            wolf_villager_count: Default::default(),
+            wolf_list: [Default::default(); 200],
+            current_wolf: Default::default(),
+            wolf_count: [Default::default(); 40],
+        }
+    }
+}
+
 /// Read by `FUN_14167a670` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct GaiaPlayer {
@@ -6599,7 +6704,7 @@ pub struct GaiaPlayer {
 
 /// Read by `FUN_14167a040` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ComputerPlayer {
@@ -6614,7 +6719,7 @@ pub struct ComputerPlayer {
 
 /// Read by `FUN_14167b900` (`WorldPlayerFactory.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct Player {
@@ -6640,7 +6745,7 @@ pub struct Player {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct SavedView {
     /// HD RGE_View_Stack entry, first float
@@ -6651,7 +6756,7 @@ pub struct SavedView {
 
 /// Read by `FUN_14163e970` (`WorldPlayerBase.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct WorldPlayerBase {
@@ -6878,7 +6983,7 @@ pub struct WorldPlayerBase {
 
 /// Read by `FUN_141410870` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, map_width: i32, map_height: i32))]
 pub struct ZoneMap {
@@ -6903,7 +7008,7 @@ pub struct ZoneMap {
 
 /// Read by `FUN_1414110f0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, map_width: i32, map_height: i32))]
 pub struct ZoneMaps {
@@ -6917,7 +7022,7 @@ pub struct ZoneMaps {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct UmvDataListEntry1 {
     /// game: `n`
@@ -6931,7 +7036,7 @@ pub struct UmvDataListEntry1 {
 
 /// Read by `FUN_140f69c40` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct UmvDataList {
@@ -6952,7 +7057,7 @@ pub struct UmvDataList {
 
 /// Read by `FUN_1412853e0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct UnifiedVisibleMap {
@@ -6969,7 +7074,7 @@ pub struct UnifiedVisibleMap {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct RgeTile {
     /// game: `terrainType`
@@ -6996,7 +7101,7 @@ pub struct RgeTile {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(map_width: i32))]
 pub struct RgeMapRow {
@@ -7007,7 +7112,7 @@ pub struct RgeMapRow {
 
 /// Read by `FUN_140f6a610` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMap {
@@ -7047,7 +7152,7 @@ pub struct RgeMap {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct ParticleSystemEntry1 {
     /// game: `start_time`
@@ -7078,7 +7183,7 @@ pub struct ParticleSystemEntry1 {
 
 /// Read by `FUN_1413bf460` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct ParticleSystem {
@@ -7095,7 +7200,7 @@ pub struct ParticleSystem {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct RgeVictoryConditionsEntry1 {
     /// game: `(temp->command)`
@@ -7143,7 +7248,7 @@ pub struct RgeVictoryConditionsEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct RgeVictoryConditionsEntry2 {
     /// game: `(point_temp->command)`
@@ -7183,7 +7288,7 @@ pub struct RgeVictoryConditionsEntry2 {
 
 /// Read by `FUN_1414e6270` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeVictoryConditions {
@@ -7219,7 +7324,7 @@ pub struct RgeVictoryConditions {
 
 /// Read by `FUN_1408d0450` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct PictureSize {
@@ -7233,7 +7338,7 @@ pub struct PictureSize {
 
 /// Read by `FUN_1408d0e80` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Picture {
@@ -7250,7 +7355,7 @@ pub struct Picture {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BaseScenarioEntry1 {
     /// game: `playerName`
@@ -7260,7 +7365,7 @@ pub struct BaseScenarioEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BaseScenarioEntry2 {
     /// game: `&mPlayerActiveArray[i]`
@@ -7281,7 +7386,7 @@ pub struct BaseScenarioEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BaseScenarioEntry3 {
     /// game: `&buildListFileSize`
@@ -7309,7 +7414,7 @@ pub struct BaseScenarioEntry3 {
 
 /// Read by `FUN_140ca6c50` (`BaseScenario.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BaseScenario {
@@ -7432,7 +7537,7 @@ pub struct BaseScenario {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TribeScenarioEntry1 {
     /// game: `&player_info[i].Gold`
@@ -7459,7 +7564,7 @@ pub struct TribeScenarioEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(base_scenario_max_players: i32))]
 pub struct TribeScenarioEntry2 {
@@ -7470,7 +7575,7 @@ pub struct TribeScenarioEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(count: i32))]
 pub struct DisabledTechnology {
@@ -7481,7 +7586,7 @@ pub struct DisabledTechnology {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(count: i32))]
 pub struct DisabledUnit {
@@ -7492,7 +7597,7 @@ pub struct DisabledUnit {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(count: i32))]
 pub struct DisabledBuilding {
@@ -7503,7 +7608,7 @@ pub struct DisabledBuilding {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TribeScenarioEntry6 {
     /// game: `&tempX`
@@ -7516,7 +7621,7 @@ pub struct TribeScenarioEntry6 {
 
 /// Read by `FUN_140ce4640` (`TribeScenario.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeScenario {
@@ -7651,7 +7756,7 @@ pub struct TribeScenario {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct CommandsEntry1 {
     /// game: `&selUnitCount`
@@ -7665,7 +7770,7 @@ pub struct CommandsEntry1 {
 
 /// Read by `FUN_140e6baf0` (`command.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Commands {
@@ -7740,9 +7845,32 @@ pub struct Motion {
     pub number_wait_delays: i32,
 }
 
+impl Default for Motion {
+    fn default() -> Self {
+        Self {
+            position: [Default::default(); 48],
+            new_position: [Default::default(); 48],
+            velocity: Default::default(),
+            acceleration: Default::default(),
+            angular_velocity: Default::default(),
+            angular_acceleration: Default::default(),
+            turn_radius: Default::default(),
+            turn_radius_speed: Default::default(),
+            maximum_yaw_per_second_moving: Default::default(),
+            stationary_yaw_revolution_time: Default::default(),
+            maximum_yaw_per_second_stationary: Default::default(),
+            num_path_datas: Default::default(),
+            temp_path_data: Default::default(),
+            motion_flags_m_bits: Default::default(),
+            maximum_velocity_forward: Default::default(),
+            number_wait_delays: Default::default(),
+        }
+    }
+}
+
 /// Read by `FUN_14101b290` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct FormationLine {
@@ -7765,7 +7893,7 @@ pub struct FormationLine {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct FormationEntry1 {
     /// game: `(mSlots[i].mUnitID)`
@@ -7805,7 +7933,7 @@ pub struct FormationEntry1 {
 
 /// Read by `FUN_1410180b0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Formation {
@@ -7849,7 +7977,7 @@ pub struct Formation {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct PointLineEntry1 {
     /// game: `(ve->mPoint)`
@@ -7868,7 +7996,7 @@ pub struct PointLineEntry1 {
 
 /// Read by `FUN_14101bb60` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct PointLine {
@@ -7927,9 +8055,26 @@ pub struct UnitTypeStatistic {
     pub end_marker: (),
 }
 
+impl Default for UnitTypeStatistic {
+    fn default() -> Self {
+        Self {
+            formation_category: Default::default(),
+            number_units: Default::default(),
+            units: Default::default(),
+            used: Default::default(),
+            attack_range: Default::default(),
+            desired_spacing: Default::default(),
+            number_unit_types: Default::default(),
+            unit_types: [Default::default(); 200],
+            unit_type_counts: [Default::default(); 200],
+            end_marker: Default::default(),
+        }
+    }
+}
+
 /// Read by `FUN_141024960` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct UnitTypeStatisticManager {
@@ -7944,7 +8089,7 @@ pub struct UnitTypeStatisticManager {
 
 /// Read by `FUN_14101c7d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TargetData {
@@ -7972,7 +8117,7 @@ pub struct TargetData {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct UnitGroupEntry1 {
     /// game: `(mUnits[i])`
@@ -8008,7 +8153,7 @@ pub struct UnitGroupEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct UnitGroupEntry2 {
     /// game: `(newOrder->mCommand)`
@@ -8029,7 +8174,7 @@ pub struct UnitGroupEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct UnitGroupEntry3 {
     /// game: `(newCommand->mCommand)`
@@ -8057,7 +8202,7 @@ pub struct UnitGroupEntry3 {
 
 /// Read by `FUN_14101d350` (`group.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct UnitGroup {
@@ -8210,7 +8355,7 @@ pub struct UnitGroup {
 
 /// Read by `FUN_141536ef0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct UnitGroups {
@@ -8227,7 +8372,7 @@ pub struct UnitGroups {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct BaseWorldEntry1 {
     /// game: `&worldPlayerArrayIndex`
@@ -8247,7 +8392,7 @@ pub struct BaseWorldEntry1 {
 
 /// Read by `FUN_141537e30` (`BaseWorld.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BaseWorld {
@@ -8425,7 +8570,7 @@ pub struct BaseWorld {
 
 /// Read by `FUN_141570220` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, trigger_version: f64))]
 pub struct TriggerEffect {
@@ -8463,7 +8608,7 @@ pub struct TriggerEffect {
 
 /// Read by `FUN_14156d0b0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, trigger_version: f64))]
 pub struct TribeTriggerCondition {
@@ -8487,7 +8632,7 @@ pub struct TribeTriggerCondition {
 
 /// Read by `FUN_14156bd00` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, trigger_version: f64))]
 pub struct TribeTrigger {
@@ -8555,7 +8700,7 @@ pub struct TribeTrigger {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry1 {
     /// game: `i`
@@ -8571,7 +8716,7 @@ pub struct TriggerSystemEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry2 {
     /// game: `goal.m_stringId`
@@ -8583,7 +8728,7 @@ pub struct TriggerSystemEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry3 {
     /// game: `decisionId`
@@ -8595,7 +8740,7 @@ pub struct TriggerSystemEntry3 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry4 {
     /// game: `attackedData.mAttackedObjectID`
@@ -8619,7 +8764,7 @@ pub struct TriggerSystemEntry4 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct TriggerSystemEntry5 {
     /// game: `unitID`
@@ -8636,7 +8781,7 @@ pub struct TriggerSystemEntry5 {
 
 /// Read by `FUN_14156dbc0` of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TriggerSystem {
@@ -8706,7 +8851,7 @@ pub struct TriggerSystem {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct WorldEntry1 {
     /// game: `length`
@@ -8719,7 +8864,7 @@ pub struct WorldEntry1 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct WorldEntry2 {
     /// game: `validTimer`
@@ -8760,7 +8905,7 @@ pub struct WorldEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 pub struct WorldEntry3 {
     /// game: `stringId`
@@ -8785,7 +8930,7 @@ pub struct WorldEntry3 {
 
 /// Read by `FUN_1415d0440` (`World.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct World {

@@ -29,42 +29,6 @@
       "crate": "genie-oracle"
     },
     {
-      "file": "crates/tools/genie-oracle/src/checked_rows.rs",
-      "function": "MoveRow::same",
-      "line": 301,
-      "cyclomatic": 12.0,
-      "coverage": 0.0,
-      "crap": 156.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/checked_rows.rs",
-      "function": "PathData::same",
-      "line": 279,
-      "cyclomatic": 17.0,
-      "coverage": 0.0,
-      "crap": 306.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/command_args.rs",
-      "function": "frames",
-      "line": 21,
-      "cyclomatic": 9.0,
-      "coverage": 0.0,
-      "crap": 90.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/decoder.rs",
-      "function": "Decoder::command",
-      "line": 133,
-      "cyclomatic": 38.0,
-      "coverage": 15.09433962264151,
-      "crap": 921.8470683853114,
-      "crate": "genie-oracle"
-    },
-    {
       "file": "crates/tools/genie-oracle/src/forced_replay.rs",
       "function": "command_phase",
       "line": 142,
@@ -107,15 +71,6 @@
       "cyclomatic": 6.0,
       "coverage": 0.0,
       "crap": 42.0,
-      "crate": "genie-oracle"
-    },
-    {
-      "file": "crates/tools/genie-oracle/src/lib.rs",
-      "function": "Error::fmt",
-      "line": 174,
-      "cyclomatic": 12.0,
-      "coverage": 0.0,
-      "crap": 156.0,
       "crate": "genie-oracle"
     },
     {
