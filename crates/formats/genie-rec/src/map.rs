@@ -252,3 +252,50 @@ impl ReadableHeaderElement for Map {
         Ok(map)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{writes_back, writes_back_with};
+
+    /// A tile with its original terrain behind the marker 0xFF, one without in two bytes.
+    #[test]
+    fn a_tile_writes_back_with_or_without_its_original_terrain() {
+        let changed = writes_back(
+            &Tile {
+                terrain: 2,
+                elevation: 1,
+                original_terrain: Some(0),
+            },
+            11.97,
+        );
+        assert_eq!(changed.original_terrain, Some(0));
+        let plain = writes_back(
+            &Tile {
+                terrain: 6,
+                elevation: 0,
+                original_terrain: None,
+            },
+            11.97,
+        );
+        assert_eq!((plain.terrain, plain.original_terrain), (6, None));
+    }
+
+    /// A zone map: its 255 infos and tiles, a byte per map tile, the passability rules and
+    /// the zone count.
+    #[test]
+    fn a_zone_map_writes_back_for_its_map_size() {
+        let zone = MapZone {
+            zone_map: vec![1, 2, 3, 4],
+            passability_rules: vec![1.0, 0.5],
+            num_zones: 3,
+            ..MapZone::default()
+        };
+        let read = writes_back_with(&zone, 11.97, |r| r.set_map_size(2, 2));
+        assert_eq!((read.info().len(), read.tiles().len()), (255, 255));
+        assert_eq!(
+            (read.zone_map, read.passability_rules, read.num_zones),
+            (vec![1, 2, 3, 4], vec![1.0, 0.5], 3)
+        );
+    }
+}

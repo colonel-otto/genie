@@ -41,6 +41,9 @@ pub mod unit_type;
 /// Game variant and version detection.
 pub mod version;
 
+#[cfg(test)]
+mod test_support;
+
 use crate::actions::{Action, Meta};
 use crate::element::ReadableHeaderElement;
 use crate::reader::{RecordingHeaderReader, SmallBufReader};

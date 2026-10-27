@@ -94,3 +94,6 @@ fn read_id_list<T: From<u32>, R: Read>(input: &mut R) -> Result<Vec<T>> {
     }
     Ok(ids)
 }
+
+#[cfg(test)]
+mod tests;

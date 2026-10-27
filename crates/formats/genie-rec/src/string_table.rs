@@ -96,8 +96,19 @@ impl IntoIterator for StringTable {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::test_support::writes_back;
+
+    /// The table: its capacity, its count, a null pointer, then each string behind its
+    /// length.
     #[test]
-    fn read_strings() {
-        assert_eq!(2 + 2, 4);
+    fn a_string_table_writes_back_its_strings() {
+        let table = StringTable {
+            max_strings: 4,
+            strings: vec!["a".to_owned(), "bc".to_owned()],
+        };
+        let read = writes_back(&table, 11.97);
+        assert_eq!((read.max_strings(), read.num_strings()), (4, 2));
+        assert_eq!(read.into_iter().collect::<Vec<_>>(), ["a", "bc"]);
     }
 }

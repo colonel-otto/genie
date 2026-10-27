@@ -147,3 +147,47 @@ impl WritableHeaderElement for SpriteList {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::writes_back;
+
+    /// A sprite list: each node behind its type (2 with an animation, 1 without), then a 0.
+    #[test]
+    fn a_sprite_list_writes_back_its_nodes() {
+        let animation = SpriteNodeAnimation {
+            animate_interval: 2,
+            animate_last: 3,
+            last_frame: 4,
+            frame_changed: 1,
+            frame_looped: 0,
+            animate_flag: 1,
+            last_speed: 0.5,
+        };
+        let list = SpriteList {
+            sprites: vec![
+                SpriteNode {
+                    id: 12.into(),
+                    x: 1,
+                    y: 2,
+                    frame: 3,
+                    invisible: true,
+                    animation: Some(animation),
+                    order: 1,
+                    flag: 2,
+                    count: 3,
+                },
+                SpriteNode {
+                    id: 13.into(),
+                    animation: None,
+                    ..SpriteNode::default()
+                },
+            ],
+        };
+        let read = writes_back(&list, 11.97);
+        assert_eq!(read.sprites.len(), 2);
+        assert_eq!(read.sprites[0].animation.map(|a| a.last_speed), Some(0.5));
+        assert!(read.sprites[1].animation.is_none());
+    }
+}

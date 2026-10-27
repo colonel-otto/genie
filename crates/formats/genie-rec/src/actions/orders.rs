@@ -188,7 +188,8 @@ impl MoveCommand {
     ///
     /// Panics if there are more than 127 objects, the most the format's `i8` count holds.
     pub fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        output.write_all(&[0, 0, 0])?;
+        output.write_u8(self.player_id.into())?;
+        output.write_all(&[0, 0])?;
         output.write_i32::<LE>(self.target_id.map_or(-1, |u| u32::from(u).cast_signed()))?;
         output.write_i8(self.objects.len().try_into().unwrap())?;
         output.write_all(&[0, 0, 0])?;
@@ -387,7 +388,10 @@ impl AIOrderCommand {
         output.write_i8(self.order_priority)?;
         output.write_u8(0)?;
         output.write_i32::<LE>(self.target_id.map_or(-1, |id| id.try_into().unwrap()))?;
-        output.write_u8(self.player_id.into())?;
+        output.write_i8(
+            self.target_player_id
+                .map_or(-1, |id| u8::from(id).cast_signed()),
+        )?;
         output.write_all(&[0, 0, 0])?;
         output.write_f32::<LE>(self.target_location.0)?;
         output.write_f32::<LE>(self.target_location.1)?;

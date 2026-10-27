@@ -247,46 +247,72 @@ impl Command {
         let len = input.read_u32::<LE>()?;
 
         let mut cursor = input.by_ref().take(len.into());
-        let command = match cursor.read_u8()? {
-            0x00 => OrderCommand::read_from(&mut cursor).map(Command::Order),
-            0x01 => StopCommand::read_from(&mut cursor).map(Command::Stop),
-            0x02 => WorkCommand::read_from(&mut cursor).map(Command::Work),
-            0x03 => MoveCommand::read_from(&mut cursor).map(Command::Move),
-            0x04 => CreateCommand::read_from(&mut cursor).map(Command::Create),
-            0x05 => AddResourceCommand::read_from(&mut cursor).map(Command::AddResource),
-            0x0a => AIOrderCommand::read_from(&mut cursor).map(Command::AIOrder),
-            0x0b => ResignCommand::read_from(&mut cursor).map(Command::Resign),
-            0x10 => GroupWaypointCommand::read_from(&mut cursor).map(Command::GroupWaypoint),
-            0x12 => UnitAIStateCommand::read_from(&mut cursor).map(Command::UnitAIState),
-            0x13 => GuardCommand::read_from(&mut cursor).map(Command::Guard),
-            0x14 => FollowCommand::read_from(&mut cursor).map(Command::Follow),
-            0x15 => PatrolCommand::read_from(&mut cursor).map(Command::Patrol),
-            0x17 => FormFormationCommand::read_from(&mut cursor).map(Command::FormFormation),
-            0x35 => UserPatchAICommand::read_from(&mut cursor, len).map(Command::UserPatchAI),
-            0x64 => MakeCommand::read_from(&mut cursor).map(Command::Make),
-            0x65 => ResearchCommand::read_from(&mut cursor).map(Command::Research),
-            0x66 => BuildCommand::read_from(&mut cursor).map(Command::Build),
-            0x67 => GameCommand::read_from(&mut cursor).map(Command::Game),
-            0x69 => BuildWallCommand::read_from(&mut cursor).map(Command::BuildWall),
-            0x6a => CancelBuildCommand::read_from(&mut cursor).map(Command::CancelBuild),
-            0x6b => AttackGroundCommand::read_from(&mut cursor).map(Command::AttackGround),
-            0x6e => RepairCommand::read_from(&mut cursor).map(Command::Repair),
-            0x6f => UngarrisonCommand::read_from(&mut cursor).map(Command::Ungarrison),
-            0x73 => FlareCommand::read_from(&mut cursor).map(Command::Flare),
-            0x75 => UnitOrderCommand::read_from(&mut cursor).map(Command::UnitOrder),
-            0x77 => QueueCommand::read_from(&mut cursor).map(Command::Queue),
-            0x78 => SetGatherPointCommand::read_from(&mut cursor).map(Command::SetGatherPoint),
-            0x7a => SellResourceCommand::read_from(&mut cursor).map(Command::SellResource),
-            0x7b => BuyResourceCommand::read_from(&mut cursor).map(Command::BuyResource),
-            0x7f => Unknown7FCommand::read_from(&mut cursor).map(Command::Unknown7F),
-            0x80 => BackToWorkCommand::read_from(&mut cursor).map(Command::BackToWork),
-            id => panic!("unsupported command type {id:#x}"),
+        let id = cursor.read_u8()?;
+        let command = if id < 0x64 {
+            read_unit_command(id, &mut cursor, len)
+        } else {
+            read_building_command(id, &mut cursor)
         };
         // Consume any excess bytes; how many there were does not matter.
         let _ = std::io::copy(&mut cursor, &mut std::io::sink())?;
 
         let _world_time = input.read_u32::<LE>()?;
         command
+    }
+}
+
+/// The commands to units and groups (ids below 0x64) after their id; `len` is the command's
+/// length, which `UserPatch`'s AI command needs.
+///
+/// # Panics
+///
+/// Panics on an id no command has.
+fn read_unit_command(id: u8, cursor: &mut impl Read, len: u32) -> Result<Command> {
+    match id {
+        0x00 => OrderCommand::read_from(&mut *cursor).map(Command::Order),
+        0x01 => StopCommand::read_from(&mut *cursor).map(Command::Stop),
+        0x02 => WorkCommand::read_from(&mut *cursor).map(Command::Work),
+        0x03 => MoveCommand::read_from(&mut *cursor).map(Command::Move),
+        0x04 => CreateCommand::read_from(&mut *cursor).map(Command::Create),
+        0x05 => AddResourceCommand::read_from(&mut *cursor).map(Command::AddResource),
+        0x0a => AIOrderCommand::read_from(&mut *cursor).map(Command::AIOrder),
+        0x0b => ResignCommand::read_from(&mut *cursor).map(Command::Resign),
+        0x10 => GroupWaypointCommand::read_from(&mut *cursor).map(Command::GroupWaypoint),
+        0x12 => UnitAIStateCommand::read_from(&mut *cursor).map(Command::UnitAIState),
+        0x13 => GuardCommand::read_from(&mut *cursor).map(Command::Guard),
+        0x14 => FollowCommand::read_from(&mut *cursor).map(Command::Follow),
+        0x15 => PatrolCommand::read_from(&mut *cursor).map(Command::Patrol),
+        0x17 => FormFormationCommand::read_from(&mut *cursor).map(Command::FormFormation),
+        0x35 => UserPatchAICommand::read_from(&mut *cursor, len).map(Command::UserPatchAI),
+        id => panic!("unsupported command type {id:#x}"),
+    }
+}
+
+/// The commands to buildings, the game and the market (ids from 0x64 on) after their id.
+///
+/// # Panics
+///
+/// Panics on an id no command has.
+fn read_building_command(id: u8, cursor: &mut impl Read) -> Result<Command> {
+    match id {
+        0x64 => MakeCommand::read_from(&mut *cursor).map(Command::Make),
+        0x65 => ResearchCommand::read_from(&mut *cursor).map(Command::Research),
+        0x66 => BuildCommand::read_from(&mut *cursor).map(Command::Build),
+        0x67 => GameCommand::read_from(&mut *cursor).map(Command::Game),
+        0x69 => BuildWallCommand::read_from(&mut *cursor).map(Command::BuildWall),
+        0x6a => CancelBuildCommand::read_from(&mut *cursor).map(Command::CancelBuild),
+        0x6b => AttackGroundCommand::read_from(&mut *cursor).map(Command::AttackGround),
+        0x6e => RepairCommand::read_from(&mut *cursor).map(Command::Repair),
+        0x6f => UngarrisonCommand::read_from(&mut *cursor).map(Command::Ungarrison),
+        0x73 => FlareCommand::read_from(&mut *cursor).map(Command::Flare),
+        0x75 => UnitOrderCommand::read_from(&mut *cursor).map(Command::UnitOrder),
+        0x77 => QueueCommand::read_from(&mut *cursor).map(Command::Queue),
+        0x78 => SetGatherPointCommand::read_from(&mut *cursor).map(Command::SetGatherPoint),
+        0x7a => SellResourceCommand::read_from(&mut *cursor).map(Command::SellResource),
+        0x7b => BuyResourceCommand::read_from(&mut *cursor).map(Command::BuyResource),
+        0x7f => Unknown7FCommand::read_from(&mut *cursor).map(Command::Unknown7F),
+        0x80 => BackToWorkCommand::read_from(&mut *cursor).map(Command::BackToWork),
+        id => panic!("unsupported command type {id:#x}"),
     }
 }
 
@@ -487,3 +513,6 @@ pub enum Action {
     /// A chat message (operation 4).
     Chat(Chat),
 }
+
+#[cfg(test)]
+mod tests;
