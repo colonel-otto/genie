@@ -2,13 +2,13 @@ use crate::Result;
 use crate::element::{OptionalReadableElement, ReadableHeaderElement, WritableHeaderElement};
 use crate::reader::RecordingHeaderReader;
 use crate::unit_type::UnitBaseClass;
-use byteorder::{ReadBytesExt, WriteBytesExt};
+use byteorder::ReadBytesExt;
 pub use genie_dat::sprite::SpriteID;
 pub use genie_dat::terrain::TerrainID;
 pub use genie_dat::unit_type::AttributeCost;
 pub use genie_support::{StringKey, UnitTypeID};
 use std::convert::TryInto;
-use std::io::{Read, Write};
+use std::io::Read;
 
 mod building;
 mod combat;
@@ -95,29 +95,6 @@ impl OptionalReadableElement for Unit {
     }
 }
 
-impl WritableHeaderElement for Unit {
-    fn write_to<W: Write>(&self, output: &mut W) -> Result<()> {
-        let raw_class = self.unit_base_class as u8;
-        output.write_u8(raw_class)?;
-        self.static_.write_to(output)?;
-        if let Some(animated) = &self.animated {
-            animated.write_to(output)?;
-        }
-        if let Some(moving) = &self.moving {
-            moving.write_to(output)?;
-        }
-        if let Some(action) = &self.action {
-            action.write_to(output)?;
-        }
-        if let Some(base_combat) = &self.base_combat {
-            base_combat.write_to(output)?;
-        }
-        if let Some(missile) = &self.missile {
-            missile.write_to(output)?;
-        }
-        if let Some(combat) = &self.combat {
-            combat.write_to(output)?;
-        }
-        Ok(())
-    }
-}
+// The old format's units are read only: their static attributes have no writer (see
+// `StaticUnitAttributes`), nor have the moving, action and combat ones.
+impl WritableHeaderElement for Unit {}

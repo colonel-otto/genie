@@ -1,6 +1,6 @@
 //! The building base class's attributes: the gather point and the production queue.
 
-use crate::element::ReadableHeaderElement;
+use crate::element::{ReadableHeaderElement, read_xyz};
 use crate::reader::RecordingHeaderReader;
 use crate::unit_action::UnitAction;
 use crate::{ObjectID, Result};
@@ -122,6 +122,7 @@ pub struct BuildingUnitAttributes {
 }
 
 impl ReadableHeaderElement for BuildingUnitAttributes {
+    // Reads the building's fields in file order, section by section.
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let mut attrs = Self {
             built: input.read_u8()? != 0,
@@ -133,82 +134,98 @@ impl ReadableHeaderElement for BuildingUnitAttributes {
             last_garrison_time: input.read_u32::<LE>()?,
             relic_count: input.read_u32::<LE>()?,
             specific_relic_count: input.read_u32::<LE>()?,
-            gather_point: {
-                let exists = input.read_u32::<LE>()? != 0;
-                let location = GatherPoint::Location {
-                    x: input.read_f32::<LE>()?,
-                    y: input.read_f32::<LE>()?,
-                    z: input.read_f32::<LE>()?,
-                };
-                let object_id = input.read_i32::<LE>()?;
-                let unit_type_id = input.read_i16::<LE>()?;
-                match (exists, object_id, unit_type_id) {
-                    (false, _, _) => None,
-                    (true, -1, -1) => Some(location),
-                    (true, id, unit_type_id) => Some(GatherPoint::Object {
-                        id: id.try_into().unwrap(),
-                        unit_type: unit_type_id.try_into().unwrap(),
-                    }),
-                }
-            },
+            gather_point: GatherPoint::read_from(input)?,
             desolid_flag: input.read_u8()? != 0,
             ..Default::default()
         };
-        if input.version() >= 10.54 {
-            attrs.pending_order = input.read_u32::<LE>()?;
-        }
-        attrs.linked_owner = read_opt_u32(input)?;
-        attrs.linked_children = {
-            let mut children: ArrayVec<ObjectID, 4> = ArrayVec::new();
-            for _ in 0..4 {
-                let id = input.read_i32::<LE>()?;
-                if id != -1 {
-                    children.push(id.try_into().unwrap());
-                }
-            }
-            children
-        };
-        attrs.captured_unit_count = input.read_u8()?;
-        attrs.extra_actions = UnitAction::read_list_from(input)?;
-        attrs.research_actions = UnitAction::read_list_from(input)?;
-        attrs.production_queue = {
-            let capacity = input.read_u16::<LE>()?;
-            let mut queue = vec![ProductionQueueEntry::default(); capacity as usize];
-            for entry in &mut queue {
-                *entry = ProductionQueueEntry::read_from(input)?;
-            }
-            let _size = input.read_u16::<LE>()?;
-            queue
-        };
-        attrs.production_queue_total_units = input.read_u16::<LE>()?;
-        attrs.production_queue_enabled = input.read_u8()? != 0;
-        attrs.production_queue_actions = UnitAction::read_list_from(input)?;
-        if input.version() >= 10.65 {
-            // game reads into the same value twice, while there are two separate fields of this
-            // type. likely a bug, but it doesn't appear to cause issues? is this unused?
-            attrs.endpoint = (
-                input.read_f32::<LE>()?,
-                input.read_f32::<LE>()?,
-                input.read_f32::<LE>()?,
-            );
-            attrs.endpoint = (
-                input.read_f32::<LE>()?,
-                input.read_f32::<LE>()?,
-                input.read_f32::<LE>()?,
-            );
-            attrs.gate_locked = input.read_u32::<LE>()?;
-            attrs.first_update = input.read_u32::<LE>()?;
-            attrs.close_timer = input.read_u32::<LE>()?;
-        }
-        if input.version() >= 10.67 {
-            attrs.terrain_type = Some(input.read_u8()?.into());
-        }
-        if input.version() >= 11.43 {
-            attrs.semi_asleep = input.read_u8()? != 0;
-        }
-        if input.version() >= 11.54 {
-            attrs.snow_flag = input.read_u8()? != 0;
-        }
+        attrs.read_links(input)?;
+        attrs.read_queues(input)?;
+        attrs.read_later_versions(input)?;
         Ok(attrs)
     }
 }
+
+impl GatherPoint {
+    /// The gather point: a flag, a location, then an object and its type (both -1 for the
+    /// location). Without the flag there is none.
+    fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Option<Self>> {
+        let exists = input.read_u32::<LE>()? != 0;
+        let location = Self::Location {
+            x: input.read_f32::<LE>()?,
+            y: input.read_f32::<LE>()?,
+            z: input.read_f32::<LE>()?,
+        };
+        let object_id = input.read_i32::<LE>()?;
+        let unit_type_id = input.read_i16::<LE>()?;
+        Ok(match (exists, object_id, unit_type_id) {
+            (false, _, _) => None,
+            (true, -1, -1) => Some(location),
+            (true, id, unit_type_id) => Some(Self::Object {
+                id: id.try_into().unwrap(),
+                unit_type: unit_type_id.try_into().unwrap(),
+            }),
+        })
+    }
+}
+
+impl BuildingUnitAttributes {
+    /// The pending order (10.54), the linked owner, up to four linked children (-1 is none)
+    /// and the count of captured units.
+    fn read_links<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        if input.version() >= 10.54 {
+            self.pending_order = input.read_u32::<LE>()?;
+        }
+        self.linked_owner = read_opt_u32(input)?;
+        for _ in 0..4 {
+            let id = input.read_i32::<LE>()?;
+            if id != -1 {
+                self.linked_children.push(id.try_into().unwrap());
+            }
+        }
+        self.captured_unit_count = input.read_u8()?;
+        Ok(())
+    }
+
+    /// The extra and research actions, the production queue (its capacity, the entries and
+    /// a size the reader skips), the queue's total and flag and its actions.
+    fn read_queues<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        self.extra_actions = UnitAction::read_list_from(input)?;
+        self.research_actions = UnitAction::read_list_from(input)?;
+        let capacity = input.read_u16::<LE>()?;
+        self.production_queue = (0..capacity)
+            .map(|_| ProductionQueueEntry::read_from(input))
+            .collect::<Result<_>>()?;
+        let _size = input.read_u16::<LE>()?;
+        self.production_queue_total_units = input.read_u16::<LE>()?;
+        self.production_queue_enabled = input.read_u8()? != 0;
+        self.production_queue_actions = UnitAction::read_list_from(input)?;
+        Ok(())
+    }
+
+    /// The gate's fields (10.65), the terrain type (10.67), the semi-asleep flag (11.43) and
+    /// the snow flag (11.54).
+    fn read_later_versions<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        if input.version() >= 10.65 {
+            // game reads into the same value twice, while there are two separate fields of this
+            // type. likely a bug, but it doesn't appear to cause issues? is this unused?
+            self.endpoint = read_xyz(input)?;
+            self.endpoint = read_xyz(input)?;
+            self.gate_locked = input.read_u32::<LE>()?;
+            self.first_update = input.read_u32::<LE>()?;
+            self.close_timer = input.read_u32::<LE>()?;
+        }
+        if input.version() >= 10.67 {
+            self.terrain_type = Some(input.read_u8()?.into());
+        }
+        if input.version() >= 11.43 {
+            self.semi_asleep = input.read_u8()? != 0;
+        }
+        if input.version() >= 11.54 {
+            self.snow_flag = input.read_u8()? != 0;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests;

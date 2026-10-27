@@ -79,3 +79,30 @@ impl<T: WritableHeaderElement> WritableElement<T> for T {
         WritableHeaderElement::write_to(element, output)
     }
 }
+
+/// A `u32` count, then that many elements of type `T`.
+///
+/// # Errors
+///
+/// Returns an error if reading the count or an element fails.
+pub(crate) fn read_counted<T: ReadableHeaderElement, R: Read>(
+    input: &mut RecordingHeaderReader<R>,
+) -> crate::Result<Vec<T>> {
+    use byteorder::{LE, ReadBytesExt};
+    let count = input.read_u32::<LE>()?;
+    (0..count).map(|_| T::read_from(input)).collect()
+}
+
+/// Three little-endian `f32`s: a position, a velocity or an orientation.
+///
+/// # Errors
+///
+/// Returns an error if reading fails.
+pub(crate) fn read_xyz<R: Read>(input: &mut R) -> std::io::Result<(f32, f32, f32)> {
+    use byteorder::{LE, ReadBytesExt};
+    Ok((
+        input.read_f32::<LE>()?,
+        input.read_f32::<LE>()?,
+        input.read_f32::<LE>()?,
+    ))
+}

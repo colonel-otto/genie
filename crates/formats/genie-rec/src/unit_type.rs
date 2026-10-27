@@ -115,16 +115,7 @@ impl ReadableHeaderElement for StaticUnitAttributes {
         let hidden_in_editor = input.read_i8()?;
         // UserPatch data
         let hidden_flags = if hidden_in_editor == -16 {
-            attrs.death_object_id = match input.read_i16::<LE>()? {
-                -1 => None,
-                id => Some(id.try_into().unwrap()),
-            };
-            attrs.string_id = Some(input.read_u16::<LE>()?.into());
-            attrs.description_id = Some(input.read_u16::<LE>()?.into());
-            attrs.flags = Some(input.read_u32::<LE>()?);
-            attrs.help_string_id = Some(input.read_u32::<LE>()?.into());
-            attrs.terrain_restriction = Some(input.read_u16::<LE>()?);
-            input.read_i8()?
+            attrs.read_user_patch(input)?
         } else {
             hidden_in_editor
         };
@@ -139,6 +130,23 @@ impl ReadableHeaderElement for StaticUnitAttributes {
         attrs.attribute_amount_held = input.read_f32::<LE>()?;
         attrs.disabled = input.read_u8()? != 0;
         Ok(attrs)
+    }
+}
+
+impl StaticUnitAttributes {
+    /// `UserPatch`'s fields behind a hidden flag of -16: the death object, the strings, the
+    /// flags and the terrain restriction. Gives the hidden flags that follow them.
+    fn read_user_patch<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<i8> {
+        self.death_object_id = match input.read_i16::<LE>()? {
+            -1 => None,
+            id => Some(id.try_into().unwrap()),
+        };
+        self.string_id = Some(input.read_u16::<LE>()?.into());
+        self.description_id = Some(input.read_u16::<LE>()?.into());
+        self.flags = Some(input.read_u32::<LE>()?);
+        self.help_string_id = Some(input.read_u32::<LE>()?.into());
+        self.terrain_restriction = Some(input.read_u16::<LE>()?);
+        Ok(input.read_i8()?)
     }
 }
 
@@ -358,27 +366,36 @@ impl ReadableHeaderElement for CombatUnitAttributes {
         }
         let create_time = input.read_u16::<LE>()?;
         // UserPatch data
-        if create_time == u16::MAX - 15 {
-            attrs.original_pierce_armor = Some(input.read_u16::<LE>()?);
-            attrs.original_armor = Some(input.read_u16::<LE>()?);
-            attrs.original_weapon = Some(input.read_u16::<LE>()?);
-            attrs.original_weapon_range = Some(input.read_f32::<LE>()?);
-            attrs.area_effect_level = Some(input.read_u8()?);
-            attrs.frame_delay = Some(input.read_u16::<LE>()?);
-            attrs.create_at_building = match input.read_i16::<LE>()? {
-                -1 => None,
-                id => Some(id.try_into().unwrap()),
-            };
-            attrs.create_button = Some(input.read_i8()?);
-            attrs.rear_attack_modifier = Some(input.read_f32::<LE>()?);
-            attrs.hero_flag = Some(input.read_u8()?);
-            attrs.create_time = input.read_u16::<LE>()?;
+        attrs.create_time = if create_time == u16::MAX - 15 {
+            attrs.read_user_patch(input)?
         } else {
-            attrs.create_time = create_time;
-        }
+            create_time
+        };
         attrs.volley_fire_amount = input.read_f32::<LE>()?;
         attrs.max_attacks_in_volley = input.read_u8()?;
         Ok(attrs)
+    }
+}
+
+impl CombatUnitAttributes {
+    /// `UserPatch`'s fields behind a create time of 65520: the original armours and weapon,
+    /// the area effect, the delay, the building and button, the rear attack and the hero
+    /// flag. Gives the create time that follows them.
+    fn read_user_patch<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<u16> {
+        self.original_pierce_armor = Some(input.read_u16::<LE>()?);
+        self.original_armor = Some(input.read_u16::<LE>()?);
+        self.original_weapon = Some(input.read_u16::<LE>()?);
+        self.original_weapon_range = Some(input.read_f32::<LE>()?);
+        self.area_effect_level = Some(input.read_u8()?);
+        self.frame_delay = Some(input.read_u16::<LE>()?);
+        self.create_at_building = match input.read_i16::<LE>()? {
+            -1 => None,
+            id => Some(id.try_into().unwrap()),
+        };
+        self.create_button = Some(input.read_i8()?);
+        self.rear_attack_modifier = Some(input.read_f32::<LE>()?);
+        self.hero_flag = Some(input.read_u8()?);
+        Ok(input.read_u16::<LE>()?)
     }
 }
 
@@ -415,6 +432,144 @@ impl ReadableHeaderElement for BuildingUnitAttributes {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{Bytes, read_all};
+
+    /// A unit type's static head up to its hidden flag.
+    fn static_head(hidden: u8) -> Bytes {
+        Bytes::default()
+            .u16(83)
+            .u16(83)
+            .u16(83)
+            .u16(4)
+            .i32(16000)
+            .u8(1)
+            .u8(hidden)
+    }
+
+    /// The static tail after the hidden flags: hit points, sight, garrison, radius, the
+    /// attribute and the disabled flag.
+    fn static_tail(bytes: Bytes) -> Bytes {
+        bytes
+            .u16(25)
+            .floats(&[4.0])
+            .u8(0)
+            .floats(&[0.2, 0.3])
+            .u16(10)
+            .floats(&[0.0])
+            .u8(0)
+    }
+
+    #[test]
+    fn a_static_unit_type_reads_its_hidden_flag() {
+        let unit = read_all::<StaticUnitAttributes>(&static_tail(static_head(2)).0, 11.97);
+        assert_eq!(u16::from(unit.id), 83);
+        assert_eq!((unit.unit_class, unit.hotkey_id), (4, 16000));
+        assert!(unit.available && unit.hidden_in_editor && unit.is_queueable_tech);
+        assert_eq!(unit.death_object_id, None);
+        assert_eq!(unit.string_id, None);
+        assert_eq!(unit.hit_points, 25);
+        assert_eq!(unit.radius, (0.2, 0.3));
+        assert_eq!(unit.attribute_max_amount, 10);
+        assert!(!unit.disabled);
+    }
+
+    /// A hidden flag of -16 is `UserPatch`'s: its fields, then the real hidden flags.
+    #[test]
+    fn a_user_patch_unit_type_reads_its_fields_before_the_hidden_flags() {
+        let bytes = static_head(0xF0)
+            .u16(3)
+            .u16(5001)
+            .u16(5002)
+            .i32(0x10)
+            .i32(5003)
+            .u16(7)
+            .u8(1);
+        let unit = read_all::<StaticUnitAttributes>(&static_tail(bytes).0, 11.97);
+        assert_eq!(unit.death_object_id.map(u16::from), Some(3));
+        assert_eq!(unit.string_id, Some(StringKey::from(5001u32)));
+        assert_eq!(unit.description_id, Some(StringKey::from(5002u32)));
+        assert_eq!(unit.flags, Some(0x10));
+        assert_eq!(unit.help_string_id, Some(StringKey::from(5003u32)));
+        assert_eq!(unit.terrain_restriction, Some(7));
+        assert!(unit.hidden_in_editor && !unit.is_queueable_tech);
+    }
+
+    /// Three costs (a negative type is none), then the create time.
+    fn costs(create_time: u16) -> Bytes {
+        Bytes::default()
+            .u16(0)
+            .u16(60)
+            .u16(1)
+            .u16(0xFFFF)
+            .u16(0)
+            .u16(0)
+            .u16(3)
+            .u16(20)
+            .u16(1)
+            .u16(create_time)
+    }
+
+    #[test]
+    fn a_combat_unit_type_keeps_its_real_costs() {
+        let bytes = costs(21).floats(&[1.5]).u8(2).0;
+        let unit = read_all::<CombatUnitAttributes>(&bytes, 11.97);
+        assert_eq!(
+            unit.costs
+                .iter()
+                .map(|cost| (cost.attribute_type, cost.amount))
+                .collect::<Vec<_>>(),
+            [(0, 60), (3, 20)]
+        );
+        assert_eq!(unit.create_time, 21);
+        assert_eq!(unit.original_armor, None);
+        assert_eq!(unit.volley_fire_amount.to_bits(), 1.5_f32.to_bits());
+        assert_eq!(unit.max_attacks_in_volley, 2);
+    }
+
+    /// A create time of 65520 is `UserPatch`'s: its fields, then the real create time.
+    #[test]
+    fn a_user_patch_combat_unit_type_reads_its_fields_before_the_create_time() {
+        let bytes = costs(u16::MAX - 15)
+            .u16(1)
+            .u16(2)
+            .u16(3)
+            .floats(&[5.0])
+            .u8(1)
+            .u16(4)
+            .u16(12)
+            .u8(6)
+            .floats(&[0.5])
+            .u8(1)
+            .u16(30)
+            .floats(&[1.0])
+            .u8(1)
+            .0;
+        let unit = read_all::<CombatUnitAttributes>(&bytes, 11.97);
+        assert_eq!(
+            (
+                unit.original_pierce_armor,
+                unit.original_armor,
+                unit.original_weapon
+            ),
+            (Some(1), Some(2), Some(3))
+        );
+        assert_eq!(
+            unit.original_weapon_range.map(f32::to_bits),
+            Some(5.0_f32.to_bits())
+        );
+        assert_eq!(
+            (unit.area_effect_level, unit.frame_delay),
+            (Some(1), Some(4))
+        );
+        assert_eq!(unit.create_at_building.map(u16::from), Some(12));
+        assert_eq!(unit.create_button, Some(6));
+        assert_eq!(
+            unit.rear_attack_modifier.map(f32::to_bits),
+            Some(0.5_f32.to_bits())
+        );
+        assert_eq!(unit.hero_flag, Some(1));
+        assert_eq!(unit.create_time, 30);
+    }
 
     #[allow(clippy::neg_cmp_op_on_partial_ord)]
     #[test]

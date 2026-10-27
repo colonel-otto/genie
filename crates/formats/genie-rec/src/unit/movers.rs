@@ -1,7 +1,7 @@
 //! The moving and action base classes' attributes: paths, movement and the action stack.
 
 use crate::Result;
-use crate::element::{ReadableHeaderElement, WritableHeaderElement};
+use crate::element::{ReadableHeaderElement, WritableHeaderElement, read_counted, read_xyz};
 use crate::reader::RecordingHeaderReader;
 use crate::unit_action::UnitAction;
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
@@ -154,14 +154,23 @@ pub struct MovingUnitAttributes {
 }
 
 impl ReadableHeaderElement for MovingUnitAttributes {
+    // Reads the moving unit's fields in file order, section by section.
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
-        let mut attrs = Self {
+        let mut attrs = Self::read_motion(input)?;
+        attrs.read_future_path_and_movement(input)?;
+        attrs.read_placement(input)?;
+        attrs.read_waypoints_and_substitute(input)?;
+        Ok(attrs)
+    }
+}
+
+impl MovingUnitAttributes {
+    /// The trail, the velocity and turning, the terrain exception, the waiting flags and the
+    /// paths: the first fields.
+    fn read_motion<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
+        Ok(Self {
             trail_remainder: input.read_u32::<LE>()?,
-            velocity: (
-                input.read_f32::<LE>()?,
-                input.read_f32::<LE>()?,
-                input.read_f32::<LE>()?,
-            ),
+            velocity: read_xyz(input)?,
             angle: input.read_f32::<LE>()?,
             turn_towards_time: input.read_u32::<LE>()?,
             turn_timer: input.read_u32::<LE>()?,
@@ -170,59 +179,49 @@ impl ReadableHeaderElement for MovingUnitAttributes {
             waiting_to_move: input.read_u8()?,
             wait_delays_count: input.read_u8()?,
             on_ground: input.read_u8()?,
-            path_data: {
-                let num_paths = input.read_u32::<LE>()?;
-                let mut paths = vec![];
-                for _ in 0..num_paths {
-                    paths.push(PathData::read_from(input)?);
-                }
-                paths
-            },
+            path_data: read_counted(input)?,
             ..Default::default()
-        };
+        })
+    }
+
+    /// The future path and the movement data, each behind a flag.
+    fn read_future_path_and_movement<R: Read>(
+        &mut self,
+        input: &mut RecordingHeaderReader<R>,
+    ) -> Result<()> {
         if input.read_u32::<LE>()? != 0 {
-            attrs.future_path_data = Some(PathData::read_from(input)?);
+            self.future_path_data = Some(PathData::read_from(input)?);
         }
         if input.read_u32::<LE>()? != 0 {
-            attrs.movement_data = Some(MovementData::read_from(input)?);
+            self.movement_data = Some(MovementData::read_from(input)?);
         }
-        attrs.position = (
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-        );
-        attrs.orientation_forward = (
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-        );
-        attrs.orientation_right = (
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-            input.read_f32::<LE>()?,
-        );
-        attrs.last_move_time = input.read_u32::<LE>()?;
-        attrs.user_defined_waypoints = {
-            let num_waypoints = input.read_i32::<LE>()?.max(0);
-            let mut waypoints = vec![];
-            for _ in 0..num_waypoints {
-                waypoints.push((
-                    input.read_f32::<LE>()?,
-                    input.read_f32::<LE>()?,
-                    input.read_f32::<LE>()?,
-                ));
-            }
-            waypoints
-        };
-        attrs.substitute_position = {
-            let exists = input.read_u32::<LE>()? != 0;
-            let x = input.read_f32::<LE>()?;
-            let y = input.read_f32::<LE>()?;
-            let z = input.read_f32::<LE>()?;
-            if exists { Some((x, y, z)) } else { None }
-        };
-        attrs.consecutive_substitute_count = input.read_u32::<LE>()?;
-        Ok(attrs)
+        Ok(())
+    }
+
+    /// The position, the forward and right orientation and the last move's time.
+    fn read_placement<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        self.position = read_xyz(input)?;
+        self.orientation_forward = read_xyz(input)?;
+        self.orientation_right = read_xyz(input)?;
+        self.last_move_time = input.read_u32::<LE>()?;
+        Ok(())
+    }
+
+    /// The user's waypoints (a negative count reads none), the substitute position (always
+    /// stored, kept only behind its flag) and the count of substitutes in a row.
+    fn read_waypoints_and_substitute<R: Read>(
+        &mut self,
+        input: &mut RecordingHeaderReader<R>,
+    ) -> Result<()> {
+        let num_waypoints = input.read_i32::<LE>()?.max(0);
+        self.user_defined_waypoints = (0..num_waypoints)
+            .map(|_| read_xyz(input))
+            .collect::<std::io::Result<_>>()?;
+        let exists = input.read_u32::<LE>()? != 0;
+        let position = read_xyz(input)?;
+        self.substitute_position = exists.then_some(position);
+        self.consecutive_substitute_count = input.read_u32::<LE>()?;
+        Ok(())
     }
 }
 
@@ -260,3 +259,6 @@ impl ReadableHeaderElement for ActionUnitAttributes {
 }
 
 impl WritableHeaderElement for ActionUnitAttributes {}
+
+#[cfg(test)]
+mod tests;

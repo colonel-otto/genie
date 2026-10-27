@@ -1,4 +1,4 @@
-use crate::element::ReadableHeaderElement;
+use crate::element::{ReadableHeaderElement, read_counted};
 use crate::map::Map;
 use crate::player::Player;
 use crate::reader::RecordingHeaderReader;
@@ -292,6 +292,7 @@ impl Header {
 }
 
 impl ReadableHeaderElement for Header {
+    // Reads the header's parts in file order; the parts it does not keep it skips.
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let mut header = Self {
             game_version: GameVersion::read_from(input)?,
@@ -307,37 +308,10 @@ impl ReadableHeaderElement for Header {
             header.ai_scripts = Some(AIScripts::read_from(input)?);
         }
 
-        let _old_time = input.read_u32::<LE>()?;
-        let _world_time = input.read_u32::<LE>()?;
-        let _old_world_time = input.read_u32::<LE>()?;
-        let _world_time_delta = input.read_u32::<LE>()?;
-        let _world_time_delta_seconds = input.read_f32::<LE>()?;
-        let _timer = input.read_f32::<LE>()?;
-        let _game_speed = input.read_f32::<LE>()?;
-        let _temp_pause = input.read_i8()?;
-        let _next_object_id = input.read_u32::<LE>()?;
-        let _next_reusable_object_id = input.read_i32::<LE>()?;
-        let _random_seed = input.read_u32::<LE>()?;
-        let _random_seed2 = input.read_u32::<LE>()?;
-        let _current_player = input.read_u16::<LE>()?;
+        skip_world_clock(input)?;
         let num_players = input.read_u16::<LE>()?;
         input.set_num_players(num_players);
-        if input.version() >= 11.76 {
-            let _aegis_enabled = input.read_u8()? != 0;
-            let _cheats_enabled = input.read_u8()? != 0;
-        }
-        let _game_mode = input.read_u8()?;
-        let _campaign = input.read_u32::<LE>()?;
-        let _campaign_player = input.read_u32::<LE>()?;
-        let _campaign_scenario = input.read_u32::<LE>()?;
-        if input.version() >= 10.13 {
-            let _king_campaign = input.read_u32::<LE>()?;
-            let _king_campaign_player = input.read_u8()?;
-            let _king_campaign_scenario = input.read_u8()?;
-        }
-        let _player_turn = input.read_u32::<LE>()?;
-        let mut player_time_delta = [0; 9];
-        input.read_u32_into::<LE>(&mut player_time_delta[..])?;
+        skip_game_mode_and_campaign(input)?;
 
         header.map = Map::read_from(input)?;
 
@@ -349,60 +323,17 @@ impl ReadableHeaderElement for Header {
             let _identifier = input.read_u32::<LE>()?;
         }
 
-        header.players.reserve(num_players.into());
-        for _ in 0..num_players {
-            header.players.push(Player::read_from(input)?);
-        }
+        header.players = (0..num_players)
+            .map(|_| Player::read_from(input))
+            .collect::<Result<_>>()?;
         for player in &mut header.players {
             player.read_info(input)?;
         }
 
         header.scenario = TribeScen::read_from(&mut *input)?;
 
-        let _difficulty = if header.save_version >= 7.16 {
-            Some(input.read_u32::<LE>()?)
-        } else {
-            None
-        };
-        let _lock_teams = if header.save_version >= 10.23 {
-            input.read_u32::<LE>()? != 0
-        } else {
-            false
-        };
-
-        if header.save_version >= 11.32 {
-            for _ in 0..9 {
-                let _player_id = input.read_u32::<LE>()?;
-                let _player_humanity = input.read_u32::<LE>()?;
-                let name_length = input.read_u32::<LE>()?;
-                let mut name = vec![0; name_length as usize];
-                input.read_exact(&mut name)?;
-            }
-        }
-
-        if header.save_version >= 11.35 {
-            for _ in 0..9 {
-                let _resigned = input.read_u32::<LE>()?;
-            }
-        }
-
-        if header.save_version >= 11.36 {
-            let _num_players = input.read_u32::<LE>()?;
-        }
-
-        if header.save_version >= 11.38 {
-            let _sent_commanded_count = input.read_u32::<LE>()?;
-            if header.save_version >= 11.39 {
-                let _sent_commanded_valid = input.read_u32::<LE>()?;
-            }
-            let mut sent_commanded_units = [0u32; 40];
-            input.read_u32_into::<LE>(&mut sent_commanded_units)?;
-            for _ in 0..9 {
-                let _num_selected = input.read_u8()?;
-                let mut selection = [0u32; 40];
-                input.read_u32_into::<LE>(&mut selection)?;
-            }
-        }
+        skip_lobby_players(input)?;
+        skip_sent_commanded_units(input)?;
 
         let _num_paths = input.read_u32::<LE>()?;
         // TODO: Read paths
@@ -410,6 +341,95 @@ impl ReadableHeaderElement for Header {
 
         Ok(header)
     }
+}
+
+/// The world's clock and speed, the next object ids, the random seeds and the current
+/// player: skipped.
+fn skip_world_clock<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
+    let _old_time = input.read_u32::<LE>()?;
+    let _world_time = input.read_u32::<LE>()?;
+    let _old_world_time = input.read_u32::<LE>()?;
+    let _world_time_delta = input.read_u32::<LE>()?;
+    let _world_time_delta_seconds = input.read_f32::<LE>()?;
+    let _timer = input.read_f32::<LE>()?;
+    let _game_speed = input.read_f32::<LE>()?;
+    let _temp_pause = input.read_i8()?;
+    let _next_object_id = input.read_u32::<LE>()?;
+    let _next_reusable_object_id = input.read_i32::<LE>()?;
+    let _random_seed = input.read_u32::<LE>()?;
+    let _random_seed2 = input.read_u32::<LE>()?;
+    let _current_player = input.read_u16::<LE>()?;
+    Ok(())
+}
+
+/// The aegis and cheats flags (11.76), the game mode, the campaign (the king campaign from
+/// 10.13), the player turn and each player's time delta: skipped.
+fn skip_game_mode_and_campaign<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
+    if input.version() >= 11.76 {
+        let _aegis_enabled = input.read_u8()? != 0;
+        let _cheats_enabled = input.read_u8()? != 0;
+    }
+    let _game_mode = input.read_u8()?;
+    let _campaign = input.read_u32::<LE>()?;
+    let _campaign_player = input.read_u32::<LE>()?;
+    let _campaign_scenario = input.read_u32::<LE>()?;
+    if input.version() >= 10.13 {
+        let _king_campaign = input.read_u32::<LE>()?;
+        let _king_campaign_player = input.read_u8()?;
+        let _king_campaign_scenario = input.read_u8()?;
+    }
+    let _player_turn = input.read_u32::<LE>()?;
+    let mut player_time_delta = [0; 9];
+    input.read_u32_into::<LE>(&mut player_time_delta[..])?;
+    Ok(())
+}
+
+/// The difficulty (7.16), the team lock (10.23), each of nine players' id, humanity and
+/// name (11.32), their resignations (11.35) and the player count (11.36): skipped.
+fn skip_lobby_players<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
+    if input.version() >= 7.16 {
+        let _difficulty = input.read_u32::<LE>()?;
+    }
+    if input.version() >= 10.23 {
+        let _lock_teams = input.read_u32::<LE>()? != 0;
+    }
+    if input.version() >= 11.32 {
+        for _ in 0..9 {
+            let _player_id = input.read_u32::<LE>()?;
+            let _player_humanity = input.read_u32::<LE>()?;
+            let name_length = input.read_u32::<LE>()?;
+            let mut name = vec![0; name_length as usize];
+            input.read_exact(&mut name)?;
+        }
+    }
+    if input.version() >= 11.35 {
+        let mut resigned = [0; 9];
+        input.read_u32_into::<LE>(&mut resigned)?;
+    }
+    if input.version() >= 11.36 {
+        let _num_players = input.read_u32::<LE>()?;
+    }
+    Ok(())
+}
+
+/// The units sent as commanded (11.38; the valid count from 11.39) and each of nine
+/// players' selection: skipped.
+fn skip_sent_commanded_units<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
+    if input.version() < 11.38 {
+        return Ok(());
+    }
+    let _sent_commanded_count = input.read_u32::<LE>()?;
+    if input.version() >= 11.39 {
+        let _sent_commanded_valid = input.read_u32::<LE>()?;
+    }
+    let mut sent_commanded_units = [0u32; 40];
+    input.read_u32_into::<LE>(&mut sent_commanded_units)?;
+    for _ in 0..9 {
+        let _num_selected = input.read_u8()?;
+        let mut selection = [0u32; 40];
+        input.read_u32_into::<LE>(&mut selection)?;
+    }
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -450,14 +470,13 @@ struct ParticleSystem {
 impl ReadableHeaderElement for ParticleSystem {
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let world_time = input.read_u32::<LE>()?;
-        let num_particles = input.read_u32::<LE>()?;
-        let mut particles = Vec::with_capacity(num_particles.try_into().unwrap());
-        for _ in 0..num_particles {
-            particles.push(Particle::read_from(input)?);
-        }
+        let particles = read_counted(input)?;
         Ok(Self {
             world_time,
             particles,
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

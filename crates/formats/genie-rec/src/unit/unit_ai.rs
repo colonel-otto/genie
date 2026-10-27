@@ -1,6 +1,6 @@
 //! A unit's AI state ([`UnitAI`]): its orders, notifications, history, retargets and paths.
 
-use crate::element::ReadableHeaderElement;
+use crate::element::{ReadableHeaderElement, read_counted};
 use crate::reader::RecordingHeaderReader;
 use crate::{ObjectID, PlayerID, Result};
 use byteorder::{LE, ReadBytesExt};
@@ -208,9 +208,20 @@ pub struct UnitAI {
 }
 
 impl ReadableHeaderElement for UnitAI {
-    // Reads the unit AI's fields in file order.
-    #[allow(clippy::too_many_lines)]
+    // Reads the unit AI's fields in file order, section by section.
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
+        let mut ai = Self::read_current(input)?;
+        ai.read_last_and_timers(input)?;
+        ai.read_lists(input)?;
+        ai.read_state_and_patrol(input)?;
+        ai.read_later_versions(input)?;
+        Ok(ai)
+    }
+}
+
+impl UnitAI {
+    /// The mood and the current order, action and target: the AI's first fields.
+    fn read_current<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let mut ai = Self {
             mood: read_opt_u32(input)?,
             current_order: read_opt_u32(input)?,
@@ -230,91 +241,89 @@ impl ReadableHeaderElement for UnitAI {
             input.read_f32::<LE>()?,
         );
         ai.desired_target_distance = input.read_f32::<LE>()?;
-        ai.last_action = read_opt_u32(input)?;
-        ai.last_order = read_opt_u32(input)?;
-        ai.last_target = read_opt_u32(input)?;
-        ai.last_target_type = read_opt_u32(input)?;
-        ai.last_update_type = read_opt_u32(input)?;
-        ai.idle_timer = input.read_u32::<LE>()?;
-        ai.idle_timeout = input.read_u32::<LE>()?;
-        ai.adjusted_idle_timeout = input.read_u32::<LE>()?;
-        ai.secondary_timer = input.read_u32::<LE>()?;
-        ai.lookaround_timer = input.read_u32::<LE>()?;
-        ai.lookaround_timeout = input.read_u32::<LE>()?;
-        ai.defend_target = read_opt_u32(input)?;
-        ai.defense_buffer = input.read_f32::<LE>()?;
-        ai.last_world_position = Waypoint::read_from(input)?;
-        ai.orders = {
-            let num_orders = input.read_u32::<LE>()?;
-            let mut orders = vec![];
-            for _ in 0..num_orders {
-                orders.push(UnitAIOrder::read_from(input)?);
-            }
-            orders
-        };
-        ai.notifications = {
-            let num_notifications = input.read_u32::<LE>()?;
-            let mut notifications = vec![];
-            for _ in 0..num_notifications {
-                notifications.push(UnitAINotification::read_from(input)?);
-            }
-            notifications
-        };
-        ai.attacking_units = {
-            let num_units = input.read_u32::<LE>()?;
-            let mut units = vec![];
-            for _ in 0..num_units {
-                units.push(input.read_u32::<LE>()?.into());
-            }
-            units
-        };
-        ai.stop_after_target_killed = input.read_u8()? != 0;
-        ai.state = input.read_u8()?;
-        ai.state_position = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
-        ai.time_since_enemy_sighting = input.read_u32::<LE>()?;
-        ai.alert_mode = input.read_u8()?;
-        ai.alert_mode_object_id = read_opt_u32(input)?;
-        ai.patrol_path = {
-            let has_path = input.read_u32::<LE>()? != 0;
-            if has_path {
-                Some(PatrolPath::read_from(input)?)
-            } else {
-                None
-            }
-        };
-        ai.patrol_current_waypoint = input.read_u32::<LE>()?;
-        if input.version() >= 10.48 {
-            ai.order_history = {
-                let num_orders = input.read_u32::<LE>()?;
-                let mut orders = vec![];
-                for _ in 0..num_orders {
-                    orders.push(UnitAIOrderHistory::read_from(input)?);
-                }
-                orders
-            };
-        }
-        if input.version() >= 10.50 {
-            ai.last_retarget_time = input.read_u32::<LE>()?;
-        }
-        if input.version() >= 11.04 {
-            ai.randomized_retarget_timer = input.read_u32::<LE>()?;
-        }
-        if input.version() >= 11.05 {
-            ai.retarget_entries = {
-                let num_entries = input.read_u32::<LE>()?;
-                let mut entries = vec![];
-                for _ in 0..num_entries {
-                    entries.push(UnitAIRetargetEntry::read_from(input)?);
-                }
-                entries
-            };
-        }
-        if input.version() >= 11.14 {
-            ai.best_unit_to_attack = read_opt_u32(input)?;
-        }
-        if input.version() >= 11.44 {
-            ai.formation_type = input.read_u8()?;
-        }
         Ok(ai)
     }
+
+    /// The last action, order and target, the timers, the defended target and the last
+    /// position.
+    fn read_last_and_timers<R: Read>(
+        &mut self,
+        input: &mut RecordingHeaderReader<R>,
+    ) -> Result<()> {
+        self.last_action = read_opt_u32(input)?;
+        self.last_order = read_opt_u32(input)?;
+        self.last_target = read_opt_u32(input)?;
+        self.last_target_type = read_opt_u32(input)?;
+        self.last_update_type = read_opt_u32(input)?;
+        self.idle_timer = input.read_u32::<LE>()?;
+        self.idle_timeout = input.read_u32::<LE>()?;
+        self.adjusted_idle_timeout = input.read_u32::<LE>()?;
+        self.secondary_timer = input.read_u32::<LE>()?;
+        self.lookaround_timer = input.read_u32::<LE>()?;
+        self.lookaround_timeout = input.read_u32::<LE>()?;
+        self.defend_target = read_opt_u32(input)?;
+        self.defense_buffer = input.read_f32::<LE>()?;
+        self.last_world_position = Waypoint::read_from(input)?;
+        Ok(())
+    }
+
+    /// The queued orders, the notifications and the units attacking this one, each behind
+    /// its count.
+    fn read_lists<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        self.orders = read_counted(input)?;
+        self.notifications = read_counted(input)?;
+        let num_units = input.read_u32::<LE>()?;
+        self.attacking_units = (0..num_units)
+            .map(|_| Ok(input.read_u32::<LE>()?.into()))
+            .collect::<Result<_>>()?;
+        Ok(())
+    }
+
+    /// The stop flag, the state and its position, the alert mode and the patrol path.
+    fn read_state_and_patrol<R: Read>(
+        &mut self,
+        input: &mut RecordingHeaderReader<R>,
+    ) -> Result<()> {
+        self.stop_after_target_killed = input.read_u8()? != 0;
+        self.state = input.read_u8()?;
+        self.state_position = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
+        self.time_since_enemy_sighting = input.read_u32::<LE>()?;
+        self.alert_mode = input.read_u8()?;
+        self.alert_mode_object_id = read_opt_u32(input)?;
+        let has_path = input.read_u32::<LE>()? != 0;
+        self.patrol_path = if has_path {
+            Some(PatrolPath::read_from(input)?)
+        } else {
+            None
+        };
+        self.patrol_current_waypoint = input.read_u32::<LE>()?;
+        Ok(())
+    }
+
+    /// The fields later versions added: the order history (10.48), the retargeting (10.50,
+    /// 11.04, 11.05), the best unit to attack (11.14) and the formation (11.44).
+    fn read_later_versions<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        if input.version() >= 10.48 {
+            self.order_history = read_counted(input)?;
+        }
+        if input.version() >= 10.50 {
+            self.last_retarget_time = input.read_u32::<LE>()?;
+        }
+        if input.version() >= 11.04 {
+            self.randomized_retarget_timer = input.read_u32::<LE>()?;
+        }
+        if input.version() >= 11.05 {
+            self.retarget_entries = read_counted(input)?;
+        }
+        if input.version() >= 11.14 {
+            self.best_unit_to_attack = read_opt_u32(input)?;
+        }
+        if input.version() >= 11.44 {
+            self.formation_type = input.read_u8()?;
+        }
+        Ok(())
+    }
 }
+
+#[cfg(test)]
+mod tests;

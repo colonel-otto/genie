@@ -1,11 +1,10 @@
 //! A player's diplomacy offers and its history: the timeline's events and entries.
 
 use crate::Result;
-use crate::element::ReadableHeaderElement;
+use crate::element::{ReadableHeaderElement, read_counted};
 use crate::reader::RecordingHeaderReader;
 use byteorder::{LE, ReadBytesExt};
 use genie_support::ReadStringsExt;
-use std::convert::TryInto;
 use std::io::Read;
 
 #[allow(dead_code)]
@@ -63,59 +62,69 @@ pub struct HistoryInfo {
 }
 
 impl ReadableHeaderElement for HistoryInfo {
+    // Reads the entries and events behind their counts, then skips the battle statistics.
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let _padding = input.read_u8()?;
         let num_entries = input.read_u32::<LE>()?;
         let _num_events = input.read_u32::<LE>()?;
-        let entries_capacity = input.read_u32::<LE>()?;
-        let mut entries = Vec::with_capacity(entries_capacity.try_into().unwrap());
-        for _ in 0..num_entries {
-            entries.push(HistoryEntry::read_from(input)?);
-        }
+        let _entries_capacity = input.read_u32::<LE>()?;
+        let entries = (0..num_entries)
+            .map(|_| HistoryEntry::read_from(input))
+            .collect::<Result<_>>()?;
 
         let _padding = input.read_u8()?;
 
-        let num_events = input.read_u32::<LE>()?;
-        let mut events = Vec::with_capacity(num_events.try_into().unwrap());
-        for _ in 0..num_events {
-            events.push(HistoryEvent::read_from(input)?);
-        }
+        let events = read_counted(input)?;
 
-        let _razings = input.read_i32::<LE>()?;
-        let _hit_points_razed = input.read_i32::<LE>()?;
-        let _razed_by_others = input.read_i32::<LE>()?;
-        let _hit_points_razed_by_others = input.read_i32::<LE>()?;
-        let _kills = input.read_i32::<LE>()?;
-        let _hit_points_killed = input.read_i32::<LE>()?;
-        let _killed_by_others = input.read_i32::<LE>()?;
-        let _hit_points_killed_by_others = input.read_i32::<LE>()?;
-        let _razings_weight = input.read_i32::<LE>()?;
-        let _kills_weight = input.read_i32::<LE>()?;
-        let _razings_percent = input.read_i32::<LE>()?;
-        let _kills_percent = input.read_i32::<LE>()?;
-        let _razing_mode = input.read_i32::<LE>()?;
-        let _battle_mode = input.read_i32::<LE>()?;
-        let _update_count = input.read_i32::<LE>()?;
-        let _old_current_units_created = input.read_i32::<LE>()?;
-        let _old_current_buildings_built = input.read_i32::<LE>()?;
-        let mut old_kills = [0; 8];
-        input.read_u16_into::<LE>(&mut old_kills[..])?;
-        let mut old_kill_bvs = [0; 8];
-        input.read_u32_into::<LE>(&mut old_kill_bvs[..])?;
-        let mut old_razings = [0; 8];
-        input.read_u16_into::<LE>(&mut old_razings[..])?;
-        let mut old_razing_bvs = [0; 8];
-        input.read_u32_into::<LE>(&mut old_razing_bvs[..])?;
-        let _running_average_bv_percent = input.read_i32::<LE>()?;
-        let _running_total_bv_kills = input.read_i32::<LE>()?;
-        let _running_total_bv_razings = input.read_i32::<LE>()?;
-        let _running_total_kills = input.read_i16::<LE>()?;
-        let _running_total_razings = input.read_i16::<LE>()?;
+        skip_battle_totals(input)?;
+        skip_old_battle_values(input)?;
 
         let _padding = input.read_u8()?;
 
         Ok(Self { entries, events })
     }
+}
+
+/// The battle totals the reader skips: razings and kills with their hit points and weights,
+/// the modes and the old counts of units and buildings.
+fn skip_battle_totals<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
+    let _razings = input.read_i32::<LE>()?;
+    let _hit_points_razed = input.read_i32::<LE>()?;
+    let _razed_by_others = input.read_i32::<LE>()?;
+    let _hit_points_razed_by_others = input.read_i32::<LE>()?;
+    let _kills = input.read_i32::<LE>()?;
+    let _hit_points_killed = input.read_i32::<LE>()?;
+    let _killed_by_others = input.read_i32::<LE>()?;
+    let _hit_points_killed_by_others = input.read_i32::<LE>()?;
+    let _razings_weight = input.read_i32::<LE>()?;
+    let _kills_weight = input.read_i32::<LE>()?;
+    let _razings_percent = input.read_i32::<LE>()?;
+    let _kills_percent = input.read_i32::<LE>()?;
+    let _razing_mode = input.read_i32::<LE>()?;
+    let _battle_mode = input.read_i32::<LE>()?;
+    let _update_count = input.read_i32::<LE>()?;
+    let _old_current_units_created = input.read_i32::<LE>()?;
+    let _old_current_buildings_built = input.read_i32::<LE>()?;
+    Ok(())
+}
+
+/// The old kills and razings per player with their battle values, and the running totals:
+/// skipped too.
+fn skip_old_battle_values<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
+    let mut old_kills = [0; 8];
+    input.read_u16_into::<LE>(&mut old_kills[..])?;
+    let mut old_kill_bvs = [0; 8];
+    input.read_u32_into::<LE>(&mut old_kill_bvs[..])?;
+    let mut old_razings = [0; 8];
+    input.read_u16_into::<LE>(&mut old_razings[..])?;
+    let mut old_razing_bvs = [0; 8];
+    input.read_u32_into::<LE>(&mut old_razing_bvs[..])?;
+    let _running_average_bv_percent = input.read_i32::<LE>()?;
+    let _running_total_bv_kills = input.read_i32::<LE>()?;
+    let _running_total_bv_razings = input.read_i32::<LE>()?;
+    let _running_total_kills = input.read_i16::<LE>()?;
+    let _running_total_razings = input.read_i16::<LE>()?;
+    Ok(())
 }
 
 /// An event on a player's timeline.
@@ -165,3 +174,6 @@ impl ReadableHeaderElement for HistoryEntry {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

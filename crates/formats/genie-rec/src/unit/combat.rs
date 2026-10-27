@@ -71,16 +71,19 @@ impl ReadableHeaderElement for MissileUnitAttributes {
         Ok(Self {
             max_range: input.read_f32::<LE>()?,
             fired_from_id: input.read_u32::<LE>()?.into(),
-            own_base: {
-                if input.read_u8()? == 0 {
-                    None
-                } else {
-                    let version = input.version();
-                    Some(UnitType::read_from(&mut *input, version)?)
-                }
-            },
+            own_base: read_own_base(input)?,
         })
     }
+}
+
+/// The unit's own copy of its type, behind a flag: a unit whose type a technology changed
+/// for it alone.
+fn read_own_base<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Option<UnitType>> {
+    if input.read_u8()? == 0 {
+        return Ok(None);
+    }
+    let version = input.version();
+    Ok(Some(UnitType::read_from(&mut *input, version)?))
 }
 
 impl WritableHeaderElement for MissileUnitAttributes {}
@@ -128,73 +131,85 @@ pub struct CombatUnitAttributes {
 }
 
 impl ReadableHeaderElement for CombatUnitAttributes {
+    // Reads the combat unit's fields in file order, section by section.
     fn read_from<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<Self> {
         let mut attrs = Self {
             next_volley: input.read_u8()?,
             using_special_attack_animation: input.read_u8()?,
-            own_base: {
-                if input.read_u8()? == 0 {
-                    None
-                } else {
-                    let version = input.version();
-                    Some(UnitType::read_from(&mut *input, version)?)
-                }
-            },
+            own_base: read_own_base(input)?,
             ..Default::default()
         };
-        for amount in &mut attrs.attribute_amounts {
-            *amount = input.read_u16::<LE>()?;
+        attrs.read_amounts_and_counters(input)?;
+        let has_ai = input.read_u32::<LE>()? != 0;
+        if has_ai {
+            attrs.unit_ai = Some(UnitAI::read_from(input)?);
         }
-        if input.version() >= 9.16 {
-            attrs.decay_timer = input.read_u16::<LE>()?;
-        }
-        if input.version() >= 9.61 {
-            attrs.raider_build_countdown = input.read_u32::<LE>()?;
-        }
-        if input.version() >= 9.65 {
-            attrs.locked_down_count = input.read_u32::<LE>()?;
-        }
-        if input.version() >= 11.56 {
-            attrs.inside_garrison_count = input.read_u8()?;
-        }
-        attrs.unit_ai = {
-            let has_ai = input.read_u32::<LE>()? != 0;
-            if has_ai {
-                Some(UnitAI::read_from(input)?)
-            } else {
-                None
-            }
-        };
-        if input.version() >= 10.30 {
-            attrs.town_bell_flag = input.read_i8()?;
-            attrs.town_bell_target_id = read_opt_u32(input)?;
-            attrs.town_bell_target_location = {
-                let location = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
-                if location.0 >= 0.0 {
-                    Some(location)
-                } else {
-                    None
-                }
-            };
-        }
-        if input.version() >= 11.71 {
-            attrs.town_bell_target_id_2 = read_opt_u32(input)?;
-            attrs.town_bell_target_type = input.read_u32::<LE>()?;
-        }
-        if input.version() >= 11.74 {
-            attrs.town_bell_action = input.read_u32::<LE>()?;
-        }
-        if input.version() >= 10.42 {
-            attrs.berserker_timer = input.read_f32::<LE>()?;
-        }
-        if input.version() >= 10.46 {
-            attrs.num_builders = input.read_u8()?;
-        }
-        if input.version() >= 11.69 {
-            attrs.num_healers = input.read_u8()?;
-        }
+        attrs.read_town_bell(input)?;
+        attrs.read_last_counters(input)?;
         Ok(attrs)
     }
 }
 
+impl CombatUnitAttributes {
+    /// The six attribute amounts, then the decay timer (9.16), the raider's build countdown
+    /// (9.61), the locked-down count (9.65) and the count inside a garrison (11.56).
+    fn read_amounts_and_counters<R: Read>(
+        &mut self,
+        input: &mut RecordingHeaderReader<R>,
+    ) -> Result<()> {
+        for amount in &mut self.attribute_amounts {
+            *amount = input.read_u16::<LE>()?;
+        }
+        if input.version() >= 9.16 {
+            self.decay_timer = input.read_u16::<LE>()?;
+        }
+        if input.version() >= 9.61 {
+            self.raider_build_countdown = input.read_u32::<LE>()?;
+        }
+        if input.version() >= 9.65 {
+            self.locked_down_count = input.read_u32::<LE>()?;
+        }
+        if input.version() >= 11.56 {
+            self.inside_garrison_count = input.read_u8()?;
+        }
+        Ok(())
+    }
+
+    /// The town bell: its flag, target and location (10.30; a negative x is no location),
+    /// the second target and its type (11.71) and the action (11.74).
+    fn read_town_bell<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        if input.version() >= 10.30 {
+            self.town_bell_flag = input.read_i8()?;
+            self.town_bell_target_id = read_opt_u32(input)?;
+            let location = (input.read_f32::<LE>()?, input.read_f32::<LE>()?);
+            self.town_bell_target_location = (location.0 >= 0.0).then_some(location);
+        }
+        if input.version() >= 11.71 {
+            self.town_bell_target_id_2 = read_opt_u32(input)?;
+            self.town_bell_target_type = input.read_u32::<LE>()?;
+        }
+        if input.version() >= 11.74 {
+            self.town_bell_action = input.read_u32::<LE>()?;
+        }
+        Ok(())
+    }
+
+    /// The berserker's timer (10.42), the builders (10.46) and the healers (11.69).
+    fn read_last_counters<R: Read>(&mut self, input: &mut RecordingHeaderReader<R>) -> Result<()> {
+        if input.version() >= 10.42 {
+            self.berserker_timer = input.read_f32::<LE>()?;
+        }
+        if input.version() >= 10.46 {
+            self.num_builders = input.read_u8()?;
+        }
+        if input.version() >= 11.69 {
+            self.num_healers = input.read_u8()?;
+        }
+        Ok(())
+    }
+}
+
 impl WritableHeaderElement for CombatUnitAttributes {}
+
+#[cfg(test)]
+mod tests;
