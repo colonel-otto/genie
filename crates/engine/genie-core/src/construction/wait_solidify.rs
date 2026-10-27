@@ -14,7 +14,7 @@
 use crate::GenieError;
 use crate::objects::masters::Task;
 use crate::unit_ai::task_finder::Actor;
-use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
+use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::{AiStart, UnitView, Wait};
 
 /// The action type (`+0x8`, 0x9a).
@@ -108,7 +108,11 @@ impl UnitView<'_> {
             foreign,
             drop_sites: self.drop_sites,
         };
-        let Some((task, switch)) = task_search(masters, &actor, &t, &general, -1, &dip)? else {
+        // slot 0x820's point: the target's place
+        let at = find(target).map_or([0.0; 3], |(_, u)| u.position);
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), at);
+        let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?
+        else {
             return Ok(false);
         };
         self.starts.push(AiStart::Wait(Wait {

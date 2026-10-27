@@ -5,7 +5,7 @@ use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning};
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
-use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
+use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::{AiStart, EnterOrder, RepairOrder, UnitView};
 
 impl UnitView<'_> {
@@ -30,9 +30,11 @@ impl UnitView<'_> {
                 .map(|u| (player, u))
                 .or_else(|| foreign.find(id))
         };
-        if find(target).is_none() {
+        let Some((_, t_unit)) = find(target) else {
             return Ok(false);
-        }
+        };
+        // slot 0x820's point: the target's place
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position);
         if unit.top_action_kind() == Some(crate::construction::repair::REPAIR) {
             self.starts
                 .push(AiStart::Repair(RepairOrder::Retake(target)));
@@ -73,6 +75,7 @@ impl UnitView<'_> {
             &actor,
             &t,
             &general,
+            terrain,
             crate::construction::repair::REPAIR,
             &dip,
         )?;
@@ -140,8 +143,17 @@ impl UnitView<'_> {
             foreign,
             drop_sites: self.drop_sites,
         };
-        let Some((task, switch)) =
-            task_search(masters, &actor, &t, &general, crate::orders::GARRISON, &dip)?
+        // slot 0x820's point: the target's place
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), t_unit.position);
+        let Some((task, switch)) = task_search(
+            masters,
+            &actor,
+            &t,
+            &general,
+            terrain,
+            crate::orders::GARRISON,
+            &dip,
+        )?
         else {
             return Ok(false);
         };

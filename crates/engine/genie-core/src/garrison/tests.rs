@@ -1956,6 +1956,125 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     );
 }
 
+/// [`coast_world`] with the ship's task 7 of type 12 for the land (terrain 0; the game's data
+/// has it for a beach), the market (84) and its building 4000 of player 1 on the land, and the
+/// ship's place in its player's list.
+fn transport_task_world() -> (World, usize) {
+    let mut t = coast_world([10.5, 10.5]);
+    for m in &mut t.masters {
+        let market = Master {
+            id: 84,
+            ..m.get(TC).expect("the town centre").clone()
+        };
+        let mut all: Vec<Master> = m.iter().cloned().collect();
+        all.push(market);
+        *m = Masters::new(all);
+        if let Some(s) = m.get_mut(SHIP) {
+            s.tasks.push(Task {
+                id: 7,
+                action_type: transport::TRANSPORT,
+                object_group: -1,
+                object_id: -1,
+                terrain: 0,
+                ..Task::default()
+            });
+        }
+    }
+    building_at(&mut t, 4000, 84, [18.5, 12.5], None);
+    let idx = t.players[1]
+        .objects
+        .iter()
+        .position(|u| u.id == 200)
+        .unwrap();
+    (t, idx)
+}
+
+/// A work order (slot 0x7e8) on `target` (−1 for none) at `point`, as INTERACT gives it.
+fn work_at(target: i32, point: [f32; 3]) -> crate::orders::Work {
+    crate::orders::Work {
+        target,
+        point,
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    }
+}
+
+/// The work command (`FUN_14106ff70`) of a transport on a point: the finder's general search
+/// gives the task for the terrain under the point (`FUN_1411a8ba0`), whose Transport
+/// (`FUN_140aa3ab0` on the task at the point) starts (`set_state(11)`: it sails toward the
+/// shore on the way) and whose notify (`FUN_14106e4e0` kind 0xc) gives the unit AI the transport
+/// order and action without a target. A second work on the same task retakes it (its slot
+/// 0x48: the work at the new point, `+0x34` 1, sailing there for another object's order);
+/// water under the point gives no task, so the ship just moves.
+#[test]
+fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
+    use crate::unit_ai::ai_kinds::ORDER_TRANSPORT;
+    let (mut t, idx) = transport_task_world();
+    t.order_work(1, idx, &work_at(-1, [17.5, 10.5, 0.0]))
+        .unwrap();
+    let ship = t.object(200).unwrap().1;
+    let tr = ship.transport.expect("the Transport");
+    assert_eq!(
+        (tr.state, tr.mode, tr.task, tr.point, tr.move_to),
+        (
+            transport::SAIL,
+            -1,
+            Some(crate::objects::masters::TaskId(7)),
+            [14.5, 10.5, 0.0],
+            Some(MoveTo::Start)
+        )
+    );
+    let ai = ship.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (ORDER_TRANSPORT, transport::TRANSPORT_ACTION, -1)
+    );
+    t.order_work(1, idx, &work_at(-1, [18.5, 11.5, 0.0]))
+        .unwrap();
+    let again = t.object(200).unwrap().1.transport.unwrap();
+    assert_eq!(
+        (again.state, again.mode, again.task),
+        (transport::SAIL, 1, tr.task)
+    );
+    // water: no task, no Transport
+    let (mut t, idx) = transport_task_world();
+    t.order_work(1, idx, &work_at(-1, [5.5, 10.5, 0.0]))
+        .unwrap();
+    assert_eq!(t.object(200).unwrap().1.transport, None);
+}
+
+/// The work command's retake (`LAB_1410706a8`) passes over a trade boat or cart (classes 2 and
+/// 19, `FUN_141195490`, `FUN_141195400`) ordered to its own player's market: the factory makes
+/// a new Transport (`+0x34` −1, not the retake's 1), whose notify names the market.
+#[test]
+fn a_trade_boat_s_work_at_its_own_market_makes_a_new_transport() {
+    let (mut t, idx) = transport_task_world();
+    for m in &mut t.masters {
+        if let Some(s) = m.get_mut(SHIP) {
+            s.class = 2;
+        }
+    }
+    t.order_work(1, idx, &work_at(-1, [17.5, 10.5, 0.0]))
+        .unwrap();
+    t.order_work(1, idx, &work_at(4000, [18.5, 12.5, 0.0]))
+        .unwrap();
+    let ship = t.object(200).unwrap().1;
+    assert_eq!(ship.transport.map(|tr| tr.mode), Some(-1));
+    let ai = ship.ai.as_ref().unwrap();
+    assert_eq!((ai.current_target, ai.target_type), (4000, 52));
+    // a transport ship (class 20) retakes it on the same work
+    let (mut t, idx) = transport_task_world();
+    t.order_work(1, idx, &work_at(-1, [17.5, 10.5, 0.0]))
+        .unwrap();
+    t.order_work(1, idx, &work_at(4000, [18.5, 12.5, 0.0]))
+        .unwrap();
+    assert_eq!(
+        t.object(200).unwrap().1.transport.map(|tr| tr.mode),
+        Some(1)
+    );
+}
+
 /// A ship beside the shore takes the unload order and unloads at once (`set_state(6)`: the
 /// land within 2 of its tile, the point within 2 of its footprint); its unload
 /// (`FUN_140aa3ba0` -> `FUN_141191b40`) puts the villager ashore east of it (the Object

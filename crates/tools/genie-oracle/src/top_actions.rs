@@ -441,7 +441,8 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
 }
 
 /// The Transport (12): the base alone is saved (`FUN_140aa3b20`): +0x34 is its second target's
-/// word, and +0x68 starts clear; `set_state` makes no sub-action but a `MoveTo`.
+/// word, its task the base's task id (−1 for none), and +0x68 starts clear; `set_state` makes no
+/// sub-action but a `MoveTo`.
 fn import_transport(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
     let base = saved.base;
     let sub = saved.move_to_sub(GenieError::unreachable(
@@ -453,6 +454,9 @@ fn import_transport(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError
         point: saved.point(),
         move_to: sub.map(sub_state).transpose()?,
         retarget: false,
+        // the save writes the task's id, −1 for none
+        task: (base.short_val != -1)
+            .then_some(genie_core::objects::masters::TaskId(base.short_val)),
     });
     Ok(())
 }

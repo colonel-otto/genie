@@ -6,7 +6,7 @@ use crate::map::spatial::Placed;
 use crate::objects::release::Releaser;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::Actor;
-use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
+use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
 
 /// What [`UnitView::start_hunt_now`] hunts by ([`UnitView::hunt_plan`]): the task, the master
@@ -192,7 +192,9 @@ impl<'u> UnitView<'u> {
             foreign,
             drop_sites: self.drop_sites,
         };
-        let (task, switch) = task_search(masters, &actor, &task_t, &general, -1, &dip)?
+        // slot 0x820's point: the target's place
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), t.position);
+        let (task, switch) = task_search(masters, &actor, &task_t, &general, terrain, -1, &dip)?
             .ok_or(crate::orders::NO_HUNT_TASK)?;
         let hunter = switch.unwrap_or(own);
         let quarry = Quarry {

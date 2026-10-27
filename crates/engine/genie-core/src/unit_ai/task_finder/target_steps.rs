@@ -13,10 +13,13 @@ use crate::unit_ai::task_finder::first;
 use crate::unit_ai::task_finder::id;
 use crate::unit_ai::task_finder::wanted;
 
+/// The trade task's action type (`0x6f`).
+const TRADE: i16 = 0x6f;
+
 /// The task finder's steps on a `target` (`LAB_1412795f5` to `LAB_1412796b4`): the drop-off
 /// ([`drop_off_finding`]), its player's foundation ([`build_task`]), the garrison into it
-/// ([`garrison_into`]), the repair ([`repair_finding`]); a garrison into it without a task ends
-/// the finder there. Master 199 and task 0x6f are not modelled.
+/// ([`garrison_into`]), the repair ([`repair_finding`]), the trade ([`trade_task`]); a garrison
+/// into it without a task ends the finder there. Master 199 is not modelled.
 pub(super) fn on_target<'m>(
     list: &'m Master,
     actor: &Actor<'_>,
@@ -42,8 +45,8 @@ pub(super) fn on_target<'m>(
     if let Finding::Answer(task) = repair_finding(list, actor, t, filter, dip) {
         return Ok(Finding::Answer(task));
     }
-    if t.state < 3 && (t.master.id == id::ID_45 || t.master.id == id::ID_84) {
-        return Err(GenieError::unsupported("the task finder's task 0x6f"));
+    if let Some(task) = trade_task(list, t, filter) {
+        return Ok(Finding::Answer(Some(task)));
     }
     // a garrison into the target without a task for it ends the finder before its tail, after
     // the repair and task 0x6f (`LAB_1412796b4`'s flag, with any filter)
@@ -52,6 +55,22 @@ pub(super) fn on_target<'m>(
     } else {
         Finding::Next
     })
+}
+
+/// The trade task (0x6f) on a dock (45) or market (84) in a state below 3 (`LAB_1412796b4`'s
+/// last loop): the first task of type 0x6f for the target's master or its class that the
+/// filter takes; none goes on to the finder's tail.
+fn trade_task<'m>(list: &'m Master, t: &TaskTarget<'_>, filter: i16) -> Option<&'m Task> {
+    let trades = t.state < 3 && (t.master.id == id::ID_45 || t.master.id == id::ID_84);
+    trades
+        .then(|| {
+            first(list, |task| {
+                task.action_type == TRADE
+                    && (task.object_id == t.master.id || task.object_group == t.master.class)
+                    && wanted(filter, task)
+            })
+        })
+        .flatten()
 }
 
 /// Dropping off what the unit carries at its player's finished drop site: the first gathering

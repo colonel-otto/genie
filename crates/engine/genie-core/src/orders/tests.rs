@@ -3296,16 +3296,16 @@ fn an_attack_task_settles_what_its_command_answered() {
 #[test]
 fn a_work_command_finds_its_master_and_task_on_a_target() {
     let t = crate::world::tests::forage_world();
-    assert_eq!(t.work_task(1, 0, -1, -1).unwrap(), None);
+    assert_eq!(t.work_task(1, 0, (-1, [1.0; 3]), -1).unwrap(), None);
     let (with, task) = t
-        .work_task(1, 0, 600, -1)
+        .work_task(1, 0, (600, [1.0; 3]), -1)
         .unwrap()
         .expect("the Gather task");
     assert_eq!(
         (with, task.id, task.action_type),
         (120, 2, crate::gathering::gather::GATHER)
     );
-    assert_eq!(t.work_task(1, 0, 700, -1).unwrap(), None);
+    assert_eq!(t.work_task(1, 0, (700, [1.0; 3]), -1).unwrap(), None);
 }
 
 /// A work command on the other bush retargets the forager's Gather on the same task, and on

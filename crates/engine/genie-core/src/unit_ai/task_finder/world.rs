@@ -2,11 +2,19 @@
 //! a target's state and the search of slot 0x820.
 
 use crate::GenieError;
+use crate::map::terrain::Terrain;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::{Actor, Diplomacy, DropSite, TaskTarget};
 use crate::unit_ai::world_view::Foreign;
 use crate::world::player::Player;
+
+/// The terrain the task finder's general search reads at `point` (`FUN_1411a8ba0`,
+/// [`Terrain::at_task_point`]); none on a world without its map's terrain.
+pub(crate) fn point_terrain(map: Option<&Terrain>, point: [f32; 3]) -> Option<i16> {
+    map.and_then(|t| t.at_task_point(point[0], point[1]))
+        .map(i16::from)
+}
 
 /// The players' relations and the drop sites, as the task finder reads them.
 pub(crate) struct TaskWorld<'a> {
@@ -123,14 +131,16 @@ pub(crate) fn task_target_with<'a>(
 /// of its class, type and group, its own too, with any filter, and the first with a task gives
 /// it. The task, with the master that gave it when the swap group did: with its `param_7` the
 /// routine switches the unit to that master (slot 0x90 with 0), its own too, which is the
-/// caller's. None: no task. The terrain under the target's place, which only a task for a
-/// terrain reads, is not passed (as `World::find_work_task`, the same routine's port in
-/// `crate::orders`, which this module cannot call).
+/// caller's. None: no task. `terrain`: the terrain under the point the caller passes, the
+/// target's place ([`point_terrain`]), which only a task for a terrain reads (as
+/// `World::find_work_task`, the same routine's port in `crate::orders`, which this module cannot
+/// call).
 pub(crate) fn task_search<'m>(
     masters: &'m Masters,
     actor: &Actor<'_>,
     t: &TaskTarget<'_>,
     general: &TaskTarget<'_>,
+    terrain: Option<i16>,
     filter: i16,
     dip: &impl Diplomacy,
 ) -> Result<Option<(crate::objects::masters::Task, Option<&'m Master>)>, GenieError> {
@@ -141,7 +151,7 @@ pub(crate) fn task_search<'m>(
             actor,
             Some(t),
             Some(general),
-            None,
+            terrain,
             filter,
             dip,
         )

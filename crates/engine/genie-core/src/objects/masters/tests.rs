@@ -1109,7 +1109,12 @@ fn a_villager_on_a_farm_takes_its_group_s_farmer_for_the_farm_s_class() {
             attribute_95: 0.0,
             civ: 1,
         };
-        m.work_master(&actor, &site, &site, -1, &Alone)
+        let on = crate::unit_ai::task_finder::TaskOn {
+            target: Some(&site),
+            general: Some(&site),
+            terrain: None,
+        };
+        m.work_master(&actor, &on, -1, &Alone)
             .map(|w| w.map(|(id, t)| (id, t.object_group, t.object_id)))
     };
     let own = |m: &Masters| m.get(83).unwrap().clone();
@@ -1156,7 +1161,12 @@ fn a_villager_takes_the_first_master_of_its_swap_group_with_a_task_for_its_found
             attribute_95: 0.0,
             civ: 1,
         };
-        m.work_master(&actor, &site, &site, -1, &Alone)
+        let on = crate::unit_ai::task_finder::TaskOn {
+            target: Some(&site),
+            general: Some(&site),
+            terrain: None,
+        };
+        m.work_master(&actor, &on, -1, &Alone)
             .map(|w| w.map(|(id, t)| (id, t.action_type)))
     };
     assert_eq!(pick(83), Ok(Some((118, 101))));

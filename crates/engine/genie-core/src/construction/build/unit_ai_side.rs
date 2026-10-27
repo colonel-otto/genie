@@ -7,7 +7,7 @@ use crate::objects::masters::Master;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
-use crate::unit_ai::task_finder::world::{SideWorld, task_search, task_target_with};
+use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
 
 /// What slot 0x380 finds on a foundation without a Build on top ([`UnitView::build_found`]).
@@ -92,7 +92,9 @@ impl<'u> UnitView<'u> {
             foreign: self.foreign,
             drop_sites: self.drop_sites,
         };
-        let found = task_search(masters, &actor, &t, &general, -1, &dip)?;
+        // slot 0x820's point: the foundation's place
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), f.position);
+        let found = task_search(masters, &actor, &t, &general, terrain, -1, &dip)?;
         Ok(found.map(|(task, switch)| BuildFound {
             task,
             switch,

@@ -103,6 +103,19 @@ pub struct TaskTarget<'a> {
     pub top_action: Option<i16>,
 }
 
+/// What the work command's finder searches on: its target (none for a point), the target its
+/// general search reads (the main building's) and the terrain under the command's point
+/// (`FUN_1411a8ba0`, [`crate::map::terrain::Terrain::at_task_point`]; none off the map).
+#[derive(Clone, Copy, Debug)]
+pub struct TaskOn<'t, 'a> {
+    /// The target, none for a point.
+    pub target: Option<&'t TaskTarget<'a>>,
+    /// The target the general search reads.
+    pub general: Option<&'t TaskTarget<'a>>,
+    /// The terrain under the point.
+    pub terrain: Option<i16>,
+}
+
 /// What the finder reads of the world: the players' relations (`FUN_141663dc0`: whether `from`
 /// counts `to` as its own or allied, the game's `with_ally` flag set or not) and the drop sites.
 /// `FUN_141663dc0` for a player of diplomacy `relations` (`player+0x260`): one's own player
@@ -1070,9 +1083,39 @@ mod tests {
         assert!(finder_head(&monk, &converting, Some(&peasant), -1, &Alone).is_err());
     }
 
+    /// The general search's last step (`FUN_1411a8ba0`): without a task for the target, or
+    /// without a target, the first task for the terrain under the point (the transport's beach
+    /// task, 12 on terrain 2), whatever the filter the finder's tail passes (−1); none without a
+    /// terrain (a point off the map, or x or y −1).
+    #[test]
+    fn a_point_on_a_terrain_takes_the_task_for_that_terrain() {
+        let beach = Task {
+            terrain: 2,
+            ..task(12, -1, -1, 0.0)
+        };
+        let ship = master(
+            545,
+            70,
+            class::TRANSPORT,
+            vec![task(109, -1, -1, 0.0), beach],
+        );
+        let a = actor(&ship, (-1, 0.0));
+        let found = |t: Option<&TaskTarget<'_>>, terrain, filter| {
+            find_task(&ship, &a, t, t, terrain, filter, &Alone).map(|f| f.map(|k| k.action_type))
+        };
+        assert_eq!(found(None, Some(2), -1), Ok(Some(12)));
+        assert_eq!(found(None, Some(2), 12), Ok(Some(12)));
+        assert_eq!(found(None, Some(1), -1), Ok(None));
+        assert_eq!(found(None, None, -1), Ok(None));
+        let villager = master(83, 70, class::VILLAGER, vec![]);
+        let peasant = building(&villager, 2, 2);
+        assert_eq!(found(Some(&peasant), Some(2), -1), Ok(Some(12)));
+    }
+
     /// The finder's steps on a target: its player's foundation takes the build task; master 199
-    /// and task 0x6f are not modelled; a transport's garrison without a task ends the finder
-    /// (none); anything else goes on.
+    /// is not modelled; a dock or market below state 3 takes the first trade task (0x6f) for its
+    /// master or class the filter takes, and without one goes on; a transport's garrison without
+    /// a task ends the finder (none); anything else goes on.
     #[test]
     fn the_finder_s_steps_on_a_target_answer_or_go_on() {
         let house = master(70, BUILDING, class::BUILDING, vec![]);
@@ -1089,7 +1132,44 @@ mod tests {
         let m199 = master(id::ID_199, BUILDING, class::BUILDING, vec![]);
         assert!(on_target(&builder, &a, &building(&m199, 2, 2), -1, &Alone).is_err());
         let m45 = master(id::ID_45, 70, 6, vec![]);
-        assert!(on_target(&builder, &a, &building(&m45, 2, 2), -1, &Alone).is_err());
+        assert_eq!(
+            on_target(&builder, &a, &building(&m45, 2, 2), -1, &Alone),
+            Ok(Finding::Next)
+        );
+        let trader = master(
+            128,
+            70,
+            19,
+            vec![
+                task(0x6f, 7, -1, 1.0),
+                task(0x6f, -1, id::ID_84, 1.0),
+                task(0x6f, 6, -1, 1.0),
+            ],
+        );
+        let cart = actor(&trader, (-1, 0.0));
+        let dock = building(&m45, 2, 2);
+        assert_eq!(
+            on_target(&trader, &cart, &dock, -1, &Alone),
+            Ok(Finding::Answer(Some(&trader.tasks[2])))
+        );
+        assert_eq!(
+            on_target(&trader, &cart, &dock, 0x6f, &Alone),
+            Ok(Finding::Answer(Some(&trader.tasks[2])))
+        );
+        assert_eq!(
+            on_target(&trader, &cart, &dock, 5, &Alone),
+            Ok(Finding::Next)
+        );
+        let market = master(id::ID_84, BUILDING, 7, vec![]);
+        assert_eq!(
+            on_target(&trader, &cart, &building(&market, 2, 2), -1, &Alone),
+            Ok(Finding::Answer(Some(&trader.tasks[0])))
+        );
+        // state 3 and up: no trade
+        assert_eq!(
+            on_target(&trader, &cart, &building(&m45, 2, 3), -1, &Alone),
+            Ok(Finding::Next)
+        );
         let soldier = master(4, 70, 6, vec![]);
         let ship = Master {
             object_flags: 1,

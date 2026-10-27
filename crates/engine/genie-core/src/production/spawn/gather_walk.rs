@@ -198,7 +198,9 @@ impl World {
         if let Some(m) = self.players[p].objects[new].mover.as_mut() {
             m.waiting = 1;
         }
-        let garrison = finder && on_building && self.garrison_task_found(p, new, target)?;
+        let garrison = finder
+            && on_building
+            && self.garrison_task_found(p, new, target, [g.point[0], g.point[1], 0.0])?;
         let work = Work {
             target,
             point: [g.point[0], g.point[1], 0.0],

@@ -160,13 +160,15 @@ impl World {
     }
 
     /// The unit's own task list's finder with filter 3 (slot 2 of its master's `+0x788`,
-    /// `FUN_1412784d0`: the garrison's, [`crate::unit_ai::task_finder::find_task`]) on `target`: whether it
-    /// finds a task, as a gather point on a building asks (`FUN_140ace9c0`).
+    /// `FUN_1412784d0`: the garrison's, [`crate::unit_ai::task_finder::find_task`]) on `target` at
+    /// the gather `point`: whether it finds a task, as a gather point on a building asks
+    /// (`FUN_140ace9c0`).
     pub(crate) fn garrison_task_found(
         &self,
         player: usize,
         idx: usize,
         target: i32,
+        point: [f32; 3],
     ) -> Result<bool, GenieError> {
         let unit = &self.players[player].objects[idx];
         let owner = &self.players[player];
@@ -190,7 +192,7 @@ impl World {
             &actor,
             Some(&t),
             Some(&general),
-            None,
+            self.task_terrain(point),
             3,
             &world,
         )?
@@ -255,7 +257,7 @@ impl World {
         }
         // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
         let clears = notified || self.master_of(player, unit.life.master_id)?.kind < 70;
-        let found = self.work_task(player, idx, target, filter)?;
+        let found = self.work_task(player, idx, (target, point), filter)?;
         let Some((with, task)) = found else {
             if filter != -1 {
                 return Ok(());
@@ -298,19 +300,17 @@ impl World {
         self.start_task(player, idx, (target, point), &task, (clears, notified))
     }
 
-    /// The work command's master and task for the unit at (`player`, `idx`) on `target`
-    /// ([`crate::objects::masters::Masters::work_master`] under the task `filter`): the master
-    /// with the task found; a work command on a point (no target) finds none.
+    /// The work command's master and task for the unit at (`player`, `idx`) on `target` (−1 for
+    /// none) at `point` ([`crate::objects::masters::Masters::work_master`] under the task
+    /// `filter`, the terrain under the point for a task for a terrain): the master with the task
+    /// found.
     pub(super) fn work_task(
         &self,
         player: usize,
         idx: usize,
-        target: i32,
+        (target, point): (i32, [f32; 3]),
         filter: i16,
     ) -> Result<Option<(i16, crate::objects::masters::Task)>, GenieError> {
-        if target == -1 {
-            return Ok(None);
-        }
         let unit = &self.players[player].objects[idx];
         let masters = self
             .masters
@@ -329,16 +329,35 @@ impl World {
             players: &self.players,
             drop_sites: &self.drop_sites,
         };
-        let t = self.task_target(target, 1)?;
-        let general = self.task_target(target, 2)?;
+        let (t, general) = if target == -1 {
+            (None, None)
+        } else {
+            (
+                Some(self.task_target(target, 1)?),
+                Some(self.task_target(target, 2)?),
+            )
+        };
+        let on = crate::unit_ai::task_finder::TaskOn {
+            target: t.as_ref(),
+            general: general.as_ref(),
+            terrain: self.task_terrain(point),
+        };
         Ok(masters
-            .work_master(&actor, &t, &general, filter, &world)?
+            .work_master(&actor, &on, filter, &world)?
             .map(|(with, task)| (with, *task)))
+    }
+
+    /// The terrain the task finder's general search reads at `point` (`FUN_1411a8ba0`,
+    /// [`crate::unit_ai::task_finder::world::point_terrain`] on the map's terrain).
+    pub(crate) fn task_terrain(&self, point: [f32; 3]) -> Option<i16> {
+        crate::unit_ai::task_finder::world::point_terrain(self.spatial.terrain.as_ref(), point)
     }
 
     /// `LAB_1410706a8`: an action of the unit already on the `task` found takes the new target
     /// itself (its slot 9): a Hunt or Gather on the same task retargets, a Build or Repair on
-    /// top takes the target again; the base action types on top answer 0 (the factory follows).
+    /// top takes the target again, a Transport on the same task works at the point
+    /// ([`World::retake_transport`]); the base action types on top answer 0 (the factory
+    /// follows).
     /// Answers whether an action kept the work.
     pub(super) fn retake_task(
         &mut self,
@@ -377,6 +396,11 @@ impl World {
                 && unit.gather.is_some_and(|g| g.task.id == task.id) =>
             {
                 self.retarget_gather_work(player, idx, (target, point, clears))?
+            }
+            _ if top == Some(crate::garrison::transport::TRANSPORT)
+                && task.action_type == crate::garrison::transport::TRANSPORT =>
+            {
+                self.retake_transport((player, idx), (target, point), task, clears)?
             }
             // the top action's slot 0x48 (FUN_140a977a0) on the same task: the base's
             // (FUN_140a7bf40: the MoveTo's, the Enter's, the missile's, the Fly's, the Make's, the
@@ -477,8 +501,8 @@ impl World {
     }
 
     /// The action list's factory (slot 0x10) for the work's `task` on `target`: the Enter,
-    /// Attack, Hunt, Build, Repair or Gather starts; a mule cart's task makes no action (the
-    /// move without one, [`World::work_move`]).
+    /// Attack, Hunt, Build, Repair, Gather or Transport starts; a mule cart's task makes no
+    /// action (the move without one, [`World::work_move`]).
     pub(super) fn start_task(
         &mut self,
         player: usize,
@@ -519,6 +543,9 @@ impl World {
             }
             crate::gathering::gather::GATHER => {
                 self.start_gather(player, idx, target, task, Some((point, clears)))
+            }
+            crate::garrison::transport::TRANSPORT => {
+                self.start_transport((player, idx), (target, point), task, clears)
             }
             _ => Err(GenieError::unsupported(
                 "the action factory for a task the slice does not model",
@@ -621,13 +648,16 @@ impl World {
         };
         let t = self.task_target(target, 1)?;
         let general = self.task_target(target, 2)?;
+        // slot 0x820's point: the target's place
+        let at = self.object(target).map_or([0.0; 3], |(_, u)| u.position);
+        let terrain = self.task_terrain(at);
         let find = |list: &Master, filter: i16| {
             crate::unit_ai::task_finder::find_task(
                 list,
                 &actor,
                 Some(&t),
                 Some(&general),
-                None,
+                terrain,
                 filter,
                 &world,
             )

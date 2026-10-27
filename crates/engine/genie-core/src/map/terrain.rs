@@ -358,6 +358,23 @@ impl Terrain {
         self.terrains.get(usize::from(t)).map_or(0, |k| k.flags)
     }
 
+    /// The terrain the general task search reads at a point (`FUN_1411a8ba0`): none for x or y
+    /// exactly −1 (`UCOMISS`: a NaN is not), else the tile of each coordinate's `CVTTSS2SI`
+    /// truncated to 16 bits; none for a tile off the map, else the terrain a map read sees there
+    /// ([`Terrain::read`]).
+    #[must_use]
+    pub fn at_task_point(&self, x: f32, y: f32) -> Option<u8> {
+        #[allow(clippy::float_cmp)]
+        if x == -1.0 || y == -1.0 {
+            return None;
+        }
+        let tile = |v: f32| crate::math::conversions::cvttss2si(v) as i16;
+        let (tx, ty) = (tile(x), tile(y));
+        let inside =
+            0 <= tx && i32::from(tx) < self.width && 0 <= ty && i32::from(ty) < self.height;
+        inside.then(|| self.read(tx, ty))
+    }
+
     /// `FUN_140f690e0`: the terrain a map read sees on tile (`x`, `y`): terrain 0 off the map, or
     /// for a terrain beyond the records or hidden.
     #[must_use]
@@ -521,6 +538,24 @@ mod tests {
         assert_eq!(t.defense(2, 5, 5), Some(1.0));
         assert_eq!(t.defense(9, 1, 0), None);
         assert_eq!(t.defense(-1, 1, 0), None);
+    }
+
+    /// `FUN_1411a8ba0`'s terrain at a point: x or y exactly −1 reads none, a NaN reads tile 0
+    /// (`CVTTSS2SI` gives `0x80000000`, whose low 16 bits are 0), a tile off the map none.
+    #[test]
+    fn the_task_search_reads_the_terrain_at_a_point_on_the_map() {
+        let t = map(vec![0, 1, 2, 3], vec![0; 4]);
+        assert_eq!(t.at_task_point(1.5, 1.25), Some(3));
+        assert_eq!(t.at_task_point(0.0, 0.99), Some(0));
+        assert_eq!(t.at_task_point(-1.0, 1.0), None);
+        assert_eq!(t.at_task_point(1.0, -1.0), None);
+        assert_eq!(t.at_task_point(-0.5, 1.0), Some(2));
+        assert_eq!(t.at_task_point(f32::NAN, 1.0), Some(2));
+        assert_eq!(t.at_task_point(2.0, 0.0), None);
+        assert_eq!(t.at_task_point(0.0, 2.0), None);
+        assert_eq!(t.at_task_point(-1.5, 0.0), None);
+        // 65536.5 truncates to tile 0 in 16 bits
+        assert_eq!(t.at_task_point(65_536.5, 1.0), Some(2));
     }
 
     #[test]

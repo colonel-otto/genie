@@ -2,7 +2,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::{Master, Masters, Task};
-use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget, find_task};
+use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskOn, find_task};
 
 impl Masters {
     /// The masters, by their ids.
@@ -40,17 +40,17 @@ impl Masters {
     }
 
     /// The work command's choice of master and task (`FUN_14106ff70` up to the task's
-    /// requirement): the unit's own master's task for the target ([`find_task`]) unless it has
-    /// none or only an attack (7); then, with a task swap group, the first master by id of the
-    /// unit's class, type and group with a task of another type (its master changes, slot 0x90),
-    /// except that a gather task (106) for a farm, a pasture or the other objects the work command
-    /// lists, with any filter, prefers the first such master with a task for the target's class
-    /// and a work value, else the first with a task for any target. `Ok(None)`: no task.
+    /// requirement) on `on` (its target, none for a point, and the terrain under the point): the
+    /// unit's own master's task ([`find_task`]) unless it has none or only an attack (7); then,
+    /// with a task swap group, the first master by id of the unit's class, type and group with a
+    /// task of another type (its master changes, slot 0x90), except that a gather task (106) for
+    /// a farm, a pasture or the other objects the work command lists, with any filter, prefers
+    /// the first such master with a task for the target's class and a work value, else the first
+    /// with a task for any target. `Ok(None)`: no task.
     pub fn work_master<'m>(
         &'m self,
         actor: &Actor<'_>,
-        target: &TaskTarget<'_>,
-        general: &TaskTarget<'_>,
+        on: &TaskOn<'_, '_>,
         filter: i16,
         dip: &impl Diplomacy,
     ) -> Result<Option<(i16, &'m Task)>, GenieError> {
@@ -59,13 +59,7 @@ impl Masters {
             "a unit of a master the player does not have",
         ))?;
         let own_task = find_task(
-            own_list,
-            actor,
-            Some(target),
-            Some(general),
-            None,
-            filter,
-            dip,
+            own_list, actor, on.target, on.general, on.terrain, filter, dip,
         )?;
         if own_task.is_none_or(|t| t.action_type == 7) && own.task_by_group != 0 {
             let (mut by_class, mut generic) = (None, None);
@@ -77,29 +71,27 @@ impl Masters {
                     continue;
                 }
                 let found = find_task(
-                    candidate,
-                    actor,
-                    Some(target),
-                    Some(general),
-                    None,
-                    filter,
-                    dip,
+                    candidate, actor, on.target, on.general, on.terrain, filter, dip,
                 )?;
                 let Some(task) = found else { continue };
                 if own_task.is_some_and(|t| t.action_type == task.action_type) {
                     continue;
                 }
-                let listed = matches!(
-                    target.master.id,
-                    50 | 357 | 1187 | 1188 | 1893 | 1894 | 1897 | 1898
-                );
-                if task.action_type != 0x6a
-                    || (filter != -1 && filter != 0x6a)
-                    || !listed
-                    || task.object_id == target.master.id
-                {
+                // a gather task for a point has no target: the game reads none there, as the
+                // finder gives a point only a task for its terrain, never a gather one
+                let listed = on.target.filter(|t| {
+                    matches!(
+                        t.master.id,
+                        50 | 357 | 1187 | 1188 | 1893 | 1894 | 1897 | 1898
+                    )
+                });
+                let Some(target) = listed.filter(|t| {
+                    task.action_type == 0x6a
+                        && (filter == -1 || filter == 0x6a)
+                        && task.object_id != t.master.id
+                }) else {
                     return Ok(Some((candidate.id, task)));
-                }
+                };
                 if by_class.is_none()
                     && task.object_group == target.master.class
                     && 0.0 < task.work_val1

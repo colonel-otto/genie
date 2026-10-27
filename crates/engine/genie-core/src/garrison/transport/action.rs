@@ -16,12 +16,21 @@ impl TransportAction {
     /// unit's place `at`, state 0 and `+0x34` −1 (the base's, `FUN_140a73e90`), `+0x68` clear.
     #[must_use]
     pub const fn new(at: [f32; 3]) -> Self {
+        Self::on_task(None, at)
+    }
+
+    /// The constructor (`FUN_140aa3ab0`) on `task` (`+0x48`), the action list's factory's for a
+    /// task of type 12 at the work command's point `at` (`+0x38`..`+0x40`): state 0 and `+0x34`
+    /// −1 (the base's, `FUN_140a73e90`), `+0x68` clear.
+    #[must_use]
+    pub const fn on_task(task: Option<crate::objects::masters::TaskId>, at: [f32; 3]) -> Self {
         Self {
             state: 0,
             mode: -1,
             point: at,
             move_to: None,
             retarget: false,
+            task,
         }
     }
 

@@ -31,5 +31,5 @@ player's other masters of the task swap group.
 ## How it connects
 
 <!-- uses -->
-- Uses: [`construction`](../../construction/), [`garrison`](../../garrison/), [`objects`](../../objects/), [`orders`](../../orders/), [`world`](../../world/).
+- Uses: [`construction`](../../construction/), [`garrison`](../../garrison/), [`map`](../../map/), [`objects`](../../objects/), [`orders`](../../orders/), [`world`](../../world/).
 <!-- /uses -->

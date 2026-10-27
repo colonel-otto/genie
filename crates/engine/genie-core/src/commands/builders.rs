@@ -6,7 +6,7 @@ use crate::commands::FOUNDATION_GONE;
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
-use crate::unit_ai::task_finder::world::{TaskWorld, task_search, task_target_with};
+use crate::unit_ai::task_finder::world::{TaskWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
 use crate::unit_ai::world_view::Wait;
 use crate::unit_ai::{BUILD_ACTION, BUILD_ORDER};
@@ -163,11 +163,18 @@ impl World {
             attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
             civ: owner.civ,
         };
-        let (with, task) = masters
-            .work_master(&actor, &target, &target, -1, &world)?
-            .ok_or(GenieError::unsupported(
-                "a builder with no task for its foundation",
-            ))?;
+        // the work command's point: BUILD's x and y on the ground
+        let on = crate::unit_ai::task_finder::TaskOn {
+            target: Some(&target),
+            general: Some(&target),
+            terrain: self.task_terrain([position[0], position[1], 0.0]),
+        };
+        let (with, task) =
+            masters
+                .work_master(&actor, &on, -1, &world)?
+                .ok_or(GenieError::unsupported(
+                    "a builder with no task for its foundation",
+                ))?;
         if task.action_type != BUILD {
             return Err(GenieError::unsupported(
                 "a builder whose task for its foundation is not Build",
@@ -352,7 +359,10 @@ impl World {
         };
         // slot 0x820 with any action type (0xffff): whatever task it finds, the Build takes
         // (FUN_140aad4e0 on it), its type and its enablement unread
-        let Some((task, switch)) = task_search(masters, &actor, &t, &general, -1, &world)? else {
+        // slot 0x820's point: the foundation's place
+        let terrain = point_terrain(self.spatial.terrain.as_ref(), f_at);
+        let Some((task, switch)) = task_search(masters, &actor, &t, &general, terrain, -1, &world)?
+        else {
             return Ok(false);
         };
         let builder = switch.unwrap_or(actor.master);

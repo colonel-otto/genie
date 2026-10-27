@@ -1587,7 +1587,7 @@ fn slot_0x820_s_search_takes_the_own_task_else_the_first_master_of_the_swap_grou
             attribute_95: 0.0,
             civ: 0,
         };
-        task_search(masters, &actor, &site, &site, -1, &world)
+        task_search(masters, &actor, &site, &site, None, -1, &world)
             .unwrap()
             .map(|(task, switch)| (task.action_type, switch.map(|m| m.id)))
     };

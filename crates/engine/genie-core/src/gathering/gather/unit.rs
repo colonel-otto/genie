@@ -85,7 +85,8 @@ impl Unit {
                                 foreign,
                                 drop_sites: c.drop_sites,
                             };
-                            task_search(masters, &actor, &t, &general, -1, &dip)?
+                            // slot 0x820's point: x, y and z −1, no terrain
+                            task_search(masters, &actor, &t, &general, None, -1, &dip)?
                         }
                         _ => None,
                     };

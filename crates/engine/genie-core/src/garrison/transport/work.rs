@@ -1,0 +1,144 @@
+//! The work command's Transport: a transport's task of type 12 (a beach, the only terrain task
+//! in the game's data) makes or retakes it.
+
+use crate::GenieError;
+use crate::garrison::transport::{
+    Changed, MapShore, Ship, TRANSPORT, TRANSPORT_ACTION, TransportAction,
+};
+use crate::math::rng::Stream;
+use crate::objects::masters::{Task, TaskId};
+use crate::unit_ai::ai_kinds::ORDER_TRANSPORT;
+
+/// The market (`0x60f0` raw), whose own trade units the work command never retakes.
+const MARKET: i16 = 84;
+/// The trade cart's and the trade boat's classes (`FUN_141195400`, `FUN_141195490`).
+const TRADE_CLASSES: [i16; 2] = [19, 2];
+
+impl crate::world::World {
+    /// The work command's Transport (its task of action type 12, the factory `FUN_140aca4b0`
+    /// case 0xc: [`TransportAction::on_task`] at the work's `point`); the unit AI's notify
+    /// (`FUN_14106e4e0` kind 0xc: the transport order 0x2ca and action 0x266, the target with
+    /// its class, none for a point, the work's point); the install (slot 0x808, `FUN_14106e990`)
+    /// clears the action list, then the list's add starts it ([`TransportAction::start`] with 1).
+    ///
+    /// # Errors
+    ///
+    /// A map without its terrain, and what the actions' teardowns do not model.
+    pub(crate) fn start_transport(
+        &mut self,
+        (p, i): (usize, usize),
+        (target, point): (i32, [f32; 3]),
+        task: &Task,
+        clears: bool,
+    ) -> Result<(), GenieError> {
+        self.notify_transport((p, i), (target, point), clears)?;
+        self.clear_actions(p, i)?;
+        let mut t = TransportAction::on_task(Some(TaskId(task.id)), point);
+        let changed = self.with_shore(p, i, |ship, shore| Ok(t.start(true, ship, shore)))?;
+        self.players[p].objects[i].transport = Some(t);
+        self.transport_changed(p, i, changed)
+    }
+
+    /// The work command's retake (`LAB_1410706a8`) of the Transport on top on the `task` it
+    /// found (its `+0x48`): the top action's slot 0x48 ([`TransportAction::work`] at the work's
+    /// point, from the unit itself when the target is the unit), then the unit AI's notify as
+    /// [`World::start_transport`]'s. A trade cart or boat (classes 19, 2) ordered to its own
+    /// player's market (84) is never retaken. Answers whether the Transport kept the work.
+    ///
+    /// # Errors
+    ///
+    /// A map without its terrain, and what the map reads give.
+    ///
+    /// [`World`]: crate::world::World
+    pub(crate) fn retake_transport(
+        &mut self,
+        (p, i): (usize, usize),
+        (target, point): (i32, [f32; 3]),
+        task: &Task,
+        clears: bool,
+    ) -> Result<bool, GenieError> {
+        let unit = &self.players[p].objects[i];
+        let on_task = unit.top_action_kind() == Some(TRANSPORT)
+            && unit.transport.and_then(|t| t.task) == Some(TaskId(task.id));
+        if !on_task || self.trade_at_own_market((p, i), target)? {
+            return Ok(false);
+        }
+        let by_self = target == unit.id;
+        let mut t = unit.transport.ok_or(GenieError::unreachable(
+            "a Transport on top without its action",
+        ))?;
+        let changed = self.with_shore(p, i, |ship, shore| t.work(point, by_self, ship, shore))?;
+        self.players[p].objects[i].transport = Some(t);
+        self.transport_changed(p, i, changed)?;
+        self.notify_transport((p, i), (target, point), clears)?;
+        Ok(true)
+    }
+
+    /// `LAB_1410706a8`'s exception: the unit is a trade cart or boat (`FUN_141195400`,
+    /// `FUN_141195490`) and the target its own player's market.
+    fn trade_at_own_market(&self, (p, i): (usize, usize), target: i32) -> Result<bool, GenieError> {
+        let Some((tp, t)) = self.object(target) else {
+            return Ok(false);
+        };
+        let market = tp == p && self.master_of(tp, t.life.master_id)?.id == MARKET;
+        let class = self
+            .master_of(p, self.players[p].objects[i].life.master_id)?
+            .class;
+        Ok(market && TRADE_CLASSES.contains(&class))
+    }
+
+    /// The unit AI's notify of the work command's Transport (`FUN_14106e4e0` kind 0xc): the
+    /// transport order and action, the target with its class (none for a point or a target the
+    /// world does not hold) and the work's point.
+    fn notify_transport(
+        &mut self,
+        (p, i): (usize, usize),
+        (target, point): (i32, [f32; 3]),
+        clears: bool,
+    ) -> Result<(), GenieError> {
+        let named = match self.object(target) {
+            Some((tp, t)) => Some((
+                target,
+                i32::from(self.master_of(tp, t.life.master_id)?.class),
+            )),
+            None => None,
+        };
+        let unit = &mut self.players[p].objects[i];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                ORDER_TRANSPORT,
+                TRANSPORT_ACTION,
+                named,
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+            self.remember_order(p, i, (ORDER_TRANSPORT, TRANSPORT_ACTION))?;
+        }
+        Ok(())
+    }
+
+    /// `f` on the Transport's view of player `p`'s object at `i` ([`World::ship`]) and of the
+    /// map ([`MapShore`] with the unit's terrain restriction).
+    ///
+    /// [`World`]: crate::world::World
+    fn with_shore(
+        &mut self,
+        p: usize,
+        i: usize,
+        f: impl FnOnce(&Ship, &mut MapShore<'_>) -> Result<Changed, GenieError>,
+    ) -> Result<Changed, GenieError> {
+        let ship = self.ship(p, i)?;
+        let restriction = self
+            .master_of(p, self.players[p].objects[i].life.master_id)?
+            .terrain_restriction;
+        let mut shore = MapShore::new(
+            &self.spatial,
+            &mut self.zones,
+            &mut self.pathing,
+            restriction,
+            ship.position,
+        )?;
+        f(&ship, &mut shore)
+    }
+}

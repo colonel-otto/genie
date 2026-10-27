@@ -19,6 +19,7 @@ use crate::movement::move_to::MoveTo;
 mod action;
 mod shore;
 mod unload;
+mod work;
 
 pub(crate) use self::shore::MapShore;
 pub use self::shore::{Around, find_drop_location, retry_point};
@@ -101,6 +102,9 @@ pub struct TransportAction {
     pub move_to: Option<MoveTo>,
     /// `+0x68`: the unload found no drop location and the action sails to a new point.
     pub retarget: bool,
+    /// `+0x48`: the task it works on, none from the unload command (the work command's
+    /// `LAB_1410706a8` retakes only a Transport on the task it finds).
+    pub task: Option<crate::objects::masters::TaskId>,
 }
 
 /// What the Transport reads of its unit.

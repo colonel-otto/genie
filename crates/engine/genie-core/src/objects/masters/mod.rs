@@ -26,6 +26,11 @@ use self::values::{
 #[cfg(test)]
 use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget};
 
+/// A task's id in its master's task list ([`Task::id`], `+0xa`), as an action keeps the task it
+/// works on (`+0x48`; the save writes the id, −1 for none).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TaskId(pub i16);
+
 /// One task of a master's task list (`RGE_Task`), with the memory offsets the task finder reads
 /// (the save's names; the `.dat`'s in brackets where they differ).
 #[derive(Clone, Copy, Debug, PartialEq)]
