@@ -492,6 +492,16 @@ impl UnitGroup {
             .and_then(|i| i32::try_from(i).ok())
             .unwrap_or(-1)
     }
+
+    /// `FUN_141017590`: unit `id`'s own move's reason (`mReason`, the `+8` of its record in
+    /// `+0xf8`), −1 when it is not a member.
+    #[must_use]
+    pub fn member_reason(&self, id: i32) -> i32 {
+        self.members
+            .iter()
+            .find(|m| m.id == id)
+            .map_or(-1, |m| m.specific_move.reason)
+    }
 }
 
 #[cfg(test)]

@@ -2051,6 +2051,64 @@ fn two_members_of_one_group_rank_by_their_places_in_it() {
     assert_eq!(pauses(&w, &loose, Some(&first)), []);
 }
 
+/// `0x141150f00`'s first hit loop (0x1411543f1..0x1411544bc): a walker whose own move in its
+/// unit group (`FUN_14152ff40` on `+0x6d0`) has reason 0 (`FUN_141017590`) keeps no hit but
+/// one of class 3, 27, 39 or 52, however its step meets it. Reason 1, a walker the group does
+/// not list (−1) and a group the world does not hold keep the hit as any walker does.
+/// (430356142's scout cavalry 9585 walking its own move through goat 34792 at update 291.)
+#[test]
+fn a_group_member_on_an_own_move_of_reason_0_keeps_only_buildings_walls_and_gates() {
+    let mut w = world();
+    let mut close = *w.get(9175).unwrap();
+    close.position = [28.3, 88.9, 0.0];
+    w.insert(9175, close);
+    w.set_gait(
+        9175,
+        Some(Gait {
+            last_move: 16361,
+            ..Gait::default()
+        }),
+    );
+    let me = Me {
+        id: 9177,
+        position: [28.0, 89.0, 0.0],
+        group: 4,
+        action_state: 0,
+    };
+    let groups = |member: i32, reason: i32| crate::groups::UnitGroups {
+        groups: vec![crate::groups::UnitGroup {
+            id: 4,
+            members: vec![crate::groups::Member {
+                id: member,
+                specific_move: crate::groups::SpecificMove {
+                    reason,
+                    ..crate::groups::SpecificMove::default()
+                },
+                ..crate::groups::Member::default()
+            }],
+            ..crate::groups::UnitGroup::default()
+        }],
+        ..crate::groups::UnitGroups::default()
+    };
+    let kept = |w: &Spatial, gs: &crate::groups::UnitGroups| {
+        let m = builder_9177();
+        let position = vector(m.moved_at);
+        let waypoint = m.paths[0].point(1);
+        let projected = m.projected(m.direction_to(position, waypoint), DT);
+        m.avoid(&me, (w, Some(gs)), &[9175], projected, DT, (16361, false))
+            .unwrap()
+            .kept
+    };
+    assert_eq!(kept(&w, &groups(9177, 0)), Vec::<i32>::new());
+    assert_eq!(kept(&w, &groups(9177, 1)), [9175]);
+    assert_eq!(kept(&w, &groups(9176, 0)), [9175]);
+    assert_eq!(kept(&w, &crate::groups::UnitGroups::default()), [9175]);
+    for class in [3, 27, 39, 52] {
+        w.insert(9175, Placed { class, ..close });
+        assert_eq!(kept(&w, &groups(9177, 0)), [9175], "class {class}");
+    }
+}
+
 /// `FUN_14114e920` (slot 0x448): a unit's own waypoint is held as (x, height, y); a
 /// coordinate less than 1e-7 above a whole number moves to the tile's middle, the height
 /// stays; a NaN stays (`COMISS`, `JBE`). Slot 0x450 (`FUN_141070ce0`) empties the list.

@@ -11,6 +11,11 @@ use crate::movement::{
 use crate::pathing::tile_path::{Path, Request};
 use crate::{GenieError, math::fmath};
 
+/// The classes whose hits a group member on an own move of reason 0 still keeps in
+/// [`Mover::avoid`]'s first loop (its tests against −0xea9, −0xe91, −0xe85 and −0xe78 at
+/// 0x141154411..0x1411544bc, decoded by + 0xeac): buildings (3), walls (27), gates (39) and 52.
+const KEPT_BY_MEMBERS: [i16; 4] = [3, 27, 39, 52];
+
 impl Mover {
     /// `FUN_140fa0370`: both ends lie on the map. With a planner for its restriction, the tile
     /// planner (`FUN_140f7c530` without the tile search, closed tiles or smoothing; the radii are
@@ -401,7 +406,9 @@ impl Mover {
     }
 
     /// The walk's avoidance of what its step hits (`0x141150f00`, after `FUN_14114cc60`). The first
-    /// loop keeps a hit the unit must go round: none whose overlap with the unit's box the step
+    /// loop keeps a hit the unit must go round: none but a building, wall or gate
+    /// ([`KEPT_BY_MEMBERS`]) for a member of a unit group the world holds whose own move there
+    /// has reason 0 (`FUN_141017590`); none whose overlap with the unit's box the step
     /// shrinks (`FUN_1411615a0`); else one in the walked path's ignore units (`FUN_140f98d20`)
     /// that moved before the top path was made, or one that moved after the walked path was made
     /// (or at the same time and outranks the unit: a higher player, or the same and a higher id).
@@ -439,6 +446,11 @@ impl Mover {
             let id = world.annex_of(id).unwrap_or(id);
             Ok(world.get_known(id)?.map(|p| (id, p)))
         };
+        // the walker's group (FUN_14152ff40 on +0x6d0) and its own move's reason there
+        // (FUN_141017590): a member on one of reason 0 keeps buildings, walls and gates alone
+        let own_move = groups
+            .and_then(|gs| gs.get(me.group))
+            .is_some_and(|g| g.member_reason(me.id) == 0);
         let mut target_hit = false;
         let mut kept = Vec::new();
         for &hit in hits {
@@ -447,6 +459,9 @@ impl Mover {
             };
             if 0 <= level.target && id == level.target {
                 target_hit = true;
+            }
+            if own_move && !KEPT_BY_MEMBERS.contains(&other.class) {
+                continue;
             }
             if self.keeps_hit(me, player, (id, other), projected, world, now) {
                 kept.push(id);

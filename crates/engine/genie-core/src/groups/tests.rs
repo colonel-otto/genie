@@ -46,6 +46,25 @@ fn member(id: i32) -> Member {
     }
 }
 
+/// `FUN_141017590`: a member's own move's reason (`+0xf8`'s record at the member's index,
+/// its `+8`), whatever its place in the list; −1 for a unit that is no member.
+#[test]
+fn a_member_s_reason_is_its_own_move_s() {
+    let mut group = UnitGroup::new(1);
+    let with_reason = |id, reason| Member {
+        id,
+        specific_move: SpecificMove {
+            reason,
+            ..SpecificMove::default()
+        },
+        ..Member::default()
+    };
+    group.members = vec![with_reason(10, 2), with_reason(11, 0)];
+    assert_eq!(group.member_reason(10), 2);
+    assert_eq!(group.member_reason(11), 0);
+    assert_eq!(group.member_reason(12), -1);
+}
+
 /// `FUN_14100bbe0`: group 1's differentiator groups 1, 2 and 9 (gone) list 10, 11 and 12, the
 /// gone one nothing; the cap stops the list.
 #[test]
