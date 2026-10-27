@@ -828,6 +828,8 @@ pub mod turn {
     pub const DEATH_BLAST_FACTOR: f32 = f32::from_bits(0x3f80_0000);
     /// 1.0
     pub const DEATH_BLAST_HP: f32 = f32::from_bits(0x3f80_0000);
+    /// -1.0
+    pub const DROP_NO_POINT: f32 = f32::from_bits(0xbf80_0000);
     /// 0.10000000149011612
     pub const DROP_REACH: f32 = f32::from_bits(0x3dcc_cccd);
     /// 0.20000000298023224

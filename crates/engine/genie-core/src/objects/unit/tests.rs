@@ -177,3 +177,37 @@ fn the_actions_update_runs_each_action_held() {
     assert_eq!(after.map(|g| g.target), Some(600));
     assert_ne!(before, after);
 }
+
+/// Slot 0x190 (`FUN_14106d090`, `FUN_140a78450`): the object the top action targets, none for an
+/// action without one (a wait for a foundation) or without an action, and an error for an action the slice does not hold.
+#[test]
+fn the_top_action_s_object_is_its_target_unless_it_has_none() {
+    use crate::construction::build::{BuildAction, BuildTask};
+    let task = BuildTask {
+        range: 0.1,
+        work_value: 1.0,
+        work_rate: 1.0,
+        resource: -1,
+        id: -1,
+    };
+    let building = Unit {
+        build: Some(BuildAction::start(800, [1.0, 2.0, 0.0], 0.0, task)),
+        ..Unit::default()
+    };
+    assert_eq!(building.top_action_object(), Ok(Some(800)));
+    // a wait for a foundation keeps it at +0x68, its +0x30 is −1
+    let waiting = Unit {
+        wait_solidify: Some(crate::construction::wait_solidify::WaitSolidify::new(
+            crate::objects::masters::Task::default(),
+            900,
+        )),
+        ..Unit::default()
+    };
+    assert_eq!(waiting.top_action_object(), Ok(None));
+    assert_eq!(Unit::default().top_action_object(), Ok(None));
+    let unmodelled = Unit {
+        unmodelled_action: Some(GenieError::unsupported("an action")),
+        ..building
+    };
+    assert!(unmodelled.top_action_object().is_err());
+}

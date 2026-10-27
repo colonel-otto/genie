@@ -478,6 +478,7 @@ impl Unit {
             groups: c.groups,
         };
         let seeker = Seeker {
+            unit: self,
             me,
             mover,
             plan: &mut plan,

@@ -50,5 +50,5 @@ The world runs the update of each group that a player owns, before the player's 
 
 <!-- uses -->
 - Uses: [`combat`](../combat/), [`gathering`](../gathering/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`pathing`](../pathing/), [`unit_ai`](../unit_ai/), [`vision`](../vision/), [`world`](../world/).
-- Used by: [`commands`](../commands/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`unit_ai`](../unit_ai/), [`world`](../world/).
+- Used by: [`commands`](../commands/), [`gathering`](../gathering/), [`movement`](../movement/), [`objects`](../objects/), [`orders`](../orders/), [`unit_ai`](../unit_ai/), [`world`](../world/).
 <!-- /uses -->

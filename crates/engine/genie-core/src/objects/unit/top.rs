@@ -106,6 +106,21 @@ impl Unit {
         })
     }
 
+    /// Its slot 0x190 (`FUN_14106d090`, then `FUN_140a78450`): the object its top action targets
+    /// (the action's `+0x30` when not −1); none without a top action.
+    ///
+    /// # Errors
+    ///
+    /// A top action the slice does not model.
+    pub fn top_action_object(&self) -> Result<Option<i32>, GenieError> {
+        if self.unmodelled_action.is_some() {
+            return Err(GenieError::unsupported(
+                "slot 0x190 of an action the slice does not model",
+            ));
+        }
+        Ok(self.top_target().filter(|&t| t != -1))
+    }
+
     /// Its top action's slots 0x190 and 0x288 (`FUN_14106d090`, `FUN_141082dc0`): the action has
     /// neither a target nor a point (`+0x30`, `+0x38` −1), or there is none. An Artifact holds
     /// them while it walks a move ([`crate::ownership::artifact::Artifact::idle`]); a `MoveTo` always holds
