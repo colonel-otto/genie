@@ -4,3 +4,5 @@
 /coverage/
 .claude
 __pycache__
+/target-cov-core/
+/target-split/
