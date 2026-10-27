@@ -1,0 +1,426 @@
+//! `FindShortPath`'s rounds (`FUN_140f85580`'s loop): the walks out of the start's hull and into
+//! the goal's, then the A* over the hulls' points, again after the area grew.
+
+use crate::GenieError;
+use crate::pathing::hull_path::{
+    GROWTHS, HullPather, HullQuery, ITERATION_CAP, MOST, NUDGE, PATHS, Point, Waypoints,
+};
+
+/// What `FindShortPath`'s rounds carry from one to the next and to the end.
+pub(super) struct Rounds {
+    /// The nearest a node came to the goal (at first the straight walk).
+    nearest_d: f32,
+    /// Whether the search reached the goal or the target.
+    pub(super) found: bool,
+    /// The goal hull's entrance the found node takes, or -1.
+    pub(super) entrance: i32,
+    /// The nodes expanded, across the rounds.
+    iterations: i32,
+    /// How often the area grew.
+    growths: i32,
+    /// Whether the walk within the start's hull (a goal in the same hull) ended partway (its
+    /// result 1), its path the one returned.
+    pub(super) within: bool,
+    /// Whether the walk into the goal's hull ended in a box (its result 5).
+    pub(super) entered_box: bool,
+    /// The node found, or the one nearest the goal.
+    pub(super) best_node: Option<usize>,
+    start_hull: i32,
+    goal_hull: i32,
+}
+
+impl Rounds {
+    /// The rounds before the first: the straight walk as the nearest.
+    pub(super) const fn new(straight: f32) -> Self {
+        Self {
+            nearest_d: straight,
+            found: false,
+            entrance: -1,
+            iterations: 0,
+            growths: 0,
+            within: false,
+            entered_box: false,
+            best_node: None,
+            start_hull: -1,
+            goal_hull: -1,
+        }
+    }
+
+    /// A node `d` from the goal: nearer than the nearest so far, it is the best node.
+    fn nearer(&mut self, node: usize, d: f32) {
+        if d < self.nearest_d {
+            self.nearest_d = d;
+            self.best_node = Some(node);
+        }
+    }
+}
+
+/// What a round's expanded node leads to.
+enum Step {
+    /// The next node.
+    Next,
+    /// The next round (the area grew, or the nodes ran out for this round).
+    NextRound,
+    /// The end of the search.
+    End,
+}
+
+impl HullPather<'_> {
+    /// The rounds, while the nodes and the growths last: each starts the open list anew
+    /// ([`HullPather::round_start`]), then expands its best node until the search ends or the
+    /// area grows. A result where a round's walk within the start's hull ends the search.
+    pub(super) fn search(
+        &mut self,
+        q: &HullQuery,
+        keep: bool,
+        rounds: &mut Rounds,
+        path: &mut Waypoints,
+    ) -> Result<Option<u8>, GenieError> {
+        while rounds.iterations < ITERATION_CAP && rounds.growths < GROWTHS {
+            if let Some(result) = self.round_start(q, keep, rounds, path)? {
+                return Ok(Some(result));
+            }
+            loop {
+                match self.expand_best(q, rounds)? {
+                    Step::Next => {}
+                    Step::NextRound => break,
+                    Step::End => return Ok(None),
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// A round's start: the open list closed, the hulls built (in the first round of a search
+    /// that keeps none), the start's node; a start in a hull walks out of it
+    /// ([`HullPather::leave_start_hull`]), a goal in one is walked into
+    /// ([`HullPather::enter_goal_hull`]). A result where the walk out ends the search.
+    pub(super) fn round_start(
+        &mut self,
+        q: &HullQuery,
+        keep: bool,
+        rounds: &mut Rounds,
+        path: &mut Waypoints,
+    ) -> Result<Option<u8>, GenieError> {
+        self.close_all(0);
+        if !keep && rounds.growths == 0 {
+            self.build_hulls()?;
+        }
+        let root = self.add_unrefused(0, true, None, q.from, Some(q.to), -1, -1);
+        rounds.start_hull = self.hull_of(q.from);
+        rounds.goal_hull = self.hull_of(q.to);
+        rounds.within = false;
+        if 0 <= rounds.start_hull
+            && let Some(result) = self.leave_start_hull(q, root, rounds, path)?
+        {
+            return Ok(Some(result));
+        }
+        rounds.entered_box = false;
+        if 0 <= rounds.goal_hull {
+            rounds.entered_box = self.enter_goal_hull(q, rounds.goal_hull as usize)?;
+        }
+        Ok(None)
+    }
+
+    /// A start inside a hull: with the goal in the same hull, the walk to it first (`walk_out`
+    /// toward the goal into `path`): there (1, or 2 for a target whose id is below 1, the goal
+    /// query's among them), none (3, or 3 for a walk that never left the boxes), or partway
+    /// (`within`). Then the ways out ([`HullPather::exit_paths`], none is 3), their nodes on the
+    /// start's node, which closes.
+    pub(super) fn leave_start_hull(
+        &mut self,
+        q: &HullQuery,
+        root: usize,
+        rounds: &mut Rounds,
+        path: &mut Waypoints,
+    ) -> Result<Option<u8>, GenieError> {
+        let sh = rounds.start_hull as usize;
+        if rounds.start_hull == rounds.goal_hull {
+            path.points.clear();
+            let mut count = 0;
+            let walk = self.walk_out(
+                sh,
+                q.from,
+                Some(q.to),
+                q.target,
+                q.range,
+                false,
+                std::slice::from_mut(path),
+                1,
+                &mut count,
+            )?;
+            if walk.result == 0 {
+                let partial = q.target.is_some() && q.target_id < 1;
+                return Ok(Some(if partial { 2 } else { 1 }));
+            }
+            if walk.result == 3 || !walk.left_boxes {
+                return Ok(Some(3));
+            }
+            rounds.within = walk.result == 1;
+        }
+        let count = self.exit_paths(sh, q.from, q.range)?;
+        if count < 1 {
+            return Ok(Some(3));
+        }
+        self.close(0, root);
+        self.add_exits(root, count, q.to, rounds.start_hull);
+        Ok(None)
+    }
+
+    /// The start hull's ways out (`walk_out` toward no goal into `exits`, at most
+    /// [`PATHS`]): how many. The walk's result is not read, its paths are.
+    fn exit_paths(&mut self, hull: usize, from: Point, range: f32) -> Result<usize, GenieError> {
+        let mut exits = std::mem::take(&mut self.exits);
+        for e in &mut exits {
+            e.points.clear();
+        }
+        let mut count = 0;
+        let walk = self.walk_out(
+            hull, from, None, None, range, true, &mut exits, PATHS, &mut count,
+        );
+        self.exits = exits;
+        let _ = walk?;
+        Ok(count)
+    }
+
+    /// The first `count` ways out as nodes on the start's node `root`: each way's points in turn,
+    /// its last open (none refused: closed, or without a hull point); a way of one point adds
+    /// none.
+    fn add_exits(&mut self, root: usize, count: usize, to: Point, start_hull: i32) {
+        for k in 0..count {
+            let points = self.exits[k].points.clone();
+            let n = points.len();
+            if n <= 1 {
+                continue;
+            }
+            let mut node = root;
+            for &p in &points[1..n - 1] {
+                node = self.add_unrefused(0, false, Some(node), p, Some(to), start_hull, -1);
+            }
+            let last = points[n - 1];
+            let _ = self.add_unrefused(0, true, Some(node), last, Some(to), start_hull, -1);
+        }
+    }
+
+    /// A goal inside the hull `hull`: the ways in (`walk_in` backwards from the goal into
+    /// `entrances`, at most [`PATHS`]), their ends joined to the hull's points
+    /// ([`HullPather::join_entrances`]). Whether the walk ended in a box (its result 5).
+    fn enter_goal_hull(&mut self, q: &HullQuery, hull: usize) -> Result<bool, GenieError> {
+        let mut entrances = std::mem::take(&mut self.entrances);
+        for e in &mut entrances {
+            e.points.clear();
+        }
+        let n = self.hulls[hull].points.len();
+        self.hulls[hull].entrances = vec![-1; n];
+        let mut count = 0;
+        let mut sides = [0usize; PATHS];
+        let walk = self.walk_in(
+            hull,
+            q.to,
+            q.from,
+            q.target,
+            &mut entrances,
+            &mut sides,
+            PATHS,
+            &mut count,
+        );
+        self.entrances = entrances;
+        let entered_box = walk?.result == 5;
+        self.join_entrances(hull, count, &sides);
+        Ok(entered_box)
+    }
+
+    /// One node of the search, the open list's best: beyond the nodes' cap the next round; an
+    /// open list with a node off the map closes the best; a best beyond the area grows it (the
+    /// next round) or ends the search. A best within range ends it found; else its walk to the
+    /// goal crosses the nearest hull ([`HullPather::around_hull`]) or none
+    /// ([`HullPather::no_crossing`]).
+    fn expand_best(&mut self, q: &HullQuery, rounds: &mut Rounds) -> Result<Step, GenieError> {
+        if ITERATION_CAP <= rounds.iterations {
+            return Ok(Step::NextRound);
+        }
+        rounds.iterations += 1;
+        let Some(best) = self.nodes[0].next else {
+            return Ok(Step::End);
+        };
+        if self.open_off_map(best) {
+            self.close(0, best);
+            return Ok(Step::Next);
+        }
+        if !self.in_area(self.nodes[best].at) {
+            if !self.grow_area()? {
+                return Ok(Step::End);
+            }
+            rounds.growths += 1;
+            return Ok(Step::NextRound);
+        }
+        self.close(0, best);
+        let at = self.nodes[best].at;
+        if self.reached(q, at) {
+            rounds.found = q.target.is_none() || q.target_id >= 0;
+            rounds.best_node = Some(best);
+            return Ok(Step::End);
+        }
+        rounds.nearer(best, self.nodes[best].to_goal);
+        let vertex = self.nodes[best].vertex;
+        let Some((hit, p, edge)) = self.nearest_crossing(vertex, at, q.to) else {
+            return self.no_crossing(q, best, rounds);
+        };
+        if rounds.start_hull == -1 && rounds.goal_hull == -1 && self.blocked(at, p)? {
+            return Ok(Step::Next);
+        }
+        if hit as i32 == self.nodes[best].hull && 0 <= vertex {
+            return Ok(Step::Next);
+        }
+        let node = self.add_unrefused(0, false, Some(best), p, Some(q.to), hit as i32, -1);
+        rounds.nearer(node, self.nodes[node].to_goal);
+        self.around_hull(node, hit, edge, q.to);
+        Ok(Step::Next)
+    }
+
+    /// Whether a node of the open list from `best` on lies off the map.
+    fn open_off_map(&self, best: usize) -> bool {
+        let mut n = Some(best);
+        while let Some(i) = n {
+            if !self.on_map(self.nodes[i].at) {
+                return true;
+            }
+            n = self.nodes[i].next;
+        }
+        false
+    }
+
+    /// Whether `at` is within range of the target's box, or without one of the goal: the radius
+    /// and the range, squared, [`NUDGE`] more (`COMISS`/`JNC` at 0x140f86cff: a NaN is not).
+    fn reached(&self, q: &HullQuery, at: Point) -> bool {
+        let (to, r) = (q.to, self.radius);
+        q.target.as_ref().map_or_else(
+            || {
+                let d = (at[1] - to[1]) * (at[1] - to[1]) + (at[0] - to[0]) * (at[0] - to[0]);
+                d <= (q.range + r) * (q.range + r) + NUDGE
+            },
+            |t| self.target_gap(t, at) <= q.range + NUDGE,
+        )
+    }
+
+    /// The hull the walk from `at` to `to` crosses first: its index, the crossing and the edge
+    /// crossed. A node off the hulls' points (`vertex` below 0) tests from outside.
+    fn nearest_crossing(&self, vertex: i32, at: Point, to: Point) -> Option<(usize, Point, usize)> {
+        let mut crossing: Option<(usize, Point, usize)> = None;
+        let mut crossing_d = MOST;
+        for (i, hull) in self.hulls.iter().enumerate() {
+            if let Some((p, edge)) = hull.intersection(vertex < 0, at, to) {
+                let d = (p[1] - at[1]) * (p[1] - at[1]) + (p[0] - at[0]) * (p[0] - at[0]);
+                if d < crossing_d {
+                    crossing = Some((i, p, edge));
+                    crossing_d = d;
+                }
+            }
+        }
+        crossing
+    }
+
+    /// A best node whose walk to the goal crosses no hull: an unblocked walk ends the search at
+    /// the goal's node; a node on a point of the goal's hull with an entrance ends it there.
+    fn no_crossing(
+        &mut self,
+        q: &HullQuery,
+        best: usize,
+        rounds: &mut Rounds,
+    ) -> Result<Step, GenieError> {
+        let (at, vertex) = (self.nodes[best].at, self.nodes[best].vertex);
+        if !self.blocked(at, q.to)? {
+            rounds.best_node =
+                self.add_node(0, false, Some(best), q.to, Some(q.to), -1, -1, -1, false);
+            rounds.found = true;
+            return Ok(Step::End);
+        }
+        if 0 <= rounds.goal_hull && rounds.goal_hull == self.nodes[best].hull && 0 <= vertex {
+            let hull = &self.hulls[rounds.goal_hull as usize];
+            if let Some(&e) = hull.entrances.get(vertex as usize)
+                && (vertex as usize) < hull.points.len()
+                && 0 <= e
+            {
+                rounds.found = true;
+                rounds.best_node = Some(best);
+                rounds.entrance = e;
+                return Ok(Step::End);
+            }
+        }
+        Ok(Step::Next)
+    }
+
+    /// The crossed hull `hit`'s points as nodes from the crossing's node, both ways around from
+    /// the crossed `edge` (back from its start, on from its end), half of them each; a hull of
+    /// an odd count adds its last point on the cheaper way (the forward way on a tie).
+    pub(super) fn around_hull(&mut self, node: usize, hit: usize, edge: usize, to: Point) {
+        let np = self.hulls[hit].points.len();
+        let mut back = if edge >= 1 { edge } else { np } as i32 - 1;
+        let mut fwd = edge;
+        let (mut a, mut b) = (Some(node), Some(node));
+        for _ in 0..np / 2 {
+            if let Some(x) = a {
+                let p = self.hulls[hit].points[back as usize];
+                a = self.add_node(0, true, Some(x), p, Some(to), hit as i32, back, -1, false);
+            }
+            if let Some(x) = b {
+                let p = self.hulls[hit].points[fwd];
+                b = self.add_node(
+                    0,
+                    true,
+                    Some(x),
+                    p,
+                    Some(to),
+                    hit as i32,
+                    fwd as i32,
+                    -1,
+                    false,
+                );
+            }
+            back -= 1;
+            if back < 0 {
+                back = np as i32 - 1;
+            }
+            fwd = if fwd + 1 < np { fwd + 1 } else { 0 };
+        }
+        if np % 2 == 1 {
+            self.odd_point(hit, (a, back), (b, fwd), to);
+        }
+    }
+
+    /// A hull of an odd count's last point, `back` on the back way's node `a` or `fwd` on the
+    /// forward way's `b`: on `a` when it is cheaper than `b` or `b` is gone, else on `b`; none
+    /// when both ways are gone.
+    fn odd_point(
+        &mut self,
+        hit: usize,
+        (a, back): (Option<usize>, i32),
+        (b, fwd): (Option<usize>, usize),
+        to: Point,
+    ) {
+        let (qa, qb) = (
+            self.hulls[hit].points[back as usize],
+            self.hulls[hit].points[fwd],
+        );
+        match (a, b) {
+            (None, None) => {}
+            (Some(x), y) if y.is_none_or(|y| self.nodes[x].cost < self.nodes[y].cost) => {
+                let _ = self.add_node(0, true, Some(x), qa, Some(to), hit as i32, back, -1, false);
+            }
+            (_, Some(y)) => {
+                let _ = self.add_node(
+                    0,
+                    true,
+                    Some(y),
+                    qb,
+                    Some(to),
+                    hit as i32,
+                    fwd as i32,
+                    -1,
+                    false,
+                );
+            }
+            (Some(_), None) => unreachable!("taken by the arm above"),
+        }
+    }
+}

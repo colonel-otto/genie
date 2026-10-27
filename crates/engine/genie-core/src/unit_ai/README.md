@@ -11,7 +11,8 @@ show in checkpoint word 9.
 - `mod.rs` holds the `UnitAi` state, its notifies and its order queue.
 - `unit.rs` is the unit AI's part of the object's update.
 - `update.rs`, `retarget.rs` and `idle.rs` hold the full update, the retarget and the idle checks.
-- `notifies.rs` and `handle.rs` process the notifies.
+- `notifies.rs`, `handle.rs` and `type_notifies.rs` process the notifies: `handle.rs` hands each to
+  its unit-AI type's handler (`type_notifies.rs`), most of which pass it on to the base handler.
 - `process_order.rs`, `order_kinds.rs` and `attack_orders.rs` process the orders by kind.
 - `attacked.rs`, `damaged.rs` and `flight.rs` hold the answers to attacks and damage.
 - `attack_pick.rs`, `attack_rules.rs` and `cared.rs` say what each type can attack and what it
@@ -53,6 +54,7 @@ show in checkpoint word 9.
 | [`side.rs`](side.rs) | What the unit AI asks of the world (`UnitSide`) and the commands it gives its unit. |
 | [`surroundings.rs`](surroundings.rs) | What the unit AI knows of its surroundings: the searches' results, its home, its targets and what it has seen. |
 | [`tests.rs`](tests.rs) | Tests. |
+| [`type_notifies.rs`](type_notifies.rs) | Each unit-AI type's notify handler (slot 0x238): the animals', the villager's, the ships', the siege's, the soldier's, the tower's and the building's. |
 | [`unit.rs`](unit.rs) | The unit AI's part of the update: its surroundings, its side and its run. |
 | [`update.rs`](update.rs) | The full update: its order's tail, its target's block and the hunters' and gatherers' searches. |
 | [`best_target/`](best_target/) | `UnitAIModule::bestUnitToAttack` (158041 `0x140c44680`) and what it keeps: the attack categories (`FUN_140c4c8e0`) by which a unit AI's order history weighs its choice. |

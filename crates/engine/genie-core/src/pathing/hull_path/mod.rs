@@ -30,6 +30,7 @@ mod convex;
 mod find;
 mod node_lists;
 mod obstacles;
+mod rounds;
 mod setup;
 mod walks;
 
@@ -207,6 +208,17 @@ struct Target {
     at: Point,
     radius: [f32; 2],
     speed: f32,
+}
+
+/// One search's query: the start and the goal, the target on the goal (its id -1 for none and for
+/// the goal query's), and the range.
+#[derive(Clone, Copy, Debug)]
+struct HullQuery {
+    from: Point,
+    to: Point,
+    target: Option<Target>,
+    target_id: i32,
+    range: f32,
 }
 
 /// A walk out of a hull or into one (`pathWithinHull`): its result and whether a ray left the

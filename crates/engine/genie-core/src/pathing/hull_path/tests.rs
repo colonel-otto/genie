@@ -1,5 +1,6 @@
 use super::*;
 use crate::map::spatial::{Obstruction, Tiles};
+use crate::pathing::hull_path::rounds::Rounds;
 
 /// The unit square as `addShapeToHulls` makes a hull of it: high right, low right, low left,
 /// high left.
@@ -1239,4 +1240,178 @@ fn a_unit_within_range_needs_no_path() {
     let mut pather = HullPather::new(&w, 9171, 9149, 6, 0.2);
     let (result, path) = pather.find([9.75, 5.5], [10.5, 5.5], 9149, 0.1).unwrap();
     assert_eq!((result, path.length()), (0, 0.0));
+}
+
+/// The triangle hull (5, 6), (5, 4), (4, 5) crossed on its edge 1 by a node at `at` (the
+/// start's child, its walk to (9, 5)), with an open node of no cost on each point of `taken`
+/// first: the nodes [`HullPather::around_hull`] makes, each its place, parent and point, and
+/// the crossing node's index.
+fn around_triangle(at: Point, taken: &[i32]) -> (Vec<(Point, Option<usize>, i32)>, usize) {
+    let w = open_world();
+    let mut p = HullPather::new(&w, 9171, -1, 6, 0.2);
+    p.hulls.push(Hull {
+        points: vec![[5.0, 6.0], [5.0, 4.0], [4.0, 5.0]],
+        entrances: vec![-1; 3],
+        min: [4.0, 4.0],
+        max: [5.0, 6.0],
+        objects: Vec::new(),
+    });
+    let to = [9.0, 5.0];
+    let root = p.add_unrefused(0, true, None, [2.0, 5.0], Some(to), -1, -1);
+    for &v in taken {
+        let point = p.hulls[0].points[v as usize];
+        let _ = p.add_node(0, true, None, point, Some(to), 0, v, -1, false);
+    }
+    let node = p.add_unrefused(0, false, Some(root), at, Some(to), 0, -1);
+    p.around_hull(node, 0, 1, to);
+    let made = p.nodes[node + 1..]
+        .iter()
+        .map(|n| (n.at, n.parent, n.vertex))
+        .collect();
+    (made, node)
+}
+
+/// `FindShortPath` around a crossed hull: from the crossed edge 1 both ways, its start's point
+/// 0 back and its end's point 1 on, half the points each; a hull of an odd count adds its last
+/// point on the cheaper way, the forward way on a tie, the way left when the other's point was
+/// refused (an open node there costs no more), none when both were.
+#[test]
+fn a_crossed_hull_s_points_go_both_ways_and_an_odd_one_the_cheaper() {
+    let (made, n) = around_triangle([4.5, 5.6], &[]);
+    let a = Some(n + 1);
+    assert_eq!(
+        made,
+        [
+            ([5.0, 6.0], Some(n), 0),
+            ([5.0, 4.0], Some(n), 1),
+            ([4.0, 5.0], a, 2)
+        ]
+    );
+    let (made, n) = around_triangle([4.5, 5.0], &[]);
+    assert_eq!(made[2], ([4.0, 5.0], Some(n + 2), 2));
+    let (made, n) = around_triangle([4.5, 5.6], &[1]);
+    assert_eq!(
+        made,
+        [([5.0, 6.0], Some(n), 0), ([4.0, 5.0], Some(n + 1), 2)]
+    );
+    let (made, n) = around_triangle([4.5, 5.6], &[0]);
+    assert_eq!(
+        made,
+        [([5.0, 4.0], Some(n), 1), ([4.0, 5.0], Some(n + 1), 2)]
+    );
+    assert_eq!(around_triangle([4.5, 5.6], &[0, 1]).0, []);
+}
+
+/// `FindShortPath`'s end of a found path ([`HullPather::found_end`]): without an entrance the
+/// path stands; with one, the entrance's points but its last (the node's own) follow
+/// backwards; a walk in that ended in a box keeps its last leg only when the leg meets nothing
+/// or the target alone, else the last point goes and the path ends partway.
+#[test]
+fn a_found_path_follows_its_entrance_and_keeps_a_last_leg_on_the_target() {
+    let w = walled(8, [2.0, 5.5]);
+    let mut p = HullPather::new(&w, 9171, -1, 6, 0.2);
+    p.entrances[0].points = vec![[12.5, 5.5], [11.9, 5.5], [11.7, 5.5]];
+    let q = HullQuery {
+        from: [2.0, 5.5],
+        to: [12.5, 5.5],
+        target: None,
+        target_id: 9149,
+        range: 0.1,
+    };
+    let walk = || Waypoints {
+        points: vec![[2.0, 5.5], [11.7, 5.5]],
+        cost: 0.0,
+    };
+    let mut rounds = Rounds::new(0.0);
+    let mut path = walk();
+    assert_eq!(p.found_end(&q, &rounds, &mut path), Ok(true));
+    assert_eq!(path, walk());
+    rounds.entrance = 0;
+    let through = [[2.0, 5.5], [11.7, 5.5], [11.9, 5.5], [12.5, 5.5]];
+    let mut path = walk();
+    assert_eq!(p.found_end(&q, &rounds, &mut path), Ok(true));
+    assert_eq!(path.points, through);
+    // ended in a box: the last leg meets the target 9149 alone
+    rounds.entered_box = true;
+    let mut path = walk();
+    assert_eq!(p.found_end(&q, &rounds, &mut path), Ok(true));
+    assert_eq!(path.points, through);
+    let other = HullQuery { target_id: -1, ..q };
+    let mut path = walk();
+    assert_eq!(p.found_end(&other, &rounds, &mut path), Ok(false));
+    assert_eq!(path.points, through[..3]);
+}
+
+/// The search's end ([`HullPather::path_end`]) unfound, from (2, 5) to (9, 5): a node at
+/// (6, 5) nearer the goal than the walk within the start's hull is the path's end (a walk
+/// without points is unordered, the node's too); a walk nearer ends the path; without a node
+/// the walk is the path, or none (3) without one. Each ends partway (2).
+#[test]
+fn an_unfound_search_ends_at_the_node_or_the_walk_nearer_the_goal() {
+    let w = open_world();
+    let mut p = HullPather::new(&w, 9171, -1, 6, 0.2);
+    p.start = [2.0, 5.0];
+    let q = HullQuery {
+        from: [2.0, 5.0],
+        to: [9.0, 5.0],
+        target: None,
+        target_id: -1,
+        range: 0.1,
+    };
+    let root = p.add_unrefused(0, false, None, [2.0, 5.0], Some(q.to), -1, -1);
+    let node = p.add_unrefused(0, false, Some(root), [6.0, 5.0], Some(q.to), -1, -1);
+    let mut rounds = Rounds::new(7.0);
+    rounds.within = true;
+    rounds.best_node = Some(node);
+    let walked = |x: &[Point]| Waypoints {
+        points: x.to_vec(),
+        cost: 0.0,
+    };
+    let to_node = [[2.0, 5.0], [6.0, 5.0]];
+    for walk in [&[[2.0, 5.0], [4.0, 5.0]][..], &[]] {
+        let mut path = walked(walk);
+        assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(2));
+        assert_eq!(path.points, to_node);
+    }
+    let mut path = walked(&[[2.0, 5.0], [8.0, 5.0]]);
+    assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(2));
+    assert_eq!(path.points, [[2.0, 5.0], [8.0, 5.0]]);
+    rounds.best_node = None;
+    let mut path = walked(&[[2.0, 5.0], [8.0, 5.0]]);
+    assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(2));
+    rounds.within = false;
+    assert_eq!(p.path_end(&q, &rounds, &mut path), Ok(3));
+}
+
+/// A start and a goal in the same hull (the object 48's grown box): the round walks within the
+/// hull toward the goal first ([`HullPather::leave_start_hull`]). A goal no object holds is
+/// reached (1); a goal the object holds makes it the target (the goal query's, id -1), whose
+/// box the walk reaches (2). Without the target the walk to that goal ends partway on the
+/// hull's side (`within`), and the search goes on from the hull's ways out.
+#[test]
+fn a_goal_in_the_start_s_hull_is_walked_to_within_it() {
+    let mut w = walled(8, [4.9, 5.5]);
+    w.insert(48, placed(5.5, 5.5, 0.5, 2));
+    let mut p = HullPather::new(&w, 9171, -1, 6, 0.2);
+    let side = [4.799_9, 5.499_899];
+    let (result, path) = p.find([4.9, 5.5], [4.85, 6.15], -1, 0.0).unwrap();
+    assert_eq!(
+        (result, path.points),
+        (1, vec![[4.9, 5.5], side, [4.85, 6.15]])
+    );
+    let to = [6.1, 5.5];
+    let (result, path) = p.find([4.9, 5.5], to, -1, 0.0).unwrap();
+    assert_eq!((result, path.points), (2, vec![[4.9, 5.5], side]));
+    let q = HullQuery {
+        from: [4.9, 5.5],
+        to,
+        target: None,
+        target_id: -1,
+        range: 0.0,
+    };
+    let mut rounds = Rounds::new(0.0);
+    let mut path = Waypoints::default();
+    assert_eq!(p.round_start(&q, true, &mut rounds, &mut path), Ok(None));
+    assert!(rounds.within);
+    assert_eq!(path.points, [[4.9, 5.5], side]);
 }

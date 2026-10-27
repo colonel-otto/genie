@@ -10324,3 +10324,93 @@ fn an_attack_completed_on_the_attack_order_looks_for_the_next_or_ends_it() {
     let _ = handled(&mut u, done, &here, false);
     assert_eq!(u.state_position, [0.0, 0.0]);
 }
+
+/// A computer player's packed siege unit (class 51) and its attacker 77 at (22, 30), with a
+/// top action on the object 90.
+fn packed_siege() -> (UnitAi, Surroundings) {
+    let mut u = idle(SIEGE_AI);
+    u.current_action = 600;
+    let at = Surroundings {
+        id: 500,
+        class: PACKED_UNIT_CLASS,
+        position: [20.0, 30.0, 0.0],
+        units: vec![UnitSeen {
+            id: 77,
+            class: 22,
+            owner: 2,
+            state: 2,
+            position: [22.0, 30.0, 0.0],
+            ..UnitSeen::default()
+        }],
+        top_target: Some(TopTarget {
+            id: 90,
+            kind: 70,
+            position: [25.0, 30.0, 0.0],
+            radius: [0.5, 0.5],
+        }),
+        ..Surroundings::default()
+    };
+    (u, at)
+}
+
+/// The siege unit's handler (`FUN_140c287e0`) on a computer player's packed unit's damage
+/// ([`UnitAi::packed_damaged`]): an attacker the world does not hold ends it. Else the unit
+/// stops (slot 0xb0), which ends its top action, so its slot 0x160 finds no top target and a
+/// computer player's unit lets the units inside it go first (`FUN_141225c40`, not modelled);
+/// dead, its owner's AI would hear the alert (not modelled either).
+#[test]
+fn a_computer_s_packed_siege_unit_stops_and_runs_when_damaged() {
+    let n = Notify::own(77, DAMAGED, [77, 40, 0]);
+    let (mut u, at) = packed_siege();
+    let mut fx = Vec::new();
+    let r = u.handle(
+        n,
+        0,
+        &at,
+        true,
+        &mut rng(),
+        &mut Recorder::default(),
+        &mut fx,
+    );
+    assert_eq!(
+        r,
+        Err(GenieError::unsupported(
+            "a computer player's siege unit running away (FUN_141225c40)"
+        ))
+    );
+    assert_eq!(
+        (fx, u.current_action, u.last_action),
+        (vec![Effect::Stop], -1, 600)
+    );
+    let (mut u, at) = packed_siege();
+    let before = u.clone();
+    let stranger = Notify::own(78, DAMAGED, [78, 40, 0]);
+    let mut fx = Vec::new();
+    let r = u.handle(
+        stranger,
+        0,
+        &at,
+        true,
+        &mut rng(),
+        &mut Recorder::default(),
+        &mut fx,
+    );
+    assert_eq!((r, fx, u), (Ok(GO_ON), Vec::new(), before));
+    let (mut u, at) = packed_siege();
+    let dead = Notify::own(77, DAMAGED, [77, 0, 0]);
+    let r = u.handle(
+        dead,
+        0,
+        &at,
+        true,
+        &mut rng(),
+        &mut Recorder::default(),
+        &mut Vec::new(),
+    );
+    assert_eq!(
+        r,
+        Err(GenieError::unsupported(
+            "a computer player's AI hearing its unit's alert (slot 0x2e8, then slot 0x3c8)"
+        ))
+    );
+}

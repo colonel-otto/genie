@@ -191,21 +191,12 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/pathing/hull_path/find.rs",
-      "function": "HullPather::find_unclear",
-      "line": 92,
-      "cyclomatic": 115.0,
-      "coverage": 74.17721518987341,
-      "crap": 342.72195789785405,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/pathing/hull_path/walks.rs",
       "function": "HullPather::walk_out",
       "line": 296,
       "cyclomatic": 31.0,
-      "coverage": 77.23577235772358,
-      "crap": 42.33658235650372,
+      "coverage": 83.73983739837398,
+      "crap": 35.13140756432351,
       "crate": "genie-core"
     },
     {
@@ -314,15 +305,6 @@
       "cyclomatic": 35.0,
       "coverage": 74.4186046511628,
       "crap": 55.50731382142453,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai/handle.rs",
-      "function": "UnitAi::handle",
-      "line": 19,
-      "cyclomatic": 108.0,
-      "coverage": 65.69767441860465,
-      "crap": 578.7802174651291,
       "crate": "genie-core"
     },
     {

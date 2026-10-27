@@ -37,6 +37,7 @@ mod retarget;
 mod side;
 mod surroundings;
 pub mod task_finder;
+mod type_notifies;
 pub(crate) mod unit;
 mod update;
 pub(crate) mod world_view;

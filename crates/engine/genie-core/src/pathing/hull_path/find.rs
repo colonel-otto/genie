@@ -1,11 +1,12 @@
-//! `FindShortPath` (`FUN_140f85580`) and its search.
+//! `FindShortPath` (`FUN_140f85580`): the bounds, the query, the quick path and the area before
+//! its rounds, and the path at their end.
 
 use crate::GenieError;
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{below_or_unordered, maxss, minss, sqrt};
+use crate::pathing::hull_path::rounds::Rounds;
 use crate::pathing::hull_path::{
-    GROWTHS, HALF, HullPather, ITERATION_CAP, MOST, NEAR_TARGET, NUDGE, PATHS, Point, Target,
-    Waypoints,
+    HALF, HullPather, HullQuery, NEAR_TARGET, Point, Target, Waypoints,
 };
 
 impl HullPather<'_> {
@@ -87,37 +88,94 @@ impl HullPather<'_> {
     /// tile records (`FUN_1410561f0`) and resets its buffer (`FUN_1410562d0` with 0): every exit
     /// after the quick path's start does but the quick-only one (its caller, `FUN_1411506e0`,
     /// removes the records and leaves the buffer); the off-map and already-there exits come
-    /// before the start set the buffer.
-    #[allow(clippy::too_many_lines)]
+    /// before the start set the buffer. The search's rounds are [`HullPather::search`], its end
+    /// [`HullPather::path_end`].
     pub(super) fn find_unclear(
         &mut self,
         from: Point,
         to: Point,
         target_id: i32,
         range: f32,
-        mut keep: bool,
+        keep: bool,
         quick_only: bool,
     ) -> Result<(u8, Waypoints, bool), GenieError> {
         let r = self.radius;
-        let [w, h] = self.world.map;
         let mut path = Waypoints::default();
         if !keep {
             self.area = [-1, -1, -1, -1];
         }
-        self.bounds = [r, r, w as f32 - r, h as f32 - r];
-        let [_, _, bx1, by1] = self.bounds;
-        // each bound by `COMISS`/`JA` (0x140f8569f..0x140f85701): an unordered coordinate passes
-        if from[0] < r || bx1 < from[0] || from[1] < r || by1 < from[1] {
-            return Ok((4, path, false));
-        }
-        if (to[0] < r || bx1 < to[0] || to[1] < r || by1 < to[1])
-            && !self.edge_goal(to, target_id)?
-        {
+        if self.off_map(from, to, target_id)? {
             return Ok((4, path, false));
         }
         self.start = from;
         self.goal = to;
-        // the target counts only where it stands on the goal
+        let mut q = self.query(from, to, target_id, range)?;
+        if self.already_there(&q) {
+            return Ok((0, path, false));
+        }
+        self.buffer = (0.0 < r).then_some(r * HALF);
+        // the pather's buffer becomes the manager's (FUN_1410562d0), its temporary tile records
+        // go (FUN_1410561f0), and the pather's ignore list becomes the manager's
+        // (FUN_1410562e0 with +0xc0..+0xd0)
+        self.world.set_manager_buffer(self.buffer);
+        self.world.clear_tile_records();
+        self.world.set_manager_ignore(&self.ignore);
+        let quick_target = (q.target_id != -1).then_some(q.target_id);
+        if self.quick_path(from, self.quick_goal(&q), quick_target, &mut path)? {
+            return Ok((1, path, true));
+        }
+        if quick_only {
+            return Ok((3, path, false));
+        }
+        let keep = self.set_area(from, to, keep);
+        // no target on the goal: the first record with an object that holds the goal is the
+        // target, its id still -1 (`FUN_141051900` at 0x140f85fd9)
+        if q.target.is_none() {
+            q.target = self.goal_record(to)?;
+        }
+        let [ax0, ay0, ax1, ay1] = self.area;
+        self.world.check_known_records([
+            (ax0 - 5) as f32,
+            (ay0 - 5) as f32,
+            (ax1 + 6) as f32,
+            (ay1 + 6) as f32,
+        ])?;
+        self.empty(0);
+        let mut rounds = Rounds::new(sqrt(
+            (from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]),
+        ));
+        if let Some(result) = self.search(&q, keep, &mut rounds, &mut path)? {
+            return Ok((result, path, true));
+        }
+        let result = self.path_end(&q, &rounds, &mut path)?;
+        Ok((result, path, true))
+    }
+
+    /// `FindShortPath`'s bounds, the map less the radius (`+0x118`), and whether the start or the
+    /// goal lies beyond them (result 4): a goal beyond them stays when [`HullPather::edge_goal`]
+    /// takes it.
+    fn off_map(&mut self, from: Point, to: Point, target_id: i32) -> Result<bool, GenieError> {
+        let r = self.radius;
+        let [w, h] = self.world.map;
+        self.bounds = [r, r, w as f32 - r, h as f32 - r];
+        let [_, _, bx1, by1] = self.bounds;
+        // each bound by `COMISS`/`JA` (0x140f8569f..0x140f85701): an unordered coordinate passes
+        if from[0] < r || bx1 < from[0] || from[1] < r || by1 < from[1] {
+            return Ok(true);
+        }
+        Ok((to[0] < r || bx1 < to[0] || to[1] < r || by1 < to[1])
+            && !self.edge_goal(to, target_id)?)
+    }
+
+    /// The search's query: the target counts only where it stands on the goal; an object off the
+    /// goal makes the id -1.
+    fn query(
+        &self,
+        from: Point,
+        to: Point,
+        target_id: i32,
+        range: f32,
+    ) -> Result<HullQuery, GenieError> {
         let mut target_id = target_id;
         let target = if target_id < 0 {
             None
@@ -135,406 +193,148 @@ impl HullPather<'_> {
                 None => None,
             }
         };
+        Ok(HullQuery {
+            from,
+            to,
+            target,
+            target_id,
+            range,
+        })
+    }
+
+    /// Whether the unit is there already (result 0): on the goal, or within range of the target's
+    /// box or of the goal (the straight walk less the radius).
+    fn already_there(&self, q: &HullQuery) -> bool {
+        let (from, to) = (q.from, q.to);
         let straight =
             sqrt((from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]));
-        let gap = target
+        let gap = q
+            .target
             .as_ref()
-            .map_or(straight - r, |t| self.target_gap(t, from));
-        if (from[0] == to[0] && from[1] == to[1]) || gap <= range {
-            return Ok((0, path, false));
-        }
-        self.buffer = (0.0 < r).then_some(r * HALF);
-        // the pather's buffer becomes the manager's (FUN_1410562d0), its temporary tile records
-        // go (FUN_1410561f0), and the pather's ignore list becomes the manager's
-        // (FUN_1410562e0 with +0xc0..+0xd0)
-        self.world.set_manager_buffer(self.buffer);
-        self.world.clear_tile_records();
-        self.world.set_manager_ignore(&self.ignore);
-        // the quick path, to the goal moved by the range or short of the target
-        let quick = if range == 0.0
-            || target
+            .map_or(straight - self.radius, |t| self.target_gap(t, from));
+        (from[0] == to[0] && from[1] == to[1]) || gap <= q.range
+    }
+
+    /// The quick path's goal: without a range (or with a target off the goal) the goal, short of
+    /// a target on it by both radii when the target moves or stands near; with a range the goal
+    /// moved on by the range along the walk.
+    fn quick_goal(&self, q: &HullQuery) -> Point {
+        let (from, to, r) = (q.from, q.to, self.radius);
+        if q.range != 0.0
+            && !q
+                .target
                 .as_ref()
                 .is_some_and(|t| t.at[0] != to[0] && t.at[1] != to[1])
         {
-            let mut q = to;
-            if let Some(t) = target.as_ref()
-                && t.at[0] == to[0]
-                && t.at[1] == to[1]
-            {
-                let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
-                let d = dy * dy + dx * dx;
-                if t.speed != 0.0 || d <= NEAR_TARGET {
-                    let len = sqrt(d);
-                    q = [
-                        q[0] - (dx / len) * (r + t.radius[0]),
-                        q[1] - (dy / len) * (r + t.radius[1]),
-                    ];
-                }
-            }
-            q
-        } else {
             let v = [to[0] - from[0], to[1] - from[1], 0.0];
             let len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
             let (ux, uy) = (v[0] / len, v[1] / len);
-            [ux * range + to[0], uy * range + to[1]]
+            return [ux * q.range + to[0], uy * q.range + to[1]];
+        }
+        let mut goal = to;
+        if let Some(t) = q.target.as_ref()
+            && t.at[0] == to[0]
+            && t.at[1] == to[1]
+        {
+            let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
+            let d = dy * dy + dx * dx;
+            if t.speed != 0.0 || d <= NEAR_TARGET {
+                let len = sqrt(d);
+                goal = [
+                    goal[0] - (dx / len) * (r + t.radius[0]),
+                    goal[1] - (dy / len) * (r + t.radius[1]),
+                ];
+            }
+        }
+        goal
+    }
+
+    /// The area, unless kept: the walk's tiles and two more each way, on the map (`MINSS`,
+    /// `MAXSS` of the start's and the goal's, `CVTTSS2SI`, 0x140f85f61..0x140f85ff5). Whether the
+    /// search keeps its hulls: a new area builds them.
+    fn set_area(&mut self, from: Point, to: Point, keep: bool) -> bool {
+        if keep && self.area[0] != -1 {
+            return true;
+        }
+        let [w, h] = self.world.map;
+        let tile = |v: f32, d: i32| cvttss2si(v).wrapping_add(d);
+        let x0 = tile(minss(from[0], to[0]), -2);
+        let y0 = tile(minss(from[1], to[1]), -2);
+        let x1 = tile(maxss(from[0], to[0]), 2);
+        let y1 = tile(maxss(from[1], to[1]), 2);
+        self.area = [
+            x0.max(0),
+            y0.max(0),
+            if w <= x1 { w - 1 } else { x1 },
+            if h <= y1 { h - 1 } else { y1 },
+        ];
+        false
+    }
+
+    /// The search's end: the path to the node found, or to the one nearest the goal; a walk
+    /// within the start's hull nearer the goal than that node ends partway along the walk, and
+    /// without a node it ends there too, or finds none (3). The result.
+    pub(super) fn path_end(
+        &mut self,
+        q: &HullQuery,
+        rounds: &Rounds,
+        path: &mut Waypoints,
+    ) -> Result<u8, GenieError> {
+        let (from, to, range) = (q.from, q.to, q.range);
+        let Some(end) = rounds.best_node else {
+            if !rounds.within {
+                return Ok(3);
+            }
+            return Ok(self.partway(path, from, to, range));
         };
-        let quick_target = (target_id != -1).then_some(target_id);
-        if self.quick_path(from, quick, quick_target, &mut path)? {
-            return Ok((1, path, true));
-        }
-        if quick_only {
-            return Ok((3, path, false));
-        }
-        // the area, unless kept: the walk's tiles and two more each way, on the map (`MINSS`,
-        // `MAXSS` of the start's and the goal's, `CVTTSS2SI`, 0x140f85f61..0x140f85ff5)
-        if !keep || self.area[0] == -1 {
-            let tile = |v: f32, d: i32| cvttss2si(v).wrapping_add(d);
-            let x0 = tile(minss(from[0], to[0]), -2);
-            let y0 = tile(minss(from[1], to[1]), -2);
-            let x1 = tile(maxss(from[0], to[0]), 2);
-            let y1 = tile(maxss(from[1], to[1]), 2);
-            self.area = [
-                x0.max(0),
-                y0.max(0),
-                if w <= x1 { w - 1 } else { x1 },
-                if h <= y1 { h - 1 } else { y1 },
-            ];
-            keep = false;
-        }
-        // no target on the goal: the first record with an object that holds the goal is the
-        // target, its id still -1 (`FUN_141051900` at 0x140f85fd9)
-        let target = match target {
-            Some(t) => Some(t),
-            None => self.goal_record(to)?,
-        };
-        let [ax0, ay0, ax1, ay1] = self.area;
-        self.world.check_known_records([
-            (ax0 - 5) as f32,
-            (ay0 - 5) as f32,
-            (ax1 + 6) as f32,
-            (ay1 + 6) as f32,
-        ])?;
-        self.empty(0);
-        let mut nearest_d =
-            sqrt((from[1] - to[1]) * (from[1] - to[1]) + (from[0] - to[0]) * (from[0] - to[0]));
-        let mut found = false;
-        let mut entrance: i32 = -1;
-        let mut iterations = 0;
-        let mut growths = 0;
-        let mut within = false;
-        let mut entered_box = false;
-        let mut best_node: Option<usize> = None;
-        let mut start_hull = -1;
-        let mut goal_hull = -1;
-        'outer: loop {
-            if ITERATION_CAP <= iterations || GROWTHS <= growths {
-                break;
-            }
-            self.close_all(0);
-            if !keep && growths == 0 {
-                self.build_hulls()?;
-            }
-            let root = self.add_unrefused(0, true, None, from, Some(to), -1, -1);
-            start_hull = self.hull_of(from);
-            goal_hull = self.hull_of(to);
-            within = false;
-            if 0 <= start_hull {
-                let sh = start_hull as usize;
-                if start_hull == goal_hull {
-                    path.points.clear();
-                    let mut count = 0;
-                    let walk = self.walk_out(
-                        sh,
-                        from,
-                        Some(to),
-                        target,
-                        range,
-                        false,
-                        std::slice::from_mut(&mut path),
-                        1,
-                        &mut count,
-                    )?;
-                    if walk.result == 0 {
-                        // 2 for a target whose id is below 1, the goal query's among them
-                        let partial = target.is_some() && target_id < 1;
-                        return Ok((if partial { 2 } else { 1 }, path, true));
-                    }
-                    if walk.result == 3 || !walk.left_boxes {
-                        return Ok((3, path, true));
-                    }
-                    within = walk.result == 1;
-                }
-                let mut exits = std::mem::take(&mut self.exits);
-                for e in &mut exits {
-                    e.points.clear();
-                }
-                let mut count = 0;
-                let walk = self.walk_out(
-                    sh, from, None, None, range, true, &mut exits, PATHS, &mut count,
-                );
-                self.exits = exits;
-                // the walk's result is not read: its paths are
-                let _ = walk?;
-                if count < 1 {
-                    return Ok((3, path, true));
-                }
-                self.close(0, root);
-                for k in 0..count {
-                    let points = self.exits[k].points.clone();
-                    let n = points.len();
-                    if n <= 1 {
-                        continue;
-                    }
-                    // the way out's points in turn, its last open (none refused: closed, or
-                    // without a hull point)
-                    let mut node = root;
-                    for &p in &points[1..n - 1] {
-                        node =
-                            self.add_unrefused(0, false, Some(node), p, Some(to), start_hull, -1);
-                    }
-                    let last = points[n - 1];
-                    let _ = self.add_unrefused(0, true, Some(node), last, Some(to), start_hull, -1);
-                }
-            }
-            entered_box = false;
-            if 0 <= goal_hull {
-                let gh = goal_hull as usize;
-                let mut entrances = std::mem::take(&mut self.entrances);
-                for e in &mut entrances {
-                    e.points.clear();
-                }
-                let n = self.hulls[gh].points.len();
-                self.hulls[gh].entrances = vec![-1; n];
-                let mut count = 0;
-                let mut sides = [0usize; PATHS];
-                let walk = self.walk_in(
-                    gh,
-                    to,
-                    from,
-                    target,
-                    &mut entrances,
-                    &mut sides,
-                    PATHS,
-                    &mut count,
-                );
-                self.entrances = entrances;
-                entered_box = walk?.result == 5;
-                self.join_entrances(gh, count, &sides);
-            }
-            // the search
-            loop {
-                if ITERATION_CAP <= iterations {
-                    continue 'outer;
-                }
-                iterations += 1;
-                let Some(best) = self.nodes[0].next else {
-                    break 'outer;
-                };
-                let mut n = Some(best);
-                let mut off = false;
-                while let Some(i) = n {
-                    if !self.on_map(self.nodes[i].at) {
-                        off = true;
-                        break;
-                    }
-                    n = self.nodes[i].next;
-                }
-                if off {
-                    self.close(0, best);
-                    continue;
-                }
-                if !self.in_area(self.nodes[best].at) {
-                    if !self.grow_area()? {
-                        break 'outer;
-                    }
-                    growths += 1;
-                    continue 'outer;
-                }
-                self.close(0, best);
-                let at = self.nodes[best].at;
-                // within range of the target's box, or without one of the goal: the radius and the
-                // range, squared, NUDGE more (`COMISS`/`JNC` at 0x140f86cff: a NaN is not)
-                let reached = target.as_ref().map_or_else(
-                    || {
-                        let d =
-                            (at[1] - to[1]) * (at[1] - to[1]) + (at[0] - to[0]) * (at[0] - to[0]);
-                        d <= (range + r) * (range + r) + NUDGE
-                    },
-                    |t| self.target_gap(t, at) <= range + NUDGE,
-                );
-                if reached {
-                    found = target.is_none() || target_id >= 0;
-                    best_node = Some(best);
-                    break 'outer;
-                }
-                if self.nodes[best].to_goal < nearest_d {
-                    nearest_d = self.nodes[best].to_goal;
-                    best_node = Some(best);
-                }
-                let vertex = self.nodes[best].vertex;
-                let mut crossing: Option<(usize, Point, usize)> = None;
-                let mut crossing_d = MOST;
-                for (i, hull) in self.hulls.iter().enumerate() {
-                    if let Some((p, edge)) = hull.intersection(vertex < 0, at, to) {
-                        let d = (p[1] - at[1]) * (p[1] - at[1]) + (p[0] - at[0]) * (p[0] - at[0]);
-                        if d < crossing_d {
-                            crossing = Some((i, p, edge));
-                            crossing_d = d;
-                        }
-                    }
-                }
-                let Some((hit, p, edge)) = crossing else {
-                    // no hull between the node and the goal
-                    if !self.blocked(at, to)? {
-                        best_node =
-                            self.add_node(0, false, Some(best), to, Some(to), -1, -1, -1, false);
-                        found = true;
-                        break 'outer;
-                    }
-                    if 0 <= goal_hull && goal_hull == self.nodes[best].hull && 0 <= vertex {
-                        let entrances = &self.hulls[goal_hull as usize].entrances;
-                        if let Some(&e) = entrances.get(vertex as usize)
-                            && (vertex as usize) < self.hulls[goal_hull as usize].points.len()
-                            && 0 <= e
-                        {
-                            found = true;
-                            best_node = Some(best);
-                            entrance = e;
-                            break 'outer;
-                        }
-                    }
-                    continue;
-                };
-                if start_hull == -1 && goal_hull == -1 && self.blocked(at, p)? {
-                    continue;
-                }
-                if hit as i32 == self.nodes[best].hull && 0 <= vertex {
-                    continue;
-                }
-                let node = self.add_unrefused(0, false, Some(best), p, Some(to), hit as i32, -1);
-                if self.nodes[node].to_goal < nearest_d {
-                    nearest_d = self.nodes[node].to_goal;
-                    best_node = Some(node);
-                }
-                let np = self.hulls[hit].points.len();
-                let mut back = if edge >= 1 { edge } else { np } as i32 - 1;
-                let mut fwd = edge;
-                let (mut a, mut b) = (Some(node), Some(node));
-                for _ in 0..np / 2 {
-                    if let Some(x) = a {
-                        let q = self.hulls[hit].points[back as usize];
-                        a = self.add_node(
-                            0,
-                            true,
-                            Some(x),
-                            q,
-                            Some(to),
-                            hit as i32,
-                            back,
-                            -1,
-                            false,
-                        );
-                    }
-                    if let Some(x) = b {
-                        let q = self.hulls[hit].points[fwd];
-                        b = self.add_node(
-                            0,
-                            true,
-                            Some(x),
-                            q,
-                            Some(to),
-                            hit as i32,
-                            fwd as i32,
-                            -1,
-                            false,
-                        );
-                    }
-                    back -= 1;
-                    if back < 0 {
-                        back = np as i32 - 1;
-                    }
-                    fwd = if fwd + 1 < np { fwd + 1 } else { 0 };
-                }
-                if np % 2 == 1 {
-                    let (qa, qb) = (
-                        self.hulls[hit].points[back as usize],
-                        self.hulls[hit].points[fwd],
-                    );
-                    match (a, b) {
-                        (None, None) => {}
-                        (Some(x), y)
-                            if y.is_none_or(|y| self.nodes[x].cost < self.nodes[y].cost) =>
-                        {
-                            let _ = self.add_node(
-                                0,
-                                true,
-                                Some(x),
-                                qa,
-                                Some(to),
-                                hit as i32,
-                                back,
-                                -1,
-                                false,
-                            );
-                        }
-                        (_, Some(y)) => {
-                            let _ = self.add_node(
-                                0,
-                                true,
-                                Some(y),
-                                qb,
-                                Some(to),
-                                hit as i32,
-                                fwd as i32,
-                                -1,
-                                false,
-                            );
-                        }
-                        (Some(_), None) => unreachable!("taken by the arm above"),
-                    }
-                }
-            }
-        }
-        let _ = (start_hull, goal_hull);
-        // the end: the path to the node found, or to the one nearest the goal
-        let Some(end) = best_node else {
-            if !within {
-                return Ok((3, path, true));
-            }
-            return Ok((self.partway(&mut path, from, to, range), path, true));
-        };
-        if !found && within {
-            let last = *path.points.last().unwrap_or(&[f32::NAN, f32::NAN]);
-            let e = self.nodes[end].at;
-            let d_path =
-                (last[1] - to[1]) * (last[1] - to[1]) + (last[0] - to[0]) * (last[0] - to[0]);
-            let d_node = (e[1] - to[1]) * (e[1] - to[1]) + (e[0] - to[0]) * (e[0] - to[0]);
-            // a node nearer the goal than the walk's end is the end (`COMISS`/`JNC` to the
-            // partway end, 0x140f86cb6: an unordered distance takes the node)
-            if !below_or_unordered(d_node, d_path) {
-                return Ok((self.partway(&mut path, from, to, range), path, true));
-            }
+        if !rounds.found && rounds.within && !self.node_nearer(end, path, to) {
+            return Ok(self.partway(path, from, to, range));
         }
         path.points.clear();
-        self.build_path(&mut path, end)?;
-        if found {
-            if entrance < 0 {
-                return Ok((1, path, true));
-            }
-            let e = self.entrances[entrance as usize].points.clone();
-            for j in (0..e.len().saturating_sub(1)).rev() {
-                path.push(e[j]);
-            }
-            if !entered_box {
-                return Ok((1, path, true));
-            }
-            let k = path.points.len() - 1;
-            let hits = self.hits(path.points[k], path.points[k - 1])?;
-            if hits.len() < 2 && (hits.len() != 1 || hits[0].id == target_id) {
-                return Ok((1, path, true));
-            }
-            let _ = path.points.remove(k);
+        self.build_path(path, end)?;
+        if rounds.found && self.found_end(q, rounds, path)? {
+            return Ok(1);
         }
-        Ok((self.partway(&mut path, from, to, range), path, true))
+        Ok(self.partway(path, from, to, range))
+    }
+
+    /// Whether the node `end` lies nearer the goal than the walk's end, the path's last point (a
+    /// path without one is NaN). `COMISS`/`JNC` to the partway end at 0x140f86cb6: an unordered
+    /// distance takes the node.
+    fn node_nearer(&self, end: usize, path: &Waypoints, to: Point) -> bool {
+        let last = *path.points.last().unwrap_or(&[f32::NAN, f32::NAN]);
+        let e = self.nodes[end].at;
+        let d_path = (last[1] - to[1]) * (last[1] - to[1]) + (last[0] - to[0]) * (last[0] - to[0]);
+        let d_node = (e[1] - to[1]) * (e[1] - to[1]) + (e[0] - to[0]) * (e[0] - to[0]);
+        below_or_unordered(d_node, d_path)
+    }
+
+    /// The found node's path on into the goal's hull: along its entrance, if any, backwards. A
+    /// path whose entrance ends in a box keeps its last leg only when it hits nothing or the
+    /// target alone; else the last point goes. Whether the path is found (1); else it ends
+    /// partway.
+    pub(super) fn found_end(
+        &self,
+        q: &HullQuery,
+        rounds: &Rounds,
+        path: &mut Waypoints,
+    ) -> Result<bool, GenieError> {
+        if rounds.entrance < 0 {
+            return Ok(true);
+        }
+        let e = &self.entrances[rounds.entrance as usize].points;
+        for j in (0..e.len().saturating_sub(1)).rev() {
+            path.push(e[j]);
+        }
+        if !rounds.entered_box {
+            return Ok(true);
+        }
+        let k = path.points.len() - 1;
+        let hits = self.hits(path.points[k], path.points[k - 1])?;
+        if hits.len() < 2 && (hits.len() != 1 || hits[0].id == q.target_id) {
+            return Ok(true);
+        }
+        let _ = path.points.remove(k);
+        Ok(false)
     }
 }
