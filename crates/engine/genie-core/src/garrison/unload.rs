@@ -14,8 +14,10 @@ pub(super) const NO_POINT: f32 = crate::math::image::garrison::NO_POINT;
 pub(super) const UNLOAD_RANGE: f32 = crate::math::image::garrison::UNLOAD_RANGE;
 
 impl World {
-    /// UNLOAD (`FUN_14161f410`) of player `player`'s objects `ids` (each alive, at least 1 hit
-    /// point; `COMISS`/`JC`: a NaN is):
+    /// UNLOAD (`FUN_14161f410`) by player `player` of the objects `ids` its check keeps
+    /// ([`World::unload_check`]: its own, and an ally's the command ties to it), any player's
+    /// (the command's list, `FUN_140e6b750`), each alive (at least 1 hit point; `COMISS`/`JC`: a
+    /// NaN is), its owner's from there on:
     /// - A unit inside a building leaves it toward the point (with its sound, no work), its
     ///   orders gone and, of type 70 and up, no longer under the town bell.
     /// - A unit (below type 80) inside a transport (type 70 or more) or, with `flag` 3, the unit
@@ -40,10 +42,14 @@ impl World {
         unit_type: i32,
         sound: bool,
     ) -> Result<(), GenieError> {
+        let Some(checked) = self.unload_check(player, ids, flag, unit_type) else {
+            return Ok(());
+        };
         // the drop locations' last place across the command's units (FUN_14161f410's locals)
         let mut last = None;
-        for &id in ids {
-            let Some(idx) = self.players[player].objects.iter().position(|u| u.id == id) else {
+        for (&id, place) in checked.iter().zip(self.lookup(&checked)) {
+            // any player's object the check kept; a sleeping one (below type 30) is not held
+            let Some(crate::orders::Place::Live(player, idx)) = place else {
                 continue;
             };
             let unit = &self.players[player].objects[idx];

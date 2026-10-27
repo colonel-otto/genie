@@ -2185,6 +2185,36 @@ fn a_unit_inside_a_transport_unloaded_goes_ashore_about_it() {
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
 }
 
+/// UNLOAD of the issuer's villager inside an ally's ship (426107079's player 3 at update 409):
+/// the check keeps the ally's ship the command ties to the issuer's unit (flag 3,
+/// `FUN_140e6f620`), the command's list holds any player's object (`FUN_140e6b750`), and the
+/// villager goes ashore about it. Without the alliance both ways the ship goes from the list.
+#[test]
+fn a_unit_inside_an_ally_s_transport_unloaded_goes_ashore() {
+    let ally = |both_ways: bool| {
+        let mut t = coast_world([14.5, 10.5]);
+        let i = t.players[1]
+            .objects
+            .iter()
+            .position(|u| u.id == 200)
+            .unwrap();
+        let ship = t.players[1].objects.remove(i);
+        t.players[2].objects.push(ship);
+        t.players[1].relations = vec![3, 0, 0, 3];
+        t.players[2].relations = vec![3, if both_ways { 4 } else { 3 }, 0, 3];
+        t
+    };
+    let mut t = ally(true);
+    let spot = ashore(&mut t, [14.5, 10.5], 1.0);
+    t.unload(1, &[200], [-1.0, -1.0], 3, 1000, false).unwrap();
+    let v = t.object(1000).unwrap().1;
+    assert_eq!(v.life.inside, None);
+    assert_eq!(v.position, [spot[0], spot[1], 0.0]);
+    let mut t = ally(false);
+    t.unload(1, &[200], [-1.0, -1.0], 3, 1000, false).unwrap();
+    assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+}
+
 #[test]
 fn a_villager_beside_a_ship_enters_it_at_once() {
     // in reach (gap 0.8, range 1) of a ship with speed: the tiles (5, 19) and (5, 20) are

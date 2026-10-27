@@ -291,6 +291,61 @@ impl World {
         Some(ids)
     }
 
+    /// UNLOAD's check (`FUN_140e6f620`) of the ids of `player`: only the first 60 (500 for a
+    /// computer, `FUN_140e6b250`) go on. An id the world does not hold (`FUN_140e6bad0`, live or
+    /// sleeping; −1 none) becomes −1. Its own player's object stays. Another player's stays when
+    /// the two count each other as allies ([`World::mutual_allies`]) and the command ties it to
+    /// the issuer: `flag` 1 names the issuer (`named`), flags 3 to 6 an object of the issuer's
+    /// (`FUN_1415417a0`). Any other stays only with the setting `+0x1074`
+    /// ([`crate::world::settings::Settings::cheats_enabled`]). A human's command whose ids all
+    /// went is refused (None). The packet's size tests are the decoder's, and the world's
+    /// `+0xb12` is not held.
+    pub(crate) fn unload_check(
+        &self,
+        player: usize,
+        ids: &[i32],
+        flag: u8,
+        named: i32,
+    ) -> Option<Vec<i32>> {
+        let computer = self.players[player].computer;
+        let mut ids = ids[..ids.len().min(if computer { 500 } else { 60 })].to_vec();
+        let tied = |owner: usize| {
+            self.mutual_allies(owner, player)
+                && match flag {
+                    1 => usize::try_from(named) == Ok(player),
+                    3..=6 => self.place(named).is_some_and(|p| p.player() == player),
+                    _ => false,
+                }
+        };
+        let mut dropped = 0;
+        for id in &mut ids {
+            let keep = (*id != -1)
+                && self.place(*id).is_some_and(|p| {
+                    p.player() == player || tied(p.player()) || self.settings.cheats_enabled
+                });
+            if !keep {
+                *id = -1;
+                dropped += 1;
+            }
+        }
+        if ids.len() <= dropped && !computer {
+            return None;
+        }
+        Some(ids)
+    }
+
+    /// `FUN_1416642c0` with the ally flag: players `a` and `b` each count the other as its own
+    /// or allied ([`crate::unit_ai::task_finder::allied`] on each one's relations); not for a
+    /// player the world lacks.
+    pub(crate) fn mutual_allies(&self, a: usize, b: usize) -> bool {
+        let allied = |from: usize, to: usize| {
+            self.players
+                .get(from)
+                .is_some_and(|p| crate::unit_ai::task_finder::allied(&p.relations, from, to, true))
+        };
+        allied(a, b) && allied(b, a)
+    }
+
     /// `FUN_140e6b750`: each id's object (`FUN_1415417a0`, live or sleeping), None where the
     /// world holds none; the list keeps the ids' count.
     pub(crate) fn lookup(&self, ids: &[i32]) -> Vec<Option<Place>> {

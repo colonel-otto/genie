@@ -754,6 +754,49 @@ fn the_command_check_drops_gone_units_and_others_units_of_its_first_60() {
     assert_eq!((checked[0], checked[1], checked[60]), (11, -1, 30));
 }
 
+/// `FUN_140e6f620`: UNLOAD's check of its first 60 ids (500 for a computer), which alone go on.
+/// Its own unit stays and one the world lacks becomes −1. Another player's stays when the two
+/// count each other as allies (`FUN_1416642c0`) and the command names the issuer (flag 1) or
+/// an object of the issuer's (flags 3 to 6); with the setting `+0x1074` any stays. A human's
+/// command left without a unit is refused.
+#[test]
+fn the_unload_check_keeps_an_ally_s_object_the_command_ties_to_the_issuer() {
+    let units = [(11, 4, [20.0, 20.0]), (12, 4, [21.0, 20.0])];
+    let mut t = soldiers(&units, &[]);
+    t.players.push(crate::world::Player {
+        objects: vec![Unit {
+            id: 30,
+            ..Unit::default()
+        }],
+        ..crate::world::Player::default()
+    });
+    t.players[1].relations = vec![3, 0, 4];
+    t.players[2].relations = vec![3, 0, 0];
+    let check = |t: &World, flag, named| t.unload_check(1, &[11, 30, 99], flag, named);
+    assert_eq!(check(&t, 3, 12), Some(vec![11, 30, -1]));
+    assert_eq!(check(&t, 6, 12), Some(vec![11, 30, -1]));
+    assert_eq!(check(&t, 1, 1), Some(vec![11, 30, -1]));
+    // the named object of another player's, the issuer not named, another flag: out
+    assert_eq!(check(&t, 3, 30), Some(vec![11, -1, -1]));
+    assert_eq!(check(&t, 1, 2), Some(vec![11, -1, -1]));
+    assert_eq!(check(&t, 0, 12), Some(vec![11, -1, -1]));
+    assert_eq!(check(&t, 7, 12), Some(vec![11, -1, -1]));
+    // allied one way only: out, unless the setting lets any through
+    t.players[2].relations = vec![3, 3, 0];
+    assert_eq!(check(&t, 3, 12), Some(vec![11, -1, -1]));
+    t.settings.cheats_enabled = true;
+    assert_eq!(check(&t, 0, 12), Some(vec![11, 30, -1]));
+    t.settings.cheats_enabled = false;
+    assert_eq!(t.unload_check(1, &[30, 99], 3, 12), None);
+    t.players[1].computer = true;
+    assert_eq!(t.unload_check(1, &[30, 99], 3, 12), Some(vec![-1, -1]));
+    t.players[1].computer = false;
+    // past the first 60 nothing goes on
+    let mut ids = vec![11; 60];
+    ids.push(12);
+    assert_eq!(t.unload_check(1, &ids, 3, 12).map(|c| c.len()), Some(60));
+}
+
 /// `FUN_140e6b750`: each id's object, live or sleeping, None for a gone one, in the ids' order.
 #[test]
 fn the_lookup_keeps_a_gone_unit_s_entry() {

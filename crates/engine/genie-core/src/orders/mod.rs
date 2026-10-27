@@ -142,6 +142,15 @@ pub(crate) enum Place {
     Sleeping(usize, usize),
 }
 
+impl Place {
+    /// The object's player (`+0x138`'s number).
+    pub(crate) const fn player(self) -> usize {
+        match self {
+            Self::Live(p, _) | Self::Sleeping(p, _) => p,
+        }
+    }
+}
+
 /// What the order splitter reads of a unit: its master's type, formation category (not 0),
 /// object flags' bit 1, its top speed (slot 0x208), its place and where it last moved to (slot
 /// 0x520's ground part), its state, and for the path between two units its master's radius on
