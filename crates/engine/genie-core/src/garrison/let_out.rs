@@ -35,8 +35,9 @@ impl World {
     /// holds it (its unit AI forgets its target, `FUN_140c5e1e0`; [`World::gather`]); else, or
     /// with a point, it moves there ([`World::gather_move`] after the same forgetting). False
     /// when no spot is free. With neither a point nor a gather point its unit AI stops, forgets
-    /// its target and takes its stance again (slots 0xb0 and 0x1c0). Not modelled: the work given
-    /// (slot 0x128 with a target), a gather point of kind 0xff,
+    /// its target and takes its stance again (slots 0xb0 and 0x1c0). With an object to work on
+    /// (`work_on`, `GO_BACK_TO_WORK`'s) its work command (slot 0x128) goes to it at the point first.
+    /// Not modelled: a gather point of kind 0xff,
     /// class 42's and livestock's counts in a building of a player with `+0x88`, a siege
     /// building's (class 13) slot 0x1b0; not held: the building's villager count (`+0xba8`) and
     /// raider count (`+0xc2c`, which the building's slot 0x1c8 `FUN_1411d6ad0` lowers for a unit

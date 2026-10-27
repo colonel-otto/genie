@@ -26,6 +26,13 @@ pub(crate) const FISHING_SHIP: i16 = 21;
 /// reach (`DAT_14330ebcc`).
 pub(crate) const FISHING_REACH: f32 = crate::math::image::turn::FISHING_REACH;
 
+/// Whether the planner's result `code` lets a drop site count in [`drop_site_search`]: a path
+/// to it or into its range (below 2), or for a fishing ship seeking by path one the planner
+/// does not reach (3 and up) whose footprint lies `near` ([`FISHING_REACH`]).
+pub(crate) fn counted(code: u8, by_path: bool, fishing: bool, near: impl FnOnce() -> bool) -> bool {
+    code < 2 || (by_path && fishing && 3 <= code && near())
+}
+
 /// A search for drop sites (`FUN_1411671e0`: in state 2, not at work on the action type `at_work`
 /// (its argument 8: an object of type 40 up whose top action is of that type, or `0x7c` too for
 /// `0x7d`, as the Gather's `set_state` 8 and 3 call it; −1 none), not inside another when
@@ -41,13 +48,6 @@ pub(crate) const FISHING_REACH: f32 = crate::math::image::turn::FISHING_REACH;
 /// drop site the planner does not reach (its result 3 or more) counts by its path's length too
 /// while the footprints' squared gap (`FUN_14118f8c0`) is at most [`FISHING_REACH`]. A villager
 /// tending a pasture (its pasture's place) is not modelled. The first of equals wins.
-/// Whether the planner's result `code` lets a drop site count in [`drop_site_search`]: a path
-/// to it or into its range (below 2), or for a fishing ship seeking by path one the planner
-/// does not reach (3 and up) whose footprint lies `near` ([`FISHING_REACH`]).
-pub(crate) fn counted(code: u8, by_path: bool, fishing: bool, near: impl FnOnce() -> bool) -> bool {
-    code < 2 || (by_path && fishing && 3 <= code && near())
-}
-
 pub(crate) fn drop_site_search(
     units: &[Unit],
     masters: &Masters,

@@ -421,6 +421,87 @@ fn a_failed_move_walks_again_once_then_waits_and_a_wait_walks_again() {
     assert_eq!((enter.state, enter.move_to), (WALK, Some(MoveTo::Start)));
 }
 
+/// The Enter's test of its target (`FUN_140a87a80`'s start): a target gone, dead (state 3 or
+/// more), of an unallied player or without room is state 11, which is not modelled; a held
+/// one passes.
+#[test]
+fn an_enter_holds_only_a_live_allied_target_with_room() {
+    let ship = moved_ship(89.5);
+    let reason = |t| EnterAction::held_target(t).unwrap_err().reason();
+    assert_eq!(reason(None), "an Enter whose building is gone (state 11)");
+    let died = "an Enter whose building died or is not allied (state 11)";
+    assert_eq!(reason(Some(EnterTarget { state: 3, ..ship })), died);
+    let unallied = EnterTarget {
+        allied: false,
+        ..ship
+    };
+    assert_eq!(reason(Some(unallied)), died);
+    let full = EnterTarget {
+        room: false,
+        ..ship
+    };
+    assert_eq!(
+        reason(Some(full)),
+        "an Enter whose building has no room (state 11)"
+    );
+    assert_eq!(EnterAction::held_target(Some(ship)), Ok(ship));
+}
+
+/// State 4's test of a moved target (`FUN_140a7bbf0`, `FUN_140a7bd10`): a target on the point,
+/// or off it by at most half a tile on every axis, stays; more than half a tile on one axis
+/// moved; a NaN offset compares as not moved (`COMISS`/`JA`).
+#[test]
+fn an_enter_s_target_moved_only_beyond_half_a_tile() {
+    let enter = EnterAction::new(7420, [82.5, 89.5, 0.0], 1.0, 20);
+    let at = |y: f32| EnterTarget {
+        position: [82.5, y, 0.0],
+        ..moved_ship(y)
+    };
+    assert!(!enter.target_moved(&at(89.5)));
+    assert!(!enter.target_moved(&at(90.0)));
+    assert!(enter.target_moved(&at(90.1)));
+    assert!(enter.target_moved(&at(88.9)));
+    assert!(!enter.target_moved(&at(f32::NAN)));
+}
+
+/// State 4's `MoveTo` (`FUN_140a992b0`) on house 10028 within 0.1 (the walker 0.8 off it) with
+/// [`WalkRig`]'s walker: a start
+/// asks for its path (a `MoveTo` that waited once, `+0x6c` 1, counts as having waited, 2) and
+/// moves; a move runs the motion step and keeps moving; both give code 0. A `MoveTo` that
+/// ended, or none, gives 1, a failed one 3.
+///
+/// [`WalkRig`]: crate::movement::tests::WalkRig
+#[test]
+fn an_enter_s_move_to_starts_moves_and_reports_its_code() {
+    use crate::movement::tests::WalkRig;
+    let mut rig = WalkRig::on_the_path();
+    let mut enter = EnterAction {
+        move_to: Some(MoveTo::Start),
+        move_wait: crate::movement::move_to::MoveWait {
+            state: 1,
+            timer: 0.0,
+            delay: 1.0,
+        },
+        ..EnterAction::new(10028, [30.0, 88.0, 0.0], 0.1, 3)
+    };
+    let code = enter.walk_code(&mut rig.walk(4), 0.1, (true, 0));
+    assert_eq!(code, Ok(0));
+    assert_eq!(
+        (enter.move_to, enter.move_wait.state),
+        (Some(MoveTo::Moving), 2)
+    );
+    let code = enter.walk_code(&mut rig.walk(4), 0.1, (true, 0));
+    assert_eq!((code, enter.move_to), (Ok(0), Some(MoveTo::Moving)));
+    for (move_to, code) in [
+        (None, 1),
+        (Some(MoveTo::Arrived), 1),
+        (Some(MoveTo::Failed), 3),
+    ] {
+        enter.move_to = move_to;
+        assert_eq!(enter.walk_code(&mut rig.walk(4), 0.1, (true, 0)), Ok(code));
+    }
+}
+
 #[test]
 fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
     // FUN_140a85f30 on an idle transport with room and speed
@@ -1186,6 +1267,117 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     assert!(v.mover.as_ref().unwrap().speed_stopped);
     let members: Vec<i32> = t.groups.groups[0].members.iter().map(|m| m.id).collect();
     assert_eq!(members, [401]);
+}
+
+/// Villager 400 (with a unit AI) beside town centre 100, in reach of its garrison task (range
+/// 1), on [`let_out_world`]; `setup` changes the world, then the villager's Enter starts
+/// ([`World::start_enter`]). The result and the world after it.
+fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>, World) {
+    let mut t = let_out_world();
+    let mut v = unit(400, VILLAGER, 25.0);
+    v.position = [12.5, 10.0, 0.0];
+    let mut walker = crate::gathering::hunt::tests::walker();
+    walker.stats = standing();
+    v.mover = Some(walker);
+    v.ai = Some(crate::unit_ai::UnitAi {
+        ai_type: 8,
+        current_order: -1,
+        current_action: -1,
+        current_target: -1,
+        ..crate::unit_ai::UnitAi::default()
+    });
+    t.players[1].objects.push(v);
+    t.players[1].attributes = vec![0.0; 250];
+    let placed = crate::map::spatial::Placed {
+        position: [12.5, 10.0, 0.0],
+        radius: [0.2, 0.2],
+        class: 4,
+        player: 1,
+        master: VILLAGER,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(400, placed);
+    setup(&mut t);
+    let idx = t.players[1].objects.len() - 1;
+    let garrison = Task {
+        work_range: 1.0,
+        ..task(GARRISON, 3)
+    };
+    let r = t.start_enter(1, idx, 100, &garrison, [10.0, 10.0, 0.0], false);
+    (r, t)
+}
+
+/// The enter into a building (`FUN_140a867b0`): a villager carrying food into a town centre
+/// that takes it as a drop site gives the load first (food and the food gathered, attribute
+/// 166) and carries nothing after; without the drop-site entry it keeps the load. A centre at
+/// a fifth of its hit points or less (480 of 2400) and a master that transforms into the
+/// centre (task 0x88) are not modelled, nor is the Enter's state 11 for a full centre.
+#[test]
+fn an_enter_gives_its_load_to_a_drop_site_and_needs_room() {
+    let carrying = |t: &mut World| {
+        let v = t.players[1].objects.last_mut().unwrap();
+        (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    };
+    let drop_site = |t: &mut World| {
+        t.drop_sites = vec![crate::unit_ai::task_finder::DropSite {
+            building: TC,
+            worker_class: 4,
+            targets: vec![crate::unit_ai::task_finder::DropTarget {
+                class: 7,
+                workers: -1,
+                state: -1,
+                attribute: 17,
+            }],
+            ..crate::unit_ai::task_finder::DropSite::default()
+        }];
+    };
+    let (r, t) = enters_the_centre(|t| {
+        carrying(t);
+        drop_site(t);
+    });
+    assert_eq!(r, Ok(()));
+    let v = t.object(400).unwrap().1;
+    assert_eq!(v.life.inside, Some(100));
+    assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
+    let p = &t.players[1];
+    assert_eq!((p.resources[0], p.attributes[166]), (6.0, 6.0));
+    let (r, t) = enters_the_centre(carrying);
+    assert_eq!(r, Ok(()));
+    let v = t.object(400).unwrap().1;
+    assert_eq!((v.life.inside, v.life.amount), (Some(100), 6.0));
+    let reason = |setup: fn(&mut World)| enters_the_centre(setup).0.unwrap_err().reason();
+    let weak: fn(&mut World) = |t| t.object_mut(100).unwrap().1.life.hp = 480.0;
+    assert_eq!(
+        reason(weak),
+        "an enter into a building at a fifth of its hit points (state 13)"
+    );
+    let transforms: fn(&mut World) = |t| {
+        for m in &mut t.masters {
+            let v = m.get_mut(VILLAGER).unwrap();
+            v.tasks.push(Task {
+                object_id: TC,
+                ..task(0x88, -1)
+            });
+        }
+    };
+    assert_eq!(
+        reason(transforms),
+        "an enter of a master that transforms (task 0x88)"
+    );
+    let full: fn(&mut World) = |t| {
+        for m in &mut t.masters {
+            m.get_mut(TC).unwrap().garrison = 0;
+        }
+    };
+    assert_eq!(
+        reason(full),
+        "an Enter into a building without room (state 11)"
+    );
 }
 
 /// Puts unit `id` of player `p` and master `m` inside the town centre.
@@ -2138,4 +2330,152 @@ fn a_buildings_count_takes_relics_in_and_leaves_raiders_unmodelled() {
     u.raider_countdown = 20;
     t.players[1].objects.push(u);
     assert_eq!(t.garrisoned(200), Ok(1));
+}
+
+/// [`coast_world`] with its ship 200 at `ship`, the mesh built, after UNLOAD to `to`; `set` then
+/// changes the ship's Transport, and one update (dt 100) runs.
+fn transport_ticked(
+    ship: [f32; 2],
+    to: [f32; 2],
+    set: impl FnOnce(&mut transport::TransportAction),
+) -> World {
+    let mut t = coast_world(ship);
+    t.build_mesh();
+    t.unload(1, &[200], to, 0, -1, false).unwrap();
+    set(t.object_mut(200).unwrap().1.transport.as_mut().unwrap());
+    t.tick(100);
+    assert_eq!(t.players[1].unsupported, None);
+    t
+}
+
+/// The Transport's update in the ship's (`transport_update`): beside the shore (state 6, the
+/// land within 2 of its tile) the update asks for the unload, which the caller runs after the
+/// actions: the villager goes ashore and the Transport idles. A failed one (state 13) tells
+/// the unit AI (0x1f9 with the transport action value), idles and leaves the list; a done one
+/// (state 1) leaves it quietly.
+#[test]
+fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() {
+    let t = transport_ticked([14.5, 10.5], [15.5, 10.5], |_| ());
+    let ship = t.object(200).unwrap().1;
+    assert_eq!(ship.transport.map(|t| t.state), Some(transport::IDLE));
+    assert_eq!(ship.garrison, [0; 0]);
+    assert_eq!(t.object(1000).unwrap().1.life.inside, None);
+    let failed = |tr: &mut transport::TransportAction| tr.state = transport::FAILED;
+    let t = transport_ticked([10.5, 10.5], [17.5, 10.5], failed);
+    let ship = t.object(200).unwrap().1;
+    assert_eq!(ship.transport, None);
+    let heard: Vec<_> = ship
+        .ai
+        .as_ref()
+        .unwrap()
+        .notifies
+        .iter()
+        .map(|n| (n.kind, n.p))
+        .collect();
+    assert_eq!(
+        heard,
+        [(
+            crate::unit_ai::ACTION_FAILED,
+            [transport::TRANSPORT_ACTION, 0, 0]
+        )]
+    );
+    // off the shore its MoveTo starts: the walk the unit AI asked for moves on
+    let t = transport_ticked([10.5, 10.5], [17.5, 10.5], |_| ());
+    let tr = t.object(200).unwrap().1.transport.unwrap();
+    assert_eq!(
+        (tr.state, tr.move_to),
+        (transport::SAIL_TO_UNLOAD, Some(MoveTo::Moving))
+    );
+    // an unload far from the point's land cannot unload: the owner hears it (a human's
+    // interface only) and the Transport idles with the villager inside
+    let far = |tr: &mut transport::TransportAction| {
+        (tr.state, tr.move_to, tr.retarget) = (transport::UNLOAD, None, false);
+        tr.point = [17.5, 10.5, 0.0];
+    };
+    let t = transport_ticked([10.5, 10.5], [17.5, 10.5], far);
+    let tr = t.object(200).unwrap().1.transport.unwrap();
+    assert_eq!(tr.state, transport::IDLE);
+    assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+    // a computer player's AI would hear it, which is not modelled
+    let mut t = coast_world([10.5, 10.5]);
+    t.build_mesh();
+    t.players[1].computer = true;
+    t.unload(1, &[200], [17.5, 10.5], 0, -1, false).unwrap();
+    far(t.object_mut(200).unwrap().1.transport.as_mut().unwrap());
+    t.tick(100);
+    let stop = t.players[1]
+        .unsupported
+        .as_ref()
+        .map(|(_, _, e)| e.reason());
+    assert_eq!(
+        stop,
+        Some("a computer player's AI hearing its unit's alert (slot 0x2e8, then slot 0x3c8)")
+    );
+    let done = |tr: &mut transport::TransportAction| tr.state = transport::DONE;
+    let t = transport_ticked([10.5, 10.5], [17.5, 10.5], done);
+    let ship = t.object(200).unwrap().1;
+    assert_eq!(ship.transport, None);
+    assert_eq!(ship.ai.as_ref().unwrap().notifies, []);
+    assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
+}
+
+/// [`let_out_world`] with villager 1000 (its unit AI on target 77, stance 1) inside town centre
+/// 100 and a second centre 101 of player 1 at (16, 4), which the villager's garrison task
+/// takes; `setup` changes the world before the villager is let out toward `point` with
+/// `work_on` ([`World::let_out`]).
+fn let_out_beside_a_second_centre(
+    setup: impl FnOnce(&mut World),
+    point: [f32; 2],
+    work_on: Option<i32>,
+) -> (Result<bool, GenieError>, World) {
+    let mut t = let_out_world();
+    inside_tc(&mut t, 1, 1000, VILLAGER);
+    t.object_mut(1000).unwrap().1.ai = Some(crate::unit_ai::UnitAi {
+        current_action: 0x261,
+        current_target: 77,
+        stance: 1,
+        ..crate::unit_ai::UnitAi::default()
+    });
+    let mut second = unit(101, TC, 2400.0);
+    second.position = [16.0, 4.0, 0.0];
+    t.players[1].objects.push(second);
+    let placed = *t.spatial.get(100).unwrap();
+    t.spatial.insert(
+        101,
+        crate::map::spatial::Placed {
+            position: [16.0, 4.0, 0.0],
+            ..placed
+        },
+    );
+    setup(&mut t);
+    let r = t.let_out(1, 0, 1000, point, (work_on, false));
+    (r, t)
+}
+
+/// The end of a let-out with a target ([`World::came_out`]): `GO_BACK_TO_WORK`'s object (the
+/// second town centre) gets the unit's work command at the point (slot 0x128, `+0xa14` 0: the
+/// unit AI keeps its target). A gather point on the second centre, with no point given, makes
+/// the unit AI forget its target first (`FUN_140c5e1e0`), then gives the same work command.
+/// Without the garrison filter (3) the villager's tasks give no action on a centre.
+#[test]
+fn a_unit_let_out_works_its_record_or_the_gather_point_s_target() {
+    let (r, t) = let_out_beside_a_second_centre(|_| (), [4.5, 4.5], Some(101));
+    assert_eq!(r, Ok(true));
+    let v = t.object(1000).unwrap().1;
+    assert_eq!(v.life.inside, None);
+    assert_eq!(v.ai.as_ref().map(|a| a.current_target), Some(77));
+    assert_eq!(v.top_action(), None);
+    let gather = |t: &mut World| {
+        t.players[1].objects[0].gather_point = Some(crate::commands::GatherPoint {
+            target: 101,
+            point: [16.0, 4.0, 0.0],
+            target_master: TC,
+        });
+    };
+    let (r, t) = let_out_beside_a_second_centre(gather, [NO_POINT, NO_POINT], None);
+    assert_eq!(r, Ok(true));
+    let v = t.object(1000).unwrap().1;
+    assert_eq!(v.life.inside, None);
+    assert_eq!(v.ai.as_ref().map(|a| a.current_target), Some(-1));
+    assert_eq!(v.top_action(), None);
 }

@@ -60,7 +60,7 @@ pub struct EnterAction {
 }
 
 /// What an Enter's update reads of its target.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EnterTarget {
     /// Its state (`+0x640`).
     pub state: u8,
@@ -225,18 +225,16 @@ impl EnterAction {
         Ok(true)
     }
 
-    /// One update (slot 6, `FUN_140a87a80`). It first checks its target: one gone, dead (state 3
-    /// or more) or of an unallied player, or without room for the unit, makes the action let it
-    /// go and turn to state 11, which is not modelled. State 1 is done; state 2 waits its timer
-    /// (by the world's `dt`), then walks again ([`EnterAction::walk_again`]). State 4: a target
-    /// off the action's point (`FUN_140a7bbf0`: any of x, y and height not equal) by more than
-    /// [`HALF_TILE`] on an axis (`FUN_140a7bd10`: `COMISS`/`JA`, a NaN is not) walks it again; then
-    /// the `MoveTo` updates (`FUN_140a992b0`: code 1 once it ended, or without it): codes 1 and
-    /// 2 enter in reach ([`EnterStep::enter`]), else wait (`set_state(2)`); code 3 (a `MoveTo`
-    /// that failed) walks again once (`+0x68`), then waits; codes 4 and 5 let the target go
-    /// (state 11), which is not modelled. State 13 returns 3, which is not modelled. `gap` and
-    /// `speed` start a new `MoveTo` ([`EnterAction::walk_start`]); `meeting` gives a transport's
-    /// point ([`meeting`]) and `reaches` its reach test there ([`EnterAction::again`]).
+    /// One update (slot 6, `FUN_140a87a80`). It first checks its target
+    /// ([`EnterAction::held_target`]). State 1 is done; state 2 waits its timer (by the world's
+    /// `dt`), then walks again ([`EnterAction::walk_again`]). State 4: a target off the action's
+    /// point ([`EnterAction::target_moved`]) walks it again; then the `MoveTo` updates
+    /// ([`EnterAction::walk_code`]): codes 1 and 2 enter in reach ([`EnterStep::enter`]), else
+    /// wait (`set_state(2)`); code 3 (a `MoveTo` that failed) walks again once (`+0x68`), then
+    /// waits; codes 4 and 5 let the target go (state 11), which is not modelled. State 13
+    /// returns 3, which is not modelled. `gap` and `speed` start a new `MoveTo`
+    /// ([`EnterAction::walk_start`]); `meeting` gives a transport's point ([`meeting`]) and
+    /// `reaches` its reach test there ([`EnterAction::again`]).
     ///
     /// [`meeting`]: crate::garrison::meeting::meeting
     pub fn update(
@@ -249,21 +247,7 @@ impl EnterAction {
         (waits, stance): (bool, u8),
     ) -> Result<EnterStep, GenieError> {
         let mut step = EnterStep::default();
-        let Some(t) = target else {
-            return Err(GenieError::unsupported(
-                "an Enter whose building is gone (state 11)",
-            ));
-        };
-        if 3 <= t.state || !t.allied {
-            return Err(GenieError::unsupported(
-                "an Enter whose building died or is not allied (state 11)",
-            ));
-        }
-        if !t.room {
-            return Err(GenieError::unsupported(
-                "an Enter whose building has no room (state 11)",
-            ));
-        }
+        let t = Self::held_target(target)?;
         match self.state {
             // state 1 returns 1, state 13 returns 3: either way the list removes the action
             ENTERED | FAILED => step.done = true,
@@ -281,12 +265,7 @@ impl EnterAction {
                 }
             }
             WALK => {
-                let [x, y, z] = t.position;
-                let moved = |d: f32| HALF_TILE < d.abs();
-                let walked_again = t.position != self.point
-                    && (moved(x - self.point[0])
-                        || moved(y - self.point[1])
-                        || moved(z - self.point[2]));
+                let walked_again = self.target_moved(&t);
                 if walked_again {
                     self.again(
                         &mut walk,
@@ -298,47 +277,7 @@ impl EnterAction {
                     )?;
                 }
                 let range = self.walk_range(t.building);
-                let code = match self.move_to {
-                    None | Some(MoveTo::Arrived) => 1,
-                    // the motion step giving up makes it wait or fail ([`MoveWait::give_up`])
-                    Some(MoveTo::Start) => {
-                        if self.move_wait.state == 1 {
-                            self.move_wait.state = 2;
-                        }
-                        self.move_to = Some(MoveTo::Moving);
-                        self.move_to = Some(
-                            match start_walk_or_give_up(
-                                walk.reborrow(),
-                                Goal::Target(self.target),
-                                range,
-                                true,
-                            )? {
-                                Some(state) => state,
-                                None => self.move_wait.give_up(waits, stance),
-                            },
-                        );
-                        0
-                    }
-                    Some(MoveTo::Moving) => {
-                        self.move_to = Some(match walk_or_give_up(walk.reborrow())? {
-                            Some(state) => state,
-                            None => self.move_wait.give_up(waits, stance),
-                        });
-                        0
-                    }
-                    Some(MoveTo::Failed) => 3,
-                    // its wait: the world's dt onto its timer; at its delay it asks again
-                    // (set_state(3); COMISS, JC: a NaN timer waits on); its update returns 0
-                    Some(MoveTo::Waiting) => {
-                        self.move_wait.timer += walk.dt;
-                        if self.move_wait.delay <= self.move_wait.timer {
-                            self.move_wait.timer = 0.0;
-                            self.move_to = Some(MoveTo::Start);
-                        }
-                        0
-                    }
-                };
-                match code {
+                match self.walk_code(&mut walk, range, (waits, stance))? {
                     // the walk again's enter put the unit inside, at the target's place: still
                     // in reach, it enters again
                     1 | 2 if walked_again && step.enter => step.again = true,
@@ -362,6 +301,87 @@ impl EnterAction {
             _ => return Err(GenieError::unsupported("an Enter state not modelled")),
         }
         Ok(step)
+    }
+
+    /// The update's test of its target first (`FUN_140a87a80`): one gone, dead (state 3 or
+    /// more) or of an unallied player, or without room for the unit, makes the action let it go
+    /// and turn to state 11, which is not modelled.
+    pub(super) const fn held_target(
+        target: Option<EnterTarget>,
+    ) -> Result<EnterTarget, GenieError> {
+        let Some(t) = target else {
+            return Err(GenieError::unsupported(
+                "an Enter whose building is gone (state 11)",
+            ));
+        };
+        if 3 <= t.state || !t.allied {
+            return Err(GenieError::unsupported(
+                "an Enter whose building died or is not allied (state 11)",
+            ));
+        }
+        if !t.room {
+            return Err(GenieError::unsupported(
+                "an Enter whose building has no room (state 11)",
+            ));
+        }
+        Ok(t)
+    }
+
+    /// State 4's test of its target: off the action's point (`FUN_140a7bbf0`: any of x, y and
+    /// height not equal) by more than [`HALF_TILE`] on an axis (`FUN_140a7bd10`: `COMISS`/`JA`,
+    /// a NaN is not).
+    pub(super) fn target_moved(&self, t: &EnterTarget) -> bool {
+        let [x, y, z] = t.position;
+        let moved = |d: f32| HALF_TILE < d.abs();
+        t.position != self.point
+            && (moved(x - self.point[0]) || moved(y - self.point[1]) || moved(z - self.point[2]))
+    }
+
+    /// State 4's `MoveTo` update (`FUN_140a992b0`) within `range`: its code, 1 once it ended or
+    /// without one, 3 once it failed, else 0. A start asks for the path to the target, a move
+    /// runs the motion step; a motion step that gives up makes it wait or fail
+    /// ([`crate::movement::move_to::MoveWait::give_up`] with `waits` and `stance`). A wait adds
+    /// the world's dt onto its timer and at its delay asks again (`set_state(3)`; `COMISS`, `JC`:
+    /// a NaN timer waits on).
+    pub(super) fn walk_code(
+        &mut self,
+        walk: &mut Walk<'_>,
+        range: f32,
+        (waits, stance): (bool, u8),
+    ) -> Result<u8, GenieError> {
+        Ok(match self.move_to {
+            None | Some(MoveTo::Arrived) => 1,
+            Some(MoveTo::Start) => {
+                if self.move_wait.state == 1 {
+                    self.move_wait.state = 2;
+                }
+                self.move_to = Some(MoveTo::Moving);
+                let goal = Goal::Target(self.target);
+                self.move_to = Some(
+                    match start_walk_or_give_up(walk.reborrow(), goal, range, true)? {
+                        Some(state) => state,
+                        None => self.move_wait.give_up(waits, stance),
+                    },
+                );
+                0
+            }
+            Some(MoveTo::Moving) => {
+                self.move_to = Some(match walk_or_give_up(walk.reborrow())? {
+                    Some(state) => state,
+                    None => self.move_wait.give_up(waits, stance),
+                });
+                0
+            }
+            Some(MoveTo::Failed) => 3,
+            Some(MoveTo::Waiting) => {
+                self.move_wait.timer += walk.dt;
+                if self.move_wait.delay <= self.move_wait.timer {
+                    self.move_wait.timer = 0.0;
+                    self.move_to = Some(MoveTo::Start);
+                }
+                0
+            }
+        })
     }
 
     /// The update's `set_state(4)` ([`EnterAction::walk_again`]): its `MoveTo`'s teardown stops

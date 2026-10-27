@@ -9992,6 +9992,115 @@ fn without_a_farm_to_make_the_farmer_idles() {
     );
 }
 
+/// [`reseed_world`] with one farm queued, `setup` run on it, then the reseed itself
+/// ([`World::reseed`]): its answer and the count of player 1's objects after it.
+fn reseeded(setup: impl FnOnce(&mut World)) -> (Result<bool, GenieError>, usize) {
+    let mut t = reseed_world();
+    t.players[1].farm_queue = 1;
+    setup(&mut t);
+    let made = t.reseed(1, 0);
+    (made, t.players[1].objects.len())
+}
+
+/// `FUN_140a8aa60` makes nothing for a gatherer without a Gather or without a farm spot, for a
+/// villager with only fish traps queued, for a fishing ship (class 21) with only farms queued and
+/// for a farm the player cannot make (its master unavailable).
+#[test]
+fn a_reseed_without_a_farm_to_make_makes_nothing() {
+    let none: [fn(&mut World); 5] = [
+        |t| t.players[1].objects[0].gather = None,
+        |t| {
+            let g = t.players[1].objects[0].gather.as_mut().unwrap();
+            g.farm = [-1.0, -1.0];
+        },
+        |t| (t.players[1].farm_queue, t.players[1].fish_trap_queue) = (0, 1),
+        |t| t.masters[1].get_mut(259).unwrap().class = 21,
+        |t| t.masters[1].get_mut(50).unwrap().available = false,
+    ];
+    for setup in none {
+        assert_eq!(reseeded(setup), (Ok(false), 1));
+    }
+}
+
+/// A fishing ship (class 21) reseeds a fish trap (199) from the dock's queue (one less), with
+/// the automatic fish trap queue paying it (60 wood) instead.
+#[test]
+fn a_fishing_ship_reseeds_a_fish_trap() {
+    let ship = |t: &mut World| {
+        let trap = Master {
+            id: crate::gathering::farm_queue::FISH_TRAP,
+            base_id: crate::gathering::farm_queue::FISH_TRAP,
+            ..t.masters[1].get(50).unwrap().clone()
+        };
+        let ms = &mut t.masters[1];
+        // a ship builds as itself: its own Build task, no group
+        let tasks = ms.get(118).unwrap().tasks.clone();
+        let ship = ms.get_mut(259).unwrap();
+        (ship.class, ship.task_by_group, ship.tasks) = (21, 0, tasks);
+        *ms = Masters::new(ms.iter().cloned().chain([trap]));
+        t.players[1].farm_queue = 0;
+    };
+    let mut t = reseed_world();
+    ship(&mut t);
+    t.players[1].fish_trap_queue = 2;
+    assert_eq!(t.reseed(1, 0), Ok(true));
+    let p = &t.players[1];
+    assert_eq!((p.resources[1], p.fish_trap_queue), (100.0, 1));
+    let trap = p.objects.last().unwrap();
+    assert_eq!(
+        (trap.life.master_id, trap.position),
+        (crate::gathering::farm_queue::FISH_TRAP, [30.5, 88.5, 0.0])
+    );
+    let mut t = reseed_world();
+    ship(&mut t);
+    t.players[1].auto_fishtrap_queue = true;
+    assert_eq!(t.reseed(1, 0), Ok(true));
+    let p = &t.players[1];
+    assert_eq!((p.resources[1], p.fish_trap_queue), (40.0, 0));
+}
+
+/// The farm's placement test passes over the gather's old target (the spent farm 12557 on the
+/// farm spot, a building): the new foundation goes over it. The same farm when it is not the
+/// target fails the test, and nothing is made.
+#[test]
+fn a_reseed_s_placement_passes_over_the_old_farm() {
+    let old_farm = |target: i32| {
+        move |t: &mut World| {
+            let farm = Unit {
+                id: 12557,
+                position: [30.5, 88.5, 0.0],
+                life: Lifecycle {
+                    class: Class::Animated,
+                    state: 2,
+                    hp: 480.0,
+                    master_id: 50,
+                    ..Lifecycle::default()
+                },
+                ..Unit::default()
+            };
+            t.players[1].objects.push(farm);
+            open_map(t);
+            let at = Placed {
+                position: [30.5, 88.5, 0.0],
+                radius: [1.5, 1.5],
+                class: 49,
+                player: 1,
+                master: 50,
+                obstruction_type: 2,
+                buildable_on: 0,
+                tall: true,
+                speed: 0.0,
+                unknown: None,
+                obstruction: None,
+            };
+            t.spatial.insert(12557, at);
+            t.players[1].objects[0].gather.as_mut().unwrap().target = target;
+        }
+    };
+    assert_eq!(reseeded(old_farm(12557)), (Ok(true), 3));
+    assert_eq!(reseeded(old_farm(-1)), (Ok(false), 2));
+}
+
 /// A committing BUILD (`+0x1f` 0) to a builder whose unit AI holds an order not ready
 /// (`FUN_140c4dfa0`): the build order joins its queue, then the readiness pass with 0
 /// (`FUN_140c42b60` at 0x140e7b252) makes every queued order ready, the ready ones kept, and
@@ -11112,6 +11221,82 @@ fn a_loaded_builder_s_drop_off_finds_its_town_centre() {
     assert_eq!(
         build_drop_off_with((5, 6.0)),
         (4, -1, 0.0, 0, vec![crate::unit_ai::NO_DROP_SITE])
+    );
+}
+
+/// [`forage_world`]'s forager 9175 (at 29.5) seeking a drop site from itself
+/// ([`Unit::drop_site_with`] with the search's arguments 10, 9 and 8 `args`) on a map with a tile
+/// planner, a second town centre 701 at 45.0 beside centre 700 at 20.0; `setup` changes the
+/// world first.
+fn drop_site_sought(
+    setup: impl FnOnce(&mut World),
+    args: (bool, bool, i16),
+) -> Result<Option<i32>, GenieError> {
+    let mut t = forage_world();
+    let mut far = t.players[1].objects[2].clone();
+    (far.id, far.position[0]) = (701, 45.0);
+    t.players[1].objects.push(far);
+    let p = *t.spatial.get(700).unwrap();
+    t.spatial.insert(
+        701,
+        Placed {
+            position: [45.0, 89.5, 0.0],
+            ..p
+        },
+    );
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    setup(&mut t);
+    let mut world = DropWorld {
+        masters: t.masters.get(1),
+        spatial: &t.spatial,
+        zones: &mut t.zones,
+        pathing: &mut t.pathing,
+        object: t.streams.get(Stream::Object),
+        world_time: 0,
+        computer: false,
+        construction_rate: 1.0,
+        groups: &t.groups,
+    };
+    let objects = &t.players[1].objects;
+    objects[0].drop_site_with(&mut world, objects, 0, args)
+}
+
+/// The drop-site search from a unit (`FUN_1411671e0`): the nearer town centre wins by path (its
+/// length within 10 tiles measured by the short path too) and by the squared distance of the
+/// centres; a centre inside another object is passed over when the search keeps outside, one at
+/// work on the searched action type always (an object of type 40 up), so the far centre wins.
+/// A drop site of a master the player does not hold fails.
+#[test]
+fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
+    use crate::gathering::make::{MAKE, MakeAction};
+    let keep = |_: &mut World| ();
+    assert_eq!(drop_site_sought(keep, (false, true, -1)), Ok(Some(700)));
+    assert_eq!(drop_site_sought(keep, (false, false, -1)), Ok(Some(700)));
+    let inside = |t: &mut World| t.players[1].objects[2].life.inside = Some(9175);
+    assert_eq!(drop_site_sought(inside, (true, true, -1)), Ok(Some(701)));
+    assert_eq!(drop_site_sought(inside, (false, true, -1)), Ok(Some(700)));
+    let making = |t: &mut World| {
+        t.players[1].objects[2].make = Some(MakeAction {
+            state: 2,
+            remaining: 0.0,
+            total: 0.0,
+            task: crate::objects::masters::Task::default(),
+        });
+    };
+    assert_eq!(drop_site_sought(making, (false, true, MAKE)), Ok(Some(701)));
+    assert_eq!(drop_site_sought(making, (false, true, -1)), Ok(Some(700)));
+    let unknown = |t: &mut World| {
+        for masters in &mut t.masters {
+            masters.get_mut(120).unwrap().drop_sites = vec![109, 999];
+        }
+        t.players[1].objects[2].life.master_id = 999;
+    };
+    assert_eq!(
+        drop_site_sought(unknown, (false, true, -1))
+            .unwrap_err()
+            .reason(),
+        "a drop site of a master the slice does not have"
     );
 }
 
