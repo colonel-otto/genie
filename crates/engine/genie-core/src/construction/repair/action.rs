@@ -8,9 +8,7 @@ use crate::construction::repair::{
     WALK_POINT, WORK,
 };
 use crate::movement::footprint_gap;
-use crate::movement::move_to::{
-    Goal, MoveTo, MoveWait, Walk, start_walk_or_give_up, walk_or_give_up,
-};
+use crate::movement::move_to::{Goal, MoveTo, MoveWait, Walk, sub_move_to_update};
 
 /// The work of one update (`0x140adaa20` case 6): the work `rate` times the task's
 /// `work_value` times the world's `dt`; with more than one repairer (`repairers`, `COMISS` with
@@ -194,11 +192,9 @@ impl RepairAction {
         Ok(())
     }
 
-    /// The `MoveTo`'s update and its code (`FUN_140a992b0`): its start asks for a path toward
-    /// `goal` within `range` (`quiet` its `+0x60`), then it walks; the motion step giving up makes
-    /// it wait once ([`MoveWait::give_up`]: a human player's villager), whose wait runs by the
-    /// world's dt before it asks again, or fail. 0 while it walks or waits, 1 once it is at the
-    /// goal (or gone), 3 once it failed.
+    /// The `MoveTo`'s update and its code (`FUN_140a992b0`, [`sub_move_to_update`]) toward
+    /// `goal` within `range` (`quiet` its `+0x60`), the view's villager test and stance deciding
+    /// a give-up: 0 while it walks or waits, 1 once it is at the goal (or gone), 3 once it failed.
     pub(super) fn step_walk(
         &mut self,
         walk: &mut Walk<'_>,
@@ -206,39 +202,13 @@ impl RepairAction {
         goal: Goal,
         (range, quiet): (f32, bool),
     ) -> Result<u8, GenieError> {
-        let give_up = |w: &mut MoveWait| w.give_up(view.waits, view.stance);
-        Ok(match self.move_to {
-            Some(MoveTo::Start) => {
-                if self.move_wait.state == 1 {
-                    self.move_wait.state = 2;
-                }
-                self.move_to = Some(MoveTo::Moving);
-                self.move_to = Some(
-                    match start_walk_or_give_up(walk.reborrow(), goal, range, quiet)? {
-                        Some(state) => state,
-                        None => give_up(&mut self.move_wait),
-                    },
-                );
-                0
-            }
-            Some(MoveTo::Moving) => {
-                self.move_to = Some(match walk_or_give_up(walk.reborrow())? {
-                    Some(state) => state,
-                    None => give_up(&mut self.move_wait),
-                });
-                0
-            }
-            Some(MoveTo::Waiting) => {
-                self.move_wait.timer += walk.dt;
-                if self.move_wait.delay <= self.move_wait.timer {
-                    self.move_wait.timer = 0.0;
-                    self.move_to = Some(MoveTo::Start);
-                }
-                0
-            }
-            Some(MoveTo::Failed) => 3,
-            Some(MoveTo::Arrived) | None => 1,
-        })
+        sub_move_to_update(
+            (&mut self.move_to, &mut self.move_wait),
+            walk,
+            goal,
+            (range, quiet),
+            (view.waits, view.stance),
+        )
     }
 
     /// The reach test of states 4 and 10: the footprints' gap (`FUN_14118f680`) less

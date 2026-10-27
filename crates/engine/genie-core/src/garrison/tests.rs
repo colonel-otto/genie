@@ -464,44 +464,6 @@ fn an_enter_s_target_moved_only_beyond_half_a_tile() {
     assert!(!enter.target_moved(&at(f32::NAN)));
 }
 
-/// State 4's `MoveTo` (`FUN_140a992b0`) on house 10028 within 0.1 (the walker 0.8 off it) with
-/// [`WalkRig`]'s walker: a start
-/// asks for its path (a `MoveTo` that waited once, `+0x6c` 1, counts as having waited, 2) and
-/// moves; a move runs the motion step and keeps moving; both give code 0. A `MoveTo` that
-/// ended, or none, gives 1, a failed one 3.
-///
-/// [`WalkRig`]: crate::movement::tests::WalkRig
-#[test]
-fn an_enter_s_move_to_starts_moves_and_reports_its_code() {
-    use crate::movement::tests::WalkRig;
-    let mut rig = WalkRig::on_the_path();
-    let mut enter = EnterAction {
-        move_to: Some(MoveTo::Start),
-        move_wait: crate::movement::move_to::MoveWait {
-            state: 1,
-            timer: 0.0,
-            delay: 1.0,
-        },
-        ..EnterAction::new(10028, [30.0, 88.0, 0.0], 0.1, 3)
-    };
-    let code = enter.walk_code(&mut rig.walk(4), 0.1, (true, 0));
-    assert_eq!(code, Ok(0));
-    assert_eq!(
-        (enter.move_to, enter.move_wait.state),
-        (Some(MoveTo::Moving), 2)
-    );
-    let code = enter.walk_code(&mut rig.walk(4), 0.1, (true, 0));
-    assert_eq!((code, enter.move_to), (Ok(0), Some(MoveTo::Moving)));
-    for (move_to, code) in [
-        (None, 1),
-        (Some(MoveTo::Arrived), 1),
-        (Some(MoveTo::Failed), 3),
-    ] {
-        enter.move_to = move_to;
-        assert_eq!(enter.walk_code(&mut rig.walk(4), 0.1, (true, 0)), Ok(code));
-    }
-}
-
 #[test]
 fn a_meeting_point_is_the_shore_on_the_way_else_a_beach_under_the_unit() {
     // FUN_140a85f30 on an idle transport with room and speed

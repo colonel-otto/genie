@@ -123,7 +123,8 @@ impl Unit {
                     ));
                 }
                 crate::movement::explore::WALK => {
-                    // the MoveTo's update code (FUN_140a992b0): 1 once it arrived, 1 without it
+                    // the MoveTo's update code (FUN_140a992b0): 1 once it arrived or without
+                    // one, 3 once it failed (quiet: no notify)
                     let quiet = self
                         .ai
                         .as_ref()
@@ -136,46 +137,14 @@ impl Unit {
                         .is_some_and(|m| m.class == 4);
                     let waits = villager && !c.computer;
                     let stance = self.ai.as_ref().map_or(0, |ai| ai.stance);
-                    let code = match explore.move_to {
-                        Some(MoveTo::Start) => {
-                            if explore.move_wait.state == 1 {
-                                explore.move_wait.state = 2;
-                            }
-                            explore.move_to = Some(MoveTo::Moving);
-                            let goal = crate::movement::move_to::Goal::Point(explore.point);
-                            let walk = c.walk(self.mover.as_mut(), me);
-                            explore.move_to = Some(
-                                match crate::movement::move_to::start_walk_or_give_up(
-                                    walk, goal, 0.0, quiet,
-                                )? {
-                                    Some(state) => state,
-                                    None => explore.move_wait.give_up(waits, stance),
-                                },
-                            );
-                            0
-                        }
-                        Some(MoveTo::Moving) => {
-                            let walk = c.walk(self.mover.as_mut(), me);
-                            explore.move_to =
-                                Some(match crate::movement::move_to::walk_or_give_up(walk)? {
-                                    Some(state) => state,
-                                    None => explore.move_wait.give_up(waits, stance),
-                                });
-                            0
-                        }
-                        // case 2: the wait runs by dt, then the MoveTo asks again (set_state 3)
-                        Some(MoveTo::Waiting) => {
-                            explore.move_wait.timer += c.dt_seconds;
-                            if explore.move_wait.delay <= explore.move_wait.timer {
-                                explore.move_wait.timer = 0.0;
-                                explore.move_to = Some(MoveTo::Start);
-                            }
-                            0
-                        }
-                        // its update in state 13 returns 3 (quiet: no notify)
-                        Some(MoveTo::Failed) => 3,
-                        Some(MoveTo::Arrived) | None => 1,
-                    };
+                    let goal = crate::movement::move_to::Goal::Point(explore.point);
+                    let code = crate::movement::move_to::sub_move_to_update(
+                        (&mut explore.move_to, &mut explore.move_wait),
+                        &mut c.walk(self.mover.as_mut(), me),
+                        goal,
+                        (0.0, quiet),
+                        (waits, stance),
+                    )?;
                     let walked = explore.move_to.is_some();
                     let owner = explore.after_walk(code)?;
                     if walked && self.explore.is_some_and(|e| e.move_to.is_none()) {

@@ -92,10 +92,11 @@ pub struct Artifact {
 /// The action type the checkpoint adds for an Artifact action.
 pub const ARTIFACT_TYPE: i16 = 107;
 
-const CHECK: u8 = 6;
+/// The state that checks for a new owner (6).
+pub(crate) const CHECK: u8 = 6;
 const WAIT: u8 = 10;
 /// The state that gives the animal to Gaia (`0x140aad250`'s case `'d'`).
-const TO_GAIA: u8 = 100;
+pub(crate) const TO_GAIA: u8 = 100;
 /// Livestock's `MoveTo` to a town centre walks to its place less this on both axes
 /// (`FUN_140aa0df0`, `DAT_142eae8d0`).
 const TOWN_CENTRE_OFFSET: f32 = crate::math::image::artifact::TOWN_CENTRE_OFFSET;
@@ -372,10 +373,11 @@ impl Artifact {
 }
 
 impl Unit {
-    /// The Artifact's part of the update (`0x140aad250`): its Enter sub-action first, then its
-    /// walk and the check for a new owner, with the handover it makes. A unit that started the
-    /// update inside another (`inside_at_start`) and an Artifact that this update started
-    /// (`artifact_from_now`) wait.
+    /// The Artifact's part of the update (`0x140aad250`): its Enter sub-action first
+    /// ([`Unit::artifact_enter_part`]), then its walk and the check for a new owner
+    /// ([`Unit::artifact_walk_and_check`]), then the handover it found
+    /// ([`Unit::artifact_handover`]). A unit that started the update inside another
+    /// (`inside_at_start`) and an Artifact that this update started (`artifact_from_now`) wait.
     pub(crate) fn artifact_part(
         &mut self,
         c: &mut Context<'_>,
@@ -384,107 +386,138 @@ impl Unit {
         inside_at_start: bool,
         artifact_from_now: bool,
     ) -> Result<Option<Captured>, GenieError> {
-        let mut captured = None;
         let by = self.releaser(c);
-        // the Artifact's Enter sub-action (an enter command's, FUN_1410847e0) updates first
-        // (FUN_140a992b0) as the unit's own Enter does (taken as the unit's meanwhile); once it
-        // ended (1 to 5: the failed one's 3, the list removing it) the sub-actions go, the point
-        // is -1 and the target goes (slot 0x68 with none); an Enter that got the unit in stays,
-        // and the inside update of the next update deletes the Artifact
-        if c.tick > 1
-            && !inside_at_start
-            && let Some(e) = self.artifact.as_mut().and_then(|a| a.enter.take())
-        {
-            let own = self.enter.replace(e);
-            let updated = self.enter_update(c, others, me);
-            let after = std::mem::replace(&mut self.enter, own);
-            updated?;
-            if let Some(art) = self.artifact.as_mut() {
-                if let Some(e) = after {
-                    art.enter = Some(e);
-                } else {
-                    art.goal = None;
-                    if let Some(t) = art.drop_target() {
-                        c.releases.push((t, by));
-                    }
+        if c.tick > 1 && !inside_at_start {
+            self.artifact_enter_part(c, others, me, by)?;
+        }
+        if c.tick <= 1 || artifact_from_now || inside_at_start {
+            return Ok(None);
+        }
+        let new = self.artifact_walk_and_check(c, me, by)?;
+        self.artifact_handover(c, others, new)
+    }
+
+    /// The Artifact's Enter sub-action (an enter command's, `FUN_1410847e0`) updates first
+    /// (`FUN_140a992b0`) as the unit's own Enter does, taken as the unit's meanwhile. Once it
+    /// ended (1 to 5: the failed one's 3, the list removing it) the sub-actions go, the point is
+    /// −1 and the target goes (slot 0x68 with none, released by `by`); an Enter that got the
+    /// unit in stays, and the inside update of the next update deletes the Artifact.
+    pub(crate) fn artifact_enter_part(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+        me: Me,
+        by: crate::objects::release::Releaser,
+    ) -> Result<(), GenieError> {
+        let Some(e) = self.artifact.as_mut().and_then(|a| a.enter.take()) else {
+            return Ok(());
+        };
+        let own = self.enter.replace(e);
+        let updated = self.enter_update(c, others, me);
+        let after = std::mem::replace(&mut self.enter, own);
+        updated?;
+        if let Some(art) = self.artifact.as_mut() {
+            if let Some(e) = after {
+                art.enter = Some(e);
+            } else {
+                art.goal = None;
+                if let Some(t) = art.drop_target() {
+                    c.releases.push((t, by));
                 }
             }
         }
-        if let Some(artifact) = self
-            .artifact
-            .as_mut()
-            .filter(|_| c.tick > 1 && !artifact_from_now && !inside_at_start)
+        Ok(())
+    }
+
+    /// The Artifact's walk and its check for a new owner: an ended `MoveTo` (codes 1 to 5) goes
+    /// (`FUN_140a98620`: its teardown stops the unit, quiet or not) and the action lets its
+    /// target go; the check (`FUN_14107cc90`: an object of the combat types whose `+0x924` is 0
+    /// never changes hands) runs [`Spatial::artifact_owner`]. A handover's check lets its
+    /// sub-actions go (an Enter's teardown lets its building go; a walking `MoveTo`'s, the
+    /// Artifact's own or the Enter's, stops the unit); then the ended `MoveTo`'s notify. The
+    /// handover found, if any; none without an Artifact.
+    pub(crate) fn artifact_walk_and_check(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+        by: crate::objects::release::Releaser,
+    ) -> Result<Option<Handover>, GenieError> {
+        let Some(artifact) = self.artifact.as_mut() else {
+            return Ok(None);
+        };
+        let dt = c.dt;
+        let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
+        if ended.is_some()
+            && let Some(m) = self.mover.as_mut()
         {
-            let dt = c.dt;
-            let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
-            // an ended MoveTo (codes 1 to 5) goes (FUN_140a98620): its teardown stops the unit,
-            // quiet or not; the action lets its target go
-            if ended.is_some()
+            m.stop()?;
+        }
+        if let Some(t) = ended.and_then(|e| e.released) {
+            c.releases.push((t, by));
+        }
+        let capture = c
+            .spatial
+            .sight
+            .as_ref()
+            .and_then(|v| v.seer(self.id))
+            .map(|s| s.capture);
+        let searches = !(self.combat && capture == Some(0));
+        let spatial: &Spatial = c.spatial;
+        let (attribute_97, game_status) = (c.attribute_97, c.game_status);
+        let id = self.id;
+        let new = artifact.step(dt, searches, &mut || {
+            spatial.artifact_owner(id, attribute_97, game_status)
+        })?;
+        if let Some(Handover::Taken { gone, .. }) = new {
+            if let Some(t) = gone.released {
+                c.releases.push((t, by));
+            }
+            if gone.stops
                 && let Some(m) = self.mover.as_mut()
             {
                 m.stop()?;
             }
-            if let Some(t) = ended.and_then(|e| e.released) {
-                c.releases.push((t, by));
-            }
-            // FUN_14107cc90: an object of the combat types whose +0x924 is 0 never changes hands
-            let capture = c
-                .spatial
-                .sight
-                .as_ref()
-                .and_then(|v| v.seer(self.id))
-                .map(|s| s.capture);
-            let searches = !(self.combat && capture == Some(0));
-            let spatial: &Spatial = c.spatial;
-            let (attribute_97, game_status) = (c.attribute_97, c.game_status);
-            let id = self.id;
-            let new = artifact.step(dt, searches, &mut || {
-                spatial.artifact_owner(id, attribute_97, game_status)
-            })?;
-            // the check's sub-actions went: an Enter's teardown lets its building go, and a
-            // walking MoveTo's, the Artifact's own or the Enter's, stops the unit
-            if let Some(Handover::Taken { gone, .. }) = new {
-                if let Some(t) = gone.released {
-                    c.releases.push((t, by));
-                }
-                if gone.stops
-                    && let Some(m) = self.mover.as_mut()
-                {
-                    m.stop()?;
-                }
-            }
-            if let Some(kind) = ended.and_then(|e| e.notify) {
-                self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
-            }
-            match new {
-                Some(Handover::Taken { new, .. }) => {
-                    let (main, also) = self.capture(c, others, new)?;
-                    captured = Some(Captured {
-                        new,
-                        main,
-                        also,
-                        building: std::mem::take(&mut c.building_handover),
-                    });
-                }
-                // state 100: the unit's stop (slot 0x148), then slot 0x70 to Gaia
-                Some(Handover::ToGaia) => {
-                    let class = self.placed_class(c)?;
-                    self.capture_stop(c, class)?;
-                    let main = self.change_owner(c, 0)?;
-                    let building = std::mem::take(&mut c.building_handover);
-                    if main || building {
-                        captured = Some(Captured {
-                            new: 0,
-                            main,
-                            also: Vec::new(),
-                            building,
-                        });
-                    }
-                }
-                None => {}
-            }
         }
-        Ok(captured)
+        if let Some(kind) = ended.and_then(|e| e.notify) {
+            self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
+        }
+        Ok(new)
+    }
+
+    /// The handover the Artifact's check found: to a new owner its capture
+    /// ([`Unit::capture`]); state 100's to Gaia the unit's stop (slot 0x148, [`Unit::capture_stop`])
+    /// and slot 0x70 to Gaia, reported when the unit or a building changed hands. None changes
+    /// nothing.
+    pub(crate) fn artifact_handover(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+        new: Option<Handover>,
+    ) -> Result<Option<Captured>, GenieError> {
+        match new {
+            Some(Handover::Taken { new, .. }) => {
+                let (main, also) = self.capture(c, others, new)?;
+                Ok(Some(Captured {
+                    new,
+                    main,
+                    also,
+                    building: std::mem::take(&mut c.building_handover),
+                }))
+            }
+            Some(Handover::ToGaia) => {
+                let class = self.placed_class(c)?;
+                self.capture_stop(c, class)?;
+                let main = self.change_owner(c, 0)?;
+                let building = std::mem::take(&mut c.building_handover);
+                Ok((main || building).then(|| Captured {
+                    new: 0,
+                    main,
+                    also: Vec::new(),
+                    building,
+                }))
+            }
+            None => Ok(None),
+        }
     }
 }
 

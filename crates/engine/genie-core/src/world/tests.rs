@@ -10,7 +10,7 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::ai_moves::PointMove;
 use crate::movement::fly::Fly;
-use crate::movement::move_to::MoveTo;
+use crate::movement::move_to::{MoveTo, MoveToAction};
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::{Master, Masters};
@@ -4050,12 +4050,8 @@ fn an_inside_unit_s_update_deletes_its_top_action() {
     let mut t = enter_world(vec![], 5);
     t.players[1].objects[0].life.inside = Some(10028);
     t.spatial.go_inside(9175, [30.0, 88.0, 0.0]);
-    t.players[1].objects[0].move_to = Some(crate::movement::move_to::MoveToAction::to_point(
-        [40.0, 80.0, 0.0],
-        0.0,
-        false,
-        None,
-    ));
+    t.players[1].objects[0].move_to =
+        Some(MoveToAction::to_point([40.0, 80.0, 0.0], 0.0, false, None));
     t.tick(50);
     let v = &t.players[1].objects[0];
     assert_eq!(v.move_to, None);
@@ -4682,6 +4678,170 @@ fn livestock_without_actions_starts_its_artifact_again() {
     t.tick(50);
     let a = t.players[1].objects[0].artifact.unwrap();
     assert_eq!((a.state, a.timer), (10, 1.0));
+}
+
+/// [`forage_world`]'s villager 9175 (master 120) with `set` run on its master and on itself,
+/// a master 99 for the remains, then `part` on it in an update: what the part left in the
+/// Context, the attribute changes and the remains.
+fn life_part(
+    set: impl FnOnce(&mut Master, &mut Unit),
+    part: impl FnOnce(&mut Unit, &mut context::Context<'_>) -> Result<(), GenieError>,
+) -> Result<LifeLeft, GenieError> {
+    let mut t = forage_world();
+    let mut master = t.masters[1].get(120).unwrap().clone();
+    set(&mut master, &mut t.players[1].objects[0]);
+    // the remains and death spawn the tests name (99, a master the game does not have)
+    let left = Master {
+        id: 99,
+        kind: 20,
+        ..Master::default()
+    };
+    let ms = &mut t.masters[1];
+    *ms = Masters::new(
+        ms.iter()
+            .filter(|m| m.id != 120)
+            .cloned()
+            .chain([master, left]),
+    );
+    in_update(&mut t, (1, 0), 50, |unit, c, _| {
+        part(unit, c)?;
+        Ok((c.attribute_adds.clone(), c.remains))
+    })
+}
+
+/// What [`life_part`] gives: the Context's attribute changes and its remains.
+type LifeLeft = (Vec<(i16, f32)>, Option<(i16, [f32; 3], Option<u8>)>);
+
+/// The life cycle's `set_state(3)` storage (`FUN_1411a56c0` with 0): a live object below one
+/// hit point gives back each storage entry of kind 2 or 16 with an attribute (the amount
+/// negated); one at a hit point, or at a NaN one, gives back nothing.
+#[test]
+fn a_dying_object_gives_back_its_storage_of_kinds_2_and_16() {
+    let storage = |hp: f32| {
+        life_part(
+            |m, v| {
+                m.storage = vec![(4, 1.0, 2), (11, 5.0, 16), (9, 1.0, 1), (-1, 1.0, 2)];
+                (v.life.state, v.life.hp) = (2, hp);
+            },
+            |u, c| {
+                u.dying_storage_leaves(c);
+                Ok(())
+            },
+        )
+        .unwrap()
+        .0
+    };
+    assert_eq!(storage(0.5), [(4, -1.0), (11, -5.0)]);
+    assert_eq!(storage(1.0), []);
+    assert_eq!(storage(f32::NAN), []);
+}
+
+/// The dying sprite's end (`RGE_Animated_Object::update`, [`Unit::dying_sprite_ended`]): the
+/// animation stops and a unit (type below 80) leaves its remains (here 99) at its place with
+/// the facet its angle gives; without remains (−1) or as a building none. A dead object's death
+/// spawn ([`Unit::death_spawn_comes`]) comes the same way. A master the player lacks fails.
+#[test]
+fn a_dead_object_leaves_its_remains_and_its_death_spawn() {
+    let ended = |kind: u8, remains: i16| {
+        life_part(
+            |m, v| {
+                m.kind = kind;
+                v.life.remains = remains;
+            },
+            Unit::dying_sprite_ended,
+        )
+    };
+    let v = forage_world().players[1].objects[0].clone();
+    let mover = v.mover.as_ref().unwrap();
+    let facet = crate::objects::facing::facet_of_angle(mover.angle, mover.stats.facets).0;
+    assert_eq!(
+        ended(70, 99).unwrap().1,
+        Some((99, v.position, Some(facet)))
+    );
+    assert_eq!(ended(70, -1).unwrap().1, None);
+    assert_eq!(ended(80, 99).unwrap().1, None);
+    let spawned = life_part(
+        |m, _| m.death_spawns = [99, -1],
+        |u, c| u.death_spawn_comes(c),
+    );
+    assert_eq!(spawned.unwrap().1, Some((99, v.position, Some(facet))));
+    let lacking = life_part(|_, v| v.life.master_id = 999, Unit::dying_sprite_ended);
+    assert_eq!(
+        lacking.unwrap_err().reason(),
+        "a dead object of a master the slice does not have"
+    );
+}
+
+/// The Artifact's handover to Gaia (state 100, [`Unit::artifact_handover`]): player 1's sheep
+/// stops and changes hands to Gaia (slot 0x70), and its Artifact checks again (state 6). The
+/// world's first update runs no Artifact (`0x140aad250` from the second on).
+#[test]
+fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
+    let master = Master {
+        id: 594,
+        kind: 70,
+        class: 58,
+        ..Master::default()
+    };
+    let sheep = Unit {
+        id: 40,
+        life: Lifecycle {
+            master_id: 594,
+            state: 2,
+            hp: 7.0,
+            ..Lifecycle::default()
+        },
+        artifact: Some(Artifact {
+            state: crate::ownership::artifact::TO_GAIA,
+            ..Artifact::new(false)
+        }),
+        ..Unit::default()
+    };
+    let player = |objects| Player {
+        objects,
+        attributes: vec![0.0; 250],
+        ..Player::default()
+    };
+    let mut t = World::new(
+        0,
+        1,
+        0,
+        vec![0, 0],
+        vec![player(vec![]), player(vec![sheep])],
+    );
+    t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
+    placeable(&mut t);
+    let placed = Placed {
+        position: [10.5, 10.5, 0.0],
+        radius: [0.2, 0.2],
+        class: 58,
+        player: 1,
+        master: 594,
+        obstruction_type: 0,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: None,
+    };
+    t.spatial.insert(40, placed);
+    t.tick(50);
+    assert_eq!(t.players[1].objects.len(), 1);
+    t.tick(50);
+    assert_eq!(
+        (
+            t.players[0].unsupported.clone(),
+            t.players[1].unsupported.clone()
+        ),
+        (None, None)
+    );
+    assert_eq!(t.players[1].objects.len(), 0);
+    let sheep = &t.players[0].objects[0];
+    assert_eq!(sheep.id, 40);
+    assert_eq!(
+        sheep.artifact.map(|a| a.state),
+        Some(crate::ownership::artifact::CHECK)
+    );
 }
 
 #[test]
@@ -6695,7 +6855,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         id,
         position: [11.5, 10.5, 0.0],
         mover: Some(mover.clone()),
-        move_to: Some(crate::movement::move_to::MoveToAction {
+        move_to: Some(MoveToAction {
             state: MoveTo::Arrived,
             goal: None,
             target: 50,
@@ -8051,7 +8211,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             patrol_waypoint: 1,
             ..UnitAi::default()
         }),
-        move_to: Some(crate::movement::move_to::MoveToAction {
+        move_to: Some(MoveToAction {
             state: MoveTo::Moving,
             goal: None,
             target: 77,
@@ -8884,12 +9044,12 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
         force: false,
         ..forced(false)
     };
-    let old = crate::movement::move_to::MoveToAction::to_point(AI_POINT, 0.0, false, None);
+    let old = MoveToAction::to_point(AI_POINT, 0.0, false, None);
     let mut u = mover_unit(5);
     u.move_to = Some(old);
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
     assert_eq!(u.move_to, Some(old));
-    let to_object = crate::movement::move_to::MoveToAction {
+    let to_object = MoveToAction {
         goal: None,
         target: 9149,
         ..old
@@ -8981,7 +9141,7 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         m.stats.stand_speed = 0.737;
         u.sprite = Some(crate::objects::sprite::ActiveSprite::start(walking, rng));
         u.anim_speed = Some(1.0);
-        u.move_to = Some(crate::movement::move_to::MoveToAction::to_point(
+        u.move_to = Some(MoveToAction::to_point(
             [119.5, 172.5, 0.0],
             0.0,
             false,
@@ -11298,6 +11458,221 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
             .reason(),
         "a drop site of a master the slice does not have"
     );
+}
+
+/// [`forage_world`]'s villager 9175 with its own `MoveTo` `m` on a map with a tile planner.
+fn own_move_world(m: MoveToAction) -> World {
+    let mut t = forage_world();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    t.players[1].objects[0].move_to = Some(m);
+    t
+}
+
+/// What [`own_move`] gives: the part's result, the `MoveTo` after it, what the unit AI heard
+/// and bush 600's workers after the step's releases.
+type OwnMoved = (
+    Result<(), GenieError>,
+    Option<MoveToAction>,
+    Vec<(i32, [i32; 3])>,
+    i32,
+);
+
+/// The villager's update's `MoveTo` part ([`Unit::move_to_part`]) in `t`.
+fn own_move(t: &mut World) -> OwnMoved {
+    let r = in_update(t, (1, 0), 50, |unit, c, _| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.move_to.map_or(0, |m| m.state.number()),
+        };
+        unit.move_to_part(c, me)
+    });
+    let v = &t.players[1].objects[0];
+    let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
+        ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
+    });
+    (r, v.move_to, heard, t.players[0].objects[0].workers)
+}
+
+/// The unit's own `MoveTo` in its update (`0x140aa2a70`): a start toward bush 600 asks for its
+/// path and moves; one that arrived tells the unit AI (0x1fa with the move action value, which
+/// an AI on another action ignores), lets its target go (one worker less) and goes; a failed
+/// one tells 0x1f9 and goes. A target that
+/// left the point the walk goes to (more than half a tile) makes it tell 0x1fc.
+#[test]
+fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
+    use crate::unit_ai::{ACTION_COMPLETED, ACTION_FAILED, MOVE_ACTION, TARGET_MOVED};
+    let to_bush = |state| MoveToAction {
+        state,
+        goal: None,
+        target: 600,
+        range: 0.25,
+        run: false,
+        wait: crate::movement::move_to::MoveWait::default(),
+    };
+    let mut t = own_move_world(to_bush(MoveTo::Start));
+    let (r, m, heard, _) = own_move(&mut t);
+    assert_eq!(
+        (r, m.map(|m| m.state), heard),
+        (Ok(()), Some(MoveTo::Moving), vec![])
+    );
+    // the bush moves two tiles off the point the walk goes to
+    t.spatial.set_position(600, [32.5, 91.5, 0.0]);
+    let (r, _, heard, _) = own_move(&mut t);
+    assert_eq!(r, Ok(()));
+    assert_eq!(heard, [(TARGET_MOVED, [0, 0, 0])]);
+    let arrived = |action| {
+        let mut t = own_move_world(to_bush(MoveTo::Arrived));
+        t.players[0].objects[0].workers = 1;
+        t.players[1].objects[0].ai.as_mut().unwrap().current_action = action;
+        own_move(&mut t)
+    };
+    let (r, m, heard, workers) = arrived(MOVE_ACTION);
+    assert_eq!((r, m, workers), (Ok(()), None, 0));
+    assert_eq!(heard, [(ACTION_COMPLETED, [MOVE_ACTION, 0, 0])]);
+    // the unit AI on another action ignores the move's completion (FUN_140c556d0)
+    assert_eq!(arrived(0x261).2, []);
+    let to_point = MoveToAction {
+        goal: Some([40.5, 89.5, 0.0]),
+        target: -1,
+        ..to_bush(MoveTo::Failed)
+    };
+    let (r, m, heard, _) = own_move(&mut own_move_world(to_point));
+    assert_eq!((r, m), (Ok(()), None));
+    assert_eq!(heard, [(ACTION_FAILED, [MOVE_ACTION, 0, 0])]);
+}
+
+/// The result of a bird's Fly part, its Fly after it and what its unit AI heard.
+type Flown = (Result<(), GenieError>, Option<Fly>, Vec<(i32, [i32; 3])>);
+
+/// [`forage_world`]'s villager 9175 as a bird flying (state 4) toward (40.5, 89.5) with its
+/// `MoveTo` in `move_to`, two seconds of flight left and a rest of two seconds; `setup`
+/// changes the unit, then its update's Fly part runs ([`Unit::fly_part`], `flies_from_now` as
+/// given): the result, the Fly after it and what its unit AI heard.
+fn flown(move_to: MoveTo, flies_from_now: bool, setup: impl FnOnce(&mut Unit)) -> Flown {
+    let mut t = forage_world();
+    let task = crate::objects::masters::Task {
+        wait_time: 2.0,
+        ..crate::objects::masters::Task::default()
+    };
+    let v = &mut t.players[1].objects[0];
+    v.fly = Some(Fly {
+        state: 4,
+        timer: 2.0,
+        move_to: Some(move_to),
+        goal: Some([40.5, 89.5, 0.0]),
+        home: [29.5, 89.5],
+        task,
+    });
+    setup(v);
+    let r = in_update(&mut t, (1, 0), 50, |unit, c, _| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: 4,
+        };
+        unit.fly_part(c, me, flies_from_now)
+    });
+    let v = &t.players[1].objects[0];
+    let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
+        ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
+    });
+    (r, v.fly, heard)
+}
+
+/// A bird's Fly in its update: a failed `MoveTo` ends the flight, its failure told to the unit
+/// AI (0x1f9 with the move action value); the bird stops and rests (state 2) for the flight's
+/// time left and the rest. A Fly this update started waits for the next update; a bird without
+/// movement state is not modelled.
+#[test]
+fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
+    use crate::unit_ai::{ACTION_FAILED, MOVE_ACTION};
+    let (r, fly, heard) = flown(MoveTo::Failed, false, |_| ());
+    assert_eq!(r, Ok(()));
+    let fly = fly.unwrap();
+    assert_eq!((fly.state, fly.move_to), (2, None));
+    assert_eq!(fly.timer, 2.0 - seconds(50) + 2.0);
+    assert_eq!(heard, [(ACTION_FAILED, [MOVE_ACTION, 0, 0])]);
+    let (r, fly, heard) = flown(MoveTo::Failed, true, |_| ());
+    assert_eq!((r, fly.map(|f| f.state), heard), (Ok(()), Some(4), vec![]));
+    let (r, _, _) = flown(MoveTo::Failed, false, |v| v.mover = None);
+    assert_eq!(r.unwrap_err().reason(), "a bird without movement state");
+}
+
+/// [`forage_world`]'s villager 9175 with an Explore toward (40.5, 89.5) on a map with a tile
+/// planner, its Explore changed by `set`, through its update's Explore part
+/// ([`Unit::explore_part`]): the result, the Explore after it and what its unit AI heard.
+fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> Explored {
+    let mut t = forage_world();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    let (mut explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0]);
+    set(&mut explore);
+    t.players[1].objects[0].explore = Some(explore);
+    let r = in_update(&mut t, (1, 0), 50, |unit, c, _| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: crate::movement::explore::WALK,
+        };
+        unit.explore_part(c, me)
+    });
+    let v = &t.players[1].objects[0];
+    let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
+        ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
+    });
+    (r, v.explore, heard)
+}
+
+/// What [`explored`] gives: the part's result, the Explore after it and the notifies heard.
+type Explored = (
+    Result<(), GenieError>,
+    Option<crate::movement::explore::ExploreAction>,
+    Vec<(i32, [i32; 3])>,
+);
+
+/// The Explore's part of the update (`0x140a880c0`): in state 11 its quiet `MoveTo` to the
+/// point starts (code 0: it walks on). A `MoveTo` that ended, or one that failed (code 1 or 3),
+/// makes it wait for a new point (state 3): the unit stops and its unit AI hears 0x202 with the
+/// explore action value 605. A waiting Explore does nothing; a done (1) or failed (13) one is
+/// not modelled.
+#[test]
+fn an_explore_walks_to_its_point_then_asks_for_the_next() {
+    use crate::movement::explore::{EXPLORE_ACTION, WAIT, WALK, WANTS_POINT};
+    let (r, e, heard) = explored(|_| ());
+    assert_eq!(r, Ok(()));
+    let e = e.unwrap();
+    assert_eq!((e.state, e.move_to), (WALK, Some(MoveTo::Moving)));
+    assert_eq!(heard, []);
+    let asked = vec![(WANTS_POINT, [EXPLORE_ACTION, 0, 0])];
+    for end in [MoveTo::Arrived, MoveTo::Failed] {
+        let (r, e, heard) = explored(|e| e.move_to = Some(end));
+        assert_eq!(r, Ok(()));
+        let e = e.unwrap();
+        assert_eq!((e.state, e.move_to), (WAIT, None));
+        assert_eq!(heard, asked);
+    }
+    let (r, e, heard) = explored(|e| {
+        let _ = e.set_state(WAIT);
+    });
+    assert_eq!((r, e.map(|e| e.state), heard), (Ok(()), Some(WAIT), vec![]));
+    for (state, reason) in [
+        (
+            crate::movement::explore::DONE,
+            "a done Explore (the action list after it)",
+        ),
+        (
+            crate::movement::explore::FAILED,
+            "a failed Explore (notify 0x1f9, set_state 2)",
+        ),
+    ] {
+        let (r, _, _) = explored(|e| e.state = state);
+        assert_eq!(r.unwrap_err().reason(), reason);
+    }
 }
 
 /// A hunter back from its drop-off without a deer (`hunt.target` -1, the deer it hunted let

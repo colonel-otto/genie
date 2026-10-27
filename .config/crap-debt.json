@@ -94,10 +94,10 @@
     {
       "file": "crates/engine/genie-core/src/movement/move_to.rs",
       "function": "MoveToAction::update",
-      "line": 511,
+      "line": 558,
       "cyclomatic": 31.0,
-      "coverage": 14.545454545454545,
-      "crap": 630.6928805409465,
+      "coverage": 52.72727272727272,
+      "crap": 132.52087753568748,
       "crate": "genie-core"
     },
     {
@@ -114,44 +114,8 @@
       "function": "Mover::request",
       "line": 28,
       "cyclomatic": 94.0,
-      "coverage": 72.34726688102894,
-      "crap": 280.84001515812804,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/movement/unit.rs",
-      "function": "Unit::explore_part",
-      "line": 110,
-      "cyclomatic": 25.0,
-      "coverage": 9.090909090909092,
-      "crap": 494.57175056348603,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/movement/unit.rs",
-      "function": "Unit::fly_part",
-      "line": 194,
-      "cyclomatic": 8.0,
-      "coverage": 27.77777777777778,
-      "crap": 32.10973936899863,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/movement/unit.rs",
-      "function": "Unit::move_to_part",
-      "line": 51,
-      "cyclomatic": 20.0,
-      "coverage": 61.904761904761905,
-      "crap": 42.11424252240578,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/objects/unit/life_step.rs",
-      "function": "Unit::life_step",
-      "line": 15,
-      "cyclomatic": 36.0,
-      "coverage": 61.627906976744185,
-      "crap": 109.22366584074359,
+      "coverage": 72.66881028938906,
+      "crap": 274.3978333810006,
       "crate": "genie-core"
     },
     {
@@ -215,15 +179,6 @@
       "cyclomatic": 63.0,
       "coverage": 72.94117647058823,
       "crap": 141.63354040301243,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/ownership/artifact.rs",
-      "function": "Unit::artifact_part",
-      "line": 379,
-      "cyclomatic": 32.0,
-      "coverage": 73.33333333333333,
-      "crap": 51.418074074074084,
       "crate": "genie-core"
     },
     {

@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::garrison::{ENTER_NEAR, HALF_TILE, UNREACHED};
-use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::movement::move_to::{Goal, MoveTo, Walk, sub_move_to_update};
 
 /// The Enter action's type (`RGE_Action_Enter`, vtable `0x142ed4db8`), which word 9 adds.
 pub const ENTER: i16 = 3;
@@ -229,7 +229,7 @@ impl EnterAction {
     /// ([`EnterAction::held_target`]). State 1 is done; state 2 waits its timer (by the world's
     /// `dt`), then walks again ([`EnterAction::walk_again`]). State 4: a target off the action's
     /// point ([`EnterAction::target_moved`]) walks it again; then the `MoveTo` updates
-    /// ([`EnterAction::walk_code`]): codes 1 and 2 enter in reach ([`EnterStep::enter`]), else
+    /// ([`sub_move_to_update`] within the task's range, quiet): codes 1 and 2 enter in reach ([`EnterStep::enter`]), else
     /// wait (`set_state(2)`); code 3 (a `MoveTo` that failed) walks again once (`+0x68`), then
     /// waits; codes 4 and 5 let the target go (state 11), which is not modelled. State 13
     /// returns 3, which is not modelled. `gap` and `speed` start a new `MoveTo`
@@ -277,7 +277,14 @@ impl EnterAction {
                     )?;
                 }
                 let range = self.walk_range(t.building);
-                match self.walk_code(&mut walk, range, (waits, stance))? {
+                let code = sub_move_to_update(
+                    (&mut self.move_to, &mut self.move_wait),
+                    &mut walk,
+                    Goal::Target(self.target),
+                    (range, true),
+                    (waits, stance),
+                )?;
+                match code {
                     // the walk again's enter put the unit inside, at the target's place: still
                     // in reach, it enters again
                     1 | 2 if walked_again && step.enter => step.again = true,
@@ -335,53 +342,6 @@ impl EnterAction {
         let moved = |d: f32| HALF_TILE < d.abs();
         t.position != self.point
             && (moved(x - self.point[0]) || moved(y - self.point[1]) || moved(z - self.point[2]))
-    }
-
-    /// State 4's `MoveTo` update (`FUN_140a992b0`) within `range`: its code, 1 once it ended or
-    /// without one, 3 once it failed, else 0. A start asks for the path to the target, a move
-    /// runs the motion step; a motion step that gives up makes it wait or fail
-    /// ([`crate::movement::move_to::MoveWait::give_up`] with `waits` and `stance`). A wait adds
-    /// the world's dt onto its timer and at its delay asks again (`set_state(3)`; `COMISS`, `JC`:
-    /// a NaN timer waits on).
-    pub(super) fn walk_code(
-        &mut self,
-        walk: &mut Walk<'_>,
-        range: f32,
-        (waits, stance): (bool, u8),
-    ) -> Result<u8, GenieError> {
-        Ok(match self.move_to {
-            None | Some(MoveTo::Arrived) => 1,
-            Some(MoveTo::Start) => {
-                if self.move_wait.state == 1 {
-                    self.move_wait.state = 2;
-                }
-                self.move_to = Some(MoveTo::Moving);
-                let goal = Goal::Target(self.target);
-                self.move_to = Some(
-                    match start_walk_or_give_up(walk.reborrow(), goal, range, true)? {
-                        Some(state) => state,
-                        None => self.move_wait.give_up(waits, stance),
-                    },
-                );
-                0
-            }
-            Some(MoveTo::Moving) => {
-                self.move_to = Some(match walk_or_give_up(walk.reborrow())? {
-                    Some(state) => state,
-                    None => self.move_wait.give_up(waits, stance),
-                });
-                0
-            }
-            Some(MoveTo::Failed) => 3,
-            Some(MoveTo::Waiting) => {
-                self.move_wait.timer += walk.dt;
-                if self.move_wait.delay <= self.move_wait.timer {
-                    self.move_wait.timer = 0.0;
-                    self.move_to = Some(MoveTo::Start);
-                }
-                0
-            }
-        })
     }
 
     /// The update's `set_state(4)` ([`EnterAction::walk_again`]): its `MoveTo`'s teardown stops
