@@ -265,7 +265,15 @@ fn the_checkpoint_view_names_the_differing_words() {
 /// error.
 #[test]
 fn the_views_of_a_recording_read_its_header() {
-    let save = header(vec![gaia(vec![combat_object(6, 4)])]);
+    let mut boar = combat_object(6, 4);
+    // a unit AI module of type 1 (`needUnitAI`), which the save writes after the flag
+    let combat = combat_mut(&mut boar);
+    combat.need_unit_ai = 1;
+    combat.unit_ai_module = Some(Box::new(UnitAiModule {
+        current_order_value: 700,
+        ..UnitAiModule::default()
+    }));
+    let save = header(vec![gaia(vec![boar])]);
     let rec = crate::fixtures::recording(&save, &[]);
     assert_eq!(
         crate::views::objects(&rec, 0, None).unwrap(),
@@ -279,10 +287,9 @@ fn the_views_of_a_recording_read_its_header() {
         crate::views::movement(&rec, 0, &[6]).unwrap(),
         movement_of(&save, 0, &[6]).unwrap()
     );
-    assert_eq!(
-        crate::views::unit_ais(&rec, 0, &[6]).unwrap(),
-        unit_ais_of(&save, 0, &[6]).unwrap()
-    );
+    let ais = crate::views::unit_ais(&rec, 0, &[6]).unwrap();
+    assert!(ais.contains("order 700"), "{ais}");
+    assert_eq!(ais, unit_ais_of(&save, 0, &[6]).unwrap());
     assert!(crate::views::objects(&[], 0, None).is_err());
 }
 

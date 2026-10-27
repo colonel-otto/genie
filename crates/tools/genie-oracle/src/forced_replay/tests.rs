@@ -1,7 +1,7 @@
 use crate::Dumps;
 use crate::fixtures::{gaia, header, human};
 use crate::forced_replay::{
-    command_phase, forced_run, forced_ticks, ghost_differences, group_owner,
+    command_phase, forced_run, forced_ticks, game_state, ghost_differences, group_owner,
     owned_group_differences,
 };
 use crate::setup::slice;
@@ -49,9 +49,19 @@ fn ghost_lists_differ_by_their_members_or_their_order() {
         d[0].1.starts_with("ghosts the slice's alone [(2, 102"),
         "{d:?}"
     );
+    // a ghost alone on one side, none on the other, is no other order
+    let extra = [Vec::new(), vec![ghost(1), ghost(2), ghost(3)]];
+    let d = ghost_differences(&turns, &extra);
+    assert!(
+        d[0].1
+            .starts_with("ghosts the slice's alone [], the game's alone [(3, 103"),
+        "{d:?}"
+    );
     // a player the slice does not hold has no ghosts
     let more = [Vec::new(), vec![ghost(1), ghost(2)], vec![ghost(5)]];
-    assert_eq!(ghost_differences(&turns, &more)[0].0, 2);
+    let d = ghost_differences(&turns, &more);
+    assert_eq!(d[0].0, 2);
+    assert!(d[0].1.starts_with("ghosts the slice's alone []"), "{d:?}");
 }
 
 /// Groups `ids`, each owned by player 1.
@@ -156,9 +166,13 @@ fn a_quiet_step_has_no_differences() {
     let step = forced_ticks(&save, &save, &rec, 0, 1, None, Dumps::default()).unwrap();
     assert_eq!((step.start, step.ticks), (0, 1));
     assert_eq!(step.differences, []);
+    let later = forced_ticks(&save, &save, &rec, 1, 1, None, Dumps::default()).unwrap();
+    assert_eq!((later.start, later.ticks), (1, 1));
     let phase = command_phase(&save, (&save, None), &rec, 0, None, Dumps::default()).unwrap();
     assert_eq!(phase.ticks, 1);
     assert_eq!(phase.differences, []);
+    let later = command_phase(&save, (&save, None), &rec, 1, None, Dumps::default()).unwrap();
+    assert_eq!((later.start, later.ticks), (1, 1));
 }
 
 /// The continuous run reports each update until the saves or the recording end. The slice
@@ -188,4 +202,110 @@ fn the_continuous_run_reports_each_update_and_forces_the_games_state() {
         assert!(report.differences[0].1.ends_with(" game 0"));
     }
     assert_eq!(reports[0].differences, reports[1].differences);
+}
+
+/// A run from the game's save after update 1 plays from the recording's third frame and
+/// compares with the saves and dumps after updates 2 and 3; the recording's four frames end
+/// it there. One tick from update 0 plays the second frame.
+#[test]
+fn a_run_from_a_later_update_compares_the_updates_after_it() {
+    let (save, rec) = (quiet(), syncs(4));
+    let asked = std::sync::Mutex::new(Vec::new());
+    let after = |u: usize| {
+        asked.lock().unwrap().push(u);
+        Some(quiet())
+    };
+    let dumped = std::cell::RefCell::new(Vec::new());
+    let dump_after = |u: usize, what: &str| {
+        dumped.borrow_mut().push((u, what.to_owned()));
+        None
+    };
+    let (reports, _) = forced_run(
+        &save,
+        &rec,
+        1,
+        3,
+        None,
+        Dumps::default(),
+        &after,
+        &dump_after,
+        1,
+    )
+    .unwrap();
+    assert_eq!(reports.iter().map(|r| r.start).collect::<Vec<_>>(), [1, 2]);
+    assert!(reports.iter().all(|r| r.ticks == 1), "{reports:?}");
+    let mut saves = asked.lock().unwrap().clone();
+    saves.sort_unstable();
+    // the window of 1 asks for one save ahead of the run
+    assert_eq!(saves, [2, 3, 4]);
+    let dumped = dumped.into_inner();
+    let globals: Vec<usize> = dumped
+        .iter()
+        .filter(|(_, what)| what == "globals")
+        .map(|&(u, _)| u)
+        .collect();
+    assert_eq!(globals, [2, 3]);
+    assert_eq!(dumped.len(), 6, "{dumped:?}");
+    let no_dump = |_: usize, _: &str| None;
+    let (one, _) = forced_run(
+        &save,
+        &rec,
+        0,
+        1,
+        None,
+        Dumps::default(),
+        &after,
+        &no_dump,
+        1,
+    )
+    .unwrap();
+    assert_eq!(one.iter().map(|r| r.start).collect::<Vec<_>>(), [0]);
+}
+
+/// The unit groups take the game's state where they differ: the group command counter the
+/// tick oracle dumped beside the save (4, the slice's 0) differs after the first update and
+/// is the slice's from then on.
+#[test]
+fn differing_groups_are_forced_to_the_games() {
+    let (save, rec) = (quiet(), syncs(4));
+    let after = |_: usize| Some(quiet());
+    let globals =
+        |_: usize, what: &str| (what == "globals").then(|| "group_commands 4\n".to_owned());
+    let (reports, _) = forced_run(
+        &save,
+        &rec,
+        0,
+        2,
+        None,
+        Dumps::default(),
+        &after,
+        &globals,
+        1,
+    )
+    .unwrap();
+    let group_lines = |r: &crate::TickReport| {
+        r.differences
+            .iter()
+            .filter(|(_, d)| d.contains("command"))
+            .count()
+    };
+    assert_eq!(group_lines(&reports[0]), 1, "{:?}", reports[0]);
+    assert_eq!(group_lines(&reports[1]), 0, "{:?}", reports[1]);
+}
+
+/// The game's state in a save: its frame seed, next reusable id, game state and groups.
+#[test]
+fn a_saves_game_state_is_its_seed_next_id_state_and_groups() {
+    let mut save = header(vec![gaia(Vec::new()), human(Vec::new())]);
+    let world = &mut save.world.base_world;
+    world.current_frame_random_seed = 5;
+    world.next_reusable_object_id = 9;
+    world.temp_game_state = 2;
+    let game = game_state(&save, None);
+    assert_eq!(
+        (game.frame_seed, game.next_reusable_id, game.game_state),
+        (5, 9, 2)
+    );
+    assert!(game.groups.is_some());
+    assert_eq!(game.players.len(), 2);
 }

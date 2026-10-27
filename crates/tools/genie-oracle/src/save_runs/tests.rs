@@ -140,6 +140,52 @@ fn stops_and_freezes_are_reported_by_their_update() {
     let mut report = TickReport::default();
     let _ = stops(player, 1, None, &mut report);
     assert_eq!(report.unsupported.len(), 2);
+    // update 6 reports its freeze alone: the stop is of update 5
+    let mut report = TickReport::default();
+    let _ = stops(player, 1, Some(6), &mut report);
+    assert_eq!(
+        report
+            .unsupported
+            .iter()
+            .map(|(p, o, t, _)| (*p, *o, *t))
+            .collect::<Vec<_>>(),
+        [(1, Some(40), 6)]
+    );
+    // a player that runs on reports no stop, whatever it last met
+    player.stopped = false;
+    player.freezes.clear();
+    let mut report = TickReport::default();
+    let _ = stops(player, 1, Some(5), &mut report);
+    assert_eq!(report.unsupported, []);
+}
+
+/// A stopped player's resources and attributes are not compared: they stood still from its
+/// stop on. A player that runs has them compared.
+#[test]
+fn a_stopped_player_s_stock_is_not_compared() {
+    let save = save();
+    let mut turns = slice(&save, None);
+    let mut after = same(&save, &turns);
+    after.game.resources = vec![[0.0; 4], [9.0, 0.0, 0.0, 0.0]];
+    let mut report = TickReport::default();
+    compare_players(&turns, &after, None, &mut report).unwrap();
+    assert!(
+        report
+            .differences
+            .iter()
+            .any(|(p, d)| *p == 1 && d.starts_with("resources ")),
+        "{report:?}"
+    );
+    turns.players[1].stopped = true;
+    let mut report = TickReport::default();
+    compare_players(&turns, &after, None, &mut report).unwrap();
+    assert!(
+        !report
+            .differences
+            .iter()
+            .any(|(_, d)| d.starts_with("resources ")),
+        "{report:?}"
+    );
 }
 
 /// The resources are one difference; each other attribute that differs is an entry of its own,

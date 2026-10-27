@@ -9,6 +9,7 @@ use genie_core::GenieError;
 use genie_core::construction::build::{BUILD, BuildTask};
 use genie_core::movement::move_to::{Goal, MOVE_TO, MoveTo};
 use genie_core::objects::masters::Task;
+use genie_core::objects::sprite::Graphic;
 use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 use genie_save::generated::world::{
@@ -108,7 +109,17 @@ fn acting(kind: i16, action: Action) -> genie_save::Object {
 fn import(
     object: &genie_save::Object,
     objects: &PlayerObjects,
+    unit: Unit,
+) -> Result<Unit, GenieError> {
+    import_drawn(object, objects, unit, None)
+}
+
+/// [`import`] with the sprites' table `graphics`.
+fn import_drawn(
+    object: &genie_save::Object,
+    objects: &PlayerObjects,
     mut unit: Unit,
+    graphics: Option<&std::collections::BTreeMap<i16, Graphic>>,
 ) -> Result<Unit, GenieError> {
     let s = object.static_part().expect("a test object's static part");
     saved_actions(
@@ -126,7 +137,7 @@ fn import(
         },
         |_| Ok(task(8, 3.0)),
         |_, slot| Ok(task(slot, 2.0)),
-        None,
+        graphics,
         &mut unit,
     )?;
     Ok(unit)
@@ -281,6 +292,20 @@ fn an_artifact_waits_or_walks_to_its_target() {
     .artifact
     .unwrap();
     assert!(matches!(a.walk_to, Some((Goal::Target(9), _))));
+    // the target's place is its goal however near the origin; an unset place (-1) is none
+    let mut near = base(5);
+    near.target_id = 9;
+    let a = imported(ARTIFACT_TYPE, artifact(near.clone()))
+        .unwrap()
+        .artifact
+        .unwrap();
+    assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
+    near.target_x = -1.0;
+    let a = imported(ARTIFACT_TYPE, artifact(near))
+        .unwrap()
+        .artifact
+        .unwrap();
+    assert_eq!(a.goal, None);
     // without a target the goal is the MoveTo's point, the action's own
     let a = imported(
         ARTIFACT_TYPE,
@@ -307,12 +332,17 @@ fn an_artifact_waits_or_walks_to_its_target() {
 
 /// A missile of unit 5's place, flying 5 from its shooter 900 (its second target).
 fn missile() -> genie_save::Object {
+    missile_of(5.0, 0)
+}
+
+/// [`missile`] `distance` from its point, a charge projectile for `charge` 1.
+fn missile_of(distance: f32, charge: u8) -> genie_save::Object {
     let mut b = base(2);
     b.target2_id = 900;
     let action = by_type(|t| {
         t.rge_action_missile = Some(Box::new(RgeActionMissile {
             rge_action: b,
-            distance: 5.0,
+            distance,
             ballistic_velocity: 3.0,
             ..RgeActionMissile::default()
         }));
@@ -320,6 +350,7 @@ fn missile() -> genie_save::Object {
     let mut flying = RgeMissileObject {
         max_range: 7.0,
         fired_from_id: 900,
+        is_charge_projectile: charge,
         ..RgeMissileObject::default()
     };
     flying.rge_combat_object.rge_action_object.actions =
@@ -350,8 +381,24 @@ fn a_missile_flies_with_its_actions_course() {
         (m.fired_from, m.max_range.to_bits()),
         (900, 7.0_f32.to_bits())
     );
-    assert!(m.flying);
-    let action = m.action.unwrap();
+    assert!(m.flying && !m.charge);
+    // a charge projectile; one at the landing distance has landed
+    let landing = genie_core::combat::missile::LANDING;
+    let m = import(
+        &missile_of(landing, 1),
+        &PlayerObjects::default(),
+        Unit::default(),
+    )
+    .unwrap()
+    .missile
+    .unwrap();
+    assert!(m.charge && !m.flying);
+    let action = import(&missile(), &PlayerObjects::default(), Unit::default())
+        .unwrap()
+        .missile
+        .unwrap()
+        .action
+        .unwrap();
     assert_eq!(
         (action.state, action.fired_from, action.hit_mode),
         (2, 900, 0)
@@ -763,4 +810,104 @@ fn a_wait_solidify_waits_for_its_foundation() {
         imported(WAIT_SOLIDIFY, explore(base(2))).unwrap_err(),
         GenieError::unsupported("a saved Wait_Solidify without its own part")
     );
+}
+
+/// The sprites' table of the Attack tests: an attack sprite 21 of ten frames of 0.1 s.
+fn swing_sprites() -> std::collections::BTreeMap<i16, Graphic> {
+    let swing = Graphic {
+        id: 21,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    std::collections::BTreeMap::from([(21, swing)])
+}
+
+/// An Attack in state `state` that walks with sprite `walk` (`short_val`) and swings sprite 21
+/// (`short_val_2`), with a hit to come (`need_to_attack`) for `pending`.
+fn attack(state: u8, walk: u16, pending: bool) -> Action {
+    by_type(|t| {
+        t.rge_action_attack = Some(Box::new(RgeActionAttack {
+            rge_action: base(state),
+            short_val: walk,
+            short_val_2: 21,
+            need_to_attack: u8::from(pending),
+            ..RgeActionAttack::default()
+        }));
+    })
+}
+
+/// An Attack runs (`+0x68`) where it walks with its master's running sprite; a unit whose
+/// master is not saved has no running sprite (-1) and never runs.
+#[test]
+fn an_attack_runs_with_the_masters_running_sprite() {
+    use genie_core::combat::attack::ATTACK;
+    let mut master = combat_master(83);
+    master_moving_mut(&mut master).run_sprite_id = 5;
+    let objects = with_masters(vec![master]);
+    let sprites = swing_sprites();
+    let runs = |walk: u16, objects: &PlayerObjects| {
+        import_drawn(
+            &acting(ATTACK, attack(4, walk, false)),
+            objects,
+            Unit::default(),
+            Some(&sprites),
+        )
+        .unwrap()
+        .attack
+        .unwrap()
+        .runs
+    };
+    assert!(runs(5, &objects));
+    assert!(!runs(4, &objects));
+    assert!(!runs(1, &PlayerObjects::default()));
+    assert!(!runs(0, &PlayerObjects::default()));
+}
+
+/// A Hunt's Attack in its swing past the hit (state 7, no hit to come) rests the unit's
+/// reload (its master's 2.5 s) less the attack sprite's length (1 s); one with its hit to
+/// come, or in another state, keeps no rest. A swing longer than the reload rests 0.
+#[test]
+fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
+    use genie_core::combat::attack::{ATTACK, SWING};
+    use genie_core::gathering::hunt::{HUNT, WALK};
+    let master = |reload: f32| {
+        let mut m = combat_master(83);
+        m.tribe_master_combat_object
+            .as_deref_mut()
+            .unwrap()
+            .rge_master_combat_object
+            .speed_of_attack = reload;
+        with_masters(vec![m])
+    };
+    let sprites = swing_sprites();
+    let swing = |state: u8, pending: bool, objects: &PlayerObjects| {
+        let a = import_drawn(
+            &acting(
+                HUNT,
+                hunt(with_sub(base(WALK), ATTACK, attack(state, 4, pending))),
+            ),
+            objects,
+            Unit::default(),
+            Some(&sprites),
+        )
+        .unwrap()
+        .hunt
+        .unwrap()
+        .attack
+        .unwrap();
+        (a.swing.to_bits(), a.rest.to_bits())
+    };
+    let rest = 2.5_f32 - 10.0 * 0.1_f32;
+    assert_eq!(
+        swing(SWING, false, &master(2.5)),
+        (rest.to_bits(), rest.to_bits())
+    );
+    assert_eq!(swing(SWING, true, &master(2.5)), (0, 0));
+    assert_eq!(swing(4, false, &master(2.5)), (0, 0));
+    let short = 0.5_f32 - 10.0 * 0.1_f32;
+    assert_eq!(swing(SWING, false, &master(0.5)), (short.to_bits(), 0));
 }
