@@ -3328,8 +3328,8 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
 }
 
 /// Runs `f` on object `i` of player `p` with its Context as its update has it (dt `dt`, outside
-/// a turn), then what the Context gathered ([`World::finish_object`]): `f`'s answer, or the
-/// first error.
+/// a turn), the unit staying in its list, then what the Context gathered
+/// ([`World::step_object`]): `f`'s answer, or the first error.
 pub(crate) fn in_update<R>(
     t: &mut World,
     (p, i): (usize, usize),
@@ -3337,15 +3337,12 @@ pub(crate) fn in_update<R>(
     f: impl FnOnce(&mut Unit, &mut context::Context<'_>, &mut Vec<Unit>) -> Result<R, GenieError>,
 ) -> Result<R, GenieError> {
     let frame = t.player_frame();
-    let id = t.players[p].objects[i].id;
-    let (result, out, victim) = t.run_object((p, i), (dt, None), &frame, None, f);
-    let step = match &result {
-        Ok(_) => Ok(crate::objects::unit::Step::Stay),
-        Err(e) => Err(e.clone()),
-    };
-    let (done, ..) = t.finish_object((p, i, id), (dt, false), out, victim, step);
-    let _ = done?;
-    result
+    let mut answer = None;
+    let _ = t.step_object((p, i), (dt, None, false), &frame, None, |u, c, o| {
+        answer = Some(f(u, c, o)?);
+        Ok(crate::objects::unit::Step::Stay)
+    })?;
+    Ok(answer.unwrap())
 }
 
 /// [`hunt_world`]'s hunter on deer 500 (the hunt command's), its hunt then set by `set`.
@@ -12055,4 +12052,418 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
     );
     assert_eq!(t.players[1].resources[0], 6.0);
     assert_eq!(t.players[1].objects[0].life.attribute_type, -1);
+}
+
+/// Object `i` of player `p`'s step (dt 50, outside a turn) whose only part is `step`: what it
+/// leaves in the Context, and its result, which what follows it sees ([`World::step_object`]).
+fn finished_with(
+    t: &mut World,
+    (p, i): (usize, usize),
+    step: impl FnOnce(&mut context::Context<'_>) -> Result<crate::objects::unit::Step, GenieError>,
+) -> Result<crate::objects::unit::Step, GenieError> {
+    let frame = t.player_frame();
+    t.step_object((p, i), (50, None, false), &frame, None, |_, c, _| step(c))
+        .map(|(step, ..)| step)
+}
+
+/// What a step leaves in its Context for what follows it.
+type Orders<'a> = dyn Fn(&mut context::Context<'_>) + 'a;
+
+/// A unit that leaves its list (`Step::Leave`) cannot take the orders its unit AI gave in the
+/// step: each kind fails with its own gap, and a step without orders just leaves.
+#[test]
+fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
+    use crate::objects::unit::Step;
+    use crate::unit_ai::world_view::AiWork;
+    let work = crate::orders::Work {
+        target: 600,
+        point: [32.5, 89.5, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    let order = crate::unit_ai::QueuedOrder {
+        issuer: 1,
+        order: crate::unit_ai::ORDER_ON_TARGET,
+        priority: 100,
+        target: 600,
+        target_owner: 0,
+        point: [32.5, 89.5, 0.0],
+        range: 0.0,
+        shown: [32.5, 89.5],
+        ready: true,
+        target_type: 7,
+    };
+    let aside = crate::unit_ai::AiMove {
+        point: [25.0, 89.5, 0.0],
+        range: 0.0,
+        force: false,
+        walk: false,
+    };
+    let leaving = |orders: &Orders<'_>| {
+        let mut t = house_builder();
+        finished_with(&mut t, (1, 0), |c| {
+            orders(c);
+            Ok(Step::Leave)
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
+    assert_eq!(leaving(&|_| ()), Ok(Step::Leave));
+    let gap = |reason: &str| Err(reason.to_owned());
+    let cases: [(&Orders<'_>, _); 6] = [
+        (
+            &|c| c.work_order = Some(work),
+            gap("a builder's work order of a unit that leaves its list"),
+        ),
+        (
+            &|c| c.works.push(AiWork::Gather(600)),
+            gap("a HuntObject or GatherObject of a unit that leaves its list"),
+        ),
+        (
+            &|c| c.move_aside.push(aside),
+            gap("a move off a footprint of a unit that leaves its list"),
+        ),
+        (
+            &|c| c.build_command = Some(10028),
+            gap(LEAVES_ITS_LIST.reason()),
+        ),
+        (&|c| c.reseed = Some(true), gap(LEAVES_ITS_LIST.reason())),
+        (
+            &|c| c.order_on_target = Some((order, None)),
+            gap("an order on a target of a unit that leaves its list"),
+        ),
+    ];
+    for (orders, failed) in cases {
+        assert_eq!(leaving(orders), failed);
+    }
+}
+
+/// What a step leaves in its Context for other objects reaches them after it: a dying
+/// building's annex goes free with its hit points, the building the unit entered gains its
+/// firepower and holds it, the owner's history gains the event (the owner as data1), the
+/// tracker files a promoted unit under its new master; the work for an annex goes to it, an
+/// annex takes its main building's state, and the footprint clearing's objects are destroyed.
+/// A human owner's foundation that another player's marks stand on goes; a computer's stays.
+#[test]
+fn a_step_s_writes_reach_the_objects_it_names() {
+    use crate::objects::unit::Step;
+    let site = |t: &World, id| {
+        let (_, u) = t.object(id).unwrap();
+        (u.life.state, u.life.hp, u.construction.map(|c| c.progress))
+    };
+    let key = |t: &World, m| crate::players::tracker::key(t.masters.get(1), &t.lines, m).master;
+    let mut t = house_builder();
+    t.players[1].objects[1].annex_of = Some(700);
+    t.players[1].history.entries.push([0, 0]);
+    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 120);
+    t.players[1].tracker.add(9175, k);
+    let r = finished_with(&mut t, (1, 0), |c| {
+        c.released_annexes.push((10028, 300.0));
+        c.entered = Some((700, 2.5));
+        c.history_events.push(6);
+        c.promotions.push((9175, 120, 83));
+        Ok(Step::Stay)
+    });
+    assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
+    let (house, centre) = (&t.players[1].objects[1], &t.players[1].objects[2]);
+    assert_eq!((house.annex_of, house.life.hp), (None, 300.0));
+    assert_eq!(
+        (centre.firepower, centre.garrison.clone()),
+        (2.5, vec![9175])
+    );
+    let event = &t.players[1].history.events[0];
+    assert_eq!((event.kind, event.data1, event.world_time), (6, 1.0, 0));
+    let tracker = &t.players[1].tracker;
+    assert_eq!(
+        (tracker.list(key(&t, 120)), tracker.list(key(&t, 83))),
+        (&[][..], &[9175][..])
+    );
+
+    let after = |setup: fn(&mut World), writes: &Orders<'_>| {
+        let mut t = house_builder();
+        setup(&mut t);
+        let r = finished_with(&mut t, (1, 0), |c| {
+            writes(c);
+            Ok(Step::Stay)
+        });
+        assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
+        t
+    };
+    let t = after(|_| (), &|c| c.main_works.push((10028, 5.0)));
+    assert_eq!(site(&t, 10028), (0, 111.0, Some(5.0)));
+    let t = after(|_| (), &|c| c.annex_states.push((10028, 1)));
+    assert_eq!(site(&t, 10028).0, 1);
+    let cleared = crate::construction::build::Cleared {
+        id: 601,
+        wall: false,
+        record_goes: false,
+    };
+    let t = after(|_| (), &|c| c.cleared.push(cleared));
+    assert_eq!(site(&t, 601), (7, 0.0, None));
+    let t = after(|_| (), &|c| c.site_removals.push(10028));
+    assert_eq!(site(&t, 10028), (7, 0.0, Some(0.0)));
+    let t = after(|t| t.players[1].computer = true, &|c| {
+        c.site_removals.push(10028);
+    });
+    assert_eq!(site(&t, 10028), (0, 1.0, Some(0.0)));
+}
+
+/// The unit AI's orders of a step reach the unit and the units they name: a `GatherObject`'s
+/// gather command takes the bush, a reseed without a farm lets it go, a build command gives the
+/// builder its Build, a drop elsewhere sends the unit to the drop site with the order back to its
+/// target queued, and an Enter's transport moves to the meeting point; one the world does not
+/// hold cannot.
+#[test]
+fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
+    use crate::objects::unit::Step;
+    use crate::unit_ai::world_view::AiWork;
+    let stay = |t: &mut World, orders: &Orders<'_>| {
+        finished_with(t, (1, 0), |c| {
+            orders(c);
+            Ok(Step::Stay)
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
+    let mut t = house_builder();
+    assert_eq!(
+        stay(&mut t, &|c| c.works.push(AiWork::Gather(600))),
+        Ok(Step::Stay)
+    );
+    let gatherer = &t.players[1].objects[0];
+    assert_eq!(
+        (
+            gatherer.top_action_kind(),
+            gatherer.gather.map(|g| (g.target, g.state))
+        ),
+        (Some(crate::gathering::gather::GATHER), Some((600, 4)))
+    );
+    assert_eq!(t.players[0].objects[0].workers, 1);
+    assert_eq!(stay(&mut t, &|c| c.reseed = Some(true)), Ok(Step::Stay));
+    let gather = t.players[1].objects[0].gather.unwrap();
+    assert_eq!((gather.target, gather.state), (-1, 2));
+    assert_eq!(t.players[0].objects[0].workers, 0);
+
+    let mut t = house_builder();
+    t.players[1].objects[0].build = None;
+    assert_eq!(
+        stay(&mut t, &|c| c.build_command = Some(10028)),
+        Ok(Step::Stay)
+    );
+    let builder = &t.players[1].objects[0];
+    assert_eq!(
+        (
+            builder.top_action_kind(),
+            builder.build.as_ref().map(|b| b.target)
+        ),
+        (Some(crate::construction::build::BUILD), Some(10028))
+    );
+
+    let mut t = house_builder();
+    let drop = AiWork::DropElsewhere(700, Some(600));
+    assert_eq!(stay(&mut t, &|c| c.works.push(drop)), Ok(Step::Stay));
+    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    let queued: Vec<_> = ai.orders.iter().map(|o| (o.order, o.target)).collect();
+    assert_eq!(
+        (ai.current_target, queued),
+        (700, vec![(crate::unit_ai::ORDER_ON_TARGET, 600)])
+    );
+
+    let mut t = house_builder();
+    let meet = [25.0, 89.5, 0.0];
+    assert_eq!(
+        stay(&mut t, &|c| c.transport_moves.push((9175, meet))),
+        Ok(Step::Stay)
+    );
+    let ship = t.players[1].objects[0].move_to.as_ref().unwrap();
+    assert_eq!((ship.goal, ship.range, ship.run), (Some(meet), 0.0, true));
+    assert_eq!(
+        stay(&mut t, &|c| c.transport_moves.push((4242, meet))),
+        Err(crate::garrison::UNREACHED.reason().to_owned())
+    );
+}
+
+/// A step that fails stops what follows it: the writes its Context gathered do not apply, and
+/// the first effect that fails stops the ones after it (an unmodelled flare master stops the
+/// history event).
+#[test]
+fn a_step_that_fails_stops_what_follows_it() {
+    use crate::objects::unit::Step;
+    let mut t = house_builder();
+    t.players[1].objects[1].annex_of = Some(700);
+    let r = finished_with(&mut t, (1, 0), |c| {
+        c.released_annexes.push((10028, 300.0));
+        Err(GenieError::unsupported("the step's own gap"))
+    });
+    assert_eq!(
+        r.map_err(|e| e.reason().to_owned()),
+        Err("the step's own gap".to_owned())
+    );
+    let house = &t.players[1].objects[1];
+    assert_eq!((house.annex_of, house.life.hp), (Some(700), 1.0));
+
+    let mut t = house_builder();
+    t.players[1].history.entries.push([0, 0]);
+    let r = finished_with(&mut t, (1, 0), |c| {
+        c.flares.push((1, [25.0, 89.5, 0.0], true));
+        c.history_events.push(6);
+        Ok(Step::Stay)
+    });
+    assert_eq!(
+        r.map_err(|e| e.reason().to_owned()),
+        Err("an object of a master the slice does not have".to_owned())
+    );
+    assert_eq!(t.players[1].history.events.len(), 0);
+}
+
+/// What a step completed reaches its owner: a pasture puts its livestock on its edges, a
+/// building's stack unit is made at its place, a completion's technology is researched, and a
+/// building that disappears when built is destroyed. A completed mule cart with nothing to find
+/// keeps its state.
+#[test]
+fn a_step_s_completions_reach_their_owner() {
+    use crate::construction::build::StackUnit;
+    use crate::gathering::pasture::LIVESTOCK;
+    use crate::objects::unit::Step;
+    use crate::technology::{TechDef, TechState};
+    let stay = |t: &mut World, orders: &Orders<'_>| {
+        finished_with(t, (1, 0), |c| {
+            orders(c);
+            Ok(Step::Stay)
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
+    let made = |t: &World| -> Vec<(i32, i16, [f32; 3])> {
+        t.players[1].objects[1..]
+            .iter()
+            .map(|u| (u.id, u.life.master_id, u.position))
+            .collect()
+    };
+    let mut t = pasture_game([60.0, 60.0, 0.0], 2.0, &LIVESTOCK);
+    assert_eq!(stay(&mut t, &|c| c.pastures.push(50)), Ok(Step::Stay));
+    assert_eq!(
+        made(&t),
+        [
+            (100, 1899, [58.5, 58.5, 0.0]),
+            (101, 1899, [59.4, 58.5, 0.0])
+        ]
+    );
+    let mut t = pasture_game([60.0, 60.0, 0.0], 2.0, &LIVESTOCK);
+    let stack = StackUnit {
+        master: 1899,
+        at: [60.0, 60.0, 0.0],
+        hp_lost: 0.0,
+    };
+    let completed = |c: &mut context::Context<'_>| c.completions.push((50, Some(stack), false));
+    assert_eq!(stay(&mut t, &completed), Ok(Step::Stay));
+    assert_eq!(made(&t), [(100, 1899, [60.0, 60.0, 0.0])]);
+
+    let mut t = house_builder();
+    t.techs = vec![TechDef::default()];
+    t.players[1].techs = vec![TechState {
+        state: 1,
+        research_cap: -1,
+        building_master: -1,
+        ..TechState::default()
+    }];
+    assert_eq!(stay(&mut t, &|c| c.techs_done.push(0)), Ok(Step::Stay));
+    assert_eq!(t.players[1].techs[0].state, 3);
+    let mut t = house_builder();
+    assert_eq!(
+        stay(&mut t, &|c| c.completions.push((10028, None, true))),
+        Ok(Step::Stay)
+    );
+    let house = &t.players[1].objects[1].life;
+    assert_eq!((house.state, house.hp), (7, 0.0));
+    let mut t = house_builder();
+    assert_eq!(stay(&mut t, &|c| c.carts.push((9175, 2))), Ok(Step::Stay));
+    let cart = &t.players[1].objects[0];
+    assert_eq!(
+        (cart.life.state, cart.ai.as_ref().map(|a| a.current_target)),
+        (2, Some(-1))
+    );
+}
+
+/// What a step's walk and deaths set off reaches the world: a paused unit's walked level
+/// pauses, a dead building's count leaves its attribute (at least 0 left), and a dying sprite's
+/// remains are a new object of the owner at their place.
+#[test]
+fn a_step_s_pauses_and_deaths_reach_the_world() {
+    use crate::objects::unit::Step;
+    let stay = |t: &mut World, orders: &Orders<'_>| {
+        finished_with(t, (1, 0), |c| {
+            orders(c);
+            Ok(Step::Stay)
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
+    let mut t = house_builder();
+    let mover = t.players[1].objects[0].mover.as_mut().unwrap();
+    mover.paths.push(crate::movement::PathData::new(0));
+    assert_eq!(
+        stay(&mut t, &|c| c.pauses.push((9175, 1.5))),
+        Ok(Step::Stay)
+    );
+    let paths = &t.players[1].objects[0].mover.as_ref().unwrap().paths;
+    assert_eq!(paths[0].pause_time, 1.5);
+
+    let mut t = house_builder();
+    t.players[1].attributes[4] = 0.5;
+    let died = BuildingDeath {
+        count: Some(4),
+        tech: None,
+    };
+    assert_eq!(
+        stay(&mut t, &|c| c.building_death = Some(died)),
+        Ok(Step::Stay)
+    );
+    assert_eq!(t.players[1].attributes[4], 0.0);
+
+    let mut t = house_builder();
+    let remains = |c: &mut context::Context<'_>| c.remains = Some((70, [25.0, 89.5, 0.0], None));
+    assert_eq!(stay(&mut t, &remains), Ok(Step::Stay));
+    let new = &t.players[1].objects[3];
+    assert_eq!(
+        (new.life.master_id, new.position, new.life.state),
+        (70, [25.0, 89.5, 0.0], 0)
+    );
+}
+
+/// The world's update runs the builder of the walk-and-build test the same way the object's
+/// own update does (4 walking, 6 and 7 at the house, 224 at its completion, then idle), and
+/// the completion's stop before its unit AI resumes it in the same update: nothing freezes.
+#[test]
+fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
+    let mut t = house_builder();
+    t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
+    t.build_mesh();
+    let v = &mut t.players[1].objects[0];
+    let m = v.mover.as_mut().unwrap();
+    m.moved_at = v.position;
+    m.stats.facets = Some(crate::objects::facing::SpriteFacets {
+        count: 8,
+        flag_1: false,
+    });
+    v.build.as_mut().unwrap().task.work_value = 1.0;
+    let mut seen = Vec::new();
+    for n in 0..520 {
+        t.tick(50);
+        let b = t.players[1].objects[0].build.unwrap();
+        let house = t.players[1].objects[1].life.state;
+        let now = (b.state, b.move_to, house);
+        if seen.last().is_none_or(|&(_, last)| last != now) {
+            seen.push((n, now));
+        }
+    }
+    assert_eq!(
+        seen,
+        [
+            (0, (4, Some(MoveTo::Moving), 0)),
+            (8, (4, Some(MoveTo::Arrived), 0)),
+            (9, (6, None, 0)),
+            (10, (7, None, 0)),
+            (511, (224, None, 2)),
+            (512, (crate::construction::build::IDLE, None, 2)),
+        ]
+    );
+    assert_eq!(t.players.iter().map(|p| p.freezes.len()).sum::<usize>(), 0);
 }

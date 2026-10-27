@@ -1,6 +1,7 @@
 //! One world update (`BaseWorld::update`): the command phase, the moving objects and the
 //! players' relations, each player's frame and the update with its commands.
 
+use crate::GenieError;
 use crate::commands::Command;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::seconds;
@@ -166,148 +167,7 @@ impl World {
                 self.stop_player(p, e);
             }
             self.pathing.reset_plans(p);
-            // An object whose update is not modelled freezes, and so do all live objects of a
-            // player a command stopped; dead objects still run their state steps, which draw
-            // nothing and depend on nothing the stop changed.
-            let frame = self.player_frame();
-            let mut i = 0;
-            // a unit whose update stopped before its unit AI for its work order runs that part
-            // again once the work is given ([`Unit::ai_part`])
-            let mut resume: Option<AiResume> = None;
-            while i < self.players[p].objects.len() {
-                let player = &self.players[p];
-                let stopped = player.stopped || player.objects[i].stopped;
-                if stopped && player.objects[i].life.is_alive() {
-                    self.spatial.freeze(player.objects[i].id);
-                    resume = None;
-                    i += 1;
-                    continue;
-                }
-                let (id, master) = (player.objects[i].id, player.objects[i].life.master_id);
-                let _object =
-                    tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master)
-                        .entered();
-                let (result, out, victim) = self.run_object(
-                    (p, i),
-                    (dt, turn),
-                    &frame,
-                    resume.take(),
-                    |unit, c, objects| unit.update(c, objects),
-                );
-                let (result, ai_resume, after_order) =
-                    self.finish_object((p, i, id), (dt, true), out, victim, result);
-                if matches!(result, Ok(Step::Stay)) && ai_resume.is_some() {
-                    resume = ai_resume;
-                    continue;
-                }
-                // the unit AI's rest after the order on a target it took, which the unit's
-                // update runs again from there ([`crate::unit_ai::UnitAi::after_order`])
-                if matches!(result, Ok(Step::Stay))
-                    && let Some(after) = after_order
-                {
-                    resume = Some(AiResume {
-                        captured: None,
-                        leaves: Step::Stay,
-                        after: Some(after),
-                    });
-                    continue;
-                }
-                let player = &mut self.players[p];
-                match result {
-                    Ok(Step::Leave) => {
-                        let gone = player.objects.swap_remove(i);
-                        if let Err(e) = self.leave_world(p, &gone) {
-                            crate::trace::player_unsupported(self.ticks, p, &e);
-                            let _ = self.players[p]
-                                .unsupported
-                                .get_or_insert((self.ticks, i, e));
-                        }
-                    }
-                    Ok(Step::Sleep) => {
-                        // the list's remove (FUN_1411664a0) puts its last object in the
-                        // sleeper's place, and the list's loop (0x141166550) goes on past it:
-                        // that object's update waits for the next tick; the player's remove and
-                        // add (slots 0x2d8, 0x2d0) file it last in the tracker
-                        let asleep = player.objects.swap_remove(i);
-                        let k = crate::players::tracker::key(
-                            self.masters.get(p),
-                            &self.lines,
-                            asleep.life.master_id,
-                        );
-                        player.tracker.remove(asleep.id, k);
-                        player.tracker.add(asleep.id, k);
-                        player.sleeping.push(asleep);
-                        i += 1;
-                    }
-                    Ok(Step::Captured(Captured { new, building, .. })) if building => {
-                        // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its
-                        // lists' moves and its new owner's parts
-                        let id = player.objects[i].id;
-                        let watched = player.watched.iter().any(|w| w.id == id);
-                        if let Err(e) = self.building_changes_hands(p, id, new, watched) {
-                            crate::trace::player_unsupported(self.ticks, p, &e);
-                            let _ = self.players[p]
-                                .unsupported
-                                .get_or_insert((self.ticks, i, e));
-                        }
-                        i += 1;
-                    }
-                    Ok(Step::Captured(Captured {
-                        new, main, also, ..
-                    })) => {
-                        // the old owner's list loses them (FUN_1411664a0, the last in each
-                        // place; the loop goes on past the first) and the new owner's gains
-                        // them (FUN_141616200), each with its attributes
-                        // ([`World::hand_over_attributes`])
-                        let mut moved = Vec::new();
-                        if main {
-                            moved.push(player.objects.swap_remove(i));
-                        }
-                        for id in also {
-                            if let Some(k) = player.objects.iter().position(|u| u.id == id) {
-                                moved.push(player.objects.swap_remove(k));
-                            }
-                        }
-                        let mut failed = None;
-                        for u in &moved {
-                            if let Err(e) = self.hand_over_attributes(p, new, u) {
-                                let _ = failed.get_or_insert(e);
-                            }
-                        }
-                        if let Some(e) = failed {
-                            crate::trace::player_unsupported(self.ticks, p, &e);
-                            let _ = self.players[p]
-                                .unsupported
-                                .get_or_insert((self.ticks, i, e));
-                        }
-                        // each one's slot 0x70: the old owner's remove (slot 0x2d8), the new
-                        // owner's add (slot 0x2d0), each tracker by its own masters
-                        for u in &moved {
-                            let m = u.life.master_id;
-                            let old =
-                                crate::players::tracker::key(self.masters.get(p), &self.lines, m);
-                            self.players[p].tracker.remove(u.id, old);
-                            let k =
-                                crate::players::tracker::key(self.masters.get(new), &self.lines, m);
-                            self.players[new].tracker.add(u.id, k);
-                        }
-                        self.players[new].objects.extend(moved);
-                        i += 1;
-                    }
-                    Ok(Step::Stay) => i += 1,
-                    Err(e) => {
-                        let e = player.objects[i].in_context(e);
-                        crate::trace::object_freezes(self.ticks, p, player.objects[i].id, &e);
-                        player
-                            .freezes
-                            .push((self.ticks, player.objects[i].id, e.clone()));
-                        let _ = player.unsupported.get_or_insert((self.ticks, i, e));
-                        player.objects[i].stopped = true;
-                        self.spatial.freeze(player.objects[i].id);
-                        i += 1;
-                    }
-                }
-            }
+            self.update_objects(p, (dt, turn));
             // the end of the player's own update: the tiles its map explored give their
             // resources
             if let Err(e) = self.process_new_tiles(p) {
@@ -352,6 +212,172 @@ impl World {
                 self.stop_player(p, e.clone());
             }
         }
+    }
+
+    /// The updates of player `p`'s objects in its list's order (`FUN_141166550`): each one's
+    /// step and what follows it ([`World::step_object`]), then its filing by the step
+    /// ([`World::file_step`]). An object whose update is not modelled freezes, and so do all live
+    /// objects of a player a command stopped; dead objects still run their state steps, which
+    /// draw nothing and depend on nothing the stop changed.
+    fn update_objects(&mut self, p: usize, (dt, turn): (u32, Option<u32>)) {
+        let frame = self.player_frame();
+        let mut i = 0;
+        // a unit whose update stopped before its unit AI for its work order runs that part
+        // again once the work is given ([`Unit::ai_part`])
+        let mut resume: Option<AiResume> = None;
+        while i < self.players[p].objects.len() {
+            let player = &self.players[p];
+            let stopped = player.stopped || player.objects[i].stopped;
+            if stopped && player.objects[i].life.is_alive() {
+                self.spatial.freeze(player.objects[i].id);
+                resume = None;
+                i += 1;
+                continue;
+            }
+            let (id, master) = (player.objects[i].id, player.objects[i].life.master_id);
+            let _object =
+                tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
+            let stepped = self.step_object(
+                (p, i),
+                (dt, turn, true),
+                &frame,
+                resume.take(),
+                |unit, c, objects| unit.update(c, objects),
+            );
+            i = match stepped {
+                Ok((Step::Stay, Some(ai_resume), _)) => {
+                    resume = Some(ai_resume);
+                    continue;
+                }
+                // the unit AI's rest after the order on a target it took, which the unit's
+                // update runs again from there ([`crate::unit_ai::UnitAi::after_order`])
+                Ok((Step::Stay, None, Some(after))) => {
+                    resume = Some(AiResume {
+                        captured: None,
+                        leaves: Step::Stay,
+                        after: Some(after),
+                    });
+                    continue;
+                }
+                Ok((step, ..)) => self.file_step(p, i, step),
+                Err(e) => {
+                    self.freeze_object(p, i, e);
+                    i + 1
+                }
+            };
+        }
+    }
+
+    /// Files object `i` of player `p` by the step it finished (the list's loop,
+    /// `FUN_141166550`): one that leaves goes from its list, a sleeper to the sleeping list, a
+    /// captured building or unit to its new owner. Returns the index of the next object to update.
+    fn file_step(&mut self, p: usize, i: usize, step: Step) -> usize {
+        let player = &mut self.players[p];
+        match step {
+            Step::Leave => {
+                let gone = player.objects.swap_remove(i);
+                if let Err(e) = self.leave_world(p, &gone) {
+                    crate::trace::player_unsupported(self.ticks, p, &e);
+                    let _ = self.players[p]
+                        .unsupported
+                        .get_or_insert((self.ticks, i, e));
+                }
+                // the list's last object took its place
+                i
+            }
+            Step::Sleep => {
+                // the list's remove (FUN_1411664a0) puts its last object in the sleeper's place,
+                // and the list's loop (0x141166550) goes on past it: that object's update waits
+                // for the next tick; the player's remove and add (slots 0x2d8, 0x2d0) file it last
+                // in the tracker
+                let asleep = player.objects.swap_remove(i);
+                let k = crate::players::tracker::key(
+                    self.masters.get(p),
+                    &self.lines,
+                    asleep.life.master_id,
+                );
+                player.tracker.remove(asleep.id, k);
+                player.tracker.add(asleep.id, k);
+                player.sleeping.push(asleep);
+                i + 1
+            }
+            Step::Captured(Captured { new, building, .. }) if building => {
+                // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its lists' moves
+                // and its new owner's parts
+                let id = player.objects[i].id;
+                let watched = player.watched.iter().any(|w| w.id == id);
+                if let Err(e) = self.building_changes_hands(p, id, new, watched) {
+                    crate::trace::player_unsupported(self.ticks, p, &e);
+                    let _ = self.players[p]
+                        .unsupported
+                        .get_or_insert((self.ticks, i, e));
+                }
+                i + 1
+            }
+            Step::Captured(taken) => {
+                self.hand_over_units(p, i, taken);
+                i + 1
+            }
+            Step::Stay => i + 1,
+        }
+    }
+
+    /// The units of player `p` a takeover in object `i`'s update captured go to their new owner:
+    /// the object itself when the new owner has its master (`main`), and the units taken with it
+    /// (`also`). The old owner's list loses them
+    /// (`FUN_1411664a0`, the last in each place; the loop goes on past the first) and the new
+    /// owner's gains them (`FUN_141616200`), each with its attributes
+    /// ([`World::hand_over_attributes`]).
+    fn hand_over_units(&mut self, p: usize, i: usize, taken: Captured) {
+        let Captured {
+            new, main, also, ..
+        } = taken;
+        let player = &mut self.players[p];
+        let mut moved = Vec::new();
+        if main {
+            moved.push(player.objects.swap_remove(i));
+        }
+        for id in also {
+            if let Some(k) = player.objects.iter().position(|u| u.id == id) {
+                moved.push(player.objects.swap_remove(k));
+            }
+        }
+        let mut failed = None;
+        for u in &moved {
+            if let Err(e) = self.hand_over_attributes(p, new, u) {
+                let _ = failed.get_or_insert(e);
+            }
+        }
+        if let Some(e) = failed {
+            crate::trace::player_unsupported(self.ticks, p, &e);
+            let _ = self.players[p]
+                .unsupported
+                .get_or_insert((self.ticks, i, e));
+        }
+        // each one's slot 0x70: the old owner's remove (slot 0x2d8), the new owner's add (slot
+        // 0x2d0), each tracker by its own masters
+        for u in &moved {
+            let m = u.life.master_id;
+            let old = crate::players::tracker::key(self.masters.get(p), &self.lines, m);
+            self.players[p].tracker.remove(u.id, old);
+            let k = crate::players::tracker::key(self.masters.get(new), &self.lines, m);
+            self.players[new].tracker.add(u.id, k);
+        }
+        self.players[new].objects.extend(moved);
+    }
+
+    /// Object `i` of player `p`, whose step failed with `e`, freezes: it stays in its list,
+    /// stopped, its error in the player's freezes, and the player keeps its first error.
+    fn freeze_object(&mut self, p: usize, i: usize, e: GenieError) {
+        let player = &mut self.players[p];
+        let e = player.objects[i].in_context(e);
+        crate::trace::object_freezes(self.ticks, p, player.objects[i].id, &e);
+        player
+            .freezes
+            .push((self.ticks, player.objects[i].id, e.clone()));
+        let _ = player.unsupported.get_or_insert((self.ticks, i, e));
+        player.objects[i].stopped = true;
+        self.spatial.freeze(player.objects[i].id);
     }
 }
 

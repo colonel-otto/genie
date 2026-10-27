@@ -395,7 +395,7 @@ const fn map_position([x, z, y]: Vec3) -> [f32; 3] {
 
 impl PathData {
     /// A new level (`FUN_140f8f670`) with a new path (`FUN_14152eea0`, flags 6, made `now`).
-    const fn new(now: u32) -> Self {
+    pub(crate) const fn new(now: u32) -> Self {
         Self {
             level: 0,
             linked_type: 0,

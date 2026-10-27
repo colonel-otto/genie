@@ -429,8 +429,8 @@
       "function": "UnitAi::handle",
       "line": 19,
       "cyclomatic": 108.0,
-      "coverage": 65.11627906976744,
-      "crap": 603.1262153017972,
+      "coverage": 65.69767441860465,
+      "crap": 578.7802174651291,
       "crate": "genie-core"
     },
     {
@@ -479,39 +479,12 @@
       "crate": "genie-core"
     },
     {
-      "file": "crates/engine/genie-core/src/world/after_step.rs",
-      "function": "World::apply_ai_orders",
-      "line": 320,
-      "cyclomatic": 25.0,
-      "coverage": 62.66666666666667,
-      "crap": 57.521481481481466,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/world/after_step.rs",
-      "function": "World::apply_object_writes",
-      "line": 99,
-      "cyclomatic": 18.0,
-      "coverage": 61.81818181818181,
-      "crap": 36.03494515401954,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/engine/genie-core/src/world/forced.rs",
       "function": "World::force",
       "line": 88,
       "cyclomatic": 34.0,
       "coverage": 64.44444444444444,
       "crap": 85.96132784636492,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/world/world_update.rs",
-      "function": "World::tick_with",
-      "line": 133,
-      "cyclomatic": 38.0,
-      "coverage": 70.93023255813954,
-      "crap": 73.47250556554766,
       "crate": "genie-core"
     },
     {

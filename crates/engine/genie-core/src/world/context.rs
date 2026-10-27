@@ -253,7 +253,7 @@ pub(crate) struct Context<'a> {
 }
 
 /// What an object's step gathered in its Context for the world to apply after it
-/// ([`crate::world::World::finish_object`]): the Context's fields of the same meaning; the left
+/// ([`crate::world::World::step_object`]): the Context's fields of the same meaning; the left
 /// group carries the unit's id.
 pub(crate) struct ObjectOutputs {
     /// [`Context`]'s `attribute_adds`.

@@ -29,7 +29,7 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 <!-- files -->
 | File | What it holds |
 | --- | --- |
-| [`after_step.rs`](after_step.rs) | What follows an object's step (`World::finish_object`): what its Context gathered, applied to the world in the order the game's update makes them. |
+| [`after_step.rs`](after_step.rs) | An object's step and what follows it (`World::step_object`): what its Context gathered, applied to the world in the order the game's update makes them. |
 | [`checkpoint.rs`](checkpoint.rs) | The per-player 11-word state block that recorded games checkpoint every N syncs. |
 | [`context.rs`](context.rs) | What a tick's update of one object reads and writes (`Context`) and its walks. |
 | [`forced.rs`](forced.rs) | The forced replay (dev only): the game's state after a tick (`GameState`) and the step that forces it on the world. |

@@ -16,16 +16,16 @@ impl World {
     /// for a command): object `i` of player `p` leaves its list, `f` gets it, the Context and the
     /// rest of the list; it comes back with the objects it made (each filed in its owner's
     /// tracker). Returns `f`'s result (an error of the sight's registry first), what the Context
-    /// gathered for the world ([`World::finish_object`]) and the victim of its attack.
+    /// gathered for the world ([`World::step_object`]) and the victim of its attack.
     #[allow(clippy::too_many_lines)]
-    pub(super) fn run_object<R>(
+    pub(super) fn run_object(
         &mut self,
         (p, i): (usize, usize),
         (dt, turn): (u32, Option<u32>),
         frame: &PlayerFrame,
         resume: Option<AiResume>,
-        f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Vec<Unit>) -> Result<R, GenieError>,
-    ) -> (Result<R, GenieError>, ObjectOutputs, Option<Victim>) {
+        f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Vec<Unit>) -> Result<Step, GenieError>,
+    ) -> (Result<Step, GenieError>, ObjectOutputs, Option<Victim>) {
         // the unit AI's target as its update starts, read before the unit leaves its list: a unit
         // may be its own target (an unload's)
         let ai_target = self.players[p].objects[i]
@@ -172,9 +172,9 @@ impl World {
     }
 
     /// Runs `f` on the unit AI of object `i` of player `p` outside its update (a command's
-    /// immediate order, `FUN_140c55c90`): the object's step ([`World::run_object`]) whose only
-    /// part is the AI's run with what it reads of the world ([`Unit::run_ai`]), then what that
-    /// gathered ([`World::finish_object`] without the update's own parts).
+    /// immediate order, `FUN_140c55c90`): the object's step ([`World::step_object`] without the
+    /// update's own parts) whose only part is the AI's run with what it reads of the world
+    /// ([`Unit::run_ai`]).
     ///
     /// # Errors
     ///
@@ -191,13 +191,14 @@ impl World {
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
         let frame = self.player_frame();
-        let id = self.players[p].objects[i].id;
-        let (result, out, victim) =
-            self.run_object((p, i), (0, None), &frame, None, |unit, c, objects| {
-                unit.run_ai(c, objects, f).map(|()| Step::Stay)
-            });
-        let (result, ..) = self.finish_object((p, i, id), (0, false), out, victim, result);
-        match result? {
+        let (step, ..) = self.step_object(
+            (p, i),
+            (0, None, false),
+            &frame,
+            None,
+            |unit, c, objects| unit.run_ai(c, objects, f).map(|()| Step::Stay),
+        )?;
+        match step {
             Step::Stay => Ok(()),
             _ => Err(GenieError::unsupported(
                 "a unit AI run outside its update that takes the unit out of its list",

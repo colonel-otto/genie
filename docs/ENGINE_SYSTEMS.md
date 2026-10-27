@@ -88,7 +88,7 @@ object and the building.
 9. The unit AI runs (`unit_ai/`).
 
 The update does not change the world directly. It reads and writes through a `Context`
-(`world/context.rs`), and `World::finish_object` (`world/after_step.rs`) applies what it
+(`world/context.rs`), and `World::step_object` (`world/after_step.rs`) applies what it
 collected: new objects, kills, resources, ownership changes.
 
 ## The systems
