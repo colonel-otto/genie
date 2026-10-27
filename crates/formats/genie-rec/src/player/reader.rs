@@ -262,7 +262,7 @@ fn skip_view_ai_and_selection<R: Read>(input: &mut RecordingHeaderReader<R>) -> 
     if input.version() >= 11.45 {
         let _easiest_reaction_percent = input.read_f32::<LE>()?;
         let _easier_reaction_percent = input.read_f32::<LE>()?;
-        let _task_ungrouped_soldiers = input.read_u8()? != 0;
+        let _task_ungrouped_soldiers = input.read_u8()?;
     }
     if input.version() >= 11.72 {
         let _selection = read_selection(input)?;
@@ -356,7 +356,7 @@ fn skip_market<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
 /// (11.42), the farm queue (11.57) and the nomad build lock (11.75): skipped.
 fn skip_queues_and_dodging<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
     if input.version() >= 9.67 {
-        let _prod_queue_enabled = input.read_u8()? != 0;
+        let _prod_queue_enabled = input.read_u8()?;
     }
     if input.version() >= 9.90 {
         let _chance_to_dodge_missiles = input.read_u8()?;
@@ -369,7 +369,7 @@ fn skip_queues_and_dodging<R: Read>(input: &mut RecordingHeaderReader<R>) -> Res
         let _farm_queue_count = input.read_u32::<LE>()?;
     }
     if input.version() >= 11.75 {
-        let _nomad_build_lock = input.read_u32::<LE>()? != 0;
+        let _nomad_build_lock = input.read_u32::<LE>()?;
     }
     Ok(())
 }

@@ -366,8 +366,8 @@ fn skip_world_clock<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()>
 /// 10.13), the player turn and each player's time delta: skipped.
 fn skip_game_mode_and_campaign<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<()> {
     if input.version() >= 11.76 {
-        let _aegis_enabled = input.read_u8()? != 0;
-        let _cheats_enabled = input.read_u8()? != 0;
+        let _aegis_enabled = input.read_u8()?;
+        let _cheats_enabled = input.read_u8()?;
     }
     let _game_mode = input.read_u8()?;
     let _campaign = input.read_u32::<LE>()?;
@@ -391,7 +391,7 @@ fn skip_lobby_players<R: Read>(input: &mut RecordingHeaderReader<R>) -> Result<(
         let _difficulty = input.read_u32::<LE>()?;
     }
     if input.version() >= 10.23 {
-        let _lock_teams = input.read_u32::<LE>()? != 0;
+        let _lock_teams = input.read_u32::<LE>()?;
     }
     if input.version() >= 11.32 {
         for _ in 0..9 {
