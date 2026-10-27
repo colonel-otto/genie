@@ -9,6 +9,8 @@ use crate::groups::update::{
     TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
+use crate::objects::masters::Master;
+use crate::objects::unit::Unit;
 use crate::world::World;
 
 impl World {
@@ -348,39 +350,7 @@ impl World {
         let WorldObject::Unit(p, u) = object else {
             return Ok(true);
         };
-        let master = self.master_of(p, u.life.master_id)?;
-        let state = if master.kind < ACTION_KIND {
-            0
-        } else {
-            if let Some(e) = u.unmodelled_action.clone() {
-                return Err(e);
-            }
-            u.top_action().map_or(0, |a| a.state)
-        };
-        if 1 < state {
-            if state == 2 {
-                if master.class == TRADE_CART || master.class == TRADE_BOAT {
-                    return Ok(true);
-                }
-                if u.top_action_kind() == Some(crate::combat::attack::ATTACK) {
-                    return Ok(false);
-                }
-            } else if !matches!(state, 3 | 13 | 14) {
-                return Ok(false);
-            }
-        }
-        if let Some(ai) = u.ai.as_ref() {
-            let mut action = ai.current_action;
-            if action != crate::unit_ai::GROUP_ASIDE_ACTION {
-                if action == CHOSEN_ACTION {
-                    action = ai.current_order;
-                }
-                if action != -1 {
-                    return Ok(false);
-                }
-            }
-        }
-        Ok(true)
+        u.free_for_group(self.master_of(p, u.life.master_id)?)
     }
 
     /// Slot 0x660 of object `id`: it shows its standing sprite. Nothing for an object below type
@@ -519,5 +489,49 @@ impl World {
             }
         }
         lead
+    }
+}
+
+impl Unit {
+    /// [`World::member_idle`] of the unit itself (`FUN_141017f00`), of master `master`, as its
+    /// own update asks it (slot 0x5e0, [`crate::movement::GroupSpeed`]).
+    ///
+    /// # Errors
+    ///
+    /// A unit with an action the slice does not model.
+    pub(crate) fn free_for_group(&self, master: &Master) -> Result<bool, GenieError> {
+        let u = self;
+        let state = if master.kind < ACTION_KIND {
+            0
+        } else {
+            if let Some(e) = u.unmodelled_action.clone() {
+                return Err(e);
+            }
+            u.top_action().map_or(0, |a| a.state)
+        };
+        if 1 < state {
+            if state == 2 {
+                if master.class == TRADE_CART || master.class == TRADE_BOAT {
+                    return Ok(true);
+                }
+                if u.top_action_kind() == Some(crate::combat::attack::ATTACK) {
+                    return Ok(false);
+                }
+            } else if !matches!(state, 3 | 13 | 14) {
+                return Ok(false);
+            }
+        }
+        if let Some(ai) = u.ai.as_ref() {
+            let mut action = ai.current_action;
+            if action != crate::unit_ai::GROUP_ASIDE_ACTION {
+                if action == CHOSEN_ACTION {
+                    action = ai.current_order;
+                }
+                if action != -1 {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
     }
 }

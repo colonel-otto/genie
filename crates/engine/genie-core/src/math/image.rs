@@ -632,6 +632,8 @@ pub mod movement {
     pub const TARGET_SHORT_REACH: f32 = f32::from_bits(0x4120_0000);
     /// 6.2831854820251465
     pub const TWO_PI: f32 = f32::from_bits(0x40c9_0fdb);
+    /// 10.0
+    pub const UNCAPPED_SPEED: f32 = f32::from_bits(0x4120_0000);
     /// 0.5
     pub const USER_WAYPOINT_MIDDLE: f32 = f32::from_bits(0x3f00_0000);
     /// 3.0

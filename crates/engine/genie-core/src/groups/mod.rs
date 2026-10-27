@@ -502,6 +502,16 @@ impl UnitGroup {
             .find(|m| m.id == id)
             .map_or(-1, |m| m.specific_move.reason)
     }
+
+    /// `FUN_1410177f0`: unit `id` is in its place, its first slot (`mUnitID`) in the current
+    /// formation (`+0x128`) in state 3 (`+0x2c`); not without such a slot or formation.
+    #[must_use]
+    pub fn slot_in_place(&self, id: i32) -> bool {
+        self.current_formation
+            .as_ref()
+            .and_then(|f| f.slots.iter().find(|s| s.unit_id == id))
+            .is_some_and(|s| s.state == 3)
+    }
 }
 
 #[cfg(test)]

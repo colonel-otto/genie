@@ -361,7 +361,9 @@ impl World {
     /// [`crate::movement::Mover::motion`] with its top action's state, the update's seconds and
     /// the world's planners); true when it is done (the step answers other than 0: arrived or
     /// given up). Its place follows the world's; the units its walk paused take their pauses
-    /// (slot 0x5f0). Not held: its facet from its angle (`FUN_14114d8b0`).
+    /// (slot 0x5f0). The walk reads the group's members' gaits as the update left them, and the
+    /// unit's own follows its step ([`World::refresh_gaits`]). Not held: its facet from its
+    /// angle (`FUN_14114d8b0`).
     ///
     /// # Errors
     ///
@@ -374,6 +376,13 @@ impl World {
         let crate::orders::Place::Live(p, idx) = place else {
             return Err(GenieError::unsupported("a sleeping member's own move"));
         };
+        // the walk meets the group's members as its update left them so far
+        let members: Vec<i32> = self
+            .groups
+            .get(self.players[p].objects[idx].group.id)
+            .map(|g| g.members.iter().map(|m| m.id).collect())
+            .unwrap_or_default();
+        self.refresh_gaits(members);
         let computer = self.players[p].computer;
         let construction_rate = self.players[p].construction_rate;
         let unit = &mut self.players[p].objects[idx];
@@ -403,6 +412,7 @@ impl World {
         for (other, pause) in pauses {
             self.pause(other, pause);
         }
+        self.refresh_gaits([id]);
         Ok(motion != Motion::Moving)
     }
 

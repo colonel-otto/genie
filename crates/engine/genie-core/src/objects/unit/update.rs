@@ -56,7 +56,7 @@ impl Unit {
         self.building_seconds(c, others)?;
         self.take_stopped_speed();
         self.run_down_attack_timers(c);
-        self.motion_step(c);
+        self.motion_step(c)?;
         let leaves = self.life_step(c)?;
         self.animate(c);
         self.actions_past_life(c)?;

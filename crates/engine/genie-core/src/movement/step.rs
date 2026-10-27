@@ -10,31 +10,76 @@ use crate::movement::{
 use crate::pathing::Pathing;
 use crate::{GenieError, math::fmath};
 
+/// The speed below which a free group member's speed is not capped by its top speed (slot
+/// 0x5e0).
+const UNCAPPED_SPEED: f32 = crate::math::image::movement::UNCAPPED_SPEED;
+
+/// What slot 0x5e0 (`FUN_14114f300`) reads of a unit its unit group steers: the unit is in a
+/// group the world holds (`+0x6d0`, `FUN_14152ff40`), the group's motion moves
+/// (`FUN_141046600`) or the unit is not in its place ([`UnitGroup::slot_in_place`]), and the
+/// unit is free for the group's moves (`FUN_141017f00`). Its own move's reason
+/// (`FUN_141017590`) decides.
+///
+/// [`UnitGroup::slot_in_place`]: crate::groups::UnitGroup::slot_in_place
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GroupSpeed {
+    /// Moved aside (reason 2): the unit stands.
+    Aside,
+    /// No own move (reason −1): a speed below [`UNCAPPED_SPEED`] is not capped by the top
+    /// speed.
+    Free,
+    /// An own move of another reason: the group's top speed (`+0xbc`) while the unit's walked
+    /// level walks (state 3) unpaused, else the unit stands.
+    OwnMove(f32),
+}
+
 impl Mover {
+    /// Slot 0x5e0 (`FUN_14114f300`): the forward speed the velocity step takes toward `wanted`
+    /// (the acceleration times dt plus the speed). A unit its group steers (`group`) takes the
+    /// group's answer ([`GroupSpeed`]; a free one below [`UNCAPPED_SPEED`], `COMISS` then `JA`,
+    /// only the floor). Any other is capped by the top speed (slot 0x208; `COMISS` then `JA`: a
+    /// NaN is not above it), then floored at 0 (a NaN stays).
+    #[must_use]
+    pub fn next_speed(&self, wanted: f32, group: Option<GroupSpeed>) -> f32 {
+        match group {
+            Some(GroupSpeed::Aside) => return 0.0,
+            Some(GroupSpeed::OwnMove(speed)) => {
+                // the walked level walks (state 3) and its pause is not above 0 (`COMISS`
+                // then `JA`: a NaN pause walks)
+                let walks = self.paths.first().is_some_and(|l| {
+                    l.state == 3 && fmath::at_most_or_unordered(l.pause_time, 0.0)
+                });
+                return if walks { speed } else { 0.0 };
+            }
+            Some(GroupSpeed::Free) if wanted < UNCAPPED_SPEED => {}
+            Some(GroupSpeed::Free) | None => {
+                if self.stats.speed < wanted {
+                    return self.stats.speed;
+                }
+            }
+        }
+        if wanted < 0.0 { 0.0 } else { wanted }
+    }
+
     /// The velocity part of `RGE_Moving_Object::update` (`FUN_140f9ba80`): the forward speed moves
-    /// toward the acceleration's target, capped by the top speed (object slot 188, `0x14114f300`),
-    /// then the unit moves `dt × speed` along its forward vector (slot 182, `0x141158490`). Returns
-    /// the position after it.
+    /// toward the acceleration's target, as slot 0x5e0 takes it ([`Mover::next_speed`], `group`
+    /// the unit's group's steer), then the unit moves `dt × speed` along its forward vector (slot
+    /// 182, `0x141158490`) at the world's time `now`. Returns the position after it.
     pub fn step_velocity(
         &mut self,
         position: [f32; 3],
         dt: f32,
         map: [i32; 2],
         terrain: Option<&crate::map::terrain::Terrain>,
-        now: u32,
+        (now, group): (u32, Option<GroupSpeed>),
     ) -> [f32; 3] {
-        let Some(v) = self.velocity.as_mut() else {
+        let Some(v) = self.velocity.as_ref() else {
             return position;
         };
-        let wanted = v.acceleration[2] * dt + v.velocity[2];
-        let speed = if self.stats.speed < wanted {
-            self.stats.speed
-        } else if wanted < 0.0 {
-            0.0
-        } else {
-            wanted
-        };
-        v.velocity[2] = speed;
+        let speed = self.next_speed(v.acceleration[2] * dt + v.velocity[2], group);
+        if let Some(v) = self.velocity.as_mut() {
+            v.velocity[2] = speed;
+        }
         // the position setter runs only for a distance it moves
         let Some(at) = self.move_forward(dt * speed, map) else {
             return position;

@@ -3,29 +3,45 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
-use crate::movement::Me;
 use crate::movement::move_to::MoveTo;
+use crate::movement::{GroupSpeed, Me};
 use crate::objects::unit::Unit;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
 use crate::world::context::Context;
 
+/// A group member's own move's reasons slot 0x5e0 tells apart (`FUN_141017590`): moved aside,
+/// and none.
+const ASIDE: i32 = 2;
+const NO_OWN_MOVE: i32 = -1;
+
 impl Unit {
     /// `RGE_Moving_Object::update` (`0x14114dbb0`) before the actions: the last human order's time
-    /// counts down, the velocity step moves the unit, and a moving unit animates at its speed.
-    pub(crate) fn motion_step(&mut self, c: &mut Context<'_>) {
+    /// counts down, the velocity step moves the unit (at the speed its group steers,
+    /// [`Unit::group_speed`]), and a moving unit animates at its speed.
+    ///
+    /// # Errors
+    ///
+    /// A unit its group may steer whose master the slice does not have or whose action it does
+    /// not model.
+    pub(crate) fn motion_step(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         // RGE_Moving_Object::update counts the last human order time down before its velocity
         // step
         if self.mover.is_some() {
             self.count_down_human_order(c.dt, c.spatial);
         }
+        // the velocity step (FUN_140f9ba80) runs for a unit with velocity data (+0x868)
+        let group = match self.mover.as_ref().and_then(|m| m.velocity.as_ref()) {
+            Some(_) => self.group_speed(c.groups, c.masters)?,
+            None => None,
+        };
         if let Some(mover) = self.mover.as_mut() {
             let at = mover.step_velocity(
                 self.position,
                 c.dt_seconds,
                 c.spatial.map,
                 c.spatial.terrain.as_ref(),
-                c.world_time,
+                (c.world_time, group),
             );
             if at != self.position {
                 self.position = at;
@@ -43,6 +59,43 @@ impl Unit {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// What slot 0x5e0 (`FUN_14114f300`) reads of the unit's group ([`GroupSpeed`]) among the
+    /// world's `groups`, the unit's master among `masters`: none outside a group the world holds (`+0x6d0`, `FUN_14152ff40`: none for −1), nor when the
+    /// group's motion stands (`FUN_141046600`) and the unit is in its place
+    /// ([`UnitGroup::slot_in_place`]), nor for a unit not free for the group's moves
+    /// ([`Unit::free_for_group`]). Else its own move's reason (`FUN_141017590`): 2 moved aside,
+    /// −1 none, any other an own move at the group's top speed (`+0xbc`).
+    ///
+    /// # Errors
+    ///
+    /// A unit whose master the slice does not have, or whose action it does not model.
+    ///
+    /// [`UnitGroup::slot_in_place`]: crate::groups::UnitGroup::slot_in_place
+    pub(crate) fn group_speed(
+        &self,
+        groups: &crate::groups::UnitGroups,
+        masters: Option<&crate::objects::masters::Masters>,
+    ) -> Result<Option<GroupSpeed>, GenieError> {
+        let Some(g) = groups.get(self.group.id) else {
+            return Ok(None);
+        };
+        if !g.motion.moving() && g.slot_in_place(self.id) {
+            return Ok(None);
+        }
+        let master = masters
+            .and_then(|m| m.get(self.life.master_id))
+            .ok_or(crate::world::OBJECT_MASTER)?;
+        if !self.free_for_group(master)? {
+            return Ok(None);
+        }
+        Ok(Some(match g.member_reason(self.id) {
+            ASIDE => GroupSpeed::Aside,
+            NO_OWN_MOVE => GroupSpeed::Free,
+            _ => GroupSpeed::OwnMove(g.motion.maximum_velocity_forward),
+        }))
     }
 
     /// The unit's own `MoveTo` in its update (`0x140aa2a70`): its update, then a give-up, a moved

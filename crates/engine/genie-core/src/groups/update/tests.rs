@@ -1,4 +1,5 @@
 use crate::groups::{Member, UnitGroup, UnitGroups};
+use crate::movement::GroupSpeed;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
 use crate::unit_ai::UnitAi;
@@ -990,6 +991,30 @@ fn a_member_s_own_move_walks_its_path() {
     assert_eq!(own.active, 1);
     assert_eq!((at, own.last_position), ([1.0, 0.0, 1.0], [1.0, 0.0, 1.0]));
     assert_eq!(own.distance, 2.0);
+    // the walks that meet the unit later in the update read its walked level as the step left it
+    assert_eq!(t.spatial.gait(10), t.object(10).unwrap().1.gait());
+}
+
+/// The walks read a unit's gait from the spatial index: a group update that changes its
+/// members' movers leaves their gaits current. Here the group goes (its members have no unit
+/// AI) and its free members stand, no longer moving.
+#[test]
+fn a_group_update_leaves_its_members_gaits_current() {
+    let mut t = world();
+    let walker = crate::gathering::hunt::tests::walker();
+    for u in &mut t.players[1].objects {
+        u.mover = Some(walker.clone());
+        u.mover.as_mut().unwrap().moved_at = u.position;
+        u.ai = None;
+        t.spatial.set_gait(u.id, u.gait());
+    }
+    assert!(t.spatial.gait(10).unwrap().moving);
+    t.update_groups(1).unwrap();
+    for id in 10..=12 {
+        let gait = t.object(id).unwrap().1.gait();
+        assert!(!gait.unwrap().moving, "{id}");
+        assert_eq!(t.spatial.gait(id), gait, "{id}");
+    }
 }
 
 /// `FUN_14100d940`: the orders whose time has come go; later ones stay.
@@ -1081,6 +1106,109 @@ fn a_player_s_groups_update_before_its_objects() {
     assert_eq!(u.group.id, -1);
     assert_eq!(u.position, before);
     assert_eq!(u.mover.as_ref().unwrap().velocity.unwrap().velocity[2], 0.0);
+}
+
+/// Slot 0x5e0 (`FUN_14114f300`) in the members' own update: the group has no formation, so no
+/// member is in its place and the group steers its free members' speeds (its owner is no
+/// player, so that no group update moves them first). 10, on an own move (reason 1) whose walked level is paused, stands; 11, without one
+/// (reason −1), keeps its speed of 1 above its top speed of 0.8 (below 10) and moves 1 a second
+/// (0.1 in the update); 12, on an own move (reason 0) without a walked level, stands.
+#[test]
+fn a_group_steers_its_free_members_speeds_in_their_own_update() {
+    let mut t = world();
+    let walker = crate::gathering::hunt::tests::walker();
+    for u in &mut t.players[1].objects {
+        let mut m = walker.clone();
+        m.moved_at = u.position;
+        m.velocity = Some(crate::movement::Velocity {
+            velocity: [0.0, 0.0, 1.0],
+            acceleration: [0.0; 3],
+        });
+        u.mover = Some(m);
+    }
+    t.players[1].objects[0].mover.as_mut().unwrap().paths = vec![crate::movement::PathData {
+        state: 3,
+        pause_time: 0.5,
+        ..crate::movement::PathData::without_path()
+    }];
+    let g = t.groups.get_mut(1).unwrap();
+    g.owner = 9;
+    g.motion.maximum_velocity_forward = 0.9;
+    g.members[0].specific_move.reason = 1;
+    g.members[1].specific_move.reason = -1;
+    g.members[2].specific_move.reason = 0;
+    let before: Vec<_> = (10..=12)
+        .map(|id| t.object(id).unwrap().1.position)
+        .collect();
+    t.tick(100);
+    assert_eq!(t.players[1].unsupported, None);
+    let speed = |t: &World, id| {
+        t.object(id)
+            .unwrap()
+            .1
+            .mover
+            .as_ref()
+            .unwrap()
+            .velocity
+            .unwrap()
+            .velocity[2]
+    };
+    assert_eq!(speed(&t, 10), 0.0);
+    assert_eq!(t.object(10).unwrap().1.position, before[0]);
+    assert_eq!(speed(&t, 11), 1.0);
+    assert_eq!(t.object(11).unwrap().1.position, [1.9, 1.0, 0.0]);
+    assert_eq!(speed(&t, 12), 0.0);
+    assert_eq!(t.object(12).unwrap().1.position, before[2]);
+}
+
+/// [`Unit::group_speed`]: the group steers a free member while its motion moves or the member
+/// is not in its place; one in its place in a standing group, one not free (its unit AI acts),
+/// one outside a group the world holds and one in none are not steered. The reason picks the
+/// answer: 2 aside, −1 free, any other an own move at the group's top speed.
+#[test]
+fn the_speed_slot_reads_the_group_that_steers_a_free_member() {
+    let t = world();
+    let mut g = t.groups.get(1).unwrap().clone();
+    g.motion.maximum_velocity_forward = 0.9;
+    g.current_formation = Some(crate::groups::Formation {
+        slots: vec![crate::groups::Slot {
+            unit_id: 10,
+            state: 3,
+            ..crate::groups::Slot::default()
+        }],
+        ..crate::groups::Formation::default()
+    });
+    g.members[0].specific_move.reason = 2;
+    g.members[1].specific_move.reason = -1;
+    g.members[2].specific_move.reason = 4;
+    let groups = UnitGroups {
+        groups: vec![g],
+        ..UnitGroups::default()
+    };
+    let masters = Some(&t.masters[1]);
+    let of = |groups: &UnitGroups, id| {
+        let u = t.object(id).unwrap().1;
+        u.group_speed(groups, masters)
+    };
+    assert_eq!(of(&groups, 10), Ok(None));
+    assert_eq!(of(&groups, 11), Ok(Some(GroupSpeed::Free)));
+    assert_eq!(of(&groups, 12), Ok(Some(GroupSpeed::OwnMove(0.9))));
+    let mut moving = groups.clone();
+    moving.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
+    assert_eq!(of(&moving, 10), Ok(Some(GroupSpeed::Aside)));
+    let mut busy = t.object(11).unwrap().1.clone();
+    busy.ai.as_mut().unwrap().current_action = 0x258;
+    assert_eq!(busy.group_speed(&groups, masters), Ok(None));
+    let mut gone = busy.clone();
+    gone.group.id = 7;
+    assert_eq!(gone.group_speed(&groups, masters), Ok(None));
+    gone.group.id = -1;
+    assert_eq!(gone.group_speed(&groups, masters), Ok(None));
+    let lost = t.object(11).unwrap().1;
+    assert_eq!(
+        lost.group_speed(&groups, None),
+        Err(crate::world::OBJECT_MASTER)
+    );
 }
 
 /// `FUN_141040b50`: a motion that moved (bit 0) stores its new position at the front; bit 1

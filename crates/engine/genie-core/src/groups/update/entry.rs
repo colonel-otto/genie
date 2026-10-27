@@ -30,11 +30,18 @@ impl World {
             .map(|g| g.id)
             .collect();
         for id in ids {
+            let members: Vec<i32> = self
+                .groups
+                .get(id)
+                .map(|g| g.members.iter().map(|m| m.id).collect())
+                .unwrap_or_default();
             if self.group_update(id)? {
                 self.group_update_end(id);
             } else {
                 self.delete_group(id)?;
             }
+            // the walks after it (other groups', the objects' own) read the members as it left them
+            self.refresh_gaits(members);
         }
         Ok(())
     }

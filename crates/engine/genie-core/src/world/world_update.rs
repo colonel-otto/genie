@@ -48,6 +48,18 @@ impl World {
         self.sync_moving();
     }
 
+    /// The walks read units `ids`' gaits ([`Unit::gait`]) from the spatial index: after a change
+    /// to their movers outside their own update (a group update's), each takes its unit's again
+    /// (a unit the world does not hold, none).
+    ///
+    /// [`Unit::gait`]: crate::objects::unit::Unit::gait
+    pub(crate) fn refresh_gaits(&mut self, ids: impl IntoIterator<Item = i32>) {
+        for id in ids {
+            let gait = self.object(id).and_then(|(_, u)| u.gait());
+            self.spatial.set_gait(id, gait);
+        }
+    }
+
     /// Tell the world which objects move now and how the players stand to each other, for the
     /// walk's query ([`Spatial::walk_hits`]), as each update does first: for a look at the
     /// world between updates.

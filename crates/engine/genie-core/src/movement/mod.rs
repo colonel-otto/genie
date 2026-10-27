@@ -30,6 +30,7 @@ mod path_points;
 mod request;
 mod request_plans;
 mod step;
+pub use self::step::GroupSpeed;
 mod unit;
 mod walk;
 mod waypoint;

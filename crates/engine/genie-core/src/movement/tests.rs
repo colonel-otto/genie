@@ -1508,7 +1508,7 @@ impl WalkRig {
 
 /// One tick of the walker: the velocity step, then the motion step from where it got.
 fn tick(m: &mut Mover, at: [f32; 3], world: &mut Spatial) -> ([f32; 3], Motion) {
-    let at = m.step_velocity(at, DT, world.map, None, 0);
+    let at = m.step_velocity(at, DT, world.map, None, (0, None));
     world.set_position(9177, at);
     let motion = m
         .motion(
@@ -1576,6 +1576,54 @@ fn the_first_step_reaches_top_speed_and_moves_along_the_saved_forward_vector() {
     assert_eq!(m.forward, [0.894_427_2, 0.0, -0.447_213_62]);
 }
 
+/// Slot 0x5e0 (`FUN_14114f300`): outside a group the speed toward `wanted` stays between 0 and
+/// the top speed (a NaN stays). A member that moved aside stands. A free member below 10 is
+/// not capped by the top speed (from 10 on, and a NaN, it is). A member on an own move takes
+/// the group's speed while its walked level walks unpaused (a NaN pause too), else it stands.
+#[test]
+fn the_speed_slot_caps_the_speed_unless_the_unit_s_group_steers_it() {
+    let mut m = builder_9177();
+    m.stats.speed = 1.2;
+    assert_eq!(m.next_speed(5.0, None), 1.2);
+    assert_eq!(m.next_speed(-1.0, None), 0.0);
+    assert_eq!(m.next_speed(0.7, None), 0.7);
+    assert!(m.next_speed(f32::NAN, None).is_nan());
+    assert_eq!(m.next_speed(5.0, Some(GroupSpeed::Aside)), 0.0);
+    assert_eq!(m.next_speed(5.0, Some(GroupSpeed::Free)), 5.0);
+    assert_eq!(m.next_speed(-1.0, Some(GroupSpeed::Free)), 0.0);
+    assert_eq!(m.next_speed(10.0, Some(GroupSpeed::Free)), 1.2);
+    assert!(m.next_speed(f32::NAN, Some(GroupSpeed::Free)).is_nan());
+    let own = Some(GroupSpeed::OwnMove(1.44));
+    assert_eq!(m.paths[0].state, 3);
+    assert_eq!(m.next_speed(-1.0, own), 1.44);
+    m.paths[0].pause_time = 0.028;
+    assert_eq!(m.next_speed(0.5, own), 0.0);
+    m.paths[0].pause_time = f32::NAN;
+    assert_eq!(m.next_speed(0.5, own), 1.44);
+    m.paths[0].pause_time = 0.0;
+    m.paths[0].state = 2;
+    assert_eq!(m.next_speed(0.5, own), 0.0);
+    m.paths.clear();
+    assert_eq!(m.next_speed(0.5, own), 0.0);
+}
+
+/// The velocity step (`FUN_140f9ba80`) takes slot 0x5e0's speed: a member on an own move whose
+/// walked level is paused stands where it is, whatever its acceleration.
+#[test]
+fn the_velocity_step_of_a_paused_member_on_its_own_move_stands() {
+    let mut m = builder_9177();
+    m.paths[0].pause_time = 0.028;
+    let at = m.step_velocity(
+        [28.0, 89.0, 0.0],
+        DT,
+        [120, 120],
+        None,
+        (0, Some(GroupSpeed::OwnMove(1.2))),
+    );
+    assert_eq!(at, [28.0, 89.0, 0.0]);
+    assert_eq!(m.velocity.unwrap().velocity[2], 0.0);
+}
+
 /// `moveForward` (`FUN_141158490`), slot 199 (`FUN_141161860`) and slot 198
 /// (`FUN_141150a80`) start from `+0x824`, where the unit last moved to, not from the place
 /// the caller holds.
@@ -1587,7 +1635,7 @@ fn the_step_and_the_speed_control_start_where_the_unit_last_moved_to() {
     m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.5];
     m.velocity.as_mut().unwrap().acceleration = [0.0; 3];
     // the step: 0.5 tiles a second for a second, from (10, 20) whatever the caller holds
-    let at = m.step_velocity([40.0, 40.0, 0.0], 1.0, [120, 120], None, 0);
+    let at = m.step_velocity([40.0, 40.0, 0.0], 1.0, [120, 120], None, (0, None));
     assert_eq!(at, [10.5, 20.0, 0.0]);
     assert_eq!(m.moved_at, [10.5, 20.0, 0.0]);
     // the projection along +x: 0.5 tiles from (10.5, 20)

@@ -65,6 +65,31 @@ fn a_member_s_reason_is_its_own_move_s() {
     assert_eq!(group.member_reason(12), -1);
 }
 
+/// `FUN_1410177f0`: the first slot of the current formation (`+0x128`) that holds the unit
+/// decides: in place when its state (`+0x2c`) is 3. A unit without a slot, and a group without
+/// a current formation, is not in place; the previous formation is not read.
+#[test]
+fn a_unit_is_in_place_when_its_first_slot_in_the_current_formation_is() {
+    let slot = |unit_id, state| Slot {
+        unit_id,
+        state,
+        ..Slot::default()
+    };
+    let mut group = UnitGroup::new(1);
+    group.previous_formation = Some(Formation {
+        slots: vec![slot(10, 3)],
+        ..Formation::default()
+    });
+    assert!(!group.slot_in_place(10));
+    group.current_formation = Some(Formation {
+        slots: vec![slot(11, 3), slot(10, 2), slot(10, 3)],
+        ..Formation::default()
+    });
+    assert!(group.slot_in_place(11));
+    assert!(!group.slot_in_place(10));
+    assert!(!group.slot_in_place(12));
+}
+
 /// `FUN_14100bbe0`: group 1's differentiator groups 1, 2 and 9 (gone) list 10, 11 and 12, the
 /// gone one nothing; the cap stops the list.
 #[test]
