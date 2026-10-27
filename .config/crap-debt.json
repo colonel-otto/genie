@@ -11,42 +11,6 @@
       "crate": "genie-error"
     },
     {
-      "file": "crates/engine/genie-core/src/combat/damage/blasts.rs",
-      "function": "blast",
-      "line": 112,
-      "cyclomatic": 29.0,
-      "coverage": 84.33734939759037,
-      "crap": 32.23140784942644,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/orders/work.rs",
-      "function": "World::work_command",
-      "line": 239,
-      "cyclomatic": 63.0,
-      "coverage": 72.94117647058823,
-      "crap": 141.63354040301243,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/production/spawn/placement_test.rs",
-      "function": "build_placement",
-      "line": 195,
-      "cyclomatic": 72.0,
-      "coverage": 75.83333333333333,
-      "crap": 145.16700000000003,
-      "crate": "genie-core"
-    },
-    {
-      "file": "crates/engine/genie-core/src/unit_ai/task_finder/mod.rs",
-      "function": "find_task",
-      "line": 397,
-      "cyclomatic": 91.0,
-      "coverage": 83.7696335078534,
-      "crap": 126.40525807667794,
-      "crate": "genie-core"
-    },
-    {
       "file": "crates/formats/genie-dat/src/lib.rs",
       "function": "DatFile::read_from",
       "line": 192,

@@ -123,17 +123,22 @@ pub fn blast(
         return Ok(false);
     }
     let wide = if a.blast_level & 0x80 != 0 { r } else { 0.0 };
-    let (from, to) = blast_tiles(center, r);
-    let on_tiles = |t: &Victim| {
-        let tile = [t.position[0] as i32, t.position[1] as i32];
-        from[0] <= tile[0] && tile[0] < to[0] && from[1] <= tile[1] && tile[1] < to[1]
+    let blast = Blast {
+        a,
+        center,
+        r,
+        wide,
+        tiles: blast_tiles(center, r),
+        spares_friends: !(1.0 < a.weapon_range && a.blast_level & 4 == 0),
+        exclude,
+        main,
+        factor,
     };
-    let spares_friends = !(1.0 < a.weapon_range && a.blast_level & 4 == 0);
     targets.sort_by_key(|t| (t.position[1] as i32, t.position[0] as i32, t.tile_place));
     // every building on the tiles starts the blast with nothing taken (+0xb90, first pass)
     for t in targets
         .iter_mut()
-        .filter(|t| t.kind == BUILDING && on_tiles(t))
+        .filter(|t| t.kind == BUILDING && blast.on_tiles(t))
     {
         if let Some(b) = t.building.as_mut() {
             b.blast_taken = 0.0;
@@ -142,63 +147,102 @@ pub fn blast(
     attacker.source.charge_hit = false;
     let weapons = attacker.weapons.clone();
     for i in 0..targets.len() {
-        let t = &*targets[i];
-        if !on_tiles(t) {
-            continue;
-        }
-        if t.uncertain {
-            return Err(GenieError::unsupported(
-                "a blast over an object whose player's update is not modelled",
-            )
-            .with("blasted", t.id));
-        }
-        if (spares_friends && t.allied[0])
-            || Some(t.id) == exclude
-            || t.id == attacker.id
-            || t.class == ARTIFACT
-        {
-            continue;
-        }
-        let is_main = Some(t.id) == main;
-        let ledger = blast_ledger(targets, i)?;
-        let (share, defense, blast_taken) = ledger_values(targets, i, ledger, &a);
-        if !(1 < defense || a.blast_level <= defense) {
-            continue;
-        }
-        let t = &mut *targets[i];
-        if RAMS.contains(&a.master_id) && t.kind != BUILDING && !is_main {
-            continue;
-        }
-        let Some(d2) = blast_distance2(t, center, r) else {
-            continue;
-        };
-        if 70 <= t.kind && shield(t, false) {
-            continue;
-        }
-        let mut f = blast_falloff(attacker, &a, t, (r, d2), is_main);
-        if !is_main {
-            if outside_cone(attacker, &a, t, (d2, wide))? {
-                continue;
-            }
-            // COMISS share, 0 / JC, then COMISS 0, share / JBE: a share below 0 is a fixed
-            // damage, a NaN one goes on to the hit with the factor as it is
-            if share < 0.0 {
-                fixed_blast(attacker, &a, t, share)?;
-                continue;
-            }
-            if !share.is_nan() {
-                f *= share;
-            }
-        }
-        blast_hit(
-            attacker,
-            targets,
-            i,
-            (&weapons, f * factor),
-            (ledger, blast_taken),
-        )?;
+        blast_one(attacker, targets, i, (&blast, &weapons))?;
     }
     Ok(true)
+}
+
+/// One blast as each object reads it ([`blast`]): the attacker's values at its start, its
+/// center, radius and wide cone's radius (0 without one), its tiles ([`blast_tiles`]), whether
+/// it spares the attacker's friends, the object it leaves out, its `main` object and its factor.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Blast {
+    pub(super) a: Attacker,
+    pub(super) center: [f32; 3],
+    pub(super) r: f32,
+    pub(super) wide: f32,
+    pub(super) tiles: ([i32; 2], [i32; 2]),
+    pub(super) spares_friends: bool,
+    pub(super) exclude: Option<i32>,
+    pub(super) main: Option<i32>,
+    pub(super) factor: f32,
+}
+
+impl Blast {
+    /// Whether the object stands on the blast's tiles (its place truncated).
+    pub(super) const fn on_tiles(&self, t: &Victim) -> bool {
+        let (from, to) = self.tiles;
+        let tile = [t.position[0] as i32, t.position[1] as i32];
+        from[0] <= tile[0] && tile[0] < to[0] && from[1] <= tile[1] && tile[1] < to[1]
+    }
+}
+
+/// The blast on object `i` of `targets` with the attacker's `weapons` ([`blast`]): passed off
+/// its tiles, as a friend it spares, the object it leaves out, the attacker, an artifact, an
+/// object of a blast level it defends, a ram's non-building other than `main`, one beyond the
+/// radius, one whose shield blocks it, and one outside a cone; a fixed damage takes its size
+/// ([`fixed_blast`]); any other takes the hit ([`blast_hit`]).
+pub(super) fn blast_one(
+    attacker: &mut Victim,
+    targets: &mut [&mut Victim],
+    i: usize,
+    (b, weapons): (&Blast, &[(i16, i16)]),
+) -> Result<(), GenieError> {
+    let a = &b.a;
+    let t = &*targets[i];
+    if !b.on_tiles(t) {
+        return Ok(());
+    }
+    if t.uncertain {
+        return Err(GenieError::unsupported(
+            "a blast over an object whose player's update is not modelled",
+        )
+        .with("blasted", t.id));
+    }
+    if (b.spares_friends && t.allied[0])
+        || Some(t.id) == b.exclude
+        || t.id == attacker.id
+        || t.class == ARTIFACT
+    {
+        return Ok(());
+    }
+    let is_main = Some(t.id) == b.main;
+    let ledger = blast_ledger(targets, i)?;
+    let (share, defense, blast_taken) = ledger_values(targets, i, ledger, a);
+    if !(1 < defense || a.blast_level <= defense) {
+        return Ok(());
+    }
+    let t = &mut *targets[i];
+    if RAMS.contains(&a.master_id) && t.kind != BUILDING && !is_main {
+        return Ok(());
+    }
+    let Some(d2) = blast_distance2(t, b.center, b.r) else {
+        return Ok(());
+    };
+    if 70 <= t.kind && shield(t, false) {
+        return Ok(());
+    }
+    let mut f = blast_falloff(attacker, a, t, (b.r, d2), is_main);
+    if !is_main {
+        if outside_cone(attacker, a, t, (d2, b.wide))? {
+            return Ok(());
+        }
+        // COMISS share, 0 / JC, then COMISS 0, share / JBE: a share below 0 is a fixed
+        // damage, a NaN one goes on to the hit with the factor as it is
+        if share < 0.0 {
+            return fixed_blast(attacker, a, t, share);
+        }
+        if !share.is_nan() {
+            f *= share;
+        }
+    }
+    blast_hit(
+        attacker,
+        targets,
+        i,
+        (weapons, f * b.factor),
+        (ledger, blast_taken),
+    )
 }
 
 /// The object a building's blast damage so far is kept on (`+0xbb8`): its main building's

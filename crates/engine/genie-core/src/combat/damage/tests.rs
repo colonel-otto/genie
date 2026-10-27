@@ -1339,3 +1339,84 @@ fn a_blast_s_hit_adds_a_building_s_loss_to_its_ledger() {
     assert!(all[0].hp < 550.0 - lost);
     assert_eq!(all[0].building.as_ref().map(|b| b.blast_taken), Some(lost));
 }
+
+/// One object under a melee blast (radius 1, level 2, half the damage): an enemy in reach
+/// takes the hit; one off the tiles, a spared friend, the object left out, the attacker, an
+/// artifact, one defending the blast's level and a ram's non-building are passed; an object
+/// whose player's update is not modelled fails.
+#[test]
+fn a_blast_passes_over_what_it_spares_and_hits_the_rest() {
+    use crate::combat::damage::blasts::{Blast, blast_one, blast_tiles};
+    let mut elephant = hunter();
+    elephant.source.area_effect = 1.0;
+    elephant.source.blast_level = 2;
+    elephant.source.area_damage = 0.5;
+    let center = elephant.position;
+    let blast = |a: Attacker| Blast {
+        a,
+        center,
+        r: 1.0,
+        wide: 0.0,
+        tiles: blast_tiles(center, 1.0),
+        spares_friends: true,
+        exclude: Some(9),
+        main: None,
+        factor: 1.0,
+    };
+    let weapons = [(4, 10)];
+    let enemy = Victim {
+        id: 2,
+        player: 2,
+        position: [10.8, 11.0, 0.0],
+        blast_defense: 2,
+        ..sheep()
+    };
+    let b = blast(elephant.source);
+    let mut hit = |b: &Blast, t: Victim| {
+        let mut t = t;
+        let r = blast_one(&mut elephant, &mut [&mut t], 0, (b, &weapons));
+        r.map(|()| t.hp)
+    };
+    assert_eq!(hit(&b, enemy.clone()), Ok(9.0));
+    for passed in [
+        Victim {
+            position: [30.0, 30.0, 0.0],
+            ..enemy.clone()
+        },
+        Victim {
+            allied: [true, true],
+            ..enemy.clone()
+        },
+        Victim {
+            id: 9,
+            ..enemy.clone()
+        },
+        Victim {
+            id: 10029,
+            ..enemy.clone()
+        },
+        Victim {
+            class: ARTIFACT,
+            ..enemy.clone()
+        },
+        Victim {
+            blast_defense: 1,
+            ..enemy.clone()
+        },
+    ] {
+        assert_eq!(hit(&b, passed), Ok(14.0));
+    }
+    let ram = blast(Attacker {
+        master_id: RAMS[0],
+        ..b.a
+    });
+    assert_eq!(hit(&ram, enemy.clone()), Ok(14.0));
+    let unsure = Victim {
+        uncertain: true,
+        ..enemy
+    };
+    assert_eq!(
+        hit(&b, unsure).unwrap_err().reason(),
+        "a blast over an object whose player's update is not modelled"
+    );
+}

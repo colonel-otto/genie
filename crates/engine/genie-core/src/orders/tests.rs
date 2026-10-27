@@ -3290,3 +3290,177 @@ fn an_attack_task_settles_what_its_command_answered() {
     let (arrived, sprite, speed, _) = settled(|c| c.arrived = true, true);
     assert_eq!((arrived, sprite, speed), (plain, Some(300), Some(0.0)));
 }
+
+/// The work command's task (`FUN_14106ff70`): none on a point; the forager's Gather task 2 on
+/// Gaia's bush (its master 120); none on its town centre, which no task of it names.
+#[test]
+fn a_work_command_finds_its_master_and_task_on_a_target() {
+    let t = crate::world::tests::forage_world();
+    assert_eq!(t.work_task(1, 0, -1, -1).unwrap(), None);
+    let (with, task) = t
+        .work_task(1, 0, 600, -1)
+        .unwrap()
+        .expect("the Gather task");
+    assert_eq!(
+        (with, task.id, task.action_type),
+        (120, 2, crate::gathering::gather::GATHER)
+    );
+    assert_eq!(t.work_task(1, 0, 700, -1).unwrap(), None);
+}
+
+/// A work command on the other bush retargets the forager's Gather on the same task, and on
+/// the other deer the hunter's Hunt: the unit AI hears the gather or hunt order on it.
+#[test]
+fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
+    use crate::unit_ai::{GATHER_ACTION, HUNT_ACTION, HUNT_ORDER, ai_kinds::ORDER_GATHER};
+    let mut t = crate::world::tests::forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    let took = t
+        .retarget_gather_work(1, 0, (601, [36.5, 89.5, 0.0], true))
+        .unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!((took, v.gather.map(|g| g.target)), (true, Some(601)));
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (ORDER_GATHER, GATHER_ACTION, 601)
+    );
+    let mut t = crate::world::tests::hunt_world();
+    t.hunt_command(1, 0, 500).unwrap();
+    t.retarget_hunt_work(1, 0, (501, [36.5, 89.5, 0.0], true))
+        .unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.hunt.map(|h| h.target), Some(501));
+    let ai = v.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (HUNT_ORDER, HUNT_ACTION, 501)
+    );
+}
+
+/// A Gather or a Hunt sent on to an object of its own player's master 84 is not modelled.
+#[test]
+fn a_work_command_s_retarget_to_its_player_s_master_84_fails() {
+    let with_84 = |mut t: World| {
+        for masters in &mut t.masters {
+            let m84 = Master {
+                id: 84,
+                kind: 70,
+                class: 9,
+                ..Master::default()
+            };
+            *masters = crate::objects::masters::Masters::new(masters.iter().cloned().chain([m84]));
+        }
+        t.players[1].objects.push(Unit {
+            id: 800,
+            position: [33.5, 89.5, 0.0],
+            life: crate::objects::lifecycle::Lifecycle {
+                master_id: 84,
+                state: 2,
+                hp: 5.0,
+                ..crate::objects::lifecycle::Lifecycle::default()
+            },
+            ..Unit::default()
+        });
+        t
+    };
+    let mut t = with_84(crate::world::tests::forage_world());
+    t.gather_command(1, 0, 600).unwrap();
+    let r = t.retarget_gather_work(1, 0, (800, [33.5, 89.5, 0.0], true));
+    assert_eq!(
+        r.err().map(|e| e.reason()),
+        Some("a gather sent to its player's master 84")
+    );
+    let mut t = with_84(crate::world::tests::hunt_world());
+    t.hunt_command(1, 0, 500).unwrap();
+    let r = t.retarget_hunt_work(1, 0, (800, [33.5, 89.5, 0.0], true));
+    assert_eq!(
+        r.err().map(|e| e.reason()),
+        Some("a hunt sent to its player's master 84")
+    );
+}
+
+/// The retake of the work's task by the unit's top action: a Gather on the same task keeps
+/// the work (retargeted); a base action type on top of the task's type answers 0 (the factory
+/// follows); another current task, or a Build of the unit's former master, is not modelled;
+/// no action on top answers 0.
+#[test]
+fn a_work_command_s_task_is_retaken_by_the_action_on_top() {
+    use crate::objects::masters::Task;
+    let mut t = crate::world::tests::forage_world();
+    let task = *t.masters[1].get(120).unwrap().tasks.first().unwrap();
+    let at = (601, [36.5, 89.5, 0.0], true);
+    assert_eq!(t.retake_task(1, 0, at, &task, true), Ok(false));
+    t.gather_command(1, 0, 600).unwrap();
+    assert_eq!(t.retake_task(1, 0, at, &task, true), Ok(true));
+    let other = Task { id: 9, ..task };
+    assert_eq!(
+        t.retake_task(1, 0, at, &other, true)
+            .err()
+            .map(|e| e.reason()),
+        Some("a work command on the unit's current task")
+    );
+    let mut t = crate::world::tests::forage_world();
+    t.players[1].objects[0].move_to = Some(crate::movement::move_to::MoveToAction {
+        run: false,
+        state: crate::movement::move_to::MoveTo::Moving,
+        goal: Some([40.0, 89.5, 0.0]),
+        target: -1,
+        range: 0.0,
+        wait: crate::movement::move_to::MoveWait::default(),
+    });
+    let moving = Task {
+        action_type: crate::movement::move_to::MOVE_TO,
+        ..task
+    };
+    assert_eq!(t.retake_task(1, 0, at, &moving, true), Ok(false));
+    let mut t = crate::world::tests::forage_world();
+    let build = crate::construction::build::BuildTask {
+        range: 0.1,
+        work_value: 1.0,
+        work_rate: 1.0,
+        resource: -1,
+        id: 3,
+    };
+    t.players[1].objects[0].build = Some(crate::construction::build::BuildAction::start(
+        10028,
+        [30.0, 88.0, 0.0],
+        1.0,
+        build,
+    ));
+    let building = Task {
+        action_type: crate::construction::build::BUILD,
+        ..task
+    };
+    assert_eq!(
+        t.retake_task(1, 0, at, &building, false)
+            .err()
+            .map(|e| e.reason()),
+        Some("a work command on the Build task of the unit's former master")
+    );
+}
+
+/// The action list's factory for the work's task: the Gather task starts a Gather on the
+/// bush; a task of an action type the slice does not make is not modelled.
+#[test]
+fn a_work_command_s_factory_starts_the_task_s_action() {
+    use crate::objects::masters::Task;
+    let mut t = crate::world::tests::forage_world();
+    let task = *t.masters[1].get(120).unwrap().tasks.first().unwrap();
+    t.start_task(1, 0, (600, [32.5, 89.5, 0.0]), &task, (true, true))
+        .unwrap();
+    assert_eq!(
+        t.players[1].objects[0].gather.map(|g| (g.target, g.state)),
+        Some((600, 4))
+    );
+    let unknown = Task {
+        action_type: 0x55,
+        ..task
+    };
+    assert_eq!(
+        t.start_task(1, 0, (600, [32.5, 89.5, 0.0]), &unknown, (true, true))
+            .err()
+            .map(|e| e.reason()),
+        Some("the action factory for a task the slice does not model")
+    );
+}

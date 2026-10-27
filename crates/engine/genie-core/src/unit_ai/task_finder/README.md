@@ -9,7 +9,9 @@ task for the target's combat level, else its master, else its class. Last, it tr
 terrain under the target's point. The work command asks the unit's own master first, then the
 player's other masters of the task swap group.
 
-- `mod.rs` holds the finder and its tests of a task on a target.
+- `mod.rs` holds the finder, its first and last steps and its tests of a task on a target.
+- `target_steps.rs` holds the steps on a target: the drop-off, the foundation, the garrison into
+  it and its repair.
 - `world.rs` holds what the finder reads of the world: relations, drop sites, a target's state.
 
 ## In the game
@@ -22,6 +24,7 @@ player's other masters of the task swap group.
 | File | What it holds |
 | --- | --- |
 | [`mod.rs`](mod.rs) | The task finder (`TRIBE_Task_List` slot 2, `FUN_1412784d0`, with the `RGE_Task_List` finder `FUN_1411a8ba0` and its test of a task on a target, slot 4 `FUN_1411a8620`): which task of a master's task list a unit does on a target object. |
+| [`target_steps.rs`](target_steps.rs) | The task finder's steps on a target: the drop-off, its player's foundation, the garrison into it and its repair. |
 | [`world.rs`](world.rs) | What the task finder reads of the world: the relations, the drop sites, a wait's progress, a target's state and the search of slot 0x820. |
 <!-- /files -->
 

@@ -255,33 +255,7 @@ impl World {
         }
         // FUN_140c64e50: a unit of a type below 70 always clears its AI's notifies
         let clears = notified || self.master_of(player, unit.life.master_id)?.kind < 70;
-        // a work command on a point (no target) finds no task
-        let found = if target == -1 {
-            None
-        } else {
-            let masters = self
-                .masters
-                .get(player)
-                .ok_or(GenieError::unsupported("a work command: no master table"))?;
-            let owner = &self.players[player];
-            let actor = Actor {
-                id: unit.id,
-                master: self.master_of(player, unit.life.master_id)?,
-                player,
-                held: (unit.life.attribute_type, unit.life.amount),
-                attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
-                civ: owner.civ,
-            };
-            let world = TaskWorld {
-                players: &self.players,
-                drop_sites: &self.drop_sites,
-            };
-            let t = self.task_target(target, 1)?;
-            let general = self.task_target(target, 2)?;
-            masters
-                .work_master(&actor, &t, &general, filter, &world)?
-                .map(|(with, task)| (with, *task))
-        };
+        let found = self.work_task(player, idx, target, filter)?;
         let Some((with, task)) = found else {
             if filter != -1 {
                 return Ok(());
@@ -303,30 +277,82 @@ impl World {
             return Ok(());
         }
         // LAB_1410706a8: an action on the task found takes the new target itself (its slot 9)
+        let top = self.players[player].objects[idx].top_action_kind();
+        let kept = self.retake_task(player, idx, (target, point, clears), &task, same_master)?;
+        if carry_test {
+            self.carried_resource_test(player, idx, &task)?;
+        }
+        if self.keep_attack(player, idx, target, filter, point, clears)? {
+            return Ok(());
+        }
+        // the top action of type 0x7e would hear the target through its slot 0x48: the slice
+        // holds no action of that type. An Artifact on top ends a command of an Enter task here.
+        if top == Some(crate::ownership::artifact::ARTIFACT_TYPE)
+            && task.action_type == crate::garrison::ENTER
+        {
+            return Ok(());
+        }
+        if kept {
+            return Ok(());
+        }
+        self.start_task(player, idx, (target, point), &task, (clears, notified))
+    }
+
+    /// The work command's master and task for the unit at (`player`, `idx`) on `target`
+    /// ([`crate::objects::masters::Masters::work_master`] under the task `filter`): the master
+    /// with the task found; a work command on a point (no target) finds none.
+    pub(super) fn work_task(
+        &self,
+        player: usize,
+        idx: usize,
+        target: i32,
+        filter: i16,
+    ) -> Result<Option<(i16, crate::objects::masters::Task)>, GenieError> {
+        if target == -1 {
+            return Ok(None);
+        }
+        let unit = &self.players[player].objects[idx];
+        let masters = self
+            .masters
+            .get(player)
+            .ok_or(GenieError::unsupported("a work command: no master table"))?;
+        let owner = &self.players[player];
+        let actor = Actor {
+            id: unit.id,
+            master: self.master_of(player, unit.life.master_id)?,
+            player,
+            held: (unit.life.attribute_type, unit.life.amount),
+            attribute_95: owner.attributes.get(95).copied().unwrap_or(0.0),
+            civ: owner.civ,
+        };
+        let world = TaskWorld {
+            players: &self.players,
+            drop_sites: &self.drop_sites,
+        };
+        let t = self.task_target(target, 1)?;
+        let general = self.task_target(target, 2)?;
+        Ok(masters
+            .work_master(&actor, &t, &general, filter, &world)?
+            .map(|(with, task)| (with, *task)))
+    }
+
+    /// `LAB_1410706a8`: an action of the unit already on the `task` found takes the new target
+    /// itself (its slot 9): a Hunt or Gather on the same task retargets, a Build or Repair on
+    /// top takes the target again; the base action types on top answer 0 (the factory follows).
+    /// Answers whether an action kept the work.
+    pub(super) fn retake_task(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (target, point, clears): (i32, [f32; 3], bool),
+        task: &crate::objects::masters::Task,
+        same_master: bool,
+    ) -> Result<bool, GenieError> {
         let unit = &self.players[player].objects[idx];
         let top = unit.top_action_kind();
-        let kept = match unit.hunt {
+        Ok(match unit.hunt {
             Some(h) if task.action_type == HUNT && h.task.id == task.id => {
-                let t = self.task_target(target, 0)?;
-                if t.master.id == MASTER_84 && t.player == player {
-                    return Err(GenieError::unsupported(
-                        "a hunt sent to its player's master 84",
-                    ));
-                }
-                let class = i32::from(t.master.class);
-                self.retarget_hunt(player, idx, target)?;
-                let unit = &mut self.players[player].objects[idx];
-                if let Some(ai) = unit.ai.as_mut() {
-                    ai.notify_work(
-                        HUNT_ORDER,
-                        HUNT_ACTION,
-                        Some((target, class)),
-                        point,
-                        clears,
-                        self.streams.get(Stream::Ai),
-                    )?;
-                    self.remember_order(player, idx, (HUNT_ORDER, HUNT_ACTION))?;
-                }
+                self.retarget_hunt_work(player, idx, (target, point, clears))?;
                 true
             }
             _ if top == Some(task.action_type)
@@ -350,36 +376,7 @@ impl World {
                 && task.action_type == crate::gathering::gather::GATHER
                 && unit.gather.is_some_and(|g| g.task.id == task.id) =>
             {
-                let t = self.task_target(target, 0)?;
-                if t.master.id == MASTER_84 && t.player == player {
-                    return Err(GenieError::unsupported(
-                        "a gather sent to its player's master 84",
-                    ));
-                }
-                let class = i32::from(t.master.class);
-                let took = self.retarget_gather(player, idx, target)?;
-                if took {
-                    let unit = &mut self.players[player].objects[idx];
-                    if let Some(ai) = unit.ai.as_mut() {
-                        ai.notify_work(
-                            crate::unit_ai::ai_kinds::ORDER_GATHER,
-                            crate::unit_ai::GATHER_ACTION,
-                            Some((target, class)),
-                            point,
-                            clears,
-                            self.streams.get(Stream::Ai),
-                        )?;
-                        self.remember_order(
-                            player,
-                            idx,
-                            (
-                                crate::unit_ai::ai_kinds::ORDER_GATHER,
-                                crate::unit_ai::GATHER_ACTION,
-                            ),
-                        )?;
-                    }
-                }
-                took
+                self.retarget_gather_work(player, idx, (target, point, clears))?
             }
             // the top action's slot 0x48 (FUN_140a977a0) on the same task: the base's
             // (FUN_140a7bf40: the MoveTo's, the Enter's, the missile's, the Fly's, the Make's, the
@@ -403,26 +400,96 @@ impl World {
                 }
             },
             _ => false,
-        };
-        if carry_test {
-            self.carried_resource_test(player, idx, &task)?;
+        })
+    }
+
+    /// A Hunt on the work's task retargets (slot 9, [`World::retarget_hunt`]) and its unit AI
+    /// hears the hunt order and action on the target at the work's point; a hunt sent to its
+    /// player's master 84 is not modelled.
+    pub(super) fn retarget_hunt_work(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (target, point, clears): (i32, [f32; 3], bool),
+    ) -> Result<(), GenieError> {
+        let t = self.task_target(target, 0)?;
+        if t.master.id == MASTER_84 && t.player == player {
+            return Err(GenieError::unsupported(
+                "a hunt sent to its player's master 84",
+            ));
         }
-        if self.keep_attack(player, idx, target, filter, point, clears)? {
-            return Ok(());
+        let class = i32::from(t.master.class);
+        self.retarget_hunt(player, idx, target)?;
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.notify_work(
+                HUNT_ORDER,
+                HUNT_ACTION,
+                Some((target, class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+            self.remember_order(player, idx, (HUNT_ORDER, HUNT_ACTION))?;
         }
-        // the top action of type 0x7e would hear the target through its slot 0x48: the slice
-        // holds no action of that type. An Artifact on top ends a command of an Enter task here.
-        if top == Some(crate::ownership::artifact::ARTIFACT_TYPE)
-            && task.action_type == crate::garrison::ENTER
-        {
-            return Ok(());
+        Ok(())
+    }
+
+    /// A Gather on the work's task retargets (slot 9, [`World::retarget_gather`]); when it took
+    /// the target its unit AI hears the gather order and action on it at the work's point.
+    /// Answers whether it took it; a gather sent to its player's master 84 is not modelled.
+    pub(super) fn retarget_gather_work(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (target, point, clears): (i32, [f32; 3], bool),
+    ) -> Result<bool, GenieError> {
+        let t = self.task_target(target, 0)?;
+        if t.master.id == MASTER_84 && t.player == player {
+            return Err(GenieError::unsupported(
+                "a gather sent to its player's master 84",
+            ));
         }
-        if kept {
-            return Ok(());
+        let class = i32::from(t.master.class);
+        let took = self.retarget_gather(player, idx, target)?;
+        if took {
+            let unit = &mut self.players[player].objects[idx];
+            if let Some(ai) = unit.ai.as_mut() {
+                ai.notify_work(
+                    crate::unit_ai::ai_kinds::ORDER_GATHER,
+                    crate::unit_ai::GATHER_ACTION,
+                    Some((target, class)),
+                    point,
+                    clears,
+                    self.streams.get(Stream::Ai),
+                )?;
+                self.remember_order(
+                    player,
+                    idx,
+                    (
+                        crate::unit_ai::ai_kinds::ORDER_GATHER,
+                        crate::unit_ai::GATHER_ACTION,
+                    ),
+                )?;
+            }
         }
+        Ok(took)
+    }
+
+    /// The action list's factory (slot 0x10) for the work's `task` on `target`: the Enter,
+    /// Attack, Hunt, Build, Repair or Gather starts; a mule cart's task makes no action (the
+    /// move without one, [`World::work_move`]).
+    pub(super) fn start_task(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (target, point): (i32, [f32; 3]),
+        task: &crate::objects::masters::Task,
+        (clears, notified): (bool, bool),
+    ) -> Result<(), GenieError> {
         match task.action_type {
-            crate::garrison::ENTER => self.start_enter(player, idx, target, &task, point, clears),
-            ATTACK_TASK => self.start_attack(player, idx, target, &task, point, clears),
+            crate::garrison::ENTER => self.start_enter(player, idx, target, task, point, clears),
+            ATTACK_TASK => self.start_attack(player, idx, target, task, point, clears),
             HUNT => self.start_hunt(
                 player,
                 idx,
@@ -441,17 +508,17 @@ impl World {
                 true,
             ),
             crate::construction::build::BUILD => {
-                self.start_build(player, idx, target, &task, point, clears)
+                self.start_build(player, idx, target, task, point, clears)
             }
             crate::construction::repair::REPAIR => {
-                self.start_repair(player, idx, target, &task, point, clears)
+                self.start_repair(player, idx, target, task, point, clears)
             }
             // the factory makes no action of a mule cart's task: the move without one
             crate::construction::build::CART_TASK => {
                 self.work_move(player, idx, target, point, (clears, notified))
             }
             crate::gathering::gather::GATHER => {
-                self.start_gather(player, idx, target, &task, Some((point, clears)))
+                self.start_gather(player, idx, target, task, Some((point, clears)))
             }
             _ => Err(GenieError::unsupported(
                 "the action factory for a task the slice does not model",

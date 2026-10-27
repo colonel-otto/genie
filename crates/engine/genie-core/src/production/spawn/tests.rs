@@ -775,3 +775,317 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
         "moving remains without a moving master"
     );
 }
+
+/// A map of `Flat`'s ground the player never explored.
+struct Dark;
+
+impl PlaceMap for Dark {
+    fn size(&self) -> [i32; 2] {
+        [120, 120]
+    }
+    fn terrain(&self, _: i32, _: i32) -> Result<u8, GenieError> {
+        Ok(0)
+    }
+    fn explored(&self, _: usize, _: i32, _: i32) -> bool {
+        false
+    }
+    fn visible(&self, _: usize, _: i32, _: i32) -> bool {
+        false
+    }
+    fn vision(&self, _: usize) -> [u64; 2] {
+        [0; 2]
+    }
+    fn elevation(&self, _: i32, _: i32) -> Option<u8> {
+        Some(0)
+    }
+    fn shape(&self, _: i32, _: i32) -> Option<u8> {
+        Some(0)
+    }
+    fn allied(&self, a: usize, b: usize, _: bool) -> bool {
+        a == b
+    }
+    fn objects(&self, _: i32, _: i32) -> Result<Vec<Near>, GenieError> {
+        Ok(Vec::new())
+    }
+}
+
+/// Player 1's house site (class 3, clearance 1, obstructing) on terrain 0, which `restriction`
+/// rates; `human` or not.
+const fn house_site(restriction: &[f32], human: bool) -> BuildSite<'_> {
+    BuildSite {
+        player: 1,
+        human,
+        clearance: [1.0, 1.0],
+        class: 3,
+        obstructs: true,
+        restriction,
+        hill_mode: 0,
+        placement: [-1; 4],
+        zones: false,
+        own: &[],
+    }
+}
+
+/// BUILD's static test: off the map 7, a forbidden terrain 2, a human who explored none of
+/// the tiles 5 (a computer passes); a box that passes answers none; a zone mode is not
+/// modelled.
+#[test]
+fn build_s_static_test_answers_the_map_s_edge_terrain_and_exploration() {
+    use crate::production::spawn::placement_test::build_static_test;
+    let open = house_site(&[1.0], true);
+    let flat = Flat(Vec::new());
+    assert_eq!(build_static_test(&open, &flat, [50.0, 50.0]), Ok(None));
+    assert_eq!(build_static_test(&open, &flat, [0.5, 50.0]), Ok(Some(7)));
+    assert_eq!(build_static_test(&open, &flat, [119.5, 50.0]), Ok(Some(7)));
+    let forbidden = house_site(&[0.0], true);
+    assert_eq!(
+        build_static_test(&forbidden, &flat, [50.0, 50.0]),
+        Ok(Some(2))
+    );
+    assert_eq!(build_static_test(&open, &Dark, [50.0, 50.0]), Ok(Some(5)));
+    let computer = house_site(&[1.0], false);
+    assert_eq!(build_static_test(&computer, &Dark, [50.0, 50.0]), Ok(None));
+    let zoned = BuildSite {
+        zones: true,
+        ..open
+    };
+    assert_eq!(
+        build_static_test(&zoned, &flat, [50.0, 50.0])
+            .unwrap_err()
+            .reason(),
+        "BUILD's placement test in a zone mode"
+    );
+}
+
+/// BUILD's scan reads 8 tiles either way of the point, from 0 to the map's last tile.
+#[test]
+fn build_s_scan_reads_eight_tiles_either_way_within_the_map() {
+    use crate::production::spawn::placement_test::build_scan_range;
+    assert_eq!(build_scan_range(50.5, 120), (42, 58));
+    assert_eq!(build_scan_range(2.0, 120), (0, 10));
+    assert_eq!(build_scan_range(115.0, 120), (107, 119));
+}
+
+/// BUILD's sight test: in sight any object but one of fog visibility 3; in the fog one with a
+/// fog visibility, and of those without only the player's own; on a tile never explored any;
+/// a fogged object of fog visibility 3 is not modelled.
+#[test]
+fn build_s_scan_counts_what_the_player_sees_of_a_tile() {
+    use crate::production::spawn::placement_test::build_sees;
+    let site = house_site(&[1.0], true);
+    let flat = Flat(Vec::new());
+    let fogged = Fogged(Vec::new(), [0; 2]);
+    let o = |player, fog_visibility| Near {
+        player,
+        fog_visibility,
+        ..sheep(2)
+    };
+    let sees = |map: &dyn PlaceMap, o: Near, sight| build_sees(&site, map, &o, sight);
+    assert_eq!(sees(&flat, o(2, 0), (true, true)), Ok(true));
+    assert_eq!(sees(&flat, o(2, 3), (true, true)), Ok(false));
+    assert_eq!(sees(&fogged, o(2, 1), (true, false)), Ok(true));
+    assert_eq!(sees(&fogged, o(2, 0), (true, false)), Ok(false));
+    assert_eq!(sees(&fogged, o(1, 0), (true, false)), Ok(true));
+    assert_eq!(sees(&Dark, o(2, 0), (false, false)), Ok(true));
+    assert_eq!(
+        sees(&fogged, o(2, 3), (true, false)).unwrap_err().reason(),
+        "a fogged object of fog visibility 3 near a BUILD"
+    );
+}
+
+/// BUILD's scan ignores a dead house (a unit only past state 6), a moving unit where the site
+/// does not obstruct, a wall under the player's own gate and another player's desolid house
+/// (not one of class 51); it keeps a standing house.
+#[test]
+fn build_s_scan_ignores_the_dead_the_moving_own_walls_and_foreign_foundations() {
+    use crate::production::spawn::placement_test::build_ignores;
+    let site = house_site(&[1.0], true);
+    let flat = Flat(Vec::new());
+    let house = Near {
+        kind: 80,
+        class: 3,
+        moving: false,
+        player: 2,
+        state: 2,
+        ..sheep(2)
+    };
+    let ignores = |site: &BuildSite<'_>, o: Near| build_ignores(site, &flat, &o);
+    assert!(!ignores(&site, house));
+    assert!(ignores(&site, Near { state: 3, ..house }));
+    let unit = Near {
+        kind: 70,
+        state: 6,
+        ..house
+    };
+    assert!(!ignores(&site, unit));
+    assert!(ignores(&site, Near { state: 7, ..unit }));
+    let walking = Near {
+        moving: true,
+        ..unit
+    };
+    assert!(!ignores(&site, walking));
+    let open = BuildSite {
+        obstructs: false,
+        ..site
+    };
+    assert!(ignores(&open, walking));
+    let gate = BuildSite {
+        class: GATE,
+        ..site
+    };
+    let own_wall = Near {
+        class: WALL,
+        player: 1,
+        ..house
+    };
+    assert!(ignores(&gate, own_wall));
+    assert!(!ignores(
+        &gate,
+        Near {
+            player: 2,
+            ..own_wall
+        }
+    ));
+    let foundation = Near {
+        desolid: true,
+        ..house
+    };
+    assert!(ignores(&site, foundation));
+    assert!(!ignores(
+        &site,
+        Near {
+            class: 51,
+            ..foundation
+        }
+    ));
+}
+
+/// BUILD's scan passes over a moving unit of the player or Gaia but not another's, one
+/// buildable on, and a felled tree off a forest but not on one or with more hit points.
+#[test]
+fn build_s_scan_passes_over_moving_friends_buildable_ground_and_felled_trees() {
+    use crate::production::spawn::placement_test::build_passes;
+    let site = house_site(&[1.0], true);
+    let flat = Flat(Vec::new());
+    let walker = Near {
+        kind: 70,
+        class: 6,
+        moving: true,
+        player: 1,
+        state: 2,
+        ..sheep(1)
+    };
+    let passes = |o: Near| build_passes(&site, &flat, &o);
+    assert!(passes(walker));
+    assert!(passes(Near {
+        player: 0,
+        ..walker
+    }));
+    assert!(!passes(Near {
+        player: 2,
+        ..walker
+    }));
+    assert!(!passes(Near {
+        moving: false,
+        ..walker
+    }));
+    assert!(!passes(Near { state: 3, ..walker }));
+    let still = Near {
+        moving: false,
+        ..walker
+    };
+    assert!(passes(Near {
+        buildable_on: 1,
+        ..still
+    }));
+    let stump = Near {
+        class: TREE,
+        kind: 10,
+        hp: 1.0,
+        ..still
+    };
+    assert!(passes(stump));
+    assert!(!passes(Near {
+        forest_tile: true,
+        ..stump
+    }));
+    assert!(!passes(Near { hp: 2.0, ..stump }));
+}
+
+/// What blocks a foundation at (21, 21): another player's house whose box overlaps it; not a
+/// razed one, a moving unit of the player, an object built on, a felled tree off a forest, a
+/// wall under the player's own gate, another's desolid foundation or an object beyond the
+/// box; an object of obstruction type 11 is not modelled.
+#[test]
+fn build_s_blockers_are_the_standing_objects_whose_box_overlaps() {
+    use crate::production::spawn::placement_test::blocks_build;
+    let site = house_site(&[1.0], true);
+    let flat = Flat(Vec::new());
+    let house = Near {
+        id: 500,
+        position: [20.5, 20.5, 0.0],
+        radius: [1.0, 1.0],
+        kind: 80,
+        class: 3,
+        master: 70,
+        obstruction_type: 2,
+        moving: false,
+        player: 2,
+        state: 2,
+        ..sheep(2)
+    };
+    let blocks = |site: &BuildSite<'_>, o: Near| blocks_build(site, &flat, &o, [21.0, 21.0]);
+    assert_eq!(blocks(&site, house), Ok(true));
+    for passed in [
+        Near { state: 3, ..house },
+        Near {
+            kind: 70,
+            player: 1,
+            moving: true,
+            ..house
+        },
+        Near {
+            buildable_on: 1,
+            ..house
+        },
+        Near {
+            class: TREE,
+            kind: 10,
+            hp: 1.0,
+            ..house
+        },
+        Near {
+            desolid: true,
+            ..house
+        },
+        Near {
+            position: [30.5, 20.5, 0.0],
+            ..house
+        },
+    ] {
+        assert_eq!(blocks(&site, passed), Ok(false), "{passed:?}");
+    }
+    let gate = BuildSite {
+        class: GATE,
+        ..site
+    };
+    let wall = Near {
+        class: WALL,
+        player: 1,
+        ..house
+    };
+    assert_eq!(blocks(&gate, wall), Ok(false));
+    assert_eq!(blocks(&site, wall), Ok(true));
+    assert_eq!(
+        blocks(
+            &site,
+            Near {
+                obstruction_type: 11,
+                ..house
+            }
+        )
+        .unwrap_err()
+        .reason(),
+        "an object of obstruction types 11 to 13 near a BUILD (its outline radii)"
+    );
+}
