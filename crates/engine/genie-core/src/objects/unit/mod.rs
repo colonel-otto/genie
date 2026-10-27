@@ -348,3 +348,6 @@ pub(crate) enum Step {
     /// A player took it or other objects of its player over ([`Captured`]).
     Captured(Captured),
 }
+
+#[cfg(test)]
+mod tests;

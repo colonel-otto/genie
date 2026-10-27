@@ -1,9 +1,113 @@
 //! An attack's start, a hunt's and an action's retarget.
 
 use crate::GenieError;
-use crate::math::rng::Stream;
+use crate::combat::attack::{Attack, Strike, SwingSprites};
+use crate::combat::damage::Victim;
+use crate::map::spatial::Spatial;
+use crate::math::rng::{Stream, Well512};
+use crate::movement::move_to::Walk;
+use crate::objects::sprite::Graphic;
+use crate::objects::unit::Unit;
 use crate::orders::BUILDING;
 use crate::world::World;
+
+/// Where an attack task's target aims ([`World::attack_aim`]).
+pub(super) struct Aim {
+    /// The target's owner.
+    pub(super) owner: usize,
+    /// The target's master's class and fog visibility.
+    pub(super) class: i32,
+    pub(super) fog_visibility: u8,
+    /// The object aimed at (the target, or a building annex's main building), its place and its
+    /// master's class.
+    pub(super) aimed: i32,
+    pub(super) at: [f32; 3],
+    pub(super) aimed_class: i32,
+}
+
+/// What the attack task's swing at its start reads of the attacker ([`ready_at_start`]).
+pub(super) struct StartStrike {
+    pub(super) standing: Graphic,
+    pub(super) volleys: bool,
+    pub(super) reload: f32,
+    pub(super) hit_chance: i16,
+    pub(super) swing_sprites: SwingSprites,
+    pub(super) computer: bool,
+    pub(super) world_time: u32,
+    pub(super) own: Victim,
+}
+
+/// The attack task's Attack in reach of a unit that cannot move goes ready at its start
+/// (`set_state(6)`, [`Attack::enter_ready`]) with a walk of no time and no planning; a swing it
+/// would start then (a hit, a missile or a notify) is not modelled.
+pub(super) fn ready_at_start(
+    attack: &mut Attack,
+    unit: &mut Unit,
+    spatial: &mut Spatial,
+    sprite_rng: &mut Well512,
+    start: StartStrike,
+    victim: &mut Victim,
+) -> Result<(), GenieError> {
+    let me = crate::movement::Me {
+        id: unit.id,
+        position: unit.position,
+        group: unit.group.id,
+        action_state: crate::combat::attack::READY,
+    };
+    let ai = unit.ai.as_ref();
+    let can_move = ai.is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
+    let stance = ai.map_or(0, |ai| ai.stance);
+    let state_position = ai.map_or([0.0; 2], |ai| ai.state_position);
+    let queue_empty = ai.is_some_and(|ai| ai.orders.is_empty());
+    let ai_order = ai.map(|ai| ai.current_order);
+    let ai_type = ai.map(|ai| ai.ai_type);
+    let walk = Walk {
+        mover: unit.mover.as_mut(),
+        me,
+        dt: 0.0,
+        world: spatial,
+        plan: None,
+    };
+    let mut blasted = Vec::new();
+    let mut strike = Strike {
+        sprite: &mut unit.sprite,
+        anim_speed: &mut unit.anim_speed,
+        standing: Some(start.standing),
+        volleys: start.volleys,
+        attack_timer: &mut unit.attack_timer,
+        reload_worldtime: &mut unit.reload_worldtime,
+        reload: start.reload,
+        hit_chance: start.hit_chance,
+        victim,
+        blasted: &mut blasted,
+        sprite_rng,
+        own: start.own,
+        executed: None,
+        fire: None,
+        can_move,
+        stance,
+        state_position,
+        posted: Vec::new(),
+        queue_empty,
+        world_time: start.world_time,
+        ai_order,
+        ai_type,
+        computer: start.computer,
+        armed: true,
+        volley_under_way: unit.next_volley != 0,
+        let_go: None,
+        forgets: false,
+        sends_home: false,
+        swing_sprites: start.swing_sprites,
+    };
+    attack.enter_ready(walk, &mut strike)?;
+    if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {
+        return Err(GenieError::unsupported(
+            "an attack task's swing at its start",
+        ));
+    }
+    Ok(())
+}
 
 impl World {
     /// The work command's Attack (its task of action type 7, the factory `FUN_140a97e00` case 7):
@@ -28,48 +132,14 @@ impl World {
         point: [f32; 3],
         clears: bool,
     ) -> Result<(), GenieError> {
-        use crate::combat::attack::Strike;
-        use crate::movement::move_to::Walk;
         if task.work_range != 0.0 {
             return Err(GenieError::unsupported(
                 "an attack task with a range of its own",
             ));
         }
-        let (tp, t) = self.object(target).ok_or(GenieError::unsupported(
-            "an attack task's target the slice does not hold",
-        ))?;
-        let tm = self.master_of(tp, t.life.master_id)?;
-        let aimed = if tm.kind == BUILDING {
-            t.annex_of.unwrap_or(target)
-        } else {
-            target
-        };
-        let (class, fog_visibility) = (i32::from(tm.class), tm.fog_visibility);
-        let (ap, a) = self.object(aimed).ok_or(GenieError::unsupported(
-            "an attack task's main building is gone",
-        ))?;
-        let aimed_at = a.position;
-        let aimed_class = i32::from(self.master_of(ap, a.life.master_id)?.class);
+        let aim = self.attack_aim(target)?;
         let world_time = self.world_time;
-        let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.set_action(600);
-            ai.set_target(aimed, aimed_class, aimed_at);
-        }
-        self.take(target, self.releaser(player, idx));
-        let unit = &mut self.players[player].objects[idx];
-        if let Some(ai) = unit.ai.as_mut() {
-            ai.last_retarget_time = world_time;
-            ai.notify_work(
-                700,
-                600,
-                Some((target, class)),
-                point,
-                clears,
-                self.streams.get(Stream::Ai),
-            )?;
-            self.remember_order(player, idx, (700, 600))?;
-        }
+        self.attack_notifies(player, idx, (target, &aim), point, clears)?;
         self.clear_actions(player, idx)?;
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         // the task factory (`FUN_140a97e00` case 7) gives the Attack the task's moving sprite
@@ -86,37 +156,35 @@ impl World {
             .ok_or(crate::world::TARGET_UNPLACED)?;
         let (tx, ty) = (t_at.position[0] as i32, t_at.position[1] as i32);
         let visible = self.spatial.sees_tile(player, tx, ty)
-            || (fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
-        let reload = {
-            let u = &self.players[player].objects[idx];
-            u.reload_stinger + (master.reload - u.reload_powerup)
-        };
-        let hit_chance = master.hit_chance;
-        let swing_sprites = crate::combat::attack::swing_sprites(
-            self.players[player].objects[idx].abilities.look.as_ref(),
-            master,
-            &self.graphics,
-        );
-        let computer = self.players[player].computer;
-        let volleys = self
-            .masters
-            .get(player)
-            .is_some_and(|m| crate::combat::attack::volleys(master, m));
-        let mut victim = self.victim(target, player).ok_or(GenieError::unsupported(
-            "an attack's target the slice does not hold live",
-        ))?;
-        let own = {
-            let u = &self.players[player].objects[idx];
-            let terrain = self.spatial.terrain.as_ref();
-            crate::combat::victims::victim_of(
+            || (aim.fog_visibility != 0 && self.spatial.explored(player, tx, ty)?);
+        let u = &self.players[player].objects[idx];
+        let start = StartStrike {
+            standing,
+            volleys: self
+                .masters
+                .get(player)
+                .is_some_and(|m| crate::combat::attack::volleys(master, m)),
+            reload: u.reload_stinger + (master.reload - u.reload_powerup),
+            hit_chance: master.hit_chance,
+            swing_sprites: crate::combat::attack::swing_sprites(
+                u.abilities.look.as_ref(),
+                master,
+                &self.graphics,
+            ),
+            computer: self.players[player].computer,
+            world_time,
+            own: crate::combat::victims::victim_of(
                 u,
                 master,
                 &self.players[player].attributes,
                 player,
-                terrain,
+                self.spatial.terrain.as_ref(),
                 self.mode_680,
-            )
+            ),
         };
+        let mut victim = self.victim(target, player).ok_or(GenieError::unsupported(
+            "an attack's target the slice does not hold live",
+        ))?;
         let speed = self.players[player].objects[idx]
             .mover
             .as_ref()
@@ -151,11 +219,11 @@ impl World {
             ready,
             failed,
             failed_first,
-        } = crate::combat::attack::Attack::command(
+        } = Attack::command(
             (target, &self.spatial),
             &e,
             arms,
-            (visible, tp),
+            (visible, aim.owner),
             mover,
         )?;
         if failed_first {
@@ -176,64 +244,15 @@ impl World {
             )?;
         }
         if ready {
-            let me = crate::movement::Me {
-                id: unit.id,
-                position: unit.position,
-                group: unit.group.id,
-                action_state: crate::combat::attack::READY,
-            };
-            let can_move = unit
-                .ai
-                .as_ref()
-                .is_some_and(|ai| ai.current_order != -1 || ai.stance <= 1);
-            let stance = unit.ai.as_ref().map_or(0, |ai| ai.stance);
-            let state_position = unit.ai.as_ref().map_or([0.0; 2], |ai| ai.state_position);
-            let queue_empty = unit.ai.as_ref().is_some_and(|ai| ai.orders.is_empty());
-            let walk = Walk {
-                mover: unit.mover.as_mut(),
-                me,
-                dt: 0.0,
-                world: &mut self.spatial,
-                plan: None,
-            };
-            let mut blasted = Vec::new();
-            let mut strike = Strike {
-                sprite: &mut unit.sprite,
-                anim_speed: &mut unit.anim_speed,
-                standing: Some(standing),
-                volleys,
-                attack_timer: &mut unit.attack_timer,
-                reload_worldtime: &mut unit.reload_worldtime,
-                reload,
-                hit_chance,
-                victim: &mut victim,
-                blasted: &mut blasted,
-                sprite_rng: self.streams.get(Stream::Sprite),
-                own,
-                executed: None,
-                fire: None,
-                can_move,
-                stance,
-                state_position,
-                posted: Vec::new(),
-                queue_empty,
-                world_time,
-                ai_order: unit.ai.as_ref().map(|ai| ai.current_order),
-                ai_type: unit.ai.as_ref().map(|ai| ai.ai_type),
-                computer,
-                armed: true,
-                volley_under_way: unit.next_volley != 0,
-                let_go: None,
-                forgets: false,
-                sends_home: false,
-                swing_sprites,
-            };
-            attack.enter_ready(walk, &mut strike)?;
-            if strike.executed.is_some() || strike.fire.is_some() || !strike.posted.is_empty() {
-                return Err(GenieError::unsupported(
-                    "an attack task's swing at its start",
-                ));
-            }
+            let sprite_rng = self.streams.get(Stream::Sprite);
+            ready_at_start(
+                &mut attack,
+                unit,
+                &mut self.spatial,
+                sprite_rng,
+                start,
+                &mut victim,
+            )?;
         }
         if arrived {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): slot 0x68 with the
@@ -251,6 +270,68 @@ impl World {
         attack.target2 = target;
         unit.attack = Some(attack);
         self.take(target, self.releaser(player, idx));
+        Ok(())
+    }
+
+    /// Where an attack task on `target` aims (`FUN_141189b20`): a building annex at its main
+    /// building, anything else at itself; with the target's owner, its master's class and fog
+    /// visibility, and the aimed object's place and class.
+    pub(super) fn attack_aim(&self, target: i32) -> Result<Aim, GenieError> {
+        let (owner, t) = self.object(target).ok_or(GenieError::unsupported(
+            "an attack task's target the slice does not hold",
+        ))?;
+        let tm = self.master_of(owner, t.life.master_id)?;
+        let aimed = if tm.kind == BUILDING {
+            t.annex_of.unwrap_or(target)
+        } else {
+            target
+        };
+        let (ap, a) = self.object(aimed).ok_or(GenieError::unsupported(
+            "an attack task's main building is gone",
+        ))?;
+        Ok(Aim {
+            owner,
+            class: i32::from(tm.class),
+            fog_visibility: tm.fog_visibility,
+            aimed,
+            at: a.position,
+            aimed_class: i32::from(self.master_of(ap, a.life.master_id)?.class),
+        })
+    }
+
+    /// The attack task's word to the unit AI of object `idx` of `player`: action 600 and the
+    /// aimed object at its place (`FUN_140c64b50`, `FUN_140c64c10`); the target taken (slot
+    /// 0x178); the last retarget time the world's; the work notify (`FUN_14106e4e0` kind 9:
+    /// order 700, action 600, the target with its class and the work's `point`, its notifies
+    /// cleared with `clears`) and the order history.
+    pub(super) fn attack_notifies(
+        &mut self,
+        player: usize,
+        idx: usize,
+        (target, aim): (i32, &Aim),
+        point: [f32; 3],
+        clears: bool,
+    ) -> Result<(), GenieError> {
+        let world_time = self.world_time;
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.set_action(600);
+            ai.set_target(aim.aimed, aim.aimed_class, aim.at);
+        }
+        self.take(target, self.releaser(player, idx));
+        let unit = &mut self.players[player].objects[idx];
+        if let Some(ai) = unit.ai.as_mut() {
+            ai.last_retarget_time = world_time;
+            ai.notify_work(
+                700,
+                600,
+                Some((target, aim.class)),
+                point,
+                clears,
+                self.streams.get(Stream::Ai),
+            )?;
+            self.remember_order(player, idx, (700, 600))?;
+        }
         Ok(())
     }
 

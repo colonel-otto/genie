@@ -285,82 +285,11 @@ impl Search<'_> {
                 }
             }
             let vc = v[cur as usize];
-            let vs = poly.shapes[cur as usize];
-            if p == vc && vs != NONE {
-                let sr = mesh.shapes[shape as usize];
-                let vr = mesh.shapes[vs as usize];
-                let y1 = if sr[3] - d < vr[3] - d {
-                    sr[3] - d
-                } else {
-                    vr[3] - d
-                };
-                let x1 = if sr[2] - d < vr[2] - d {
-                    sr[2] - d
-                } else {
-                    vr[2] - d
-                };
-                let y0 = if vr[1] + d < sr[1] + d { sr[1] } else { vr[1] };
-                let x0 = if vr[0] + d < sr[0] + d { sr[0] } else { vr[0] };
-                let o = [x0 + d, y0 + d, x1, y1];
-                if o[0] < o[2] && o[1] < o[3] && inside(o, p, 0) {
-                    return Some(cur);
-                }
-            }
-            if side == u32::from(s_cur) {
-                let vn = v[nxt as usize];
-                let hit = match s_cur {
-                    0 if vc[1] == p[1] => {
-                        let (a, b) = (vc[0], vn[0]);
-                        let start = if prev < 2 { a <= p[0] } else { a < p[0] };
-                        start
-                            && if s_i == 3 || s_i == 0 {
-                                p[0] <= b
-                            } else {
-                                p[0] < b
-                            }
-                    }
-                    1 if vc[0] == p[0] => {
-                        let (a, b) = (vc[1], vn[1]);
-                        let start = if prev.wrapping_sub(1) < 2 {
-                            a <= p[1]
-                        } else {
-                            a < p[1]
-                        };
-                        start && if s_i < 2 { p[1] <= b } else { p[1] < b }
-                    }
-                    2 if vc[1] == p[1] => {
-                        let (a, b) = (vc[0], vn[0]);
-                        let start = if s_i.wrapping_sub(1) < 2 {
-                            b <= p[0]
-                        } else {
-                            b < p[0]
-                        };
-                        start
-                            && if 1 < prev.wrapping_sub(2) {
-                                p[0] < a
-                            } else {
-                                p[0] <= a
-                            }
-                    }
-                    3 if vc[0] == p[0] => {
-                        let (a, b) = (vc[1], vn[1]);
-                        let start = if s_i.wrapping_sub(2) < 2 {
-                            b <= p[1]
-                        } else {
-                            b < p[1]
-                        };
-                        start
-                            && if prev == 0 || prev == 3 {
-                                p[1] <= a
-                            } else {
-                                p[1] < a
-                            }
-                    }
-                    _ => false,
-                };
-                if hit {
-                    return Some(cur);
-                }
+            if Self::vertex_in_overlap(mesh, (p, vc, poly.shapes[cur as usize]), shape, d)
+                || (side == u32::from(s_cur)
+                    && Self::on_edge(s_cur, (vc, v[nxt as usize]), p, (prev, s_i)))
+            {
+                return Some(cur);
             }
             i = nxt + 1;
             prev = s_cur;
@@ -368,6 +297,97 @@ impl Search<'_> {
             if i >= limit {
                 return None;
             }
+        }
+    }
+
+    /// `FUN_140fa77b0`'s vertex test: the vertex `vc` of shape `vs` is `p`, and `p` lies in the
+    /// overlap of that shape with `shape` (the higher low corner, the lower high one), shrunk by
+    /// `d` on every side.
+    pub(super) fn vertex_in_overlap(
+        mesh: &Mesh,
+        (p, vc, vs): (Point, Point, u32),
+        shape: u32,
+        d: i32,
+    ) -> bool {
+        if p != vc || vs == NONE {
+            return false;
+        }
+        let sr = mesh.shapes[shape as usize];
+        let vr = mesh.shapes[vs as usize];
+        let y1 = if sr[3] - d < vr[3] - d {
+            sr[3] - d
+        } else {
+            vr[3] - d
+        };
+        let x1 = if sr[2] - d < vr[2] - d {
+            sr[2] - d
+        } else {
+            vr[2] - d
+        };
+        let y0 = if vr[1] + d < sr[1] + d { sr[1] } else { vr[1] };
+        let x0 = if vr[0] + d < sr[0] + d { sr[0] } else { vr[0] };
+        let o = [x0 + d, y0 + d, x1, y1];
+        o[0] < o[2] && o[1] < o[3] && inside(o, p, 0)
+    }
+
+    /// `FUN_140fa77b0`'s edge test: `p` lies on the edge of side `s_cur` from `vc` to `vn`; the
+    /// side before the edge's run (`prev`) and the one after it (`next`) decide whether each end
+    /// counts.
+    pub(super) const fn on_edge(
+        s_cur: u8,
+        (vc, vn): (Point, Point),
+        p: Point,
+        (prev, next): (u8, u8),
+    ) -> bool {
+        match s_cur {
+            0 if vc[1] == p[1] => {
+                let (a, b) = (vc[0], vn[0]);
+                let start = if prev < 2 { a <= p[0] } else { a < p[0] };
+                start
+                    && if next == 3 || next == 0 {
+                        p[0] <= b
+                    } else {
+                        p[0] < b
+                    }
+            }
+            1 if vc[0] == p[0] => {
+                let (a, b) = (vc[1], vn[1]);
+                let start = if prev.wrapping_sub(1) < 2 {
+                    a <= p[1]
+                } else {
+                    a < p[1]
+                };
+                start && if next < 2 { p[1] <= b } else { p[1] < b }
+            }
+            2 if vc[1] == p[1] => {
+                let (a, b) = (vc[0], vn[0]);
+                let start = if next.wrapping_sub(1) < 2 {
+                    b <= p[0]
+                } else {
+                    b < p[0]
+                };
+                start
+                    && if 1 < prev.wrapping_sub(2) {
+                        p[0] < a
+                    } else {
+                        p[0] <= a
+                    }
+            }
+            3 if vc[0] == p[0] => {
+                let (a, b) = (vc[1], vn[1]);
+                let start = if next.wrapping_sub(2) < 2 {
+                    b <= p[1]
+                } else {
+                    b < p[1]
+                };
+                start
+                    && if prev == 0 || prev == 3 {
+                        p[1] <= a
+                    } else {
+                        p[1] < a
+                    }
+            }
+            _ => false,
         }
     }
 

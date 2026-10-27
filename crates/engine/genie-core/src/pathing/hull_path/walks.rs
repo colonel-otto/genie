@@ -379,37 +379,7 @@ impl HullPather<'_> {
                     break 'search;
                 }
             }
-            for side in 0..4 {
-                let n = self.nodes[node];
-                if !Self::may_cast(&n, side) {
-                    continue;
-                }
-                if let Some((q, b, box_side)) = self.hulls[hull].ray_to_box(at, side, n.hull) {
-                    let _ =
-                        self.add_node(1, true, Some(node), q, goal, b as i32, box_side, side, true);
-                    continue;
-                }
-                left_boxes = true;
-                let Some((mut q, edge)) = self.hulls[hull].ray_to_hull(at, side) else {
-                    continue;
-                };
-                if goal.is_some() {
-                    let _ =
-                        self.add_node(1, true, Some(node), q, goal, -1, edge as i32, side, true);
-                    continue;
-                }
-                if *count < most {
-                    if nudge {
-                        let s = SIDES[side as usize];
-                        q = [q[0] + s[0] * NUDGE, q[1] + s[1] * NUDGE];
-                    }
-                    if let Some(end) =
-                        self.add_node(1, false, Some(node), q, None, -1, -1, -1, false)
-                    {
-                        let _ = self.keep_path(paths, count, end)?;
-                    }
-                }
-            }
+            left_boxes |= self.cast_rays(hull, node, goal, nudge, paths, (count, most))?;
         }
         // the search's end
         // without a goal the walk's ways out are its answer, even past a target within range
@@ -433,6 +403,52 @@ impl HullPather<'_> {
             result: u8::from(end.is_none()),
             left_boxes,
         })
+    }
+
+    /// The rays of the walk out's `node` (`FUN_140f8cf00`), to each side it may cast to
+    /// ([`HullPather::may_cast`]): a ray onto a box of hull `hull` goes on from the box's side; one
+    /// that leaves the boxes ends on the hull's edge, where toward a `goal` the walk goes on, and
+    /// without one it is a way out (nudged past the edge with `nudge`), kept in `paths` while
+    /// `count` is below `most`. True when a ray left the boxes.
+    pub(super) fn cast_rays(
+        &mut self,
+        hull: usize,
+        node: usize,
+        goal: Option<Point>,
+        nudge: bool,
+        paths: &mut [Waypoints],
+        (count, most): (&mut usize, usize),
+    ) -> Result<bool, GenieError> {
+        let at = self.nodes[node].at;
+        let mut left_boxes = false;
+        for side in 0..4 {
+            let n = self.nodes[node];
+            if !Self::may_cast(&n, side) {
+                continue;
+            }
+            if let Some((q, b, box_side)) = self.hulls[hull].ray_to_box(at, side, n.hull) {
+                let _ = self.add_node(1, true, Some(node), q, goal, b as i32, box_side, side, true);
+                continue;
+            }
+            left_boxes = true;
+            let Some((mut q, edge)) = self.hulls[hull].ray_to_hull(at, side) else {
+                continue;
+            };
+            if goal.is_some() {
+                let _ = self.add_node(1, true, Some(node), q, goal, -1, edge as i32, side, true);
+                continue;
+            }
+            if *count < most {
+                if nudge {
+                    let s = SIDES[side as usize];
+                    q = [q[0] + s[0] * NUDGE, q[1] + s[1] * NUDGE];
+                }
+                if let Some(end) = self.add_node(1, false, Some(node), q, None, -1, -1, -1, false) {
+                    let _ = self.keep_path(paths, count, end)?;
+                }
+            }
+        }
+        Ok(left_boxes)
     }
 
     /// `MShortPather::pathWithinHull` into a hull (`FUN_140f88ee0`): the walk out of hull `hull`

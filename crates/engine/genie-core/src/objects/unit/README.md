@@ -41,6 +41,7 @@ The other files of this folder:
 | [`life_step.rs`](life_step.rs) | The life cycle's step in a unit's update: the hit points, the states, and what each new state sets off. |
 | [`mod.rs`](mod.rs) | What the slice tracks of one object (`Unit`) and its update, action by action. |
 | [`stop.rs`](stop.rs) | A unit's stops: its actions torn down or cleared, its standing sprite, an action's effects applied. |
+| [`tests.rs`](tests.rs) | Tests. |
 | [`top.rs`](top.rs) | What a unit's actions hold: their taker, its top action, target and gait. |
 | [`update.rs`](update.rs) | A unit's update on its owner's turn, action by action. |
 <!-- /files -->

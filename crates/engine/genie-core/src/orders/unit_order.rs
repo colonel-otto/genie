@@ -227,129 +227,135 @@ impl World {
                     "a UNIT_ORDER drop-off of an action not held",
                 ));
             }
-            if let Some(gather) = unit.gather.as_ref().filter(|_| {
-                asks && unit.top_action_kind() == Some(crate::gathering::gather::GATHER)
-            }) {
-                // without a target or a point the work goes into the town-bell records first
-                // (FUN_141206a20) and the way back after the drop-off (FUN_141205ac0)
-                let unaimed = way_back
-                    && gather.target == -1
-                    && gather.point[0] == NO_POINT
-                    && gather.point[1] == NO_POINT;
-                let attributes = self.players[p].attributes.len();
-                let asked = gather.drop_off_asked(unit.life.attribute_type, attributes);
-                if !asked {
-                    self.other_load(p, idx);
-                }
-                if unaimed {
-                    self.record_town_bell(p, idx)?;
-                }
-                if !asked {
-                    if unaimed {
-                        self.queue_way_back(p, idx)?;
-                    }
-                    continue;
-                }
-                let mut unit =
-                    std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
-                let player = &self.players[p];
-                let world = crate::unit_ai::world_view::DropWorld {
-                    masters: self.masters.get(p),
-                    spatial: &self.spatial,
-                    zones: &mut self.zones,
-                    pathing: &mut self.pathing,
-                    object: self.streams.get(Stream::Object),
-                    world_time: self.world_time,
-                    computer: player.computer,
-                    construction_rate: player.construction_rate,
-                    groups: &self.groups,
-                };
-                let result = unit.gather_drop_off_in(world, &player.objects);
-                self.players[p].objects[idx] = unit;
-                if let Some(site) = result? {
-                    self.take(site, self.releaser(p, idx));
-                }
-                if unaimed {
-                    self.queue_way_back(p, idx)?;
-                }
-                continue;
-            }
-            if let Some(build) = unit.build.as_ref().filter(|_| {
-                asks && unit.top_action_kind() == Some(crate::construction::build::BUILD)
-            }) {
-                // a Build without a target or a point as the Gather's above
-                let unaimed = way_back
-                    && build.target == -1
-                    && build.point[0] == NO_POINT
-                    && build.point[1] == NO_POINT;
-                let attributes = self.players[p].attributes.len();
-                let asked = crate::gathering::hunt::asked_drop_off(
-                    build.task.resource,
-                    unit.life.attribute_type,
-                    attributes,
-                );
-                if !asked {
-                    self.other_load(p, idx);
-                }
-                if unaimed {
-                    self.record_town_bell(p, idx)?;
-                }
-                if asked {
-                    self.build_drop_off_now(p, idx)?;
-                }
-                if unaimed {
-                    self.queue_way_back(p, idx)?;
-                }
-                continue;
-            }
-            let Some(hunt) = unit
-                .hunt
-                .as_ref()
-                .filter(|_| asks && unit.top_action_kind() == Some(HUNT))
-            else {
-                self.drop_off_unasked(p, idx, way_back)?;
-                continue;
-            };
-            let unaimed = way_back
-                && hunt.target == -1
-                && hunt.point[0] == NO_POINT
-                && hunt.point[1] == NO_POINT;
-            let attributes = self.players[p].attributes.len();
-            let asked = hunt.drop_off_asked(unit.life.attribute_type, attributes);
-            if !asked {
-                self.other_load(p, idx);
-            }
-            if unaimed {
-                self.record_town_bell(p, idx)?;
-            }
-            if !asked {
-                if unaimed {
-                    self.queue_way_back(p, idx)?;
-                }
-                continue;
-            }
-            let mut unit = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
-            let player = &self.players[p];
-            let world = crate::unit_ai::world_view::DropWorld {
-                masters: self.masters.get(p),
-                spatial: &self.spatial,
-                zones: &mut self.zones,
-                pathing: &mut self.pathing,
-                object: self.streams.get(Stream::Object),
-                world_time: self.world_time,
-                computer: player.computer,
-                construction_rate: player.construction_rate,
-                groups: &self.groups,
-            };
-            let result = unit.drop_off_in(world, &player.objects);
-            self.players[p].objects[idx] = unit;
-            if let Some(site) = result? {
-                self.take(site, self.releaser(p, idx));
-            }
-            if unaimed {
-                self.queue_way_back(p, idx)?;
+            match self.drop_off_ask(p, idx, (asks, way_back)) {
+                Some(ask) => self.asked_drop_off(p, idx, ask)?,
+                None => self.drop_off_unasked(p, idx, way_back)?,
             }
         }
         Ok(())
     }
+    /// The drop-off order's ask of object `idx` of player `p` (`asks` for the orders 7 and 8):
+    /// a top Gather (5), Build (101) or Hunt (110), with whether it asks for the drop-off of the
+    /// load (slot 0x78: the task's resource, any for −1, of the load's kind) and whether it is
+    /// unaimed (`way_back`, the order 8, of an action without a target or a point); None for
+    /// another action, for none and for the order 6.
+    pub(super) fn drop_off_ask(
+        &self,
+        p: usize,
+        idx: usize,
+        (asks, way_back): (bool, bool),
+    ) -> Option<DropOffAsk> {
+        let unit = &self.players[p].objects[idx];
+        let top = if asks { unit.top_action_kind() } else { None };
+        let (by, target, point, resource) = match top {
+            Some(crate::gathering::gather::GATHER) => unit
+                .gather
+                .as_ref()
+                .map(|g| (DropOffBy::Gather, g.target, g.point, g.task.resource)),
+            Some(crate::construction::build::BUILD) => unit
+                .build
+                .as_ref()
+                .map(|b| (DropOffBy::Build, b.target, b.point, b.task.resource)),
+            Some(HUNT) => unit
+                .hunt
+                .as_ref()
+                .map(|h| (DropOffBy::Hunt, h.target, h.point, h.task.resource)),
+            _ => None,
+        }?;
+        Some(DropOffAsk {
+            by,
+            asked: crate::gathering::hunt::asked_drop_off(
+                resource,
+                unit.life.attribute_type,
+                self.players[p].attributes.len(),
+            ),
+            unaimed: way_back && target == -1 && point[0] == NO_POINT && point[1] == NO_POINT,
+        })
+    }
+
+    /// The drop-off order to an action that `ask`s for it: a load of another resource takes
+    /// notify 0x21c ([`World::other_load`]); an unaimed action's work goes into the town-bell
+    /// records first (`FUN_141206a20`, [`World::record_town_bell`]); an asked drop-off goes to
+    /// the drop site (`set_state(8)`: [`World::drop_off_at_site`], [`World::build_drop_off_now`]);
+    /// the way back to the unaimed work is queued after (`FUN_141205ac0`,
+    /// [`World::queue_way_back`]).
+    pub(super) fn asked_drop_off(
+        &mut self,
+        p: usize,
+        idx: usize,
+        ask: DropOffAsk,
+    ) -> Result<(), GenieError> {
+        if !ask.asked {
+            self.other_load(p, idx);
+        }
+        if ask.unaimed {
+            self.record_town_bell(p, idx)?;
+        }
+        if ask.asked {
+            match ask.by {
+                DropOffBy::Build => self.build_drop_off_now(p, idx)?,
+                DropOffBy::Gather | DropOffBy::Hunt => self.drop_off_at_site(p, idx, ask.by)?,
+            }
+        }
+        if ask.unaimed {
+            self.queue_way_back(p, idx)?;
+        }
+        Ok(())
+    }
+
+    /// A Gather's or a Hunt's drop-off at its drop site (`set_state(8)`:
+    /// [`Unit::gather_drop_off_in`], [`Unit::drop_off_in`]): the site found is taken (slot
+    /// 0x178, [`World::take`]).
+    pub(super) fn drop_off_at_site(
+        &mut self,
+        p: usize,
+        idx: usize,
+        by: DropOffBy,
+    ) -> Result<(), GenieError> {
+        let mut unit = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
+        let player = &self.players[p];
+        let world = crate::unit_ai::world_view::DropWorld {
+            masters: self.masters.get(p),
+            spatial: &self.spatial,
+            zones: &mut self.zones,
+            pathing: &mut self.pathing,
+            object: self.streams.get(Stream::Object),
+            world_time: self.world_time,
+            computer: player.computer,
+            construction_rate: player.construction_rate,
+            groups: &self.groups,
+        };
+        let result = if by == DropOffBy::Hunt {
+            unit.drop_off_in(world, &player.objects)
+        } else {
+            unit.gather_drop_off_in(world, &player.objects)
+        };
+        self.players[p].objects[idx] = unit;
+        if let Some(site) = result? {
+            self.take(site, self.releaser(p, idx));
+        }
+        Ok(())
+    }
+}
+
+/// The top action a drop-off order asks ([`World::drop_off_ask`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DropOffBy {
+    /// A Gather (5).
+    Gather,
+    /// A Build (101).
+    Build,
+    /// A Hunt (110).
+    Hunt,
+}
+
+/// A drop-off order's ask of a unit's top action ([`World::drop_off_ask`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct DropOffAsk {
+    /// The action asked.
+    pub(super) by: DropOffBy,
+    /// The action asks for the drop-off of the load (slot 0x78).
+    pub(super) asked: bool,
+    /// The order 8 to an action without a target or a point.
+    pub(super) unaimed: bool,
 }

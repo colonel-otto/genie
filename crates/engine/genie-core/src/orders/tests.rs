@@ -316,6 +316,201 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
 /// clears `+0x7b8`; the Attack waits in state 4 for the `MoveTo`'s end.
 #[test]
 fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
+    let (mut t, task) = work_attack(0);
+    t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
+        .unwrap();
+    let unit = &t.players[1].objects[0];
+    let attack = unit.attack.as_ref().expect("the soldier's Attack");
+    assert_eq!(
+        (attack.state, attack.move_to, attack.target2),
+        (
+            crate::combat::attack::MOVE,
+            Some(crate::movement::move_to::MoveTo::Arrived),
+            50
+        )
+    );
+    assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
+    assert_eq!(unit.anim_speed, Some(0.0));
+    assert_eq!(unit.mover.as_ref().map(|m| m.stats.speed), Some(0.0));
+}
+
+/// The attack task's aim (`FUN_141189b20`): Gaia's wolf aims at itself; a building annex at
+/// its main building, with the annex's owner, class and fog visibility but the main building's
+/// place and class; a target or a main building the slice does not hold fails.
+#[test]
+fn an_attack_task_aims_at_its_target_or_an_annex_s_main_building() {
+    let (mut t, _) = work_attack(0);
+    let aim = t.attack_aim(50).unwrap();
+    assert_eq!((aim.owner, aim.class, aim.fog_visibility), (0, 10, 0));
+    assert_eq!(
+        (aim.aimed, aim.at, aim.aimed_class),
+        (50, [10.4, 10.0, 0.0], 10)
+    );
+    annexed(&mut t);
+    let aim = t.attack_aim(61).unwrap();
+    assert_eq!((aim.owner, aim.class, aim.fog_visibility), (0, 52, 1));
+    assert_eq!(
+        (aim.aimed, aim.at, aim.aimed_class),
+        (60, [20.5, 20.5, 0.0], 3)
+    );
+    let r = t.attack_aim(98);
+    assert_eq!(
+        r.err().map(|e| e.reason()),
+        Some("an attack task's target the slice does not hold")
+    );
+    t.players[0].objects[2].annex_of = Some(99);
+    let r = t.attack_aim(61);
+    assert_eq!(
+        r.err().map(|e| e.reason()),
+        Some("an attack task's main building is gone")
+    );
+}
+
+/// The attack task's word to its unit AI (`FUN_140c64b50`, `FUN_140c64c10`, `FUN_14106e4e0`
+/// kind 9): the aimed main building becomes the soldier's last target, the annex its target
+/// with its class at the work's point under order 700 and action 600; the last retarget time
+/// and the order history take the world's time, and the annex counts the soldier as a worker.
+/// A soldier without a unit AI only takes the target.
+#[test]
+fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
+    let (mut t, _) = work_attack(0);
+    annexed(&mut t);
+    t.world_time = 1730;
+    let aim = t.attack_aim(61).unwrap();
+    t.attack_notifies(1, 0, (61, &aim), [21.0, 21.0, 0.0], true)
+        .unwrap();
+    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (700, 600, 61)
+    );
+    assert_eq!((ai.target_type, ai.target_point), (52, [21.0, 21.0, 0.0]));
+    assert_eq!(
+        (ai.last_target, ai.last_target_type, ai.last_retarget_time),
+        (60, 3, 1730)
+    );
+    let record = ai.order_history.last().expect("the order history");
+    assert_eq!(
+        (record.order, record.action, record.time, record.target),
+        (700, 600, 1730, 61)
+    );
+    assert_eq!(t.players[0].objects[2].workers, 1);
+    t.players[1].objects[0].ai = None;
+    t.attack_notifies(1, 0, (61, &aim), [21.0, 21.0, 0.0], true)
+        .unwrap();
+    assert_eq!(t.players[0].objects[2].workers, 2);
+}
+
+/// The attack task's Attack of a soldier without a unit AI (it cannot move) touching the wolf
+/// goes ready at its start (`set_state(6)`, [`super::attack::ready_at_start`]): with its reload
+/// under way it waits ready on its standing sprite; with it done it swings at once on its
+/// attack sprite.
+#[test]
+fn an_attack_task_of_a_unit_that_cannot_move_goes_ready_in_reach() {
+    use crate::combat::attack::{READY, SWING};
+    for (timer, state, pending, sprite) in [(0.5, READY, false, 300), (0.0, SWING, true, 301)] {
+        let (mut t, task) = work_attack(0);
+        let unit = &mut t.players[1].objects[0];
+        unit.ai = None;
+        unit.attack_timer = timer;
+        t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
+            .unwrap();
+        let unit = &t.players[1].objects[0];
+        let attack = unit.attack.expect("the soldier's Attack");
+        assert_eq!(
+            (attack.state, attack.pending, attack.target2),
+            (state, pending, 50),
+            "reload timer {timer}"
+        );
+        assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(sprite));
+    }
+}
+
+/// [`super::attack::ready_at_start`] on an Attack of its own with neither a target nor a
+/// point: at ready it posts the action's end (0x1fa), a part of the swing the start does not
+/// model, and fails.
+#[test]
+fn an_attack_task_s_ready_start_fails_on_a_post_it_does_not_model() {
+    use super::attack::{StartStrike, ready_at_start};
+    let (mut t, task) = work_attack(0);
+    let unit = &mut t.players[1].objects[0];
+    unit.ai = None;
+    unit.attack_timer = 0.5;
+    t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
+        .unwrap();
+    let unit = &mut t.players[1].objects[0];
+    let mut attack = unit.attack.take().expect("the soldier's Attack");
+    assert!(!attack.sub_action);
+    attack.target = -1;
+    attack.point = [crate::math::image::attack::NONE; 3];
+    let start = StartStrike {
+        standing: t.graphics[&300],
+        volleys: false,
+        reload: 2.0,
+        hit_chance: 100,
+        swing_sprites: crate::combat::attack::SwingSprites::default(),
+        computer: false,
+        world_time: 0,
+        own: crate::combat::damage::Victim::default(),
+    };
+    let r = ready_at_start(
+        &mut attack,
+        unit,
+        &mut t.spatial,
+        &mut crate::math::rng::Well512::default(),
+        start,
+        &mut crate::combat::damage::Victim::default(),
+    );
+    assert_eq!(
+        r.err().map(|e| e.reason()),
+        Some("an attack task's swing at its start")
+    );
+}
+
+/// Gaia's main building 60 (master 200, class 3) at (20.5, 20.5) and its annex 61 (master 201,
+/// class 52) at (22, 20.5), both fog visible, after the wolf of [`work_attack`]'s world.
+fn annexed(t: &mut World) {
+    let wolf = t.masters[0].get(126).cloned().expect("the wolf's master");
+    t.masters[0] = crate::objects::masters::Masters::new([
+        wolf,
+        Master {
+            id: 200,
+            kind: BUILDING,
+            class: 3,
+            fog_visibility: 1,
+            ..Master::default()
+        },
+        Master {
+            id: 201,
+            kind: BUILDING,
+            class: 52,
+            fog_visibility: 1,
+            ..Master::default()
+        },
+    ]);
+    let building = |id, master_id, position, annex_of| Unit {
+        id,
+        position,
+        annex_of,
+        life: crate::objects::lifecycle::Lifecycle {
+            master_id,
+            state: 2,
+            ..crate::objects::lifecycle::Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    t.players[0]
+        .objects
+        .push(building(60, 200, [20.5, 20.5, 0.0], None));
+    t.players[0]
+        .objects
+        .push(building(61, 201, [22.0, 20.5, 0.0], Some(60)));
+}
+
+/// [`soldiers`]' soldier 11 (master 4, melee, reload 2) at (10, 10) on its feet with a walker
+/// of speed 1.2 and a unit AI of `stance`, touching Gaia's wolf 50 (master 126, class 10, 25
+/// hit points) at (10.4, 10), and the attack task (action type 7, no sprites of its own).
+fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
     use crate::objects::sprite::Graphic;
@@ -406,6 +601,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
         current_order: -1,
         current_action: -1,
         current_target: -1,
+        stance,
         ..crate::unit_ai::UnitAi::default()
     });
     let task = crate::objects::masters::Task {
@@ -413,21 +609,7 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
         sprites: [-1; 4],
         ..crate::objects::masters::Task::default()
     };
-    t.start_attack(1, 0, 50, &task, [10.4, 10.0, 0.0], true)
-        .unwrap();
-    let unit = &t.players[1].objects[0];
-    let attack = unit.attack.as_ref().expect("the soldier's Attack");
-    assert_eq!(
-        (attack.state, attack.move_to, attack.target2),
-        (
-            crate::combat::attack::MOVE,
-            Some(crate::movement::move_to::MoveTo::Arrived),
-            50
-        )
-    );
-    assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
-    assert_eq!(unit.anim_speed, Some(0.0));
-    assert_eq!(unit.mover.as_ref().map(|m| m.stats.speed), Some(0.0));
+    (t, task)
 }
 
 /// A world of player 1's soldiers (master 4, formation category 3) and villagers (master 83,
@@ -2900,4 +3082,151 @@ fn a_gather_takes_a_farm_but_no_other_building() {
     let mut t = world;
     assert_eq!(t.retarget_gather(1, 0, 700), Ok(false));
     assert!(t.retarget_gather(1, 0, 4444).is_err());
+}
+
+/// [`crate::world::tests::forage_world`]'s forager 9175 carrying 6 berries (kind 17), its
+/// Gather on bush 600 from a work command, its player holding 10 attributes.
+fn foraging() -> World {
+    let mut t = crate::world::tests::forage_world();
+    let work = Work {
+        target: 600,
+        point: [32.5, 89.5, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    t.players[1].attributes = vec![0.0; 10];
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (17, 6.0);
+    t
+}
+
+/// The drop-off order's ask (`FUN_14161e370`): the orders 7 and 8 ask a top Gather, Build or
+/// Hunt, whose task's resource (berries, kind 0) asks for a load of its kind and not for wood
+/// (kind 1); the order 8 to an action without a target or a point is unaimed; the order 6
+/// and a unit without such an action ask nothing.
+#[test]
+fn a_drop_off_order_asks_the_top_gather_build_or_hunt() {
+    use super::unit_order::{DropOffAsk, DropOffBy};
+    let mut t = foraging();
+    let ask = |by, asked, unaimed| Some(DropOffAsk { by, asked, unaimed });
+    assert_eq!(
+        t.drop_off_ask(1, 0, (true, true)),
+        ask(DropOffBy::Gather, true, false)
+    );
+    assert_eq!(t.drop_off_ask(1, 0, (false, true)), None);
+    t.players[1].objects[0].life.attribute_type = 1;
+    assert_eq!(
+        t.drop_off_ask(1, 0, (true, false)),
+        ask(DropOffBy::Gather, false, false)
+    );
+    let g = t.players[1].objects[0].gather.as_mut().unwrap();
+    (g.target, g.point) = (-1, [NO_POINT, NO_POINT, 0.0]);
+    assert_eq!(
+        t.drop_off_ask(1, 0, (true, true)),
+        ask(DropOffBy::Gather, false, true)
+    );
+    assert_eq!(
+        t.drop_off_ask(1, 0, (true, false)),
+        ask(DropOffBy::Gather, false, false)
+    );
+    // a Hunt and a Build of a wood task, aimed
+    let mut hunt = crate::gathering::hunt::tests::hunting(600);
+    hunt.task.resource = 1;
+    let v = &mut t.players[1].objects[0];
+    v.gather = None;
+    v.hunt = Some(hunt);
+    assert_eq!(
+        t.drop_off_ask(1, 0, (true, true)),
+        ask(DropOffBy::Hunt, true, false)
+    );
+    let task = crate::construction::build::BuildTask {
+        range: 0.1,
+        work_value: 1.0,
+        work_rate: 1.0,
+        resource: 1,
+        id: -1,
+    };
+    let v = &mut t.players[1].objects[0];
+    v.build = Some(crate::construction::build::BuildAction::start(
+        10028,
+        [10.5, 10.5, 0.0],
+        5.0,
+        task,
+    ));
+    assert_eq!(
+        t.drop_off_ask(1, 0, (true, true)),
+        ask(DropOffBy::Build, true, false)
+    );
+    let v = &mut t.players[1].objects[0];
+    (v.build, v.hunt) = (None, None);
+    assert_eq!(t.drop_off_ask(1, 0, (true, true)), None);
+}
+
+/// The drop-off order 7 to the forager's Gather: it carries its berries to the town centre
+/// 700 (state 8), which counts it as a worker; a load of wood instead posts the other load
+/// (0x21c) and leaves the Gather; the order 8 to an unaimed Gather records its work for the
+/// town bell, drops off and queues the way back.
+#[test]
+fn a_drop_off_order_takes_a_gather_to_its_site_or_posts_the_other_load() {
+    let mut t = foraging();
+    t.unit_order(1, &[9175], 7).unwrap();
+    let g = t.players[1].objects[0].gather.expect("the Gather");
+    assert_eq!((g.carry_to, g.state), (700, 8));
+    assert_eq!(t.players[1].objects[2].workers, 1);
+    let mut t = foraging();
+    t.players[1].objects[0].life.attribute_type = 1;
+    let before = t.players[1].objects[0].gather;
+    t.unit_order(1, &[9175], 7).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.gather, before);
+    let ai = v.ai.as_ref().expect("the forager's unit AI");
+    assert!(
+        ai.notifies
+            .iter()
+            .any(|n| n.kind == crate::unit_ai::OTHER_LOAD),
+        "{:?}",
+        ai.notifies
+    );
+    let mut t = foraging();
+    let g = t.players[1].objects[0].gather.as_mut().unwrap();
+    (g.target, g.point) = (-1, [NO_POINT, NO_POINT, 0.0]);
+    t.unit_order(1, &[9175], 8).unwrap();
+    let v = &t.players[1].objects[0];
+    assert_eq!(v.gather.map(|g| (g.carry_to, g.state)), Some((700, 8)));
+    assert_eq!(v.ai.as_ref().map(|ai| ai.orders.len()), Some(1));
+}
+
+/// The drop-off order 7 to a Hunt carrying its load: it goes to the town centre 700 (state 8),
+/// which counts it as a worker.
+#[test]
+fn a_drop_off_order_takes_a_hunt_to_its_site() {
+    let mut t = foraging();
+    let v = &mut t.players[1].objects[0];
+    v.gather = None;
+    let mut hunt = crate::gathering::hunt::tests::hunting(600);
+    hunt.task.resource = 17;
+    v.hunt = Some(hunt);
+    t.unit_order(1, &[9175], 7).unwrap();
+    let h = t.players[1].objects[0].hunt.expect("the Hunt");
+    assert_eq!((h.carry_to, h.state), (700, 8));
+    assert_eq!(t.players[1].objects[2].workers, 1);
+}
+
+/// The drop-off orders fail on a sleeping object and on a unit whose action the slice does not
+/// hold; they pass over a unit not in state 2, below type 40 or carrying nothing.
+#[test]
+fn a_drop_off_order_fails_on_what_it_does_not_hold() {
+    let mut t = foraging();
+    t.players[1].objects[0].unmodelled_action = Some(GenieError::unsupported("a test's action"));
+    assert_eq!(
+        t.unit_order(1, &[9175], 7).err().map(|e| e.reason()),
+        Some("a UNIT_ORDER drop-off of an action not held")
+    );
+    let mut t = foraging();
+    t.players[1].objects[0].life.amount = 0.0;
+    let before = t.players[1].objects[0].clone();
+    t.unit_order(1, &[9175, 12345], 7).unwrap();
+    assert_eq!(t.players[1].objects[0], before);
 }

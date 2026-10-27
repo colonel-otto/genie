@@ -19,25 +19,10 @@ impl Unit {
             return self.ai_part(c, others, resume);
         }
         self.death_blast(c)?;
-        // RGE_Static_Object::update (0x14118ad50): an object flagged to sleep (`+0x643`) drops
-        // the flag, is marked asleep (`+0x641`) and moves to its player's sleeping list (player
-        // slots 0x2d8 and 0x2d0), and its update ends; only static objects (type 10) are flagged
-        if self.life.goto_sleep {
-            if self.life.class != Class::Static || self.mover.is_some() || self.ai.is_some() {
-                return Err(GenieError::unsupported(
-                    "an object above the static type goes to sleep",
-                ));
-            }
-            self.life.goto_sleep = false;
+        if self.go_to_sleep()? {
             return Ok(Step::Sleep);
         }
-        // the yaw and the facing read the current sprite's facets
-        if let (Some(m), Some(s)) = (self.mover.as_mut(), self.sprite) {
-            m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
-                count: s.graphic.facets,
-                flag_1: s.graphic.flags & 2 != 0,
-            });
-        }
+        self.take_sprite_facets();
         self.gate_update(c, others)?;
         self.complete_on_update(c, others)?;
         self.building_seconds(c, others)?;
@@ -45,28 +30,8 @@ impl Unit {
         self.run_down_attack_timers(c);
         self.motion_step(c);
         let leaves = self.life_step(c)?;
-        // the animated object's update (0x141071880): its sprite's clock at its animation speed,
-        // then its idle swap
-        if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
-            sprite.update(c.dt_seconds, speed);
-            // the swap reads the loop this update's clock made
-            if let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) {
-                self.idle_swap(master, c.graphics, c.streams.get(Stream::Sprite));
-            }
-        }
-        if let Some(e) = self
-            .unmodelled_action
-            .clone()
-            .filter(|_| self.life.state == 2)
-        {
-            return Err(e);
-        }
-        // RGE_Action_Object::update (0x14106ac90), after the moving update: an object past
-        // state 2 (the Wonder past state 5) loses its action list (FUN_140a98620)
-        if loses_actions(&self.life) {
-            let by = self.releaser(c);
-            self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
-        }
+        self.animate(c);
+        self.actions_past_life(c)?;
         let started = self.start_default_task(c)?;
         // The default action exists from tick 1 on, but its first update is in tick 2: fitted to
         // 16 checkpoints of idle players with livestock (workspace FD-008).
@@ -110,16 +75,7 @@ impl Unit {
         if !self.hunt_part(c, others, me, &mut own, tree_lost)? {
             self.attack_part(c, me, own)?;
         }
-        // the motion step may have put the unit onto a waypoint it reached
-        if let Some(p) = c.spatial.get(self.id) {
-            self.position = p.position;
-        }
-        if let Some(m) = self.mover.as_mut() {
-            c.pauses.append(&mut m.pauses);
-            if !m.in_the_way.is_empty() {
-                return Err(crate::world::IN_THE_WAY);
-            }
-        }
+        self.after_actions(c)?;
         let resume = AiResume {
             captured,
             leaves,
@@ -133,6 +89,78 @@ impl Unit {
             return Ok(Step::Stay);
         }
         self.ai_part(c, others, resume)
+    }
+
+    /// `RGE_Static_Object::update` (`0x14118ad50`): an object flagged to sleep (`+0x643`) drops
+    /// the flag, is marked asleep (`+0x641`) and moves to its player's sleeping list (player
+    /// slots 0x2d8 and 0x2d0), and its update ends (true); only static objects (type 10) are
+    /// flagged, so one with movement state or a unit AI is not modelled.
+    pub(crate) fn go_to_sleep(&mut self) -> Result<bool, GenieError> {
+        if !self.life.goto_sleep {
+            return Ok(false);
+        }
+        if self.life.class != Class::Static || self.mover.is_some() || self.ai.is_some() {
+            return Err(GenieError::unsupported(
+                "an object above the static type goes to sleep",
+            ));
+        }
+        self.life.goto_sleep = false;
+        Ok(true)
+    }
+
+    /// The yaw and the facing read the current sprite's facets: the movement state takes them.
+    pub(crate) const fn take_sprite_facets(&mut self) {
+        if let (Some(m), Some(s)) = (self.mover.as_mut(), self.sprite) {
+            m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
+                count: s.graphic.facets,
+                flag_1: s.graphic.flags & 2 != 0,
+            });
+        }
+    }
+
+    /// The animated object's update (`0x141071880`): its sprite's clock at its animation speed,
+    /// then its idle swap, which reads the loop this update's clock made.
+    pub(crate) fn animate(&mut self, c: &mut Context<'_>) {
+        if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
+            sprite.update(c.dt_seconds, speed);
+            if let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) {
+                self.idle_swap(master, c.graphics, c.streams.get(Stream::Sprite));
+            }
+        }
+    }
+
+    /// `RGE_Action_Object::update` (`0x14106ac90`) after the moving update: an object past state
+    /// 2 (the Wonder past state 5) loses its action list (`FUN_140a98620`). An alive object with
+    /// an action the slice does not model fails here.
+    pub(crate) fn actions_past_life(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        if let Some(e) = self
+            .unmodelled_action
+            .clone()
+            .filter(|_| self.life.state == 2)
+        {
+            return Err(e);
+        }
+        if loses_actions(&self.life) {
+            let by = self.releaser(c);
+            self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+        }
+        Ok(())
+    }
+
+    /// After the actions: the unit takes its place as the world has it (the motion step may have
+    /// put it onto a waypoint it reached) and hands the pauses it gave to the Context. A unit
+    /// whose walk met others in its way is not modelled.
+    pub(crate) fn after_actions(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        if let Some(p) = c.spatial.get(self.id) {
+            self.position = p.position;
+        }
+        if let Some(m) = self.mover.as_mut() {
+            c.pauses.append(&mut m.pauses);
+            if !m.in_the_way.is_empty() {
+                return Err(crate::world::IN_THE_WAY);
+            }
+        }
+        Ok(())
     }
 
     /// [`Unit::ai_part`]'s first step: the pathing grid takes a unit of a master of kind 40 or

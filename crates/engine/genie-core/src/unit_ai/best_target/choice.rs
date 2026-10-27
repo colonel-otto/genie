@@ -39,11 +39,10 @@ pub struct Choice {
     pub retries: Vec<(i32, u32)>,
 }
 
-/// The object tests the statistics' main and retry walks share: the world holds it with a unit
-/// AI, alive, not allied, not inside another; the unit AI's attack check; a combat unit's
-/// friends' scan; a neutral object's test; a Gaia unit others take by sight is passed outside
-/// the scenarios; its flags; a computer player's tests; the classes without `any_class`; a
-/// computer player's unit's Gaia holdings and boats. The object and its category, or None.
+/// The object tests the statistics' main and retry walks share: the world's attack checks
+/// ([`may_attack`]); a Gaia unit others take by sight is passed outside the scenarios; its
+/// flags and whether the unit shuns it; then the owner and class rules
+/// ([`kept_by_owner_and_class`]). The object and its category, or None.
 pub(super) fn tested(
     me: &Searcher,
     ask: &Ask,
@@ -54,13 +53,7 @@ pub(super) fn tested(
     let Some(t) = world.thing(id)? else {
         return Ok(None);
     };
-    if !t.has_ai || 3 <= t.state || t.allied || t.inside || !world.can_attack(id)? {
-        return Ok(None);
-    }
-    if me.kind == 70 && !world.spares_friends(id)? {
-        return Ok(None);
-    }
-    if kind == 3 && !world.attacks_neutral(t.class)? {
+    if !may_attack(me, (id, &t), kind, world)? {
         return Ok(None);
     }
     let gaia_taken = !me.scenario && t.owner == 0 && 0x45 < t.kind;
@@ -70,24 +63,48 @@ pub(super) fn tested(
     if !t.targetable || (!t.attackable && me.action == 600) || world.shuns(id)? {
         return Ok(None);
     }
+    Ok(kept_by_owner_and_class(me, ask, &t).then_some(t))
+}
+
+/// The world's checks of object `id` (`t`, of relation list `kind`), in the game's order: it
+/// has a unit AI, is alive, not allied and not inside another; the unit AI's attack check; a
+/// combat unit's friends' scan; a neutral object's (list 3) test.
+pub(super) fn may_attack(
+    me: &Searcher,
+    (id, t): (i32, &Thing),
+    kind: usize,
+    world: &mut dyn Battlefield,
+) -> Result<bool, crate::GenieError> {
+    if !t.has_ai || 3 <= t.state || t.allied || t.inside || !world.can_attack(id)? {
+        return Ok(false);
+    }
+    if me.kind == 70 && !world.spares_friends(id)? {
+        return Ok(false);
+    }
+    if kind == 3 && !world.attacks_neutral(t.class)? {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+/// The owner and class rules of an object `t`: without `any_class` the buildings, walls,
+/// towers, gates and packed units are passed over; a computer player's unit passes over Gaia's
+/// objects that hold something or that others take by sight, and boats unless it is a boat, of
+/// class 52 or of [`BOAT_HUNTERS`].
+pub(super) fn kept_by_owner_and_class(me: &Searcher, ask: &Ask, t: &Thing) -> bool {
     if !ask.any_class && NOT_ANY.contains(&t.class) {
-        return Ok(None);
+        return false;
     }
     let captured = 0x45 < t.kind && t.capture;
-    if me.computer && t.owner == 0 {
-        // nothing held (`+0x310` at most 0) and not taken by sight
-        let free = t.held <= 0.0 && !captured;
-        if !free {
-            return Ok(None);
-        }
+    // nothing held (`+0x310` at most 0) and not taken by sight
+    let free = t.held <= 0.0 && !captured;
+    if me.computer && t.owner == 0 && !free {
+        return false;
     }
     let boat_free =
         me.class == 52 || BOAT_HUNTERS.contains(&me.master) || !BOATS.contains(&t.class);
     let is_boat = BOATS.contains(&me.class);
-    if me.computer && !boat_free && !is_boat {
-        return Ok(None);
-    }
-    Ok(Some(t))
+    !(me.computer && !boat_free && !is_boat)
 }
 
 /// The ranges the statistics' walks test an object at `gap` by: at least the least range,

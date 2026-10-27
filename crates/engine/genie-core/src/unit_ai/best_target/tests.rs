@@ -1,5 +1,5 @@
 use super::*;
-use crate::unit_ai::best_target::choice::add_extra;
+use crate::unit_ai::best_target::choice::{add_extra, kept_by_owner_and_class, may_attack};
 
 fn candidate(id: i32, distance: f32, speed: f32) -> Candidate {
     Candidate {
@@ -122,13 +122,24 @@ fn the_order_history_weighs_the_last_minute_s_categories() {
 }
 
 /// A world of objects by id: each a [`Thing`] and its candidate's values; the paths that
-/// succeed and the calls made.
+/// succeed and the calls made; the object checks it refuses (`'a'` the attack check, `'f'`
+/// the friends' scan, `'n'` the neutral test) and the ones made, in order.
 #[derive(Default)]
 struct Field {
     things: std::collections::BTreeMap<i32, (Thing, Candidate)>,
     quick: Vec<i32>,
     paths: Vec<i32>,
     asked: Vec<(char, i32)>,
+    refused: Vec<char>,
+    checked: Vec<char>,
+}
+
+impl Field {
+    /// Check `c` is made: it passes unless refused.
+    fn check(&mut self, c: char) -> bool {
+        self.checked.push(c);
+        !self.refused.contains(&c)
+    }
 }
 
 impl Battlefield for Field {
@@ -136,13 +147,13 @@ impl Battlefield for Field {
         Ok(self.things.get(&id).map(|t| t.0))
     }
     fn can_attack(&mut self, _: i32) -> Result<bool, crate::GenieError> {
-        Ok(true)
+        Ok(self.check('a'))
     }
     fn attacks_neutral(&mut self, _: i16) -> Result<bool, crate::GenieError> {
-        Ok(true)
+        Ok(self.check('n'))
     }
     fn spares_friends(&mut self, _: i32) -> Result<bool, crate::GenieError> {
-        Ok(true)
+        Ok(self.check('f'))
     }
     fn shuns(&mut self, _: i32) -> Result<bool, crate::GenieError> {
         Ok(false)
@@ -480,4 +491,108 @@ fn the_current_target_answers_by_its_path_outside_an_idle_check() {
     let c = best_unit_to_attack(&me, &idle, &lists, &mut field).unwrap();
     assert_eq!(c.target, 9);
     assert!(!field.asked.contains(&('p', 7)));
+}
+
+/// The world's checks of a candidate ([`may_attack`]), in the game's order: one without a unit
+/// AI, dead, allied or inside another fails before any; then the attack check, a combat unit's
+/// friends' scan (a unit of another type skips it) and the neutral test of list 3 alone, each
+/// failing it.
+#[test]
+fn a_candidate_passes_the_attack_check_the_friends_scan_and_the_neutral_test_in_order() {
+    let (thing, _) = enemy(7, 0, 3.0, 40.0);
+    let checked = |me: &Searcher, t: &Thing, kind, refused: &[char]| {
+        let mut field = Field {
+            refused: refused.to_vec(),
+            ..Field::default()
+        };
+        let pass = may_attack(me, (7, t), kind, &mut field).unwrap();
+        (pass, field.checked)
+    };
+    let me = soldier();
+    assert_eq!(checked(&me, &thing, 4, &[]), (true, vec!['a', 'f']));
+    assert_eq!(checked(&me, &thing, 3, &[]), (true, vec!['a', 'f', 'n']));
+    assert_eq!(checked(&me, &thing, 3, &['a']), (false, vec!['a']));
+    assert_eq!(checked(&me, &thing, 3, &['f']), (false, vec!['a', 'f']));
+    assert_eq!(
+        checked(&me, &thing, 3, &['n']),
+        (false, vec!['a', 'f', 'n'])
+    );
+    let building = Searcher {
+        kind: 80,
+        ..soldier()
+    };
+    assert_eq!(checked(&building, &thing, 4, &[]), (true, vec!['a']));
+    for t in [
+        Thing {
+            has_ai: false,
+            ..thing
+        },
+        Thing { state: 3, ..thing },
+        Thing {
+            allied: true,
+            ..thing
+        },
+        Thing {
+            inside: true,
+            ..thing
+        },
+    ] {
+        assert_eq!(checked(&me, &t, 4, &[]), (false, vec![]));
+    }
+}
+
+/// The owner and class rules ([`kept_by_owner_and_class`]): without `any_class` a building is
+/// passed over; a computer player's unit passes over Gaia's objects that hold something or that
+/// others take by sight, and boats unless it is a boat itself, of class 52 or a boat hunter (the
+/// castle); a human player's unit keeps them all.
+#[test]
+fn a_computer_s_unit_passes_over_gaia_s_holdings_and_boats() {
+    let (thing, _) = enemy(7, 0, 3.0, 40.0);
+    let any = Ask {
+        any_class: true,
+        ..Ask::default()
+    };
+    let human = soldier();
+    let computer = Searcher {
+        computer: true,
+        ..soldier()
+    };
+    let house = Thing { class: 3, ..thing };
+    assert!(!kept_by_owner_and_class(&human, &Ask::default(), &house));
+    assert!(kept_by_owner_and_class(&human, &any, &house));
+    let gaia = Thing { owner: 0, ..thing };
+    let holding = Thing { held: 5.0, ..gaia };
+    let taken = Thing {
+        capture: true,
+        ..gaia
+    };
+    assert!(kept_by_owner_and_class(&computer, &any, &gaia));
+    // a held amount that is not a number counts as held (`+0x310 <= 0` fails)
+    let unordered = Thing {
+        held: f32::NAN,
+        ..gaia
+    };
+    for t in [holding, taken, unordered] {
+        assert!(!kept_by_owner_and_class(&computer, &any, &t));
+        assert!(kept_by_owner_and_class(&human, &any, &t));
+    }
+    let boat = Thing { class: 22, ..thing };
+    assert!(!kept_by_owner_and_class(&computer, &any, &boat));
+    assert!(kept_by_owner_and_class(&human, &any, &boat));
+    for me in [
+        Searcher {
+            class: 52,
+            ..computer.clone()
+        },
+        Searcher {
+            master: 82,
+            ..computer.clone()
+        },
+        Searcher {
+            class: 2,
+            ..computer
+        },
+    ] {
+        assert!(kept_by_owner_and_class(&me, &any, &boat));
+    }
 }

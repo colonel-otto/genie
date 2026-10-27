@@ -553,8 +553,10 @@ impl MoveToAction {
     }
 
     /// One update (`0x140aa2240`), its state 3 with what the unit's AI says (`ask`,
-    /// [`start_walk_asked`]). A target that is gone (the update's first check: notify 0x1fb,
-    /// code 4) is not modelled.
+    /// [`start_walk_asked`]): a walk goes on ([`MoveToAction::update_moving`]), a start asks for
+    /// its path ([`MoveToAction::update_start`]), a wait runs by dt and at its end the `MoveTo`
+    /// asks again (`set_state` 3). A target that is gone (the update's first check: notify
+    /// 0x1fb, code 4) is not modelled.
     pub fn update(&mut self, mut walk: Walk<'_>, ask: PathAsk) -> Result<MoveStep, GenieError> {
         let mut step = MoveStep::default();
         if self.target != -1 && walk.world.get_known(self.target)?.is_none() {
@@ -563,65 +565,8 @@ impl MoveToAction {
             ));
         }
         match self.state {
-            MoveTo::Moving => {
-                let follow = if self.target == -1 {
-                    Follow::Stays
-                } else {
-                    target_moved(&walk, self.target, false)?
-                };
-                if let Follow::PathEnd(p) = follow {
-                    follow_path_end(&mut walk, p)?;
-                }
-                if follow.again() {
-                    // set_state 3, then the motion step (`LAB_140aa320c`): moving on, the MoveTo
-                    // stays in state 3
-                    step.target_moved = true;
-                    match walk_or_give_up(walk.reborrow())? {
-                        Some(MoveTo::Moving) => self.state = MoveTo::Start,
-                        Some(other) => self.state = other,
-                        // the motion step gave up: the wait or the failure, as below
-                        None => {
-                            self.state = MoveTo::Start;
-                            step.gave_up = true;
-                        }
-                    }
-                } else {
-                    match walk_or_give_up(walk.reborrow())? {
-                        Some(state) => self.state = state,
-                        None => step.gave_up = true,
-                    }
-                }
-                self.ended(&mut walk);
-            }
-            MoveTo::Start => {
-                // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
-                if self.wait.state == 1 {
-                    self.wait.state = 2;
-                }
-                let goal = match (self.target, self.goal) {
-                    (-1, Some(point)) => Goal::Point(point),
-                    (-1, None) => {
-                        return Err(GenieError::unsupported(
-                            "a MoveTo of its own without a goal",
-                        ));
-                    }
-                    (id, _) => Goal::Target(id),
-                };
-                // its sprite, the running or the walking one, sets the unit's speed
-                if let Some(m) = walk.mover.as_deref_mut() {
-                    m.stats.speed = if self.run {
-                        m.stats.run_speed
-                    } else {
-                        m.stats.walk_speed
-                    };
-                }
-                self.state = MoveTo::Moving;
-                match start_walk_asked(walk.reborrow(), goal, self.range, false, ask)? {
-                    Some(state) => self.state = state,
-                    None => step.gave_up = true,
-                }
-                self.ended(&mut walk);
-            }
+            MoveTo::Moving => self.update_moving(&mut walk, &mut step)?,
+            MoveTo::Start => self.update_start(&mut walk, ask, &mut step)?,
             MoveTo::Arrived => step.done = true,
             // case 2: the timer runs by dt; at its end the MoveTo asks again (set_state 3)
             MoveTo::Waiting => {
@@ -636,12 +581,183 @@ impl MoveToAction {
         }
         Ok(step)
     }
+
+    /// The update's walk (state 4): a target that left its point makes the `MoveTo` follow it
+    /// (the top path's end, [`follow_path_end`]) and turn to state 3 before the motion step
+    /// (`LAB_140aa320c`), which moving on leaves it in state 3; else the motion step alone. A
+    /// motion step that gives up leaves the wait or the failure to the caller.
+    fn update_moving(
+        &mut self,
+        walk: &mut Walk<'_>,
+        step: &mut MoveStep,
+    ) -> Result<(), GenieError> {
+        let follow = if self.target == -1 {
+            Follow::Stays
+        } else {
+            target_moved(walk, self.target, false)?
+        };
+        if let Follow::PathEnd(p) = follow {
+            follow_path_end(walk, p)?;
+        }
+        if follow.again() {
+            step.target_moved = true;
+            match walk_or_give_up(walk.reborrow())? {
+                Some(MoveTo::Moving) => self.state = MoveTo::Start,
+                Some(other) => self.state = other,
+                // the motion step gave up: the wait or the failure, as below
+                None => {
+                    self.state = MoveTo::Start;
+                    step.gave_up = true;
+                }
+            }
+        } else {
+            match walk_or_give_up(walk.reborrow())? {
+                Some(state) => self.state = state,
+                None => step.gave_up = true,
+            }
+        }
+        self.ended(walk);
+        Ok(())
+    }
+
+    /// The update's start (state 3): after a wait `+0x6c` goes from 1 to 2 as it asks again; the
+    /// goal is its point or its target; its sprite, the running or the walking one, sets the
+    /// unit's speed; then it moves (state 4) and asks for its path ([`start_walk_asked`]).
+    fn update_start(
+        &mut self,
+        walk: &mut Walk<'_>,
+        ask: PathAsk,
+        step: &mut MoveStep,
+    ) -> Result<(), GenieError> {
+        if self.wait.state == 1 {
+            self.wait.state = 2;
+        }
+        let goal = match (self.target, self.goal) {
+            (-1, Some(point)) => Goal::Point(point),
+            (-1, None) => {
+                return Err(GenieError::unsupported(
+                    "a MoveTo of its own without a goal",
+                ));
+            }
+            (id, _) => Goal::Target(id),
+        };
+        if let Some(m) = walk.mover.as_deref_mut() {
+            m.stats.speed = if self.run {
+                m.stats.run_speed
+            } else {
+                m.stats.walk_speed
+            };
+        }
+        self.state = MoveTo::Moving;
+        match start_walk_asked(walk.reborrow(), goal, self.range, false, ask)? {
+            Some(state) => self.state = state,
+            None => step.gave_up = true,
+        }
+        self.ended(walk);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::map::spatial::Placed;
+
+    /// A `MoveTo` of its own to the house 10028's point, in `state`, running or not.
+    fn own_move_to(state: MoveTo, run: bool, target: i32) -> MoveToAction {
+        MoveToAction {
+            run,
+            state,
+            goal: (target == -1).then_some([30.0, 88.0, 0.0]),
+            target,
+            range: 0.1,
+            wait: MoveWait {
+                state: 1,
+                timer: 0.0,
+                delay: 0.15,
+            },
+        }
+    }
+
+    /// A `MoveTo` of its own (`0x140aa2240`) with [`WalkRig`]'s walker: a start takes the
+    /// running or the walking speed, counts a wait's ask (`+0x6c` 1 to 2) and moves; a move runs
+    /// the motion step and keeps moving; one at its target is done, a failed one reports it; a
+    /// wait runs by the walk's dt and asks again at its delay. A start without a goal and a
+    /// target that is gone are not modelled.
+    ///
+    /// [`WalkRig`]: crate::movement::tests::WalkRig
+    #[test]
+    fn a_move_to_of_its_own_starts_moves_and_reports_its_end() {
+        use crate::movement::tests::WalkRig;
+        let mut rig = WalkRig::on_the_path();
+        (rig.mover.stats.walk_speed, rig.mover.stats.run_speed) = (0.8, 1.2);
+        let mut m = own_move_to(MoveTo::Start, true, -1);
+        let step = m.update(rig.walk(0), PathAsk::default()).unwrap();
+        assert_eq!(step, MoveStep::default());
+        assert_eq!((m.state, m.wait.state), (MoveTo::Moving, 2));
+        assert_eq!(rig.mover.stats.speed, 1.2);
+        let step = m.update(rig.walk(0), PathAsk::default()).unwrap();
+        assert_eq!((m.state, step), (MoveTo::Moving, MoveStep::default()));
+        let mut on = own_move_to(MoveTo::Start, false, 10028);
+        let _ = on.update(rig.walk(0), PathAsk::default()).unwrap();
+        assert_eq!((on.state, rig.mover.stats.speed), (MoveTo::Moving, 0.8));
+        let ended = |state| {
+            let mut rig = WalkRig::on_the_path();
+            let mut m = own_move_to(state, false, -1);
+            (m.update(rig.walk(0), PathAsk::default()).unwrap(), m.state)
+        };
+        let done = MoveStep {
+            done: true,
+            ..MoveStep::default()
+        };
+        let failed = MoveStep {
+            failed: true,
+            ..MoveStep::default()
+        };
+        assert_eq!(ended(MoveTo::Arrived), (done, MoveTo::Arrived));
+        assert_eq!(ended(MoveTo::Failed), (failed, MoveTo::Failed));
+        // the walk is a tenth of a second: the wait of 0.15 asks again on its second update
+        let mut w = own_move_to(MoveTo::Waiting, false, -1);
+        let _ = w.update(rig.walk(0), PathAsk::default()).unwrap();
+        assert_eq!((w.state, w.wait.timer), (MoveTo::Waiting, 0.1));
+        let _ = w.update(rig.walk(0), PathAsk::default()).unwrap();
+        assert_eq!((w.state, w.wait.timer), (MoveTo::Start, 0.0));
+        let reason = |mut m: MoveToAction| {
+            let mut rig = WalkRig::on_the_path();
+            m.update(rig.walk(0), PathAsk::default())
+                .unwrap_err()
+                .reason()
+        };
+        let no_goal = MoveToAction {
+            goal: None,
+            ..own_move_to(MoveTo::Start, false, -1)
+        };
+        assert_eq!(reason(no_goal), "a MoveTo of its own without a goal");
+        assert_eq!(
+            reason(own_move_to(MoveTo::Moving, false, 77)),
+            "a MoveTo of its own whose target is gone"
+        );
+    }
+
+    /// The walk of a `MoveTo` of its own on the house 10028 (`0x140aa2240`, state 4): a target
+    /// that stays walks on; one that left the `MoveTo`'s point (by more than the tolerance) has
+    /// a walker on its path's last stretch follow it there, and any other tell the unit and turn
+    /// the `MoveTo` to state 3 before the motion step.
+    #[test]
+    fn a_move_to_of_its_own_turns_to_its_start_when_its_target_moved() {
+        use crate::movement::tests::WalkRig;
+        let walked = |point: [f32; 3], waypoint| {
+            let mut rig = WalkRig::on_the_path();
+            rig.mover.move_to_point = Some(point);
+            rig.mover.paths[0].waypoint = waypoint;
+            let mut m = own_move_to(MoveTo::Moving, false, 10028);
+            let step = m.update(rig.walk(0), PathAsk::default()).unwrap();
+            (m.state, step.target_moved)
+        };
+        assert_eq!(walked([30.0, 88.0, 0.0], 1), (MoveTo::Moving, false));
+        assert_eq!(walked([36.0, 88.0, 0.0], 1), (MoveTo::Moving, false));
+        assert_eq!(walked([36.0, 88.0, 0.0], 0), (MoveTo::Start, true));
+    }
 
     /// A `MoveTo` sub-action ([`sub_move_to_update`]) on house 10028 within 0.1 (the walker 0.8
     /// off it) with [`WalkRig`]'s walker: a start asks for its path (a `MoveTo` that waited

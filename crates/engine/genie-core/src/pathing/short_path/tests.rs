@@ -417,3 +417,327 @@ fn the_search_truncates_its_radius_and_range_to_fixed_point() {
     let found = pather.search(&mut mesh, &words, &range_query(below), &[]);
     assert_eq!(found.map(|f| f.result), Ok(1));
 }
+
+/// A square outline of four tiles' side at the origin, its sides 0 to 3 in turn (with `run`,
+/// side 0 split at (2, 0) into a run of two edges), its vertices of no shape.
+fn square(run: bool) -> Poly {
+    let mut vertices = vec![[0, 0], [4 * ONE, 0], [4 * ONE, 4 * ONE], [0, 4 * ONE]];
+    let mut sides = vec![0, 1, 2, 3];
+    if run {
+        vertices.insert(1, [2 * ONE, 0]);
+        sides.insert(1, 0);
+    }
+    let n = vertices.len();
+    Poly {
+        vertices,
+        sides,
+        shapes: vec![NONE; n],
+        costs: vec![0; n],
+        flag: false,
+    }
+}
+
+/// `FUN_140fa77b0`: the outline's edge whose side is `side` and that holds the point, the
+/// first vertex of its run (a run's edges are one); none for a point on no such edge, an
+/// outline of no vertices or no shape; a vertex of a shape whose overlap with the shape asked
+/// holds the point answers whatever the side.
+#[test]
+fn the_edge_holding_a_point_is_the_first_vertex_of_its_side_s_run() {
+    let mut mesh = Mesh::new(64);
+    mesh.shapes = vec![
+        [0, 0, 4 * ONE, 4 * ONE],
+        [3 * ONE, 3 * ONE, 6 * ONE, 6 * ONE],
+    ];
+    let edge = |poly: &Poly, p: Point, side| Search::edge_holding(poly, p, side, &mesh, 0, 0);
+    let poly = square(false);
+    assert_eq!(edge(&poly, [2 * ONE, 0], 0), Some(0));
+    assert_eq!(edge(&poly, [4 * ONE, 2 * ONE], 1), Some(1));
+    assert_eq!(edge(&poly, [2 * ONE, 4 * ONE], 2), Some(2));
+    assert_eq!(edge(&poly, [0, 2 * ONE], 3), Some(3));
+    assert_eq!(edge(&poly, [2 * ONE, 0], 1), None);
+    assert_eq!(edge(&poly, [2 * ONE, 2 * ONE], 0), None);
+    let run = square(true);
+    assert_eq!(edge(&run, [3 * ONE, 0], 0), Some(0));
+    assert_eq!(edge(&run, [4 * ONE, 2 * ONE], 1), Some(2));
+    assert_eq!(
+        Search::edge_holding(&poly, [2 * ONE, 0], 0, &mesh, NONE, 0),
+        None
+    );
+    let empty = Poly {
+        vertices: Vec::new(),
+        sides: Vec::new(),
+        shapes: Vec::new(),
+        costs: Vec::new(),
+        flag: false,
+    };
+    assert_eq!(edge(&empty, [2 * ONE, 0], 0), None);
+    let mut corner = square(false);
+    corner.shapes[2] = 1;
+    assert_eq!(edge(&corner, [4 * ONE, 4 * ONE], 0), Some(2));
+}
+
+/// `FUN_140fa77b0`'s vertex test: the vertex at the point, of a shape whose overlap with the
+/// shape asked (shrunk by `d`) holds it; not another vertex, a vertex of no shape, an empty
+/// overlap or one shrunk past the point.
+#[test]
+fn a_vertex_holds_a_point_in_its_shape_s_overlap_with_the_other() {
+    let mut mesh = Mesh::new(64);
+    mesh.shapes = vec![
+        [0, 0, 4 * ONE, 4 * ONE],
+        [2 * ONE, 2 * ONE, 6 * ONE, 6 * ONE],
+        [5 * ONE, 5 * ONE, 8 * ONE, 8 * ONE],
+    ];
+    let p = [3 * ONE, 3 * ONE];
+    let held = |vc: Point, vs, d| Search::vertex_in_overlap(&mesh, (p, vc, vs), 0, d);
+    assert!(held(p, 1, 0));
+    assert!(held(p, 1, ONE / 2));
+    assert!(!held([3 * ONE, 2 * ONE], 1, 0));
+    assert!(!held(p, NONE, 0));
+    assert!(!held(p, 2, 0));
+    assert!(!held(p, 1, ONE));
+}
+
+/// `FUN_140fa77b0`'s edge test on each side: the point on the edge's line between its ends;
+/// whether an end counts follows the side before the run and the one after it.
+#[test]
+fn a_point_lies_on_an_edge_between_ends_its_neighbour_sides_open_or_close() {
+    let (lo, hi, mid) = (0, 4 * ONE, 2 * ONE);
+    // (side, from, to, point, side before, side after, on the edge)
+    let cases: [(u8, Point, Point, Point, u8, u8, bool); 20] = [
+        (0, [lo, lo], [hi, lo], [mid, lo], 3, 1, true),
+        (0, [lo, lo], [hi, lo], [mid, ONE], 3, 1, false),
+        (0, [lo, lo], [hi, lo], [lo, lo], 1, 1, true),
+        (0, [lo, lo], [hi, lo], [lo, lo], 3, 1, false),
+        (0, [lo, lo], [hi, lo], [hi, lo], 3, 3, true),
+        (0, [lo, lo], [hi, lo], [hi, lo], 3, 1, false),
+        (1, [hi, lo], [hi, hi], [hi, lo], 2, 2, true),
+        (1, [hi, lo], [hi, hi], [hi, lo], 0, 2, false),
+        (1, [hi, lo], [hi, hi], [hi, hi], 0, 1, true),
+        (1, [hi, lo], [hi, hi], [hi, hi], 0, 2, false),
+        (1, [hi, lo], [hi, hi], [mid, mid], 0, 2, false),
+        (2, [hi, hi], [lo, hi], [lo, hi], 1, 1, true),
+        (2, [hi, hi], [lo, hi], [lo, hi], 1, 3, false),
+        (2, [hi, hi], [lo, hi], [hi, hi], 3, 3, true),
+        (2, [hi, hi], [lo, hi], [hi, hi], 1, 3, false),
+        (3, [lo, hi], [lo, lo], [lo, lo], 0, 2, true),
+        (3, [lo, hi], [lo, lo], [lo, lo], 0, 0, false),
+        (3, [lo, hi], [lo, lo], [lo, hi], 0, 0, true),
+        (3, [lo, hi], [lo, lo], [lo, hi], 2, 0, false),
+        (7, [lo, lo], [hi, lo], [mid, lo], 3, 1, false),
+    ];
+    for (side, from, to, p, prev, next, on) in cases {
+        assert_eq!(
+            Search::on_edge(side, (from, to), p, (prev, next)),
+            on,
+            "side {side} at {p:?}, sides {prev} and {next}"
+        );
+    }
+}
+
+/// The escape candidates a search holds open: each one's place, cost and shape side.
+fn opened(s: &Search<'_>) -> Vec<(Point, i32, Kind)> {
+    s.open.iter().map(|n| (n.at, n.g, n.kind)).collect()
+}
+
+/// Shape 0 over tiles (2, 2) to (6, 6), and a search of doubled radius two tiles (`r` one
+/// tile, `rr2` four) toward (12, 12).
+fn shape_at_2_2() -> Mesh {
+    let mut mesh = Mesh::new(16);
+    let _ = mesh.add([2 * ONE, 2 * ONE, 6 * ONE, 6 * ONE]);
+    mesh
+}
+
+/// `FUN_140fa4410`: a start within range answers 3 with only its node made; a free start
+/// opens its node and answers 0; a held start with escape candidates keeps open only the one
+/// of the lowest estimate, its estimate taken again (1), and with fewer than two answers 2.
+#[test]
+fn a_start_in_range_free_or_held_answers_by_its_escape_candidates() {
+    let mesh = shape_at_2_2();
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 2 * ONE);
+    assert_eq!(s.start([11 * ONE, 12 * ONE]), 3);
+    assert_eq!((s.arena.len(), s.open.len()), (1, 0));
+    assert_eq!(s.start([10 * ONE, 10 * ONE]), 0);
+    assert_eq!((s.arena.len(), s.open.len()), (2, 1));
+    assert_eq!(
+        (s.open[0].at, s.open[0].kind),
+        ([10 * ONE, 10 * ONE], Kind::Start)
+    );
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.goal.r = ONE;
+    assert_eq!(s.start([4 * ONE, 3 * ONE]), 1);
+    assert_eq!(s.open.len(), 1);
+    let n = s.open[0];
+    // the touching point on side 1 has the lowest estimate toward (12, 12)
+    assert_eq!((n.at, n.g), ([6 * ONE, 3 * ONE], 2 * ONE));
+    assert_eq!(n.f, s.goal.heuristic(n.at) + n.g);
+    assert_eq!(s.arena[n.idx as usize].f, n.f);
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.goal.r = ONE / 8;
+    assert_eq!(s.start([4 * ONE, 4 * ONE]), 2);
+}
+
+/// `FUN_140fa4410`'s scan: every corner tile of the box twice the radius out is read once;
+/// each holding shape 0 gives its four sides' candidates again, as the game scans a tile's
+/// shapes without a seen list; an ignored shape gives none.
+#[test]
+fn the_start_s_scan_reads_each_corner_tile_once_and_skips_ignored_shapes() {
+    let mesh = shape_at_2_2();
+    let p = [4 * ONE, 3 * ONE];
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.goal.r = ONE;
+    s.escape_candidates(p, 0);
+    let mut one = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    one.goal.r = ONE;
+    for k in 0..4 {
+        one.escape_side(p, 0, (0, k), 4 * i64::from(ONE));
+    }
+    let tiles = [(2, 1), (6, 1), (6, 5), (2, 5)];
+    let holding = tiles
+        .iter()
+        .filter(|&&(x, y)| mesh.tiles[y * 16 + x].contains(&0))
+        .count();
+    assert!(0 < holding);
+    assert_eq!(s.open.len(), holding * one.open.len());
+    let ignore = [true];
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.ctx.ignore = &ignore;
+    s.goal.r = ONE;
+    s.escape_candidates(p, 0);
+    assert_eq!(s.open.len(), 0);
+}
+
+/// One side of shape 0 seen from (4, 3) with a circle of two tiles: side 0, one tile away,
+/// gives the two points where the circle crosses it and the start's foot; side 1, two tiles
+/// away, the touching point twice and the foot there; side 2, three tiles away, nothing. A
+/// corner within the circle is a candidate; a crossing another shape holds is not.
+#[test]
+fn a_shape_s_side_gives_the_circle_s_crossings_the_foot_and_a_near_corner() {
+    let mesh = shape_at_2_2();
+    let side = |shape, side| Kind::Side { shape, side };
+    let rr2 = 4 * i64::from(ONE);
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2);
+    let mut got = opened(&s);
+    got.sort_by_key(|&(at, _, _)| at);
+    assert_eq!(got.len(), 3);
+    assert_eq!(
+        (got[1].0, got[1].1, got[1].2),
+        ([4 * ONE, 2 * ONE], ONE, side(0, 0))
+    );
+    for &(at, g, kind) in [&got[0], &got[2]] {
+        assert_eq!((at[1], kind), (2 * ONE, side(0, 0)));
+        // √3 tiles either side of the foot, two tiles from the start
+        assert!(((at[0] - 4 * ONE).abs() - 7_264_748).abs() <= 2, "{at:?}");
+        assert!((g - 2 * ONE).abs() <= 2, "{g}");
+    }
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 1), rr2);
+    assert_eq!(
+        opened(&s),
+        vec![([6 * ONE, 3 * ONE], 2 * ONE, side(0, 1)); 3]
+    );
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 2), rr2);
+    assert_eq!(opened(&s), vec![]);
+    // from (3, 3) the corner (2, 2) lies √2 away
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.escape_side([3 * ONE, 3 * ONE], 0, (0, 0), rr2);
+    assert!(
+        opened(&s)
+            .iter()
+            .any(|&(at, g, _)| at == [2 * ONE, 2 * ONE] && (g - 5_931_642).abs() <= 2)
+    );
+    // shape 1 holds the crossing right of the foot; its contact at (5, 2) is a candidate
+    let mut mesh = shape_at_2_2();
+    let _ = mesh.add([5 * ONE, 0, 9 * ONE, 3 * ONE]);
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.escape_side([4 * ONE, 3 * ONE], 0, (0, 0), rr2);
+    let got = opened(&s);
+    assert_eq!(got.len(), 3);
+    assert!(got.iter().all(|&(at, _, _)| at[0] <= 5 * ONE));
+    assert!(got.iter().any(|&(at, _, _)| at == [5 * ONE, 2 * ONE]));
+}
+
+/// The start's foot on a side: strictly between the side's corners, in the search's box and
+/// free, at the perpendicular distance; not past either corner, outside the box or held.
+#[test]
+fn the_start_s_foot_on_a_side_lies_between_its_corners_in_the_box_and_free() {
+    let mesh = shape_at_2_2();
+    let corners = |k: u32| {
+        let r = mesh.shapes[0];
+        (
+            shrunk_corner(r, [0, 1, 3, 0][k as usize], 0),
+            shrunk_corner(r, [1, 2, 2, 3][k as usize], 0),
+        )
+    };
+    let side = |side| Kind::Side { shape: 0, side };
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    let p = [3 * ONE, 5 * ONE / 2];
+    for k in 0..4 {
+        s.escape_foot(p, 0, (0, k), corners(k));
+    }
+    let mut got = opened(&s);
+    got.sort_by_key(|&(_, g, _)| g);
+    assert_eq!(
+        got,
+        vec![
+            ([3 * ONE, 2 * ONE], ONE / 2, side(0)),
+            ([2 * ONE, 5 * ONE / 2], ONE, side(3)),
+            ([6 * ONE, 5 * ONE / 2], 3 * ONE, side(1)),
+            ([3 * ONE, 6 * ONE], 7 * ONE / 2, side(2)),
+        ]
+    );
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.escape_foot([2 * ONE, 5 * ONE / 2], 0, (0, 0), corners(0));
+    s.escape_foot([3 * ONE, 6 * ONE], 0, (0, 1), corners(1));
+    assert_eq!(opened(&s), vec![]);
+    s.bounds = [0, 0, 64 * ONE, ONE];
+    s.escape_foot(p, 0, (0, 0), corners(0));
+    let mut held = shape_at_2_2();
+    let _ = held.add([0, 0, 4 * ONE, 4 * ONE]);
+    let mut t = search_toward(&held, [12 * ONE, 12 * ONE], 0);
+    t.escape_foot(p, 0, (0, 0), corners(0));
+    assert_eq!((opened(&s), opened(&t)), (vec![], vec![]));
+}
+
+/// A side's contacts: one wider than the search's shrink, with a shape not ignored, at a free
+/// point in the box within the circle is a candidate; one on a side of its own number counts
+/// only when its other shape holds the point nudged into it, and costs 0x32 more.
+#[test]
+fn a_side_s_contacts_become_candidates_when_wide_free_and_near() {
+    use crate::pathing::mesh::Contact;
+    let mut mesh = shape_at_2_2();
+    let _ = mesh.add([5 * ONE, 0, 9 * ONE, 3 * ONE]);
+    let _ = mesh.add([4 * ONE, 2 * ONE, 7 * ONE, 4 * ONE]);
+    let contact = |other, side, at: Point, half| Contact {
+        other,
+        side,
+        at,
+        along: at[0],
+        flag: 0,
+        half,
+    };
+    let near = [19 * ONE / 4, 2 * ONE];
+    mesh.sides[0][0] = vec![
+        contact(1, 3, near, ONE),
+        contact(1, 3, near, 0),
+        contact(3, 3, near, ONE),
+        contact(1, 3, [-ONE, 2 * ONE], ONE),
+        contact(2, 0, near, ONE),
+        contact(1, 0, near, ONE),
+        contact(1, 3, [6 * ONE, ONE], ONE),
+        contact(1, 3, [ONE / 2, 2 * ONE], ONE),
+    ];
+    let ignore = [false, false, false, true];
+    let mut s = search_toward(&mesh, [12 * ONE, 12 * ONE], 0);
+    s.ctx.ignore = &ignore;
+    s.escape_contacts([4 * ONE, 3 * ONE], 0, (0, 0), 4 * i64::from(ONE));
+    let side = Kind::Side { shape: 0, side: 0 };
+    // 3/4 and 1 tile off: 5/4 tiles
+    let mut got = opened(&s);
+    got.sort_by_key(|&(_, g, _)| g);
+    assert_eq!(
+        got,
+        vec![(near, 5 * ONE / 4, side), (near, 5 * ONE / 4 + 0x32, side)]
+    );
+}

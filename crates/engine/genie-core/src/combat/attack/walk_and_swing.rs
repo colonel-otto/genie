@@ -27,95 +27,13 @@ impl Attack {
     ) -> Result<u8, GenieError> {
         let code = match self.move_to {
             Some(MoveTo::Start) => {
-                // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
-                if self.move_wait.state == 1 {
-                    self.move_wait.state = 2;
-                }
-                // the MoveTo's sprite sets the unit's speed: a running one the running speed
-                if self.runs
-                    && let Some(m) = walk.mover.as_deref_mut()
-                {
-                    m.stats.speed = m.stats.run_speed;
-                }
-                self.move_to = Some(MoveTo::Moving);
-                let (goal, range) = self.goal();
-                let walked = start_walk_or_give_up(walk.reborrow(), goal, range, false)?;
-                in_the_way(&mut walk, s);
-                // the MoveTo's set_state(4) shows its sprite (`+0x58`, the Attack's `+0x68`)
-                if walked.is_none_or(|w| w == MoveTo::Moving)
-                    && let Some(g) = self.arms.move_sprite
-                {
-                    set_sprite(s.sprite, g, s.sprite_rng);
-                }
-                let Some(state) = walked else {
-                    // the motion step gave up in the update set_state(4) ran; a MoveTo that fails
-                    // at once (set_state 13, not quiet: 0x140aa29e0) shows the idle sprite and
-                    // clears `+0x7b8` as an arrived one does
-                    self.give_up(s);
-                    if self.move_to == Some(MoveTo::Failed) {
-                        let g = self
-                            .arms
-                            .idle_sprite
-                            .ok_or(crate::world::NO_STANDING_SPRITE)?;
-                        set_sprite(s.sprite, g, s.sprite_rng);
-                        if let Some(a) = s.anim_speed.as_mut() {
-                            *a = 0.0;
-                        }
-                    }
+                if !self.walk_start(&mut walk, s)? {
                     return Ok(0);
-                };
-                if state == MoveTo::Arrived {
-                    // in range at its start: the MoveTo, not quiet, shows the idle sprite and
-                    // clears `+0x7b8`
-                    let g = self
-                        .arms
-                        .idle_sprite
-                        .ok_or(crate::world::NO_STANDING_SPRITE)?;
-                    set_sprite(s.sprite, g, s.sprite_rng);
-                    if let Some(a) = s.anim_speed.as_mut() {
-                        *a = 0.0;
-                    }
                 }
-                self.move_to = Some(state);
                 0
             }
             Some(MoveTo::Moving) => {
-                // the MoveTo takes the Attack's `+0x61` (`0x140a824ac`), which the Hunt's
-                // set_state(12) sets: a target that left its point asks for a path again; a
-                // MoveTo to a point follows nothing
-                let follow = if self.state == MOVE {
-                    target_moved(&walk, self.target, self.repaths)?
-                } else {
-                    Follow::Stays
-                };
-                if let Follow::PathEnd(p) = follow {
-                    follow_path_end(&mut walk, p)?;
-                }
-                if follow.again() {
-                    if self.repaths {
-                        // with `+0x61` the MoveTo only turns to state 3 (`LAB_140aa3a59`)
-                        self.move_to = Some(MoveTo::Start);
-                    } else {
-                        // without it the MoveTo tells the unit (notify 0x1fc), turns to state 3
-                        // and runs the motion step (`LAB_140aa320c`): moving on, it stays in
-                        // state 3
-                        s.posted.push((0x1fc, [0; 3]));
-                        let walked = walk_or_give_up(walk.reborrow())?;
-                        in_the_way(&mut walk, s);
-                        match walked {
-                            Some(MoveTo::Moving) => self.move_to = Some(MoveTo::Start),
-                            Some(other) => self.move_to = Some(other),
-                            None => self.give_up(s),
-                        }
-                    }
-                } else {
-                    let walked = walk_or_give_up(walk.reborrow())?;
-                    in_the_way(&mut walk, s);
-                    match walked {
-                        Some(m) => self.move_to = Some(m),
-                        None => self.give_up(s),
-                    }
-                }
+                self.walk_on(&mut walk, s)?;
                 0
             }
             // case 2: the timer runs by dt; at its end the MoveTo asks again (set_state 3)
@@ -173,6 +91,116 @@ impl Attack {
         Ok(code)
     }
 
+    /// State 4's `MoveTo` start (case 3): after a wait `+0x6c` goes from 1 to 2 as it asks again;
+    /// a running `MoveTo` sets the running speed; it moves (`set_state` 4, its sprite shown) and
+    /// asks for its path. In range at once it arrives, showing the idle sprite with `+0x7b8`
+    /// cleared. False when the motion step gave up ([`Attack::give_up`]; a `MoveTo` that fails at
+    /// once shows the idle sprite too).
+    pub(super) fn walk_start(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+    ) -> Result<bool, GenieError> {
+        // case 3 after a wait: `+0x6c` goes from 1 to 2 as it asks again
+        if self.move_wait.state == 1 {
+            self.move_wait.state = 2;
+        }
+        // the MoveTo's sprite sets the unit's speed: a running one the running speed
+        if self.runs
+            && let Some(m) = walk.mover.as_deref_mut()
+        {
+            m.stats.speed = m.stats.run_speed;
+        }
+        self.move_to = Some(MoveTo::Moving);
+        let (goal, range) = self.goal();
+        let walked = start_walk_or_give_up(walk.reborrow(), goal, range, false)?;
+        in_the_way(walk, s);
+        // the MoveTo's set_state(4) shows its sprite (`+0x58`, the Attack's `+0x68`)
+        if walked.is_none_or(|w| w == MoveTo::Moving)
+            && let Some(g) = self.arms.move_sprite
+        {
+            set_sprite(s.sprite, g, s.sprite_rng);
+        }
+        let Some(state) = walked else {
+            // the motion step gave up in the update set_state(4) ran; a MoveTo that fails
+            // at once (set_state 13, not quiet: 0x140aa29e0) shows the idle sprite and
+            // clears `+0x7b8` as an arrived one does
+            self.give_up(s);
+            if self.move_to == Some(MoveTo::Failed) {
+                let g = self
+                    .arms
+                    .idle_sprite
+                    .ok_or(crate::world::NO_STANDING_SPRITE)?;
+                set_sprite(s.sprite, g, s.sprite_rng);
+                if let Some(a) = s.anim_speed.as_mut() {
+                    *a = 0.0;
+                }
+            }
+            return Ok(false);
+        };
+        if state == MoveTo::Arrived {
+            // in range at its start: the MoveTo, not quiet, shows the idle sprite and
+            // clears `+0x7b8`
+            let g = self
+                .arms
+                .idle_sprite
+                .ok_or(crate::world::NO_STANDING_SPRITE)?;
+            set_sprite(s.sprite, g, s.sprite_rng);
+            if let Some(a) = s.anim_speed.as_mut() {
+                *a = 0.0;
+            }
+        }
+        self.move_to = Some(state);
+        Ok(true)
+    }
+
+    /// State 4's `MoveTo` walking (case 4): it takes the Attack's `+0x61` (`0x140a824ac`, which
+    /// the Hunt's `set_state(12)` sets): a target that left its point asks for a path again (with
+    /// `+0x61` only `set_state` 3; without it notify 0x1fc, `set_state` 3 and the motion step), a
+    /// walker on its path's last stretch follows it; else the motion step alone. A motion step
+    /// that gives up gives the Attack up ([`Attack::give_up`]).
+    pub(super) fn walk_on(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+    ) -> Result<(), GenieError> {
+        // a MoveTo to a point follows nothing
+        let follow = if self.state == MOVE {
+            target_moved(walk, self.target, self.repaths)?
+        } else {
+            Follow::Stays
+        };
+        if let Follow::PathEnd(p) = follow {
+            follow_path_end(walk, p)?;
+        }
+        if follow.again() {
+            if self.repaths {
+                // with `+0x61` the MoveTo only turns to state 3 (`LAB_140aa3a59`)
+                self.move_to = Some(MoveTo::Start);
+            } else {
+                // without it the MoveTo tells the unit (notify 0x1fc), turns to state 3
+                // and runs the motion step (`LAB_140aa320c`): moving on, it stays in
+                // state 3
+                s.posted.push((0x1fc, [0; 3]));
+                let walked = walk_or_give_up(walk.reborrow())?;
+                in_the_way(walk, s);
+                match walked {
+                    Some(MoveTo::Moving) => self.move_to = Some(MoveTo::Start),
+                    Some(other) => self.move_to = Some(other),
+                    None => self.give_up(s),
+                }
+            }
+        } else {
+            let walked = walk_or_give_up(walk.reborrow())?;
+            in_the_way(walk, s);
+            match walked {
+                Some(m) => self.move_to = Some(m),
+                None => self.give_up(s),
+            }
+        }
+        Ok(())
+    }
+
     /// State 7 (case 6). A melee swing counts down and lands its hit when its sprite reaches the
     /// firing frame (half its frames without one): the attack timer becomes the reload less the
     /// time to that frame (`FUN_141089820`) and the target takes the hit; a dead target ends the
@@ -189,66 +217,111 @@ impl Attack {
             return Err(GenieError::unsupported("a swing without the unit's sprite"));
         };
         if self.pending {
-            if s.own.class == 51 || (!ranged && matches!(s.own.class, 35 | 64)) {
-                return Err(GenieError::unsupported("a swing of class 35, 51 or 64"));
-            }
-            if ranged && self.arms.fire_frame < 0 {
+            self.swing_to_hit(walk, s, sprite, ranged)?;
+        } else {
+            self.swing_after_hit(walk, s, sprite, ranged)?;
+        }
+        Ok(0)
+    }
+
+    /// The swing before its hit (state 7 with the hit pending): a melee swing counts down; at the
+    /// firing frame (half the sprite's frames for a melee unit without one, at once with frame 0
+    /// for a ranged one) the hit lands ([`Attack::land_hit`]). Class 51's swing, a melee swing of
+    /// classes 35 and 64, and a ranged one without a firing frame are not modelled.
+    pub(super) fn swing_to_hit(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+        sprite: crate::objects::sprite::ActiveSprite,
+        ranged: bool,
+    ) -> Result<(), GenieError> {
+        if s.own.class == 51 || (!ranged && matches!(s.own.class, 35 | 64)) {
+            return Err(GenieError::unsupported("a swing of class 35, 51 or 64"));
+        }
+        if ranged && self.arms.fire_frame < 0 {
+            return Err(GenieError::unsupported(
+                "a ranged swing without a firing frame",
+            ));
+        }
+        let fire = if ranged {
+            self.arms.fire_frame
+        } else if self.arms.fire_frame < 1 {
+            (f32::from(sprite.graphic.frames) * HALF) as u32 as i16
+        } else {
+            self.arms.fire_frame
+        };
+        if !ranged {
+            self.swing -= walk.dt;
+        }
+        if fire != 0 && !sprite.reached(fire) {
+            return Ok(());
+        }
+        self.land_hit(walk, s, sprite, ranged)
+    }
+
+    /// The swing's hit at its firing frame: the attack timer becomes the reload less the time to
+    /// that frame (`FUN_141089820`); the volley fires ([`Strike::fire`]) for a ranged unit or one
+    /// with volleys, else the target takes the melee hit ([`Attack::hit`]). A dead target ends
+    /// the swing (`set_state` 2); else the rest of the reload past the sprite is the swing's.
+    /// A self-destructing attacker's hit is not modelled.
+    pub(super) fn land_hit(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+        sprite: crate::objects::sprite::ActiveSprite,
+        ranged: bool,
+    ) -> Result<(), GenieError> {
+        let frame = if self.arms.fire_frame == 0 && !ranged {
+            sprite.graphic.frames / 2
+        } else {
+            self.arms.fire_frame
+        };
+        set_attack_timer(
+            s,
+            s.reload - f32::from(frame) * sprite.graphic.frame_duration,
+        );
+        // slot 0x858 (FUN_14120c0a0): the volley, but for a unit without a missile, volley
+        // missile or charge projectile, whose hit is FUN_141081020's melee one
+        if ranged || s.volleys {
+            s.fire = Some(self.target);
+        } else {
+            if matches!(s.own.master_id, 527 | 528 | 1104 | 2133..=2135) {
                 return Err(GenieError::unsupported(
-                    "a ranged swing without a firing frame",
+                    "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)",
                 ));
             }
-            let fire = if ranged {
-                self.arms.fire_frame
-            } else if self.arms.fire_frame < 1 {
-                (f32::from(sprite.graphic.frames) * HALF) as u32 as i16
-            } else {
-                self.arms.fire_frame
-            };
-            if !ranged {
-                self.swing -= walk.dt;
-            }
-            if fire != 0 && !sprite.reached(fire) {
-                return Ok(0);
-            }
-            let frame = if self.arms.fire_frame == 0 && !ranged {
-                sprite.graphic.frames / 2
-            } else {
-                self.arms.fire_frame
-            };
-            set_attack_timer(
-                s,
-                s.reload - f32::from(frame) * sprite.graphic.frame_duration,
-            );
-            // slot 0x858 (FUN_14120c0a0): the volley, but for a unit without a missile, volley
-            // missile or charge projectile, whose hit is FUN_141081020's melee one
-            if ranged || s.volleys {
-                s.fire = Some(self.target);
-            } else {
-                if matches!(s.own.master_id, 527 | 528 | 1104 | 2133..=2135) {
-                    return Err(GenieError::unsupported(
-                        "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)",
-                    ));
-                }
-                let object = walk
-                    .plan
-                    .as_mut()
-                    .map(|p| &mut *p.object)
-                    .ok_or(NO_OBJECT_STREAM)?;
-                self.hit(s, object)?;
-            }
-            self.pending = false;
-            if s.victim.hp <= 0.0 {
-                self.enter(KILLED, walk, s)?;
-                return Ok(0);
-            }
-            let rest = s.reload - f32::from(sprite.graphic.frames) * sprite.graphic.frame_duration;
-            self.rest = rest;
-            self.swing = rest;
-            if rest < 0.0 {
-                self.rest = 0.0;
-            }
-            return Ok(0);
+            let object = walk
+                .plan
+                .as_mut()
+                .map(|p| &mut *p.object)
+                .ok_or(NO_OBJECT_STREAM)?;
+            self.hit(s, object)?;
         }
+        self.pending = false;
+        if s.victim.hp <= 0.0 {
+            return self.enter(KILLED, walk, s);
+        }
+        let rest = s.reload - f32::from(sprite.graphic.frames) * sprite.graphic.frame_duration;
+        self.rest = rest;
+        self.swing = rest;
+        if rest < 0.0 {
+            self.rest = 0.0;
+        }
+        Ok(())
+    }
+
+    /// The swing after its hit: a done swing ends (`set_state` 2), a ready one readies
+    /// (`set_state` 6), one past its interrupt frame checks its target (readyToAttack with 0: one
+    /// out of reach is followed, `set_state` 4). Once the sprite looped (or does not loop) the unit
+    /// is ready again; a reload longer than the sprite waits at its last frame with the idle
+    /// attack sprite (else the standing one) at speed 1.
+    pub(super) fn swing_after_hit(
+        &mut self,
+        walk: &mut Walk<'_>,
+        s: &mut Strike<'_>,
+        sprite: crate::objects::sprite::ActiveSprite,
+        ranged: bool,
+    ) -> Result<(), GenieError> {
         match after_hit(
             ranged,
             *s.attack_timer,
@@ -257,14 +330,8 @@ impl Attack {
             self.arms.fire_frame,
             sprite.frame,
         ) {
-            AfterHit::Done => {
-                self.enter(KILLED, walk, s)?;
-                return Ok(0);
-            }
-            AfterHit::Ready => {
-                self.ready(walk, s)?;
-                return Ok(0);
-            }
+            AfterHit::Done => return self.enter(KILLED, walk, s),
+            AfterHit::Ready => return self.ready(walk, s),
             // readyToAttack with its third argument 0: a target out of reach is followed
             // (`set_state` 4); a ready unit only faces it; the swing goes on either way
             AfterHit::Continue { check: true } => {
@@ -280,7 +347,7 @@ impl Attack {
         // shown the standing one
         let sprite = s.sprite.unwrap_or(sprite);
         if !sprite.looped && sprite.graphic.flags & 1 != 0 {
-            return Ok(0);
+            return Ok(());
         }
         // a reload longer than the sprite: at its last frame the unit waits with its idle attack
         // sprite (`+0x88`), else its standing one (slot 0x68), from its first frame when it
@@ -300,8 +367,7 @@ impl Attack {
             }
             *s.anim_speed = Some(1.0);
         }
-        self.ready(walk, s)?;
-        Ok(0)
+        self.ready(walk, s)
     }
 
     /// The hit of a melee unit (slot 0x858 -> `FUN_141081020` -> slot 0x860,

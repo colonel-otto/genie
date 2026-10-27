@@ -1693,3 +1693,249 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
         "an attack's target the slice does not hold live"
     );
 }
+
+/// A sprite of [`STANDING`]'s graphic (ten frames of 0.1 s) that just advanced from frame
+/// `last` to `frame`.
+fn at_frame(frame: i16, last: i16) -> ActiveSprite {
+    ActiveSprite {
+        frame,
+        last_frame: last,
+        changed: true,
+        looped: false,
+        ..ActiveSprite::start(STANDING, &mut Well512::default())
+    }
+}
+
+/// [`own_attack`] on the house 10028 in state `state`, its swing pending, with the standing
+/// sprite to end with and a missile (`ranged`) firing at frame `fire`.
+fn swinging_attack(state: u8, ranged: bool, fire: i16) -> Attack {
+    let mut a = own_attack(10028, state, 0.1);
+    a.pending = true;
+    a.arms.idle_sprite = Some(STANDING);
+    a.arms.missile = if ranged { 5 } else { -1 };
+    a.arms.fire_frame = fire;
+    a
+}
+
+/// The swing before its hit ([`Attack::swing_to_hit`]): a ranged swing waits for its firing
+/// frame without counting down, then fires its volley at its target ([`Attack::land_hit`]): the
+/// attack timer is the reload less the time to that frame, the rest of the reload past the
+/// sprite the swing's; a melee swing counts down by the walk's dt toward half its frames.
+#[test]
+fn a_ranged_swing_fires_at_its_firing_frame_and_a_melee_one_counts_down() {
+    use crate::movement::tests::WalkRig;
+    let mut walker = WalkRig::on_the_path();
+    let mut rig = Rig::new(Victim {
+        hp: 50.0,
+        ..Victim::default()
+    });
+    let mut s = rig.strike();
+    let mut a = swinging_attack(SWING, true, 3);
+    a.swing = 1.0;
+    a.swing_to_hit(&mut walker.walk(7), &mut s, at_frame(2, 1), true)
+        .unwrap();
+    assert_eq!((a.pending, s.fire, a.swing), (true, None, 1.0));
+    a.swing_to_hit(&mut walker.walk(7), &mut s, at_frame(3, 2), true)
+        .unwrap();
+    assert_eq!((a.pending, s.fire), (false, Some(10028)));
+    assert_eq!(*s.attack_timer, 2.0 - 3.0 * STANDING.frame_duration);
+    let rest = 2.0 - 10.0 * STANDING.frame_duration;
+    assert_eq!((a.rest, a.swing), (rest, rest));
+    let mut melee = swinging_attack(SWING, false, 0);
+    melee.swing = 1.0;
+    melee
+        .swing_to_hit(&mut walker.walk(7), &mut s, at_frame(4, 3), false)
+        .unwrap();
+    assert_eq!((melee.pending, melee.swing), (true, 1.0 - 0.1));
+}
+
+/// The swing's unmodelled parts: class 51's swing, a melee swing of class 35, a ranged one
+/// without a firing frame and a self-destructing attacker's melee hit; and a ranged hit that
+/// kills its target ends the swing (`set_state` 2).
+#[test]
+fn a_swing_s_unmodelled_parts_fail_and_a_killing_hit_ends_it() {
+    use crate::movement::tests::WalkRig;
+    let reason = |class, master, ranged, fire| {
+        let mut walker = WalkRig::on_the_path();
+        let mut rig = Rig::new(Victim {
+            hp: 50.0,
+            ..Victim::default()
+        });
+        let mut s = rig.strike();
+        (s.own.class, s.own.master_id) = (class, master);
+        let mut a = swinging_attack(SWING, ranged, fire);
+        a.swing_to_hit(&mut walker.walk(7), &mut s, at_frame(5, 4), ranged)
+            .unwrap_err()
+            .reason()
+    };
+    assert_eq!(reason(51, 4, true, 3), "a swing of class 35, 51 or 64");
+    assert_eq!(reason(35, 4, false, 0), "a swing of class 35, 51 or 64");
+    assert_eq!(
+        reason(6, 4, true, -1),
+        "a ranged swing without a firing frame"
+    );
+    assert_eq!(
+        reason(6, 527, false, 0),
+        "a self-destructing attacker's hit (masters 527, 528, 1104, 2133..2135)"
+    );
+    let mut walker = WalkRig::on_the_path();
+    let mut rig = Rig::new(Victim::default());
+    let mut s = rig.strike();
+    let mut a = swinging_attack(SWING, true, 3);
+    a.land_hit(&mut walker.walk(7), &mut s, at_frame(3, 2), true)
+        .unwrap();
+    assert_eq!((a.pending, a.state, s.fire), (false, KILLED, Some(10028)));
+}
+
+/// The swing after its hit ([`Attack::swing_after_hit`]): a ranged swing whose timer ran out
+/// without a target ends (`set_state` 2), with one past its interrupt frame readies
+/// (`set_state` 6, whose readyToAttack finds the house out of sight: the unit goes to where it
+/// saw it, state 5); one going on waits for its sprite to loop; a looped sprite with reload
+/// left shows the idle sprite at speed 1 and readies.
+#[test]
+fn a_swing_after_its_hit_ends_readies_or_waits_for_its_sprite() {
+    use crate::movement::tests::WalkRig;
+    let after = |target, interrupt, sprite: ActiveSprite, swing| {
+        let mut walker = WalkRig::on_the_path();
+        let mut rig = Rig::new(Victim::default());
+        let mut s = rig.strike();
+        let mut a = swinging_attack(SWING, true, 3);
+        (a.pending, a.target, a.swing) = (false, target, swing);
+        a.arms.interrupt_frame = interrupt;
+        a.swing_after_hit(&mut walker.walk(7), &mut s, sprite, true)
+            .unwrap();
+        (a.state, *s.anim_speed)
+    };
+    assert_eq!(after(-1, 5, at_frame(9, 8), 0.0).0, KILLED);
+    assert_eq!(after(10028, 5, at_frame(6, 5), 0.0).0, GOTO_SEEN);
+    assert_eq!(after(10028, -1, at_frame(3, 2), 0.0).0, SWING);
+    let looped = ActiveSprite {
+        looped: true,
+        ..at_frame(0, 9)
+    };
+    assert_eq!(after(10028, -1, looped, 0.5), (GOTO_SEEN, Some(1.0)));
+}
+
+/// State 4's `MoveTo` start ([`Attack::walk_start`]) on the house 10028: after a wait `+0x6c`
+/// goes from 1 to 2, a running `MoveTo` takes the running speed and shows its move sprite as it
+/// moves; one in range at once arrives and shows the idle sprite with `+0x7b8` cleared.
+#[test]
+fn an_attack_s_move_to_starts_running_or_arrives_in_range() {
+    use crate::movement::tests::WalkRig;
+    let walking = Graphic {
+        id: 301,
+        ..STANDING
+    };
+    let start = |range| {
+        let mut walker = WalkRig::on_the_path();
+        walker.mover.stats.run_speed = 1.2;
+        let mut rig = Rig::new(Victim::default());
+        let mut s = rig.strike();
+        *s.anim_speed = Some(1.0);
+        let mut a = own_attack(10028, MOVE, range);
+        (a.move_to, a.move_wait.state) = (Some(MoveTo::Start), 1);
+        (a.arms.move_sprite, a.arms.idle_sprite) = (Some(walking), Some(STANDING));
+        let walked = a.walk_start(&mut walker.walk(4), &mut s).unwrap();
+        let shown = s.sprite.map(|g| g.graphic.id);
+        (
+            walked,
+            a.move_to,
+            a.move_wait.state,
+            shown,
+            *s.anim_speed,
+            walker.mover.stats.speed,
+        )
+    };
+    assert_eq!(
+        start(0.1),
+        (true, Some(MoveTo::Moving), 2, Some(301), Some(1.0), 1.2)
+    );
+    let (walked, move_to, _, shown, anim, _) = start(5.0);
+    assert_eq!(
+        (walked, move_to, shown, anim),
+        (true, Some(MoveTo::Arrived), Some(300), Some(0.0))
+    );
+}
+
+/// State 4's `MoveTo` walking ([`Attack::walk_on`]) on the house 10028: a target that stays is
+/// walked to; one that left the `MoveTo`'s point only turns it to state 3 with `+0x61`, and
+/// without it tells the unit (notify 0x1fc) and runs the motion step first.
+#[test]
+fn an_attack_s_move_to_follows_a_target_that_left_its_point() {
+    use crate::movement::tests::WalkRig;
+    let walk_on = |point: [f32; 3], repaths| {
+        let mut walker = WalkRig::on_the_path();
+        walker.mover.move_to_point = Some(point);
+        walker.mover.paths[0].waypoint = 0;
+        let mut rig = Rig::new(Victim::default());
+        let mut s = rig.strike();
+        let mut a = own_attack(10028, MOVE, 0.1);
+        (a.move_to, a.repaths) = (Some(MoveTo::Moving), repaths);
+        a.walk_on(&mut walker.walk(4), &mut s).unwrap();
+        (a.move_to, s.posted.clone())
+    };
+    assert_eq!(
+        walk_on([30.0, 88.0, 0.0], false),
+        (Some(MoveTo::Moving), vec![])
+    );
+    assert_eq!(
+        walk_on([36.0, 88.0, 0.0], true),
+        (Some(MoveTo::Start), vec![])
+    );
+    assert_eq!(
+        walk_on([36.0, 88.0, 0.0], false),
+        (Some(MoveTo::Start), vec![(0x1fc, [0; 3])])
+    );
+}
+
+/// State 4's update ([`Attack::walk`]) on the house 10028 out of reach: a walking `MoveTo`
+/// walks on; a wait runs by the walk's dt and asks again at its delay; an arrived `MoveTo` goes
+/// and stops the unit, which readies (the house out of sight: it goes to where it saw it); a
+/// failed one ends the Attack (code 3), a unit's own posting 0x1f9 with 600. An Attack in
+/// state 4 without its `MoveTo` is not modelled.
+#[test]
+fn an_attack_s_walk_walks_waits_arrives_or_fails() {
+    use crate::movement::tests::WalkRig;
+    let walked = |move_to: Option<MoveTo>, timer: f32| {
+        let mut walker = WalkRig::on_the_path();
+        let mut rig = Rig::new(Victim::default());
+        let mut s = rig.strike();
+        let mut a = own_attack(10028, MOVE, 0.1);
+        a.arms.idle_sprite = Some(STANDING);
+        a.move_to = move_to;
+        a.move_wait = MoveWait {
+            state: 1,
+            timer,
+            delay: 0.15,
+        };
+        let code = a
+            .walk(walker.walk(4), &mut s, [30.0, 88.0, 0.0], [1.0, 1.0])
+            .map_err(|e| e.reason());
+        let posted = s.posted.clone();
+        (code, a, posted, walker.mover.speed_stopped)
+    };
+    let (code, a, posted, _) = walked(Some(MoveTo::Moving), 0.0);
+    assert_eq!(
+        (code, a.move_to, a.state, posted),
+        (Ok(0), Some(MoveTo::Moving), MOVE, vec![])
+    );
+    let (_, a, ..) = walked(Some(MoveTo::Waiting), 0.0);
+    assert_eq!((a.move_to, a.move_wait.timer), (Some(MoveTo::Waiting), 0.1));
+    let (_, a, ..) = walked(Some(MoveTo::Waiting), 0.1);
+    assert_eq!((a.move_to, a.move_wait.timer), (Some(MoveTo::Start), 0.0));
+    let (code, a, _, stopped) = walked(Some(MoveTo::Arrived), 0.0);
+    assert_eq!((code, a.state, stopped), (Ok(0), GOTO_SEEN, true));
+    let (code, a, posted, _) = walked(Some(MoveTo::Failed), 0.0);
+    assert_eq!(
+        (code, a.state, posted),
+        (
+            Ok(3),
+            FAILED,
+            vec![(crate::unit_ai::ACTION_FAILED, [600, 0, 0])]
+        )
+    );
+    assert_eq!(
+        walked(None, 0.0).0,
+        Err("an Attack in state 4 without its MoveTo")
+    );
+}

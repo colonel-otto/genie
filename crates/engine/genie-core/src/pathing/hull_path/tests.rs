@@ -978,6 +978,91 @@ fn a_walk_out_of_a_hull_keeps_its_ways_out_or_reaches_the_goal() {
     assert_eq!(paths[0].points, [[4.9, 5.5], [3.0, 5.5]]);
 }
 
+/// The rays of a walk out's node ([`HullPather::cast_rays`]) at (4.2, 5.5), inside a hull of
+/// (4, 4) to (7, 7) and left of its box: the ray to the right meets the box and the walk goes
+/// on from its side; the other three leave the boxes and end on the hull's edge. Without a goal
+/// each of those is a way out nudged past the edge, kept while fewer than `most` are; toward a
+/// goal the walk goes on from each end too, keeping none.
+#[test]
+fn a_walk_out_s_rays_end_on_the_hull_s_edge_as_ways_out() {
+    let w = walled(8, [4.9, 5.5]);
+    let rays = |goal: Option<Point>, most| {
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        p.area = [0, 0, 19, 19];
+        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]);
+        p.hulls[h].objects.push(Shape {
+            bounds: [4.8, 4.8, 6.2, 6.2],
+            id: 48,
+        });
+        p.empty(1);
+        let root = p.add_unrefused(1, true, None, [4.2, 5.5], goal, -1, -1);
+        p.close(1, root);
+        let mut paths = vec![Waypoints::default(); PATHS];
+        let mut count = 0;
+        let left = p
+            .cast_rays(h, root, goal, true, &mut paths, (&mut count, most))
+            .unwrap();
+        let ends: Vec<Point> = paths[..count]
+            .iter()
+            .map(|w| *w.points.last().unwrap())
+            .collect();
+        let mut open = 0;
+        let mut next = p.nodes[1].next;
+        while let Some(n) = next {
+            open += 1;
+            next = p.nodes[n].next;
+        }
+        (left, ends, open)
+    };
+    let n = NUDGE;
+    let (left, ends, open) = rays(None, PATHS);
+    assert_eq!((left, open), (true, 1));
+    assert_eq!(ends, [[4.2, 4.0 - n], [4.2, 7.0 + n], [4.0 - n, 5.5]]);
+    assert_eq!(rays(None, 2).1, [[4.2, 4.0 - n], [4.2, 7.0 + n]]);
+    let (left, ends, open) = rays(Some([3.0, 5.5]), PATHS);
+    assert_eq!((left, ends.len(), open), (true, 0, 4));
+}
+
+/// `pathWithinHull` out of a hull (`FUN_140f8cf00`) from (4.2, 5.5), inside the hull of (4, 4)
+/// to (7, 7) and outside its box: without a goal its ways out are the answer (result 4: the
+/// start was in no box), none kept is result 2; toward a goal within the unit's radius and range
+/// of the start the start ends the walk (0).
+#[test]
+fn a_walk_out_from_outside_its_boxes_ends_by_its_ways_out_or_at_a_goal_in_range() {
+    let w = walled(8, [4.9, 5.5]);
+    let walk = |goal: Option<Point>, range, most| {
+        let mut p = HullPather::new(&w, 9171, 9149, 6, 0.2);
+        p.area = [0, 0, 19, 19];
+        let h = p.add_shape([4.0, 4.0], [7.0, 7.0]);
+        p.hulls[h].objects.push(Shape {
+            bounds: [4.8, 4.8, 6.2, 6.2],
+            id: 48,
+        });
+        let mut paths = vec![Waypoints::default(); PATHS];
+        let mut count = 0;
+        let walk = p
+            .walk_out(
+                h,
+                [4.2, 5.5],
+                goal,
+                None,
+                range,
+                true,
+                &mut paths,
+                most,
+                &mut count,
+            )
+            .unwrap();
+        (walk.result, walk.left_boxes, count, paths[0].points.clone())
+    };
+    let (result, left, count, _) = walk(None, 0.1, PATHS);
+    assert_eq!((result, left), (4, true));
+    assert!(0 < count);
+    assert_eq!(walk(None, 0.1, 0), (2, false, 0, vec![]));
+    let (result, _, count, points) = walk(Some([4.4, 5.5]), 0.5, 1);
+    assert_eq!((result, count, points), (0, 0, vec![[4.2, 5.5]]));
+}
+
 /// `pathWithinHull` into a hull (`FUN_140f88ee0`): the walk out of the hull from the goal
 /// inside a box toward the start, its ways out nudged back in by [`NUDGE`], each with the hull
 /// side it leaves by (result 5: the goal is inside a box).
