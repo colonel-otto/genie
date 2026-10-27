@@ -95,7 +95,7 @@ impl HuntAction {
         // caller takes and releases it), the point and `+0x68` clear, `set_state(8)`; a hunter
         // carrying nothing does not get there
         if target.player == player && target.drop_site && 0.0 < held.1 {
-            hunt.target = -1;
+            hunt.set_target(-1);
             hunt.point = [-1.0; 3];
             hunt.target_class = -1;
             hunt.carry_to = target.id;
@@ -185,7 +185,7 @@ impl HuntAction {
             ));
         }
         if target.player == player && drops_here && 0.0 < held {
-            self.target = -1;
+            self.set_target(-1);
             self.timer = 0.0;
             self.point = [-1.0; 3];
             self.carry_to = target.id;
@@ -196,7 +196,7 @@ impl HuntAction {
         if target.id == self.target {
             return Ok(None);
         }
-        self.target = target.id;
+        self.set_target(target.id);
         self.target_class = target.class;
         self.carry_to = -1;
         self.chase(target, player, attack, arms, mover).map(Some)
@@ -236,7 +236,7 @@ impl HuntAction {
             if t.id == self.carry_to && self.state == DROP {
                 return Ok(true);
             }
-            self.target = -1;
+            self.set_target(-1);
             self.point = [-1.0; 3];
             self.target_class = t.class;
             self.carry_to = t.id;
@@ -245,7 +245,7 @@ impl HuntAction {
         }
         self.point = point;
         self.target_class = -1;
-        self.target = -1;
+        self.set_target(-1);
         self.set_point_walk(WALK_POINT, mover)?;
         Ok(true)
     }

@@ -252,6 +252,48 @@ fn a_hunt_retargeted_to_a_tree_beside_it_starts_its_attack_arrived() {
     );
 }
 
+/// Slot 0x68 (`FUN_140ac7980`) clears the lead with the target: a hunt that led one sheep and
+/// is sent to another forgets it sent any (`moved_sheep` 0, the start −1). 429604460's
+/// shepherd 30721 at update 184: its next sheep, more than 3 tiles from the town centre, is
+/// sent there.
+#[test]
+fn a_hunt_s_new_target_clears_its_lead() {
+    let mut mover = walker();
+    let mut held = (-1, 0.0);
+    let (mut hunt, _) = HuntAction::start(
+        CHOP,
+        &tree(),
+        2,
+        false,
+        false,
+        &mut held,
+        &engagement(),
+        ARMS,
+        &mut mover,
+    )
+    .unwrap();
+    let led = Lead {
+        moved: true,
+        still_time: 3,
+        start: [127.5, 30.4],
+    };
+    hunt.lead = led;
+    let other = Quarry {
+        id: 9366,
+        position: [20.78, 97.5, 0.0],
+        ..tree()
+    };
+    // its own target changes nothing
+    let _ = hunt
+        .retarget(&tree(), 2, 0.0, false, &engagement(), ARMS, &mut mover)
+        .unwrap();
+    assert_eq!(hunt.lead, led);
+    let _ = hunt
+        .retarget(&other, 2, 0.0, false, &engagement(), ARMS, &mut mover)
+        .unwrap();
+    assert_eq!((hunt.target, hunt.lead), (9366, Lead::NEW));
+}
+
 #[test]
 fn a_hunter_keeps_another_food_it_carries_and_drops_the_rest_by_the_settings() {
     let start = |held: (i16, f32), carry_rule: bool| {

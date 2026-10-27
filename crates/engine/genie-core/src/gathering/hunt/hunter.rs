@@ -43,7 +43,7 @@ impl Unit {
                     c.releases.push((target, self.releaser(c)));
                 }
                 if let Some(h) = self.hunt.as_mut() {
-                    h.target = -1;
+                    h.set_target(-1);
                 }
             }
         }

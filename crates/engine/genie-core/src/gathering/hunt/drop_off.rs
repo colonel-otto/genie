@@ -171,17 +171,20 @@ impl HuntAction {
         asked_drop_off(self.task.resource, held_kind, attributes)
     }
 
-    /// Slot 0x68 with none (`FUN_140ac7980`): the target goes and the lead's fields clear (its
-    /// start −1); the old target, which the caller releases (slot 0x180).
+    /// Slot 0x68 with none (`FUN_140ac7980`, [`HuntAction::set_target`]): the target goes; the
+    /// old target, which the caller releases (slot 0x180).
     pub const fn let_go(&mut self) -> i32 {
         let target = self.target;
-        self.target = -1;
-        self.lead = Lead {
-            moved: false,
-            still_time: 0,
-            start: [-1.0, -1.0],
-        };
+        self.set_target(-1);
         target
+    }
+
+    /// Slot 0x68 (`FUN_140ac7980`): the base's change of target (`FUN_140a7a230`, whose release
+    /// and take are the caller's), then the lead clears ([`Lead::NEW`]: `moved_sheep` and
+    /// `sheep_still_time` 0, the start −1).
+    pub const fn set_target(&mut self, target: i32) {
+        self.target = target;
+        self.lead = Lead::NEW;
     }
 
     /// The teardown (`FUN_140a73fc0`): the sub-actions go; the caller releases the target (slot

@@ -287,7 +287,11 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
             carry_to: -1,
             timer: 0.0,
             move_wait: crate::movement::move_to::MoveWait::default(),
-            lead: Lead::default(),
+            lead: Lead {
+                moved: true,
+                still_time: 2,
+                start: [3.0, 4.0],
+            },
         }),
         ..Unit::default()
     };
@@ -309,6 +313,8 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     without_ai.object_stop(1, idx).unwrap();
     let u = &without_ai.players[1].objects[idx];
     assert_eq!(u.hunt.map(|h| h.state), Some(crate::gathering::hunt::IDLE));
+    // its target went through slot 0x68 (FUN_140ac7980), which clears the lead
+    assert_eq!(u.hunt.map(|h| h.lead), Some(Lead::NEW));
 }
 
 /// records/425906646's player 2 cancels the second villager of its town centre at update

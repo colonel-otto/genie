@@ -157,7 +157,7 @@ impl World {
         );
         // the target, then the second target
         let released = [hunt.target, hunt.carry_to];
-        hunt.target = -1;
+        hunt.set_target(-1);
         hunt.carry_to = -1;
         hunt.point = [-1.0; 3];
         hunt.timer = 0.0;
