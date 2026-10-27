@@ -397,9 +397,10 @@ pub enum Command {
         /// `+0x20`: it sets their last human order time.
         human: bool,
     },
-    /// INTERACT (0x00), MOVE (0x03) or RETREAT (0x23): before the order runs, each listed unit's AI
-    /// resets its idle timeout ([`UnitAi::reset_for_order`]), in list order, wherever the unit is.
-    /// INTERACT's order then runs ([`Interact`]), and MOVE's ([`MoveOrder`]); RETREAT is not
+    /// INTERACT (0x00), WORK (0x02), MOVE (0x03), RETREAT (0x23), FOLLOW or GUARD: before the
+    /// order runs, each listed unit's AI resets its idle timeout ([`UnitAi::reset_for_order`],
+    /// WORK's not), in list order, wherever the unit is. INTERACT's order then runs
+    /// ([`Interact`]), MOVE's ([`MoveOrder`]), FOLLOW's and GUARD's; WORK and RETREAT are not
     /// modelled.
     ///
     /// [`UnitAi::reset_for_order`]: crate::unit_ai::UnitAi::reset_for_order
@@ -407,10 +408,20 @@ pub enum Command {
         /// The player who orders.
         player: usize,
         /// The units of the packet.
-        units: Vec<i32>,
-        /// The order they take, None for a command that only resets their idle timeouts.
+        units: OrderUnits,
+        /// The order they take, None for RETREAT, which only resets their idle timeouts.
         order: Option<Order>,
     },
+}
+
+/// The units an order command names (its unit-list reader, `FUN_140e6b290`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OrderUnits {
+    /// The packet's ids, as many as its count says.
+    Listed(Vec<i32>),
+    /// A count of `0xffff`: the comm player's last commanded units
+    /// ([`World::last_commanded`]).
+    LastCommanded,
 }
 
 /// What an order command gives its units.
@@ -424,6 +435,8 @@ pub enum Order {
     Follow(i32),
     /// GUARD's target (`+0x8`).
     Guard(i32),
+    /// WORK: its units' work on a target (`FUN_140e6a9f0`), which is not modelled.
+    Work,
 }
 
 /// RESEARCH's fields ([`Command::Research`] but the player).
@@ -458,17 +471,63 @@ const CASTLE_AGE: i16 = 0x66;
 /// The game mode (`0x10`) in which a Castle Age queued marks the world's treaty monitor.
 const CASTLE_AGE_MODE: i32 = 0x10;
 
+/// The units a human player's command names at most (`FUN_140e6b290`'s `0x3c`).
+const HUMAN_UNITS: usize = 60;
+/// The units a computer player's command names at most (`FUN_141659cf0`, 500).
+const COMPUTER_UNITS: usize = 500;
+
 impl World {
     /// The command check's units (`FUN_140e553f0`, `FUN_140e55250`): each unit the world holds
-    /// that is the player's own, or any while players may order each other's units
-    /// ([`crate::world::settings::Settings::cheats_enabled`]); −1 for the others.
+    /// (`FUN_1415417a0`, live or sleeping) that is the player's own, or any while players may
+    /// order each other's units ([`crate::world::settings::Settings::cheats_enabled`]); −1 for
+    /// the others.
     pub(crate) fn checked_units(&self, player: usize, units: &[i32]) -> Vec<i32> {
         units
             .iter()
-            .map(|&id| match self.object(id) {
-                Some((p, _)) if p == player || self.settings.cheats_enabled => id,
+            .map(|&id| match self.place(id) {
+                Some(p) if p.player() == player || self.settings.cheats_enabled => id,
                 _ => -1,
             })
             .collect()
+    }
+
+    /// `FUN_140e6b290`: the units an order of comm player `player` names. Comm player 0 and
+    /// one past the world's take the packet's list as it is; a count of `0xffff` there reads
+    /// past the packet (no units here). Any other takes its first [`World::most_units`], or
+    /// for a count of `0xffff` its last commanded units ([`World::last_commanded`], none before
+    /// its first).
+    pub(crate) fn command_units(&self, player: usize, units: &OrderUnits) -> Vec<i32> {
+        let inside = player == 0 || self.players.len() <= player;
+        match units {
+            OrderUnits::Listed(ids) if inside => ids.clone(),
+            OrderUnits::Listed(ids) => ids[..ids.len().min(self.most_units(player))].to_vec(),
+            OrderUnits::LastCommanded if inside => Vec::new(),
+            OrderUnits::LastCommanded => {
+                self.last_commanded.get(player).cloned().unwrap_or_default()
+            }
+        }
+    }
+
+    /// The units a command of `player` names at most: 60, 500 for a computer
+    /// (`FUN_141659cf0`); none for a player the world lacks.
+    pub(crate) fn most_units(&self, player: usize) -> usize {
+        match self.players.get(player) {
+            Some(p) if p.computer => COMPUTER_UNITS,
+            Some(_) => HUMAN_UNITS,
+            None => 0,
+        }
+    }
+
+    /// Comm player `player`'s last commanded units become `units` (`FUN_140e6d140` and the
+    /// copy after it, `FUN_140e6b290` with 0); nothing for comm player 0 or one past the
+    /// world's.
+    pub(crate) fn set_last_commanded(&mut self, player: usize, units: Vec<i32>) {
+        if player == 0 || self.players.len() <= player {
+            return;
+        }
+        if self.last_commanded.len() <= player {
+            self.last_commanded.resize(player + 1, Vec::new());
+        }
+        self.last_commanded[player] = units;
     }
 }

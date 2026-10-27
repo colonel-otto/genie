@@ -1,12 +1,13 @@
 //! A command's run in the command phase ([`World::run`]), a human player's order and the
 //! order units' reset.
 
-use std::borrow::Cow;
-
 use crate::GenieError;
-use crate::commands::{Command, Order, QueueAt, ResearchAt};
+use crate::commands::{Command, Order, OrderUnits, QueueAt, ResearchAt};
 use crate::math::rng::Stream;
 use crate::world::World;
+
+/// WORK's and RETREAT's runs (`FUN_140e6a9f0`, `FUN_140e69f00`).
+const ORDER_UNMODELLED: GenieError = GenieError::unsupported("an order moves its units");
 
 impl World {
     /// Run a command in the command phase (`TRIBE_Command::do_command`, `0x140e77b00`): the
@@ -315,21 +316,24 @@ impl World {
         self.research(player, &ResearchAt { buildings, ..r })
     }
 
-    /// An order of units (INTERACT, MOVE, FOLLOW, GUARD): its units after the command's check
-    /// ([`World::order_units`]); FOLLOW (`FUN_140e66a60`) and GUARD (`FUN_140e67620`) of a
-    /// target the world lacks do nothing. The units reset for the order, a human's take the
-    /// world time as their last human order time (`+0x15`, `FUN_140e5e780`; FOLLOW's when a
-    /// unit the world holds belongs to a player who is not a computer, `FUN_141659cf0`), then
-    /// the order runs.
+    /// An order of units (INTERACT, WORK, MOVE, RETREAT, FOLLOW, GUARD): its units after the
+    /// command's check ([`World::order_units`]). FOLLOW (`FUN_140e66a60`) and GUARD
+    /// (`FUN_140e67620`) of a target the world lacks do nothing. The units reset for the order
+    /// (WORK's not), a human's take the world time as their last human order time (`+0x15`,
+    /// `FUN_140e5e780`; FOLLOW's when a unit the world holds belongs to a player who is not a
+    /// computer, `FUN_141659cf0`), then the order runs.
     fn order_command(
         &mut self,
         player: usize,
-        units: &[i32],
+        source: &OrderUnits,
         order: Option<Order>,
     ) -> Result<(), GenieError> {
-        let Some(units) = self.order_units(player, units, order) else {
+        let Some(units) = self.order_units(player, source, order) else {
             return Ok(());
         };
+        if order == Some(Order::Work) {
+            return Err(ORDER_UNMODELLED);
+        }
         if let Some(Order::Follow(target) | Order::Guard(target)) = order
             && self.object(target).is_none()
         {
@@ -342,7 +346,7 @@ impl World {
                 self.object(id)
                     .is_some_and(|(p, _)| !self.players[p].computer)
             }),
-            None => false,
+            Some(Order::Work) | None => false,
         };
         self.reset_order_units(&units);
         if human {
@@ -353,32 +357,54 @@ impl World {
             Some(Order::Move(o)) => self.move_order(player, &units, &o),
             Some(Order::Follow(target)) => self.follow(player, &units, target),
             Some(Order::Guard(target)) => self.guard(player, &units, target),
-            None => Err(GenieError::unsupported("an order moves its units")),
+            Some(Order::Work) | None => Err(ORDER_UNMODELLED),
         }
     }
 
-    /// An order's units after its command's check: MOVE's (`FUN_140e553f0`) and INTERACT's
-    /// (`FUN_140e55250`) make a unit the world does not hold, or of another player without the
-    /// setting `+0x1074`, −1, and a human player's command left without a unit does nothing
-    /// (None); GUARD's (`FUN_140e550d0`, FOLLOW's twin) is BUILD's builders' check; the others
-    /// keep their units.
-    fn order_units<'u>(
-        &self,
+    /// An order's units after its command's check. The checks of INTERACT (`FUN_140e55250`),
+    /// WORK (`FUN_140e55eb0`), MOVE (`FUN_140e553f0`) and RETREAT (`FUN_140e55710`) read the
+    /// units ([`World::command_units`]) and make each one the world does not hold, or of
+    /// another player without the setting `+0x1074`, −1 ([`World::checked_units`]); read from
+    /// the last commanded units, they leave the −1s there. A human player's command left
+    /// without a unit, or a command of a player the world lacks, does nothing (None). Else the
+    /// run reads its units again (`FUN_140e6b290` with 0): a list of the command's own becomes
+    /// the last commanded units, −1s and all. FOLLOW and GUARD take the first 60 units of their
+    /// packet (500 for a computer); GUARD's check is BUILD's builders' (`FUN_140e550d0`,
+    /// [`World::command_check`]), FOLLOW's runs in [`World::follow`].
+    ///
+    /// [`World::command_units`]: crate::world::World::command_units
+    /// [`World::checked_units`]: crate::world::World::checked_units
+    /// [`World::command_check`]: crate::world::World::command_check
+    fn order_units(
+        &mut self,
         player: usize,
-        units: &'u [i32],
+        source: &OrderUnits,
         order: Option<Order>,
-    ) -> Option<Cow<'u, [i32]>> {
-        match order {
-            Some(Order::Move(_) | Order::Interact(_)) => {
-                let checked = self.checked_units(player, units);
-                if checked.iter().all(|&id| id == -1) && !self.players[player].computer {
-                    return None;
-                }
-                Some(Cow::Owned(checked))
-            }
-            Some(Order::Guard(_)) => self.command_check(player, units).map(Cow::Owned),
-            _ => Some(Cow::Borrowed(units)),
+    ) -> Option<Vec<i32>> {
+        if let Some(Order::Follow(_) | Order::Guard(_)) = order {
+            // the decoder lists FOLLOW's and GUARD's own units: their count is never 0xffff
+            let ids = match source {
+                OrderUnits::Listed(ids) => ids.as_slice(),
+                OrderUnits::LastCommanded => &[],
+            };
+            let ids = &ids[..ids.len().min(self.most_units(player))];
+            return match order {
+                Some(Order::Guard(_)) => self.command_check(player, ids),
+                _ => Some(ids.to_vec()),
+            };
         }
+        let computer = self.players.get(player)?.computer;
+        let checked = self.checked_units(player, &self.command_units(player, source));
+        if *source == OrderUnits::LastCommanded {
+            self.set_last_commanded(player, checked.clone());
+        }
+        if !computer && checked.iter().all(|&id| id == -1) {
+            return None;
+        }
+        if let OrderUnits::Listed(_) = source {
+            self.set_last_commanded(player, checked.clone());
+        }
+        Some(checked)
     }
 
     /// `FUN_140e5e780`: each unit of `ids` with a unit AI takes the world time as its last human

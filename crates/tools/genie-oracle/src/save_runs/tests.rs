@@ -279,18 +279,34 @@ fn a_dump_out_of_shape_is_an_error() {
     assert!(turns.pathing.mesh().is_none());
 }
 
-/// The decoder's priming sets the world's update count to the frames it read.
+/// The decoder's priming sets the world's update count to the frames it read and its last
+/// commanded units to the frames' last own list of each comm player.
 #[test]
-fn priming_sets_the_update_count() {
+fn priming_sets_the_update_count_and_the_last_commanded_units() {
     let save = save();
     let mut turns = slice(&save, None);
+    let moved = genie_rec::de::command::Move {
+        commp_id: 1,
+        t_id: -1,
+        x: 5.0,
+        y: 6.0,
+        num: 1,
+        field_0x12: 0,
+        field_0x13: 0,
+        field_0x14: 0,
+        field_0x15: 1,
+        gap_0x16: [0; 2],
+        ids: vec![7],
+    }
+    .encode();
     let frames = [Frame {
         dt: 40,
         checkpoint: None,
-        commands: Vec::new(),
+        commands: vec![&moved[..]],
     }];
     let _ = primed(&mut turns, &frames, 3, &save.players());
     assert_eq!(turns.ticks, 3);
+    assert_eq!(turns.last_commanded, [vec![], vec![7]]);
 }
 
 /// A frame's command phase moves the world's time on; without a frame nothing happens.

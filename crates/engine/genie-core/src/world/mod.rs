@@ -317,6 +317,11 @@ pub struct World {
     pub market: crate::players::market::Market,
     /// The world's unit groups ([`crate::groups`]).
     pub groups: crate::groups::UnitGroups,
+    /// Each comm player's last commanded units (the command processor's list at
+    /// `+(0xd + n) * 0x18`, not saved): the own list of an INTERACT, WORK, MOVE or RETREAT
+    /// whose check let it run, which a count of `0xffff` names
+    /// ([`crate::commands::OrderUnits::LastCommanded`]).
+    pub last_commanded: Vec<Vec<i32>>,
     /// The current update's time in seconds (`world+0x164`, set before the commands run).
     pub dt_seconds: f32,
     /// The current update's time in milliseconds (`world+0x7c`, set before the commands run).

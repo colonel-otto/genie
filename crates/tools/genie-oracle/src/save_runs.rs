@@ -326,7 +326,7 @@ pub(super) fn played_frames<'a>(
 }
 
 /// A decoder primed with the commands of the recording's first `updates` frames, the world's
-/// update count set to them.
+/// update count set to them and its last commanded units the frames' ([`Decoder::prime`]).
 pub(super) fn primed(
     turns: &mut World,
     all: &[Frame<'_>],
@@ -336,6 +336,13 @@ pub(super) fn primed(
     turns.ticks = updates as u32;
     let mut decoder = Decoder::default();
     decoder.prime(&all[..updates.min(all.len())], sections);
+    for (&player, units) in &decoder.last_commanded {
+        let p = usize::from(player);
+        if turns.last_commanded.len() <= p {
+            turns.last_commanded.resize(p + 1, Vec::new());
+        }
+        turns.last_commanded[p].clone_from(units);
+    }
     decoder
 }
 

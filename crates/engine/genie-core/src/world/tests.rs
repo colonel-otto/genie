@@ -4588,7 +4588,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
         40,
         &[Command::Order {
             player: 0,
-            units: vec![8, 99, 7],
+            units: crate::commands::OrderUnits::Listed(vec![8, 99, 7]),
             order: None,
         }],
     );
@@ -13713,13 +13713,13 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
 }
 
 /// An order of units runs after its command's check ([`World::run`]): a MOVE of the villager
-/// resets it for the order, takes the world time as its last human order time and moves it;
-/// a human player's MOVE left without a unit (Gaia's bush) does nothing, as does a FOLLOW of
-/// a target the world lacks; a GUARD takes the builders' check; without an order the run is
-/// not modelled (after the reset).
+/// leaves it as the last commanded units, resets it for the order, takes the world time as its
+/// last human order time and moves it; a human player's MOVE left without a unit (Gaia's bush)
+/// does nothing, as does a FOLLOW of a target the world lacks; a GUARD takes the builders'
+/// check; a RETREAT is not modelled (after the reset).
 #[test]
 fn the_command_phase_runs_an_order_after_its_check() {
-    use crate::commands::Order;
+    use crate::commands::{Order, OrderUnits};
     let t = forage_world();
     let v = vec![9175];
     let walk = crate::orders::MoveOrder {
@@ -13732,7 +13732,7 @@ fn the_command_phase_runs_an_order_after_its_check() {
     };
     let order = |units: Vec<i32>, order| Command::Order {
         player: 1,
-        units,
+        units: OrderUnits::Listed(units),
         order,
     };
     assert!(routes(
@@ -13740,6 +13740,7 @@ fn the_command_phase_runs_an_order_after_its_check() {
         &order(v.clone(), Some(Order::Move(walk))),
         1,
         |w| {
+            w.set_last_commanded(1, v.clone());
             w.reset_order_units(&v);
             w.human_order(&v);
             w.move_order(1, &v, &walk)
@@ -13760,9 +13761,82 @@ fn the_command_phase_runs_an_order_after_its_check() {
         }
     ));
     assert!(routes(&t, &order(v.clone(), None), 1, |w| {
+        w.set_last_commanded(1, v.clone());
         w.reset_order_units(&v);
         Err(GenieError::unsupported("an order moves its units"))
     }));
+}
+
+/// The last commanded units (`FUN_140e6b290`): a MOVE of its own list that its check lets
+/// run leaves that list as its player's last commanded units, −1s and all; a refused MOVE
+/// leaves them. A count of `0xffff` orders them, and its check writes its −1s back, refused
+/// or not.
+#[test]
+fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
+    use crate::commands::{Order, OrderUnits};
+    let walk = crate::orders::MoveOrder {
+        target: -1,
+        point: [40.5, 89.5],
+        queued: false,
+        direct: false,
+        human: true,
+        control: false,
+    };
+    let order = |units| Command::Order {
+        player: 1,
+        units,
+        order: Some(Order::Move(walk)),
+    };
+    let mut t = forage_world();
+    t.run(&order(OrderUnits::Listed(vec![9175, 600])));
+    assert_eq!(t.last_commanded.get(1), Some(&vec![9175, -1]));
+    t.run(&order(OrderUnits::Listed(vec![600])));
+    assert_eq!(t.last_commanded.get(1), Some(&vec![9175, -1]));
+
+    let mut cached = forage_world();
+    cached.set_last_commanded(1, vec![600, 9175]);
+    let checked = vec![-1, 9175];
+    assert!(routes(&cached, &order(OrderUnits::LastCommanded), 1, |w| {
+        w.set_last_commanded(1, checked.clone());
+        w.reset_order_units(&checked);
+        w.human_order(&checked);
+        w.move_order(1, &checked, &walk)
+    }));
+    cached.set_last_commanded(1, vec![600]);
+    let mut refused = cached.clone();
+    refused.run(&order(OrderUnits::LastCommanded));
+    cached.set_last_commanded(1, vec![-1]);
+    assert_eq!(refused, cached);
+}
+
+/// An order's units (`FUN_140e6b290`): comm player 0's and one past the world's are the
+/// packet's as they are, with no last commanded units; any other's are the first 60, 500 for
+/// a computer, or its last commanded units, none before its first.
+#[test]
+fn an_order_s_units_are_capped_unless_its_comm_player_is_outside_the_world() {
+    use crate::commands::OrderUnits;
+    let many: Vec<i32> = (0..600).collect();
+    let mut t = forage_world();
+    let listed = OrderUnits::Listed(many.clone());
+    assert_eq!(t.command_units(0, &listed), many);
+    assert_eq!(t.command_units(t.players.len(), &listed), many);
+    assert_eq!(t.command_units(1, &listed), many[..60]);
+    assert_eq!(
+        t.command_units(1, &OrderUnits::LastCommanded),
+        Vec::<i32>::new()
+    );
+    t.players[1].computer = true;
+    assert_eq!(t.command_units(1, &listed), many[..500]);
+    assert_eq!(t.most_units(t.players.len()), 0);
+    t.set_last_commanded(0, vec![5]);
+    t.set_last_commanded(t.players.len(), vec![6]);
+    t.set_last_commanded(1, vec![7]);
+    assert_eq!(t.last_commanded, [vec![], vec![7]]);
+    assert_eq!(
+        t.command_units(0, &OrderUnits::LastCommanded),
+        Vec::<i32>::new()
+    );
+    assert_eq!(t.command_units(1, &OrderUnits::LastCommanded), [7]);
 }
 
 /// The command phase runs each building command by its handler ([`World::run`]) on

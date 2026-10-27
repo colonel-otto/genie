@@ -56,6 +56,7 @@ impl World {
             effects: Vec::new(),
             market: crate::players::market::Market::default(),
             groups: crate::groups::UnitGroups::default(),
+            last_commanded: Vec::new(),
             dt_seconds: 0.0,
             dt: 0,
             history_period: HISTORY_PERIOD,

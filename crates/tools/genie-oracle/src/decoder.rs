@@ -6,7 +6,7 @@ use crate::{
     trade,
 };
 use genie_core::GenieError;
-use genie_core::commands::Command;
+use genie_core::commands::{Command, OrderUnits};
 use genie_rec::de;
 use genie_rec::de::command::Command as Packet;
 use genie_save::PlayerSection;
@@ -106,10 +106,10 @@ pub(super) const LAST_COMMANDED: u16 = 0xffff;
 pub(super) const MAX_UNITS: usize = 60;
 
 /// Decodes what the slice runs of the recorded commands, in their order (the packets through
-/// genie-rec's generated layouts). It remembers each comm player's last commanded units, as the
-/// game's unit-list reader (`FUN_140e6b290`) does for INTERACT, WORK, MOVE and RETREAT. BUILD,
-/// QUEUE, SET GATHER POINT and the orders run; every other command is left out (see [`GROUP_COMMANDS`] for what
-/// that may miss).
+/// genie-rec's generated layouts). BUILD, QUEUE, SET GATHER POINT and the orders run; every
+/// other command is left out (see [`GROUP_COMMANDS`] for what that may miss). An order's
+/// count of `0xffff` names the comm player's last commanded units, which the world keeps as
+/// the game's unit-list reader (`FUN_140e6b290`) does ([`OrderUnits::LastCommanded`]).
 ///
 /// The player byte is the comm player, which the handlers map to a world player through the lobby
 /// (`FUN_140e6b210`); the slice takes the two as equal.
@@ -117,12 +117,16 @@ pub(super) const MAX_UNITS: usize = 60;
 /// [`GROUP_COMMANDS`]: crate::header_runs::GROUP_COMMANDS
 #[derive(Default)]
 pub(super) struct Decoder {
+    /// Each comm player's last own list of an INTERACT, WORK, MOVE or RETREAT, without the
+    /// world's checks: what a run from a mid-game save starts its world's last commanded units
+    /// with ([`Decoder::prime`]).
     pub(super) last_commanded: std::collections::HashMap<u8, Vec<i32>>,
 }
 
 impl Decoder {
     /// The commands of the frames a save already played: decoded for the unit lists they leave
-    /// (a later command's 'last commanded units'), not run.
+    /// (a later command's 'last commanded units'), not run. Without the world of those updates
+    /// the commands' checks do not run: a list a check would have refused is left too.
     pub(super) fn prime(&mut self, frames: &[Frame<'_>], sections: &[PlayerSection<'_>]) {
         for frame in frames {
             for p in &frame.commands {
@@ -138,49 +142,51 @@ impl Decoder {
     ) -> Option<Command> {
         let decoded = Packet::decode(packet);
         if let Some(list) = unit_list_order(&decoded) {
-            return self.order(list);
+            return Some(self.order(list));
         }
         listed_command(&decoded)
             .unwrap_or_else(|NotListed| single_command(&decoded, packet, sections))
     }
 
-    /// An order to the units listed, or to the comm player's last commanded units (a count of
-    /// `0xffff`); a list of its own becomes the player's last commanded units. WORK and RETREAT
-    /// only leave their list.
-    fn order(&mut self, list: UnitList) -> Option<Command> {
+    /// An order to the units listed, or (INTERACT, WORK, MOVE, RETREAT) to the comm player's
+    /// last commanded units for a count of `0xffff`; such an order's own list is noted for
+    /// [`Decoder::prime`].
+    fn order(&mut self, list: UnitList) -> Command {
         let UnitList {
             player,
             num,
             ids,
+            reads_last,
             order,
-            interact,
         } = list;
-        let units = if num == LAST_COMMANDED {
-            self.last_commanded
-                .get(&player)
-                .cloned()
-                .unwrap_or_default()
+        let units = if reads_last && num == LAST_COMMANDED {
+            OrderUnits::LastCommanded
         } else {
-            let units = capped(&ids, usize::from(num));
-            let _ = self.last_commanded.insert(player, units.clone());
-            units
+            let units: Vec<i32> = ids.iter().copied().take(usize::from(num)).collect();
+            if reads_last {
+                let _ = self
+                    .last_commanded
+                    .insert(player, capped(&units, units.len()));
+            }
+            OrderUnits::Listed(units)
         };
-        order.then_some(Command::Order {
+        Command::Order {
             player: player as usize,
             units,
-            order: interact,
-        })
+            order,
+        }
     }
 }
 
-/// A command to the units of the game's unit-list reader: its comm player, the count, the ids,
-/// whether it orders them and the order.
+/// A command to the units of an order: its comm player, the count, the ids, whether its count
+/// of `0xffff` names the last commanded units (the game's unit-list reader, INTERACT, WORK,
+/// MOVE and RETREAT), and the order.
 struct UnitList {
     player: u8,
     num: u16,
     ids: Vec<i32>,
-    order: bool,
-    interact: Option<genie_core::commands::Order>,
+    reads_last: bool,
+    order: Option<genie_core::commands::Order>,
 }
 
 /// The first `num` of `ids`, at most a human player's 60.
@@ -188,11 +194,11 @@ fn capped(ids: &[i32], num: usize) -> Vec<i32> {
     ids.iter().copied().take(num.min(MAX_UNITS)).collect()
 }
 
-/// INTERACT, WORK, MOVE, RETREAT, FOLLOW and GUARD, whose units the unit-list reader
-/// (`FUN_140e6b290`) reads; None for any other packet.
+/// INTERACT, WORK, MOVE and RETREAT, whose units the unit-list reader (`FUN_140e6b290`) reads,
+/// and FOLLOW and GUARD, which list theirs; None for any other packet.
 fn unit_list_order(packet: &Packet) -> Option<UnitList> {
-    // INTERACT, MOVE and RETREAT reset their units' idle timeouts (`FUN_140e6cfc0`), WORK not
-    let (player, num, ids, order, interact) = match packet {
+    use genie_core::commands::Order;
+    let (player, num, ids, reads_last, order) = match packet {
         Packet::Interact(c) => {
             let order = genie_core::orders::Interact {
                 target: c.t_id,
@@ -203,10 +209,15 @@ fn unit_list_order(packet: &Packet) -> Option<UnitList> {
                 human: c.field_0x15 == 1,
                 filter: c.field_0x16 as i16,
             };
-            let order = genie_core::commands::Order::Interact(order);
-            (c.commp_id, c.num, c.ids.clone(), true, Some(order))
+            (
+                c.commp_id,
+                c.num,
+                c.ids.clone(),
+                true,
+                Some(Order::Interact(order)),
+            )
         }
-        Packet::Work(c) => (c.commp_id, c.num, c.ids.clone(), false, None),
+        Packet::Work(c) => (c.commp_id, c.num, c.ids.clone(), true, Some(Order::Work)),
         Packet::Move(c) => {
             let order = genie_core::orders::MoveOrder {
                 target: c.t_id,
@@ -216,28 +227,40 @@ fn unit_list_order(packet: &Packet) -> Option<UnitList> {
                 human: c.field_0x15 == 1,
                 control: c.field_0x12 != 0,
             };
-            let order = genie_core::commands::Order::Move(order);
-            (c.commp_id, c.num, c.ids.clone(), true, Some(order))
+            (
+                c.commp_id,
+                c.num,
+                c.ids.clone(),
+                true,
+                Some(Order::Move(order)),
+            )
         }
         Packet::Retreat(c) => (c.commp_id, c.num, c.ids.clone(), true, None),
-        // FOLLOW: its units as MOVE's, the target at +8
-        Packet::Follow(c) => {
-            let order = genie_core::commands::Order::Follow(c.target);
-            (c.commp_id, c.num, c.ids.clone(), true, Some(order))
-        }
+        // FOLLOW: its units as MOVE's, the target at +8; its handler (FUN_140e66a60) reads its
+        // own list only
+        Packet::Follow(c) => (
+            c.commp_id,
+            c.num,
+            c.ids.clone(),
+            false,
+            Some(Order::Follow(c.target)),
+        ),
         // GUARD: its units as FOLLOW's, the target at +8
-        Packet::Guard(c) => {
-            let order = genie_core::commands::Order::Guard(c.target);
-            (c.commp_id, c.num, c.ids.clone(), true, Some(order))
-        }
+        Packet::Guard(c) => (
+            c.commp_id,
+            c.num,
+            c.ids.clone(),
+            false,
+            Some(Order::Guard(c.target)),
+        ),
         _ => return None,
     };
     Some(UnitList {
         player,
         num,
         ids,
+        reads_last,
         order,
-        interact,
     })
 }
 

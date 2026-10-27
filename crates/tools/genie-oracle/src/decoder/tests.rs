@@ -1,5 +1,5 @@
 use crate::decoder::{Decoder, LAST_COMMANDED, MAX_UNITS};
-use genie_core::commands::{Command, Order};
+use genie_core::commands::{Command, Order, OrderUnits};
 use genie_rec::de::command as packets;
 
 fn decode(packet: &[u8]) -> Option<Command> {
@@ -23,10 +23,10 @@ fn interact(num: u16, ids: Vec<i32>) -> Vec<u8> {
     .encode()
 }
 
-/// INTERACT orders its units and remembers them; a later count of `0xffff` orders the
-/// remembered units.
+/// INTERACT orders the units its count takes and notes them, at most 60, for a primed run; a
+/// later count of `0xffff` orders the last commanded units, which the world keeps.
 #[test]
-fn an_interact_orders_its_units_and_a_later_one_the_same_again() {
+fn an_interact_orders_its_units_and_a_later_one_the_last_commanded() {
     let mut d = Decoder::default();
     let order = Order::Interact(genie_core::orders::Interact {
         target: 500,
@@ -37,18 +37,28 @@ fn an_interact_orders_its_units_and_a_later_one_the_same_again() {
         human: true,
         filter: 3,
     });
-    let expected = Some(Command::Order {
-        player: 2,
-        units: vec![10, 11],
-        order: Some(order),
-    });
-    assert_eq!(d.command(&interact(2, vec![10, 11, 12]), &[]), expected);
-    assert_eq!(d.command(&interact(LAST_COMMANDED, vec![]), &[]), expected);
+    let ordered = |units| {
+        Some(Command::Order {
+            player: 2,
+            units,
+            order: Some(order),
+        })
+    };
+    assert_eq!(
+        d.command(&interact(2, vec![10, 11, 12]), &[]),
+        ordered(OrderUnits::Listed(vec![10, 11]))
+    );
+    assert_eq!(d.last_commanded.get(&2), Some(&vec![10, 11]));
+    assert_eq!(
+        d.command(&interact(LAST_COMMANDED, vec![]), &[]),
+        ordered(OrderUnits::LastCommanded)
+    );
+    assert_eq!(d.last_commanded.get(&2), Some(&vec![10, 11]));
 }
 
-/// WORK leaves its units as the last commanded but orders nothing itself.
+/// WORK orders its units (a run the world does not model) and notes them.
 #[test]
-fn a_work_command_only_remembers_its_units() {
+fn a_work_command_orders_its_units_and_notes_them() {
     let mut d = Decoder::default();
     let work = packets::Work {
         commp_id: 4,
@@ -64,12 +74,20 @@ fn a_work_command_only_remembers_its_units() {
         ids: vec![20],
     }
     .encode();
-    assert_eq!(d.command(&work, &[]), None);
+    assert_eq!(
+        d.command(&work, &[]),
+        Some(Command::Order {
+            player: 4,
+            units: OrderUnits::Listed(vec![20]),
+            order: Some(Order::Work),
+        })
+    );
     assert_eq!(d.last_commanded.get(&4), Some(&vec![20]));
 }
 
 /// MOVE, RETREAT, FOLLOW and GUARD order their units: MOVE with its point, RETREAT without an
-/// order, FOLLOW and GUARD with the target at `+8`. A list keeps at most 60 units.
+/// order, FOLLOW and GUARD with the target at `+8`. The list keeps its count's units (the
+/// world caps them); the decoder notes at most 60 of MOVE's and none of FOLLOW's or GUARD's.
 #[test]
 fn move_retreat_follow_and_guard_order_their_units() {
     let many: Vec<i32> = (0..70).collect();
@@ -95,14 +113,16 @@ fn move_retreat_follow_and_guard_order_their_units() {
         human: true,
         control: false,
     });
+    let mut d = Decoder::default();
     assert_eq!(
-        decode(&moved),
+        d.command(&moved, &[]),
         Some(Command::Order {
             player: 1,
-            units: many[..MAX_UNITS].to_vec(),
+            units: OrderUnits::Listed(many.clone()),
             order: Some(order),
         })
     );
+    assert_eq!(d.last_commanded.get(&1), Some(&many[..MAX_UNITS].to_vec()));
     let retreat = packets::Retreat {
         commp_id: 1,
         t_id: 0,
@@ -121,7 +141,7 @@ fn move_retreat_follow_and_guard_order_their_units() {
         decode(&retreat),
         Some(Command::Order {
             player: 1,
-            units: vec![7],
+            units: OrderUnits::Listed(vec![7]),
             order: None,
         })
     );
@@ -143,11 +163,13 @@ fn move_retreat_follow_and_guard_order_their_units() {
     .encode();
     let ordered = |order| Command::Order {
         player: 1,
-        units: vec![8],
+        units: OrderUnits::Listed(vec![8]),
         order: Some(order),
     };
-    assert_eq!(decode(&follow), Some(ordered(Order::Follow(900))));
-    assert_eq!(decode(&guard), Some(ordered(Order::Guard(901))));
+    let mut d = Decoder::default();
+    assert_eq!(d.command(&follow, &[]), Some(ordered(Order::Follow(900))));
+    assert_eq!(d.command(&guard, &[]), Some(ordered(Order::Guard(901))));
+    assert!(d.last_commanded.is_empty());
 }
 
 /// The listed commands keep the counted ids, at most 60.
