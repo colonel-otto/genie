@@ -126,3 +126,6 @@ pub fn planner_from_save(
         &blocked,
     ))
 }
+
+#[cfg(test)]
+mod tests;

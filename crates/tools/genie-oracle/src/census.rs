@@ -5,6 +5,9 @@
 
 use genie_rec::de::{self, Op};
 
+use genie_core::world::World;
+use genie_save::PlayerSection;
+
 use crate::{Decoder, Error, MasterTable, frames, header_slice, lane_block, run};
 
 /// Why a census run ended.
@@ -107,24 +110,11 @@ pub fn census_run(
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let sections = header.players();
-    let mut checkpoints = Vec::new();
-    let mut syncs = 0;
-    for op in chapter.ops() {
-        match op? {
-            Op::Sync { .. } => syncs += 1,
-            Op::Checkpoint { checkpoint, .. } => {
-                checkpoints.push((syncs, checkpoint.lanes));
-                syncs += 1;
-            }
-            _ => {}
-        }
-    }
+    let (syncs, checkpoints) = recorded_checkpoints(&chapter)?;
     let total = limit.map_or(syncs, |l| l.min(syncs));
     let mut turns = header_slice(&header, masters);
     let mut decoder = Decoder::default();
-    let mut players = vec![CensusPlayer::default(); sections.len()];
-    let mut next = 0;
-    let (mut updates, mut compared) = (0, 0);
+    let mut census = Census::new(sections.len(), checkpoints);
     let mut end = if total < syncs {
         CensusEnd::Limit
     } else {
@@ -137,8 +127,69 @@ pub fn census_run(
             std::slice::from_ref(&frame),
             &sections,
         );
-        updates += 1;
-        for (p, player) in players.iter_mut().enumerate() {
+        census.update(&turns, &sections);
+        if census.players.iter().all(CensusPlayer::done) {
+            end = CensusEnd::AllDone;
+            break;
+        }
+    }
+    Ok(CensusRun {
+        updates: census.updates,
+        syncs,
+        checkpoints: census.compared,
+        players: census.players,
+        end,
+    })
+}
+
+/// The recording's syncs (a checkpoint's included) and its checkpoints, each with the syncs
+/// before it: it holds the state after that many updates.
+fn recorded_checkpoints(chapter: &de::Chapter<'_>) -> Result<(usize, Vec<(usize, Lanes)>), Error> {
+    let mut checkpoints = Vec::new();
+    let mut syncs = 0;
+    for op in chapter.ops() {
+        match op? {
+            Op::Sync { .. } => syncs += 1,
+            Op::Checkpoint { checkpoint, .. } => {
+                checkpoints.push((syncs, checkpoint.lanes));
+                syncs += 1;
+            }
+            _ => {}
+        }
+    }
+    Ok((syncs, checkpoints))
+}
+
+/// A checkpoint's 11-word blocks, one lane per lobby slot.
+type Lanes = [[u32; 11]; 8];
+
+/// A census run's progress: each player's census, the recorded checkpoints and the next of
+/// them, the updates run and the checkpoints compared.
+struct Census {
+    players: Vec<CensusPlayer>,
+    checkpoints: Vec<(usize, Lanes)>,
+    next: usize,
+    updates: usize,
+    compared: usize,
+}
+
+impl Census {
+    /// The census of `players` players against `checkpoints`, before the first update.
+    fn new(players: usize, checkpoints: Vec<(usize, Lanes)>) -> Self {
+        Self {
+            players: vec![CensusPlayer::default(); players],
+            checkpoints,
+            next: 0,
+            updates: 0,
+            compared: 0,
+        }
+    }
+
+    /// After one more update: each player's first stop, then the checkpoint that holds the state
+    /// after it (an earlier one, passed by a run that started later, is skipped).
+    fn update(&mut self, turns: &World, sections: &[PlayerSection<'_>]) {
+        self.updates += 1;
+        for (p, player) in self.players.iter_mut().enumerate() {
             if player.stop.is_none()
                 && let Some((tick, object, why)) =
                     turns.players.get(p).and_then(|q| q.unsupported.as_ref())
@@ -146,46 +197,46 @@ pub fn census_run(
                 player.stop = Some(CensusStop::of(*tick, *object, why));
             }
         }
-        while let Some(&(at, lanes)) = checkpoints.get(next).filter(|(at, _)| *at <= updates) {
-            next += 1;
-            if at < updates {
-                continue;
+        while let Some(&(at, lanes)) = self
+            .checkpoints
+            .get(self.next)
+            .filter(|(at, _)| *at <= self.updates)
+        {
+            self.next += 1;
+            if at == self.updates {
+                self.compared += 1;
+                self.compare(turns, sections, at, &lanes);
             }
-            compared += 1;
-            for lane in lanes.iter().filter(|l| l.iter().any(|&w| w != 0)) {
-                let p = lane[8] as usize;
-                let (Some(section), Some(state), Some(player)) =
-                    (sections.get(p), turns.players.get(p), players.get_mut(p))
-                else {
-                    continue;
-                };
-                if player.done() {
-                    continue;
-                }
-                let block = lane_block(section, lane[8], state);
-                let words: Vec<(usize, u32, u32)> = (0..11)
-                    .filter(|&w| block[w] != lane[w])
-                    .map(|w| (w, block[w], lane[w]))
-                    .collect();
-                if words.is_empty() {
-                    player.checkpoints_held += 1;
-                } else {
-                    player.mismatch = Some(CensusMismatch { syncs: at, words });
-                }
-            }
-        }
-        if players.iter().all(CensusPlayer::done) {
-            end = CensusEnd::AllDone;
-            break;
         }
     }
-    Ok(CensusRun {
-        updates,
-        syncs,
-        checkpoints: compared,
-        players,
-        end,
-    })
+
+    /// The checkpoint after `at` syncs: each used lane against its player's block, for a player
+    /// still running.
+    fn compare(&mut self, turns: &World, sections: &[PlayerSection<'_>], at: usize, lanes: &Lanes) {
+        for lane in lanes.iter().filter(|l| l.iter().any(|&w| w != 0)) {
+            let p = lane[8] as usize;
+            let (Some(section), Some(state), Some(player)) = (
+                sections.get(p),
+                turns.players.get(p),
+                self.players.get_mut(p),
+            ) else {
+                continue;
+            };
+            if player.done() {
+                continue;
+            }
+            let block = lane_block(section, lane[8], state);
+            let words: Vec<(usize, u32, u32)> = (0..11)
+                .filter(|&w| block[w] != lane[w])
+                .map(|w| (w, block[w], lane[w]))
+                .collect();
+            if words.is_empty() {
+                player.checkpoints_held += 1;
+            } else {
+                player.mismatch = Some(CensusMismatch { syncs: at, words });
+            }
+        }
+    }
 }
 
 /// What a run from the header says of one player against the game's saves
@@ -296,7 +347,7 @@ pub fn header_run(
     masters: Option<&MasterTable>,
     last: usize,
     before: &mut dyn FnMut(usize),
-) -> Result<genie_core::world::World, Error> {
+) -> Result<World, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
     let sections = header.players();
@@ -332,3 +383,6 @@ pub fn header_divergence(
             .unwrap_or(Followed::Follows),
     )
 }
+
+#[cfg(test)]
+mod tests;

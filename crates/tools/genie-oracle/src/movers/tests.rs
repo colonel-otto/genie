@@ -1,0 +1,182 @@
+use crate::fixtures::{
+    action_list, combat_master, combat_mut, combat_object, master_moving_mut, master_static_mut,
+    moving_mut, static_mut, with_masters,
+};
+use crate::masters::{MasterTable, Turning};
+use crate::movers::{mover, saved_move_to_point};
+use genie_save::generated::world::{
+    Action, Master, PathData, PlayerObjects, RgeAction, RgeActionByType, RgeActionMoveTo,
+};
+
+/// Master 83: restriction 1, top speed 1, turning 0.5, walking as sprite 11 and running as 12.
+fn master() -> Master {
+    let mut master = combat_master(83);
+    let s = master_static_mut(&mut master);
+    s.terrain_restriction_mask_id = 1;
+    s.radius_x = 0.2;
+    s.idle_sprite_id = 10;
+    let m = master_moving_mut(&mut master);
+    m.move_sprite_id = 11;
+    m.run_sprite_id = 12;
+    m.turn_speed = 0.5;
+    m.rge_master_animated_object.max_speed = 1.0;
+    master
+}
+
+fn table() -> MasterTable {
+    let turning = Turning {
+        move_algorithm: 0,
+        min_collision_size_multiplier: 1.0,
+    };
+    MasterTable::of_master(0, 83, Some(turning), 0)
+        .with_sprite(10, 0.0, 8, 0)
+        .with_sprite(11, 2.0, 8, 0)
+        .with_sprite(12, 3.0, 8, 0)
+        .with_masks(vec![0, 0b11])
+}
+
+/// A walker of master 83 showing sprite `sprite`.
+fn walker(sprite: i16) -> genie_save::Object {
+    let mut object = combat_object(5, 83);
+    static_mut(&mut object).sprite = sprite;
+    moving_mut(&mut object).angle = 0.25;
+    object
+}
+
+fn run(
+    object: &genie_save::Object,
+    objects: &PlayerObjects,
+    table: Option<&MasterTable>,
+) -> Result<Option<genie_core::movement::Mover>, genie_core::GenieError> {
+    let s = object.static_part().unwrap().clone();
+    mover(object, &s, objects, &[], 0, table)
+}
+
+/// The speed is the master's times the shown sprite's factor; walking and running by their
+/// sprites'; the restriction's mask from the table.
+#[test]
+fn a_walker_moves_by_its_master_and_sprites() {
+    let objects = with_masters(vec![master()]);
+    let m = run(&walker(11), &objects, Some(&table())).unwrap().unwrap();
+    assert_eq!(m.stats.speed.to_bits(), 2.0_f32.to_bits());
+    assert_eq!(m.stats.walk_speed.to_bits(), 2.0_f32.to_bits());
+    assert_eq!(m.stats.run_speed.to_bits(), 3.0_f32.to_bits());
+    assert_eq!(m.stats.stand_speed.to_bits(), 1.0_f32.to_bits());
+    assert_eq!((m.stats.restriction, m.stats.restriction_mask), (1, 0b11));
+    assert_eq!(m.angle.to_bits(), 0.25_f32.to_bits());
+    assert!(m.velocity.is_none() && m.paths.is_empty());
+    // without a sprite, no factor; without a run sprite, running is walking
+    let mut no_run = master();
+    master_moving_mut(&mut no_run).run_sprite_id = -1;
+    let m = run(&walker(-1), &with_masters(vec![no_run]), Some(&table()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(m.stats.speed.to_bits(), 1.0_f32.to_bits());
+    assert_eq!(m.stats.run_speed.to_bits(), 2.0_f32.to_bits());
+}
+
+/// An object below type 30 does not move.
+#[test]
+fn a_static_object_has_no_mover() {
+    let tree = genie_save::Object {
+        rge_object: Some(Box::new(genie_save::generated::world::RgeObject {
+            rge_static_object: Some(Box::default()),
+            ..Default::default()
+        })),
+        ..genie_save::Object::default()
+    };
+    assert!(
+        run(&tree, &PlayerObjects::default(), None)
+            .unwrap()
+            .is_none()
+    );
+}
+
+/// What the slice cannot read is reported: future path data, a master the save or the table
+/// does not have, a sprite, turning or restriction the table does not have.
+#[test]
+fn what_the_mover_cannot_read_is_unsupported() {
+    let objects = with_masters(vec![master()]);
+    let mut future = walker(11);
+    moving_mut(&mut future).future_path_data = Some(Box::default());
+    assert!(run(&future, &objects, Some(&table())).is_err());
+    assert!(run(&walker(11), &PlayerObjects::default(), Some(&table())).is_err());
+    assert!(run(&walker(11), &objects, None).is_err());
+    assert!(run(&walker(99), &objects, Some(&table())).is_err());
+    let unturned = MasterTable::default().with_sprite(11, 1.0, 8, 0);
+    assert!(run(&walker(11), &objects, Some(&unturned)).is_err());
+    let masks = table().with_masks(vec![0]);
+    assert!(run(&walker(11), &objects, Some(&masks)).is_err());
+    let mut negative = master();
+    master_static_mut(&mut negative).terrain_restriction_mask_id = -1;
+    assert!(run(&walker(11), &with_masters(vec![negative]), Some(&table())).is_err());
+    let mut lost_path = walker(11);
+    moving_mut(&mut lost_path).temp_path_data = vec![PathData {
+        path_id: 4,
+        ..PathData::default()
+    }];
+    assert!(run(&lost_path, &objects, Some(&table())).is_err());
+}
+
+/// A `MoveTo` toward `target` at (3, 4, 0).
+fn move_to(target: i32) -> Action {
+    Action {
+        rge_action_by_type: Some(Box::new(RgeActionByType {
+            rge_action_move_to: Some(Box::new(RgeActionMoveTo {
+                rge_action: RgeAction {
+                    target_id: target,
+                    target_x: 3.0,
+                    target_y: 4.0,
+                    ..RgeAction::default()
+                },
+                ..RgeActionMoveTo::default()
+            })),
+            ..RgeActionByType::default()
+        })),
+        ..Action::default()
+    }
+}
+
+/// An action of class `RgeActionByType`'s `explore` kind with the sub-actions `subs`.
+fn with_subs(subs: Vec<(i16, Action)>) -> Action {
+    Action {
+        rge_action_by_type: Some(Box::new(RgeActionByType {
+            rge_action_explore: Some(Box::new(RgeAction {
+                sub_actions: action_list(subs),
+                ..RgeAction::default()
+            })),
+            ..RgeActionByType::default()
+        })),
+        ..Action::default()
+    }
+}
+
+fn walking(top: Vec<(i16, Action)>) -> Option<[f32; 3]> {
+    let mut object = combat_object(5, 83);
+    combat_mut(&mut object)
+        .rge_combat_object
+        .rge_action_object
+        .actions = action_list(top);
+    saved_move_to_point(&object)
+}
+
+/// The point of a `MoveTo` to a target: the top action, its first sub-action, or an
+/// Attack's own first one; none without a target.
+#[test]
+fn the_move_to_point_is_the_walk_toward_a_target() {
+    let point = Some([3.0, 4.0, 0.0]);
+    assert_eq!(walking(vec![(1, move_to(700))]), point);
+    assert_eq!(walking(vec![(1, move_to(-1))]), None);
+    assert_eq!(
+        walking(vec![(110, with_subs(vec![(1, move_to(700))]))]),
+        point
+    );
+    let attack = with_subs(vec![(1, move_to(700))]);
+    assert_eq!(walking(vec![(110, with_subs(vec![(9, attack)]))]), point);
+    assert_eq!(
+        walking(vec![(110, with_subs(vec![(4, move_to(700))]))]),
+        None
+    );
+    assert_eq!(walking(vec![(110, with_subs(vec![]))]), None);
+    assert_eq!(walking(vec![]), None);
+}

@@ -490,3 +490,6 @@ pub(super) fn own_default_task(s: &RgeStaticObject) -> Option<i16> {
             .map(|b| tribe(&b.own_tribe_master_combat_object))
     })
 }
+
+#[cfg(test)]
+mod tests;

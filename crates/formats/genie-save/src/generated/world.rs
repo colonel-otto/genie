@@ -92,7 +92,7 @@ pub struct PlayerCivilization {
 
 /// Read by `FUN_14131a930` (`GameOptionsPlayer.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct PlayerInfo {
@@ -161,6 +161,34 @@ pub struct PlayerInfo {
     /// game: `&mPlayerPlatform`
     /// read at 0x14131d8d4
     pub player_platform: u32,
+}
+
+impl Default for PlayerInfo {
+    fn default() -> Self {
+        Self {
+            version: 14,
+            scenario_player_index: Default::default(),
+            override_scenario_color_table_id: Default::default(),
+            user_chosen_team: Default::default(),
+            resolved_team: Default::default(),
+            dat_file_crc: Default::default(),
+            multi_player_game_version: Default::default(),
+            civilization_choice: Default::default(),
+            ai_script_base_name: Default::default(),
+            ai_civ_name_index: Default::default(),
+            ai_player_name: Default::default(),
+            human_sanitized_player_name: Default::default(),
+            human_unsanitized_player_name: Default::default(),
+            humanity: Default::default(),
+            rl_profile_id: Default::default(),
+            world_player_array_index_including_gaia: Default::default(),
+            prefers_random_civs: Default::default(),
+            is_custom_ai: Default::default(),
+            slot_color_override: Default::default(),
+            handicap: Default::default(),
+            player_platform: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_140d074c0` of the build.
@@ -241,7 +269,7 @@ pub struct GameOptionsEntry3 {
 
 /// Read by `FUN_141305310` (`GameOptions.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, version: f32))]
 pub struct GameOptions {
@@ -555,9 +583,114 @@ pub struct GameOptions {
     pub civ_2: Vec<u32>,
 }
 
+impl Default for GameOptions {
+    fn default() -> Self {
+        Self {
+            game_options_dlcs: Default::default(),
+            difficulty: Default::default(),
+            map_size: Default::default(),
+            user_chosen_map_type: Default::default(),
+            resolved_map_type: Default::default(),
+            visibility_type: Default::default(),
+            victory_get_type: Default::default(),
+            resource_level: Default::default(),
+            starting_age: Default::default(),
+            ending_age: Default::default(),
+            game_mode: Default::default(),
+            game_speed: Default::default(),
+            treaty_length: Default::default(),
+            population_limit: Default::default(),
+            num_players_excluding_gaia: Default::default(),
+            max_players_for_lobby: Default::default(),
+            unused_player_color: Default::default(),
+            victory_get_amount: Default::default(),
+            trading_enabled: Default::default(),
+            team_bonuses_disabled: Default::default(),
+            randomize_positions: Default::default(),
+            full_tech_tree_enabled: Default::default(),
+            number_of_starting_units: Default::default(),
+            teams_locked: Default::default(),
+            speed_locked: Default::default(),
+            is_multi_player: Default::default(),
+            cheats_enabled: Default::default(),
+            record_game_enabled: Default::default(),
+            animals_enabled: Default::default(),
+            predators_enabled: Default::default(),
+            turbo_enabled: Default::default(),
+            shared_exploration: Default::default(),
+            team_positions: Default::default(),
+            sub_game_mode_flag: Default::default(),
+            battle_royale_time: Default::default(),
+            handicap: Default::default(),
+            walkable_farms: Default::default(),
+            marker: Default::default(),
+            player_info: Default::default(),
+            dummy_number_of_map_tiles: Default::default(),
+            version: Default::default(),
+            dummy_is_restore_game: Default::default(),
+            fog_of_war_enabled: Default::default(),
+            cheat_notifications_enabled: Default::default(),
+            colored_chat_enabled: Default::default(),
+            is_ranked: Default::default(),
+            allow_spectators: Default::default(),
+            lobby_visibility: Default::default(),
+            hide_civ_names: Default::default(),
+            is_automatch: Default::default(),
+            spectator_delay: Default::default(),
+            is_using_scenario_civ: Default::default(),
+            custom_scenario_or_campaign_file: Default::default(),
+            custom_random_map_file: Default::default(),
+            custom_random_map_scenario_file: Default::default(),
+            raw_data: Default::default(),
+            raw_data_2: Default::default(),
+            raw_data_3: Default::default(),
+            custom_map_pool: vec![Default::default(); 10],
+            standard_map_pool: Default::default(),
+            capacity: Default::default(),
+            custom_aifiles: Default::default(),
+            capacity_2: Default::default(),
+            custom_xsfiles: Default::default(),
+            game_id: Default::default(),
+            game_title: Default::default(),
+            match_type: Default::default(),
+            modded_dataset_title: Default::default(),
+            modded_dataset_workshop_id: Default::default(),
+            modded_dataset_crc: Default::default(),
+            dataset_is_official: Default::default(),
+            selected_content_mode: Default::default(),
+            is_free_host: Default::default(),
+            player_info_get_in_lobby: Default::default(),
+            start_button_pressed: Default::default(),
+            campaign_key: Default::default(),
+            map_style_type: Default::default(),
+            collide_and_correcting: Default::default(),
+            villager_force_drop: Default::default(),
+            block_humanity_team_change: Default::default(),
+            coop_campaign_index: Default::default(),
+            coop_scenario_index: Default::default(),
+            game_session_id: Default::default(),
+            random_map_seed: Default::default(),
+            play_slideshows: Default::default(),
+            other_players: Default::default(),
+            map_filters_as_array: vec![Default::default(); 8],
+            controller_only_scenario: Default::default(),
+            keyboard_and_mouse_only_scenario: Default::default(),
+            game_was_saved: Default::default(),
+            campaign_difficulty_modifier: Default::default(),
+            is_event_scenario: Default::default(),
+            allowed_civs_option: Default::default(),
+            antiquity_mode: Default::default(),
+            size: Default::default(),
+            civ: Default::default(),
+            size_pompeii: Default::default(),
+            civ_2: Default::default(),
+        }
+    }
+}
+
 /// Read by `FUN_1412ff850` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct GameOptionsRead {
@@ -571,9 +704,18 @@ pub struct GameOptionsRead {
     pub game_options: GameOptions,
 }
 
+impl Default for GameOptionsRead {
+    fn default() -> Self {
+        Self {
+            version: 1122.0,
+            game_options: Default::default(),
+        }
+    }
+}
+
 /// Read by `FUN_140edcb10` (`SaveGameFileHeader.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct SaveGameFileHeader {
@@ -610,6 +752,23 @@ pub struct SaveGameFileHeader {
     /// game: `&mTimeOfSave`
     /// read at 0x140ededb0
     pub time_of_save: u64,
+}
+
+impl Default for SaveGameFileHeader {
+    fn default() -> Self {
+        Self {
+            game_version: vec![Default::default(); 8],
+            old_save_game_version: -1.0,
+            new_save_game_version: Default::default(),
+            game_build_number: Default::default(),
+            date_time_played: Default::default(),
+            game_options_read: Default::default(),
+            save_game_name: Default::default(),
+            random_seed: Default::default(),
+            game_duration: Default::default(),
+            time_of_save: Default::default(),
+        }
+    }
 }
 
 #[binrw]
@@ -649,7 +808,7 @@ pub struct TribePlayerTechEntry2 {
 }
 
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct TechPlayerTree {
     /// HD Tech_Player_Tree::research_done (float, +0)
@@ -703,6 +862,31 @@ pub struct TechPlayerTree {
     /// game: `tech_player_tree[index].mResearchBuildingMasterId`
     /// read at 0x1413c3ff5; named by the save's write in the same place (0x1413d1a60, write at 0x1413d293e)
     pub tech_player_tree_research_building_master_id: u16,
+}
+
+impl Default for TechPlayerTree {
+    fn default() -> Self {
+        Self {
+            research_done: Default::default(),
+            state: Default::default(),
+            cost_adj: vec![Default::default(); 3],
+            tech_player_tree_times_researched: Default::default(),
+            tech_player_tree_allow_multiple_research: Default::default(),
+            name_override: Default::default(),
+            description_override: Default::default(),
+            tech_player_tree_stack_tech: Default::default(),
+            tech_player_tree_research_cap: Default::default(),
+            tech_player_tree_pending_count: Default::default(),
+            cost_override: vec![Default::default(); 3],
+            tech_player_tree_icon_override: Default::default(),
+            tech_player_tree_hotkey_override: Default::default(),
+            tech_player_tree_enabled_tech: Default::default(),
+            tech_player_tree_effect_override: Default::default(),
+            num_locations: Default::default(),
+            location: Default::default(),
+            tech_player_tree_research_building_master_id: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_1413c2a40` of the build.
@@ -929,8 +1113,8 @@ impl Default for TechTreeEntry1 {
             tech_tree_ages_dependent_tech_ids: Default::default(),
             tech_tree_ages_age_preregs: [Default::default(); 84],
             tech_tree_ages_num_building_levels: Default::default(),
-            tech_tree_ages_bld_per_zone: Default::default(),
-            tech_tree_ages_grp_len_per_zone: Default::default(),
+            tech_tree_ages_bld_per_zone: vec![Default::default(); 10],
+            tech_tree_ages_grp_len_per_zone: vec![Default::default(); 10],
             tech_tree_ages_max_age_len: Default::default(),
             tech_tree_ages_node_type: Default::default(),
         }
@@ -1249,7 +1433,7 @@ pub struct XsDataVersion2 {
 
 /// Read by `FUN_14174d040` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsVariableEntryVersion {
@@ -1257,6 +1441,12 @@ pub struct XsVariableEntryVersion {
     /// read at 0x14174d111
     #[br(assert(ms_load_version == 2, "the build writes ms_load_version 2"))]
     pub ms_load_version: u32,
+}
+
+impl Default for XsVariableEntryVersion {
+    fn default() -> Self {
+        Self { ms_load_version: 2 }
+    }
 }
 
 /// Read by `FUN_1416f1ee0` of the build.
@@ -1273,7 +1463,7 @@ pub struct XsFileEntryVersion {
 
 /// Read by `FUN_1416fcb10` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsFunctionEntryVersion {
@@ -1283,9 +1473,15 @@ pub struct XsFunctionEntryVersion {
     pub ms_load_version: u32,
 }
 
+impl Default for XsFunctionEntryVersion {
+    fn default() -> Self {
+        Self { ms_load_version: 2 }
+    }
+}
+
 /// Read by `FUN_141734cf0` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsSymbolTableVersion {
@@ -1295,9 +1491,15 @@ pub struct XsSymbolTableVersion {
     pub ms_load_version: u32,
 }
 
+impl Default for XsSymbolTableVersion {
+    fn default() -> Self {
+        Self { ms_load_version: 1 }
+    }
+}
+
 /// Read by `FUN_141735010` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsSymbolTableVersion2 {
@@ -1307,9 +1509,15 @@ pub struct XsSymbolTableVersion2 {
     pub ms_load_version: u32,
 }
 
+impl Default for XsSymbolTableVersion2 {
+    fn default() -> Self {
+        Self { ms_load_version: 1 }
+    }
+}
+
 /// Read by `FUN_14173ae90` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsSyscallEntryVersion {
@@ -1317,6 +1525,12 @@ pub struct XsSyscallEntryVersion {
     /// read at 0x14173af61
     #[br(assert(ms_load_version == 2, "the build writes ms_load_version 2"))]
     pub ms_load_version: u32,
+}
+
+impl Default for XsSyscallEntryVersion {
+    fn default() -> Self {
+        Self { ms_load_version: 2 }
+    }
 }
 
 /// Read by `FUN_14174c300` (`xsvariableentry.cpp`) of the build.
@@ -1573,7 +1787,7 @@ pub struct BxsSource {
 
 /// Read by `FUN_14170c7d0` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct XsRuleEntryVersion {
@@ -1581,6 +1795,12 @@ pub struct XsRuleEntryVersion {
     /// read at 0x14170c8cf
     #[br(assert(ms_load_version == 1, "the build writes ms_load_version 1"))]
     pub ms_load_version: u32,
+}
+
+impl Default for XsRuleEntryVersion {
+    fn default() -> Self {
+        Self { ms_load_version: 1 }
+    }
 }
 
 /// Read by `FUN_14170ca50` of the build.
@@ -2266,7 +2486,7 @@ pub struct WorldPlayerEntry1 {
 
 /// Read by `FUN_1415f1160` (`WorldPlayer.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct WorldPlayer {
@@ -2490,6 +2710,81 @@ pub struct WorldPlayer {
     pub end_marker: (),
 }
 
+impl Default for WorldPlayer {
+    fn default() -> Self {
+        Self {
+            base: Default::default(),
+            type_: Default::default(),
+            update_count: Default::default(),
+            update_count_need_help: Default::default(),
+            enemy_alert_count: Default::default(),
+            regular_attack_count: Default::default(),
+            regular_attack_flag: Default::default(),
+            regular_attack_x: Default::default(),
+            regular_attack_y: Default::default(),
+            town_attack_count: Default::default(),
+            town_attack_flag: Default::default(),
+            town_attack_x: Default::default(),
+            town_attack_y: Default::default(),
+            fog_update: Default::default(),
+            update_time: Default::default(),
+            tech_tree: Default::default(),
+            update_history_count: Default::default(),
+            history: Default::default(),
+            ruin_held_time: Default::default(),
+            artifact_held_time: Default::default(),
+            per_player: vec![Default::default(); 9],
+            fealty: Default::default(),
+            offboard_trade_route_explored: Default::default(),
+            offboard_trade_route_being_explored: Default::default(),
+            max_trade_amount: Default::default(),
+            old_max_trade_amount: Default::default(),
+            max_trade_limit: Default::default(),
+            current_wood_limit: Default::default(),
+            current_food_limit: Default::default(),
+            current_stone_limit: Default::default(),
+            current_ore_limit: Default::default(),
+            commodity_volumn_delta: Default::default(),
+            trade_vig_rate: Default::default(),
+            trade_refresh_timer: Default::default(),
+            trade_refresh_rate: Default::default(),
+            prod_queue_on: Default::default(),
+            chance_to_dodge_missiles: Default::default(),
+            chance_for_archers_to_maintain_distance: Default::default(),
+            open_gates_for_pathing_count: Default::default(),
+            farm_queue_count: Default::default(),
+            auto_farm_queue: Default::default(),
+            fish_trap_queue_count: Default::default(),
+            auto_fish_trap_queue: Default::default(),
+            cp_nomad_tc_build_lock: Default::default(),
+            sudden_death_can_be_eliminated: Default::default(),
+            tcflared: Default::default(),
+            old_kills: Default::default(),
+            old_razings: Default::default(),
+            battle_flag: Default::default(),
+            razings_flag: Default::default(),
+            total_kills: Default::default(),
+            total_razings: Default::default(),
+            old_hit_points: Default::default(),
+            total_hit_points: Default::default(),
+            old_player_kills: vec![Default::default(); 9],
+            tech_tree_help: Default::default(),
+            is_scout_map_enabled: Default::default(),
+            tribe_information_aimodule: Default::default(),
+            final_battle_royale_position: Default::default(),
+            sharing_is_caring: Default::default(),
+            is_first_update: Default::default(),
+            d3_ktmilitary_unit_built: Default::default(),
+            marker: Default::default(),
+            temp: Default::default(),
+            unsupported_at_0x1415f3e84: Default::default(),
+            using_xs: Default::default(),
+            bxs_runtime: Default::default(),
+            end_marker: Default::default(),
+        }
+    }
+}
+
 /// Read by `FUN_141120780` of the build.
 #[binrw]
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -2536,7 +2831,7 @@ pub struct RgeMasterStaticObjectEntry2 {
 
 /// Read by `FUN_1411319f0` (`MasterStaticObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterStaticObject {
@@ -2691,6 +2986,63 @@ pub struct RgeMasterStaticObject {
     /// game: `mName`
     /// helper 0x140932010
     pub name: SigString,
+}
+
+impl Default for RgeMasterStaticObject {
+    fn default() -> Self {
+        Self {
+            read_temp: Default::default(),
+            read_temp_2: Default::default(),
+            read_temp_3: Default::default(),
+            read_temp_4: Default::default(),
+            read_temp_5: Default::default(),
+            available: Default::default(),
+            hide_in_scenario_editor: Default::default(),
+            read_temp_6: Default::default(),
+            los: Default::default(),
+            obj_max: Default::default(),
+            radius_x: Default::default(),
+            radius_y: Default::default(),
+            attribute_max_amount: Default::default(),
+            attribute: vec![Default::default(); 3],
+            disabled: Default::default(),
+            string_id: Default::default(),
+            string_id2: Default::default(),
+            terrain_restriction_mask_id: Default::default(),
+            death_spawn_obj_id: Default::default(),
+            button_pict: Default::default(),
+            area_effect_object_level: Default::default(),
+            fog_flag: Default::default(),
+            occlusion_flag: Default::default(),
+            object_flags: Default::default(),
+            death_spawn_obj_id2: Default::default(),
+            radius_z: Default::default(),
+            obstruction_type: Default::default(),
+            obstruction_class: Default::default(),
+            can_be_built_on: Default::default(),
+            idle_sprite_id: Default::default(),
+            idle2_sprite_id: Default::default(),
+            death_sprite_id: Default::default(),
+            undead_sprite_id: Default::default(),
+            override_description: Default::default(),
+            temp_sound_num: Default::default(),
+            temp_sound_num_2: Default::default(),
+            temp_sound_num_3: Default::default(),
+            temp_sound_num_4: Default::default(),
+            selected_sound_event_event_id: Default::default(),
+            death_sound_event_event_id: Default::default(),
+            created_sound_event_event_id: Default::default(),
+            damage_sound_event_event_id: Default::default(),
+            unit_level: Default::default(),
+            combat_level: Default::default(),
+            select_level: Default::default(),
+            map_draw_level: Default::default(),
+            damage_sprite_entry_mod: Default::default(),
+            damage_sprite_num: Default::default(),
+            damage_sprite: Default::default(),
+            name: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_1410a9400` of the build.
@@ -2868,7 +3220,7 @@ pub struct TaskList {
 
 /// Read by `FUN_1410a3510` (`MasterActionObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMasterActionObject {
@@ -2903,6 +3255,23 @@ pub struct RgeMasterActionObject {
     /// game: `&run_pattern`
     /// helper 0x140c94e10
     pub run_pattern: u8,
+}
+
+impl Default for RgeMasterActionObject {
+    fn default() -> Self {
+        Self {
+            rge_master_moving_object: Default::default(),
+            search_radius: Default::default(),
+            work_rate: Default::default(),
+            handicapped_work_rate: Default::default(),
+            object_task_flags: Default::default(),
+            tasks: Default::default(),
+            temp_sound_num: Default::default(),
+            temp_sound_num_2: Default::default(),
+            sound_event_event_id: vec![Default::default(); 2],
+            run_pattern: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_1410c8520` (`MasterCombatObject.cpp`) of the build.
@@ -3028,7 +3397,7 @@ pub struct TribeMasterCombatObjectEntry1 {
 
 /// Read by `FUN_14126f2a0` (`TribeMasterCombatObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeMasterCombatObject {
@@ -3140,6 +3509,48 @@ pub struct TribeMasterCombatObject {
     /// helper 0x140a90f60
     #[br(if(ver >= 0x426666))]
     pub train_location_entry_mod: Option<i16>,
+}
+
+impl Default for TribeMasterCombatObject {
+    fn default() -> Self {
+        Self {
+            rge_master_combat_object: Default::default(),
+            build_inventory: vec![Default::default(); 3],
+            num_train_locations: Default::default(),
+            train_location: Default::default(),
+            volley_fire_amount: Default::default(),
+            max_attacks_in_volley: Default::default(),
+            hero_flag: Default::default(),
+            orig_pierce_armor: Default::default(),
+            regeneration_rate: Default::default(),
+            max_charge: Default::default(),
+            recharge_rate: Default::default(),
+            charge_event: Default::default(),
+            charge_type: Default::default(),
+            charge_target: Default::default(),
+            charge_projectile_unit: Default::default(),
+            attack_priority: Default::default(),
+            invulnerability_level: Default::default(),
+            button_icon_id: Default::default(),
+            button_short_tooltip_id: Default::default(),
+            button_extended_tooltip_id: Default::default(),
+            button_hotkey_action: Default::default(),
+            min_conversion_time_adj: Default::default(),
+            max_conversion_time_adj: Default::default(),
+            conversion_chance_adj: Default::default(),
+            volley_missile_id: Default::default(),
+            temp_formation_category: Default::default(),
+            special_sprite_id: Default::default(),
+            special_attack_flag: Default::default(),
+            temp_id: Default::default(),
+            temp_id_2: Default::default(),
+            temp_id_3: Default::default(),
+            volley_x_spread: Default::default(),
+            volley_y_spread: Default::default(),
+            volley_start_spread_adjustment: Default::default(),
+            train_location_entry_mod: Some(Default::default()),
+        }
+    }
 }
 
 /// Read by `FUN_1410d7320` of the build.
@@ -3296,7 +3707,7 @@ pub struct RgeVisibleMap {
 
 /// Read by `FUN_141289120` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct VisibleResourceRec {
@@ -3316,6 +3727,20 @@ pub struct VisibleResourceRec {
     pub pos_x: f32,
     /// HD VISIBLE_RESOURCE_REC::pos_y, stored as a float at +0x1c
     pub pos_y: f32,
+}
+
+impl Default for VisibleResourceRec {
+    fn default() -> Self {
+        Self {
+            struct_id: 1448232259,
+            struct_version: 1,
+            object_id: Default::default(),
+            distance: Default::default(),
+            zone: Default::default(),
+            pos_x: Default::default(),
+            pos_y: Default::default(),
+        }
+    }
 }
 
 #[binrw]
@@ -3390,7 +3815,7 @@ pub struct OwnRgeMasterStaticObjectEntry2 {
 
 /// Read by `FUN_14112c560` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnRgeMasterStaticObject {
@@ -3620,6 +4045,88 @@ pub struct OwnRgeMasterStaticObject {
     /// game: `readTemp`
     /// read at 0x1411315fd
     pub read_temp_5: i16,
+}
+
+impl Default for OwnRgeMasterStaticObject {
+    fn default() -> Self {
+        Self {
+            read_temp: Default::default(),
+            string_id: Default::default(),
+            string_id2: Default::default(),
+            read_temp_2: Default::default(),
+            sprite_num: Default::default(),
+            sprite_num2: Default::default(),
+            death_sprite_num: Default::default(),
+            undead_sprite_num: Default::default(),
+            undead_flag: Default::default(),
+            read_temp_3: Default::default(),
+            los: Default::default(),
+            obj_max: Default::default(),
+            radius_x: Default::default(),
+            radius_y: Default::default(),
+            radius_z: Default::default(),
+            created_sound_num: Default::default(),
+            damage_sound_num: Default::default(),
+            death_spawn_obj_id: Default::default(),
+            death_spawn_obj_id2: Default::default(),
+            sort_number: Default::default(),
+            can_be_built_on: Default::default(),
+            button_pict: Default::default(),
+            hide_in_scenario_editor: Default::default(),
+            portrait_pict: Default::default(),
+            available: Default::default(),
+            disabled: Default::default(),
+            tile_req1: Default::default(),
+            tile_req2: Default::default(),
+            center_tile_req1: Default::default(),
+            center_tile_req2: Default::default(),
+            construction_radius_x: Default::default(),
+            construction_radius_y: Default::default(),
+            elevation_flag: Default::default(),
+            fog_flag: Default::default(),
+            terrain_restriction_mask_id: Default::default(),
+            movement_type: Default::default(),
+            attribute_max_amount: Default::default(),
+            attribute_rot: Default::default(),
+            area_effect_object_level: Default::default(),
+            combat_level: Default::default(),
+            select_level: Default::default(),
+            map_draw_level: Default::default(),
+            unit_level: Default::default(),
+            multiple_attribute_mod: Default::default(),
+            map_color: Default::default(),
+            string_id_2: Default::default(),
+            help_page_id: Default::default(),
+            recyclable: Default::default(),
+            track_as_resource: Default::default(),
+            create_doppleganger_on_death: Default::default(),
+            resource_group: Default::default(),
+            occlusion_flag: Default::default(),
+            obstruction_type: Default::default(),
+            obstruction_class: Default::default(),
+            object_flags: Default::default(),
+            draw_flag: Default::default(),
+            draw_color: Default::default(),
+            outline_radius_x: Default::default(),
+            outline_radius_y: Default::default(),
+            outline_radius_z: Default::default(),
+            override_description: Default::default(),
+            attribute: vec![Default::default(); 3],
+            damage_sprite_num: Default::default(),
+            damage_sprite: Default::default(),
+            selected_sound_num: Default::default(),
+            death_sound_num: Default::default(),
+            created_sound_event_event_id: Default::default(),
+            damage_sound_event_event_id: Default::default(),
+            selected_sound_event_event_id: Default::default(),
+            death_sound_event_event_id: Default::default(),
+            attack_reaction: Default::default(),
+            convert_terrain_flag: Default::default(),
+            name: Default::default(),
+            read_temp_4: Default::default(),
+            read_temp_5: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_1410a9070` of the build.
@@ -3892,7 +4399,7 @@ pub struct OwnTribeMasterCombatObjectEntry1 {
 
 /// Read by `FUN_14126ae20` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnTribeMasterCombatObject {
@@ -4011,6 +4518,50 @@ pub struct OwnTribeMasterCombatObject {
     pub orig_pierce_armor: i16,
 }
 
+impl Default for OwnTribeMasterCombatObject {
+    fn default() -> Self {
+        Self {
+            own_rge_master_combat_object: Default::default(),
+            build_inventory: vec![Default::default(); 3],
+            num_train_locations: Default::default(),
+            train_location: Default::default(),
+            regeneration_rate: Default::default(),
+            spacing_modifier: Default::default(),
+            formation_category: Default::default(),
+            hero_flag: Default::default(),
+            temp_sprite_id: Default::default(),
+            temp_sprite_id_2: Default::default(),
+            temp_sprite_id_3: Default::default(),
+            temp_sprite_id_4: Default::default(),
+            temp_sprite_id_5: Default::default(),
+            max_charge: Default::default(),
+            recharge_rate: Default::default(),
+            charge_event: Default::default(),
+            charge_type: Default::default(),
+            charge_target: Default::default(),
+            charge_projectile_unit: Default::default(),
+            attack_priority: Default::default(),
+            invulnerability_level: Default::default(),
+            button_icon_id: Default::default(),
+            button_short_tooltip_id: Default::default(),
+            button_extended_tooltip_id: Default::default(),
+            button_hotkey_action: Default::default(),
+            min_conversion_time_adj: Default::default(),
+            max_conversion_time_adj: Default::default(),
+            conversion_chance_adj: Default::default(),
+            volley_fire_amount: Default::default(),
+            max_attacks_in_volley: Default::default(),
+            volley_x_spread: Default::default(),
+            volley_y_spread: Default::default(),
+            volley_start_spread_adjustment: Default::default(),
+            volley_missile_id: Default::default(),
+            temp_sprite_id_6: Default::default(),
+            special_attack_flag: Default::default(),
+            orig_pierce_armor: Default::default(),
+        }
+    }
+}
+
 #[binrw]
 #[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
@@ -4028,7 +4579,7 @@ pub struct OwnTribeMasterBuildingObjectEntry1 {
 
 /// Read by `FUN_141240660` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct OwnTribeMasterBuildingObject {
@@ -4114,6 +4665,40 @@ pub struct OwnTribeMasterBuildingObject {
     /// read at 0x141242ff0
     #[br(count = 6)]
     pub pillage_attr: Vec<u8>,
+}
+
+impl Default for OwnTribeMasterBuildingObject {
+    fn default() -> Self {
+        Self {
+            own_tribe_master_combat_object: Default::default(),
+            sprite_num: Default::default(),
+            snow_sprite_num: Default::default(),
+            destruction_sprite_num: Default::default(),
+            destruction_rubble_sprite_num: Default::default(),
+            researching_sprite_num: Default::default(),
+            research_completed_sprite_num: Default::default(),
+            building_connect_flag: Default::default(),
+            building_facet: Default::default(),
+            build_and_go_away: Default::default(),
+            on_build_make_obj: Default::default(),
+            on_build_make_tile: Default::default(),
+            on_build_make_overlay: Default::default(),
+            on_build_make_tech: Default::default(),
+            can_burn: Default::default(),
+            linked: vec![Default::default(); 4],
+            construction_id: Default::default(),
+            open_close_id: Default::default(),
+            open_close_sound_num: Default::default(),
+            sound_num: Default::default(),
+            open_close_sound_event_event_id: Default::default(),
+            construction_sound_event_event_id: Default::default(),
+            garrison_units: Default::default(),
+            garrison_heal_rate: Default::default(),
+            garrison_repair_rate: Default::default(),
+            salvage_id: Default::default(),
+            pillage_attr: vec![Default::default(); 6],
+        }
+    }
 }
 
 /// Read by `FUN_1413b0c50` of the build.
@@ -4225,7 +4810,7 @@ pub struct ActiveSpriteListEntry1 {
 
 /// Read by `FUN_1413b87c0` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct ActiveSpriteList {
@@ -4233,6 +4818,14 @@ pub struct ActiveSpriteList {
     /// entries until a sprite_type of 0, that one included
     #[br(parse_with = binrw::helpers::until(|e: &ActiveSpriteListEntry1| e.sprite_type == 0), args(ver))]
     pub sprite_type_list: Vec<ActiveSpriteListEntry1>,
+}
+
+impl Default for ActiveSpriteList {
+    fn default() -> Self {
+        Self {
+            sprite_type_list: vec![Default::default()],
+        }
+    }
 }
 
 /// Read by `FUN_1408cb520` of the build.
@@ -5484,7 +6077,7 @@ pub struct ActionListEntry1 {
 
 /// Read by `FUN_140a98850` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ActionList {
@@ -5492,6 +6085,14 @@ pub struct ActionList {
     /// entries until a action_type of 0, that one included
     #[br(parse_with = binrw::helpers::until(|e: &ActionListEntry1| e.action_type == 0), args(ver, num_players))]
     pub action_type_list: Vec<ActionListEntry1>,
+}
+
+impl Default for ActionList {
+    fn default() -> Self {
+        Self {
+            action_type_list: vec![Default::default()],
+        }
+    }
 }
 
 /// Read by `FUN_14106ec00` of the build.
@@ -5537,7 +6138,7 @@ pub struct RgeCombatObjectEntry1 {
 
 /// Read by `FUN_141089880` (`CombatObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct RgeCombatObject {
@@ -5600,6 +6201,32 @@ pub struct RgeCombatObject {
     /// game: `&mProcessedKill`
     /// helper 0x140ccd170
     pub processed_kill: u8,
+}
+
+impl Default for RgeCombatObject {
+    fn default() -> Self {
+        Self {
+            rge_action_object: Default::default(),
+            formation_id: Default::default(),
+            formation_row: Default::default(),
+            formation_col: Default::default(),
+            attack_timer: Default::default(),
+            reload_worldtime: Some(Default::default()),
+            capture_flag: Default::default(),
+            multi_unified_points: Default::default(),
+            large_object_radius: Default::default(),
+            attack_count: Default::default(),
+            hit_something_valid_for_charge_attack: Default::default(),
+            num_kill_rewards: Default::default(),
+            kill_reward: Default::default(),
+            object_trigger_flags_m_bits: Default::default(),
+            previous_master_id: Default::default(),
+            m_transform_back_timer_ms: Default::default(),
+            m_special_ability_duration_ms: Default::default(),
+            m_ability_activated_time_ms: Default::default(),
+            processed_kill: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_140f961e0` of the build.
@@ -5916,7 +6543,7 @@ pub struct TribeCombatObjectEntry1 {
 
 /// Read by `FUN_14121ec90` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeCombatObject {
@@ -6091,6 +6718,67 @@ pub struct TribeCombatObject {
     pub skip_volley_attack: u8,
 }
 
+impl Default for TribeCombatObject {
+    fn default() -> Self {
+        Self {
+            rge_combat_object: Default::default(),
+            next_volley: Default::default(),
+            using_special_attack_animation: Default::default(),
+            attr_amt: vec![Default::default(); 6],
+            decay_timer: Default::default(),
+            raider_build_countdown: Default::default(),
+            locked_down_count: Default::default(),
+            inside_garrison_count: Default::default(),
+            need_unit_ai: Default::default(),
+            unit_ai_module: Default::default(),
+            tribe_elephant_unit_ai_module: Default::default(),
+            tribe_tower_unit_ai_module: Default::default(),
+            tribe_building_unit_ai_module: Default::default(),
+            unit_ai_module_2: Default::default(),
+            town_bell_flag: Default::default(),
+            back_to_work1_town_bell_target_id: Default::default(),
+            back_to_work1_town_bell_target_x: Default::default(),
+            back_to_work1_town_bell_target_y: Default::default(),
+            back_to_work1_town_bell_target_id2: Default::default(),
+            back_to_work1_town_bell_target_type: Default::default(),
+            back_to_work1_town_bell_action: Default::default(),
+            back_to_work2_town_bell_target_id: Default::default(),
+            back_to_work2_town_bell_target_x: Default::default(),
+            back_to_work2_town_bell_target_y: Default::default(),
+            back_to_work2_town_bell_target_id2: Default::default(),
+            back_to_work2_town_bell_target_type: Default::default(),
+            back_to_work2_town_bell_action: Default::default(),
+            berserker_timer: Default::default(),
+            num_builders: Default::default(),
+            num_healers: Default::default(),
+            charge: Default::default(),
+            melee_armor_removed: Default::default(),
+            pierce_armor_removed: Default::default(),
+            movement_damage_timer: Default::default(),
+            attack_powerup: Default::default(),
+            reload_powerup: Default::default(),
+            powerup_update_offset: Default::default(),
+            speed_powerup: Default::default(),
+            work_rate_powerup: Default::default(),
+            regeneration_rate_powerup: Default::default(),
+            speed_stinger: Default::default(),
+            regeneration_stinger: Default::default(),
+            reload_stinger: Default::default(),
+            active_stinger_count: Default::default(),
+            stinger: Default::default(),
+            hitpoints_powerup: Default::default(),
+            hitpoints_max_powerup: Default::default(),
+            max_range_powerup: Default::default(),
+            melee_armor_powerup: Default::default(),
+            pierce_armor_powerup: Default::default(),
+            local_resource_store_size: Default::default(),
+            local_resource_store: Default::default(),
+            conversion_rate: Default::default(),
+            skip_volley_attack: Default::default(),
+        }
+    }
+}
+
 #[binrw]
 #[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
@@ -6117,7 +6805,7 @@ pub struct TribeBuildingObjectEntry1 {
 
 /// Read by `FUN_1411df160` (`TribeBuildingObject.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct TribeBuildingObject {
@@ -6295,6 +6983,67 @@ pub struct TribeBuildingObject {
     pub is_on_mangrove_shallows: Option<u8>,
 }
 
+impl Default for TribeBuildingObject {
+    fn default() -> Self {
+        Self {
+            tribe_combat_object: Default::default(),
+            built: Default::default(),
+            build_pts: Default::default(),
+            unique_build_id: Default::default(),
+            culture: Default::default(),
+            burning: Default::default(),
+            last_burn_time: Default::default(),
+            last_garrison_time: Default::default(),
+            relic_count: Default::default(),
+            specific_relic_count: Default::default(),
+            gather_point_exists: Default::default(),
+            gather_point_x: Default::default(),
+            gather_point_y: Default::default(),
+            gather_point_z: Default::default(),
+            gather_point_target: Default::default(),
+            gather_point_target_master: Default::default(),
+            desolid_flag: Default::default(),
+            mupt_linked_object_references_linked_owner_id: Default::default(),
+            mupt_linked_object_references_linked_object_ids: vec![Default::default(); 4],
+            captured_unit_count: Default::default(),
+            extra_actions: Default::default(),
+            production_queue_size: Default::default(),
+            production_queue: Default::default(),
+            production_queue_count: Default::default(),
+            production_queue_total_units: Default::default(),
+            production_queue_enabled: Default::default(),
+            production_queue_actions: Default::default(),
+            endpoint1: Default::default(),
+            endpoint1_2: Default::default(),
+            gate_locked: Default::default(),
+            first_update: Default::default(),
+            close_timer: Default::default(),
+            building_terrain_type: Default::default(),
+            temp_semi_asleep: Default::default(),
+            snow_flag: Default::default(),
+            original_owner: Default::default(),
+            temp: Default::default(),
+            livestock_summation: Default::default(),
+            pasture_livestock_count: Default::default(),
+            livestock_id: Default::default(),
+            pasture_worker_num: Default::default(),
+            pasture_worker_id: Default::default(),
+            has_open_closed_master_object: Default::default(),
+            master_type: Default::default(),
+            tribe_master_building_object: Default::default(),
+            attacking_units_count: Default::default(),
+            unit_id: Default::default(),
+            local_disabled_techs_size: Default::default(),
+            value: Default::default(),
+            local_available_units_size: Default::default(),
+            value_2: Default::default(),
+            local_researched_techs_size: Default::default(),
+            value_3: Default::default(),
+            is_on_mangrove_shallows: Some(Default::default()),
+        }
+    }
+}
+
 /// Read by `FUN_14108dda0` of the build.
 #[binrw]
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -6409,7 +7158,7 @@ pub struct ObjectListEntry1 {
 
 /// Read by `FUN_141168280` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, num_players: usize))]
 pub struct ObjectList {
@@ -6423,6 +7172,16 @@ pub struct ObjectList {
     /// entries until a object_type of 0, that one included
     #[br(parse_with = binrw::helpers::until(|e: &ObjectListEntry1| e.object_type == 0), args(ver, num_players))]
     pub object_type_list: Vec<ObjectListEntry1>,
+}
+
+impl Default for ObjectList {
+    fn default() -> Self {
+        Self {
+            list_size: Default::default(),
+            grow_size: Default::default(),
+            object_type_list: vec![Default::default()],
+        }
+    }
 }
 
 #[binrw]
@@ -6669,7 +7428,7 @@ impl Default for WorldPlayerGaia {
             world_player: Default::default(),
             update_time: Default::default(),
             update_nature: Default::default(),
-            creatures: Default::default(),
+            creatures: vec![Default::default(); 5],
             next_wolf_attack_update_time: Default::default(),
             wolf_attack_update_interval: Default::default(),
             wolf_attack_stop_time: Default::default(),
@@ -6983,7 +7742,7 @@ pub struct WorldPlayerBase {
 
 /// Read by `FUN_141410870` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32, map_width: i32, map_height: i32))]
 pub struct ZoneMap {
@@ -7004,6 +7763,18 @@ pub struct ZoneMap {
     /// game: `mNumberZones`
     /// read at 0x141410fea; named by the save's write in the same place (0x141413c80, write at 0x140a913c7)
     pub number_zones: u32,
+}
+
+impl Default for ZoneMap {
+    fn default() -> Self {
+        Self {
+            number_tiles_in_zone_value: vec![Default::default(); 512],
+            zone_map: Default::default(),
+            float_value_count: Default::default(),
+            float_value: Default::default(),
+            number_zones: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_1414110f0` of the build.
@@ -7112,7 +7883,7 @@ pub struct RgeMapRow {
 
 /// Read by `FUN_140f6a610` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeMap {
@@ -7149,6 +7920,23 @@ pub struct RgeMap {
     /// read by 0x1412853e0; named by the save's write in the same place (0x140f6eaf0)
     #[br(args(ver))]
     pub unified_vis_map: UnifiedVisibleMap,
+}
+
+impl Default for RgeMap {
+    fn default() -> Self {
+        Self {
+            header: 3735936685,
+            version: 3,
+            map_width: Default::default(),
+            map_height: Default::default(),
+            map_zones: Default::default(),
+            unencrypted_visible: Default::default(),
+            unencrypted_fog: Default::default(),
+            rows: Default::default(),
+            umv_data_list: Default::default(),
+            unified_vis_map: Default::default(),
+        }
+    }
 }
 
 #[binrw]
@@ -7288,7 +8076,7 @@ pub struct RgeVictoryConditionsEntry2 {
 
 /// Read by `FUN_1414e6270` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct RgeVictoryConditions {
@@ -7320,6 +8108,22 @@ pub struct RgeVictoryConditions {
     /// a loop of 11 reads; named by the save's write in the same place (0x1414f00b0)
     #[br(count = point_list_num as usize)]
     pub point_temp: Vec<RgeVictoryConditionsEntry2>,
+}
+
+impl Default for RgeVictoryConditions {
+    fn default() -> Self {
+        Self {
+            version: 2.1,
+            list_num: Default::default(),
+            victory: Default::default(),
+            list: Default::default(),
+            temp0: Default::default(),
+            point_list_num: Default::default(),
+            starting_points: Default::default(),
+            starting_group: Default::default(),
+            point_temp: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_1408d0450` of the build.
@@ -7355,13 +8159,21 @@ pub struct Picture {
 }
 
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 pub struct BaseScenarioEntry1 {
     /// game: `playerName`
     /// helper 0x140938490
     #[br(count = 256)]
     pub player_name: Vec<u8>,
+}
+
+impl Default for BaseScenarioEntry1 {
+    fn default() -> Self {
+        Self {
+            player_name: vec![Default::default(); 256],
+        }
+    }
 }
 
 #[binrw]
@@ -7414,7 +8226,7 @@ pub struct BaseScenarioEntry3 {
 
 /// Read by `FUN_140ca6c50` (`BaseScenario.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BaseScenario {
@@ -7536,6 +8348,49 @@ pub struct BaseScenario {
     pub val: i32,
 }
 
+impl Default for BaseScenario {
+    fn default() -> Self {
+        Self {
+            version: 1.56,
+            max_players: Default::default(),
+            gaia_player_index: Default::default(),
+            player_name: Default::default(),
+            player_name_string_id: Default::default(),
+            player: Default::default(),
+            player_civ_lock_array: Default::default(),
+            player_personality_lock_array: Default::default(),
+            victory_conquest: Default::default(),
+            list_num: Default::default(),
+            avail_id: Default::default(),
+            old_time: Default::default(),
+            scenario_name: Default::default(),
+            description_string_id: Default::default(),
+            hints_string_id: Default::default(),
+            win_message_string_id: Default::default(),
+            loss_message_string_id: Default::default(),
+            historical_notes_string_id: Default::default(),
+            scout_message_string_id: Default::default(),
+            description: Default::default(),
+            hints: Default::default(),
+            win_message: Default::default(),
+            loss_message: Default::default(),
+            historical_notes: Default::default(),
+            scout_message: Default::default(),
+            pre_game_movie_file_name: Default::default(),
+            win_movie_file_name: Default::default(),
+            loss_movie_file_name: Default::default(),
+            mission_bmp_name: Default::default(),
+            mupt_mission_picture: Default::default(),
+            build_list_file_name: Default::default(),
+            city_plan_file_name: Default::default(),
+            ai_rules_file_name: Default::default(),
+            file_data: Default::default(),
+            ai_rules_type: Default::default(),
+            val: Default::default(),
+        }
+    }
+}
+
 #[binrw]
 #[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
@@ -7621,7 +8476,7 @@ pub struct TribeScenarioEntry6 {
 
 /// Read by `FUN_140ce4640` (`TribeScenario.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TribeScenario {
@@ -7755,6 +8610,52 @@ pub struct TribeScenario {
     pub secondary_game_modes: i32,
 }
 
+impl Default for TribeScenario {
+    fn default() -> Self {
+        Self {
+            base_scenario: Default::default(),
+            player_info: Default::default(),
+            checksum: Default::default(),
+            victory: Default::default(),
+            victory_all_flag: Default::default(),
+            mp_victory_type: Default::default(),
+            victory_score: Default::default(),
+            victory_time: Default::default(),
+            opponent: Default::default(),
+            buffer: Default::default(),
+            checksum_2: Default::default(),
+            allied_victory: Default::default(),
+            teams_locked: Default::default(),
+            can_change_teams: Default::default(),
+            random_start_locations: Default::default(),
+            max_teams: Default::default(),
+            num_disable_techs: Default::default(),
+            disabled_technology: Default::default(),
+            num_disable_units: Default::default(),
+            disabled_unit: Default::default(),
+            num_disable_buildings: Default::default(),
+            disabled_building: Default::default(),
+            scenario_options: vec![Default::default(); 3],
+            player_age: Default::default(),
+            checksum_3: Default::default(),
+            view_x: Default::default(),
+            view_y: Default::default(),
+            map_type_for_ai: Default::default(),
+            bases_priorities: Default::default(),
+            trigger_count: Default::default(),
+            water_def_type: Default::default(),
+            color_correction_type: Default::default(),
+            xsfilename: Default::default(),
+            collide_and_correcting: Default::default(),
+            villager_force_drop: Default::default(),
+            player_views: Default::default(),
+            block_humanity_team_change: Default::default(),
+            pop: Default::default(),
+            secondary_game_modes: Default::default(),
+        }
+    }
+}
+
 #[binrw]
 #[derive(Debug, Clone, Default, PartialEq)]
 #[brw(little)]
@@ -7770,7 +8671,7 @@ pub struct CommandsEntry1 {
 
 /// Read by `FUN_140e6baf0` (`command.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct Commands {
@@ -7787,6 +8688,17 @@ pub struct Commands {
     /// a loop of 2 reads; one entry per player slot (`while (local_210 < 9)`): the units each player last commanded
     #[br(count = 9)]
     pub per_player: Vec<CommandsEntry1>,
+}
+
+impl Default for Commands {
+    fn default() -> Self {
+        Self {
+            com_unit_count: Default::default(),
+            sent_commanded_valid: Default::default(),
+            dummy: Default::default(),
+            per_player: vec![Default::default(); 9],
+        }
+    }
 }
 
 /// Read by `FUN_141046660` of the build.
@@ -8392,7 +9304,7 @@ pub struct BaseWorldEntry1 {
 
 /// Read by `FUN_141537e30` (`BaseWorld.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct BaseWorld {
@@ -8566,6 +9478,67 @@ pub struct BaseWorld {
     /// game: `&fadeIntervalStart`
     /// helper 0x140a91160
     pub fade_interval_start: f32,
+}
+
+impl Default for BaseWorld {
+    fn default() -> Self {
+        Self {
+            old_time: Default::default(),
+            world_time: Default::default(),
+            old_world_time: Default::default(),
+            world_time_delta: Default::default(),
+            world_time_delta_seconds: Default::default(),
+            timer: Default::default(),
+            game_speed: Default::default(),
+            temp_pause: Default::default(),
+            next_object_id: Default::default(),
+            next_reusable_object_id: Default::default(),
+            currand: Default::default(),
+            current_frame_random_seed: Default::default(),
+            local_player_index: Default::default(),
+            num_players: Default::default(),
+            temp_byte: Default::default(),
+            temp_byte_2: Default::default(),
+            temp_game_state: Default::default(),
+            campaign_index: Default::default(),
+            campaign_player_index: Default::default(),
+            campaign_scenario_index: Default::default(),
+            campaign_section: Default::default(),
+            campaign_sub_index: Default::default(),
+            scenario_sub_index: Default::default(),
+            player_turn: Default::default(),
+            player_time_delta: Default::default(),
+            map: Default::default(),
+            particle_system: Default::default(),
+            exe_id: Default::default(),
+            players: Default::default(),
+            victory_conditions: Default::default(),
+            tribe_scenario: Default::default(),
+            difficulty: Default::default(),
+            alliance_locked: Default::default(),
+            per_player: vec![Default::default(); 9],
+            is_resigned: vec![Default::default(); 9],
+            num_players_2: Default::default(),
+            player_game_version: Default::default(),
+            battle_royale_position: Default::default(),
+            battle_royale_commander: Default::default(),
+            battle_royale_team_rank_applied_number: Default::default(),
+            battle_royale_team_rank_applied: Default::default(),
+            commands: Default::default(),
+            temp_path_count: Default::default(),
+            path: Default::default(),
+            unit_groups: Default::default(),
+            color_correction_type: Default::default(),
+            game_get_is_unit_deletion_allowed: Default::default(),
+            trigger_count: Default::default(),
+            trigger_id: Default::default(),
+            signal_count: Default::default(),
+            multiplayer_aitrigger_signals: Default::default(),
+            target_color_correction: Default::default(),
+            color_correction_fade_interval: Default::default(),
+            fade_interval_start: Default::default(),
+        }
+    }
 }
 
 /// Read by `FUN_141570220` of the build.
@@ -8781,7 +9754,7 @@ pub struct TriggerSystemEntry5 {
 
 /// Read by `FUN_14156dbc0` of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct TriggerSystem {
@@ -8848,6 +9821,33 @@ pub struct TriggerSystem {
     /// game: `m_isLegacyExecutionOrder`
     /// read at 0x14156fa3b; named by the save's write in the same place (0x141587990, write at 0x14158a237)
     pub m_is_legacy_execution_order: u8,
+}
+
+impl Default for TriggerSystem {
+    fn default() -> Self {
+        Self {
+            trigger_version: 4.5,
+            objectives_updated: Default::default(),
+            trigger_num: Default::default(),
+            trigger_list: Default::default(),
+            trigger_order: Default::default(),
+            variables: vec![Default::default(); 256],
+            size: Default::default(),
+            enabled_techs: Default::default(),
+            size_2: Default::default(),
+            variable_names: Default::default(),
+            current_trigger_id: Default::default(),
+            last_trade_object_array_size: Default::default(),
+            found_trade_object: Default::default(),
+            total_goal_count: Default::default(),
+            goal: Default::default(),
+            decisions_count: Default::default(),
+            decisions: Default::default(),
+            attacked_object_size: Default::default(),
+            attacked_object: Default::default(),
+            m_is_legacy_execution_order: Default::default(),
+        }
+    }
 }
 
 #[binrw]
@@ -8930,7 +9930,7 @@ pub struct WorldEntry3 {
 
 /// Read by `FUN_1415d0440` (`World.cpp`) of the build.
 #[binrw]
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[brw(little)]
 #[br(import(ver: u32))]
 pub struct World {
@@ -9172,4 +10172,88 @@ pub struct World {
     /// game: `mWaterDefIndex`
     /// read at 0x1415d6115
     pub water_def_index: i32,
+}
+
+impl Default for World {
+    fn default() -> Self {
+        Self {
+            load_airules: Default::default(),
+            unsupported_at_0x1415d0732: Default::default(),
+            unsupported_at_0x1415d09bb: Default::default(),
+            base_world: Default::default(),
+            victory_type: Default::default(),
+            artifact_count: Default::default(),
+            ruin_count: Default::default(),
+            countdown_victory: Default::default(),
+            countdown_clock: Default::default(),
+            world_score_display_on: Default::default(),
+            world_time_display_on: Default::default(),
+            world_research_display_on: Default::default(),
+            controlling_computer_player: Default::default(),
+            world_start_default_price: Default::default(),
+            world_min_price: Default::default(),
+            world_max_price: Default::default(),
+            world_price_delta: Default::default(),
+            world_wood_price: Default::default(),
+            world_food_price: Default::default(),
+            world_stone_price: Default::default(),
+            world_ore_price: Default::default(),
+            wood_price_delta: Default::default(),
+            old_wood_price_adj: Default::default(),
+            stone_price_delta: Default::default(),
+            old_stone_price_adj: Default::default(),
+            food_price_delta: Default::default(),
+            old_food_price_adj: Default::default(),
+            ore_price_delta: Default::default(),
+            old_ore_price_adj: Default::default(),
+            last_trade_update_time: Default::default(),
+            world_wood_inven: Default::default(),
+            world_food_inven: Default::default(),
+            world_stone_inven: Default::default(),
+            world_ore_inven: Default::default(),
+            temp_flag: Default::default(),
+            temp_flag_2: Default::default(),
+            relic_hun_bonus: Default::default(),
+            relicwarned500years: Default::default(),
+            relicwarned1000years: Default::default(),
+            timedwarned500years: Default::default(),
+            timedwarned1000years: Default::default(),
+            ruinwarned500years: Default::default(),
+            ruinwarned1000years: Default::default(),
+            global_ruin_countdown_clock: Default::default(),
+            captured_first_castle: Default::default(),
+            guard_state_id_type: Default::default(),
+            guard_state_resource: Default::default(),
+            guard_state_delta: Default::default(),
+            guard_state_flags: Default::default(),
+            trigger_system_result: Default::default(),
+            is_xsenabled: Default::default(),
+            scripted_trigger_system: Default::default(),
+            size: Default::default(),
+            rms_module_filenames: Default::default(),
+            is_rmsxsenabled: Default::default(),
+            scripted_rmssystem: Default::default(),
+            player_teams: vec![Default::default(); 8],
+            vis_set: Default::default(),
+            fog_set: Default::default(),
+            map_size: Default::default(),
+            pop_limit: Default::default(),
+            game_type: Default::default(),
+            teams_locked: Default::default(),
+            gb_force_nomad_treaty: Default::default(),
+            treaty_length: Default::default(),
+            cheat_codes_used: Default::default(),
+            forbidden_cheat_used: Default::default(),
+            number_of_chats: Default::default(),
+            chats: Default::default(),
+            saved_seed: Default::default(),
+            use_feature_flags: Default::default(),
+            count_down_clock: vec![Default::default(); 10],
+            trade_objects: Default::default(),
+            trading_object_ids: Default::default(),
+            tutorial_prompt_count: Default::default(),
+            tutorial_prompt: Default::default(),
+            water_def_index: Default::default(),
+        }
+    }
 }

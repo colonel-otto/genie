@@ -5,8 +5,9 @@ use std::fmt::Write;
 
 use crate::{Error, MasterTable};
 use genie_rec::de::{self, Op};
-use genie_save::Object;
 use genie_save::generated::world::RgeActionObject;
+use genie_save::generated::world::{Formation, UnitGroup};
+use genie_save::{Header, Object};
 
 fn chapter(data: &[u8]) -> Result<de::Chapter<'_>, Error> {
     de::chapters(data)?.first().copied().ok_or(Error::NoChapter)
@@ -27,8 +28,11 @@ fn vec3(b: &[u8; 12]) -> [f32; 3] {
 ///
 /// When the save cannot be read.
 pub fn groups(data: &[u8], full: bool) -> Result<String, Error> {
-    let chapter = chapter(data)?;
-    let header = chapter.header()?;
+    Ok(groups_of(&chapter(data)?.header()?, full))
+}
+
+/// [`groups`] of a save read.
+fn groups_of(header: &Header, full: bool) -> String {
     let g = &header.world.base_world.unit_groups;
     let mut out = String::new();
     let _ = writeln!(
@@ -48,85 +52,97 @@ pub fn groups(data: &[u8], full: bool) -> Result<String, Error> {
                 let _ = writeln!(out, "the groups do not import: {e}");
             }
         }
-        return Ok(out);
+        return out;
     }
     for u in &g.unit_group {
-        let _ = writeln!(
-            out,
-            "group {} owner {} state {} flags {:#x} centroid {:?} hibernating {} idle {}",
-            u.id,
-            u.owner.to_bits(),
-            u.state,
-            u.group_flags_m_bits,
-            vec3(&u.centroid),
-            u.hibernating,
-            u.idle_timer
-        );
-        for e in &u.units {
-            let _ = writeln!(
-                out,
-                "  unit {} move active {} path {} reason {} goal {:?} timer {} failures {} distance {} last {:?} since attack {}",
-                e.units,
-                e.specific_moves_active,
-                e.specific_moves_path_id,
-                e.specific_moves_reason,
-                vec3(&e.specific_moves_goal),
-                e.specific_moves_timer,
-                e.specific_moves_consecutive_move_failures,
-                e.specific_moves_distance,
-                vec3(&e.specific_moves_last_position),
-                e.seconds_since_attacking
-            );
-        }
-        for (name, f) in [
-            ("previous", u.previous_formation.as_deref()),
-            ("current", u.current_formation.as_deref()),
-        ] {
-            if let Some(f) = f {
-                let _ = writeln!(
-                    out,
-                    "  {name} formation type {} slots {} lines {} transform {} orientation {:?}",
-                    f.type_,
-                    f.number_slots,
-                    f.number_lines,
-                    f.transform_type,
-                    vec3(&f.transform_orientation)
-                );
-                for slot in &f.slots {
-                    let _ = writeln!(
-                        out,
-                        "    slot unit {} offset {:?} position {:?} state {} depth {} desired {:?} filled {} category {}/{} active {}",
-                        slot.slots_unit_id,
-                        vec3(&slot.slots_offset),
-                        vec3(&slot.slots_transform_position),
-                        slot.slots_state,
-                        slot.slots_depth,
-                        vec3(&slot.slots_desired_transform_position),
-                        slot.slots_position_filled,
-                        slot.slots_desired_category,
-                        slot.slots_desired_sub_category,
-                        slot.slots_active
-                    );
-                }
-            }
-        }
-        let waypoints: Vec<[f32; 3]> = u.waypoints.iter().map(vec3).collect();
-        let _ = writeln!(
-            out,
-            "  command {} target {} type {} range {} waypoints {waypoints:?} orders {} commands {} spacing {}",
-            u.current_command,
-            u.current_target.target,
-            u.current_target.type_,
-            u.current_target.range,
-            u.order_queue.len(),
-            u.command_queue.len(),
-            u.desired_spacing
-        );
+        group_lines(&mut out, u);
     }
-    Ok(out)
+    out
 }
 
-/// A player's live objects, one tab-separated row each./// A player's live objects, one tab-separated row each.
+/// One saved unit group's lines: its state, its units' specific moves, its formations and
+/// its command.
+fn group_lines(out: &mut String, u: &UnitGroup) {
+    let _ = writeln!(
+        out,
+        "group {} owner {} state {} flags {:#x} centroid {:?} hibernating {} idle {}",
+        u.id,
+        u.owner.to_bits(),
+        u.state,
+        u.group_flags_m_bits,
+        vec3(&u.centroid),
+        u.hibernating,
+        u.idle_timer
+    );
+    for e in &u.units {
+        let _ = writeln!(
+            out,
+            "  unit {} move active {} path {} reason {} goal {:?} timer {} failures {} distance {} last {:?} since attack {}",
+            e.units,
+            e.specific_moves_active,
+            e.specific_moves_path_id,
+            e.specific_moves_reason,
+            vec3(&e.specific_moves_goal),
+            e.specific_moves_timer,
+            e.specific_moves_consecutive_move_failures,
+            e.specific_moves_distance,
+            vec3(&e.specific_moves_last_position),
+            e.seconds_since_attacking
+        );
+    }
+    for (name, f) in [
+        ("previous", u.previous_formation.as_deref()),
+        ("current", u.current_formation.as_deref()),
+    ] {
+        if let Some(f) = f {
+            formation_lines(out, name, f);
+        }
+    }
+    let waypoints: Vec<[f32; 3]> = u.waypoints.iter().map(vec3).collect();
+    let _ = writeln!(
+        out,
+        "  command {} target {} type {} range {} waypoints {waypoints:?} orders {} commands {} spacing {}",
+        u.current_command,
+        u.current_target.target,
+        u.current_target.type_,
+        u.current_target.range,
+        u.order_queue.len(),
+        u.command_queue.len(),
+        u.desired_spacing
+    );
+}
+
+/// A group's formation `name` (previous or current): its type, slots and transform, then each
+/// slot.
+fn formation_lines(out: &mut String, name: &str, f: &Formation) {
+    let _ = writeln!(
+        out,
+        "  {name} formation type {} slots {} lines {} transform {} orientation {:?}",
+        f.type_,
+        f.number_slots,
+        f.number_lines,
+        f.transform_type,
+        vec3(&f.transform_orientation)
+    );
+    for slot in &f.slots {
+        let _ = writeln!(
+            out,
+            "    slot unit {} offset {:?} position {:?} state {} depth {} desired {:?} filled {} category {}/{} active {}",
+            slot.slots_unit_id,
+            vec3(&slot.slots_offset),
+            vec3(&slot.slots_transform_position),
+            slot.slots_state,
+            slot.slots_depth,
+            vec3(&slot.slots_desired_transform_position),
+            slot.slots_position_filled,
+            slot.slots_desired_category,
+            slot.slots_desired_sub_category,
+            slot.slots_active
+        );
+    }
+}
+
+/// A player's live objects, one tab-separated row each.
 ///
 /// A row holds the id, master, object state, hit points, position, the top action (type and
 /// state) and the unit AI's retarget timer; with `actions_of`, that object's whole action list
@@ -136,8 +152,11 @@ pub fn groups(data: &[u8], full: bool) -> Result<String, Error> {
 ///
 /// When the save or the player cannot be read.
 pub fn objects(data: &[u8], player: usize, actions_of: Option<i32>) -> Result<String, Error> {
-    let chapter = chapter(data)?;
-    let header = chapter.header()?;
+    objects_of(&chapter(data)?.header()?, player, actions_of)
+}
+
+/// [`objects`] of a save read.
+fn objects_of(header: &Header, player: usize, actions_of: Option<i32>) -> Result<String, Error> {
     let players = header.players();
     let section = players.get(player).ok_or(Error::NoPlayer(player))?;
     let mut out =
@@ -228,8 +247,11 @@ fn f3(b: &[u8; 12]) -> [f32; 3] {
 ///
 /// When the save or the player cannot be read.
 pub fn movement(data: &[u8], player: usize, ids: &[i32]) -> Result<String, Error> {
-    let chapter = chapter(data)?;
-    let header = chapter.header()?;
+    movement_of(&chapter(data)?.header()?, player, ids)
+}
+
+/// [`movement`] of a save read.
+fn movement_of(header: &Header, player: usize, ids: &[i32]) -> Result<String, Error> {
     let paths = &header.world.base_world.path;
     let players = header.players();
     let section = players.get(player).ok_or(Error::NoPlayer(player))?;
@@ -238,61 +260,71 @@ pub fn movement(data: &[u8], player: usize, ids: &[i32]) -> Result<String, Error
         let (Some(s), Some(m)) = (object.static_part(), object.moving_part()) else {
             continue;
         };
-        if !ids.contains(&s.id) {
-            continue;
-        }
-        let _ = writeln!(
-            out,
-            "{} master {} at ({}, {}, {}) facet {} sprite {}",
-            s.id, s.master_obj, s.t_x, s.t_y, s.t_z, s.facet, s.sprite
-        );
-        let _ = writeln!(
-            out,
-            "  velocity ({}, {}, {}) angle {} turn_towards {} waiting {} on_ground {}",
-            m.velocity_x,
-            m.velocity_y,
-            m.velocity_z,
-            m.angle,
-            m.turn_towards_time,
-            m.waiting_to_move_value,
-            m.on_ground
-        );
-        let _ = writeln!(
-            out,
-            "  movement {:?} {:?}",
-            m.velocity.as_ref().map(f3),
-            m.acceleration.as_ref().map(f3)
-        );
-        let _ = writeln!(
-            out,
-            "  position {:?} forward {:?} right {:?} last_move {}",
-            f3(&m.position_value),
-            f3(&m.orientation_forward_value),
-            f3(&m.orientation_right_value),
-            m.last_move_time_value
-        );
-        let _ = writeln!(
-            out,
-            "  speedup building {} value {}",
-            m.speedup_building_id, m.speedup_value
-        );
-        for d in m.temp_path_data.iter().chain(m.future_path_data.as_deref()) {
-            let _ = writeln!(out, "  path data {d:?}");
-            for p in paths.iter().filter(|p| p.idvalue == d.path_id) {
-                let points: Vec<[f32; 3]> = p.m_waypoints.iter().map(f3).collect();
-                let _ = writeln!(
-                    out,
-                    "    path {} points {points:?} length {} created {} flags {:#x} refs {}",
-                    p.idvalue,
-                    p.path_length_value,
-                    p.creation_time_value,
-                    p.flags_m_bits,
-                    p.reference_count
-                );
-            }
+        if ids.contains(&s.id) {
+            moving_lines(&mut out, s, m, paths);
         }
     }
     Ok(out)
+}
+
+/// One moving object's lines: its place, velocity, orientation, speedup and each path level
+/// with the world's paths of its id.
+fn moving_lines(
+    out: &mut String,
+    s: &genie_save::generated::world::RgeStaticObject,
+    m: &genie_save::generated::world::RgeMovingObject,
+    paths: &[genie_save::generated::world::Path],
+) {
+    let _ = writeln!(
+        out,
+        "{} master {} at ({}, {}, {}) facet {} sprite {}",
+        s.id, s.master_obj, s.t_x, s.t_y, s.t_z, s.facet, s.sprite
+    );
+    let _ = writeln!(
+        out,
+        "  velocity ({}, {}, {}) angle {} turn_towards {} waiting {} on_ground {}",
+        m.velocity_x,
+        m.velocity_y,
+        m.velocity_z,
+        m.angle,
+        m.turn_towards_time,
+        m.waiting_to_move_value,
+        m.on_ground
+    );
+    let _ = writeln!(
+        out,
+        "  movement {:?} {:?}",
+        m.velocity.as_ref().map(f3),
+        m.acceleration.as_ref().map(f3)
+    );
+    let _ = writeln!(
+        out,
+        "  position {:?} forward {:?} right {:?} last_move {}",
+        f3(&m.position_value),
+        f3(&m.orientation_forward_value),
+        f3(&m.orientation_right_value),
+        m.last_move_time_value
+    );
+    let _ = writeln!(
+        out,
+        "  speedup building {} value {}",
+        m.speedup_building_id, m.speedup_value
+    );
+    for d in m.temp_path_data.iter().chain(m.future_path_data.as_deref()) {
+        let _ = writeln!(out, "  path data {d:?}");
+        for p in paths.iter().filter(|p| p.idvalue == d.path_id) {
+            let points: Vec<[f32; 3]> = p.m_waypoints.iter().map(f3).collect();
+            let _ = writeln!(
+                out,
+                "    path {} points {points:?} length {} created {} flags {:#x} refs {}",
+                p.idvalue,
+                p.path_length_value,
+                p.creation_time_value,
+                p.flags_m_bits,
+                p.reference_count
+            );
+        }
+    }
 }
 
 /// The saved unit AI of a player's objects `ids`: its order, action and target with their last
@@ -302,8 +334,11 @@ pub fn movement(data: &[u8], player: usize, ids: &[i32]) -> Result<String, Error
 ///
 /// When the save or the player cannot be read.
 pub fn unit_ais(data: &[u8], player: usize, ids: &[i32]) -> Result<String, Error> {
-    let chapter = chapter(data)?;
-    let header = chapter.header()?;
+    unit_ais_of(&chapter(data)?.header()?, player, ids)
+}
+
+/// [`unit_ais`] of a save read.
+fn unit_ais_of(header: &Header, player: usize, ids: &[i32]) -> Result<String, Error> {
     let players = header.players();
     let section = players.get(player).ok_or(Error::NoPlayer(player))?;
     let mut out = String::new();
@@ -436,6 +471,12 @@ pub fn checkpoints(rec: &[u8], masters: &MasterTable, updates: usize) -> Result<
         .map(|p| u32::try_from(p).expect("fewer than 2^32 players"))
         .collect();
     let blocks = crate::blocks_per_tick(rec, &ids, updates, Some(masters))?;
+    checkpoint_lines(&chapter, &blocks)
+}
+
+/// One line per checkpoint of `chapter` that `blocks` (the run's 11-word blocks per tick and
+/// player) reaches: each recorded player's differing words, or `ok`.
+fn checkpoint_lines(chapter: &de::Chapter<'_>, blocks: &[Vec<[u32; 11]>]) -> Result<String, Error> {
     let mut out = String::new();
     let mut tick = 0usize;
     for op in chapter.ops() {
@@ -471,3 +512,6 @@ pub fn checkpoints(rec: &[u8], masters: &MasterTable, updates: usize) -> Result<
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests;

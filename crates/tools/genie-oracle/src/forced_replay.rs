@@ -3,14 +3,12 @@
 
 use crate::masters::MasterTable;
 use crate::{
-    Decoder, Dumps, Error, SavedStep, command_phase_from_save, compare_players, frames,
-    ghost_pool_from_dump, groups, hunted_origins, inside_lists_from_dump, mesh_from_dump,
-    mesh_owners_from_dump, recycle_pools_from_dump, registry_from_dump, run, run_from_save, slice,
-    tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit, watch_at_load,
+    Dumps, Error, SavedStep, command_phase_from_save, compare_players, ghost_pool_from_dump,
+    groups, loaded_slice, played_frames, primed, recycle_pools_from_dump, run, run_from_save,
+    save_header, tech_state, tile_lists_from_dump, tile_order_differences, turns_from_save, unit,
 };
 use genie_core::GenieError;
 use genie_core::world::World;
-use genie_rec::de;
 use genie_save::Header;
 
 /// The old short pather's result and path for one call ([`old_pather_paths`]).
@@ -119,15 +117,11 @@ pub fn forced_ticks(
         ticks,
         ..TickReport::default()
     };
-    let saved = SavedStep::of(after, masters)?;
+    let mut saved = SavedStep::of(after, masters)?;
     compare_players(&turns, &saved, None, &mut report)?;
-    if let Some(g) = saved.game.groups.as_ref() {
-        for d in groups::group_differences(&turns.groups, g, false) {
-            report
-                .differences
-                .push((group_owner(&turns, &saved.game, &d), d));
-        }
-    }
+    report
+        .differences
+        .extend(owned_group_differences(&turns, &mut saved.game, None));
     Ok(report)
 }
 
@@ -155,16 +149,11 @@ pub fn command_phase(
     };
     let mut saved = SavedStep::of(after, masters)?;
     compare_players(&turns, &saved, None, &mut report)?;
-    if let (Some(text), Some(g)) = (after_globals, saved.game.groups.as_mut()) {
-        groups::globals_from_dump(text, g);
-    }
-    if let Some(g) = saved.game.groups.as_ref() {
-        for d in groups::group_differences(&turns.groups, g, after_globals.is_some()) {
-            report
-                .differences
-                .push((group_owner(&turns, &saved.game, &d), d));
-        }
-    }
+    report.differences.extend(owned_group_differences(
+        &turns,
+        &mut saved.game,
+        after_globals,
+    ));
     Ok(report)
 }
 
@@ -190,39 +179,12 @@ pub fn forced_run(
     dump_after: &dyn Fn(usize, &str) -> Option<String>,
     window: usize,
 ) -> Result<(Vec<TickReport>, Times), Error> {
-    let chapter = de::chapters(start_save)?[0];
-    let header = chapter.header()?;
+    let header = save_header(start_save)?;
     let sections = header.players();
-    let mut turns = slice(&header, masters);
-    if let Some(text) = dumps.mesh {
-        let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
-        turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
-    }
-    if let (Some(text), Some(sight)) = (dumps.registry, turns.spatial.sight.as_mut()) {
-        sight.registry = Some(registry_from_dump(text)?);
-    }
-    if let Some(text) = dumps.tiles {
-        let _ = turns.spatial.force_tile_lists(&tile_lists_from_dump(text)?);
-    }
-    if let Some(text) = dumps.pools {
-        turns.recycling.missiles = recycle_pools_from_dump(text)?;
-        turns.recycling.ghosts = ghost_pool_from_dump(text)?;
-    }
-    if let Some(text) = dumps.inside {
-        let _ = turns.force_garrisons(&inside_lists_from_dump(text)?);
-    }
-    if let Some(text) = dumps.globals {
-        groups::globals_from_dump(text, &mut turns.groups);
-    }
-    watch_at_load(&mut turns);
-    let played = de::chapters(recording)?[0];
-    let start_header = played.header()?;
-    hunted_origins(&mut turns, &start_header);
+    let mut turns = loaded_slice(&header, masters, dumps)?;
     let updates = start + 1;
-    turns.ticks = updates as u32;
-    let all = frames(&played, updates + ticks)?;
-    let mut decoder = Decoder::default();
-    decoder.prime(&all[..updates.min(all.len())], &sections);
+    let all = played_frames(&mut turns, recording, updates + ticks)?;
+    let mut decoder = primed(&mut turns, &all, updates, &sections);
     let mut reports = Vec::new();
     // the game's saves after each update, parsed on rayon's pool while the run goes on, at most
     // `window` ahead of it; the pool is shared by every run going on at once
@@ -275,35 +237,9 @@ pub fn forced_run(
                         report.differences.push((0, d));
                     }
                 }
-                // each player's ghosts, in the list's order, by what the save holds of them
-                for (p, game) in after.ghosts.iter().enumerate() {
-                    let slice = turns.players.get(p).map_or(&[][..], |q| &q.ghosts[..]);
-                    let key = |g: &genie_core::vision::ghost::Ghost| {
-                        (
-                            g.id,
-                            g.original_id,
-                            g.state,
-                            g.cant_see,
-                            g.position.map(f32::to_bits),
-                        )
-                    };
-                    let (a, b): (Vec<_>, Vec<_>) = (
-                        slice.iter().map(key).collect(),
-                        game.iter().map(key).collect(),
-                    );
-                    if a != b {
-                        let only = |x: &Vec<_>, y: &Vec<_>| -> Vec<_> {
-                            x.iter().filter(|e| !y.contains(*e)).copied().collect()
-                        };
-                        let (sl, gm) = (only(&a, &b), only(&b, &a));
-                        let what = if sl.is_empty() && gm.is_empty() {
-                            format!("ghosts in another order: slice {a:?}, the game {b:?}")
-                        } else {
-                            format!("ghosts the slice's alone {sl:?}, the game's alone {gm:?}")
-                        };
-                        report.differences.push((p as u32, what));
-                    }
-                }
+                report
+                    .differences
+                    .extend(ghost_differences(&turns, &after.ghosts));
                 let pools_text = dump_after(start + k + 1, "pools");
                 let pool = pools_text
                     .as_deref()
@@ -349,21 +285,10 @@ pub fn forced_run(
                 // oracle dumped beside the save are the game's
                 let mut after = after;
                 let globals = dump_after(start + k + 1, "globals");
-                if let (Some(text), Some(g)) = (globals.as_deref(), after.game.groups.as_mut()) {
-                    groups::globals_from_dump(text, g);
-                }
-                let group_differences = after
-                    .game
-                    .groups
-                    .as_ref()
-                    .map(|g| groups::group_differences(&turns.groups, g, globals.is_some()))
-                    .unwrap_or_default();
+                let group_differences =
+                    owned_group_differences(&turns, &mut after.game, globals.as_deref());
                 let groups_differ = !group_differences.is_empty();
-                for d in group_differences {
-                    report
-                        .differences
-                        .push((group_owner(&turns, &after.game, &d), d));
-                }
+                report.differences.extend(group_differences);
                 // the next frame seed: a free run draws the game's
                 if turns.frame_seed != after.game.frame_seed {
                     report.differences.push((
@@ -422,6 +347,64 @@ pub fn forced_run(
         run_all()
     })?;
     Ok((reports, times))
+}
+
+/// Each player's ghosts against the game's (`game`), in the list's order, by what the save holds
+/// of them: one difference per player whose list differs.
+pub(super) fn ghost_differences(
+    turns: &World,
+    game: &[Vec<genie_core::vision::ghost::Ghost>],
+) -> Vec<(u32, String)> {
+    let key = |g: &genie_core::vision::ghost::Ghost| {
+        (
+            g.id,
+            g.original_id,
+            g.state,
+            g.cant_see,
+            g.position.map(f32::to_bits),
+        )
+    };
+    let only = |x: &Vec<_>, y: &Vec<_>| -> Vec<_> {
+        x.iter().filter(|e| !y.contains(*e)).copied().collect()
+    };
+    let mut out = Vec::new();
+    for (p, game) in game.iter().enumerate() {
+        let slice = turns.players.get(p).map_or(&[][..], |q| &q.ghosts[..]);
+        let (a, b): (Vec<_>, Vec<_>) = (
+            slice.iter().map(key).collect(),
+            game.iter().map(key).collect(),
+        );
+        if a != b {
+            let (sl, gm) = (only(&a, &b), only(&b, &a));
+            let what = if sl.is_empty() && gm.is_empty() {
+                format!("ghosts in another order: slice {a:?}, the game {b:?}")
+            } else {
+                format!("ghosts the slice's alone {sl:?}, the game's alone {gm:?}")
+            };
+            out.push((p as u32, what));
+        }
+    }
+    out
+}
+
+/// The world's unit groups against the game's (`game`), each difference with its owner
+/// ([`group_owner`]). The process globals dumped beside the game's save (`globals`) go into the
+/// game's groups first, and the comparison then holds the globals too.
+pub(super) fn owned_group_differences(
+    turns: &World,
+    game: &mut genie_core::world::GameState,
+    globals: Option<&str>,
+) -> Vec<(u32, String)> {
+    if let (Some(text), Some(g)) = (globals, game.groups.as_mut()) {
+        groups::globals_from_dump(text, g);
+    }
+    let Some(g) = game.groups.as_ref() else {
+        return Vec::new();
+    };
+    groups::group_differences(&turns.groups, g, globals.is_some())
+        .into_iter()
+        .map(|d| (group_owner(turns, game, &d), d))
+        .collect()
 }
 
 /// The player a group difference (`group ID: …`) goes with: the group's owner in the game or the
@@ -530,3 +513,6 @@ pub(super) fn game_state(
     }
     game
 }
+
+#[cfg(test)]
+mod tests;

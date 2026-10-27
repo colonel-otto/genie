@@ -443,3 +443,6 @@ pub(super) fn resource_differences(
     }
     out
 }
+
+#[cfg(test)]
+mod tests;

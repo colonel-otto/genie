@@ -459,3 +459,6 @@ pub(super) fn placement(s: &RgeStaticObject, objects: &PlayerObjects) -> Option<
         los: m.los,
     })
 }
+
+#[cfg(test)]
+mod tests;

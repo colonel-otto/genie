@@ -347,3 +347,6 @@ pub(super) fn saved_move_to_point(object: &genie_save::Object) -> Option<[f32; 3
     (kind == genie_core::movement::move_to::MOVE_TO && b.target_id != -1)
         .then_some([b.target_x, b.target_y, b.target_z])
 }
+
+#[cfg(test)]
+mod tests;

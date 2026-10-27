@@ -1,6 +1,7 @@
 //! Runs from a tick oracle's save and their comparison with the game's: the players' objects,
 //! sight and technologies, the unit groups, the hunted animals' origins.
 
+use crate::command_args::Frame;
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{
     Decoder, Dumps, Error, ObjectRow, SavedStep, TickReport, frames, ghost_pool_from_dump, groups,
@@ -11,7 +12,7 @@ use crate::{
 use genie_core::commands::Command;
 use genie_core::world::{Player, World};
 use genie_rec::de;
-use genie_save::Header;
+use genie_save::{Header, PlayerSection};
 
 /// Every player's objects and sight after a run against the game's save `after`; with `tick`,
 /// only the freezes of that update count, else all. A frozen object's differences are left out.
@@ -21,8 +22,15 @@ pub(super) fn compare_players(
     tick: Option<u32>,
     report: &mut TickReport,
 ) -> Result<(), Error> {
-    let seen = &after.seen;
-    // the world's game state and the map's terrain go with Gaia's differences
+    world_differences(turns, after, report);
+    for p in 0..turns.players.len() {
+        player_differences(turns, after, tick, p, report)?;
+    }
+    Ok(())
+}
+
+/// The world's game state and the map's terrain against the game's: Gaia's differences.
+pub(super) fn world_differences(turns: &World, after: &SavedStep, report: &mut TickReport) {
     if turns.game_state != after.game.game_state {
         let d = format!(
             "game state slice {} game {}",
@@ -35,86 +43,109 @@ pub(super) fn compare_players(
             report.differences.push((0, d));
         }
     }
-    for (p, player) in turns.players.iter().enumerate() {
-        let id = p as u32;
-        let now = |t: u32| tick.is_none_or(|n| n == t);
-        if let Some((t, _, why)) = player
-            .unsupported
-            .clone()
-            .filter(|u| player.stopped && now(u.0))
-        {
-            report.unsupported.push((id, None, t, why));
-        }
-        let frozen: Vec<i32> = player
-            .objects
-            .iter()
-            .filter(|u| u.stopped)
-            .map(|u| u.id)
-            .chain(player.freezes.iter().map(|&(_, o, _)| o))
-            .collect();
-        for (t, o, why) in player.freezes.iter().filter(|f| now(f.0)) {
-            report.unsupported.push((id, Some(*o), *t, why.clone()));
-        }
-        let rows: Vec<ObjectRow> = player
-            .objects
-            .iter()
-            .filter(|u| listed(u))
-            .map(ObjectRow::of_unit)
-            .collect();
-        let game = after.objects.get(p).ok_or(Error::NoSuchPlayer(id))?;
-        if !player.stopped
-            && let Some(r) = after.game.resources.get(p)
-            && *r != player.resources
-        {
-            let d = format!("resources slice {:?} game {:?}", player.resources, r);
+}
+
+/// Player `p`'s stops, state, objects and sight against the game's save `after`.
+fn player_differences(
+    turns: &World,
+    after: &SavedStep,
+    tick: Option<u32>,
+    p: usize,
+    report: &mut TickReport,
+) -> Result<(), Error> {
+    let player = &turns.players[p];
+    let id = p as u32;
+    let frozen = stops(player, id, tick, report);
+    let rows: Vec<ObjectRow> = player
+        .objects
+        .iter()
+        .filter(|u| listed(u))
+        .map(ObjectRow::of_unit)
+        .collect();
+    let game = after.objects.get(p).ok_or(Error::NoSuchPlayer(id))?;
+    if !player.stopped {
+        stock_differences(player, &after.game, p, report);
+    }
+    if let Some(&(status, resigned)) = after.game.statuses.get(p)
+        && (status, resigned) != (player.game_status, player.resigned)
+    {
+        let d = format!(
+            "game status slice {:?} game {:?} (status, resigned)",
+            (player.game_status, player.resigned),
+            (status, resigned)
+        );
+        report.differences.push((id, d));
+    }
+    if !player.stopped {
+        for d in tech_differences(player, &after.game, p) {
             report.differences.push((id, d));
         }
-        // the other attributes, each one the slice holds that differs (reported apart)
-        if !player.stopped
-            && let Some(saved) = after.game.attributes.get(p)
-        {
-            report.attributes.extend(
-                player
-                    .attributes
-                    .iter()
-                    .zip(saved)
-                    .enumerate()
-                    .skip(4)
-                    .filter(|(_, (a, b))| a.to_bits() != b.to_bits())
-                    .map(|(i, (a, b))| (id, i, a.to_bits(), b.to_bits())),
-            );
-        }
-        if let Some(&(status, resigned)) = after.game.statuses.get(p)
-            && (status, resigned) != (player.game_status, player.resigned)
-        {
-            let d = format!(
-                "game status slice {:?} game {:?} (status, resigned)",
-                (player.game_status, player.resigned),
-                (status, resigned)
-            );
-            report.differences.push((id, d));
-        }
-        if !player.stopped {
-            for d in tech_differences(player, &after.game, p) {
-                report.differences.push((id, d));
-            }
-        }
-        if !player.stopped {
-            for d in object_differences(&rows, game) {
-                let object = d.split(':').next().and_then(|o| o.parse::<i32>().ok());
-                if object.is_some_and(|o| frozen.contains(&o)) {
-                    continue;
-                }
-                report.differences.push((id, d));
-            }
-        }
-        if let Some(sight) = turns.spatial.sight.as_ref() {
-            for d in visibility_differences(sight, seen, p) {
+        for d in object_differences(&rows, game) {
+            let object = d.split(':').next().and_then(|o| o.parse::<i32>().ok());
+            if !object.is_some_and(|o| frozen.contains(&o)) {
                 report.differences.push((id, d));
             }
         }
     }
+    if let Some(sight) = turns.spatial.sight.as_ref() {
+        for d in visibility_differences(sight, &after.seen, p) {
+            report.differences.push((id, d));
+        }
+    }
     Ok(())
+}
+
+/// A player's stop and its objects' freezes as the report's unsupported entries (with `tick`,
+/// only that update's); returns the objects whose differences are left out: the stopped and the
+/// frozen ones, of any update.
+fn stops(player: &Player, id: u32, tick: Option<u32>, report: &mut TickReport) -> Vec<i32> {
+    let now = |t: u32| tick.is_none_or(|n| n == t);
+    if let Some((t, _, why)) = player
+        .unsupported
+        .clone()
+        .filter(|u| player.stopped && now(u.0))
+    {
+        report.unsupported.push((id, None, t, why));
+    }
+    for (t, o, why) in player.freezes.iter().filter(|f| now(f.0)) {
+        report.unsupported.push((id, Some(*o), *t, why.clone()));
+    }
+    player
+        .objects
+        .iter()
+        .filter(|u| u.stopped)
+        .map(|u| u.id)
+        .chain(player.freezes.iter().map(|&(_, o, _)| o))
+        .collect()
+}
+
+/// A player's resources against the game's (one difference), then each other attribute the
+/// slice holds that differs (reported apart).
+fn stock_differences(
+    player: &Player,
+    game: &genie_core::world::GameState,
+    p: usize,
+    report: &mut TickReport,
+) {
+    let id = p as u32;
+    if let Some(r) = game.resources.get(p)
+        && *r != player.resources
+    {
+        let d = format!("resources slice {:?} game {:?}", player.resources, r);
+        report.differences.push((id, d));
+    }
+    if let Some(saved) = game.attributes.get(p) {
+        report.attributes.extend(
+            player
+                .attributes
+                .iter()
+                .zip(saved)
+                .enumerate()
+                .skip(4)
+                .filter(|(_, (a, b))| a.to_bits() != b.to_bits())
+                .map(|(i, (a, b))| (id, i, a.to_bits(), b.to_bits())),
+        );
+    }
 }
 
 /// A player's pending debit and technology states against the game's: per technology its state,
@@ -222,10 +253,43 @@ pub(super) fn from_save(
     dumps: Dumps<'_>,
     commands_only: bool,
 ) -> Result<World, Error> {
-    let chapter = de::chapters(save)?[0];
-    let header = chapter.header()?;
+    let header = save_header(save)?;
     let sections = header.players();
-    let mut turns = slice(&header, masters);
+    let mut turns = loaded_slice(&header, masters, dumps)?;
+    let updates = start_tick + 1;
+    let all = played_frames(&mut turns, recording, updates + ticks)?;
+    let mut decoder = primed(&mut turns, &all, updates, &sections);
+    let next = all.get(updates..).unwrap_or_default();
+    if commands_only {
+        frame_commands(&mut turns, &mut decoder, next.first(), &sections);
+    } else {
+        run(&mut turns, &mut decoder, next, &sections);
+    }
+    Ok(turns)
+}
+
+/// A save's world: its first chapter's header.
+pub(super) fn save_header(save: &[u8]) -> Result<Header, Error> {
+    Ok(de::chapters(save)?[0].header()?)
+}
+
+/// The slice from a save as the game's load leaves it: the tick oracle's dumps beside the save
+/// put in ([`load_dumps`]), the watched lists built.
+pub(super) fn loaded_slice(
+    header: &Header,
+    masters: Option<&MasterTable>,
+    dumps: Dumps<'_>,
+) -> Result<World, Error> {
+    let mut turns = slice(header, masters);
+    load_dumps(&mut turns, dumps)?;
+    watch_at_load(&mut turns);
+    Ok(turns)
+}
+
+/// The tick oracle's dumps beside a save, put into its slice: the shape mesh and its owners, the
+/// objects-in-sight registry, the tiles' object lists, the recycled missiles and ghosts, the
+/// garrisons and the process globals.
+pub(super) fn load_dumps(turns: &mut World, dumps: Dumps<'_>) -> Result<(), Error> {
     if let Some(text) = dumps.mesh {
         let m = mesh_from_dump(text).ok_or(Error::BadMeshDump)?;
         turns.pathing.set_mesh(m, mesh_owners_from_dump(text));
@@ -246,28 +310,50 @@ pub(super) fn from_save(
     if let Some(text) = dumps.globals {
         groups::globals_from_dump(text, &mut turns.groups);
     }
-    watch_at_load(&mut turns);
+    Ok(())
+}
+
+/// The recording's first `limit` frames, the hunted animals' origins taken from its start
+/// ([`hunted_origins`]).
+pub(super) fn played_frames<'a>(
+    turns: &mut World,
+    recording: &'a [u8],
+    limit: usize,
+) -> Result<Vec<Frame<'a>>, Error> {
     let played = de::chapters(recording)?[0];
-    hunted_origins(&mut turns, &played.header()?);
-    let updates = start_tick + 1;
+    hunted_origins(turns, &played.header()?);
+    frames(&played, limit)
+}
+
+/// A decoder primed with the commands of the recording's first `updates` frames, the world's
+/// update count set to them.
+pub(super) fn primed(
+    turns: &mut World,
+    all: &[Frame<'_>],
+    updates: usize,
+    sections: &[PlayerSection<'_>],
+) -> Decoder {
     turns.ticks = updates as u32;
-    let all = frames(&played, updates + ticks)?;
-    let next = all.get(updates..).unwrap_or_default();
     let mut decoder = Decoder::default();
-    decoder.prime(&all[..updates.min(all.len())], &sections);
-    if commands_only {
-        if let Some(frame) = next.first() {
-            let commands: Vec<Command> = frame
-                .commands
-                .iter()
-                .filter_map(|p| decoder.command(p, &sections))
-                .collect();
-            turns.command_phase(frame.dt, &commands);
-        }
-        return Ok(turns);
+    decoder.prime(&all[..updates.min(all.len())], sections);
+    decoder
+}
+
+/// The command phase of `frame`'s update alone ([`World::command_phase`]); none without a frame.
+pub(super) fn frame_commands(
+    turns: &mut World,
+    decoder: &mut Decoder,
+    frame: Option<&Frame<'_>>,
+    sections: &[PlayerSection<'_>],
+) {
+    if let Some(frame) = frame {
+        let commands: Vec<Command> = frame
+            .commands
+            .iter()
+            .filter_map(|p| decoder.command(p, sections))
+            .collect();
+        turns.command_phase(frame.dt, &commands);
     }
-    run(&mut turns, &mut decoder, next, &sections);
-    Ok(turns)
 }
 
 /// The hunted animals' unit AI fields the save does not hold (`TribeHuntedAnimalUnitAIModule`,
@@ -317,3 +403,6 @@ pub fn spatial_with_tiles(
     let header = chapter.header()?;
     Ok(spatial(&header, terrain))
 }
+
+#[cfg(test)]
+mod tests;

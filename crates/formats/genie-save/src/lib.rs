@@ -85,7 +85,9 @@ pub struct SectionEnds {
 
 /// A world save: the save-game file header, then the world (`World::load_world`), both generated
 /// from the game's load code, to the save's last byte.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Its default is all zeros: a test's save, which [`parse`] never gives.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Header {
     /// The save-game file header: version, build, the lobby's options.
     pub file_header: SaveGameFileHeader,
@@ -272,5 +274,107 @@ mod tests {
         let e = parse(&save).unwrap_err();
         assert_eq!(e, GenieError::invalid_input("a save older than 66.0"));
         assert_eq!(e.context().collect::<Vec<_>>(), [("version", "6500")]);
+    }
+
+    /// Save 66.6, build 158041's own version: its fraction in sixteen bits.
+    const SAVE_66_6: u32 = 0x0042_9999;
+
+    /// A save of the build's own version, every generated part its default.
+    fn default_save() -> Header {
+        let mut h = Header::default();
+        h.file_header.new_save_game_version = SAVE_66_6;
+        h
+    }
+
+    fn bytes(h: &Header) -> Vec<u8> {
+        let mut out = binrw::io::Cursor::new(Vec::new());
+        write(h, &mut out).unwrap();
+        out.into_inner()
+    }
+
+    /// The generated parts' defaults are a save the reader reads back, byte for byte: its
+    /// sections end where the writer put them.
+    #[test]
+    fn a_default_save_reads_back_byte_for_byte() {
+        let save = bytes(&default_save());
+        let read = parse(&save).unwrap();
+        assert_eq!(bytes(&read), save);
+        assert_eq!(read.save_version().hundredths(), 6660);
+        assert_eq!(read.ends.lobby, written_len(&read.file_header));
+        assert!(read.ends.lobby < read.ends.replay && read.ends.replay < read.ends.map);
+        assert_eq!(read.ends.players_start, save.len());
+        assert_eq!(read.players(), []);
+    }
+
+    #[test]
+    fn bytes_after_the_world_are_an_error() {
+        let mut save = bytes(&default_save());
+        save.push(0);
+        let e = parse(&save).unwrap_err();
+        assert_eq!(
+            e,
+            GenieError::invalid_input("a world that ends before the save's end")
+        );
+        assert_eq!(
+            e.context().collect::<Vec<_>>(),
+            [
+                ("world end", &*(save.len() - 1).to_string()),
+                ("bytes after it", "1")
+            ]
+        );
+    }
+
+    /// A save cut inside its file header or its world does not read.
+    #[test]
+    fn a_cut_save_does_not_read() {
+        let save = bytes(&default_save());
+        for len in [20, save.len() - 1] {
+            let e = parse(&save[..len]).unwrap_err();
+            assert_eq!(
+                e,
+                GenieError::invalid_input("a save that does not read"),
+                "{len}"
+            );
+        }
+        assert!(parse(&save[..10]).is_err());
+    }
+
+    /// A player whose type has no class is the game's own error.
+    #[test]
+    fn a_player_of_no_known_type_is_invalid() {
+        let mut h = default_save();
+        let world = &mut h.world.base_world;
+        world.num_players = 1;
+        world.player_time_delta = vec![0];
+        world.victory_conditions = vec![generated::world::RgeVictoryConditions::default()];
+        world.players = vec![Positioned {
+            pos: 0,
+            val: Player {
+                type_: 4,
+                ..Player::default()
+            },
+        }];
+        let e = parse(&bytes(&h)).unwrap_err();
+        assert_eq!(e, GenieError::invalid_input("InvalidPlayerType"));
+        assert_eq!(e.context().next(), Some(("type", "4")));
+    }
+
+    /// The world's AI scripts are a part the reader does not derive yet: an unsupported error
+    /// with its place.
+    #[test]
+    fn a_part_the_reader_does_not_derive_is_unsupported() {
+        let mut h = default_save();
+        h.world.load_airules = 1;
+        let save = bytes(&h);
+        let e = parse(&save).unwrap_err();
+        assert_eq!(
+            e,
+            GenieError::unsupported("the world's AI scripts (AIExpert)")
+        );
+        let lobby = written_len(&h.file_header);
+        assert_eq!(
+            e.context().next(),
+            Some(("at", &*format!("{:#x}", lobby + 4)))
+        );
     }
 }

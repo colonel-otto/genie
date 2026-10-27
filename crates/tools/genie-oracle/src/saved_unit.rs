@@ -317,3 +317,6 @@ pub(super) fn construction(
         started: false,
     })
 }
+
+#[cfg(test)]
+mod tests;

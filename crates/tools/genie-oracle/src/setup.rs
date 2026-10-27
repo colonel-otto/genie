@@ -527,3 +527,6 @@ pub(super) fn garrison_firepower(turns: &mut World) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

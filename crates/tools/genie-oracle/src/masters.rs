@@ -504,6 +504,14 @@ impl MasterTable {
         })?;
         let dat = DatFile::read_from(file).map_err(ReadError::Dat)?;
         let mut table = Self::from_dat(&dat);
+        table.read_tables_beside(path)?;
+        Ok(table)
+    }
+
+    /// The drop sites (`dropsites.json`), linked technologies (`linkedTechs.json`) and unit
+    /// lines (`unitlines.json`) beside the data file at `path`, each where there is one.
+    fn read_tables_beside(&mut self, path: &std::path::Path) -> Result<(), ReadError> {
+        let table = self;
         if let Ok(json) = std::fs::read_to_string(path.with_file_name("dropsites.json")) {
             table.drop_sites = crate::drop_sites(&json).map_err(ReadError::DropSites)?;
         }
@@ -513,7 +521,7 @@ impl MasterTable {
         if let Ok(json) = std::fs::read_to_string(path.with_file_name("unitlines.json")) {
             table.unit_lines = crate::unit_lines(&json).map_err(ReadError::UnitLines)?;
         }
-        Ok(table)
+        Ok(())
     }
 
     /// The rows of every unit every civ of `dat` has: decay (`resource_decay`), the undead flag
@@ -676,9 +684,124 @@ impl MasterTable {
     }
 }
 
+/// The tests' tables: one master's row, the sprites' speed factors and graphics and the terrain
+/// restrictions' masks, without a data file.
+#[cfg(test)]
+impl MasterTable {
+    /// A table of the master `master` of `civ`, turning as `turning` and flying as `fly_mode`.
+    pub(crate) fn of_master(civ: u8, master: i16, turning: Option<Turning>, fly_mode: u8) -> Self {
+        let row = Row {
+            data: MasterData::default(),
+            default_action: DefaultAction::None,
+            work: None,
+            turning,
+            projectile_type: None,
+            fly_mode,
+        };
+        Self {
+            rows: std::iter::once(((civ, master), row)).collect(),
+            ..Self::default()
+        }
+    }
+
+    /// The sprite `sprite`'s speed factor and graphic of `facets` facets and `flags`.
+    pub(crate) fn with_sprite(mut self, sprite: i16, speed: f32, facets: i16, flags: u8) -> Self {
+        let _ = self.sprite_speed.insert(sprite, speed);
+        let graphic = genie_core::objects::sprite::Graphic {
+            id: sprite,
+            frames: 1,
+            facets,
+            speed_multiplier: speed,
+            frame_duration: 0.1,
+            replay_delay: 0.0,
+            flags,
+        };
+        let _ = self.graphics.insert(sprite, graphic);
+        self
+    }
+
+    /// The default action of the table's master `master` of `civ`.
+    ///
+    /// # Panics
+    ///
+    /// For a master the table does not have.
+    pub(crate) fn with_default_action(
+        mut self,
+        civ: u8,
+        master: i16,
+        action: DefaultAction,
+    ) -> Self {
+        self.rows
+            .get_mut(&(civ, master))
+            .expect("a master of the table")
+            .default_action = action;
+        self
+    }
+
+    /// The terrain restrictions' masks.
+    pub(crate) fn with_masks(mut self, masks: Vec<u8>) -> Self {
+        self.terrain.masks = masks;
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A directory of its own under the system's temporary one, emptied first.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("genie-oracle-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A data file that does not open is the data file's error; one that is not a `.dat`
+    /// too.
+    #[test]
+    fn a_data_file_that_does_not_read_is_its_error() {
+        let dir = scratch("no-dat");
+        let path = dir.join("empires2_x2_p1.dat");
+        assert!(matches!(MasterTable::read(&path), Err(ReadError::Dat(_))));
+        std::fs::write(&path, b"not a dat").unwrap();
+        assert!(matches!(MasterTable::read(&path), Err(ReadError::Dat(_))));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// The tables beside the data file are read where there are; one out of shape is its own
+    /// error, and none leaves the table as it was.
+    #[test]
+    fn the_tables_beside_the_data_file_are_read_where_there_are() {
+        let dir = scratch("tables");
+        let path = dir.join("empires2_x2_p1.dat");
+        let mut table = MasterTable::default();
+        table.read_tables_beside(&path).unwrap();
+        assert_eq!(table, MasterTable::default());
+        std::fs::write(dir.join("dropsites.json"), r#"{"drop_site_list": []}"#).unwrap();
+        std::fs::write(dir.join("linkedTechs.json"), r#"{"LinkedTechs": []}"#).unwrap();
+        std::fs::write(dir.join("unitlines.json"), r#"{"UnitLines": []}"#).unwrap();
+        table.read_tables_beside(&path).unwrap();
+        for (file, check) in [
+            ("dropsites.json", 0),
+            ("linkedTechs.json", 1),
+            ("unitlines.json", 2),
+        ] {
+            let good = std::fs::read_to_string(dir.join(file)).unwrap();
+            std::fs::write(dir.join(file), "[").unwrap();
+            let error = table.read_tables_beside(&path).unwrap_err();
+            let kind = match error {
+                ReadError::DropSites(_) => 0,
+                ReadError::LinkedTechs(_) => 1,
+                ReadError::UnitLines(_) => 2,
+                ReadError::Dat(_) => 3,
+            };
+            assert_eq!(kind, check, "{file}");
+            assert_ne!(error.to_string(), "");
+            std::fs::write(dir.join(file), good).unwrap();
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     fn sound(files: usize) -> genie_dat::de::Sound {
         let item = genie_dat::de::SoundItem {

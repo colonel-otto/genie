@@ -201,3 +201,6 @@ pub fn finder_world(save: &[u8], table: &MasterTable) -> Result<FinderWorld, Err
         drop_sites: table.drop_sites.clone(),
     })
 }
+
+#[cfg(test)]
+mod tests;

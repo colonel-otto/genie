@@ -329,3 +329,6 @@ pub fn header_run(
     );
     Ok(turns)
 }
+
+#[cfg(test)]
+mod tests;

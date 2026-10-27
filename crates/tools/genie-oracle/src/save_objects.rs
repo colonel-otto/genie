@@ -385,3 +385,6 @@ pub fn turns_from_save(
     turns.sync_world();
     Ok(turns)
 }
+
+#[cfg(test)]
+mod tests;

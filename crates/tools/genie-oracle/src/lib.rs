@@ -70,6 +70,9 @@ mod sub_actions;
 mod task_finder;
 mod top_actions;
 
+#[cfg(test)]
+mod fixtures;
+
 pub use self::checked_rows::{AiRow, MoveRow, ObjectRow, object_rows};
 use self::checked_rows::{Same, saved_movement};
 #[cfg(test)]
@@ -117,7 +120,9 @@ use self::save_objects::{group_link, tile_order_differences};
 pub use self::save_runs::{
     command_phase_from_save, run_from_save, saved_groups, spatial_from_save, spatial_with_tiles,
 };
-use self::save_runs::{compare_players, hunted_origins};
+use self::save_runs::{
+    compare_players, hunted_origins, loaded_slice, played_frames, primed, save_header,
+};
 use self::saved_masters::{
     core_task, master_facets, moving_speed, placement, task_at, work_masters,
 };

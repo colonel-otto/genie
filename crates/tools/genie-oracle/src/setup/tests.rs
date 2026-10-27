@@ -1,0 +1,127 @@
+use crate::fixtures::{
+    action_list, building_mut, building_object, combat_object, gaia, header, human, human_mut,
+};
+use crate::masters::MasterTable;
+use crate::setup::{slice, wonder_time};
+use genie_save::generated::world::{Action, Object, RgeAction, TribeActionWonder};
+
+/// A wonder whose action is in state `state` with the timer `timer`.
+fn wonder(id: i32, state: u8, timer: f32) -> Object {
+    let mut wonder = building_object(id, 276);
+    let action = Action {
+        tribe_action_wonder: Some(Box::new(TribeActionWonder {
+            rge_action: RgeAction {
+                state,
+                timer,
+                ..RgeAction::default()
+            },
+            ..TribeActionWonder::default()
+        })),
+        ..Action::default()
+    };
+    building_mut(&mut wonder)
+        .tribe_combat_object
+        .rge_combat_object
+        .rge_action_object
+        .actions = action_list(vec![(120, action)]);
+    wonder
+}
+
+#[test]
+fn a_player_without_a_standing_wonder_has_no_countdown() {
+    let save = header(vec![human(vec![combat_object(1, 83), wonder(2, 1, 50.0)])]);
+    assert_eq!(
+        wonder_time(&save.players()[0]).to_bits(),
+        (-1.0_f32).to_bits()
+    );
+}
+
+/// The least timer of the standing wonders counts, the sleeping ones' too.
+#[test]
+fn the_countdown_is_the_least_standing_wonders_timer() {
+    let mut player = human(vec![wonder(1, 7, 300.0), wonder(2, 1, 10.0)]);
+    let objects = &mut player
+        .human_or_coop_player
+        .as_deref_mut()
+        .unwrap()
+        .player_objects;
+    objects.sleeping_objects.object_type_list = human(vec![wonder(3, 7, 200.0)])
+        .human_or_coop_player
+        .unwrap()
+        .player_objects
+        .objects
+        .object_type_list;
+    let save = header(vec![player]);
+    assert_eq!(
+        wonder_time(&save.players()[0]).to_bits(),
+        200.0_f32.to_bits()
+    );
+}
+
+/// A save's world and players as the slice sets them up, without the master table.
+#[test]
+fn the_slice_takes_the_worlds_and_the_players_fields() {
+    let mut player = human(vec![combat_object(7, 83)]);
+    let wp = human_mut(&mut player);
+    wp.base.civ_id = 3;
+    wp.base.attributes = vec![200.0, 150.0, 100.0, 50.0];
+    wp.base.resigned = 2;
+    wp.ruin_held_time = 12.5;
+    let mut save = header(vec![gaia(vec![combat_object(1, 594)]), player]);
+    let world = &mut save.world.base_world;
+    world.world_time = 1500;
+    world.current_frame_random_seed = 77;
+    world.player_turn = -1;
+    world.next_object_id = 300;
+    world.next_reusable_object_id = -5;
+    world.local_player_index = 1;
+    save.world.player_teams = vec![0, 2];
+    let turns = slice(&save, None);
+    assert_eq!(
+        (turns.world_time, turns.next_object_id, turns.local_player),
+        (1500, 300, 1)
+    );
+    assert_eq!(turns.recycling.next_id, -5);
+    assert_eq!(turns.teams[..2], [0, 2]);
+    let p = &turns.players[1];
+    assert_eq!((p.civ, p.kind), (3, 1));
+    assert_eq!(
+        p.resources.map(f32::to_bits),
+        [200.0_f32, 150.0, 100.0, 50.0].map(f32::to_bits)
+    );
+    assert!(p.dropped && !p.resigned);
+    assert_eq!(p.victory_times.ruins.to_bits(), 12.5_f32.to_bits());
+    assert_eq!(p.victory_times.wonder.to_bits(), (-1.0_f32).to_bits());
+    assert_eq!(p.objects.iter().map(|u| u.id).collect::<Vec<_>>(), [7]);
+    assert_eq!(
+        turns.players[0]
+            .objects
+            .iter()
+            .map(|u| u.id)
+            .collect::<Vec<_>>(),
+        [1]
+    );
+    // no table: no masters, so no unit lines and no planners
+    assert_eq!(turns.masters.len(), 0);
+}
+
+/// A resign is the flag without the drop's bit.
+#[test]
+fn a_resign_is_not_a_drop() {
+    let mut player = human(Vec::new());
+    human_mut(&mut player).base.resigned = 1;
+    let turns = slice(&header(vec![gaia(Vec::new()), player]), None);
+    assert!(turns.players[1].resigned && !turns.players[1].dropped);
+}
+
+/// With the master table, the slice takes its tables and builds every player's masters.
+#[test]
+fn the_slice_takes_the_master_tables() {
+    let mut table = MasterTable::of_master(0, 83, None, 0);
+    table.time_slice = 9;
+    let save = header(vec![gaia(Vec::new()), human(Vec::new())]);
+    let turns = slice(&save, Some(&table));
+    assert_eq!(turns.history_period, 9);
+    assert_eq!(turns.masters.len(), 2);
+    assert_eq!(turns.spatial.fastest.to_bits(), 0.0_f32.to_bits());
+}

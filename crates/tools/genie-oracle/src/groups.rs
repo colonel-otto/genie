@@ -518,6 +518,21 @@ mod tests {
         );
     }
 
+    /// The globals dump sets the group command counter and the unit types' scratch words;
+    /// other lines and a counter line without a value leave the groups.
+    #[test]
+    fn the_globals_dump_sets_the_command_counter_and_the_scratch() {
+        let mut groups = world(vec![]);
+        globals_from_dump(
+            "group_commands 12\nunit_types_scratch 1 2 -1\nother 5\n",
+            &mut groups,
+        );
+        assert_eq!(groups.commands, 12);
+        assert_eq!(groups.unit_types_scratch, [1, 2, u32::MAX]);
+        globals_from_dump("group_commands\n\n", &mut groups);
+        assert_eq!(groups.commands, 12);
+    }
+
     #[test]
     fn groups_only_one_side_holds_and_the_counter_show_in_the_world_lines() {
         let mut theirs = world(vec![group(3), group(4)]);
