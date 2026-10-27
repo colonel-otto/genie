@@ -414,7 +414,9 @@ impl UnitAi {
         Ok(fx)
     }
 
-    /// Slot 0x28 (`FUN_140c55c90`, every type's; slot 0x30 jumps to it), an order for the
+    /// Slot 0x28 (`FUN_140c55c90`, every type's; slot 0x30, `FUN_140c563d0`, takes 14 arguments
+    /// and passes it the order's x and y as the shown point and its last argument's low byte as
+    /// the ready flag), an order for the
     /// queue: a unit in a state above 2 takes none (false), an order of kind −1 neither (true);
     /// an order that is not immediate goes into the queue (`FUN_140c42640`: before the first
     /// queued order when `in_front`, else after the last). An immediate one, which keeps or drops

@@ -252,11 +252,8 @@ impl World {
     /// clear, [`crate::unit_ai::UnitAi::take_order_now_with`], run outside the unit's update):
     /// issued by the owner, on the unit itself with its master as the target type and the owner
     /// as the target's, at the point (the unit's own place for (−1, −1) unless its master's class
-    /// is 3), height 0, within [`UNLOAD_RANGE`], priority 100. Of the record's last three fields
-    /// the call writes only the first's low byte (1, the shown x: its upper bytes are the
-    /// stack's, not held); the stack slots it leaves as the other two hold the caller's saved
-    /// `RDI` (the shown y, not held) and the return address, whose low byte (`0x85`) makes the
-    /// order ready.
+    /// is 3), height 0, within [`UNLOAD_RANGE`], priority 100, ready (slot 0x30's last argument,
+    /// 1); slot 0x30 shows the order at its x and y.
     pub(super) fn unload_order(
         &mut self,
         player: usize,
@@ -285,7 +282,7 @@ impl World {
             target_owner: player as i32,
             point: [to[0], to[1], 0.0],
             range: UNLOAD_RANGE,
-            shown: [f32::from_bits(1), 0.0],
+            shown: to,
             ready: true,
             target_type: i32::from(master.id),
         };

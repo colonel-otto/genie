@@ -81,10 +81,8 @@ impl World {
     /// order (`0x2bd`) on `target` at once (slot 0x30 -> slot 0x28 with Immediate set and inFront
     /// clear, [`crate::unit_ai::UnitAi::take_order_now_with`], run outside the unit's update by
     /// [`World::run_unit_ai`]): issued by the unit's owner, on the target with its master as the
-    /// target type and its owner, at the target's place, within [`GUARD_RANGE`], priority 100. Of
-    /// the record's last three fields the call writes only the first's low byte (1, the shown x:
-    /// its upper bytes are the stack's, not held); the stack slots it leaves as the other two hold
-    /// the place's decoded y (the shown y) and x, whose low byte becomes the ready flag.
+    /// target type and its owner, at the target's place, within [`GUARD_RANGE`], priority 100,
+    /// ready (slot 0x30's last argument, 1); slot 0x30 shows the order at its x and y.
     pub(crate) fn guard(
         &mut self,
         player: usize,
@@ -104,8 +102,8 @@ impl World {
             target_owner: tp as i32,
             point: [x, y, z],
             range: GUARD_RANGE,
-            shown: [f32::from_bits(1), y],
-            ready: x.to_bits() as u8 != 0,
+            shown: [x, y],
+            ready: true,
             target_type: i32::from(tm.id),
         };
         let cap = if self.players[player].computer {

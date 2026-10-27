@@ -217,7 +217,8 @@ impl World {
     /// holds): it works on the site at its place (slot 0x128: the carried-resource test, any task,
     /// `+0xa14` 0, [`World::order_work`]); with a target its unit AI then queues the order on it
     /// (slot 0x30: `0x2db` issued by the unit, the target's master as its type and its owner's
-    /// number, its place, range 0, priority 100, ready, neither at once nor in front).
+    /// number, its place, shown at its x and y, range 0, priority 100, ready, neither at once nor
+    /// in front).
     ///
     /// # Errors
     ///
@@ -259,7 +260,7 @@ impl World {
                 target_owner: owner as i32,
                 point: place,
                 range: 0.0,
-                shown: [0.0; 2],
+                shown: [place[0], place[1]],
                 ready: true,
                 target_type: i32::from(master),
             };

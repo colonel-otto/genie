@@ -1847,43 +1847,28 @@ fn followers() -> World {
 
 /// GUARD (`FUN_14161dee0`): each unit's AI takes the defend order on the target at once,
 /// run outside its update: it stops, forgets its target and defends the target within 2.5
-/// (the defend action, the target at its place), the order processed and gone. The ready
-/// flag is the low byte of the target's x: a whole x leaves the order queued, unprocessed.
+/// (the defend action, the target at its place), the order processed and gone. Slot 0x30
+/// (`FUN_140c563d0`) makes the order ready (its last argument, 1) and shows it at the
+/// target's x and y, whole ones too (430024841's scout guarding a villager at x 144).
 #[test]
 fn a_guard_gives_its_units_the_defend_order_at_once() {
-    let mut t = followers();
-    t.players[2].objects[0].position = [20.3, 20.0, 0.0];
-    t.spatial.set_position(30, [20.3, 20.0, 0.0]);
-    t.guard(1, &[11], 30).unwrap();
-    let ai = t.players[1].objects[0].ai.as_ref().unwrap();
-    assert_eq!(
-        (ai.current_order, ai.current_action, ai.order_priority),
-        (crate::unit_ai::DEFEND_ORDER, 0x259, 100)
-    );
-    assert_eq!(
-        (ai.current_target, ai.defend_target, ai.desired_distance),
-        (30, 30, GUARD_RANGE)
-    );
-    assert_eq!(ai.target_point, [20.3, 20.0, 0.0]);
-    assert_eq!(ai.orders.len(), 0);
-    // a whole x: the order waits in the queue, the unit stopped and without a target
-    let mut t = followers();
-    t.guard(1, &[12], 30).unwrap();
-    let ai = t.players[1].objects[1].ai.as_ref().unwrap();
-    assert_eq!((ai.current_order, ai.current_target), (-1, -1));
-    assert_eq!(ai.orders.len(), 1);
-    assert_eq!(
-        (ai.orders[0].order, ai.orders[0].target, ai.orders[0].ready),
-        (crate::unit_ai::DEFEND_ORDER, 30, false)
-    );
-    assert_eq!(
-        (
-            ai.orders[0].issuer,
-            ai.orders[0].target_owner,
-            ai.orders[0].target_type
-        ),
-        (1, 2, 5)
-    );
+    for x in [20.3, 40.0] {
+        let mut t = followers();
+        t.players[2].objects[0].position = [x, 20.0, 0.0];
+        t.spatial.set_position(30, [x, 20.0, 0.0]);
+        t.guard(1, &[11], 30).unwrap();
+        let ai = t.players[1].objects[0].ai.as_ref().unwrap();
+        assert_eq!(
+            (ai.current_order, ai.current_action, ai.order_priority),
+            (crate::unit_ai::DEFEND_ORDER, 0x259, 100)
+        );
+        assert_eq!(
+            (ai.current_target, ai.defend_target, ai.desired_distance),
+            (30, 30, GUARD_RANGE)
+        );
+        assert_eq!(ai.target_point, [x, 20.0, 0.0]);
+        assert_eq!(ai.orders.len(), 0);
+    }
 }
 
 /// `FUN_14161c920` for one unit: it follows the target (a `MoveTo` to it), its unit AI takes
