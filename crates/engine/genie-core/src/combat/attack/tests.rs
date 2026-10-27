@@ -1626,3 +1626,70 @@ fn ready_to_attack_s_leash_fails_a_target_too_far_from_the_unit_ai_s_point() {
         assert_eq!(a.state, if follows { READY } else { FAILED });
     }
 }
+
+/// The unit's own Attack in its update without a target ([`Unit::attack_part`]): a building
+/// that cannot attack (`armed` false) ends it with its standing sprite at speed 1, posts 0x1fb
+/// with 600 and no target, and the Attack goes (code 1). An Attack whose target the world does
+/// not hold live is not modelled.
+///
+/// [`Unit::attack_part`]: crate::objects::unit::Unit::attack_part
+#[test]
+fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
+    use crate::world::tests::{forage_world, in_update};
+    let stand = Graphic {
+        id: 9,
+        frames: 10,
+        facets: 1,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 1,
+    };
+    let me = |id, position| crate::movement::Me {
+        id,
+        position,
+        group: -1,
+        action_state: 0,
+    };
+    let mut t = forage_world();
+    // the town centre's master without a missile cannot attack
+    for masters in &mut t.masters {
+        masters.get_mut(109).unwrap().missile = -1;
+    }
+    let centre = &mut t.players[1].objects[2];
+    let mut attack = own_attack(-1, 1, 0.0);
+    attack.arms.idle_sprite = Some(stand);
+    centre.attack = Some(attack);
+    // its unit AI on the attack's action, which takes the Attack's invalidation
+    centre.ai = Some(crate::unit_ai::UnitAi {
+        current_action: 600,
+        ..crate::unit_ai::UnitAi::default()
+    });
+    let at = centre.position;
+    in_update(&mut t, (1, 2), 50, |u, c, _| {
+        u.attack_part(c, me(700, at), None)
+    })
+    .unwrap();
+    let centre = &t.players[1].objects[2];
+    assert_eq!(centre.attack, None);
+    assert_eq!(
+        (centre.sprite.map(|s| s.graphic.id), centre.anim_speed),
+        (Some(9), Some(1.0))
+    );
+    let posted = &centre.ai.as_ref().unwrap().notifies;
+    assert!(
+        posted
+            .iter()
+            .any(|n| n.kind == 0x1fb && n.p == [600, -1, 0])
+    );
+    let mut t = forage_world();
+    t.players[1].objects[0].attack = Some(own_attack(77, 1, 0.0));
+    let at = t.players[1].objects[0].position;
+    let r = in_update(&mut t, (1, 0), 50, |u, c, _| {
+        u.attack_part(c, me(9175, at), None)
+    });
+    assert_eq!(
+        r.unwrap_err().reason(),
+        "an attack's target the slice does not hold live"
+    );
+}

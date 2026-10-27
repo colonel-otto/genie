@@ -562,3 +562,216 @@ fn a_second_pass_between_walled_corners_tries_the_bottom_right_corner() {
     );
     assert!(r.is_err());
 }
+
+/// A queued move of the centre's, which a new unit's notified walk forgets.
+fn queued_move() -> crate::unit_ai::QueuedOrder {
+    crate::unit_ai::QueuedOrder {
+        issuer: 1,
+        order: crate::unit_ai::MOVE_ORDER,
+        priority: 5,
+        target: -1,
+        target_owner: -1,
+        point: [40.0, 80.0, 7.0],
+        range: 2.0,
+        shown: [40.0, 80.0],
+        ready: false,
+        target_type: -1,
+    }
+}
+
+/// `FUN_140ace9c0` with a point: the new villager waits to move, takes the move order and
+/// action with no target at the point, leaves the town bell and walks there (a `MoveTo` of
+/// range 0); a new unit's queue empties, an unloaded unit's stays.
+#[test]
+fn a_gather_point_without_a_target_walks_the_new_unit_there() {
+    use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+    let walked = |notified| {
+        let mut t = crate::world::tests::forage_world();
+        let u = &mut t.players[1].objects[0];
+        u.town_bell.flag = true;
+        u.ai.as_mut().unwrap().orders.push(queued_move());
+        t.gather_move(1, 0, [40.0, 80.0, 0.0], notified).unwrap();
+        t.players[1].objects.swap_remove(0)
+    };
+    let u = walked(true);
+    assert_eq!(u.mover.as_ref().unwrap().waiting, 1);
+    assert!(!u.town_bell.flag);
+    let ai = u.ai.as_ref().unwrap();
+    assert_eq!(
+        (ai.current_order, ai.current_action, ai.current_target),
+        (crate::unit_ai::MOVE_ORDER, crate::unit_ai::MOVE_ACTION, -1)
+    );
+    assert_eq!(ai.target_point, [40.0, 80.0, 0.0]);
+    assert_eq!(ai.orders, []);
+    assert_eq!(
+        u.move_to,
+        Some(MoveToAction {
+            run: false,
+            state: MoveTo::Start,
+            goal: Some([40.0, 80.0, 0.0]),
+            target: -1,
+            range: 0.0,
+            wait: MoveWait::default(),
+        })
+    );
+    let unloaded = walked(false);
+    assert_eq!(unloaded.ai.as_ref().unwrap().orders, [queued_move()]);
+    assert_eq!(unloaded.move_to, u.move_to);
+}
+
+/// A unit without speed only waits to move; one that already acts, or one not in state 2,
+/// is not modelled.
+#[test]
+fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
+    let mut t = crate::world::tests::forage_world();
+    t.players[1].objects[0].mover.as_mut().unwrap().stats.speed = 0.0;
+    t.gather_move(1, 0, [40.0, 80.0, 0.0], true).unwrap();
+    let u = &t.players[1].objects[0];
+    assert_eq!(u.mover.as_ref().unwrap().waiting, 1);
+    assert_eq!(u.move_to, None);
+    assert_eq!(u.ai.as_ref().unwrap().current_order, -1);
+    // a second walk finds the first's `MoveTo`
+    let mut t = crate::world::tests::forage_world();
+    t.gather_move(1, 0, [40.0, 80.0, 0.0], true).unwrap();
+    let reason = |t: &mut World| {
+        t.gather_move(1, 0, [41.0, 80.0, 0.0], true)
+            .unwrap_err()
+            .reason()
+    };
+    assert_eq!(
+        reason(&mut t),
+        "a gather point's move of a unit with an action"
+    );
+    let mut t = crate::world::tests::forage_world();
+    t.players[1].objects[0].life.state = 3;
+    assert_eq!(
+        reason(&mut t),
+        "a gather point's move of a unit not in state 2"
+    );
+}
+
+/// [`crate::world::tests::forage_world`] with the remains masters 800 (static, its storage of
+/// flag 2 given to its owner and of flag 0 held, its death sprite 20 of eight facets starting
+/// on a random one) and 801 (moving, its standing sprite 21 of eight facets).
+fn remains_world() -> World {
+    use crate::objects::masters::{Master, Masters};
+    let mut t = crate::world::tests::forage_world();
+    let graphic = |id, flags| crate::objects::sprite::Graphic {
+        id,
+        frames: 10,
+        facets: 8,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags,
+    };
+    for (id, flags) in [(20, 4), (21, 1)] {
+        let _ = t.graphics.insert(id, graphic(id, flags));
+    }
+    let static_remains = Master {
+        id: 800,
+        kind: 10,
+        death_sprite: 20,
+        standing_sprite: -1,
+        storage: vec![(4, 1.0, 2), (11, 5.0, 0)],
+        ..Master::default()
+    };
+    let moving_remains = Master {
+        id: 801,
+        kind: 30,
+        standing_sprite: 21,
+        moving: Some(crate::gathering::hunt::tests::walker().stats),
+        ..Master::default()
+    };
+    for masters in &mut t.masters {
+        *masters = Masters::new(
+            masters
+                .iter()
+                .cloned()
+                .chain([static_remains.clone(), moving_remains.clone()]),
+        );
+    }
+    t
+}
+
+/// The master's slot 0x40 for remains (`FUN_1411a45a0`, `FUN_141141640`): a static object gives
+/// its owner its storage of flag 2, holds its entry of flag 0 and dies on its death sprite's
+/// eight facets; moving remains face their dead object's facet (with their own sprite's
+/// facets). Another type, a static object with hit points, a recyclable master, moving remains
+/// without a facet or without a moving master are not modelled.
+#[test]
+fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
+    use crate::objects::lifecycle::Class;
+    let made = |t: &World, id| t.masters[1].get(id).unwrap().clone();
+    let mut t = remains_world();
+    let food = t.players[1].attributes[4];
+    let i = t
+        .plain_object(
+            1,
+            800,
+            &made(&t, 800),
+            [30.5, 85.5, 0.0],
+            Facing::Dead(None),
+        )
+        .unwrap();
+    let u = &t.players[1].objects[i];
+    assert_eq!(
+        (u.life.class, u.life.attribute_type, u.life.amount),
+        (Class::Static, 11, 5.0)
+    );
+    assert_eq!((u.life.death_facets, u.sprite), (Some(8), None));
+    assert_eq!(t.players[1].attributes[4], food + 1.0);
+    let i = t
+        .plain_object(
+            1,
+            801,
+            &made(&t, 801),
+            [31.5, 85.5, 0.0],
+            Facing::Dead(Some(2)),
+        )
+        .unwrap();
+    let u = &t.players[1].objects[i];
+    let facets = crate::objects::facing::SpriteFacets {
+        count: 8,
+        flag_1: false,
+    };
+    assert_eq!(
+        u.mover.as_ref().map(|m| m.angle),
+        Some(crate::objects::facing::angle_of_facet(2, facets))
+    );
+    let reason = |change: &dyn Fn(&mut crate::objects::masters::Master), facing| {
+        let mut t = remains_world();
+        let mut m = made(&t, 801);
+        change(&mut m);
+        t.plain_object(1, m.id, &m, [31.5, 85.5, 0.0], facing)
+            .unwrap_err()
+            .reason()
+    };
+    let unchanged = |_: &mut crate::objects::masters::Master| {};
+    assert_eq!(
+        reason(&|m| m.kind = 70, Facing::Drawn),
+        "remains of a type other than 10 and 20 to 39"
+    );
+    assert_eq!(
+        reason(
+            &|m| {
+                m.kind = 10;
+                m.hit_points = 5;
+            },
+            Facing::Drawn
+        ),
+        "remains with hit points (the sleeping list)"
+    );
+    assert_eq!(
+        reason(&|m| m.recyclable = true, Facing::Drawn),
+        "a new object of a recyclable master (a negative id)"
+    );
+    assert_eq!(
+        reason(&unchanged, Facing::Dead(None)),
+        "moving remains of an object without a facet the slice holds"
+    );
+    assert_eq!(
+        reason(&|m| m.moving = None, Facing::Drawn),
+        "moving remains without a moving master"
+    );
+}

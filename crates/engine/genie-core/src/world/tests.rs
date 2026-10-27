@@ -5841,6 +5841,137 @@ fn a_research_of_castle_age_queues_it_but_in_game_mode_16() {
     assert!(castle(16).0.is_err());
 }
 
+/// [`one_player`]'s town centre 9 with a unit AI and technology 5, available (state 1) at the
+/// centre's master 109, its first cost 50 food.
+fn research_world() -> World {
+    use crate::technology::{Cost, Location, TechDef, TechState};
+    let mut t = one_player(vec![centre(9)], [1000.0; 4]);
+    t.players[0].objects[0].ai = Some(UnitAi::default());
+    t.techs = vec![TechDef::default(); 6];
+    t.techs[5].costs[0] = Cost {
+        attribute: 0,
+        amount: 50,
+        paid: 1,
+    };
+    let mut techs = vec![TechState::default(); 6];
+    techs[5] = TechState {
+        state: 1,
+        research_cap: -1,
+        building_master: -1,
+        overrides: [(0, -1, -2), (0, -1, 0), (0, -1, 0)],
+        locations: vec![Location {
+            building: 109,
+            time: 30,
+            button: 1,
+            adjustment: 0.0,
+        }],
+        ..TechState::default()
+    };
+    t.players[0].techs = techs;
+    t
+}
+
+/// RESEARCH of technology `tech` at building 9 with the target `target`.
+fn research_at(tech: i16, target: i32) -> ResearchAt {
+    ResearchAt {
+        building: 9,
+        count: 1,
+        buildings: vec![],
+        tech,
+        target,
+        shift: false,
+    }
+}
+
+/// RESEARCH (`0x140e7e270`): its listed costs come off the pending debit, and an alive building
+/// at one of the technology's locations queues it, its unit AI on the action value 0x26c; a
+/// target, a technology the tree lacks, one neither available nor repeatable, a building
+/// nowhere, a dead one or one at no location do nothing past the debit.
+#[test]
+fn a_research_queues_at_an_alive_location_after_its_costs_come_off_the_debit() {
+    let queued = |t: &World| {
+        t.players[0].objects[0]
+            .production
+            .as_ref()
+            .map_or(0, |p| p.queue.total)
+    };
+    let mut t = research_world();
+    t.research(0, &research_at(5, -1)).unwrap();
+    assert_eq!(queued(&t), 1);
+    assert_eq!(t.players[0].pending_debit, [-50.0, 0.0, 0.0, 0.0]);
+    let ai = t.players[0].objects[0].ai.as_ref().unwrap();
+    assert_eq!(ai.current_action, RESEARCH_ACTION);
+    let untouched = research_world();
+    for (tech, target) in [(5, 9), (6, -1), (-1, -1)] {
+        let mut t = research_world();
+        t.research(0, &research_at(tech, target)).unwrap();
+        assert_eq!(t, untouched);
+    }
+    let refused = |change: &dyn Fn(&mut World)| {
+        let mut t = research_world();
+        change(&mut t);
+        t.research(0, &research_at(5, -1)).unwrap();
+        (queued(&t), t.players[0].pending_debit[0])
+    };
+    assert_eq!(refused(&|t| t.players[0].techs[5].state = 2), (0, -50.0));
+    assert_eq!(refused(&|t| t.players[0].objects[0].id = 8), (0, -50.0));
+    assert_eq!(
+        refused(&|t| t.players[0].objects[0].life.state = 3),
+        (0, -50.0)
+    );
+    assert_eq!(
+        refused(&|t| t.players[0].techs[5].locations[0].building = 110),
+        (0, -50.0)
+    );
+}
+
+/// RESEARCH's unmodelled parts: a technology the data file lacks, the shared kind, a linked
+/// technology, a building of another player, a computer player's research and a building with
+/// an unmodelled action.
+#[test]
+fn a_research_s_unmodelled_parts_fail() {
+    let fails = |change: &dyn Fn(&mut World)| {
+        let mut t = research_world();
+        change(&mut t);
+        t.research(0, &research_at(5, -1)).unwrap_err().reason()
+    };
+    assert_eq!(
+        fails(&|t| t.techs.truncate(5)),
+        "a technology the data file has not got"
+    );
+    assert_eq!(
+        fails(&|t| t.techs[5].kind = crate::technology::SHARED_KIND),
+        "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)"
+    );
+    assert_eq!(
+        fails(&|t| {
+            let _ = t.linked_techs.insert(5, crate::technology::Linked::Cycle);
+        }),
+        "RESEARCH of a linked technology (FUN_140f3a0f0, FUN_140f39e80)"
+    );
+    assert_eq!(
+        fails(&|t| {
+            let tc = t.players[0].objects.remove(0);
+            t.players.push(Player {
+                objects: vec![tc],
+                ..Player::default()
+            });
+            t.masters.push(t.masters[0].clone());
+        }),
+        "RESEARCH at another player's object"
+    );
+    assert_eq!(
+        fails(&|t| t.players[0].computer = true),
+        "a computer player's RESEARCH (FUN_1411d5520, player+0x7a8)"
+    );
+    assert_eq!(
+        fails(&|t| {
+            t.players[0].objects[0].unmodelled_action = Some(GenieError::unsupported("an action"));
+        }),
+        "RESEARCH at a building with an unmodelled action"
+    );
+}
+
 /// `FUN_1411cbc40`: a queue adds its units' population to attribute 80 (the queued units),
 /// which keeps it until the unit spawns; the make action's start counts the one it makes in
 /// 81.
@@ -6221,6 +6352,73 @@ fn an_owner_search_passes_over_a_player_out_of_the_game() {
     assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
     assert_eq!(s.artifact_owner(27530, &none, &[0, 2, 0]), Ok(Some(2)));
     assert_eq!(s.artifact_owner(27530, &none, &[0, 2, 1]), Ok(None));
+}
+
+/// The owner search's own owner and attribute 97 (`FUN_140aabc40`): a unit of the animal's own
+/// owner keeps it, and so does that owner's attribute 97 above 0 for livestock; another
+/// player's attribute 97 above 0 counts its units 100 more, so it takes the animal from its
+/// owner. A unit of a class that never counts (a building's, 3) and a Gaia unit with `+0x924`
+/// set do not count; an animal inside another object searches about its record there.
+#[test]
+fn an_owner_search_keeps_the_owner_s_animal_unless_attribute_97_takes_it() {
+    let unit = owner_search_unit;
+    let none = [0.0; 3];
+    let mut s = hands_world(27530, 1, LIVESTOCK, 594, 2.0);
+    unit(&mut s, 1, 1, 11.5);
+    unit(&mut s, 2, 2, 11.5);
+    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(None));
+    assert_eq!(
+        s.artifact_owner(27530, &[0.0, 0.0, 1.0], &[0, 0, 0]),
+        Ok(Some(2))
+    );
+    assert_eq!(
+        s.artifact_owner(27530, &[0.0, 1.0, 1.0], &[0, 0, 0]),
+        Ok(None)
+    );
+    let mut s = hands_world(27530, 1, LIVESTOCK, 594, 2.0);
+    unit(&mut s, 0, 0, 11.5);
+    unit(&mut s, 3, 2, 12.5);
+    let building = Placed {
+        class: 3,
+        ..*s.get(3).unwrap()
+    };
+    s.insert(3, building);
+    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(None));
+    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    unit(&mut s, 1, 1, 11.5);
+    s.go_inside(27530, [10.5, 10.5, 0.0]);
+    assert_eq!(s.artifact_owner(27530, &none, &[0, 0, 0]), Ok(Some(1)));
+}
+
+/// The owner search's unmodelled parts: an animal the world does not hold, a unit of a player
+/// beyond the lists, and a stopped unit that counts and may have moved onto the tiles.
+#[test]
+fn an_owner_search_s_unmodelled_parts_fail() {
+    let none = [0.0; 3];
+    let reason =
+        |s: &Spatial, me, status: &[u8]| s.artifact_owner(me, &none, status).unwrap_err().reason();
+    let s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    assert_eq!(
+        reason(&s, 99, &[0, 0, 0]),
+        "an owner search of an object the world does not hold"
+    );
+    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    owner_search_unit(&mut s, 1, 3, 11.5);
+    assert_eq!(
+        reason(&s, 27530, &[0, 0, 0, 0]),
+        "an owner search's unit of a player beyond the list"
+    );
+    let mut s = hands_world(27530, 0, LIVESTOCK, 594, 2.0);
+    owner_search_unit(&mut s, 1, 1, 20.5);
+    let stopped = Placed {
+        unknown: Some(10.0),
+        ..*s.get(1).unwrap()
+    };
+    s.insert(1, stopped);
+    assert_eq!(
+        reason(&s, 27530, &[0, 0, 0]),
+        "an owner search near a stopped unit that counts"
+    );
 }
 
 /// The owner search walks the tiles' lists (`+0x28`, `FUN_140aabc40`), as the game does: a unit
@@ -9573,11 +9771,13 @@ fn helper_scout(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> U
 }
 
 /// `AskForHelp`'s world: the scout 123's view (player 1, master 448, at (10, 10)) with the
-/// `helper` among its owner's other objects, Gaia's wolf 50 at (10.5, 10), and the lists the
-/// last search left (`searched`, none before any); `f` runs on the view.
+/// `helper` among its owner's other objects, Gaia's wolf 50 at (10.5, 10), the lists the last
+/// search left (`searched`, none before any) and the world's unit groups `groups`; `f` runs on
+/// the view.
 fn help_view<R>(
     helper: Unit,
     searched: Option<[Vec<crate::vision::registry::Record>; 5]>,
+    groups: &crate::groups::UnitGroups,
     f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_>) -> R,
 ) -> R {
     let scout = Master {
@@ -9641,7 +9841,6 @@ fn help_view<R>(
     let masters = Masters::new([scout]);
     let every = [Masters::new([wolf]), masters.clone()];
     let (mut pathing, mut zones) = (Pathing::default(), crate::pathing::zones::Zones::default());
-    let groups = crate::groups::UnitGroups::default();
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -9678,7 +9877,7 @@ fn help_view<R>(
         computer: false,
         spatial: &mut spatial,
         pathing: &mut pathing,
-        groups: &groups,
+        groups,
         object: &mut object,
         sprite: &mut sprite,
         world_time: 0,
@@ -9715,9 +9914,19 @@ fn help_view<R>(
 ///
 /// [`UnitView::helper_free`]: crate::unit_ai::world_view::UnitView::helper_free
 fn helper_free(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> bool {
-    help_view(helper_scout(helper, own), None, |side| {
+    helper_free_of(
+        1,
+        helper_scout(helper, own),
+        &crate::groups::UnitGroups::default(),
+    )
+}
+
+/// [`helper_free`] of the unit `helper` of player `owner` with the world's unit groups `groups`.
+fn helper_free_of(owner: usize, helper: Unit, groups: &crate::groups::UnitGroups) -> bool {
+    help_view(helper, None, groups, |side| {
         let scout = side.masters.and_then(|m| m.get(448)).unwrap().clone();
-        side.helper_free(1, &side.others[0], &scout, 50).unwrap()
+        side.helper_free(owner, &side.others[0], &scout, 50)
+            .unwrap()
     })
 }
 
@@ -9754,6 +9963,53 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
     }
     // an action of its own makes it busy
     assert!(!helper_free(idle, Some(own_attack(50, -1, 4))));
+}
+
+/// `AskForHelp`'s helper in a group answers whatever it does while its group patrols, and not
+/// while it does not; a patrolling helper whose own Attack's target lies within its range keeps
+/// it. A unit without a unit AI never answers; the helper of another player than the asker's
+/// answers as one of its own.
+#[test]
+fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
+    let idle = UnitAi {
+        ai_type: 13,
+        current_order: -1,
+        current_action: -1,
+        current_target: -1,
+        stance: 0,
+        ..UnitAi::default()
+    };
+    let busy = UnitAi {
+        current_order: 700,
+        current_action: 600,
+        ..idle.clone()
+    };
+    let groups = crate::groups::UnitGroups {
+        groups: vec![
+            crate::groups::UnitGroup {
+                flags: 0x800,
+                ..crate::groups::UnitGroup::new(7)
+            },
+            crate::groups::UnitGroup::new(8),
+        ],
+        ..crate::groups::UnitGroups::default()
+    };
+    let in_group = |group, own| {
+        let mut u = helper_scout(busy.clone(), own);
+        u.group.id = group;
+        u
+    };
+    assert!(helper_free_of(1, in_group(7, None), &groups));
+    assert!(!helper_free_of(1, in_group(8, None), &groups));
+    assert!(!helper_free_of(
+        1,
+        in_group(7, Some(own_attack(50, -1, 4))),
+        &groups
+    ));
+    let mut thoughtless = helper_scout(idle.clone(), None);
+    thoughtless.ai = None;
+    assert!(!helper_free_of(1, thoughtless, &groups));
+    assert!(helper_free_of(2, helper_scout(idle, None), &groups));
 }
 
 /// `FUN_141081a80` on the target of the unit's own Attack: it answers true; forced, the Attack's
@@ -13517,7 +13773,10 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
             Vec::new(),
         ]
     };
-    let call = |helper: Unit, searched| help_view(helper, searched, |side| side.call_for_help(50));
+    let groups = crate::groups::UnitGroups::default();
+    let call = |helper: Unit, searched| {
+        help_view(helper, searched, &groups, |side| side.call_for_help(50))
+    };
     assert_eq!(
         call(helper_scout(idle.clone(), None), Some(lists())),
         crate::unit_ai::helper_answers()

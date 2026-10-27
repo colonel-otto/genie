@@ -905,6 +905,124 @@ mod tests {
         assert_eq!(t.recycling.ghosts, [100]);
     }
 
+    /// Player 2's ghost of player 1's house 9 on tile (2, 1), in state 2, of footprint entry
+    /// `footprint` (0 for none), its bits 0.
+    fn house_ghost(footprint: u8) -> Ghost {
+        Ghost {
+            id: 100,
+            original: Some(9),
+            original_id: 9,
+            original_master: Some(HOUSE),
+            original_owner: 1,
+            position: [2.5, 1.5, 0.0],
+            tile: [2, 1],
+            footprint,
+            bits: 0,
+            cant_see: 0,
+            seen: false,
+            state: 2,
+        }
+    }
+
+    /// `FUN_141090000` once its tile's bits change: the players sharing the original owner's
+    /// sight note themselves in `cant_see` and the ghost takes the bits; the same bits again
+    /// change nothing; its viewer seeing them destroys it. A ghost marked seen below state 3 is
+    /// destroyed before any of that.
+    #[test]
+    fn a_ghost_its_viewer_sees_again_is_destroyed_and_the_owner_notes_itself() {
+        let mut t = world(true);
+        t.players[2].ghosts = vec![house_ghost(0)];
+        set_tile(&mut t, 2, 1, 1 << 1);
+        t.update_ghosts(2).unwrap();
+        let g = t.players[2].ghosts[0];
+        assert_eq!((g.state, g.bits, g.cant_see), (2, 1 << 1, 1 << 1));
+        t.players[2].ghosts[0].cant_see = 0;
+        t.update_ghosts(2).unwrap();
+        assert_eq!(t.players[2].ghosts[0].cant_see, 0);
+        set_tile(&mut t, 2, 1, (1 << 1) | (1 << 2));
+        t.update_ghosts(2).unwrap();
+        assert_eq!(t.players[2].ghosts[0].state, 7);
+        let mut t = world(true);
+        t.players[2].ghosts = vec![Ghost {
+            seen: true,
+            ..house_ghost(0)
+        }];
+        set_tile(&mut t, 2, 1, 1 << 1);
+        t.update_ghosts(2).unwrap();
+        let g = t.players[2].ghosts[0];
+        assert_eq!((g.state, g.bits), (7, 0));
+    }
+
+    /// A ghost its viewer sees stays while a player sharing the viewer's sight (but not the
+    /// owner's) does not see it: viewer 2 shares the sight of players 3 and 4, player 3 only the
+    /// viewer's; the tile seen by player 4 alone keeps the ghost, by player 3 too destroys it.
+    #[test]
+    fn a_ghost_stays_while_a_player_sharing_the_viewer_s_sight_does_not_see_it() {
+        let mut t = world(true);
+        for _ in 0..2 {
+            t.players.push(Player::default());
+            t.masters.push(masters(true));
+        }
+        let own = |p| crate::vision::own_masks(p, false);
+        let with = |p, bits: u64| {
+            let [v, e] = own(p);
+            [v | bits, e]
+        };
+        t.spatial.vision = vec![
+            own(0),
+            own(1),
+            with(2, (1 << 3) | (1 << 4)),
+            with(3, 1 << 2),
+            own(4),
+        ];
+        t.players[2].ghosts = vec![house_ghost(0)];
+        set_tile(&mut t, 2, 1, 1 << 4);
+        t.update_ghosts(2).unwrap();
+        let g = t.players[2].ghosts[0];
+        assert_eq!((g.state, g.bits, g.cant_see), (2, 1 << 4, 1 << 1));
+        set_tile(&mut t, 2, 1, (1 << 3) | (1 << 4));
+        t.update_ghosts(2).unwrap();
+        assert_eq!(t.players[2].ghosts[0].state, 7);
+    }
+
+    /// A building's ghost reads its footprint's tiles too (its UMV entry's offsets): seen there
+    /// by its viewer while the original's mask and the ghost's own tile miss the viewer, it is
+    /// marked seen, not destroyed, and the next update destroys it; without its UMV entry it is
+    /// not modelled.
+    #[test]
+    fn a_building_s_ghost_seen_on_its_footprint_alone_is_marked_seen() {
+        let mut t = world(true);
+        let sight = t.spatial.sight.as_mut().unwrap();
+        sight.extents = vec![crate::vision::visibility::Extent {
+            guid: 1,
+            offsets: vec![[0, 0], [1, 0]],
+            capacity: 2,
+        }];
+        let mut registry = crate::vision::registry::Registry::default();
+        let _ = registry.entries.insert(
+            9,
+            crate::vision::registry::Entry {
+                mask: 1 << 1,
+                ..crate::vision::registry::Entry::default()
+            },
+        );
+        sight.registry = Some(registry);
+        t.players[2].ghosts = vec![house_ghost(1)];
+        set_tile(&mut t, 2, 1, 1 << 1);
+        set_tile(&mut t, 3, 1, 1 << 2);
+        t.update_ghosts(2).unwrap();
+        let g = t.players[2].ghosts[0];
+        assert_eq!((g.state, g.seen, g.bits), (2, true, (1 << 1) | (1 << 2)));
+        t.update_ghosts(2).unwrap();
+        assert_eq!(t.players[2].ghosts[0].state, 7);
+        let mut t = world(true);
+        t.players[2].ghosts = vec![house_ghost(1)];
+        assert_eq!(
+            t.update_ghosts(2).unwrap_err().reason(),
+            "a building's ghost without its UMV entry"
+        );
+    }
+
     #[test]
     fn a_watched_list_gives_ghosts_to_the_players_who_lost_sight_and_tells_a_computer() {
         // FUN_1410905e0: lost = ((old ^ new) & old) >> 1, from player 1, not the list's player

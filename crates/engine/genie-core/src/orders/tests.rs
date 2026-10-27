@@ -945,6 +945,89 @@ fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
     assert_eq!((ai.current_order, ai.current_target), (-1, -1));
 }
 
+/// One unit of INTERACT (`FUN_140e68b90`): a unit the world does not hold takes nothing; a
+/// queued order's unit AI queues it at the unit's offset from the centroid added to the order's
+/// point, the order's own point shown, its ignore list the order's other units; a unit the order
+/// targets itself takes it without a work command. A sleeping unit and a mover without movement
+/// state are not modelled.
+#[test]
+fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
+    let interact = Interact {
+        target: -1,
+        point: [25.0, 30.0],
+        carry_test: false,
+        queued: true,
+        direct: false,
+        human: false,
+        filter: -1,
+    };
+    let mover = || {
+        let mut t = soldiers(&[(11, 83, [20.0, 20.0])], &[]);
+        let walker = crate::gathering::hunt::tests::walker();
+        if let Some(m) = t.masters[1].get_mut(83) {
+            m.moving = Some(walker.stats);
+        }
+        let unit = &mut t.players[1].objects[0];
+        unit.mover = Some(walker);
+        (unit.pasture, unit.my_pasture) = (-1, -1);
+        unit.ai = Some(crate::unit_ai::UnitAi::default());
+        t.spatial.map = [100, 100];
+        t
+    };
+    let mut t = mover();
+    t.interact_unit(1, 99, &[], None, &interact).unwrap();
+    assert_eq!(t, mover());
+    t.interact_unit(1, 11, &[12], Some([21.0, 20.0]), &interact)
+        .unwrap();
+    let u = &t.players[1].objects[0];
+    let m = u.mover.as_ref().unwrap();
+    assert_eq!((m.waiting, &m.ignore_units[..]), (1, &[12][..]));
+    let queued: Vec<_> =
+        u.ai.as_ref()
+            .unwrap()
+            .orders
+            .iter()
+            .map(|o| (o.order, o.point, o.shown, o.ready))
+            .collect();
+    assert_eq!(
+        queued,
+        [(
+            crate::unit_ai::ORDER_ON_TARGET,
+            [24.0, 30.0, 0.0],
+            [25.0, 30.0],
+            false
+        )]
+    );
+    let mut t = mover();
+    let ai = t.players[1].objects[0].ai.as_mut().unwrap();
+    ai.orders.push(crate::unit_ai::QueuedOrder::default());
+    let itself = Interact {
+        target: 11,
+        queued: false,
+        direct: true,
+        ..interact
+    };
+    t.interact_unit(1, 11, &[], None, &itself).unwrap();
+    let u = &t.players[1].objects[0];
+    assert_eq!(u.ai.as_ref().unwrap().orders, []);
+    assert_eq!(u.move_to, None);
+    let mut t = mover();
+    t.players[1].objects[0].mover = None;
+    let reason = |t: &mut World| {
+        t.interact_unit(1, 11, &[], None, &interact)
+            .unwrap_err()
+            .reason()
+    };
+    assert_eq!(reason(&mut t), "an ordered unit without movement state");
+    let mut t = mover();
+    let u = t.players[1].objects.remove(0);
+    t.players[1].sleeping.push(u);
+    assert_eq!(
+        reason(&mut t),
+        "an order to a unit the slice does not hold live"
+    );
+}
+
 /// `FUN_140c42b60` with 1: from the last order to the first, an order not ready becomes
 /// ready and a ready one leaves the queue, the others keeping their order; with 0 the ready
 /// ones stay.
@@ -1240,6 +1323,197 @@ fn a_master_change_inside_a_building_keeps_to_its_record() {
     let record = spatial.get(7).copied().unwrap();
     assert_eq!((record.master, record.radius), (5, [0.3, 0.3]));
     assert!(!spatial.tile_list(5, 5).contains(&7));
+}
+
+/// Slot 0x90's unit part ([`switch_master`]) of `unit`, at (3.5, 3.5) in the open, from `old`
+/// to `next`, with the graphics `shown`: what it leaves to its owner, the unit after it and its
+/// record.
+fn switched_in_the_open(
+    mut unit: Unit,
+    old: &Master,
+    next: &Master,
+    shown: &[i16],
+) -> Result<(actions::Switched, Unit, crate::map::spatial::Placed), GenieError> {
+    let mut spatial = crate::map::spatial::Spatial::new([10, 10]);
+    spatial.insert(
+        unit.id,
+        crate::map::spatial::Placed {
+            position: [3.5, 3.5, 0.0],
+            radius: old.radius,
+            class: old.class,
+            player: 1,
+            master: old.id,
+            obstruction_type: old.obstruction_type,
+            buildable_on: 0,
+            tall: false,
+            speed: 0.0,
+            unknown: None,
+            obstruction: Some(crate::map::spatial::Obstruction { kind: 5, class: 2 }),
+        },
+    );
+    let mut pathing = crate::pathing::Pathing::default();
+    let graphics = shown
+        .iter()
+        .map(|&id| {
+            let g = crate::objects::sprite::Graphic {
+                id,
+                frames: 10,
+                facets: 8,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            };
+            (id, g)
+        })
+        .collect();
+    let mut rng = crate::math::rng::Well512::default();
+    let world = SwitchWorld {
+        spatial: &mut spatial,
+        pathing: &mut pathing,
+        graphics: &graphics,
+        sprite: &mut rng,
+    };
+    let switched = switch_master(&mut unit, old, next, world)?;
+    let record = spatial.get(unit.id).copied().unwrap();
+    Ok((switched, unit, record))
+}
+
+/// The two masters of [`switched_in_the_open`]'s tests: 4 (40 hit points, standing sprite 10)
+/// and 5 (60, sprite 11, volley fire 3), each with storage of several flags.
+fn switch_masters() -> (Master, Master) {
+    let old = Master {
+        id: 4,
+        kind: 70,
+        class: 6,
+        hit_points: 40,
+        radius: [0.2, 0.2],
+        standing_sprite: 10,
+        storage: vec![
+            (4, 1.0, 2),
+            (11, 1.0, 16),
+            (12, 2.0, 32),
+            (13, 3.0, 1),
+            (-1, 1.0, 2),
+        ],
+        ..Master::default()
+    };
+    let next = Master {
+        id: 5,
+        kind: 70,
+        class: 6,
+        hit_points: 60,
+        radius: [0.3, 0.3],
+        standing_sprite: 11,
+        storage: vec![(4, 1.0, 2), (14, 1.0, 16)],
+        volley_fire: 3.0,
+        obstruction_type: 3,
+        obstruction_class: 1,
+        ..Master::default()
+    };
+    (old, next)
+}
+
+/// `FUN_141225b70` with 0 on a unit in the open below state 3: the old master's storage of the
+/// flags 2, 16 and 32 leaves, the new master's of flag 2 comes; the hit points keep their share
+/// of the new master's (at most them, at least 1); its record and obstruction take the new
+/// master's values; it shows the new standing sprite; in state 2 its volleys are the new
+/// master's volley fire. In state 3 only the powerups go.
+#[test]
+fn a_master_change_in_the_open_moves_the_storage_and_shows_the_new_standing_sprite() {
+    let (old, next) = switch_masters();
+    let unit = |hp, state| Unit {
+        id: 7,
+        position: [3.5, 3.5, 0.0],
+        life: crate::objects::lifecycle::Lifecycle {
+            hp,
+            state,
+            master_id: 4,
+            ..crate::objects::lifecycle::Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let mut sprites = crate::math::rng::Well512::default();
+    let showing = Unit {
+        sprite: Some(crate::objects::sprite::ActiveSprite::start(
+            crate::objects::sprite::Graphic {
+                id: 10,
+                frames: 10,
+                facets: 8,
+                speed_multiplier: 1.0,
+                frame_duration: 0.1,
+                replay_delay: 0.0,
+                flags: 1,
+            },
+            &mut sprites,
+        )),
+        ..unit(20.0, 2)
+    };
+    let (switched, u, record) = switched_in_the_open(showing, &old, &next, &[10, 11]).unwrap();
+    assert_eq!(switched.leaving, [(4, -1.0), (11, -1.0), (12, -2.0)]);
+    assert_eq!(switched.coming, [(4, 1.0)]);
+    assert!(switched.promoted);
+    assert_eq!((u.life.master_id, u.life.hp, u.firepower), (5, 30.0, 3.0));
+    assert_eq!(u.sprite.map(|s| s.graphic.id), Some(11));
+    assert_eq!(
+        (record.master, record.radius, record.obstruction_type),
+        (5, [0.3, 0.3], 3)
+    );
+    assert_eq!(
+        record.obstruction,
+        Some(crate::map::spatial::Obstruction { kind: 3, class: 1 })
+    );
+    let hp = |hp| {
+        let (_, u, _) = switched_in_the_open(unit(hp, 1), &old, &next, &[10, 11]).unwrap();
+        (u.life.hp, u.firepower)
+    };
+    assert_eq!(hp(50.0), (60.0, 0.0));
+    assert_eq!(hp(0.5), (1.0, 0.0));
+    let (switched, u, record) = switched_in_the_open(unit(20.0, 3), &old, &next, &[]).unwrap();
+    assert!(!switched.promoted && switched.leaving.is_empty());
+    assert_eq!((u.life.master_id, record.master), (4, 4));
+}
+
+/// [`switch_master`]'s unmodelled parts: a share that changes the damage sprites, a moving
+/// unit's new master that does not move and a new standing sprite the data file lacks.
+#[test]
+fn a_master_change_s_unmodelled_parts_fail() {
+    let (old, next) = switch_masters();
+    let unit = Unit {
+        id: 7,
+        life: crate::objects::lifecycle::Lifecycle {
+            hp: 0.1,
+            master_id: 4,
+            ..crate::objects::lifecycle::Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let damaged = Master {
+        damage_sprites: true,
+        ..old.clone()
+    };
+    let reason = |r: Result<_, GenieError>| r.unwrap_err().reason();
+    assert_eq!(
+        reason(switched_in_the_open(
+            unit.clone(),
+            &damaged,
+            &next,
+            &[10, 11]
+        )),
+        "a master change that changes the damage sprites (FUN_1411859a0)"
+    );
+    let walking = Unit {
+        mover: Some(crate::gathering::hunt::tests::walker()),
+        ..unit.clone()
+    };
+    assert_eq!(
+        reason(switched_in_the_open(walking, &old, &next, &[10, 11])),
+        "a moving unit's new master does not move"
+    );
+    assert_eq!(
+        reason(switched_in_the_open(unit, &old, &next, &[10])),
+        "a new master's standing sprite the data file does not have"
+    );
 }
 
 /// `FUN_1412066b0`: the attack, reload, work rate, most hit points and armor powerups go, the

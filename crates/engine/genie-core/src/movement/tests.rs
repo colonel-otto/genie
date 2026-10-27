@@ -179,6 +179,112 @@ fn the_ignore_list_takes_the_own_list_when_the_top_path_is_this_update_s() {
     assert_eq!(list(&m, &mut plan), Ok(vec![9177, 10028]));
 }
 
+/// A 16 × 16 map of terrain `class` with player 2's drop-off walker 9177 standing at (5.5, 5.5),
+/// its target the house 10028 at (12.5, 5.5), and the records `near` about it (id, place,
+/// radius, class, player), each of the master numbered as its class.
+fn drop_off_world(class: u8, near: &[(i32, [f32; 2], f32, i16, usize)]) -> Spatial {
+    let mut w = Spatial::with_tiles(
+        [16, 16],
+        crate::map::spatial::Tiles::new(16, 16, vec![class; 256]),
+    );
+    let placed = |[x, y]: [f32; 2], r: f32, class, player| Placed {
+        position: [x, y, 0.0],
+        radius: [r, r],
+        class,
+        player,
+        master: class,
+        obstruction_type: 5,
+        buildable_on: 0,
+        tall: true,
+        speed: 0.0,
+        unknown: None,
+        obstruction: Some(Obstruction { kind: 5, class: 2 }),
+    };
+    w.insert(9177, placed([5.5, 5.5], 0.2, 4, 2));
+    w.insert(
+        10028,
+        Placed {
+            obstruction: None,
+            ..placed([12.5, 5.5], 1.0, 3, 2)
+        },
+    );
+    for &(id, at, r, class, player) in near {
+        w.insert(id, placed(at, r, class, player));
+    }
+    w.relations = vec![vec![]; 5];
+    // player 4 is player 2's ally; player 3 is not
+    w.relations[4] = vec![1, 1, 0, 1, 1];
+    w
+}
+
+/// `FUN_14114ece0` for a standing unit whose action is in state 8 (a drop-off): with its
+/// start blocked it also ignores the workers within its radius and a tenth that stand (their
+/// path not this update's), of a worker class or a building with a task of action type 0x99,
+/// allied, and not touching the target; with its start free, or walking, or in another state,
+/// none of them.
+#[test]
+fn a_drop_off_walker_ignores_the_allied_workers_standing_beside_it() {
+    let near = [
+        (1, [5.6, 5.5], 0.2, 4, 2),
+        (2, [5.6, 5.6], 0.2, 7, 2),
+        (3, [5.4, 5.5], 0.2, 4, 2),
+        (4, [5.5, 5.6], 0.2, 4, 2),
+        (5, [5.5, 5.4], 0.2, 4, 3),
+        (6, [5.4, 5.4], 0.2, 21, 4),
+        (7, [5.6, 5.4], 0.5, 27, 2),
+        (8, [5.4, 5.6], 0.5, 39, 2),
+        (9, [5.5, 5.5], 7.0, 4, 2),
+    ];
+    let mut world = drop_off_world(1, &near);
+    let gait = |moving, path_made| {
+        Some(Gait {
+            moving,
+            path_made,
+            ..Gait::default()
+        })
+    };
+    world.set_gait(3, gait(true, None));
+    world.set_gait(4, gait(false, Some(100)));
+    world.set_gait(1, gait(false, Some(99)));
+    // player 2's master 27 (a building of class 27) has a task of action type 0x99; 39 none
+    world.task_0x99 = vec![vec![], vec![], vec![27]];
+    let mut pathing = Pathing::default();
+    pathing.start_mesh(16);
+    let mut object = Well512::default();
+    let groups = crate::groups::UnitGroups::default();
+    let mut plan = Planning {
+        pathing: &mut pathing,
+        now: 100,
+        computer: false,
+        object: &mut object,
+        construction_rate: 1.0,
+        groups: &groups,
+    };
+    let me = |action_state| Me {
+        id: 9177,
+        position: [5.5, 5.5, 0.0],
+        group: -1,
+        action_state,
+    };
+    let mut m = builder_9177();
+    m.paths.clear();
+    m.moved_at = [5.5, 5.5, 0.0];
+    let house = *world.get(10028).unwrap();
+    let line = ([5.5, 5.5], [12.5, 5.5]);
+    let list = |m: &Mover, world: &Spatial, plan: &mut Planning<'_>, state| {
+        m.ignore_list(&me(state), world, plan, Some(&house), 10028, line)
+    };
+    let mut ids = list(&m, &world, &mut plan, 8).unwrap();
+    ids[2..].sort_unstable();
+    assert_eq!(ids, [9177, 10028, 1, 6, 7]);
+    assert_eq!(list(&m, &world, &mut plan, 7).unwrap(), [9177, 10028]);
+    m.velocity.as_mut().unwrap().velocity = [0.0, 0.0, 0.8];
+    assert_eq!(list(&m, &world, &mut plan, 8).unwrap(), [9177, 10028]);
+    m.velocity.as_mut().unwrap().velocity = [0.0; 3];
+    let free = drop_off_world(2, &near);
+    assert_eq!(list(&m, &free, &mut plan, 8).unwrap(), [9177, 10028]);
+}
+
 /// `FUN_140fa0110`: the drop-off walker's start test along its line, with its radius, its
 /// weapon range and the target's radii: blocked deep in terrain its mask lacks, free on
 /// terrain it has.

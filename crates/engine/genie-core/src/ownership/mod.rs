@@ -5,3 +5,6 @@
 pub mod artifact;
 pub(crate) mod capture;
 pub(crate) mod change;
+
+#[cfg(test)]
+mod tests;

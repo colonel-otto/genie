@@ -855,4 +855,156 @@ mod tests {
         assert_eq!(t.players[0].resources[0], 10.0);
         assert_eq!(t.masters[0].get(83).map(|m| m.class), Some(VILLAGER));
     }
+
+    /// `FUN_140a97970` -> `FUN_140a78150`: each action finds its old task's match among the new
+    /// master's tasks (action type, target class and master; the last of equals) and takes it; an
+    /// action without a match keeps its task.
+    #[test]
+    fn an_upgrade_s_actions_take_the_new_master_s_last_matching_task() {
+        use crate::construction::build::{BUILD, BuildAction, BuildTask};
+        use crate::gathering::gather::GATHER;
+        use crate::gathering::hunt::HuntTask;
+        use crate::objects::masters::Task;
+        let task = |id, action_type, object_group, work_range| Task {
+            id,
+            action_type,
+            object_group,
+            work_range,
+            work_val1: work_range * 2.0,
+            attribute_type: 17,
+            ..Task::default()
+        };
+        let mut t = crate::world::tests::forage_world();
+        t.gather_command(1, 0, 600).unwrap();
+        let mut old = t.masters[1].get(120).unwrap().clone();
+        old.tasks.push(task(3, BUILD, 3, 0.25));
+        let make = task(4, crate::gathering::make::MAKE, -1, 0.0);
+        let waiting = task(9, 0x9a, 3, 0.0);
+        let new = Master {
+            id: 121,
+            tasks: vec![
+                task(5, GATHER, 7, 0.5),
+                task(6, GATHER, 7, 0.75),
+                task(7, BUILD, 3, 1.5),
+                task(8, crate::gathering::make::MAKE, -1, 2.0),
+            ],
+            ..old.clone()
+        };
+        let u = &mut t.players[1].objects[0];
+        let build = BuildTask {
+            range: 0.25,
+            work_value: 0.5,
+            work_rate: 1.0,
+            resource: 17,
+            id: 3,
+        };
+        u.build = Some(BuildAction::start(10028, [30.0, 88.0, 0.0], 1.0, build));
+        u.make = Some(crate::gathering::make::MakeAction {
+            state: 0,
+            remaining: 0.0,
+            total: 0.0,
+            task: make,
+        });
+        u.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify {
+            state: 0,
+            task: waiting,
+            target: 10028,
+        });
+        t.actions_take_master(Place::Live(1, 0), &old, &new);
+        let u = &t.players[1].objects[0];
+        assert_eq!(u.gather.unwrap().task, HuntTask::of(&new.tasks[1]));
+        assert_eq!(
+            u.build.unwrap().task,
+            BuildTask {
+                range: 1.5,
+                work_value: 3.0,
+                work_rate: 1.0,
+                resource: 17,
+                id: 7,
+            }
+        );
+        assert_eq!(u.make.unwrap().task, new.tasks[3]);
+        assert_eq!(u.wait_solidify.unwrap().task, waiting);
+        // a Gather whose task the old master lacks keeps it
+        let gather = u.gather.unwrap().task;
+        let mut bare = old.clone();
+        bare.tasks.clear();
+        t.actions_take_master(Place::Live(1, 0), &bare, &new);
+        assert_eq!(t.players[1].objects[0].gather.unwrap().task, gather);
+    }
+
+    /// Player 0's world for `FUN_141657d10`'s modes: soldiers 10 and 11 and the sleeping 12 of
+    /// master 4 (40 hit points, each at 20), 11 with a master of its own of id 4; the masters 5
+    /// and 0x67f (60 hit points); 10 filed in the tracker.
+    fn upgrade_world() -> World {
+        let soldier = |id, hit_points| Master {
+            id,
+            kind: master_type::COMBAT,
+            class: 6,
+            hit_points,
+            ..Master::default()
+        };
+        let mut own = object(11, 4, 2, 20.0);
+        own.own_master = Some(Box::new(soldier(4, 40)));
+        let player = crate::world::Player {
+            objects: vec![object(10, 4, 2, 20.0), own],
+            sleeping: vec![object(12, 4, 2, 20.0)],
+            attributes: vec![0.0; 300],
+            ..crate::world::Player::default()
+        };
+        let mut t = World::new(0, 1, 0, vec![0], vec![player]);
+        t.masters = vec![Masters::new([
+            soldier(4, 40),
+            soldier(5, 60),
+            soldier(0x67f, 60),
+        ])];
+        t.track_add(0, 10, 4);
+        t
+    }
+
+    /// `FUN_141657d10` in mode 2 with the effect's object: that object alone takes a master of
+    /// its own, its upgrade keeping it, then `to`'s values copied in; the player's master stays.
+    /// In mode 3 an object whose own master has `from`'s id takes the upgrade too, and so does a
+    /// sleeping object; masters the table lacks change nothing.
+    #[test]
+    fn a_mode_2_upgrade_gives_the_effect_s_object_a_master_of_its_own() {
+        let hp = |t: &World| -> Vec<f32> {
+            let p = &t.players[0];
+            p.objects
+                .iter()
+                .chain(&p.sleeping)
+                .map(|u| u.life.hp)
+                .collect()
+        };
+        let mut t = upgrade_world();
+        t.upgrade_objects(0, 4, 5, 2, Some(10)).unwrap();
+        let own = t.players[0].objects[0].own_master.as_deref().unwrap();
+        assert_eq!((own.id, own.hit_points), (4, 60));
+        assert_eq!(hp(&t), [30.0, 20.0, 20.0]);
+        assert_eq!(t.masters[0].get(4).map(|m| m.hit_points), Some(40));
+        let mut t = upgrade_world();
+        t.upgrade_objects(0, 4, 5, 3, None).unwrap();
+        assert_eq!(hp(&t), [30.0, 30.0, 30.0]);
+        let own = t.players[0].objects[1].own_master.as_deref().unwrap();
+        assert_eq!((own.id, own.hit_points), (4, 60));
+        assert_eq!(t.masters[0].get(4).map(|m| m.hit_points), Some(60));
+        for (p, to) in [(0, 99), (3, 5)] {
+            let mut t = upgrade_world();
+            t.upgrade_objects(p, 4, to, 0, None).unwrap();
+            assert_eq!(t, upgrade_world());
+        }
+    }
+
+    /// The upgrades to 0x67f and 0x6a1 move the tracker's list of `from` to `to`'s
+    /// (`FUN_14104fd10`); another upgrade leaves it.
+    #[test]
+    fn an_upgrade_to_0x67f_moves_the_tracker_s_list() {
+        let mut t = upgrade_world();
+        t.upgrade_objects(0, 4, 0x67f, 0, None).unwrap();
+        let tracker = &t.players[0].tracker;
+        assert_eq!((tracker.list(0x67f), tracker.list(4)), (&[10][..], &[][..]));
+        let mut t = upgrade_world();
+        t.upgrade_objects(0, 4, 5, 0, None).unwrap();
+        assert_eq!(t.players[0].tracker.list(4), [10]);
+    }
 }
