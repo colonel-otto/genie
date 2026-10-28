@@ -4026,6 +4026,31 @@ fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
     assert!(t.players[0].sleeping.by_id(521).is_some());
 }
 
+/// Outside an update a take, a release and a builder's leave run the update's calls on a view
+/// of the whole world ([`World::with_lets`]): the sleeping tree wakes to the end of Gaia's live
+/// list and tracker, a release lets it sleep again, and the annex's main building counts a
+/// builder less.
+#[test]
+fn outside_an_update_the_lets_run_on_the_whole_world() {
+    let mut t = lets_world();
+    let by = Releaser {
+        id: t.players[1].objects[0].id,
+        class: 4,
+        player: 1,
+    };
+    t.take(521, by);
+    assert_eq!(t.players[0].objects.iter().last().map(|u| u.id), Some(521));
+    let k = crate::players::tracker::key(t.masters.first(), &t.lines, 349);
+    assert_eq!(t.players[0].tracker.list(k.master).last(), Some(&521));
+    assert_eq!(t.object(521).map(|(_, u)| u.workers), Some(1));
+    t.release(521, by).unwrap();
+    let tree = t.object(521).map(|(_, u)| (u.workers, u.life.goto_sleep));
+    assert_eq!(tree, Some((0, true)));
+    t.object_mut(520).unwrap().1.builders = 2;
+    t.leave_builders(530).unwrap();
+    assert_eq!(t.object(520).map(|(_, u)| u.builders), Some(1));
+}
+
 /// The unit AI's stop (`Effect::Stop`, [`Unit::stop_action`]): the forager's Gather goes and
 /// its bush counts a worker less within the update, through the view, not after the step.
 #[test]

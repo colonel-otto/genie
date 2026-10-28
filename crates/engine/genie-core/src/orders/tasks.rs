@@ -490,15 +490,9 @@ impl World {
     /// The builder count: the building `FUN_140aaddb0` gives for the foundation `id` a Build
     /// counted its builder among ([`World::counted_building`]; a Repair's target the same,
     /// `FUN_140ad9050`) counts one less (`+0x9e8`: a building's in its construction record, a
-    /// unit's its own); none once the world no longer holds `id`.
+    /// unit's its own); none once the world no longer holds `id`. Outside an update
+    /// ([`crate::world::lets::Lets::leave_builders`] on the whole world).
     pub(crate) fn leave_builders(&mut self, id: i32) -> Result<(), GenieError> {
-        let Some(site) = self.counted_building(id)? else {
-            return Ok(());
-        };
-        if let Some((_, b)) = self.object_mut(site) {
-            let n = b.repairers_mut();
-            *n = n.wrapping_sub(1);
-        }
-        Ok(())
+        self.with_lets(0, |lets, others| lets.leave_builders(others, id))
     }
 }

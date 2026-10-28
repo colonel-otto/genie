@@ -7,77 +7,35 @@ use crate::objects::masters::Master;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
-use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
 
 impl World {
-    /// Slot 0x178 on the object an action of `by` takes as its target: a building's
-    /// (`FUN_1411dba70`) first lists an unallied taker of a foundation with a stack unit
-    /// ([`Unit::taken`]); then the base take (`FUN_14119d3e0`): its worker count (`+0x644`)
-    /// rises, to at most 550; a sleeping object (static, never a building) wakes: it leaves its
-    /// player's sleeping list (slot 0x2d8, the last object taking its place) for the end of the
-    /// live list (slot 0x2d0). A live object flagged to sleep only drops the flags.
+    /// Slot 0x178 on the object an action of `by` takes as its target, outside an update
+    /// ([`crate::world::lets::Lets::take`] on the whole world): a building's (`FUN_1411dba70`)
+    /// first lists an unallied taker of a foundation with a stack unit ([`Unit::taken`]); then
+    /// the base take (`FUN_14119d3e0`): its worker count (`+0x644`) rises, to at most 550; a
+    /// sleeping object (static, never a building) wakes: it leaves its player's sleeping list
+    /// (slot 0x2d8, the last object taking its place) for the end of the live list (slot
+    /// 0x2d0). A live object flagged to sleep only drops the flags.
     pub(crate) fn take(&mut self, id: i32, by: Releaser) {
-        match self.place(id) {
-            Some(Place::Live(p, i)) => {
-                let world = TaskWorld {
-                    players: &self.players,
-                    drop_sites: &self.drop_sites,
-                };
-                let allied = world.allied(by.player, p, true);
-                let u = &self.players[p].objects[i];
-                let listed = self
-                    .master_of(p, u.life.master_id)
-                    .is_ok_and(|m| u.lists_taker(m, allied));
-                self.players[p].objects[i].taken(listed, by.id);
-            }
-            Some(Place::Sleeping(p, i)) => {
-                let owner = &mut self.players[p];
-                let u = &mut owner.sleeping[i];
-                if u.workers < 550 {
-                    u.workers += 1;
-                }
-                let woken = owner.sleeping.swap_remove(i);
-                let (id, master) = (woken.id, woken.life.master_id);
-                owner.objects.push(woken);
-                self.track_relist(p, id, master);
-            }
-            None => {}
-        }
+        self.with_lets(by.player, |lets, others| lets.take(others, id, by));
     }
 
-    /// Slot 0x180 on the object an action of `by` lets go ([`crate::objects::release::released`]): a
-    /// building's (`FUN_1411d6020`) drops an unallied releaser from the attacking units of a
-    /// foundation with a stack unit ([`Unit::lists_taker`]); its worker count falls; a static
-    /// object (type below 30, `FUN_141197d00`) that no one works on any more and is alive (state
-    /// 2 with hit points at least 0) or in state 6 is flagged to sleep (`+0x641`, `+0x643`); a
-    /// combat object (`FUN_141086e60`) tells its unit AI (notify 699).
+    /// Slot 0x180 on the object an action of `by` lets go, outside an update
+    /// ([`crate::world::lets::Lets::release`] on the whole world,
+    /// [`crate::objects::release::released`]): a building's (`FUN_1411d6020`) drops an unallied
+    /// releaser from the attacking units of a foundation with a stack unit
+    /// ([`Unit::lists_taker`]); its worker count falls; a static object (type below 30,
+    /// `FUN_141197d00`) that no one works on any more and is alive (state 2 with hit points at
+    /// least 0) or in state 6 is flagged to sleep (`+0x641`, `+0x643`); a combat object
+    /// (`FUN_141086e60`) tells its unit AI (notify 699). A sleeping object only counts a worker
+    /// less.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::world::lets::Lets::release`]'s.
     pub(crate) fn release(&mut self, id: i32, by: Releaser) -> Result<(), GenieError> {
-        let (p, i) = match self.place(id) {
-            Some(Place::Live(p, i)) => (p, i),
-            // a sleeping object (static: only those sleep) found by FUN_1415417a0 counts a worker
-            // less (FUN_141197d00); asleep already (`+0x641`), it is not flagged again
-            Some(Place::Sleeping(p, i)) => {
-                let u = &mut self.players[p].sleeping[i];
-                if 0 < u.workers {
-                    u.workers -= 1;
-                }
-                return Ok(());
-            }
-            None => return Ok(()),
-        };
-        let world = TaskWorld {
-            players: &self.players,
-            drop_sites: &self.drop_sites,
-        };
-        let allied = world.allied(by.player, p, true);
-        let (kind, listed) = {
-            let u = &self.players[p].objects[i];
-            let master = self.master_of(p, u.life.master_id)?;
-            (master.kind, u.lists_taker(master, allied))
-        };
-        crate::objects::release::released(&mut self.players[p].objects[i], kind, listed, by)
+        self.with_lets(by.player, |lets, others| lets.release(others, id, by))
     }
 
     /// Object `idx` of player `player` as the releaser of its actions' targets.

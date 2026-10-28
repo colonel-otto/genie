@@ -1,22 +1,20 @@
 //! What an object's update does to the objects its actions take and let go (slots 0x178 and
 //! 0x180) and to the building a counted builder leaves: each a call through the update's view
-//! where the game makes it (FD-045-D07), as [`World::take`], [`World::release`] and
-//! [`World::leave_builders`] do outside an update.
+//! where the game makes it (FD-045-D07). Outside an update [`World::take`], [`World::release`]
+//! and [`World::leave_builders`] run the same calls on a view of the whole world.
 //!
 //! The updating object itself is outside the view (its slot holds its stand-in): a call on it
 //! goes to the world after the step (the Context's `takes`, `releases`, `builder_leaves`).
-//!
-//! [`World::take`]: crate::world::World::take
-//! [`World::release`]: crate::world::World::release
-//! [`World::leave_builders`]: crate::world::World::leave_builders
 
 use crate::GenieError;
 use crate::objects::lines::UnitLines;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::release::{Releaser, released};
+use crate::objects::unit::TAKEN_OUT;
 use crate::players::tracker::Tracker;
 use crate::world::context::Context;
 use crate::world::others::{Others, OthersRef};
+use crate::world::{Player, World};
 
 /// What the calls on the objects let go and taken reach besides the view: the updating player
 /// and its relations (whether a taker or releaser is allied), every player's masters and the
@@ -31,6 +29,40 @@ pub(crate) struct Lets<'l> {
     pub(crate) takes: &'l mut Vec<(i32, Releaser)>,
     pub(crate) releases: &'l mut Vec<(i32, Releaser)>,
     pub(crate) builder_leaves: &'l mut Vec<i32>,
+}
+
+impl World {
+    /// `f` with the world's [`Lets`] for player `player`'s calls and a view of every player's
+    /// objects, none of them updating: [`World::take`], [`World::release`] and
+    /// [`World::leave_builders`] outside an update run the update's calls on it.
+    pub(crate) fn with_lets<R>(
+        &mut self,
+        player: usize,
+        f: impl FnOnce(&mut Lets<'_>, &mut Others<'_>) -> R,
+    ) -> R {
+        let (before, rest) = self.players.split_at_mut(player);
+        let (own, after) = rest.split_first_mut().expect("a player of the world");
+        let Player {
+            objects,
+            sleeping,
+            relations,
+            tracker,
+            ..
+        } = own;
+        let mut others = Others::new((player, TAKEN_OUT), (objects, sleeping), (before, after));
+        let (mut takes, mut releases, mut builder_leaves) = (Vec::new(), Vec::new(), Vec::new());
+        let mut lets = Lets {
+            player,
+            relations,
+            masters: &self.masters,
+            lines: &self.lines,
+            tracker,
+            takes: &mut takes,
+            releases: &mut releases,
+            builder_leaves: &mut builder_leaves,
+        };
+        f(&mut lets, &mut others)
+    }
 }
 
 impl Context<'_> {
