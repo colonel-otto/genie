@@ -3919,6 +3919,112 @@ fn lumber_world(near: f32) -> World {
     t
 }
 
+/// [`lumber_world`] with its tree 521 asleep and a Gaia foundation 530 (state 0) of a building
+/// master with a stack unit (master 99, which the game never uses) that is an annex of tree
+/// 520.
+fn lets_world() -> World {
+    let mut t = lumber_world(31.5);
+    let asleep = t.players[0].objects.swap_remove(3);
+    t.players[0].sleeping.push(asleep);
+    for masters in &mut t.masters {
+        let annex = Master {
+            id: 99,
+            kind: crate::orders::BUILDING,
+            building: Some(crate::objects::masters::BuildingMaster {
+                stack_unit: 5,
+                ..crate::objects::masters::BuildingMaster::default()
+            }),
+            ..Master::default()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([annex]));
+    }
+    t.players[0].objects.push(Unit {
+        id: 530,
+        annex_of: Some(520),
+        life: Lifecycle {
+            state: 0,
+            master_id: 99,
+            ..Lifecycle::default()
+        },
+        pasture: -1,
+        my_pasture: -1,
+        ..Unit::default()
+    });
+    t
+}
+
+/// An update's take through its view (slot 0x178, [`crate::world::lets::take`]): a live tree
+/// counts its worker; a sleeping one counts its worker and wakes, last in its player's live
+/// list and tracker; an unallied player's foundation with a stack unit lists its taker, and
+/// Gaia's own taker is allied; one the world does not hold is not taken; the updating unit
+/// itself is the world's after the step.
+#[test]
+fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
+    use crate::world::lets::take;
+    let mut t = lets_world();
+    let gaia = Releaser {
+        id: 500,
+        class: 9,
+        player: 0,
+    };
+    let deferred = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let by = unit.releaser(c);
+        for id in [520, 521, 530, 9999, unit.id] {
+            take(c, others, id, by);
+        }
+        take(c, others, 530, gaia);
+        Ok(c.takes.iter().map(|&(id, _)| id).collect::<Vec<_>>())
+    });
+    assert_eq!(deferred, Ok(vec![t.players[1].objects[0].id]));
+    let workers = |t: &World, id| t.object(id).map(|(_, u)| u.workers);
+    assert_eq!(workers(&t, 520), Some(1));
+    assert_eq!(workers(&t, 521), Some(1));
+    assert_eq!(t.players[0].objects.iter().last().map(|u| u.id), Some(521));
+    assert!(t.players[0].sleeping.by_id(521).is_none());
+    let k = crate::players::tracker::key(t.masters.first(), &t.lines, 349);
+    assert_eq!(t.players[0].tracker.list(k.master).last(), Some(&521));
+    let villager = t.players[1].objects[0].id;
+    assert_eq!(workers(&t, villager), Some(1));
+    let annex = t
+        .object(530)
+        .map(|(_, u)| (u.workers, u.attacking_units.clone()));
+    assert_eq!(annex, Some((2, vec![villager])));
+}
+
+/// An update's release through its view (slot 0x180, [`crate::world::lets::release`]): a live
+/// tree no one works on any more goes to sleep; a sleeping one counts a worker less and stays
+/// asleep; one the world does not hold is not let go; the updating unit itself is the world's
+/// after the step. Then a counted builder's leave ([`crate::world::lets::leave_builders`]): an
+/// object counts one builder less, an annex's main building for the annex; the teardown's
+/// pair applies leaves before releases ([`crate::world::lets::torn_down`]).
+#[test]
+fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
+    use crate::world::lets::{leave_builders, release, torn_down};
+    let mut t = lets_world();
+    for id in [520, 521] {
+        let u = t.object_mut(id).unwrap().1;
+        (u.workers, u.builders) = (2, 3);
+    }
+    let deferred = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let by = unit.releaser(c);
+        for id in [520, 521, 9999, unit.id] {
+            release(c, others, id, by)?;
+        }
+        leave_builders(c, others, 520)?;
+        leave_builders(c, others, 530)?;
+        torn_down(c, others, (vec![521], vec![(520, by)]))?;
+        Ok(c.releases.iter().map(|&(id, _)| id).collect::<Vec<_>>())
+    });
+    assert_eq!(deferred, Ok(vec![t.players[1].objects[0].id]));
+    let tree = |t: &World, id| {
+        t.object(id)
+            .map(|(_, u)| (u.workers, u.builders, u.life.goto_sleep))
+    };
+    assert_eq!(tree(&t, 520), Some((0, 1, true)));
+    assert_eq!(tree(&t, 521), Some((1, 2, false)));
+    assert!(t.players[0].sleeping.by_id(521).is_some());
+}
+
 /// The hunt's search for the next tree (`FUN_140ac4670`, [`Unit::hunt_tree_search`]): the
 /// unit AI's `ClosestResourceObject` of group 0 names the nearer tree, which the hunt takes
 /// (slot 0x48: its Attack on the tree) and the tree counts the hunter. A hunt farther than
@@ -3927,7 +4033,7 @@ fn lumber_world(near: f32) -> World {
 fn a_hunt_that_lost_its_tree_takes_the_next_one() {
     let search = |t: &mut World, within, near| {
         in_update(t, (1, 0), 50, |unit, c, others| {
-            unit.hunt_tree_search(c, others.view(), within, near)
+            unit.hunt_tree_search(c, others, within, near)
         })
     };
     let mut t = lumber_world(31.5);
@@ -3954,7 +4060,7 @@ fn a_hunt_that_lost_its_tree_takes_the_next_one() {
 fn a_hunt_whose_attack_failed_takes_a_near_tree_or_searches() {
     let failed = |t: &mut World| {
         in_update(t, (1, 0), 50, |unit, c, others| {
-            unit.hunt_attack_failed(c, others.view())
+            unit.hunt_attack_failed(c, others)
         })
     };
     let mut t = lumber_world(31.5);
@@ -12094,10 +12200,10 @@ fn gather_step(t: &mut World) -> Result<(), GenieError> {
 }
 
 /// What follows the Gather's update ([`Unit::gather_next`]) for the forager on bush 600 with
-/// its town centre 700: the end lets both go and removes the Gather; a target the update changed
-/// lets the old one go; a build command asks for the Gather's target to be built after the update
-/// (a second in one update is not modelled); the reseed after the walk back to the farm, whether
-/// it arrived.
+/// its town centre 700, each worked by one: the end lets both go and removes the Gather; a
+/// target the update changed lets the old one go, where the update does; a build command asks
+/// for the Gather's target to be built after the update (a second in one update is not
+/// modelled); the reseed after the walk back to the farm, whether it arrived.
 #[test]
 fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
     use crate::gathering::gather::Next;
@@ -12109,11 +12215,18 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
             .gather_mut()
             .unwrap()
             .carry_to = 700;
+        for id in [600, 700] {
+            t.object_mut(id).unwrap().1.workers = 1;
+        }
         let seen = in_update(&mut t, (1, 0), 50, |unit, c, others| {
             let by = unit.releaser(c);
             c.build_command = built;
-            let r = unit.gather_next(c, others.view(), next, old, by);
-            let released = c.releases.drain(..).map(|(id, _)| id).collect();
+            let r = unit.gather_next(c, others, next, old, by);
+            // the objects let go, as the update leaves them
+            let released = [600, 700]
+                .into_iter()
+                .filter(|&id| others.find(id).is_some_and(|(_, u)| u.workers == 0))
+                .collect();
             Ok((r, released, c.build_command.take(), c.reseed.take()))
         })
         .unwrap();
@@ -12122,11 +12235,11 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
     let (t, seen) = follow(Next::Done, (600, 700), None);
     assert_eq!(seen, (Ok(()), vec![600, 700], None, None));
     assert!(t.players[1].objects[0].actions.gather().is_none());
-    let (t, seen) = follow(Next::Stay, (601, -1), None);
-    assert_eq!(seen, (Ok(()), vec![601], None, None));
+    let (t, seen) = follow(Next::Stay, (700, -1), None);
+    assert_eq!(seen, (Ok(()), vec![700], None, None));
     assert!(t.players[1].objects[0].actions.gather().is_some());
-    let (_, seen) = follow(Next::Stay, (600, 702), None);
-    assert_eq!(seen, (Ok(()), vec![702], None, None));
+    let (_, seen) = follow(Next::Stay, (600, 600), None);
+    assert_eq!(seen, (Ok(()), vec![600], None, None));
     let (_, seen) = follow(Next::Build, (600, 700), None);
     assert_eq!(seen, (Ok(()), vec![], Some(600), None));
     let (_, (r, ..)) = follow(Next::Build, (600, 700), Some(5));
@@ -12223,7 +12336,7 @@ fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.build_drop_off(c, others.view(), me)
+        unit.build_drop_off(c, others, me)
     })
     .unwrap();
     let v = &t.players[1].objects[0];
@@ -12356,14 +12469,14 @@ type OwnMoved = (
 
 /// The villager's update's `MoveTo` part ([`Unit::move_to_part`]) in `t`.
 fn own_move(t: &mut World) -> OwnMoved {
-    let r = in_update(t, (1, 0), 50, |unit, c, _| {
+    let r = in_update(t, (1, 0), 50, |unit, c, others| {
         let me = crate::movement::Me {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
             action_state: unit.actions.move_to().map_or(0, |m| m.state.number()),
         };
-        unit.move_to_part(c, me)
+        unit.move_to_part(c, others, me)
     });
     let v = &t.players[1].objects[0];
     let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
@@ -12732,16 +12845,15 @@ fn a_build_step_s_changes_reach_the_builder() {
     assert_eq!((v.life.attribute_type, v.life.amount), (-1, 0.0));
     assert_eq!(t.players[1].resources[1], 5.0);
     let mut t = house_builder();
+    t.object_mut(700).unwrap().1.workers = 1;
     let stopped = BuildStep {
         anim_stopped: true,
         site_let_go: Some(700),
         ..BuildStep::default()
     };
-    let released = vec![700];
-    assert_eq!(
-        after_build(&mut t, stopped),
-        AfterBuild { released, ..none() }
-    );
+    // the second target goes where the step lets it go, not after the update
+    assert_eq!(after_build(&mut t, stopped), none());
+    assert_eq!(t.object(700).map(|(_, u)| u.workers), Some(0));
     assert_eq!(t.players[1].objects[0].body.anim_speed(), Some(0.0));
     for (done, released) in [(true, false), (false, true)] {
         let mut t = house_builder();
@@ -13463,7 +13575,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.build_drop_off(c, others.view(), me)
+        unit.build_drop_off(c, others, me)
     })
     .unwrap();
     let mut seen = Vec::new();

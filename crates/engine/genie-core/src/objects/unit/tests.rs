@@ -107,13 +107,13 @@ fn an_object_past_state_2_loses_its_actions() {
         range: 0.0,
         wait: MoveWait::default(),
     }));
-    in_update(&mut t, (1, 0), 50, |u, c, _| u.actions_past_life(c)).unwrap();
+    in_update(&mut t, (1, 0), 50, Unit::actions_past_life).unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(u.actions.move_to().copied(), None);
     assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
     let mut t = forage_world();
     t.players[1].objects[0].unmodelled_action = Some(GenieError::unsupported("an action"));
-    let r = in_update(&mut t, (1, 0), 50, |u, c, _| u.actions_past_life(c));
+    let r = in_update(&mut t, (1, 0), 50, Unit::actions_past_life);
     assert_eq!(r.unwrap_err().reason(), "an action");
 }
 

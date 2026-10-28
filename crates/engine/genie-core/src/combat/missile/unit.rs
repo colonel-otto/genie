@@ -48,7 +48,7 @@ impl Unit {
         &self,
         action: &mut crate::combat::missile::MissileAction,
         c: &mut Context<'_>,
-        others: &Others<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let dead = |state: u8| 2 < state && state != 6;
         let target_state = readable(c, others, action.target).map(|(_, u, _)| u.life.state);
@@ -70,7 +70,8 @@ impl Unit {
             action.fired_from = -1;
         }
         if action.target != -1 && target_state.is_some_and(dead) {
-            c.releases.push((action.target, self.releaser(c)));
+            let by = self.releaser(c);
+            crate::world::lets::release(c, others, action.target, by)?;
             action.target = -1;
         }
         if action.fired_from != -1 && shooter_state.is_some_and(dead) {
@@ -439,30 +440,7 @@ impl Unit {
         let Some(action) = slot.as_mut() else {
             return Ok(());
         };
-        if action.state != crate::combat::missile::DONE
-            && action.target != -1
-            && !action.met.contains(&action.target)
-        {
-            let v = victim(c, others, action.target).ok_or(GenieError::unsupported(
-                "a missile's target the slice does not hold live",
-            ))?;
-            let (target_at, target_radius, target_player) = (v.position, v.radius, v.player);
-            let mode = stats.hit_mode;
-            if (matches!(mode, 0 | 2) || (mode == 1 && c.player != target_player))
-                && crate::combat::missile::on_target(
-                    self.position,
-                    stats.radius,
-                    target_at,
-                    target_radius,
-                )
-            {
-                let result = self.missile_strike(action, fired, c, others)?;
-                action.result = result;
-                if result != 2 {
-                    self.end_missile(action);
-                }
-            }
-        }
+        self.missile_lands_on_target(action, fired, stats, c, others)?;
         if action.state == crate::combat::missile::DONE {
             return Ok(());
         }
@@ -484,30 +462,74 @@ impl Unit {
         }
         self.end_missile(action);
         if stats.vanish_mode & 2 == 0 {
-            if let Some(a) = slot.take() {
-                let by = self.releaser(c);
-                c.releases.extend(
-                    [a.target, a.fired_from]
-                        .into_iter()
-                        .filter(|&t| t != -1)
-                        .map(|t| (t, by)),
-                );
+            self.missile_destroyed(slot, c, others)?;
+        }
+        Ok(())
+    }
+
+    /// [`Unit::missile_lands`] on a target it did not meet yet: it lands when it lies on the
+    /// target's box and its master's hit mode is 0 or 2, or 1 against another player's target;
+    /// the shooter's hit ([`Unit::missile_strike`]) ends it unless a shield blocked it.
+    fn missile_lands_on_target(
+        &mut self,
+        action: &mut crate::combat::missile::MissileAction,
+        fired: Fired,
+        stats: &crate::combat::missile::MissileStats,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
+        if action.state == crate::combat::missile::DONE
+            || action.target == -1
+            || action.met.contains(&action.target)
+        {
+            return Ok(());
+        }
+        let v = victim(c, others, action.target).ok_or(GenieError::unsupported(
+            "a missile's target the slice does not hold live",
+        ))?;
+        let mode = stats.hit_mode;
+        if (matches!(mode, 0 | 2) || (mode == 1 && c.player != v.player))
+            && crate::combat::missile::on_target(self.position, stats.radius, v.position, v.radius)
+        {
+            let result = self.missile_strike(action, fired, c, others)?;
+            action.result = result;
+            if result != 2 {
+                self.end_missile(action);
             }
-            if self.life.state < 7 {
-                if self.life.inside.is_some() {
-                    return Err(GenieError::unsupported(
-                        "a destroyed object inside another (slot 0x1a8)",
-                    ));
-                }
-                let before = self.life.state;
-                self.life.hp = 0.0;
-                self.life.goto_sleep = false;
-                self.life.state = 7;
-                c.spatial.sight_state(self.id, 7);
-                if before < 4 {
-                    let master = c.masters.and_then(|m| m.get(self.life.master_id));
-                    forget_resource(c.spatial, master, self.id, self.position);
-                }
+        }
+        Ok(())
+    }
+
+    /// A landed missile's destruction (slot 0xd0, `FUN_14106c420`): its action list goes,
+    /// which lets its target and shooter go ([`crate::world::lets::release`]); then
+    /// `FUN_14118f1e0`: its hit points 0 and state 7, out of the visible resources below state
+    /// 4. One inside another is not modelled.
+    fn missile_destroyed(
+        &mut self,
+        slot: &mut Option<crate::combat::missile::MissileAction>,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
+        if let Some(a) = slot.take() {
+            let by = self.releaser(c);
+            for t in [a.target, a.fired_from].into_iter().filter(|&t| t != -1) {
+                crate::world::lets::release(c, others, t, by)?;
+            }
+        }
+        if self.life.state < 7 {
+            if self.life.inside.is_some() {
+                return Err(GenieError::unsupported(
+                    "a destroyed object inside another (slot 0x1a8)",
+                ));
+            }
+            let before = self.life.state;
+            self.life.hp = 0.0;
+            self.life.goto_sleep = false;
+            self.life.state = 7;
+            c.spatial.sight_state(self.id, 7);
+            if before < 4 {
+                let master = c.masters.and_then(|m| m.get(self.life.master_id));
+                forget_resource(c.spatial, master, self.id, self.position);
             }
         }
         Ok(())

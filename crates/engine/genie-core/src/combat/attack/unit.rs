@@ -30,7 +30,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         match self.actions.attack().map(|a| a.target) {
             None => Ok(()),
-            Some(-1) => self.attack_lost_part(c),
+            Some(-1) => self.attack_lost_part(c, others),
             Some(_) => self.attack_strike_part(c, others, me, own),
         }
     }
@@ -38,7 +38,11 @@ impl Unit {
     /// The unit's own Attack after its target went
     /// ([`crate::combat::attack::Attack::lost`]): its update without a target, the notify its
     /// disarm posts to the unit AI; codes 1 and 3 delete it.
-    fn attack_lost_part(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    fn attack_lost_part(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -57,7 +61,7 @@ impl Unit {
             }
         }
         if matches!(code, 1 | 3) {
-            self.delete_attack(c)?;
+            self.delete_attack(c, others)?;
         }
         Ok(())
     }
@@ -135,7 +139,8 @@ impl Unit {
         let sends_home = strike.sends_home;
         let struck = write_struck(c, others, blasted, &mut victim)?;
         if let Some(t) = let_go {
-            c.releases.push((t, self.releaser(c)));
+            let by = self.releaser(c);
+            crate::world::lets::release(c, others, t, by)?;
         }
         if forgets && let Some(ai) = self.ai.as_mut() {
             ai.remove_target();
@@ -154,7 +159,7 @@ impl Unit {
         }
         struck.file(c, self.hit_back(own)?.map(|k| KillLeft::own(self.id, k)));
         if matches!(code, 1 | 3) {
-            self.delete_attack(c)?;
+            self.delete_attack(c, others)?;
         }
         Ok(())
     }

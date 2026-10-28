@@ -22,12 +22,12 @@ impl Unit {
     pub(crate) fn hunt_set_search(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.target_class != 10 {
             let target = std::mem::replace(&mut hunt.target, -1);
-            self.hunt_release(c, [target]);
+            self.hunt_release(c, others, [target])?;
         }
         self.hunt_search_state(c, others)
     }
@@ -39,7 +39,7 @@ impl Unit {
     pub(crate) fn hunt_search_state(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let task = hunt.task;
@@ -52,11 +52,11 @@ impl Unit {
             }
             let released = hunt.set_done();
             self.hunt_stand(c, &task)?;
-            self.hunt_release(c, released);
+            self.hunt_release(c, others, released)?;
             return Ok(());
         }
         hunt.timer = SEARCH_AGAIN;
-        self.hunt_search_notify(c, others)?;
+        self.hunt_search_notify(c, others.view())?;
         self.hunt_stand(c, &task)
     }
 
@@ -84,11 +84,23 @@ impl Unit {
         Ok(())
     }
 
-    /// The objects a hunt let go (−1 for none), released in order after the update.
-    pub(crate) fn hunt_release<const N: usize>(&self, c: &mut Context<'_>, ids: [i32; N]) {
+    /// The objects a hunt lets go (−1 for none), each where the hunt does (slot 0x180,
+    /// [`crate::world::lets::release`]).
+    ///
+    /// # Errors
+    ///
+    /// The release's.
+    pub(crate) fn hunt_release<const N: usize>(
+        &self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+        ids: [i32; N],
+    ) -> Result<(), GenieError> {
+        let by = self.releaser(c);
         for id in ids.into_iter().filter(|&id| id != -1) {
-            c.releases.push((id, self.releaser(c)));
+            crate::world::lets::release(c, others, id, by)?;
         }
+        Ok(())
     }
 
     /// The Hunt in state 3 tells its unit AI to look for the next target (`0x140ac60e0` case 3,
@@ -168,7 +180,7 @@ impl Unit {
         if self.actions.hunt().expect("the caller's hunt").target != -1 {
             return self.hunt_back_to_target(c, others);
         }
-        if self.hunt_drop_orders(c)? {
+        if self.hunt_drop_orders(c, others)? {
             return Ok(());
         }
         let (found, kind) = self.hunt_next_search(c, others.view())?;
@@ -185,7 +197,7 @@ impl Unit {
     fn hunt_back_to_target(
         &mut self,
         c: &mut Context<'_>,
-        others: &Others<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let master = c
@@ -232,7 +244,7 @@ impl Unit {
         let site = std::mem::replace(&mut hunt.carry_to, -1);
         let by = self.releaser(c);
         if site != -1 {
-            c.releases.push((site, by));
+            crate::world::lets::release(c, others, site, by)?;
         }
         let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
@@ -258,7 +270,11 @@ impl Unit {
     /// `FUN_140c64b50`) and the hunt ends (`set_state(1)`; its update returns 1 and the action
     /// list removes it, its teardown letting the drop site go): its unit AI runs the queued
     /// order. True when it ends.
-    fn hunt_drop_orders(&mut self, c: &mut Context<'_>) -> Result<bool, GenieError> {
+    fn hunt_drop_orders(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<bool, GenieError> {
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
@@ -279,7 +295,7 @@ impl Unit {
         ai.end_order_and_action()?;
         let mut hunt = self.actions.take_hunt().expect("the caller's hunt");
         hunt.tear_down(self.body.mover_mut())?;
-        self.hunt_release(c, [hunt.target, hunt.carry_to]);
+        self.hunt_release(c, others, [hunt.target, hunt.carry_to])?;
         Ok(true)
     }
 
@@ -522,13 +538,7 @@ impl Unit {
                     c.streams.get(Stream::Sprite),
                 )?;
             }
-            if owner == c.player {
-                // one of its own player's: allied, never listed
-                let u = others.own_mut(found).expect("found above");
-                u.taken(false, by.id);
-            } else {
-                c.takes.push((found, by));
-            }
+            crate::world::lets::take(c, others, found, by);
         }
         self.hunt_failed_sprite(c)
     }
@@ -580,7 +590,7 @@ impl Unit {
     pub(crate) fn hunt_drop_off(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let w = DropWorld {
             masters: c.masters,
@@ -593,8 +603,9 @@ impl Unit {
             construction_rate: c.construction_rate,
             groups: c.groups,
         };
-        if let Some(site) = self.drop_off_in(w, others)? {
-            c.takes.push((site, self.releaser(c)));
+        if let Some(site) = self.drop_off_in(w, others.view())? {
+            let by = self.releaser(c);
+            crate::world::lets::take(c, others, site, by);
         }
         Ok(())
     }

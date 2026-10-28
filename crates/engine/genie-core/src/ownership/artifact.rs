@@ -389,7 +389,7 @@ impl Unit {
             return Ok(None);
         }
         self.artifact_enter_part(c, others, me, by)?;
-        let new = self.artifact_walk_and_check(c, me, by)?;
+        let new = self.artifact_walk_and_check(c, others, me, by)?;
         self.artifact_handover(c, others, new)
     }
 
@@ -420,7 +420,7 @@ impl Unit {
             } else {
                 art.goal = None;
                 if let Some(t) = art.drop_target() {
-                    c.releases.push((t, by));
+                    crate::world::lets::release(c, others, t, by)?;
                 }
             }
         }
@@ -437,6 +437,7 @@ impl Unit {
     pub(crate) fn artifact_walk_and_check(
         &mut self,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<Option<Handover>, GenieError> {
@@ -451,7 +452,7 @@ impl Unit {
             m.stop()?;
         }
         if let Some(t) = ended.and_then(|e| e.released) {
-            c.releases.push((t, by));
+            crate::world::lets::release(c, others, t, by)?;
         }
         let capture = c
             .spatial
@@ -468,7 +469,7 @@ impl Unit {
         })?;
         if let Some(Handover::Taken { gone, .. }) = new {
             if let Some(t) = gone.released {
-                c.releases.push((t, by));
+                crate::world::lets::release(c, others, t, by)?;
             }
             if gone.stops
                 && let Some(m) = self.body.mover_mut()

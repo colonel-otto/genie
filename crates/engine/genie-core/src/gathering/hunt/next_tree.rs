@@ -5,7 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::world::context::Context;
-use crate::world::others::OthersRef;
+use crate::world::others::Others;
 
 impl Unit {
     /// The hunt's search for another target (`FUN_140ac4670`) when the class its unit AI targets
@@ -21,7 +21,7 @@ impl Unit {
     pub(crate) fn hunt_tree_search(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
         within: Option<f32>,
         near: Option<f32>,
     ) -> Result<bool, GenieError> {
@@ -38,7 +38,7 @@ impl Unit {
             return Ok(false);
         }
         let site = hunt.carry_to;
-        let found = self.resource_search_from(c, others, 0, 2, site)?;
+        let found = self.resource_search_from(c, others.view(), 0, 2, site)?;
         if found == -1 {
             return Ok(false);
         }
@@ -126,8 +126,9 @@ impl Unit {
                 )?;
             }
             // slot 0x68 (FUN_140a7a230): the old target goes, the new one is taken
-            self.hunt_release(c, [old]);
-            c.takes.push((found, self.releaser(c)));
+            self.hunt_release(c, others, [old])?;
+            let by = self.releaser(c);
+            crate::world::lets::take(c, others, found, by);
         }
         Ok(true)
     }

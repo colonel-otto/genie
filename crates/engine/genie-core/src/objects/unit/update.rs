@@ -60,7 +60,7 @@ impl Unit {
         self.motion_step(c)?;
         let leaves = self.life_step(c, others)?;
         self.animate(c);
-        self.actions_past_life(c)?;
+        self.actions_past_life(c, others)?;
         Ok(Some(leaves))
     }
 
@@ -78,7 +78,7 @@ impl Unit {
         let captured = if started {
             None
         } else if self.life.inside.is_some() {
-            self.inside_update(c)?;
+            self.inside_update(c, others)?;
             None
         } else {
             self.update_head(c, others)?
@@ -113,7 +113,7 @@ impl Unit {
                 Ok(())
             }
             Some(Action::Missile(_)) => self.fly(c, others),
-            Some(Action::MoveTo(_)) => self.move_to_part(c, me),
+            Some(Action::MoveTo(_)) => self.move_to_part(c, others, me),
             Some(Action::Explore(_)) => self.explore_part(c, me),
             Some(Action::Fly(_)) => self.fly_part(c, me),
             Some(Action::Make(_)) => self.make_part(c),
@@ -195,7 +195,11 @@ impl Unit {
     /// `RGE_Action_Object::update` (`0x14106ac90`) after the moving update: an object past state
     /// 2 (the Wonder past state 5) loses its action list (`FUN_140a98620`). An alive object with
     /// an action the slice does not model fails here.
-    pub(crate) fn actions_past_life(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn actions_past_life(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
         if let Some(e) = self
             .unmodelled_action
             .clone()
@@ -205,7 +209,9 @@ impl Unit {
         }
         if loses_actions(&self.life) {
             let by = self.releaser(c);
-            self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+            let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+            self.clear_own_actions(&mut releases, &mut leaves, by)?;
+            crate::world::lets::torn_down(c, others, (leaves, releases))?;
         }
         Ok(())
     }

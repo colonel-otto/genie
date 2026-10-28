@@ -33,6 +33,7 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 | [`checkpoint.rs`](checkpoint.rs) | The per-player 11-word state block that recorded games checkpoint every N syncs. |
 | [`context.rs`](context.rs) | What a tick's update of one object reads and writes (`Context`) and its walks. |
 | [`forced.rs`](forced.rs) | The forced replay (dev only): the game's state after a tick (`GameState`) and the step that forces it on the world. |
+| [`lets.rs`](lets.rs) | What an object's update does to the objects its actions take and let go (slots 0x178 and 0x180) and to the building a counted builder leaves: each a call through the update's view where the game makes it (FD-045-D07), as `World::take`, `World::release` and `World::leave_builders` do outside an update. |
 | [`mod.rs`](mod.rs) | The world: its state and its tick. |
 | [`object_step.rs`](object_step.rs) | One object's step with its context (`World::run_object`) and a unit AI run outside its update. |
 | [`others.rs`](others.rs) | The world's objects as one object's update reaches them (FD-045-D19): `Others` to change the owner's other objects, `OthersRef` to read them, both by id. |

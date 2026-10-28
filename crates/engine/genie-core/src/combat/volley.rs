@@ -54,7 +54,11 @@ impl Unit {
     /// The action list's deletion of the unit's own Attack (`FUN_140a98e20`): its teardown (a
     /// `MoveTo`'s stops the unit) and the base teardown (`FUN_140a73fc0`), which lets its target,
     /// then its second target go (slot 0x180).
-    pub(crate) fn delete_attack(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn delete_attack(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
         let Some(mut a) = self.actions.take_attack() else {
             return Ok(());
         };
@@ -62,7 +66,7 @@ impl Unit {
         let by = self.releaser(c);
         for t in [a.target, a.target2] {
             if t != -1 {
-                c.releases.push((t, by));
+                crate::world::lets::release(c, others, t, by)?;
             }
         }
         Ok(())
@@ -545,7 +549,7 @@ impl Unit {
             class: made.class,
             player: c.player,
         };
-        c.takes.push((aimed.target, missile));
+        crate::world::lets::take(c, others, aimed.target, missile);
         if shot.shooter {
             // the shooter, of the missile's own player: never listed
             self.taken(false, id);

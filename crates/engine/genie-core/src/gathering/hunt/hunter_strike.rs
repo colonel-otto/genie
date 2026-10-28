@@ -137,16 +137,16 @@ impl Unit {
         }
         struck.file(c, self.hit_back(own)?.map(|k| KillLeft::own(self.id, k)));
         if full {
-            self.hunt_drop_off(c, others.view())?;
+            self.hunt_drop_off(c, others)?;
         }
         if searches {
-            self.hunt_set_search(c, others.view())?;
+            self.hunt_set_search(c, others)?;
         }
         if let Some(target) = let_go {
-            self.hunt_release(c, [target]);
+            self.hunt_release(c, others, [target])?;
         }
         if attack_failed {
-            self.hunt_attack_failed(c, others.view())?;
+            self.hunt_attack_failed(c, others)?;
         }
         c.leads = leads;
         Ok(())
@@ -160,7 +160,7 @@ impl Unit {
     pub(crate) fn hunt_attack_failed(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let tree = self.ai.as_ref().is_some_and(|ai| {
             let class = if ai.target_type == -1 {

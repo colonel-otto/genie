@@ -139,7 +139,7 @@ impl World {
             zones: &mut self.zones,
         };
         let lists = (&mut player.objects, &mut player.sleeping);
-        let mut others = Others::new(p, lists, (before, after));
+        let mut others = Others::new((p, unit.id), lists, (before, after));
         let mut result = f(&mut unit, &mut c, &mut others);
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);

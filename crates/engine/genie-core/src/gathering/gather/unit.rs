@@ -26,20 +26,21 @@ impl Unit {
     pub(crate) fn build_drop_off(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
         let by = self.releaser(c);
         let build = self.actions.build().expect("the caller's Build");
         let task_range = build.task.range;
+        let view = others.view();
         let search = if 0.0 < self.life.amount {
             let (masters, own) = c
                 .masters
                 .and_then(|m| Some((m, m.get(self.life.master_id)?)))
                 .ok_or(crate::world::OBJECT_MASTER)?;
             let at = [self.position[0], self.position[1]];
-            let look = |id: i32| others.own(id).map(|u| (u.life.state, u.position));
+            let look = |id: i32| view.own(id).map(|u| (u.life.state, u.position));
             let found = crate::orders::nearest_table_site(
                 (c.drop_sites, c.civ, c.tracker),
                 (at, self.life.attribute_type, own.class),
@@ -48,13 +49,13 @@ impl Unit {
             match found {
                 None => DropSearch::Nothing,
                 Some(id) => {
-                    let (player, foreign) = (c.player, others.players());
+                    let (player, foreign) = (c.player, view.players());
                     let unit = &*self;
                     let find = |t: i32| {
                         if t == unit.id {
                             return Some((player, unit));
                         }
-                        others.find(t)
+                        view.find(t)
                     };
                     let every = c.every_masters;
                     let task = match (
@@ -94,10 +95,10 @@ impl Unit {
         let build = self.actions.build_mut().expect("the caller's Build");
         let out = build.set_drop(&mut walk, None, search)?;
         if out.let_go != -1 {
-            c.releases.push((out.let_go, by));
+            crate::world::lets::release(c, others, out.let_go, by)?;
         }
         if out.took != -1 {
-            c.takes.push((out.took, by));
+            crate::world::lets::take(c, others, out.took, by);
         }
         if out.notified {
             self.post_own(crate::unit_ai::NO_DROP_SITE, [BUILD_ACTION, 0, 0])?;
@@ -137,7 +138,7 @@ impl Unit {
     fn gather_check_targets(
         &mut self,
         c: &mut Context<'_>,
-        others: &Others<'_>,
+        others: &mut Others<'_>,
         by: Releaser,
     ) -> Result<(), GenieError> {
         let gather = self.actions.gather_mut().expect("the caller's gather");
@@ -154,7 +155,7 @@ impl Unit {
             };
             if gone {
                 if state.is_some() {
-                    c.releases.push((gather.target, by));
+                    crate::world::lets::release(c, others, gather.target, by)?;
                 }
                 gather.target = -1;
             }
@@ -164,7 +165,7 @@ impl Unit {
         let (kept, let_go) = second_target_checked(site, held, state_of(site, others.view()));
         gather.carry_to = kept;
         if let Some(t) = let_go {
-            c.releases.push((t, by));
+            crate::world::lets::release(c, others, t, by)?;
         }
         Ok(())
     }
@@ -258,11 +259,11 @@ impl Unit {
                 self.gather_load_dropped(c, others, by, (kind, amount), radius)
             }
             // set_state(8) again: the drop site kept or searched
-            Dropped::Again => self.gather_drop_off(c, others.view()),
+            Dropped::Again => self.gather_drop_off(c, others),
             // set_state(2): the target, then the drop site go (slot 0x68, FUN_140a7a190)
             Dropped::Idle => {
                 for id in before.into_iter().filter(|&id| id != -1) {
-                    c.releases.push((id, by));
+                    crate::world::lets::release(c, others, id, by)?;
                 }
                 Ok(())
             }
@@ -323,7 +324,7 @@ impl Unit {
         if gather.target == -1 {
             return self.gather_after_drop(c, others);
         }
-        c.releases.push((gather.carry_to, by));
+        crate::world::lets::release(c, others, gather.carry_to, by)?;
         gather.carry_to = -1;
         let t = c
             .spatial
@@ -393,7 +394,7 @@ impl Unit {
                 sold,
             )?;
         }
-        self.gather_next(c, others.view(), next, old, by)
+        self.gather_next(c, others, next, old, by)
     }
 
     /// What follows the Gather's update (`next`; `old`: its targets before): an end lets both
@@ -404,7 +405,7 @@ impl Unit {
     pub(crate) fn gather_next(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
         next: crate::gathering::gather::Next,
         (old_target, old_second): (i32, i32),
         by: Releaser,
@@ -414,7 +415,7 @@ impl Unit {
             let g = self.actions.take_gather().expect("the caller's gather");
             for t in [g.target, g.carry_to] {
                 if t != -1 {
-                    c.releases.push((t, by));
+                    crate::world::lets::release(c, others, t, by)?;
                 }
             }
             return Ok(());
@@ -422,13 +423,13 @@ impl Unit {
         if let Some(g) = self.actions.gather() {
             for (old, new) in [(old_target, g.target), (old_second, g.carry_to)] {
                 if old != new && old != -1 {
-                    c.releases.push((old, by));
+                    crate::world::lets::release(c, others, old, by)?;
                 }
             }
         }
         match next {
             Next::Drop => self.gather_drop_off(c, others)?,
-            Next::Search => self.gather_search(c, others)?,
+            Next::Search => self.gather_search(c, others.view())?,
             Next::Build => {
                 let target = self.actions.gather().map_or(-1, |g| g.target);
                 if c.build_command.replace(target).is_some() {

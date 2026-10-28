@@ -9,6 +9,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 /// A group member's own move's reasons slot 0x5e0 tells apart (`FUN_141017590`): moved aside,
 /// and none.
@@ -101,7 +102,12 @@ impl Unit {
     /// The unit's own `MoveTo` in its update (`0x140aa2a70`): its update, then a give-up, a moved
     /// target, and its end (done or failed), which posts the notify, lets the target go and stops
     /// the unit.
-    pub(crate) fn move_to_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn move_to_part(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+        me: Me,
+    ) -> Result<(), GenieError> {
         let step = match self.actions.move_to_mut() {
             Some(move_to) => {
                 // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
@@ -154,7 +160,8 @@ impl Unit {
                 .map(|m| m.target)
                 .filter(|&t| t != -1)
             {
-                c.releases.push((t, self.releaser(c)));
+                let by = self.releaser(c);
+                crate::world::lets::release(c, others, t, by)?;
             }
             if let Some(m) = self.body.mover_mut() {
                 m.stop()?;

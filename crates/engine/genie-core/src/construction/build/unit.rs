@@ -15,7 +15,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus};
-use crate::objects::release::{Releaser, release_own};
+use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::unit_ai::BUILD_ACTION;
 use crate::unit_ai::task_finder::Actor;
@@ -251,7 +251,6 @@ impl Unit {
         (target, built, by): (i32, Option<i16>, Releaser),
         step: BuildStep,
     ) -> Result<(), GenieError> {
-        let masters = c.masters;
         // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
         // 1 and 1, then the builder carries nothing, FUN_14119d310)
         if let Some((kind, amount)) = step.dropped {
@@ -270,7 +269,7 @@ impl Unit {
             self.body.set_anim_speed(0.0);
         }
         if let Some(s) = step.site_let_go {
-            c.releases.push((s, by));
+            crate::world::lets::release(c, others, s, by)?;
         }
         if step.done {
             // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
@@ -282,14 +281,14 @@ impl Unit {
                 .map_or((false, -1), |b| (b.target != -1, b.site));
             self.actions.set_build(None);
             if holds {
-                release_own(others, masters, target, by)?;
+                crate::world::lets::release(c, others, target, by)?;
             }
             if second != -1 {
-                c.releases.push((second, by));
+                crate::world::lets::release(c, others, second, by)?;
             }
         }
         if step.released {
-            release_own(others, masters, target, by)?;
+            crate::world::lets::release(c, others, target, by)?;
         }
         self.post_build_notifies(&step)?;
         if step.stands {
@@ -316,7 +315,7 @@ impl Unit {
             self.build_search(c, others, (target, built, by))?;
         }
         if step.drop_off {
-            self.build_drop_off(c, others.view(), me)?;
+            self.build_drop_off(c, others, me)?;
         }
         Ok(())
     }
@@ -354,7 +353,7 @@ impl Unit {
             if let Some(b) = self.actions.build_mut() {
                 b.no_more_work()?;
             }
-            release_own(others, c.masters, target, by)?;
+            crate::world::lets::release(c, others, target, by)?;
             self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
             self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }

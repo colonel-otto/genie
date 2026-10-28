@@ -155,6 +155,8 @@ impl<'a> OthersRef<'a> {
 /// owner's other live objects and the other players to write.
 pub(crate) struct Others<'a> {
     player: usize,
+    /// The updating object, out of its slot for its update.
+    me: i32,
     own: &'a mut ObjectList,
     /// The owner's sleeping list, which only a write by id reaches.
     own_sleeping: &'a mut ObjectList,
@@ -164,15 +166,16 @@ pub(crate) struct Others<'a> {
 }
 
 impl<'a> Others<'a> {
-    /// Player `player`'s view: its live list `own`, its sleeping list `own_sleeping` and the
-    /// players `before` and `after` it.
+    /// The view of player `player`'s object `me` as it updates: the player's live list
+    /// `own`, its sleeping list `own_sleeping` and the players `before` and `after` it.
     pub(crate) const fn new(
-        player: usize,
+        (player, me): (usize, i32),
         (own, own_sleeping): (&'a mut ObjectList, &'a mut ObjectList),
         (before, after): (&'a mut [Player], &'a mut [Player]),
     ) -> Self {
         Self {
             player,
+            me,
             own,
             own_sleeping,
             before,
@@ -188,6 +191,11 @@ impl<'a> Others<'a> {
             left: None,
         };
         OthersRef::new(self.player, self.own, foreign)
+    }
+
+    /// Whether `id` is the updating object, which the view does not hold.
+    pub(crate) const fn is_updating(&self, id: i32) -> bool {
+        id == self.me
     }
 
     /// [`OthersRef::own`].
@@ -379,7 +387,7 @@ mod tests {
     fn the_owner_s_objects_iterate_in_list_order_without_the_one_that_updates() {
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
-        let mut others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        let mut others = Others::new((1, 11), (&mut own, &mut asleep), (&mut before, &mut after));
         let ids: Vec<i32> = others.own_iter().map(|u| u.id).collect();
         assert_eq!(ids, [10, 12]);
         for u in others.own_iter_mut() {
@@ -411,7 +419,7 @@ mod tests {
     fn a_lookup_by_id_reaches_every_list_and_says_whether_the_object_sleeps() {
         let (mut own, mut before, mut after) = world();
         let mut asleep = ObjectList::from(vec![unit(13)]);
-        let others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        let others = Others::new((1, 11), (&mut own, &mut asleep), (&mut before, &mut after));
         let at = |id| others.locate(id).map(|(q, u, sleeps)| (q, u.id, sleeps));
         assert_eq!(at(12), Some((1, 12, false)), "the owner's before another's");
         assert_eq!(at(13), Some((1, 13, true)));
@@ -438,7 +446,7 @@ mod tests {
         for id in [2, 1] {
             before[0].tracker.add(id, k);
         }
-        let mut others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        let mut others = Others::new((1, 11), (&mut own, &mut asleep), (&mut before, &mut after));
         assert!(others.wake(13, &mut tracker, (&[], &lines)));
         assert!(others.wake(2, &mut tracker, (&[], &lines)));
         assert!(!others.wake(20, &mut tracker, (&[], &lines)), "20 is awake");

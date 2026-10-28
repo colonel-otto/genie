@@ -6,7 +6,6 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::masters::{Master, Masters};
-use crate::objects::release::release_own;
 use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
 use crate::world::context::Context;
@@ -124,11 +123,7 @@ impl Unit {
         }
         let by = self.releaser(c);
         if step.released {
-            if others.own(target).is_some() {
-                release_own(others, c.masters, target, by)?;
-            } else {
-                c.releases.push((target, by));
-            }
+            crate::world::lets::release(c, others, target, by)?;
         }
         for kind in &step.notifies {
             self.post_own(*kind, [crate::construction::repair::REPAIR_ACTION, 0, 0])?;
@@ -142,11 +137,7 @@ impl Unit {
             let holds = self.actions.repair().map_or(-1, |r| r.target);
             self.actions.set_repair(None);
             if holds != -1 {
-                if others.own(holds).is_some() {
-                    release_own(others, c.masters, holds, by)?;
-                } else {
-                    c.releases.push((holds, by));
-                }
+                crate::world::lets::release(c, others, holds, by)?;
             }
         }
         Ok(())

@@ -144,7 +144,8 @@ impl Unit {
             // failed one's 3: the action list removes it, its teardown letting its building go
             // (slot 0x180)
             if let Some(e) = self.actions.take_enter() {
-                c.releases.push((e.target, self.releaser(c)));
+                let by = self.releaser(c);
+                crate::world::lets::release(c, others, e.target, by)?;
             }
         }
         Ok(())
@@ -535,7 +536,11 @@ pub(crate) struct EnterWorld<'a> {
 impl Unit {
     /// The inside update of an object inside another (`FUN_140a98790`), which runs in place of
     /// its actions' update.
-    pub(crate) fn inside_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn inside_update(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
         // RGE_Action_Object::update: the actions of an object inside another do not update; its
         // inside update (FUN_140a98790) deletes its top action (FUN_140a78480 -> FUN_140a784a0:
         // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
@@ -551,7 +556,8 @@ impl Unit {
                 {
                     m.stop()?;
                 }
-                c.releases.push((e.target, self.releaser(c)));
+                let by = self.releaser(c);
+                crate::world::lets::release(c, others, e.target, by)?;
             } else if self.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE) {
                 // the Artifact goes (FUN_140a73fc0): its target is let go, then its sub-actions
                 // go (an Enter's teardown lets its building go; a walking MoveTo's stops the
@@ -560,7 +566,7 @@ impl Unit {
                 let by = self.releaser(c);
                 let (released, gone) = art.tear_down();
                 for t in [released, gone.released].into_iter().flatten() {
-                    c.releases.push((t, by));
+                    crate::world::lets::release(c, others, t, by)?;
                 }
                 if gone.stops
                     && let Some(m) = self.body.mover_mut()
@@ -574,7 +580,9 @@ impl Unit {
             } else if self.top_action_kind().is_some() {
                 // any other action's destructor, as the list's deletion runs it
                 let by = self.releaser(c);
-                self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+                let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+                self.clear_own_actions(&mut releases, &mut leaves, by)?;
+                crate::world::lets::torn_down(c, others, (leaves, releases))?;
             }
         }
         Ok(())

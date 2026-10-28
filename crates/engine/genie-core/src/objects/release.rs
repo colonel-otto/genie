@@ -3,33 +3,10 @@
 
 use crate::GenieError;
 use crate::objects::lifecycle::death_parts::{count_class, forget_resource};
-use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::world::World;
 use crate::world::context::Context;
-use crate::world::others::Others;
-
-/// Slot 0x180 (`World::release`) on an object of the unit's own live list, from inside the unit's
-/// update ([`released`]; the releaser's own player is allied).
-pub(crate) fn release_own(
-    others: &mut Others<'_>,
-    masters: Option<&Masters>,
-    id: i32,
-    by: Releaser,
-) -> Result<(), GenieError> {
-    let u = others.own_mut(id).ok_or(GenieError::unsupported(
-        "a release of an object not in the unit's live list",
-    ))?;
-    let kind = masters
-        .and_then(|m| m.get(u.life.master_id))
-        .ok_or(GenieError::unsupported(
-            "a released object of a master the slice does not have",
-        ))?
-        .kind;
-    // one of the releaser's own player: allied, never listed
-    released(u, kind, false, by)
-}
 
 /// The object whose action lets its target go (the target's slot 0x180 takes it): its id, its
 /// master's class and its owner.
