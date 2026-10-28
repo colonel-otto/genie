@@ -352,7 +352,6 @@ impl Unit {
                 },
                 starts: &mut c.starts,
                 attribute_adds: &mut c.attribute_adds,
-                promotions: &mut c.promotions,
                 relations: &relations,
                 attributes: &attributes,
                 civ: view.civ,

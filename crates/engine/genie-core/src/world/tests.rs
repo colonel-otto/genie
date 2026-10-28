@@ -10300,7 +10300,7 @@ fn scout_attack_on(
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    let (mut adds, mut promotions) = (Vec::new(), Vec::new());
+    let mut adds = Vec::new();
     let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
     let mut view = Others::new((1, 123), (&mut none, &mut asleep), (&mut players, &mut []));
     let attacked = {
@@ -10358,7 +10358,6 @@ fn scout_attack_on(
             },
             starts: &mut waits,
             attribute_adds: &mut adds,
-            promotions: &mut promotions,
             relations: &[0, 0],
             attributes: &[],
             civ: 0,
@@ -10377,9 +10376,8 @@ fn scout_attack_on(
 }
 
 /// The attack command of unit 123 of master `who` (in a table with `also`) on Gaia's wolf 50, as
-/// [`scout_attack_on`]: the unit, the answer, the attribute changes and the tracker's promotions
-/// it left its owner.
-#[allow(clippy::type_complexity)]
+/// [`scout_attack_on`], the unit in its owner's done tracker list of its master: the unit, the
+/// answer, the attribute changes and its owner's tracker after it.
 fn attack_by(
     who: Master,
     also: Vec<Master>,
@@ -10387,7 +10385,7 @@ fn attack_by(
     Unit,
     crate::unit_ai::Attacked,
     Vec<(i16, f32)>,
-    Vec<(i32, i16, i16)>,
+    crate::players::tracker::Tracker,
 ) {
     use crate::unit_ai::UnitSide;
     let (timer, inside, own, force) = (0.0, None, None, true);
@@ -10490,8 +10488,14 @@ fn attack_by(
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    let (mut adds, mut promotions) = (Vec::new(), Vec::new());
+    let mut adds = Vec::new();
     let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
+    let lines = crate::objects::lines::UnitLines::default();
+    let mut tracker = crate::players::tracker::Tracker::default();
+    tracker.add(
+        123,
+        crate::players::tracker::key(every.get(1), &lines, attacker_master),
+    );
     let mut view = Others::new((1, 123), (&mut none, &mut asleep), (&mut players, &mut []));
     let attacked = {
         let mut side = crate::unit_ai::world_view::UnitView {
@@ -10540,15 +10544,14 @@ fn attack_by(
                 player: 1,
                 relations: &[0, 0],
                 masters: &every,
-                lines: &crate::objects::lines::UnitLines::default(),
-                tracker: &mut crate::players::tracker::Tracker::default(),
+                lines: &lines,
+                tracker: &mut tracker,
                 takes: &mut takes,
                 releases: &mut releases,
                 builder_leaves: &mut leaves,
             },
             starts: &mut waits,
             attribute_adds: &mut adds,
-            promotions: &mut promotions,
             relations: &[0, 0],
             attributes: &[],
             civ: 0,
@@ -10560,7 +10563,7 @@ fn attack_by(
         side.attack(50, force, &ai).unwrap()
     };
     let _ = takes;
-    (unit, attacked, adds, promotions)
+    (unit, attacked, adds, tracker)
 }
 
 /// A villager's attack command (`FUN_141081a80`): a builder (118, task swap group 1) switches to
@@ -10582,7 +10585,7 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
         moving: Some(crate::gathering::hunt::tests::walker().stats),
         ..Master::default()
     };
-    let (unit, attacked, adds, promotions) = attack_by(
+    let (unit, attacked, adds, tracker) = attack_by(
         villager(118, vec![(4, 1.0, 2)]),
         vec![villager(83, vec![(4, 1.0, 2)])],
     );
@@ -10590,7 +10593,7 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
     assert!(attacked.attacks);
     assert!(unit.actions.attack().is_some_and(|a| a.target == 50));
     assert_eq!(adds, [(4, -1.0), (4, 1.0)]);
-    assert_eq!(promotions, [(123, 118, 83)]);
+    assert_eq!((tracker.list(118), tracker.list(83)), (&[][..], &[123][..]));
 }
 
 /// The scout 124 (player 1, master 448, at (10.3, 10), its unit AI `helper`, its own Attack
@@ -10685,7 +10688,7 @@ fn help_view<R>(
     let (mut object, mut sprite) = (Well512::default(), Well512::default());
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    let (mut adds, mut promotions) = (Vec::new(), Vec::new());
+    let mut adds = Vec::new();
     let graphics = std::collections::BTreeMap::new();
     let mut view = Others::new((1, 123), (&mut own, &mut asleep), (&mut players, &mut []));
     let mut side = crate::unit_ai::world_view::UnitView {
@@ -10742,7 +10745,6 @@ fn help_view<R>(
         },
         starts: &mut waits,
         attribute_adds: &mut adds,
-        promotions: &mut promotions,
         relations: &[0, 0],
         attributes: &[],
         civ: 0,
@@ -14067,29 +14069,19 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 }
 
 /// What a step leaves in its Context for other objects reaches them after it: the owner's
-/// history gains the event (the owner as data1), the tracker files a promoted unit under its
-/// new master.
+/// history gains the event (the owner as data1).
 #[test]
 fn a_step_s_writes_reach_the_objects_it_names() {
     use crate::objects::unit::Step;
-    let key = |t: &World, m| crate::players::tracker::key(t.masters.get(1), &t.lines, m).master;
     let mut t = house_builder();
     t.players[1].history.entries.push([0, 0]);
-    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 120);
-    t.players[1].tracker.add(9175, k);
     let r = finished_with(&mut t, (1, 0), |c| {
         c.history_events.push(6);
-        c.promotions.push((9175, 120, 83));
         Ok(Step::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
     let event = &t.players[1].history.events[0];
     assert_eq!((event.kind, event.data1, event.world_time), (6, 1.0, 0));
-    let tracker = &t.players[1].tracker;
-    assert_eq!(
-        (tracker.list(key(&t, 120)), tracker.list(key(&t, 83))),
-        (&[][..], &[9175][..])
-    );
 }
 
 /// The unit AI's orders of a step reach the unit and the units they name: a `GatherObject`'s

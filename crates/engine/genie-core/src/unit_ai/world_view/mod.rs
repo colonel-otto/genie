@@ -241,8 +241,6 @@ pub(crate) struct UnitView<'u, 'o> {
     pub(crate) starts: &'u mut Vec<AiStart>,
     /// What its master change (slot 0x90) gives or takes of its owner's attributes, the caller's.
     pub(crate) attribute_adds: &'u mut Vec<(i16, f32)>,
-    /// Its master change's tracker promotion ([`Context::promotions`]), the caller's.
-    pub(crate) promotions: &'u mut Vec<(i32, i16, i16)>,
     /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
     /// sites.
     pub(crate) relations: &'u [u8],

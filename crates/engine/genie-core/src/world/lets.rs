@@ -127,6 +127,14 @@ pub(crate) fn torn_down(
 }
 
 impl Lets<'_> {
+    /// The tracker's promotion (`FUN_14104fb20`) of the owner's unit `id`, whose master changes
+    /// from `old` to `new` where the change runs ([`crate::players::tracker::Tracker::promote`]).
+    pub(crate) fn promote(&mut self, id: i32, old: i16, new: i16) {
+        let masters = self.masters.get(self.player);
+        let key = |m| crate::players::tracker::key(masters, self.lines, m);
+        self.tracker.promote(id, key(old), key(new));
+    }
+
     /// Slot 0x178 on object `id`, which an action of `by` takes ([`World::take`] through the
     /// view): a live one counts its worker ([`crate::objects::unit::Unit::taken`]; a building
     /// first lists an unallied taker of a foundation with a stack unit); a sleeping one counts

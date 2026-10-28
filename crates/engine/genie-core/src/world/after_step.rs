@@ -101,16 +101,12 @@ impl World {
     }
 
     /// The step's writes on other objects and on its own building: a repair's writes, the
-    /// tracker's promotions, the gate and the history events.
+    /// gate and the history events.
     fn apply_object_writes(
         &mut self,
         (p, i): (usize, usize),
         out: &mut ObjectOutputs,
     ) -> Result<(), GenieError> {
-        // the tracker's promotions of the units whose master changed while their unit AI ran
-        for (id, old, new) in std::mem::take(&mut out.promotions) {
-            self.track_promote(p, id, old, new);
-        }
         // the gate's player opens or shuts it, in the gate's update before the rest
         if out.gate_toggle {
             self.toggle_gate(p, i)?;

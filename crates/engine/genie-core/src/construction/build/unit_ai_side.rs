@@ -160,7 +160,7 @@ impl<'u> UnitView<'u, '_> {
             let switched = crate::orders::switch_master(unit, own, next, world)?;
             self.attribute_adds.extend(switched.leaving);
             if switched.promoted {
-                self.promotions.push((id, own.id, next.id));
+                self.lets.promote(id, own.id, next.id);
             }
             self.attribute_adds.extend(switched.coming);
         }
