@@ -39,6 +39,7 @@ pub mod unit_ai_state;
 pub mod unit_order;
 pub mod units;
 pub mod unload;
+pub mod unmodelled;
 pub mod wall;
 
 pub use self::all_back_to_work::AllBackToWorkCommand;
@@ -51,9 +52,9 @@ pub use self::flare::FlareCommand;
 pub use self::game::GameCommand;
 pub use self::gate::GateCommand;
 pub use self::gather_point::GatherPointCommand;
-pub use self::go_back_to_work::GoBackToWorkCommand;
+pub use self::go_back_to_work::{GoBackToWork2Command, GoBackToWorkCommand};
 pub use self::order::{Order, OrderCommand};
-pub use self::patrol::PatrolCommand;
+pub use self::patrol::{PatrolCommand, Waypoints};
 pub use self::queue::QueueCommand;
 pub use self::research::ResearchCommand;
 pub use self::resign::ResignCommand;
@@ -67,6 +68,7 @@ pub use self::unit_ai_state::UnitAiStateCommand;
 pub use self::unit_order::{UnitOrderAction, UnitOrderCommand};
 pub use self::units::UnitList;
 pub use self::unload::UnloadCommand;
+pub use self::unmodelled::UnmodelledCommand;
 pub use self::wall::BuildWallCommand;
 
 #[cfg(test)]
@@ -102,20 +104,16 @@ pub enum Command {
     Queue(QueueCommand),
     /// RESEARCH (0x65).
     Research(ResearchCommand),
-    /// A command the slice runs part of or none, for a reason the decoder names: it stops the
-    /// issuing player's lane.
-    Unmodelled {
-        /// The issuing player.
-        player: usize,
-        /// Why its command is not modelled.
-        why: GenieError,
-    },
+    /// A command the slice runs part of or none: it stops the issuing player's lane.
+    Unmodelled(UnmodelledCommand),
     /// GAME (0x67).
     Game(GameCommand),
     /// `BUILDING_COMMAND_QUEUE` (0x2d).
     CommandQueue(BuildingQueueCommand),
-    /// `GO_BACK_TO_WORK` (0x80, 0x86).
+    /// `GO_BACK_TO_WORK` (0x80).
     GoBackToWork(GoBackToWorkCommand),
+    /// `GO_BACK_TO_WORK2` (0x86).
+    GoBackToWork2(GoBackToWork2Command),
     /// `ALL_BACK_TO_WORK` (0x8c).
     AllBackToWork(AllBackToWorkCommand),
     /// `TOWN_BELL` (0x7f).
@@ -167,10 +165,11 @@ impl Command {
             Self::GatherPoint(c) => c.run(w),
             Self::Queue(c) => c.run(w),
             Self::Research(c) => c.run(w),
-            Self::Unmodelled { why, .. } => Err(why.clone()),
+            Self::Unmodelled(c) => Err(c.why.clone()),
             Self::Game(c) => c.run(w),
             Self::CommandQueue(c) => c.run(w),
             Self::GoBackToWork(c) => c.run(w),
+            Self::GoBackToWork2(c) => c.run(w),
             Self::AllBackToWork(c) => c.run(w),
             Self::TownBell(c) => c.run(w),
             Self::Delete(c) => c.run(w),
@@ -215,10 +214,11 @@ impl Command {
             Self::GatherPoint(c) => c.player,
             Self::Queue(c) => c.player,
             Self::Research(c) => c.player,
-            Self::Unmodelled { player, .. } => *player,
+            Self::Unmodelled(c) => c.player,
             Self::Game(c) => c.issuer,
             Self::CommandQueue(c) => c.player,
             Self::GoBackToWork(c) => c.player,
+            Self::GoBackToWork2(c) => c.player,
             Self::AllBackToWork(c) => c.player,
             Self::TownBell(c) => c.player,
             Self::Delete(c) => c.player,
@@ -292,7 +292,8 @@ impl World {
 
     /// The units a command of `player` names at most: 60, 500 for a computer
     /// (`FUN_141659cf0`); none for a player the world lacks.
-    pub(crate) fn most_units(&self, player: usize) -> usize {
+    #[must_use]
+    pub fn most_units(&self, player: usize) -> usize {
         match self.players.get(player) {
             Some(p) if p.computer => COMPUTER_UNITS,
             Some(_) => HUMAN_UNITS,

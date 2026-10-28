@@ -1,0 +1,14 @@
+[package]
+name = "genie-command-codec"
+version = "0.1.0"
+description = "The command packets of Age of Empires II: Definitive Edition recordings as the genie engine's commands, and back"
+edition = "2024"
+license = "AGPL-3.0-only"
+repository.workspace = true
+
+[dependencies]
+genie-core = { path = "../genie-core" }
+genie-rec = { version = "0.1.1", path = "../../formats/genie-rec" }
+
+[lints]
+workspace = true

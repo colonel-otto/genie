@@ -330,12 +330,11 @@ pub(super) fn primed(turns: &mut World, all: &[Frame<'_>], updates: usize) -> De
     turns.ticks = updates as u32;
     let mut decoder = Decoder::default();
     decoder.prime(&all[..updates.min(all.len())]);
-    for (&player, units) in &decoder.last_commanded {
-        let p = usize::from(player);
+    for (&p, units) in &decoder.last_commanded {
         if turns.last_commanded.len() <= p {
             turns.last_commanded.resize(p + 1, Vec::new());
         }
-        turns.last_commanded[p].clone_from(units);
+        turns.last_commanded[p] = units[..units.len().min(turns.most_units(p))].to_vec();
     }
     decoder
 }

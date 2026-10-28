@@ -453,6 +453,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "genie-command-codec"
+version = "0.1.0"
+dependencies = [
+ "genie-core",
+ "genie-rec",
+]
+
+[[package]]
 name = "genie-core"
 version = "0.1.0"
 dependencies = [
@@ -567,6 +575,7 @@ name = "genie-oracle"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "genie-command-codec",
  "genie-core",
  "genie-dat",
  "genie-json",

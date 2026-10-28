@@ -228,7 +228,7 @@ impl Watch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::Command;
+    use crate::commands::{Command, UnmodelledCommand};
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
     use crate::world::{Player, World};
     use std::fmt::Write;
@@ -404,7 +404,16 @@ mod tests {
         let why = GenieError::unsupported("QUEUE at two buildings");
         let at = why.location();
         let mut t = one(Vec::new());
-        let lines = heard(|| t.tick_with(104, &[Command::Unmodelled { player: 0, why }]));
+        let lines = heard(|| {
+            t.tick_with(
+                104,
+                &[Command::Unmodelled(UnmodelledCommand {
+                    player: 0,
+                    packet: Vec::new(),
+                    why,
+                })],
+            );
+        });
         assert!(lines[1].starts_with("DEBUG genie_core::update command command=Unmodelled"));
         assert!(lines.contains(&format!(
             "WARN genie_core::unsupported a player stops tick=1 player=0 \

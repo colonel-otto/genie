@@ -10,21 +10,29 @@ use crate::world::World;
 pub struct TradeCommand {
     /// The player who trades.
     pub player: usize,
-    /// The commodity.
-    pub attribute: u8,
-    /// How many lots.
+    /// `+0x4`: the commodity (the dispatcher reads its low byte).
+    pub attribute: u16,
+    /// `+0x6`: how many lots.
     pub times: u16,
+    /// `+0x8`: the market, which the check (`FUN_140e6f3f0`) reads.
+    pub market: i32,
     /// A purchase, else a sale.
     pub buy: bool,
 }
 
 impl TradeCommand {
-    /// The purchase ([`World::buy`]) or the sale ([`World::sell`]); a trade cannot fail.
+    /// The dispatcher trades food, wood and stone only (the attribute's low byte 0 to 2,
+    /// `do_command`'s 0x7a and 0x7b): the purchase ([`World::buy`]) or the sale
+    /// ([`World::sell`]); a trade cannot fail.
     pub(crate) fn run(&self, w: &mut World) {
+        let commodity = self.attribute.to_le_bytes()[0];
+        if 2 < commodity {
+            return;
+        }
         if self.buy {
-            w.buy(self.player, self.attribute, self.times);
+            w.buy(self.player, commodity, self.times);
         } else {
-            w.sell(self.player, self.attribute, self.times);
+            w.sell(self.player, commodity, self.times);
         }
     }
 }

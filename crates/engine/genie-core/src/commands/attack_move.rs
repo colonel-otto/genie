@@ -1,7 +1,7 @@
 //! `ATTACK_MOVE` (0x21): the player's units attack-move through waypoints.
 
 use crate::GenieError;
-use crate::commands::UnitList;
+use crate::commands::{UnitList, Waypoints};
 use crate::world::World;
 
 /// `ATTACK_MOVE` (0x21, `FUN_140e66200`): the units the packet lists (the count at `+0x4`, the
@@ -16,7 +16,7 @@ pub struct AttackMoveCommand {
     /// The units.
     pub units: UnitList,
     /// The waypoints.
-    pub waypoints: Vec<[f32; 2]>,
+    pub waypoints: Waypoints,
     /// `+0x8`.
     pub reset: bool,
     /// `+0x9`.
@@ -27,10 +27,14 @@ pub struct AttackMoveCommand {
 
 impl AttackMoveCommand {
     /// The check (`FUN_140e54490`) refuses a count past the packet's ids; the handler reads the
-    /// first of them ([`World::read_units`]) and runs [`World::attack_move`] with the sweep of
-    /// an attack move (no patrol).
+    /// first of them ([`World::read_units`]); without 1 to 10 waypoints it does nothing
+    /// ([`Waypoints::used`]), else it runs [`World::attack_move`] with the sweep of an attack
+    /// move (no patrol).
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
         let Some(ids) = w.read_units(self.player, &self.units) else {
+            return Ok(());
+        };
+        let Some(waypoints) = self.waypoints.used() else {
             return Ok(());
         };
         let sweep = crate::orders::Sweep {
@@ -39,6 +43,6 @@ impl AttackMoveCommand {
             queued: self.queued,
             ignore_pending: self.ignore_pending,
         };
-        w.attack_move(self.player, ids, &self.waypoints, sweep)
+        w.attack_move(self.player, ids, waypoints, sweep)
     }
 }

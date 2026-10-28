@@ -4,10 +4,10 @@ use crate::commands::game::GameCommand;
 use crate::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GateCommand, GatherPoint,
-    GatherPointCommand, GoBackToWorkCommand, OrderCommand, PatrolCommand, QueueCommand,
+    GatherPointCommand, GoBackToWork2Command, Order, OrderCommand, PatrolCommand, QueueCommand,
     ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
     TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction,
-    UnitOrderCommand, UnloadCommand,
+    UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
 use crate::construction::build::{BuildAction, BuildStep, BuildTask, Construction};
 use crate::construction::gates::gate_units;
@@ -1334,6 +1334,41 @@ fn build_world() -> World {
     t
 }
 
+/// BUILD's handler (`FUN_140e7a400`) does nothing for a human's packet with a target (`+0x14`);
+/// a house of civ 12 keeps the packet's sprite override (`+0x18`, 0x2c9 to 0x2ce), any other
+/// none.
+#[test]
+fn a_human_build_with_a_target_places_nothing_and_a_house_keeps_its_sprite_override() {
+    let build = |target, sprite_override| {
+        Command::Build(BuildCommand {
+            player: 1,
+            master: 70,
+            position: [30.0, 88.0],
+            target,
+            sprite_override,
+            builders: UnitList::of(vec![9175, 9181]),
+            queued: false,
+            commits: false,
+            frame: 0,
+        })
+    };
+    let mut t = build_world();
+    let before = t.players[1].objects.len();
+    t.run(&build(3, -1));
+    assert_eq!(t.players[1].objects.len(), before);
+    let overridden = |civ, sprite_override| {
+        let mut t = build_world();
+        t.players[1].civ = civ;
+        t.run(&build(-1, sprite_override));
+        let foundation = t.players[1].objects.last().unwrap();
+        foundation.construction.as_ref().unwrap().sprite_override
+    };
+    assert!(overridden(12, 0x2c9));
+    assert!(!overridden(12, 0x2cf));
+    assert!(!overridden(11, 0x2c9));
+    assert!(!overridden(12, -1));
+}
+
 #[test]
 fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     let mut t = build_world();
@@ -1342,7 +1377,9 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
         &[Command::Build(BuildCommand {
             player: 1,
             master: 70,
-            position: [30.0, 88.0, 0.0],
+            position: [30.0, 88.0],
+            target: -1,
+            sprite_override: -1,
             builders: UnitList::of(vec![9175, 9181]),
             queued: false,
             commits: false,
@@ -1411,7 +1448,9 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        position: [30.0, 88.0, 0.0],
+        position: [30.0, 88.0],
+        target: -1,
+        sprite_override: -1,
         builders: UnitList::of(vec![9175]),
         queued: false,
         commits: false,
@@ -1480,7 +1519,9 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        position: [30.0, 88.0, 0.0],
+        position: [30.0, 88.0],
+        target: -1,
+        sprite_override: -1,
         builders: UnitList::of(vec![9618, 9175]),
         queued: true,
         commits: false,
@@ -4954,7 +4995,9 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
         &[Command::Build(BuildCommand {
             player: 0,
             master: 70,
-            position: [10.0, 10.0, 0.0],
+            position: [10.0, 10.0],
+            target: -1,
+            sprite_override: -1,
             builders: UnitList::of(vec![]),
             queued: false,
             commits: false,
@@ -5036,7 +5079,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
         &[Command::Order(OrderCommand {
             player: 0,
             units: UnitList::of(vec![8, 99, 7]),
-            order: None,
+            order: Order::Retreat(crate::orders::Interact::default()),
         })],
     );
     let mut streams = Streams::default();
@@ -5461,10 +5504,11 @@ fn town_centre(id: i32) -> Unit {
     }
 }
 
-fn queue(building: i32, unit: i16, amount: u16) -> Command {
+fn queue(building: i32, unit: i16, amount: i16) -> Command {
     Command::Queue(QueueCommand {
         player: 0,
         buildings: UnitList::of(vec![building]),
+        building_master: -1,
         unit,
         amount,
         button: -1,
@@ -6205,6 +6249,7 @@ fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
         Command::Queue(QueueCommand {
             player: 0,
             buildings: UnitList::of(vec![9, 10]),
+            building_master: -1,
             unit: 99,
             amount,
             button: -1,
@@ -6270,6 +6315,7 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
     let both = Command::Queue(QueueCommand {
         player: 0,
         buildings: UnitList::of(vec![9, 10]),
+        building_master: -1,
         unit: 99,
         amount: 3,
         button: -1,
@@ -6327,6 +6373,7 @@ fn a_queue_passes_over_a_sleeping_object_the_unit_does_not_train_at() {
     let both = Command::Queue(QueueCommand {
         player: 0,
         buildings: UnitList::of(vec![11, 9]),
+        building_master: -1,
         unit: 99,
         amount: 2,
         button: -1,
@@ -6641,6 +6688,7 @@ fn queued_units_join_the_last_entry_and_a_full_buffer_grows() {
         Command::Queue(QueueCommand {
             player: 0,
             buildings: UnitList::of(vec![9]),
+            building_master: -1,
             unit: 99,
             amount,
             button,
@@ -6715,10 +6763,11 @@ fn an_unmodelled_command_stops_its_player() {
     let why = GenieError::unsupported("QUEUE at two buildings");
     t.tick_with(
         104,
-        &[Command::Unmodelled {
+        &[Command::Unmodelled(UnmodelledCommand {
             player: 0,
+            packet: Vec::new(),
             why: why.clone(),
-        }],
+        })],
     );
     assert_eq!(t.players[0].unsupported, Some((1, 0, why)));
 }
@@ -11067,7 +11116,9 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        position: [30.0, 88.0, 0.0],
+        position: [30.0, 88.0],
+        target: -1,
+        sprite_override: -1,
         builders: UnitList::of(vec![9175]),
         queued: false,
         commits: false,
@@ -11162,7 +11213,9 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
         t.run(&Command::Build(BuildCommand {
             player: 1,
             master: 70,
-            position: [30.0, 88.0, 0.0],
+            position: [30.0, 88.0],
+            target: -1,
+            sprite_override: -1,
             builders: UnitList::of(vec![9175]),
             queued: false,
             commits: false,
@@ -11519,7 +11572,9 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
-        position: [30.0, 88.0, 0.0],
+        position: [30.0, 88.0],
+        target: -1,
+        sprite_override: -1,
         builders: UnitList::of(vec![9175]),
         queued: false,
         commits: true,
@@ -11572,7 +11627,14 @@ fn a_resource_search_starts_from_its_point_unless_it_is_none_or_has_a_site() {
 fn a_stop_s_error_names_the_command_or_the_object_it_happened_on() {
     let why = GenieError::unsupported("QUEUE at two buildings");
     let mut t = one_player(vec![town_centre(9)], [200.0; 4]);
-    t.tick_with(104, &[Command::Unmodelled { player: 0, why }]);
+    t.tick_with(
+        104,
+        &[Command::Unmodelled(UnmodelledCommand {
+            player: 0,
+            packet: Vec::new(),
+            why,
+        })],
+    );
     let (_, _, stopped) = t.players[0].unsupported.clone().unwrap();
     assert_eq!(
         stopped.context().collect::<Vec<_>>(),
@@ -11739,7 +11801,9 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
         Command::Build(BuildCommand {
             player: 1,
             master: 70,
-            position: [30.0, 88.0, 0.0],
+            position: [30.0, 88.0],
+            target: -1,
+            sprite_override: -1,
             builders: UnitList::of(builders),
             queued: false,
             commits: false,
@@ -14664,6 +14728,8 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             player: 1,
             units: UnitList::of(v.clone()),
             target: 700,
+            point: [-1.0, -1.0],
+            q_id: -1,
             through_ai: true,
             nearby: false,
             action: UnitOrderAction::of(action),
@@ -14686,7 +14752,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &Command::Patrol(PatrolCommand {
                 player: 1,
                 units: UnitList::of(v.clone()),
-                waypoints: way.clone(),
+                waypoints: Waypoints::of(&way.clone()),
                 reset: true,
             }),
             1,
@@ -14697,7 +14763,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &Command::AttackMove(AttackMoveCommand {
                 player: 1,
                 units: UnitList::of(v.clone()),
-                waypoints: way.clone(),
+                waypoints: Waypoints::of(&way.clone()),
                 reset: true,
                 queued: false,
                 ignore_pending: false,
@@ -14758,7 +14824,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
         ),
         routes(
             &t,
-            &Command::GoBackToWork(GoBackToWorkCommand {
+            &Command::GoBackToWork2(GoBackToWork2Command {
                 player: 1,
                 units: UnitList::of(v.clone()),
             }),
@@ -14852,6 +14918,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
                 target: -1,
                 point: [40.5, 89.5],
                 players: 2,
+                shown: Vec::new(),
             }),
             1,
             |w| w.flare(-1, [40.5, 89.5], 2),
@@ -14862,6 +14929,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
                 player: 1,
                 attribute: 1,
                 times: 1,
+                market: -1,
                 buy: true,
             }),
             1,
@@ -14876,6 +14944,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
                 player: 1,
                 attribute: 1,
                 times: 1,
+                market: -1,
                 buy: false,
             }),
             1,
@@ -14887,10 +14956,11 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
         routes(&t, &Command::Game(game(0)), 0, |w| w.game(&game(0))),
         routes(
             &t,
-            &Command::Unmodelled {
+            &Command::Unmodelled(UnmodelledCommand {
                 player: 1,
+                packet: Vec::new(),
                 why: why.clone(),
-            },
+            }),
             1,
             |_| Err(why.clone()),
         ),
@@ -14935,36 +15005,34 @@ fn the_command_phase_runs_an_order_after_its_check() {
             order,
         })
     };
+    assert!(routes(&t, &order(v.clone(), Order::Move(walk)), 1, |w| {
+        w.set_last_commanded(1, v.clone());
+        w.reset_order_units(&v);
+        w.human_order(&v);
+        w.move_order(1, &v, &walk)
+    }));
+    let none_left = order(vec![600], Order::Move(walk));
+    assert!(!routes(&t, &none_left, 1, |_| Ok(())));
+    let lost = order(v.clone(), Order::Follow(4444));
+    assert!(!routes(&t, &lost, 1, |_| Ok(())));
+    assert!(routes(&t, &order(v.clone(), Order::Guard(700)), 1, |w| {
+        w.reset_order_units(&v);
+        w.human_order(&v);
+        w.guard(1, &v, 700)
+    }));
     assert!(routes(
         &t,
-        &order(v.clone(), Some(Order::Move(walk))),
+        &order(
+            v.clone(),
+            Order::Retreat(crate::orders::Interact::default())
+        ),
         1,
         |w| {
             w.set_last_commanded(1, v.clone());
             w.reset_order_units(&v);
-            w.human_order(&v);
-            w.move_order(1, &v, &walk)
+            Err(GenieError::unsupported("an order moves its units"))
         }
     ));
-    let none_left = order(vec![600], Some(Order::Move(walk)));
-    assert!(!routes(&t, &none_left, 1, |_| Ok(())));
-    let lost = order(v.clone(), Some(Order::Follow(4444)));
-    assert!(!routes(&t, &lost, 1, |_| Ok(())));
-    assert!(routes(
-        &t,
-        &order(v.clone(), Some(Order::Guard(700))),
-        1,
-        |w| {
-            w.reset_order_units(&v);
-            w.human_order(&v);
-            w.guard(1, &v, 700)
-        }
-    ));
-    assert!(routes(&t, &order(v.clone(), None), 1, |w| {
-        w.set_last_commanded(1, v.clone());
-        w.reset_order_units(&v);
-        Err(GenieError::unsupported("an order moves its units"))
-    }));
 }
 
 /// The last commanded units (`FUN_140e6b290`): a MOVE of its own list that its check lets
@@ -14986,7 +15054,7 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
         Command::Order(OrderCommand {
             player: 1,
             units,
-            order: Some(Order::Move(walk)),
+            order: Order::Move(walk),
         })
     };
     let mut t = forage_world();
@@ -15065,6 +15133,7 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
     let queue = QueueCommand {
         player: 1,
         buildings: UnitList::of(tc.clone()),
+        building_master: -1,
         unit: 83,
         amount: 1,
         button: 0,
@@ -15075,6 +15144,7 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
             &Command::Queue(QueueCommand {
                 player: 1,
                 buildings: UnitList::of(tc.clone()),
+                building_master: -1,
                 unit: 83,
                 amount: 1,
                 button: 0,

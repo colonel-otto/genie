@@ -12,10 +12,12 @@ pub struct QueueCommand {
     pub player: usize,
     /// The buildings the packet lists (the count at `+0x4`, the ids from `+0x14`).
     pub buildings: UnitList,
-    /// The master to train (0x712 for the villager).
+    /// `+0xa`, the formatter's `bId`: the buildings' master, which the handler does not read.
+    pub building_master: i16,
+    /// The master to train (`+0xc`; 0x712 for the villager).
     pub unit: i16,
-    /// How many.
-    pub amount: u16,
+    /// How many (`+0xe`, which the handler takes as an int).
+    pub amount: i16,
     /// `button_location_id`: the train button, −1 for none.
     pub button: i32,
 }

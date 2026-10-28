@@ -1,11 +1,7 @@
-//! The body's frames and the commands' arguments: patrol, attack move, queue, trade and the
-//! market, build and build wall; the unit AI a new object gets.
+//! The body's frames, and from the save: a `MoveTo`'s wait, the world's market and a master's
+//! combat part.
 
 use crate::Error;
-use genie_core::commands::{
-    AttackMoveCommand, BuildCommand, BuildWallCommand, Command, PatrolCommand, QueueCommand,
-    TradeCommand, UnitList,
-};
 use genie_rec::de;
 use genie_rec::de::Op;
 use genie_save::generated::world::Master;
@@ -62,106 +58,6 @@ pub(super) fn saved_move_wait(
         })
 }
 
-/// `ATTACK_MOVE` (0x21): PATROL's layout ([`patrol_command`]), its flags at `+0x8`..`+0xa`.
-pub(super) fn attack_move_command(c: &de::command::AttackMove) -> Option<Command> {
-    let waypoints = usize::from(c.waypoints_count);
-    if !(1..=10).contains(&waypoints) {
-        return None;
-    }
-    // x from +0xc (the first as bits, nine more after it), y from +0x34 (likewise)
-    let word = |b: &[u8], i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
-    let xs = std::iter::once(f32::from_bits(c.field_0x0c))
-        .chain((0..9).map(|i| word(&c.gap_0x10, 4 * i)));
-    let ys = std::iter::once(c.field_0x34).chain((0..9).map(|i| word(&c.gap_0x38, 4 * i)));
-    Some(Command::AttackMove(AttackMoveCommand {
-        player: c.commp_id as usize,
-        units: UnitList {
-            count: c.num,
-            ids: c.ids.clone(),
-        },
-        waypoints: xs.zip(ys).take(waypoints).map(<[f32; 2]>::from).collect(),
-        reset: c.field_0x08 != 0,
-        queued: c.field_0x09 != 0,
-        ignore_pending: c.field_0x0a != 0,
-    }))
-}
-
-/// PATROL (0x15): the units of the count at `+0x4` from `+0x5c`, the waypoints of the count
-/// at `+0xb` (x from `+0xc`, y from `+0x34`, each an f32's bits), `+0x8`. None where the
-/// command does nothing: no waypoints or more than 10 (`FUN_140e69cc0`).
-pub(super) fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
-    let waypoints = usize::from(c.waypoints_count);
-    if !(1..=10).contains(&waypoints) {
-        return None;
-    }
-    let xs = [
-        c.field_0x0c,
-        c.field_0x10,
-        c.field_0x14,
-        c.field_0x18,
-        c.field_0x1c,
-        c.field_0x20,
-        c.field_0x24,
-        c.field_0x28,
-        c.field_0x2c,
-        c.field_0x30,
-    ];
-    let ys = [
-        c.field_0x34,
-        c.field_0x38,
-        c.field_0x3c,
-        c.field_0x40,
-        c.field_0x44,
-        c.field_0x48,
-        c.field_0x4c,
-        c.field_0x50,
-        c.field_0x54,
-        c.field_0x58,
-    ];
-    Some(Command::Patrol(PatrolCommand {
-        player: c.commp_id as usize,
-        units: UnitList {
-            count: c.num,
-            ids: c.ids.clone(),
-        },
-        waypoints: xs
-            .iter()
-            .zip(ys)
-            .take(waypoints)
-            .map(|(&x, y)| [f32::from_bits(x), y])
-            .collect(),
-        reset: c.field_0x08 != 0,
-    }))
-}
-
-/// QUEUE (`do_command` case 0x81, `MULTI_QUEUE)`: `num` buildings, the unit `t_id`, `count` of it and
-/// the train button (`button_location_id`, -1 for none); the building ids follow. genie-core reads
-/// the costs, the train time and the building's work rate from its own state.
-pub(super) fn queue_command(packet: &de::command::MultiQueue) -> Command {
-    Command::Queue(QueueCommand {
-        player: packet.commp_id as usize,
-        buildings: UnitList {
-            count: packet.num,
-            ids: packet.ids.clone(),
-        },
-        unit: packet.t_id,
-        amount: packet.count.max(0) as u16,
-        button: packet.button_location_id,
-    })
-}
-
-/// `SELL_COMMODITY`'s and `BUY_COMMODITY`'s command: the dispatcher trades food, wood and stone
-/// only (`+0x4`'s low byte).
-pub(super) fn trade(player: u8, attribute: u16, times: u16, buy: bool) -> Option<Command> {
-    let attribute = attribute as u8;
-    (attribute <= 2).then_some(Command::Trade(TradeCommand {
-        player: usize::from(player),
-        attribute,
-        times,
-        buy,
-    }))
-}
-
 /// The world's market as the save holds it: the save names the int net trades `*_price_delta`
 /// (their bits) and the swings `old_*_price_adj`.
 pub(super) fn market(
@@ -184,43 +80,6 @@ pub(super) fn market(
         ),
         ore: commodity(w.world_ore_price, w.ore_price_delta, w.old_ore_price_adj),
     }
-}
-
-/// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
-/// builder ids follow. The handler reads the master as an i16 (`+0x10`). The slice takes z = 0:
-/// the game sets it from the terrain, so a foundation on raised terrain shows in word 7.
-pub(super) fn build_command(packet: &de::command::Build) -> Command {
-    Command::Build(BuildCommand {
-        player: packet.commp_id as usize,
-        master: packet.o_id as i16,
-        position: [packet.x, packet.y, 0.0],
-        builders: UnitList {
-            count: packet.num,
-            ids: packet.ids.clone(),
-        },
-        queued: packet.field_0x1e != 0,
-        commits: packet.field_0x1f == 0,
-        frame: packet.frame,
-    })
-}
-
-/// `BUILD_WALL` (0x69): the wall's master at `+0x10`, the line's tiles at `+0x8`..`+0xe`, the
-/// target at `+0x14`, the queue flags at `+0x1a` and `+0x1b`, the builders (the count at
-/// `+0x4`, the ids from `+0x1c`).
-pub(super) fn build_wall_command(packet: &de::command::BuildWall) -> Command {
-    Command::BuildWall(BuildWallCommand {
-        player: packet.commp_id as usize,
-        master: packet.o_id as i16,
-        from: [packet.x1, packet.y1],
-        to: [packet.x2, packet.y2],
-        target: packet.q_id,
-        builders: UnitList {
-            count: packet.num,
-            ids: packet.ids.clone(),
-        },
-        queued: packet.field_0x1a != 0,
-        commits: packet.field_0x1b == 0,
-    })
 }
 
 pub(super) fn combat_master(

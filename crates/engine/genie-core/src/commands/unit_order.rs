@@ -65,9 +65,8 @@ impl UnitOrderAction {
 /// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units the packet lists (the count
 /// at `+0x4`, the ids from `+0x21`) take the order `action` ([`World::unit_order`]) with the
 /// object `target` (`tId`, `+8`, which the garrison reads) and the flags `+0x1d`, `+0x1e`;
-/// `human` (`+0x20`) sets their last human order time first. Its point, `qId` and `param` are not read by the actions
-/// modelled.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// `human` (`+0x20`) sets their last human order time first.
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnitOrderCommand {
     /// The player whose units take it.
     pub player: usize,
@@ -75,6 +74,10 @@ pub struct UnitOrderCommand {
     pub units: UnitList,
     /// `tId`: the target object's id.
     pub target: i32,
+    /// `+0xc`, `+0x10`: the point, which the actions modelled do not read.
+    pub point: [f32; 2],
+    /// `+0x14`, the formatter's `qId`, which the actions modelled do not read.
+    pub q_id: i32,
     /// `+0x1d`: a garrison goes through the units' unit AIs (their slot 0x30); a cancel cancels
     /// up to five of a kind.
     pub through_ai: bool,

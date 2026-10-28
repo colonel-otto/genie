@@ -6,7 +6,7 @@ use crate::world::World;
 /// FLARE (0x73, `0x140e7bfd0`): every player from 1 below `players` (`+0x10`, at most the
 /// world's) gets a flare at `target`'s place (`+4`, −1 for none) or at `point` (`+8`, `+0xc`)
 /// ([`World::flare`]).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FlareCommand {
     /// The player who sent it.
     pub player: usize,
@@ -16,6 +16,9 @@ pub struct FlareCommand {
     pub point: [f32; 2],
     /// The players the command counts (`+0x10`).
     pub players: u8,
+    /// `+0x11..`: one byte for each player the command counts, whether that player sees the
+    /// flare (the interface's, not read by the slice).
+    pub shown: Vec<bool>,
 }
 
 impl FlareCommand {

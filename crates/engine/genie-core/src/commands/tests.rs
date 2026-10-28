@@ -4,10 +4,10 @@ use crate::GenieError;
 use crate::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GameCommand, GateCommand,
-    GatherPointCommand, GoBackToWorkCommand, OrderCommand, PatrolCommand, QueueCommand,
-    ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
-    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction,
-    UnitOrderCommand, UnloadCommand,
+    GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order, OrderCommand,
+    PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand,
+    TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
+    UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
 
 /// One command of each kind, issued by player `p`.
@@ -22,7 +22,9 @@ fn one_of_each(p: usize) -> Vec<Command> {
         Command::Build(BuildCommand {
             player: p,
             master: 70,
-            position: [0.0; 3],
+            position: [0.0; 2],
+            target: -1,
+            sprite_override: -1,
             builders: UnitList::of(ids.clone()),
             queued: false,
             commits: true,
@@ -49,6 +51,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
         Command::Queue(QueueCommand {
             player: p,
             buildings: UnitList::of(ids.clone()),
+            building_master: -1,
             unit: 83,
             amount: 1,
             button: -1,
@@ -62,10 +65,11 @@ fn one_of_each(p: usize) -> Vec<Command> {
             target: -1,
             shift: false,
         }),
-        Command::Unmodelled {
+        Command::Unmodelled(UnmodelledCommand {
             player: p,
+            packet: Vec::new(),
             why: GenieError::unsupported("a test's"),
-        },
+        }),
         // a sub-command for no player of the world
         Command::Game(GameCommand {
             issuer: p,
@@ -78,7 +82,8 @@ fn one_of_each(p: usize) -> Vec<Command> {
             target: -1,
             point: [0.0; 2],
         }),
-        Command::GoBackToWork(GoBackToWorkCommand {
+        Command::GoBackToWork(GoBackToWorkCommand { player: p, id: 7 }),
+        Command::GoBackToWork2(GoBackToWork2Command {
             player: p,
             units: UnitList::of(ids.clone()),
         }),
@@ -94,6 +99,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
             target: -1,
             point: [0.0; 2],
             players: 2,
+            shown: Vec::new(),
         }),
         Command::Tribute(TributeCommand {
             player: p,
@@ -104,6 +110,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
             player: p,
             attribute: 0,
             times: 1,
+            market: -1,
             buy: true,
         }),
         Command::Gate(GateCommand { player: p, id: 7 }),
@@ -135,13 +142,13 @@ fn one_of_each(p: usize) -> Vec<Command> {
         Command::Patrol(PatrolCommand {
             player: p,
             units: UnitList::of(ids.clone()),
-            waypoints: vec![[1.0, 1.0]],
+            waypoints: Waypoints::of(&[[1.0, 1.0]]),
             reset: false,
         }),
         Command::AttackMove(AttackMoveCommand {
             player: p,
             units: UnitList::of(ids.clone()),
-            waypoints: vec![[1.0, 1.0]],
+            waypoints: Waypoints::of(&[[1.0, 1.0]]),
             reset: false,
             queued: false,
             ignore_pending: false,
@@ -159,6 +166,8 @@ fn one_of_each(p: usize) -> Vec<Command> {
             player: p,
             units: UnitList::of(ids.clone()),
             target: -1,
+            point: [-1.0, -1.0],
+            q_id: -1,
             through_ai: false,
             nearby: false,
             action: UnitOrderAction::DropOff,
@@ -168,7 +177,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
         Command::Order(OrderCommand {
             player: p,
             units: UnitList::of(ids),
-            order: None,
+            order: Order::Retreat(crate::orders::Interact::default()),
         }),
     ]
 }
@@ -179,7 +188,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
 #[test]
 fn a_command_names_the_player_whose_lane_it_stops() {
     let commands = one_of_each(3);
-    assert_eq!(commands.len(), 27);
+    assert_eq!(commands.len(), 28);
     for c in &commands {
         assert_eq!((c.player(), c.stopped_player(8)), (3, 3), "{c:?}");
     }
@@ -190,4 +199,33 @@ fn a_command_names_the_player_whose_lane_it_stops() {
     });
     assert_eq!((game.player(), game.stopped_player(8)), (3, 5));
     assert_eq!(game.stopped_player(4), 3);
+}
+
+/// The waypoints the handlers read: the first of their count, none without 1 to 10.
+#[test]
+fn a_patrol_reads_one_to_ten_waypoints() {
+    let two = Waypoints::of(&[[1.0, 2.0], [3.0, 4.0]]);
+    assert_eq!(two.used(), Some(&[[1.0, 2.0], [3.0, 4.0]][..]));
+    assert_eq!(Waypoints::default().used(), None);
+    let eleven = Waypoints { count: 11, ..two };
+    assert_eq!(eleven.used(), None);
+}
+
+/// The market trades the attribute's low byte, food, wood and stone only.
+#[test]
+fn a_trade_of_another_commodity_does_nothing() {
+    let player = crate::world::Player::default();
+    let mut w = crate::world::World::new(0, 1, 1, vec![0; 2], vec![player; 2]);
+    let before = w.clone();
+    for attribute in [3, 0x0103] {
+        TradeCommand {
+            player: 1,
+            attribute,
+            times: 1,
+            market: -1,
+            buy: true,
+        }
+        .run(&mut w);
+    }
+    assert_eq!(w, before);
 }

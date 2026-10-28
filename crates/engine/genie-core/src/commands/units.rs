@@ -126,7 +126,9 @@ mod tests {
         w.run(&Command::Build(BuildCommand {
             player: 1,
             master: 70,
-            position: [1.0, 1.0, 0.0],
+            position: [1.0, 1.0],
+            target: -1,
+            sprite_override: -1,
             builders: UnitList::last_commanded(),
             queued: false,
             commits: true,

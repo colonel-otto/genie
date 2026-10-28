@@ -75,10 +75,7 @@ mod fixtures;
 
 pub use self::checked_rows::{AiRow, MoveRow, ObjectRow, object_rows};
 use self::checked_rows::{Same, saved_movement};
-use self::command_args::{
-    Frame, attack_move_command, build_command, build_wall_command, combat_master, frames, market,
-    patrol_command, queue_command, saved_move_wait, trade,
-};
+use self::command_args::{Frame, combat_master, frames, market, saved_move_wait};
 use self::decoder::Decoder;
 pub use self::differences::{
     Difference, ONLY_IN_THE_GAME, ONLY_IN_THE_SLICE, object_differences, object_field_differences,

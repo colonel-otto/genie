@@ -97,7 +97,7 @@ impl World {
             rooms.push(room);
             loads.push(self.production_load(p, building));
         }
-        let mut amount = i32::from(q.amount as i16).min(i32::from(total_room as i16));
+        let mut amount = i32::from(q.amount).min(i32::from(total_room as i16));
         if 0 < amount {
             if unit.kind < crate::production::COMBAT_MASTER {
                 return Ok(());

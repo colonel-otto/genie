@@ -1,21 +1,42 @@
-//! `GO_BACK_TO_WORK` (0x80, 0x86): the player's buildings let their villagers back out.
+//! `GO_BACK_TO_WORK` (0x80) and `GO_BACK_TO_WORK2` (0x86): the player's buildings let their
+//! villagers back out.
 
 use crate::GenieError;
 use crate::commands::UnitList;
 use crate::world::World;
 
-/// `GO_BACK_TO_WORK` (0x80 with one object, `+4`; 0x86 with a list, its count at `+4`, the ids
-/// from `+8`): the player's buildings let their villagers back out to work
+/// `GO_BACK_TO_WORK` (0x80): the player's building (`+4`) lets its villagers back out to work
 /// ([`World::go_back_to_work`]).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GoBackToWorkCommand {
     /// The player.
     pub player: usize,
-    /// Its buildings: 0x80's one, 0x86's list.
-    pub units: UnitList,
+    /// Its building.
+    pub id: i32,
 }
 
 impl GoBackToWorkCommand {
+    /// `do_command`'s check leaves only the player's own building (or any with the setting
+    /// `+0x1074`); the handler (`FUN_141625590`) runs on it ([`World::go_back_to_work`]).
+    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+        if w.players.get(self.player).is_none() {
+            return Ok(());
+        }
+        w.go_back_to_work(self.player, &[self.id])
+    }
+}
+
+/// `GO_BACK_TO_WORK2` (0x86): `GO_BACK_TO_WORK` of the buildings the packet lists (the count at
+/// `+4`, the ids from `+8`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GoBackToWork2Command {
+    /// The player.
+    pub player: usize,
+    /// Its buildings.
+    pub units: UnitList,
+}
+
+impl GoBackToWork2Command {
     /// `do_command`'s check refuses a count past the packet's ids; the handler reads the first
     /// of them ([`World::read_units`], [`World::go_back_to_work`]).
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {

@@ -8,6 +8,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+genie-command-codec = { path = "../../engine/genie-command-codec" }
 genie-core = { path = "../../engine/genie-core" }
 genie-dat = { version = "0.1.0", path = "../../formats/genie-dat" }
 genie-json = { version = "0.1.0", path = "../../formats/genie-json" }

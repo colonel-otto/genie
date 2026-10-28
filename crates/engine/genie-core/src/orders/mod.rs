@@ -39,7 +39,7 @@ use crate::gathering::hunt::HUNT;
 use crate::unit_ai::MOVE_ORDER;
 
 /// INTERACT's fields past its units (`+0x4`..`+0x16`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Interact {
     /// `t_id` (`+0x4`): the target object, -1 for a point.
     pub target: i32,

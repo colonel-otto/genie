@@ -39,7 +39,7 @@ building commands, the unit commands and the players' each have their own dispat
 | [`game.rs`](game.rs) | GAME (0x67): `TRIBE_Command::do_command`'s case (`0x140e77b00`), which lets a player's sub-command for another player through only with the game's cheats, and its switch on the sub-command (`FUN_140e7c330`, `World::game`). |
 | [`gate.rs`](gate.rs) | GATE (0x72): a player's gate lock. |
 | [`gather_point.rs`](gather_point.rs) | SET GATHER POINT (0x78): the gather point of the player's buildings. |
-| [`go_back_to_work.rs`](go_back_to_work.rs) | `GO_BACK_TO_WORK` (0x80, 0x86): the player's buildings let their villagers back out. |
+| [`go_back_to_work.rs`](go_back_to_work.rs) | `GO_BACK_TO_WORK` (0x80) and `GO_BACK_TO_WORK2` (0x86): the player's buildings let their villagers back out. |
 | [`ground.rs`](ground.rs) | A new building's ground: the units on its foundation sent off, its terrain, the footprint clearing and its place. |
 | [`mod.rs`](mod.rs) | The commands (`Command`) and their dispatch (`World::run`): the handlers of the players' orders, the buildings' placement and the production queue's. |
 | [`new_building.rs`](new_building.rs) | A new building: BUILD's foundation and the building constructor, with its combat setup, its storage and its annexes. |
@@ -62,6 +62,7 @@ building commands, the unit commands and the players' each have their own dispat
 | [`unit_order.rs`](unit_order.rs) | `UNIT_ORDER` (0x75): an order of the player's units by its action. |
 | [`units.rs`](units.rs) | The units a command's packet lists: its count and the ids after the packet's fixed part. |
 | [`unload.rs`](unload.rs) | UNLOAD (0x6f): units let out of the player's buildings and transports. |
+| [`unmodelled.rs`](unmodelled.rs) | A recorded command the slice does not run: it keeps its packet and why. |
 | [`wall.rs`](wall.rs) | A player's line of wall foundations: `BUILD_WALL` (0x69, `FUN_140e7b2e0`), which dragging a wall sends. |
 <!-- /files -->
 

@@ -20,8 +20,12 @@ pub enum Order {
     Follow(i32),
     /// GUARD's target (`+0x8`).
     Guard(i32),
-    /// WORK: its units' work on a target (`FUN_140e6a9f0`), which is not modelled.
-    Work,
+    /// WORK: its units' work on a target (`FUN_140e6a9f0`), which is not modelled. Its packet
+    /// has INTERACT's layout (the formatter prints the same fields).
+    Work(Interact),
+    /// RETREAT: its units only reset their idle timeouts here (`FUN_140e69f00`, not modelled
+    /// beyond them). Its packet has INTERACT's layout.
+    Retreat(Interact),
 }
 
 /// INTERACT (0x00), WORK (0x02), MOVE (0x03), RETREAT (0x23), FOLLOW or GUARD: before the order
@@ -37,8 +41,8 @@ pub struct OrderCommand {
     /// The units of the packet (the count at `+0x10` for INTERACT, WORK, MOVE and RETREAT, whose
     /// count `0xffff` names the last commanded units, `+0x4` for FOLLOW and GUARD).
     pub units: UnitList,
-    /// The order they take, None for RETREAT, which only resets their idle timeouts.
-    pub order: Option<Order>,
+    /// The order they take.
+    pub order: Order,
 }
 
 impl OrderCommand {
@@ -52,32 +56,32 @@ impl OrderCommand {
         let Some(units) = self.units(w) else {
             return Ok(());
         };
-        if order == Some(Order::Work) {
+        if let Order::Work(_) = order {
             return Err(ORDER_UNMODELLED);
         }
-        if let Some(Order::Follow(target) | Order::Guard(target)) = order
+        if let Order::Follow(target) | Order::Guard(target) = order
             && w.object(target).is_none()
         {
             return Ok(());
         }
         let human = match order {
-            Some(Order::Interact(o)) => o.human,
-            Some(Order::Move(o)) => o.human,
-            Some(Order::Follow(_) | Order::Guard(_)) => units
+            Order::Interact(o) => o.human,
+            Order::Move(o) => o.human,
+            Order::Follow(_) | Order::Guard(_) => units
                 .iter()
                 .any(|&id| w.object(id).is_some_and(|(p, _)| !w.players[p].computer)),
-            Some(Order::Work) | None => false,
+            Order::Work(_) | Order::Retreat(_) => false,
         };
         w.reset_order_units(&units);
         if human {
             w.human_order(&units);
         }
         match order {
-            Some(Order::Interact(o)) => w.interact(player, &units, &o),
-            Some(Order::Move(o)) => w.move_order(player, &units, &o),
-            Some(Order::Follow(target)) => w.follow(player, &units, target),
-            Some(Order::Guard(target)) => w.guard(player, &units, target),
-            Some(Order::Work) | None => Err(ORDER_UNMODELLED),
+            Order::Interact(o) => w.interact(player, &units, &o),
+            Order::Move(o) => w.move_order(player, &units, &o),
+            Order::Follow(target) => w.follow(player, &units, target),
+            Order::Guard(target) => w.guard(player, &units, target),
+            Order::Work(_) | Order::Retreat(_) => Err(ORDER_UNMODELLED),
         }
     }
 
@@ -95,10 +99,10 @@ impl OrderCommand {
     /// builders' ([`World::command_check`]), FOLLOW's runs in [`World::follow`].
     fn units(&self, w: &mut World) -> Option<Vec<i32>> {
         let (player, source, order) = (self.player, &self.units, self.order);
-        if let Some(Order::Follow(_) | Order::Guard(_)) = order {
+        if let Order::Follow(_) | Order::Guard(_) = order {
             let ids = w.read_units(player, source)?;
             return match order {
-                Some(Order::Guard(_)) => w.command_check(player, ids),
+                Order::Guard(_) => w.command_check(player, ids),
                 _ => Some(ids.to_vec()),
             };
         }

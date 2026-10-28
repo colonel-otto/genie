@@ -20,6 +20,7 @@ members = [
   "crates/formats/genie-scx",
   "crates/formats/genie-support",
   "crates/formats/jascpal",
+  "crates/engine/genie-command-codec",
   "crates/engine/genie-core",
   "crates/tools/genie-oracle",
   "crates/tools/genie-swiss-knife",
