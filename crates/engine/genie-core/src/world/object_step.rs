@@ -7,7 +7,6 @@ use crate::construction::building_update::blasts_at_death;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
 use crate::unit_ai::unit::AiResume;
-use crate::unit_ai::world_view::Foreign;
 use crate::world::context::{Context, ObjectOutputs};
 use crate::world::others::Others;
 use crate::world::{PlayerFrame, World, scenario_mode, standard_mode};
@@ -54,11 +53,7 @@ impl World {
         };
         let (before, rest) = self.players.split_at_mut(p);
         let (player, after) = rest.split_first_mut().expect("the player updating");
-        let foreign = Foreign {
-            before,
-            after,
-            left: None,
-        };
+
         let mut c = Context {
             dt,
             dt_seconds: seconds(dt),
@@ -148,9 +143,8 @@ impl World {
             relations: &player.relations,
             leads: None,
             zones: &mut self.zones,
-            foreign,
         };
-        let mut others = Others::new(p, &mut player.objects, foreign);
+        let mut others = Others::new(p, &mut player.objects, (before, after));
         let mut result = f(&mut unit, &mut c, &mut others);
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);

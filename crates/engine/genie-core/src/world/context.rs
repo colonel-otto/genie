@@ -14,7 +14,7 @@ use crate::pathing::Pathing;
 use crate::unit_ai::AiMove;
 use crate::unit_ai::task_finder::DropSite;
 use crate::unit_ai::unit::AiResume;
-use crate::unit_ai::world_view::{AiStart, AiWork, Foreign, RepairWrite};
+use crate::unit_ai::world_view::{AiStart, AiWork, RepairWrite};
 use crate::world::{BuildingDeath, Recycling};
 
 pub(crate) struct Context<'a> {
@@ -248,8 +248,6 @@ pub(crate) struct Context<'a> {
     pub(crate) leads: Option<(i32, i32)>,
     /// The map's zone maps, which an auto scout's search reads.
     pub(crate) zones: &'a mut crate::pathing::zones::Zones,
-    /// The other players' lists, as they stand before the unit's update.
-    pub(crate) foreign: Foreign<'a>,
 }
 
 /// What an object's step gathered in its Context for the world to apply after it

@@ -47,7 +47,7 @@ impl Unit {
             match found {
                 None => DropSearch::Nothing,
                 Some(id) => {
-                    let (player, foreign) = (c.player, c.foreign);
+                    let (player, foreign) = (c.player, others.players());
                     let unit = &*self;
                     let find = |t: i32| {
                         if t == unit.id {

@@ -141,29 +141,46 @@ impl<'a> OthersRef<'a> {
     pub(crate) fn get(&self, id: i32) -> Option<&'a Unit> {
         self.find(id).map(|(_, u)| u)
     }
+
+    /// The other players, whose data (diplomacy, attributes) the view's readers read.
+    pub(crate) const fn players(&self) -> Foreign<'a> {
+        self.foreign
+    }
 }
 
-/// The objects besides the one that updates, its owner's to change: what [`OthersRef`] reads,
-/// with the owner's other live objects to write.
+/// The objects besides the one that updates, to change: what [`OthersRef`] reads, with the
+/// owner's other live objects and the other players to write.
 pub(crate) struct Others<'a> {
     player: usize,
     own: &'a mut ObjectList,
-    foreign: Foreign<'a>,
+    /// The players before the owner and after it.
+    before: &'a mut [Player],
+    after: &'a mut [Player],
 }
 
 impl<'a> Others<'a> {
-    /// Player `player`'s view: its live list `own` to change and the other players' `foreign`.
-    pub(crate) const fn new(player: usize, own: &'a mut ObjectList, foreign: Foreign<'a>) -> Self {
+    /// Player `player`'s view: its live list `own` and the players `before` and `after` it.
+    pub(crate) const fn new(
+        player: usize,
+        own: &'a mut ObjectList,
+        (before, after): (&'a mut [Player], &'a mut [Player]),
+    ) -> Self {
         Self {
             player,
             own,
-            foreign,
+            before,
+            after,
         }
     }
 
     /// The view to read.
     pub(crate) const fn view(&self) -> OthersRef<'_> {
-        OthersRef::new(self.player, self.own, self.foreign)
+        let foreign = Foreign {
+            before: self.before,
+            after: self.after,
+            left: None,
+        };
+        OthersRef::new(self.player, self.own, foreign)
     }
 
     /// [`OthersRef::own`].
@@ -237,6 +254,11 @@ mod tests {
         assert_eq!(v.find(2).map(|(q, u)| (q, u.id)), Some((0, 2)));
         assert_eq!(v.find(20).map(|(q, _)| q), Some(2));
         assert_eq!(v.get(1).map(|u| u.id), Some(1));
+        assert_eq!(v.players().player(2).map(|p| p.objects.len()), Some(2));
+        assert!(
+            v.players().player(1).is_none(),
+            "the owner's data is the update's own"
+        );
         let foreign: Vec<(usize, i32)> = v.foreign_iter().map(|(q, u)| (q, u.id)).collect();
         assert_eq!(foreign, [(0, 1), (0, 2), (2, 20), (2, 12)]);
         let every: Vec<i32> = v.every().map(|u| u.id).collect();
@@ -250,13 +272,8 @@ mod tests {
 
     #[test]
     fn the_owner_s_objects_iterate_in_list_order_without_the_one_that_updates() {
-        let (mut own, before, after) = world();
-        let foreign = Foreign {
-            before: &before,
-            after: &after,
-            left: None,
-        };
-        let mut others = Others::new(1, &mut own, foreign);
+        let (mut own, mut before, mut after) = world();
+        let mut others = Others::new(1, &mut own, (&mut before, &mut after));
         let ids: Vec<i32> = others.own_iter().map(|u| u.id).collect();
         assert_eq!(ids, [10, 12]);
         for u in others.own_iter_mut() {

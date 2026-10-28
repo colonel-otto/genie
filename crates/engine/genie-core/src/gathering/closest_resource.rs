@@ -282,7 +282,7 @@ impl Unit {
             player: c.player,
             spatial: c.spatial,
             zones: c.zones,
-            foreign: c.foreign,
+            foreign: others.players(),
             every: c.every_masters,
             masters: c.masters,
             plan: Planning {

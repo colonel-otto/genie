@@ -331,7 +331,7 @@ fn repair_reads(
         let Some(o) = held(id) else {
             continue;
         };
-        reads.set.push(repaired(c, o, id)?);
+        reads.set.push(repaired(c, others, o, id)?);
     }
     Ok(reads)
 }
@@ -357,6 +357,7 @@ fn reached_ids(spatial: &Spatial, t: &Unit, target: i32, building: bool) -> Vec<
 /// (sorted), and its owner's repair cost rates.
 fn repaired(
     c: &Context<'_>,
+    others: OthersRef<'_>,
     (oq, o): (usize, &Unit),
     id: i32,
 ) -> Result<crate::construction::repair::Repaired, GenieError> {
@@ -365,7 +366,10 @@ fn repaired(
     let attributes: &[f32] = if oq == c.player {
         c.attributes
     } else {
-        c.foreign.player(oq).map_or(&[][..], |p| &p.attributes[..])
+        others
+            .players()
+            .player(oq)
+            .map_or(&[][..], |p| &p.attributes[..])
     };
     let rate = |k: usize| attributes.get(k).copied().unwrap_or(0.0);
     let annexes = if om.kind == 80 && o.annex_of.is_none() {

@@ -177,7 +177,7 @@ impl<'a> OwnerView<'a> {
         let own = Self {
             player: c.player,
             others,
-            foreign: c.foreign,
+            foreign: others.players(),
             masters: c.masters,
             relations: c.relations,
             attributes: c.attributes,
@@ -185,13 +185,13 @@ impl<'a> OwnerView<'a> {
             construction_rate: c.construction_rate,
             ai_settings: c.ai_settings,
         };
-        let Some((new, q)) = new.and_then(|new| Some((new, c.foreign.player(new)?))) else {
+        let Some((new, q)) = new.and_then(|new| Some((new, others.players().player(new)?))) else {
             return own;
         };
         Self {
             player: new,
             others: others.changed_hands(new, &q.objects),
-            foreign: c.foreign,
+            foreign: others.players(),
             masters: c.every_masters.get(new),
             relations: &q.relations,
             attributes: &q.attributes,
