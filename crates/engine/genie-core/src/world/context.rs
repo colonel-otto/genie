@@ -14,7 +14,7 @@ use crate::pathing::Pathing;
 use crate::unit_ai::AiMove;
 use crate::unit_ai::task_finder::DropSite;
 use crate::unit_ai::unit::AiResume;
-use crate::unit_ai::world_view::{AiStart, AiWork, RepairWrite};
+use crate::unit_ai::world_view::{AiStart, AiWork};
 use crate::world::{BuildingDeath, Recycling};
 
 pub(crate) struct Context<'a> {
@@ -238,9 +238,6 @@ pub(crate) struct Context<'a> {
     /// seconds; [`crate::construction::build::Worked::Main`]), which the caller runs after the update
     /// ([`World::work_building`]).
     pub(crate) main_works: Vec<(i32, f32)>,
-    /// What a repair changed of another player's objects ([`RepairWrite`]), which the caller
-    /// writes after the update.
-    pub(crate) repair_writes: Vec<RepairWrite>,
     /// The owner's diplomacy (`player+0x260`), which the unit's task search reads.
     pub(crate) relations: &'a [u8],
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
@@ -340,8 +337,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) unwatched: Vec<i32>,
     /// [`Context`]'s `evacuations`.
     pub(in crate::world) evacuations: Vec<(i32, Vec<i32>)>,
-    /// [`Context`]'s `repair_writes`.
-    pub(in crate::world) repair_writes: Vec<RepairWrite>,
 }
 
 impl Context<'_> {
@@ -390,7 +385,6 @@ impl Context<'_> {
             started: std::mem::take(&mut self.started),
             unwatched: std::mem::take(&mut self.unwatched),
             evacuations: std::mem::take(&mut self.evacuations),
-            repair_writes: std::mem::take(&mut self.repair_writes),
         }
     }
 }

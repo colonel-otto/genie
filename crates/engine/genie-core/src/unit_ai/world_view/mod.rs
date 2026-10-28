@@ -59,21 +59,6 @@ pub(crate) enum AiWork {
     DropElsewhere(i32, Option<i32>),
 }
 
-/// What a repair changed of an object of another player than the repairer's
-/// ([`Context::repair_writes`]): its hit points and powerups, its repairers (`+0x9e8`) and the
-/// armor its charge's hits took, which a full repair gives back (`FUN_1412066a0`).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct RepairWrite {
-    /// The object.
-    pub(crate) id: i32,
-    /// Its new hit points and hit point powerups (`+0xa38`, `+0xa3c`).
-    pub(crate) hp: Option<(f32, [f32; 2])>,
-    /// What its repairers change by.
-    pub(crate) repairers: i8,
-    /// Its armor removed (`+0x9e4`, `+0x9e6`) goes back to 0.
-    pub(crate) restored: bool,
-}
-
 /// What the unit's slot 0x388 (`FUN_141226fc0`) found while its unit AI ran
 /// ([`crate::unit_ai::UnitSide::wait_solidify`]): the foundation, the task its slot 0x820 found
 /// on it and the master the search switches the unit to (slot 0x90; None when its own master's

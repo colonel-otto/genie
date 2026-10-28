@@ -12963,9 +12963,7 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
 /// hit points make (the house's in wood, a castle's in stone); a repair that
 /// takes the house to its hit points ends (state 1, then the action goes) with the house's armor
 /// back, the house let go and out of its repairers, the unit AI told 0x1fa; an ally's house takes
-/// its hit points and its repairer after the update ([`Context::repair_writes`]).
-///
-/// [`Context::repair_writes`]: crate::world::context::Context
+/// its hit points and its repairer at once, through the update's view ([`Others::get_mut`]).
 #[test]
 fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     let near = [30.0, 89.2, 0.0];

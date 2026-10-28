@@ -91,21 +91,6 @@ impl World {
         (p, i): (usize, usize),
         out: &mut ObjectOutputs,
     ) -> Result<(), GenieError> {
-        // a repair's changes of another player's objects (the hit points, the repairers, the
-        // armor back), in the order it made them
-        for w in std::mem::take(&mut out.repair_writes) {
-            if let Some((_, u)) = self.object_mut(w.id) {
-                if let Some((hp, powerups)) = w.hp {
-                    u.life.hp = hp;
-                    u.hp_powerups = powerups;
-                }
-                let n = u.repairers_mut();
-                *n = n.wrapping_add_signed(w.repairers);
-                if w.restored {
-                    u.armor_removed = [0; 2];
-                }
-            }
-        }
         // the tracker's promotions of the units whose master changed while their unit AI ran
         for (id, old, new) in std::mem::take(&mut out.promotions) {
             self.track_promote(p, id, old, new);

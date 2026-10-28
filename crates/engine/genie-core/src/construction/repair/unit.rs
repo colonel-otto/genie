@@ -9,7 +9,6 @@ use crate::objects::masters::{Master, Masters};
 use crate::objects::release::release_own;
 use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
-use crate::unit_ai::world_view::RepairWrite;
 use crate::world::context::Context;
 use crate::world::others::{Others, OthersRef};
 
@@ -94,7 +93,7 @@ impl Unit {
         };
         let repair_action = self.actions.repair_mut().expect("checked above");
         let step = repair_action.update(c.walk(self.body.mover_mut(), me), view)?;
-        repair_write_back(c, others, &set, &original);
+        repair_write_back(others, &set, &original);
         c.attribute_adds.extend(paid.adds);
         self.after_repair_step(c, others, (target, target_kind, counted_in), step)
     }
@@ -103,7 +102,6 @@ impl Unit {
     /// `counted_in` the object whose repairers count the unit): a target of a type above 69 has
     /// its armor back (`FUN_1412066a0`), the repairers change, the target is let go, the unit AI
     /// hears the notifies, the unit stands, and the action's end lets the target it holds go.
-    /// Another player's objects take theirs after the update ([`Context::repair_writes`]).
     fn after_repair_step(
         &mut self,
         c: &mut Context<'_>,
@@ -111,32 +109,18 @@ impl Unit {
         (target, target_kind, counted_in): (i32, u8, Option<(i32, u8)>),
         step: crate::construction::repair::RepairStep,
     ) -> Result<(), GenieError> {
-        if step.restored && 0x45 < target_kind {
-            if let Some(u) = others.own_mut(target) {
-                u.armor_removed = [0; 2];
-            } else {
-                c.repair_writes.push(RepairWrite {
-                    id: target,
-                    hp: None,
-                    repairers: 0,
-                    restored: true,
-                });
-            }
+        if step.restored
+            && 0x45 < target_kind
+            && let Some((_, u)) = others.get_mut(target)
+        {
+            u.armor_removed = [0; 2];
         }
         if step.repairers != 0
             && let Some((id, _)) = counted_in
+            && let Some((_, u)) = others.get_mut(id)
         {
-            if let Some(u) = others.own_mut(id) {
-                let n = u.repairers_mut();
-                *n = n.wrapping_add_signed(step.repairers);
-            } else {
-                c.repair_writes.push(RepairWrite {
-                    id,
-                    hp: None,
-                    repairers: step.repairers,
-                    restored: false,
-                });
-            }
+            let n = u.repairers_mut();
+            *n = n.wrapping_add_signed(step.repairers);
         }
         let by = self.releaser(c);
         if step.released {
@@ -396,11 +380,9 @@ fn repaired(
     })
 }
 
-/// The repair's changes to the objects it reached (`set` against `original`): the unit's
-/// player's objects take their hit points at once, another player's after the update
-/// ([`Context::repair_writes`]).
+/// The repair's changes to the objects it reached (`set` against `original`): each takes its
+/// hit points at once, any player's.
 fn repair_write_back(
-    c: &mut Context<'_>,
     others: &mut Others<'_>,
     set: &[crate::construction::repair::Repaired],
     original: &[crate::construction::repair::Repaired],
@@ -409,16 +391,9 @@ fn repair_write_back(
         if now == was {
             continue;
         }
-        if let Some(u) = others.own_mut(now.id) {
+        if let Some((_, u)) = others.get_mut(now.id) {
             u.life.hp = now.hp;
             u.hp_powerups = now.hp_powerups;
-        } else {
-            c.repair_writes.push(RepairWrite {
-                id: now.id,
-                hp: Some((now.hp, now.hp_powerups)),
-                repairers: 0,
-                restored: false,
-            });
         }
     }
 }

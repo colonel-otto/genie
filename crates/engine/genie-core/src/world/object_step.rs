@@ -139,12 +139,12 @@ impl World {
             entered: None,
             starts: Vec::new(),
             main_works: Vec::new(),
-            repair_writes: Vec::new(),
             relations: &player.relations,
             leads: None,
             zones: &mut self.zones,
         };
-        let mut others = Others::new(p, &mut player.objects, (before, after));
+        let lists = (&mut player.objects, &mut player.sleeping);
+        let mut others = Others::new(p, lists, (before, after));
         let mut result = f(&mut unit, &mut c, &mut others);
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);
