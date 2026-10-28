@@ -13,8 +13,7 @@ use crate::world::{PlayerFrame, World, scenario_mode, standard_mode};
 impl World {
     /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI
     /// for a command): object `i` of player `p` leaves its list, `f` gets it, the Context and the
-    /// rest of the list; it comes back with the objects it made (each filed in its owner's
-    /// tracker). Returns `f`'s result (an error of the sight's registry first), what the Context
+    /// rest of the list (the objects it makes join the list at their making). Returns `f`'s result (an error of the sight's registry first), what the Context
     /// gathered for the world ([`World::step_object`]).
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object(
@@ -78,7 +77,6 @@ impl World {
             takes: Vec::new(),
             builder_leaves: Vec::new(),
             left_group: None,
-            made: Vec::new(),
             ghost_deaths: Vec::new(),
             started: Vec::new(),
             unwatched: Vec::new(),
@@ -146,8 +144,7 @@ impl World {
         if let Some(w) = watch {
             w.report(&unit, c.tick, p);
         }
-        let mut out = c.outputs(unit.id);
-        let made = std::mem::take(&mut out.made);
+        let out = c.outputs(unit.id);
         if let Some(e) = self.spatial.take_sight_unsupported()
             && result.is_ok()
         {
@@ -155,13 +152,6 @@ impl World {
         }
         self.spatial.set_gait(unit.id, unit.gait());
         player.objects[i] = unit;
-        // each made object's add to its player (slot 0x2d0) filed it in the tracker
-        for m in &made {
-            let k =
-                crate::players::tracker::key(self.masters.get(p), &self.lines, m.life.master_id);
-            player.tracker.add(m.id, k);
-        }
-        player.objects.extend(made);
         (result, out)
     }
 

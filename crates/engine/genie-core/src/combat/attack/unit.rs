@@ -147,7 +147,7 @@ impl Unit {
             self.post_own(kind, p)?;
         }
         if let Some(aimed) = fired {
-            self.volley(c, aimed)?;
+            self.volley(c, others, aimed)?;
         }
         if let Some(target) = executed {
             self.post_own(ACTION_EXECUTED, [600, target, 0])?;

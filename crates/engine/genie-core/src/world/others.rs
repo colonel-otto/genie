@@ -297,6 +297,12 @@ impl<'a> Others<'a> {
         false
     }
 
+    /// An object the update made (a missile) joins the end of the owner's live list (slot
+    /// 0x2d0 at its making).
+    pub(crate) fn add(&mut self, unit: Unit) {
+        self.own.push(unit);
+    }
+
     /// The owner's live object `id`, to change.
     pub(crate) fn own_mut(&mut self, id: i32) -> Option<&mut Unit> {
         self.own.by_id_mut(id)

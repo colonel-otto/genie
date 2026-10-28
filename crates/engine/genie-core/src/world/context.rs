@@ -10,7 +10,6 @@ use crate::movement::{Me, Mover, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
-use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
 use crate::unit_ai::AiMove;
 use crate::unit_ai::task_finder::DropSite;
@@ -83,9 +82,6 @@ pub(crate) struct Context<'a> {
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
     /// building: the caller runs the group's removeUnit ([`World::remove_unit`]).
     pub(crate) left_group: Option<(i32, i32)>,
-    /// The objects the unit made (a ranged unit's missiles), which join the end of its owner's
-    /// list after it and update later in the same tick.
-    pub(crate) made: Vec<Unit>,
     /// The objects whose master leaves ghosts that died in this update ([`crate::vision::ghost`]), the
     /// caller's.
     pub(crate) ghost_deaths: Vec<i32>,
@@ -314,8 +310,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) left_group: Option<(i32, i32, i32)>,
     /// [`Context`]'s `takes`.
     pub(in crate::world) takes: Vec<(i32, Releaser)>,
-    /// [`Context`]'s `made`.
-    pub(in crate::world) made: Vec<Unit>,
     /// [`Context`]'s `ghost_deaths`.
     pub(in crate::world) ghost_deaths: Vec<i32>,
     /// [`Context`]'s `started`.
@@ -363,7 +357,6 @@ impl Context<'_> {
             builder_leaves: std::mem::take(&mut self.builder_leaves),
             left_group: self.left_group.take().map(|(g, b)| (g, id, b)),
             takes: std::mem::take(&mut self.takes),
-            made: std::mem::take(&mut self.made),
             ghost_deaths: std::mem::take(&mut self.ghost_deaths),
             started: std::mem::take(&mut self.started),
             unwatched: std::mem::take(&mut self.unwatched),

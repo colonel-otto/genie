@@ -127,7 +127,7 @@ impl Unit {
         let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
         let struck = write_struck(c, others, blasted, &mut victim)?;
         if let Some(aimed) = fired {
-            self.volley(c, aimed)?;
+            self.volley(c, others, aimed)?;
         }
         if let Some(target) = executed {
             self.post_own(ACTION_EXECUTED, [600, target, 0])?;

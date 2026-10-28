@@ -15,6 +15,7 @@ use crate::unit_ai::{ACTION_EXECUTED, Notify};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::ARMED_FIREPOWER;
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 impl Unit {
     /// The unit's own part of its hit, written back: what a retaliation or reflected damage left
@@ -82,7 +83,12 @@ impl Unit {
     /// 2133..2135, classes 35 and 64 alive), a charge (charge types 6 and 7) and a target of a
     /// computer player (its notify 0x214). Not held: the local player's statistics
     /// (`FUN_140a4ba80`).
-    pub(crate) fn volley(&mut self, c: &mut Context<'_>, aimed: Aimed) -> Result<(), GenieError> {
+    pub(crate) fn volley(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+        aimed: Aimed,
+    ) -> Result<(), GenieError> {
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -147,7 +153,7 @@ impl Unit {
                     crate::combat::missile::scatter(x, x_spread),
                     crate::combat::missile::scatter(y, y_spread),
                 ];
-                self.volley_missile(c, &aimed, scatter)?;
+                self.volley_missile(c, others, &aimed, scatter)?;
             }
         }
         if (extra != 0 || missile) && c.computers.get(aimed.player).copied().unwrap_or(false) {
@@ -156,7 +162,7 @@ impl Unit {
             ));
         }
         if first && missile {
-            self.fire(c, &aimed)?;
+            self.fire(c, others, &aimed)?;
         }
         Ok(())
     }
@@ -170,7 +176,12 @@ impl Unit {
     /// 559). Not modelled: a target of a computer player, which a shooter whose blast does not
     /// spare friends notifies (0x20f). Not held: the damaged flag of masters 83, 293, 122 and 216
     /// (`+0x683`).
-    pub(crate) fn fire(&mut self, c: &mut Context<'_>, aimed: &Aimed) -> Result<(), GenieError> {
+    pub(crate) fn fire(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+        aimed: &Aimed,
+    ) -> Result<(), GenieError> {
         self.attack_count += 1;
         let master =
             c.masters
@@ -201,7 +212,7 @@ impl Unit {
             },
             attack_count: self.attack_count,
         };
-        self.launch(c, aimed, &shot)?;
+        self.launch(c, others, aimed, &shot)?;
         if !matches!(self.life.master_id, 73 | 559) {
             self.post_own(ACTION_EXECUTED, [600, aimed.target, 0])?;
         }
@@ -228,6 +239,7 @@ impl Unit {
     pub(crate) fn volley_missile(
         &mut self,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
         aimed: &Aimed,
         scatter: [f32; 2],
     ) -> Result<(), GenieError> {
@@ -289,7 +301,7 @@ impl Unit {
             },
             attack_count: 0,
         };
-        self.launch(c, aimed, &shot)?;
+        self.launch(c, others, aimed, &shot)?;
         if !matches!(self.life.master_id, 73 | 559) {
             self.post_own(ACTION_EXECUTED, [600, -1, 0])?;
         }
@@ -315,6 +327,7 @@ impl Unit {
     pub(crate) fn launch(
         &mut self,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
         aimed: &Aimed,
         shot: &Shot,
     ) -> Result<(), GenieError> {
@@ -470,16 +483,6 @@ impl Unit {
             },
             met: Vec::new(),
         };
-        let missile = Releaser {
-            id,
-            class: made.class,
-            player: c.player,
-        };
-        c.takes.push((aimed.target, missile));
-        if shot.shooter {
-            // the shooter, of the missile's own player: never listed
-            self.taken(false, id);
-        }
         let point = {
             let draws = c.streams.get(Stream::Action);
             crate::combat::missile::aim(
@@ -497,7 +500,7 @@ impl Unit {
             mover.angle = a;
         }
         let remains = made.death_spawns[1];
-        c.made.push(Self {
+        let missile = Self {
             id,
             position,
             life: Lifecycle {
@@ -529,7 +532,24 @@ impl Unit {
             pasture: -1,
             my_pasture: -1,
             ..Self::default()
-        });
+        };
+        // it joins the end of its owner's list (slot 0x2d0, which files it in the tracker);
+        // then its action takes the target and the shooter
+        c.tracker.add(
+            id,
+            crate::players::tracker::key(c.masters, c.lines, made.id),
+        );
+        others.add(missile);
+        let missile = Releaser {
+            id,
+            class: made.class,
+            player: c.player,
+        };
+        c.takes.push((aimed.target, missile));
+        if shot.shooter {
+            // the shooter, of the missile's own player: never listed
+            self.taken(false, id);
+        }
         Ok(())
     }
 }

@@ -11603,6 +11603,26 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
     assert_eq!(t.recycling.missiles, vec![]);
 }
 
+/// The missile a swing fires joins the end of its owner's live list at its making (slot
+/// 0x2d0, which files it in the tracker), inside the archer's update: what the update does after
+/// the fire reaches it by id, as the game's table does.
+#[test]
+fn a_fired_missile_joins_its_owner_s_list_at_its_making() {
+    let mut t = archer_world(100, 0, 0.0);
+    for _ in 0..5 {
+        t.tick(100);
+    }
+    let made = in_update(&mut t, (1, 0), 100, |unit, c, others| {
+        let _ = unit.update(c, others)?;
+        let k = crate::players::tracker::key(c.masters, c.lines, 363);
+        let listed = others.own(-1).map(|m| m.life.master_id);
+        Ok((listed, c.tracker.list(k.master).contains(&-1)))
+    });
+    assert_eq!(made, Ok((Some(363), true)));
+    let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+    assert_eq!(ids.last(), Some(&-1));
+}
+
 /// `FUN_140a9c600`'s miss: a hit chance of 0 strays the missile by up to the ground distance
 /// times the master's missed spread; it flies past the deer, lands on the ground (its height 0,
 /// `FUN_140a9c890`) and goes to the pool as landed (not flying).
