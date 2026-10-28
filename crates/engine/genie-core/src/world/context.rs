@@ -87,9 +87,6 @@ pub(crate) struct Context<'a> {
     /// The buildings that died in this update: their owner's watched list lets them go
     /// (`FUN_141091310`), the caller's.
     pub(crate) unwatched: Vec<i32>,
-    /// The annexes a building's `set_state` (`FUN_1411dbb70`) took to its own state (slot 0xa0
-    /// on each, before its own parts), the caller's after the update ([`World::set_state`]).
-    pub(crate) annex_states: Vec<(i32, u8)>,
     /// The objects a builder's footprint clearing deletes (the Build's `set_state(7)`,
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
     /// update ([`World::clear_object`]).
@@ -261,8 +258,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) remains: Option<(i16, [f32; 3], Option<u8>)>,
     /// [`Context`]'s `refund`.
     pub(in crate::world) refund: Vec<(i16, f32)>,
-    /// [`Context`]'s `annex_states`.
-    pub(in crate::world) annex_states: Vec<(i32, u8)>,
     /// [`Context`]'s `cleared`.
     pub(in crate::world) cleared: Vec<crate::construction::build::Cleared>,
     /// [`Context`]'s `site_removals`.
@@ -321,7 +316,6 @@ impl Context<'_> {
             kills: std::mem::take(&mut self.kills),
             remains: self.remains.take(),
             refund: std::mem::take(&mut self.refund),
-            annex_states: std::mem::take(&mut self.annex_states),
             cleared: std::mem::take(&mut self.cleared),
             site_removals: std::mem::take(&mut self.site_removals),
             flares: std::mem::take(&mut self.flares),

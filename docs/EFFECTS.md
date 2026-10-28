@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 36 world outputs, 15 unit AI effects and 48 hand-offs.
+These are the channels it uses (FD-045): 35 world outputs, 15 unit AI effects and 48 hand-offs.
 
 ## The world's outputs
 
@@ -33,7 +33,6 @@ the object's update by the functions named.
 | `kills` | `Vec<KillLeft>` | The updating object's own kill (a retaliation's), which its slot's stand-in keeps from the world until the step's end (`crate::combat::victims::file_kill`): the caller's after the update (`World::kill_left`); another object's kill reaches the world at the hit. |  | [`combat/victims.rs`](../crates/engine/genie-core/src/combat/victims.rs) | `apply_hits_and_releases` |
 | `remains` | `Option<(i16, [f32; 3], Option<u8>)>` | What the unit's death leaves for the caller: the remains its dying sprite's end makes (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its owner takes back (attributes 98 and 164). | `FUN_1411a4e90` | [`objects/unit/life_step.rs`](../crates/engine/genie-core/src/objects/unit/life_step.rs) | `apply_deaths` |
 | `refund` | `Vec<(i16, f32)>` | `Context`'s `refund`. |  | [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_deaths` |
-| `annex_states` | `Vec<(i32, u8)>` | The annexes a building's `set_state` (`FUN_1411dbb70`) took to its own state (slot 0xa0 on each, before its own parts), the caller's after the update (`World::set_state`). | `FUN_1411dbb70`, `slot 0xa0` | [`construction/build/unit.rs`](../crates/engine/genie-core/src/construction/build/unit.rs), [`construction/building_update.rs`](../crates/engine/genie-core/src/construction/building_update.rs), [`objects/unit/life_step.rs`](../crates/engine/genie-core/src/objects/unit/life_step.rs) | `apply_object_writes` |
 | `cleared` | `Vec<crate::construction::build::Cleared>` | The objects a builder's footprint clearing deletes (the Build's `set_state(7)`, `FUN_1415c3620` with `param_6`; their records went already), the caller's after the update (`World::clear_object`). | `FUN_1415c3620` | [`construction/build/unit.rs`](../crates/engine/genie-core/src/construction/build/unit.rs) | `apply_object_writes` |
 | `site_removals` | `Vec<i32>` | The foundations another player's marks lie on, which a builder's `set_state(7)` removes when their owner is human (`crate::construction::build::BuildStep::removes`), the caller's after the update (`World::remove_building`). |  | [`construction/build/unit.rs`](../crates/engine/genie-core/src/construction/build/unit.rs) | `apply_object_writes` |
 | `flares` | `Vec<(usize, [f32; 3], bool)>` | The flares a hit on a player's object has that player make (master 112, its slot 0x1c0) at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's after the update (`World::make_flare`). | `slot 0x1c0` | [`combat/volley.rs`](../crates/engine/genie-core/src/combat/volley.rs) | `apply_object_writes` |

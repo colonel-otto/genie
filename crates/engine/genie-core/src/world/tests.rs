@@ -13171,7 +13171,7 @@ fn a_build_step_s_changes_reach_the_world() {
     use std::mem::take;
     let recorded = |t: &mut World, step: &mut BuildStep| {
         in_update(t, (1, 0), 50, |_, c| {
-            record_build_step(c, 10028, &[], step);
+            record_build_step(c, 10028, &[], step)?;
             let built = (
                 take(&mut c.history_events),
                 take(&mut c.attribute_adds),
@@ -13186,7 +13186,6 @@ fn a_build_step_s_changes_reach_the_world() {
                 take(&mut c.evacuations),
                 take(&mut c.started),
                 take(&mut c.main_works),
-                take(&mut c.annex_states),
                 built,
             ))
         })
@@ -13198,7 +13197,6 @@ fn a_build_step_s_changes_reach_the_world() {
     assert_eq!(
         nothing,
         (
-            vec![],
             vec![],
             vec![],
             vec![],
@@ -13243,7 +13241,6 @@ fn a_build_step_s_changes_reach_the_world() {
             vec![(10028, vec![9175])],
             vec![10028],
             vec![(10028, 2.5)],
-            vec![],
             (
                 vec![6],
                 vec![(4, 5.0)],
@@ -13259,6 +13256,93 @@ fn a_build_step_s_changes_reach_the_world() {
     assert!(!house.construction.unwrap().started);
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
     assert!(t.players[1].tracker.list(k.master).contains(&10028));
+}
+
+/// [`house_builder`]'s house 10028 with an annex: a second house foundation 10030 (player 1's
+/// last object) in its owner's pending tracker list, linked to the house as the game links an
+/// annex (`+0xbc0`, `+0xbb8`).
+fn annexed_house() -> World {
+    let mut t = house_builder();
+    let mut annex = t.players[1].objects.by_id(10028).unwrap().clone();
+    annex.id = 10030;
+    annex.annex_of = Some(10028);
+    t.players[1].objects.push(annex);
+    let placed = *t.spatial.get(10028).unwrap();
+    t.spatial.insert(10030, placed);
+    t.spatial.set_annex(10030, Some(10028));
+    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
+    t.players[1].tracker.add(10030, k);
+    t
+}
+
+/// Where houses `a` and `b` stand in their owner's done tracker list of master 70.
+fn done_at(t: &World, a: i32, b: i32) -> (Option<usize>, Option<usize>) {
+    let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
+    let done = t.players[1].tracker.list(k.master);
+    let at = |id| done.iter().position(|&d| d == id);
+    (at(a), at(b))
+}
+
+/// A building that completes in its own update takes its annexes to state 2 first (its
+/// `set_state(2)`, `FUN_1411dbb70`: their slot 0xa0 before its own completion): the annex's
+/// completion reaches the world at once, its tracker part before the building's.
+#[test]
+fn a_building_s_own_completion_completes_its_annexes_first() {
+    let mut t = annexed_house();
+    let h = t.players[1].objects.by_id_mut(10028).unwrap();
+    let k = h.construction.as_mut().unwrap();
+    k.progress = f32::from(k.build_time);
+    let i = t.players[1].objects.position_of(10028).unwrap();
+    let seen = in_update(&mut t, (1, i), 50, |unit, c| {
+        unit.complete_on_update(c)?;
+        Ok(c.w.object(10030).map(|(_, a)| a.life.state))
+    });
+    assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(Some(2)));
+    let (annex, house) = done_at(&t, 10030, 10028);
+    assert!(annex.is_some() && annex < house, "{annex:?} {house:?}");
+}
+
+/// A builder's completion of its foundation takes the foundation's annexes to state 2 where it
+/// runs, before the foundation's tracker part (`record_build_step`).
+#[test]
+fn a_builder_s_completion_completes_the_foundation_s_annexes_where_it_runs() {
+    use crate::construction::build::Built;
+    use crate::construction::build::unit::record_build_step;
+    let mut t = annexed_house();
+    let built = Built {
+        attributes: vec![],
+        history: None,
+        tech: None,
+        cart: None,
+        stack: None,
+        vanishes: false,
+        started: false,
+        pasture: false,
+    };
+    let mut step = BuildStep {
+        completed: Some(built),
+        ..BuildStep::default()
+    };
+    let seen = in_update(&mut t, (1, 0), 50, |_, c| {
+        record_build_step(c, 10028, &[10030], &mut step)?;
+        Ok(c.w.object(10030).map(|(_, a)| a.life.state))
+    });
+    assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(Some(2)));
+    let (annex, house) = done_at(&t, 10030, 10028);
+    assert!(annex.is_some() && annex < house, "{annex:?} {house:?}");
+}
+
+/// A building's `set_state` past 3 takes its annexes along where it runs (`FUN_1411dbb70`,
+/// [`Unit::annexes_follow`]): the annex holds the state within the building's update.
+#[test]
+fn a_building_s_later_state_reaches_its_annexes_where_it_runs() {
+    let mut t = annexed_house();
+    let i = t.players[1].objects.position_of(10028).unwrap();
+    let seen = in_update(&mut t, (1, i), 0, |unit, c| {
+        unit.annexes_follow(c, 3, 7)?;
+        Ok(c.w.object(10030).map(|(_, a)| a.life.state))
+    });
+    assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(Some(7)));
 }
 
 /// What [`completed_house`]'s completion left: the attributes added and the constructions
@@ -13911,8 +13995,8 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 
 /// What a step leaves in its Context for other objects reaches them after it: the owner's
 /// history gains the event (the owner as data1), the tracker files a promoted unit under its
-/// new master; the work for an annex goes to it, an annex takes its main building's state, and
-/// the footprint clearing's objects are destroyed. A human owner's foundation that another
+/// new master; the work for an annex goes to it, and the footprint clearing's objects are
+/// destroyed. A human owner's foundation that another
 /// player's marks stand on goes; a computer's stays.
 #[test]
 fn a_step_s_writes_reach_the_objects_it_names() {
@@ -13952,8 +14036,6 @@ fn a_step_s_writes_reach_the_objects_it_names() {
     };
     let t = after(|_| (), &|c| c.main_works.push((10028, 5.0)));
     assert_eq!(site(&t, 10028), (0, 111.0, Some(5.0)));
-    let t = after(|_| (), &|c| c.annex_states.push((10028, 1)));
-    assert_eq!(site(&t, 10028).0, 1);
     let cleared = crate::construction::build::Cleared {
         id: 601,
         wall: false,

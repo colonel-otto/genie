@@ -82,7 +82,7 @@ impl Unit {
                 c.ghost_deaths.push(self.id);
             }
         }
-        self.annexes_follow(c, before, after);
+        self.annexes_follow(c, before, after)?;
         self.sight_follows(c, before, after);
         if before == 4 && after == 5 {
             self.dying_sprite_ended(c)?;
@@ -93,10 +93,21 @@ impl Unit {
         Ok(())
     }
 
-    /// A building's `set_state`s after its death's 3 take its annexes along too
-    /// (`FUN_1411dbb70`): the animated update's 4 or 5 from 3, the static update's 7 and 8; the
-    /// dying sprite's end (4 to 5) writes the state without a `set_state`.
-    pub(crate) fn annexes_follow(&self, c: &mut Context<'_>, before: u8, after: u8) {
+    /// A building's `set_state`s after its death's 3 take its annexes along too, each annex's
+    /// slot 0xa0 where it runs (`FUN_1411dbb70`, [`crate::world::World::set_state`]): the
+    /// animated update's 4
+    /// or 5 from 3, the static update's 7 and 8; the dying sprite's end (4 to 5) writes the state
+    /// without a `set_state`.
+    ///
+    /// # Errors
+    ///
+    /// What an annex's `set_state` does not model.
+    pub(crate) fn annexes_follow(
+        &self,
+        c: &mut Context<'_>,
+        before: u8,
+        after: u8,
+    ) -> Result<(), GenieError> {
         if 3 < after
             && after != before
             && !(before == 4 && after == 5)
@@ -107,9 +118,12 @@ impl Unit {
                 .is_some_and(|m| m.kind == 80)
         {
             for annex in c.w.spatial.annexes_of(self.id) {
-                c.annex_states.push((annex, after));
+                if let Some((q, _)) = c.w.object(annex) {
+                    c.w.set_state(q, annex, after)?;
+                }
             }
         }
+        Ok(())
     }
 
     /// The sight follows a changed state: a death through state 3 first, then the new state but

@@ -106,7 +106,7 @@ impl Unit {
             stack_made: reads.stack_made,
         };
         let mut step = build.update(walk, site, builder)?;
-        record_build_step(c, target, &annex_ids, &mut step);
+        record_build_step(c, target, &annex_ids, &mut step)?;
         self.after_build_step(c, me, (target, reads.built, by), step)
     }
 
@@ -500,14 +500,18 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 /// What the Build's step changes of the world beside the builder (the caller's): the cleared
 /// objects, the footprint's removals and occupants, the constructions that started (its annexes'
 /// first: their owner watches each, `FUN_1411e5670`), the work an annex's main building takes,
-/// and the completion (taken out of the step) with its tracker part, its standing sprite and its
-/// annexes' state.
+/// and the completion (taken out of the step) with its annexes' state (at once, through the
+/// world), its tracker part and its standing sprite.
+///
+/// # Errors
+///
+/// What an annex's `set_state` does not model.
 pub(crate) fn record_build_step(
     c: &mut Context<'_>,
     target: i32,
     annex_ids: &[i32],
     step: &mut BuildStep,
-) {
+) -> Result<(), GenieError> {
     c.cleared.extend(step.cleared.iter().copied());
     c.site_removals.extend(step.removes);
     if !step.occupants.is_empty() {
@@ -528,8 +532,14 @@ pub(crate) fn record_build_step(
         c.main_works.push((target, amount));
     }
     if let Some(built) = step.completed.take() {
-        // the completion's first part's tracker part (FUN_1411c6bd0 -> FUN_14104eac0); the
-        // foundation is the builder's player's
+        // its set_state(2) took its annexes along (FUN_1411dbb70: their slot 0xa0), which the
+        // game does before the completion the step made; then the completion's first part's
+        // tracker part (FUN_1411c6bd0 -> FUN_14104eac0), the foundation the builder's player's
+        for annex in c.w.spatial.annexes_of(target) {
+            if let Some((q, _)) = c.w.object(annex) {
+                c.w.set_state(q, annex, 2)?;
+            }
+        }
         let p = c.player;
         if let Some(master_id) = c.w.players[p]
             .objects
@@ -557,10 +567,6 @@ pub(crate) fn record_build_step(
                 );
             }
         }
-        // its set_state(2) took its annexes along first (FUN_1411dbb70)
-        for annex in c.w.spatial.annexes_of(target) {
-            c.annex_states.push((annex, 2));
-        }
         c.history_events.extend(built.history);
         c.attribute_adds.extend(built.attributes);
         c.techs_done.extend(built.tech);
@@ -574,4 +580,5 @@ pub(crate) fn record_build_step(
             c.completions.push((target, built.stack, built.vanishes));
         }
     }
+    Ok(())
 }

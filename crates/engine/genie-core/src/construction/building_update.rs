@@ -174,6 +174,16 @@ impl Unit {
         if !walls && self.annex_of.is_some() {
             return Ok(());
         }
+        // its set_state(2) takes its annexes along first (FUN_1411dbb70: their slot 0xa0)
+        for annex in c.w.spatial.annexes_of(self.id) {
+            if let Some((q, _)) = c.w.object(annex) {
+                c.w.set_state(q, annex, 2)?;
+            }
+        }
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id));
         let others = OthersRef::of(&c.w.players, c.player);
         let annexed = others.own_iter().any(|u| u.annex_of == Some(self.id));
         let Some(construction) = self.construction.as_mut() else {
@@ -224,10 +234,6 @@ impl Unit {
             self.life.master_id,
         );
         c.w.players[c.player].tracker.complete(self.id, k);
-        // its set_state(2) took its annexes along first (FUN_1411dbb70)
-        for annex in c.w.spatial.annexes_of(self.id) {
-            c.annex_states.push((annex, 2));
-        }
         c.attribute_adds.extend(built.attributes);
         c.techs_done.extend(built.tech);
         if built.pasture {
