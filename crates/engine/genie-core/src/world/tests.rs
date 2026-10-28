@@ -4,10 +4,10 @@ use crate::commands::game::GameCommand;
 use crate::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GateCommand, GatherPoint,
-    GatherPointCommand, GoBackToWorkCommand, OrderCommand, OrderUnits, PatrolCommand, QueueCommand,
+    GatherPointCommand, GoBackToWorkCommand, OrderCommand, PatrolCommand, QueueCommand,
     ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
-    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitOrderAction, UnitOrderCommand,
-    UnloadCommand,
+    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction,
+    UnitOrderCommand, UnloadCommand,
 };
 use crate::construction::build::{BuildAction, BuildStep, BuildTask, Construction};
 use crate::construction::gates::gate_units;
@@ -1343,7 +1343,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
             player: 1,
             master: 70,
             position: [30.0, 88.0, 0.0],
-            builders: vec![9175, 9181],
+            builders: UnitList::of(vec![9175, 9181]),
             queued: false,
             commits: false,
             frame: 0,
@@ -1412,7 +1412,7 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
         player: 1,
         master: 70,
         position: [30.0, 88.0, 0.0],
-        builders: vec![9175],
+        builders: UnitList::of(vec![9175]),
         queued: false,
         commits: false,
         frame: 0,
@@ -1481,7 +1481,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         player: 1,
         master: 70,
         position: [30.0, 88.0, 0.0],
-        builders: vec![9618, 9175],
+        builders: UnitList::of(vec![9618, 9175]),
         queued: true,
         commits: false,
         frame: 2,
@@ -4955,7 +4955,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
             player: 0,
             master: 70,
             position: [10.0, 10.0, 0.0],
-            builders: vec![],
+            builders: UnitList::of(vec![]),
             queued: false,
             commits: false,
             frame: 0,
@@ -5035,7 +5035,7 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
         40,
         &[Command::Order(OrderCommand {
             player: 0,
-            units: OrderUnits::Listed(vec![8, 99, 7]),
+            units: UnitList::of(vec![8, 99, 7]),
             order: None,
         })],
     );
@@ -5464,7 +5464,7 @@ fn town_centre(id: i32) -> Unit {
 fn queue(building: i32, unit: i16, amount: u16) -> Command {
     Command::Queue(QueueCommand {
         player: 0,
-        buildings: vec![building],
+        buildings: UnitList::of(vec![building]),
         unit,
         amount,
         button: -1,
@@ -6204,7 +6204,7 @@ fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
     let several = |amount| {
         Command::Queue(QueueCommand {
             player: 0,
-            buildings: vec![9, 10],
+            buildings: UnitList::of(vec![9, 10]),
             unit: 99,
             amount,
             button: -1,
@@ -6269,7 +6269,7 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
     };
     let both = Command::Queue(QueueCommand {
         player: 0,
-        buildings: vec![9, 10],
+        buildings: UnitList::of(vec![9, 10]),
         unit: 99,
         amount: 3,
         button: -1,
@@ -6326,7 +6326,7 @@ fn a_queue_passes_over_a_sleeping_object_the_unit_does_not_train_at() {
     t.players[0].sleeping.push(asleep);
     let both = Command::Queue(QueueCommand {
         player: 0,
-        buildings: vec![11, 9],
+        buildings: UnitList::of(vec![11, 9]),
         unit: 99,
         amount: 2,
         button: -1,
@@ -6640,7 +6640,7 @@ fn queued_units_join_the_last_entry_and_a_full_buffer_grows() {
     let with = |amount, button| {
         Command::Queue(QueueCommand {
             player: 0,
-            buildings: vec![9],
+            buildings: UnitList::of(vec![9]),
             unit: 99,
             amount,
             button,
@@ -9104,7 +9104,7 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
     let set = |target, point, own| {
         Command::GatherPoint(GatherPointCommand {
             player: 0,
-            ids: vec![9149],
+            units: UnitList::of(vec![9149]),
             point,
             target,
             target_master: 705,
@@ -9161,7 +9161,7 @@ fn set_gather_point_takes_a_building_that_trains_without_garrisoning() {
     ])];
     let set = Command::GatherPoint(GatherPointCommand {
         player: 0,
-        ids: vec![10908, 10909],
+        units: UnitList::of(vec![10908, 10909]),
         point: [20.5, 30.5],
         target: -1,
         target_master: -1,
@@ -9210,7 +9210,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
     let step = |point| {
         Command::CommandQueue(BuildingQueueCommand {
             player: 0,
-            ids: vec![9149],
+            units: UnitList::of(vec![9149]),
             target: -1,
             point,
         })
@@ -9234,7 +9234,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
         25,
         &[Command::GatherPoint(GatherPointCommand {
             player: 0,
-            ids: vec![9149],
+            units: UnitList::of(vec![9149]),
             point: [-1.0, -1.0],
             target: -1,
             target_master: -1,
@@ -11068,7 +11068,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         player: 1,
         master: 70,
         position: [30.0, 88.0, 0.0],
-        builders: vec![9175],
+        builders: UnitList::of(vec![9175]),
         queued: false,
         commits: false,
         frame: 0,
@@ -11163,7 +11163,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
             player: 1,
             master: 70,
             position: [30.0, 88.0, 0.0],
-            builders: vec![9175],
+            builders: UnitList::of(vec![9175]),
             queued: false,
             commits: false,
             frame: 0,
@@ -11520,7 +11520,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
         player: 1,
         master: 70,
         position: [30.0, 88.0, 0.0],
-        builders: vec![9175],
+        builders: UnitList::of(vec![9175]),
         queued: false,
         commits: true,
         frame: 0,
@@ -11540,7 +11540,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
         from: [30, 88],
         to: [30, 88],
         target: -1,
-        builders: vec![9175],
+        builders: UnitList::of(vec![9175]),
         queued: false,
         commits: true,
     }));
@@ -11740,7 +11740,7 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
             player: 1,
             master: 70,
             position: [30.0, 88.0, 0.0],
-            builders,
+            builders: UnitList::of(builders),
             queued: false,
             commits: false,
             frame: 0,
@@ -14662,7 +14662,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
     let unit_order = |action, human| {
         Command::UnitOrder(UnitOrderCommand {
             player: 1,
-            ids: v.clone(),
+            units: UnitList::of(v.clone()),
             target: 700,
             through_ai: true,
             nearby: false,
@@ -14676,7 +14676,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &t,
             &Command::Stop(StopCommand {
                 player: 1,
-                ids: v.clone(),
+                units: UnitList::of(v.clone()),
             }),
             1,
             |w| w.stop_command(1, &v),
@@ -14685,7 +14685,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &t,
             &Command::Patrol(PatrolCommand {
                 player: 1,
-                ids: v.clone(),
+                units: UnitList::of(v.clone()),
                 waypoints: way.clone(),
                 reset: true,
             }),
@@ -14696,7 +14696,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &t,
             &Command::AttackMove(AttackMoveCommand {
                 player: 1,
-                ids: v.clone(),
+                units: UnitList::of(v.clone()),
                 waypoints: way.clone(),
                 reset: true,
                 queued: false,
@@ -14709,7 +14709,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &t,
             &Command::SeekShelter(SeekShelterCommand {
                 player: 1,
-                ids: v.clone(),
+                units: UnitList::of(v.clone()),
             }),
             1,
             |w| w.seek_shelter(1, &v),
@@ -14718,7 +14718,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &t,
             &Command::UnitAiState(UnitAiStateCommand {
                 player: 1,
-                ids: v.clone(),
+                units: UnitList::of(v.clone()),
                 state: 1,
             }),
             1,
@@ -14728,7 +14728,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &t,
             &Command::AutoScout(AutoScoutCommand {
                 player: 1,
-                ids: v.clone(),
+                units: UnitList::of(v.clone()),
             }),
             1,
             |w| w.auto_scout(1, &v),
@@ -14737,7 +14737,7 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             &t,
             &Command::Unload(UnloadCommand {
                 player: 1,
-                ids: vec![700],
+                units: UnitList::of(vec![700]),
                 point: [24.5, 89.5],
                 flag: 0,
                 unit_type: -1,
@@ -14745,21 +14745,22 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
             }),
             1,
             |w| {
-                w.unload(&UnloadCommand {
+                UnloadCommand {
                     player: 1,
-                    ids: vec![700],
+                    units: UnitList::of(vec![700]),
                     point: [24.5, 89.5],
                     flag: 0,
                     unit_type: -1,
                     sound: false,
-                })
+                }
+                .run(w)
             },
         ),
         routes(
             &t,
             &Command::GoBackToWork(GoBackToWorkCommand {
                 player: 1,
-                ids: v.clone(),
+                units: UnitList::of(v.clone()),
             }),
             1,
             |w| w.go_back_to_work(1, &v),
@@ -14916,7 +14917,7 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
 /// check; a RETREAT is not modelled (after the reset).
 #[test]
 fn the_command_phase_runs_an_order_after_its_check() {
-    use crate::commands::{Order, OrderUnits};
+    use crate::commands::{Order, UnitList};
     let t = forage_world();
     let v = vec![9175];
     let walk = crate::orders::MoveOrder {
@@ -14930,7 +14931,7 @@ fn the_command_phase_runs_an_order_after_its_check() {
     let order = |units: Vec<i32>, order| {
         Command::Order(OrderCommand {
             player: 1,
-            units: OrderUnits::Listed(units),
+            units: UnitList::of(units),
             order,
         })
     };
@@ -14972,7 +14973,7 @@ fn the_command_phase_runs_an_order_after_its_check() {
 /// or not.
 #[test]
 fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
-    use crate::commands::{Order, OrderUnits};
+    use crate::commands::{Order, UnitList};
     let walk = crate::orders::MoveOrder {
         target: -1,
         point: [40.5, 89.5],
@@ -14989,23 +14990,28 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
         })
     };
     let mut t = forage_world();
-    t.run(&order(OrderUnits::Listed(vec![9175, 600])));
+    t.run(&order(UnitList::of(vec![9175, 600])));
     assert_eq!(t.last_commanded.get(1), Some(&vec![9175, -1]));
-    t.run(&order(OrderUnits::Listed(vec![600])));
+    t.run(&order(UnitList::of(vec![600])));
     assert_eq!(t.last_commanded.get(1), Some(&vec![9175, -1]));
 
     let mut cached = forage_world();
     cached.set_last_commanded(1, vec![600, 9175]);
     let checked = vec![-1, 9175];
-    assert!(routes(&cached, &order(OrderUnits::LastCommanded), 1, |w| {
-        w.set_last_commanded(1, checked.clone());
-        w.reset_order_units(&checked);
-        w.human_order(&checked);
-        w.move_order(1, &checked, &walk)
-    }));
+    assert!(routes(
+        &cached,
+        &order(UnitList::last_commanded()),
+        1,
+        |w| {
+            w.set_last_commanded(1, checked.clone());
+            w.reset_order_units(&checked);
+            w.human_order(&checked);
+            w.move_order(1, &checked, &walk)
+        }
+    ));
     cached.set_last_commanded(1, vec![600]);
     let mut refused = cached.clone();
-    refused.run(&order(OrderUnits::LastCommanded));
+    refused.run(&order(UnitList::last_commanded()));
     cached.set_last_commanded(1, vec![-1]);
     assert_eq!(refused, cached);
 }
@@ -15015,15 +15021,15 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
 /// a computer, or its last commanded units, none before its first.
 #[test]
 fn an_order_s_units_are_capped_unless_its_comm_player_is_outside_the_world() {
-    use OrderUnits;
+    use UnitList;
     let many: Vec<i32> = (0..600).collect();
     let mut t = forage_world();
-    let listed = OrderUnits::Listed(many.clone());
+    let listed = UnitList::of(many.clone());
     assert_eq!(t.command_units(0, &listed), many);
     assert_eq!(t.command_units(t.players.len(), &listed), many);
     assert_eq!(t.command_units(1, &listed), many[..60]);
     assert_eq!(
-        t.command_units(1, &OrderUnits::LastCommanded),
+        t.command_units(1, &UnitList::last_commanded()),
         Vec::<i32>::new()
     );
     t.players[1].computer = true;
@@ -15034,10 +15040,10 @@ fn an_order_s_units_are_capped_unless_its_comm_player_is_outside_the_world() {
     t.set_last_commanded(1, vec![7]);
     assert_eq!(t.last_commanded, [vec![], vec![7]]);
     assert_eq!(
-        t.command_units(0, &OrderUnits::LastCommanded),
+        t.command_units(0, &UnitList::last_commanded()),
         Vec::<i32>::new()
     );
-    assert_eq!(t.command_units(1, &OrderUnits::LastCommanded), [7]);
+    assert_eq!(t.command_units(1, &UnitList::last_commanded()), [7]);
 }
 
 /// The command phase runs each building command by its handler ([`World::run`]) on
@@ -15058,7 +15064,7 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
     };
     let queue = QueueCommand {
         player: 1,
-        buildings: tc.clone(),
+        buildings: UnitList::of(tc.clone()),
         unit: 83,
         amount: 1,
         button: 0,
@@ -15068,13 +15074,13 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
             &t,
             &Command::Queue(QueueCommand {
                 player: 1,
-                buildings: tc.clone(),
+                buildings: UnitList::of(tc.clone()),
                 unit: 83,
                 amount: 1,
                 button: 0,
             }),
             1,
-            |w| w.queue(&queue),
+            |w| queue.run(w),
         ),
         routes(
             &t,
@@ -15102,7 +15108,7 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
             &t,
             &Command::GatherPoint(GatherPointCommand {
                 player: 1,
-                ids: tc.clone(),
+                units: UnitList::of(tc.clone()),
                 point: [30.5, 85.5],
                 target: -1,
                 target_master: -1,
@@ -15110,21 +15116,22 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
             }),
             1,
             |w| {
-                w.gather_point(&GatherPointCommand {
+                GatherPointCommand {
                     player: 1,
-                    ids: tc.clone(),
+                    units: UnitList::of(tc.clone()),
                     point: [30.5, 85.5],
                     target: -1,
                     target_master: -1,
                     own: false,
-                })
+                }
+                .run(w)
             },
         ),
         routes(
             &t,
             &Command::CommandQueue(BuildingQueueCommand {
                 player: 1,
-                ids: tc.clone(),
+                units: UnitList::of(tc.clone()),
                 target: -1,
                 point: [30.5, 85.5],
             }),

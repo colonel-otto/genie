@@ -1,14 +1,14 @@
 use crate::decoder::{Decoder, LAST_COMMANDED, MAX_UNITS};
 use genie_core::commands::{
     AutoScoutCommand, BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GateCommand,
-    GatherPointCommand, GoBackToWorkCommand, Order, OrderCommand, OrderUnits, ResearchCommand,
-    ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
-    TransformObjectCommand, UnitAiStateCommand, UnitOrderAction, UnitOrderCommand, UnloadCommand,
+    GatherPointCommand, GoBackToWorkCommand, Order, OrderCommand, ResearchCommand, ResignCommand,
+    SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand, TransformObjectCommand,
+    UnitAiStateCommand, UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand,
 };
 use genie_rec::de::command as packets;
 
 fn decode(packet: &[u8]) -> Option<Command> {
-    Decoder::default().command(packet, &[])
+    Decoder::default().command(packet)
 }
 
 fn interact(num: u16, ids: Vec<i32>) -> Vec<u8> {
@@ -50,13 +50,16 @@ fn an_interact_orders_its_units_and_a_later_one_the_last_commanded() {
         }))
     };
     assert_eq!(
-        d.command(&interact(2, vec![10, 11, 12]), &[]),
-        ordered(OrderUnits::Listed(vec![10, 11]))
+        d.command(&interact(2, vec![10, 11, 12])),
+        ordered(UnitList {
+            count: 2,
+            ids: vec![10, 11, 12]
+        })
     );
     assert_eq!(d.last_commanded.get(&2), Some(&vec![10, 11]));
     assert_eq!(
-        d.command(&interact(LAST_COMMANDED, vec![]), &[]),
-        ordered(OrderUnits::LastCommanded)
+        d.command(&interact(LAST_COMMANDED, vec![])),
+        ordered(UnitList::last_commanded())
     );
     assert_eq!(d.last_commanded.get(&2), Some(&vec![10, 11]));
 }
@@ -80,10 +83,10 @@ fn a_work_command_orders_its_units_and_notes_them() {
     }
     .encode();
     assert_eq!(
-        d.command(&work, &[]),
+        d.command(&work),
         Some(Command::Order(OrderCommand {
             player: 4,
-            units: OrderUnits::Listed(vec![20]),
+            units: UnitList::of(vec![20]),
             order: Some(Order::Work),
         }))
     );
@@ -120,10 +123,10 @@ fn move_retreat_follow_and_guard_order_their_units() {
     });
     let mut d = Decoder::default();
     assert_eq!(
-        d.command(&moved, &[]),
+        d.command(&moved),
         Some(Command::Order(OrderCommand {
             player: 1,
-            units: OrderUnits::Listed(many.clone()),
+            units: UnitList::of(many.clone()),
             order: Some(order),
         }))
     );
@@ -146,7 +149,7 @@ fn move_retreat_follow_and_guard_order_their_units() {
         decode(&retreat),
         Some(Command::Order(OrderCommand {
             player: 1,
-            units: OrderUnits::Listed(vec![7]),
+            units: UnitList::of(vec![7]),
             order: None,
         }))
     );
@@ -169,17 +172,17 @@ fn move_retreat_follow_and_guard_order_their_units() {
     let ordered = |order| {
         Command::Order(OrderCommand {
             player: 1,
-            units: OrderUnits::Listed(vec![8]),
+            units: UnitList::of(vec![8]),
             order: Some(order),
         })
     };
     let mut d = Decoder::default();
-    assert_eq!(d.command(&follow, &[]), Some(ordered(Order::Follow(900))));
-    assert_eq!(d.command(&guard, &[]), Some(ordered(Order::Guard(901))));
+    assert_eq!(d.command(&follow), Some(ordered(Order::Follow(900))));
+    assert_eq!(d.command(&guard), Some(ordered(Order::Guard(901))));
     assert!(d.last_commanded.is_empty());
 }
 
-/// The listed commands keep the counted ids, at most 60.
+/// The listed commands keep their count and every id the packet holds (the runs read them).
 #[test]
 fn the_listed_commands_keep_their_counted_ids() {
     let gather = packets::SetGatherPoint {
@@ -198,7 +201,10 @@ fn the_listed_commands_keep_their_counted_ids() {
         decode(&gather),
         Some(Command::GatherPoint(GatherPointCommand {
             player: 3,
-            ids: vec![30],
+            units: UnitList {
+                count: 1,
+                ids: vec![30, 31]
+            },
             point: [1.0, 2.0],
             target: 40,
             target_master: 83,
@@ -219,7 +225,7 @@ fn the_listed_commands_keep_their_counted_ids() {
         decode(&queue),
         Some(Command::CommandQueue(BuildingQueueCommand {
             player: 3,
-            ids: vec![32, 33],
+            units: UnitList::of(vec![32, 33]),
             target: 41,
             point: [3.0, 4.0],
         }))
@@ -237,7 +243,7 @@ fn the_listed_commands_keep_their_counted_ids() {
         decode(&state),
         Some(Command::UnitAiState(UnitAiStateCommand {
             player: 3,
-            ids: vec![34],
+            units: UnitList::of(vec![34]),
             state: 2,
         }))
     );
@@ -252,7 +258,7 @@ fn the_listed_commands_keep_their_counted_ids() {
         decode(&scout),
         Some(Command::AutoScout(AutoScoutCommand {
             player: 3,
-            ids: vec![35],
+            units: UnitList::of(vec![35]),
         }))
     );
     let shelter = packets::SeekShelter {
@@ -266,7 +272,7 @@ fn the_listed_commands_keep_their_counted_ids() {
         decode(&shelter),
         Some(Command::SeekShelter(SeekShelterCommand {
             player: 3,
-            ids: vec![36],
+            units: UnitList::of(vec![36]),
         }))
     );
 }
@@ -287,15 +293,25 @@ fn a_stop_with_too_few_ids_does_nothing() {
         decode(&stop(1)),
         Some(Command::Stop(StopCommand {
             player: 2,
-            ids: vec![50],
+            units: UnitList::of(vec![50]),
         }))
     );
-    assert_eq!(decode(&stop(2)), None);
+    // a count past the ids: STOP's check refuses it in the run
+    assert_eq!(
+        decode(&stop(2)),
+        Some(Command::Stop(StopCommand {
+            player: 2,
+            units: UnitList {
+                count: 2,
+                ids: vec![50]
+            },
+        }))
+    );
 }
 
-/// UNLOAD and `UNIT_ORDER` with the count `0xffff` (the last commanded units) are not modelled.
+/// UNLOAD and `UNIT_ORDER` keep their count, `0xffff` too (their checks refuse it in the run).
 #[test]
-fn unload_and_unit_order_decode_their_lists_but_not_the_last_commanded() {
+fn unload_and_unit_order_decode_their_lists_and_counts() {
     let unload = |num| {
         packets::Unload {
             commp_id: 2,
@@ -315,7 +331,7 @@ fn unload_and_unit_order_decode_their_lists_but_not_the_last_commanded() {
         decode(&unload(1)),
         Some(Command::Unload(UnloadCommand {
             player: 2,
-            ids: vec![60],
+            units: UnitList::of(vec![60]),
             point: [1.0, 1.0],
             flag: 1,
             unit_type: -1,
@@ -324,7 +340,13 @@ fn unload_and_unit_order_decode_their_lists_but_not_the_last_commanded() {
     );
     assert!(matches!(
         decode(&unload(LAST_COMMANDED)),
-        Some(Command::Unmodelled { player: 2, .. })
+        Some(Command::Unload(UnloadCommand {
+            units: UnitList {
+                count: LAST_COMMANDED,
+                ..
+            },
+            ..
+        }))
     ));
     let order = |num| {
         packets::UnitOrder {
@@ -349,7 +371,7 @@ fn unload_and_unit_order_decode_their_lists_but_not_the_last_commanded() {
         decode(&order(1)),
         Some(Command::UnitOrder(UnitOrderCommand {
             player: 2,
-            ids: vec![61],
+            units: UnitList::of(vec![61]),
             target: 70,
             through_ai: true,
             nearby: false,
@@ -360,11 +382,17 @@ fn unload_and_unit_order_decode_their_lists_but_not_the_last_commanded() {
     );
     assert!(matches!(
         decode(&order(LAST_COMMANDED)),
-        Some(Command::Unmodelled { player: 2, .. })
+        Some(Command::UnitOrder(UnitOrderCommand {
+            units: UnitList {
+                count: LAST_COMMANDED,
+                ..
+            },
+            ..
+        }))
     ));
 }
 
-/// `GO_BACK_TO_WORK2`: the count at `+4` and the ids from `+8`, at most 60.
+/// `GO_BACK_TO_WORK2`: the count at `+4` and the ids from `+8`.
 #[test]
 fn go_back_to_work_2_reads_its_counted_ids() {
     let mut rest = vec![2, 0, 0, 0];
@@ -376,7 +404,10 @@ fn go_back_to_work_2_reads_its_counted_ids() {
         decode(&packet),
         Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: 1,
-            ids: vec![80, 81],
+            units: UnitList {
+                count: 2,
+                ids: vec![80, 81, 82]
+            },
         }))
     );
     let empty = packets::GoBackToWork2 {
@@ -388,7 +419,7 @@ fn go_back_to_work_2_reads_its_counted_ids() {
         decode(&empty),
         Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: 1,
-            ids: vec![],
+            units: UnitList::of(vec![]),
         }))
     );
 }
@@ -462,7 +493,7 @@ fn the_single_commands_decode_their_fields() {
         decode(&back),
         Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: 2,
-            ids: vec![93],
+            units: UnitList::of(vec![93]),
         }))
     );
     let bell = packets::TownBell {

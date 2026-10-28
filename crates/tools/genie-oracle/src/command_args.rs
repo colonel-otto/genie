@@ -1,15 +1,13 @@
 //! The body's frames and the commands' arguments: patrol, attack move, queue, trade and the
 //! market, build and build wall; the unit AI a new object gets.
 
-use crate::{Error, LAST_COMMANDED, MAX_UNITS};
-use genie_core::GenieError;
+use crate::Error;
 use genie_core::commands::{
     AttackMoveCommand, BuildCommand, BuildWallCommand, Command, PatrolCommand, QueueCommand,
-    TradeCommand,
+    TradeCommand, UnitList,
 };
 use genie_rec::de;
 use genie_rec::de::Op;
-use genie_save::PlayerSection;
 use genie_save::generated::world::Master;
 
 /// One frame of the body (FD-007's per-frame record order): the op-2 record that starts a tick, its
@@ -48,10 +46,6 @@ pub(super) fn frames<'a>(chapter: &de::Chapter<'a>, limit: usize) -> Result<Vec<
     Ok(out)
 }
 
-/// PATROL (0x15): the units of the count at `+0x4` from `+0x5c`, the waypoints of the count
-/// at `+0xb` (x from `+0xc`, y from `+0x34`, each an f32's bits), `+0x8`. None where the
-/// command does nothing: a count past the ids the packet holds (the check `FUN_140e55590`),
-/// no waypoints or more than 10 (`FUN_140e69cc0`).
 /// A saved `MoveTo`'s wait (`+0x6c`, `+0x70`, `+0x74`); none for another sub-action.
 pub(super) fn saved_move_wait(
     sub: &genie_save::generated::world::Action,
@@ -68,10 +62,10 @@ pub(super) fn saved_move_wait(
         })
 }
 
+/// `ATTACK_MOVE` (0x21): PATROL's layout ([`patrol_command`]), its flags at `+0x8`..`+0xa`.
 pub(super) fn attack_move_command(c: &de::command::AttackMove) -> Option<Command> {
-    let count = usize::from(c.num);
     let waypoints = usize::from(c.waypoints_count);
-    if c.ids.len() < count || !(1..=10).contains(&waypoints) {
+    if !(1..=10).contains(&waypoints) {
         return None;
     }
     // x from +0xc (the first as bits, nine more after it), y from +0x34 (likewise)
@@ -81,7 +75,10 @@ pub(super) fn attack_move_command(c: &de::command::AttackMove) -> Option<Command
     let ys = std::iter::once(c.field_0x34).chain((0..9).map(|i| word(&c.gap_0x38, 4 * i)));
     Some(Command::AttackMove(AttackMoveCommand {
         player: c.commp_id as usize,
-        ids: c.ids[..count].to_vec(),
+        units: UnitList {
+            count: c.num,
+            ids: c.ids.clone(),
+        },
         waypoints: xs.zip(ys).take(waypoints).map(<[f32; 2]>::from).collect(),
         reset: c.field_0x08 != 0,
         queued: c.field_0x09 != 0,
@@ -89,10 +86,12 @@ pub(super) fn attack_move_command(c: &de::command::AttackMove) -> Option<Command
     }))
 }
 
+/// PATROL (0x15): the units of the count at `+0x4` from `+0x5c`, the waypoints of the count
+/// at `+0xb` (x from `+0xc`, y from `+0x34`, each an f32's bits), `+0x8`. None where the
+/// command does nothing: no waypoints or more than 10 (`FUN_140e69cc0`).
 pub(super) fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
-    let count = usize::from(c.num);
     let waypoints = usize::from(c.waypoints_count);
-    if c.ids.len() < count || !(1..=10).contains(&waypoints) {
+    if !(1..=10).contains(&waypoints) {
         return None;
     }
     let xs = [
@@ -121,7 +120,10 @@ pub(super) fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
     ];
     Some(Command::Patrol(PatrolCommand {
         player: c.commp_id as usize,
-        ids: c.ids[..count].to_vec(),
+        units: UnitList {
+            count: c.num,
+            ids: c.ids.clone(),
+        },
         waypoints: xs
             .iter()
             .zip(ys)
@@ -135,21 +137,13 @@ pub(super) fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
 /// QUEUE (`do_command` case 0x81, `MULTI_QUEUE)`: `num` buildings, the unit `t_id`, `count` of it and
 /// the train button (`button_location_id`, -1 for none); the building ids follow. genie-core reads
 /// the costs, the train time and the building's work rate from its own state.
-pub(super) fn queue_command(
-    packet: &de::command::MultiQueue,
-    sections: &[PlayerSection<'_>],
-) -> Command {
-    let player = packet.commp_id as usize;
-    let unmodelled = |why| Command::Unmodelled {
-        player,
-        why: GenieError::unsupported(why),
-    };
-    if sections.get(player).is_none() {
-        return unmodelled("QUEUE by a player the save does not have");
-    }
+pub(super) fn queue_command(packet: &de::command::MultiQueue) -> Command {
     Command::Queue(QueueCommand {
-        player,
-        buildings: queue_buildings(packet),
+        player: packet.commp_id as usize,
+        buildings: UnitList {
+            count: packet.num,
+            ids: packet.ids.clone(),
+        },
         unit: packet.t_id,
         amount: packet.count.max(0) as u16,
         button: packet.button_location_id,
@@ -192,39 +186,18 @@ pub(super) fn market(
     }
 }
 
-/// QUEUE's buildings: the first `num` of the ids that follow (the dispatcher's check reads that
-/// many, `FUN_140e6b250` with `num`).
-pub(super) fn queue_buildings(packet: &de::command::MultiQueue) -> Vec<i32> {
-    packet
-        .ids
-        .iter()
-        .take(usize::from(packet.num))
-        .copied()
-        .collect()
-}
-
 /// BUILD (`FUN_140e7a400`): `num` builders put a foundation of master `o_id` at (`x`, `y`); the
 /// builder ids follow. The handler reads the master as an i16 (`+0x10`). The slice takes z = 0:
 /// the game sets it from the terrain, so a foundation on raised terrain shows in word 7.
 pub(super) fn build_command(packet: &de::command::Build) -> Command {
-    let player = packet.commp_id as usize;
-    let master = packet.o_id as i16;
-    if packet.num == LAST_COMMANDED {
-        return Command::Unmodelled {
-            player,
-            why: GenieError::unsupported("BUILD by the last commanded units"),
-        };
-    }
     Command::Build(BuildCommand {
-        player,
-        master,
+        player: packet.commp_id as usize,
+        master: packet.o_id as i16,
         position: [packet.x, packet.y, 0.0],
-        builders: packet
-            .ids
-            .iter()
-            .copied()
-            .take(packet.num as usize)
-            .collect(),
+        builders: UnitList {
+            count: packet.num,
+            ids: packet.ids.clone(),
+        },
         queued: packet.field_0x1e != 0,
         commits: packet.field_0x1f == 0,
         frame: packet.frame,
@@ -232,29 +205,19 @@ pub(super) fn build_command(packet: &de::command::Build) -> Command {
 }
 
 /// `BUILD_WALL` (0x69): the wall's master at `+0x10`, the line's tiles at `+0x8`..`+0xe`, the
-/// target at `+0x14`, the queue flags at `+0x1a` and `+0x1b`, the builders (at most a human
-/// player's 60, `FUN_140e6b250`).
+/// target at `+0x14`, the queue flags at `+0x1a` and `+0x1b`, the builders (the count at
+/// `+0x4`, the ids from `+0x1c`).
 pub(super) fn build_wall_command(packet: &de::command::BuildWall) -> Command {
-    let player = packet.commp_id as usize;
-    let master = packet.o_id as i16;
-    if packet.num == LAST_COMMANDED {
-        return Command::Unmodelled {
-            player,
-            why: GenieError::unsupported("BUILD_WALL by the last commanded units"),
-        };
-    }
     Command::BuildWall(BuildWallCommand {
-        player,
-        master,
+        player: packet.commp_id as usize,
+        master: packet.o_id as i16,
         from: [packet.x1, packet.y1],
         to: [packet.x2, packet.y2],
         target: packet.q_id,
-        builders: packet
-            .ids
-            .iter()
-            .copied()
-            .take((packet.num as usize).min(MAX_UNITS))
-            .collect(),
+        builders: UnitList {
+            count: packet.num,
+            ids: packet.ids.clone(),
+        },
         queued: packet.field_0x1a != 0,
         commits: packet.field_0x1b == 0,
     })

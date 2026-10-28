@@ -4,10 +4,10 @@ use crate::GenieError;
 use crate::commands::{
     AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
     BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GameCommand, GateCommand,
-    GatherPointCommand, GoBackToWorkCommand, OrderCommand, OrderUnits, PatrolCommand, QueueCommand,
+    GatherPointCommand, GoBackToWorkCommand, OrderCommand, PatrolCommand, QueueCommand,
     ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
-    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitOrderAction, UnitOrderCommand,
-    UnloadCommand,
+    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction,
+    UnitOrderCommand, UnloadCommand,
 };
 
 /// One command of each kind, issued by player `p`.
@@ -23,7 +23,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
             player: p,
             master: 70,
             position: [0.0; 3],
-            builders: ids.clone(),
+            builders: UnitList::of(ids.clone()),
             queued: false,
             commits: true,
             frame: 0,
@@ -34,13 +34,13 @@ fn one_of_each(p: usize) -> Vec<Command> {
             from: [0, 0],
             to: [1, 1],
             target: -1,
-            builders: ids.clone(),
+            builders: UnitList::of(ids.clone()),
             queued: false,
             commits: true,
         }),
         Command::GatherPoint(GatherPointCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
             point: [0.0; 2],
             target: -1,
             target_master: -1,
@@ -48,7 +48,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
         }),
         Command::Queue(QueueCommand {
             player: p,
-            buildings: ids.clone(),
+            buildings: UnitList::of(ids.clone()),
             unit: 83,
             amount: 1,
             button: -1,
@@ -74,13 +74,13 @@ fn one_of_each(p: usize) -> Vec<Command> {
         }),
         Command::CommandQueue(BuildingQueueCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
             target: -1,
             point: [0.0; 2],
         }),
         Command::GoBackToWork(GoBackToWorkCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
         }),
         Command::AllBackToWork(AllBackToWorkCommand { player: p, id: 7 }),
         Command::TownBell(TownBellCommand {
@@ -109,7 +109,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
         Command::Gate(GateCommand { player: p, id: 7 }),
         Command::Unload(UnloadCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
             point: [-1.0; 2],
             flag: 0,
             unit_type: -1,
@@ -126,21 +126,21 @@ fn one_of_each(p: usize) -> Vec<Command> {
         }),
         Command::AutoScout(AutoScoutCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
         }),
         Command::Stop(StopCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
         }),
         Command::Patrol(PatrolCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
             waypoints: vec![[1.0, 1.0]],
             reset: false,
         }),
         Command::AttackMove(AttackMoveCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
             waypoints: vec![[1.0, 1.0]],
             reset: false,
             queued: false,
@@ -148,16 +148,16 @@ fn one_of_each(p: usize) -> Vec<Command> {
         }),
         Command::SeekShelter(SeekShelterCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
         }),
         Command::UnitAiState(UnitAiStateCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
             state: 1,
         }),
         Command::UnitOrder(UnitOrderCommand {
             player: p,
-            ids: ids.clone(),
+            units: UnitList::of(ids.clone()),
             target: -1,
             through_ai: false,
             nearby: false,
@@ -167,7 +167,7 @@ fn one_of_each(p: usize) -> Vec<Command> {
         }),
         Command::Order(OrderCommand {
             player: p,
-            units: OrderUnits::Listed(ids),
+            units: UnitList::of(ids),
             order: None,
         }),
     ]

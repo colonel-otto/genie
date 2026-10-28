@@ -14,6 +14,7 @@
 //! so never.
 
 use crate::GenieError;
+use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
 use crate::orders::Place;
 use crate::world::World;
@@ -53,8 +54,8 @@ pub struct BuildWallCommand {
     pub to: [u16; 2],
     /// `+0x14`: anything but −1 and the command does nothing.
     pub target: i32,
-    /// The units told to build it, in packet order.
-    pub builders: Vec<i32>,
+    /// The units told to build it, in packet order (the count at `+0x4`, the ids from `+0x1c`).
+    pub builders: UnitList,
     /// `+0x1a`: queued (a builder with a unit AI takes the line as orders in its queue).
     pub queued: bool,
     /// `+0x1b` is 0: a builder with a unit AI holding an order not ready takes the line as
@@ -63,16 +64,17 @@ pub struct BuildWallCommand {
 }
 
 impl BuildWallCommand {
-    /// `do_command`'s case checks the builders as BUILD's, then the wall's line is placed
+    /// `do_command`'s case checks the builders as BUILD's (a count past the packet's ids
+    /// refuses it, [`World::read_units`]), then the wall's line is placed
     /// ([`World::build_wall`]).
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        let Some(builders) = w.command_check(self.player, &self.builders) else {
+        let Some(listed) = w.read_units(self.player, &self.builders) else {
             return Ok(());
         };
-        w.build_wall(&Self {
-            builders,
-            ..self.clone()
-        })
+        let Some(builders) = w.command_check(self.player, listed) else {
+            return Ok(());
+        };
+        w.build_wall(self, &builders)
     }
 }
 
@@ -210,7 +212,11 @@ impl World {
     /// (`FUN_140c42b60` at 0x140e7be4b, [`crate::orders::readiness`]). Not modelled: the
     /// population test of a master without `+0x5f0` (as for BUILD), more builders than the game's
     /// insertion sort takes.
-    pub(crate) fn build_wall(&mut self, w: &BuildWallCommand) -> Result<(), GenieError> {
+    pub(crate) fn build_wall(
+        &mut self,
+        w: &BuildWallCommand,
+        builders: &[i32],
+    ) -> Result<(), GenieError> {
         let player = w.player;
         if w.target != -1 {
             return Ok(());
@@ -223,10 +229,10 @@ impl World {
         }
         let (radius, trained_at) = (site.radius, site.trained_at.clone());
         let computer = self.players[player].computer;
-        let builders: &[i32] = if computer && w.builders.first() == Some(&-1) {
+        let builders: &[i32] = if computer && builders.first() == Some(&-1) {
             &[]
         } else {
-            &w.builders
+            builders
         };
         let mut capable = 0;
         for &id in builders {

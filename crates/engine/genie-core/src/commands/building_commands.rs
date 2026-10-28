@@ -8,14 +8,18 @@ use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, World};
 
 impl World {
     /// SET GATHER POINT's handler ([`GatherPointCommand`]).
-    pub(crate) fn gather_point(&mut self, g: &GatherPointCommand) -> Result<(), GenieError> {
+    pub(crate) fn gather_point(
+        &mut self,
+        g: &GatherPointCommand,
+        ids: &[i32],
+    ) -> Result<(), GenieError> {
         let GatherPointCommand {
             player,
-            ref ids,
             point: [x, y],
             target,
             target_master,
             own,
+            ..
         } = *g;
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone

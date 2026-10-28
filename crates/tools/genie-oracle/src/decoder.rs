@@ -9,13 +9,12 @@ use genie_core::GenieError;
 use genie_core::commands::{
     AllBackToWorkCommand, AutoScoutCommand, BuildingQueueCommand, Command, DeleteCommand,
     FlareCommand, GateCommand, GatherPointCommand, GoBackToWorkCommand, Order, OrderCommand,
-    OrderUnits, ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand,
-    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitOrderAction, UnitOrderCommand,
-    UnloadCommand,
+    ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand,
+    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitList, UnitOrderAction,
+    UnitOrderCommand, UnloadCommand,
 };
 use genie_rec::de;
 use genie_rec::de::command::Command as Packet;
-use genie_save::PlayerSection;
 
 /// Why the slice stops on a command it does not decode, by the command's name.
 pub(super) const fn unmodelled_command(p: &de::command::Command) -> &'static str {
@@ -133,52 +132,41 @@ impl Decoder {
     /// The commands of the frames a save already played: decoded for the unit lists they leave
     /// (a later command's 'last commanded units'), not run. Without the world of those updates
     /// the commands' checks do not run: a list a check would have refused is left too.
-    pub(super) fn prime(&mut self, frames: &[Frame<'_>], sections: &[PlayerSection<'_>]) {
+    pub(super) fn prime(&mut self, frames: &[Frame<'_>]) {
         for frame in frames {
             for p in &frame.commands {
-                let _ = self.command(p, sections);
+                let _ = self.command(p);
             }
         }
     }
 
-    pub(super) fn command(
-        &mut self,
-        packet: &[u8],
-        sections: &[PlayerSection<'_>],
-    ) -> Option<Command> {
+    pub(super) fn command(&mut self, packet: &[u8]) -> Option<Command> {
         let decoded = Packet::decode(packet);
         if let Some(list) = unit_list_order(&decoded) {
             return Some(self.order(list));
         }
-        listed_command(&decoded)
-            .unwrap_or_else(|NotListed| single_command(&decoded, packet, sections))
+        listed_command(&decoded).unwrap_or_else(|NotListed| single_command(&decoded, packet))
     }
 
     /// An order to the units listed, or (INTERACT, WORK, MOVE, RETREAT) to the comm player's
     /// last commanded units for a count of `0xffff`; such an order's own list is noted for
     /// [`Decoder::prime`].
-    fn order(&mut self, list: UnitList) -> Command {
-        let UnitList {
+    fn order(&mut self, list: OrderList) -> Command {
+        let OrderList {
             player,
             num,
             ids,
             reads_last,
             order,
         } = list;
-        let units = if reads_last && num == LAST_COMMANDED {
-            OrderUnits::LastCommanded
-        } else {
-            let units: Vec<i32> = ids.iter().copied().take(usize::from(num)).collect();
-            if reads_last {
-                let _ = self
-                    .last_commanded
-                    .insert(player, capped(&units, units.len()));
-            }
-            OrderUnits::Listed(units)
-        };
+        if reads_last && num != LAST_COMMANDED {
+            let _ = self
+                .last_commanded
+                .insert(player, capped(&ids, usize::from(num)));
+        }
         Command::Order(OrderCommand {
             player: player as usize,
-            units,
+            units: UnitList { count: num, ids },
             order,
         })
     }
@@ -187,7 +175,7 @@ impl Decoder {
 /// A command to the units of an order: its comm player, the count, the ids, whether its count
 /// of `0xffff` names the last commanded units (the game's unit-list reader, INTERACT, WORK,
 /// MOVE and RETREAT), and the order.
-struct UnitList {
+struct OrderList {
     player: u8,
     num: u16,
     ids: Vec<i32>,
@@ -202,7 +190,7 @@ fn capped(ids: &[i32], num: usize) -> Vec<i32> {
 
 /// INTERACT, WORK, MOVE and RETREAT, whose units the unit-list reader (`FUN_140e6b290`) reads,
 /// and FOLLOW and GUARD, which list theirs; None for any other packet.
-fn unit_list_order(packet: &Packet) -> Option<UnitList> {
+fn unit_list_order(packet: &Packet) -> Option<OrderList> {
     use Order;
     let (player, num, ids, reads_last, order) = match packet {
         Packet::Interact(c) => {
@@ -261,7 +249,7 @@ fn unit_list_order(packet: &Packet) -> Option<UnitList> {
         ),
         _ => return None,
     };
-    Some(UnitList {
+    Some(OrderList {
         player,
         num,
         ids,
@@ -279,7 +267,7 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, NotListed> {
     Ok(match packet {
         Packet::SetGatherPoint(c) => Some(Command::GatherPoint(GatherPointCommand {
             player: c.commp_id as usize,
-            ids: capped(&c.ids, c.num as usize),
+            units: listed(c.num, &c.ids),
             point: [c.x, c.y],
             target: c.t_id,
             target_master: c.tm_id as i16,
@@ -288,94 +276,97 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, NotListed> {
         // BUILDING_COMMAND_QUEUE: the count at +0x10
         Packet::BuildingCommandQueue(c) => Some(Command::CommandQueue(BuildingQueueCommand {
             player: c.commp_id as usize,
-            ids: capped(&c.ids, c.num as usize),
+            units: listed(c.num, &c.ids),
             target: c.t_id,
             point: [c.x, c.y],
         })),
         // GO_BACK_TO_WORK2: a count (+4, a short) and the ids from +8
         Packet::GoBackToWork2(c) => Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: c.commp_id as usize,
-            ids: go_back_to_work_ids(&c.rest),
+            units: go_back_to_work_units(&c.rest),
         })),
         // UNLOAD: the count at +4
-        Packet::Unload(c) if c.num != LAST_COMMANDED => Some(Command::Unload(UnloadCommand {
+        Packet::Unload(c) => Some(Command::Unload(UnloadCommand {
             player: c.commp_id as usize,
-            ids: capped(&c.ids, c.num as usize),
+            units: listed(c.num, &c.ids),
             point: [c.x, c.y],
             flag: c.flag,
             unit_type: c.unit_type,
             sound: c.field_0x18 != 0,
         })),
         // UNIT_ORDER: the count at +4
-        Packet::UnitOrder(c) if c.num != LAST_COMMANDED => {
-            Some(Command::UnitOrder(UnitOrderCommand {
-                player: c.commp_id as usize,
-                ids: capped(&c.ids, c.num as usize),
-                target: c.t_id,
-                through_ai: c.field_0x1d != 0,
-                nearby: c.field_0x1e != 0,
-                action: UnitOrderAction::of(c.action),
-                param: c.param.cast_unsigned(),
-                human: c.field_0x20 == 1,
-            }))
-        }
+        Packet::UnitOrder(c) => Some(Command::UnitOrder(UnitOrderCommand {
+            player: c.commp_id as usize,
+            units: listed(c.num, &c.ids),
+            target: c.t_id,
+            through_ai: c.field_0x1d != 0,
+            nearby: c.field_0x1e != 0,
+            action: UnitOrderAction::of(c.action),
+            param: c.param.cast_unsigned(),
+            human: c.field_0x20 == 1,
+        })),
         // UNIT_AI_STATE: the count at +4
         Packet::UnitAiState(c) => Some(Command::UnitAiState(UnitAiStateCommand {
             player: c.commp_id as usize,
-            ids: capped(&c.ids, usize::from(c.num)),
+            units: listed(c.num, &c.ids),
             state: c.state,
         })),
         // AUTO_SCOUT: the count at +4
         Packet::AutoScout(c) => Some(Command::AutoScout(AutoScoutCommand {
             player: c.commp_id as usize,
-            ids: capped(&c.ids, usize::from(c.field_0x04)),
+            units: listed(c.field_0x04, &c.ids),
         })),
-        // STOP: the count at +4; a count past the ids the packet holds fails the command's
-        // check (`FUN_140e55a30`)
-        Packet::Stop(c) => (usize::from(c.num) <= c.ids.len()).then(|| {
-            Command::Stop(StopCommand {
-                player: c.commp_id as usize,
-                ids: capped(&c.ids, usize::from(c.num)),
-            })
-        }),
-        // PATROL: the units listed, the count at +4 (the core caps them at the player's 60
-        // or 500); the command's check refuses a count past the ids the packet holds
-        // (`FUN_140e55590`), and the handler does nothing without 1 to 10 waypoints (`+0xb`)
+        // STOP: the count at +4
+        Packet::Stop(c) => Some(Command::Stop(StopCommand {
+            player: c.commp_id as usize,
+            units: listed(c.num, &c.ids),
+        })),
+        // PATROL: the units listed, the count at +4; the handler does nothing without 1 to 10
+        // waypoints (`+0xb`)
         Packet::Patrol(c) => patrol_command(c),
-        // ATTACK_MOVE: the same layout and check (`FUN_140e54490`); the handler does nothing
-        // without 1 to 10 waypoints (`+0xb`)
+        // ATTACK_MOVE: the same layout; the handler does nothing without 1 to 10 waypoints
+        // (`+0xb`)
         Packet::AttackMove(c) => attack_move_command(c),
         // SEEK_SHELTER: the count at +4
         Packet::SeekShelter(c) => Some(Command::SeekShelter(SeekShelterCommand {
             player: c.commp_id as usize,
-            ids: capped(&c.ids, usize::from(c.num)),
+            units: listed(c.num, &c.ids),
         })),
         _ => return Err(NotListed),
     })
 }
 
-/// `GO_BACK_TO_WORK2`'s ids: the count is the short at the start of `rest` (+4), the ids follow
-/// from +8.
-fn go_back_to_work_ids(rest: &[u8]) -> Vec<i32> {
+/// `GO_BACK_TO_WORK2`'s units: the count is the short at the start of `rest` (+4), the ids
+/// follow from +8.
+fn go_back_to_work_units(rest: &[u8]) -> UnitList {
     let count = rest
         .get(..2)
-        .map_or(0, |b| usize::from(u16::from_le_bytes([b[0], b[1]])));
-    rest.get(4..)
+        .map_or(0, |b| u16::from_le_bytes([b[0], b[1]]));
+    let ids = rest
+        .get(4..)
         .unwrap_or_default()
         .as_chunks::<4>()
         .0
         .iter()
-        .take(count.min(MAX_UNITS))
         .map(|b| i32::from_le_bytes(*b))
-        .collect()
+        .collect();
+    UnitList { count, ids }
+}
+
+/// A packet's unit list: its count and every id it holds (the runs read the first `count`).
+fn listed(count: u16, ids: &[i32]) -> UnitList {
+    UnitList {
+        count,
+        ids: ids.to_vec(),
+    }
 }
 
 /// The commands of one object, one player or the game; a command the decoder does not turn
 /// into the slice's stops its player (byte 1 of the `raw` packet is the issuing comm player).
-fn single_command(packet: &Packet, raw: &[u8], sections: &[PlayerSection<'_>]) -> Option<Command> {
+fn single_command(packet: &Packet, raw: &[u8]) -> Option<Command> {
     Some(match packet {
         Packet::Build(build) => build_command(build),
-        Packet::MultiQueue(queue) => queue_command(queue, sections),
+        Packet::MultiQueue(queue) => queue_command(queue),
         Packet::BuildWall(c) => build_wall_command(c),
         // RESEARCH (0x65): the handler reads the building count at +0x8 as a short
         Packet::Research(c) => Command::Research(ResearchCommand {
@@ -405,7 +396,7 @@ fn single_command(packet: &Packet, raw: &[u8], sections: &[PlayerSection<'_>]) -
         // GO_BACK_TO_WORK: one building (+4)
         Packet::GoBackToWork(c) => Command::GoBackToWork(GoBackToWorkCommand {
             player: c.commp_id as usize,
-            ids: vec![c.u_id],
+            units: UnitList::of(vec![c.u_id]),
         }),
         // ALL_BACK_TO_WORK: the object (+4)
         Packet::AllBackToWork(c) => Command::AllBackToWork(AllBackToWorkCommand {

@@ -1,21 +1,27 @@
 //! `AUTO_SCOUT` (0x26): the player's units scout by themselves.
 
 use crate::GenieError;
+use crate::commands::UnitList;
 use crate::world::World;
 
-/// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the auto
-/// scout order, or the stop order when it scouts already ([`World::auto_scout`]).
+/// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each unit the packet lists (the count at `+0x4`, the
+/// ids from `+0x8`) takes the auto scout order, or the stop order when it scouts already
+/// ([`World::auto_scout`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AutoScoutCommand {
     /// The player.
     pub player: usize,
     /// Its units.
-    pub ids: Vec<i32>,
+    pub units: UnitList,
 }
 
 impl AutoScoutCommand {
-    /// Its handler ([`World::auto_scout`]).
+    /// The check (`FUN_140e54790`) refuses a count past the packet's ids; the handler reads
+    /// the first of them ([`World::read_units`], [`World::auto_scout`]).
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        w.auto_scout(self.player, &self.ids)
+        let Some(ids) = w.read_units(self.player, &self.units) else {
+            return Ok(());
+        };
+        w.auto_scout(self.player, ids)
     }
 }

@@ -34,14 +34,14 @@ impl World {
     ///   bell (`+0x9dc`).
     ///
     /// The local player's interface flag (`FUN_141663f50`) is not held.
-    pub(crate) fn unload(&mut self, u: &UnloadCommand) -> Result<(), GenieError> {
+    pub(crate) fn unload(&mut self, u: &UnloadCommand, ids: &[i32]) -> Result<(), GenieError> {
         let UnloadCommand {
             player,
-            ref ids,
             point,
             flag,
             unit_type,
             sound,
+            ..
         } = *u;
         let Some(checked) = self.unload_check(player, ids, flag, unit_type) else {
             return Ok(());

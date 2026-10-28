@@ -60,6 +60,7 @@ building commands, the unit commands and the players' each have their own dispat
 | [`tribute.rs`](tribute.rs) | GIVE ATTRIBUTES (0xc4): the player's tribute to another. |
 | [`unit_ai_state.rs`](unit_ai_state.rs) | `UNIT_AI_STATE` (0x12): the stance of the player's units. |
 | [`unit_order.rs`](unit_order.rs) | `UNIT_ORDER` (0x75): an order of the player's units by its action. |
+| [`units.rs`](units.rs) | The units a command's packet lists: its count and the ids after the packet's fixed part. |
 | [`unload.rs`](unload.rs) | UNLOAD (0x6f): units let out of the player's buildings and transports. |
 | [`wall.rs`](wall.rs) | A player's line of wall foundations: `BUILD_WALL` (0x69, `FUN_140e7b2e0`), which dragging a wall sends. |
 <!-- /files -->

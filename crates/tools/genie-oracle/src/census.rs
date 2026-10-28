@@ -121,12 +121,7 @@ pub fn census_run(
         CensusEnd::Recording
     };
     for frame in frames(&chapter, total)? {
-        run(
-            &mut turns,
-            &mut decoder,
-            std::slice::from_ref(&frame),
-            &sections,
-        );
+        run(&mut turns, &mut decoder, std::slice::from_ref(&frame));
         census.update(&turns, &sections);
         if census.players.iter().all(CensusPlayer::done) {
             end = CensusEnd::AllDone;
@@ -280,7 +275,6 @@ pub fn header_divergences(
 ) -> Result<Vec<Followed>, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
-    let sections = header.players();
     let mut turns = header_slice(&header, masters);
     let mut decoder = Decoder::default();
     if let Some(&p) = players.iter().find(|&&p| turns.players.len() <= p as usize) {
@@ -289,12 +283,7 @@ pub fn header_divergences(
     let mut out: Vec<Followed> = vec![Followed::Follows; players.len()];
     let mut done = vec![false; players.len()];
     for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
-        run(
-            &mut turns,
-            &mut decoder,
-            std::slice::from_ref(frame),
-            &sections,
-        );
+        run(&mut turns, &mut decoder, std::slice::from_ref(frame));
         let update = i + 1;
         for (k, &p) in players.iter().enumerate() {
             if let (false, Some((tick, object, why))) =
@@ -351,16 +340,10 @@ pub fn next_id_divergence(
 ) -> Result<Option<(usize, i32, i32)>, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
-    let sections = header.players();
     let mut turns = header_slice(&header, masters);
     let mut decoder = Decoder::default();
     for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
-        run(
-            &mut turns,
-            &mut decoder,
-            std::slice::from_ref(frame),
-            &sections,
-        );
+        run(&mut turns, &mut decoder, std::slice::from_ref(frame));
         let update = i + 1;
         if update < first {
             continue;
@@ -395,17 +378,11 @@ pub fn header_run(
 ) -> Result<World, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
-    let sections = header.players();
     let mut turns = header_slice(&header, masters);
     let mut decoder = Decoder::default();
     for (i, frame) in frames(&chapter, last)?.iter().enumerate() {
         before(i + 1);
-        run(
-            &mut turns,
-            &mut decoder,
-            std::slice::from_ref(frame),
-            &sections,
-        );
+        run(&mut turns, &mut decoder, std::slice::from_ref(frame));
     }
     Ok(turns)
 }

@@ -44,9 +44,9 @@ impl World {
     /// # Errors
     ///
     /// A sleeping object the unit trains at, and what the parts do not model.
-    pub(crate) fn queue(&mut self, q: &QueueCommand) -> Result<(), GenieError> {
+    pub(crate) fn queue(&mut self, q: &QueueCommand, buildings: &[i32]) -> Result<(), GenieError> {
         let player = q.player;
-        let Some(ids) = self.command_check(player, &q.buildings) else {
+        let Some(ids) = self.command_check(player, buildings) else {
             return Ok(());
         };
         let owner = &self.players[player];

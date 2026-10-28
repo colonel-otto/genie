@@ -304,7 +304,7 @@ fn priming_sets_the_update_count_and_the_last_commanded_units() {
         checkpoint: None,
         commands: vec![&moved[..]],
     }];
-    let _ = primed(&mut turns, &frames, 3, &save.players());
+    let _ = primed(&mut turns, &frames, 3);
     assert_eq!(turns.ticks, 3);
     assert_eq!(turns.last_commanded, [vec![], vec![7]]);
 }
@@ -315,14 +315,14 @@ fn a_frames_command_phase_moves_the_time_on() {
     let save = save();
     let mut turns = slice(&save, None);
     let mut decoder = Decoder::default();
-    frame_commands(&mut turns, &mut decoder, None, &save.players());
+    frame_commands(&mut turns, &mut decoder, None);
     assert_eq!((turns.ticks, turns.world_time), (0, 0));
     let frame = Frame {
         dt: 40,
         checkpoint: None,
         commands: Vec::new(),
     };
-    frame_commands(&mut turns, &mut decoder, Some(&frame), &save.players());
+    frame_commands(&mut turns, &mut decoder, Some(&frame));
     assert_eq!((turns.ticks, turns.world_time), (1, 40));
 }
 

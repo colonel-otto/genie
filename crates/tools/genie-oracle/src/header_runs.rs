@@ -62,18 +62,13 @@ pub fn trace_commands(on: bool) {
 }
 
 /// Run the slice over `frames`, each tick with its commands.
-pub(super) fn run(
-    turns: &mut World,
-    decoder: &mut Decoder,
-    frames: &[Frame<'_>],
-    sections: &[PlayerSection<'_>],
-) {
+pub(super) fn run(turns: &mut World, decoder: &mut Decoder, frames: &[Frame<'_>]) {
     let trace = TRACE_COMMANDS.load(std::sync::atomic::Ordering::Relaxed);
     for frame in frames {
         let commands: Vec<Command> = frame
             .commands
             .iter()
-            .filter_map(|p| decoder.command(p, sections))
+            .filter_map(|p| decoder.command(p))
             .collect();
         if trace {
             for c in &commands {
@@ -117,12 +112,7 @@ pub fn simulate_word9(
     let sections = header.players();
     // from the recording's header: the load's run-time state too, not the bare `slice`
     let mut turns = header_slice(&header, masters);
-    run(
-        &mut turns,
-        &mut Decoder::default(),
-        &all[..first],
-        &sections,
-    );
+    run(&mut turns, &mut Decoder::default(), &all[..first]);
     checkpoint
         .lanes
         .iter()
@@ -222,7 +212,6 @@ pub fn word9_terms(
         &mut turns,
         &mut Decoder::default(),
         &frames(&chapter, ticks)?,
-        &sections,
     );
     Ok(turns.players[id as usize]
         .objects
@@ -260,12 +249,7 @@ pub fn blocks_per_tick(
     let mut out = Vec::with_capacity(ticks);
     let mut decoder = Decoder::default();
     for frame in frames(&chapter, ticks)? {
-        run(
-            &mut turns,
-            &mut decoder,
-            std::slice::from_ref(&frame),
-            &sections,
-        );
+        run(&mut turns, &mut decoder, std::slice::from_ref(&frame));
         out.push(
             ids.iter()
                 .map(|&id| lane_block(&sections[id as usize], id, &turns.players[id as usize]))
@@ -321,15 +305,9 @@ pub fn header_run(
 ) -> Result<World, Error> {
     let chapter = de::chapters(recording)?[0];
     let header = chapter.header()?;
-    let sections = header.players();
     let mut turns = header_slice(&header, masters);
     let mut decoder = Decoder::default();
-    run(
-        &mut turns,
-        &mut decoder,
-        &frames(&chapter, ticks)?,
-        &sections,
-    );
+    run(&mut turns, &mut decoder, &frames(&chapter, ticks)?);
     Ok(turns)
 }
 

@@ -1,23 +1,28 @@
 //! `UNIT_AI_STATE` (0x12): the stance of the player's units.
 
 use crate::GenieError;
+use crate::commands::UnitList;
 use crate::world::World;
 
-/// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
-/// take the stance `state` ([`World::unit_ai_state`]).
+/// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of the units the packet lists (the
+/// count at `+0x4`, the ids from `+0xc`) take the stance `state` ([`World::unit_ai_state`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnitAiStateCommand {
     /// The player whose units take it.
     pub player: usize,
     /// The units.
-    pub ids: Vec<i32>,
+    pub units: UnitList,
     /// The stance.
     pub state: u8,
 }
 
 impl UnitAiStateCommand {
-    /// Its handler ([`World::unit_ai_state`]).
+    /// The check (`FUN_140e55d30`) refuses a count past the packet's ids; the handler reads
+    /// the first of them ([`World::read_units`], [`World::unit_ai_state`]).
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        w.unit_ai_state(self.player, &self.ids, self.state)
+        let Some(ids) = w.read_units(self.player, &self.units) else {
+            return Ok(());
+        };
+        w.unit_ai_state(self.player, ids, self.state)
     }
 }

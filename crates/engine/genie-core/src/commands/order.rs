@@ -2,21 +2,12 @@
 //! the reset and the order's run.
 
 use crate::GenieError;
+use crate::commands::UnitList;
 use crate::orders::{Interact, MoveOrder};
 use crate::world::World;
 
 /// WORK's and RETREAT's runs (`FUN_140e6a9f0`, `FUN_140e69f00`).
 const ORDER_UNMODELLED: GenieError = GenieError::unsupported("an order moves its units");
-
-/// The units an order command names (its unit-list reader, `FUN_140e6b290`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum OrderUnits {
-    /// The packet's ids, as many as its count says.
-    Listed(Vec<i32>),
-    /// A count of `0xffff`: the comm player's last commanded units
-    /// ([`World::last_commanded`]).
-    LastCommanded,
-}
 
 /// What an order command gives its units.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,8 +34,9 @@ pub enum Order {
 pub struct OrderCommand {
     /// The player who orders.
     pub player: usize,
-    /// The units of the packet.
-    pub units: OrderUnits,
+    /// The units of the packet (the count at `+0x10` for INTERACT, WORK, MOVE and RETREAT, whose
+    /// count `0xffff` names the last commanded units, `+0x4` for FOLLOW and GUARD).
+    pub units: UnitList,
     /// The order they take, None for RETREAT, which only resets their idle timeouts.
     pub order: Option<Order>,
 }
@@ -90,38 +82,39 @@ impl OrderCommand {
     }
 
     /// Its units after the command's check. The checks of INTERACT (`FUN_140e55250`), WORK
-    /// (`FUN_140e55eb0`), MOVE (`FUN_140e553f0`) and RETREAT (`FUN_140e55710`) read the units
-    /// ([`World::command_units`]) and make each one the world does not hold, or of another
-    /// player without the setting `+0x1074`, −1 ([`World::checked_units`]); read from the last
-    /// commanded units, they leave the −1s there. A human player's command left without a unit,
-    /// or a command of a player the world lacks, does nothing (None). Else the run reads its
-    /// units again (`FUN_140e6b290` with 0): a list of the command's own becomes the last
-    /// commanded units, −1s and all. FOLLOW and GUARD take the first 60 units of their packet
-    /// (500 for a computer); GUARD's check is BUILD's builders' (`FUN_140e550d0`,
-    /// [`World::command_check`]), FOLLOW's runs in [`World::follow`].
+    /// (`FUN_140e55eb0`), MOVE (`FUN_140e553f0`) and RETREAT (`FUN_140e55710`) refuse a count
+    /// past the packet's ids but `0xffff`, then read the units ([`World::command_units`]) and
+    /// make each one the world does not hold, or of another player without the setting
+    /// `+0x1074`, −1 ([`World::checked_units`]); read from the last commanded units, they leave
+    /// the −1s there. A human player's command left without a unit, or a command of a player
+    /// the world lacks, does nothing (None). Else the run reads its units again
+    /// (`FUN_140e6b290` with 0): a list of the command's own becomes the last commanded units,
+    /// −1s and all. FOLLOW's and GUARD's checks (`FUN_140e54c50`, `FUN_140e550d0`) refuse a
+    /// count past the packet's ids, the count `0xffff` too, and they take the first 60 units
+    /// of their packet (500 for a computer, [`World::read_units`]); GUARD's check is BUILD's
+    /// builders' ([`World::command_check`]), FOLLOW's runs in [`World::follow`].
     fn units(&self, w: &mut World) -> Option<Vec<i32>> {
         let (player, source, order) = (self.player, &self.units, self.order);
         if let Some(Order::Follow(_) | Order::Guard(_)) = order {
-            // the decoder lists FOLLOW's and GUARD's own units: their count is never 0xffff
-            let ids = match source {
-                OrderUnits::Listed(ids) => ids.as_slice(),
-                OrderUnits::LastCommanded => &[],
-            };
-            let ids = &ids[..ids.len().min(w.most_units(player))];
+            let ids = w.read_units(player, source)?;
             return match order {
                 Some(Order::Guard(_)) => w.command_check(player, ids),
                 _ => Some(ids.to_vec()),
             };
         }
+        let last = source.names_last_commanded();
+        if source.overruns() && !last {
+            return None;
+        }
         let computer = w.players.get(player)?.computer;
         let checked = w.checked_units(player, &w.command_units(player, source));
-        if *source == OrderUnits::LastCommanded {
+        if last {
             w.set_last_commanded(player, checked.clone());
         }
         if !computer && checked.iter().all(|&id| id == -1) {
             return None;
         }
-        if let OrderUnits::Listed(_) = source {
+        if !last {
             w.set_last_commanded(player, checked.clone());
         }
         Some(checked)

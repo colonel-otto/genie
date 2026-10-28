@@ -1,6 +1,7 @@
 use super::*;
 use genie_core::commands::{
     AllBackToWorkCommand, AttackMoveCommand, Command, PatrolCommand, TradeCommand, TributeCommand,
+    UnitList,
 };
 use genie_core::objects::actions::ActionList;
 
@@ -129,30 +130,32 @@ fn patrol(num: u16, ids: Vec<i32>, count: u8, flag: u8) -> Vec<u8> {
     .encode()
 }
 
-/// PATROL (0x15): the counted units, the counted waypoints (x as an f32's bits) and `+0x8`;
-/// no command for a count past the packet's ids, nor without 1 to 10 waypoints.
+/// PATROL (0x15): the units' count and ids, the counted waypoints (x as an f32's bits) and
+/// `+0x8`; no command without 1 to 10 waypoints (a count past the packet's ids is the run's
+/// check).
 #[test]
 fn a_patrol_packet_decodes_its_units_and_waypoints() {
     let mut d = Decoder::default();
-    let c = d.command(&patrol(2, vec![9397, 9398, 9399], 2, 1), &[]);
+    let c = d.command(&patrol(2, vec![9397, 9398, 9399], 2, 1));
     assert_eq!(
         c,
         Some(Command::Patrol(PatrolCommand {
             player: 2,
-            ids: vec![9397, 9398],
+            units: UnitList {
+                count: 2,
+                ids: vec![9397, 9398, 9399]
+            },
             waypoints: vec![[10.0, 20.0], [11.0, 21.0]],
             reset: true,
         }))
     );
-    assert_eq!(d.command(&patrol(4, vec![9397, 9398], 1, 0), &[]), None);
-    assert_eq!(d.command(&patrol(1, vec![9397], 0, 0), &[]), None);
-    assert_eq!(d.command(&patrol(1, vec![9397], 11, 0), &[]), None);
+    assert_eq!(d.command(&patrol(1, vec![9397], 0, 0)), None);
+    assert_eq!(d.command(&patrol(1, vec![9397], 11, 0)), None);
 }
 
 /// `ATTACK_MOVE` (0x21): the counted units, the counted waypoints (the first x as an f32's
 /// bits, nine more from `+0x10`; the first y at `+0x34`, nine more from `+0x38`) and the flags
-/// `+0x8`, `+0x9`, `+0xa`; no command for a count past the packet's ids, nor without 1 to 10
-/// waypoints.
+/// `+0x8`, `+0x9`, `+0xa`; no command without 1 to 10 waypoints.
 #[test]
 fn an_attack_move_packet_decodes_its_units_waypoints_and_flags() {
     let packet = |num: u16, ids: Vec<i32>, count: u8| {
@@ -178,19 +181,21 @@ fn an_attack_move_packet_decodes_its_units_waypoints_and_flags() {
     };
     let mut d = Decoder::default();
     assert_eq!(
-        d.command(&packet(1, vec![30065, 1], 2), &[]),
+        d.command(&packet(1, vec![30065, 1], 2)),
         Some(Command::AttackMove(AttackMoveCommand {
             player: 6,
-            ids: vec![30065],
+            units: UnitList {
+                count: 1,
+                ids: vec![30065, 1]
+            },
             waypoints: vec![[10.0, 20.0], [11.0, 21.0]],
             reset: true,
             queued: false,
             ignore_pending: true,
         }))
     );
-    assert_eq!(d.command(&packet(3, vec![30065], 1), &[]), None);
-    assert_eq!(d.command(&packet(1, vec![30065], 0), &[]), None);
-    assert_eq!(d.command(&packet(1, vec![30065], 11), &[]), None);
+    assert_eq!(d.command(&packet(1, vec![30065], 0)), None);
+    assert_eq!(d.command(&packet(1, vec![30065], 11)), None);
 }
 
 /// `SELL_COMMODITY` and `BUY_COMMODITY`: the commodity is `+0x4`'s low byte, food, wood or
@@ -215,7 +220,7 @@ fn a_trade_packet_decodes_food_wood_or_stone_only() {
     }
     .encode();
     assert_eq!(
-        Decoder::default().command(&packet, &[]),
+        Decoder::default().command(&packet),
         Some(Command::Trade(TradeCommand {
             player: 1,
             attribute: 2,
@@ -234,7 +239,7 @@ fn an_all_back_to_work_packet_decodes_its_object() {
     }
     .encode();
     assert_eq!(
-        Decoder::default().command(&packet, &[]),
+        Decoder::default().command(&packet),
         Some(Command::AllBackToWork(AllBackToWorkCommand {
             player: 3,
             id: 4321,
@@ -258,7 +263,14 @@ fn a_queue_packet_decodes_its_buildings() {
     }
     .encode();
     let decoded = de::command::MultiQueue::decode(&packet).expect("the layout");
-    assert_eq!(queue_buildings(&decoded), [9, 10]);
+    let Command::Queue(queue) = queue_command(&decoded) else {
+        panic!("not a QUEUE");
+    };
+    // the run reads the first `num` (the packet's count) of the ids it holds
+    assert_eq!(
+        (queue.buildings.count, queue.buildings.ids.as_slice()),
+        (2, &[9, 10, 11][..])
+    );
 }
 
 /// GAME (0x67): the issuer (byte 1), the sub-command at `+0x4`, its player at `+0x8` and
@@ -276,7 +288,7 @@ fn a_game_packet_decodes_its_fields() {
     }
     .encode();
     assert_eq!(
-        Decoder::default().command(&packet, &[]),
+        Decoder::default().command(&packet),
         Some(Command::Game(genie_core::commands::game::GameCommand {
             issuer: 8,
             sub: 0,
@@ -315,7 +327,7 @@ fn a_tribute_packet_decodes_its_four_entries() {
         fee,
     };
     assert_eq!(
-        Decoder::default().command(&packet, &[]),
+        Decoder::default().command(&packet),
         Some(Command::Tribute(TributeCommand {
             player: 3,
             to: 5,

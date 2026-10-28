@@ -269,8 +269,9 @@ impl World {
     /// `FUN_141659cf0`) an id the world does not hold, or another player's without the setting
     /// `+0x1074` ([`crate::world::settings::Settings::cheats_enabled`]), becomes -1; the ids past them stay unchecked. A
     /// human's command whose checked ids all went is refused (None).
-    /// The packet's own tests (its size, a player the game lacks) are the decoder's, and the
-    /// world's `+0xb12` (the cheat that would let either through) is not held.
+    /// The packet's own tests (its size, a player the game lacks) are
+    /// [`World::read_units`]'s, and the world's `+0xb12` (the cheat that would let either
+    /// through) is not held.
     pub(crate) fn command_check(&self, player: usize, ids: &[i32]) -> Option<Vec<i32>> {
         let computer = self.players[player].computer;
         let checked = ids.len().min(if computer { 500 } else { 60 });

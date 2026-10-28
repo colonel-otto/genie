@@ -12,7 +12,7 @@ use crate::{
 use genie_core::commands::Command;
 use genie_core::world::{Player, World};
 use genie_rec::de;
-use genie_save::{Header, PlayerSection};
+use genie_save::Header;
 
 /// Every player's objects and sight after a run against the game's save `after`; with `tick`,
 /// only the freezes of that update count, else all. A frozen object's differences are left out.
@@ -254,16 +254,15 @@ pub(super) fn from_save(
     commands_only: bool,
 ) -> Result<World, Error> {
     let header = save_header(save)?;
-    let sections = header.players();
     let mut turns = loaded_slice(&header, masters, dumps)?;
     let updates = start_tick + 1;
     let all = played_frames(&mut turns, recording, updates + ticks)?;
-    let mut decoder = primed(&mut turns, &all, updates, &sections);
+    let mut decoder = primed(&mut turns, &all, updates);
     let next = all.get(updates..).unwrap_or_default();
     if commands_only {
-        frame_commands(&mut turns, &mut decoder, next.first(), &sections);
+        frame_commands(&mut turns, &mut decoder, next.first());
     } else {
-        run(&mut turns, &mut decoder, next, &sections);
+        run(&mut turns, &mut decoder, next);
     }
     Ok(turns)
 }
@@ -327,15 +326,10 @@ pub(super) fn played_frames<'a>(
 
 /// A decoder primed with the commands of the recording's first `updates` frames, the world's
 /// update count set to them and its last commanded units the frames' ([`Decoder::prime`]).
-pub(super) fn primed(
-    turns: &mut World,
-    all: &[Frame<'_>],
-    updates: usize,
-    sections: &[PlayerSection<'_>],
-) -> Decoder {
+pub(super) fn primed(turns: &mut World, all: &[Frame<'_>], updates: usize) -> Decoder {
     turns.ticks = updates as u32;
     let mut decoder = Decoder::default();
-    decoder.prime(&all[..updates.min(all.len())], sections);
+    decoder.prime(&all[..updates.min(all.len())]);
     for (&player, units) in &decoder.last_commanded {
         let p = usize::from(player);
         if turns.last_commanded.len() <= p {
@@ -347,17 +341,12 @@ pub(super) fn primed(
 }
 
 /// The command phase of `frame`'s update alone ([`World::command_phase`]); none without a frame.
-pub(super) fn frame_commands(
-    turns: &mut World,
-    decoder: &mut Decoder,
-    frame: Option<&Frame<'_>>,
-    sections: &[PlayerSection<'_>],
-) {
+pub(super) fn frame_commands(turns: &mut World, decoder: &mut Decoder, frame: Option<&Frame<'_>>) {
     if let Some(frame) = frame {
         let commands: Vec<Command> = frame
             .commands
             .iter()
-            .filter_map(|p| decoder.command(p, sections))
+            .filter_map(|p| decoder.command(p))
             .collect();
         turns.command_phase(frame.dt, &commands);
     }

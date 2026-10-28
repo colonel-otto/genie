@@ -1,6 +1,7 @@
 //! `UNIT_ORDER` (0x75): an order of the player's units by its action.
 
 use crate::GenieError;
+use crate::commands::UnitList;
 use crate::world::World;
 
 /// `UNIT_ORDER`'s action (`+0x1c`, the switch of `FUN_14161e370`).
@@ -61,17 +62,17 @@ impl UnitOrderAction {
     }
 }
 
-/// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
-/// decoder's) take the order `action` ([`World::unit_order`]) with the object `target` (`tId`,
-/// `+8`, which the garrison reads) and the flags `+0x1d`, `+0x1e`; `human` (`+0x20`) sets their
-/// last human order time first. Its point, `qId` and `param` are not read by the actions
+/// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units the packet lists (the count
+/// at `+0x4`, the ids from `+0x21`) take the order `action` ([`World::unit_order`]) with the
+/// object `target` (`tId`, `+8`, which the garrison reads) and the flags `+0x1d`, `+0x1e`;
+/// `human` (`+0x20`) sets their last human order time first. Its point, `qId` and `param` are not read by the actions
 /// modelled.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnitOrderCommand {
     /// The player whose units take it.
     pub player: usize,
     /// The units.
-    pub ids: Vec<i32>,
+    pub units: UnitList,
     /// `tId`: the target object's id.
     pub target: i32,
     /// `+0x1d`: a garrison goes through the units' unit AIs (their slot 0x30); a cancel cancels
@@ -88,23 +89,24 @@ pub struct UnitOrderCommand {
 }
 
 impl UnitOrderCommand {
-    /// A human player's order takes the world time as its units' last human order time first
-    /// ([`World::human_order`]); then the action: the garrison ([`World::garrison_order`]), a
-    /// cancel ([`World::cancel_order`]) or the others ([`World::unit_order`]).
+    /// `do_command`'s check refuses a count past the packet's ids; the handler reads the first
+    /// of them ([`World::read_units`]). A human player's order takes the world time as its
+    /// units' last human order time first ([`World::human_order`]); then the action: the
+    /// garrison ([`World::garrison_order`]), a cancel ([`World::cancel_order`]) or the others
+    /// ([`World::unit_order`]).
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+        let Some(ids) = w.read_units(self.player, &self.units) else {
+            return Ok(());
+        };
         if self.human {
-            w.human_order(&self.ids);
+            w.human_order(ids);
         }
         match self.action {
-            UnitOrderAction::Garrison => w.garrison_order(
-                self.player,
-                &self.ids,
-                self.target,
-                self.through_ai,
-                self.nearby,
-            ),
-            UnitOrderAction::Cancel => w.cancel_order(&self.ids, self.param, self.through_ai),
-            action => w.unit_order(self.player, &self.ids, action.byte()),
+            UnitOrderAction::Garrison => {
+                w.garrison_order(self.player, ids, self.target, self.through_ai, self.nearby)
+            }
+            UnitOrderAction::Cancel => w.cancel_order(ids, self.param, self.through_ai),
+            action => w.unit_order(self.player, ids, action.byte()),
         }
     }
 }

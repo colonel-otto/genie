@@ -37,6 +37,7 @@ pub mod transform_object;
 pub mod tribute;
 pub mod unit_ai_state;
 pub mod unit_order;
+pub mod units;
 pub mod unload;
 pub mod wall;
 
@@ -51,7 +52,7 @@ pub use self::game::GameCommand;
 pub use self::gate::GateCommand;
 pub use self::gather_point::GatherPointCommand;
 pub use self::go_back_to_work::GoBackToWorkCommand;
-pub use self::order::{Order, OrderCommand, OrderUnits};
+pub use self::order::{Order, OrderCommand};
 pub use self::patrol::PatrolCommand;
 pub use self::queue::QueueCommand;
 pub use self::research::ResearchCommand;
@@ -64,6 +65,7 @@ pub use self::transform_object::TransformObjectCommand;
 pub use self::tribute::TributeCommand;
 pub use self::unit_ai_state::UnitAiStateCommand;
 pub use self::unit_order::{UnitOrderAction, UnitOrderCommand};
+pub use self::units::UnitList;
 pub use self::unload::UnloadCommand;
 pub use self::wall::BuildWallCommand;
 
@@ -278,15 +280,13 @@ impl World {
     /// past the packet (no units here). Any other takes its first [`World::most_units`], or
     /// for a count of `0xffff` its last commanded units ([`World::last_commanded`], none before
     /// its first).
-    pub(crate) fn command_units(&self, player: usize, units: &OrderUnits) -> Vec<i32> {
+    pub(crate) fn command_units(&self, player: usize, units: &UnitList) -> Vec<i32> {
         let inside = player == 0 || self.players.len() <= player;
-        match units {
-            OrderUnits::Listed(ids) if inside => ids.clone(),
-            OrderUnits::Listed(ids) => ids[..ids.len().min(self.most_units(player))].to_vec(),
-            OrderUnits::LastCommanded if inside => Vec::new(),
-            OrderUnits::LastCommanded => {
-                self.last_commanded.get(player).cloned().unwrap_or_default()
-            }
+        match units.names_last_commanded() {
+            false if inside => units.first(usize::MAX).to_vec(),
+            false => units.first(self.most_units(player)).to_vec(),
+            true if inside => Vec::new(),
+            true => self.last_commanded.get(player).cloned().unwrap_or_default(),
         }
     }
 

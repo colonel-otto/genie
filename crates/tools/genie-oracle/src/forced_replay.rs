@@ -180,11 +180,10 @@ pub fn forced_run(
     window: usize,
 ) -> Result<(Vec<TickReport>, Times), Error> {
     let header = save_header(start_save)?;
-    let sections = header.players();
     let mut turns = loaded_slice(&header, masters, dumps)?;
     let updates = start + 1;
     let all = played_frames(&mut turns, recording, updates + ticks)?;
-    let mut decoder = primed(&mut turns, &all, updates, &sections);
+    let mut decoder = primed(&mut turns, &all, updates);
     let mut reports = Vec::new();
     // the game's saves after each update, parsed on rayon's pool while the run goes on, at most
     // `window` ahead of it; the pool is shared by every run going on at once
@@ -214,12 +213,7 @@ pub fn forced_run(
                 let after = after?;
                 times.parse += clock.elapsed();
                 let clock = std::time::Instant::now();
-                run(
-                    &mut turns,
-                    &mut decoder,
-                    std::slice::from_ref(frame),
-                    &sections,
-                );
+                run(&mut turns, &mut decoder, std::slice::from_ref(frame));
                 times.run += clock.elapsed();
                 let clock = std::time::Instant::now();
                 let mut report = TickReport {
