@@ -39,9 +39,10 @@ const BUILD_TASK: i16 = 0x65;
 /// entries. More go to its quicksort, which is not stable.
 const INSERTION_SORT_MAX: usize = 32;
 
-/// A `BUILD_WALL` packet as the command reads it.
+/// `BUILD_WALL` (0x69, `FUN_140e7b2e0`): a line of the player's wall foundations and its
+/// builders shared out over them, as the command reads its packet.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Wall {
+pub struct BuildWallCommand {
     /// The player who places it.
     pub player: usize,
     /// The wall's master (`+0x10`).
@@ -61,6 +62,20 @@ pub struct Wall {
     /// `+0x1b` is 0: a builder with a unit AI holding an order not ready takes the line as
     /// orders too, and the queue's orders become ready after (`FUN_140c42b60`).
     pub commits: bool,
+}
+
+impl BuildWallCommand {
+    /// `do_command`'s case checks the builders as BUILD's, then the wall's line is placed
+    /// ([`World::build_wall`]).
+    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+        let Some(builders) = w.command_check(self.player, &self.builders) else {
+            return Ok(());
+        };
+        w.build_wall(&Self {
+            builders,
+            ..self.clone()
+        })
+    }
 }
 
 /// The segments of the line from `from` to `to` (`FUN_140e7b2e0`): one when the line is a single
@@ -185,7 +200,7 @@ pub fn share(i: usize, capable: usize, placed: usize) -> Option<usize> {
 }
 
 impl World {
-    /// `BUILD_WALL` ([`Wall`]) for its player: a target other than −1, a master the player has not
+    /// `BUILD_WALL` ([`BuildWallCommand`]) for its player: a target other than −1, a master the player has not
     /// got or not a building does nothing, and so does a human's line without a builder that can
     /// build it ([`World::builds`]). The foundations go down tile by tile (the placement
     /// test with the explored test on, then the payment's, [`World::found`]); then each builder
@@ -197,7 +212,7 @@ impl World {
     /// (`FUN_140c42b60` at 0x140e7be4b, [`crate::orders::readiness`]). Not modelled: the
     /// population test of a master without `+0x5f0` (as for BUILD), more builders than the game's
     /// insertion sort takes.
-    pub(crate) fn build_wall(&mut self, w: &Wall) -> Result<(), GenieError> {
+    pub(crate) fn build_wall(&mut self, w: &BuildWallCommand) -> Result<(), GenieError> {
         let player = w.player;
         if w.target != -1 {
             return Ok(());
@@ -249,7 +264,7 @@ impl World {
     /// What the placement test, the payment and the foundation do not model.
     fn wall_foundations(
         &mut self,
-        w: &Wall,
+        w: &BuildWallCommand,
         radius: [f32; 2],
     ) -> Result<Vec<(i32, [f32; 3])>, GenieError> {
         let player = w.player;
@@ -282,7 +297,11 @@ impl World {
     ///
     /// A builder of a master the slice does not have, and more builders than the insertion sort
     /// takes.
-    fn builders_by_gap(&self, w: &Wall, builders: &[i32]) -> Result<Vec<(i32, f32)>, GenieError> {
+    fn builders_by_gap(
+        &self,
+        w: &BuildWallCommand,
+        builders: &[i32],
+    ) -> Result<Vec<(i32, f32)>, GenieError> {
         let mut sorted = Vec::new();
         for id in self.checked_units(w.player, builders) {
             let Some((owner, u)) = self.object(id) else {
@@ -317,7 +336,7 @@ impl World {
     /// A builder the slice does not have, and what the build does not model.
     fn wall_builder_takes(
         &mut self,
-        w: &Wall,
+        w: &BuildWallCommand,
         id: i32,
         placed: &[(i32, [f32; 3])],
         (foundation, at): (i32, [f32; 3]),

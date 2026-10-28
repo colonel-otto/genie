@@ -2,7 +2,9 @@
 //! entry's costs.
 
 use crate::GenieError;
-use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE, QueueAt, ResearchAt};
+use crate::commands::queue::QueueCommand;
+use crate::commands::research::ResearchCommand;
+use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE};
 use crate::math::rng::Stream;
 use crate::objects::masters::Masters;
 use crate::orders::Place;
@@ -42,7 +44,8 @@ impl World {
     /// # Errors
     ///
     /// A sleeping object the unit trains at, and what the parts do not model.
-    pub(crate) fn queue(&mut self, player: usize, q: &QueueAt) -> Result<(), GenieError> {
+    pub(crate) fn queue(&mut self, q: &QueueCommand) -> Result<(), GenieError> {
+        let player = q.player;
         let Some(ids) = self.command_check(player, &q.buildings) else {
             return Ok(());
         };
@@ -172,7 +175,8 @@ impl World {
     /// `FUN_140e6b250`), each listed one the world holds (`+0x11..`, `FUN_140e6bad0`) whose load
     /// ([`World::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
     /// takes its place. −1 for none.
-    pub(crate) fn least_loaded(&self, player: usize, r: &ResearchAt) -> i32 {
+    pub(crate) fn least_loaded(&self, r: &ResearchCommand) -> i32 {
+        let player = r.player;
         let load = |id: i32| {
             self.object(id)
                 .map_or(0.0, |(q, u)| self.production_load(q, u))

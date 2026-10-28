@@ -73,6 +73,11 @@ pub mod sub {
 pub(crate) const CHEAT: GenieError = GenieError::unsupported("a cheat code (FUN_1415c62c0)");
 
 impl GameCommand {
+    /// `do_command`'s case and its switch ([`World::game`]).
+    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+        w.game(self)
+    }
+
     /// `+8` as a world player of `count` players (`FUN_14152fe40`: none outside 0 to count − 1).
     #[must_use]
     pub fn target(&self, count: usize) -> Option<usize> {

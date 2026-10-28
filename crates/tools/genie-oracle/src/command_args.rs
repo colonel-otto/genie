@@ -3,7 +3,10 @@
 
 use crate::{Error, LAST_COMMANDED, MAX_UNITS};
 use genie_core::GenieError;
-use genie_core::commands::Command;
+use genie_core::commands::{
+    AttackMoveCommand, BuildCommand, BuildWallCommand, Command, PatrolCommand, QueueCommand,
+    TradeCommand,
+};
 use genie_rec::de;
 use genie_rec::de::Op;
 use genie_save::PlayerSection;
@@ -76,14 +79,14 @@ pub(super) fn attack_move_command(c: &de::command::AttackMove) -> Option<Command
     let xs = std::iter::once(f32::from_bits(c.field_0x0c))
         .chain((0..9).map(|i| word(&c.gap_0x10, 4 * i)));
     let ys = std::iter::once(c.field_0x34).chain((0..9).map(|i| word(&c.gap_0x38, 4 * i)));
-    Some(Command::AttackMove {
+    Some(Command::AttackMove(AttackMoveCommand {
         player: c.commp_id as usize,
         ids: c.ids[..count].to_vec(),
         waypoints: xs.zip(ys).take(waypoints).map(<[f32; 2]>::from).collect(),
         reset: c.field_0x08 != 0,
         queued: c.field_0x09 != 0,
         ignore_pending: c.field_0x0a != 0,
-    })
+    }))
 }
 
 pub(super) fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
@@ -116,7 +119,7 @@ pub(super) fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
         c.field_0x54,
         c.field_0x58,
     ];
-    Some(Command::Patrol {
+    Some(Command::Patrol(PatrolCommand {
         player: c.commp_id as usize,
         ids: c.ids[..count].to_vec(),
         waypoints: xs
@@ -126,7 +129,7 @@ pub(super) fn patrol_command(c: &de::command::Patrol) -> Option<Command> {
             .map(|(&x, y)| [f32::from_bits(x), y])
             .collect(),
         reset: c.field_0x08 != 0,
-    })
+    }))
 }
 
 /// QUEUE (`do_command` case 0x81, `MULTI_QUEUE)`: `num` buildings, the unit `t_id`, `count` of it and
@@ -144,25 +147,25 @@ pub(super) fn queue_command(
     if sections.get(player).is_none() {
         return unmodelled("QUEUE by a player the save does not have");
     }
-    Command::Queue {
+    Command::Queue(QueueCommand {
         player,
         buildings: queue_buildings(packet),
         unit: packet.t_id,
         amount: packet.count.max(0) as u16,
         button: packet.button_location_id,
-    }
+    })
 }
 
 /// `SELL_COMMODITY`'s and `BUY_COMMODITY`'s command: the dispatcher trades food, wood and stone
 /// only (`+0x4`'s low byte).
 pub(super) fn trade(player: u8, attribute: u16, times: u16, buy: bool) -> Option<Command> {
     let attribute = attribute as u8;
-    (attribute <= 2).then_some(Command::Trade {
+    (attribute <= 2).then_some(Command::Trade(TradeCommand {
         player: usize::from(player),
         attribute,
         times,
         buy,
-    })
+    }))
 }
 
 /// The world's market as the save holds it: the save names the int net trades `*_price_delta`
@@ -221,7 +224,7 @@ pub(super) fn build_command(
             why: GenieError::unsupported("BUILD by the last commanded units"),
         };
     }
-    Command::Build {
+    Command::Build(BuildCommand {
         player,
         master,
         unit_ai,
@@ -235,7 +238,7 @@ pub(super) fn build_command(
         queued: packet.field_0x1e != 0,
         commits: packet.field_0x1f == 0,
         frame: packet.frame,
-    }
+    })
 }
 
 /// `BUILD_WALL` (0x69): the wall's master at `+0x10`, the line's tiles at `+0x8`..`+0xe`, the
@@ -259,7 +262,7 @@ pub(super) fn build_wall_command(
         )),
         |section| new_unit_ai(section.objects(), master),
     );
-    Command::BuildWall(genie_core::commands::wall::Wall {
+    Command::BuildWall(BuildWallCommand {
         player,
         master,
         unit_ai,

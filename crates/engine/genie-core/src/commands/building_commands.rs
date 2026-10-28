@@ -1,21 +1,22 @@
 //! The commands of a building: SET GATHER POINT, the command queue and RESEARCH.
 
 use crate::GenieError;
-use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint, ResearchAt};
+use crate::commands::gather_point::GatherPointCommand;
+use crate::commands::research::ResearchCommand;
+use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
 use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, World};
 
 impl World {
-    /// SET GATHER POINT's handler ([`Command::GatherPoint`]).
-    ///
-    /// [`Command::GatherPoint`]: crate::commands::Command::GatherPoint
-    pub(crate) fn gather_point(
-        &mut self,
-        player: usize,
-        ids: &[i32],
-        [x, y]: [f32; 2],
-        (target, target_master): (i32, i16),
-        own: bool,
-    ) -> Result<(), GenieError> {
+    /// SET GATHER POINT's handler ([`GatherPointCommand`]).
+    pub(crate) fn gather_point(&mut self, g: &GatherPointCommand) -> Result<(), GenieError> {
+        let GatherPointCommand {
+            player,
+            ref ids,
+            point: [x, y],
+            target,
+            target_master,
+            own,
+        } = *g;
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
             let Some(i) = self.players[player].objects.position_of(id) else {
@@ -151,7 +152,8 @@ impl World {
     /// the listed ones (`+0x11..`) as the unit commands' ([`World::command_check`]). None for a
     /// refused one, else the list with −1 for the ones left out. The packet's size tests are the
     /// decoder's, and the world's `+0xb12` cheat is not held.
-    pub(crate) fn research_check(&self, player: usize, r: &ResearchAt) -> Option<Vec<i32>> {
+    pub(crate) fn research_check(&self, r: &ResearchCommand) -> Option<Vec<i32>> {
+        let player = r.player;
         let listed = usize::try_from(r.count).unwrap_or(0);
         if listed == 0 {
             return None;
@@ -186,7 +188,8 @@ impl World {
     /// local player's statistics flag. Not modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
     /// `+0x648` (0 for every player probed), Castle Age queued in game mode 16 (the world's treaty
     /// monitor's `+0x17`; no other game mode marks it).
-    pub(crate) fn research(&mut self, player: usize, r: &ResearchAt) -> Result<(), GenieError> {
+    pub(crate) fn research(&mut self, r: &ResearchCommand) -> Result<(), GenieError> {
+        let player = r.player;
         let owner = &self.players[player];
         if r.target != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
             return Ok(());
@@ -215,7 +218,7 @@ impl World {
                 "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)",
             ));
         }
-        let building_id = self.least_loaded(player, r);
+        let building_id = self.least_loaded(r);
         if self.linked_techs.contains_key(&r.tech) {
             return Err(GenieError::unsupported(
                 "RESEARCH of a linked technology (FUN_140f3a0f0, FUN_140f39e80)",

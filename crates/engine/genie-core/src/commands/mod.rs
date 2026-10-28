@@ -4,22 +4,73 @@
 //! [`World::run`]: crate::world::World::run
 
 use crate::GenieError;
-use crate::orders::{Interact, MoveOrder};
 use crate::world::World;
 
+pub mod all_back_to_work;
+pub mod attack_move;
+pub mod auto_scout;
+pub mod build;
 mod builders;
 mod building_commands;
+pub mod building_queue;
 pub mod delete;
+pub mod flare;
 pub mod game;
+pub mod gate;
+pub mod gather_point;
+pub mod go_back_to_work;
 mod ground;
 mod new_building;
+pub mod order;
+pub mod patrol;
 mod placement;
 mod production;
+pub mod queue;
+pub mod research;
+pub mod resign;
 mod run;
+pub mod seek_shelter;
+pub mod stop;
+pub mod town_bell;
+pub mod trade;
+pub mod transform_object;
+pub mod tribute;
+pub mod unit_ai_state;
+pub mod unit_order;
+pub mod unload;
 pub mod wall;
+
+pub use self::all_back_to_work::AllBackToWorkCommand;
+pub use self::attack_move::AttackMoveCommand;
+pub use self::auto_scout::AutoScoutCommand;
+pub use self::build::BuildCommand;
+pub use self::building_queue::BuildingQueueCommand;
+pub use self::delete::DeleteCommand;
+pub use self::flare::FlareCommand;
+pub use self::game::GameCommand;
+pub use self::gate::GateCommand;
+pub use self::gather_point::GatherPointCommand;
+pub use self::go_back_to_work::GoBackToWorkCommand;
+pub use self::order::{Order, OrderCommand, OrderUnits};
+pub use self::patrol::PatrolCommand;
+pub use self::queue::QueueCommand;
+pub use self::research::ResearchCommand;
+pub use self::resign::ResignCommand;
+pub use self::seek_shelter::SeekShelterCommand;
+pub use self::stop::StopCommand;
+pub use self::town_bell::TownBellCommand;
+pub use self::trade::TradeCommand;
+pub use self::transform_object::TransformObjectCommand;
+pub use self::tribute::TributeCommand;
+pub use self::unit_ai_state::UnitAiStateCommand;
+pub use self::unit_order::{UnitOrderAction, UnitOrderCommand};
+pub use self::unload::UnloadCommand;
+pub use self::wall::BuildWallCommand;
 
 #[cfg(test)]
 pub(crate) use self::production::least_loaded;
+#[cfg(test)]
+mod tests;
 
 /// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
 /// master; the save's `gather_point_*`).
@@ -33,100 +84,22 @@ pub struct GatherPoint {
     pub target_master: i16,
 }
 
-/// A recorded command, run in the command phase of its tick: after the frame seed's `SeedAll`, before
-/// the players update (`TRIBE_Command::do_command`, `0x140e77b00`). The slice runs only what other
-/// players' lanes see of a command; the issuing player's lane stops.
+/// A recorded command, run in the command phase of its tick: after the frame seed's `SeedAll`,
+/// before the players update (`TRIBE_Command::do_command`, `0x140e77b00`), each by its own run
+/// ([`World::run`]). The slice runs only what other players' lanes see of a command; the issuing
+/// player's lane stops.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
-    /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` at `position`
-    /// (state 0, hit points 1), with a unit AI of the given type if its class gets one; `Err` when
-    /// the slice cannot tell. The player pays the master's cost, and each builder, in packet order,
-    /// takes the master it builds with and starts a Build action (`World::masters`). The slice
-    /// takes the placement as given: the recording's game accepted it.
-    Build {
-        /// The player who places it.
-        player: usize,
-        /// The foundation's master.
-        master: i16,
-        /// The unit AI type its class gets, if any, or why the slice cannot tell.
-        unit_ai: Result<Option<u32>, GenieError>,
-        /// Where it is placed.
-        position: [f32; 3],
-        /// The units told to build it, in packet order.
-        builders: Vec<i32>,
-        /// `+0x1e`: queued (a builder with a unit AI takes it as an order in its queue).
-        queued: bool,
-        /// `+0x1f` is 0: a builder with a unit AI holding an order not ready takes it as an order
-        /// too, and the queue's orders become ready after (`FUN_140c42b60`).
-        commits: bool,
-        /// `+0x1c`: the frame the foundation's standing sprite takes once built (its `+0xc54`,
-        /// [`crate::objects::unit::Unit::build_frame`]).
-        frame: u8,
-    },
-    /// `BUILD_WALL` (0x69, `FUN_140e7b2e0`): a line of the player's wall foundations and its
-    /// builders shared out over them ([`crate::commands::wall`]).
-    BuildWall(wall::Wall),
-    /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects of `ids` that takes
-    /// a gather point (its master garrisons, `+0x5d4`, or its player trains a unit there,
-    /// `FUN_141625a20`'s count with no object, [`World::trainable_count`]) takes `point` and
-    /// `target` with its master, or with `own` itself (`FUN_1411c7ff0`); a target of −1 at
-    /// (−1, −1) clears it, and its unit AI's command queue empties (slot 0x210). The ids of
-    /// other players' objects are left out (the game setting `+0x1074` that lets them is not
-    /// modelled), as is the exists byte's value 0xff (`+0xc30`, which keeps the target).
-    ///
-    /// [`World::trainable_count`]: crate::world::World::trainable_count
-    GatherPoint {
-        /// The player whose objects take it.
-        player: usize,
-        /// The objects of the packet.
-        ids: Vec<i32>,
-        /// The point.
-        point: [f32; 2],
-        /// The object the point is on, −1 for none.
-        target: i32,
-        /// That object's master.
-        target_master: i16,
-        /// The building itself is the gather point (`+0x18`).
-        own: bool,
-    },
-    /// QUEUE (0x81, the player's queue `FUN_141614450`, the building's `FUN_1411cbc40`): `amount`
-    /// units of master `unit` at one building with the train button `button`
-    /// ([`World::queue`]).
-    ///
-    /// [`World::queue`]: crate::world::World::queue
-    Queue {
-        /// The player who queues.
-        player: usize,
-        /// The buildings the packet lists (`+0x14..`, its `num` of them).
-        buildings: Vec<i32>,
-        /// The master to train (0x712 for the villager).
-        unit: i16,
-        /// How many.
-        amount: u16,
-        /// `button_location_id`: the train button, −1 for none.
-        button: i32,
-    },
-    /// RESEARCH (0x65, `0x140e7e270`): the technology `tech` at the building `building`
-    /// ([`World::research`]). `count` (`+0x8`) counts the buildings the packet lists, `target`
-    /// (`+0xc`) is −1 for a research to run, and `shift` (`+0x10`) asks for five at once.
-    ///
-    /// [`World::research`]: crate::world::World::research
-    Research {
-        /// The player who researches.
-        player: usize,
-        /// The building of the packet.
-        building: i32,
-        /// `+0x8`: how many buildings the packet lists.
-        count: i16,
-        /// `+0x11..`: the buildings the packet lists.
-        buildings: Vec<i32>,
-        /// `+0xa`: the technology.
-        tech: i16,
-        /// `+0xc`: −1 for a research to run.
-        target: i32,
-        /// `+0x10`: five at once.
-        shift: bool,
-    },
+    /// BUILD (0x66).
+    Build(BuildCommand),
+    /// `BUILD_WALL` (0x69).
+    BuildWall(BuildWallCommand),
+    /// SET GATHER POINT (0x78).
+    GatherPoint(GatherPointCommand),
+    /// QUEUE (0x81).
+    Queue(QueueCommand),
+    /// RESEARCH (0x65).
+    Research(ResearchCommand),
     /// A command the slice runs part of or none, for a reason the decoder names: it stops the
     /// issuing player's lane.
     Unmodelled {
@@ -135,326 +108,135 @@ pub enum Command {
         /// Why its command is not modelled.
         why: GenieError,
     },
-    /// GAME (0x67): `do_command`'s case and its switch on the sub-command (`0x140e7c330`,
-    /// [`World::game`]).
-    ///
-    /// [`World::game`]: crate::world::World::game
-    Game(game::GameCommand),
-    /// `BUILDING_COMMAND_QUEUE` (0x2d, `0x140e64310`): the objects `ids` (at most a human
-    /// player's 60) queue a step to `target` (−1 for none) or `point` ([`World::command_queue`]).
-    ///
-    /// [`World::command_queue`]: crate::world::World::command_queue
-    CommandQueue {
-        /// The player.
-        player: usize,
-        /// The objects of the packet.
-        ids: Vec<i32>,
-        /// The object the step is on, −1 for none.
-        target: i32,
-        /// Its point.
-        point: [f32; 2],
-    },
-    /// `GO_BACK_TO_WORK` (0x80 with one object, `+4`; 0x86 with a list, its count at `+4`, the ids
-    /// from `+8`): the player's buildings let their villagers back out to work
-    /// ([`World::go_back_to_work`]).
-    ///
-    /// [`World::go_back_to_work`]: crate::world::World::go_back_to_work
-    GoBackToWork {
-        /// The player.
-        player: usize,
-        /// Its buildings.
-        ids: Vec<i32>,
-    },
-    /// `ALL_BACK_TO_WORK` (0x8c, the object at `+4`): its owner's buildings near it let their
-    /// villagers out to work and the others go back ([`World::all_back_to_work`]).
-    ///
-    /// [`World::all_back_to_work`]: crate::world::World::all_back_to_work
-    AllBackToWork {
-        /// The player.
-        player: usize,
-        /// The object (a town centre).
-        id: i32,
-    },
-    /// `TOWN_BELL` (0x7f, `do_command` case 0x7f): the town centre `id` rings its owner's bell
-    /// (`activate`) or ends it ([`World::town_bell`]).
-    ///
-    /// [`World::town_bell`]: crate::world::World::town_bell
-    TownBell {
-        /// The player.
-        player: usize,
-        /// The town centre.
-        id: i32,
-        /// Ring (1) or end (0).
-        activate: bool,
-    },
-    /// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
-    /// ([`World::delete`]).
-    ///
-    /// [`World::delete`]: crate::world::World::delete
-    Delete {
-        /// The player.
-        player: usize,
-        /// The object.
-        id: i32,
-    },
-    /// FLARE (0x73, `0x140e7bfd0`): every player from 1 below `players` (`+0x10`, at most the
-    /// world's) gets a flare at `target`'s place (`+4`, −1 for none) or at `point` (`+8`, `+0xc`)
-    /// ([`World::flare`]).
-    ///
-    /// [`World::flare`]: crate::world::World::flare
-    Flare {
-        /// The player who sent it.
-        player: usize,
-        /// The object it is on, −1 for none.
-        target: i32,
-        /// Its point without a target.
-        point: [f32; 2],
-        /// The players the command counts (`+0x10`).
-        players: u8,
-    },
-    /// GIVE ATTRIBUTES (0xc4, `FUN_140e7d040`): the player's tribute to player `to`
-    /// ([`World::tribute`]).
-    ///
-    /// [`World::tribute`]: crate::world::World::tribute
-    Tribute {
-        /// The player who gives.
-        player: usize,
-        /// The player who receives (`+0x2c`).
-        to: usize,
-        /// The four entries.
-        gifts: [crate::players::tribute::Gift; 4],
-    },
-    /// `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b), `do_command`'s cases: the player trades
-    /// `times` lots (`+0x6`) of the commodity `attribute` (`+0x4`'s low byte: food, wood or
-    /// stone; the decoder drops another) at the market ([`World::sell`], [`World::buy`]). The
-    /// market building (`+0x8`) is not read. Not held: the interface's view (`FUN_140e6de20`).
-    ///
-    /// [`World::buy`]: crate::world::World::buy
-    /// [`World::sell`]: crate::world::World::sell
-    Trade {
-        /// The player who trades.
-        player: usize,
-        /// The commodity.
-        attribute: u8,
-        /// How many lots.
-        times: u16,
-        /// A purchase, else a sale.
-        buy: bool,
-    },
-    /// GATE (0x72, `do_command` case 0x72): the player's building `id` toggles its gate lock
-    /// ([`World::gate`]).
-    ///
-    /// [`World::gate`]: crate::world::World::gate
-    Gate {
-        /// The player.
-        player: usize,
-        /// Its building.
-        id: i32,
-    },
-    /// UNLOAD (0x6f, `FUN_14161f410`): the units `ids` (a building, the units inside it; a unit
-    /// inside one, itself) let units out ([`World::unload`]) toward `point` (−1, −1 for none),
-    /// those `flag` and `unit_type` pick (`FUN_14118a610`); `sound` (`+0x18`) plays the
-    /// building's.
-    ///
-    /// [`World::unload`]: crate::world::World::unload
-    Unload {
-        /// The player.
-        player: usize,
-        /// Its objects.
-        ids: Vec<i32>,
-        /// Where they go.
-        point: [f32; 2],
-        /// Which units leave (`FUN_14118a610`'s switch).
-        flag: u8,
-        /// The unit type or object the flag reads.
-        unit_type: i32,
-        /// `+0x18`.
-        sound: bool,
-    },
-    /// `TRANSFORM_OBJECT` (0x29, `RGE_Command::do_command`'s case): the player's object `id`
-    /// takes the master `master` ([`World::transform_object`]).
-    ///
-    /// [`World::transform_object`]: crate::world::World::transform_object
-    TransformObject {
-        /// The player.
-        player: usize,
-        /// The object (`+8`).
-        id: i32,
-        /// The new master (`+4`).
-        master: i16,
-    },
-    /// RESIGN (0x0b, `FUN_140d25af0`): the comm player `player` resigns, or drops (`dropped`)
-    /// ([`World::resign`]).
-    ///
-    /// [`World::resign`]: crate::world::World::resign
-    Resign {
-        /// The comm player (the world player of the same number in the slice's games).
-        player: usize,
-        /// A drop from the game, not a resignation.
-        dropped: bool,
-    },
-    /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each of `ids` (at most 60, the decoder's) takes the
-    /// auto scout order, or the stop order when it scouts already ([`World::auto_scout`]).
-    ///
-    /// [`World::auto_scout`]: crate::world::World::auto_scout
-    AutoScout {
-        /// The player.
-        player: usize,
-        /// Its units.
-        ids: Vec<i32>,
-    },
-    /// STOP (0x01, `FUN_14161e200`): the units `ids` (at most 60, the decoder's) stop
-    /// ([`World::stop_command`]).
-    ///
-    /// [`World::stop_command`]: crate::world::World::stop_command
-    Stop {
-        /// The player whose units stop.
-        player: usize,
-        /// The units.
-        ids: Vec<i32>,
-    },
-    /// PATROL (0x15, `FUN_140e69cc0`): the units `ids` (the packet's count at `+0x4`, the ids
-    /// from `+0x5c`) patrol through `waypoints` (1 to 10, their count at `+0xb`, x from `+0xc`, y
-    /// from `+0x34`); `reset` (`+0x8`) drops their unit AIs' saved patrols ([`World::patrol`]).
-    ///
-    /// [`World::patrol`]: crate::world::World::patrol
-    Patrol {
-        /// The player whose units patrol.
-        player: usize,
-        /// The units.
-        ids: Vec<i32>,
-        /// The waypoints.
-        waypoints: Vec<[f32; 2]>,
-        /// `+0x8`.
-        reset: bool,
-    },
-    /// `ATTACK_MOVE` (0x21, `FUN_140e66200`): the units `ids` (the packet's count at `+0x4`, the
-    /// ids from `+0x5c`) attack-move through `waypoints` (1 to 10, their count at `+0xb`, x from
-    /// `+0xc`, y from `+0x34`); `reset` (`+0x8`) drops their unit AIs' saved patrols, `queued`
-    /// (`+0x9`) and `ignore_pending` (`+0xa`) send the order through the unit AIs' queues
-    /// ([`World::attack_move`]).
-    ///
-    /// [`World::attack_move`]: crate::world::World::attack_move
-    AttackMove {
-        /// The player whose units attack-move.
-        player: usize,
-        /// The units.
-        ids: Vec<i32>,
-        /// The waypoints.
-        waypoints: Vec<[f32; 2]>,
-        /// `+0x8`.
-        reset: bool,
-        /// `+0x9`.
-        queued: bool,
-        /// `+0xa`.
-        ignore_pending: bool,
-    },
-    /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): the villagers of `ids` (at most 60, the decoder's)
-    /// seek shelter in the player's buildings ([`World::seek_shelter`]).
-    ///
-    /// [`World::seek_shelter`]: crate::world::World::seek_shelter
-    SeekShelter {
-        /// The player whose units seek shelter.
-        player: usize,
-        /// The units.
-        ids: Vec<i32>,
-    },
-    /// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of `ids` (at most 60, the decoder's)
-    /// take the stance `state` ([`World::unit_ai_state`]).
-    ///
-    /// [`World::unit_ai_state`]: crate::world::World::unit_ai_state
-    UnitAiState {
-        /// The player whose units take it.
-        player: usize,
-        /// The units.
-        ids: Vec<i32>,
-        /// The stance.
-        state: u8,
-    },
-    /// `UNIT_ORDER` (0x75, `FUN_140e7f200` -> `FUN_14161e370`): the units `ids` (at most 60, the
-    /// decoder's) take the order `action` ([`World::unit_order`]) with the object `target`
-    /// (`tId`, `+8`, which action 5 reads) and the flags `+0x1d`, `+0x1e`; `human` (`+0x20`) sets
-    /// their last human order time first. Its point, `qId` and `param` are not read by the
-    /// actions modelled.
-    ///
-    /// [`World::unit_order`]: crate::world::World::unit_order
-    UnitOrder {
-        /// The player whose units take it.
-        player: usize,
-        /// The units.
-        ids: Vec<i32>,
-        /// `tId`: the target object's id.
-        target: i32,
-        /// `+0x1d`: a garrison goes through the units' unit AIs (their slot 0x30); a cancel
-        /// (action 4) cancels up to five of a kind.
-        through_ai: bool,
-        /// `+0x1e`: a garrison takes the buildings of the target's master near it.
-        nearby: bool,
-        /// The order's action (4: a queue's cancel, 8: the drop-off).
-        action: u8,
-        /// `+0x18`: a cancel's unit index in the queue.
-        param: u32,
-        /// `+0x20`: it sets their last human order time.
-        human: bool,
-    },
-    /// INTERACT (0x00), WORK (0x02), MOVE (0x03), RETREAT (0x23), FOLLOW or GUARD: before the
-    /// order runs, each listed unit's AI resets its idle timeout ([`UnitAi::reset_for_order`],
-    /// WORK's not), in list order, wherever the unit is. INTERACT's order then runs
-    /// ([`Interact`]), MOVE's ([`MoveOrder`]), FOLLOW's and GUARD's; WORK and RETREAT are not
-    /// modelled.
-    ///
-    /// [`UnitAi::reset_for_order`]: crate::unit_ai::UnitAi::reset_for_order
-    Order {
-        /// The player who orders.
-        player: usize,
-        /// The units of the packet.
-        units: OrderUnits,
-        /// The order they take, None for RETREAT, which only resets their idle timeouts.
-        order: Option<Order>,
-    },
+    /// GAME (0x67).
+    Game(GameCommand),
+    /// `BUILDING_COMMAND_QUEUE` (0x2d).
+    CommandQueue(BuildingQueueCommand),
+    /// `GO_BACK_TO_WORK` (0x80, 0x86).
+    GoBackToWork(GoBackToWorkCommand),
+    /// `ALL_BACK_TO_WORK` (0x8c).
+    AllBackToWork(AllBackToWorkCommand),
+    /// `TOWN_BELL` (0x7f).
+    TownBell(TownBellCommand),
+    /// `CANCEL_BUILD` (0x6a).
+    Delete(DeleteCommand),
+    /// FLARE (0x73).
+    Flare(FlareCommand),
+    /// GIVE ATTRIBUTES (0xc4).
+    Tribute(TributeCommand),
+    /// `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b).
+    Trade(TradeCommand),
+    /// GATE (0x72).
+    Gate(GateCommand),
+    /// UNLOAD (0x6f).
+    Unload(UnloadCommand),
+    /// `TRANSFORM_OBJECT` (0x29).
+    TransformObject(TransformObjectCommand),
+    /// RESIGN (0x0b).
+    Resign(ResignCommand),
+    /// `AUTO_SCOUT` (0x26).
+    AutoScout(AutoScoutCommand),
+    /// STOP (0x01).
+    Stop(StopCommand),
+    /// PATROL (0x15).
+    Patrol(PatrolCommand),
+    /// `ATTACK_MOVE` (0x21).
+    AttackMove(AttackMoveCommand),
+    /// `SEEK_SHELTER` (0x2c).
+    SeekShelter(SeekShelterCommand),
+    /// `UNIT_AI_STATE` (0x12).
+    UnitAiState(UnitAiStateCommand),
+    /// `UNIT_ORDER` (0x75).
+    UnitOrder(UnitOrderCommand),
+    /// INTERACT (0x00), WORK (0x02), MOVE (0x03), RETREAT (0x23), FOLLOW or GUARD.
+    Order(OrderCommand),
 }
 
-/// The units an order command names (its unit-list reader, `FUN_140e6b290`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum OrderUnits {
-    /// The packet's ids, as many as its count says.
-    Listed(Vec<i32>),
-    /// A count of `0xffff`: the comm player's last commanded units
-    /// ([`World::last_commanded`]).
-    LastCommanded,
-}
+impl Command {
+    /// Its run on the world, by its kind: an unmodelled command fails with its reason.
+    ///
+    /// # Errors
+    ///
+    /// What the run does not model.
+    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+        match self {
+            Self::Build(c) => c.run(w),
+            Self::BuildWall(c) => c.run(w),
+            Self::GatherPoint(c) => c.run(w),
+            Self::Queue(c) => c.run(w),
+            Self::Research(c) => c.run(w),
+            Self::Unmodelled { why, .. } => Err(why.clone()),
+            Self::Game(c) => c.run(w),
+            Self::CommandQueue(c) => c.run(w),
+            Self::GoBackToWork(c) => c.run(w),
+            Self::AllBackToWork(c) => c.run(w),
+            Self::TownBell(c) => c.run(w),
+            Self::Delete(c) => c.run(w),
+            Self::Flare(c) => c.run(w),
+            Self::Tribute(c) => c.run(w),
+            Self::Trade(c) => {
+                c.run(w);
+                Ok(())
+            }
+            Self::Gate(c) => c.run(w),
+            Self::Unload(c) => c.run(w),
+            Self::TransformObject(c) => c.run(w),
+            Self::Resign(c) => c.run(w),
+            Self::AutoScout(c) => c.run(w),
+            Self::Stop(c) => c.run(w),
+            Self::Patrol(c) => c.run(w),
+            Self::AttackMove(c) => c.run(w),
+            Self::SeekShelter(c) => c.run(w),
+            Self::UnitAiState(c) => c.run(w),
+            Self::UnitOrder(c) => c.run(w),
+            Self::Order(c) => c.run(w),
+        }
+    }
 
-/// What an order command gives its units.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Order {
-    /// INTERACT: work on, attack or follow a target.
-    Interact(Interact),
-    /// MOVE: walk to a point.
-    Move(MoveOrder),
-    /// FOLLOW's target (`+0x8`).
-    Follow(i32),
-    /// GUARD's target (`+0x8`).
-    Guard(i32),
-    /// WORK: its units' work on a target (`FUN_140e6a9f0`), which is not modelled.
-    Work,
-}
+    /// The player whose lane a failed run stops, of `players` world players: a GAME
+    /// sub-command's target, else its issuer ([`GameCommand::target`]); any other command's
+    /// issuing player.
+    #[must_use]
+    pub fn stopped_player(&self, players: usize) -> usize {
+        match self {
+            Self::Game(g) => g.target(players).unwrap_or(g.issuer),
+            other => other.player(),
+        }
+    }
 
-/// RESEARCH's fields ([`Command::Research`] but the player).
-pub(crate) struct ResearchAt {
-    pub(crate) building: i32,
-    pub(crate) count: i16,
-    pub(crate) buildings: Vec<i32>,
-    pub(crate) tech: i16,
-    pub(crate) target: i32,
-    pub(crate) shift: bool,
-}
-
-/// QUEUE's fields ([`Command::Queue`] but the player).
-pub(crate) struct QueueAt {
-    pub(crate) buildings: Vec<i32>,
-    pub(crate) unit: i16,
-    pub(crate) amount: u16,
-    pub(crate) button: i32,
+    /// The issuing player (GAME's issuer).
+    #[must_use]
+    pub const fn player(&self) -> usize {
+        match self {
+            Self::Build(c) => c.player,
+            Self::BuildWall(c) => c.player,
+            Self::GatherPoint(c) => c.player,
+            Self::Queue(c) => c.player,
+            Self::Research(c) => c.player,
+            Self::Unmodelled { player, .. } => *player,
+            Self::Game(c) => c.issuer,
+            Self::CommandQueue(c) => c.player,
+            Self::GoBackToWork(c) => c.player,
+            Self::AllBackToWork(c) => c.player,
+            Self::TownBell(c) => c.player,
+            Self::Delete(c) => c.player,
+            Self::Flare(c) => c.player,
+            Self::Tribute(c) => c.player,
+            Self::Trade(c) => c.player,
+            Self::Gate(c) => c.player,
+            Self::Unload(c) => c.player,
+            Self::TransformObject(c) => c.player,
+            Self::Resign(c) => c.player,
+            Self::AutoScout(c) => c.player,
+            Self::Stop(c) => c.player,
+            Self::Patrol(c) => c.player,
+            Self::AttackMove(c) => c.player,
+            Self::SeekShelter(c) => c.player,
+            Self::UnitAiState(c) => c.player,
+            Self::UnitOrder(c) => c.player,
+            Self::Order(c) => c.player,
+        }
+    }
 }
 
 /// The player's attribute game mode 16's QUEUE reads (6, `+0x30`), and its bound

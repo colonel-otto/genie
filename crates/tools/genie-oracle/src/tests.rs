@@ -1,5 +1,7 @@
 use super::*;
-use genie_core::commands::Command;
+use genie_core::commands::{
+    AllBackToWorkCommand, AttackMoveCommand, Command, PatrolCommand, TradeCommand, TributeCommand,
+};
 use genie_core::objects::actions::ActionList;
 
 /// Word 9 reads a building's production action's state over its top action's (records
@@ -135,12 +137,12 @@ fn a_patrol_packet_decodes_its_units_and_waypoints() {
     let c = d.command(&patrol(2, vec![9397, 9398, 9399], 2, 1), &[]);
     assert_eq!(
         c,
-        Some(Command::Patrol {
+        Some(Command::Patrol(PatrolCommand {
             player: 2,
             ids: vec![9397, 9398],
             waypoints: vec![[10.0, 20.0], [11.0, 21.0]],
             reset: true,
-        })
+        }))
     );
     assert_eq!(d.command(&patrol(4, vec![9397, 9398], 1, 0), &[]), None);
     assert_eq!(d.command(&patrol(1, vec![9397], 0, 0), &[]), None);
@@ -177,14 +179,14 @@ fn an_attack_move_packet_decodes_its_units_waypoints_and_flags() {
     let mut d = Decoder::default();
     assert_eq!(
         d.command(&packet(1, vec![30065, 1], 2), &[]),
-        Some(Command::AttackMove {
+        Some(Command::AttackMove(AttackMoveCommand {
             player: 6,
             ids: vec![30065],
             waypoints: vec![[10.0, 20.0], [11.0, 21.0]],
             reset: true,
             queued: false,
             ignore_pending: true,
-        })
+        }))
     );
     assert_eq!(d.command(&packet(3, vec![30065], 1), &[]), None);
     assert_eq!(d.command(&packet(1, vec![30065], 0), &[]), None);
@@ -197,12 +199,12 @@ fn an_attack_move_packet_decodes_its_units_waypoints_and_flags() {
 fn a_trade_packet_decodes_food_wood_or_stone_only() {
     assert_eq!(
         trade(2, 0x0101, 3, true),
-        Some(Command::Trade {
+        Some(Command::Trade(TradeCommand {
             player: 2,
             attribute: 1,
             times: 3,
             buy: true,
-        })
+        }))
     );
     assert_eq!(trade(2, 3, 1, false), None);
     let packet = de::command::SellCommodity {
@@ -214,12 +216,12 @@ fn a_trade_packet_decodes_food_wood_or_stone_only() {
     .encode();
     assert_eq!(
         Decoder::default().command(&packet, &[]),
-        Some(Command::Trade {
+        Some(Command::Trade(TradeCommand {
             player: 1,
             attribute: 2,
             times: 5,
             buy: false,
-        })
+        }))
     );
 }
 
@@ -233,10 +235,10 @@ fn an_all_back_to_work_packet_decodes_its_object() {
     .encode();
     assert_eq!(
         Decoder::default().command(&packet, &[]),
-        Some(Command::AllBackToWork {
+        Some(Command::AllBackToWork(AllBackToWorkCommand {
             player: 3,
             id: 4321,
-        })
+        }))
     );
 }
 
@@ -314,7 +316,7 @@ fn a_tribute_packet_decodes_its_four_entries() {
     };
     assert_eq!(
         Decoder::default().command(&packet, &[]),
-        Some(Command::Tribute {
+        Some(Command::Tribute(TributeCommand {
             player: 3,
             to: 5,
             gifts: [
@@ -323,7 +325,7 @@ fn a_tribute_packet_decodes_its_four_entries() {
                 gift(2, 0.0, 0.3),
                 gift(3, 200.0, 0.25),
             ],
-        })
+        }))
     );
 }
 

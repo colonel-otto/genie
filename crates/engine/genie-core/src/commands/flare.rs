@@ -1,0 +1,26 @@
+//! FLARE (0x73): a flare for the player's allies.
+
+use crate::GenieError;
+use crate::world::World;
+
+/// FLARE (0x73, `0x140e7bfd0`): every player from 1 below `players` (`+0x10`, at most the
+/// world's) gets a flare at `target`'s place (`+4`, −1 for none) or at `point` (`+8`, `+0xc`)
+/// ([`World::flare`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FlareCommand {
+    /// The player who sent it.
+    pub player: usize,
+    /// The object it is on, −1 for none.
+    pub target: i32,
+    /// Its point without a target.
+    pub point: [f32; 2],
+    /// The players the command counts (`+0x10`).
+    pub players: u8,
+}
+
+impl FlareCommand {
+    /// Its handler ([`World::flare`]).
+    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+        w.flare(self.target, self.point, self.players)
+    }
+}

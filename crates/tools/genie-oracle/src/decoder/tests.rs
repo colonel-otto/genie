@@ -1,5 +1,10 @@
 use crate::decoder::{Decoder, LAST_COMMANDED, MAX_UNITS};
-use genie_core::commands::{Command, Order, OrderUnits};
+use genie_core::commands::{
+    AutoScoutCommand, BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GateCommand,
+    GatherPointCommand, GoBackToWorkCommand, Order, OrderCommand, OrderUnits, ResearchCommand,
+    ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
+    TransformObjectCommand, UnitAiStateCommand, UnitOrderAction, UnitOrderCommand, UnloadCommand,
+};
 use genie_rec::de::command as packets;
 
 fn decode(packet: &[u8]) -> Option<Command> {
@@ -38,11 +43,11 @@ fn an_interact_orders_its_units_and_a_later_one_the_last_commanded() {
         filter: 3,
     });
     let ordered = |units| {
-        Some(Command::Order {
+        Some(Command::Order(OrderCommand {
             player: 2,
             units,
             order: Some(order),
-        })
+        }))
     };
     assert_eq!(
         d.command(&interact(2, vec![10, 11, 12]), &[]),
@@ -76,11 +81,11 @@ fn a_work_command_orders_its_units_and_notes_them() {
     .encode();
     assert_eq!(
         d.command(&work, &[]),
-        Some(Command::Order {
+        Some(Command::Order(OrderCommand {
             player: 4,
             units: OrderUnits::Listed(vec![20]),
             order: Some(Order::Work),
-        })
+        }))
     );
     assert_eq!(d.last_commanded.get(&4), Some(&vec![20]));
 }
@@ -116,11 +121,11 @@ fn move_retreat_follow_and_guard_order_their_units() {
     let mut d = Decoder::default();
     assert_eq!(
         d.command(&moved, &[]),
-        Some(Command::Order {
+        Some(Command::Order(OrderCommand {
             player: 1,
             units: OrderUnits::Listed(many.clone()),
             order: Some(order),
-        })
+        }))
     );
     assert_eq!(d.last_commanded.get(&1), Some(&many[..MAX_UNITS].to_vec()));
     let retreat = packets::Retreat {
@@ -139,11 +144,11 @@ fn move_retreat_follow_and_guard_order_their_units() {
     .encode();
     assert_eq!(
         decode(&retreat),
-        Some(Command::Order {
+        Some(Command::Order(OrderCommand {
             player: 1,
             units: OrderUnits::Listed(vec![7]),
             order: None,
-        })
+        }))
     );
     let follow = packets::Follow {
         commp_id: 1,
@@ -161,10 +166,12 @@ fn move_retreat_follow_and_guard_order_their_units() {
         ids: vec![8],
     }
     .encode();
-    let ordered = |order| Command::Order {
-        player: 1,
-        units: OrderUnits::Listed(vec![8]),
-        order: Some(order),
+    let ordered = |order| {
+        Command::Order(OrderCommand {
+            player: 1,
+            units: OrderUnits::Listed(vec![8]),
+            order: Some(order),
+        })
     };
     let mut d = Decoder::default();
     assert_eq!(d.command(&follow, &[]), Some(ordered(Order::Follow(900))));
@@ -189,14 +196,14 @@ fn the_listed_commands_keep_their_counted_ids() {
     .encode();
     assert_eq!(
         decode(&gather),
-        Some(Command::GatherPoint {
+        Some(Command::GatherPoint(GatherPointCommand {
             player: 3,
             ids: vec![30],
             point: [1.0, 2.0],
             target: 40,
             target_master: 83,
             own: true,
-        })
+        }))
     );
     let queue = packets::BuildingCommandQueue {
         commp_id: 3,
@@ -210,12 +217,12 @@ fn the_listed_commands_keep_their_counted_ids() {
     .encode();
     assert_eq!(
         decode(&queue),
-        Some(Command::CommandQueue {
+        Some(Command::CommandQueue(BuildingQueueCommand {
             player: 3,
             ids: vec![32, 33],
             target: 41,
             point: [3.0, 4.0],
-        })
+        }))
     );
     let state = packets::UnitAiState {
         commp_id: 3,
@@ -228,11 +235,11 @@ fn the_listed_commands_keep_their_counted_ids() {
     .encode();
     assert_eq!(
         decode(&state),
-        Some(Command::UnitAiState {
+        Some(Command::UnitAiState(UnitAiStateCommand {
             player: 3,
             ids: vec![34],
             state: 2,
-        })
+        }))
     );
     let scout = packets::AutoScout {
         commp_id: 3,
@@ -243,10 +250,10 @@ fn the_listed_commands_keep_their_counted_ids() {
     .encode();
     assert_eq!(
         decode(&scout),
-        Some(Command::AutoScout {
+        Some(Command::AutoScout(AutoScoutCommand {
             player: 3,
             ids: vec![35],
-        })
+        }))
     );
     let shelter = packets::SeekShelter {
         commp_id: 3,
@@ -257,10 +264,10 @@ fn the_listed_commands_keep_their_counted_ids() {
     .encode();
     assert_eq!(
         decode(&shelter),
-        Some(Command::SeekShelter {
+        Some(Command::SeekShelter(SeekShelterCommand {
             player: 3,
             ids: vec![36],
-        })
+        }))
     );
 }
 
@@ -278,10 +285,10 @@ fn a_stop_with_too_few_ids_does_nothing() {
     };
     assert_eq!(
         decode(&stop(1)),
-        Some(Command::Stop {
+        Some(Command::Stop(StopCommand {
             player: 2,
             ids: vec![50],
-        })
+        }))
     );
     assert_eq!(decode(&stop(2)), None);
 }
@@ -306,14 +313,14 @@ fn unload_and_unit_order_decode_their_lists_but_not_the_last_commanded() {
     };
     assert_eq!(
         decode(&unload(1)),
-        Some(Command::Unload {
+        Some(Command::Unload(UnloadCommand {
             player: 2,
             ids: vec![60],
             point: [1.0, 1.0],
             flag: 1,
             unit_type: -1,
             sound: true,
-        })
+        }))
     );
     assert!(matches!(
         decode(&unload(LAST_COMMANDED)),
@@ -340,16 +347,16 @@ fn unload_and_unit_order_decode_their_lists_but_not_the_last_commanded() {
     };
     assert_eq!(
         decode(&order(1)),
-        Some(Command::UnitOrder {
+        Some(Command::UnitOrder(UnitOrderCommand {
             player: 2,
             ids: vec![61],
             target: 70,
             through_ai: true,
             nearby: false,
-            action: 5,
+            action: UnitOrderAction::Garrison,
             param: u32::MAX,
             human: true,
-        })
+        }))
     );
     assert!(matches!(
         decode(&order(LAST_COMMANDED)),
@@ -367,10 +374,10 @@ fn go_back_to_work_2_reads_its_counted_ids() {
     let packet = packets::GoBackToWork2 { commp_id: 1, rest }.encode();
     assert_eq!(
         decode(&packet),
-        Some(Command::GoBackToWork {
+        Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: 1,
             ids: vec![80, 81],
-        })
+        }))
     );
     let empty = packets::GoBackToWork2 {
         commp_id: 1,
@@ -379,10 +386,10 @@ fn go_back_to_work_2_reads_its_counted_ids() {
     .encode();
     assert_eq!(
         decode(&empty),
-        Some(Command::GoBackToWork {
+        Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: 1,
             ids: vec![],
-        })
+        }))
     );
 }
 
@@ -401,7 +408,7 @@ fn the_single_commands_decode_their_fields() {
     .encode();
     assert_eq!(
         decode(&research),
-        Some(Command::Research {
+        Some(Command::Research(ResearchCommand {
             player: 1,
             building: 90,
             count: 1,
@@ -409,7 +416,7 @@ fn the_single_commands_decode_their_fields() {
             tech: 22,
             target: -1,
             shift: true,
-        })
+        }))
     );
     let resign = packets::Resign {
         commp_id: 2,
@@ -418,10 +425,10 @@ fn the_single_commands_decode_their_fields() {
     .encode();
     assert_eq!(
         decode(&resign),
-        Some(Command::Resign {
+        Some(Command::Resign(ResignCommand {
             player: 2,
             dropped: true,
-        })
+        }))
     );
     let transform = packets::TransformObject {
         commp_id: 2,
@@ -431,18 +438,21 @@ fn the_single_commands_decode_their_fields() {
     .encode();
     assert_eq!(
         decode(&transform),
-        Some(Command::TransformObject {
+        Some(Command::TransformObject(TransformObjectCommand {
             player: 2,
             id: 91,
             master: 83,
-        })
+        }))
     );
     let cancel = packets::CancelBuild {
         commp_id: 2,
         u_id: 92,
     }
     .encode();
-    assert_eq!(decode(&cancel), Some(Command::Delete { player: 2, id: 92 }));
+    assert_eq!(
+        decode(&cancel),
+        Some(Command::Delete(DeleteCommand { player: 2, id: 92 }))
+    );
     let back = packets::GoBackToWork {
         commp_id: 2,
         u_id: 93,
@@ -450,10 +460,10 @@ fn the_single_commands_decode_their_fields() {
     .encode();
     assert_eq!(
         decode(&back),
-        Some(Command::GoBackToWork {
+        Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: 2,
             ids: vec![93],
-        })
+        }))
     );
     let bell = packets::TownBell {
         commp_id: 2,
@@ -463,18 +473,21 @@ fn the_single_commands_decode_their_fields() {
     .encode();
     assert_eq!(
         decode(&bell),
-        Some(Command::TownBell {
+        Some(Command::TownBell(TownBellCommand {
             player: 2,
             id: 94,
             activate: true,
-        })
+        }))
     );
     let gate = packets::Gate {
         commp_id: 2,
         u_id: 95,
     }
     .encode();
-    assert_eq!(decode(&gate), Some(Command::Gate { player: 2, id: 95 }));
+    assert_eq!(
+        decode(&gate),
+        Some(Command::Gate(GateCommand { player: 2, id: 95 }))
+    );
     let flare = packets::Flare {
         commp_id: 2,
         field_0x04: u32::MAX,
@@ -489,12 +502,12 @@ fn the_single_commands_decode_their_fields() {
     .encode();
     assert_eq!(
         decode(&flare),
-        Some(Command::Flare {
+        Some(Command::Flare(FlareCommand {
             player: 2,
             target: -1,
             point: [7.0, 8.0],
             players: 0b110,
-        })
+        }))
     );
     let buy = packets::BuyCommodity {
         commp_id: 2,
@@ -505,12 +518,12 @@ fn the_single_commands_decode_their_fields() {
     .encode();
     assert_eq!(
         decode(&buy),
-        Some(Command::Trade {
+        Some(Command::Trade(TradeCommand {
             player: 2,
             attribute: 1,
             times: 2,
             buy: true,
-        })
+        }))
     );
 }
 

@@ -1,7 +1,14 @@
 use super::*;
 use crate::GenieError;
 use crate::commands::game::GameCommand;
-use crate::commands::{Command, GatherPoint, ResearchAt};
+use crate::commands::{
+    AllBackToWorkCommand, AttackMoveCommand, AutoScoutCommand, BuildCommand, BuildWallCommand,
+    BuildingQueueCommand, Command, DeleteCommand, FlareCommand, GateCommand, GatherPoint,
+    GatherPointCommand, GoBackToWorkCommand, OrderCommand, OrderUnits, PatrolCommand, QueueCommand,
+    ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand, TradeCommand,
+    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitOrderAction, UnitOrderCommand,
+    UnloadCommand,
+};
 use crate::construction::build::{BuildAction, BuildStep, BuildTask, Construction};
 use crate::construction::gates::gate_units;
 use crate::gathering::closest_resource::search_origin;
@@ -1332,7 +1339,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     let mut t = build_world();
     t.tick_with(
         50,
-        &[Command::Build {
+        &[Command::Build(BuildCommand {
             player: 1,
             master: 70,
             unit_ai: Ok(None),
@@ -1341,7 +1348,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
             queued: false,
             commits: false,
             frame: 0,
-        }],
+        })],
     );
     let p = &t.players[1];
     assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
@@ -1402,7 +1409,7 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
         u.ai.as_mut().unwrap().orders.push(queued_move);
     }
     // the command phase alone (the units' updates would run the orders)
-    t.run(&Command::Build {
+    t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
         unit_ai: Ok(None),
@@ -1411,7 +1418,7 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
         queued: false,
         commits: false,
         frame: 0,
-    });
+    }));
     let unit = |id: i32| t.object(id).map(|(_, u)| u).unwrap();
     let orders = |id: i32| unit(id).ai.as_ref().map_or(0, |ai| ai.orders.len());
     assert!(unit(9175).actions.build().is_some());
@@ -1472,7 +1479,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
     placeable(&mut t);
     t.settings.cheats_enabled = true;
     // the command phase alone (the units' updates would run the orders)
-    t.run(&Command::Build {
+    t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
         unit_ai: Ok(None),
@@ -1481,7 +1488,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         queued: true,
         commits: false,
         frame: 2,
-    });
+    }));
     // the foundation keeps the command's frame (+0xc54)
     assert_eq!(t.object(10028).map(|(_, u)| u.build_frame), Some(2));
     let order = |p: usize| {
@@ -4947,7 +4954,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
     let mut built = world(vec![live(2)]);
     built.tick_with(
         40,
-        &[Command::Build {
+        &[Command::Build(BuildCommand {
             player: 0,
             master: 70,
             unit_ai: Ok(Some(17)),
@@ -4956,7 +4963,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
             queued: false,
             commits: false,
             frame: 0,
-        }],
+        })],
     );
     let foundation = &built.players[0].objects[0];
     assert_eq!(
@@ -5030,11 +5037,11 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
     );
     t.tick_with(
         40,
-        &[Command::Order {
+        &[Command::Order(OrderCommand {
             player: 0,
-            units: crate::commands::OrderUnits::Listed(vec![8, 99, 7]),
+            units: OrderUnits::Listed(vec![8, 99, 7]),
             order: None,
-        }],
+        })],
     );
     let mut streams = Streams::default();
     streams.seed_all(29910);
@@ -5459,13 +5466,13 @@ fn town_centre(id: i32) -> Unit {
 }
 
 fn queue(building: i32, unit: i16, amount: u16) -> Command {
-    Command::Queue {
+    Command::Queue(QueueCommand {
         player: 0,
         buildings: vec![building],
         unit,
         amount,
         button: -1,
-    }
+    })
 }
 
 /// A town centre of master 109 ([`one_player`]'s).
@@ -6198,12 +6205,14 @@ fn a_queue_the_player_cannot_pay_or_at_a_missing_building_queues_nothing() {
 /// go to 9, 10, 10, 9, 9.
 #[test]
 fn a_queue_at_several_buildings_shares_its_units_out_by_load() {
-    let several = |amount| Command::Queue {
-        player: 0,
-        buildings: vec![9, 10],
-        unit: 99,
-        amount,
-        button: -1,
+    let several = |amount| {
+        Command::Queue(QueueCommand {
+            player: 0,
+            buildings: vec![9, 10],
+            unit: 99,
+            amount,
+            button: -1,
+        })
     };
     let total = |t: &World, k: usize| {
         t.players[0].objects[k]
@@ -6262,13 +6271,13 @@ fn a_queue_at_a_building_that_does_not_train_the_unit_queues_nothing_there() {
             .as_ref()
             .map_or(0, |p| p.queue.total)
     };
-    let both = Command::Queue {
+    let both = Command::Queue(QueueCommand {
         player: 0,
         buildings: vec![9, 10],
         unit: 99,
         amount: 3,
         button: -1,
-    };
+    });
     let mut t = with_trophy(vec![trophy(9), centre(10)]);
     t.tick_with(104, &[both]);
     assert!(t.players[0].unsupported.is_none());
@@ -6319,13 +6328,13 @@ fn a_queue_passes_over_a_sleeping_object_the_unit_does_not_train_at() {
     let mut asleep = town_centre(11);
     asleep.life.master_id = 99;
     t.players[0].sleeping.push(asleep);
-    let both = Command::Queue {
+    let both = Command::Queue(QueueCommand {
         player: 0,
         buildings: vec![11, 9],
         unit: 99,
         amount: 2,
         button: -1,
-    };
+    });
     t.tick_with(104, &[both]);
     assert!(t.players[0].unsupported.is_none());
     let production = t.players[0].objects[0].production.as_ref().unwrap();
@@ -6340,7 +6349,8 @@ fn a_queue_passes_over_a_sleeping_object_the_unit_does_not_train_at() {
 fn a_research_at_several_buildings_takes_the_least_loaded() {
     let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
     t.tick_with(104, &[queue(9, 99, 1)]);
-    let at = |building, count, buildings: Vec<i32>| ResearchAt {
+    let at = |player, building, count, buildings: Vec<i32>| ResearchCommand {
+        player,
         building,
         count,
         buildings,
@@ -6348,10 +6358,10 @@ fn a_research_at_several_buildings_takes_the_least_loaded() {
         target: -1,
         shift: false,
     };
-    assert_eq!(t.least_loaded(0, &at(9, 3, vec![9, 77, 10])), 10);
-    assert_eq!(t.least_loaded(0, &at(10, 2, vec![10, 9])), 10);
-    assert_eq!(t.least_loaded(0, &at(9, 1, vec![9, 10])), 9);
-    assert_eq!(t.least_loaded(0, &at(77, 1, vec![])), -1);
+    assert_eq!(t.least_loaded(&at(0, 9, 3, vec![9, 77, 10])), 10);
+    assert_eq!(t.least_loaded(&at(0, 10, 2, vec![10, 9])), 10);
+    assert_eq!(t.least_loaded(&at(0, 9, 1, vec![9, 10])), 9);
+    assert_eq!(t.least_loaded(&at(0, 77, 1, vec![])), -1);
 }
 
 /// `do_command`'s case 0x65 (`FUN_140e6f470`), RESEARCH's check before its handler: listing
@@ -6363,7 +6373,8 @@ fn a_research_at_several_buildings_takes_the_least_loaded() {
 fn a_research_s_check_refuses_another_player_s_buildings() {
     let mut t = one_player(vec![centre(9), centre(10)], [200.0; 4]);
     t.players.push(Player::default());
-    let at = |building, count, buildings: Vec<i32>| ResearchAt {
+    let at = |player, building, count, buildings: Vec<i32>| ResearchCommand {
+        player,
         building,
         count,
         buildings,
@@ -6372,33 +6383,33 @@ fn a_research_s_check_refuses_another_player_s_buildings() {
         shift: false,
     };
     // its own: listed alone, or with the others checked
-    assert_eq!(t.research_check(0, &at(9, 1, vec![])), Some(vec![]));
+    assert_eq!(t.research_check(&at(0, 9, 1, vec![])), Some(vec![]));
     assert_eq!(
-        t.research_check(0, &at(9, 3, vec![9, 77, 10])),
+        t.research_check(&at(0, 9, 3, vec![9, 77, 10])),
         Some(vec![9, -1, 10])
     );
-    assert_eq!(t.research_check(0, &at(9, 0, vec![])), None);
-    assert_eq!(t.research_check(0, &at(9, -2, vec![])), None);
+    assert_eq!(t.research_check(&at(0, 9, 0, vec![])), None);
+    assert_eq!(t.research_check(&at(0, 9, -2, vec![])), None);
     // player 1's: another's building, one alone the world lacks, a list of none of its own
-    assert_eq!(t.research_check(1, &at(9, 1, vec![])), None);
-    assert_eq!(t.research_check(1, &at(9, 2, vec![9, 10])), None);
-    assert_eq!(t.research_check(1, &at(77, 1, vec![])), None);
-    assert_eq!(t.research_check(1, &at(77, 2, vec![9, 10])), None);
+    assert_eq!(t.research_check(&at(1, 9, 1, vec![])), None);
+    assert_eq!(t.research_check(&at(1, 9, 2, vec![9, 10])), None);
+    assert_eq!(t.research_check(&at(1, 77, 1, vec![])), None);
+    assert_eq!(t.research_check(&at(1, 77, 2, vec![9, 10])), None);
     // a building the world lacks with a list skips the packet's own test
     assert_eq!(
-        t.research_check(0, &at(77, 2, vec![77, 10])),
+        t.research_check(&at(0, 77, 2, vec![77, 10])),
         Some(vec![-1, 10])
     );
     // a computer's list left without one still runs
     t.players[1].computer = true;
     assert_eq!(
-        t.research_check(1, &at(77, 2, vec![9, 10])),
+        t.research_check(&at(1, 77, 2, vec![9, 10])),
         Some(vec![-1, -1])
     );
     // while players may order each other's
     t.settings.cheats_enabled = true;
     t.players[1].computer = false;
-    assert_eq!(t.research_check(1, &at(9, 1, vec![])), Some(vec![]));
+    assert_eq!(t.research_check(&at(1, 9, 1, vec![])), Some(vec![]));
 }
 
 /// RESEARCH (`0x140e7e270`) of Castle Age (0x66) at the town centre: queued as any technology;
@@ -6425,7 +6436,8 @@ fn a_research_of_castle_age_queues_it_but_in_game_mode_16() {
             ..TechState::default()
         };
         t.players[0].techs = techs;
-        let at = ResearchAt {
+        let at = ResearchCommand {
+            player: 0,
             building: 9,
             count: 1,
             buildings: vec![],
@@ -6433,7 +6445,7 @@ fn a_research_of_castle_age_queues_it_but_in_game_mode_16() {
             target: -1,
             shift: false,
         };
-        let r = t.research(0, &at);
+        let r = t.research(&at);
         let queued = t.players[0].objects[0]
             .production
             .as_ref()
@@ -6475,9 +6487,10 @@ fn research_world() -> World {
     t
 }
 
-/// RESEARCH of technology `tech` at building 9 with the target `target`.
-fn research_at(tech: i16, target: i32) -> ResearchAt {
-    ResearchAt {
+/// RESEARCH of technology `tech` at player 0's building 9 with the target `target`.
+fn research_at(tech: i16, target: i32) -> ResearchCommand {
+    ResearchCommand {
+        player: 0,
         building: 9,
         count: 1,
         buildings: vec![],
@@ -6500,7 +6513,7 @@ fn a_research_queues_at_an_alive_location_after_its_costs_come_off_the_debit() {
             .map_or(0, |p| p.queue.total)
     };
     let mut t = research_world();
-    t.research(0, &research_at(5, -1)).unwrap();
+    t.research(&research_at(5, -1)).unwrap();
     assert_eq!(queued(&t), 1);
     assert_eq!(t.players[0].pending_debit, [-50.0, 0.0, 0.0, 0.0]);
     let ai = t.players[0].objects[0].ai.as_ref().unwrap();
@@ -6508,13 +6521,13 @@ fn a_research_queues_at_an_alive_location_after_its_costs_come_off_the_debit() {
     let untouched = research_world();
     for (tech, target) in [(5, 9), (6, -1), (-1, -1)] {
         let mut t = research_world();
-        t.research(0, &research_at(tech, target)).unwrap();
+        t.research(&research_at(tech, target)).unwrap();
         assert_eq!(t, untouched);
     }
     let refused = |change: &dyn Fn(&mut World)| {
         let mut t = research_world();
         change(&mut t);
-        t.research(0, &research_at(5, -1)).unwrap();
+        t.research(&research_at(5, -1)).unwrap();
         (queued(&t), t.players[0].pending_debit[0])
     };
     assert_eq!(refused(&|t| t.players[0].techs[5].state = 2), (0, -50.0));
@@ -6537,7 +6550,7 @@ fn a_research_s_unmodelled_parts_fail() {
     let fails = |change: &dyn Fn(&mut World)| {
         let mut t = research_world();
         change(&mut t);
-        t.research(0, &research_at(5, -1)).unwrap_err().reason()
+        t.research(&research_at(5, -1)).unwrap_err().reason()
     };
     assert_eq!(
         fails(&|t| t.techs.truncate(5)),
@@ -6628,12 +6641,14 @@ fn a_queue_takes_as_many_as_the_room_and_the_resources_allow() {
 /// ten, the serials numbering the entries.
 #[test]
 fn queued_units_join_the_last_entry_and_a_full_buffer_grows() {
-    let with = |amount, button| Command::Queue {
-        player: 0,
-        buildings: vec![9],
-        unit: 99,
-        amount,
-        button,
+    let with = |amount, button| {
+        Command::Queue(QueueCommand {
+            player: 0,
+            buildings: vec![9],
+            unit: 99,
+            amount,
+            button,
+        })
     };
     let mut t = one_player(vec![centre(9)], [1000.0; 4]);
     t.tick_with(104, &[with(2, -1), with(3, -1), with(1, 1)]);
@@ -9090,13 +9105,15 @@ fn set_gather_point_takes_the_point_and_target_or_clears_it() {
         garrison: 15,
         ..Master::default()
     }])];
-    let set = |target, point, own| Command::GatherPoint {
-        player: 0,
-        ids: vec![9149],
-        point,
-        target,
-        target_master: 705,
-        own,
+    let set = |target, point, own| {
+        Command::GatherPoint(GatherPointCommand {
+            player: 0,
+            ids: vec![9149],
+            point,
+            target,
+            target_master: 705,
+            own,
+        })
     };
     t.tick_with(25, &[set(9520, [107.2451, 46.075_863], false)]);
     assert_eq!(t.players[0].unsupported, None);
@@ -9146,14 +9163,14 @@ fn set_gather_point_takes_a_building_that_trains_without_garrisoning() {
             ..Master::default()
         },
     ])];
-    let set = Command::GatherPoint {
+    let set = Command::GatherPoint(GatherPointCommand {
         player: 0,
         ids: vec![10908, 10909],
         point: [20.5, 30.5],
         target: -1,
         target_master: -1,
         own: false,
-    };
+    });
     t.tick_with(25, &[set]);
     assert_eq!(t.players[0].unsupported, None);
     assert_eq!(
@@ -9194,11 +9211,13 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
         garrison: 15,
         ..Master::default()
     }])];
-    let step = |point| Command::CommandQueue {
-        player: 0,
-        ids: vec![9149],
-        target: -1,
-        point,
+    let step = |point| {
+        Command::CommandQueue(BuildingQueueCommand {
+            player: 0,
+            ids: vec![9149],
+            target: -1,
+            point,
+        })
     };
     t.tick_with(25, &[step([50.0, 60.0])]);
     t.tick_with(25, &[step([70.0, 80.0])]);
@@ -9217,14 +9236,14 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
     assert_eq!(steps, vec![at(30.5, 40.5), at(50.0, 60.0), at(70.0, 80.0)]);
     t.tick_with(
         25,
-        &[Command::GatherPoint {
+        &[Command::GatherPoint(GatherPointCommand {
             player: 0,
             ids: vec![9149],
             point: [-1.0, -1.0],
             target: -1,
             target_master: -1,
             own: false,
-        }],
+        })],
     );
     let left = &t.players[0].objects[0].ai.as_ref().unwrap().building_orders;
     assert_eq!(left.len(), 0);
@@ -11049,7 +11068,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
     t.world_time = 72890;
     t.masters = vec![Masters::default(), masters];
     placeable(&mut t);
-    t.run(&Command::Build {
+    t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
         unit_ai: Ok(None),
@@ -11058,7 +11077,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
         queued: false,
         commits: false,
         frame: 0,
-    });
+    }));
     assert_eq!(t.players[1].unsupported, None);
     let foundation = t.players[1].objects.last().unwrap();
     assert_eq!(foundation.id, 10028);
@@ -11145,7 +11164,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
         );
         placeable(&mut t);
         let before = t.streams.get(Stream::Object).clone();
-        t.run(&Command::Build {
+        t.run(&Command::Build(BuildCommand {
             player: 1,
             master: 70,
             unit_ai: Ok(None),
@@ -11154,7 +11173,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
             queued: false,
             commits: false,
             frame: 0,
-        });
+        }));
         assert_eq!(t.players[1].unsupported, None);
         (t, before)
     };
@@ -11503,7 +11522,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     t.masters = vec![Masters::default(), builder_masters()];
     placeable(&mut t);
     let mut wall = t.clone();
-    t.run(&Command::Build {
+    t.run(&Command::Build(BuildCommand {
         player: 1,
         master: 70,
         unit_ai: Ok(None),
@@ -11512,7 +11531,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
         queued: false,
         commits: true,
         frame: 0,
-    });
+    }));
     assert_eq!(t.players[1].unsupported, None);
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     let queue: Vec<_> = ai.orders.iter().map(|o| (o.order, o.ready)).collect();
@@ -11522,7 +11541,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
     );
     assert_eq!(ai.current_order, crate::unit_ai::MOVE_ORDER);
     // BUILD_WALL's line of one tile the same (0x140e7be4b)
-    wall.run(&Command::BuildWall(crate::commands::wall::Wall {
+    wall.run(&Command::BuildWall(BuildWallCommand {
         player: 1,
         master: 70,
         unit_ai: Ok(None),
@@ -11724,15 +11743,17 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
     t.masters[0] = builder_masters();
     let theirs = t.players[1].objects.remove(1);
     t.players[0].objects.push(theirs);
-    let build = |builders: Vec<i32>| Command::Build {
-        player: 1,
-        master: 70,
-        unit_ai: Ok(None),
-        position: [30.0, 88.0, 0.0],
-        builders,
-        queued: false,
-        commits: false,
-        frame: 0,
+    let build = |builders: Vec<i32>| {
+        Command::Build(BuildCommand {
+            player: 1,
+            master: 70,
+            unit_ai: Ok(None),
+            position: [30.0, 88.0, 0.0],
+            builders,
+            queued: false,
+            commits: false,
+            frame: 0,
+        })
     };
     t.tick_with(50, &[build(vec![9181])]);
     let p = &t.players[1];
@@ -14647,116 +14668,127 @@ fn the_command_phase_runs_each_unit_command_by_its_handler() {
         queued: false,
         ignore_pending: false,
     };
-    let unit_order = |action, human| Command::UnitOrder {
-        player: 1,
-        ids: v.clone(),
-        target: 700,
-        through_ai: true,
-        nearby: false,
-        action,
-        param: 0,
-        human,
+    let unit_order = |action, human| {
+        Command::UnitOrder(UnitOrderCommand {
+            player: 1,
+            ids: v.clone(),
+            target: 700,
+            through_ai: true,
+            nearby: false,
+            action: UnitOrderAction::of(action),
+            param: 0,
+            human,
+        })
     };
     let changed = [
         routes(
             &t,
-            &Command::Stop {
+            &Command::Stop(StopCommand {
                 player: 1,
                 ids: v.clone(),
-            },
+            }),
             1,
             |w| w.stop_command(1, &v),
         ),
         routes(
             &t,
-            &Command::Patrol {
+            &Command::Patrol(PatrolCommand {
                 player: 1,
                 ids: v.clone(),
                 waypoints: way.clone(),
                 reset: true,
-            },
+            }),
             1,
             |w| w.patrol(1, &v, &way, true),
         ),
         routes(
             &t,
-            &Command::AttackMove {
+            &Command::AttackMove(AttackMoveCommand {
                 player: 1,
                 ids: v.clone(),
                 waypoints: way.clone(),
                 reset: true,
                 queued: false,
                 ignore_pending: false,
-            },
+            }),
             1,
             |w| w.attack_move(1, &v, &way, sweep),
         ),
         routes(
             &t,
-            &Command::SeekShelter {
+            &Command::SeekShelter(SeekShelterCommand {
                 player: 1,
                 ids: v.clone(),
-            },
+            }),
             1,
             |w| w.seek_shelter(1, &v),
         ),
         routes(
             &t,
-            &Command::UnitAiState {
+            &Command::UnitAiState(UnitAiStateCommand {
                 player: 1,
                 ids: v.clone(),
                 state: 1,
-            },
+            }),
             1,
             |w| w.unit_ai_state(1, &v, 1),
         ),
         routes(
             &t,
-            &Command::AutoScout {
+            &Command::AutoScout(AutoScoutCommand {
                 player: 1,
                 ids: v.clone(),
-            },
+            }),
             1,
             |w| w.auto_scout(1, &v),
         ),
         routes(
             &t,
-            &Command::Unload {
+            &Command::Unload(UnloadCommand {
                 player: 1,
                 ids: vec![700],
                 point: [24.5, 89.5],
                 flag: 0,
                 unit_type: -1,
                 sound: false,
-            },
+            }),
             1,
-            |w| w.unload(1, &[700], [24.5, 89.5], 0, -1, false),
+            |w| {
+                w.unload(&UnloadCommand {
+                    player: 1,
+                    ids: vec![700],
+                    point: [24.5, 89.5],
+                    flag: 0,
+                    unit_type: -1,
+                    sound: false,
+                })
+            },
         ),
         routes(
             &t,
-            &Command::GoBackToWork {
+            &Command::GoBackToWork(GoBackToWorkCommand {
                 player: 1,
                 ids: v.clone(),
-            },
+            }),
             1,
             |w| w.go_back_to_work(1, &v),
         ),
         routes(
             &t,
-            &Command::Delete {
+            &Command::Delete(DeleteCommand {
                 player: 1,
                 id: 9175,
-            },
+            }),
             1,
             |w| w.delete(1, 9175),
         ),
         routes(
             &t,
-            &Command::TransformObject {
+            &Command::TransformObject(TransformObjectCommand {
                 player: 1,
                 id: 9175,
                 master: 120,
-            },
+            }),
             1,
             |w| w.transform_object(1, 9175, 120),
         ),
@@ -14804,42 +14836,42 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
     let changed = [
         routes(
             &t,
-            &Command::Tribute {
+            &Command::Tribute(TributeCommand {
                 player: 1,
                 to: 0,
                 gifts,
-            },
+            }),
             1,
             |w| w.tribute(1, 0, &gifts),
         ),
         routes(
             &t,
-            &Command::Resign {
+            &Command::Resign(ResignCommand {
                 player: 1,
                 dropped: false,
-            },
+            }),
             1,
             |w| w.resign(1, false),
         ),
         routes(
             &t,
-            &Command::Flare {
+            &Command::Flare(FlareCommand {
                 player: 1,
                 target: -1,
                 point: [40.5, 89.5],
                 players: 2,
-            },
+            }),
             1,
             |w| w.flare(-1, [40.5, 89.5], 2),
         ),
         routes(
             &t,
-            &Command::Trade {
+            &Command::Trade(TradeCommand {
                 player: 1,
                 attribute: 1,
                 times: 1,
                 buy: true,
-            },
+            }),
             1,
             |w| {
                 w.buy(1, 1, 1);
@@ -14848,12 +14880,12 @@ fn the_command_phase_runs_each_player_command_by_its_handler() {
         ),
         routes(
             &t,
-            &Command::Trade {
+            &Command::Trade(TradeCommand {
                 player: 1,
                 attribute: 1,
                 times: 1,
                 buy: false,
-            },
+            }),
             1,
             |w| {
                 w.sell(1, 1, 1);
@@ -14904,10 +14936,12 @@ fn the_command_phase_runs_an_order_after_its_check() {
         human: true,
         control: false,
     };
-    let order = |units: Vec<i32>, order| Command::Order {
-        player: 1,
-        units: OrderUnits::Listed(units),
-        order,
+    let order = |units: Vec<i32>, order| {
+        Command::Order(OrderCommand {
+            player: 1,
+            units: OrderUnits::Listed(units),
+            order,
+        })
     };
     assert!(routes(
         &t,
@@ -14956,10 +14990,12 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
         human: true,
         control: false,
     };
-    let order = |units| Command::Order {
-        player: 1,
-        units,
-        order: Some(Order::Move(walk)),
+    let order = |units| {
+        Command::Order(OrderCommand {
+            player: 1,
+            units,
+            order: Some(Order::Move(walk)),
+        })
     };
     let mut t = forage_world();
     t.run(&order(OrderUnits::Listed(vec![9175, 600])));
@@ -14988,7 +15024,7 @@ fn an_order_of_the_last_commanded_units_reads_what_the_last_run_order_left() {
 /// a computer, or its last commanded units, none before its first.
 #[test]
 fn an_order_s_units_are_capped_unless_its_comm_player_is_outside_the_world() {
-    use crate::commands::OrderUnits;
+    use OrderUnits;
     let many: Vec<i32> = (0..600).collect();
     let mut t = forage_world();
     let listed = OrderUnits::Listed(many.clone());
@@ -15020,7 +15056,8 @@ fn an_order_s_units_are_capped_unless_its_comm_player_is_outside_the_world() {
 fn the_command_phase_runs_each_building_command_by_its_handler() {
     let t = forage_world();
     let tc = vec![700];
-    let research = || ResearchAt {
+    let research = || ResearchCommand {
+        player: 1,
         building: 700,
         count: 1,
         buildings: tc.clone(),
@@ -15028,7 +15065,8 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
         target: -1,
         shift: false,
     };
-    let queue = crate::commands::QueueAt {
+    let queue = QueueCommand {
+        player: 1,
         buildings: tc.clone(),
         unit: 83,
         amount: 1,
@@ -15037,19 +15075,19 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
     let changed = [
         routes(
             &t,
-            &Command::Queue {
+            &Command::Queue(QueueCommand {
                 player: 1,
                 buildings: tc.clone(),
                 unit: 83,
                 amount: 1,
                 button: 0,
-            },
+            }),
             1,
-            |w| w.queue(1, &queue),
+            |w| w.queue(&queue),
         ),
         routes(
             &t,
-            &Command::Research {
+            &Command::Research(ResearchCommand {
                 player: 1,
                 building: 700,
                 count: 1,
@@ -15057,61 +15095,73 @@ fn the_command_phase_runs_each_building_command_by_its_handler() {
                 tech: 22,
                 target: -1,
                 shift: false,
-            },
+            }),
             1,
             |w| {
-                let Some(buildings) = w.research_check(1, &research()) else {
+                let Some(buildings) = w.research_check(&research()) else {
                     return Ok(());
                 };
-                w.research(
-                    1,
-                    &ResearchAt {
-                        buildings,
-                        ..research()
-                    },
-                )
+                w.research(&ResearchCommand {
+                    buildings,
+                    ..research()
+                })
             },
         ),
         routes(
             &t,
-            &Command::GatherPoint {
+            &Command::GatherPoint(GatherPointCommand {
                 player: 1,
                 ids: tc.clone(),
                 point: [30.5, 85.5],
                 target: -1,
                 target_master: -1,
                 own: false,
-            },
+            }),
             1,
-            |w| w.gather_point(1, &tc, [30.5, 85.5], (-1, -1), false),
+            |w| {
+                w.gather_point(&GatherPointCommand {
+                    player: 1,
+                    ids: tc.clone(),
+                    point: [30.5, 85.5],
+                    target: -1,
+                    target_master: -1,
+                    own: false,
+                })
+            },
         ),
         routes(
             &t,
-            &Command::CommandQueue {
+            &Command::CommandQueue(BuildingQueueCommand {
                 player: 1,
                 ids: tc.clone(),
                 target: -1,
                 point: [30.5, 85.5],
-            },
+            }),
             1,
             |w| w.command_queue(1, &tc, -1, [30.5, 85.5]),
         ),
-        routes(&t, &Command::Gate { player: 1, id: 700 }, 1, |w| {
-            w.gate(1, 700)
-        }),
         routes(
             &t,
-            &Command::TownBell {
+            &Command::Gate(GateCommand { player: 1, id: 700 }),
+            1,
+            |w| w.gate(1, 700),
+        ),
+        routes(
+            &t,
+            &Command::TownBell(TownBellCommand {
                 player: 1,
                 id: 700,
                 activate: true,
-            },
+            }),
             1,
             |w| w.town_bell(1, 700, true),
         ),
-        routes(&t, &Command::AllBackToWork { player: 1, id: 700 }, 1, |w| {
-            w.all_back_to_work(1, 700)
-        }),
+        routes(
+            &t,
+            &Command::AllBackToWork(AllBackToWorkCommand { player: 1, id: 700 }),
+            1,
+            |w| w.all_back_to_work(1, 700),
+        ),
     ];
     // the town centre's master is bare: only the gate changes it (any building of type 80
     // toggles its lock)

@@ -1,6 +1,7 @@
 //! UNLOAD and `GO_BACK_TO_WORK`: the units inside a building or a transport come out.
 
 use crate::GenieError;
+use crate::commands::unload::UnloadCommand;
 use crate::garrison::{
     BUILDING_CLASS, COMBAT_KIND, MASTER_1808, SIEGE_CLASS, SIEGE_UNLOAD, VILLAGER_CLASS,
     WHOLE_SHARE_CLASS,
@@ -33,15 +34,15 @@ impl World {
     ///   bell (`+0x9dc`).
     ///
     /// The local player's interface flag (`FUN_141663f50`) is not held.
-    pub(crate) fn unload(
-        &mut self,
-        player: usize,
-        ids: &[i32],
-        point: [f32; 2],
-        flag: u8,
-        unit_type: i32,
-        sound: bool,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn unload(&mut self, u: &UnloadCommand) -> Result<(), GenieError> {
+        let UnloadCommand {
+            player,
+            ref ids,
+            point,
+            flag,
+            unit_type,
+            sound,
+        } = *u;
         let Some(checked) = self.unload_check(player, ids, flag, unit_type) else {
             return Ok(());
         };

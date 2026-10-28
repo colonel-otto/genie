@@ -1,4 +1,5 @@
 use super::*;
+use crate::commands::{GatherPoint, UnloadCommand};
 use crate::objects::masters::BuildingMaster;
 use crate::objects::unit::Unit;
 use crate::world::Player;
@@ -1160,7 +1161,7 @@ fn a_gather_point_on_its_own_building_takes_the_new_unit_in() {
     walker(&mut t, 1, 1000, VILLAGER, [12.5, 10.0]);
     let idx = t.players[1].objects.len() - 1;
     let state = t.players[1].objects[idx].life.state;
-    let g = crate::commands::GatherPoint {
+    let g = GatherPoint {
         point: [10.0, 10.0, 0.0],
         target: 100,
         target_master: TC,
@@ -1929,7 +1930,15 @@ fn ashore(t: &mut World, center: [f32; 2], radius: f32) -> [f32; 2] {
 #[test]
 fn an_unload_command_sends_a_transport_toward_the_shore() {
     let mut t = coast_world([10.5, 10.5]);
-    t.unload(1, &[200], [17.5, 10.5], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [17.5, 10.5],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     let ship = t.object(200).unwrap().1;
     let tr = ship.actions.transport().copied().expect("the Transport");
     assert_eq!(
@@ -1951,7 +1960,15 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
     // a second unload: the immediate order stops the unit AI's action first (slot 0xb0, the
     // unit's stop tears the Transport down), so the command makes a new one alike
-    t.unload(1, &[200], [17.5, 10.5], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [17.5, 10.5],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     let again = t
         .object(200)
         .unwrap()
@@ -2123,7 +2140,15 @@ fn a_trade_boat_s_work_at_its_own_market_makes_a_new_transport() {
 #[test]
 fn a_transport_beside_the_shore_puts_its_units_ashore() {
     let mut t = coast_world([14.5, 10.5]);
-    t.unload(1, &[200], [15.5, 10.5], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [15.5, 10.5],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     let tr = t
         .object(200)
         .unwrap()
@@ -2191,7 +2216,15 @@ fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
     if let Some(terrain) = t.spatial.terrain.as_mut() {
         terrain.restrictions[0] = vec![0.0, 0.0];
     }
-    t.unload(1, &[200], [15.5, 10.5], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [15.5, 10.5],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     let idx = t.players[1]
         .objects
         .iter()
@@ -2228,7 +2261,15 @@ fn a_transport_without_a_drop_location_sails_on_to_a_new_point() {
 fn a_unit_inside_a_transport_unloaded_goes_ashore_about_it() {
     let mut t = coast_world([14.5, 10.5]);
     let spot = ashore(&mut t, [14.5, 10.5], 1.0);
-    t.unload(1, &[1000], [-1.0, -1.0], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![1000],
+        point: [-1.0, -1.0],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, None);
     assert_eq!(v.position, [spot[0], spot[1], 0.0]);
@@ -2240,11 +2281,27 @@ fn a_unit_inside_a_transport_unloaded_goes_ashore_about_it() {
     // flag 3 names the unit inside: the ship lets it out the same way
     let mut t = coast_world([14.5, 10.5]);
     let spot = ashore(&mut t, [14.5, 10.5], 1.0);
-    t.unload(1, &[200], [-1.0, -1.0], 3, 1000, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [-1.0, -1.0],
+        flag: 3,
+        unit_type: 1000,
+        sound: false,
+    })
+    .unwrap();
     assert_eq!(t.object(1000).unwrap().1.position, [spot[0], spot[1], 0.0]);
     // a named unit elsewhere stays
     let mut t = coast_world([14.5, 10.5]);
-    t.unload(1, &[200], [-1.0, -1.0], 3, 100, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [-1.0, -1.0],
+        flag: 3,
+        unit_type: 100,
+        sound: false,
+    })
+    .unwrap();
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
 }
 
@@ -2269,12 +2326,28 @@ fn a_unit_inside_an_ally_s_transport_unloaded_goes_ashore() {
     };
     let mut t = ally(true);
     let spot = ashore(&mut t, [14.5, 10.5], 1.0);
-    t.unload(1, &[200], [-1.0, -1.0], 3, 1000, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [-1.0, -1.0],
+        flag: 3,
+        unit_type: 1000,
+        sound: false,
+    })
+    .unwrap();
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, None);
     assert_eq!(v.position, [spot[0], spot[1], 0.0]);
     let mut t = ally(false);
-    t.unload(1, &[200], [-1.0, -1.0], 3, 1000, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [-1.0, -1.0],
+        flag: 3,
+        unit_type: 1000,
+        sound: false,
+    })
+    .unwrap();
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
 }
 
@@ -2389,7 +2462,15 @@ fn unload_of_a_building_lets_every_unit_inside_out() {
             ..crate::unit_ai::UnitAi::default()
         });
     }
-    t.unload(1, &[100], [4.5, 4.5], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![100],
+        point: [4.5, 4.5],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     assert_eq!(t.players[1].objects[0].garrison, [1500]);
     for id in [1000, 1001] {
         let v = t.object(id).unwrap().1;
@@ -2403,7 +2484,17 @@ fn unload_of_a_building_lets_every_unit_inside_out() {
         building_orders: vec![crate::unit_ai::QueuedOrder::default()],
         ..crate::unit_ai::UnitAi::default()
     });
-    assert!(t.unload(1, &[100], [4.5, 4.5], 0, -1, false).is_err());
+    assert!(
+        t.unload(&UnloadCommand {
+            player: 1,
+            ids: vec![100],
+            point: [4.5, 4.5],
+            flag: 0,
+            unit_type: -1,
+            sound: false
+        })
+        .is_err()
+    );
 }
 
 #[test]
@@ -2416,7 +2507,15 @@ fn unload_lets_a_unit_out_of_the_building_it_is_inside() {
     let v = t.object_mut(1000).unwrap().1;
     v.town_bell.flag = true;
     v.ai = Some(crate::unit_ai::UnitAi::default());
-    t.unload(1, &[1000], [4.5, 4.5], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![1000],
+        point: [4.5, 4.5],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     let v = t.object(1000).unwrap().1;
     assert_eq!(v.life.inside, None);
     assert!(!v.town_bell.flag);
@@ -2515,7 +2614,15 @@ fn transport_ticked(
 ) -> World {
     let mut t = coast_world(ship);
     t.build_mesh();
-    t.unload(1, &[200], to, 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: to,
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     set(t
         .object_mut(200)
         .unwrap()
@@ -2597,7 +2704,15 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
     let mut t = coast_world([10.5, 10.5]);
     t.build_mesh();
     t.players[1].computer = true;
-    t.unload(1, &[200], [17.5, 10.5], 0, -1, false).unwrap();
+    t.unload(&UnloadCommand {
+        player: 1,
+        ids: vec![200],
+        point: [17.5, 10.5],
+        flag: 0,
+        unit_type: -1,
+        sound: false,
+    })
+    .unwrap();
     far(t
         .object_mut(200)
         .unwrap()
@@ -2669,7 +2784,7 @@ fn a_unit_let_out_works_its_record_or_the_gather_point_s_target() {
     assert_eq!(v.ai.as_ref().map(|a| a.current_target), Some(77));
     assert_eq!(v.top_action(), None);
     let gather = |t: &mut World| {
-        t.players[1].objects[0].gather_point = Some(crate::commands::GatherPoint {
+        t.players[1].objects[0].gather_point = Some(GatherPoint {
             target: 101,
             point: [16.0, 4.0, 0.0],
             target_master: TC,

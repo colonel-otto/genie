@@ -41,6 +41,23 @@ const BEING_CAPTURED: u8 = 2;
 const SPARED_CLASS: i16 = 42;
 pub(crate) const LIVESTOCK: i16 = 58;
 
+/// `CANCEL_BUILD` (0x6a, `do_command` case 0x6a): the player deletes its object `id`
+/// ([`World::delete`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeleteCommand {
+    /// The player.
+    pub player: usize,
+    /// The object.
+    pub id: i32,
+}
+
+impl DeleteCommand {
+    /// Its handler ([`World::delete`]).
+    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+        w.delete(self.player, self.id)
+    }
+}
+
 impl World {
     /// `CANCEL_BUILD` for `player` on object `id`: the object must exist and be the player's,
     /// unless the setting `+0x1074` lets players order each other's ([`crate::world::settings::Settings::cheats_enabled`])

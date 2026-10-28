@@ -6,7 +6,13 @@ use crate::{
     trade,
 };
 use genie_core::GenieError;
-use genie_core::commands::{Command, OrderUnits};
+use genie_core::commands::{
+    AllBackToWorkCommand, AutoScoutCommand, BuildingQueueCommand, Command, DeleteCommand,
+    FlareCommand, GateCommand, GatherPointCommand, GoBackToWorkCommand, Order, OrderCommand,
+    OrderUnits, ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand, TownBellCommand,
+    TransformObjectCommand, TributeCommand, UnitAiStateCommand, UnitOrderAction, UnitOrderCommand,
+    UnloadCommand,
+};
 use genie_rec::de;
 use genie_rec::de::command::Command as Packet;
 use genie_save::PlayerSection;
@@ -170,11 +176,11 @@ impl Decoder {
             }
             OrderUnits::Listed(units)
         };
-        Command::Order {
+        Command::Order(OrderCommand {
             player: player as usize,
             units,
             order,
-        }
+        })
     }
 }
 
@@ -186,7 +192,7 @@ struct UnitList {
     num: u16,
     ids: Vec<i32>,
     reads_last: bool,
-    order: Option<genie_core::commands::Order>,
+    order: Option<Order>,
 }
 
 /// The first `num` of `ids`, at most a human player's 60.
@@ -197,7 +203,7 @@ fn capped(ids: &[i32], num: usize) -> Vec<i32> {
 /// INTERACT, WORK, MOVE and RETREAT, whose units the unit-list reader (`FUN_140e6b290`) reads,
 /// and FOLLOW and GUARD, which list theirs; None for any other packet.
 fn unit_list_order(packet: &Packet) -> Option<UnitList> {
-    use genie_core::commands::Order;
+    use Order;
     let (player, num, ids, reads_last, order) = match packet {
         Packet::Interact(c) => {
             let order = genie_core::orders::Interact {
@@ -271,62 +277,66 @@ struct NotListed;
 /// unit-list reader; `Ok(None)` where the command's check refuses it.
 fn listed_command(packet: &Packet) -> Result<Option<Command>, NotListed> {
     Ok(match packet {
-        Packet::SetGatherPoint(c) => Some(Command::GatherPoint {
+        Packet::SetGatherPoint(c) => Some(Command::GatherPoint(GatherPointCommand {
             player: c.commp_id as usize,
             ids: capped(&c.ids, c.num as usize),
             point: [c.x, c.y],
             target: c.t_id,
             target_master: c.tm_id as i16,
             own: c.field_0x18 != 0,
-        }),
+        })),
         // BUILDING_COMMAND_QUEUE: the count at +0x10
-        Packet::BuildingCommandQueue(c) => Some(Command::CommandQueue {
+        Packet::BuildingCommandQueue(c) => Some(Command::CommandQueue(BuildingQueueCommand {
             player: c.commp_id as usize,
             ids: capped(&c.ids, c.num as usize),
             target: c.t_id,
             point: [c.x, c.y],
-        }),
+        })),
         // GO_BACK_TO_WORK2: a count (+4, a short) and the ids from +8
-        Packet::GoBackToWork2(c) => Some(Command::GoBackToWork {
+        Packet::GoBackToWork2(c) => Some(Command::GoBackToWork(GoBackToWorkCommand {
             player: c.commp_id as usize,
             ids: go_back_to_work_ids(&c.rest),
-        }),
+        })),
         // UNLOAD: the count at +4
-        Packet::Unload(c) if c.num != LAST_COMMANDED => Some(Command::Unload {
+        Packet::Unload(c) if c.num != LAST_COMMANDED => Some(Command::Unload(UnloadCommand {
             player: c.commp_id as usize,
             ids: capped(&c.ids, c.num as usize),
             point: [c.x, c.y],
             flag: c.flag,
             unit_type: c.unit_type,
             sound: c.field_0x18 != 0,
-        }),
+        })),
         // UNIT_ORDER: the count at +4
-        Packet::UnitOrder(c) if c.num != LAST_COMMANDED => Some(Command::UnitOrder {
-            player: c.commp_id as usize,
-            ids: capped(&c.ids, c.num as usize),
-            target: c.t_id,
-            through_ai: c.field_0x1d != 0,
-            nearby: c.field_0x1e != 0,
-            action: c.action,
-            param: c.param.cast_unsigned(),
-            human: c.field_0x20 == 1,
-        }),
+        Packet::UnitOrder(c) if c.num != LAST_COMMANDED => {
+            Some(Command::UnitOrder(UnitOrderCommand {
+                player: c.commp_id as usize,
+                ids: capped(&c.ids, c.num as usize),
+                target: c.t_id,
+                through_ai: c.field_0x1d != 0,
+                nearby: c.field_0x1e != 0,
+                action: UnitOrderAction::of(c.action),
+                param: c.param.cast_unsigned(),
+                human: c.field_0x20 == 1,
+            }))
+        }
         // UNIT_AI_STATE: the count at +4
-        Packet::UnitAiState(c) => Some(Command::UnitAiState {
+        Packet::UnitAiState(c) => Some(Command::UnitAiState(UnitAiStateCommand {
             player: c.commp_id as usize,
             ids: capped(&c.ids, usize::from(c.num)),
             state: c.state,
-        }),
+        })),
         // AUTO_SCOUT: the count at +4
-        Packet::AutoScout(c) => Some(Command::AutoScout {
+        Packet::AutoScout(c) => Some(Command::AutoScout(AutoScoutCommand {
             player: c.commp_id as usize,
             ids: capped(&c.ids, usize::from(c.field_0x04)),
-        }),
+        })),
         // STOP: the count at +4; a count past the ids the packet holds fails the command's
         // check (`FUN_140e55a30`)
-        Packet::Stop(c) => (usize::from(c.num) <= c.ids.len()).then(|| Command::Stop {
-            player: c.commp_id as usize,
-            ids: capped(&c.ids, usize::from(c.num)),
+        Packet::Stop(c) => (usize::from(c.num) <= c.ids.len()).then(|| {
+            Command::Stop(StopCommand {
+                player: c.commp_id as usize,
+                ids: capped(&c.ids, usize::from(c.num)),
+            })
         }),
         // PATROL: the units listed, the count at +4 (the core caps them at the player's 60
         // or 500); the command's check refuses a count past the ids the packet holds
@@ -336,10 +346,10 @@ fn listed_command(packet: &Packet) -> Result<Option<Command>, NotListed> {
         // without 1 to 10 waypoints (`+0xb`)
         Packet::AttackMove(c) => attack_move_command(c),
         // SEEK_SHELTER: the count at +4
-        Packet::SeekShelter(c) => Some(Command::SeekShelter {
+        Packet::SeekShelter(c) => Some(Command::SeekShelter(SeekShelterCommand {
             player: c.commp_id as usize,
             ids: capped(&c.ids, usize::from(c.num)),
-        }),
+        })),
         _ => return Err(NotListed),
     })
 }
@@ -368,7 +378,7 @@ fn single_command(packet: &Packet, raw: &[u8], sections: &[PlayerSection<'_>]) -
         Packet::MultiQueue(queue) => queue_command(queue, sections),
         Packet::BuildWall(c) => build_wall_command(c, sections),
         // RESEARCH (0x65): the handler reads the building count at +0x8 as a short
-        Packet::Research(c) => Command::Research {
+        Packet::Research(c) => Command::Research(ResearchCommand {
             player: c.commp_id as usize,
             building: c.u_id,
             count: c.field_0x08 as i16,
@@ -376,52 +386,52 @@ fn single_command(packet: &Packet, raw: &[u8], sections: &[PlayerSection<'_>]) -
             tech: c.t_id,
             target: c.q_id,
             shift: c.field_0x10 != 0,
-        },
+        }),
         // RESIGN: the comm player, the world player of the same number in these games
-        Packet::Resign(c) => Command::Resign {
+        Packet::Resign(c) => Command::Resign(ResignCommand {
             player: c.commp_id as usize,
             dropped: c.dropped != 0,
-        },
+        }),
         // TRANSFORM_OBJECT: the object at +8 takes the master at +4
-        Packet::TransformObject(c) => Command::TransformObject {
+        Packet::TransformObject(c) => Command::TransformObject(TransformObjectCommand {
             player: c.commp_id as usize,
             id: c.field_0x08 as i32,
             master: c.field_0x04 as i16,
-        },
-        Packet::CancelBuild(c) => Command::Delete {
+        }),
+        Packet::CancelBuild(c) => Command::Delete(DeleteCommand {
             player: c.commp_id as usize,
             id: c.u_id,
-        },
+        }),
         // GO_BACK_TO_WORK: one building (+4)
-        Packet::GoBackToWork(c) => Command::GoBackToWork {
+        Packet::GoBackToWork(c) => Command::GoBackToWork(GoBackToWorkCommand {
             player: c.commp_id as usize,
             ids: vec![c.u_id],
-        },
+        }),
         // ALL_BACK_TO_WORK: the object (+4)
-        Packet::AllBackToWork(c) => Command::AllBackToWork {
+        Packet::AllBackToWork(c) => Command::AllBackToWork(AllBackToWorkCommand {
             player: c.commp_id as usize,
             id: c.u_id,
-        },
+        }),
         // TOWN_BELL: the town centre (+4) and the ring or its end (+8, a byte)
-        Packet::TownBell(c) => Command::TownBell {
+        Packet::TownBell(c) => Command::TownBell(TownBellCommand {
             player: c.commp_id as usize,
             id: c.u_id,
             activate: c.activate != 0,
-        },
+        }),
         Packet::TribeGiveAttributes(c) => tribute_command(c),
         // SELL_COMMODITY and BUY_COMMODITY: food, wood or stone (the low byte), else nothing
         Packet::SellCommodity(c) => return trade(c.commp_id, c.attr, c.amt, false),
         Packet::BuyCommodity(c) => return trade(c.commp_id, c.attr, c.amt, true),
-        Packet::Flare(c) => Command::Flare {
+        Packet::Flare(c) => Command::Flare(FlareCommand {
             player: c.commp_id as usize,
             target: c.field_0x04.cast_signed(),
             point: [c.field_0x08, c.field_0x0c],
             players: c.field_0x10,
-        },
-        Packet::Gate(c) => Command::Gate {
+        }),
+        Packet::Gate(c) => Command::Gate(GateCommand {
             player: c.commp_id as usize,
             id: c.u_id,
-        },
+        }),
         // GAME: the sub-command at +4, its player at +8 and arguments at +0xa, +0xc, +0x10
         // (do_command's gate and the switch are the core's)
         Packet::Game(g) => Command::Game(genie_core::commands::game::GameCommand {
@@ -447,7 +457,7 @@ fn tribute_command(c: &de::command::TribeGiveAttributes) -> Command {
         amount,
         fee,
     };
-    Command::Tribute {
+    Command::Tribute(TributeCommand {
         player: c.commp_id as usize,
         to: usize::from(c.to),
         gifts: [
@@ -456,7 +466,7 @@ fn tribute_command(c: &de::command::TribeGiveAttributes) -> Command {
             gift(c.field_0x28, c.field_0x0c, c.field_0x1c),
             gift(c.field_0x2a, c.field_0x10, c.field_0x20),
         ],
-    }
+    })
 }
 
 #[cfg(test)]
