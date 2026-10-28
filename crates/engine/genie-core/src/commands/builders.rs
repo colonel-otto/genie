@@ -143,8 +143,7 @@ impl World {
         let owner = &world.players[q];
         let unit = owner
             .objects
-            .iter()
-            .find(|o| o.id == id)
+            .by_id(id)
             .ok_or(GenieError::unsupported("a builder the slice does not have"))?;
         if unit.actions.artifact().is_some()
             || unit.production.is_some()

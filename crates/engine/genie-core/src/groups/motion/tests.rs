@@ -18,7 +18,7 @@ fn a_top_target_below_minus_one_is_none() {
         ..Unit::default()
     };
     let player = Player {
-        objects: vec![held(7), held(-3)],
+        objects: vec![held(7), held(-3)].into(),
         ..Player::default()
     };
     let t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);

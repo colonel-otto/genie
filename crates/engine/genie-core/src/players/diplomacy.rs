@@ -293,8 +293,7 @@ impl World {
     fn live_index(&self, p: usize, id: i32) -> Result<usize, GenieError> {
         self.players[p]
             .objects
-            .iter()
-            .position(|u| u.id == id)
+            .position_of(id)
             .ok_or(GenieError::unsupported(
                 "a unit inside a building outside the live lists",
             ))

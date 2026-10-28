@@ -32,7 +32,7 @@ pub(crate) fn slot_world(units: &[(i32, i16, f32, f32)], blocked: &[(usize, usiz
         })
         .collect();
     let player = crate::world::Player {
-        objects: objects.clone(),
+        objects: objects.clone().into(),
         ..crate::world::Player::default()
     };
     let mut t = World::new(
@@ -743,7 +743,7 @@ fn type_world(paths: Vec<PathData>) -> World {
     };
     u.life.master_id = 4;
     let player = crate::world::Player {
-        objects: vec![u],
+        objects: vec![u].into(),
         formations: crate::world::Formations {
             min_column_distance: 10,
             column_to_line_distance: 5,

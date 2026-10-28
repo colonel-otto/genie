@@ -35,15 +35,16 @@ fn world() -> World {
                 soldier(10, 1.0, 1.0),
                 soldier(11, 2.0, 1.0),
                 soldier(12, 1.0, 2.0),
-            ],
+            ]
+            .into(),
             ..Player::default()
         },
         Player {
-            objects: vec![soldier(20, 3.5, 3.5)],
+            objects: vec![soldier(20, 3.5, 3.5)].into(),
             ..Player::default()
         },
         Player {
-            objects: vec![soldier(30, 4.5, 4.5)],
+            objects: vec![soldier(30, 4.5, 4.5)].into(),
             ..Player::default()
         },
     ];
@@ -1222,7 +1223,7 @@ fn the_lead_is_the_member_nearest_the_targets_place() {
         ..Unit::default()
     };
     let player = Player {
-        objects: vec![at(10, 5.0, 5.0), at(11, 2.0, 1.0), at(12, 1.0, 2.0)],
+        objects: vec![at(10, 5.0, 5.0), at(11, 2.0, 1.0), at(12, 1.0, 2.0)].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 1, 0, vec![0], vec![player]);
@@ -1252,7 +1253,7 @@ fn a_group_holds_members_draws_its_idle_timer_and_tells_when_it_is_idle() {
         ..Unit::default()
     };
     let player = Player {
-        objects: vec![held],
+        objects: vec![held].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 1, 0, vec![0], vec![player]);

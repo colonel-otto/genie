@@ -56,7 +56,7 @@ fn world() -> World {
     let players = vec![
         Player::default(),
         Player {
-            objects: vec![member(10, 5.0, 5.0), member(11, 6.0, 5.0)],
+            objects: vec![member(10, 5.0, 5.0), member(11, 6.0, 5.0)].into(),
             ..Player::default()
         },
     ];

@@ -20,9 +20,8 @@ impl World {
         let (p, u) = self.players.iter().enumerate().find_map(|(p, player)| {
             player
                 .objects
-                .iter()
-                .chain(&player.sleeping)
-                .find(|u| u.id == id)
+                .by_id(id)
+                .or_else(|| player.sleeping.by_id(id))
                 .map(|u| (p, u))
         })?;
         let master = self.masters.get(p)?.get(u.life.master_id)?;
@@ -51,9 +50,8 @@ impl World {
         for (p, player) in self.players.iter().enumerate() {
             if let Some(u) = player
                 .objects
-                .iter()
-                .chain(&player.sleeping)
-                .find(|u| u.id == id)
+                .by_id(id)
+                .or_else(|| player.sleeping.by_id(id))
             {
                 let master = self
                     .masters

@@ -1,7 +1,7 @@
 //! A player ([`Player`]): its objects, attributes and formations, and the stop of its update.
 
 use crate::GenieError;
-use crate::objects::unit::Unit;
+use crate::objects::object_list::ObjectList;
 use crate::world::World;
 
 /// A player's settings for the groups an order's splitter forms ([`Player::formations`]).
@@ -66,7 +66,7 @@ pub struct AiSettings {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Player {
     /// Its live objects, in their list's order.
-    pub objects: Vec<Unit>,
+    pub objects: ObjectList,
     /// `player+0x10 == 3`.
     pub computer: bool,
     /// `player+0x10`, the player's type (the save's class byte): 1 human, 2 Gaia, 3 computer
@@ -88,7 +88,7 @@ pub struct Player {
     pub relations: Vec<u8>,
     /// The sleeping objects, in their list's order: they are not updated; a unit's work on one
     /// wakes it.
-    pub sleeping: Vec<Unit>,
+    pub sleeping: ObjectList,
     /// `autoFarmQueue` (`+0x1424`, saved), which GAME 0x10 flips: a farmer whose farm ran out
     /// buys another one without the mill's queue (`FUN_141618260`).
     pub auto_farm_queue: bool,

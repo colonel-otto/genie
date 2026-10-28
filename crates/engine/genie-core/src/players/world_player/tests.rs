@@ -181,7 +181,7 @@ fn a_mill_s_livestock_makes_food() {
         military: false,
     };
     let p = &mut t.players[1];
-    p.objects = vec![mill, other, sheep];
+    p.objects = vec![mill, other, sheep].into();
     for id in [10, 11, 12] {
         p.tracker.add(id, key);
     }
@@ -251,7 +251,7 @@ fn a_player_without_an_object_that_keeps_it_loses() {
         let mut t = world();
         t.masters = vec![masters.clone(); 4];
         t.settings.game_mode = game_mode;
-        t.players[1].objects = objects;
+        t.players[1].objects = objects.into();
         let p = &t.players[1];
         let kept: Vec<bool> = p
             .objects
@@ -287,7 +287,7 @@ fn a_player_without_an_object_that_keeps_it_loses() {
     let mut t = world();
     t.masters = vec![masters.clone(); 4];
     t.players[1].victory_times = VictoryTimes::default();
-    t.players[1].objects = vec![object(3, 117, 2)];
+    t.players[1].objects = vec![object(3, 117, 2)].into();
     t.players[1].attributes[45] = 1.0;
     t.update_world_player(1).unwrap();
     assert_eq!(t.players[1].game_status, LOST);
@@ -296,7 +296,7 @@ fn a_player_without_an_object_that_keeps_it_loses() {
     let mut t = world();
     t.masters = vec![masters; 4];
     t.players[1].victory_times = VictoryTimes::default();
-    t.players[1].objects = vec![object(3, 117, 2), object(1, 83, 2)];
+    t.players[1].objects = vec![object(3, 117, 2), object(1, 83, 2)].into();
     t.players[1].attributes[45] = 1.0;
     t.update_world_player(1).unwrap();
     assert_eq!(t.players[1].game_status, PLAYING);
@@ -341,7 +341,7 @@ fn the_nth_town_centre_follows_the_tracker_and_skips_what_the_world_lacks() {
         military: false,
     };
     let mut t = world();
-    t.players[1].objects = vec![object(7, 444, 2), object(5, 109, 3), object(6, 109, 2)];
+    t.players[1].objects = vec![object(7, 444, 2), object(5, 109, 3), object(6, 109, 2)].into();
     // 9 is filed but gone from the world
     for (id, master) in [(5, 109), (9, 109), (6, 109), (7, 444)] {
         t.players[1].tracker.add(id, key(master));
@@ -366,7 +366,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     t.masters = vec![masters.clone(); 4];
     t.settings.game_mode = 11;
     t.players[1].victory_times = VictoryTimes::default();
-    t.players[1].objects = vec![object(1, 83, 2), object(5, 109, 2)];
+    t.players[1].objects = vec![object(1, 83, 2), object(5, 109, 2)].into();
     t.players[1].tracker.add(5, tc_key);
     t.update_world_player(1).unwrap();
     assert!(t.players[1].sudden_death_eliminable);
@@ -381,7 +381,7 @@ fn sudden_death_and_regicide_end_a_player_their_ways() {
     let mut t = world();
     t.masters = vec![masters; 4];
     t.settings.sub_game_mode_flag = 4;
-    t.players[1].objects = vec![object(1, 83, 2)];
+    t.players[1].objects = vec![object(1, 83, 2)].into();
     t.update_world_player(1).unwrap();
     assert_eq!(t.players[1].game_status, LOST);
     let mut t2 = world();

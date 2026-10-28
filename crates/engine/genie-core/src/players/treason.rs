@@ -174,8 +174,9 @@ mod tests {
         t.players[2].objects = vec![
             king(20, [5.0, 6.0, 0.0], None),
             king(21, [9.0, 9.0, 0.0], None),
-        ];
-        t.players[3].objects = vec![king(30, [1.0, 1.0, 0.0], None)];
+        ]
+        .into();
+        t.players[3].objects = vec![king(30, [1.0, 1.0, 0.0], None)].into();
         t.treason(1).unwrap();
         let flares = |t: &World, p: usize| -> Vec<(i32, [f32; 3])> {
             t.players[p]
@@ -194,7 +195,7 @@ mod tests {
         with_flares(&mut t);
         let mut castle = king(40, [12.0, 13.0, 0.0], None);
         castle.life.master_id = CASTLE;
-        t.players[2].objects = vec![king(20, [5.0, 6.0, 0.0], Some(40)), castle];
+        t.players[2].objects = vec![king(20, [5.0, 6.0, 0.0], Some(40)), castle].into();
         t.treason(1).unwrap();
         assert_eq!(flares(&t, 1)[0].1, [12.0, 13.0, 0.0]);
     }

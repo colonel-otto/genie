@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::object_list::ObjectList;
 use crate::world::others::OthersRef;
 
 /// Slot 0x228 (`FUN_141084070`): the attacks above 0 add up in their order from +0; none
@@ -40,7 +41,8 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
                 ..crate::objects::lifecycle::Lifecycle::default()
             },
             ..Unit::default()
-        }],
+        }]
+        .into(),
         ..Player::default()
     };
     let (gaia, after) = (Player::default(), [enemy]);
@@ -76,6 +78,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         firepower: 0.0,
         capture: 0,
     };
+    let none = ObjectList::default();
     let foreign = Foreign {
         before: &before,
         after: &after,
@@ -86,7 +89,7 @@ fn harmless(master: crate::objects::masters::Master) -> bool {
         seeker: None,
         me: 123,
         player: 1,
-        others: OthersRef::new(1, &[], foreign),
+        others: OthersRef::new(1, &none, foreign),
         foreign,
         spatial: &spatial,
         every: &every,
@@ -127,18 +130,19 @@ fn a_ward_s_nearest_attacker_is_its_closest_held_one() {
         ..UnitAi::default()
     };
     let me = unit(123, 10.0, 4, None);
-    let others = [
+    let others = ObjectList::from(vec![
         unit(20, 12.0, 4, Some(attacked(vec![50, 51, 52, 53]))),
         unit(21, 12.0, 4, None),
         unit(22, 12.0, 4, Some(attacked(vec![99]))),
-    ];
+    ]);
     let enemy = Player {
         // 50 at a gap of 4.4, 51 of 2.4 (its radius 1), 53 of 2.4 too
         objects: vec![
             unit(50, 17.0, 5, None),
             unit(51, 16.0, 6, None),
             unit(53, 16.0, 6, None),
-        ],
+        ]
+        .into(),
         ..Player::default()
     };
     let (gaia, after) = (Player::default(), [enemy]);
@@ -267,7 +271,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
     };
     let me = unit(123, 10.0, 4);
     let enemy = Player {
-        objects: vec![unit(50, 12.0, 5)],
+        objects: vec![unit(50, 12.0, 5)].into(),
         ..Player::default()
     };
     let (gaia, after) = (Player::default(), [enemy]);
@@ -303,6 +307,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         firepower: 0.0,
         capture: 0,
     };
+    let none = ObjectList::default();
     let foreign = Foreign {
         before: &before,
         after: &after,
@@ -313,7 +318,7 @@ fn a_candidate_s_statistics_are_its_class_hit_points_and_the_damage_to_it() {
         seeker: None,
         me: 123,
         player: 1,
-        others: OthersRef::new(1, &[], foreign),
+        others: OthersRef::new(1, &none, foreign),
         foreign,
         spatial: &spatial,
         every: &every,

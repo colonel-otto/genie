@@ -201,9 +201,8 @@ impl World {
                 .find_map(|(q, player)| {
                     player
                         .objects
-                        .iter()
-                        .chain(&player.sleeping)
-                        .find(|u| u.id == id)
+                        .by_id(id)
+                        .or_else(|| player.sleeping.by_id(id))
                         .map(|u| (q, u))
                 })
                 .ok_or(GenieError::unsupported(

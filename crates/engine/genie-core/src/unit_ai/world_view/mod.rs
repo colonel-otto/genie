@@ -137,7 +137,7 @@ pub(crate) struct Foreign<'a> {
     pub(crate) after: &'a [Player],
     /// The live list of the player whose list is out, once its object changed hands: that
     /// object's AI part reads it as another player's ([`OthersRef::changed_hands`]).
-    pub(crate) left: Option<(usize, &'a [Unit])>,
+    pub(crate) left: Option<(usize, &'a crate::objects::object_list::ObjectList)>,
 }
 
 impl<'a> Foreign<'a> {

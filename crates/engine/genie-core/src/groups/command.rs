@@ -657,7 +657,7 @@ mod tests {
         let players = vec![
             Player::default(),
             Player {
-                objects: vec![u],
+                objects: vec![u].into(),
                 ..Player::default()
             },
         ];

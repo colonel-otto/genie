@@ -24,11 +24,11 @@ fn a_gather_point_whose_tree_is_gone_takes_the_closest_tree_within_sight() {
         vec![0, 0],
         vec![
             crate::world::Player {
-                sleeping: vec![unit(10, 349, 20.5, 20.5), unit(11, 349, 22.5, 20.5)],
+                sleeping: vec![unit(10, 349, 20.5, 20.5), unit(11, 349, 22.5, 20.5)].into(),
                 ..crate::world::Player::default()
             },
             crate::world::Player {
-                objects: vec![unit(99, 83, 18.0, 18.0)],
+                objects: vec![unit(99, 83, 18.0, 18.0)].into(),
                 ..crate::world::Player::default()
             },
         ],

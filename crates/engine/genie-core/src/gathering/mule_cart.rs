@@ -18,7 +18,7 @@ impl World {
     /// completion's `set_state(state)`; then a cart with a target moves to it (slot 0x138 at the
     /// target's place).
     pub(crate) fn cart_search(&mut self, p: usize, id: i32, state: u8) -> Result<(), GenieError> {
-        let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
+        let Some(idx) = self.players[p].objects.position_of(id) else {
             return Ok(());
         };
         let Some(current) = self.players[p].objects[idx]

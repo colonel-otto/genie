@@ -738,15 +738,15 @@ mod tests {
         let players = vec![
             Player::default(),
             Player {
-                objects: vec![soldier],
+                objects: vec![soldier].into(),
                 ..Player::default()
             },
             Player {
-                objects: vec![unit(20, 4, 6.0, 5.0), dying],
+                objects: vec![unit(20, 4, 6.0, 5.0), dying].into(),
                 ..Player::default()
             },
             Player {
-                objects: vec![unit(30, 4, 4.0, 5.0), unit(31, 6, 5.0, 4.0)],
+                objects: vec![unit(30, 4, 4.0, 5.0), unit(31, 6, 5.0, 4.0)].into(),
                 ..Player::default()
             },
         ];

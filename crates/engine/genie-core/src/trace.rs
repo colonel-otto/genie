@@ -315,7 +315,7 @@ mod tests {
 
     fn one(objects: Vec<Unit>) -> World {
         let player = Player {
-            objects,
+            objects: objects.into(),
             ..Player::default()
         };
         World::new(0, 1, 0, vec![0], vec![player])

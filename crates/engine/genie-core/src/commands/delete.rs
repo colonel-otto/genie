@@ -569,7 +569,8 @@ mod tests {
                             id: 12,
                             ..Unit::default()
                         },
-                    ],
+                    ]
+                    .into(),
                     attributes: vec![0.0; 10],
                     ..Player::default()
                 },
@@ -577,7 +578,8 @@ mod tests {
                     objects: vec![Unit {
                         id: 20,
                         ..Unit::default()
-                    }],
+                    }]
+                    .into(),
                     ..Player::default()
                 },
             ],
@@ -810,13 +812,13 @@ mod clearing_tests {
             vec![0; 2],
             vec![
                 Player {
-                    objects: gaia,
-                    sleeping: asleep,
+                    objects: gaia.into(),
+                    sleeping: asleep.into(),
                     attributes: vec![0.0; 200],
                     ..Player::default()
                 },
                 Player {
-                    objects: own,
+                    objects: own.into(),
                     attributes: vec![0.0; 200],
                     ..Player::default()
                 },

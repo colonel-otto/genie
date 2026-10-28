@@ -15,6 +15,7 @@ use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::{Master, Masters};
+use crate::objects::object_list::ObjectList;
 use crate::objects::release::{Releaser, released};
 use crate::objects::unit::{Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
@@ -122,11 +123,11 @@ fn artifacts_of_every_player_start_updating_in_the_second_tick() {
     };
     let players = vec![
         Player {
-            objects: vec![animal(true)],
+            objects: vec![animal(true)].into(),
             ..Player::default()
         },
         Player {
-            objects: vec![animal(false)],
+            objects: vec![animal(false)].into(),
             ..Player::default()
         },
     ];
@@ -207,7 +208,7 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
         0,
         vec![0],
         vec![Player {
-            objects: vec![dead_building(), live(2), live(3)],
+            objects: vec![dead_building(), live(2), live(3)].into(),
             ..Player::default()
         }],
     );
@@ -223,7 +224,7 @@ fn a_removed_object_is_replaced_by_the_last_one_which_updates_in_the_same_tick()
         0,
         vec![0],
         vec![Player {
-            objects: vec![live(3), live(2)],
+            objects: vec![live(3), live(2)].into(),
             ..Player::default()
         }],
     );
@@ -249,8 +250,8 @@ fn a_dead_objects_unit_ai_draws_nothing() {
         t.tick(10);
         t
     };
-    let with_dead = one(vec![dead_building(), live(2)]);
-    let alone = one(vec![live(2)]);
+    let with_dead = one(vec![dead_building(), live(2)].into());
+    let alone = one(vec![live(2)].into());
     assert_eq!(with_dead.players[0].objects[0].life.state, 5);
     // its full update adds the world's dt to the time since the last enemy sighting, and
     // returns before anything else
@@ -434,12 +435,9 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
         0,
         vec![0, 0, 0],
         vec![
-            player(vec![]),
-            player(vec![
-                unit(1, [10.0, 11.0, 0.0], 2),
-                unit(3, [1.0, 1.0, 0.0], 99),
-            ]),
-            player(vec![unit(2, [20.0, 21.0, 1.0], -1)]),
+            player(vec![].into()),
+            player(vec![unit(1, [10.0, 11.0, 0.0], 2), unit(3, [1.0, 1.0, 0.0], 99)].into()),
+            player(vec![unit(2, [20.0, 21.0, 1.0], -1)].into()),
         ],
     );
     let table = Masters::new([master(74, 6), master(4, 0)]);
@@ -833,7 +831,7 @@ fn a_villager_tends_the_nearest_livestock_with_room() {
     let v = other.players[1].objects.pop().unwrap();
     other.players.push(Player {
         attributes: vec![0.0; 300],
-        objects: vec![v],
+        objects: vec![v].into(),
         ..Player::default()
     });
     other.masters.push(other.masters[1].clone());
@@ -967,7 +965,8 @@ fn a_player_s_new_tiles_give_their_resources_to_its_lists() {
                     object(501, 411, 10.5, 10.25),
                     object(502, 412, 10.5, 10.5),
                     object(503, 413, 11.5, 10.75),
-                ],
+                ]
+                .into(),
                 ..Player::default()
             },
             Player::default(),
@@ -1064,7 +1063,8 @@ fn a_resource_leaves_the_lists_when_it_runs_out_or_is_deleted() {
                 objects: vec![
                     dead(501, Class::Static, 3, 411),
                     dead(502, Class::Animated, 5, 412),
-                ],
+                ]
+                .into(),
                 ..Player::default()
             },
             Player::default(),
@@ -1312,7 +1312,8 @@ fn build_world() -> World {
                 objects: vec![
                     villager(9175, 83, 30.0, 89.0),
                     villager(9181, 293, 29.0, 99.0),
-                ],
+                ]
+                .into(),
                 resources: [200.0, 100.0, 200.0, 100.0],
                 attributes: vec![0.0; 250],
                 ..Player::default()
@@ -1453,13 +1454,13 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         vec![
             Player::default(),
             Player {
-                objects: vec![villager(9175, 83, 30.0, 89.0)],
+                objects: vec![villager(9175, 83, 30.0, 89.0)].into(),
                 resources: [200.0, 100.0, 200.0, 100.0],
                 attributes: vec![0.0; 250],
                 ..Player::default()
             },
             Player {
-                objects: vec![villager(9618, 293, 29.0, 99.0)],
+                objects: vec![villager(9618, 293, 29.0, 99.0)].into(),
                 attributes: vec![0.0; 250],
                 ..Player::default()
             },
@@ -1553,7 +1554,7 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
         vec![
             Player::default(),
             Player {
-                objects: vec![villager, foundation],
+                objects: vec![villager, foundation].into(),
                 attributes: vec![0.0; 250],
                 relations: vec![1, 0],
                 ..Player::default()
@@ -1731,7 +1732,7 @@ fn a_wait_reads_its_foundation_s_build_points_wherever_it_is() {
         left: None,
     };
     assert_eq!(
-        wait_progress(10028, OthersRef::new(0, &[], other)),
+        wait_progress(10028, OthersRef::new(0, &ObjectList::default(), other)),
         Some(0.0)
     );
 }
@@ -2165,7 +2166,7 @@ pub(crate) fn forage_world() -> World {
         my_pasture: -1,
         ..Unit::default()
     };
-    t.players[0].objects = vec![resource(600, 32.5), resource(601, 36.5)];
+    t.players[0].objects = vec![resource(600, 32.5), resource(601, 36.5)].into();
     t.players[1].objects.push(Unit {
         id: 700,
         position: [20.0, 89.5, 0.0],
@@ -3119,7 +3120,8 @@ fn a_built_castle_s_death_takes_its_headroom_and_its_count() {
                         pasture: -1,
                         my_pasture: -1,
                         ..Unit::default()
-                    }],
+                    }]
+                    .into(),
                     attributes,
                     ..Player::default()
                 },
@@ -3185,7 +3187,8 @@ fn the_load_s_mesh_takes_the_shapes_of_the_standing_tall_objects() {
                 house(4, 0, None, true, 70),
                 house(5, 2, None, false, 70),
                 house(6, 2, None, false, 71),
-            ],
+            ]
+            .into(),
             ..Player::default()
         }],
     );
@@ -3272,7 +3275,7 @@ pub(crate) fn hunt_world() -> World {
         my_pasture: -1,
         ..Unit::default()
     };
-    t.players[0].objects = vec![deer(500, 32.5), deer(501, 36.5)];
+    t.players[0].objects = vec![deer(500, 32.5), deer(501, 36.5)].into();
     t.players[1].objects.push(Unit {
         id: 700,
         position: [20.0, 89.5, 0.0],
@@ -4613,7 +4616,7 @@ fn a_build_creates_a_foundation_whose_unit_ai_draws_before_the_turn_players_unit
                     ..Player::default()
                 },
                 Player {
-                    objects,
+                    objects: objects.into(),
                     ..Player::default()
                 },
             ],
@@ -4698,11 +4701,11 @@ fn an_order_resets_the_idle_timeouts_of_its_units_wherever_they_are() {
         vec![0, 0],
         vec![
             Player {
-                objects: vec![ordered(7), ordered(8)],
+                objects: vec![ordered(7), ordered(8)].into(),
                 ..Player::default()
             },
             Player {
-                objects: vec![live(2)],
+                objects: vec![live(2)].into(),
                 ..Player::default()
             },
         ],
@@ -4808,7 +4811,7 @@ fn livestock_without_actions_starts_its_artifact_again() {
         vec![
             Player::default(),
             Player {
-                objects: vec![sheep],
+                objects: vec![sheep].into(),
                 attributes: vec![0.0; 100],
                 ..Player::default()
             },
@@ -4963,7 +4966,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
         1,
         0,
         vec![0, 0],
-        vec![player(vec![]), player(vec![sheep])],
+        vec![player(vec![].into()), player(vec![sheep].into())],
     );
     t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
     placeable(&mut t);
@@ -5021,7 +5024,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
         0,
         vec![0],
         vec![Player {
-            objects: vec![farm],
+            objects: vec![farm].into(),
             attributes,
             ..Player::default()
         }],
@@ -5084,7 +5087,7 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
         0,
         vec![0],
         vec![Player {
-            objects: vec![house],
+            objects: vec![house].into(),
             attributes: vec![0.0; 300],
             ..Player::default()
         }],
@@ -5188,8 +5191,8 @@ fn an_order_resets_its_units_sleeping_ones_too() {
         ..Unit::default()
     };
     let player = Player {
-        objects: vec![unit(1)],
-        sleeping: vec![unit(2)],
+        objects: vec![unit(1)].into(),
+        sleeping: vec![unit(2)].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);
@@ -5228,7 +5231,7 @@ fn only_a_standing_unlocked_transforming_gate_lets_an_ally_pass() {
         ..Unit::default()
     };
     let player = |objects: Vec<Unit>| Player {
-        objects,
+        objects: objects.into(),
         relations: vec![0, 0],
         attributes: vec![0.0; 250],
         ..Player::default()
@@ -5280,7 +5283,7 @@ fn a_gate_opens_for_its_allies_while_they_update() {
         ..Unit::default()
     };
     let player = |objects: Vec<Unit>, relations: Vec<u8>| Player {
-        objects,
+        objects: objects.into(),
         relations,
         attributes: vec![0.0; 250],
         ..Player::default()
@@ -5463,7 +5466,8 @@ fn gate_world() -> World {
                     unit(27746, 88, 18.5, Some(27745)),
                     unit(27747, 88, 21.5, Some(27745)),
                     unit(1, 4, 19.6, None),
-                ],
+                ]
+                .into(),
                 ..Player::default()
             },
         ],
@@ -5726,7 +5730,7 @@ fn one_player(objects: Vec<Unit>, resources: [f32; 4]) -> World {
         0,
         vec![0],
         vec![Player {
-            objects,
+            objects: objects.into(),
             resources,
             attributes,
             ..Player::default()
@@ -5945,7 +5949,7 @@ fn a_queue_at_another_player_s_building_queues_and_pays_for_its_owner() {
     let two = |cheats| {
         let mut t = one_player(vec![], [200.0; 4]);
         let mut other = t.players[0].clone();
-        other.objects = vec![centre(10)];
+        other.objects = vec![centre(10)].into();
         other.resources = [100.0, 0.0, 0.0, 0.0];
         t.players.push(other);
         t.player_time.push(0);
@@ -6212,7 +6216,7 @@ fn a_research_s_unmodelled_parts_fail() {
         fails(&|t| {
             let tc = t.players[0].objects.remove(0);
             t.players.push(Player {
-                objects: vec![tc],
+                objects: vec![tc].into(),
                 ..Player::default()
             });
             t.masters.push(t.masters[0].clone());
@@ -6759,12 +6763,13 @@ fn a_gaia_archer_a_player_sees_goes_to_that_player() {
                         ai: None,
                         capture_flag: 1,
                         ..hands_unit(21712, 4)
-                    }],
+                    }]
+                    .into(),
                     attributes: vec![0.0; 300],
                     ..Player::default()
                 },
                 Player {
-                    objects: vec![live(500)],
+                    objects: vec![live(500)].into(),
                     attributes: vec![0.0; 300],
                     computer,
                     kind: if computer { 3 } else { 1 },
@@ -6882,12 +6887,13 @@ fn teardown_world() -> World {
                     unit(40, 83),
                     tc(9149),
                     tc(9150),
-                ],
+                ]
+                .into(),
                 relations: vec![0, 1, 2],
                 ..Player::default()
             },
             Player {
-                objects: vec![foundation],
+                objects: vec![foundation].into(),
                 relations: vec![0, 2, 1],
                 ..Player::default()
             },
@@ -7177,7 +7183,7 @@ fn deaths_world() -> World {
         vec![0, 0],
         vec![
             Player {
-                objects: gaia,
+                objects: gaia.into(),
                 ..Player::default()
             },
             Player {
@@ -7371,7 +7377,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         },
         ..walker(43)
     };
-    t.players[1].objects = vec![walker(44), dead];
+    t.players[1].objects = vec![walker(44), dead].into();
     t.spatial.insert(
         50,
         Placed {
@@ -7472,7 +7478,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     };
     t.spatial.insert(40, placed(10.5, 0.2, 4, 83));
     t.spatial.insert(9149, placed(20.0, 2.0, 52, 109));
-    let others = [tc];
+    let others = ObjectList::from(vec![tc]);
     let drop_off = |hunter: &mut Unit, t: &mut World| {
         let world = DropWorld {
             masters: Some(&masters),
@@ -7652,17 +7658,17 @@ fn a_foundation_lists_its_unallied_takers_and_drops_them_when_they_let_it_go() {
         vec![
             Player::default(),
             Player {
-                objects: vec![foundation(10028, 621), foundation(10029, 70)],
+                objects: vec![foundation(10028, 621), foundation(10029, 70)].into(),
                 relations: vec![0, 0, 2, 4],
                 ..Player::default()
             },
             Player {
-                objects: vec![unit(40, 83), unit(41, 83)],
+                objects: vec![unit(40, 83), unit(41, 83)].into(),
                 relations: vec![0, 2, 0, 2],
                 ..Player::default()
             },
             Player {
-                objects: vec![unit(50, 83)],
+                objects: vec![unit(50, 83)].into(),
                 relations: vec![0, 4, 2, 0],
                 ..Player::default()
             },
@@ -7885,12 +7891,12 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         vec![0, 0, 0],
         vec![
             Player {
-                objects: vec![torch],
+                objects: vec![torch].into(),
                 attributes: vec![0.0; 300],
                 ..Player::default()
             },
             Player {
-                objects: vec![villager],
+                objects: vec![villager].into(),
                 attributes: vec![0.0; 300],
                 ..Player::default()
             },
@@ -8002,12 +8008,12 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         vec![0, 0, 0],
         vec![
             Player {
-                objects: vec![torch],
+                objects: vec![torch].into(),
                 attributes: vec![0.0; 300],
                 ..Player::default()
             },
             Player {
-                objects: vec![villager],
+                objects: vec![villager].into(),
                 attributes: vec![0.0; 300],
                 ..Player::default()
             },
@@ -8096,12 +8102,12 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         vec![0, 0, 0],
         vec![
             Player {
-                objects: vec![sheep],
+                objects: vec![sheep].into(),
                 attributes: vec![0.0; 300],
                 ..Player::default()
             },
             Player {
-                objects: vec![villager],
+                objects: vec![villager].into(),
                 attributes: vec![0.0; 300],
                 ..Player::default()
             },
@@ -8246,9 +8252,9 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
             0,
             vec![0; 3],
             vec![
-                player(2, vec![unit(50, 126)]),
-                player(1, vec![unit(40, 83), unit(41, 83)]),
-                player(attacker_kind, vec![unit(60, 4)]),
+                player(2, vec![unit(50, 126)].into()),
+                player(1, vec![unit(40, 83), unit(41, 83)].into()),
+                player(attacker_kind, vec![unit(60, 4)].into()),
             ],
         );
         let masters = Masters::new([
@@ -8323,7 +8329,7 @@ fn a_killed_sheep_goes_to_gaia() {
                 ..Player::default()
             },
             Player {
-                objects: vec![town_centre(10029), sheep],
+                objects: vec![town_centre(10029), sheep].into(),
                 attributes: vec![0.0; 500],
                 ..Player::default()
             },
@@ -8400,13 +8406,16 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         0,
         vec![0, 0, 0],
         vec![
-            player(vec![]),
-            player(vec![]),
-            player(vec![
-                building(30, 82, None),
-                building(31, 1, Some(30)),
-                building(32, 1, Some(30)),
-            ]),
+            player(vec![].into()),
+            player(vec![].into()),
+            player(
+                vec![
+                    building(30, 82, None),
+                    building(31, 1, Some(30)),
+                    building(32, 1, Some(30)),
+                ]
+                .into(),
+            ),
         ],
     );
     let castle = Master {
@@ -8784,12 +8793,12 @@ fn a_petard_below_1_hit_point_blasts_about_itself_then_dies() {
         vec![0, 0],
         vec![
             Player {
-                objects: vec![unit(7948, 706, -1.0, [101.5, 158.5, 0.0])],
+                objects: vec![unit(7948, 706, -1.0, [101.5, 158.5, 0.0])].into(),
                 attributes: vec![0.0; 250],
                 ..Player::default()
             },
             Player {
-                objects: vec![unit(7231, 117, 1080.0, [102.5, 158.5, 0.0])],
+                objects: vec![unit(7231, 117, 1080.0, [102.5, 158.5, 0.0])].into(),
                 attributes: vec![0.0; 250],
                 ..Player::default()
             },
@@ -8949,7 +8958,8 @@ fn an_annex_follows_its_dying_main_building_into_state_4() {
                         annex_of: Some(7228),
                         ..building(7229, 95, 1650.0)
                     },
-                ],
+                ]
+                .into(),
                 attributes: vec![0.0; 250],
                 ..Player::default()
             },
@@ -9049,7 +9059,8 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
                     foundation(34602, 1192, 1.0, Some(34600)),
                     foundation(34601, 1192, 1.0, Some(34600)),
                     foundation(34600, 800, 0.0, None),
-                ],
+                ]
+                .into(),
                 attributes: vec![0.0; 250],
                 ..Player::default()
             },
@@ -9241,7 +9252,7 @@ fn the_attack_timer_runs_down_at_the_object_s_rate() {
         0,
         vec![0],
         vec![Player {
-            objects: vec![unit],
+            objects: vec![unit].into(),
             ..Player::default()
         }],
     );
@@ -9318,7 +9329,7 @@ fn building_short_of_its_build_time_dies(state: u8) {
         0,
         vec![0],
         vec![Player {
-            objects: vec![foundation],
+            objects: vec![foundation].into(),
             attributes: vec![0.0; 300],
             ..Player::default()
         }],
@@ -9744,7 +9755,8 @@ fn scout_attack_on(
                 ..Lifecycle::default()
             },
             ..Unit::default()
-        }],
+        }]
+        .into(),
         ..Player::default()
     };
     let players = [gaia];
@@ -9781,6 +9793,7 @@ fn scout_attack_on(
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
+    let none = ObjectList::default();
     let attacked = {
         let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
@@ -9820,7 +9833,7 @@ fn scout_attack_on(
             construction_rate: 1.0,
             others: OthersRef::new(
                 1,
-                &[],
+                &none,
                 Foreign {
                     before: &players,
                     after: &[],
@@ -9932,7 +9945,8 @@ fn attack_by(
                 ..Lifecycle::default()
             },
             ..Unit::default()
-        }],
+        }]
+        .into(),
         ..Player::default()
     };
     let players = [gaia];
@@ -9970,6 +9984,7 @@ fn attack_by(
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
+    let none = ObjectList::default();
     let attacked = {
         let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
@@ -10009,7 +10024,7 @@ fn attack_by(
             construction_rate: 1.0,
             others: OthersRef::new(
                 1,
-                &[],
+                &none,
                 Foreign {
                     before: &players,
                     after: &[],
@@ -10144,14 +10159,15 @@ fn help_view<R>(
                 ..Lifecycle::default()
             },
             ..Unit::default()
-        }],
+        }]
+        .into(),
         ..Player::default()
     };
     let players = [gaia];
     if let Some(lists) = searched {
         spatial.set_searched(lists);
     }
-    let others = [helper];
+    let others = ObjectList::from(vec![helper]);
     let mut unit = Unit {
         id: 123,
         position: [10.0, 10.0, 0.0],
@@ -10457,7 +10473,8 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
                         ..UnitAi::default()
                     }),
                     ..Unit::default()
-                }],
+                }]
+                .into(),
                 resources: [200.0, 100.0, 200.0, 100.0],
                 attributes: vec![0.0; 250],
                 ..Player::default()
@@ -10539,7 +10556,8 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
                             ..UnitAi::default()
                         }),
                         ..Unit::default()
-                    }],
+                    }]
+                    .into(),
                     resources: [200.0, 100.0, 200.0, 100.0],
                     attributes: vec![0.0; 250],
                     ..Player::default()
@@ -10683,7 +10701,7 @@ fn reseed_world() -> World {
         vec![
             Player::default(),
             Player {
-                objects: vec![farmer],
+                objects: vec![farmer].into(),
                 resources: [0.0, 100.0, 0.0, 0.0],
                 attributes: vec![0.0; 250],
                 ..Player::default()
@@ -10909,7 +10927,8 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
                         ..UnitAi::default()
                     }),
                     ..Unit::default()
-                }],
+                }]
+                .into(),
                 resources: [200.0, 100.0, 200.0, 100.0],
                 attributes: vec![0.0; 250],
                 ..Player::default()

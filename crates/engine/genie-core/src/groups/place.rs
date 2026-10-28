@@ -423,7 +423,7 @@ mod tests {
             0,
             vec![0],
             vec![crate::world::Player {
-                objects: units.clone(),
+                objects: units.clone().into(),
                 ..crate::world::Player::default()
             }],
         );

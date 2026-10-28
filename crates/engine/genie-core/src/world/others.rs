@@ -5,6 +5,7 @@
 //! caller asks for the owner's own object ([`OthersRef::own`]), another player's
 //! ([`OthersRef::foreign`]) or anyone's ([`OthersRef::find`]), never for a list position.
 
+use crate::objects::object_list::ObjectList;
 use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::unit_ai::world_view::Foreign;
 use crate::world::player::Player;
@@ -16,14 +17,14 @@ pub(crate) struct OthersRef<'a> {
     /// The owner, as the update reads it (a captured unit's new one).
     player: usize,
     /// The owner's live list (the updating object's slot holds its stand-in, [`TAKEN_OUT`]).
-    own: &'a [Unit],
+    own: &'a ObjectList,
     /// The other players' lists.
     foreign: Foreign<'a>,
 }
 
 impl<'a> OthersRef<'a> {
     /// Player `player`'s view: its live list `own` and the other players' `foreign`.
-    pub(crate) const fn new(player: usize, own: &'a [Unit], foreign: Foreign<'a>) -> Self {
+    pub(crate) const fn new(player: usize, own: &'a ObjectList, foreign: Foreign<'a>) -> Self {
         Self {
             player,
             own,
@@ -33,7 +34,7 @@ impl<'a> OthersRef<'a> {
 
     /// Player `player`'s view of its live list `own` alone, no other player's.
     #[cfg(test)]
-    pub(crate) const fn alone(player: usize, own: &'a [Unit]) -> Self {
+    pub(crate) const fn alone(player: usize, own: &'a ObjectList) -> Self {
         let foreign = Foreign {
             before: &[],
             after: &[],
@@ -47,7 +48,7 @@ impl<'a> OthersRef<'a> {
     /// # Panics
     ///
     /// When `players` holds no player `p`.
-    pub(crate) fn of(players: &'a [Player], p: usize) -> Self {
+    pub(crate) const fn of(players: &'a [Player], p: usize) -> Self {
         let (before, rest) = players.split_at(p);
         let (player, after) = rest.split_first().expect("the view's player");
         let foreign = Foreign {
@@ -60,7 +61,7 @@ impl<'a> OthersRef<'a> {
 
     /// The view of player `new`, which took the updating object over in its update, with its
     /// live list `list`: this view's owner's list counts among the other players' (`left`).
-    pub(crate) const fn changed_hands(self, new: usize, list: &'a [Unit]) -> Self {
+    pub(crate) const fn changed_hands(self, new: usize, list: &'a ObjectList) -> Self {
         Self {
             player: new,
             own: list,
@@ -73,7 +74,7 @@ impl<'a> OthersRef<'a> {
 
     /// The owner's live object `id`.
     pub(crate) fn own(&self, id: i32) -> Option<&'a Unit> {
-        self.own_iter().find(|u| u.id == id)
+        self.own.by_id(id)
     }
 
     /// The owner's live objects in their list's order, the updating one aside.
@@ -105,7 +106,23 @@ impl<'a> OthersRef<'a> {
     /// Another player's live or sleeping object `id`, with that player
     /// ([`OthersRef::foreign_iter`]'s first).
     pub(crate) fn foreign(&self, id: i32) -> Option<(usize, &'a Unit)> {
-        self.foreign_iter().find(|(_, u)| u.id == id)
+        let Foreign {
+            before,
+            after,
+            left,
+        } = self.foreign;
+        let skip = before.len() + 1;
+        let before = before.iter().enumerate();
+        let after = after.iter().enumerate().map(move |(q, p)| (q + skip, p));
+        let mut players = before.chain(after);
+        players
+            .find_map(|(q, p)| {
+                p.objects
+                    .by_id(id)
+                    .or_else(|| p.sleeping.by_id(id))
+                    .map(|u| (q, u))
+            })
+            .or_else(|| left.and_then(|(q, list)| list.by_id(id).map(|u| (q, u))))
     }
 
     /// Every object the view holds: the owner's, then the other players'.
@@ -130,13 +147,13 @@ impl<'a> OthersRef<'a> {
 /// with the owner's other live objects to write.
 pub(crate) struct Others<'a> {
     player: usize,
-    own: &'a mut [Unit],
+    own: &'a mut ObjectList,
     foreign: Foreign<'a>,
 }
 
 impl<'a> Others<'a> {
     /// Player `player`'s view: its live list `own` to change and the other players' `foreign`.
-    pub(crate) const fn new(player: usize, own: &'a mut [Unit], foreign: Foreign<'a>) -> Self {
+    pub(crate) const fn new(player: usize, own: &'a mut ObjectList, foreign: Foreign<'a>) -> Self {
         Self {
             player,
             own,
@@ -166,7 +183,7 @@ impl<'a> Others<'a> {
 
     /// The owner's live object `id`, to change.
     pub(crate) fn own_mut(&mut self, id: i32) -> Option<&mut Unit> {
-        self.own_iter_mut().find(|u| u.id == id)
+        self.own.by_id_mut(id)
     }
 
     /// The owner's live objects in their list's order, the updating one aside, to change.
@@ -196,8 +213,8 @@ mod tests {
 
     /// Player 1 updates object 11 (taken out); player 0 holds 1 live and 2 asleep, player 2
     /// holds 20 and, again, 12.
-    fn world() -> (Vec<Unit>, [Player; 1], [Player; 1]) {
-        let mut own = vec![unit(10), Unit::taken_out(), unit(12)];
+    fn world() -> (ObjectList, [Player; 1], [Player; 1]) {
+        let mut own = ObjectList::from(vec![unit(10), Unit::taken_out(), unit(12)]);
         own[2].life.hp = 5.0;
         let mut theirs = player(&[20, 12], &[]);
         theirs.objects[1].life.hp = 7.0;

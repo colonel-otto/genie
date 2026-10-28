@@ -792,7 +792,7 @@ mod stack_tests {
             vec![
                 Player::default(),
                 Player {
-                    objects: vec![foundation],
+                    objects: vec![foundation].into(),
                     attributes: vec![0.0; 600],
                     ..Player::default()
                 },
@@ -906,7 +906,7 @@ mod stack_tests {
                 [53.0, 148.0, 0.0]
             ]
         );
-        let unit = |id: i32| t.players[1].objects.iter().find(|u| u.id == id).unwrap();
+        let unit = |id: i32| t.players[1].objects.by_id(id).unwrap();
         assert_eq!(
             [8769, 8770, 8771, 8772, 8773].map(|a| unit(a).annex_of),
             [Some(8768), Some(8768), Some(8770), Some(8768), Some(8768)]
@@ -1007,7 +1007,7 @@ mod stack_tests {
                 },
             )
             .unwrap();
-            let gate = t.players[1].objects.iter().find(|u| u.id == 8768).unwrap();
+            let gate = t.players[1].objects.by_id(8768).unwrap();
             assert_eq!(gate.gate.map(|g| g.locked), Some(locked));
             let last_move = gate.body.mover().map(|m| m.last_move);
             assert_eq!(

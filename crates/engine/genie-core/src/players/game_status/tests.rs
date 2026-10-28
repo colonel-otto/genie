@@ -67,7 +67,11 @@ fn game() -> World {
         1,
         0,
         vec![0; 3],
-        vec![Player::default(), player(vec![tc]), player(vec![])],
+        vec![
+            Player::default(),
+            player(vec![tc].into()),
+            player(vec![].into()),
+        ],
     );
     let masters = Masters::new([
         Master {

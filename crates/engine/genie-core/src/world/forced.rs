@@ -355,7 +355,7 @@ mod tests {
         theirs[0].stopped = false;
         theirs[0].ai.as_mut().unwrap().hunted = None;
         let mut game = GameState {
-            players: vec![vec![], theirs.clone()],
+            players: vec![vec![], theirs.to_vec()],
             ..GameState::default()
         };
         let notes = t.force(&game);

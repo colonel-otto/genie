@@ -297,10 +297,10 @@ const WAYPOINT_APART_LOW: f32 = crate::math::image::order::WAYPOINT_APART_LOW;
 impl World {
     pub(crate) fn place(&self, id: i32) -> Option<Place> {
         self.players.iter().enumerate().find_map(|(p, player)| {
-            if let Some(i) = player.objects.iter().position(|u| u.id == id) {
+            if let Some(i) = player.objects.position_of(id) {
                 return Some(Place::Live(p, i));
             }
-            let i = player.sleeping.iter().position(|u| u.id == id)?;
+            let i = player.sleeping.position_of(id)?;
             Some(Place::Sleeping(p, i))
         })
     }

@@ -312,7 +312,7 @@ impl World {
             let Some((p, _)) = self.object(id) else {
                 continue;
             };
-            let Some(idx) = self.players[p].objects.iter().position(|u| u.id == id) else {
+            let Some(idx) = self.players[p].objects.position_of(id) else {
                 return Err(GenieError::unsupported(
                     "a GO_BACK_TO_WORK of a sleeping object",
                 ));

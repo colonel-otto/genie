@@ -645,8 +645,9 @@ mod tests {
                 unit(12, 109, Some(149.9)),
                 unit(13, 118, None),
                 unit(14, 109, Some(f32::NAN)),
-            ],
-            sleeping: vec![unit(15, 83, None)],
+            ]
+            .into(),
+            sleeping: vec![unit(15, 83, None)].into(),
             ..Player::default()
         };
         let mut t = World::new(0, 0, 0, vec![0; 2], vec![Player::default(), player]);

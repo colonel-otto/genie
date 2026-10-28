@@ -18,7 +18,7 @@ impl World {
     ) -> Result<(), GenieError> {
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
-            let Some(i) = self.players[player].objects.iter().position(|u| u.id == id) else {
+            let Some(i) = self.players[player].objects.position_of(id) else {
                 continue;
             };
             let unit = &self.players[player].objects[i];
@@ -226,7 +226,7 @@ impl World {
         if state.state != 1 && !repeatable {
             return Ok(());
         }
-        let Some(i) = owner.objects.iter().position(|u| u.id == building_id) else {
+        let Some(i) = owner.objects.position_of(building_id) else {
             let elsewhere = self.players.iter().any(|q| {
                 q.objects
                     .iter()

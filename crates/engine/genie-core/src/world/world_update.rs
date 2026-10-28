@@ -350,7 +350,7 @@ impl World {
             moved.push(player.objects.swap_remove(i));
         }
         for id in also {
-            if let Some(k) = player.objects.iter().position(|u| u.id == id) {
+            if let Some(k) = player.objects.position_of(id) {
                 moved.push(player.objects.swap_remove(k));
             }
         }

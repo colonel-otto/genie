@@ -17,12 +17,12 @@ fn an_object_s_own_slot_is_taken_while_it_holds_the_object() {
         vec![0, 0],
         vec![
             crate::world::Player {
-                objects: vec![unit(1), unit(2)],
+                objects: vec![unit(1), unit(2)].into(),
                 ..crate::world::Player::default()
             },
             crate::world::Player {
-                objects: vec![unit(3)],
-                sleeping: vec![unit(4)],
+                objects: vec![unit(3)].into(),
+                sleeping: vec![unit(4)].into(),
                 ..crate::world::Player::default()
             },
         ],
@@ -66,7 +66,7 @@ fn a_drop_off_order_leaves_a_livestock_without_a_drop_site_alone() {
         0,
         vec![0],
         vec![crate::world::Player {
-            objects: vec![goose],
+            objects: vec![goose].into(),
             ..crate::world::Player::default()
         }],
     );
@@ -220,7 +220,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             0,
             vec![0],
             vec![crate::world::Player {
-                objects: vec![villager.clone(), foundation.clone(), mill.clone()],
+                objects: vec![villager.clone(), foundation.clone(), mill.clone()].into(),
                 ..crate::world::Player::default()
             }],
         );
@@ -781,7 +781,8 @@ fn the_unload_check_keeps_an_ally_s_object_the_command_ties_to_the_issuer() {
         objects: vec![Unit {
             id: 30,
             ..Unit::default()
-        }],
+        }]
+        .into(),
         ..crate::world::Player::default()
     });
     t.players[1].relations = vec![3, 0, 4];
@@ -1096,7 +1097,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
         },
         ..Unit::default()
     };
-    t.players[1].objects = vec![trophy(2)];
+    t.players[1].objects = vec![trophy(2)].into();
     t.transform_object(1, 60, 1650).unwrap();
     let unit = &t.players[1].objects[0];
     assert_eq!(unit.life.master_id, 1650);
@@ -1104,7 +1105,7 @@ fn a_transformed_building_takes_its_new_master_s_build_time_in_state_2() {
     assert_eq!(unit.construction.unwrap().progress, 30.0);
     // FUN_141225b70 in state 2: the volleys are the new master's volley fire
     assert_eq!(unit.firepower, 2.0);
-    t.players[1].objects = vec![trophy(1)];
+    t.players[1].objects = vec![trophy(1)].into();
     t.transform_object(1, 60, 1650).unwrap();
     assert_eq!(t.players[1].objects[0].construction.unwrap().progress, 10.0);
     assert_eq!(t.players[1].objects[0].firepower, 7.0);
@@ -2016,7 +2017,7 @@ fn a_builder_leaves_the_main_building_of_an_annex() {
         },
         ..Unit::default()
     };
-    t.players[1].objects = vec![building(60, None), building(70, Some(60))];
+    t.players[1].objects = vec![building(60, None), building(70, Some(60))].into();
     t.leave_builders(70).unwrap();
     let builders = |t: &World, i: usize| t.players[1].objects[i].construction.unwrap().builders;
     assert_eq!((builders(&t, 0), builders(&t, 1)), (1, 2));
@@ -2073,7 +2074,7 @@ fn an_action_s_new_target_is_taken_and_its_old_one_let_go() {
         },
         ..Unit::default()
     };
-    t.players[0].objects = vec![deer(40, 2, 1), deer(41, 2, 0), deer(42, 7, 0)];
+    t.players[0].objects = vec![deer(40, 2, 1), deer(41, 2, 0), deer(42, 7, 0)].into();
     let workers =
         |t: &World| -> Vec<i32> { t.players[0].objects.iter().map(|u| u.workers).collect() };
     assert_eq!(t.retarget_action(1, 0, 40, 40, false), Ok(40));
@@ -2203,8 +2204,9 @@ fn a_shutting_gate_kills_the_units_in_it_but_the_spared() {
         unit(12, 42, 0.0),
         unit(13, 58, 50.0),
         unit(14, 58, f32::NAN),
-    ];
-    t.players[1].sleeping = vec![unit(15, 10, 0.0)];
+    ]
+    .into();
+    t.players[1].sleeping = vec![unit(15, 10, 0.0)].into();
     for id in 11..=16 {
         t.shut_in_gate(id).unwrap();
     }
@@ -2430,9 +2432,9 @@ fn soldier_and_enemy(x: f32, class: i16) -> World {
         0,
         vec![0, 0, 0],
         vec![
-            player(vec![], vec![0, 3, 3]),
-            player(vec![unit(10, 4, 10.0)], vec![3, 0, 3]),
-            player(vec![unit(20, 5, x)], vec![3, 3, 0]),
+            player(vec![].into(), vec![0, 3, 3]),
+            player(vec![unit(10, 4, 10.0)].into(), vec![3, 0, 3]),
+            player(vec![unit(20, 5, x)].into(), vec![3, 3, 0]),
         ],
     );
     let master = |id, class| Master {

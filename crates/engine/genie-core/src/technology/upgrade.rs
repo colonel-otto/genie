@@ -840,7 +840,7 @@ mod tests {
             &mut sprites,
         ));
         let player = crate::world::Player {
-            objects: vec![house, object(11, 70, 4, 0.0), object(12, 1403, 2, 1.0)],
+            objects: vec![house, object(11, 70, 4, 0.0), object(12, 1403, 2, 1.0)].into(),
             ..crate::world::Player::default()
         };
         let mut t = World::new(0, 1, 0, vec![0], vec![player]);
@@ -896,7 +896,7 @@ mod tests {
         (v.life.attribute_type, v.life.amount) = (17, 10.0);
         v.firepower = 1.0;
         let player = crate::world::Player {
-            objects: vec![v],
+            objects: vec![v].into(),
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
@@ -1021,8 +1021,8 @@ mod tests {
         let mut own = object(11, 4, 2, 20.0);
         own.own_master = Some(Box::new(soldier(4, 40)));
         let player = crate::world::Player {
-            objects: vec![object(10, 4, 2, 20.0), own],
-            sleeping: vec![object(12, 4, 2, 20.0)],
+            objects: vec![object(10, 4, 2, 20.0), own].into(),
+            sleeping: vec![object(12, 4, 2, 20.0)].into(),
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };
@@ -1085,7 +1085,7 @@ mod tests {
     /// (each animated) and 300 attributes.
     fn one_player(objects: Vec<Unit>, masters: Vec<Master>, graphics: &[i16]) -> World {
         let player = crate::world::Player {
-            objects,
+            objects: objects.into(),
             attributes: vec![0.0; 300],
             ..crate::world::Player::default()
         };

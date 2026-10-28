@@ -437,7 +437,7 @@ mod tests {
         mover.paths[0].state = 3;
         walking.body.put_mover(Some(mover));
         let player = Player {
-            objects: vec![unit(10, 4, 1.0), walking, unit(12, 6, 3.0)],
+            objects: vec![unit(10, 4, 1.0), walking, unit(12, 6, 3.0)].into(),
             ..Player::default()
         };
         let mut t = World::new(0, 0, 0, vec![0, 0], vec![Player::default(), player]);

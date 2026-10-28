@@ -8,6 +8,7 @@ pub mod layers;
 pub mod lifecycle;
 pub mod lines;
 pub mod masters;
+pub mod object_list;
 pub(crate) mod release;
 pub mod sprite;
 pub mod unit;

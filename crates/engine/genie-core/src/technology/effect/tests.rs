@@ -162,7 +162,7 @@ fn an_object_takes_its_record_again_unless_dying_inside_or_flat() {
         0,
         vec![0],
         vec![Player {
-            objects: vec![unit(1, 2, None), unit(2, 7, None), unit(3, 2, Some(9))],
+            objects: vec![unit(1, 2, None), unit(2, 7, None), unit(3, 2, Some(9))].into(),
             ..Player::default()
         }],
     );
@@ -274,7 +274,7 @@ fn loom_adds_hit_points_to_its_villagers_and_their_master_and_armor_to_the_maste
         u
     };
     let player = Player {
-        objects: vec![villager(9175, 25.0), villager(9177, 10.0)],
+        objects: vec![villager(9175, 25.0), villager(9177, 10.0)].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -367,7 +367,7 @@ fn attribute(kind: u8, a: i16, b: i16, c: i16, d: f32) -> EffectCommand {
 #[test]
 fn an_effect_on_one_master_changes_its_objects_and_it_alone() {
     let player = Player {
-        objects: vec![unit_of(1, 4, 30.0), unit_of(2, 5, 30.0)],
+        objects: vec![unit_of(1, 4, 30.0), unit_of(2, 5, 30.0)].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -409,7 +409,7 @@ fn a_change_moves_the_shares_of_the_units_inside_a_building() {
     let mut archer = unit_of(11, 4, 30.0);
     archer.life.inside = Some(10);
     let player = Player {
-        objects: vec![tower, archer],
+        objects: vec![tower, archer].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -444,7 +444,7 @@ fn a_class_effect_reaches_buildings_their_annexes_and_foundations() {
     let mut foundation = unit_of(22, 30, 10.0);
     foundation.life.state = 0;
     let player = Player {
-        objects: vec![main, annex, foundation],
+        objects: vec![main, annex, foundation].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -529,7 +529,7 @@ fn a_team_effect_reaches_the_mutual_allies() {
 #[test]
 fn a_storage_set_moves_the_player_s_attribute_by_each_object() {
     let player = Player {
-        objects: vec![unit_of(1, 70, 550.0), unit_of(2, 70, 550.0)],
+        objects: vec![unit_of(1, 70, 550.0), unit_of(2, 70, 550.0)].into(),
         attributes: vec![0.0; 40],
         ..Player::default()
     };
@@ -560,7 +560,7 @@ fn a_static_object_s_line_of_sight_and_second_storage_take_the_change() {
     };
     let world = || {
         let player = Player {
-            objects: vec![unit_of(1, 50, 10.0)],
+            objects: vec![unit_of(1, 50, 10.0)].into(),
             attributes: vec![0.0; 40],
             ..Player::default()
         };
@@ -672,8 +672,8 @@ fn an_object_s_copies_of_its_master_follow_its_change() {
     let mut site = unit_of(1, 4, 30.0);
     site.construction = Some(built());
     let player = Player {
-        objects: vec![site, unit_of(3, 5, 30.0)],
-        sleeping: vec![unit_of(2, 4, 30.0)],
+        objects: vec![site, unit_of(3, 5, 30.0)].into(),
+        sleeping: vec![unit_of(2, 4, 30.0)].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -765,7 +765,7 @@ fn a_speed_change_reaches_the_units_movement() {
     let stats = mover.stats;
     walker.body.put_mover(Some(mover));
     let player = Player {
-        objects: vec![walker],
+        objects: vec![walker].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -836,7 +836,7 @@ fn a_farm_food_change_grows_the_farms_food() {
             task: crate::objects::masters::Task::default(),
         }));
     let player = Player {
-        objects: vec![farm],
+        objects: vec![farm].into(),
         attributes: vec![0.0; 300],
         ..Player::default()
     };
@@ -1099,7 +1099,7 @@ fn spawns_and_cost_entries() {
     let mut centre = unit_of(1, 109, 2400.0);
     centre.life.state = 0;
     let player = Player {
-        objects: vec![centre],
+        objects: vec![centre].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -1468,7 +1468,7 @@ fn the_last_building_of_a_master_withdraws_its_technology() {
         u
     };
     let player = Player {
-        objects: vec![building(1, 3), building(2, 2)],
+        objects: vec![building(1, 3), building(2, 2)].into(),
         techs: vec![TechState {
             state: 3,
             ..TechState::default()
@@ -1515,7 +1515,7 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
         crate::movement::explore::ExploreAction::new([5.0, 5.0, 0.0]).0,
     ));
     let player = Player {
-        objects: vec![shown(1, 0), shown(2, 1), exploring],
+        objects: vec![shown(1, 0), shown(2, 1), exploring].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
@@ -1557,7 +1557,7 @@ fn a_height_or_obstruction_change_takes_the_records_off_and_gives_them_again() {
     let mut soldier = unit_of(2, 4, 30.0);
     soldier.group.id = 7;
     let player = Player {
-        objects: vec![house, soldier],
+        objects: vec![house, soldier].into(),
         ..Player::default()
     };
     let mut t = World::new(0, 0, 0, vec![0], vec![player]);
