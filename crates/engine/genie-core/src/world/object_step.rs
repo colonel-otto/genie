@@ -86,7 +86,6 @@ impl World {
             builder_leaves: Vec::new(),
             left_group: None,
             ghost_deaths: Vec::new(),
-            started: Vec::new(),
             unwatched: Vec::new(),
             mode_1: mode_680 == 1,
             player: p,

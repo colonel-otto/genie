@@ -104,8 +104,8 @@ impl Unit {
     /// a farm's bonus once its build points reached its build time, a mule cart's search for
     /// resources, the caller's), then, as the state is still 0 and 3 lies within 1 to 6, its
     /// construction's start (`FUN_1411e5670`, [`Construction::begin`]: a desolid one gets its
-    /// record and sight, its missiles per volley its master's; its owner watches it, the
-    /// caller's).
+    /// record and sight, its missiles per volley its master's; its owner watches it at once,
+    /// the foundation lent to the world).
     pub(crate) fn foundation_died(
         &mut self,
         c: &mut Context<'_>,
@@ -153,8 +153,9 @@ impl Unit {
         )?;
         if started {
             construction.started = false;
-            c.started.push(self.id);
             self.firepower = master.volley_fire;
+            let (p, id) = (c.player, self.id);
+            c.lend(self, |w| w.watch_started(p, id))?;
         }
         Ok(())
     }

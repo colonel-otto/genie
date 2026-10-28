@@ -247,7 +247,8 @@ impl Unit {
             if let Some(k) = self.construction.as_mut() {
                 k.started = false;
             }
-            c.started.push(self.id);
+            let (p, id) = (c.player, self.id);
+            c.lend(self, |w| w.watch_started(p, id))?;
         }
         if built.stack.is_some() || built.vanishes {
             c.completions.push((self.id, built.stack, built.vanishes));

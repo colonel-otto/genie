@@ -499,7 +499,7 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 
 /// What the Build's step changes of the world beside the builder `me`: the cleared objects and
 /// the footprint's removals and occupants (at once, through the world), the constructions that
-/// started (its annexes' first: their owner watches each, `FUN_1411e5670`), the work an annex's
+/// started (its annexes' first: their owner watches each at once, `FUN_1411e5670`), the work an annex's
 /// main building takes ([`World::work_building`]), and the completion (taken out of the step)
 /// with its annexes' state ([`World::set_state`]), its tracker part, its standing sprite and
 /// what it leaves its owner ([`World::built`]). The last three run with the builder lent to the
@@ -540,7 +540,7 @@ pub(crate) fn record_build_step(
             .filter(|cons| cons.started)
         {
             cons.started = false;
-            c.started.push(id);
+            c.w.watch_started(c.player, id)?;
         }
     }
     // the work the annex leaves its main building (FUN_1411cc430), where the builder's runs

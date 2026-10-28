@@ -82,9 +82,6 @@ pub(crate) struct Context<'a> {
     /// The objects whose master leaves ghosts that died in this update ([`crate::vision::ghost`]), the
     /// caller's.
     pub(crate) ghost_deaths: Vec<i32>,
-    /// The buildings whose construction started in this update: their owner watches them
-    /// ([`World::watch_started`]), the caller's.
-    pub(crate) started: Vec<i32>,
     /// The buildings that died in this update: their owner's watched list lets them go
     /// (`FUN_141091310`), the caller's.
     pub(crate) unwatched: Vec<i32>,
@@ -252,8 +249,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) takes: Vec<(i32, Releaser)>,
     /// [`Context`]'s `ghost_deaths`.
     pub(in crate::world) ghost_deaths: Vec<i32>,
-    /// [`Context`]'s `started`.
-    pub(in crate::world) started: Vec<i32>,
     /// [`Context`]'s `unwatched`.
     pub(in crate::world) unwatched: Vec<i32>,
 }
@@ -290,7 +285,6 @@ impl Context<'_> {
             left_group: self.left_group.take().map(|(g, b)| (g, id, b)),
             takes: std::mem::take(&mut self.takes),
             ghost_deaths: std::mem::take(&mut self.ghost_deaths),
-            started: std::mem::take(&mut self.started),
             unwatched: std::mem::take(&mut self.unwatched),
         }
     }

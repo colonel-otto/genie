@@ -157,24 +157,18 @@ impl World {
         Ok(())
     }
 
-    /// What the step's deaths and construction starts set off: the watched lists, the ghosts, a
-    /// dead building's count and technology, a dead object's refund, and the remains of a dying
-    /// sprite's end.
+    /// What the step's deaths set off: the watched lists, the ghosts, a dead building's count
+    /// and technology, a dead object's refund, and the remains of a dying sprite's end. A
+    /// started construction's watch (`FUN_1411e5670`) is its site's, at once.
     fn apply_deaths(&mut self, p: usize, out: &mut ObjectOutputs) -> Result<(), GenieError> {
         // a dead building leaves its owner's watched list (FUN_141091310), then the
-        // ghosts of a death (FUN_14118e990, while the game state is not 2) and the
-        // watch of a started construction (FUN_1411e5670)
+        // ghosts of a death (FUN_14118e990, while the game state is not 2)
         for id in std::mem::take(&mut out.unwatched) {
             self.unwatch(p, id);
         }
         for id in std::mem::take(&mut out.ghost_deaths) {
             if self.game_state != 2 {
                 self.ghosts_at_death(p, id)?;
-            }
-        }
-        for id in std::mem::take(&mut out.started) {
-            if let Some((owner, _)) = self.object(id) {
-                self.watch_started(owner, id)?;
             }
         }
         // a dead building's count leaves its attribute, at least 0 (FUN_1411dbb70)

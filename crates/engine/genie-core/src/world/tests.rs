@@ -13235,6 +13235,11 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
     );
 }
 
+/// How often player `p` watches object `id`.
+fn watches(t: &World, p: usize, id: i32) -> usize {
+    t.players[p].watched.iter().filter(|w| w.id == id).count()
+}
+
 /// A site's state, hit points and build points.
 fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
     (u.life.state, u.life.hp, u.construction.map(|c| c.progress))
@@ -13242,7 +13247,7 @@ fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
 
 /// What a Build's step changes beside its builder (`record_build_step`, the caller's after the
 /// step): the cleared objects, the foundation another player's marks lie on, a construction that
-/// started (its owner watches it once: the flag clears), the work
+/// started (its owner watches it once, at once: the flag clears), the work
 /// an annex's main building takes (at once, `World::work_building`: the house's state, hit points
 /// and build points); and the completion, taken out of the step: the house leaves its
 /// pending tracker list for its done one and its owner gains what it brings at once (the builder
@@ -13252,7 +13257,6 @@ fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
 fn a_build_step_s_changes_reach_the_world() {
     use crate::construction::build::unit::record_build_step;
     use crate::construction::build::{Built, Cleared};
-    use std::mem::take;
     let recorded = |t: &mut World, step: &mut BuildStep| {
         in_update(t, (1, 0), 50, |unit, c| {
             record_build_step(c, unit, 10028, &[], step)?;
@@ -13261,7 +13265,7 @@ fn a_build_step_s_changes_reach_the_world() {
             let built = (events, owner.attributes[4]);
             Ok((
                 c.w.object(601).map(|(_, u)| site_of(u)),
-                take(&mut c.started),
+                watches(c.w, 1, 10028),
                 c.w.object(10028).map(|(_, u)| site_of(u)),
                 built,
             ))
@@ -13276,7 +13280,7 @@ fn a_build_step_s_changes_reach_the_world() {
         nothing,
         (
             Some((2, 1.0, None)),
-            vec![],
+            0,
             Some((0, 1.0, Some(0.0))),
             (vec![], 0.0)
         )
@@ -13313,7 +13317,7 @@ fn a_build_step_s_changes_reach_the_world() {
         recorded(&mut t, &mut step),
         (
             Some((7, 0.0, None)),
-            vec![10028],
+            1,
             Some((0, 56.0, Some(2.5))),
             (vec![6], 5.0)
         )
@@ -13325,6 +13329,28 @@ fn a_build_step_s_changes_reach_the_world() {
     assert!(!house.construction.unwrap().started);
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
     assert!(t.players[1].tracker.list(k.master).contains(&10028));
+}
+
+/// A Build's step whose site's construction started (`record_build_step`, `FUN_1411e5670`):
+/// its owner watches the site within the builder's update, and the start's flag clears.
+#[test]
+fn a_build_step_s_started_site_is_watched_where_the_builder_runs() {
+    use crate::construction::build::unit::record_build_step;
+    let mut t = house_builder();
+    let k = t.players[1].objects[1].construction.as_mut().unwrap();
+    (k.desolid, k.started) = (false, true);
+    let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
+        record_build_step(c, unit, 10028, &[], &mut BuildStep::default())?;
+        let started =
+            c.w.object(10028)
+                .and_then(|(_, u)| u.construction)
+                .map(|k| k.started);
+        Ok((watches(c.w, 1, 10028), started))
+    });
+    assert_eq!(
+        seen.map_err(|e| e.reason().to_owned()),
+        Ok((1, Some(false)))
+    );
 }
 
 /// A Build's step deletes the objects its footprint clearing found (`FUN_1415c3620`) and
@@ -13489,13 +13515,14 @@ fn a_building_s_later_state_reaches_its_annexes_where_it_runs() {
     assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(Some(7)));
 }
 
-/// What [`completed_house`]'s completion left: the attributes added and the constructions
-/// started.
-type Completed = (Vec<(i16, f32)>, Vec<i32>);
+/// What [`completed_house`]'s completion left: the attributes added and how often its owner
+/// watches the house within the update.
+type Completed = (Vec<(i16, f32)>, usize);
 
 /// [`house_builder`]'s house 10028 (player 1's object 1) with its build points at its build
 /// time, changed by `setup`, after its own update's completion test
-/// ([`Unit::complete_on_update`]): the attributes its owner gains and the constructions started.
+/// ([`Unit::complete_on_update`]): the attributes its owner gains and how often it watches the
+/// house within the update.
 fn completed_house(setup: fn(&mut Unit)) -> (World, Completed) {
     let mut t = house_builder();
     let h = &mut t.players[1].objects[1];
@@ -13506,7 +13533,7 @@ fn completed_house(setup: fn(&mut Unit)) -> (World, Completed) {
         unit.complete_on_update(c)?;
         Ok((
             std::mem::take(&mut c.attribute_adds),
-            std::mem::take(&mut c.started),
+            watches(c.w, 1, 10028),
         ))
     })
     .unwrap();
@@ -13522,7 +13549,7 @@ fn completed_house(setup: fn(&mut Unit)) -> (World, Completed) {
 #[test]
 fn a_foundation_whose_build_points_reached_its_build_time_completes() {
     let (t, r) = completed_house(|_| ());
-    assert_eq!(r, (vec![(98, 25.0), (165, 25.0)], vec![10028]));
+    assert_eq!(r, (vec![(98, 25.0), (165, 25.0)], 1));
     let h = &t.players[1].objects[1];
     let k = h.construction.unwrap();
     assert_eq!((h.life.state, k.desolid, k.started), (2, false, false));
@@ -13532,9 +13559,36 @@ fn a_foundation_whose_build_points_reached_its_build_time_completes() {
     let annex: fn(&mut Unit) = |h| (h.life.master_id, h.annex_of) = (109, Some(700));
     for setup in [short, annex] {
         let (t, r) = completed_house(setup);
-        assert_eq!(r, (vec![], vec![]));
+        assert_eq!(r, (vec![], 0));
         assert_eq!(t.players[1].objects[1].life.state, 0);
     }
+}
+
+/// A desolid foundation that dies (`FUN_1411dbb70` to state 3 from state 0) starts its
+/// construction ([`Unit::foundation_died`], [`Construction::begin`]): its owner watches it at
+/// once, the foundation lent to the world within its own update, and the start's flag clears.
+#[test]
+fn a_dying_desolid_foundation_s_owner_watches_it_within_its_update() {
+    let mut t = house_builder();
+    for masters in &mut t.masters {
+        let house = masters.get_mut(70).unwrap();
+        house.death_sprite = -1;
+        if let Some(b) = house.building.as_mut() {
+            b.destruction_sprite = -1;
+        }
+    }
+    let k = t.players[1].objects[1].construction.as_mut().unwrap();
+    k.desolid = true;
+    let seen = in_update(&mut t, (1, 1), 0, |unit, c| {
+        unit.life.state = 3;
+        unit.died(c, 0)?;
+        let started = unit.construction.map(|k| k.started);
+        Ok((watches(c.w, 1, 10028), started))
+    });
+    assert_eq!(
+        seen.map_err(|e| e.reason().to_owned()),
+        Ok((1, Some(false)))
+    );
 }
 
 /// [`house_builder`]'s town centre 700 (master 109: 2400 hit points, a garrison heal rate of 2)
