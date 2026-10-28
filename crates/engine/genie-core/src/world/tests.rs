@@ -3688,6 +3688,70 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
     assert_eq!(t.players[0].objects[0].life.amount, 100.0);
 }
 
+/// A hunter's work on its dead deer reaches the deer where it ran (the hit's write-back,
+/// [`crate::combat::victims::write_back`]): in the same update the deer holds 0.05 less.
+#[test]
+fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
+    use crate::gathering::hunt::GATHER;
+    let mut t = hunter_in(|h| {
+        (h.state, h.attack, h.move_to) = (GATHER, None, None);
+        (h.task.work_value, h.task.resource) = (1.0, 15);
+    });
+    for masters in &mut t.masters {
+        let hunter = masters.get_mut(122).unwrap();
+        (hunter.capacity, hunter.work_rate) = (10, 1.0);
+    }
+    let deer = &mut t.players[0].objects[0];
+    (deer.life.state, deer.life.hp) = (3, 0.0);
+    (deer.life.attribute_type, deer.life.amount) = (15, 100.0);
+    let v = &mut t.players[1].objects[0];
+    (v.life.attribute_type, v.life.amount) = (15, 5.0);
+    v.position = [31.9, 89.5, 0.0];
+    t.spatial.set_position(9175, [31.9, 89.5, 0.0]);
+    let left = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let mut own = unit.own_victim(c);
+        let tree_lost = unit.tree_lost();
+        unit.hunt_part(c, others, me, &mut own, tree_lost)?;
+        Ok(others.view().find(500).map(|(_, deer)| deer.life.amount))
+    });
+    assert!(
+        left.as_ref()
+            .is_ok_and(|l| l.is_some_and(|l| (l - 99.95).abs() < 1e-4)),
+        "{left:?}"
+    );
+}
+
+/// A gathering hunt (state 7) whose deer left the world drops it at its update's start and
+/// ends without a target in the same update: holding nothing, it searches (state 3), reading no
+/// target.
+#[test]
+fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
+    use crate::gathering::hunt::{GATHER, SEARCH};
+    let mut t = hunter_in(|h| (h.state, h.attack, h.move_to) = (GATHER, None, None));
+    let _ = t.players[0].objects.remove(0);
+    let _ = t.spatial.leave(500);
+    let r = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        unit.hunt_targets(c, others)?;
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        let mut own = unit.own_victim(c);
+        unit.hunt_part(c, others, me, &mut own, false)
+    });
+    assert_eq!(r, Ok(()));
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
+    assert_eq!((h.state, h.target), (SEARCH, -1));
+}
+
 /// [`hunt_world`] with player 1's own sheep 510 (master 594, class 58, moving) at `x` beside
 /// the hunter, its hunter's task on livestock, the drop-site table's town centre taking
 /// livestock; the hunt command's hunt faces it (state 4, arrived).
@@ -3880,6 +3944,33 @@ fn a_hunt_that_lost_its_tree_takes_the_next_one() {
         t.players[0].objects[i].life.amount = 0.0;
     }
     assert_eq!(search(&mut t, None, None), Ok(false));
+}
+
+/// A hunt's end of an Attack that failed (`FUN_140ac4670` with -1 and 5,
+/// [`Unit::hunt_attack_failed`]): a hunter whose unit AI targets trees takes the next tree
+/// within 5 of it; with none so near, or a unit AI that targets another class, the hunt
+/// searches (state 3, its timer at -10 s) with its target kept.
+#[test]
+fn a_hunt_whose_attack_failed_takes_a_near_tree_or_searches() {
+    let failed = |t: &mut World| {
+        in_update(t, (1, 0), 50, |unit, c, others| {
+            unit.hunt_attack_failed(c, others.view())
+        })
+    };
+    let mut t = lumber_world(31.5);
+    assert_eq!(failed(&mut t), Ok(()));
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
+    assert_eq!((h.target, h.attack.map(|a| a.target)), (520, Some(520)));
+    for (near, target_type) in [(39.0, 15), (31.5, 99)] {
+        let mut t = lumber_world(near);
+        t.players[1].objects[0].ai.as_mut().unwrap().target_type = target_type;
+        assert_eq!(failed(&mut t), Ok(()));
+        let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
+        assert_eq!(
+            (h.state, h.timer, h.target),
+            (crate::gathering::hunt::SEARCH, SEARCH_AGAIN, -1)
+        );
+    }
 }
 
 /// The unit AI's repair order on the player's damaged house (`0x2ce`, slot 0x378 forced,
@@ -8410,7 +8501,7 @@ fn a_killed_sheep_goes_to_gaia() {
         attacker_player: 1,
         to_gaia: true,
     });
-    t.set_victim(&v).unwrap();
+    write_hit(&mut t, (1, 0), v);
     assert_eq!(t.players[1].objects.len(), 1);
     let gone = &t.players[0].objects[0];
     assert_eq!((gone.id, gone.life.hp), (9520, 0.0));
@@ -8451,7 +8542,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         vec![0, 0, 0],
         vec![
             player(vec![].into()),
-            player(vec![].into()),
+            player(vec![building(9, 82, None)].into()),
             player(
                 vec![
                     building(30, 82, None),
@@ -8504,7 +8595,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         event: Some(crate::players::history::CASTLE_DESTROYED),
         adds: vec![(1, 43, 1.0), (2, 155, 1.0), (1, 170, 650.0)],
     });
-    t.set_victim(&v).unwrap();
+    write_hit(&mut t, (1, 0), v);
     let hp: Vec<f32> = t.players[2].objects.iter().map(|u| u.life.hp).collect();
     assert_eq!(hp, [0.0, 0.0, 0.0]);
     assert_eq!(t.players[2].objects[0].damaged_lately, 60);
@@ -8521,6 +8612,78 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
         .event_of_kind(crate::players::history::CASTLE_DESTROYED)
         .unwrap();
     assert_eq!(event.data1, 2.0);
+}
+
+/// The hit `v` written back where it ran, in the update of object `i` of player `p` (through
+/// its view, [`crate::combat::victims::write_back`]); its kill and razings follow the update.
+fn write_hit(t: &mut World, (p, i): (usize, usize), mut v: crate::combat::damage::Victim) {
+    in_update(t, (p, i), 0, |_, c, others| {
+        let left = crate::combat::victims::write_back(c, others, &mut v)?;
+        c.kills.extend(left);
+        Ok(())
+    })
+    .unwrap();
+}
+
+/// A hit on a sleeping object (a tree a blast reached) written back where it ran: it takes
+/// its hit points and what it holds and sleeps on, still flagged, at 1 hit point or more;
+/// below 1 it wakes to the end of its player's live list and takes the rest, the hit's cleared
+/// sleep flag among it.
+#[test]
+fn a_hit_wakes_a_sleeping_object_only_below_1_hit_point() {
+    let tree = |id| Unit {
+        id,
+        life: Lifecycle {
+            master_id: 349,
+            hp: 20.0,
+            amount: 100.0,
+            state: 2,
+            goto_sleep: true,
+            ..Lifecycle::default()
+        },
+        ..Unit::default()
+    };
+    let hit = |hp: f32| {
+        let mut t = World::new(
+            0,
+            1,
+            0,
+            vec![0, 0],
+            vec![
+                Player {
+                    objects: vec![tree(51)].into(),
+                    sleeping: vec![tree(50)].into(),
+                    attributes: vec![0.0; 500],
+                    ..Player::default()
+                },
+                Player {
+                    objects: vec![tree(9)].into(),
+                    attributes: vec![0.0; 500],
+                    ..Player::default()
+                },
+            ],
+        );
+        let master = Master {
+            id: 349,
+            kind: 10,
+            class: 15,
+            ..Master::default()
+        };
+        t.masters = vec![Masters::new([master.clone()]), Masters::new([master])];
+        let mut v = t.victim(50, 1).unwrap();
+        (v.hp, v.amount, v.goto_sleep) = (hp, 90.0, false);
+        write_hit(&mut t, (1, 0), v);
+        let gaia = &t.players[0];
+        let ids = |l: &ObjectList| -> Vec<i32> { l.iter().map(|u| u.id).collect() };
+        let (_, u) = t.object(50).unwrap();
+        (
+            ids(&gaia.objects),
+            ids(&gaia.sleeping),
+            (u.life.hp, u.life.amount, u.life.goto_sleep),
+        )
+    };
+    assert_eq!(hit(5.0), (vec![51], vec![50], (5.0, 90.0, true)));
+    assert_eq!(hit(0.5), (vec![51, 50], vec![], (0.5, 90.0, false)));
 }
 
 /// `FUN_140fde380`: a master of type 70 and up, of class 51 or 54, with a weapon (`+0x810`

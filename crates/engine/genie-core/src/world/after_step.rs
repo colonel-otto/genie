@@ -2,7 +2,6 @@
 //! applied to the world in the order the game's update makes them.
 
 use crate::GenieError;
-use crate::combat::damage::Victim;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
 use crate::unit_ai::AfterOrder;
@@ -39,7 +38,7 @@ impl World {
     /// game's update makes them (the gate, the annexes' and main buildings'
     /// work, the completions, the attributes, the deaths and remains, the regeneration, passive
     /// abilities and production of a full update, the unit AI's works, moves, waits and order on
-    /// a target, the hit's write-backs, the takes and releases). Returns the step, the resume of a
+    /// a target, the hits' kills, the takes and releases). Returns the step, the resume of a
     /// unit AI part the update stopped before, and the tail after an order on a target.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
     /// runs (regeneration, passive abilities, production) do not.
@@ -60,7 +59,7 @@ impl World {
         ) -> Result<Step, GenieError>,
     ) -> Result<(Step, Option<AiResume>, Option<AfterOrder>), GenieError> {
         let id = self.players[p].objects[i].id;
-        let (step, mut out, mut victim) = self.run_object((p, i), (dt, turn), frame, resume, f);
+        let (step, mut out) = self.run_object((p, i), (dt, turn), frame, resume, f);
         let step = step?;
         // the tail after an order on a target, which stops the unit AI's rest
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
@@ -68,17 +67,10 @@ impl World {
         self.apply_completions(p, &mut out)?;
         self.apply_deaths(p, &mut out)?;
         let own_update = full && out.ai_resume.is_none();
-        self.finish_own_update(
-            (p, i, id),
-            (dt, own_update),
-            &mut out,
-            &mut victim,
-            after_order,
-            &step,
-        )?;
+        self.finish_own_update((p, i, id), (dt, own_update), &out, after_order, &step)?;
         self.apply_ai_works((p, i), &mut out, &step)?;
         self.apply_ai_starts((p, i), &mut out, &step)?;
-        self.apply_hits_and_releases((p, i), &mut out, victim)?;
+        self.apply_hits_and_releases(&mut out)?;
         Ok((step, out.ai_resume, after_order))
     }
 
@@ -229,8 +221,7 @@ impl World {
         &mut self,
         (p, i, id): (usize, usize, i32),
         (dt, own_update): (u32, bool),
-        out: &mut ObjectOutputs,
-        victim: &mut Option<Victim>,
+        out: &ObjectOutputs,
         after_order: Option<AfterOrder>,
         step: &Step,
     ) -> Result<(), GenieError> {
@@ -246,11 +237,7 @@ impl World {
                 Step::Leave => (p, true),
                 _ => (p, false),
             };
-            let mut pending = crate::combat::abilities::Pending {
-                victim: victim.as_mut(),
-                blasted: &mut out.blasted,
-            };
-            let _ = self.abilities((id, p, i), owner, leaves, &mut pending)?;
+            let _ = self.abilities((id, p, i), owner, leaves)?;
             // then its hit point powerup check
             self.clamp_object_powerup((p, i, id));
         }
@@ -367,24 +354,13 @@ impl World {
         Ok(())
     }
 
-    /// A hit's write-backs in the order the hit made them (the blast's objects, the unit itself
-    /// for a retaliation, its target), an entered unit's leave of its group, the takes, the
-    /// builders' leaves and the releases, then a construction start's clearing and the changed
-    /// tiles.
-    fn apply_hits_and_releases(
-        &mut self,
-        (p, i): (usize, usize),
-        out: &mut ObjectOutputs,
-        victim: Option<Victim>,
-    ) -> Result<(), GenieError> {
-        for v in &out.blasted {
-            self.set_victim(v)?;
-        }
-        if let Some(kill) = out.own_killed.take() {
-            self.killed(p, i, kill)?;
-        }
-        if let Some(v) = victim {
-            self.set_victim(&v)?;
+    /// What the hits' write-backs left, in the order the hits made it (the blast's objects, the
+    /// unit itself for a retaliation, its target): the kills and razings; then an entered unit's
+    /// leave of its group, the takes, the builders' leaves and the releases, a construction
+    /// start's clearing and the changed tiles.
+    fn apply_hits_and_releases(&mut self, out: &mut ObjectOutputs) -> Result<(), GenieError> {
+        for k in std::mem::take(&mut out.kills) {
+            self.kill_left(&k)?;
         }
         // an entered unit's removeUnit from its group (FUN_14102c160), when the world
         // holds the group (FUN_14152ff40)

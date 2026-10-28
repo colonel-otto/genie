@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::combat::victims::KillLeft;
 use crate::map::spatial::Spatial;
 use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::move_to::Walk;
@@ -38,14 +39,16 @@ pub(crate) struct Context<'a> {
     pub(crate) construction_rate: f32,
     /// The owner's masters, which an attack reads.
     pub(crate) masters: Option<&'a Masters>,
-    /// The target of the unit's attack, read before its update and written back after it, and
-    /// the objects about a unit with an area effect, which its blast may reach.
-    pub(crate) victim: Option<&'a mut Victim>,
     /// The unit AI's current target as its target block reads it ([`World::seen`]).
     pub(crate) ai_target: Result<Option<crate::unit_ai::Seen>, GenieError>,
+    /// The objects about the target of a unit with an area effect (or about the unit, for its
+    /// blast at death), which its blast may reach, read as the update starts; each hit writes
+    /// them back where it ran ([`crate::combat::victims::write_back`]).
     pub(crate) blasted: Vec<Victim>,
-    /// The unit was killed in its update (a retaliation), which the caller handles after it.
-    pub(crate) own_killed: Option<crate::combat::damage::Kill>,
+    /// What the hits' write-backs left in the order the hits made it (a retaliation's kill of
+    /// the unit among them): the kills and razings, the caller's after the update
+    /// ([`World::kill_left`]).
+    pub(crate) kills: Vec<KillLeft>,
     /// What the unit's death leaves for the caller: the remains its dying sprite's end makes
     /// (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its
     /// owner takes back (attributes 98 and 164).
@@ -69,8 +72,8 @@ pub(crate) struct Context<'a> {
     /// caller's ([`crate::ownership::capture::Captured::building`]).
     pub(crate) building_handover: bool,
     /// The objects the unit's actions let go (slot 0x180, [`World::release`]) and take (slot
-    /// 0x178, [`World::take`]) in other players' lists, which the caller applies after the hit's
-    /// write-backs.
+    /// 0x178, [`World::take`]) in other players' lists, which the caller applies after the hits'
+    /// kills.
     pub(crate) releases: Vec<(i32, Releaser)>,
     pub(crate) takes: Vec<(i32, Releaser)>,
     /// The foundations a counted builder's Build leaves as the unit's action list goes
@@ -279,10 +282,8 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) work_order: Option<crate::orders::Work>,
     /// [`Context`]'s `transport_unload`.
     pub(in crate::world) transport_unload: bool,
-    /// [`Context`]'s `blasted`.
-    pub(in crate::world) blasted: Vec<Victim>,
-    /// [`Context`]'s `own_killed`.
-    pub(in crate::world) own_killed: Option<crate::combat::damage::Kill>,
+    /// [`Context`]'s `kills`.
+    pub(in crate::world) kills: Vec<KillLeft>,
     /// [`Context`]'s `remains`.
     pub(in crate::world) remains: Option<(i16, [f32; 3], Option<u8>)>,
     /// [`Context`]'s `refund`.
@@ -346,8 +347,7 @@ impl Context<'_> {
             completions: std::mem::take(&mut self.completions),
             work_order: self.work_order.take(),
             transport_unload: std::mem::take(&mut self.transport_unload),
-            blasted: std::mem::take(&mut self.blasted),
-            own_killed: self.own_killed.take(),
+            kills: std::mem::take(&mut self.kills),
             remains: self.remains.take(),
             refund: std::mem::take(&mut self.refund),
             annex_states: std::mem::take(&mut self.annex_states),

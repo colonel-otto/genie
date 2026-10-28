@@ -1,6 +1,7 @@
 //! A hunter's search, its walk after a drop and its drop-off.
 
 use crate::GenieError;
+use crate::combat::victims::victim;
 use crate::gathering::closest_resource::herded;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Stream;
@@ -165,7 +166,7 @@ impl Unit {
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::HUNTER_MASTER)?;
         if self.actions.hunt().expect("the caller's hunt").target != -1 {
-            return self.hunt_back_to_target(c);
+            return self.hunt_back_to_target(c, others);
         }
         if self.hunt_drop_orders(c)? {
             return Ok(());
@@ -181,13 +182,17 @@ impl Unit {
     /// and the hunt walks back to it (`set_state(4)`, [`crate::gathering::hunt::HuntAction::chase`]
     /// with the hunter's engagement and arms). A chase that starts arrived, or fails, is not
     /// modelled.
-    fn hunt_back_to_target(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    fn hunt_back_to_target(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &Others<'_>,
+    ) -> Result<(), GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::HUNTER_MASTER)?;
-        let v = c.victim.as_deref().ok_or(GenieError::unsupported(
+        let v = victim(c, others, hunt.target).ok_or(GenieError::unsupported(
             "a hunt's target the slice does not hold live",
         ))?;
         let quarry = crate::gathering::hunt::Quarry {

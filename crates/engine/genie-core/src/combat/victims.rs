@@ -2,13 +2,15 @@
 //! the kill and its counts.
 
 use crate::GenieError;
-use crate::combat::damage::Victim;
+use crate::combat::damage::{Kill, Razed, Victim};
 use crate::map::spatial::Spatial;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Notify;
 use crate::unit_ai::task_finder::Diplomacy;
-use crate::unit_ai::task_finder::world::TaskWorld;
+use crate::unit_ai::task_finder::world::{SideWorld, TaskWorld};
+use crate::world::context::Context;
+use crate::world::others::Others;
 use crate::world::{BUILDING_KIND, World};
 
 impl World {
@@ -136,73 +138,214 @@ impl World {
     }
 }
 
-impl World {
-    /// An attack's hit on its target, written back: its hit points, what it holds, its charge
-    /// and powerups, its damage notify (500), its kill ([`World::killed`]); a struck building's
-    /// `damaged_lately_timer` and its annexes' hit points (`+0xbc0`..), then each razing
-    /// ([`crate::combat::damage::Razed`]: the history event of the attacker's player, the attribute adds
-    /// in their order).
-    pub(crate) fn set_victim(&mut self, v: &Victim) -> Result<(), GenieError> {
-        let (q, j) = match self.place(v.id) {
-            Some(crate::orders::Place::Live(q, j)) => (q, j),
-            // an object asleep (a tree a blast reached) holds what the hit left; below 1 hit
-            // point (COMISS/JBE: a NaN sleeps on) the hit woke it (FUN_14119deb0 with 0) to the
-            // end of its player's live list, where the rest is written back
-            Some(crate::orders::Place::Sleeping(q, j)) => {
-                let u = &mut self.players[q].sleeping[j];
-                u.life.hp = v.hp;
-                u.life.amount = v.amount;
-                if crate::math::fmath::at_most_or_unordered(1.0, v.hp) {
-                    return Ok(());
-                }
-                let j = self.wake(v.id);
-                (q, j)
-            }
-            None => return Ok(()),
-        };
-        let u = &mut self.players[q].objects[j];
+/// What a hit's write-back ([`write_back`]) leaves the caller after the update
+/// ([`World::kill_left`]), in the order the hits made it: the object's kill and its razings.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct KillLeft {
+    /// The object.
+    pub(crate) id: i32,
+    /// A hit killed it ([`World::killed`]).
+    pub(crate) kill: Option<Kill>,
+    /// What each hit that left it, a building, below 1 hit point counted.
+    pub(crate) razed: Vec<Razed>,
+}
+
+impl KillLeft {
+    /// The updating unit `id`, killed by its target's retaliation (`kill`).
+    pub(crate) const fn own(id: i32, kill: Kill) -> Self {
+        Self {
+            id,
+            kill: Some(kill),
+            razed: Vec::new(),
+        }
+    }
+}
+
+/// The object `id` a hit of the updating unit can read ([`victim`]) with its owner and master:
+/// one of any list, live or asleep, of a master its owner has.
+pub(crate) fn readable<'o>(
+    c: &Context<'o>,
+    others: &'o Others<'_>,
+    id: i32,
+) -> Option<(usize, &'o Unit, &'o Master)> {
+    let (p, u, _) = others.locate(id)?;
+    let master = c.every_masters.get(p)?.get(u.life.master_id)?;
+    Some((p, u, master))
+}
+
+/// What a hit of the updating unit reads of object `id` ([`World::victim`] through the update's
+/// view `others`): an object [`readable`] by the hit.
+pub(crate) fn victim(c: &Context<'_>, others: &Others<'_>, id: i32) -> Option<Victim> {
+    let (p, u, master) = readable(c, others, id)?;
+    let view = others.view();
+    let attributes = if p == c.player {
+        c.attributes
+    } else {
+        &view.players().player(p)?.attributes[..]
+    };
+    let sides = SideWorld {
+        player: c.player,
+        relations: c.relations,
+        foreign: view.players(),
+        drop_sites: c.drop_sites,
+    };
+    Some(victim_in(
+        u,
+        (p, master, attributes),
+        (c.player, &sides),
+        c.spatial,
+        c.mode_680,
+    ))
+}
+
+/// The hit's changes on its victim `v`, written back through the update's view `others` where
+/// the hit ran. An object asleep (a tree a blast reached) takes its hit points and what it
+/// holds; below 1 hit point (COMISS/JBE: a NaN sleeps on) the hit wakes it (`FUN_14119deb0`
+/// with 0, [`Others::wake`]) to take the rest. A live one takes its hit points, what it holds,
+/// its sleep flag, its decay, its powerups and charge, a struck building's
+/// `damaged_lately_timer`, the damage notifies (500) to its unit AI, and a struck building's
+/// annexes take its hit points (`+0xbc0`..). Returns its kill and razings for the caller
+/// ([`KillLeft`]); `v` keeps neither them nor its notifies, so another write-back repeats none.
+///
+/// # Errors
+///
+/// A notify its unit AI's queue does not take.
+pub(crate) fn write_back(
+    c: &mut Context<'_>,
+    others: &mut Others<'_>,
+    v: &mut Victim,
+) -> Result<Option<KillLeft>, GenieError> {
+    let damaged = std::mem::take(&mut v.damaged);
+    let left = KillLeft {
+        id: v.id,
+        kill: v.killed.take(),
+        razed: v
+            .building
+            .as_mut()
+            .map(|b| std::mem::take(&mut b.razed))
+            .unwrap_or_default(),
+    };
+    let Some((_, _, sleeps)) = others.locate(v.id) else {
+        return Ok(None);
+    };
+    if sleeps {
+        let (_, u) = others.get_mut(v.id).expect("located");
         u.life.hp = v.hp;
         u.life.amount = v.amount;
-        u.life.goto_sleep = v.goto_sleep;
-        // a hunt that stopped its decay gave it a master of its own (FUN_140ac44b0)
-        if let Some(m) = u.life.master.as_mut() {
-            m.decay = v.decay;
+        if crate::math::fmath::at_most_or_unordered(1.0, v.hp) {
+            return Ok(None);
         }
-        if let Some(a) = v.armored.as_ref() {
-            u.hp_powerups = a.hp_powerups;
+        let _ = others.wake(v.id, c.tracker, (c.every_masters, c.lines));
+    }
+    let (_, u) = others.get_mut(v.id).expect("located");
+    u.life.hp = v.hp;
+    u.life.amount = v.amount;
+    u.life.goto_sleep = v.goto_sleep;
+    // a hunt that stopped its decay gave it a master of its own (FUN_140ac44b0)
+    if let Some(m) = u.life.master.as_mut() {
+        m.decay = v.decay;
+    }
+    if let Some(a) = v.armored.as_ref() {
+        u.hp_powerups = a.hp_powerups;
+    }
+    // a shield spends its charge
+    u.charge = v.source.charge;
+    let struck = v.building.as_ref().filter(|b| b.struck);
+    if let Some(b) = struck {
+        u.damaged_lately = b.damaged_lately;
+    }
+    // the damage notify (500) to its unit AI
+    if let Some(ai) = u.ai.as_mut() {
+        for &(attacker, p) in &damaged {
+            let n = Notify {
+                caller: attacker,
+                recipient: v.id,
+                kind: crate::unit_ai::DAMAGED,
+                p,
+            };
+            ai.post(n, u.life.state)?;
         }
-        // a shield spends its charge
-        u.charge = v.source.charge;
-        let struck = v.building.as_ref().filter(|b| b.struck);
-        if let Some(b) = struck {
-            u.damaged_lately = b.damaged_lately;
+    }
+    for &a in struck.map_or(&[][..], |b| &b.annexes) {
+        if let Some((_, _, false)) = others.locate(a) {
+            let (_, x) = others.get_mut(a).expect("located");
+            x.life.hp = v.hp;
         }
-        // the damage notify (500) to its unit AI
-        if let Some(ai) = u.ai.as_mut() {
-            for &(attacker, p) in &v.damaged {
-                let n = Notify {
-                    caller: attacker,
-                    recipient: v.id,
-                    kind: crate::unit_ai::DAMAGED,
-                    p,
-                };
-                ai.post(n, u.life.state)?;
-            }
-        }
-        for &a in struck.map_or(&[][..], |b| &b.annexes) {
-            if let Some(x) = self
-                .players
-                .iter_mut()
-                .flat_map(|p| p.objects.iter_mut())
-                .find(|x| x.id == a)
-            {
-                x.life.hp = v.hp;
-            }
-        }
-        if let Some(kill) = v.killed {
+    }
+    Ok((left.kill.is_some() || !left.razed.is_empty()).then_some(left))
+}
+
+/// What a strike's write-back left ([`write_struck`]): the blast's objects' kills in their
+/// order, then the target's.
+pub(crate) struct Struck {
+    blast: Vec<KillLeft>,
+    target: Option<KillLeft>,
+}
+
+impl Struck {
+    /// Files the strike's kills with the update's, in the game's order: the blast's, the
+    /// updating unit's own (`own`, by its target's retaliation), the target's.
+    pub(crate) fn file(self, c: &mut Context<'_>, own: Option<KillLeft>) {
+        c.kills.extend(self.blast);
+        c.kills.extend(own);
+        c.kills.extend(self.target);
+    }
+}
+
+/// A strike's write-back where it ran ([`write_back`]): the blast's objects (`blasted`, which
+/// go back to the update's), then its target `v`.
+///
+/// # Errors
+///
+/// A notify a unit AI's queue does not take.
+pub(crate) fn write_struck(
+    c: &mut Context<'_>,
+    others: &mut Others<'_>,
+    mut blasted: Vec<Victim>,
+    v: &mut Victim,
+) -> Result<Struck, GenieError> {
+    let mut blast = Vec::new();
+    for b in &mut blasted {
+        blast.extend(write_back(c, others, b)?);
+    }
+    c.blasted = blasted;
+    let target = write_back(c, others, v)?;
+    Ok(Struck { blast, target })
+}
+
+/// A strike's write-back where it ran ([`write_struck`] on the update's `blasted`, then its
+/// target `v`); what they leave joins the update's kills in that order.
+///
+/// # Errors
+///
+/// A notify a unit AI's queue does not take.
+pub(crate) fn write_strike_back(
+    c: &mut Context<'_>,
+    others: &mut Others<'_>,
+    v: &mut Victim,
+) -> Result<(), GenieError> {
+    let blasted = std::mem::take(&mut c.blasted);
+    write_struck(c, others, blasted, v)?.file(c, None);
+    Ok(())
+}
+
+impl World {
+    /// What a hit's write-back left after the update ([`KillLeft`]) on an object the world
+    /// still holds live: its kill ([`World::killed`]), then each razing
+    /// ([`crate::combat::damage::Razed`]: the history event of the attacker's player, the
+    /// attribute adds in their order).
+    ///
+    /// # Errors
+    ///
+    /// What the kill does not model, or an attribute a player lacks.
+    pub(crate) fn kill_left(&mut self, k: &KillLeft) -> Result<(), GenieError> {
+        let Some(crate::orders::Place::Live(q, j)) = self.place(k.id) else {
+            return Ok(());
+        };
+        if let Some(kill) = k.kill {
             self.killed(q, j, kill)?;
         }
-        for r in v.building.iter().flat_map(|b| &b.razed) {
+        for r in &k.razed {
             if let Some(kind) = r.event {
                 let now = self.world_time;
                 self.players[r.attacker_player].history.add_event(
@@ -233,12 +376,7 @@ impl World {
     /// 16 and 32, Gaia gains 1, 2 and 32) and its list (the old owner's last object takes its
     /// place). Not held: the killer (`+0x690`, `+0x694`), `+0x954`, the statistics of the local
     /// player and the particles (`FUN_141158bb0`).
-    pub(crate) fn killed(
-        &mut self,
-        q: usize,
-        j: usize,
-        kill: crate::combat::damage::Kill,
-    ) -> Result<(), GenieError> {
+    pub(crate) fn killed(&mut self, q: usize, j: usize, kill: Kill) -> Result<(), GenieError> {
         if self.players[q].computer {
             return Err(GenieError::unsupported(
                 "a computer player's killed object (its AI's slot 0x2f0)",

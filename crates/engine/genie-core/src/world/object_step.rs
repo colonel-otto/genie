@@ -2,7 +2,6 @@
 //! update.
 
 use crate::GenieError;
-use crate::combat::damage::Victim;
 use crate::construction::building_update::blasts_at_death;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
@@ -16,7 +15,7 @@ impl World {
     /// for a command): object `i` of player `p` leaves its list, `f` gets it, the Context and the
     /// rest of the list; it comes back with the objects it made (each filed in its owner's
     /// tracker). Returns `f`'s result (an error of the sight's registry first), what the Context
-    /// gathered for the world ([`World::step_object`]) and the victim of its attack.
+    /// gathered for the world ([`World::step_object`]).
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object(
         &mut self,
@@ -25,7 +24,7 @@ impl World {
         frame: &PlayerFrame,
         resume: Option<AiResume>,
         f: impl FnOnce(&mut Unit, &mut Context<'_>, &mut Others<'_>) -> Result<Step, GenieError>,
-    ) -> (Result<Step, GenieError>, ObjectOutputs, Option<Victim>) {
+    ) -> (Result<Step, GenieError>, ObjectOutputs) {
         // the unit AI's target as its update starts, read before the unit leaves its list: a unit
         // may be its own target (an unload's)
         let ai_target = self.players[p].objects[i]
@@ -36,11 +35,13 @@ impl World {
             .map_or(Ok(None), |t| self.seen(t, p));
         let mut unit = std::mem::replace(&mut self.players[p].objects[i], Unit::taken_out());
         let watch = crate::trace::Watch::of(&unit);
-        let mut victim = unit.attack_target().and_then(|t| self.victim(t, p));
-        // the objects a hit's blast may reach about its target, or about the unit for
-        // its blast at death (TRIBE_Combat_Object::update)
-        let blasted = match victim.as_ref() {
-            Some(v) => self.blasted(&unit, p, v.id),
+        // the objects a hit's blast may reach about its target (one a hit can read), or about
+        // the unit for its blast at death (TRIBE_Combat_Object::update)
+        let target = unit
+            .attack_target()
+            .filter(|&t| self.victim(t, p).is_some());
+        let blasted = match target {
+            Some(t) => self.blasted(&unit, p, t),
             None if self
                 .masters
                 .get(p)
@@ -67,10 +68,9 @@ impl World {
             groups: &self.groups,
             construction_rate: player.construction_rate,
             masters: self.masters.get(p),
-            victim: victim.as_mut(),
             ai_target,
             blasted,
-            own_killed: None,
+            kills: Vec::new(),
             remains: None,
             refund: Vec::new(),
             building_death: None,
@@ -162,7 +162,7 @@ impl World {
             player.tracker.add(m.id, k);
         }
         player.objects.extend(made);
-        (result, out, victim)
+        (result, out)
     }
 
     /// Runs `f` on the unit AI of object `i` of player `p` outside its update (a command's

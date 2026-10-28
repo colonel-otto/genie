@@ -5,8 +5,11 @@
 //! caller asks for the owner's own object ([`OthersRef::own`]), another player's
 //! ([`OthersRef::foreign`]) or anyone's ([`OthersRef::find`]), never for a list position.
 
+use crate::objects::lines::UnitLines;
+use crate::objects::masters::Masters;
 use crate::objects::object_list::ObjectList;
 use crate::objects::unit::{TAKEN_OUT, Unit};
+use crate::players::tracker::{Tracker, key};
 use crate::unit_ai::world_view::Foreign;
 use crate::world::player::Player;
 
@@ -230,6 +233,70 @@ impl<'a> Others<'a> {
         })
     }
 
+    /// Object `id` of any list with its owner and whether it sleeps: what the world's table by
+    /// id (`FUN_1415417a0`) gives, the owner's lists first.
+    pub(crate) fn locate(&self, id: i32) -> Option<(usize, &Unit, bool)> {
+        let p = self.player;
+        if let Some(u) = self.own.by_id(id) {
+            return Some((p, u, false));
+        }
+        if let Some(u) = self.own_sleeping.by_id(id) {
+            return Some((p, u, true));
+        }
+        let skip = self.before.len() + 1;
+        let before = self.before.iter().enumerate();
+        let after = self.after.iter().enumerate().map(|(q, pl)| (q + skip, pl));
+        before.chain(after).find_map(|(q, pl)| {
+            let live = pl.objects.by_id(id).map(|u| (q, u, false));
+            live.or_else(|| pl.sleeping.by_id(id).map(|u| (q, u, true)))
+        })
+    }
+
+    /// The sleeping object `id` wakes (`FUN_14119deb0` with 0, [`World::wake`]): it leaves its
+    /// player's sleeping list for the end of the live one, no longer flagged to sleep, and the
+    /// remove and add (slots 0x2d8, 0x2d0) file it last in its player's tracker (`own_tracker`
+    /// the owner's; `masters` and `lines` give the key). False when no sleeping list holds it.
+    ///
+    /// [`World::wake`]: crate::world::World::wake
+    pub(crate) fn wake(
+        &mut self,
+        id: i32,
+        own_tracker: &mut Tracker,
+        (masters, lines): (&[Masters], &UnitLines),
+    ) -> bool {
+        let p = self.player;
+        let skip = self.before.len() + 1;
+        let own = std::iter::once((p, &mut *self.own, &mut *self.own_sleeping, own_tracker));
+        let before = self.before.iter_mut().enumerate();
+        let after = self
+            .after
+            .iter_mut()
+            .enumerate()
+            .map(|(q, pl)| (q + skip, pl));
+        let foreign = before.chain(after).map(|(q, pl)| {
+            let Player {
+                objects,
+                sleeping,
+                tracker,
+                ..
+            } = pl;
+            (q, objects, sleeping, tracker)
+        });
+        for (q, live, sleeping, tracker) in own.chain(foreign) {
+            let Some(i) = sleeping.position_of(id) else {
+                continue;
+            };
+            let mut woken = sleeping.swap_remove(i);
+            woken.life.goto_sleep = false;
+            let k = key(masters.get(q), lines, woken.life.master_id);
+            live.push(woken);
+            tracker.remove(id, k);
+            tracker.add(id, k);
+            return true;
+        }
+        false
+    }
+
     /// The owner's live object `id`, to change.
     pub(crate) fn own_mut(&mut self, id: i32) -> Option<&mut Unit> {
         self.own.by_id_mut(id)
@@ -332,6 +399,58 @@ mod tests {
         assert_eq!(others.find(20).map(|(q, _)| q), Some(2));
         assert_eq!(others.view().foreign(10).map(|(q, _)| q), None);
         assert_eq!(own[1].id, TAKEN_OUT, "the stand-in stays as it was");
+    }
+
+    #[test]
+    fn a_lookup_by_id_reaches_every_list_and_says_whether_the_object_sleeps() {
+        let (mut own, mut before, mut after) = world();
+        let mut asleep = ObjectList::from(vec![unit(13)]);
+        let others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        let at = |id| others.locate(id).map(|(q, u, sleeps)| (q, u.id, sleeps));
+        assert_eq!(at(12), Some((1, 12, false)), "the owner's before another's");
+        assert_eq!(at(13), Some((1, 13, true)));
+        assert_eq!(at(2), Some((0, 2, true)));
+        assert_eq!(at(20), Some((2, 20, false)));
+        assert_eq!(at(11), None, "the updating object is out");
+        assert_eq!(at(TAKEN_OUT), None);
+    }
+
+    /// A woken object (`FUN_14119deb0` with 0) leaves its sleeping list for the end of its
+    /// player's live list, unflagged, and its player's tracker files it last.
+    #[test]
+    fn a_woken_object_moves_to_the_end_of_its_player_s_live_list_and_tracker() {
+        use crate::players::tracker::{Tracker, key};
+        let (mut own, mut before, mut after) = world();
+        let mut asleep = ObjectList::from(vec![unit(13)]);
+        asleep[0].life.goto_sleep = true;
+        let lines = UnitLines::default();
+        let k = key(None, &lines, 0);
+        let mut tracker = Tracker::default();
+        for id in [13, 10] {
+            tracker.add(id, k);
+        }
+        for id in [2, 1] {
+            before[0].tracker.add(id, k);
+        }
+        let mut others = Others::new(1, (&mut own, &mut asleep), (&mut before, &mut after));
+        assert!(others.wake(13, &mut tracker, (&[], &lines)));
+        assert!(others.wake(2, &mut tracker, (&[], &lines)));
+        assert!(!others.wake(20, &mut tracker, (&[], &lines)), "20 is awake");
+        assert_eq!(others.locate(13).map(|(q, _, s)| (q, s)), Some((1, false)));
+        assert_eq!(others.own(13).map(|u| u.life.goto_sleep), Some(false));
+        let ids = |l: &ObjectList| l.iter().map(|u| u.id).collect::<Vec<_>>();
+        assert_eq!(
+            (ids(&own), ids(&asleep)),
+            (vec![10, TAKEN_OUT, 12, 13], vec![])
+        );
+        assert_eq!(
+            (ids(&before[0].objects), ids(&before[0].sleeping)),
+            (vec![1, 2], vec![])
+        );
+        assert_eq!(
+            (tracker.list(k.master), before[0].tracker.list(k.master)),
+            (&[10, 13][..], &[1, 2][..])
+        );
     }
 
     #[test]

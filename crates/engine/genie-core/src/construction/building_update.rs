@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
-use crate::combat::victims::victim_of;
+use crate::combat::victims::{victim_of, write_back};
 use crate::construction::build::{Completion, Construction, Site};
 use crate::construction::gates::gate_units;
 use crate::map::spatial::Spatial;
@@ -523,14 +523,18 @@ impl Unit {
     /// that blasts at its death ([`blasts_at_death`]) blasts about its place (slot 0x848,
     /// `FUN_14107f690`, [`crate::combat::damage::blast`]: itself left out, no main target, the factor
     /// 1, the hit info `FUN_140aa8720` gives) over the objects its caller gathered
-    /// ([`Context::blasted`], written back after the update); its death follows in the static
-    /// update. Its own part of the blast is written back ([`Unit::hit_back`]); a kill of it
-    /// changes nothing, as it dies anyway.
+    /// ([`Context::blasted`], written back through the update's view `others` right after it,
+    /// [`write_back`]); its death follows in the static update. Its own part of the blast is
+    /// written back ([`Unit::hit_back`]); a kill of it changes nothing, as it dies anyway.
     ///
     /// # Errors
     ///
     /// What the blast does not model.
-    pub(crate) fn death_blast(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn death_blast(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
         let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             return Ok(());
         };
@@ -548,6 +552,12 @@ impl Unit {
             &mut targets,
             DEATH_BLAST_FACTOR,
         )?;
+        let mut blasted = std::mem::take(&mut c.blasted);
+        for v in &mut blasted {
+            let left = write_back(c, others, v)?;
+            c.kills.extend(left);
+        }
+        c.blasted = blasted;
         let _ = self.hit_back(own)?;
         Ok(())
     }

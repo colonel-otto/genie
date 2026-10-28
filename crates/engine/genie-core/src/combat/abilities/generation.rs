@@ -1,8 +1,6 @@
 //! The generation tasks (action type 151): their test, what they make and the player's store.
 
-use crate::combat::abilities::{
-    BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, WORKING, WORKING_ACTIONS,
-};
+use crate::combat::abilities::{BUILDING_KIND, COMBAT_KIND, ONE, Own, WORKING, WORKING_ACTIONS};
 use crate::objects::masters::Task;
 use crate::world::World;
 use crate::{GenieError, math::fmath};
@@ -100,7 +98,7 @@ impl World {
     /// [`store`]): what reaches the store's threshold goes to the player (slot 0xf8 with 1 and 1,
     /// as a load's, [`crate::gathering::gather::unit::give_load`]); the statistics (`FUN_14097daf0`, the local
     /// player's, and `FUN_140a4c020`'s telemetry) are not held. The top action's target is read
-    /// as the world holds it after the update: a pending one as the update left it.
+    /// as the world holds it after the update (its hits wrote their victims back where they ran).
     ///
     /// # Errors
     ///
@@ -112,7 +110,6 @@ impl World {
         owner: usize,
         master: Own,
         task: &Task,
-        pending: &mut Pending<'_>,
     ) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[i];
         let flags = task.combat_level_flag;
@@ -133,7 +130,7 @@ impl World {
                 let target = unit
                     .top_target()
                     .filter(|&t| works && 0 <= t)
-                    .and_then(|t| self.work_target(t, pending));
+                    .and_then(|t| self.work_target(t));
                 TopWork {
                     kind: a.kind,
                     state: a.state,
@@ -176,17 +173,9 @@ impl World {
         Ok(())
     }
 
-    /// What a generation task's test reads of the object `id` its top action works on: a pending
-    /// one as its update left it, else as the world holds it; None for an object the world does
-    /// not hold.
-    pub(super) fn work_target(&self, id: i32, pending: &mut Pending<'_>) -> Option<WorkTarget> {
-        if let Some(v) = pending.get(id) {
-            return Some(WorkTarget {
-                hp: v.hp,
-                storage: v.storage,
-                class: v.class,
-            });
-        }
+    /// What a generation task's test reads of the object `id` its top action works on, as the
+    /// world holds it; None for an object the world does not hold.
+    pub(super) fn work_target(&self, id: i32) -> Option<WorkTarget> {
         let (q, u) = self.object(id)?;
         let m = u
             .own_master

@@ -231,7 +231,8 @@ pub struct Razed {
     pub adds: Vec<(usize, i16, f32)>,
 }
 
-/// What a killing hit leaves for the caller ([`crate::world::World`]'s write-back).
+/// What a killing hit leaves for the caller after the update
+/// ([`crate::world::World::kill_left`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Kill {
     /// The object that killed it.

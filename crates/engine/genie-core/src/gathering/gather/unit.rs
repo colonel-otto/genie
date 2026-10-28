@@ -1,6 +1,7 @@
 //! A builder's and a gatherer's drop-off and a gatherer's update and search.
 
 use crate::GenieError;
+use crate::combat::victims::{readable, victim, write_back};
 use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
@@ -120,14 +121,14 @@ impl Unit {
         me: Me,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
-        self.gather_check_targets(c, others.view(), by)?;
+        self.gather_check_targets(c, others, by)?;
         let view = self.gather_view(c)?;
         if self.actions.gather().expect("the caller's gather").state
             == crate::gathering::gather::DROP
         {
             return self.gather_drop_update(c, others, me, view, by);
         }
-        self.gather_work_update(c, others.view(), me, view, by)
+        self.gather_work_update(c, others, me, view, by)
     }
 
     /// The Gather's update's check of its targets: a target the world does not hold goes, one
@@ -136,16 +137,12 @@ impl Unit {
     fn gather_check_targets(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &Others<'_>,
         by: Releaser,
     ) -> Result<(), GenieError> {
         let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.target != -1 {
-            let state = c
-                .victim
-                .as_deref()
-                .filter(|v| v.id == gather.target)
-                .map(|v| v.state);
+            let state = readable(c, others, gather.target).map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.spatial.get(gather.target).is_some() => {
@@ -164,7 +161,7 @@ impl Unit {
         }
         let site = gather.carry_to;
         let held = c.spatial.get(site).is_some();
-        let (kept, let_go) = second_target_checked(site, held, state_of(site, others));
+        let (kept, let_go) = second_target_checked(site, held, state_of(site, others.view()));
         gather.carry_to = kept;
         if let Some(t) = let_go {
             c.releases.push((t, by));
@@ -349,14 +346,14 @@ impl Unit {
     fn gather_work_update(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
         me: Me,
         view: GatherView,
         by: Releaser,
     ) -> Result<(), GenieError> {
         let dt = c.dt_seconds;
         let gather = self.actions.gather_mut().expect("the caller's gather");
-        let mut victim = c.victim.take();
+        let mut victim = victim(c, others, gather.target);
         let old = (gather.target, gather.carry_to);
         let (next, posted, sold, anim_stopped) = {
             let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.body.mover_mut(), me);
@@ -366,7 +363,7 @@ impl Unit {
                 self.life.master_id,
                 (sprite_rng, action_rng),
             );
-            let target = victim.as_deref_mut().filter(|v| v.id == gather.target);
+            let target = victim.as_mut();
             let next = gather.update(walk, target, &mut work, dt);
             (
                 next,
@@ -375,8 +372,12 @@ impl Unit {
                 work.anim_stopped,
             )
         };
-        c.victim = victim;
         let next = next?;
+        // what the work changed on its target, where it ran
+        if let Some(v) = victim.as_mut() {
+            let left = write_back(c, others, v)?;
+            c.kills.extend(left);
+        }
         for (kind, p) in posted {
             self.post_own(kind, p)?;
         }
@@ -392,7 +393,7 @@ impl Unit {
                 sold,
             )?;
         }
-        self.gather_next(c, others, next, old, by)
+        self.gather_next(c, others.view(), next, old, by)
     }
 
     /// What follows the Gather's update (`next`; `old`: its targets before): an end lets both

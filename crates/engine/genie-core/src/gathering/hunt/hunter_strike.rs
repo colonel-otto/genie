@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::Strike;
 use crate::combat::damage::Victim;
+use crate::combat::victims::{KillLeft, victim, write_struck};
 use crate::combat::volley::Aimed;
 use crate::gathering::drop_sites::nearest_drop_site;
 use crate::gathering::hunt::{Gatherer, Herd, HuntAction, HuntSprites};
@@ -14,7 +15,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::TREE_NEAR;
 use crate::world::context::Context;
-use crate::world::others::OthersRef;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     /// The hunt's strike in the hunter's update (`0x140ac7a00`'s states 4, 6, 7, 10 and 12): what
@@ -25,7 +26,7 @@ impl Unit {
     pub(crate) fn hunt_strike(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
         me: Me,
         own: &mut Option<Victim>,
         tree_lost: bool,
@@ -35,12 +36,10 @@ impl Unit {
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::HUNTER_MASTER)?;
-        let victim = c.victim.take().ok_or(GenieError::unsupported(
-            "an attack's target the slice does not hold live",
-        ))?;
-        let own = own.take().ok_or(crate::world::HUNTER_MASTER)?;
         let action = self.actions.hunt().copied().expect("the caller's test");
-        let herd = self.herd_for(c, others, &action, master, victim)?;
+        let mut victim = hunt_victim(c, others, &action)?;
+        let own = own.take().ok_or(crate::world::HUNTER_MASTER)?;
+        let herd = self.herd_for(c, others.view(), &action, master, &victim)?;
         let hunt = self.actions.hunt_mut().expect("the caller's test");
         // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
         let productivity = usize::try_from(hunt.task.productivity)
@@ -97,7 +96,7 @@ impl Unit {
             reload_worldtime: &mut self.reload_worldtime,
             reload: self.reload_stinger + (master.reload - self.reload_powerup),
             hit_chance: master.hit_chance,
-            victim,
+            victim: &mut victim,
             blasted: &mut blasted,
             sprite_rng,
             own,
@@ -124,18 +123,9 @@ impl Unit {
         let (attack_failed, let_go) = (gather.attack_failed, gather.let_go);
         let posted = std::mem::take(&mut strike.posted);
         let leads = gather.leads.map(|site| (hunt.target, site));
-        let fired = strike.fire.map(|target| {
-            let v = &*strike.victim;
-            Aimed {
-                target,
-                position: v.position,
-                radius: [v.radius[0], v.radius[1], v.height],
-                class: v.class,
-                player: v.player,
-            }
-        });
+        let fired = strike.fire.map(|target| Aimed::at(target, strike.victim));
         let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
-        c.blasted = blasted;
+        let struck = write_struck(c, others, blasted, &mut victim)?;
         if let Some(aimed) = fired {
             self.volley(c, aimed)?;
         }
@@ -145,39 +135,50 @@ impl Unit {
         for (kind, p) in posted {
             self.post_own(kind, p)?;
         }
-        c.own_killed = self.hit_back(own)?;
+        struck.file(c, self.hit_back(own)?.map(|k| KillLeft::own(self.id, k)));
         if full {
-            self.hunt_drop_off(c, others)?;
+            self.hunt_drop_off(c, others.view())?;
         }
         if searches {
-            self.hunt_set_search(c, others)?;
+            self.hunt_set_search(c, others.view())?;
         }
         if let Some(target) = let_go {
             self.hunt_release(c, [target]);
         }
         if attack_failed {
-            // FUN_140ac4670 with -1 and 5: the class its unit AI targets (else the hunt's)
-            // that the civilian's slot 0x1b0 gives 0 (trees) takes the next tree within 5
-            // of the unit; else set_state(3) with the target kept
-            let tree = self.ai.as_ref().is_some_and(|ai| {
-                let class = if ai.target_type == -1 {
-                    self.actions
-                        .hunt()
-                        .map_or(-1, |h| i32::from(h.target_class))
-                } else {
-                    ai.target_type
-                };
-                class == crate::gathering::hunt::TREE_CLASS
-            });
-            if !(tree && self.hunt_tree_search(c, others, None, Some(TREE_NEAR))?) {
-                let hunt = self.actions.hunt_mut().expect("above");
-                hunt.tear_down(self.body.mover_mut())?;
-                hunt.state = crate::gathering::hunt::SEARCH;
-                self.hunt_search_state(c, others)?;
-            }
+            self.hunt_attack_failed(c, others.view())?;
         }
         c.leads = leads;
         Ok(())
+    }
+
+    /// The hunt's end of an Attack that failed (`FUN_140ac4670` with -1 and 5): a hunter whose
+    /// unit AI targets trees (its class, else the hunt's, that the civilian's slot 0x1b0 gives
+    /// 0) takes the next tree within 5 of it ([`Unit::hunt_tree_search`]); any other, or one
+    /// that finds none, searches (`set_state(3)` with the target kept,
+    /// [`Unit::hunt_search_state`]).
+    pub(crate) fn hunt_attack_failed(
+        &mut self,
+        c: &mut Context<'_>,
+        others: OthersRef<'_>,
+    ) -> Result<(), GenieError> {
+        let tree = self.ai.as_ref().is_some_and(|ai| {
+            let class = if ai.target_type == -1 {
+                self.actions
+                    .hunt()
+                    .map_or(-1, |h| i32::from(h.target_class))
+            } else {
+                ai.target_type
+            };
+            class == crate::gathering::hunt::TREE_CLASS
+        });
+        if tree && self.hunt_tree_search(c, others, None, Some(TREE_NEAR))? {
+            return Ok(());
+        }
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
+        hunt.tear_down(self.body.mover_mut())?;
+        hunt.state = crate::gathering::hunt::SEARCH;
+        self.hunt_search_state(c, others)
     }
 
     /// What `set_state(6)` on live livestock reads (`0x140ac60e0` case 6), and the lead's update
@@ -269,5 +270,28 @@ impl Unit {
                 None
             },
         }))
+    }
+}
+
+/// The object the hunt's strike reads through the update's view ([`victim`]): its target, else
+/// its Attack's. A hunt whose start dropped its target (gone or past state 6) and holds no
+/// Attack reads none (state 7's end without a target): a stand-in no object holds.
+fn hunt_victim(
+    c: &Context<'_>,
+    others: &Others<'_>,
+    action: &HuntAction,
+) -> Result<Victim, GenieError> {
+    let target = match action.target {
+        -1 => action.attack.map_or(-1, |a| a.target),
+        t => t,
+    };
+    match target {
+        -1 => Ok(Victim {
+            id: -1,
+            ..Victim::default()
+        }),
+        t => victim(c, others, t).ok_or(GenieError::unsupported(
+            "an attack's target the slice does not hold live",
+        )),
     }
 }

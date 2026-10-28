@@ -1,14 +1,14 @@
 //! A missile's flight: where it ends, what it hits and where it lands.
 
 use crate::GenieError;
-use crate::combat::victims::victim_of;
+use crate::combat::victims::{readable, victim, victim_of, write_strike_back};
 use crate::combat::volley::Fired;
 use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::{Unit, missed_passes};
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::context::Context;
-use crate::world::others::{Others, OthersRef};
+use crate::world::others::Others;
 
 impl Unit {
     /// The missile action's update (slot 6, `FUN_140a9e6e0`). First its target and the object it
@@ -48,13 +48,10 @@ impl Unit {
         &self,
         action: &mut crate::combat::missile::MissileAction,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &Others<'_>,
     ) -> Result<(), GenieError> {
         let dead = |state: u8| 2 < state && state != 6;
-        let target_state = match c.victim.as_deref() {
-            Some(v) if v.id == action.target => Some(v.state),
-            _ => None,
-        };
+        let target_state = readable(c, others, action.target).map(|(_, u, _)| u.life.state);
         let shooter_state = others.own(action.fired_from).map(|u| u.life.state);
         if action.target != -1 && target_state.is_none() {
             if c.spatial.get(action.target).is_some() {
@@ -103,7 +100,7 @@ impl Unit {
         let Some(action) = slot.as_mut() else {
             return Ok(());
         };
-        self.missile_ends(action, c, others.view())?;
+        self.missile_ends(action, c, others)?;
         match action.state {
             crate::combat::missile::FLYING => {}
             crate::combat::missile::DONE => {
@@ -319,8 +316,9 @@ impl Unit {
             return Err(GenieError::unsupported("a charge projectile's own hit"));
         }
         if action.fired_from == -1 {
-            return self.own_strike(action, fired.by, c);
+            return self.own_strike(action, fired.by, c, others);
         }
+        let mut victim = victim(c, others, action.target);
         let shooter = others
             .own_mut(action.fired_from)
             .ok_or(GenieError::unsupported(
@@ -339,13 +337,9 @@ impl Unit {
         }
         let terrain = c.spatial.terrain.as_ref();
         let mut own = victim_of(shooter, master, c.attributes, c.player, terrain, c.mode_680);
-        let victim = c
-            .victim
-            .as_deref_mut()
-            .filter(|v| v.id == action.target)
-            .ok_or(GenieError::unsupported(
-                "a missile's target the slice does not hold live",
-            ))?;
+        let victim = victim.as_mut().ok_or(GenieError::unsupported(
+            "a missile's target the slice does not hold live",
+        ))?;
         let hit = crate::combat::attack::Hit {
             at: self.position,
             from_z: Some(action.origin.position[2]),
@@ -362,6 +356,7 @@ impl Unit {
                 "a retaliation killing a missile's shooter",
             ));
         }
+        write_strike_back(c, others, victim)?;
         Ok(struck.result)
     }
 
@@ -378,6 +373,7 @@ impl Unit {
         action: &crate::combat::missile::MissileAction,
         fired_from: i32,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
     ) -> Result<u8, GenieError> {
         if action.origin.owner != -1 {
             return Err(GenieError::unsupported(
@@ -399,13 +395,10 @@ impl Unit {
         let mut own = victim_of(self, master, c.attributes, c.player, terrain, c.mode_680);
         // the missile's own part is out of the unit while it flies
         own.source.fired_from = fired_from;
-        let victim = c
-            .victim
-            .as_deref_mut()
-            .filter(|v| v.id == action.target)
-            .ok_or(GenieError::unsupported(
-                "a missile's target the slice does not hold live",
-            ))?;
+        let mut victim = victim(c, others, action.target).ok_or(GenieError::unsupported(
+            "a missile's target the slice does not hold live",
+        ))?;
+        let victim = &mut victim;
         let hit = crate::combat::attack::Hit {
             at: self.position,
             from_z: None,
@@ -417,6 +410,7 @@ impl Unit {
         if self.hit_back(own)?.is_some() {
             return Err(GenieError::unsupported("a retaliation killing a missile"));
         }
+        write_strike_back(c, others, victim)?;
         Ok(struck.result)
     }
 
@@ -449,13 +443,9 @@ impl Unit {
             && action.target != -1
             && !action.met.contains(&action.target)
         {
-            let v = c
-                .victim
-                .as_deref()
-                .filter(|v| v.id == action.target)
-                .ok_or(GenieError::unsupported(
-                    "a missile's target the slice does not hold live",
-                ))?;
+            let v = victim(c, others, action.target).ok_or(GenieError::unsupported(
+                "a missile's target the slice does not hold live",
+            ))?;
             let (target_at, target_radius, target_player) = (v.position, v.radius, v.player);
             let mode = stats.hit_mode;
             if (matches!(mode, 0 | 2) || (mode == 1 && c.player != target_player))

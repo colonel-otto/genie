@@ -544,6 +544,20 @@ pub(crate) struct Aimed {
     pub(crate) player: usize,
 }
 
+impl Aimed {
+    /// The fire's aim at `target` as the strike read it (`v`): its place, its master's radii
+    /// and height, its class and its player.
+    pub(crate) const fn at(target: i32, v: &Victim) -> Self {
+        Self {
+            target,
+            position: v.position,
+            radius: [v.radius[0], v.radius[1], v.height],
+            class: v.class,
+            player: v.player,
+        }
+    }
+}
+
 /// `FUN_14120ea30` of an attacker of `master` with `firepower` (`+0xa00`): a building can attack
 /// when of class 51 or 54, with a missile, or with a firepower above 1; any other attacker can.
 pub(crate) fn armed(master: &Master, firepower: f32) -> bool {

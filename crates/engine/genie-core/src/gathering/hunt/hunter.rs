@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::combat::damage::Victim;
+use crate::combat::victims::readable;
 use crate::gathering::gather::unit::give_load;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
@@ -22,14 +23,10 @@ impl Unit {
     pub(crate) fn hunt_targets(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &Others<'_>,
     ) -> Result<(), GenieError> {
         if let Some(target) = self.actions.hunt().map(|h| h.target).filter(|&t| t != -1) {
-            let state = c
-                .victim
-                .as_deref()
-                .filter(|v| v.id == target)
-                .map(|v| v.state);
+            let state = readable(c, others, target).map(|(_, u, _)| u.life.state);
             let gone = match state {
                 Some(s) => 6 < s,
                 None if c.spatial.get(target).is_some() => {
@@ -50,7 +47,7 @@ impl Unit {
         }
         if let Some(site) = self.actions.hunt().map(|h| h.carry_to) {
             let held = c.spatial.get(site).is_some();
-            let (kept, let_go) = second_target_checked(site, held, state_of(site, others));
+            let (kept, let_go) = second_target_checked(site, held, state_of(site, others.view()));
             if let Some(h) = self.actions.hunt_mut() {
                 h.carry_to = kept;
             }
@@ -119,7 +116,7 @@ impl Unit {
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
             _ if tree_lost
                 && self.hunt_tree_search(c, others.view(), Some(TREE_SEARCH_WITHIN), None)? => {}
-            Some(_) => self.hunt_strike(c, others.view(), me, own, tree_lost)?,
+            Some(_) => self.hunt_strike(c, others, me, own, tree_lost)?,
             None => {}
         }
         Ok(())

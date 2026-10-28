@@ -1,4 +1,5 @@
 use super::*;
+use crate::combat::damage::Victim;
 
 fn task(action_type: i16) -> Task {
     Task {
@@ -479,25 +480,19 @@ fn put(t: &mut World, p: usize, id: i32, m: i16, hp: f32, [x, y]: [f32; 2]) {
     );
 }
 
-/// The abilities of object `id` of player `p` as `p`'s, nothing pending, which issue no
-/// command.
+/// The abilities of object `id` of player `p` as `p`'s, which issue no command.
 fn run(t: &mut World, p: usize, id: i32) {
     assert_eq!(rewards(t, p, id, false), Vec::new());
 }
 
-/// The abilities of object `id` of player `p` as `p`'s, nothing pending: the commands they
-/// issue.
+/// The abilities of object `id` of player `p` as `p`'s: the commands they issue.
 fn rewards(t: &mut World, p: usize, id: i32, leaves: bool) -> Vec<Reward> {
     let i = t.players[p]
         .objects
         .iter()
         .position(|u| u.id == id)
         .unwrap();
-    let mut pending = Pending {
-        victim: None,
-        blasted: &mut [],
-    };
-    t.abilities((id, p, i), p, leaves, &mut pending).unwrap()
+    t.abilities((id, p, i), p, leaves).unwrap()
 }
 
 /// The players' sight with `id` a building of player `p` that is `built`.
@@ -620,35 +615,6 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     assert_eq!(t.players[1].generated[3], 0.0);
 }
 
-#[test]
-fn a_keshik_reads_its_target_as_its_update_left_it() {
-    let mut t = world();
-    keshik(&mut t);
-    // the world holds a target of another class; the pending one, of class 0, counts
-    give_master(&mut t, 4, 70, 6, Vec::new());
-    put(&mut t, 2, 77, 4, 30.0, [6.5, 5.5]);
-    let mut v = Victim {
-        id: 77,
-        hp: 12.0,
-        class: 0,
-        ..Victim::default()
-    };
-    let mut pending = Pending {
-        victim: Some(&mut v),
-        blasted: &mut [],
-    };
-    assert_eq!(
-        t.abilities((60, 1, 0), 1, false, &mut pending),
-        Ok(Vec::new())
-    );
-    assert_eq!(t.players[1].generated[3], 0.0);
-    assert!(0.999 < t.players[1].resources[3]);
-    // the world's alone: class 6, nothing
-    t.players[1].generated[3] = 0.5;
-    run(&mut t, 1, 60);
-    assert_eq!(t.players[1].generated[3], 0.5);
-}
-
 /// A combat unit of master 9 at (5.5, 5.5) moving east, with a movement damage of range 2,
 /// 5 hit points and a timer of 3 s.
 fn trampler(t: &mut World) {
@@ -711,34 +677,6 @@ fn a_movement_damage_kill_leaves_0_hit_points_and_counts_the_kill() {
     assert_eq!(t.players[1].attributes[302], 1.0);
     assert_eq!(t.players[2].attributes[154], 1.0);
     assert_eq!(t.players[2].attributes[326], 1.0);
-}
-
-#[test]
-fn a_movement_damage_on_the_pending_target_hits_it_as_the_update_left_it() {
-    let mut t = world();
-    trampler(&mut t);
-    give_master(&mut t, 4, 70, 6, Vec::new());
-    put(&mut t, 2, 20, 4, 30.0, [6.5, 5.5]);
-    let mut v = crate::combat::victims::victim_of(
-        &t.players[2].objects[0],
-        t.masters[2].get(4).unwrap(),
-        &t.players[2].attributes,
-        2,
-        None,
-        0,
-    );
-    v.hp = 8.0;
-    let mut pending = Pending {
-        victim: Some(&mut v),
-        blasted: &mut [],
-    };
-    assert_eq!(
-        t.abilities((10, 1, 0), 1, false, &mut pending),
-        Ok(Vec::new())
-    );
-    assert_eq!(v.hp, 3.0);
-    // the world's copy waits for the write-back
-    assert_eq!(t.object(20).unwrap().1.life.hp, 30.0);
 }
 
 /// The map's terrain: every tile of terrain 1 but (5, 6) of terrain 2, whose flag byte has

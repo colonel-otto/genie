@@ -48,7 +48,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &mut Others<'_>,
     ) -> Result<Option<Step>, GenieError> {
-        self.death_blast(c)?;
+        self.death_blast(c, others)?;
         if self.go_to_sleep()? {
             return Ok(None);
         }
@@ -121,7 +121,7 @@ impl Unit {
             Some(Action::Hunt(_)) => self.hunter_update(c, others, me),
             Some(Action::Attack(_)) => {
                 let own = self.own_victim(c);
-                self.attack_part(c, me, own)
+                self.attack_part(c, others, me, own)
             }
         };
         updated?;
@@ -148,7 +148,7 @@ impl Unit {
         others: &mut Others<'_>,
         me: Me,
     ) -> Result<(), GenieError> {
-        self.hunt_targets(c, others.view())?;
+        self.hunt_targets(c, others)?;
         let mut own = self.own_victim(c);
         let tree_lost = self.tree_lost();
         self.hunt_part(c, others, me, &mut own, tree_lost)

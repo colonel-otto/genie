@@ -2,7 +2,7 @@
 //! strike and the hit.
 
 use crate::combat::abilities::{
-    ALWAYS_REACHED, BUILDING_KIND, COMBAT_KIND, ONE, Own, Pending, STRUCK_BUILDING_CLASSES,
+    ALWAYS_REACHED, BUILDING_KIND, COMBAT_KIND, ONE, Own, STRUCK_BUILDING_CLASSES,
 };
 use crate::combat::damage::Victim;
 use crate::objects::masters::Task;
@@ -152,7 +152,6 @@ impl World {
         owner: usize,
         master: Own,
         task: &Task,
-        pending: &mut Pending<'_>,
     ) -> Result<(), GenieError> {
         let dt = self.dt_seconds;
         let unit = &mut self.players[p].objects[i];
@@ -181,14 +180,14 @@ impl World {
                     return Ok(());
                 }
                 for id in self.spatial.tile_list(x, y).to_vec() {
-                    let Some(b) = self.bystander(id, owner, pending)? else {
+                    let Some(b) = self.bystander(id, owner)? else {
                         continue;
                     };
                     if !struck(&hitter, range, &b) {
                         continue;
                     }
                     self.players[p].objects[i].abilities.movement_damage_timer = task.work_val2;
-                    self.movement_hit(b, owner, task.work_val1, pending)?;
+                    self.movement_hit(b, owner, task.work_val1)?;
                 }
             }
         }
@@ -196,34 +195,16 @@ impl World {
     }
 
     /// What a movement damage reads of the object `id` on a tile, as player `owner`'s hitter
-    /// sees it: a pending object as its hitter's update left it, a ghost as its viewer's object
-    /// of the ghost master, any other as the world holds it.
+    /// sees it: a ghost as its viewer's object of the ghost master, any other as the world holds
+    /// it (its hitter's update wrote its hits back where they ran).
     ///
     /// # Errors
     ///
     /// An object the slice does not hold ([`crate::construction::build::NOT_HELD`]).
-    pub(super) fn bystander(
-        &self,
-        id: i32,
-        owner: usize,
-        pending: &mut Pending<'_>,
-    ) -> Result<Option<Bystander>, GenieError> {
+    pub(super) fn bystander(&self, id: i32, owner: usize) -> Result<Option<Bystander>, GenieError> {
         let allied = |q: usize| {
             crate::unit_ai::task_finder::allied(&self.players[owner].relations, owner, q, true)
         };
-        if let Some(v) = pending.get(id) {
-            return Ok(Some(Bystander {
-                id,
-                player: v.player,
-                allied: allied(v.player),
-                kind: v.kind,
-                class: v.class,
-                state: v.state,
-                blast_defense: v.blast_defense,
-                position: v.position,
-                radius: v.radius,
-            }));
-        }
         if let Some((q, u)) = self.object(id) {
             let m = u
                 .own_master
@@ -268,16 +249,8 @@ impl World {
         b: Bystander,
         owner: usize,
         damage: f32,
-        pending: &mut Pending<'_>,
     ) -> Result<(), GenieError> {
         if b.kind == crate::vision::ghost::GHOST {
-            return Ok(());
-        }
-        if let Some(v) = pending.get(b.id) {
-            crate::combat::damage::lose(v, damage);
-            if finish(v) && b.kind == COMBAT_KIND {
-                self.count_kill(b.id, owner)?;
-            }
             return Ok(());
         }
         let Some((q, u)) = self.object(b.id) else {

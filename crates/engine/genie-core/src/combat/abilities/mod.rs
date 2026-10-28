@@ -33,7 +33,6 @@
 //! hold.
 
 use crate::GenieError;
-use crate::combat::damage::Victim;
 use crate::math::fmath;
 use crate::objects::masters::Task;
 use crate::world::World;
@@ -159,26 +158,6 @@ struct Own {
     radius: [f32; 2],
 }
 
-/// The objects of the world a movement damage may reach whose update is still to write them
-/// back (the caller's): the target of the hitter's own attack and the objects of its blast.
-#[derive(Debug)]
-pub struct Pending<'a> {
-    /// The target of its attack, read before its update.
-    pub victim: Option<&'a mut Victim>,
-    /// The objects its blast reached.
-    pub blasted: &'a mut [Victim],
-}
-
-impl Pending<'_> {
-    /// The pending object `id`.
-    fn get(&mut self, id: i32) -> Option<&mut Victim> {
-        if let Some(v) = self.victim.as_deref_mut().filter(|v| v.id == id) {
-            return Some(v);
-        }
-        self.blasted.iter_mut().find(|v| v.id == id)
-    }
-}
-
 impl World {
     /// `FUN_1412072f0` on the object `id`, the one at `i` of player `p`'s list, as player
     /// `owner`'s (its owner after its update: the new one when the update handed it over),
@@ -199,7 +178,6 @@ impl World {
         (id, p, i): (i32, usize, usize),
         owner: usize,
         leaves: bool,
-        pending: &mut Pending<'_>,
     ) -> Result<Vec<Reward>, GenieError> {
         let i = match self.players[p].objects.get(i) {
             Some(u) if u.id == id => i,
@@ -254,8 +232,8 @@ impl World {
         }
         for task in &tasks {
             match task.action_type {
-                GENERATE => self.generate((p, i), owner, own, task, pending)?,
-                MOVEMENT_DAMAGE => self.movement_damage((p, i), owner, own, task, pending)?,
+                GENERATE => self.generate((p, i), owner, own, task)?,
+                MOVEMENT_DAMAGE => self.movement_damage((p, i), owner, own, task)?,
                 // the terrain mask's throw ends the game
                 TERRAIN_LOOK if !self.terrain_look((p, i), task) => return Ok(rewards),
                 _ => {}
