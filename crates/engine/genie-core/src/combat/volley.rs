@@ -73,23 +73,6 @@ impl Unit {
         Ok(own.killed)
     }
 
-    /// The action list's deletion of the unit's own Attack (`FUN_140a98e20`): its teardown (a
-    /// `MoveTo`'s stops the unit) and the base teardown (`FUN_140a73fc0`), which lets its target,
-    /// then its second target go (slot 0x180).
-    pub(crate) fn delete_attack(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        let Some(mut a) = self.actions.take_attack() else {
-            return Ok(());
-        };
-        a.tear_down(self.body.mover_mut())?;
-        let by = self.releaser(c);
-        for t in [a.target, a.target2] {
-            if t != -1 {
-                crate::world::lets::release(c, t, by)?;
-            }
-        }
-        Ok(())
-    }
-
     /// Slot 0x858 (`FUN_14120c0a0`), a combat object's hit at its target from the Attack's swing
     /// when it has a missile, a volley missile or a charge projectile
     /// ([`crate::combat::attack::volleys`]; the others' melee hit is the Attack's). A master without

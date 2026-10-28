@@ -11,6 +11,8 @@ use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::Me;
 use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_or_give_up};
+use crate::objects::actions::Action;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::world::context::Context;
@@ -408,9 +410,14 @@ impl Unit {
         let own = self.actions.take_enter();
         self.actions.set_enter(Some(e));
         let updated = self.enter_update(c, me);
-        let after = self.actions.take_enter();
+        let mut after = self.actions.take_enter();
         self.actions.set_enter(own);
-        updated?;
+        if updated? == HeadCode::Deletes
+            && let Some(e) = after.take()
+        {
+            // its sub-action list deletes it (FUN_140a98e20): the Enter's destructor
+            Action::Enter(e).tear_down(&mut self.body)?.let_go(c, by)?;
+        }
         if let Some(art) = self.actions.artifact_mut() {
             if let Some(e) = after {
                 art.enter = Some(e);

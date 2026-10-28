@@ -5,11 +5,17 @@ use crate::math::rng::Stream;
 use crate::movement::{Me, Mover};
 use crate::objects::actions::Action;
 use crate::objects::lifecycle::Class;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Step, Unit, loses_actions};
 use crate::unit_ai::task_finder::world::wait_progress;
 use crate::unit_ai::unit::AiResume;
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
+
+/// An action below the head after the head's update: its idle update (`FUN_140a78470`: a target
+/// or second target past state 6 let go, its sub-actions' idle update) is not ported, and no list
+/// of the slice holds two (every add starts from an empty list, the import takes one).
+const BELOW_HEAD: &str = "an action below the head of the list (its idle update, FUN_140a78470)";
 
 impl Unit {
     pub(crate) fn update(&mut self, c: &mut Context<'_>) -> Result<Step, GenieError> {
@@ -81,9 +87,9 @@ impl Unit {
         Ok(captured)
     }
 
-    /// The list's update (`FUN_140a992b0`): its head's update (slot 0x30), by the head's kind;
-    /// the slice holds no action below it, whose idle update (`FUN_140a78470`) would follow.
-    /// The Artifact's capture, if it found one.
+    /// The list's update (`FUN_140a992b0`): its head's update (slot 0x30), by the head's kind,
+    /// then what follows it ([`Unit::end_head_update`]). The Artifact's capture, if it found
+    /// one.
     fn update_head(
         &mut self,
         c: &mut Context<'_>,
@@ -94,21 +100,37 @@ impl Unit {
             group: self.group.id,
             action_state: self.top_action().map_or(0, |a| a.state),
         };
-        let updated = match self.actions.head() {
-            None => Ok(()),
-            Some(Action::Artifact(_)) => return self.artifact_part(c, me),
+        let mut captured = None;
+        let code = self.head_part(c, me, &mut captured)?;
+        self.end_head_update(c, code)?;
+        Ok(captured)
+    }
+
+    /// The head's update (slot 0x30) by its kind, and its code; the Artifact's capture into
+    /// `captured`.
+    fn head_part(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+        captured: &mut Option<crate::ownership::capture::Captured>,
+    ) -> Result<HeadCode, GenieError> {
+        match self.actions.head() {
+            None => Ok(HeadCode::Keeps),
+            Some(Action::Artifact(_)) => self.artifact_part(c, me).map(|found| {
+                *captured = found;
+                HeadCode::Keeps
+            }),
             Some(Action::Build(_)) => self.build_part(c, me),
             Some(Action::Repair(_)) => self.repair_part(c, me),
             Some(Action::Enter(_)) => self.enter_update(c, me),
             Some(Action::Transport(_)) => self.transport_update(c, me),
             Some(Action::WaitSolidify(_)) => {
-                self.wait_solidify_part(OthersRef::of(&c.w.players, c.player));
-                Ok(())
+                Ok(self.wait_solidify_part(OthersRef::of(&c.w.players, c.player)))
             }
-            Some(Action::Missile(_)) => self.fly(c),
+            Some(Action::Missile(_)) => self.fly(c).map(|()| HeadCode::Keeps),
             Some(Action::MoveTo(_)) => self.move_to_part(c, me),
-            Some(Action::Explore(_)) => self.explore_part(c, me),
-            Some(Action::Fly(_)) => self.fly_part(c, me),
+            Some(Action::Explore(_)) => self.explore_part(c, me).map(|()| HeadCode::Keeps),
+            Some(Action::Fly(_)) => self.fly_part(c, me).map(|()| HeadCode::Keeps),
             Some(Action::Make(_)) => self.make_part(c),
             Some(Action::Gather(_)) => self.gather_update(c, me),
             Some(Action::Hunt(_)) => self.hunter_update(c, me),
@@ -116,26 +138,44 @@ impl Unit {
                 let own = self.own_victim(c);
                 self.attack_part(c, me, own)
             }
-        };
-        updated?;
-        Ok(None)
+        }
+    }
+
+    /// What follows the head's update (its `code`): the idle update of the actions below it
+    /// ([`BELOW_HEAD`]), then `RGE_Action_Object::update`'s deletion of a head whose code is 1 or
+    /// 3 ([`Unit::delete_own_head`]).
+    ///
+    /// # Errors
+    ///
+    /// An action below the head, and the deletion's.
+    pub(crate) fn end_head_update(
+        &mut self,
+        c: &mut Context<'_>,
+        code: HeadCode,
+    ) -> Result<(), GenieError> {
+        if self.actions.iter().nth(1).is_some() {
+            return Err(GenieError::unreachable(BELOW_HEAD));
+        }
+        if code == HeadCode::Deletes {
+            self.delete_own_head(c)?;
+        }
+        Ok(())
     }
 
     /// The wait for a foundation in its update (`FUN_140ae8b70`) on its build points, none when
-    /// the world does not hold it; its 1 removes it (`FUN_140a98e20`: the base teardown lets no
-    /// target go, and no action follows it, the wait having replaced the list).
-    fn wait_solidify_part(&mut self, others: OthersRef<'_>) {
-        if let Some(w) = self.actions.wait_solidify()
-            && w.update(wait_progress(w.target, others))
-        {
-            self.actions.set_wait_solidify(None);
-        }
+    /// the world does not hold it; its 1 deletes it (its destructor lets no target go).
+    fn wait_solidify_part(&self, others: OthersRef<'_>) -> HeadCode {
+        let ended = self
+            .actions
+            .wait_solidify()
+            .is_some_and(|w| w.update(wait_progress(w.target, others)));
+        HeadCode::ended(ended)
     }
 
     /// The Hunt's update (`0x140ac7a00`): its targets' check ([`Unit::hunt_targets`]), then its
     /// part by state ([`Unit::hunt_part`]) with the hunter as a combat object, which its hits
     /// read and change.
-    fn hunter_update(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    fn hunter_update(&mut self, c: &mut Context<'_>, me: Me) -> Result<HeadCode, GenieError> {
         self.hunt_targets(c)?;
         let mut own = self.own_victim(c);
         let tree_lost = self.tree_lost();

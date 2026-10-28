@@ -11,6 +11,7 @@
 
 use crate::GenieError;
 use crate::objects::masters::Task;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::world::context::Context;
 
@@ -179,45 +180,43 @@ impl MakeAction {
 
 impl Unit {
     /// A farm's Make in its update: the food it makes, the player's share, the farm that runs
-    /// out, and the end.
-    pub(crate) fn make_part(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        if let Some(make) = self.actions.make_mut() {
-            let master =
-                c.w.masters
-                    .get(c.player)
-                    .and_then(|m| m.get(self.life.master_id))
-                    .ok_or(GenieError::unsupported(
-                        "a Make of a master the slice does not have",
-                    ))?;
-            let farm = Farm {
-                master_id: master.id,
-                kind: master.kind,
-                class: master.class,
-                work_rate: master.work_rate + self.work_rate_powerup,
-                capacity: master.capacity,
-                dt: c.dt_seconds,
-            };
-            let step = make.update(
-                &mut Held {
-                    attribute_type: &mut self.life.attribute_type,
-                    amount: &mut self.life.amount,
-                },
-                farm,
-            );
-            if let Some((kind, amount)) = step.to_player {
-                c.w.players[c.player].add_attribute(kind, amount)?;
-            }
-            // slot 0xd8 (FUN_14118f580): no hit points left; the object is in its list, so not
-            // asleep, and the special-object list (+0x30c bit 0) is not held
-            if step.exhausted {
-                self.life.hp = 0.0;
-            }
-            // the action list's result 1 removes it (FUN_140a98e20)
-            if step.done {
-                self.actions.set_make(None);
-            }
+    /// out, and its code (the end's 1).
+    pub(crate) fn make_part(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
+        let Some(make) = self.actions.make_mut() else {
+            return Ok(HeadCode::Keeps);
+        };
+        let master =
+            c.w.masters
+                .get(c.player)
+                .and_then(|m| m.get(self.life.master_id))
+                .ok_or(GenieError::unsupported(
+                    "a Make of a master the slice does not have",
+                ))?;
+        let farm = Farm {
+            master_id: master.id,
+            kind: master.kind,
+            class: master.class,
+            work_rate: master.work_rate + self.work_rate_powerup,
+            capacity: master.capacity,
+            dt: c.dt_seconds,
+        };
+        let step = make.update(
+            &mut Held {
+                attribute_type: &mut self.life.attribute_type,
+                amount: &mut self.life.amount,
+            },
+            farm,
+        );
+        if let Some((kind, amount)) = step.to_player {
+            c.w.players[c.player].add_attribute(kind, amount)?;
         }
-        Ok(())
+        // slot 0xd8 (FUN_14118f580): no hit points left; the object is in its list, so not
+        // asleep, and the special-object list (+0x30c bit 0) is not held
+        if step.exhausted {
+            self.life.hp = 0.0;
+        }
+        // its 1 deletes it
+        Ok(HeadCode::ended(step.done))
     }
 }
 

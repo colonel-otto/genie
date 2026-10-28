@@ -24,8 +24,8 @@ type TaskAt<'a> = &'a dyn Fn(i16, i16) -> Result<Task, GenieError>;
 /// The top action of a saved object as the slice models it: the Artifact action (107), the
 /// Build action (101) with its `MoveTo`, a `MoveTo` of its own (type 1), a bird's Fly action (10)
 /// with its `MoveTo`, the Hunt (110) with its Attack or `MoveTo` (and in state 8 its second
-/// target, the drop site) and a farm's Make (21). Any other saved action stops the object's
-/// player.
+/// target, the drop site) and a farm's Make (21). Any other saved action, and a second one
+/// below the head ([`not_imported`]), stops the object's player.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn saved_actions(
     object: &genie_save::Object,
@@ -37,10 +37,16 @@ pub(super) fn saved_actions(
     graphics: Option<&BTreeMap<i16, Graphic>>,
     unit: &mut Unit,
 ) -> Result<(), GenieError> {
-    let (kind, action) = object
+    let mut entries = object
         .actions()
-        .and_then(|a| a.entries().next())
+        .map(genie_save::generated::world::ActionList::entries)
         .expect("saved_actions is called for an object with actions");
+    let (kind, action) = entries
+        .next()
+        .expect("saved_actions is called for an object with actions");
+    if let Some((below, _)) = entries.next() {
+        return Err(not_imported().with("below the head", below));
+    }
     let base = action
         .base()
         .ok_or(GenieError::unsupported("a saved action without its base"))?;
@@ -74,10 +80,15 @@ pub(super) fn saved_actions(
         genie_core::construction::wait_solidify::WAIT_SOLIDIFY => {
             import_wait_solidify(&saved, &task_at, unit)
         }
-        _ => Err(GenieError::unsupported(
-            "a saved action the slice does not import",
-        )),
+        _ => Err(not_imported().with("action type", kind)),
     }
+}
+
+/// A saved action the slice does not import: one of a type it does not model, or one below the
+/// head (the slice's lists hold one action: the restart of the action under a deleted head, its
+/// slot 0x28, is not ported).
+const fn not_imported() -> GenieError {
+    GenieError::unsupported("a saved action the slice does not import")
 }
 
 /// The second target (+0x34): only the Hunt, the Gather and the Build (their drop site), the

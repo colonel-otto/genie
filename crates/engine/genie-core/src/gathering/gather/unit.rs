@@ -6,6 +6,7 @@ use crate::gathering::hunt::HuntSprites;
 use crate::math::rng::{Stream, Well512};
 use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::release::Releaser;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
 use crate::unit_ai::BUILD_ACTION;
 use crate::unit_ai::task_finder::Actor;
@@ -115,7 +116,11 @@ impl Unit {
     /// target (`set_state(4)`); without a target the unit AI's search is not modelled. The other
     /// states ([`crate::gathering::gather::GatherAction::update`]) may ask for the drop-off
     /// ([`Unit::gather_drop_off`]).
-    pub(crate) fn gather_update(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn gather_update(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+    ) -> Result<HeadCode, GenieError> {
         let by = self.releaser(c);
         self.gather_check_targets(c, by)?;
         let view = self.gather_view(c)?;
@@ -224,7 +229,7 @@ impl Unit {
         me: Me,
         view: GatherView,
         by: Releaser,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         use crate::gathering::hunt::Dropped;
         let (position, radius) =
             c.w.spatial
@@ -252,16 +257,16 @@ impl Unit {
             self.body.set_anim_speed(0.0);
         }
         match dropped {
-            Dropped::Going => Ok(()),
+            Dropped::Going => Ok(HeadCode::Keeps),
             Dropped::Load(kind, amount) => self.gather_load_dropped(c, by, (kind, amount), radius),
             // set_state(8) again: the drop site kept or searched
-            Dropped::Again => self.gather_drop_off(c),
+            Dropped::Again => self.gather_drop_off(c).map(|()| HeadCode::Keeps),
             // set_state(2): the target, then the drop site go (slot 0x68, FUN_140a7a190)
             Dropped::Idle => {
                 for id in before.into_iter().filter(|&id| id != -1) {
                     crate::world::lets::release(c, id, by)?;
                 }
-                Ok(())
+                Ok(HeadCode::Keeps)
             }
         }
     }
@@ -312,7 +317,7 @@ impl Unit {
         by: Releaser,
         (kind, amount): (i16, f32),
         radius: [f32; 2],
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         c.give_load(kind, amount)?;
         let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.target == -1 {
@@ -330,7 +335,9 @@ impl Unit {
             .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let rng = c.w.streams.get(Stream::Action);
-        gather.set_walk(t.position, t.radius, gap, mover, rng)
+        gather
+            .set_walk(t.position, t.radius, gap, mover, rng)
+            .map(|()| HeadCode::Keeps)
     }
 
     /// The Gather's other states ([`crate::gathering::gather::GatherAction::update`]) on the
@@ -344,7 +351,7 @@ impl Unit {
         me: Me,
         view: GatherView,
         by: Releaser,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         let dt = c.dt_seconds;
         let gather = self.actions.gather_mut().expect("the caller's gather");
         let mut victim = victim(c, gather.target);
@@ -385,27 +392,20 @@ impl Unit {
         self.gather_next(c, next, old, by)
     }
 
-    /// What follows the Gather's update (`next`; `old`: its targets before): an end lets both
-    /// targets go and removes the Gather (state 1's update returns 1, whose teardown lets them
-    /// go); else each target it changed is let go (slot 0x68, `FUN_140a7a190` with none), then
-    /// the drop-off, the search, a build command, or the reseed after the update (state 0xf2's
-    /// walk ended).
+    /// What follows the Gather's update (`next`; `old`: its targets before): an end is its code
+    /// (state 1's update returns 1, whose deletion lets both targets go); else each target it
+    /// changed is let go (slot 0x68, `FUN_140a7a190` with none), then the drop-off, the search, a
+    /// build command, or the reseed after the update (state 0xf2's walk ended).
     pub(crate) fn gather_next(
         &mut self,
         c: &mut Context<'_>,
         next: crate::gathering::gather::Next,
         (old_target, old_second): (i32, i32),
         by: Releaser,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         use crate::gathering::gather::Next;
         if next == Next::Done {
-            let g = self.actions.take_gather().expect("the caller's gather");
-            for t in [g.target, g.carry_to] {
-                if t != -1 {
-                    crate::world::lets::release(c, t, by)?;
-                }
-            }
-            return Ok(());
+            return Ok(HeadCode::Deletes);
         }
         if let Some(g) = self.actions.gather() {
             for (old, new) in [(old_target, g.target), (old_second, g.carry_to)] {
@@ -426,7 +426,7 @@ impl Unit {
             Next::Reseed { arrived } => c.reseed = Some(arrived),
             Next::Stay | Next::Done => {}
         }
-        Ok(())
+        Ok(HeadCode::Keeps)
     }
 
     /// The Gather's search in state 3 (`0x140a8cd40` case 3 and its repeat, `0x140a8e1d0` case

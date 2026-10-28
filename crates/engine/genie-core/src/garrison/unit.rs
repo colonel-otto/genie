@@ -8,6 +8,7 @@ use crate::movement::Me;
 use crate::movement::move_to::MoveTo;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::sprite::Graphic;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
 use crate::unit_ai::UnitAi;
@@ -29,7 +30,11 @@ impl Unit {
     /// update's `set_state(1)`, with an enter again ([`crate::garrison::EnterStep::again`]); a
     /// wait's standing sprite; the transport's move at once ([`crate::world::World::ship_move`], the
     /// unit lent to the world).
-    pub(crate) fn enter_update(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn enter_update(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+    ) -> Result<HeadCode, GenieError> {
         let enter = self
             .actions
             .enter()
@@ -110,16 +115,9 @@ impl Unit {
         if step.enter {
             self.enter_in_update(c, enter.target, step.again)?;
         }
-        if step.done {
-            // its 1 (an Enter that got the unit in, the unit out again before this update) or a
-            // failed one's 3: the action list removes it, its teardown letting its building go
-            // (slot 0x180)
-            if let Some(e) = self.actions.take_enter() {
-                let by = self.releaser(c);
-                crate::world::lets::release(c, e.target, by)?;
-            }
-        }
-        Ok(())
+        // its 1 (an Enter that got the unit in, the unit out again before this update) or a
+        // failed one's 3 deletes it, its destructor letting its building go
+        Ok(HeadCode::ended(step.done))
     }
 
     /// The Enter's enter in its update (`FUN_140a867b0` into `target`, [`Unit::enter_building`],
@@ -191,13 +189,12 @@ impl Unit {
     /// standing sprite ([`Unit::show_standing`]), a failure notifies its unit AI (0x1f9 with
     /// the transport's action value), the owner hears that it cannot unload
     /// ([`crate::unit_ai::alert_owner`]), the unload is the caller's before the unit AI part
-    /// ([`Context::transport_unload`]), and a 1 or 3 removes it from the list (its teardown: no
-    /// `MoveTo` is left, no target).
+    /// ([`Context::transport_unload`]); its code, whose 1 or 3 deletes it.
     pub(crate) fn transport_update(
         &mut self,
         c: &mut Context<'_>,
         me: Me,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         let master =
             c.w.masters
                 .get(c.player)
@@ -253,11 +250,8 @@ impl Unit {
         if step.cannot_unload {
             crate::unit_ai::alert_owner(c.computer)?;
         }
-        if matches!(step.code, 1 | 3) {
-            self.actions.set_transport(None);
-        }
         c.transport_unload = step.unload;
-        Ok(())
+        Ok(HeadCode::of(step.code))
     }
 
     /// The Transport's slot 8 on a move to `point` ([`crate::garrison::transport::TransportAction::move_to`])
@@ -576,51 +570,21 @@ pub(crate) struct EnterWorld<'a> {
 
 impl Unit {
     /// The inside update of an object inside another (`FUN_140a98790`), which runs in place of
-    /// its actions' update.
+    /// its actions' update (`RGE_Action_Object::update`): the head's idle update
+    /// (`FUN_140a78480` -> `FUN_140a784a0`: a target or second target past state 6 let go, its
+    /// sub-actions' idle update; the head's deletion right after lets them go alike), the idle
+    /// update of each action below it, and the head's deletion ([`Unit::end_head_update`] with
+    /// its 1). A unit its actions got in this update waits for the next. An empty list takes the
+    /// default task instead: livestock inside makes its Artifact in one update and loses it in
+    /// the next.
     pub(crate) fn inside_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        // RGE_Action_Object::update: the actions of an object inside another do not update; its
-        // inside update (FUN_140a98790) deletes its top action (FUN_140a78480 -> FUN_140a784a0:
-        // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
-        // targets go, slot 0x180, and a MoveTo's stops the unit, slot 0x5d0); the actions below
-        // it (FUN_140a78470) and the next one's slot 0x28 need a second action, which the slice
-        // never holds; a unit its actions got in this update waits for the next. An empty list
-        // takes the default task instead: livestock inside makes its Artifact in one update and
-        // loses it in the next
-        {
-            if let Some(e) = self.actions.take_enter() {
-                if e.move_to.is_some()
-                    && let Some(m) = self.body.mover_mut()
-                {
-                    m.stop()?;
-                }
-                let by = self.releaser(c);
-                crate::world::lets::release(c, e.target, by)?;
-            } else if self.top_action_kind() == Some(crate::ownership::artifact::ARTIFACT_TYPE) {
-                // the Artifact goes (FUN_140a73fc0): its target is let go, then its sub-actions
-                // go (an Enter's teardown lets its building go; a walking MoveTo's stops the
-                // unit)
-                let mut art = self.actions.take_artifact().expect("its top action");
-                let by = self.releaser(c);
-                let (released, gone) = art.tear_down();
-                for t in [released, gone.released].into_iter().flatten() {
-                    crate::world::lets::release(c, t, by)?;
-                }
-                if gone.stops
-                    && let Some(m) = self.body.mover_mut()
-                {
-                    m.stop()?;
-                }
-            } else if self.unmodelled_action.is_some() {
-                return Err(GenieError::unsupported(
-                    "the inside update of an action the slice does not hold",
-                ));
-            } else if self.top_action_kind().is_some() {
-                // any other action's destructor, as the list's deletion runs it
-                let by = self.releaser(c);
-                let (mut releases, mut leaves) = (Vec::new(), Vec::new());
-                self.clear_own_actions(&mut releases, &mut leaves, by)?;
-                crate::world::lets::torn_down(c, (leaves, releases))?;
-            }
+        if !self.actions.is_empty() {
+            return self.end_head_update(c, HeadCode::Deletes);
+        }
+        if self.unmodelled_action.is_some() {
+            return Err(GenieError::unsupported(
+                "the inside update of an action the slice does not hold",
+            ));
         }
         Ok(())
     }

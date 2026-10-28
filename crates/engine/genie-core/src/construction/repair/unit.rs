@@ -6,6 +6,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::Me;
 use crate::objects::masters::{Master, Masters};
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
 use crate::world::World;
@@ -19,9 +20,13 @@ impl Unit {
     /// [`crate::construction::repair::repair_unit`]) paid from the player's resources. Its changes
     /// go to the objects ([`repair_write_back`]), the payments join the attribute adds, then what
     /// the step leaves ([`Unit::after_repair_step`]).
-    pub(crate) fn repair_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn repair_part(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+    ) -> Result<HeadCode, GenieError> {
         let Some(target) = self.actions.repair().map(|r| r.target) else {
-            return Ok(());
+            return Ok(HeadCode::Keeps);
         };
         let own = repair_master(&c.w.masters, c.player, self)
             .ok_or(GenieError::missing_data("a repairer's master"))?;
@@ -106,13 +111,13 @@ impl Unit {
     /// What the Repair's step leaves besides the repair (`step`; `target` of type `target_kind`,
     /// `counted_in` the object whose repairers count the unit): a target of a type above 69 has
     /// its armor back (`FUN_1412066a0`), the repairers change, the target is let go, the unit AI
-    /// hears the notifies, the unit stands, and the action's end lets the target it holds go.
+    /// hears the notifies and the unit stands; its code (the end's 1).
     fn after_repair_step(
         &mut self,
         c: &mut Context<'_>,
         (target, target_kind, counted_in): (i32, u8, Option<(i32, u8)>),
         step: crate::construction::repair::RepairStep,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         if step.restored
             && 0x45 < target_kind
             && let Some((_, u)) = c.w.object_mut(target)
@@ -140,16 +145,9 @@ impl Unit {
                 c.w.streams.get(Stream::Sprite),
             )?;
         }
-        if step.done {
-            // the action list removes it; its destructor (FUN_140ad8fd0) finds it out of the
-            // repairers (set_state left them) and lets the target it still holds go
-            let holds = self.actions.repair().map_or(-1, |r| r.target);
-            self.actions.set_repair(None);
-            if holds != -1 {
-                crate::world::lets::release(c, holds, by)?;
-            }
-        }
-        Ok(())
+        // its end's 1 deletes it; the destructor (FUN_140ad8fd0) finds it out of the repairers
+        // (set_state left them) and lets the target it still holds go
+        Ok(HeadCode::ended(step.done))
     }
 
     /// `+0x9e8` (`num_builders`): a building's in its construction, any other's its own.

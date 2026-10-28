@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{GroupSpeed, Me};
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
@@ -99,9 +100,13 @@ impl Unit {
     }
 
     /// The unit's own `MoveTo` in its update (`0x140aa2a70`): its update, then a give-up, a moved
-    /// target, and its end (done or failed), which posts the notify, lets the target go and stops
-    /// the unit.
-    pub(crate) fn move_to_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    /// target, and its end (done or failed), which posts the notify; its code (the end's 1 or 3,
+    /// whose deletion lets the target go and stops the unit).
+    pub(crate) fn move_to_part(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+    ) -> Result<HeadCode, GenieError> {
         let step = self.own_move_step(c, me)?;
         if step.gave_up {
             let villager =
@@ -123,10 +128,11 @@ impl Unit {
         if step.target_moved {
             self.post_own(TARGET_MOVED, [0, 0, 0])?;
         }
-        if step.done || step.failed {
-            self.own_move_end(c, step.failed)?;
+        let ended = step.done || step.failed;
+        if ended {
+            self.own_move_end(step.failed)?;
         }
-        Ok(())
+        Ok(HeadCode::ended(ended))
     }
 
     /// The own `MoveTo`'s update (`0x140aa2a70`): its state 3 asks the unit's AI for a path to
@@ -157,33 +163,16 @@ impl Unit {
         })
     }
 
-    /// The own `MoveTo`'s end, done or `failed`: the notify, the target let go and the unit
-    /// stopped.
-    fn own_move_end(&mut self, c: &mut Context<'_>, failed: bool) -> Result<(), GenieError> {
-        // its update in state 1 posts its completion (0x1fa with the move action value; an
-        // own MoveTo is never quiet), in state 13 its failure (0x1f9) and returns 3; the
-        // action list removes it (FUN_140a98e20): its teardown (0x140aa1f30) stops the unit
-        // (slot 0x5d0)
+    /// The own `MoveTo`'s end, done or `failed`: its update in state 1 posts its completion
+    /// (0x1fa with the move action value; an own `MoveTo` is never quiet), in state 13 its
+    /// failure (0x1f9) and returns 3.
+    fn own_move_end(&mut self, failed: bool) -> Result<(), GenieError> {
         let notify = if failed {
             crate::unit_ai::ACTION_FAILED
         } else {
             ACTION_COMPLETED
         };
-        self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
-        // ... and the base teardown (FUN_140a73fc0) lets its target go (slot 0x180)
-        if let Some(t) = self
-            .actions
-            .take_move_to()
-            .map(|m| m.target)
-            .filter(|&t| t != -1)
-        {
-            let by = self.releaser(c);
-            crate::world::lets::release(c, t, by)?;
-        }
-        if let Some(m) = self.body.mover_mut() {
-            m.stop()?;
-        }
-        Ok(())
+        self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])
     }
 
     /// The unit's Explore in its update (`0x140a880c0`): its walk in state 11; states 1 (done) and

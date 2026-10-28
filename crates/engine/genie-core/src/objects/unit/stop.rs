@@ -94,122 +94,44 @@ impl Unit {
         Ok(())
     }
 
-    /// The action list's deletion (`FUN_140a98620`), the one every caller shares (the unit's
-    /// death, its stops and commands, [`crate::world::World::clear_actions`]): each action's
-    /// destructor. A `MoveTo`'s (`FUN_140aa1f30`, an action's sub-action's too) stops the unit
-    /// (slot 0x5d0). The base teardown (`FUN_140a73fc0`) lets the target go (slot 0x180) unless
-    /// the action is quiet (`+0x60`; the Hunt's Attack is, so only the Hunt lets its target go),
-    /// then the second target, into `releases` with the unit as `by`. The Build's
-    /// (`FUN_140aadbf0`) first takes a counted builder (`+0x68`) out of its building's builders
-    /// (`FUN_140aaddb0`, `+0x9e8`), its foundation into `builder_leaves`
-    /// ([`crate::world::World::leave_builders`]), as the Repair's (`FUN_140ad8fd0`) a counted
-    /// repairer (`+0x6c`) its target's; the Artifact's (`FUN_140aab0d0`) lets its
-    /// target go and its `MoveTo`'s stops the unit; the Fly's (`FUN_140a84750`) gives the unit
-    /// its top speed as its animation speed (slot 0x208 into `+0x7b8`); the missile's lets its
-    /// target and the object it was fired from go. The Make, the wait for a foundation
-    /// (`0x140ae8780`) and the Explore (`0x140a87dd0`) hold no target. A building's production
-    /// is a list of its own, which stays. Of the list's deletion itself, the next action's slot
-    /// 0x28 for a unit below state 3 needs a second action, which the slice never holds.
+    /// The action list's deletion (`FUN_140a98620`, [`ActionList::delete_all`]), the one every
+    /// caller shares (the unit's death, its stops and commands,
+    /// [`crate::world::World::clear_actions`]): each action's destructor
+    /// ([`crate::objects::actions::Action::tear_down`]) in the list's order. The targets they let
+    /// go go into `releases` with the unit as `by`, the buildings a counted builder or repairer
+    /// leaves into `builder_leaves` ([`crate::world::World::leave_builders`]). A building's
+    /// production is a list of its own, which stays.
+    ///
+    /// [`ActionList::delete_all`]: crate::objects::actions::ActionList::delete_all
     ///
     /// # Errors
     ///
-    /// The unit's stop that the motion step does not model.
+    /// The unit's stop that the motion step does not model, and the list's deletion's.
     pub(crate) fn clear_own_actions(
         &mut self,
         releases: &mut Vec<(i32, Releaser)>,
         builder_leaves: &mut Vec<i32>,
         by: Releaser,
     ) -> Result<(), GenieError> {
-        let mut release = |t: i32| {
-            if t != -1 {
-                releases.push((t, by));
-            }
-        };
-        self.actions.set_wait_solidify(None);
-        self.actions.set_make(None);
-        if let Some(mut a) = self.actions.take_artifact() {
-            let (released, gone) = a.tear_down();
-            if let Some(t) = released {
-                release(t);
-            }
-            if let Some(t) = gone.released {
-                release(t);
-            }
-            self.stop_if_moving(gone.stops)?;
-        }
-        if let Some(f) = self.actions.take_fly() {
-            self.body
-                .set_anim_speed(self.body.mover().map_or(0.0, |m| m.stats.speed));
-            self.stop_if_moving(f.move_to.is_some())?;
-        }
-        if let Some(e) = self.actions.take_enter() {
-            self.stop_if_moving(e.move_to.is_some())?;
-            release(e.target);
-        }
-        // the Transport's teardown: its MoveTo's stops the unit; it holds no target
-        let moves = self
-            .actions
-            .take_transport()
-            .is_some_and(|t| t.move_to.is_some());
-        self.stop_if_moving(moves)?;
-        if let Some(b) = self.actions.take_build() {
-            if b.added {
-                builder_leaves.push(b.target);
-            }
-            release(b.target);
-            self.stop_if_moving(b.move_to.is_some())?;
-        }
-        // the Repair's destructor (FUN_140ad8fd0): a counted repairer leaves its target's
-        // repairers, then the base teardown's sub-actions and target
-        if let Some(r) = self.actions.take_repair() {
-            if r.counted {
-                builder_leaves.push(r.target);
-            }
-            release(r.target);
-            self.stop_if_moving(r.move_to.is_some())?;
-        }
-        let moves = self
-            .actions
-            .take_explore()
-            .is_some_and(|e| e.move_to.is_some());
-        self.stop_if_moving(moves)?;
-        if let Some(mut h) = self.actions.take_hunt() {
-            h.tear_down(self.body.mover_mut())?;
-            release(h.target);
-            release(h.carry_to);
-        }
-        if let Some(mut g) = self.actions.take_gather() {
-            g.tear_down(self.body.mover_mut())?;
-            release(g.target);
-            release(g.carry_to);
-        }
-        if let Some(mut a) = self.actions.take_attack() {
-            a.tear_down(self.body.mover_mut())?;
-            release(a.target);
-            release(a.target2);
-        }
-        if let Some(old) = self.actions.take_move_to() {
-            self.stop_if_moving(true)?;
-            release(old.target);
-        }
-        if let Some(a) = self.actions.take_missile() {
-            release(a.target);
-            release(a.fired_from);
-        }
+        let torn = self.actions.delete_all(&mut self.body, self.life.state)?;
+        releases.extend(torn.releases.into_iter().map(|t| (t, by)));
+        builder_leaves.extend(torn.builder_leaves);
         Ok(())
     }
 
-    /// [`Unit::clear_own_actions`]'s stop (slot 0x5d0) for a torn-down action's `MoveTo`, when
-    /// it had one (`moves`) and the unit moves at all.
+    /// `FUN_140a98e20` on the unit's own list ([`ActionList::delete_head`]): the head's
+    /// destructor, what it lets go applied at once
+    /// ([`crate::objects::teardown::TornDown::let_go`]).
+    ///
+    /// [`ActionList::delete_head`]: crate::objects::actions::ActionList::delete_head
     ///
     /// # Errors
     ///
-    /// The unit's stop that the motion step does not model.
-    pub(super) fn stop_if_moving(&mut self, moves: bool) -> Result<(), GenieError> {
-        if moves && let Some(m) = self.body.mover_mut() {
-            m.stop()?;
-        }
-        Ok(())
+    /// The deletion's, and what it lets go.
+    pub(crate) fn delete_own_head(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        let by = self.releaser(c);
+        let torn = self.actions.delete_head(&mut self.body, self.life.state)?;
+        torn.let_go(c, by)
     }
 
     /// Its unit AI's effects, in order.

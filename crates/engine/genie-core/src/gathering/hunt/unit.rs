@@ -6,6 +6,7 @@ use crate::gathering::closest_resource::herded;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
@@ -158,23 +159,23 @@ impl Unit {
     ///
     /// [`HuntAction::retarget`]: crate::gathering::hunt::HuntAction::retarget
     /// [`HuntAction::search_walk`]: crate::gathering::hunt::HuntAction::search_walk
-    pub(crate) fn hunt_after_drop(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn hunt_after_drop(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
         let _ =
             c.w.masters
                 .get(c.player)
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(crate::world::HUNTER_MASTER)?;
         if self.actions.hunt().expect("the caller's hunt").target != -1 {
-            return self.hunt_back_to_target(c);
+            return self.hunt_back_to_target(c).map(|()| HeadCode::Keeps);
         }
         if self.hunt_drop_orders(c)? {
-            return Ok(());
+            return Ok(HeadCode::Deletes);
         }
         let (found, kind) = self.hunt_next_search(c)?;
         if found == -1 {
-            return self.hunt_found_nothing(c, kind);
+            return self.hunt_found_nothing(c, kind).map(|()| HeadCode::Keeps);
         }
-        self.hunt_take_found(c, found)
+        self.hunt_take_found(c, found).map(|()| HeadCode::Keeps)
     }
 
     /// [`Unit::hunt_after_drop`] with a target: the drop site goes (`FUN_140a7a190` with none)
@@ -251,10 +252,9 @@ impl Unit {
     /// The unit AI's queued orders after the drop: the orders (gather, hunt, on a target) whose
     /// target is gone (the world does not hold it, or its sight sees it past state 5) leave
     /// (`FUN_140c5de60`); with orders left the AI's order and action clear (`FUN_140c64b60`,
-    /// `FUN_140c64b50`) and the hunt ends (`set_state(1)`; its update returns 1 and the action
-    /// list removes it, its teardown letting the drop site go): its unit AI runs the queued
-    /// order. True when it ends.
-    fn hunt_drop_orders(&mut self, c: &mut Context<'_>) -> Result<bool, GenieError> {
+    /// `FUN_140c64b50`) and the hunt ends (`set_state(1)`; its update returns 1, whose deletion
+    /// lets the drop site go): its unit AI runs the queued order. True when it ends.
+    fn hunt_drop_orders(&mut self, c: &Context<'_>) -> Result<bool, GenieError> {
         let ai = self.ai.as_mut().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
@@ -273,9 +273,6 @@ impl Unit {
             return Ok(false);
         }
         ai.end_order_and_action()?;
-        let mut hunt = self.actions.take_hunt().expect("the caller's hunt");
-        hunt.tear_down(self.body.mover_mut())?;
-        self.hunt_release(c, [hunt.target, hunt.carry_to])?;
         Ok(true)
     }
 

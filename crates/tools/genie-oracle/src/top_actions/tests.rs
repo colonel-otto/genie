@@ -180,6 +180,33 @@ fn a_second_target_or_an_unknown_action_is_unsupported() {
     );
 }
 
+/// A saved list of two actions: the slice's lists hold one (the restart of the action under a
+/// deleted head, slot 0x28, is not ported), so the import refuses the action below the head
+/// rather than dropping it, and names it.
+#[test]
+fn a_second_saved_action_is_refused() {
+    let mut object = acting(MOVE_TO, move_to(2, 0.5));
+    combat_mut(&mut object)
+        .rge_combat_object
+        .rge_action_object
+        .actions = action_list(vec![
+        (MOVE_TO, move_to(2, 0.5)),
+        (genie_core::movement::explore::EXPLORE, explore(base(0))),
+    ]);
+    let err = import(&object, &PlayerObjects::default(), Unit::default()).unwrap_err();
+    assert_eq!(
+        err,
+        GenieError::unsupported("a saved action the slice does not import")
+    );
+    assert_eq!(
+        err.context().collect::<Vec<_>>(),
+        [(
+            "below the head",
+            genie_core::movement::explore::EXPLORE.to_string().as_str()
+        )]
+    );
+}
+
 #[test]
 fn a_move_to_takes_its_state_point_range_and_wait() {
     let m = imported(MOVE_TO, move_to(4, 0.5))

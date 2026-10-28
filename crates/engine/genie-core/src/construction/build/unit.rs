@@ -16,6 +16,7 @@ use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::lifecycle::death_parts::{clear_look_of, farm_bonus};
 use crate::objects::object_list::ObjectList;
 use crate::objects::release::Releaser;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::unit_ai::BUILD_ACTION;
 use crate::unit_ai::task_finder::Actor;
@@ -44,12 +45,16 @@ struct BuildReads {
 
 impl Unit {
     /// The Build's part of the builder's update (`RGE_Action_Object::update` on its Build, the
-    /// action's slot 6): nothing without a Build.
-    pub(crate) fn build_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    /// action's slot 6) and its code: nothing without a Build.
+    pub(crate) fn build_part(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+    ) -> Result<HeadCode, GenieError> {
         let looks = self.clearing_looks(c, OthersRef::of(&c.w.players, c.player));
         let by = self.releaser(c);
         let Some(action) = self.actions.build().copied() else {
-            return Ok(());
+            return Ok(HeadCode::Keeps);
         };
         let target = action.target;
         let annexed = OthersRef::of(&c.w.players, c.player)
@@ -252,15 +257,15 @@ impl Unit {
     }
 
     /// What the Build's step changes of the builder: the load dropped, its animation, the
-    /// targets let go, the action's end, its notifies, its standing sprite, the work it takes
-    /// next and its drop-off. `target` is the foundation, `built` its master.
+    /// targets let go, its notifies, its standing sprite, the work it takes next and its
+    /// drop-off; its code (the end's 1). `target` is the foundation, `built` its master.
     pub(crate) fn after_build_step(
         &mut self,
         c: &mut Context<'_>,
         me: Me,
         (target, built, by): (i32, Option<i16>, Releaser),
         step: BuildStep,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
         // 1 and 1, then the builder carries nothing, FUN_14119d310)
         if let Some((kind, amount)) = step.dropped {
@@ -274,22 +279,6 @@ impl Unit {
         }
         if let Some(s) = step.site_let_go {
             crate::world::lets::release(c, s, by)?;
-        }
-        if step.done {
-            // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
-            // builders (set_state left them) and releases the foundation and the second
-            // target it still holds (slot 0x180, FUN_140a73fc0)
-            let (holds, second) = self
-                .actions
-                .build()
-                .map_or((false, -1), |b| (b.target != -1, b.site));
-            self.actions.set_build(None);
-            if holds {
-                crate::world::lets::release(c, target, by)?;
-            }
-            if second != -1 {
-                crate::world::lets::release(c, second, by)?;
-            }
         }
         if step.released {
             crate::world::lets::release(c, target, by)?;
@@ -325,7 +314,9 @@ impl Unit {
         if step.drop_off {
             self.build_drop_off(c, me)?;
         }
-        Ok(())
+        // its end's 1 deletes it; the destructor (FUN_140aadbf0) finds it out of the builders
+        // (set_state left them) and lets go the foundation and the second target it still holds
+        Ok(HeadCode::ended(step.done))
     }
 
     /// The notifies a Build's step posts to the builder's unit AI: the search needed, a pasture

@@ -6,6 +6,7 @@ use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Planning, footprint_gap};
 use crate::objects::release::Releaser;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::DropWorld;
 use crate::world::context::Context;
@@ -23,23 +24,27 @@ impl Unit {
     /// one a Gather with its point would walk there to search again (`set_state(11)`, not
     /// modelled, or 0xf3 for a farmer); without a point a computer player's Gather is done, a
     /// human's idles (`set_state(2)`).
-    pub(crate) fn gather_after_drop(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    pub(crate) fn gather_after_drop(
+        &mut self,
+        c: &mut Context<'_>,
+    ) -> Result<HeadCode, GenieError> {
         let by = self.releaser(c);
-        if self.after_drop_orders(c, by)? {
-            return Ok(());
+        if self.after_drop_orders(c)? {
+            return Ok(HeadCode::Deletes);
         }
         let found = self.after_drop_search(c)?;
         if found == -1 {
             return self.after_drop_nothing(c, by);
         }
         self.after_drop_retarget(c, found, by)
+            .map(|()| HeadCode::Keeps)
     }
 
     /// The unit AI's queued orders after the drop: the orders on targets gone (a target the world
     /// does not hold, or one its sight sees past state 5) leave (`FUN_140c5de60`); with orders
-    /// left the AI ends its order and action and the Gather is done (its drop site let go). True
-    /// when it is.
-    fn after_drop_orders(&mut self, c: &mut Context<'_>, by: Releaser) -> Result<bool, GenieError> {
+    /// left the AI ends its order and action and the Gather is done (its deletion lets the drop
+    /// site go). True when it is.
+    fn after_drop_orders(&mut self, c: &Context<'_>) -> Result<bool, GenieError> {
         let spatial: &Spatial = &c.w.spatial;
         let gone = |id: i32| match spatial.get(id) {
             None => true,
@@ -58,11 +63,6 @@ impl Unit {
             return Ok(false);
         }
         ai.end_order_and_action()?;
-        let mut gather = self.actions.take_gather().expect("the caller's gather");
-        gather.tear_down(self.body.mover_mut())?;
-        if gather.carry_to != -1 {
-            crate::world::lets::release(c, gather.carry_to, by)?;
-        }
         Ok(true)
     }
 
@@ -94,9 +94,14 @@ impl Unit {
 
     /// Nothing found after the drop: a Gather with its point walks there to search again
     /// (`set_state(11)` within the task's range; a farmer's 0xf3 is not modelled); without one
-    /// (`LAB_140a8ed55`) a computer player's Gather is done, a human's idles (`set_state(2)`: its
-    /// targets and point cleared, its sprite [`Unit::idle_sprite`]'s). Its drop site is let go.
-    fn after_drop_nothing(&mut self, c: &mut Context<'_>, by: Releaser) -> Result<(), GenieError> {
+    /// (`LAB_140a8ed55`) a computer player's Gather is done (its code; its deletion lets the drop
+    /// site go), a human's idles (`set_state(2)`: its targets and point cleared, its sprite
+    /// [`Unit::idle_sprite`]'s) and lets its drop site go.
+    fn after_drop_nothing(
+        &mut self,
+        c: &mut Context<'_>,
+        by: Releaser,
+    ) -> Result<HeadCode, GenieError> {
         let farm_waits = crate::gathering::gather::waits_for_a_farm(
             self.life.master_id,
             self.actions.gather().map_or(-1, |g| g.target_type),
@@ -113,33 +118,27 @@ impl Unit {
                 .body
                 .mover_mut()
                 .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
-            return gather.walk_back(0.0, mover);
+            return gather.walk_back(0.0, mover).map(|()| HeadCode::Keeps);
+        }
+        if c.computer {
+            return Ok(HeadCode::Deletes);
         }
         let carry_to = gather.carry_to;
-        if c.computer {
-            let mut gather = self.actions.take_gather().expect("the caller's gather");
-            gather.tear_down(self.body.mover_mut())?;
-        } else {
-            let shows = self.idle_sprite(c)?;
-            let gather = self.actions.gather_mut().expect("the caller's gather");
-            gather.tear_down(self.body.mover_mut())?;
-            gather.state = crate::gathering::gather::IDLE;
-            gather.timer = 0.0;
-            gather.target = -1;
-            gather.carry_to = -1;
-            gather.point = [-1.0; 3];
-            if let Some(g) = shows {
-                crate::combat::attack::set_sprite(
-                    &mut self.sprite,
-                    g,
-                    c.w.streams.get(Stream::Sprite),
-                );
-            }
+        let shows = self.idle_sprite(c)?;
+        let gather = self.actions.gather_mut().expect("the caller's gather");
+        gather.tear_down(self.body.mover_mut())?;
+        gather.state = crate::gathering::gather::IDLE;
+        gather.timer = 0.0;
+        gather.target = -1;
+        gather.carry_to = -1;
+        gather.point = [-1.0; 3];
+        if let Some(g) = shows {
+            crate::combat::attack::set_sprite(&mut self.sprite, g, c.w.streams.get(Stream::Sprite));
         }
         if carry_to != -1 {
             crate::world::lets::release(c, carry_to, by)?;
         }
-        Ok(())
+        Ok(HeadCode::Keeps)
     }
 
     /// The sprite an idle gatherer shows: its task's carrying sprite while it holds at least 1 of

@@ -196,10 +196,11 @@ fn gone_foundation() -> crate::construction::wait_solidify::WaitSolidify {
     }
 }
 
-/// The list's update (`FUN_140a992b0`) runs its head's update only: a wait for a gone
-/// foundation on top of a Gather ends, and the Gather below it does not walk.
+/// The list's update (`FUN_140a992b0`) runs its head's update, then the idle update
+/// (`FUN_140a78470`) of each action below it, which is not ported: a wait for a gone foundation
+/// on top of a Gather stops there, before its deletion.
 #[test]
-fn the_list_s_update_runs_its_head_only() {
+fn the_list_s_update_stops_at_an_action_below_its_head() {
     let mut t = forage_world();
     t.gather_command(1, 0, 600).unwrap();
     let unit = &mut t.players[1].objects[0];
@@ -208,14 +209,13 @@ fn the_list_s_update_runs_its_head_only() {
         unit.top_action_kind(),
         Some(crate::construction::wait_solidify::WAIT_SOLIDIFY)
     );
-    let before = unit.actions.gather().copied();
+    let err = in_update(&mut t, (1, 0), 50, Unit::update_actions).unwrap_err();
+    assert_eq!(err.kind(), crate::ErrorKind::Unreachable);
     assert_eq!(
-        in_update(&mut t, (1, 0), 50, Unit::update_actions),
-        Ok(None)
+        err.reason(),
+        "an action below the head of the list (its idle update, FUN_140a78470)"
     );
-    let unit = &t.players[1].objects[0];
-    assert_eq!(unit.actions.wait_solidify(), None);
-    assert_eq!(unit.actions.gather().copied(), before);
+    assert!(t.players[1].objects[0].actions.wait_solidify().is_some());
 }
 
 /// An object inside another runs its inside update (`FUN_140a98790`) in place of its actions':

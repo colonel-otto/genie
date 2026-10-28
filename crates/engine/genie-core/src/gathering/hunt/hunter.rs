@@ -7,6 +7,7 @@ use crate::combat::damage::Victim;
 use crate::combat::victims::readable;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, hunt_walk_sprite, second_target_checked};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
@@ -83,14 +84,14 @@ impl Unit {
     /// ([`Unit::hunt_point_walk`]), the search ([`Unit::hunt_search_wait`]), the idle
     /// ([`Unit::hunt_idle`]), the wait after a given-up `MoveTo` ([`Unit::hunt_wait_walk`]), a
     /// lead without its target, a lost tree's search, else its strike ([`Unit::hunt_strike`]).
-    /// Nothing without a hunt.
+    /// Nothing without a hunt. Its code: the failure's 3, the end after a drop-off's 1.
     pub(crate) fn hunt_part(
         &mut self,
         c: &mut Context<'_>,
         me: Me,
         own: &mut Option<Victim>,
         tree_lost: bool,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         use crate::gathering::hunt::{
             DROP, FAILED, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH,
         };
@@ -100,8 +101,8 @@ impl Unit {
             .map_or((None, 0.0, -1), |h| (Some(h.state), h.timer, h.target));
         match state {
             Some(DROP) if timer < 0.0 => self.hunt_drop_wait(c)?,
-            Some(DROP) => self.hunt_drop_walk(c, me)?,
-            Some(FAILED) => self.hunt_failed(c)?,
+            Some(DROP) => return self.hunt_drop_walk(c, me),
+            Some(FAILED) => return self.hunt_failed(),
             Some(WALK_POINT | WALK_SEARCH) => self.hunt_point_walk(c, me)?,
             Some(SEARCH) => self.hunt_search_wait(c)?,
             Some(IDLE) => self.hunt_idle()?,
@@ -116,7 +117,7 @@ impl Unit {
             Some(_) => self.hunt_strike(c, me, own, tree_lost)?,
             None => {}
         }
-        Ok(())
+        Ok(HeadCode::Keeps)
     }
 
     /// Case 7 waiting to try again (state 8 with its timer below 0): the timer runs by dt; at its
@@ -139,7 +140,11 @@ impl Unit {
     /// at once ([`Context::give_load`]) and the hunt walks back ([`Unit::hunt_after_drop`]); a
     /// drop site that does not take it goes and the drop-off searches again. Its idling
     /// (`set_state` 2) is not modelled.
-    pub(crate) fn hunt_drop_walk(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+    pub(crate) fn hunt_drop_walk(
+        &mut self,
+        c: &mut Context<'_>,
+        me: Me,
+    ) -> Result<HeadCode, GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let master =
             c.w.masters
@@ -206,7 +211,7 @@ impl Unit {
                 // the local player's tracker (FUN_14097daf0) are not held; a sharing player's
                 // allies' share (+0x1426) is not modelled
                 c.give_load(kind, amount)?;
-                self.hunt_after_drop(c)?;
+                return self.hunt_after_drop(c);
             }
             crate::gathering::hunt::Dropped::Again => {
                 // the drop site goes (FUN_140a7a190 with none), then set_state(8)
@@ -221,15 +226,14 @@ impl Unit {
                 ));
             }
         }
-        Ok(())
+        Ok(HeadCode::Keeps)
     }
 
     /// State 13 (`0x140ac7a00` case 0xc): notify 0x1f9 with the hunt's action value, and the
-    /// update returns 3: the action list removes the hunt (`FUN_140a98e20`), whose teardown lets
-    /// its target, then its second target go. One with a sub-action is not modelled.
-    pub(crate) fn hunt_failed(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    /// update returns 3, whose deletion lets its target, then its second target go. One with a
+    /// sub-action is not modelled.
+    pub(crate) fn hunt_failed(&mut self) -> Result<HeadCode, GenieError> {
         let hunt = self.actions.hunt().expect("the caller's hunt");
-        let held = [hunt.target, hunt.carry_to];
         if hunt.attack.is_some() || hunt.move_to.is_some() {
             return Err(GenieError::unsupported("a failed hunt with a sub-action"));
         }
@@ -237,9 +241,7 @@ impl Unit {
             crate::unit_ai::ACTION_FAILED,
             [crate::unit_ai::HUNT_ACTION, 0, 0],
         )?;
-        self.actions.set_hunt(None);
-        self.hunt_release(c, held)?;
-        Ok(())
+        Ok(HeadCode::of(3))
     }
 
     /// States 15 and 11: the walk to a point

@@ -3438,7 +3438,8 @@ fn hunt_part_of(t: &mut World, dt: u32) -> Result<(), GenieError> {
         };
         let mut own = unit.own_victim(c);
         let tree_lost = unit.tree_lost();
-        unit.hunt_part(c, me, &mut own, tree_lost)
+        let code = unit.hunt_part(c, me, &mut own, tree_lost)?;
+        unit.end_head_update(c, code)
     })
 }
 
@@ -3718,7 +3719,8 @@ fn a_hunter_s_work_reaches_its_deer_in_the_same_update() {
         };
         let mut own = unit.own_victim(c);
         let tree_lost = unit.tree_lost();
-        unit.hunt_part(c, me, &mut own, tree_lost)?;
+        let code = unit.hunt_part(c, me, &mut own, tree_lost)?;
+        unit.end_head_update(c, code)?;
         Ok(OthersRef::of(&c.w.players, c.player)
             .find(500)
             .map(|(_, deer)| deer.life.amount))
@@ -3748,7 +3750,8 @@ fn a_gathering_hunt_whose_target_left_searches_without_reading_one() {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let mut own = unit.own_victim(c);
-        unit.hunt_part(c, me, &mut own, false)
+        let code = unit.hunt_part(c, me, &mut own, false)?;
+        unit.end_head_update(c, code)
     });
     assert_eq!(r, Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
@@ -4470,7 +4473,8 @@ fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
                 group: unit.group.id,
                 action_state: unit.top_action().map_or(0, |a| a.state),
             };
-            unit.enter_update(c, me)?;
+            let code = unit.enter_update(c, me)?;
+            unit.end_head_update(c, code)?;
             let (_, house) = OthersRef::of(&c.w.players, c.player).find(10028).unwrap();
             Ok((unit.life.inside, house.garrison.clone()))
         })
@@ -7314,24 +7318,21 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
             task_class: 0,
             move_wait: crate::movement::move_to::MoveWait::default(),
         }));
+    // a walking villager: an Enter without a MoveTo does not stop it
+    villager.body.set_anim_speed(1.0);
+    t.clear_actions(1, 2).unwrap();
+    let villager = &mut t.players[1].objects[2];
+    assert_eq!(villager.actions.enter().copied(), None);
+    assert_ne!(villager.body.mover().unwrap().animated.speed, 0.0);
     villager.actions.set_wait_solidify(Some(
         crate::construction::wait_solidify::WaitSolidify::new(
             crate::objects::masters::Task::default(),
             10028,
         ),
     ));
-    // a walking villager: an Enter without a MoveTo does not stop it
-    villager.body.set_anim_speed(1.0);
     t.clear_actions(1, 2).unwrap();
     let villager = &t.players[1].objects[2];
-    assert_eq!(
-        (
-            villager.actions.enter().copied(),
-            villager.actions.wait_solidify().copied()
-        ),
-        (None, None)
-    );
-    assert_ne!(villager.body.mover().unwrap().animated.speed, 0.0);
+    assert_eq!(villager.actions.wait_solidify().copied(), None);
     assert_eq!(t.players[1].objects[4].workers, 0);
     t.players[1].objects[2].actions.set_build(Some(BuildAction {
         target: 10028,
@@ -12461,7 +12462,11 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
     let v = &mut t.players[1].objects[0];
     v.actions.gather_mut().unwrap().target = -1;
     v.ai.as_mut().unwrap().orders = vec![order(600), order(601)];
-    in_update(&mut t, (1, 0), 50, Unit::gather_after_drop).unwrap();
+    in_update(&mut t, (1, 0), 50, |unit, c| {
+        let code = unit.gather_after_drop(c)?;
+        unit.end_head_update(c, code)
+    })
+    .unwrap();
     let v = &t.players[1].objects[0];
     assert!(v.actions.gather().is_none());
     let ai = v.ai.as_ref().unwrap();
@@ -12481,7 +12486,8 @@ fn gather_step(t: &mut World) -> Result<(), GenieError> {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.gather_update(c, me)
+        let code = unit.gather_update(c, me)?;
+        unit.end_head_update(c, code)
     })
 }
 
@@ -12507,7 +12513,9 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
         let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
             let by = unit.releaser(c);
             c.build_command = built;
-            let r = unit.gather_next(c, next, old, by);
+            let r = unit
+                .gather_next(c, next, old, by)
+                .and_then(|code| unit.end_head_update(c, code));
             // the objects let go, as the update leaves them
             let released = [600, 700]
                 .into_iter()
@@ -12766,7 +12774,8 @@ fn own_move(t: &mut World) -> OwnMoved {
             group: unit.group.id,
             action_state: unit.actions.move_to().map_or(0, |m| m.state.number()),
         };
-        unit.move_to_part(c, me)
+        let code = unit.move_to_part(c, me)?;
+        unit.end_head_update(c, code)
     });
     let v = &t.players[1].objects[0];
     let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
@@ -12998,7 +13007,11 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
     v.actions.hunt_mut().unwrap().target = -1;
     v.ai.as_mut().unwrap().target_type = -1;
     setup(v);
-    in_update(&mut t, (1, 0), 50, Unit::hunt_after_drop).unwrap();
+    in_update(&mut t, (1, 0), 50, |unit, c| {
+        let code = unit.hunt_after_drop(c)?;
+        unit.end_head_update(c, code)
+    })
+    .unwrap();
     t
 }
 
@@ -13083,7 +13096,8 @@ fn after_build(t: &mut World, step: BuildStep) -> AfterBuild {
         };
         let by = unit.releaser(c);
         let before = attribute_values(c.w, 1);
-        unit.after_build_step(c, me, (10028, Some(70), by), step)?;
+        let code = unit.after_build_step(c, me, (10028, Some(70), by), step)?;
+        unit.end_head_update(c, code)?;
         let released = c.releases.iter().map(|&(id, _)| id).collect();
         let heard = unit.ai.as_ref().unwrap().notifies.iter();
         Ok(AfterBuild {
@@ -13782,7 +13796,8 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
                 group: unit.group.id,
                 action_state: unit.top_action().map_or(0, |a| a.state),
             };
-            unit.repair_part(c, me)
+            let code = unit.repair_part(c, me)?;
+            unit.end_head_update(c, code)
         })
         .unwrap();
         let state = t.players[1].objects[0].actions.repair().map(|r| r.state);
@@ -13847,7 +13862,8 @@ fn a_repair_pays_from_what_its_owner_holds_at_the_payment() {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        unit.repair_part(c, me)
+        let code = unit.repair_part(c, me)?;
+        unit.end_head_update(c, code)
     })
     .unwrap();
     let house = &t.players[1].objects[1];
@@ -14016,7 +14032,8 @@ fn repaired_by(n: usize) -> [(f32, f32); 2] {
                     group: unit.group.id,
                     action_state: unit.top_action().map_or(0, |a| a.state),
                 };
-                unit.repair_part(c, me)
+                let code = unit.repair_part(c, me)?;
+                unit.end_head_update(c, code)
             })
             .unwrap();
         }

@@ -184,14 +184,15 @@ impl Action {
         }
     }
 
-    /// The action's second target (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's or a
-    /// Gather's drop site, a missile's shooter, an Attack's second target; the slice's other
+    /// The action's second target (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's, a Gather's
+    /// or a Build's drop site, a missile's shooter, an Attack's second target; the slice's other
     /// actions hold none (an import checks the save's).
     #[must_use]
     pub const fn second_target(&self) -> i32 {
         match self {
             Self::Hunt(h) => h.carry_to,
             Self::Gather(g) => g.carry_to,
+            Self::Build(b) => b.site,
             Self::Missile(m) => m.fired_from,
             Self::Attack(a) => a.target2,
             _ => -1,
@@ -239,6 +240,12 @@ impl ActionList {
     #[must_use]
     pub fn head(&self) -> Option<&Action> {
         self.0.first()
+    }
+
+    /// The head leaves the list (no destructor runs; [`crate::objects::teardown`]'s deletions
+    /// run it).
+    pub(crate) fn pop_head(&mut self) -> Option<Action> {
+        (!self.0.is_empty()).then(|| self.0.remove(0))
     }
 
     /// The actions, the head first.

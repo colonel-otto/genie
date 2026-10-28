@@ -11,4 +11,5 @@ pub mod masters;
 pub mod object_list;
 pub(crate) mod release;
 pub mod sprite;
+pub(crate) mod teardown;
 pub mod unit;

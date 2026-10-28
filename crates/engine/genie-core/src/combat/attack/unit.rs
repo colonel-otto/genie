@@ -8,6 +8,7 @@ use crate::combat::victims::{KillLeft, file_kill, victim, victim_of, write_struc
 use crate::combat::volley::{Aimed, armed};
 use crate::math::rng::Stream;
 use crate::movement::Me;
+use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ACTION_EXECUTED;
 use crate::world::context::Context;
@@ -25,9 +26,9 @@ impl Unit {
         c: &mut Context<'_>,
         me: Me,
         own: Option<Victim>,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         match self.actions.attack().map(|a| a.target) {
-            None => Ok(()),
+            None => Ok(HeadCode::Keeps),
             Some(-1) => self.attack_lost_part(c),
             Some(_) => self.attack_strike_part(c, me, own),
         }
@@ -36,7 +37,7 @@ impl Unit {
     /// The unit's own Attack after its target went
     /// ([`crate::combat::attack::Attack::lost`]): its update without a target, the notify its
     /// disarm posts to the unit AI; codes 1 and 3 delete it.
-    fn attack_lost_part(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    fn attack_lost_part(&mut self, c: &mut Context<'_>) -> Result<HeadCode, GenieError> {
         let master =
             c.w.masters
                 .get(c.player)
@@ -55,10 +56,7 @@ impl Unit {
                 self.post_own(kind, p)?;
             }
         }
-        if matches!(code, 1 | 3) {
-            self.delete_attack(c)?;
-        }
-        Ok(())
+        Ok(HeadCode::of(code))
     }
 
     /// The unit's own Attack's update (slot 6, `0x140a82ae0`) with the strike and what follows:
@@ -69,7 +67,7 @@ impl Unit {
         c: &mut Context<'_>,
         me: Me,
         own: Option<Victim>,
-    ) -> Result<(), GenieError> {
+    ) -> Result<HeadCode, GenieError> {
         let attack = self.actions.attack_mut().expect("the caller's test");
         let master =
             c.w.masters
@@ -161,10 +159,7 @@ impl Unit {
         if let Some(k) = self.hit_back(own)? {
             file_kill(c, KillLeft::own(self.id, k))?;
         }
-        if matches!(code, 1 | 3) {
-            self.delete_attack(c)?;
-        }
-        Ok(())
+        Ok(HeadCode::of(code))
     }
 }
 
