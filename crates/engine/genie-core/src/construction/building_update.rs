@@ -174,10 +174,11 @@ impl Unit {
         if !walls && self.annex_of.is_some() {
             return Ok(());
         }
-        // its set_state(2) takes its annexes along first (FUN_1411dbb70: their slot 0xa0)
+        // its set_state(2) takes its annexes along first (FUN_1411dbb70: their slot 0xa0), the
+        // building lent to the world for what their completion reaches
         for annex in c.w.spatial.annexes_of(self.id) {
             if let Some((q, _)) = c.w.object(annex) {
-                c.w.set_state(q, annex, 2)?;
+                c.lend(self, |w| w.set_state(q, annex, 2))?;
             }
         }
         let master =

@@ -8707,6 +8707,47 @@ fn a_killed_sheep_goes_to_gaia() {
     assert_eq!(t.players[0].attributes[16], 100.0);
 }
 
+/// The update lends its object back to its slot for a world call that may reach it
+/// ([`context::Context::lend`], the game's world holding the object while its update runs):
+/// the world holds it as the update left it, what the call changes on it comes back, and its
+/// slot holds the stand-in again after; a removal in the call that moves the object is
+/// followed. One the call takes from its list fails the update, the stand-in in nobody's list.
+#[test]
+fn a_lent_object_is_the_world_s_for_the_call() {
+    let mut t = house_builder();
+    let last = t.players[1].objects.len() - 1;
+    let id = t.players[1].objects[last].id;
+    let seen = in_update(&mut t, (1, last), 0, |unit, c| {
+        unit.life.hp = 7.0;
+        let during = c.lend(unit, |w| {
+            let hp = w.object(id).map(|(_, u)| u.life.hp);
+            w.object_mut(id).expect("lent").1.life.amount = 3.0;
+            let _ = w.players[1].objects.swap_remove(0);
+            Ok(hp)
+        })?;
+        let out = c.w.object(id).is_none();
+        Ok((during, unit.life.amount, out, unit.id))
+    });
+    assert_eq!(
+        seen.map_err(|e| e.reason().to_owned()),
+        Ok((Some(7.0), 3.0, true, id))
+    );
+    assert_eq!(t.players[1].objects.position_of(id), Some(0));
+    let mut t = house_builder();
+    let failed = in_update(&mut t, (1, last), 0, |unit, c| {
+        c.lend(unit, |w| {
+            let _ = w.players[1].objects.pop();
+            Ok(())
+        })
+    });
+    assert_eq!(
+        failed.map_err(|e| e.kind()),
+        Err(crate::ErrorKind::Unreachable)
+    );
+    let ids: Vec<i32> = t.players[1].objects.iter().map(|u| u.id).collect();
+    assert!(!ids.contains(&crate::objects::unit::TAKEN_OUT), "{ids:?}");
+}
+
 /// The hit's kill gives Gaia the sheep in slot 0 of its owner's list where the hit runs
 /// (`FUN_1411664a0`: the list's last object takes its slot): the town centre that steps, the
 /// last, moves into it while it is out, goes back there, and the step reports that slot for the
@@ -13204,24 +13245,20 @@ fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
 /// started (its owner watches it once: the flag clears), the work
 /// an annex's main building takes (at once, `World::work_building`: the house's state, hit points
 /// and build points); and the completion, taken out of the step: the house leaves its
-/// pending tracker list for its done one and its owner gains what it brings (its history event,
-/// attributes, technology, pasture, cart, and the vanishing). A step of nothing changes nothing.
+/// pending tracker list for its done one and its owner gains what it brings at once (the builder
+/// lent to the world, `World::built`: here its history event and attributes; the start's watch
+/// is the loop's). A step of nothing changes nothing.
 #[test]
 fn a_build_step_s_changes_reach_the_world() {
     use crate::construction::build::unit::record_build_step;
     use crate::construction::build::{Built, Cleared};
     use std::mem::take;
     let recorded = |t: &mut World, step: &mut BuildStep| {
-        in_update(t, (1, 0), 50, |_, c| {
-            record_build_step(c, 10028, &[], step)?;
-            let built = (
-                take(&mut c.history_events),
-                take(&mut c.attribute_adds),
-                take(&mut c.techs_done),
-                take(&mut c.pastures),
-                take(&mut c.carts),
-                take(&mut c.completions),
-            );
+        in_update(t, (1, 0), 50, |unit, c| {
+            record_build_step(c, unit, 10028, &[], step)?;
+            let owner = &c.w.players[1];
+            let events: Vec<u8> = owner.history.events.iter().map(|e| e.kind).collect();
+            let built = (events, owner.attributes[4]);
             Ok((
                 c.w.object(601).map(|(_, u)| site_of(u)),
                 take(&mut c.started),
@@ -13232,6 +13269,7 @@ fn a_build_step_s_changes_reach_the_world() {
         .unwrap()
     };
     let mut t = house_builder();
+    t.players[1].history.entries.push([0, 0]);
     let mut quiet = BuildStep::default();
     let nothing = recorded(&mut t, &mut quiet);
     assert_eq!(
@@ -13240,7 +13278,7 @@ fn a_build_step_s_changes_reach_the_world() {
             Some((2, 1.0, None)),
             vec![],
             Some((0, 1.0, Some(0.0))),
-            (vec![], vec![], vec![], vec![], vec![], vec![])
+            (vec![], 0.0)
         )
     );
     t.players[1].objects[1]
@@ -13256,12 +13294,12 @@ fn a_build_step_s_changes_reach_the_world() {
     let built = Built {
         attributes: vec![(4, 5.0)],
         history: Some(6),
-        tech: Some(7),
-        cart: Some(0),
+        tech: None,
+        cart: None,
         stack: None,
-        vanishes: true,
-        started: false,
-        pasture: true,
+        vanishes: false,
+        started: true,
+        pasture: false,
     };
     let mut step = BuildStep {
         cleared: vec![cleared],
@@ -13277,17 +13315,12 @@ fn a_build_step_s_changes_reach_the_world() {
             Some((7, 0.0, None)),
             vec![10028],
             Some((0, 56.0, Some(2.5))),
-            (
-                vec![6],
-                vec![(4, 5.0)],
-                vec![7],
-                vec![10028],
-                vec![(10028, 0)],
-                vec![(10028, None, true)]
-            )
+            (vec![6], 5.0)
         )
     );
     assert_eq!(step.completed, None);
+    let watched = t.players[1].watched.iter().filter(|w| w.id == 10028);
+    assert_eq!(watched.count(), 1, "the start's watch once, the loop's");
     let house = &t.players[1].objects[1];
     assert!(!house.construction.unwrap().started);
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);
@@ -13304,8 +13337,8 @@ fn a_build_step_clears_and_removes_where_the_builder_runs() {
     let run = |computer: bool, mut step: BuildStep| {
         let mut t = house_builder();
         t.players[1].computer = computer;
-        in_update(&mut t, (1, 0), 50, |_, c| {
-            record_build_step(c, 10028, &[], &mut step)?;
+        in_update(&mut t, (1, 0), 50, |unit, c| {
+            record_build_step(c, unit, 10028, &[], &mut step)?;
             Ok([601, 10028].map(|id| c.w.object(id).map(|(_, u)| site_of(u))))
         })
         .map_err(|e| e.reason().to_owned())
@@ -13354,8 +13387,8 @@ fn a_build_step_sends_its_footprint_s_units_off_where_the_builder_runs() {
         occupants: vec![9176],
         ..BuildStep::default()
     };
-    let heard = in_update(&mut t, (1, 0), 50, |_, c| {
-        record_build_step(c, 10028, &[], &mut step)?;
+    let heard = in_update(&mut t, (1, 0), 50, |unit, c| {
+        record_build_step(c, unit, 10028, &[], &mut step)?;
         let (_, u) = c.w.object(9176).expect("held");
         let sent = |ai: &UnitAi| {
             let sent = ai
@@ -13434,8 +13467,8 @@ fn a_builder_s_completion_completes_the_foundation_s_annexes_where_it_runs() {
         completed: Some(built),
         ..BuildStep::default()
     };
-    let seen = in_update(&mut t, (1, 0), 50, |_, c| {
-        record_build_step(c, 10028, &[10030], &mut step)?;
+    let seen = in_update(&mut t, (1, 0), 50, |unit, c| {
+        record_build_step(c, unit, 10028, &[10030], &mut step)?;
         Ok(c.w.object(10030).map(|(_, a)| a.life.state))
     });
     assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(Some(2)));

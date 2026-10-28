@@ -341,8 +341,14 @@ impl World {
     ///
     /// # Errors
     ///
-    /// Its stand-in left the list: the unit goes to the list's end.
+    /// Its stand-in left the list: the unit goes to the list's end; a stand-in itself (its
+    /// object lost in a lend, [`crate::world::context::Context::lend`]) goes nowhere.
     pub(crate) fn put_back_own(&mut self, p: usize, unit: Unit) -> Result<usize, GenieError> {
+        if unit.id == TAKEN_OUT {
+            return Err(GenieError::unreachable(
+                "a stand-in put back for its object",
+            ));
+        }
         let own = &mut self.players[p].objects;
         own.put_back(unit).map_err(|unit| {
             let id = unit.id;

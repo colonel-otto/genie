@@ -8,6 +8,7 @@ use crate::movement::move_to::Walk;
 use crate::movement::{Me, Mover, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::release::Releaser;
+use crate::objects::unit::Unit;
 use crate::unit_ai::AiMove;
 use crate::unit_ai::unit::AiResume;
 use crate::unit_ai::world_view::{AiStart, AiWork};
@@ -350,6 +351,30 @@ impl World {
 }
 
 impl Context<'_> {
+    /// Runs `f` on the world with the updating object `me` lent back to its slot (FD-045-Q03:
+    /// the game's world holds the object while its update calls a routine that scans the
+    /// objects, a technology's effects or a search among them), then takes it out again from
+    /// where `f` left it; `me` holds what `f` changed on it.
+    ///
+    /// # Errors
+    ///
+    /// `f`'s, or the object's stand-in or the object itself gone from the owner's live list.
+    pub(crate) fn lend<R>(
+        &mut self,
+        me: &mut Unit,
+        f: impl FnOnce(&mut World) -> Result<R, GenieError>,
+    ) -> Result<R, GenieError> {
+        let p = self.player;
+        let lent = std::mem::replace(me, Unit::taken_out());
+        let answer = self.w.put_back_own(p, lent).and_then(|_| f(self.w));
+        let own = &mut self.w.players[p].objects;
+        let i = own.position_of(self.me).ok_or_else(|| {
+            GenieError::unreachable("a lent object left its list").with("object", self.me)
+        })?;
+        *me = own.take_out(i);
+        answer
+    }
+
     /// What a walk takes of the update beside the world ([`World::walk_beside`]).
     pub(crate) const fn pace(&self) -> Pace {
         Pace {

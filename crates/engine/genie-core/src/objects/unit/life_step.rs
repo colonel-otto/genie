@@ -94,8 +94,8 @@ impl Unit {
     }
 
     /// A building's `set_state`s after its death's 3 take its annexes along too, each annex's
-    /// slot 0xa0 where it runs (`FUN_1411dbb70`, [`crate::world::World::set_state`]): the
-    /// animated update's 4
+    /// slot 0xa0 where it runs with the building lent to the world (`FUN_1411dbb70`,
+    /// [`crate::world::World::set_state`], [`Context::lend`]): the animated update's 4
     /// or 5 from 3, the static update's 7 and 8; the dying sprite's end (4 to 5) writes the state
     /// without a `set_state`.
     ///
@@ -103,7 +103,7 @@ impl Unit {
     ///
     /// What an annex's `set_state` does not model.
     pub(crate) fn annexes_follow(
-        &self,
+        &mut self,
         c: &mut Context<'_>,
         before: u8,
         after: u8,
@@ -119,7 +119,7 @@ impl Unit {
         {
             for annex in c.w.spatial.annexes_of(self.id) {
                 if let Some((q, _)) = c.w.object(annex) {
-                    c.w.set_state(q, annex, after)?;
+                    c.lend(self, |w| w.set_state(q, annex, after))?;
                 }
             }
         }

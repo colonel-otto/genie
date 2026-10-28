@@ -106,7 +106,7 @@ impl Unit {
             stack_made: reads.stack_made,
         };
         let mut step = build.update(walk, site, builder)?;
-        record_build_step(c, target, &annex_ids, &mut step)?;
+        record_build_step(c, self, target, &annex_ids, &mut step)?;
         self.after_build_step(c, me, (target, reads.built, by), step)
     }
 
@@ -497,19 +497,21 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
     })
 }
 
-/// What the Build's step changes of the world beside the builder: the cleared objects and the
-/// footprint's removals and occupants (at once, through the world), the constructions that
+/// What the Build's step changes of the world beside the builder `me`: the cleared objects and
+/// the footprint's removals and occupants (at once, through the world), the constructions that
 /// started (its annexes' first: their owner watches each, `FUN_1411e5670`), the work an annex's
-/// main building takes (at once, [`World::work_building`]), and the completion (taken out of
-/// the step) with its annexes' state (at once, [`World::set_state`]), its tracker part, its
-/// standing sprite and what it leaves its owner (the caller's after the update: the routines
-/// it sets off scan the world, the builder among it).
+/// main building takes ([`World::work_building`]), and the completion (taken out of the step)
+/// with its annexes' state ([`World::set_state`]), its tracker part, its standing sprite and
+/// what it leaves its owner ([`World::built`]). The last three run with the builder lent to the
+/// world ([`Context::lend`]): their searches and effects meet it, as the game's do.
 ///
 /// # Errors
 ///
-/// What an annex's `set_state` does not model.
+/// What an annex's `set_state`, the main building's work and the completion's outputs do not
+/// model.
 pub(crate) fn record_build_step(
     c: &mut Context<'_>,
+    me: &mut Unit,
     target: i32,
     annex_ids: &[i32],
     step: &mut BuildStep,
@@ -543,7 +545,7 @@ pub(crate) fn record_build_step(
     }
     // the work the annex leaves its main building (FUN_1411cc430), where the builder's runs
     if let Some(amount) = step.main_work {
-        c.w.work_building(target, amount)?;
+        c.lend(me, |w| w.work_building(target, amount))?;
     }
     if let Some(built) = step.completed.take() {
         // its set_state(2) took its annexes along (FUN_1411dbb70: their slot 0xa0), which the
@@ -551,7 +553,7 @@ pub(crate) fn record_build_step(
         // tracker part (FUN_1411c6bd0 -> FUN_14104eac0), the foundation the builder's player's
         for annex in c.w.spatial.annexes_of(target) {
             if let Some((q, _)) = c.w.object(annex) {
-                c.w.set_state(q, annex, 2)?;
+                c.lend(me, |w| w.set_state(q, annex, 2))?;
             }
         }
         let p = c.player;
@@ -581,18 +583,14 @@ pub(crate) fn record_build_step(
                 );
             }
         }
-        c.history_events.extend(built.history);
-        c.attribute_adds.extend(built.attributes);
-        c.techs_done.extend(built.tech);
-        if built.pasture {
-            c.pastures.push(target);
-        }
-        if let Some(state) = built.cart {
-            c.carts.push((target, state));
-        }
-        if built.stack.is_some() || built.vanishes {
-            c.completions.push((target, built.stack, built.vanishes));
-        }
+        // what it leaves its owner, at once and in the game's order, the builder lent to the
+        // world for its searches and effects; the start's watch is the started loop's above,
+        // which cleared the flag
+        let built = crate::construction::build::Built {
+            started: false,
+            ..built
+        };
+        c.lend(me, |w| w.built(p, target, built))?;
     }
     Ok(())
 }
