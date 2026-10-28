@@ -7,6 +7,7 @@
 //! caller asks for the owner's own object ([`OthersRef::own`]), another player's
 //! ([`OthersRef::foreign`]) or anyone's ([`OthersRef::find`]), never for a list position.
 
+use crate::GenieError;
 use crate::objects::lines::UnitLines;
 use crate::objects::masters::Masters;
 use crate::objects::object_list::ObjectList;
@@ -327,17 +328,27 @@ impl World {
     }
 
     /// Player `p`'s live object `id` out of its slot (its stand-in, [`TAKEN_OUT`], holds it),
-    /// for a call on it that reaches the world as the updating object's do: the slot and the
-    /// object, which [`World::put_back_own`] returns.
-    pub(crate) fn take_out_own(&mut self, p: usize, id: i32) -> Option<(usize, Unit)> {
+    /// for a call on it that reaches the world as the updating object's do; it goes back with
+    /// [`World::put_back_own`].
+    pub(crate) fn take_out_own(&mut self, p: usize, id: i32) -> Option<Unit> {
         let own = &mut self.players[p].objects;
         let i = own.position_of(id)?;
-        Some((i, std::mem::replace(&mut own[i], Unit::taken_out())))
+        Some(own.take_out(i))
     }
 
-    /// The object [`World::take_out_own`] took out of player `p`'s slot `slot` goes back to it.
-    pub(crate) fn put_back_own(&mut self, p: usize, slot: usize, unit: Unit) {
-        self.players[p].objects[slot] = unit;
+    /// `unit`, out of player `p`'s live list, goes back to the slot its stand-in holds now (the
+    /// list's removals move it as the game's do, [`ObjectList::put_back`]): that slot.
+    ///
+    /// # Errors
+    ///
+    /// Its stand-in left the list: the unit goes to the list's end.
+    pub(crate) fn put_back_own(&mut self, p: usize, unit: Unit) -> Result<usize, GenieError> {
+        let own = &mut self.players[p].objects;
+        own.put_back(unit).map_err(|unit| {
+            let id = unit.id;
+            own.push(*unit);
+            GenieError::unreachable("an object's stand-in left its list").with("object", id)
+        })
     }
 }
 

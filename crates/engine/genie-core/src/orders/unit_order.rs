@@ -3,7 +3,6 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
-use crate::objects::unit::Unit;
 use crate::orders::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
 use crate::world::World;
 
@@ -312,7 +311,7 @@ impl World {
         idx: usize,
         by: DropOffBy,
     ) -> Result<(), GenieError> {
-        let mut unit = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
+        let mut unit = self.players[p].objects.take_out(idx);
         let player = &self.players[p];
         let world = crate::unit_ai::world_view::DropWorld {
             masters: self.masters.get(p),
@@ -331,7 +330,7 @@ impl World {
         } else {
             unit.gather_drop_off_in(world, others)
         };
-        self.players[p].objects[idx] = unit;
+        let idx = self.put_back_own(p, unit)?;
         if let Some(site) = result? {
             self.take(site, self.releaser(p, idx));
         }

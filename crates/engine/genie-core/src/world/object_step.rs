@@ -13,8 +13,10 @@ impl World {
     /// One object's step with its Context (`f`: the unit's update, or one part of its unit AI
     /// for a command): object `i` of player `p` leaves its list (its stand-in holds the slot),
     /// and `f` gets it and the Context, which holds the world (FD-045-D28; the objects it
-    /// makes join the list at their making). Returns `f`'s result (an error of the sight's
-    /// registry first) and what the Context gathered for the world ([`World::step_object`]).
+    /// makes join the list at their making). It goes back to the slot its stand-in holds then
+    /// ([`World::put_back_own`]). Returns `f`'s result (an error of the put-back, then of the
+    /// sight's registry first) and what the Context gathered for the world
+    /// ([`World::step_object`]).
     #[allow(clippy::too_many_lines)]
     pub(super) fn run_object(
         &mut self,
@@ -32,7 +34,7 @@ impl World {
             .map(|ai| ai.current_target)
             .filter(|&t| t != -1)
             .map_or(Ok(None), |t| self.seen(t, p));
-        let mut unit = std::mem::replace(&mut self.players[p].objects[i], Unit::taken_out());
+        let mut unit = self.players[p].objects.take_out(i);
         let watch = crate::trace::Watch::of(&unit);
         // the objects a hit's blast may reach about its target (one a hit can read), or about
         // the unit for its blast at death (TRIBE_Combat_Object::update)
@@ -145,7 +147,10 @@ impl World {
             result = Err(e);
         }
         self.spatial.set_gait(me, unit.gait());
-        self.players[p].objects[i] = unit;
+        // back to its stand-in's slot, which a removal in the step may have moved
+        if let Err(e) = self.put_back_own(p, unit) {
+            result = Err(e);
+        }
         (result, out)
     }
 
@@ -169,10 +174,10 @@ impl World {
         ) -> Result<Vec<crate::unit_ai::Effect>, GenieError>,
     ) -> Result<(), GenieError> {
         let frame = self.player_frame();
-        let (step, ..) = self.step_object((p, i), (0, None, false), &frame, None, |unit, c| {
+        let stepped = self.step_object((p, i), (0, None, false), &frame, None, |unit, c| {
             unit.run_ai(c, f).map(|()| Step::Stay)
         })?;
-        match step {
+        match stepped.step {
             Step::Stay => Ok(()),
             _ => Err(GenieError::unsupported(
                 "a unit AI run outside its update that takes the unit out of its list",

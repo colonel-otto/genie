@@ -10,6 +10,19 @@ use crate::unit_ai::world_view::{AiStart, AiWork};
 use crate::world::context::{Context, ObjectOutputs};
 use crate::world::{BuildingDeath, LEAVES_ITS_LIST, Player, PlayerFrame, World};
 
+/// What an object's step left for its list's loop ([`World::step_object`]).
+pub(super) struct Stepped {
+    /// The step.
+    pub(super) step: Step,
+    /// The resume of a unit AI part the update stopped before.
+    pub(super) resume: Option<AiResume>,
+    /// The tail after an order on a target.
+    pub(super) after: Option<AfterOrder>,
+    /// The object's slot in its owner's live list after the step: a removal that put the list's
+    /// last object in another's slot (`FUN_1411664a0`) may have moved it.
+    pub(super) slot: usize,
+}
+
 /// An effect for a unit that stays in its list: `leaves` when the step took the unit out.
 fn in_list<T>(
     step: &Step,
@@ -39,7 +52,8 @@ impl World {
     /// work, the completions, the attributes, the deaths and remains, the regeneration, passive
     /// abilities and production of a full update, the unit AI's works, moves, waits and order on
     /// a target, the hits' kills, the takes and releases). Returns the step, the resume of a
-    /// unit AI part the update stopped before, and the tail after an order on a target.
+    /// unit AI part the update stopped before, the tail after an order on a target and the
+    /// object's slot, which it looks up by id after each part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
     /// runs (regeneration, passive abilities, production) do not.
     ///
@@ -53,21 +67,38 @@ impl World {
         frame: &PlayerFrame,
         resume: Option<AiResume>,
         f: impl FnOnce(&mut Unit, &mut Context<'_>) -> Result<Step, GenieError>,
-    ) -> Result<(Step, Option<AiResume>, Option<AfterOrder>), GenieError> {
+    ) -> Result<Stepped, GenieError> {
         let id = self.players[p].objects[i].id;
         let (step, mut out) = self.run_object((p, i), (dt, turn), frame, resume, f);
         let step = step?;
         // the tail after an order on a target, which stops the unit AI's rest
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
-        self.apply_object_writes((p, i), &mut out)?;
+        self.apply_object_writes((p, self.slot_of(p, id)?), &mut out)?;
         self.apply_completions(p, &mut out)?;
         self.apply_deaths(p, &mut out)?;
         let own_update = full && out.ai_resume.is_none();
-        self.finish_own_update((p, i, id), (dt, own_update), &out, after_order, &step)?;
-        self.apply_ai_works((p, i), &mut out, &step)?;
-        self.apply_ai_starts((p, i), &mut out, &step)?;
+        let at = (p, self.slot_of(p, id)?, id);
+        self.finish_own_update(at, (dt, own_update), &out, after_order, &step)?;
+        self.apply_ai_works((p, self.slot_of(p, id)?), &mut out, &step)?;
+        self.apply_ai_starts((p, self.slot_of(p, id)?), &mut out, &step)?;
         self.apply_hits_and_releases(&mut out)?;
-        Ok((step, out.ai_resume, after_order))
+        Ok(Stepped {
+            step,
+            resume: out.ai_resume,
+            after: after_order,
+            slot: self.slot_of(p, id)?,
+        })
+    }
+
+    /// The slot of object `id` in player `p`'s live list, after its step.
+    ///
+    /// # Errors
+    ///
+    /// The object left the list in its own step.
+    fn slot_of(&self, p: usize, id: i32) -> Result<usize, GenieError> {
+        self.players[p].objects.position_of(id).ok_or_else(|| {
+            GenieError::unreachable("a stepped object left its list in its step").with("object", id)
+        })
     }
 
     /// The step's writes on other objects and on its own building: a repair's writes, the

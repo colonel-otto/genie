@@ -5,7 +5,6 @@ use crate::GenieError;
 use crate::gathering::closest_resource::{ResourceWorld, closest_resource_of};
 use crate::math::rng::Stream;
 use crate::movement::{Planning, footprint_gap_squared};
-use crate::objects::unit::Unit;
 use crate::unit_ai::world_view::Foreign;
 use crate::world::World;
 use crate::world::others::OthersRef;
@@ -103,7 +102,7 @@ impl World {
             };
             kinds.push(kind);
         }
-        let cart = std::mem::replace(&mut self.players[p].objects[idx], Unit::taken_out());
+        let cart = self.players[p].objects.take_out(idx);
         let result = (|| {
             let (before, rest) = self.players.split_at_mut(p);
             let (player, after) = rest.split_first_mut().expect("p is a player");
@@ -143,7 +142,7 @@ impl World {
             }
             Ok::<_, GenieError>(found)
         })();
-        self.players[p].objects[idx] = cart;
+        let idx = self.put_back_own(p, cart)?;
         let found = result?;
         let cart_master = self.master_of(p, self.players[p].objects[idx].life.master_id)?;
         let at = self.players[p].objects[idx].position;

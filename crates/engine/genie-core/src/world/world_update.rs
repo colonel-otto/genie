@@ -233,57 +233,55 @@ impl World {
     /// draw nothing and depend on nothing the stop changed.
     fn update_objects(&mut self, p: usize, (dt, turn): (u32, Option<u32>)) {
         let frame = self.player_frame();
+        // the loop's count, which goes on past each object but one that leaves
         let mut i = 0;
         // a unit whose update stopped before its unit AI for its work order runs that part
-        // again once the work is given ([`Unit::ai_part`])
-        let mut resume: Option<AiResume> = None;
-        while i < self.players[p].objects.len() {
+        // again once the work is given ([`Unit::ai_part`]), at the slot its step left it in
+        let mut resume: Option<(AiResume, usize)> = None;
+        while resume.is_some() || i < self.players[p].objects.len() {
+            let (again, slot) = resume.take().map_or((None, i), |(r, k)| (Some(r), k));
             let player = &self.players[p];
-            let stopped = player.stopped || player.objects[i].stopped;
-            if stopped && player.objects[i].life.is_alive() {
-                self.spatial.freeze(player.objects[i].id);
-                resume = None;
+            let stopped = player.stopped || player.objects[slot].stopped;
+            if stopped && player.objects[slot].life.is_alive() {
+                self.spatial.freeze(player.objects[slot].id);
                 i += 1;
                 continue;
             }
-            let (id, master) = (player.objects[i].id, player.objects[i].life.master_id);
+            let (id, master) = (player.objects[slot].id, player.objects[slot].life.master_id);
             let _object =
                 tracing::trace_span!(target: crate::trace::UPDATE, "object", id, master).entered();
-            let stepped = self.step_object(
-                (p, i),
-                (dt, turn, true),
-                &frame,
-                resume.take(),
-                Unit::update,
-            );
-            i = match stepped {
-                Ok((Step::Stay, Some(ai_resume), _)) => {
-                    resume = Some(ai_resume);
-                    continue;
-                }
-                // the unit AI's rest after the order on a target it took, which the unit's
-                // update runs again from there ([`crate::unit_ai::UnitAi::after_order`])
-                Ok((Step::Stay, None, Some(after))) => {
-                    resume = Some(AiResume {
-                        captured: None,
-                        leaves: Step::Stay,
-                        after: Some(after),
-                    });
-                    continue;
-                }
-                Ok((step, ..)) => self.file_step(p, i, step),
+            let stepped =
+                self.step_object((p, slot), (dt, turn, true), &frame, again, Unit::update);
+            match stepped {
+                Ok(s) => match (s.step, s.resume, s.after) {
+                    (Step::Stay, Some(ai_resume), _) => resume = Some((ai_resume, s.slot)),
+                    // the unit AI's rest after the order on a target it took, which the unit's
+                    // update runs again from there ([`crate::unit_ai::UnitAi::after_order`])
+                    (Step::Stay, None, Some(after)) => {
+                        let ai_resume = AiResume {
+                            captured: None,
+                            leaves: Step::Stay,
+                            after: Some(after),
+                        };
+                        resume = Some((ai_resume, s.slot));
+                    }
+                    (step, ..) => i += usize::from(self.file_step(p, s.slot, step)),
+                },
                 Err(e) => {
-                    self.freeze_object(p, i, e);
-                    i + 1
+                    self.freeze_object(p, (i, id), e);
+                    i += 1;
                 }
-            };
+            }
         }
     }
 
     /// Files object `i` of player `p` by the step it finished (the list's loop,
     /// `FUN_141166550`): one that leaves goes from its list, a sleeper to the sleeping list, a
-    /// captured building or unit to its new owner. Returns the index of the next object to update.
-    fn file_step(&mut self, p: usize, i: usize, step: Step) -> usize {
+    /// captured building or unit to its new owner. Returns whether the loop's count goes on: not
+    /// past one that leaves (the game's loop runs its count again, the list's last object in the
+    /// slot), past any other (a sleeper's slot holds the last object too, whose update waits
+    /// for the next tick).
+    pub(super) fn file_step(&mut self, p: usize, i: usize, step: Step) -> bool {
         let player = &mut self.players[p];
         match step {
             Step::Leave => {
@@ -295,7 +293,7 @@ impl World {
                         .get_or_insert((self.ticks, i, e));
                 }
                 // the list's last object took its place
-                i
+                false
             }
             Step::Sleep => {
                 // the list's remove (FUN_1411664a0) puts its last object in the sleeper's place,
@@ -311,7 +309,7 @@ impl World {
                 player.tracker.remove(asleep.id, k);
                 player.tracker.add(asleep.id, k);
                 player.sleeping.push(asleep);
-                i + 1
+                true
             }
             Step::Captured(Captured { new, building, .. }) if building => {
                 // a building's slot 0x70 (FUN_1411cd860), whole: its annexes, its lists' moves
@@ -324,13 +322,13 @@ impl World {
                         .unsupported
                         .get_or_insert((self.ticks, i, e));
                 }
-                i + 1
+                true
             }
             Step::Captured(taken) => {
                 self.hand_over_units(p, i, taken);
-                i + 1
+                true
             }
-            Step::Stay => i + 1,
+            Step::Stay => true,
         }
     }
 
@@ -378,18 +376,24 @@ impl World {
         self.players[new].objects.extend(moved);
     }
 
-    /// Object `i` of player `p`, whose step failed with `e`, freezes: it stays in its list,
-    /// stopped, its error in the player's freezes, and the player keeps its first error.
-    fn freeze_object(&mut self, p: usize, i: usize, e: GenieError) {
+    /// Object `id` of player `p`, whose step at the loop's count `i` failed with `e`, freezes:
+    /// it stays in its list, stopped, its error in the player's freezes, and the player keeps
+    /// its first error with the object's slot (the count, once the step took it from the list).
+    fn freeze_object(&mut self, p: usize, (i, id): (usize, i32), e: GenieError) {
         let player = &mut self.players[p];
-        let e = player.objects[i].in_context(e);
-        crate::trace::object_freezes(self.ticks, p, player.objects[i].id, &e);
-        player
-            .freezes
-            .push((self.ticks, player.objects[i].id, e.clone()));
-        let _ = player.unsupported.get_or_insert((self.ticks, i, e));
-        player.objects[i].stopped = true;
-        self.spatial.freeze(player.objects[i].id);
+        let slot = player.objects.position_of(id);
+        let e = match slot {
+            Some(k) => player.objects[k].in_context(e),
+            None => e.with("object", id),
+        };
+        crate::trace::object_freezes(self.ticks, p, id, &e);
+        player.freezes.push((self.ticks, id, e.clone()));
+        let first = (self.ticks, slot.unwrap_or(i), e);
+        let _ = player.unsupported.get_or_insert(first);
+        if let Some(k) = slot {
+            player.objects[k].stopped = true;
+        }
+        self.spatial.freeze(id);
     }
 }
 

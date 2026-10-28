@@ -242,7 +242,7 @@ pub(crate) fn scan_livestock(
                 [] => {}
                 [id] => {
                     // out of its slot while its stop reaches the view, as the updating object
-                    let (slot, mut unit) =
+                    let mut unit =
                         c.w.take_out_own(c.player, id)
                             .expect("the scan's own object");
                     let done = (|| {
@@ -250,7 +250,7 @@ pub(crate) fn scan_livestock(
                         unit.change_owner(c, new)
                     })();
                     let position = unit.position;
-                    c.w.put_back_own(c.player, slot, unit);
+                    let _ = c.w.put_back_own(c.player, unit)?;
                     // without the master the animal stays Gaia's, which scans nothing
                     if done? {
                         taken.push(id);

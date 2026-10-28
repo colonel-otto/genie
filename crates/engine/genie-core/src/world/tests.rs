@@ -4061,12 +4061,12 @@ fn an_own_object_taken_out_leaves_the_world_until_it_goes_back() {
     let mut t = lets_world();
     let id = t.players[1].objects[0].id;
     assert!(t.take_out_own(0, id).is_none(), "another player's");
-    let (slot, mut u) = t.take_out_own(1, id).expect("the owner's");
-    assert_eq!((slot, u.id), (0, id));
+    let mut u = t.take_out_own(1, id).expect("the owner's");
+    assert_eq!(u.id, id);
     assert!(t.object(id).is_none() && t.locate(id).is_none());
     assert_eq!(t.players[1].objects[0].id, crate::objects::unit::TAKEN_OUT);
     u.life.hp = 8.0;
-    t.put_back_own(1, slot, u);
+    assert_eq!(t.put_back_own(1, u).ok(), Some(0));
     assert_eq!(
         t.locate(id).map(|(q, u, s)| (q, u.life.hp, s)),
         Some((1, 8.0, false))
@@ -8617,11 +8617,9 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
     assert!(t.killed(1, 0, by(60, 2)).is_err());
 }
 
-/// MarvinBlue/426048731's update 1250: 10029's second hit kills its sheep 9520 (2 hit points,
-/// 12 damage): it has none, Gaia takes it (its list, its storage, its unit AI's notifies),
-/// and the players count the kill (300 + 1 and 325 + 1; a sheep costs nothing).
-#[test]
-fn a_killed_sheep_goes_to_gaia() {
+/// [`a_killed_sheep_goes_to_gaia`]'s world: player 1's town centre 10029 (`killer_last`: the
+/// list's last object) and its sheep 9520, and the hit that kills the sheep for Gaia.
+fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
     let sheep = Unit {
         id: 9520,
         life: Lifecycle {
@@ -8632,6 +8630,12 @@ fn a_killed_sheep_goes_to_gaia() {
         ai: Some(UnitAi::default()),
         ..Unit::default()
     };
+    let objects = if killer_last {
+        vec![sheep, town_centre(10029)]
+    } else {
+        vec![town_centre(10029), sheep]
+    }
+    .into();
     let mut t = World::new(
         0,
         1,
@@ -8643,7 +8647,7 @@ fn a_killed_sheep_goes_to_gaia() {
                 ..Player::default()
             },
             Player {
-                objects: vec![town_centre(10029), sheep].into(),
+                objects,
                 attributes: vec![0.0; 500],
                 ..Player::default()
             },
@@ -8680,6 +8684,15 @@ fn a_killed_sheep_goes_to_gaia() {
         attacker_player: 1,
         to_gaia: true,
     });
+    (t, v)
+}
+
+/// MarvinBlue/426048731's update 1250: 10029's second hit kills its sheep 9520 (2 hit points,
+/// 12 damage): it has none, Gaia takes it (its list, its storage, its unit AI's notifies),
+/// and the players count the kill (300 + 1 and 325 + 1; a sheep costs nothing).
+#[test]
+fn a_killed_sheep_goes_to_gaia() {
+    let (mut t, v) = killed_sheep(false);
     write_hit(&mut t, (1, 0), v);
     assert_eq!(t.players[1].objects.len(), 1);
     let gone = &t.players[0].objects[0];
@@ -8688,6 +8701,78 @@ fn a_killed_sheep_goes_to_gaia() {
     assert_eq!(t.players[1].attributes[301], 1.0);
     assert_eq!(t.players[1].attributes[326], 1.0);
     assert_eq!(t.players[0].attributes[16], 100.0);
+}
+
+/// The hit's kill after the step gives Gaia the sheep in slot 0 of its owner's list
+/// (`FUN_1411664a0`: the list's last object takes its slot): the town centre that stepped, the
+/// last, moves into it, and the step reports that slot for the list's loop to file it at.
+#[test]
+fn a_kill_after_the_step_reports_the_object_s_new_slot() {
+    let (mut t, mut v) = killed_sheep(true);
+    let frame = t.player_frame();
+    let stepped = t
+        .step_object((1, 1), (0, None, false), &frame, None, |_, c| {
+            let left = crate::combat::victims::write_back(c, &mut v)?;
+            c.kills.extend(left);
+            Ok(crate::objects::unit::Step::Stay)
+        })
+        .unwrap();
+    assert_eq!(stepped.slot, 0);
+    assert_eq!(t.players[1].objects.position_of(10029), Some(0));
+    assert_eq!(t.players[0].objects[0].id, 9520);
+}
+
+/// A world call in the step that moves the stepping object's stand-in (a removal from its list,
+/// the stand-in its last object) puts the object back where the stand-in went; one whose
+/// stand-in left the list goes to its end, and the step fails.
+#[test]
+fn a_step_puts_its_object_back_where_its_stand_in_went() {
+    use crate::objects::unit::Step;
+    let ids = |t: &World| {
+        t.players[1]
+            .objects
+            .iter()
+            .map(|u| u.id)
+            .collect::<Vec<_>>()
+    };
+    let mut t = house_builder();
+    let before = ids(&t);
+    let last = before.len() - 1;
+    let frame = t.player_frame();
+    let stepped = t
+        .step_object((1, last), (50, None, false), &frame, None, |_, c| {
+            let _ = c.w.players[1].objects.swap_remove(0);
+            Ok(Step::Stay)
+        })
+        .unwrap();
+    assert_eq!(stepped.slot, 0);
+    assert_eq!(ids(&t)[0], before[last]);
+    let mut t = house_builder();
+    let frame = t.player_frame();
+    let failed = t
+        .step_object((1, 0), (50, None, false), &frame, None, |_, c| {
+            c.w.players[1].objects.truncate(0);
+            Ok(Step::Stay)
+        })
+        .err()
+        .unwrap();
+    assert_eq!(failed.kind(), crate::ErrorKind::Unreachable);
+    assert_eq!(ids(&t), [before[0]]);
+}
+
+/// The list's loop goes on by its own count (`FUN_141166550`): past an object that stays,
+/// sleeps or changes hands, and again at the same count after one that leaves, whose slot the
+/// list's last object took.
+#[test]
+fn the_list_s_loop_runs_its_count_again_only_after_a_leave() {
+    use crate::objects::unit::Step;
+    let mut t = house_builder();
+    let n = t.players[1].objects.len();
+    assert!(t.file_step(1, 0, Step::Stay));
+    assert!(t.file_step(1, 0, Step::Sleep));
+    assert_eq!(t.players[1].objects.len(), n - 1);
+    assert!(!t.file_step(1, 0, Step::Leave));
+    assert_eq!(t.players[1].objects.len(), n - 2);
 }
 
 /// A hit on player 2's castle 30 (master 82, 650 stone paid) with its annexes 31 and 32:
@@ -13677,7 +13762,7 @@ fn finished_with(
 ) -> Result<crate::objects::unit::Step, GenieError> {
     let frame = t.player_frame();
     t.step_object((p, i), (50, None, false), &frame, None, |_, c| step(c))
-        .map(|(step, ..)| step)
+        .map(|s| s.step)
 }
 
 /// What a step leaves in its Context for what follows it.

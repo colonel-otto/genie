@@ -19,7 +19,7 @@ impl World {
     /// Gaia's add does not take into its list of class 10 of combat level 4 (`+0x14a0`, a draw
     /// on the Player stream).
     pub(crate) fn give_gaia(&mut self, q: usize, j: usize) -> Result<(), GenieError> {
-        let mut unit = std::mem::replace(&mut self.players[q].objects[j], Unit::taken_out());
+        let mut unit = self.players[q].objects.take_out(j);
         let changed = change_hands(
             &mut unit,
             (q, 0),
@@ -27,7 +27,7 @@ impl World {
             &mut self.spatial,
             self.world_time,
         );
-        self.players[q].objects[j] = unit;
+        let j = self.put_back_own(q, unit)?;
         if !changed? {
             return Ok(());
         }
@@ -240,7 +240,7 @@ impl World {
         new: usize,
         id: i32,
     ) -> Result<usize, GenieError> {
-        let mut unit = std::mem::replace(&mut self.players[old].objects[idx], Unit::taken_out());
+        let mut unit = self.players[old].objects.take_out(idx);
         let changed = change_hands(
             &mut unit,
             (old, new),
@@ -248,7 +248,7 @@ impl World {
             &mut self.spatial,
             self.world_time,
         );
-        self.players[old].objects[idx] = unit;
+        let idx = self.put_back_own(old, unit)?;
         Ok(if changed? {
             let unit = self.players[old].objects.swap_remove(idx);
             let handed = self.hand_over_attributes(old, new, &unit);

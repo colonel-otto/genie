@@ -358,10 +358,7 @@ impl World {
         let Some(crate::orders::Place::Live(tp, ti)) = self.place(target) else {
             return Err(ENTER_SLEEPING);
         };
-        let mut unit = std::mem::replace(
-            &mut self.players[player].objects[idx],
-            crate::objects::unit::Unit::taken_out(),
-        );
+        let mut unit = self.players[player].objects.take_out(idx);
         let mut adds = Vec::new();
         let result = (|| {
             let building = &self.players[tp].objects[ti];
@@ -390,9 +387,9 @@ impl World {
             unit.entered(&mut w)?;
             Ok((w.firepower, w.left_group))
         })();
-        self.players[player].objects[idx] = unit;
+        let id = unit.id;
+        let _ = self.put_back_own(player, unit)?;
         let (firepower, left_group) = result?;
-        let id = self.players[player].objects[idx].id;
         // its removeUnit from the unit group it left (FUN_14102c160), when the world holds it
         if let Some(g) = left_group.filter(|&g| self.groups.get(g).is_some()) {
             let _ = self.remove_unit(g, id, target, false)?;
@@ -425,10 +422,7 @@ impl World {
         let bm = self
             .master_of(tp, self.players[tp].objects[ti].life.master_id)?
             .clone();
-        let mut unit = std::mem::replace(
-            &mut self.players[player].objects[idx],
-            crate::objects::unit::Unit::taken_out(),
-        );
+        let mut unit = self.players[player].objects.take_out(idx);
         let mut adds = Vec::new();
         let result: Result<_, GenieError> = (|| {
             let building = &self.players[tp].objects[ti];
@@ -453,9 +447,9 @@ impl World {
             unit.go_inside(building, (masters, &me, &bm), &mut w)?;
             Ok((w.firepower, w.left_group))
         })();
-        self.players[player].objects[idx] = unit;
+        let id = unit.id;
+        let _ = self.put_back_own(player, unit)?;
         let (firepower, left_group) = result?;
-        let id = self.players[player].objects[idx].id;
         if let Some(g) = left_group.filter(|&g| self.groups.get(g).is_some()) {
             let _ = self.remove_unit(g, id, target, false)?;
         }
