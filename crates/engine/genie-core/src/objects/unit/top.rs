@@ -1,7 +1,7 @@
 //! What a unit's actions hold: their taker, its top action, target and gait.
 
 use crate::GenieError;
-use crate::construction::build::BUILD;
+use crate::objects::actions::Action;
 use crate::objects::masters::Master;
 use crate::objects::unit::{TAKEN_OUT, Unit};
 use crate::world::BUILDING_KIND;
@@ -155,75 +155,12 @@ impl Unit {
         self.top_action().map(|a| a.kind)
     }
 
-    /// Its top action as the slice models it, type and state.
+    /// Its top action (the list's head) as the slice models it, type and state.
     #[must_use]
     pub fn top_action(&self) -> Option<TopAction> {
-        let action = |kind, state| TopAction { kind, state };
-        None.or_else(|| {
-            self.actions
-                .artifact()
-                .map(|a| action(crate::ownership::artifact::ARTIFACT_TYPE, a.state))
-        })
-        .or_else(|| self.actions.build().map(|b| action(BUILD, b.state)))
-        .or_else(|| {
-            self.actions
-                .repair()
-                .map(|r| action(crate::construction::repair::REPAIR, r.state))
-        })
-        .or_else(|| {
-            self.actions
-                .move_to()
-                .map(|m| action(crate::movement::move_to::MOVE_TO, m.state.number()))
-        })
-        .or_else(|| {
-            self.actions
-                .fly()
-                .map(|f| action(crate::movement::fly::FLY, f.state))
-        })
-        .or_else(|| {
-            self.actions
-                .hunt()
-                .map(|h| action(crate::gathering::hunt::HUNT, h.state))
-        })
-        .or_else(|| {
-            self.actions
-                .gather()
-                .map(|g| action(crate::gathering::gather::GATHER, g.state))
-        })
-        .or_else(|| {
-            self.actions
-                .attack()
-                .map(|a| action(crate::combat::attack::ATTACK, a.state))
-        })
-        .or_else(|| {
-            self.actions
-                .explore()
-                .map(|e| action(crate::movement::explore::EXPLORE, e.state))
-        })
-        .or_else(|| {
-            self.actions
-                .enter()
-                .map(|e| action(crate::garrison::ENTER, e.state))
-        })
-        .or_else(|| {
-            self.actions
-                .transport()
-                .map(|t| action(crate::garrison::transport::TRANSPORT, t.state))
-        })
-        .or_else(|| {
-            self.actions
-                .missile()
-                .map(|a| action(crate::combat::missile::MISSILE, a.state))
-        })
-        .or_else(|| {
-            self.actions
-                .make()
-                .map(|m| action(crate::gathering::make::MAKE, m.state))
-        })
-        .or_else(|| {
-            self.actions
-                .wait_solidify()
-                .map(|w| action(crate::construction::wait_solidify::WAIT_SOLIDIFY, w.state))
+        self.actions.head().map(|a| TopAction {
+            kind: a.kind(),
+            state: a.state(),
         })
     }
 
@@ -239,88 +176,46 @@ impl Unit {
                 state: m.number(),
             })
         };
-        if let Some(a) = self.actions.artifact().copied() {
-            return walking(a.move_to).or_else(|| {
+        match self.actions.head()? {
+            Action::Artifact(a) => walking(a.move_to).or_else(|| {
                 a.enter.map(|e| TopAction {
                     kind: crate::garrison::ENTER,
                     state: e.state,
                 })
-            });
-        }
-        if let Some(b) = self.actions.build().copied() {
-            return walking(b.move_to);
-        }
-        if let Some(r) = self.actions.repair().copied() {
-            return walking(r.move_to);
-        }
-        if self.actions.move_to().is_some() {
-            return None;
-        }
-        if let Some(f) = self.actions.fly().copied() {
-            return walking(f.move_to);
-        }
-        if let Some(h) = self.actions.hunt().copied() {
-            return h
+            }),
+            Action::Hunt(h) => h
                 .attack
                 .map(|a| TopAction {
                     kind: crate::combat::attack::ATTACK,
                     state: a.state,
                 })
-                .or_else(|| walking(h.move_to));
+                .or_else(|| walking(h.move_to)),
+            Action::Build(b) => walking(b.move_to),
+            Action::Repair(r) => walking(r.move_to),
+            Action::Fly(f) => walking(f.move_to),
+            Action::Gather(g) => walking(g.move_to),
+            Action::Attack(a) => walking(a.move_to),
+            Action::Explore(e) => walking(e.move_to),
+            Action::Enter(e) => walking(e.move_to),
+            Action::Transport(t) => walking(t.move_to),
+            Action::MoveTo(_) | Action::Missile(_) | Action::Make(_) | Action::WaitSolidify(_) => {
+                None
+            }
         }
-        if let Some(g) = self.actions.gather().copied() {
-            return walking(g.move_to);
-        }
-        if let Some(a) = self.actions.attack().copied() {
-            return walking(a.move_to);
-        }
-        if let Some(e) = self.actions.explore().copied() {
-            return walking(e.move_to);
-        }
-        if let Some(e) = self.actions.enter().copied() {
-            return walking(e.move_to);
-        }
-        self.actions
-            .transport()
-            .copied()
-            .and_then(|t| walking(t.move_to))
     }
 
-    /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
-    /// Artifact not moving to an object, a Fly, an Explore, a wait for a foundation, which keeps
-    /// the foundation at `+0x68`); None without an action the slice holds.
+    /// The target of its top action ([`Unit::top_action`], [`Action::target`]); None without an
+    /// action the slice holds.
     #[must_use]
     pub fn top_target(&self) -> Option<i32> {
-        if let Some(a) = self.actions.artifact().copied() {
-            return Some(a.target);
-        }
-        None.or_else(|| self.actions.build().map(|b| b.target))
-            .or_else(|| self.actions.repair().map(|r| r.target))
-            .or_else(|| self.actions.move_to().map(|m| m.target))
-            .or_else(|| self.actions.fly().map(|_| -1))
-            .or_else(|| self.actions.hunt().map(|h| h.target))
-            .or_else(|| self.actions.gather().map(|g| g.target))
-            .or_else(|| self.actions.attack().map(|a| a.target))
-            .or_else(|| self.actions.explore().map(|_| -1))
-            .or_else(|| self.actions.enter().map(|e| e.target))
-            .or_else(|| self.actions.transport().map(|_| -1))
-            .or_else(|| self.actions.missile().map(|a| a.target))
-            .or_else(|| self.actions.make().map(|_| -1))
-            .or_else(|| self.actions.wait_solidify().map(|_| -1))
+        self.actions.head().map(Action::target)
     }
 
-    /// The second target of its top action (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's
-    /// or a Gather's drop site, a missile's shooter; the slice's other actions hold none (an import checks the
-    /// save's). None without an action the slice holds.
+    /// The second target of its top action ([`Action::second_target`]); None without an action
+    /// the slice holds.
     #[must_use]
     pub fn top_second_target(&self) -> Option<i32> {
-        match self.top_action_kind()? {
-            crate::gathering::hunt::HUNT => self.actions.hunt().map(|h| h.carry_to),
-            crate::gathering::gather::GATHER => self.actions.gather().map(|g| g.carry_to),
-            crate::combat::missile::MISSILE => self.actions.missile().map(|a| a.fired_from),
-            crate::combat::attack::ATTACK => self.actions.attack().map(|a| a.target2),
-            _ => Some(-1),
-        }
+        self.actions.head().map(Action::second_target)
     }
 
     /// Slot 0x2d0 with 0 (`FUN_14106d170`): whether its top action may be interrupted (the group

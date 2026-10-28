@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::{Me, Mover};
+use crate::objects::actions::Action;
 use crate::objects::lifecycle::Class;
 use crate::objects::unit::{Step, Unit, loses_actions};
 use crate::unit_ai::task_finder::world::wait_progress;
@@ -62,60 +63,94 @@ impl Unit {
         Ok(Some(leaves))
     }
 
-    /// `RGE_Action_Object::update`: the default task's start, then each action held in the
-    /// game's order (Artifact, Build, Repair, garrison, the wait for a foundation, a missile's
-    /// flight, `MoveTo`, Explore, Fly, Make, Gather, Hunt, Attack) and what follows them; the
-    /// Artifact's capture, which the unit AI's part reads.
+    /// `RGE_Action_Object::update` (`0x14106ac90`) after the moving update: an empty list in state
+    /// 2 starts the master's default task, which waits for the next update; an object inside
+    /// another (`+0x2f0`) runs its inside update (`FUN_140a98790`, [`Unit::inside_update`]);
+    /// any other runs its list's update (`FUN_140a992b0`, [`Unit::update_head`]). Then what
+    /// follows the actions; the Artifact's capture, which the unit AI's part reads.
     pub(crate) fn update_actions(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
     ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let started = self.start_default_task(c)?;
-        // The default action exists from tick 1 on, but its first update is in tick 2: fitted to
-        // 16 checkpoints of idle players with livestock (workspace FD-008).
+        let captured = if started {
+            None
+        } else if self.life.inside.is_some() {
+            self.inside_update(c)?;
+            None
+        } else {
+            self.update_head(c, others)?
+        };
+        self.after_actions(c)?;
+        Ok(captured)
+    }
+
+    /// The list's update (`FUN_140a992b0`): its head's update (slot 0x30), by the head's kind;
+    /// the slice holds no action below it, whose idle update (`FUN_140a78470`) would follow.
+    /// The Artifact's capture, if it found one.
+    fn update_head(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+    ) -> Result<Option<crate::ownership::capture::Captured>, GenieError> {
         let me = Me {
             id: self.id,
             position: self.position,
             group: self.group.id,
             action_state: self.top_action().map_or(0, |a| a.state),
         };
-        // RGE_Action_Object::update runs the actions of an object not inside another (`+0x2f0`
-        // none as it reaches them), else the inside update, never both
-        let inside_at_start = self.life.inside.is_some();
-        let captured = self.artifact_part(c, others, me, inside_at_start, started.artifact)?;
-        self.build_part(c, others, me)?;
-        if self.actions.repair().is_some() {
-            self.repair_part(c, others, me)?;
-        }
-        self.garrison_part(c, others, me, inside_at_start, started.any())?;
-        // the wait for a foundation (FUN_140ae8b70) on its build points, none when the world
-        // does not hold it; its 1 removes it (FUN_140a98e20: the base teardown lets no target go,
-        // and no action follows it, the wait having replaced the list)
-        if let Some(w) = self.actions.wait_solidify().copied()
+        let updated = match self.actions.head() {
+            None => Ok(()),
+            Some(Action::Artifact(_)) => return self.artifact_part(c, others, me),
+            Some(Action::Build(_)) => self.build_part(c, others, me),
+            Some(Action::Repair(_)) => self.repair_part(c, others, me),
+            Some(Action::Enter(_)) => self.enter_update(c, others, me),
+            Some(Action::Transport(_)) => self.transport_update(c, me),
+            Some(Action::WaitSolidify(_)) => {
+                self.wait_solidify_part(c, others);
+                Ok(())
+            }
+            Some(Action::Missile(_)) => self.fly(c, others),
+            Some(Action::MoveTo(_)) => self.move_to_part(c, me),
+            Some(Action::Explore(_)) => self.explore_part(c, me),
+            Some(Action::Fly(_)) => self.fly_part(c, me),
+            Some(Action::Make(_)) => self.make_part(c),
+            Some(Action::Gather(_)) => self.gather_update(c, others, me),
+            Some(Action::Hunt(_)) => self.hunter_update(c, others, me),
+            Some(Action::Attack(_)) => {
+                let own = self.own_victim(c);
+                self.attack_part(c, me, own)
+            }
+        };
+        updated?;
+        Ok(None)
+    }
+
+    /// The wait for a foundation in its update (`FUN_140ae8b70`) on its build points, none when
+    /// the world does not hold it; its 1 removes it (`FUN_140a98e20`: the base teardown lets no
+    /// target go, and no action follows it, the wait having replaced the list).
+    fn wait_solidify_part(&mut self, c: &Context<'_>, others: &[Self]) {
+        if let Some(w) = self.actions.wait_solidify()
             && w.update(wait_progress(w.target, others, c.foreign))
         {
             self.actions.set_wait_solidify(None);
         }
-        if self.actions.missile().is_some() {
-            self.fly(c, others)?;
-        }
-        self.move_to_part(c, me)?;
-        self.explore_part(c, me)?;
-        self.fly_part(c, me, started.fly)?;
-        self.make_part(c, started.make)?;
-        if self.actions.gather().is_some() {
-            self.gather_update(c, others, me)?;
-        }
+    }
+
+    /// The Hunt's update (`0x140ac7a00`): its targets' check ([`Unit::hunt_targets`]), then its
+    /// part by state ([`Unit::hunt_part`]) with the hunter as a combat object, which its hits
+    /// read and change.
+    fn hunter_update(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut [Self],
+        me: Me,
+    ) -> Result<(), GenieError> {
         self.hunt_targets(c, others)?;
-        // the hunter as a combat object, which its hits read and change
         let mut own = self.own_victim(c);
         let tree_lost = self.tree_lost();
-        if !self.hunt_part(c, others, me, &mut own, tree_lost)? {
-            self.attack_part(c, me, own)?;
-        }
-        self.after_actions(c)?;
-        Ok(captured)
+        self.hunt_part(c, others, me, &mut own, tree_lost)
     }
 
     /// `RGE_Static_Object::update` (`0x14118ad50`): an object flagged to sleep (`+0x643`) drops

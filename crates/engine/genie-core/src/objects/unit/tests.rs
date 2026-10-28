@@ -159,23 +159,16 @@ fn the_update_up_to_the_actions_ends_for_a_sleeper() {
 /// The actions' update: an idle forager runs none and captures nothing; a wait for a
 /// foundation the world does not hold ends; a Gather walks on to its bush.
 #[test]
-fn the_actions_update_runs_each_action_held() {
+fn the_actions_update_runs_the_action_held() {
     let mut t = forage_world();
     let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
     assert!(captured.is_none());
-    t.players[1].objects[0].actions.set_wait_solidify(Some(
-        crate::construction::wait_solidify::WaitSolidify {
-            state: 0,
-            task: crate::objects::masters::Task::default(),
-            target: 99_999,
-        },
-    ));
+    t.players[1].objects[0]
+        .actions
+        .set_wait_solidify(Some(gone_foundation()));
     let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
     assert!(captured.is_none());
-    assert_eq!(
-        t.players[1].objects[0].actions.wait_solidify().copied(),
-        None
-    );
+    assert_eq!(t.players[1].objects[0].actions.wait_solidify(), None);
     t.gather_command(1, 0, 600).unwrap();
     let before = t.players[1].objects[0].actions.gather().copied();
     let captured = in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)).unwrap();
@@ -183,6 +176,67 @@ fn the_actions_update_runs_each_action_held() {
     let after = t.players[1].objects[0].actions.gather().copied();
     assert_eq!(after.map(|g| g.target), Some(600));
     assert_ne!(before, after);
+}
+
+/// A wait for a foundation (state 0) on one the world does not hold.
+fn gone_foundation() -> crate::construction::wait_solidify::WaitSolidify {
+    crate::construction::wait_solidify::WaitSolidify {
+        state: 0,
+        task: crate::objects::masters::Task::default(),
+        target: 99_999,
+    }
+}
+
+/// The list's update (`FUN_140a992b0`) runs its head's update only: a wait for a gone
+/// foundation on top of a Gather ends, and the Gather below it does not walk.
+#[test]
+fn the_list_s_update_runs_its_head_only() {
+    let mut t = forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    let unit = &mut t.players[1].objects[0];
+    unit.actions.set_wait_solidify(Some(gone_foundation()));
+    assert_eq!(
+        unit.top_action_kind(),
+        Some(crate::construction::wait_solidify::WAIT_SOLIDIFY)
+    );
+    let before = unit.actions.gather().copied();
+    assert_eq!(
+        in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)),
+        Ok(None)
+    );
+    let unit = &t.players[1].objects[0];
+    assert_eq!(unit.actions.wait_solidify(), None);
+    assert_eq!(unit.actions.gather().copied(), before);
+}
+
+/// An object inside another runs its inside update (`FUN_140a98790`) in place of its actions':
+/// its Gather goes, with no walk; an empty list in state 2 starts the master's default task,
+/// which waits for the next update.
+#[test]
+fn an_object_inside_another_runs_its_inside_update() {
+    let mut t = forage_world();
+    t.gather_command(1, 0, 600).unwrap();
+    let at = t.players[1].objects[0].position;
+    t.players[1].objects[0].life.inside = Some(700);
+    assert_eq!(
+        in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)),
+        Ok(None)
+    );
+    let unit = &t.players[1].objects[0];
+    assert!(unit.actions.is_empty());
+    assert_eq!(unit.position, at);
+    let unit = &mut t.players[1].objects[0];
+    unit.life.inside = None;
+    unit.default_artifact = true;
+    assert_eq!(
+        in_update(&mut t, (1, 0), 50, |u, c, o| u.update_actions(c, o)),
+        Ok(None)
+    );
+    assert_eq!(
+        t.players[1].objects[0].actions.artifact(),
+        Some(&crate::ownership::artifact::Artifact::new(false)),
+        "the Artifact the default task made has not run yet"
+    );
 }
 
 /// Slot 0x190 (`FUN_14106d090`, `FUN_140a78450`): the object the top action targets, none for an
@@ -269,4 +323,60 @@ fn the_top_action_s_sub_action_is_its_move_to_or_its_attack() {
     };
     assert_eq!(builder.top_sub_action(), Some(walking(4)));
     assert_eq!(Unit::default().top_sub_action(), None);
+}
+
+/// The sub-action of each kind of top action: the walk of an Artifact, a Fly, an Attack, an
+/// Explore, an Enter and a Transport, an Artifact's Enter when it does not walk, and none for an
+/// own `MoveTo`, a Make or a wait for a foundation.
+#[test]
+fn every_kind_of_top_action_shows_its_sub_action() {
+    use crate::movement::move_to::{MOVE_TO, MoveTo};
+    use crate::objects::actions::Action;
+    use crate::world::checkpoint::TopAction;
+    let walking = Some(TopAction {
+        kind: MOVE_TO,
+        state: MoveTo::Moving.number(),
+    });
+    let of = |action: Action| {
+        let mut u = Unit::default();
+        u.actions.put(action);
+        u.top_sub_action()
+    };
+    let mut artifact = crate::ownership::artifact::Artifact::new(false);
+    artifact.move_to = Some(MoveTo::Moving);
+    assert_eq!(of(Action::Artifact(artifact)), walking);
+    let mut enter = crate::garrison::EnterAction::new(7, [1.0, 2.0, 0.0], 0.5, -1);
+    artifact.move_to = None;
+    artifact.enter = Some(enter);
+    assert_eq!(
+        of(Action::Artifact(artifact)),
+        Some(TopAction {
+            kind: crate::garrison::ENTER,
+            state: enter.state,
+        })
+    );
+    enter.move_to = Some(MoveTo::Moving);
+    assert_eq!(of(Action::Enter(enter)), walking);
+    let mut fly = crate::movement::fly::Fly::start(
+        crate::objects::masters::Task::default(),
+        [1.0, 2.0, 0.0],
+        &mut crate::math::rng::Well512::default(),
+    );
+    fly.move_to = Some(MoveTo::Moving);
+    assert_eq!(of(Action::Fly(fly)), walking);
+    let mut attack = crate::combat::attack::tests::own_attack(7, 4, 0.5);
+    attack.move_to = Some(MoveTo::Moving);
+    assert_eq!(of(Action::Attack(attack)), walking);
+    let (mut explore, _) = crate::movement::explore::ExploreAction::new([1.0, 2.0, 0.0]);
+    explore.move_to = Some(MoveTo::Moving);
+    assert_eq!(of(Action::Explore(explore)), walking);
+    let mut transport = crate::garrison::transport::TransportAction::new([1.0, 2.0, 0.0]);
+    transport.move_to = Some(MoveTo::Moving);
+    assert_eq!(of(Action::Transport(transport)), walking);
+    let wait = crate::construction::wait_solidify::WaitSolidify {
+        state: 0,
+        task: crate::objects::masters::Task::default(),
+        target: 7,
+    };
+    assert_eq!(of(Action::WaitSolidify(wait)), None);
 }

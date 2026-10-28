@@ -216,15 +216,9 @@ impl Unit {
         Ok(())
     }
 
-    /// A bird's Fly in its update: its step, the stop, and a failed flight's notify. A Fly that
-    /// this update started (`flies_from_now`) waits for the next update.
-    pub(crate) fn fly_part(
-        &mut self,
-        c: &mut Context<'_>,
-        me: Me,
-        flies_from_now: bool,
-    ) -> Result<(), GenieError> {
-        if let Some(fly) = self.actions.fly_mut().filter(|_| !flies_from_now) {
+    /// A bird's Fly in its update: its step, the stop, and a failed flight's notify.
+    pub(crate) fn fly_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
+        if let Some(fly) = self.actions.fly_mut() {
             let mover = self
                 .body
                 .mover_mut()

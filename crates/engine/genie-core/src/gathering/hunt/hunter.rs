@@ -87,7 +87,7 @@ impl Unit {
     /// ([`Unit::hunt_point_walk`]), the search ([`Unit::hunt_search_wait`]), the idle
     /// ([`Unit::hunt_idle`]), the wait after a given-up `MoveTo` ([`Unit::hunt_wait_walk`]), a
     /// lead without its target, a lost tree's search, else its strike ([`Unit::hunt_strike`]).
-    /// False when the unit holds no hunt: its Attack's part runs then.
+    /// Nothing without a hunt.
     pub(crate) fn hunt_part(
         &mut self,
         c: &mut Context<'_>,
@@ -95,7 +95,7 @@ impl Unit {
         me: Me,
         own: &mut Option<Victim>,
         tree_lost: bool,
-    ) -> Result<bool, GenieError> {
+    ) -> Result<(), GenieError> {
         use crate::gathering::hunt::{
             DROP, FAILED, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH,
         };
@@ -120,9 +120,9 @@ impl Unit {
             _ if tree_lost
                 && self.hunt_tree_search(c, others, Some(TREE_SEARCH_WITHIN), None)? => {}
             Some(_) => self.hunt_strike(c, others, me, own, tree_lost)?,
-            None => return Ok(false),
+            None => {}
         }
-        Ok(true)
+        Ok(())
     }
 
     /// Case 7 waiting to try again (state 8 with its timer below 0): the timer runs by dt; at its

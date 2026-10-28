@@ -549,26 +549,18 @@ pub(crate) struct EnterWorld<'a> {
 }
 
 impl Unit {
-    /// The garrison's part of the update: the inside update of a unit that started the update
-    /// inside another (`0x140a98790`), else its Enter's or its transport's update. A unit that
-    /// started a default task in this update (`default_made`) takes the other branch.
-    pub(crate) fn garrison_part(
-        &mut self,
-        c: &mut Context<'_>,
-        others: &mut [Self],
-        me: Me,
-        inside_at_start: bool,
-        default_made: bool,
-    ) -> Result<(), GenieError> {
+    /// The inside update of an object inside another (`FUN_140a98790`), which runs in place of
+    /// its actions' update.
+    pub(crate) fn inside_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         // RGE_Action_Object::update: the actions of an object inside another do not update; its
         // inside update (FUN_140a98790) deletes its top action (FUN_140a78480 -> FUN_140a784a0:
         // a dead target let go, the sub-actions' end; then the action's teardown, which lets its
         // targets go, slot 0x180, and a MoveTo's stops the unit, slot 0x5d0); the actions below
         // it (FUN_140a78470) and the next one's slot 0x28 need a second action, which the slice
         // never holds; a unit its actions got in this update waits for the next. An empty list
-        // takes the default task instead (its branch of the three): livestock inside makes its
-        // Artifact in one update and loses it in the next
-        if inside_at_start && !default_made {
+        // takes the default task instead: livestock inside makes its Artifact in one update and
+        // loses it in the next
+        {
             if let Some(e) = self.actions.take_enter() {
                 if e.move_to.is_some()
                     && let Some(m) = self.body.mover_mut()
@@ -600,10 +592,6 @@ impl Unit {
                 let by = self.releaser(c);
                 self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
             }
-        } else if self.actions.enter().is_some() {
-            self.enter_update(c, others, me)?;
-        } else if self.actions.transport().is_some() {
-            self.transport_update(c, me)?;
         }
         Ok(())
     }

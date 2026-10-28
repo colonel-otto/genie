@@ -3419,7 +3419,7 @@ fn notified(t: &World, kind: i32) -> Vec<[i32; 3]> {
 
 /// The hunter's part of the update in its hunt's state ([`Unit::hunt_part`]) with `dt`, the
 /// hunter as a combat object and its lost tree as the update reads them.
-fn hunt_part_of(t: &mut World, dt: u32) -> Result<bool, GenieError> {
+fn hunt_part_of(t: &mut World, dt: u32) -> Result<(), GenieError> {
     in_update(t, (1, 0), dt, |unit, c, others| {
         let me = crate::movement::Me {
             id: unit.id,
@@ -3447,7 +3447,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     };
     let mut t = wait(-0.5);
     t.players[1].objects[2].workers = 1;
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.carry_to), (DROP, 700));
     assert!((h.timer + 0.45).abs() < 1e-6);
@@ -3455,7 +3455,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     t.players[1].objects[0].life.attribute_type = 15;
     t.players[1].objects[0].life.amount = 5.0;
     t.players[1].objects[2].workers = 1;
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.carry_to, h.timer), (DROP, 700, 0.0));
     // the centre let go, then taken again as the new drop site
@@ -3494,14 +3494,14 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
         t
     };
     let mut t = dropping(MoveTo::Arrived);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.amount, 0.0);
     assert_eq!(t.players[1].resources[0], 5.0);
     let h = v.actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.target, h.carry_to), (ATTACK, 500, -1));
     let mut t = dropping(MoveTo::Failed);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let v = &t.players[1].objects[0];
     assert_eq!(v.body.anim_speed(), Some(0.0));
     assert!(v.actions.hunt().is_some_and(|h| h.timer < 0.0));
@@ -3512,7 +3512,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
 
 /// The failed hunt (state 13, case 0xc): notify 0x1f9 with the hunt action; the hunt goes and
 /// its deer, another player's, is let go after the update. With a sub-action it is not
-/// modelled; without a hunt the part is not the hunter's (false).
+/// modelled; without a hunt the part does nothing.
 #[test]
 fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
     use crate::gathering::hunt::FAILED;
@@ -3521,14 +3521,14 @@ fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
         h.attack = None;
     });
     assert_eq!(t.players[0].objects[0].workers, 1);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(t.players[1].objects[0].actions.hunt().copied(), None);
     assert_eq!(
         notified(&t, crate::unit_ai::ACTION_FAILED),
         [[crate::unit_ai::HUNT_ACTION, 0, 0]]
     );
     assert_eq!(t.players[0].objects[0].workers, 0);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(false));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let mut t = hunter_in(|h| h.state = FAILED);
     assert!(hunt_part_of(&mut t, 50).is_err());
 }
@@ -3545,10 +3545,10 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
         (h.state, h.timer) = (SEARCH, -0.5);
         h.attack = None;
     });
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(notified(&t, SEARCH_NEEDED), [[0; 3]; 0]);
     t.players[1].objects[0].actions.hunt_mut().unwrap().timer = -0.01;
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(notified(&t, SEARCH_NEEDED), [search]);
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.timer),
@@ -3558,7 +3558,7 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
         (h.state, h.target) = (LEAD, -1);
         h.attack = None;
     });
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
         Some(SEARCH)
@@ -3569,7 +3569,7 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
         h.attack = None;
     });
     let before = t.players[1].objects[0].actions.hunt().copied();
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(t.players[1].objects[0].actions.hunt().copied(), before);
     t.players[1].objects[0]
         .actions
@@ -3594,12 +3594,12 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
         })
     };
     let mut t = walked(WALK_POINT);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.target, h.move_to), (IDLE, -1, None));
     assert_eq!(t.players[0].objects[0].workers, 0);
     let mut t = walked(WALK_SEARCH);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
         Some(SEARCH)
@@ -3610,7 +3610,7 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
         h.move_wait.delay = 1.0;
         h.attack = None;
     });
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.move_to, h.state), (Some(MoveTo::Waiting), WALK_POINT));
     let mut t = hunter_in(|h| {
@@ -3618,7 +3618,7 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
         h.point = [36.0, 89.5, 0.0];
         h.attack = None;
     });
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
         Some(WALK_SEARCH)
@@ -3635,7 +3635,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
     use crate::gathering::hunt::{ATTACK, DROP, GATHER};
     use crate::movement::move_to::MoveTo;
     let mut t = hunter_in(|_| {});
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let v = &t.players[1].objects[0];
     let h = v.actions.hunt().copied().unwrap();
     assert_eq!(
@@ -3662,7 +3662,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         t
     };
     let mut t = gathering(5.0);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let (gained, left) = (
         t.players[1].objects[0].life.amount,
         t.players[0].objects[0].life.amount,
@@ -3673,7 +3673,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         Some(GATHER)
     );
     let mut t = gathering(9.99);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.carry_to), (DROP, 700));
     assert_eq!(t.players[1].objects[0].life.amount, 9.99);
@@ -3760,11 +3760,11 @@ fn shepherd_world(x: f32) -> World {
 fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
     use crate::gathering::hunt::{ATTACK, LEAD};
     let mut t = shepherd_world(30.2);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.target, h.drop_site), (LEAD, 510, 700));
     assert!(t.players[1].objects[3].actions.move_to().is_some());
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     assert_eq!(
         t.players[1].objects[0].actions.hunt().map(|h| h.state),
         Some(LEAD)
@@ -3772,7 +3772,7 @@ fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
     let mut t = shepherd_world(22.6);
     t.players[1].objects[0].position = [23.2, 89.5, 0.0];
     t.spatial.set_position(9175, [23.2, 89.5, 0.0]);
-    assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
+    assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
     let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.attack.map(|a| a.target)), (ATTACK, Some(510)));
 }
@@ -12155,9 +12155,9 @@ type Flown = (Result<(), GenieError>, Option<Fly>, Vec<(i32, [i32; 3])>);
 
 /// [`forage_world`]'s villager 9175 as a bird flying (state 4) toward (40.5, 89.5) with its
 /// `MoveTo` in `move_to`, two seconds of flight left and a rest of two seconds; `setup`
-/// changes the unit, then its update's Fly part runs ([`Unit::fly_part`], `flies_from_now` as
-/// given): the result, the Fly after it and what its unit AI heard.
-fn flown(move_to: MoveTo, flies_from_now: bool, setup: impl FnOnce(&mut Unit)) -> Flown {
+/// changes the unit, then its update's Fly part runs ([`Unit::fly_part`]): the result, the Fly
+/// after it and what its unit AI heard.
+fn flown(move_to: MoveTo, setup: impl FnOnce(&mut Unit)) -> Flown {
     let mut t = forage_world();
     let task = crate::objects::masters::Task {
         wait_time: 2.0,
@@ -12180,7 +12180,7 @@ fn flown(move_to: MoveTo, flies_from_now: bool, setup: impl FnOnce(&mut Unit)) -
             group: unit.group.id,
             action_state: 4,
         };
-        unit.fly_part(c, me, flies_from_now)
+        unit.fly_part(c, me)
     });
     let v = &t.players[1].objects[0];
     let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
@@ -12191,20 +12191,17 @@ fn flown(move_to: MoveTo, flies_from_now: bool, setup: impl FnOnce(&mut Unit)) -
 
 /// A bird's Fly in its update: a failed `MoveTo` ends the flight, its failure told to the unit
 /// AI (0x1f9 with the move action value); the bird stops and rests (state 2) for the flight's
-/// time left and the rest. A Fly this update started waits for the next update; a bird without
-/// movement state is not modelled.
+/// time left and the rest; a bird without movement state is not modelled.
 #[test]
 fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
     use crate::unit_ai::{ACTION_FAILED, MOVE_ACTION};
-    let (r, fly, heard) = flown(MoveTo::Failed, false, |_| ());
+    let (r, fly, heard) = flown(MoveTo::Failed, |_| ());
     assert_eq!(r, Ok(()));
     let fly = fly.unwrap();
     assert_eq!((fly.state, fly.move_to), (2, None));
     assert_eq!(fly.timer, 2.0 - seconds(50) + 2.0);
     assert_eq!(heard, [(ACTION_FAILED, [MOVE_ACTION, 0, 0])]);
-    let (r, fly, heard) = flown(MoveTo::Failed, true, |_| ());
-    assert_eq!((r, fly.map(|f| f.state), heard), (Ok(()), Some(4), vec![]));
-    let (r, _, _) = flown(MoveTo::Failed, false, |v| v.body.put_mover(None));
+    let (r, _, _) = flown(MoveTo::Failed, |v| v.body.put_mover(None));
     assert_eq!(r.unwrap_err().reason(), "a bird without movement state");
 }
 

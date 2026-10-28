@@ -376,23 +376,18 @@ impl Unit {
     /// The Artifact's part of the update (`0x140aad250`): its Enter sub-action first
     /// ([`Unit::artifact_enter_part`]), then its walk and the check for a new owner
     /// ([`Unit::artifact_walk_and_check`]), then the handover it found
-    /// ([`Unit::artifact_handover`]). A unit that started the update inside another
-    /// (`inside_at_start`) and an Artifact that this update started (`artifact_from_now`) wait.
+    /// ([`Unit::artifact_handover`]). In the first tick it waits.
     pub(crate) fn artifact_part(
         &mut self,
         c: &mut Context<'_>,
         others: &mut [Self],
         me: Me,
-        inside_at_start: bool,
-        artifact_from_now: bool,
     ) -> Result<Option<Captured>, GenieError> {
         let by = self.releaser(c);
-        if c.tick > 1 && !inside_at_start {
-            self.artifact_enter_part(c, others, me, by)?;
-        }
-        if c.tick <= 1 || artifact_from_now || inside_at_start {
+        if c.tick <= 1 {
             return Ok(None);
         }
+        self.artifact_enter_part(c, others, me, by)?;
         let new = self.artifact_walk_and_check(c, me, by)?;
         self.artifact_handover(c, others, new)
     }

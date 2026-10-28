@@ -179,14 +179,9 @@ impl MakeAction {
 
 impl Unit {
     /// A farm's Make in its update: the food it makes, the player's share, the farm that runs
-    /// out, and the end. A Make that this update started (`makes_from_now`) waits for the next
-    /// update.
-    pub(crate) fn make_part(
-        &mut self,
-        c: &mut Context<'_>,
-        makes_from_now: bool,
-    ) -> Result<(), GenieError> {
-        if let Some(make) = self.actions.make_mut().filter(|_| !makes_from_now) {
+    /// out, and the end.
+    pub(crate) fn make_part(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+        if let Some(make) = self.actions.make_mut() {
             let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
                 GenieError::unsupported("a Make of a master the slice does not have"),
             )?;

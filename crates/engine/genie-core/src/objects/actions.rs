@@ -116,6 +116,89 @@ action_kinds! {
         set_wait_solidify, with_wait_solidify;
 }
 
+impl Action {
+    /// The action's type (`+0x8`, `FUN_140a7be70`), as word 9 of a checkpoint adds it.
+    #[must_use]
+    pub const fn kind(&self) -> i16 {
+        match self {
+            Self::Artifact(_) => crate::ownership::artifact::ARTIFACT_TYPE,
+            Self::Build(_) => crate::construction::build::BUILD,
+            Self::Repair(_) => crate::construction::repair::REPAIR,
+            Self::MoveTo(_) => crate::movement::move_to::MOVE_TO,
+            Self::Fly(_) => crate::movement::fly::FLY,
+            Self::Hunt(_) => crate::gathering::hunt::HUNT,
+            Self::Gather(_) => crate::gathering::gather::GATHER,
+            Self::Attack(_) => crate::combat::attack::ATTACK,
+            Self::Explore(_) => crate::movement::explore::EXPLORE,
+            Self::Enter(_) => crate::garrison::ENTER,
+            Self::Transport(_) => crate::garrison::transport::TRANSPORT,
+            Self::Missile(_) => crate::combat::missile::MISSILE,
+            Self::Make(_) => crate::gathering::make::MAKE,
+            Self::WaitSolidify(_) => crate::construction::wait_solidify::WAIT_SOLIDIFY,
+        }
+    }
+
+    /// The action's state (`+0x18`); a `MoveTo`'s by its number.
+    #[must_use]
+    pub const fn state(&self) -> u8 {
+        match self {
+            Self::Artifact(a) => a.state,
+            Self::Build(a) => a.state,
+            Self::Repair(a) => a.state,
+            Self::MoveTo(a) => a.state.number(),
+            Self::Fly(a) => a.state,
+            Self::Hunt(a) => a.state,
+            Self::Gather(a) => a.state,
+            Self::Attack(a) => a.state,
+            Self::Explore(a) => a.state,
+            Self::Enter(a) => a.state,
+            Self::Transport(a) => a.state,
+            Self::Missile(a) => a.state,
+            Self::Make(a) => a.state,
+            Self::WaitSolidify(a) => a.state,
+        }
+    }
+}
+
+impl Action {
+    /// Slot 0x190's read of the action's target (`+0x30`), −1 for an action without one (an
+    /// Artifact not moving to an object, a Fly, an Explore, a Transport, a Make, a wait for a
+    /// foundation, which keeps the foundation at `+0x68`).
+    #[must_use]
+    pub const fn target(&self) -> i32 {
+        match self {
+            Self::Artifact(a) => a.target,
+            Self::Build(a) => a.target,
+            Self::Repair(a) => a.target,
+            Self::MoveTo(a) => a.target,
+            Self::Hunt(a) => a.target,
+            Self::Gather(a) => a.target,
+            Self::Attack(a) => a.target,
+            Self::Enter(a) => a.target,
+            Self::Missile(a) => a.target,
+            Self::Fly(_)
+            | Self::Explore(_)
+            | Self::Transport(_)
+            | Self::Make(_)
+            | Self::WaitSolidify(_) => -1,
+        }
+    }
+
+    /// The action's second target (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's or a
+    /// Gather's drop site, a missile's shooter, an Attack's second target; the slice's other
+    /// actions hold none (an import checks the save's).
+    #[must_use]
+    pub const fn second_target(&self) -> i32 {
+        match self {
+            Self::Hunt(h) => h.carry_to,
+            Self::Gather(g) => g.carry_to,
+            Self::Missile(m) => m.fired_from,
+            Self::Attack(a) => a.target2,
+            _ => -1,
+        }
+    }
+}
+
 /// The object's actions (`RGE_Action_List`), the head first.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ActionList(Vec<Action>);
@@ -138,6 +221,18 @@ impl ActionList {
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// `get_action` (`FUN_140a986a0`): the first action of type `kind`, if the list holds one.
+    #[must_use]
+    pub fn of_kind(&self, kind: i16) -> Option<&Action> {
+        self.0.iter().find(|a| a.kind() == kind)
+    }
+
+    /// `have_action` (`FUN_140a98740`): whether the list holds an action of type `kind`.
+    #[must_use]
+    pub fn holds(&self, kind: i16) -> bool {
+        self.of_kind(kind).is_some()
     }
 
     /// The current action (the head), if any.
@@ -205,6 +300,20 @@ mod tests {
         assert_eq!(list.take_make(), None);
         assert_eq!(list.take_artifact(), Some(artifact(8)));
         assert!(list.is_empty());
+    }
+
+    #[test]
+    fn an_action_reads_its_type_and_state() {
+        let a = Action::Artifact(artifact(6));
+        assert_eq!(
+            (a.kind(), a.state()),
+            (crate::ownership::artifact::ARTIFACT_TYPE, 6)
+        );
+        let list = ActionList::default().with_artifact(Some(artifact(6)));
+        assert_eq!(list.of_kind(107), Some(&a));
+        assert!(list.holds(107));
+        assert_eq!(list.of_kind(crate::combat::attack::ATTACK), None);
+        assert!(!list.holds(crate::combat::attack::ATTACK));
     }
 
     #[test]
