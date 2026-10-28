@@ -5877,28 +5877,30 @@ fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
 }
 
 /// [`Unit::gate_update`] of [`gate_world`]'s gate as master `master` with its gate state `gate`:
-/// the gate's toggle it asks for, its state after, or the error.
+/// the gate's master within the update after it (its toggle's, [`World::toggle_gate`]), its
+/// state after, or the error.
 fn gate_update_of(
     master: i16,
     gate: Option<Gate>,
     setup: impl FnOnce(&mut World),
-) -> Result<(bool, Option<Gate>), GenieError> {
+) -> Result<(i16, Option<Gate>), GenieError> {
     let mut t = gate_world();
     let g = &mut t.players[1].objects[0];
     (g.life.master_id, g.gate) = (master, gate);
     setup(&mut t);
-    let toggle = in_update(&mut t, (1, 0), 50, |unit, c| {
+    let master = in_update(&mut t, (1, 0), 50, |unit, c| {
         unit.gate_update(c)?;
-        Ok(std::mem::take(&mut c.gate_toggle))
+        Ok(unit.life.master_id)
     })?;
-    Ok((toggle, t.players[1].objects[0].gate))
+    Ok((master, t.players[1].objects[0].gate))
 }
 
-/// The gate's update (`FUN_1411e7730`): a shut (height 2), unlocked gate with an ally moving
-/// between its posts asks to open, its close timer 0; a locked one stays shut. An open gate (no
-/// height) with nothing in it starts its close timer at 0.5 s, runs it down by the world's dt
-/// (0.05 s), and at 0 asks to shut. Its first update clears every time it runs; a gate whose
-/// master transforms into nothing is passed over, and one without its gate state is not modelled.
+/// The gate's update (`FUN_1411e7730`): a shut (height 2, master 91), unlocked gate with an ally
+/// moving between its posts opens within its update (its player's toggle: master 88), its close
+/// timer 0; a locked one stays shut. An open gate (no height) with nothing in it starts its close
+/// timer at 0.5 s, runs it down by the world's dt (0.05 s), and at 0 shuts within its update.
+/// Its first update clears every time it runs; a gate whose master transforms into nothing is
+/// passed over, and one without its gate state is not modelled.
 #[test]
 fn a_gate_opens_for_an_ally_inside_and_shuts_after_its_close_timer() {
     let gate = |locked, close_timer| {
@@ -5917,11 +5919,11 @@ fn a_gate_opens_for_an_ally_inside_and_shuts_after_its_close_timer() {
     };
     assert_eq!(
         gate_update_of(91, gate(false, 0.3), |_| ()),
-        Ok((true, ran(false, 0.0)))
+        Ok((88, ran(false, 0.0)))
     );
     assert_eq!(
         gate_update_of(91, gate(true, 0.3), |_| ()),
-        Ok((false, ran(true, 0.3)))
+        Ok((91, ran(true, 0.3)))
     );
     // the soldier stands aside: nothing in the open gate
     let aside = |t: &mut World| {
@@ -5936,24 +5938,24 @@ fn a_gate_opens_for_an_ally_inside_and_shuts_after_its_close_timer() {
     };
     assert_eq!(
         gate_update_of(88, gate(false, 0.0), aside),
-        Ok((false, ran(false, GATE_CLOSE_DELAY)))
+        Ok((88, ran(false, GATE_CLOSE_DELAY)))
     );
     assert_eq!(
         gate_update_of(88, gate(false, 0.5), aside),
-        Ok((false, ran(false, 0.5 - 0.05)))
+        Ok((88, ran(false, 0.5 - 0.05)))
     );
     assert_eq!(
         gate_update_of(88, gate(false, 0.05), aside),
-        Ok((true, ran(false, 0.0)))
+        Ok((91, ran(false, 0.0)))
     );
     // the soldier in the open gate holds its timer
     assert_eq!(
         gate_update_of(88, gate(false, 0.5), |_| ()),
-        Ok((false, ran(false, 0.5)))
+        Ok((88, ran(false, 0.5)))
     );
     assert_eq!(
         gate_update_of(92, gate(false, 0.5), |_| ()),
-        Ok((false, gate(false, 0.5)))
+        Ok((92, gate(false, 0.5)))
     );
     let err = gate_update_of(91, None, |_| ()).unwrap_err();
     assert_eq!(err.reason(), "a gate without its gate state");
@@ -14368,8 +14370,8 @@ fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
 }
 
 /// A step that fails stops what follows it: what its Context gathered does not apply (a dead
-/// unit's refund), and the first effect that fails stops the ones after it (an unmodelled gate
-/// toggle stops the refund); a step that holds applies it.
+/// unit's refund), and the first effect that fails stops the ones after it (a refund of a
+/// negative attribute stops the next one); a step that holds applies it.
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Step;
@@ -14387,18 +14389,13 @@ fn a_step_that_fails_stops_what_follows_it() {
 
     let mut t = house_builder();
     t.players[1].attributes[98] = 10.0;
-    t.players[1].objects[0].gate = Some(Gate {
-        other_masters: true,
-        ..Gate::default()
-    });
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.gate_toggle = true;
-        c.refund = vec![(98, 5.0)];
+        c.refund = vec![(-1, 5.0), (98, 5.0)];
         Ok(Step::Stay)
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
-        Err("a gate's toggle to a master of its own or its original owner's".to_owned())
+        Err("a negative attribute".to_owned())
     );
     assert_eq!(t.players[1].attributes[98], 10.0);
     let mut t = house_builder();

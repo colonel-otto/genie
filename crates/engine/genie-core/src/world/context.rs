@@ -55,9 +55,6 @@ pub(crate) struct Context<'a> {
     /// a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no
     /// other building of the master stands ([`World::withdraw_tech`]).
     pub(crate) building_death: Option<BuildingDeath>,
-    /// The gate's update asked its player to open or shut it ([`World::toggle_gate`], the
-    /// caller's after the update).
-    pub(crate) gate_toggle: bool,
     /// The unit's update stopped before its unit AI for the caller's work order
     /// ([`Unit::ai_part`]); given back, the update runs only that part.
     pub(crate) ai_resume: Option<AiResume>,
@@ -194,8 +191,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) refund: Vec<(i16, f32)>,
     /// [`Context`]'s `building_death`.
     pub(in crate::world) building_death: Option<BuildingDeath>,
-    /// [`Context`]'s `gate_toggle`.
-    pub(in crate::world) gate_toggle: bool,
     /// [`Context`]'s `ai_resume`.
     pub(in crate::world) ai_resume: Option<AiResume>,
     /// [`Context`]'s `releases`.
@@ -230,7 +225,6 @@ impl Context<'_> {
             remains: self.remains.take(),
             refund: std::mem::take(&mut self.refund),
             building_death: self.building_death.take(),
-            gate_toggle: std::mem::take(&mut self.gate_toggle),
             ai_resume: self.ai_resume.take(),
             releases: std::mem::take(&mut self.releases),
             builder_leaves: std::mem::take(&mut self.builder_leaves),

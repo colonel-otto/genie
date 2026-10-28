@@ -48,7 +48,7 @@ fn take_at_least_zero(owner: &mut Player, kind: i16, amount: f32) -> Result<(), 
 impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its Context gathered, applied in the order the
-    /// game's update makes them (the gate, the deaths and remains, the regeneration, passive
+    /// game's update makes them (the deaths and remains, the regeneration, passive
     /// abilities and production of a full update, the unit AI's works, moves, waits and order on
     /// a target, the own kill, the takes and releases). Returns the step, the resume of a unit AI
     /// part the update stopped before, the tail after an order on a target and the object's
@@ -72,7 +72,6 @@ impl World {
         let step = step?;
         // the tail after an order on a target, which stops the unit AI's rest
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
-        self.apply_object_writes((p, self.slot_of(p, id)?), &out)?;
         self.apply_deaths(p, &mut out)?;
         let own_update = full && out.ai_resume.is_none();
         let at = (p, self.slot_of(p, id)?, id);
@@ -97,19 +96,6 @@ impl World {
         self.players[p].objects.position_of(id).ok_or_else(|| {
             GenieError::unreachable("a stepped object left its list in its step").with("object", id)
         })
-    }
-
-    /// The step's write on its own building: the gate.
-    fn apply_object_writes(
-        &mut self,
-        (p, i): (usize, usize),
-        out: &ObjectOutputs,
-    ) -> Result<(), GenieError> {
-        // the gate's player opens or shuts it, in the gate's update before the rest
-        if out.gate_toggle {
-            self.toggle_gate(p, i)?;
-        }
-        Ok(())
     }
 
     /// What the step's deaths set off: the watched lists, the ghosts, a dead building's count

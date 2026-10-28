@@ -107,7 +107,6 @@ impl World {
             sight_takers: &frame.sight_takers,
             work_order: None,
             transport_unload: false,
-            gate_toggle: false,
             ai_resume: resume,
             taken_over: None,
             building_handover: false,

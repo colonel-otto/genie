@@ -27,9 +27,10 @@ impl Unit {
     /// is shut (its master's height above [`GATE_EPSILON`]) and locked, it counts the units in it
     /// ([`Unit::gate_count`]): a shut, unlocked gate with one of an ally (its player counting the
     /// unit's an ally) in it opens (its player's slot 0x340, `FUN_14162f7e0`: a gate of a height
-    /// of at least 1, [`World::toggle_gate`]) and its close timer is 0; an open one (a height
-    /// below the epsilon) with nothing in it starts its close timer at 0.5 s, or runs it down by
-    /// the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height of at most 0).
+    /// of at least 1, [`World::toggle_gate`], within the update) and its close timer is 0; an
+    /// open one (a height below the epsilon) with nothing in it starts its close timer at 0.5 s,
+    /// or runs it down by the world's dt, and at 0 shuts (slot 0x338, `FUN_1416193e0`: a height
+    /// of at most 0).
     pub(crate) fn gate_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let others = OthersRef::of(&c.w.players, c.player);
         let Some(master) =
@@ -60,9 +61,8 @@ impl Unit {
         let (total, allied) = self.gate_count(c, others)?;
         let gate = self.gate.as_mut().expect("held above");
         if shut && 0 < allied && !locked {
-            c.gate_toggle = GATE_SHUT_HEIGHT <= height;
             gate.close_timer = 0.0;
-            return Ok(());
+            return self.toggle_own_gate(c, GATE_SHUT_HEIGHT <= height);
         }
         if height < GATE_EPSILON && total == 0 {
             if gate.close_timer <= 0.0 {
@@ -71,11 +71,30 @@ impl Unit {
                 gate.close_timer -= c.dt_seconds;
                 if gate.close_timer <= 0.0 {
                     gate.close_timer = 0.0;
-                    c.gate_toggle = height <= 0.0;
+                    return self.toggle_own_gate(c, height <= 0.0);
                 }
             }
         }
         Ok(())
+    }
+
+    /// The gate's player's toggle within the gate's update when `toggles` (slots 0x340 and 0x338,
+    /// [`crate::world::World::toggle_gate`]), the gate lent to the world.
+    ///
+    /// # Errors
+    ///
+    /// The toggle's, or the gate gone from its owner's live list.
+    fn toggle_own_gate(&mut self, c: &mut Context<'_>, toggles: bool) -> Result<(), GenieError> {
+        if !toggles {
+            return Ok(());
+        }
+        let (p, id) = (c.player, self.id);
+        c.lend(self, |w| {
+            let i = w.players[p].objects.position_of(id).ok_or_else(|| {
+                GenieError::unreachable("a lent gate left its list").with("object", id)
+            })?;
+            w.toggle_gate(p, i)
+        })
     }
 
     /// [`gate_units`] of this gate, its annexes the units of `others` that are its (in id order,
