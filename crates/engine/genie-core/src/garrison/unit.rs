@@ -22,8 +22,8 @@ impl Unit {
     /// rest of [`crate::garrison::enter_view`]; a transport's reach test is
     /// [`crate::garrison::ship_reaches`]. Then its step: the enter (`FUN_140a867b0`) and the
     /// update's `set_state(1)`, with an enter again ([`crate::garrison::EnterStep::again`]); a
-    /// wait's standing sprite; the transport's move, the caller's after the update
-    /// ([`Context::transport_moves`]).
+    /// wait's standing sprite; the transport's move at once ([`crate::world::World::ship_move`], the
+    /// unit lent to the world).
     pub(crate) fn enter_update(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
         let enter = self
             .actions
@@ -96,7 +96,8 @@ impl Unit {
             gives_up,
         )?;
         if let Some(to) = step.order {
-            c.transport_moves.push((enter.target, to));
+            // the transport's slot 0x340 within the update, the unit lent for what it lets go
+            c.lend(self, |w| w.ship_move(enter.target, to))?;
         }
         if step.waits {
             self.shows_standing_sprite(

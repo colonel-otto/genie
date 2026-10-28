@@ -286,18 +286,14 @@ impl World {
         Ok(())
     }
 
-    /// The unit AI's entries and starts after its works: the transports' meeting points, the waits and repairs, a Gather's build command and reseed,
-    /// and the order on a target.
+    /// The unit AI's starts after its works: the waits and repairs, a Gather's build command and
+    /// reseed, and the order on a target.
     fn apply_ai_starts(
         &mut self,
         (p, i): (usize, usize),
         out: &mut ObjectOutputs,
         step: &Step,
     ) -> Result<(), GenieError> {
-        // the transports an Enter sent to where they meet the unit (slot 0x340)
-        for (ship, to) in std::mem::take(&mut out.transport_moves) {
-            self.ship_move(ship, to)?;
-        }
         // the waits for foundations (slot 0x388) and the repairs (slot 0x378) the unit AI's
         // orders gave
         for start in std::mem::take(&mut out.starts) {

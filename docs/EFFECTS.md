@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 28 world outputs, 15 unit AI effects and 47 hand-offs.
+These are the channels it uses (FD-045): 27 world outputs, 15 unit AI effects and 47 hand-offs.
 
 ## The world's outputs
 
@@ -22,7 +22,6 @@ the object's update by the functions named.
 | `build_command` | `Option<i32>` | The foundation of the unit's own build command (slot 0x380, a Gather's `set_state(6)` on a target not built yet), which the caller runs after the update (`World::build_command`). | `slot 0x380` | [`gathering/gather/unit.rs`](../crates/engine/genie-core/src/gathering/gather/unit.rs) | `apply_ai_starts` |
 | `reseed` | `Option<bool>` | A Gather's walk back to reseed ended (state 0xf2, whether it arrived), which the caller reseeds after the update (`World::reseed_after_walk`). |  | [`gathering/gather/unit.rs`](../crates/engine/genie-core/src/gathering/gather/unit.rs) | `apply_ai_starts` |
 | `move_aside` | `Vec<AiMove>` | The unit AI's moves off foundations' footprints (slot 0x148), in order, which the caller runs after the update (`World::move_aside`). | `slot 0x148` | [`objects/unit/stop.rs`](../crates/engine/genie-core/src/objects/unit/stop.rs) | `apply_ai_works` |
-| `transport_moves` | `Vec<(i32, [f32; 3])>` | The transports an Enter's `set_state(4)` sent to where they meet the unit (slot 0x340), which the caller moves after the update (`World::move_transport`'s move). | `slot 0x340` | [`garrison/unit.rs`](../crates/engine/genie-core/src/garrison/unit.rs) | `apply_ai_starts` |
 | `starts` | `Vec<AiStart>` | The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran (`AiStart`), which the caller makes the unit's after the update, in order. |  | [`unit_ai/unit.rs`](../crates/engine/genie-core/src/unit_ai/unit.rs) | `apply_ai_starts` |
 | `techs_done` | `Vec<i16>` | The technologies the owner researches from the object's update (a completed building's), which the caller completes after the attributes (`World::complete_research`). |  | [`construction/building_update.rs`](../crates/engine/genie-core/src/construction/building_update.rs) | `apply_completions` |
 | `pastures` | `Vec<i32>` | The pastures the object's update completed, whose livestock the caller makes after the attributes (`World::setup_pasture`). |  | [`construction/building_update.rs`](../crates/engine/genie-core/src/construction/building_update.rs), [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_completions` |

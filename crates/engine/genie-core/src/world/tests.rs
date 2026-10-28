@@ -14210,8 +14210,7 @@ fn a_step_s_writes_reach_the_objects_it_names() {
 /// The unit AI's orders of a step reach the unit and the units they name: a `GatherObject`'s
 /// gather command takes the bush, a reseed without a farm lets it go, a build command gives the
 /// builder its Build, a drop elsewhere sends the unit to the drop site with the order back to its
-/// target queued, and an Enter's transport moves to the meeting point; one the world does not
-/// hold cannot.
+/// target queued.
 #[test]
 fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     use crate::objects::unit::Step;
@@ -14266,19 +14265,32 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
         (ai.current_target, queued),
         (700, vec![(crate::unit_ai::ORDER_ON_TARGET, 600)])
     );
+}
 
+/// An Enter's transport moves to the meeting point within the entering unit's update (slot
+/// 0x340, [`World::ship_move`], the unit lent to the world): the transport's `MoveTo` is there
+/// before the update ends; one the world does not hold cannot move.
+#[test]
+fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
     let mut t = house_builder();
+    let mut ship = t.players[1].objects[0].clone();
+    ship.id = 9176;
+    ship.actions = ActionList::default();
+    t.players[1].objects.push(ship);
+    let placed = *t.spatial.get(9175).unwrap();
+    t.spatial.insert(9176, placed);
     let meet = [25.0, 89.5, 0.0];
-    assert_eq!(
-        stay(&mut t, &|c| c.transport_moves.push((9175, meet))),
-        Ok(Step::Stay)
-    );
-    let ship = t.players[1].objects[0].actions.move_to().unwrap();
-    assert_eq!((ship.goal, ship.range, ship.run), (Some(meet), 0.0, true));
-    assert_eq!(
-        stay(&mut t, &|c| c.transport_moves.push((4242, meet))),
-        Err(crate::garrison::UNREACHED.reason().to_owned())
-    );
+    let moved = |t: &mut World, ship: i32| {
+        in_update(t, (1, 0), 50, |unit, c| {
+            c.lend(unit, |w| w.ship_move(ship, meet))?;
+            let (_, s) = c.w.object(9176).expect("held");
+            Ok(s.actions.move_to().map(|m| (m.goal, m.range, m.run)))
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
+    assert_eq!(moved(&mut t, 9176), Ok(Some((Some(meet), 0.0, true))));
+    let unreached = crate::garrison::UNREACHED.reason().to_owned();
+    assert_eq!(moved(&mut t, 4242), Err(unreached));
 }
 
 /// A step that fails stops what follows it: the writes its Context gathered do not apply (the

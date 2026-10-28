@@ -124,7 +124,6 @@ impl World {
             build_command: None,
             reseed: None,
             move_aside: Vec::new(),
-            transport_moves: Vec::new(),
             starts: Vec::new(),
             leads: None,
         };
