@@ -117,24 +117,32 @@ fn an_object_past_state_2_loses_its_actions() {
     assert_eq!(r.unwrap_err().reason(), "an action");
 }
 
-/// After the actions the unit takes its place as the world has it and hands its pauses to the
-/// Context; a walk that met others in its way is not modelled.
+/// After the actions the unit takes its place as the world has it, and the units its walk met
+/// take their pauses at once (slot 0x5f0: the walked level's and the gait): Gaia's 600 with a
+/// path level; 601 without a mover and an id the world does not hold take none. A walk that
+/// met others in its way is not modelled.
 #[test]
-fn after_its_actions_a_unit_takes_the_world_s_place_and_hands_its_pauses_on() {
+fn after_its_actions_a_unit_takes_the_world_s_place_and_pauses_the_units_it_met() {
     let mut t = forage_world();
     t.spatial.set_position(9175, [29.75, 89.5, 0.0]);
-    t.players[1].objects[0].body.mover_mut().unwrap().pauses = vec![(600, 0.5)];
-    let pauses = in_update(&mut t, (1, 0), 50, |u, c, _| {
-        u.after_actions(c)?;
-        Ok(c.pauses.clone())
+    let mut met = crate::gathering::hunt::tests::walker();
+    met.paths = vec![crate::movement::PathData::without_path()];
+    t.players[0].objects[0].body.put_mover(Some(met));
+    let mover = t.players[1].objects[0].body.mover_mut().unwrap();
+    mover.pauses = vec![(600, 0.5), (601, 0.5), (4242, 0.5)];
+    let paused = in_update(&mut t, (1, 0), 50, |u, c, others| {
+        u.after_actions(c, others)?;
+        let (_, bush) = others.view().find(600).unwrap();
+        let level = bush.body.mover().unwrap().paths[0].pause_time;
+        Ok((level, c.spatial.gait(600).and_then(|g| g.pause)))
     })
     .unwrap();
-    assert_eq!(pauses, [(600, 0.5)]);
+    assert_eq!(paused, (0.5, Some(0.5)));
     let u = &t.players[1].objects[0];
     assert_eq!(u.position, [29.75, 89.5, 0.0]);
     assert_eq!(u.body.mover().unwrap().pauses, []);
     t.players[1].objects[0].body.mover_mut().unwrap().in_the_way = vec![600];
-    let r = in_update(&mut t, (1, 0), 50, |u, c, _| u.after_actions(c));
+    let r = in_update(&mut t, (1, 0), 50, Unit::after_actions);
     assert_eq!(
         r.unwrap_err().reason(),
         "a walk's unit in the way (notify 0x215) the action does not pass on"

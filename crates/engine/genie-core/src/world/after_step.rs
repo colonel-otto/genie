@@ -172,14 +172,9 @@ impl World {
         Ok(())
     }
 
-    /// The pauses the walk made, and what the step's deaths and construction starts set off:
-    /// the watched lists, the evacuations, the ghosts, a dead building's count and technology, a
+    /// What the step's deaths and construction starts set off: the watched lists, the evacuations, the ghosts, a dead building's count and technology, a
     /// dead object's refund, and the remains of a dying sprite's end.
     fn apply_deaths(&mut self, p: usize, out: &mut ObjectOutputs) -> Result<(), GenieError> {
-        // slot 0x5f0 on each unit the walk paused: its walked level's pause
-        for (id, pause) in std::mem::take(&mut out.pauses) {
-            self.pause(id, pause);
-        }
         // a dead building leaves its owner's watched list (FUN_141091310), then the
         // ghosts of a death (FUN_14118e990, while the game state is not 2) and the
         // watch of a started construction (FUN_1411e5670)

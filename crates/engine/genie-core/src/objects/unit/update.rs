@@ -83,7 +83,7 @@ impl Unit {
         } else {
             self.update_head(c, others)?
         };
-        self.after_actions(c)?;
+        self.after_actions(c, others)?;
         Ok(captured)
     }
 
@@ -211,14 +211,28 @@ impl Unit {
     }
 
     /// After the actions: the unit takes its place as the world has it (the motion step may have
-    /// put it onto a waypoint it reached) and hands the pauses it gave to the Context. A unit
-    /// whose walk met others in its way is not modelled.
-    pub(crate) fn after_actions(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
+    /// put it onto a waypoint it reached) and the units its walk met take their pauses (slot
+    /// 0x5f0: the walked level's pause and their gait, through the view `others`; the walk read
+    /// them from its own list till now, `Mover::pause_of`). A unit whose walk met others in
+    /// its way is not modelled.
+    pub(crate) fn after_actions(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<(), GenieError> {
         if let Some(p) = c.spatial.get(self.id) {
             self.position = p.position;
         }
         if let Some(m) = self.body.mover_mut() {
-            c.pauses.append(&mut m.pauses);
+            for (id, pause) in std::mem::take(&mut m.pauses) {
+                let Some((_, u)) = others.get_mut(id) else {
+                    continue;
+                };
+                if let Some(level) = u.body.mover_mut().and_then(|m| m.paths.first_mut()) {
+                    level.pause_time = pause;
+                    c.spatial.set_gait(id, u.gait());
+                }
+            }
             if !m.in_the_way.is_empty() {
                 return Err(crate::world::IN_THE_WAY);
             }

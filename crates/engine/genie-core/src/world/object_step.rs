@@ -74,7 +74,6 @@ impl World {
             remains: None,
             refund: Vec::new(),
             building_death: None,
-            pauses: Vec::new(),
             releases: Vec::new(),
             takes: Vec::new(),
             builder_leaves: Vec::new(),

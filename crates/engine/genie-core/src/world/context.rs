@@ -56,8 +56,6 @@ pub(crate) struct Context<'a> {
     /// a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no
     /// other building of the master stands ([`World::withdraw_tech`]).
     pub(crate) building_death: Option<BuildingDeath>,
-    /// The pauses the unit's walk gave units it met ([`Mover::pauses`]).
-    pub(crate) pauses: Vec<(i32, f32)>,
     /// The gate's update asked its player to open or shut it ([`World::toggle_gate`], the
     /// caller's after the update).
     pub(crate) gate_toggle: bool,
@@ -303,8 +301,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) main_works: Vec<(i32, f32)>,
     /// [`Context`]'s `building_death`.
     pub(in crate::world) building_death: Option<BuildingDeath>,
-    /// [`Context`]'s `pauses`.
-    pub(in crate::world) pauses: Vec<(i32, f32)>,
     /// [`Context`]'s `gate_toggle`.
     pub(in crate::world) gate_toggle: bool,
     /// [`Context`]'s `ai_resume`.
@@ -361,7 +357,6 @@ impl Context<'_> {
             promotions: std::mem::take(&mut self.promotions),
             main_works: std::mem::take(&mut self.main_works),
             building_death: self.building_death.take(),
-            pauses: std::mem::take(&mut self.pauses),
             gate_toggle: std::mem::take(&mut self.gate_toggle),
             ai_resume: self.ai_resume.take(),
             releases: std::mem::take(&mut self.releases),

@@ -13663,11 +13663,10 @@ fn a_step_s_completions_reach_their_owner() {
     );
 }
 
-/// What a step's walk and deaths set off reaches the world: a paused unit's walked level
-/// pauses, a dead building's count leaves its attribute (at least 0 left), and a dying sprite's
-/// remains are a new object of the owner at their place.
+/// What a step's deaths set off reaches the world: a dead building's count leaves its attribute
+/// (at least 0 left), and a dying sprite's remains are a new object of the owner at their place.
 #[test]
-fn a_step_s_pauses_and_deaths_reach_the_world() {
+fn a_step_s_deaths_reach_the_world() {
     use crate::objects::unit::Step;
     let stay = |t: &mut World, orders: &Orders<'_>| {
         finished_with(t, (1, 0), |c| {
@@ -13676,16 +13675,6 @@ fn a_step_s_pauses_and_deaths_reach_the_world() {
         })
         .map_err(|e| e.reason().to_owned())
     };
-    let mut t = house_builder();
-    let mover = t.players[1].objects[0].body.mover_mut().unwrap();
-    mover.paths.push(crate::movement::PathData::new(0));
-    assert_eq!(
-        stay(&mut t, &|c| c.pauses.push((9175, 1.5))),
-        Ok(Step::Stay)
-    );
-    let paths = &t.players[1].objects[0].body.mover().unwrap().paths;
-    assert_eq!(paths[0].pause_time, 1.5);
-
     let mut t = house_builder();
     t.players[1].attributes[4] = 0.5;
     let died = BuildingDeath {
