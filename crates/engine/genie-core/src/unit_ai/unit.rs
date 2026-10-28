@@ -7,10 +7,11 @@ use crate::objects::masters::Master;
 use crate::objects::unit::{Step, Unit};
 use crate::ownership::capture::Captured;
 use crate::unit_ai::Notify;
-use crate::unit_ai::world_view::{OwnerView, UnitView};
+use crate::unit_ai::world_view::{OwnerView, UnitView, owner_view};
 use crate::unit_ai::{Effect, Surroundings, UnitAi};
 use crate::world::context::Context;
-use crate::world::others::OthersRef;
+use crate::world::lets::Lets;
+use crate::world::others::{Others, OthersRef};
 
 impl Unit {
     /// The end of [`Unit::update`] after the actions: `RGE_Action_Object::update`'s end
@@ -20,7 +21,7 @@ impl Unit {
     pub(crate) fn ai_part(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
         resume: AiResume,
     ) -> Result<Step, GenieError> {
         let AiResume {
@@ -74,7 +75,7 @@ impl Unit {
         };
         let view = OwnerView::of(
             c,
-            others,
+            others.view(),
             captured.as_ref().filter(|k| k.main).map(|k| k.new),
         );
         // RGE_Combat_Object::update: on the owner's turn the full update (slot 4), else
@@ -117,6 +118,7 @@ impl Unit {
                 self.attacker_of(ai_type, master, (player, computer), c.scenario, at.capture);
             let effects = self.with_side(
                 c,
+                others,
                 &view,
                 attacker,
                 (player, computer),
@@ -133,7 +135,7 @@ impl Unit {
                     }
                 },
             )?;
-            self.apply(effects, class, c)?;
+            self.apply(effects, class, c, others)?;
         }
         if let Some((new, main)) = c.taken_over.take() {
             captured = Some(Captured {
@@ -162,7 +164,7 @@ impl Unit {
     pub(crate) fn surroundings(
         &self,
         c: &Context<'_>,
-        others: OthersRef<'_>,
+        others: &Others<'_>,
         view: &OwnerView<'_>,
         (master, class): (Option<&Master>, Option<i16>),
         (player, busy, interruptible): (usize, bool, bool),
@@ -232,7 +234,7 @@ impl Unit {
                 Some(self.top_action().map_or(0, |a| a.state))
             },
             attack_listed: self.actions.attack().is_some(),
-            units: self.named_units(c, view, master)?,
+            units: self.named_units(c, owner_view(others, view.new_owner), view, master)?,
             group: c
                 .groups
                 .get(self.group.id)
@@ -243,7 +245,7 @@ impl Unit {
                     moving: g.motion.moving(),
                     member_moving: self.body.mover().is_some_and(Mover::is_moving),
                 }),
-            top_target: self.top_target_seen(c, others),
+            top_target: self.top_target_seen(c, others.view()),
             min_range: master.map_or(0.0, |m| m.min_range),
             attack_moving: self.body.mover().is_some_and(|m| m.attack_moving),
             moved_at: {
@@ -272,10 +274,11 @@ impl Unit {
     pub(crate) fn with_side<R>(
         &mut self,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
         view: &OwnerView<'_>,
         attacker: crate::unit_ai::Attacker,
         (player, computer): (usize, bool),
-        f: impl FnOnce(&mut UnitAi, &mut UnitView<'_>, &mut Well512) -> Result<R, GenieError>,
+        f: impl FnOnce(&mut UnitAi, &mut UnitView<'_, '_>, &mut Well512) -> Result<R, GenieError>,
     ) -> Result<R, GenieError> {
         let mut ai = self.ai.take().expect("a unit with a unit AI");
         let [ai_stream, object, sprite] =
@@ -293,24 +296,30 @@ impl Unit {
                 sprite,
                 world_time: c.world_time,
                 construction_rate: view.construction_rate,
-                others: view.others,
+                others,
+                new_owner: view.new_owner,
                 zones: c.zones,
-                foreign: view.foreign,
                 every: c.every_masters,
                 masters: view.masters,
                 graphics: c.graphics,
-                takes: &mut c.takes,
-                releases: &mut c.releases,
-                builder_leaves: &mut c.builder_leaves,
+                lets: Lets {
+                    player: c.player,
+                    relations: c.relations,
+                    masters: c.every_masters,
+                    lines: c.lines,
+                    tracker: c.tracker,
+                    takes: &mut c.takes,
+                    releases: &mut c.releases,
+                    builder_leaves: &mut c.builder_leaves,
+                },
                 starts: &mut c.starts,
                 attribute_adds: &mut c.attribute_adds,
                 promotions: &mut c.promotions,
-                relations: view.relations,
-                attributes: view.attributes,
+                relations: &view.relations,
+                attributes: &view.attributes,
                 civ: view.civ,
                 ai_settings: view.ai_settings,
                 drop_sites: c.drop_sites,
-                tracker: &*c.tracker,
                 mode_680: c.mode_680,
                 carry_rule: c.carry_rule,
             };
@@ -332,7 +341,7 @@ impl Unit {
     pub(crate) fn run_ai(
         &mut self,
         c: &mut Context<'_>,
-        others: OthersRef<'_>,
+        others: &mut Others<'_>,
         f: impl FnOnce(
             &mut UnitAi,
             &Surroundings,
@@ -353,7 +362,7 @@ impl Unit {
             .or_else(|| c.masters.and_then(|ms| ms.get(self.life.master_id)));
         let class = master.map(|ms| ms.class);
         let (player, computer) = (c.player, c.computer);
-        let view = OwnerView::of(c, others, None);
+        let view = OwnerView::of(c, others.view(), None);
         let interruptible = self.interruptible()?;
         let at = self.surroundings(
             c,
@@ -364,10 +373,15 @@ impl Unit {
         )?;
         let attacker =
             self.attacker_of(ai_type, master, (player, computer), c.scenario, at.capture);
-        let effects = self.with_side(c, &view, attacker, (player, computer), |ai, side, rng| {
-            f(ai, &at, side, computer, rng)
-        })?;
-        self.apply(effects, class, c)
+        let effects = self.with_side(
+            c,
+            others,
+            &view,
+            attacker,
+            (player, computer),
+            |ai, side, rng| f(ai, &at, side, computer, rng),
+        )?;
+        self.apply(effects, class, c, others)
     }
 }
 
@@ -390,6 +404,7 @@ impl Unit {
     pub(crate) fn named_units(
         &self,
         c: &Context<'_>,
+        others: OthersRef<'_>,
         view: &OwnerView<'_>,
         master: Option<&Master>,
     ) -> Result<Vec<crate::unit_ai::UnitSeen>, GenieError> {
@@ -417,7 +432,7 @@ impl Unit {
         ids.dedup();
         let mut seen = Vec::new();
         for id in ids {
-            let found = view.others.find(id);
+            let found = others.find(id);
             let (Some((owner, u)), Some(p)) = (found, c.spatial.get(id)) else {
                 continue;
             };
@@ -443,7 +458,7 @@ impl Unit {
                 kind: m.kind,
                 main: u.annex_of,
                 allied: crate::unit_ai::task_finder::allied(
-                    view.relations,
+                    &view.relations,
                     view.player,
                     owner,
                     true,

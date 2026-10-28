@@ -11,6 +11,7 @@ use crate::movement::move_to::Walk;
 use crate::objects::release::Releaser;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::world::SideWorld;
+use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView};
 
 /// The villagers a villager's attack command switches to by its task swap group (its player's
@@ -18,15 +19,15 @@ use crate::unit_ai::world_view::{NOT_HELD, UnitView};
 const VILLAGER_MALE: i16 = 83;
 const VILLAGER_FEMALE: i16 = 293;
 
-impl<'u> UnitView<'u> {
+impl<'u> UnitView<'u, '_> {
     /// The attack command (slot 0x338, `FUN_14120cea0`; classes 51 and 54 are not modelled) ->
     /// `FUN_141081a80`: a target the world does not hold fails; `+0x648` takes the world's time
     /// (not held); the unit's own Attack on the target answers true, forced after its slot 0x48
     /// on it ([`UnitView::attack_again`]); a villager's master switch (slot 0x90) is not modelled.
     /// Then the new
     /// Attack ([`crate::combat::attack::Attack::command`]): the constructor takes its target (slot 0x178,
-    /// the caller's) and clears the unit's `+0x900` (its target is new), the action list clears
-    /// (the old actions' teardowns), and the install's start (`0x140a7f8c0`) of a unit inside
+    /// through the view) and clears the unit's `+0x900` (its target is new), the action list
+    /// clears ([`UnitView::attack_clears_actions`]), and the install's start (`0x140a7f8c0`) of a unit inside
     /// another fails it at once (`set_state(13)`, [`crate::combat::attack::Attack::fail_at_start`]); else
     /// it puts the unit on its standing sprite (slot 0x68 with `+0x80`) and runs the range test
     /// ([`crate::combat::attack::Attack::begin`]): readyToAttack's failure
@@ -97,14 +98,8 @@ impl<'u> UnitView<'u> {
                 "an attack command of a unit whose sprite the slice does not hold",
             ));
         }
-        // the action list's clearing (FUN_140a98620): an Attack on another target tears down (its
-        // MoveTo's stops the unit) and lets its targets go (slot 0x180), as do the others
-        let by = Releaser {
-            id: unit.id,
-            class: master.class,
-            player: self.player,
-        };
-        unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+        let by = self.attack_clears_actions(master.class)?;
+        let unit = &mut *self.unit;
         let speed = unit
             .body
             .mover()
@@ -125,7 +120,7 @@ impl<'u> UnitView<'u> {
             let mut attack = crate::combat::attack::Attack::own(target, &e, arms);
             attack.fail_at_start(&mut unit.sprite, &mut unit.body, self.sprite)?;
             unit.actions.set_attack(Some(attack));
-            self.takes.push((target, by));
+            self.lets.take(self.others, target, by);
             return Ok(crate::unit_ai::Attacked {
                 attacks: true,
                 posted: Vec::new(),
@@ -165,18 +160,35 @@ impl<'u> UnitView<'u> {
             unit.shows_standing_sprite(self.masters, self.graphics, self.sprite)?;
         }
         unit.actions.set_attack(Some(attack));
-        self.takes.push((target, by));
+        self.lets.take(self.others, target, by);
         Ok(crate::unit_ai::Attacked {
             attacks: true,
             posted,
         })
     }
 
+    /// The action list's clearing before the attack command's Attack (`FUN_140a98620`): an
+    /// Attack on another target tears down (its `MoveTo`'s stops the unit) and lets its targets
+    /// go (slot 0x180) through the view, as do the others. The releaser, the unit as master
+    /// class `class`.
+    fn attack_clears_actions(&mut self, class: i16) -> Result<Releaser, GenieError> {
+        let by = Releaser {
+            id: self.unit.id,
+            class,
+            player: self.player,
+        };
+        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+        self.unit
+            .tear_down_actions(&mut releases, &mut leaves, by)?;
+        self.lets.torn_down(self.others, (leaves, releases))?;
+        Ok(by)
+    }
+
     /// The forced attack command on the target of the unit's own Attack (`FUN_141081a80`): the
     /// top Attack's slot 0x48 (`FUN_140a841d0`, [`crate::combat::attack::Attack::work`]) on the target
     /// and its place, with the main building of an annex for a unit of an area effect, the
-    /// unit's top speed and canMoveToAttack ([`crate::unit_ai::Seeker::can_move`]); what it takes
-    /// and lets go is the caller's ([`UnitView::takes`], [`UnitView::releases`]), a new target
+    /// unit's top speed and canMoveToAttack ([`crate::unit_ai::Seeker::can_move`]); what it lets
+    /// go and takes goes through the view at once ([`crate::world::lets::Lets`]), a new target
     /// clearing the unit's attack count (`+0x900`). Its answer is not read.
     fn attack_again(
         &mut self,
@@ -186,7 +198,9 @@ impl<'u> UnitView<'u> {
         ai: &UnitAi,
     ) -> Result<(), GenieError> {
         let mark = |id: i32, p: &Placed| -> Result<crate::combat::attack::Mark, GenieError> {
-            let u = self.others.get(id).ok_or(NOT_HELD)?;
+            let u = owner_view(self.others, self.new_owner)
+                .get(id)
+                .ok_or(NOT_HELD)?;
             let m = self
                 .every
                 .get(p.player)
@@ -202,7 +216,10 @@ impl<'u> UnitView<'u> {
             })
         };
         let target_mark = mark(target, t)?;
-        let main = match self.others.get(target).and_then(|u| u.annex_of) {
+        let main = match owner_view(self.others, self.new_owner)
+            .get(target)
+            .and_then(|u| u.annex_of)
+        {
             Some(m) => match self.spatial.get(m).copied() {
                 Some(p) => Some(mark(m, &p)?),
                 None => None,
@@ -228,10 +245,10 @@ impl<'u> UnitView<'u> {
             unit.attack_count = 0;
         }
         if let Some(old) = w.lets_go {
-            self.releases.push((old, by));
+            self.lets.release(self.others, old, by)?;
         }
         if let Some(new) = w.takes {
-            self.takes.push((new, by));
+            self.lets.take(self.others, new, by);
         }
         Ok(())
     }
@@ -241,17 +258,20 @@ impl<'u> UnitView<'u> {
     /// sleeping objects, or the old owner's of a unit taken over in its update, whose attributes
     /// it does not hold).
     fn victim_of_target(&self, id: i32) -> Option<Victim> {
-        let (q, t) = self.others.find(id)?;
-        let attributes = if self.others.own(id).is_some() {
+        let (q, t) = owner_view(self.others, self.new_owner).find(id)?;
+        let attributes = if owner_view(self.others, self.new_owner).own(id).is_some() {
             self.attributes
         } else {
-            &self.foreign.player(q)?.attributes[..]
+            &owner_view(self.others, self.new_owner)
+                .players()
+                .player(q)?
+                .attributes[..]
         };
         let master = self.every.get(q)?.get(t.life.master_id)?;
         let dip = SideWorld {
             player: self.player,
             relations: self.relations,
-            foreign: self.foreign,
+            foreign: owner_view(self.others, self.new_owner).players(),
             drop_sites: self.drop_sites,
         };
         Some(victim_in(

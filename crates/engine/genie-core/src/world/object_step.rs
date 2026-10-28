@@ -177,7 +177,7 @@ impl World {
         let frame = self.player_frame();
         let (step, ..) =
             self.step_object((p, i), (0, None, false), &frame, None, |unit, c, others| {
-                unit.run_ai(c, others.view(), f).map(|()| Step::Stay)
+                unit.run_ai(c, others, f).map(|()| Step::Stay)
             })?;
         match step {
             Step::Stay => Ok(()),

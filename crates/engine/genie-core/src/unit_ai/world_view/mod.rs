@@ -4,12 +4,12 @@
 use crate::map::spatial::Spatial;
 use crate::math::rng::Well512;
 use crate::objects::masters::Masters;
-use crate::objects::release::Releaser;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
 use crate::unit_ai::task_finder::DropSite;
-use crate::world::others::OthersRef;
+use crate::world::lets::Lets;
+use crate::world::others::{Others, OthersRef};
 use crate::world::player::Player;
 
 mod commands;
@@ -137,49 +137,44 @@ impl<'a> Foreign<'a> {
     }
 }
 
-/// What a unit's AI part reads of its owner's side ([`Unit::ai_part`]): the owner, its other
-/// objects, the other players' lists, its masters, diplomacy, attributes, civ and construction
-/// rate. A unit another player took over in its update reads its new owner's, with its old
-/// owner's list among the others' (`RGE_Combat_Object::update` reads the owner after the
-/// change).
-#[derive(Clone, Copy)]
+/// What a unit's AI part reads of its owner's side ([`Unit::ai_part`]): the owner, its
+/// masters, diplomacy, attributes, civ and construction rate, and the player that took the unit
+/// over in its update (`new_owner`), whose side it reads (`RGE_Combat_Object::update` reads the
+/// owner after the change; [`owner_view`] gives its objects).
+#[derive(Clone)]
 pub(crate) struct OwnerView<'a> {
     pub(crate) player: usize,
-    pub(crate) others: OthersRef<'a>,
-    pub(crate) foreign: Foreign<'a>,
+    pub(crate) new_owner: Option<usize>,
     pub(crate) masters: Option<&'a Masters>,
-    pub(crate) relations: &'a [u8],
-    pub(crate) attributes: &'a [f32],
+    pub(crate) relations: std::borrow::Cow<'a, [u8]>,
+    pub(crate) attributes: std::borrow::Cow<'a, [f32]>,
     pub(crate) civ: u8,
     pub(crate) construction_rate: f32,
     pub(crate) ai_settings: crate::world::player::AiSettings,
 }
 
 impl<'a> OwnerView<'a> {
-    /// The owner's side: player `new`'s when the unit changed hands to it in its update, else
-    /// the updating player's (`c`, its other objects `others`).
-    pub(crate) fn of<'c: 'a>(c: &Context<'c>, others: OthersRef<'a>, new: Option<usize>) -> Self {
-        let own = Self {
-            player: c.player,
-            others,
-            foreign: others.players(),
-            masters: c.masters,
-            relations: c.relations,
-            attributes: c.attributes,
-            civ: c.civ,
-            construction_rate: c.construction_rate,
-            ai_settings: c.ai_settings,
-        };
+    /// The owner's side: player `new`'s when the unit changed hands to it in its update (its
+    /// diplomacy and attributes copied out of `others`), else the updating player's (`c`).
+    pub(crate) fn of<'c: 'a>(c: &Context<'c>, others: OthersRef<'_>, new: Option<usize>) -> Self {
         let Some((new, q)) = new.and_then(|new| Some((new, others.players().player(new)?))) else {
-            return own;
+            return Self {
+                player: c.player,
+                new_owner: None,
+                masters: c.masters,
+                relations: std::borrow::Cow::Borrowed(c.relations),
+                attributes: std::borrow::Cow::Borrowed(c.attributes),
+                civ: c.civ,
+                construction_rate: c.construction_rate,
+                ai_settings: c.ai_settings,
+            };
         };
         Self {
             player: new,
-            others: others.changed_hands(new, &q.objects),
-            foreign: others.players(),
+            new_owner: Some(new),
             masters: c.every_masters.get(new),
-            relations: &q.relations,
-            attributes: &q.attributes,
+            relations: std::borrow::Cow::Owned(q.relations.clone()),
+            attributes: std::borrow::Cow::Owned(q.attributes.clone()),
             civ: q.civ,
             construction_rate: q.construction_rate,
             ai_settings: q.ai_settings,
@@ -187,9 +182,20 @@ impl<'a> OwnerView<'a> {
     }
 }
 
+/// The objects as the unit AI of an updating unit reads them: the update's view `others`, or
+/// for a unit player `new` took over in its update, that player's live list as its own and the
+/// old owner's among the others' ([`OthersRef::changed_hands`]).
+pub(crate) fn owner_view<'v>(others: &'v Others<'_>, new: Option<usize>) -> OthersRef<'v> {
+    let view = others.view();
+    match new.and_then(|new| Some((new, view.players().player(new)?))) {
+        Some((new, q)) => view.changed_hands(new, &q.objects),
+        None => view,
+    }
+}
+
 /// A unit and the world as its unit AI asks them while it runs, the AI taken out of the unit
 /// for that time ([`crate::unit_ai::UnitSide`]): the searches and the unit's own commands.
-pub(crate) struct UnitView<'u> {
+pub(crate) struct UnitView<'u, 'o> {
     /// The unit, without its unit AI.
     pub(crate) unit: &'u mut Unit,
     /// What the attack check of a search reads of the unit.
@@ -212,25 +218,22 @@ pub(crate) struct UnitView<'u> {
     pub(crate) world_time: u32,
     /// The owner's construction rate.
     pub(crate) construction_rate: f32,
-    /// The owner's other objects.
-    pub(crate) others: OthersRef<'u>,
+    /// The world's objects besides the unit, to read ([`owner_view`]) and change by id.
+    pub(crate) others: &'u mut Others<'o>,
+    /// The player that took the unit over in its update ([`owner_view`]).
+    pub(crate) new_owner: Option<usize>,
     /// The map's terrain zones, which an explorer's search reads.
     pub(crate) zones: &'u mut crate::pathing::zones::Zones,
-    /// The other players' lists.
-    pub(crate) foreign: Foreign<'u>,
     /// Every player's masters.
     pub(crate) every: &'u [Masters],
     /// The owner's masters.
     pub(crate) masters: Option<&'u Masters>,
     /// The sprites.
     pub(crate) graphics: &'u std::collections::BTreeMap<i16, Graphic>,
-    /// The objects an action took (slot 0x178), the caller's.
-    pub(crate) takes: &'u mut Vec<(i32, Releaser)>,
-    /// The objects an action let go (slot 0x180), the caller's.
-    pub(crate) releases: &'u mut Vec<(i32, Releaser)>,
-    /// The foundations a counted builder's Build left ([`Context::builder_leaves`]), the
-    /// caller's.
-    pub(crate) builder_leaves: &'u mut Vec<i32>,
+    /// Where the side's takes (slot 0x178), releases (slot 0x180) and a counted builder's
+    /// leaves go, through `others` ([`Lets`]); the owner's object tracker among them, whose
+    /// done lists the drop-site table's search reads.
+    pub(crate) lets: Lets<'u>,
     /// The actions its slots 0x388 and 0x378 gave ([`AiStart`]), the caller's.
     pub(crate) starts: &'u mut Vec<AiStart>,
     /// What its master change (slot 0x90) gives or takes of its owner's attributes, the caller's.
@@ -245,8 +248,6 @@ pub(crate) struct UnitView<'u> {
     /// The owner's AI settings.
     pub(crate) ai_settings: crate::world::player::AiSettings,
     pub(crate) drop_sites: &'u [DropSite],
-    /// The owner's object tracker, whose done lists the drop-site table's search reads.
-    pub(crate) tracker: &'u crate::players::tracker::Tracker,
     /// The game's setting at `+0x680` ([`World::mode_680`]), which a hit's source carries.
     pub(crate) mode_680: i32,
     /// The game's carry rule ([`crate::world::settings::Settings::carry_rule`]), which a hunt's start

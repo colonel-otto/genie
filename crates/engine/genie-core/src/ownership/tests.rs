@@ -24,12 +24,16 @@ fn walking_forager() -> World {
     t
 }
 
-/// Object 0 of player 1's capture stop as master class `class`, then the unit and the targets
-/// the stop let go.
+/// Object 0 of player 1's capture stop as master class `class`, then the unit and Gaia's bushes
+/// the stop let go in the update (each held by one worker before it, none after).
 fn stopped(mut t: World, class: i16) -> Result<(Unit, Vec<i32>), GenieError> {
-    let released = in_update(&mut t, (1, 0), 50, |u, c, _| {
-        u.capture_stop(c, class)?;
-        Ok(c.releases.iter().map(|&(id, _)| id).collect::<Vec<_>>())
+    for b in &mut t.players[0].objects {
+        b.workers = 1;
+    }
+    let released = in_update(&mut t, (1, 0), 50, |u, c, others| {
+        u.capture_stop(c, others, class)?;
+        let gone = others.view().foreign_iter().filter(|(_, b)| b.workers == 0);
+        Ok(gone.map(|(_, b)| b.id).collect())
     })?;
     Ok((t.players[1].objects.swap_remove(0), released))
 }

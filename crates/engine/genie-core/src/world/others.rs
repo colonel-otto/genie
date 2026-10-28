@@ -311,6 +311,19 @@ impl<'a> Others<'a> {
         self.own.push(unit);
     }
 
+    /// The owner's live object `id` out of its slot (its stand-in, [`TAKEN_OUT`], holds it),
+    /// for a call on it that reaches the view as the updating object's do: the slot and the
+    /// object, which [`Others::put_back_own`] returns.
+    pub(crate) fn take_out_own(&mut self, id: i32) -> Option<(usize, Unit)> {
+        let i = self.own.position_of(id)?;
+        Some((i, std::mem::replace(&mut self.own[i], Unit::taken_out())))
+    }
+
+    /// The object [`Others::take_out_own`] took out of slot `slot` goes back to it.
+    pub(crate) fn put_back_own(&mut self, slot: usize, unit: Unit) {
+        self.own[slot] = unit;
+    }
+
     /// The owner's live object `id`, to change.
     pub(crate) fn own_mut(&mut self, id: i32) -> Option<&mut Unit> {
         self.own.by_id_mut(id)
@@ -413,6 +426,30 @@ mod tests {
         assert_eq!(others.find(20).map(|(q, _)| q), Some(2));
         assert_eq!(others.view().foreign(10).map(|(q, _)| q), None);
         assert_eq!(own[1].id, TAKEN_OUT, "the stand-in stays as it was");
+    }
+
+    /// An own object out of its slot ([`Others::take_out_own`]) is out of the view as the
+    /// updating one is, its stand-in in its place, until it goes back.
+    #[test]
+    fn an_own_object_taken_out_leaves_the_view_until_it_goes_back() {
+        let (mut own, mut before, mut after) = world();
+        let mut asleep = ObjectList::default();
+        let mut others = Others::new((1, 11), (&mut own, &mut asleep), (&mut before, &mut after));
+        assert!(others.take_out_own(20).is_none(), "another player's");
+        let (slot, mut u) = others.take_out_own(12).expect("the owner's");
+        assert_eq!((slot, u.id), (2, 12));
+        assert_eq!(
+            others.find(12).map(|(q, _)| q),
+            Some(2),
+            "the other player's 12 only"
+        );
+        u.life.hp = 8.0;
+        others.put_back_own(slot, u);
+        assert_eq!(others.own(12).map(|u| u.life.hp), Some(8.0));
+        assert_eq!(
+            own.iter().map(|u| u.id).collect::<Vec<_>>(),
+            [10, TAKEN_OUT, 12]
+        );
     }
 
     #[test]

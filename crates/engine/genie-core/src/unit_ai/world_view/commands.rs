@@ -5,10 +5,11 @@ use crate::map::spatial::Spatial;
 use crate::movement::{Me, Mover, Planning};
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
+use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{AiStart, EnterOrder, RepairOrder, UnitView};
 use crate::world::others::OthersRef;
 
-impl UnitView<'_> {
+impl UnitView<'_, '_> {
     /// The unit's repair command (slot 0x378, `FUN_141217c00`, forced) on `target`: an object the
     /// world (`FUN_1415417a0`) does not hold is 0. A Repair on top takes it (its slot 0x48,
     /// `FUN_140adb480`): 1. Else a unit of task swap group 1 or 2 switches to its player's
@@ -19,7 +20,11 @@ impl UnitView<'_> {
     /// the switches and the Repair after the update ([`RepairOrder`], [`World::repair_order`]).
     pub(super) fn repair_command(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
-        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let (player, others, foreign) = (
+            self.player,
+            owner_view(self.others, self.new_owner),
+            owner_view(self.others, self.new_owner).players(),
+        );
         let find = |id: i32| {
             if id == unit.id {
                 return Some((player, unit));
@@ -97,7 +102,11 @@ impl UnitView<'_> {
     /// ([`EnterOrder`], [`World::enter_order`]).
     pub(super) fn enter_command(&mut self, target: i32) -> Result<bool, GenieError> {
         let unit = &*self.unit;
-        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let (player, others, foreign) = (
+            self.player,
+            owner_view(self.others, self.new_owner),
+            owner_view(self.others, self.new_owner).players(),
+        );
         let find = |id: i32| {
             if id == unit.id {
                 return Some((player, unit));

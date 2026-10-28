@@ -4,19 +4,20 @@ use crate::GenieError;
 use crate::movement::footprint_gap_squared;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
+use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{NOT_HELD, UnitView, WorldPicker};
 
-impl UnitView<'_> {
+impl UnitView<'_, '_> {
     /// The world as `bestUnitToAttack` and the attack tests read it for the unit
     /// ([`WorldPicker`]), with `seeker` and without a terrain restriction.
-    pub(super) const fn picker(&self, seeker: Option<crate::unit_ai::Seeker>) -> WorldPicker<'_> {
+    pub(super) fn picker(&self, seeker: Option<crate::unit_ai::Seeker>) -> WorldPicker<'_> {
         WorldPicker {
             attacker: &self.attacker,
             seeker,
             me: self.unit.id,
             player: self.player,
-            others: self.others,
-            foreign: self.foreign,
+            others: owner_view(self.others, self.new_owner),
+            foreign: owner_view(self.others, self.new_owner).players(),
             spatial: self.spatial,
             every: self.every,
             restriction: -1,
@@ -46,7 +47,7 @@ impl UnitView<'_> {
         m: &crate::objects::masters::Master,
         attacker: i32,
     ) -> Result<bool, GenieError> {
-        let others = self.others;
+        let others = owner_view(self.others, self.new_owner);
         let find = |id: i32| others.find(id);
         let master_of =
             |q: usize, o: &Unit| self.every.get(q).and_then(|ms| ms.get(o.life.master_id));
@@ -82,7 +83,10 @@ impl UnitView<'_> {
         let computer = if owner == self.player {
             self.computer
         } else {
-            self.foreign.player(owner).is_some_and(|q| q.computer)
+            owner_view(self.others, self.new_owner)
+                .players()
+                .player(owner)
+                .is_some_and(|q| q.computer)
         };
         let capture = self
             .spatial
@@ -110,7 +114,7 @@ impl UnitView<'_> {
     }
 }
 
-impl UnitView<'_> {
+impl UnitView<'_, '_> {
     /// Slot 0x90 with 0 from `own` to `next` (a task's switch, a villager's swap): the action list
     /// clears (the old actions' teardowns), then the master's unit part
     /// ([`crate::orders::switch_master`]); what it gives and takes of the owner's attributes and
@@ -130,7 +134,9 @@ impl UnitView<'_> {
             class: own.class,
             player: self.player,
         };
-        unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+        unit.tear_down_actions(&mut releases, &mut leaves, by)?;
+        self.lets.torn_down(self.others, (leaves, releases))?;
         let world = crate::orders::SwitchWorld {
             spatial: self.spatial,
             pathing: self.pathing,

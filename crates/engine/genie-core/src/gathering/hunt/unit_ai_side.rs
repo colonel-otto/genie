@@ -8,6 +8,7 @@ use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
+use crate::unit_ai::world_view::owner_view;
 
 /// What [`UnitView::start_hunt_now`] hunts by ([`UnitView::hunt_plan`]): the task, the master
 /// the unit switches to (none to keep its own), its own master, the quarry and the target's
@@ -20,7 +21,7 @@ struct HuntPlan<'u> {
     them: Placed,
 }
 
-impl<'u> UnitView<'u> {
+impl<'u> UnitView<'u, '_> {
     /// `HuntObject`'s unit part at once ([`World::hunt_command`] in the view): the stopAction
     /// (the actions go, and in state 2 the master's standing sprite, slot 0x68), then the hunt
     /// command: slot 0x820's task with any filter and the switch ([`task_search`]; the switch,
@@ -43,8 +44,10 @@ impl<'u> UnitView<'u> {
             class: own_class,
             player,
         };
+        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         self.unit
-            .tear_down_actions(self.releases, self.builder_leaves, by)?;
+            .tear_down_actions(&mut releases, &mut leaves, by)?;
+        self.lets.torn_down(self.others, (leaves, releases))?;
         if self.unit.life.state == 2 {
             self.unit
                 .show_standing(self.masters, self.graphics, self.sprite)?;
@@ -76,8 +79,10 @@ impl<'u> UnitView<'u> {
             class: hunter.class,
             player,
         };
-        self.takes.push((target, by));
-        unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+        self.lets.take(self.others, target, by);
+        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+        unit.tear_down_actions(&mut releases, &mut leaves, by)?;
+        self.lets.torn_down(self.others, (leaves, releases))?;
         let me = *self
             .spatial
             .get(id)
@@ -115,8 +120,8 @@ impl<'u> UnitView<'u> {
         let drops = hunt.target == -1 && hunt.carry_to == target;
         unit.actions.set_hunt(Some(hunt));
         if drops {
-            self.takes.push((target, by));
-            self.releases.push((target, by));
+            self.lets.take(self.others, target, by);
+            self.lets.release(self.others, target, by)?;
         }
         Ok(())
     }
@@ -133,7 +138,11 @@ impl<'u> UnitView<'u> {
     fn hunt_plan(&self, target: i32) -> Result<HuntPlan<'u>, GenieError> {
         use crate::gathering::hunt::Quarry;
         use crate::unit_ai::task_finder::Diplomacy;
-        let (player, others, foreign) = (self.player, self.others, self.foreign);
+        let (player, others, foreign) = (
+            self.player,
+            owner_view(self.others, self.new_owner),
+            owner_view(self.others, self.new_owner).players(),
+        );
         let unit = &*self.unit;
         let find = |id: i32| {
             if id == unit.id {

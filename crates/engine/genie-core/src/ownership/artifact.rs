@@ -505,7 +505,7 @@ impl Unit {
             }
             Some(Handover::ToGaia) => {
                 let class = self.placed_class(c)?;
-                self.capture_stop(c, class)?;
+                self.capture_stop(c, others, class)?;
                 let main = self.change_owner(c, 0)?;
                 let building = std::mem::take(&mut c.building_handover);
                 Ok((main || building).then(|| Captured {

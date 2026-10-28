@@ -7,6 +7,7 @@ use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::masters::Masters;
 use crate::objects::unit::Unit;
+use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{Foreign, UnitView};
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
@@ -191,7 +192,7 @@ pub(crate) fn herded(others: OthersRef<'_>, id: i32) -> bool {
     })
 }
 
-impl UnitView<'_> {
+impl UnitView<'_, '_> {
     /// The unit AI's `ClosestResourceObject` while it runs
     /// ([`crate::unit_ai::UnitSide::closest_resource`]): what it found, with its place and class.
     pub(crate) fn closest_gatherable(
@@ -202,7 +203,7 @@ impl UnitView<'_> {
             player: self.player,
             spatial: self.spatial,
             zones: self.zones,
-            foreign: self.foreign,
+            foreign: owner_view(self.others, self.new_owner).players(),
             every: self.every,
             masters: self.masters,
             plan: Planning {
@@ -217,16 +218,19 @@ impl UnitView<'_> {
         let (id, _) = closest_resource_of(
             self.unit,
             &mut w,
-            self.others,
+            owner_view(self.others, self.new_owner),
             (search.kind, search.cap, search.site),
             (search.current, search.min_state, search.point),
         )?;
         if id == -1 {
             return Ok(None);
         }
-        let (owner, u) = self.others.find(id).ok_or(GenieError::unsupported(
-            "a resource found that the slice does not hold",
-        ))?;
+        let (owner, u) =
+            owner_view(self.others, self.new_owner)
+                .find(id)
+                .ok_or(GenieError::unsupported(
+                    "a resource found that the slice does not hold",
+                ))?;
         let class = self
             .every
             .get(owner)

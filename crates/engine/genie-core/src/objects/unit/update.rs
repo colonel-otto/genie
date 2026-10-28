@@ -18,7 +18,7 @@ impl Unit {
         others: &mut Others<'_>,
     ) -> Result<Step, GenieError> {
         if let Some(resume) = c.ai_resume.take() {
-            return self.ai_part(c, others.view(), resume);
+            return self.ai_part(c, others, resume);
         }
         let Some(leaves) = self.update_to_actions(c, others)? else {
             return Ok(Step::Sleep);
@@ -36,7 +36,7 @@ impl Unit {
             c.ai_resume = Some(resume);
             return Ok(Step::Stay);
         }
-        self.ai_part(c, others.view(), resume)
+        self.ai_part(c, others, resume)
     }
 
     /// `RGE_Static_Object::update` and the combat object's steps before the actions: the death

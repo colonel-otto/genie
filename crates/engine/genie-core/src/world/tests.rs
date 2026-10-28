@@ -29,6 +29,7 @@ use crate::unit_ai::world_view::{DropWorld, Foreign, Wait, patrol_information};
 use crate::unit_ai::{BUILD_ORDER, Notify, OWNER_CHANGED, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::checkpoint::TopAction;
+use crate::world::lets::Lets;
 use crate::world::others::{Others, OthersRef};
 use crate::world::player::Player;
 
@@ -3994,12 +3995,12 @@ fn an_update_s_take_counts_its_worker_and_wakes_a_sleeping_object() {
 /// An update's release through its view (slot 0x180, [`crate::world::lets::release`]): a live
 /// tree no one works on any more goes to sleep; a sleeping one counts a worker less and stays
 /// asleep; one the world does not hold is not let go; the updating unit itself is the world's
-/// after the step. Then a counted builder's leave ([`crate::world::lets::leave_builders`]): an
+/// after the step. Then a counted builder's leave ([`crate::world::lets::Lets::leave_builders`]): an
 /// object counts one builder less, an annex's main building for the annex; the teardown's
 /// pair applies leaves before releases ([`crate::world::lets::torn_down`]).
 #[test]
 fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
-    use crate::world::lets::{leave_builders, release, torn_down};
+    use crate::world::lets::{release, torn_down};
     let mut t = lets_world();
     for id in [520, 521] {
         let u = t.object_mut(id).unwrap().1;
@@ -4010,8 +4011,8 @@ fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
         for id in [520, 521, 9999, unit.id] {
             release(c, others, id, by)?;
         }
-        leave_builders(c, others, 520)?;
-        leave_builders(c, others, 530)?;
+        c.lets().leave_builders(others, 520)?;
+        c.lets().leave_builders(others, 530)?;
         torn_down(c, others, (vec![521], vec![(520, by)]))?;
         Ok(c.releases.iter().map(|&(id, _)| id).collect::<Vec<_>>())
     });
@@ -4023,6 +4024,29 @@ fn an_update_s_release_and_builder_leave_change_the_objects_at_once() {
     assert_eq!(tree(&t, 520), Some((0, 1, true)));
     assert_eq!(tree(&t, 521), Some((1, 2, false)));
     assert!(t.players[0].sleeping.by_id(521).is_some());
+}
+
+/// The unit AI's stop (`Effect::Stop`, [`Unit::stop_action`]): the forager's Gather goes and
+/// its bush counts a worker less within the update, through the view, not after the step.
+#[test]
+fn a_unit_ai_s_stop_lets_its_target_go_within_the_update() {
+    let mut t = forage_world();
+    let work = crate::orders::Work {
+        target: 600,
+        point: [32.5, 89.5, 0.0],
+        carry_test: false,
+        filter: -1,
+        notified: true,
+    };
+    t.order_work(1, 0, &work).unwrap();
+    assert_eq!(t.players[0].objects[0].workers, 1);
+    let seen = in_update(&mut t, (1, 0), 50, |unit, c, others| {
+        unit.stop_action(c, others)?;
+        let bush = others.find(600).map(|(_, b)| b.workers);
+        Ok((bush, c.releases.len(), unit.actions.gather().is_some()))
+    });
+    assert_eq!(seen, Ok((Some(0), 0, false)));
+    assert_eq!(t.players[0].objects[0].workers, 0);
 }
 
 /// The hunt's search for the next tree (`FUN_140ac4670`, [`Unit::hunt_tree_search`]): the
@@ -10072,7 +10096,7 @@ fn scout_attack_on(
         .into(),
         ..Player::default()
     };
-    let players = [gaia];
+    let mut players = [gaia];
     let mut rng = Well512::default();
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.speed = 1.2;
@@ -10106,7 +10130,8 @@ fn scout_attack_on(
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
-    let none = ObjectList::default();
+    let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
+    let mut view = Others::new((1, 123), (&mut none, &mut asleep), (&mut players, &mut []));
     let attacked = {
         let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
@@ -10144,27 +10169,22 @@ fn scout_attack_on(
             sprite: &mut sprite,
             world_time: 0,
             construction_rate: 1.0,
-            others: OthersRef::new(
-                1,
-                &none,
-                Foreign {
-                    before: &players,
-                    after: &[],
-                    left: None,
-                },
-            ),
+            others: &mut view,
+            new_owner: None,
             zones: &mut zones,
-            foreign: Foreign {
-                before: &players,
-                after: &[],
-                left: None,
-            },
             every: &every,
             masters: Some(&masters),
             graphics: &graphics,
-            takes: &mut takes,
-            releases: &mut releases,
-            builder_leaves: &mut leaves,
+            lets: Lets {
+                player: 1,
+                relations: &[0, 0],
+                masters: &every,
+                lines: &crate::objects::lines::UnitLines::default(),
+                tracker: &mut crate::players::tracker::Tracker::default(),
+                takes: &mut takes,
+                releases: &mut releases,
+                builder_leaves: &mut leaves,
+            },
             starts: &mut waits,
             attribute_adds: &mut adds,
             promotions: &mut promotions,
@@ -10173,13 +10193,16 @@ fn scout_attack_on(
             civ: 0,
             ai_settings: AiSettings::default(),
             drop_sites: &[],
-            tracker: &crate::players::tracker::Tracker::default(),
             mode_680: 0,
             carry_rule: false,
         };
         side.attack(50, force, &ai).unwrap()
     };
-    (unit, attacked, takes.into_iter().map(|(t, _)| t).collect())
+    let _ = takes;
+    // the takes reach Gaia's objects through the view: each counts a worker
+    let taken = players[0].objects.iter();
+    let takes = taken.flat_map(|u| std::iter::repeat_n(u.id, u.workers as usize));
+    (unit, attacked, takes.collect())
 }
 
 /// The attack command of unit 123 of master `who` (in a table with `also`) on Gaia's wolf 50, as
@@ -10262,7 +10285,7 @@ fn attack_by(
         .into(),
         ..Player::default()
     };
-    let players = [gaia];
+    let mut players = [gaia];
     let mut rng = Well512::default();
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats.speed = 1.2;
@@ -10297,7 +10320,8 @@ fn attack_by(
     let (mut takes, mut releases, mut leaves, mut waits) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
-    let none = ObjectList::default();
+    let (mut none, mut asleep) = (ObjectList::default(), ObjectList::default());
+    let mut view = Others::new((1, 123), (&mut none, &mut asleep), (&mut players, &mut []));
     let attacked = {
         let mut side = crate::unit_ai::world_view::UnitView {
             unit: &mut unit,
@@ -10335,27 +10359,22 @@ fn attack_by(
             sprite: &mut sprite,
             world_time: 0,
             construction_rate: 1.0,
-            others: OthersRef::new(
-                1,
-                &none,
-                Foreign {
-                    before: &players,
-                    after: &[],
-                    left: None,
-                },
-            ),
+            others: &mut view,
+            new_owner: None,
             zones: &mut zones,
-            foreign: Foreign {
-                before: &players,
-                after: &[],
-                left: None,
-            },
             every: &every,
             masters: Some(&masters),
             graphics: &graphics,
-            takes: &mut takes,
-            releases: &mut releases,
-            builder_leaves: &mut leaves,
+            lets: Lets {
+                player: 1,
+                relations: &[0, 0],
+                masters: &every,
+                lines: &crate::objects::lines::UnitLines::default(),
+                tracker: &mut crate::players::tracker::Tracker::default(),
+                takes: &mut takes,
+                releases: &mut releases,
+                builder_leaves: &mut leaves,
+            },
             starts: &mut waits,
             attribute_adds: &mut adds,
             promotions: &mut promotions,
@@ -10364,7 +10383,6 @@ fn attack_by(
             civ: 0,
             ai_settings: AiSettings::default(),
             drop_sites: &[],
-            tracker: &crate::players::tracker::Tracker::default(),
             mode_680: 0,
             carry_rule: false,
         };
@@ -10429,7 +10447,7 @@ fn help_view<R>(
     helper: Unit,
     searched: Option<[Vec<crate::vision::registry::Record>; 5]>,
     groups: &crate::groups::UnitGroups,
-    f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_>) -> R,
+    f: impl FnOnce(&mut crate::unit_ai::world_view::UnitView<'_, '_>) -> R,
 ) -> R {
     let scout = Master {
         id: 448,
@@ -10476,11 +10494,11 @@ fn help_view<R>(
         .into(),
         ..Player::default()
     };
-    let players = [gaia];
+    let mut players = [gaia];
     if let Some(lists) = searched {
         spatial.set_searched(lists);
     }
-    let others = ObjectList::from(vec![helper]);
+    let (mut own, mut asleep) = (ObjectList::from(vec![helper]), ObjectList::default());
     let mut unit = Unit {
         id: 123,
         position: [10.0, 10.0, 0.0],
@@ -10498,6 +10516,7 @@ fn help_view<R>(
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     let (mut adds, mut promotions) = (Vec::new(), Vec::new());
     let graphics = std::collections::BTreeMap::new();
+    let mut view = Others::new((1, 123), (&mut own, &mut asleep), (&mut players, &mut []));
     let mut side = crate::unit_ai::world_view::UnitView {
         unit: &mut unit,
         attacker: crate::unit_ai::Attacker {
@@ -10534,27 +10553,22 @@ fn help_view<R>(
         sprite: &mut sprite,
         world_time: 0,
         construction_rate: 1.0,
-        others: OthersRef::new(
-            1,
-            &others,
-            Foreign {
-                before: &players,
-                after: &[],
-                left: None,
-            },
-        ),
+        others: &mut view,
+        new_owner: None,
         zones: &mut zones,
-        foreign: Foreign {
-            before: &players,
-            after: &[],
-            left: None,
-        },
         every: &every,
         masters: Some(&masters),
         graphics: &graphics,
-        takes: &mut takes,
-        releases: &mut releases,
-        builder_leaves: &mut leaves,
+        lets: Lets {
+            player: 1,
+            relations: &[0, 0],
+            masters: &every,
+            lines: &crate::objects::lines::UnitLines::default(),
+            tracker: &mut crate::players::tracker::Tracker::default(),
+            takes: &mut takes,
+            releases: &mut releases,
+            builder_leaves: &mut leaves,
+        },
         starts: &mut waits,
         attribute_adds: &mut adds,
         promotions: &mut promotions,
@@ -10563,7 +10577,6 @@ fn help_view<R>(
         civ: 0,
         ai_settings: AiSettings::default(),
         drop_sites: &[],
-        tracker: &crate::players::tracker::Tracker::default(),
         mode_680: 0,
         carry_rule: false,
     };

@@ -9,6 +9,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::UnitView;
+use crate::unit_ai::world_view::owner_view;
 
 /// What slot 0x380 finds on a foundation without a Build on top ([`UnitView::build_found`]).
 struct BuildFound<'u> {
@@ -24,7 +25,7 @@ struct BuildFound<'u> {
     at: [f32; 3],
 }
 
-impl<'u> UnitView<'u> {
+impl<'u> UnitView<'u, '_> {
     /// Slot 0x380's answer (forced) on `foundation` without its effects, which `BuildObject`
     /// reads before it takes the build ([`crate::unit_ai::UnitSide::builds`]): 0 for a
     /// foundation the world does not hold (`FUN_1415417a0`), 1 with a Build on top (its slot
@@ -46,7 +47,7 @@ impl<'u> UnitView<'u> {
         if id == self.unit.id {
             return Some((self.player, &*self.unit));
         }
-        self.others.find(id)
+        owner_view(self.others, self.new_owner).find(id)
     }
 
     /// Slot 0x380's search without a Build on top: the foundation (None when the world does not
@@ -85,7 +86,7 @@ impl<'u> UnitView<'u> {
         let dip = SideWorld {
             player: self.player,
             relations: self.relations,
-            foreign: self.foreign,
+            foreign: owner_view(self.others, self.new_owner).players(),
             drop_sites: self.drop_sites,
         };
         // slot 0x820's point: the foundation's place
@@ -147,7 +148,9 @@ impl<'u> UnitView<'u> {
                 class: own.class,
                 player,
             };
-            unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+            let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+            unit.tear_down_actions(&mut releases, &mut leaves, by)?;
+            self.lets.torn_down(self.others, (leaves, releases))?;
             let world = crate::orders::SwitchWorld {
                 spatial: self.spatial,
                 pathing: self.pathing,
@@ -166,8 +169,10 @@ impl<'u> UnitView<'u> {
             class: builder.class,
             player,
         };
-        self.takes.push((foundation, by));
-        unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
+        self.lets.take(self.others, foundation, by);
+        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+        unit.tear_down_actions(&mut releases, &mut leaves, by)?;
+        self.lets.torn_down(self.others, (leaves, releases))?;
         unit.actions.set_build(Some(build));
         Ok(())
     }
@@ -190,8 +195,12 @@ impl<'u> UnitView<'u> {
             master.search_radius
         } as i32;
         let (ux, uy) = (unit.position[0] as i32, unit.position[1] as i32);
-        let (player, others, masters, spatial) =
-            (self.player, self.others, self.masters, &*self.spatial);
+        let (player, others, masters, spatial) = (
+            self.player,
+            owner_view(self.others, self.new_owner),
+            self.masters,
+            &*self.spatial,
+        );
         let foundation_on = |x: i32, y: i32| -> Option<i32> {
             spatial.objects_on(x, y).find_map(|(id, p)| {
                 if p.player != player {
@@ -222,7 +231,7 @@ impl<'u> UnitView<'u> {
             .ok_or(GenieError::unsupported(
                 "a unit sent off of a master the slice does not have",
             ))?;
-        let (player, others) = (self.player, self.others);
+        let (player, others) = (self.player, owner_view(self.others, self.new_owner));
         let named = |id: i32| {
             let found = if id == unit.id {
                 Some((player, unit))

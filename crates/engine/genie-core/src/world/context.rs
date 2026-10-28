@@ -70,16 +70,14 @@ pub(crate) struct Context<'a> {
     /// The unit is a building whose slot 0x70 ran in the update: the whole change is the
     /// caller's ([`crate::ownership::capture::Captured::building`]).
     pub(crate) building_handover: bool,
-    /// The objects let go (slot 0x180, [`World::release`]) and taken (slot 0x178,
-    /// [`World::take`]) that the caller applies after the hits' kills: those of the unit AI's
-    /// side and its stops, and the updating object itself, which the view does not hold (the
-    /// update's actions call the rest at once, [`crate::world::lets`]).
+    /// The releases (slot 0x180, [`World::release`]) and takes (slot 0x178, [`World::take`])
+    /// of the updating object itself, which the view does not hold: the caller applies them
+    /// after the hits' kills. The update calls every other one at once ([`crate::world::lets`]).
     pub(crate) releases: Vec<(i32, Releaser)>,
     pub(crate) takes: Vec<(i32, Releaser)>,
-    /// The foundations a counted builder's Build leaves as the unit AI's side and stops clear
-    /// the action list ([`Unit::clear_own_actions`], `FUN_140aadbf0`): the building
-    /// `FUN_140aaddb0` gives counts one builder less ([`World::leave_builders`]), the caller's
-    /// before the releases.
+    /// A counted builder's leave ([`Unit::clear_own_actions`], `FUN_140aadbf0`) of the updating
+    /// object itself, or of an annex of it: the building `FUN_140aaddb0` gives counts one
+    /// builder less ([`World::leave_builders`]), the caller's before the releases.
     pub(crate) builder_leaves: Vec<i32>,
     /// The unit group a unit that entered a building left (`FUN_1411921d0`), with the
     /// building: the caller runs the group's removeUnit ([`World::remove_unit`]).

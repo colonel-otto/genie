@@ -13,6 +13,7 @@ use crate::objects::unit::Unit;
 use crate::ownership::capture::LIVESTOCK;
 use crate::unit_ai::AiMove;
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 /// An unpacked trebuchet's class (`-0xe76` raw), whose slot 0x340 packs instead of moving.
 const UNPACKED_TREBUCHET: i16 = 54;
@@ -25,15 +26,18 @@ impl Unit {
         m: AiMove,
         class: i16,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
         let sprite_rng = c.streams.get(Stream::Sprite);
+        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
         let sails = self.ai_move_with(
             m,
             (class, c.player),
-            (&mut c.releases, &mut c.builder_leaves, by),
+            (&mut releases, &mut leaves, by),
             (c.masters, c.graphics, sprite_rng),
         )?;
+        crate::world::lets::torn_down(c, others, (leaves, releases))?;
         if sails {
             let sprite_rng = c.streams.get(Stream::Sprite);
             self.transport_sail(
@@ -228,6 +232,7 @@ impl Unit {
         (target, state): (i32, u8),
         range: f32,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
     ) -> Result<(), GenieError> {
         if self.unmodelled_action.is_some() {
             return Err(GenieError::unsupported(
@@ -248,11 +253,13 @@ impl Unit {
             .get_known(target)?
             .ok_or(crate::movement::move_to::TARGET_LACKING)?
             .master;
-        if crate::movement::move_to::holds_object(livestock, master, state) {
-            c.takes.push((target, self.releaser(c)));
-        }
         let by = self.releaser(c);
-        self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+        if crate::movement::move_to::holds_object(livestock, master, state) {
+            crate::world::lets::take(c, others, target, by);
+        }
+        let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+        self.clear_own_actions(&mut releases, &mut leaves, by)?;
+        crate::world::lets::torn_down(c, others, (leaves, releases))?;
         let own = c.masters.and_then(|m| m.get(self.life.master_id));
         let range = crate::movement::move_to::object_range(range, own);
         let mover = self.body.mover_mut().expect("tested above");

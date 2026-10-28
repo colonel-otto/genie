@@ -26,7 +26,7 @@ impl Unit {
         new: usize,
     ) -> Result<(bool, Vec<i32>), GenieError> {
         let class = self.placed_class(c)?;
-        self.capture_stop(c, class)?;
+        self.capture_stop(c, others, class)?;
         let changed = self.change_owner(c, new)?;
         // the scan reads the owner after the change: the old one when `new` lacks the master
         let mut taken = Vec::new();
@@ -61,6 +61,7 @@ impl Unit {
     pub(crate) fn capture_stop(
         &mut self,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
         class: i16,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
@@ -75,13 +76,15 @@ impl Unit {
                     .stop()?;
             }
             for t in [gone.released, released].into_iter().flatten() {
-                c.releases.push((t, by));
+                crate::world::lets::release(c, others, t, by)?;
             }
             self.show_standing(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         } else {
             // any other top action's slot 0x38 is the base's false for what an animal or an
             // artifact holds (a `MoveTo` of its own), and the list goes
-            self.tear_down_actions(&mut c.releases, &mut c.builder_leaves, by)?;
+            let (mut releases, mut leaves) = (Vec::new(), Vec::new());
+            self.tear_down_actions(&mut releases, &mut leaves, by)?;
+            crate::world::lets::torn_down(c, others, (leaves, releases))?;
         }
         let top = self.top_action_kind().map_or(-1, i32::from);
         let trading = top == TRADE_ACTION
@@ -96,7 +99,7 @@ impl Unit {
             let place = ([self.position[0], self.position[1]], class);
             ai.stop_with(false, Some(place), &mut fx)?;
             ai.forget_targets();
-            self.apply(fx, Some(class), c)?;
+            self.apply(fx, Some(class), c, others)?;
         }
         Ok(())
     }
@@ -233,12 +236,14 @@ pub(crate) fn scan_livestock(
             match on[..] {
                 [] => {}
                 [id] => {
-                    let unit = others.own_mut(id).expect("the scan's own object");
+                    // out of its slot while its stop reaches the view, as the updating object
+                    let (slot, mut unit) = others.take_out_own(id).expect("the scan's own object");
                     let done = (|| {
-                        unit.capture_stop(c, LIVESTOCK)?;
+                        unit.capture_stop(c, others, LIVESTOCK)?;
                         unit.change_owner(c, new)
                     })();
                     let position = unit.position;
+                    others.put_back_own(slot, unit);
                     // without the master the animal stays Gaia's, which scans nothing
                     if done? {
                         taken.push(id);
