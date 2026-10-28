@@ -13200,8 +13200,8 @@ fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
 }
 
 /// What a Build's step changes beside its builder (`record_build_step`, the caller's after the
-/// step): the cleared objects, the foundation another player's marks lie on, the occupants of the
-/// footprint, a construction that started (its owner watches it once: the flag clears), the work
+/// step): the cleared objects, the foundation another player's marks lie on, a construction that
+/// started (its owner watches it once: the flag clears), the work
 /// an annex's main building takes (at once, `World::work_building`: the house's state, hit points
 /// and build points); and the completion, taken out of the step: the house leaves its
 /// pending tracker list for its done one and its owner gains what it brings (its history event,
@@ -13224,7 +13224,6 @@ fn a_build_step_s_changes_reach_the_world() {
             );
             Ok((
                 c.w.object(601).map(|(_, u)| site_of(u)),
-                take(&mut c.evacuations),
                 take(&mut c.started),
                 c.w.object(10028).map(|(_, u)| site_of(u)),
                 built,
@@ -13239,7 +13238,6 @@ fn a_build_step_s_changes_reach_the_world() {
         nothing,
         (
             Some((2, 1.0, None)),
-            vec![],
             vec![],
             Some((0, 1.0, Some(0.0))),
             (vec![], vec![], vec![], vec![], vec![], vec![])
@@ -13277,7 +13275,6 @@ fn a_build_step_s_changes_reach_the_world() {
         recorded(&mut t, &mut step),
         (
             Some((7, 0.0, None)),
-            vec![(10028, vec![9175])],
             vec![10028],
             Some((0, 56.0, Some(2.5))),
             (
@@ -13331,6 +13328,45 @@ fn a_build_step_clears_and_removes_where_the_builder_runs() {
     assert_eq!(seen, Ok(Some((7, 0.0, Some(0.0)))));
     let seen = run(true, removes()).map(|s| s[1]);
     assert_eq!(seen, Ok(Some((0, 1.0, Some(0.0)))));
+}
+
+/// A Build's step sends the units on its footprint off where the builder's update runs
+/// (`record_build_step`, [`World::evacuate`]): an idle villager standing there hears notify 0x216
+/// within the builder's update.
+#[test]
+fn a_build_step_sends_its_footprint_s_units_off_where_the_builder_runs() {
+    use crate::construction::build::unit::record_build_step;
+    let mut t = house_builder();
+    let mut other = t.players[1].objects[0].clone();
+    other.id = 9176;
+    other.position = [30.0, 88.5, 0.0];
+    other.actions = ActionList::default();
+    t.players[1].objects.push(other);
+    let placed = *t.spatial.get(9175).unwrap();
+    t.spatial.insert(
+        9176,
+        Placed {
+            position: [30.0, 88.5, 0.0],
+            ..placed
+        },
+    );
+    let mut step = BuildStep {
+        occupants: vec![9176],
+        ..BuildStep::default()
+    };
+    let heard = in_update(&mut t, (1, 0), 50, |_, c| {
+        record_build_step(c, 10028, &[], &mut step)?;
+        let (_, u) = c.w.object(9176).expect("held");
+        let sent = |ai: &UnitAi| {
+            let sent = ai
+                .notifies
+                .iter()
+                .filter(|n| n.kind == crate::unit_ai::SENT_OFF);
+            sent.count()
+        };
+        Ok(u.ai.as_ref().map(sent))
+    });
+    assert_eq!(heard.map_err(|e| e.reason().to_owned()), Ok(Some(1)));
 }
 
 /// [`house_builder`]'s house 10028 with an annex: a second house foundation 10030 (player 1's

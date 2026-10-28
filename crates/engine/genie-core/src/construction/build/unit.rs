@@ -498,10 +498,12 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 }
 
 /// What the Build's step changes of the world beside the builder: the cleared objects and the
-/// footprint's removals (at once, through the world), its occupants, the constructions that started (its annexes'
-/// first: their owner watches each, `FUN_1411e5670`), the work an annex's main building takes
-/// (at once, [`World::work_building`]), and the completion (taken out of the step) with its annexes' state (at once, through the
-/// world), its tracker part and its standing sprite.
+/// footprint's removals and occupants (at once, through the world), the constructions that
+/// started (its annexes' first: their owner watches each, `FUN_1411e5670`), the work an annex's
+/// main building takes (at once, [`World::work_building`]), and the completion (taken out of
+/// the step) with its annexes' state (at once, [`World::set_state`]), its tracker part, its
+/// standing sprite and what it leaves its owner (the caller's after the update: the routines
+/// it sets off scan the world, the builder among it).
 ///
 /// # Errors
 ///
@@ -523,8 +525,10 @@ pub(crate) fn record_build_step(
     {
         c.w.remove_building(q, site)?;
     }
+    // the units its footprint's test met are sent off (FUN_14123bb20), the builder not among
+    // them
     if !step.occupants.is_empty() {
-        c.evacuations.push((target, step.occupants.clone()));
+        c.w.evacuate(target, &step.occupants)?;
     }
     for id in annex_ids.iter().copied().chain([target]) {
         if let Some(cons) = c.w.players[c.player]

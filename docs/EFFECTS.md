@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 30 world outputs, 15 unit AI effects and 47 hand-offs.
+These are the channels it uses (FD-045): 29 world outputs, 15 unit AI effects and 47 hand-offs.
 
 ## The world's outputs
 
@@ -43,7 +43,6 @@ the object's update by the functions named.
 | `ghost_deaths` | `Vec<i32>` | The objects whose master leaves ghosts that died in this update (`crate::vision::ghost`), the caller's. |  | [`objects/unit/life_step.rs`](../crates/engine/genie-core/src/objects/unit/life_step.rs) | `apply_deaths` |
 | `started` | `Vec<i32>` | The buildings whose construction started in this update: their owner watches them (`World::watch_started`), the caller's. |  | [`construction/build/construction.rs`](../crates/engine/genie-core/src/construction/build/construction.rs), [`construction/build/unit.rs`](../crates/engine/genie-core/src/construction/build/unit.rs), [`construction/build/world_side.rs`](../crates/engine/genie-core/src/construction/build/world_side.rs), [`construction/building_update.rs`](../crates/engine/genie-core/src/construction/building_update.rs), [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_deaths` |
 | `unwatched` | `Vec<i32>` | The buildings that died in this update: their owner's watched list lets them go (`FUN_141091310`), the caller's. | `FUN_141091310` | [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_deaths` |
-| `evacuations` | `Vec<(i32, Vec<i32>)>` | The units on a foundation's footprint its builder's test met (the foundation, them): the caller sends off those the test would (`World::evacuate`). |  | [`construction/build/unit.rs`](../crates/engine/genie-core/src/construction/build/unit.rs) | `apply_deaths` |
 
 ## The unit AI's effects
 

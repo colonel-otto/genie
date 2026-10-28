@@ -87,9 +87,6 @@ pub(crate) struct Context<'a> {
     /// The buildings that died in this update: their owner's watched list lets them go
     /// (`FUN_141091310`), the caller's.
     pub(crate) unwatched: Vec<i32>,
-    /// The units on a foundation's footprint its builder's test met (the foundation, them):
-    /// the caller sends off those the test would ([`World::evacuate`]).
-    pub(crate) evacuations: Vec<(i32, Vec<i32>)>,
     /// The game's setting at `+0x680` is 1 ([`World::mode_680`]).
     pub(crate) mode_1: bool,
     /// The owner's food, wood, stone and gold ([`Player::resources`]), which a repair pays from.
@@ -258,8 +255,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) started: Vec<i32>,
     /// [`Context`]'s `unwatched`.
     pub(in crate::world) unwatched: Vec<i32>,
-    /// [`Context`]'s `evacuations`.
-    pub(in crate::world) evacuations: Vec<(i32, Vec<i32>)>,
 }
 
 impl Context<'_> {
@@ -296,7 +291,6 @@ impl Context<'_> {
             ghost_deaths: std::mem::take(&mut self.ghost_deaths),
             started: std::mem::take(&mut self.started),
             unwatched: std::mem::take(&mut self.unwatched),
-            evacuations: std::mem::take(&mut self.evacuations),
         }
     }
 }
