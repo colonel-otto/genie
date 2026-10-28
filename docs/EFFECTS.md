@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 41 world outputs, 15 unit AI effects and 51 hand-offs.
+These are the channels it uses (FD-045): 40 world outputs, 15 unit AI effects and 51 hand-offs.
 
 ## The world's outputs
 
@@ -40,7 +40,6 @@ the object's update by the functions named.
 | `site_removals` | `Vec<i32>` | The foundations another player's marks lie on, which a builder's `set_state(7)` removes when their owner is human (`crate::construction::build::BuildStep::removes`), the caller's after the update (`World::remove_building`). |  | [`construction/build/unit.rs`](../crates/engine/genie-core/src/construction/build/unit.rs) | `apply_object_writes` |
 | `flares` | `Vec<(usize, [f32; 3], bool)>` | The flares a hit on a player's object has that player make (master 112, its slot 0x1c0) at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's after the update (`World::make_flare`). | `slot 0x1c0` | [`combat/volley.rs`](../crates/engine/genie-core/src/combat/volley.rs) | `apply_object_writes` |
 | `promotions` | `Vec<(i32, i16, i16)>` | The tracker's promotions (`FUN_14104fb20`) of the owner's units whose master changed while the unit AI ran (the unit, its old master, its new one), the caller's after the update (`World::track_promote`). | `FUN_14104fb20` | [`unit_ai/unit.rs`](../crates/engine/genie-core/src/unit_ai/unit.rs) | `apply_object_writes` |
-| `released_annexes` | `Vec<(i32, f32)>` | The annexes a dying building let go (the static update's death, `0x14118ad50`), each with the hit points it takes: its `+0xbb8` clears, the caller's after the update. | `0x14118ad50` | [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_object_writes` |
 | `main_works` | `Vec<(i32, f32)>` | The work a builder gave an annex whose main building takes it (the foundation, the seconds; `crate::construction::build::Worked::Main`), which the caller runs after the update (`World::work_building`). |  | [`construction/build/unit.rs`](../crates/engine/genie-core/src/construction/build/unit.rs) | `apply_object_writes` |
 | `building_death` | `Option<BuildingDeath>` | What a built building's death takes from its owner before its combat part's refund: the counts of the monastery, the wonder and the castle (slot 0xf8, then slot 0xf0 with 0 for a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no other building of the master stands (`World::withdraw_tech`). | `slot 0xf8`, `slot 0xf0` | [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_deaths` |
 | `pauses` | `Vec<(i32, f32)>` | The pauses the unit's walk gave units it met (`Mover::pauses`). |  | [`objects/unit/update.rs`](../crates/engine/genie-core/src/objects/unit/update.rs) | `apply_deaths` |

@@ -6,6 +6,7 @@ use crate::math::rng::Stream;
 use crate::objects::lifecycle::death_parts::forget_resource;
 use crate::objects::unit::{Step, Unit};
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 impl Unit {
     /// The life cycle's part of the update: the storage that a dying object's player loses
@@ -13,7 +14,11 @@ impl Unit {
     /// (`FUN_14119d710`, [`Unit::state_set_off`]): the death, the ghost, the annexes' states,
     /// the sight, the remains and the death spawn. [`Step::Leave`] when the object leaves the
     /// world.
-    pub(crate) fn life_step(&mut self, c: &mut Context<'_>) -> Result<Step, GenieError> {
+    pub(crate) fn life_step(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+    ) -> Result<Step, GenieError> {
         self.dying_storage_leaves(c);
         let before = self.life.state;
         if before == 4 && self.sprite.is_none() {
@@ -33,7 +38,7 @@ impl Unit {
         } else {
             Step::Stay
         };
-        self.state_set_off(c, before)?;
+        self.state_set_off(c, others, before)?;
         Ok(leaves)
     }
 
@@ -63,11 +68,12 @@ impl Unit {
     pub(crate) fn state_set_off(
         &mut self,
         c: &mut Context<'_>,
+        others: &mut Others<'_>,
         before: u8,
     ) -> Result<(), GenieError> {
         let after = self.life.state;
         if before <= 2 && 3 <= after {
-            self.died(c, before)?;
+            self.died(c, others, before)?;
             if c.masters
                 .and_then(|m| m.get(self.life.master_id))
                 .is_some_and(|m| m.ghost_on_death == crate::vision::ghost::LEAVES_GHOSTS)

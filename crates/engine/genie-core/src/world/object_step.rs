@@ -84,7 +84,6 @@ impl World {
             started: Vec::new(),
             unwatched: Vec::new(),
             annex_states: Vec::new(),
-            released_annexes: Vec::new(),
             cleared: Vec::new(),
             site_removals: Vec::new(),
             flares: Vec::new(),

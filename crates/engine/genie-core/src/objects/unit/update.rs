@@ -58,7 +58,7 @@ impl Unit {
         self.building_seconds(c, others)?;
         self.run_down_attack_timers(c);
         self.motion_step(c)?;
-        let leaves = self.life_step(c)?;
+        let leaves = self.life_step(c, others)?;
         self.animate(c);
         self.actions_past_life(c)?;
         Ok(Some(leaves))

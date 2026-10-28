@@ -13350,9 +13350,43 @@ fn a_unit_that_leaves_its_list_takes_none_of_its_unit_ai_s_orders() {
     }
 }
 
-/// What a step leaves in its Context for other objects reaches them after it: a dying
-/// building's annex goes free with its hit points, the building the unit entered gains its
-/// firepower and holds it, the owner's history gains the event (the owner as data1), the
+/// A dying building lets its annexes go at once (the static update's death, `0x14118ad50`): in
+/// the same update its annex, here the town centre, holds no main building and the building's
+/// hit points, and the world's annex slots are clear.
+#[test]
+fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
+    use crate::objects::sprite::{Graphic, building_death};
+    let mut t = house_builder();
+    t.spatial.set_annex(700, Some(10028));
+    t.players[1].objects[2].annex_of = Some(10028);
+    let house = &t.players[1].objects[1];
+    let master = t.masters[1].get(house.life.master_id).unwrap();
+    let progress = house.construction.unwrap().progress;
+    let id = building_death(master, None, progress).unwrap();
+    let shown = Graphic {
+        id,
+        frames: 10,
+        facets: 1,
+        speed_multiplier: 1.0,
+        frame_duration: 0.1,
+        replay_delay: 0.0,
+        flags: 0,
+    };
+    let _ = t.graphics.insert(id, shown);
+    let seen = in_update(&mut t, (1, 1), 0, |unit, c, others| {
+        unit.life.hp = 3.0;
+        unit.died(c, others, 1)?;
+        let (_, annex) = others.view().find(700).unwrap();
+        Ok((annex.annex_of, annex.life.hp, c.spatial.annexes_of(10028)))
+    });
+    assert_eq!(
+        seen.map_err(|e| e.reason().to_owned()),
+        Ok((None, 3.0, vec![]))
+    );
+}
+
+/// What a step leaves in its Context for other objects reaches them after it: the building the
+/// unit entered gains its firepower and holds it, the owner's history gains the event (the owner as data1), the
 /// tracker files a promoted unit under its new master; the work for an annex goes to it, an
 /// annex takes its main building's state, and the footprint clearing's objects are destroyed.
 /// A human owner's foundation that another player's marks stand on goes; a computer's stays.
@@ -13365,20 +13399,17 @@ fn a_step_s_writes_reach_the_objects_it_names() {
     };
     let key = |t: &World, m| crate::players::tracker::key(t.masters.get(1), &t.lines, m).master;
     let mut t = house_builder();
-    t.players[1].objects[1].annex_of = Some(700);
     t.players[1].history.entries.push([0, 0]);
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 120);
     t.players[1].tracker.add(9175, k);
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.released_annexes.push((10028, 300.0));
         c.entered = Some((700, 2.5));
         c.history_events.push(6);
         c.promotions.push((9175, 120, 83));
         Ok(Step::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
-    let (house, centre) = (&t.players[1].objects[1], &t.players[1].objects[2]);
-    assert_eq!((house.annex_of, house.life.hp), (None, 300.0));
+    let centre = &t.players[1].objects[2];
     assert_eq!(
         (centre.firepower, centre.garrison.clone()),
         (2.5, vec![9175])
@@ -13494,24 +13525,23 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     );
 }
 
-/// A step that fails stops what follows it: the writes its Context gathered do not apply, and
-/// the first effect that fails stops the ones after it (an unmodelled flare master stops the
-/// history event).
+/// A step that fails stops what follows it: the writes its Context gathered do not apply (the
+/// history event), and the first effect that fails stops the ones after it (an unmodelled flare
+/// master stops the history event).
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Step;
     let mut t = house_builder();
-    t.players[1].objects[1].annex_of = Some(700);
+    t.players[1].history.entries.push([0, 0]);
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.released_annexes.push((10028, 300.0));
+        c.history_events.push(6);
         Err(GenieError::unsupported("the step's own gap"))
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
         Err("the step's own gap".to_owned())
     );
-    let house = &t.players[1].objects[1];
-    assert_eq!((house.annex_of, house.life.hp), (Some(700), 1.0));
+    assert_eq!(t.players[1].history.events.len(), 0);
 
     let mut t = house_builder();
     t.players[1].history.entries.push([0, 0]);

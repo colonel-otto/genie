@@ -107,13 +107,6 @@ impl World {
         for (annex, amount) in std::mem::take(&mut out.main_works) {
             self.work_building(annex, amount)?;
         }
-        // a dying building's annexes, let go with its hit points (0x14118ad50)
-        for (annex, hp) in std::mem::take(&mut out.released_annexes) {
-            if let Some((_, a)) = self.object_mut(annex) {
-                a.annex_of = None;
-                a.life.hp = hp;
-            }
-        }
         // a building's set_state took its annexes along first (FUN_1411dbb70)
         for (annex, state) in std::mem::take(&mut out.annex_states) {
             if let Some((q, _)) = self.object(annex) {

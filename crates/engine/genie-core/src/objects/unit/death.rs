@@ -8,18 +8,25 @@ use crate::objects::lifecycle::death_parts::{built_death, combat_dies, farm_bonu
 use crate::objects::masters::Master;
 use crate::objects::unit::{NO_DYING_SPRITE, Unit};
 use crate::world::context::Context;
+use crate::world::others::Others;
 
 impl Unit {
     /// The death's `set_state(3)` (from `before`, the state the object had) and the static
     /// update's dying sprite after it (slot 0x7a0, then slot 0x68, `FUN_141217000`). A building's
-    /// (`FUN_1411dbb70`) first sets its annexes' states (the caller's after the update), then a
+    /// (`FUN_1411dbb70`) first lets its annexes go (each takes its hit points at once, through
+    /// the update's view `others`) and sets their states (the caller's after the update), then a
     /// built one dies ([`built_death`]) and a foundation runs the completion's first part and its
     /// construction's start ([`Unit::foundation_died`]); then the combat object's
     /// (`FUN_14121cc40`, [`combat_dies`]), whose refund from state 2 ([`refund_of`]) the caller
     /// takes from its owner's attributes; then the base one's (`FUN_14119d710`, whose storage and
     /// sight are the caller's). An animated or moving object (types 20 to 69) shows its
     /// master's dying sprite. Not held: the particles and the sounds.
-    pub(crate) fn died(&mut self, c: &mut Context<'_>, before: u8) -> Result<(), GenieError> {
+    pub(crate) fn died(
+        &mut self,
+        c: &mut Context<'_>,
+        others: &mut Others<'_>,
+        before: u8,
+    ) -> Result<(), GenieError> {
         let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) else {
             if self.life.dying_sprite.is_some() {
                 return Err(GenieError::unsupported(
@@ -35,7 +42,10 @@ impl Unit {
             // (FUN_1411dbb70) then finds no annex to take along
             for annex in c.spatial.annexes_of(self.id) {
                 c.spatial.set_annex(annex, None);
-                c.released_annexes.push((annex, self.life.hp));
+                if let Some((_, a)) = others.get_mut(annex) {
+                    a.annex_of = None;
+                    a.life.hp = self.life.hp;
+                }
             }
             if before == 2 {
                 let death = built_death(self, master, c.computer)?;

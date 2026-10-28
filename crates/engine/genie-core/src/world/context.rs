@@ -97,9 +97,6 @@ pub(crate) struct Context<'a> {
     /// The annexes a building's `set_state` (`FUN_1411dbb70`) took to its own state (slot 0xa0
     /// on each, before its own parts), the caller's after the update ([`World::set_state`]).
     pub(crate) annex_states: Vec<(i32, u8)>,
-    /// The annexes a dying building let go (the static update's death, `0x14118ad50`), each with
-    /// the hit points it takes: its `+0xbb8` clears, the caller's after the update.
-    pub(crate) released_annexes: Vec<(i32, f32)>,
     /// The objects a builder's footprint clearing deletes (the Build's `set_state(7)`,
     /// `FUN_1415c3620` with `param_6`; their records went already), the caller's after the
     /// update ([`World::clear_object`]).
@@ -307,8 +304,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) flares: Vec<(usize, [f32; 3], bool)>,
     /// [`Context`]'s `promotions`.
     pub(in crate::world) promotions: Vec<(i32, i16, i16)>,
-    /// [`Context`]'s `released_annexes`.
-    pub(in crate::world) released_annexes: Vec<(i32, f32)>,
     /// [`Context`]'s `main_works`.
     pub(in crate::world) main_works: Vec<(i32, f32)>,
     /// [`Context`]'s `building_death`.
@@ -370,7 +365,6 @@ impl Context<'_> {
             site_removals: std::mem::take(&mut self.site_removals),
             flares: std::mem::take(&mut self.flares),
             promotions: std::mem::take(&mut self.promotions),
-            released_annexes: std::mem::take(&mut self.released_annexes),
             main_works: std::mem::take(&mut self.main_works),
             building_death: self.building_death.take(),
             pauses: std::mem::take(&mut self.pauses),
