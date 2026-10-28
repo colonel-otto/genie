@@ -66,6 +66,7 @@ mod save_runs;
 mod saved_masters;
 mod saved_unit;
 mod setup;
+mod step_runs;
 mod sub_actions;
 mod task_finder;
 mod top_actions;
@@ -124,6 +125,7 @@ use self::saved_masters::{
 use self::saved_unit::{OTHER_SUB_ACTION, saved_gate, town_bell, unit};
 pub use self::setup::{history, settings};
 use self::setup::{saved_ghosts, slice, tech_state};
+pub use self::step_runs::{StepSave, steps_from_save};
 use self::sub_actions::{
     DefaultStart, build_task, default_task, fly_task, gather_point, production, saved_attack,
     saved_reload, saved_sprite,
