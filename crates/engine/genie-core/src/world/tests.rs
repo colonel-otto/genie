@@ -4165,6 +4165,50 @@ fn an_inside_unit_s_update_deletes_its_top_action() {
     assert_eq!(t.players[1].freezes, vec![]);
 }
 
+/// An Enter whose walk arrived in reach gets its unit in in its update (`FUN_140a867b0`): the
+/// building adds the unit to its list in the same update, its own player's and an ally's
+/// (player 2's) alike.
+#[test]
+fn an_enter_s_update_adds_its_unit_to_its_building_own_or_an_ally_s() {
+    let entered = |ally: bool| {
+        let mut t = enter_world(vec![], 5);
+        if ally {
+            let house = t.players[1].objects.remove(1);
+            let mut ally = Player {
+                attributes: vec![0.0; 250],
+                ..Player::default()
+            };
+            ally.objects.push(house);
+            t.players.push(ally);
+            t.masters.push(t.masters[1].clone());
+            let mut placed = *t.spatial.get(10028).unwrap();
+            placed.player = 2;
+            t.spatial.insert(10028, placed);
+            t.players[1].relations = vec![3, 0, 0];
+            t.players[2].relations = vec![3, 0, 0];
+            t.spatial.relations = vec![vec![0, 3, 3], vec![3, 0, 0], vec![3, 0, 0]];
+        }
+        let mut e = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 2.0, 3);
+        e.move_to = Some(MoveTo::Arrived);
+        let v = &mut t.players[1].objects[0];
+        v.position = [29.5, 89.5, 0.0];
+        v.actions.set_enter(Some(e));
+        in_update(&mut t, (1, 0), 50, |unit, c, others| {
+            let me = crate::movement::Me {
+                id: unit.id,
+                position: unit.position,
+                group: unit.group.id,
+                action_state: unit.top_action().map_or(0, |a| a.state),
+            };
+            unit.enter_update(c, others, me)?;
+            let (_, house) = others.view().find(10028).unwrap();
+            Ok((unit.life.inside, house.garrison.clone()))
+        })
+    };
+    assert_eq!(entered(false), Ok((Some(10028), vec![9175])));
+    assert_eq!(entered(true), Ok((Some(10028), vec![9175])));
+}
+
 /// An Enter that got the unit in, the unit let out again before its next update: that update's
 /// 1 has the action list remove it (its teardown lets the building go).
 #[test]
@@ -13385,11 +13429,11 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
     );
 }
 
-/// What a step leaves in its Context for other objects reaches them after it: the building the
-/// unit entered gains its firepower and holds it, the owner's history gains the event (the owner as data1), the
-/// tracker files a promoted unit under its new master; the work for an annex goes to it, an
-/// annex takes its main building's state, and the footprint clearing's objects are destroyed.
-/// A human owner's foundation that another player's marks stand on goes; a computer's stays.
+/// What a step leaves in its Context for other objects reaches them after it: the owner's
+/// history gains the event (the owner as data1), the tracker files a promoted unit under its
+/// new master; the work for an annex goes to it, an annex takes its main building's state, and
+/// the footprint clearing's objects are destroyed. A human owner's foundation that another
+/// player's marks stand on goes; a computer's stays.
 #[test]
 fn a_step_s_writes_reach_the_objects_it_names() {
     use crate::objects::unit::Step;
@@ -13403,17 +13447,11 @@ fn a_step_s_writes_reach_the_objects_it_names() {
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 120);
     t.players[1].tracker.add(9175, k);
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.entered = Some((700, 2.5));
         c.history_events.push(6);
         c.promotions.push((9175, 120, 83));
         Ok(Step::Stay)
     });
     assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
-    let centre = &t.players[1].objects[2];
-    assert_eq!(
-        (centre.firepower, centre.garrison.clone()),
-        (2.5, vec![9175])
-    );
     let event = &t.players[1].history.events[0];
     assert_eq!((event.kind, event.data1, event.world_time), (6, 1.0, 0));
     let tracker = &t.players[1].tracker;

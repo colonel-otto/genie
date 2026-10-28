@@ -133,12 +133,10 @@ impl Unit {
             }
             let firepower = w.firepower;
             c.left_group = w.left_group.map(|g| (g, enter.target));
-            if let Some(b) = others.own_mut(enter.target) {
+            // its building, any player's, gains the unit at once (the enter's slot 0x1c0)
+            if let Some((_, b)) = others.get_mut(enter.target) {
                 b.firepower += firepower;
                 b.garrison.push(self.id);
-            } else {
-                // another player's: the caller's after the update
-                c.entered = Some((enter.target, firepower));
             }
         }
         if step.done {

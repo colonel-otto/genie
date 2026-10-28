@@ -135,7 +135,6 @@ impl World {
             reseed: None,
             move_aside: Vec::new(),
             transport_moves: Vec::new(),
-            entered: None,
             starts: Vec::new(),
             main_works: Vec::new(),
             relations: &player.relations,

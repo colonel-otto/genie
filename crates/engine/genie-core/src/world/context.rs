@@ -225,9 +225,6 @@ pub(crate) struct Context<'a> {
     /// The transports an Enter's `set_state(4)` sent to where they meet the unit (slot 0x340),
     /// which the caller moves after the update ([`World::move_transport`]'s move).
     pub(crate) transport_moves: Vec<(i32, [f32; 3])>,
-    /// Another player's transport or building the unit entered, with what its volleys gain: the
-    /// caller adds them and the unit to its list after the update.
-    pub(crate) entered: Option<(i32, f32)>,
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
     pub(crate) starts: Vec<AiStart>,
@@ -269,8 +266,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) move_aside: Vec<AiMove>,
     /// [`Context`]'s `transport_moves`.
     pub(in crate::world) transport_moves: Vec<(i32, [f32; 3])>,
-    /// [`Context`]'s `entered`.
-    pub(in crate::world) entered: Option<(i32, f32)>,
     /// [`Context`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
     /// [`Context`]'s `techs_done`.
@@ -348,7 +343,6 @@ impl Context<'_> {
             reseed: self.reseed.take(),
             move_aside: std::mem::take(&mut self.move_aside),
             transport_moves: std::mem::take(&mut self.transport_moves),
-            entered: self.entered.take(),
             starts: std::mem::take(&mut self.starts),
             techs_done: std::mem::take(&mut self.techs_done),
             pastures: std::mem::take(&mut self.pastures),

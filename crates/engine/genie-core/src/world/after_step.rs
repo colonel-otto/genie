@@ -77,7 +77,7 @@ impl World {
             &step,
         )?;
         self.apply_ai_works((p, i), &mut out, &step)?;
-        self.apply_ai_starts((p, i, id), &mut out, &step)?;
+        self.apply_ai_starts((p, i), &mut out, &step)?;
         self.apply_hits_and_releases((p, i), &mut out, victim)?;
         Ok((step, out.ai_resume, after_order))
     }
@@ -319,22 +319,14 @@ impl World {
         Ok(())
     }
 
-    /// The unit AI's entries and starts after its works: an entered object's garrison, the
-    /// transports' meeting points, the waits and repairs, a Gather's build command and reseed,
+    /// The unit AI's entries and starts after its works: the transports' meeting points, the waits and repairs, a Gather's build command and reseed,
     /// and the order on a target.
     fn apply_ai_starts(
         &mut self,
-        (p, i, id): (usize, usize, i32),
+        (p, i): (usize, usize),
         out: &mut ObjectOutputs,
         step: &Step,
     ) -> Result<(), GenieError> {
-        // another player's transport or building the unit entered
-        if let Some((target, firepower)) = out.entered
-            && let Some((_, b)) = self.object_mut(target)
-        {
-            b.firepower += firepower;
-            b.garrison.push(id);
-        }
         // the transports an Enter sent to where they meet the unit (slot 0x340)
         for (ship, to) in std::mem::take(&mut out.transport_moves) {
             self.ship_move(ship, to)?;
