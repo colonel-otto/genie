@@ -2,10 +2,11 @@
 //! every listed unit is in.
 
 use crate::groups::UnitGroup;
+use genie_diff::Diff;
 
 /// An object's link to its group: `mGroupID` (`+0x6d0`) and `mGroupFlag` (`+0x6d4`), -1 and -2
 /// from the object's setup (`FUN_141196df0`) and in every object of a save in no group.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub struct GroupLink {
     /// `mGroupID`: the group's id, -1 for none.
     pub id: i32,

@@ -5,7 +5,6 @@
 use crate::GenieError;
 use crate::groups::Motion;
 use crate::groups::formation::on_map;
-use crate::groups::motion::moved_vector;
 use crate::math::fmath::{self, Vec3, cross, normalize};
 use crate::world::World;
 
@@ -252,7 +251,10 @@ impl World {
         let held: Vec<(i32, Vec3)> = g
             .members
             .iter()
-            .filter_map(|mb| self.object(mb.id).map(|(_, u)| (mb.id, moved_vector(u))))
+            .filter_map(|mb| {
+                self.object(mb.id)
+                    .map(|(_, u)| (mb.id, u.moved_vector().xhy()))
+            })
             .collect();
         let centre = if m.flags & 2 == 0 {
             m.position[0]
@@ -326,15 +328,15 @@ impl World {
         let spot = match self.object(chosen) {
             Some((p, u))
                 if !in_front.is_empty()
-                    || ground_squared(moved_vector(u), front) <= nearest_d
+                    || ground_squared(u.moved_vector().xhy(), front) <= nearest_d
                     || {
                         let r = self.master_of(p, u.life.master_id)?.radius[0];
                         beside <= (r + r) * (r + r)
                     } =>
             {
-                Some(moved_vector(u))
+                Some(u.moved_vector().xhy())
             }
-            _ => self.object(nearest).map(|(_, u)| moved_vector(u)),
+            _ => self.object(nearest).map(|(_, u)| u.moved_vector().xhy()),
         };
         let Some(at) = spot else {
             return Ok(());

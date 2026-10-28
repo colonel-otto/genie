@@ -10,6 +10,7 @@
 use crate::combat::attack::{Arms, Attack, Engagement};
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::sprite::Graphic;
+use genie_diff::Diff;
 
 mod drop_off;
 mod gathering;
@@ -108,7 +109,7 @@ const PREDATOR: i16 = 10;
 const CLASS_49: i16 = 49;
 
 /// The Hunt action of a gatherer (`TRIBE_Action_Hunt`, type 110).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct HuntAction {
     /// The target object (`+0x20`, its id at `+0x30`).
     pub target: i32,
@@ -127,6 +128,9 @@ pub struct HuntAction {
     pub move_to: Option<MoveTo>,
     /// The `MoveTo`'s range: the task's (`+0x30`) to a dead target, `OWN_LIVESTOCK_RANGE` to its
     /// own player's livestock.
+    #[diff(
+        gap = "the MoveTo's range (+0x68) is held per owning action; the save's sub-action holds one"
+    )]
     pub walk_range: f32,
     /// `+0x70`: the drop site its own livestock is led to, −1 for none yet.
     pub drop_site: i32,
@@ -143,7 +147,7 @@ pub struct HuntAction {
 
 /// What a hunt keeps of the livestock it leads to its drop site (`TRIBE_Action_Hunt`'s
 /// `moved_sheep` `+0x6c`, `sheep_still_time` `+0x74` and `sheep_start_x`, `_y` `+0x78`, `+0x7c`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Lead {
     /// `moved_sheep`: the hunt sent its livestock off once.
     pub moved: bool,
@@ -196,7 +200,7 @@ pub struct Herd {
 /// What the hunt reads of its task (`+0x48`): its id in the master's list (`+0xa`; the work command
 /// keeps a hunt on the task it finds), the work range (`+0x30`) and the resource it gathers
 /// (`attribute_type`, `+0x20`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct HuntTask {
     /// Its id in the master's task list (`+0xa`).
     pub id: i16,

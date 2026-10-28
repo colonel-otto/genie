@@ -14,6 +14,7 @@ use crate::objects::masters::Task;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::world::context::Context;
+use genie_diff::Diff;
 
 /// The action type (`+0x8`, 0x15).
 pub const MAKE: i16 = 21;
@@ -50,7 +51,7 @@ const TRIBE_COMBAT_TYPE: u8 = 70;
 
 /// `RGE_Action_Make`: its state (`+0x18`), the food still to make (`+0x44`, the base's
 /// `mTimer`), the food it makes in all (`+0x68`, the save's `work_timer`) and its task (`+0x48`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MakeAction {
     /// `+0x18`.
     pub state: u8,

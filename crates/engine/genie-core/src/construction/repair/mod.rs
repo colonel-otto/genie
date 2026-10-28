@@ -12,6 +12,7 @@
 
 use crate::GenieError;
 use crate::movement::move_to::{MoveTo, MoveWait};
+use genie_diff::Diff;
 
 mod action;
 pub(crate) mod payment;
@@ -64,7 +65,7 @@ pub const SHIP_REPAIR: GenieError =
     GenieError::unsupported("the task finder's repair (106) of a ship (FUN_140ad9120)");
 
 /// What a Repair works with: its task's id and work value (`+0x28`, `work_val1`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct RepairTask {
     /// The task's id.
     pub id: i16,
@@ -73,7 +74,7 @@ pub struct RepairTask {
 }
 
 /// The Repair action of a repairer (`TRIBE_Action_Repair`, type 106).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct RepairAction {
     /// The target's id (`+0x30`), −1 for none.
     pub target: i32,

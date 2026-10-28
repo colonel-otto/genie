@@ -8,6 +8,8 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+# the field by field comparison of genie's objects with the game's (FD-045-D14)
+genie-diff = { path = "../../base/genie-diff" }
 genie-command-codec = { path = "../../engine/genie-command-codec" }
 genie-core = { path = "../../engine/genie-core" }
 genie-dat = { version = "0.1.0", path = "../../formats/genie-dat" }

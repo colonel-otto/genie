@@ -41,6 +41,7 @@
 pub mod census;
 pub mod groups;
 pub mod masters;
+pub mod survey;
 pub mod tick_trace;
 pub mod views;
 
@@ -49,8 +50,8 @@ pub use masters::{DefaultAction, MasterTable, ReadError, TerrainTable};
 use genie_core::GenieError;
 use genie_rec::de;
 
-mod checked_rows;
 mod command_args;
+mod compared_objects;
 mod decoder;
 mod differences;
 mod first_checkpoint;
@@ -74,12 +75,13 @@ mod top_actions;
 #[cfg(test)]
 mod fixtures;
 
-pub use self::checked_rows::{AiRow, MoveRow, ObjectRow, object_rows};
-use self::checked_rows::{Same, saved_movement};
 use self::command_args::{Frame, combat_master, frames, market, saved_move_wait};
+use self::compared_objects::header_objects;
+pub use self::compared_objects::{object_rows, saved_objects};
 use self::decoder::Decoder;
 pub use self::differences::{
     Difference, ONLY_IN_THE_GAME, ONLY_IN_THE_SLICE, object_differences, object_field_differences,
+    object_field_differences_in,
 };
 pub use self::first_checkpoint::{
     PlayerComparison, SAVE_WORDS, compare_first_checkpoint, player_state,
@@ -106,11 +108,9 @@ use self::object_parts::{lifecycle, unit_ai};
 pub use self::pathing_inputs::{
     mesh_from_dump, mesh_owners_from_dump, planner_from_save, unit_terrain,
 };
-pub(crate) use self::save_objects::header_objects;
 pub use self::save_objects::{
     Dumps, SliceRun, ghost_pool_from_dump, inside_lists_from_dump, objects_from_save,
-    recycle_pools_from_dump, registry_from_dump, saved_objects, tile_lists_from_dump,
-    turns_from_save,
+    recycle_pools_from_dump, registry_from_dump, tile_lists_from_dump, turns_from_save,
 };
 use self::save_objects::{group_link, tile_order_differences};
 pub use self::save_runs::{
@@ -122,7 +122,7 @@ use self::save_runs::{
 use self::saved_masters::{
     core_task, master_facets, moving_speed, placement, task_at, work_masters,
 };
-use self::saved_unit::{OTHER_SUB_ACTION, saved_gate, town_bell, unit};
+use self::saved_unit::{OTHER_SUB_ACTION, unit};
 pub use self::setup::{history, settings};
 use self::setup::{saved_ghosts, slice, tech_state};
 pub use self::step_runs::{StepSave, steps_from_save};
@@ -138,6 +138,8 @@ use genie_core::objects::unit::Unit;
 use genie_core::ownership::artifact::ARTIFACT_TYPE;
 #[cfg(test)]
 use genie_core::world::checkpoint::TopAction;
+/// The fields a comparison covers ([`object_field_differences_in`]).
+pub use genie_diff::Scope;
 
 /// Why a recording could not be compared.
 #[derive(Debug)]

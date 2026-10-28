@@ -36,6 +36,7 @@ use crate::GenieError;
 use crate::math::fmath;
 use crate::objects::masters::Task;
 use crate::world::World;
+use genie_diff::Diff;
 
 mod generation;
 mod looks_and_rewards;
@@ -78,16 +79,18 @@ const EPSILON: f32 = crate::math::image::abilities::EPSILON;
 
 /// What the routine keeps on its object. The constructor's values are the default: no timer,
 /// rate 1 and the master's look.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Abilities {
     /// `+0x9a4`, `mMovementDamageTimer` (saved): the seconds before a movement damage task hits
     /// again.
     pub movement_damage_timer: f32,
     /// `+0x87c`: the rate the attack timer (`+0x91c`) runs down at (`RGE_Combat_Object::update`,
-    /// `0x14107e28e`).
+    /// `0x14107e28e`). Not saved: the constructor's 1 until the first update's abilities.
+    #[diff(unsaved)]
     pub attack_rate: f32,
     /// `+0x8a9` set, with the sprites at `+0x960`..`+0x988`: a terrain look task's look; None
     /// while the object shows its master's (not saved: the constructor clears `+0x8a9`).
+    #[diff(unsaved)]
     pub look: Option<Look>,
 }
 
@@ -103,7 +106,7 @@ impl Default for Abilities {
 
 /// The sprites a terrain look task gives its object (graphic ids; None for a null sprite), which
 /// the object's sprite slots show while `+0x8a9` is set.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub struct Look {
     /// `+0x960`, the task's carrying sprite (`+0x58`): slot 0x798's standing sprite.
     pub standing: Option<i16>,

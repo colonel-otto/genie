@@ -16,6 +16,7 @@
 //! passability and the obstruction manager's blocked tiles, as the game does at load.
 
 use crate::math::fmath::{self, Vec3};
+use genie_diff::Diff;
 
 mod goal_marks;
 mod grid;
@@ -98,7 +99,7 @@ impl Found {
 }
 
 /// A path's points and its length, as the game's path data holds them (`+0x438`..`+0x440`, `+4`).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Path {
     /// The points.
     pub points: Vec<Vec3>,

@@ -10,6 +10,7 @@ use crate::movement::move_to::{Goal, MoveTo, Walk, start_walk_or_give_up, walk_o
 use crate::objects::masters::Task;
 use crate::objects::unit::Unit;
 use crate::world::context::Context;
+use genie_diff::Diff;
 
 /// The Fly action's type, which word 9 adds.
 pub const FLY: i16 = 10;
@@ -36,7 +37,7 @@ pub struct FlyStep {
 }
 
 /// A bird's Fly action (type 10).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Fly {
     /// `+0x18`.
     pub state: u8,

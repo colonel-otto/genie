@@ -418,10 +418,14 @@ pub(crate) fn placeable(t: &mut World) {
 }
 
 /// `FUN_140c42080` after a notify of a new action: a unit AI with a target the world holds
-/// remembers the order with the world's time, both places and the target's attack category by
-/// its master (an archer, class 0: 3); one whose target is gone, or on a point, remembers none.
+/// remembers the order with the world's time, both places as slot 0x520 gives them (a
+/// [`GameVector`]; these hold no movement state) and the target's attack category by its master
+/// (an archer, class 0: 3); one whose target is gone, or on a point, remembers none.
+///
+/// [`GameVector`]: crate::math::game_vector::GameVector
 #[test]
 fn an_order_on_a_target_joins_the_unit_ai_s_history() {
+    use crate::math::game_vector::GameVector;
     let master = |id, class| Master {
         id,
         kind: 70,
@@ -478,10 +482,10 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
             order: Some(OrderKind::Attack),
             action: Some(ActionKind::Attack),
             time: 4321,
-            position: [10.0, 11.0, 0.0],
+            position: GameVector::new(10.0, 0.0, 11.0),
             target: 2,
             category: 3,
-            target_position: [20.0, 21.0, 1.0],
+            target_position: GameVector::new(20.0, 1.0, 21.0),
         }]
     );
     assert_eq!(history(1), []);
@@ -742,14 +746,29 @@ fn a_pasture_counts_each_attempt_and_shares_its_food() {
 
 /// A moving object of type 30 that dies (429381190's Ibex 15371 in update 1426) shows its
 /// master's dying sprite (slot 0x7a0, `FUN_1411887e0`, through slot 0x68) and goes on to state 4.
+/// Its top speed (slot 65, `FUN_14114d1d0`) follows the sprite: the master's speed, times the
+/// sprite's speed factor above 0.
 #[test]
 fn a_dying_livestock_shows_its_dying_sprite() {
+    for (factor, speed) in [(0.0, 0.737), (2.0, 1.474)] {
+        let u = dying_animal(crate::objects::masters::master_type::MOVING, factor);
+        assert_eq!(u.sprite.map(|s| s.graphic.id), Some(13171));
+        assert_eq!(u.life.state, 4);
+        assert_eq!(u.body.mover().map(|m| m.stats.speed), Some(speed));
+    }
+}
+
+/// A livestock of [`pasture_game`] of master type `kind` (speed 0.737, the dying sprite 13171 of
+/// speed factor `factor`) running at 1.4003 when it dies, two updates later (the deer 9655 of
+/// MarvinBlue/426048731, a combat object, likewise in update 3147: the Gaia pin of
+/// `oracle_snapshots`).
+fn dying_animal(kind: u8, factor: f32) -> Unit {
     let mut t = pasture_game([20.0, 20.0, 0.0], 1.0, &[1899, 1900]);
     let dying = Graphic {
         id: 13171,
         frames: 10,
         facets: 16,
-        speed_multiplier: 0.0,
+        speed_multiplier: factor,
         frame_duration: 0.1,
         replay_delay: 0.0,
         flags: 7,
@@ -761,19 +780,22 @@ fn a_dying_livestock_shows_its_dying_sprite() {
             .iter_mut()
             .filter(|a| a.kind == crate::objects::masters::master_type::MOVING)
         {
+            a.kind = kind;
             a.death_sprite = 13171;
+            a.max_speed = 0.737;
         }
         *m = Masters::new(all);
     }
     t.setup_pasture(1, 50).unwrap();
     let animal = t.players[1].objects[1].id;
     t.players[1].objects[1].life.hp = 0.0;
+    if let Some(m) = t.players[1].objects[1].body.mover_mut() {
+        m.stats.speed = 1.4003;
+    }
     for _ in 0..2 {
         t.tick(50);
     }
-    let (_, u) = t.object(animal).unwrap();
-    assert_eq!(u.sprite.map(|s| s.graphic.id), Some(13171));
-    assert_eq!(u.life.state, 4);
+    t.object(animal).unwrap().1.clone()
 }
 
 /// [`pasture_game`] with its three livestock made and player 1's villager 60 (class 4, radius
@@ -5457,15 +5479,15 @@ fn a_built_farm_s_master_starts_a_make_and_another_default_task_is_reported() {
     assert_eq!(other.default_start(), (false, None));
 }
 
-/// `TRIBE_Building_Object::update`'s whole seconds (`0x1411c95a2`): a built building's
-/// `damaged_lately_timer` (`+0x30d`) loses one in an update that passes whole seconds, however
-/// many, and stays at 0.
+/// `TRIBE_Building_Object::update`'s whole seconds (`0x1411c95a2`): a built building outside
+/// the walls' branch (a barracks) has its `damaged_lately_timer` (`+0x30d`) lose one in an
+/// update that passes whole seconds, however many, and stay at 0.
 #[test]
 fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
-    let house = Unit {
+    let barracks = Unit {
         id: 40,
         life: Lifecycle {
-            master_id: 70,
+            master_id: 12,
             hp: 550.0,
             state: 2,
             ..Lifecycle::default()
@@ -5479,13 +5501,13 @@ fn a_building_s_damaged_lately_timer_loses_one_an_update_with_whole_seconds() {
         0,
         vec![0],
         vec![Player {
-            objects: vec![house].into(),
+            objects: vec![barracks].into(),
             attributes: vec![0.0; 300],
             ..Player::default()
         }],
     );
     t.masters = vec![Masters::new([Master {
-        id: 70,
+        id: 12,
         kind: 80,
         class: 3,
         hit_points: 550,
@@ -6085,7 +6107,6 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
             charge: false,
             flying: true,
             step: [0.0; 3],
-            attack_count: 0,
         }),
         life: Lifecycle {
             master_id: 54,
@@ -9832,7 +9853,7 @@ fn a_unit_regenerated_to_its_most_has_its_armor_back() {
 /// 2 or below 1.2e-7 in size nothing changes.
 #[test]
 fn a_unit_regenerates_whole_hit_points_and_keeps_the_rest_as_time() {
-    use crate::construction::building_update::regeneration_rate;
+    use crate::objects::hit_points::regeneration_rate;
     let berserk = Master {
         id: 692,
         kind: 70,
@@ -12209,6 +12230,14 @@ fn a_volley_fires_its_missiles_over_swings_scattered_by_its_spread() {
         (missiles(&one).len(), one.players[1].objects[0].next_volley),
         (1, 1)
     );
+    // the missile's own +0x900 is its archer's attack count when fired
+    let counts: Vec<i32> = one.players[1].objects[1..]
+        .iter()
+        .filter(|u| u.missile.is_some())
+        .map(|u| u.attack_count)
+        .collect();
+    assert_eq!(counts, [one.players[1].objects[0].attack_count]);
+    assert_ne!(counts, [0]);
 }
 
 /// `FUN_141226690` with the master's own volley missile (`volley_missile`, 364): the extra
@@ -13866,6 +13895,29 @@ fn a_building_heals_its_garrison_each_whole_second() {
         reason(centre_seconds(repairs)),
         "a building its villagers inside repair (FUN_1411d33e0)"
     );
+}
+
+/// A wall's or a house's update takes the walls' branch (`0x1411c9000`, [`walls_branch`]): no
+/// whole seconds, so its garrison time stays and nothing inside heals.
+///
+/// [`walls_branch`]: crate::construction::building_update::walls_branch
+#[test]
+fn a_wall_or_a_house_counts_no_whole_seconds() {
+    use crate::construction::building_update::walls_branch;
+    let wall = |t: &mut World| {
+        for masters in &mut t.masters {
+            masters.get_mut(109).unwrap().class = 27;
+        }
+    };
+    assert_eq!(centre_seconds(wall), Ok((10.0, 0)));
+    let master = |id, class| Master {
+        id,
+        class,
+        ..Master::default()
+    };
+    assert!(walls_branch(&master(70, 3)));
+    assert!(walls_branch(&master(117, 27)));
+    assert!(!walls_branch(&master(109, 3)));
 }
 
 /// [`repair_world`] on [`open_map`] with the repairer 9175 (a mover) at `at` and the house

@@ -1,8 +1,6 @@
 //! An object of the world's id table ([`WorldObject`]) as the groups read it, and a unit's
 //! sub-formation.
 
-use crate::groups::motion;
-
 /// An object of the world's id table (`FUN_1415417a0`, `BaseWorld::object`): the objects of
 /// every player's live, sleeping and doppelganger lists, which the player's add and removal
 /// (`FUN_141668040`) keep in the table through the world's slots 16 and 17 (`FUN_14152cb60`,
@@ -84,13 +82,12 @@ impl WorldObject<'_> {
         }
     }
 
-    /// Slot 0x520, where it last moved to as the game's vector (x, height, y): a moving
-    /// object's `+0x824` ([`crate::groups::motion::moved_vector`]), any other's place
-    /// (`FUN_141196c10`, a ghost's too).
-    pub(crate) fn moved_vector(&self) -> crate::math::fmath::Vec3 {
+    /// Slot 0x520, where it last moved to as the game's vector (x, height, y): a unit's
+    /// ([`crate::objects::unit::Unit::moved_vector`]), a ghost's place (`FUN_141196c10`).
+    pub(crate) fn moved_vector(&self) -> crate::math::game_vector::GameVector {
         match *self {
-            Self::Unit(_, u) => motion::moved_vector(u),
-            Self::Ghost(_, g) => [g.position[0], g.position[2], g.position[1]],
+            Self::Unit(_, u) => u.moved_vector(),
+            Self::Ghost(_, g) => crate::math::game_vector::GameVector::of_place(g.position),
         }
     }
 }

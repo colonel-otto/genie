@@ -514,8 +514,9 @@ impl Unit {
                 charge: false,
                 flying,
                 step: [0.0; 3],
-                attack_count: self.attack_count,
             }),
+            // its +0x900, the firing object's attack count when fired
+            attack_count: self.attack_count,
             actions: ActionList::default().with_missile(Some(action)),
             attackable: true,
             pasture: -1,

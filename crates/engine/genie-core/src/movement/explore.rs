@@ -14,6 +14,7 @@ use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::context::Context;
+use genie_diff::Diff;
 
 /// The Explore action's type.
 pub const EXPLORE: i16 = 4;
@@ -51,7 +52,7 @@ pub enum Owner {
 }
 
 /// An Explore action.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct ExploreAction {
     /// `+0x18`.
     pub state: u8,
@@ -96,11 +97,7 @@ impl ExploreAction {
             DONE | FAILED | 14 => Owner::Standing,
             WALK => {
                 self.move_to = Some(MoveTo::Start);
-                self.move_wait = crate::movement::move_to::MoveWait {
-                    state: 0,
-                    timer: 0.0,
-                    delay: 0.0,
-                };
+                self.move_wait = crate::movement::move_to::MoveWait::NEW;
                 Owner::Nothing
             }
             _ => Owner::Nothing,

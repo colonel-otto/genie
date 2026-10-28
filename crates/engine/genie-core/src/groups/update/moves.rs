@@ -34,7 +34,7 @@ impl World {
                 let from = g.current_target.original_position;
                 let to = self
                     .world_object(target)
-                    .map(|t| (t.moved_vector(), t.position()));
+                    .map(|t| (t.moved_vector().xhy(), t.position()));
                 let lead = if to.is_some() {
                     let lead = self.nearest_to_target(group);
                     self.groups.get_mut(group).expect("held").motion.lead = lead;
@@ -141,7 +141,7 @@ impl World {
                         // DAT_143f0dc78, zero-initialised (.bss) and written by nothing
                         _ => [0.0; 3],
                     };
-                    let d = crate::math::fmath::sub(end, target.moved_vector());
+                    let d = crate::math::fmath::sub(end, target.moved_vector().xhy());
                     let squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
                     if !crate::math::fmath::below_or_unordered(squared, CLOSE) {
                         self.groups.get_mut(group).expect("held").current_command = FOLLOW;
@@ -323,7 +323,7 @@ impl World {
                 let _ = self.show_walking(m.id)?;
                 let at = self
                     .object(m.id)
-                    .map(|(_, u)| crate::groups::motion::moved_vector(u))
+                    .map(|(_, u)| u.moved_vector().xhy())
                     .expect("the member is held");
                 let own =
                     &mut self.groups.get_mut(group).expect("held").members[i - 1].specific_move;

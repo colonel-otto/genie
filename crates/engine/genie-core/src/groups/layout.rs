@@ -572,7 +572,7 @@ impl World {
             let place = match self.world_object(m.id) {
                 Some(object) => Some(MemberPlace {
                     id: m.id,
-                    at: object.moved_vector(),
+                    at: object.moved_vector().xhy(),
                     category: self.unit_category(Some(object))?,
                 }),
                 None => None,

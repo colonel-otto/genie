@@ -37,6 +37,7 @@ use crate::pathing::Pathing;
 use crate::unit_ai::task_finder::DropSite;
 pub(crate) use crate::world::player::NO_ATTRIBUTE;
 pub use crate::world::player::{AiSettings, Formations, Player};
+use genie_diff::Diff;
 
 mod after_step;
 mod forced;
@@ -55,7 +56,7 @@ pub use self::world_update::{scenario_mode, standard_mode};
 ///
 /// [`Mover::last_move`]: crate::movement::Mover::last_move
 /// [`Unit::gate_update`]: crate::objects::unit::Unit::gate_update
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Gate {
     /// `mGateLocked`: the gate is locked.
     pub locked: bool,

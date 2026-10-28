@@ -7,6 +7,7 @@ use crate::GenieError;
 use crate::objects::ObjectId;
 use crate::players::PlayerId;
 use crate::world::World;
+use genie_diff::Diff;
 
 pub mod all_back_to_work;
 pub mod attack_move;
@@ -80,7 +81,7 @@ mod tests;
 
 /// A building's gather point (`+0xc30`..`+0xc44`: it exists, x, y, z, the target and the target's
 /// master; the save's `gather_point_*`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct GatherPoint {
     /// The point its trained units walk to.
     pub point: [f32; 3],

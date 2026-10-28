@@ -285,7 +285,6 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
         charge: mo.is_charge_projectile != 0,
         flying: genie_core::combat::missile::LANDING < ma.distance,
         step: [moving.velocity_x, moving.velocity_y, moving.velocity_z],
-        attack_count: mo.rge_combat_object.attack_count,
     });
     unit.actions
         .set_missile(Some(genie_core::combat::missile::MissileAction {

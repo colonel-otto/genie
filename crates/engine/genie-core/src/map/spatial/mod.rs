@@ -14,6 +14,7 @@
 use crate::GenieError;
 use crate::vision::registry::Record;
 use crate::vision::visibility::Visibility;
+use genie_diff::Diff;
 use std::collections::BTreeMap;
 
 mod footprint;
@@ -203,7 +204,7 @@ pub struct Placed {
 
 /// An obstruction record's kind (its byte `+1`, the master's `obstruction_type`, master `+0x651`)
 /// and the master's `obstruction_class` (`+0x652`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub struct Obstruction {
     /// The record's kind (`obstruction_type`).
     pub kind: u8,

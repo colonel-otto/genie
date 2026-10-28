@@ -15,6 +15,7 @@ use crate::combat::damage::Victim;
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait, Walk};
 use crate::objects::sprite::{ActiveSprite, Graphic};
+use genie_diff::Diff;
 
 mod constructor;
 mod hits;
@@ -93,7 +94,7 @@ const BOAR_AI: u32 = 4;
 const LION_AI: u32 = 5;
 
 /// The sprites and frames the Attack takes from its constructor.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Arms {
     /// `+0x68`: the sprite its `MoveTo` shows (its constructor's argument: the hunt's walking
     /// sprite, the task's moving one; else the master's running one, slot 0x7d0, else its
@@ -120,7 +121,7 @@ pub struct Arms {
 }
 
 /// The Attack action (`RGE_Action_Attack`, type 9) as the hunt's sub-action.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Attack {
     /// The target object (`+0x20`, its id at `+0x30`).
     pub target: i32,
@@ -150,8 +151,14 @@ pub struct Attack {
     pub pending: bool,
     /// `+0xb0` and `+0xb4`: the time of a swing past its sprite's length; a melee swing counts
     /// `+0xb0` down until the hit.
+    #[diff(
+        gap = "differs from the save (MarvinBlue/426048731's 9181 at update 1025: genie -0.34, game 0)"
+    )]
     pub swing: f32,
     /// `+0xb4`: the rest after the swing's sprite.
+    #[diff(
+        gap = "differs from the save (MarvinBlue/426048731's 10029 at update 1150: genie 0.5, game 0)"
+    )]
     pub rest: f32,
     /// The sprites and frames from its constructor.
     pub arms: Arms,
@@ -164,6 +171,7 @@ pub struct Attack {
     /// `+0x68`, the sprite its `MoveTo` shows, is the master's running one (a unit's own
     /// Attack's, slot 0x7d0): the `MoveTo`'s start sets the unit's running speed. The Hunt's
     /// (its task's sprite) leaves the speed.
+    #[diff(gap = "differs from the save (MarvinBlue/426048731's 9149 at update 4450)")]
     pub runs: bool,
     /// `+0x9f`, `was_same_owner` (saved): its target was its unit's player's when the
     /// constructor (`FUN_140a7c210`) took it; the update's ally test spares such a livestock or

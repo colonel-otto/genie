@@ -9,6 +9,7 @@
 //! master has the same ([`crate::movement::MoveStats::facets`]).
 
 use crate::math::fmath::{self, Vec3};
+use genie_diff::Diff;
 
 const TWO_PI: f32 = crate::math::image::facing::TWO_PI;
 const MINUS_TWO_PI: f32 = crate::math::image::facing::MINUS_TWO_PI;
@@ -29,7 +30,7 @@ const TWO: f32 = crate::math::image::facing::TWO;
 
 /// What the facing routines read of the current sprite: its facets and whether its sequence
 /// flags have bit 1 (`+0x1a`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub struct SpriteFacets {
     /// How many facets.
     pub count: i16,

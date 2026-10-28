@@ -8,12 +8,13 @@
 use crate::GenieError;
 use crate::map::spatial::Spatial;
 use crate::movement::{Me, Motion, Mover, PathAsk, Planning, footprint_gap, footprint_gap_squared};
+use genie_diff::Diff;
 
 /// The `MoveTo` action's type, which word 9 adds when it is a unit's top action.
 pub const MOVE_TO: i16 = 1;
 
 /// The `MoveTo`'s state (`+0x18`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub enum MoveTo {
     /// 1: at the target when it started.
     Arrived,
@@ -30,8 +31,8 @@ pub enum MoveTo {
 
 /// A `MoveTo`'s wait after the motion step gave up (`+0x6c` `movement_wait_state`: 0 never, 1
 /// waiting, 2 asked again; the timer `+0x70` and its end `+0x74`), held by the action that owns
-/// the `MoveTo`; a new `MoveTo` starts without one.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+/// the `MoveTo`; a new `MoveTo` starts without one ([`MoveWait::default`]).
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MoveWait {
     /// `+0x6c`, `movement_wait_state`: 0 never waited, 1 waiting, 2 asked again.
     pub state: u8,
@@ -41,7 +42,24 @@ pub struct MoveWait {
     pub delay: f32,
 }
 
+/// `kDefaultWaitTime`, the wait a `MoveTo`'s constructors set (`+0x74`, `FUN_140aa0d30`,
+/// `FUN_140aa0df0`): one second.
+const DEFAULT_WAIT: f32 = 1.0;
+
+impl Default for MoveWait {
+    fn default() -> Self {
+        Self::NEW
+    }
+}
+
 impl MoveWait {
+    /// A new `MoveTo`'s: never waited, no time waited, [`DEFAULT_WAIT`].
+    pub const NEW: Self = Self {
+        state: 0,
+        timer: 0.0,
+        delay: DEFAULT_WAIT,
+    };
+
     /// The `MoveTo`'s answer to the motion step giving up (it returns 1, `0x140aa2a70` in state
     /// 4): a human player's villager (`waits`) whose `MoveTo` has not waited yet (`+0x6c` 0) waits
     /// (`set_state` 2, `+0x6c` 1) a second with a stance (`+0x1a9`) below 2, else two, then asks
@@ -107,7 +125,7 @@ impl Walk<'_> {
 }
 
 /// Where a `MoveTo` goes: a target object or a point (`x, y, z` on the map).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub enum Goal {
     /// A target object.
     Target(i32),
@@ -346,7 +364,7 @@ pub fn target_moved(walk: &Walk<'_>, target: i32, quiet: bool) -> Result<Follow,
 
 /// A `MoveTo` as a unit's own top action (a wandering animal's, a moved or following unit's). Its
 /// `+0x60` and `+0x61` are 0: it is not quiet.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MoveToAction {
     /// Its state (`+0x18`).
     pub state: MoveTo,
@@ -359,6 +377,9 @@ pub struct MoveToAction {
     pub range: f32,
     /// It shows the master's running sprite (an AI move that does not walk, slot 0x340 with
     /// its seventh argument 0), else its walking one.
+    #[diff(
+        gap = "differs from the save (MarvinBlue/426048731's 9183 at update 3050: genie true, game false)"
+    )]
     pub run: bool,
     /// Its wait after the motion step gave up.
     pub wait: MoveWait,

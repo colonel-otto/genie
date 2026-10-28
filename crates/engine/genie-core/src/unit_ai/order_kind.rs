@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::unit_ai::{ActionKind, ai_kinds};
+use genie_diff::Diff;
 
 /// An order a unit AI holds: a case of its order handler (`FUN_140c5c170`, slot 0x230), named
 /// by the line the case logs (`ai_kinds`, generated) or, where it logs none, by what it does,
@@ -14,7 +15,7 @@ use crate::unit_ai::{ActionKind, ai_kinds};
 /// converts fallibly ([`OrderKind::try_from`]). The game also compares the current order with
 /// `0x262`, `0x269`, `0x2cf`, `0x2d0`, `0x323` and `0x324` (the full update, the leash,
 /// `AddUnit`), which nothing stores there: those tests never hold.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Diff)]
 #[repr(i32)]
 pub enum OrderKind {
     /// 700: attack the target (slot 0xb8, `AttackObject`).

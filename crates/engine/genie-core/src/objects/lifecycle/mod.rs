@@ -9,12 +9,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use genie_diff::Diff;
 
 pub(crate) mod death_parts;
 
 /// What the dead-object steps read from an object's master that the header save does not hold;
 /// they come from the `.dat`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct MasterData {
     /// Master `+0x620`: how much of the held attribute a dead object loses per second.
     pub decay: f32,
@@ -24,7 +25,7 @@ pub struct MasterData {
 
 /// Which update chain the object runs. `RGE_Animated_Object::update` and everything derived from
 /// it (types 20 and up) adds a step after the static update's.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Diff)]
 pub enum Class {
     /// Type 10, `RGE_Static_Object`.
     #[default]
@@ -34,7 +35,7 @@ pub enum Class {
 }
 
 /// The fields the dead-object steps read and write, with their offsets in 158041.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Lifecycle {
     /// The object's class: static or animated.
     pub class: Class,
@@ -48,6 +49,7 @@ pub struct Lifecycle {
     pub amount: f32,
     /// The master's death sprite (`+0x480`, the slot 0x7a0's): an animated object with one plays
     /// it in state 4.
+    #[diff(gap = "stays the import's master's after a master change (a villager's new task)")]
     pub dying_sprite: Option<i16>,
     /// The master spawns an object when this one is gone (its death spawn `+0x5e4`, state 7).
     pub death_spawn: bool,

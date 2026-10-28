@@ -12,8 +12,7 @@ pub(super) fn sprite_speed(
     sprite: i16,
     graphics: &std::collections::BTreeMap<i16, crate::objects::sprite::Graphic>,
 ) -> f32 {
-    let factor = graphics.get(&sprite).map_or(0.0, |g| g.speed_multiplier);
-    if 0.0 < factor { base * factor } else { base }
+    crate::objects::sprite::top_speed(base, graphics.get(&sprite))
 }
 
 impl Master {

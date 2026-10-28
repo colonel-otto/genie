@@ -36,11 +36,7 @@ impl RepairAction {
             target,
             state: MOVE,
             move_to: Some(MoveTo::Start),
-            move_wait: MoveWait {
-                state: 0,
-                timer: 0.0,
-                delay: 0.0,
-            },
+            move_wait: MoveWait::NEW,
             goal: None,
             point: at,
             timer: 0.0,

@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::garrison::{ENTER_NEAR, HALF_TILE, UNREACHED};
 use crate::movement::move_to::{Goal, MoveTo, Walk, sub_move_to_update};
+use genie_diff::Diff;
 
 /// The Enter action's type (`RGE_Action_Enter`, vtable `0x142ed4db8`), which word 9 adds.
 pub const ENTER: i16 = 3;
@@ -32,7 +33,7 @@ pub(crate) const SIEGE_UNLOAD: GenieError =
 
 /// A unit's Enter action (`RGE_Action_Enter`, type 3): it walks to a building or a transport and
 /// enters it.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct EnterAction {
     /// The building or transport (`+0x20`, its id `+0x30`).
     pub target: i32,
@@ -126,11 +127,7 @@ impl EnterAction {
             timer: 0.0,
             retry: true,
             task_class,
-            move_wait: crate::movement::move_to::MoveWait {
-                state: 0,
-                timer: 0.0,
-                delay: 0.0,
-            },
+            move_wait: crate::movement::move_to::MoveWait::NEW,
         }
     }
 

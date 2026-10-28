@@ -3,6 +3,7 @@
 use crate::masters::MasterTable;
 use crate::vec3;
 use genie_core::GenieError;
+use genie_core::math::game_vector::GameVector;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
 use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_save::generated::world::{
@@ -198,10 +199,11 @@ fn order_history(ai: &UnitAiModule) -> Result<Vec<genie_core::unit_ai::OrderReco
                 order: OrderKind::of_field(e.new_oh_order)?,
                 action: ActionKind::of_field(e.new_oh_action)?,
                 time: e.new_oh_time,
-                position: vec3(&e.new_oh_position),
+                // the save's 12 bytes are the game's vector, x, height, y
+                position: GameVector::from_xhy(vec3(&e.new_oh_position)),
                 target: e.new_oh_target_id,
                 category: e.new_oh_target_attack_category,
-                target_position: vec3(&e.new_oh_target_position),
+                target_position: GameVector::from_xhy(vec3(&e.new_oh_target_position)),
             })
         })
         .collect()

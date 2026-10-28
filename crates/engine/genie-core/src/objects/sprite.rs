@@ -17,9 +17,10 @@ use crate::combat::abilities::Look;
 use crate::math::fmath;
 use crate::math::rng::Well512;
 use crate::objects::masters::Master;
+use genie_diff::Diff;
 
 /// What the clock reads of a sprite (the `.dat` graphic, memory `+0x8`..`+0x1a`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Graphic {
     /// The graphic's id.
     pub id: i16,
@@ -57,9 +58,21 @@ const SHORTEST: f32 = crate::math::image::sprite::SHORTEST;
 /// The gap below which a speed multiplier counts as none (`DAT_142eb0c60`).
 const EPSILON: f32 = crate::math::image::sprite::EPSILON;
 
+/// A moving object's top speed (slot 65, `FUN_14114d1d0`) with the sprite `shown`: its master's
+/// speed `base` (slot 0x1d0's `+0x740`), times the sprite's speed factor (`+0xc`) when that is
+/// above 0 (`COMISS`, `JBE`: a NaN is not). The game reads it from the current sprite (`+0x140`)
+/// each time; genie holds it in [`crate::movement::MoveStats::speed`], set at each sprite change.
+#[must_use]
+pub(crate) fn top_speed(base: f32, shown: Option<&Graphic>) -> f32 {
+    match shown {
+        Some(g) if 0.0 < g.speed_multiplier => base * g.speed_multiplier,
+        _ => base,
+    }
+}
+
 /// The active sprite (the save's `RGE_Active_Animated_Sprite`, memory `+0x24`..`+0x3b`; a static
 /// one, the save's `RGE_Active_Sprite`, has only the frame, and the clock's fields stay at rest).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct ActiveSprite {
     /// The graphic.
     pub graphic: Graphic,

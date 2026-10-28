@@ -968,7 +968,7 @@ fn a_member_s_own_move_walks_its_path() {
     };
     t.specific_moves_step(1).unwrap();
     let (_, u) = t.object(10).unwrap();
-    let at = crate::groups::motion::moved_vector(u);
+    let at = u.moved_vector().xhy();
     let own = t.groups.get(1).unwrap().members[0].specific_move;
     assert_eq!(own.active, 1);
     assert_eq!((at, own.last_position), ([1.0, 0.0, 1.0], [1.0, 0.0, 1.0]));

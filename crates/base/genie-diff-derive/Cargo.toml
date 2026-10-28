@@ -1,0 +1,23 @@
+[package]
+name = "genie-diff-derive"
+version = "0.1.0"
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license = "GPL-3.0-only"
+description = "#[derive(Diff)] for genie-diff"
+homepage = "https://github.com/librematch/genie/tree/main/crates/base/genie-diff-derive"
+documentation = "https://docs.rs/genie-diff-derive"
+repository.workspace = true
+readme = "./README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", default-features = false, features = ["clone-impls", "derive", "parsing", "printing", "proc-macro"] }
+
+[lints]
+workspace = true

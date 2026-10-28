@@ -2,7 +2,7 @@
 //! steering toward its slot (`FUN_141025fb0`).
 
 use crate::groups::SpecificMove;
-use crate::groups::motion::{hold, moved_vector};
+use crate::groups::motion::hold;
 use crate::groups::steer::{
     ACTION_KIND, ASIDE, ASIDE_TIMER, CLEARANCE, EPSILON, KEEPS_MOVING, MOST_FAILURES, MOVE_TO,
     MOVES,
@@ -73,7 +73,7 @@ impl World {
                 let to = g.current_formation.as_ref().expect("found above").slots[slot]
                     .transform_position;
                 let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
-                let clear = self.line_clear(u, moved_vector(u), to, CLEARANCE, &members)?;
+                let clear = self.line_clear(u, u.moved_vector().xhy(), to, CLEARANCE, &members)?;
                 let dt = self.dt_seconds;
                 let g = self.groups.get_mut(group).expect("held");
                 let own = &mut g.members[index].specific_move;
@@ -262,7 +262,7 @@ impl World {
         let s = g.current_formation.as_ref().expect("a formation").slots[slot];
         let to = s.transform_position;
         let late = s.time < self.world_time;
-        let at = moved_vector(u);
+        let at = u.moved_vector().xhy();
         let mut d = fmath::sub(to, at);
         d[1] = 0.0;
         let gap = fmath::sqrt(d[0] * d[0] + 0.0 + d[2] * d[2]);
@@ -309,7 +309,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return Ok(());
         };
-        if !self.line_clear(u, moved_vector(u), to, CLEARANCE, differentiators)? {
+        if !self.line_clear(u, u.moved_vector().xhy(), to, CLEARANCE, differentiators)? {
             return self.way_round(group, index, slot, gap, differentiators);
         }
         self.steer_member(group, slot, id, gap)?;

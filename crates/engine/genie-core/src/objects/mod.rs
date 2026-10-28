@@ -4,6 +4,7 @@
 
 pub mod actions;
 pub mod facing;
+pub(crate) mod hit_points;
 pub mod layers;
 pub mod lifecycle;
 pub mod lines;

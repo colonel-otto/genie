@@ -1,0 +1,19 @@
+[package]
+name = "genie-diff"
+version = "0.1.0"
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license = "GPL-3.0-only"
+description = "Where two values of the same type differ, field by field, each difference named by its path"
+homepage = "https://github.com/librematch/genie/tree/main/crates/base/genie-diff"
+documentation = "https://docs.rs/genie-diff"
+repository.workspace = true
+readme = "./README.md"
+
+[dependencies]
+# the derive, which `genie_diff::Diff` re-exports
+genie-diff-derive = { path = "../genie-diff-derive" }
+
+[lints]
+workspace = true

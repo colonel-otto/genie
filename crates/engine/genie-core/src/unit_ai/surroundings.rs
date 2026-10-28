@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::math::fmath::Vec3;
 use crate::unit_ai::{Effect, Search, UnitSide};
+use genie_diff::Diff;
 
 /// What a [`Search`] answers: the object picked (−1 for none) and whether the lists it read hold
 /// enemies (the fifth relation list), which sets the alert mode when its query ran (`fresh`; a
@@ -87,7 +88,7 @@ pub const fn no_search(_: &Search<'_>) -> Result<Found, GenieError> {
 
 /// A boar's part of its unit AI (`TribeElephantUnitAIModule`, factory type 4), which its idle check
 /// reads.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Home {
     /// `+0x1f0`..`+0x1f8`, `origin`: the point it wanders around.
     pub origin: [f32; 3],
@@ -96,6 +97,7 @@ pub struct Home {
     /// `+0x1fd`: its next idle check sends it home; its slot 0x1f0 (`FUN_140c16d50`) sets it
     /// after a failed Attack ([`crate::combat::attack::Attack::update`]). Not saved; a loaded boar
     /// starts without it.
+    #[diff(unsaved)]
     pub go_home: bool,
 }
 

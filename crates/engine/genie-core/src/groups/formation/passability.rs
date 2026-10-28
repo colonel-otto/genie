@@ -221,7 +221,7 @@ impl World {
         };
         // the active slot nearest the group's place, and the box around the tester and them
         let ([min_x, min_z, max_x, max_z], nearest) =
-            passability_box(&formation.slots, tester.moved_vector(), position);
+            passability_box(&formation.slots, tester.moved_vector().xhy(), position);
         let k = nearest.expect(
             "an active slot lies nearer than f32::MAX (the game reads the slot before the array \
              when none does)",

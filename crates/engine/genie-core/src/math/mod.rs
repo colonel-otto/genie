@@ -3,6 +3,7 @@
 
 pub mod conversions;
 pub mod fmath;
+pub mod game_vector;
 pub mod image;
 pub mod msvc;
 pub mod rng;

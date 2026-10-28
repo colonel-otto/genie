@@ -6,7 +6,7 @@ use crate::save_runs::{
     stock_differences, stops, world_differences,
 };
 use crate::setup::slice;
-use crate::{Decoder, Dumps, Error, ObjectRow, TickReport, listed};
+use crate::{Decoder, Dumps, Error, TickReport, listed};
 use genie_core::GenieError;
 use genie_core::world::{GameState, World};
 use genie_save::Header;
@@ -16,19 +16,13 @@ fn save() -> Header {
     header(vec![gaia(Vec::new()), human(vec![combat_object(7, 83)])])
 }
 
-/// The game's save as the slice holds it: the same rows, sight and state.
+/// The game's save as the slice holds it: the same objects, sight and state.
 fn same(save: &Header, turns: &World) -> SavedStep {
     SavedStep {
         objects: turns
             .players
             .iter()
-            .map(|p| {
-                p.objects
-                    .iter()
-                    .filter(|u| listed(u))
-                    .map(ObjectRow::of_unit)
-                    .collect()
-            })
+            .map(|p| p.objects.iter().filter(|u| listed(u)).cloned().collect())
             .collect(),
         ghosts: Vec::new(),
         seen: saved_sight(save),
@@ -74,8 +68,8 @@ fn the_state_the_status_and_the_unfrozen_objects_differ() {
     turns.players[1]
         .freezes
         .push((5, 7, GenieError::unsupported("a test's freeze")));
-    for row in &mut after.objects[1] {
-        row.hp += 1.0;
+    for unit in &mut after.objects[1] {
+        unit.life.hp += 1.0;
     }
     let mut report = TickReport::default();
     compare_players(&turns, &after, Some(6), &mut report).unwrap();

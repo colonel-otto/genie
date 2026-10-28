@@ -19,6 +19,7 @@ use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
 use crate::objects::layers::Animated;
 use crate::objects::unit::Unit;
+use genie_diff::Diff;
 
 pub(crate) mod ai_moves;
 pub mod explore;
@@ -58,7 +59,7 @@ use crate::pathing::{Pathing, PlanBudget};
 
 /// The velocity data (`+0x868`): velocity and acceleration in the unit's own frame; component 2 is
 /// along the forward vector.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Velocity {
     /// The velocity.
     pub velocity: Vec3,
@@ -98,7 +99,7 @@ impl Default for PathAsk {
 }
 
 /// One level of a unit's path data (`+0x858`; each level's parent at `+8`).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Diff)]
 pub struct PathData {
     /// `+0x14`, `mWaypointLevel`: 0 is the path the unit walks.
     pub level: u8,
@@ -142,11 +143,12 @@ pub struct PathData {
     /// (`FUN_140f98d20`): a short path made in the tick its top path was made takes the unit's
     /// own (`+0x670`, `FUN_140f9b7a0`). The save does not hold them: a loaded path takes them
     /// back by that rule (the oracle's import).
+    #[diff(unsaved)]
     pub ignored: Vec<i32>,
 }
 
 /// What movement reads of the unit's master.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct MoveStats {
     /// The master's `fly_mode` (`+0x608`): how its place takes the ground's height
     /// ([`Mover::grounded`]).
@@ -171,6 +173,7 @@ pub struct MoveStats {
     /// `+0x770`: the speed at which the turn radius is its value.
     pub turn_radius_speed: f32,
     /// Master `+0x5d8`, `+0x5dc`, `+0x5e0`.
+    #[diff(gap = "an own master's radius (a foundation's, a dying annex's) is not modelled")]
     pub radius: [f32; 3],
     /// The master's terrain restriction (`+0x606`) and the terrain classes it lets the unit stand
     /// on (its mask).
@@ -198,7 +201,7 @@ pub struct MoveStats {
 
 /// The moving object's own layer (`RGE_Moving_Object`, types 30 and up) with the animated layer
 /// below it ([`crate::objects::layers`]): a moving unit's movement state.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Diff)]
 pub struct Mover {
     /// The animated layer below it (`+0x7b8`), which its stop clears ([`Mover::stop`]).
     pub animated: Animated,
@@ -245,6 +248,7 @@ pub struct Mover {
     /// object: where the target stood when the `MoveTo` last asked for a path, which its check of
     /// the target reads ([`crate::movement::move_to::target_moved`]). A stop leaves it (the motion step's
     /// pause stops a unit whose `MoveTo` goes on); a new `MoveTo` sets it.
+    #[diff(gap = "genie keeps the MoveTo's point on the mover past the MoveTo")]
     pub move_to_point: Option<[f32; 3]>,
     /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
     /// `+0x34`), for the caller to hand on.
@@ -256,7 +260,8 @@ pub struct Mover {
     /// The facets of the unit's current sprite (`+0x140` -> `+0xa`, and its sequence flag bit
     /// 1), which the yaw and the facing read: the sprite the slice holds as the unit's update
     /// starts ([`crate::objects::unit::Unit`]'s), or a new unit's standing sprite; None for neither (the
-    /// master's [`MoveStats::facets`] then).
+    /// master's [`MoveStats::facets`] then). Not saved: the update's copy of its sprite's.
+    #[diff(unsaved)]
     pub sprite_facets: Option<crate::objects::facing::SpriteFacets>,
 }
 

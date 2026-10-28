@@ -1,7 +1,6 @@
 //! The way round a record on the line to the slot: the short pather, the long pather and the
 //! tile planner.
 
-use crate::groups::motion::moved_vector;
 use crate::groups::steer::{
     BLOCKED, EPSILON, MOVES, OFF_MAP, PARTIAL, REACHED, ROUND_LENGTH, ROUND_RADIUS, ROUND_REACH,
     ROUND_STILL, ROUND_TIMER,
@@ -127,7 +126,7 @@ impl World {
                 ..mover.walker(id)
             },
             computer: self.players.get(p).is_some_and(|q| q.computer),
-            at: moved_vector(u),
+            at: u.moved_vector().xhy(),
             here: u.position,
             mask: mover.stats.restriction_mask,
             restriction: mover.stats.restriction,

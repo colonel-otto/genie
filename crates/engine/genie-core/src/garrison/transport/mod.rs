@@ -15,6 +15,7 @@
 
 use crate::GenieError;
 use crate::movement::move_to::MoveTo;
+use genie_diff::Diff;
 
 mod action;
 mod shore;
@@ -86,7 +87,7 @@ pub const STACK_PLACE: GenieError =
     GenieError::unsupported("a drop location's first draw of side 4 (the place the stack holds)");
 
 /// A unit's Transport action.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct TransportAction {
     /// The action state (`+0x18`), which word 9 adds.
     pub state: u8,

@@ -242,7 +242,6 @@ pub(super) fn unit(
             charge: mo.is_charge_projectile != 0,
             flying: true,
             step,
-            attack_count: mo.rge_combat_object.attack_count,
         });
     }
     let production = production(object).map(|p| unit.production = p);

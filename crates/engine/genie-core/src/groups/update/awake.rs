@@ -291,7 +291,8 @@ impl World {
             let v = self
                 .world_object(m.id)
                 .expect("the update's start keeps only held members")
-                .moved_vector();
+                .moved_vector()
+                .xhy();
             sum = [sum[0] + v[0], sum[1] + v[1], sum[2] + v[2]];
         }
         let n = g.members.len() as i32 as f32;

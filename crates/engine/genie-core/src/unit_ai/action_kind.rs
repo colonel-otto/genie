@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::unit_ai::OrderKind;
+use genie_diff::Diff;
 
 /// An action value a unit AI holds (`+0x44`, the last one `+0x68`). Where an order serves it,
 /// the value is that order's less 100 ([`ActionKind::order`]), and the variant takes the
 /// order's name. The value setter's (`FUN_140c64b50`) 44 calls give no other value (these, −1,
 /// or a value saved or read before), nor do the unit AI's own stores, nor the work command's
 /// notify (`FUN_14106e4e0`); a save's raw value converts fallibly ([`ActionKind::try_from`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Diff)]
 #[repr(i32)]
 pub enum ActionKind {
     /// 600: attacking.

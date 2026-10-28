@@ -7,8 +7,9 @@ and writers for the game's file formats.
 Licences
 --------
 
-- Base crates, crates/base/* (genie-error, the error every crate returns): GPL-3.0-only. Text:
-  LICENSE-GPL-3.0. They depend on no crate of the workspace, and every crate may depend on them.
+- Base crates, crates/base/* (genie-error, the error every crate returns; genie-diff with
+  genie-diff-derive, the field by field comparison): GPL-3.0-only. Text: LICENSE-GPL-3.0. They
+  depend on no crate of the workspace but each other, and every crate may depend on them.
 - Format crates, crates/formats/*: GPL-3.0-only (genie-drs: GPL-3.0-or-later). Text: LICENSE-GPL-3.0.
 - Engine crates, crates/engine/*: AGPL-3.0-only. Text: LICENSE-AGPL-3.0.
 - Tool crates, crates/tools/* (genie-swiss-knife, the `gsk` command; genie-oracle, the checks

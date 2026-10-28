@@ -2448,3 +2448,15 @@ fn a_unit_without_a_footprint_takes_the_straight_way() {
     m.straight_way(start, &mut np);
     assert_eq!((np.path.points, np.path.length), (vec![start], 0.0));
 }
+
+/// A new `MoveTo`'s wait (`FUN_140aa0d30`, `FUN_140aa0df0`): never waited, no time waited, and
+/// `kDefaultWaitTime` (`+0x74`) 1 s, which a give-up replaces by the stance's.
+#[test]
+fn a_new_move_to_s_wait_lasts_a_second() {
+    use crate::movement::move_to::MoveWait;
+    let new = MoveWait::default();
+    assert_eq!((new.state, new.timer, new.delay), (0, 0.0, 1.0));
+    let mut wait = new;
+    let _ = wait.give_up(true, 2);
+    assert_eq!((wait.state, wait.delay), (1, 2.0));
+}

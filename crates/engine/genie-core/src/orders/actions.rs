@@ -59,7 +59,8 @@ impl World {
     /// `FUN_14121c890`, the attack order of `FUN_14161b970`) of object `idx` of player `player`:
     /// with a target the world holds (`FUN_1415417a0`), its unit AI remembers `order` and
     /// `action` on it ([`crate::unit_ai::UnitAi::remember_order`]) at the world's time, with the
-    /// unit's place and the target's (slot 0x520) and the target's attack category by its master
+    /// unit's and the target's slot 0x520 ([`Unit::moved_vector`]: x, height, y) and the target's
+    /// attack category by its master
     /// ([`crate::unit_ai::best_target::category`]: its own, else its owner's). An order on a point (no
     /// target) records nothing.
     pub(crate) fn remember_order(
@@ -72,7 +73,7 @@ impl World {
         let Some(target) = u.ai.as_ref().map(|a| a.current_target).filter(|&t| 0 <= t) else {
             return Ok(());
         };
-        let position = u.position;
+        let position = u.moved_vector();
         let Some((q, t)) = self.object(target) else {
             return Ok(());
         };
@@ -87,7 +88,7 @@ impl World {
             position,
             target,
             category: crate::unit_ai::best_target::category(t.life.master_id, class),
-            target_position: t.position,
+            target_position: t.moved_vector(),
         };
         if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
             ai.remember_order(record);

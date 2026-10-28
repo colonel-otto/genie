@@ -14,9 +14,10 @@ use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
 use crate::world::World;
+use genie_diff::Diff;
 
 /// One back-to-work record.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct BackToWork {
     /// `townBellTargetId` (`+0x9ac`): the top action's target (the pasture of a target in one),
     /// else the target of the unit AI's first own queued order, −1 for none.
@@ -45,7 +46,7 @@ impl BackToWork {
 }
 
 /// The town-bell flag and the two records of a combat object (type 70 and up).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct TownBell {
     /// `mTownBellFlag` (`+0x9dc`): a garrison order sent the villager into a building that takes
     /// villagers; no record is made while it holds.

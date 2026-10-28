@@ -7,11 +7,12 @@
 //! the action layer an object has are its [`Body`].
 
 use crate::movement::Mover;
+use genie_diff::Diff;
 
 /// `RGE_Animated_Object`'s own field (types 20 and up): `mCurrentSpeed` (`+0x7b8`), the speed the
 /// object's sprite clock runs at. Its constructor (`FUN_141070cf0`) sets it to 0; a moving
 /// unit's velocity sets it as it walks, and a stop clears it.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Animated {
     /// `mCurrentSpeed` (`+0x7b8`).
     pub speed: f32,
@@ -20,7 +21,7 @@ pub struct Animated {
 /// The layers of an object below its action layer, by its type: the static object alone (types
 /// below 20), the animated object (20 to 29), or the moving object (30 and up), which holds the
 /// animated one.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Diff)]
 #[expect(
     clippy::large_enum_variant,
     reason = "nearly every object moves; a box per unit would cost more than the static few save"

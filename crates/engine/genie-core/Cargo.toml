@@ -9,6 +9,8 @@ repository.workspace = true
 [dependencies]
 # the error every crate returns: its kind, reason, place and context
 genie-error = { path = "../../base/genie-error" }
+# the field by field comparison the divergence tools run on the state (FD-045-D14)
+genie-diff = { path = "../../base/genie-diff" }
 # the getters of the newtypes (an object id, a player, a master, a point): their values are
 # private, so only the constructors that check them set them (FD-001-D23)
 getset.workspace = true

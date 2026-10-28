@@ -264,7 +264,7 @@ impl World {
                 .iter()
                 .map(|m| {
                     self.object(m.id)
-                        .map(|(_, u)| (self.top_target_object(u), moved_vector(u)))
+                        .map(|(_, u)| (self.top_target_object(u), u.moved_vector().xhy()))
                 })
                 .collect(),
         };
@@ -300,12 +300,3 @@ impl World {
 /// The ignore list the short pather and the walk's query take of the lead's group, at most this
 /// many (`FUN_14100bbe0` with `0x80`; the request's own loop stops past `0x7f`).
 pub(super) const SHORT_IGNORED: usize = 128;
-
-/// Slot 0x520 of a unit: where it last moved to, as the game's vector (x, height, y).
-pub(in crate::groups) fn moved_vector(u: &crate::objects::unit::Unit) -> Vec3 {
-    u.body
-        .mover()
-        .map_or([u.position[0], u.position[2], u.position[1]], |m| {
-            [m.moved_at[0], m.moved_at[2], m.moved_at[1]]
-        })
-}

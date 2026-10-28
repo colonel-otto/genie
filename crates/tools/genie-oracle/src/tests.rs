@@ -57,14 +57,17 @@ fn a_building_s_production_state_comes_before_its_top_action_s() {
 /// object in one list alone is one too; the lines are the differences' texts.
 #[test]
 fn differences_name_the_object_its_master_and_the_field() {
-    let row = |id, master, hp| ObjectRow {
-        id,
-        master,
-        hp,
-        ..ObjectRow::default()
+    let unit = |id, master, hp| {
+        let mut u = Unit {
+            id,
+            ..Unit::default()
+        };
+        u.life.master_id = master;
+        u.life.hp = hp;
+        u
     };
-    let slice = [row(1, 83, 25.0), row(2, 83, 25.0), row(4, 4, 1.0)];
-    let game = [row(1, 83, 25.0), row(2, 293, 24.0), row(3, 59, 1.0)];
+    let slice = [unit(1, 83, 25.0), unit(2, 83, 25.0), unit(4, 4, 1.0)];
+    let game = [unit(1, 83, 25.0), unit(2, 293, 24.0), unit(3, 59, 1.0)];
     let d = object_field_differences(&slice, &game);
     let fields: Vec<(i32, i16, &str)> = d
         .iter()
@@ -73,16 +76,16 @@ fn differences_name_the_object_its_master_and_the_field() {
     assert_eq!(
         fields,
         [
-            (2, 293, "master"),
-            (2, 293, "hp"),
+            (2, 293, "life.hp"),
+            (2, 293, "life.master_id"),
             (3, 59, ONLY_IN_THE_GAME),
             (4, 4, ONLY_IN_THE_SLICE)
         ]
     );
-    assert_eq!(d[1].to_string(), "2: hp slice 25.0 game 24.0");
-    assert!(
-        d[2].to_string()
-            .starts_with("3: only in the game (ObjectRow {")
+    assert_eq!(d[0].to_string(), "2: life.hp slice 25.0 game 24.0");
+    assert_eq!(
+        d[2].to_string(),
+        "3: only in the game (master 59 state 2 hp 1.0 at [0.0, 0.0, 0.0] action None)"
     );
     assert_eq!(
         object_differences(&slice, &game),

@@ -17,6 +17,7 @@ use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::{SideWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::world_view::owner_view;
 use crate::unit_ai::world_view::{AiStart, UnitView, Wait};
+use genie_diff::Diff;
 
 /// The action type (`+0x8`, 0x9a).
 pub const WAIT_SOLIDIFY: i16 = 0x9a;
@@ -30,7 +31,7 @@ const SOLID_FROM: f64 = crate::math::image::wait_solidify::SOLID_FROM;
 
 /// `TRIBE_Action_Wait_Solidify`: its state (`+0x18`), its task (`+0x48`) and the foundation it
 /// waits for (`+0x68`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct WaitSolidify {
     /// `+0x18`.
     pub state: u8,

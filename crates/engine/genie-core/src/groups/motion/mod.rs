@@ -18,7 +18,6 @@ pub(in crate::groups) use self::levels::{hold, passes_waypoint};
 use self::request::request;
 use self::step::Pass;
 pub(crate) use self::step::{StepWorld, path_step};
-pub(in crate::groups) use self::walk::moved_vector;
 use self::walk::{SHORT_IGNORED, steer};
 #[cfg(test)]
 use crate::map::spatial::Spatial;

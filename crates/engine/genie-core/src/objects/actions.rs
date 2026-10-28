@@ -23,13 +23,14 @@ use crate::movement::explore::ExploreAction;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveToAction;
 use crate::ownership::artifact::Artifact;
+use genie_diff::Diff;
 
 /// Declares the action kinds: the [`Action`] variants and, for each, the list's accessors.
 macro_rules! action_kinds {
     ($($(#[$doc:meta])* $variant:ident($ty:ty) => $get:ident, $get_mut:ident, $take:ident,
         $set:ident, $with:ident;)*) => {
         /// One action of an object's list, by its kind.
-        #[derive(Clone, Debug, PartialEq)]
+        #[derive(Clone, Debug, PartialEq, Diff)]
         pub enum Action {
             $($(#[$doc])* $variant($ty),)*
         }
@@ -201,7 +202,7 @@ impl Action {
 }
 
 /// The object's actions (`RGE_Action_List`), the head first.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct ActionList(Vec<Action>);
 
 impl ActionList {

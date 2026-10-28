@@ -4,7 +4,7 @@
 use crate::command_args::Frame;
 use crate::masters::{MasterTable, TerrainTable};
 use crate::{
-    Decoder, Dumps, Error, ObjectRow, SavedStep, TickReport, frames, ghost_pool_from_dump, groups,
+    Decoder, Dumps, Error, SavedStep, TickReport, frames, ghost_pool_from_dump, groups,
     inside_lists_from_dump, listed, mesh_from_dump, mesh_owners_from_dump, object_differences,
     recycle_pools_from_dump, registry_from_dump, run, slice, spatial, tile_differences,
     tile_lists_from_dump, visibility_differences, watch_at_load,
@@ -56,12 +56,6 @@ fn player_differences(
     let player = &turns.players[p];
     let id = p as u32;
     let frozen = stops(player, id, tick, report);
-    let rows: Vec<ObjectRow> = player
-        .objects
-        .iter()
-        .filter(|u| listed(u))
-        .map(ObjectRow::of_unit)
-        .collect();
     let game = after.objects.get(p).ok_or(Error::NoSuchPlayer(id))?;
     if !player.stopped {
         stock_differences(player, &after.game, p, report);
@@ -80,7 +74,7 @@ fn player_differences(
         for d in tech_differences(player, &after.game, p) {
             report.differences.push((id, d));
         }
-        for d in object_differences(&rows, game) {
+        for d in object_differences(player.objects.iter().filter(|u| listed(u)), game) {
             let object = d.split(':').next().and_then(|o| o.parse::<i32>().ok());
             if !object.is_some_and(|o| frozen.contains(&o)) {
                 report.differences.push((id, d));

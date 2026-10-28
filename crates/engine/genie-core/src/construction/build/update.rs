@@ -34,11 +34,7 @@ impl BuildAction {
             task,
             added: false,
             timer: 0.0,
-            move_wait: MoveWait {
-                state: 0,
-                timer: 0.0,
-                delay: 0.0,
-            },
+            move_wait: MoveWait::default(),
             site: -1,
             drop_range: 0.0,
         }

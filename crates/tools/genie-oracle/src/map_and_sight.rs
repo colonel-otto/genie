@@ -2,7 +2,7 @@
 //! sees them, the visible maps and resources against the game's.
 
 use crate::masters::{MasterTable, TerrainTable};
-use crate::{Error, ObjectRow, game_state, header_objects, moving_speed, placement, saved_ghosts};
+use crate::{Error, game_state, header_objects, moving_speed, placement, saved_ghosts};
 use genie_core::vision::visibility::{
     BuildingSight, Extent, Seer, Visibility, VisibleMap, VisibleResource, VisibleResources,
     capture_kind,
@@ -105,7 +105,7 @@ pub(super) fn tile_differences(
 ///
 /// [`forced_run`]: crate::forced_replay::forced_run
 pub(super) struct SavedStep {
-    pub(super) objects: Vec<Vec<ObjectRow>>,
+    pub(super) objects: Vec<Vec<genie_core::objects::unit::Unit>>,
     /// Each player's ghosts (type 25) in its list's order.
     pub(super) ghosts: Vec<Vec<genie_core::vision::ghost::Ghost>>,
     pub(super) seen: Visibility,
@@ -119,7 +119,7 @@ impl SavedStep {
         let chapter = de::chapters(save)?[0];
         let header = chapter.header()?;
         let objects = (0..header.players().len() as u32)
-            .map(|id| header_objects(&header, id))
+            .map(|id| header_objects(&header, id, masters))
             .collect::<Result<_, _>>()?;
         let (width, terrain) = saved_terrain(&header);
         Ok(Self {

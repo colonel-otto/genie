@@ -17,6 +17,7 @@ use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
 use crate::unit_ai::ActionKind;
 use crate::world::context::Context;
+use genie_diff::Diff;
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
 /// caller: the action is not quiet (`+0x60` 0, its constructors' `FUN_140a73e90` with 1), so the
@@ -69,7 +70,7 @@ pub struct SubActionsGone {
 }
 
 /// One animal's Artifact action, as the checkpoint sees it.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Artifact {
     /// 6 checks for a new owner; 10 waits for the timer.
     pub state: u8,

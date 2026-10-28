@@ -19,6 +19,7 @@ use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::Master;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
+use genie_diff::Diff;
 
 mod clearing;
 mod construction;
@@ -68,7 +69,7 @@ const UNSEEN_SITE: GenieError =
     GenieError::unsupported("a foundation its owner sees only through its ghosts (slot 0x1e0)");
 
 /// The Build action of a builder (`TRIBE_Action_Build`, type 101).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct BuildAction {
     /// The foundation's id.
     pub target: i32,
@@ -98,13 +99,16 @@ pub struct BuildAction {
     pub site: i32,
     /// The range of its drop-off's `MoveTo` (that `MoveTo`'s `+0x68`): the drop site's task's
     /// for the builder (`+0x30`), else the Build task's.
+    #[diff(
+        gap = "the MoveTo's range (+0x68) is held per owning action; the save's sub-action holds one"
+    )]
     pub drop_range: f32,
 }
 
 /// What a builder's Build task gives its work: the task's work range (`+0x30`; its `MoveTo` to the
 /// foundation stops this near) and work value (`+0x28`, `work_val1`), and the builder's work rate:
 /// its master's `work_rate` (`+0x798`) plus its own `mWorkRatePowerup` (`+0xa30`, slot 0x6e8).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct BuildTask {
     /// The task's work range.
     pub range: f32,
@@ -122,7 +126,7 @@ pub struct BuildTask {
 }
 
 /// A building under construction (`TRIBE_Building_Object`), with what its master says of it.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Construction {
     /// `+0xc50`, `build_pts`: the seconds of work it has had.
     pub progress: f32,
@@ -138,6 +142,9 @@ pub struct Construction {
     /// The record its start adds: its master's obstruction kind and class.
     pub record: Obstruction,
     /// `+0xc61`, `snow_flag`: it was completed on snow (its decal is not held).
+    #[diff(
+        gap = "the teardowns' clearing (FUN_1411d5600, FUN_1411ad250) is not ported; the game's flag has three values"
+    )]
     pub snow: bool,
     /// `+0x788`, `sprite_override_id`, is not −1.
     pub sprite_override: bool,

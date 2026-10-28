@@ -111,10 +111,11 @@ use self::surroundings::{
 use crate::math::rng::Well512;
 #[cfg(test)]
 use crate::movement::PathAsk;
+use genie_diff::Diff;
 
 /// A notify to a unit AI (the save's `temp_notify`, 0x18 bytes): from `caller` to `recipient`, of
 /// `kind`, with three parameters.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Diff)]
 pub struct Notify {
     /// The object that posts it.
     pub caller: i32,
@@ -276,7 +277,7 @@ pub const fn notify_capacity(ai_type: u32, count: usize) -> usize {
 
 /// A queued order (the save's `temp_order`, 0x34 bytes), which the order queue (`+0x18` count,
 /// `+0x20` array) runs once the unit can take it ([`UnitAi::run_orders`]).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct QueuedOrder {
     /// `+0x0`: the issuing player.
     pub issuer: i32,
@@ -428,7 +429,7 @@ pub fn first_move(effects: &[Effect]) -> Option<AiMove> {
 /// A unit AI's saved patrol (`+0x1c0`, a `Path` of its own): a copy of its unit's top path
 /// (the unit's slot 0x468, `FUN_141157c50`: `FUN_140f95c00` into a new path) with that path's
 /// flags (`+0xc`: bit 0 a loop, bit 1 back and forth, `getPatrolLinear` `FUN_140c4df80`).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct PatrolPath {
     /// The points (x, height, y) and the length.
     pub path: crate::pathing::tile_path::Path,
@@ -437,7 +438,7 @@ pub struct PatrolPath {
 }
 
 /// The unit-AI fields the idle update reads and writes, with their offsets in 158041.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct UnitAi {
     /// The factory's type (`has_ai` in the save), which picks the class.
     pub ai_type: u32,
@@ -509,7 +510,9 @@ pub struct UnitAi {
     pub stop_after_kill: bool,
     /// A boar's own fields (factory type 4).
     pub home: Option<Home>,
-    /// A hunted animal's own fields (factory type 2).
+    /// A hunted animal's own fields (factory type 2). Not saved: a load makes the unit AI anew,
+    /// its origin the animal's place then, so a replay takes them from the recording's start.
+    #[diff(unsaved)]
     pub hunted: Option<Hunted>,
     /// `+0x15c`, `last_update_time_value`: what `FUN_140c5dc10` last cleared the notifies with
     /// (the owner's time on its turn, the world time on a MOVE or an ownership change).
@@ -524,6 +527,7 @@ pub struct UnitAi {
     /// Its capacity (`+0x2c`, not saved): the factory's 10 (5 for the artifact's and the
     /// livestock's, types 14 and 19), doubled by a post that finds it full outside the
     /// processing (`FUN_140c42470`).
+    #[diff(unsaved)]
     pub notify_capacity: usize,
     /// `+0x38`: the notifies are being processed; a post that finds the queue full then goes to
     /// the buffer (`DAT_143e6f930`), which the processing's end flushes into the queue
@@ -532,7 +536,9 @@ pub struct UnitAi {
     /// The buffered notifies (the game's buffer is global; one unit AI processes at a time).
     pub buffered: Vec<Notify>,
     /// This update gave the unit an action of its own (the attack command, from `AttackObject`):
-    /// its action list is no longer as [`Surroundings::busy`] read it.
+    /// its action list is no longer as [`Surroundings::busy`] read it. Not saved: genie's flag
+    /// within one update, cleared at its start.
+    #[diff(unsaved)]
     pub commanded: bool,
     /// `+0xc0`, the attackers (count `+0xc8`): a set of object ids kept sorted
     /// (`FUN_140b43f30`), which a boar's damage notify adds to and the full update prunes; the
@@ -553,7 +559,7 @@ pub struct UnitAi {
 }
 
 /// An order on a target in a unit AI's history (`FUN_140c42080`, a node of `+0x78`'s list).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct OrderRecord {
     /// The order (`mOrder`), None for the −1 of an order recorded without one.
     pub order: Option<OrderKind>,
@@ -561,14 +567,14 @@ pub struct OrderRecord {
     pub action: Option<ActionKind>,
     /// The world time it was given (`mTime`).
     pub time: u32,
-    /// The unit's place then (slot 0x520, `mPosition`).
-    pub position: [f32; 3],
+    /// The unit's slot 0x520 then (`mPosition`: where it last moved to).
+    pub position: crate::math::game_vector::GameVector,
     /// The target (`mTargetID`).
     pub target: i32,
     /// The target's attack category ([`crate::unit_ai::best_target::category`], `mTargetAttackCategory`).
     pub category: i32,
-    /// The target's place then (`mTargetPosition`).
-    pub target_position: [f32; 3],
+    /// The target's slot 0x520 then (`mTargetPosition`).
+    pub target_position: crate::math::game_vector::GameVector,
 }
 
 /// The order history's length (`FUN_140c42080`: a ninth order recycles the oldest).
@@ -577,7 +583,7 @@ pub const ORDER_HISTORY: usize = 8;
 /// A hunted animal's part of its unit AI (`TribeHuntedAnimalUnitAIModule`, factory type 2), set
 /// when the AI is made (`FUN_140c11920`) and not saved: a loaded game makes it from the loaded
 /// unit.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Hunted {
     /// `+0x1f0`..`+0x1f8`: the unit's place when its AI was made.
     pub origin: [f32; 3],

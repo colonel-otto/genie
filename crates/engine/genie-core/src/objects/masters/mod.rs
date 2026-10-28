@@ -7,6 +7,7 @@
 
 use crate::GenieError;
 use crate::movement::MoveStats;
+use genie_diff::Diff;
 
 mod combat_setters;
 mod derived;
@@ -28,12 +29,12 @@ use crate::unit_ai::task_finder::{Actor, Diplomacy, TaskTarget};
 
 /// A task's id in its master's task list ([`Task::id`], `+0xa`), as an action keeps the task it
 /// works on (`+0x48`; the save writes the id, −1 for none).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Diff)]
 pub struct TaskId(pub i16);
 
 /// One task of a master's task list (`RGE_Task`), with the memory offsets the task finder reads
 /// (the save's names; the `.dat`'s in brackets where they differ).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Task {
     /// `+0xa`.
     pub id: i16,
@@ -164,7 +165,7 @@ impl Master {
 
 /// What a building's completion (`FUN_1411dbb70` with 2) reads of its master, the `.dat`'s type
 /// 80 values.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct BuildingMaster {
     /// `+0x980`, `adjacent_mode`: walls and gates join their neighbours (`FUN_1411ce890`).
     pub adjacent_mode: u8,
@@ -203,7 +204,7 @@ pub struct BuildingMaster {
 }
 
 /// The master values the task finder and the work command read.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Diff)]
 pub struct Master {
     /// The master's id.
     pub id: i16,
@@ -501,7 +502,7 @@ pub struct Master {
 }
 
 /// One damage sprite of a master (`+0x638`'s entries; the save's `damage_sprite`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Diff)]
 pub struct DamageGraphic {
     /// `+0x0`, the sprite (`tempId`, −1 for none).
     pub sprite: i16,
@@ -524,7 +525,7 @@ impl Default for DamageGraphic {
 
 /// One train location of a combat master (`+0x898`'s 12-byte entries; the save's
 /// `train_location`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Diff)]
 pub struct TrainLocation {
     /// `+0x0`, `trainLocationID`: the master that makes it.
     pub location: i16,
@@ -538,7 +539,7 @@ pub struct TrainLocation {
 
 /// A moving master's trail (`obj_trail_id`, `obj_trail_options`, `obj_trail_spacing`; the
 /// `.dat`'s tracking unit, its mode and density).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Trail {
     /// `+0x75e`: the master it leaves behind.
     pub unit: i16,
@@ -549,7 +550,7 @@ pub struct Trail {
 }
 
 /// What a combat master shows of its values (`+0x856`, `+0x858`, `+0x854`, `+0x8b0`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct Shown {
     /// `+0x856`, `orig_weapon`.
     pub attack: i16,

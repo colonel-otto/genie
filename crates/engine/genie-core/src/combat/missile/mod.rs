@@ -10,6 +10,7 @@
 
 use crate::GenieError;
 use crate::math::fmath;
+use genie_diff::Diff;
 
 pub(crate) mod unit;
 
@@ -51,7 +52,7 @@ const VOLLEY_REACH_MARGIN: f32 = crate::math::image::missile::VOLLEY_REACH_MARGI
 /// (`+0x888`, `ballistics_ratio`); its master's speed (slot 0xe8, `+0x740`), radii
 /// (`+0x5d8`..`+0x5e0`) and the `.dat`'s `fly_mode` (`+0x608`: 0 holds it on the ground, 1 above
 /// it, `FUN_141193a10`).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Diff)]
 pub struct MissileStats {
     /// `projectile_type` (`+0x880`).
     pub projectile_type: u8,
@@ -74,7 +75,7 @@ pub struct MissileStats {
 /// Where a missile came from (`+0x9c`, `mProjectileData`, `FUN_140aa86e0`): the firing object's
 /// place, the missile master's radii on the ground, the firing object's master and owner (−1
 /// both without one, `FUN_140aa8720`). The hit's elevation reads its height.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Origin {
     /// The firing object's place.
     pub position: [f32; 3],
@@ -110,7 +111,7 @@ impl Origin {
 }
 
 /// The missile action (type 8).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Diff)]
 pub struct MissileAction {
     /// `+0x18`.
     pub state: u8,
@@ -138,11 +139,12 @@ pub struct MissileAction {
     /// `+0x9c`.
     pub origin: Origin,
     /// `+0x88`: the objects the last step met (not saved: none after a load).
+    #[diff(unsaved)]
     pub met: Vec<i32>,
 }
 
 /// A missile object's own part.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct Missile {
     /// `+0x990`: how far it flies at most (`max_range`).
     pub max_range: f32,
@@ -151,11 +153,11 @@ pub struct Missile {
     /// `+0x99c` (`mIsChargeProjectile`): a charge's projectile.
     pub charge: bool,
     /// `+0x994`: farther than [`LANDING`] from its point; the ground does not stop it.
+    /// Not saved: the load's constructor sets 1.
+    #[diff(unsaved)]
     pub flying: bool,
     /// `+0x7dc`..`+0x7e4`: this update's step (the moving object's `velocity_x`..`_z`).
     pub step: [f32; 3],
-    /// `+0x900`: the firing object's attack count when fired.
-    pub attack_count: i32,
 }
 
 /// `FUN_141081020`'s place for a new missile: the firing object's place plus its master's weapon

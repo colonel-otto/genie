@@ -464,6 +464,7 @@ dependencies = [
 name = "genie-core"
 version = "0.1.0"
 dependencies = [
+ "genie-diff",
  "genie-error",
  "getset",
  "libm",
@@ -497,6 +498,22 @@ dependencies = [
  "genie-support",
  "jascpal",
  "thiserror",
+]
+
+[[package]]
+name = "genie-diff"
+version = "0.1.0"
+dependencies = [
+ "genie-diff-derive",
+]
+
+[[package]]
+name = "genie-diff-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -579,6 +596,7 @@ dependencies = [
  "genie-command-codec",
  "genie-core",
  "genie-dat",
+ "genie-diff",
  "genie-json",
  "genie-rec",
  "genie-save",

@@ -1,6 +1,7 @@
 //! What a unit's actions hold: their taker, its top action, target and gait.
 
 use crate::GenieError;
+use crate::math::game_vector::GameVector;
 use crate::objects::actions::Action;
 use crate::objects::masters::Master;
 use crate::objects::unit::{TAKEN_OUT, Unit};
@@ -8,6 +9,14 @@ use crate::world::BUILDING_KIND;
 use crate::world::checkpoint::TopAction;
 
 impl Unit {
+    /// Slot 0x520: where it last moved to, as the game's vector: a moving object's `+0x824`
+    /// (`FUN_14106d530`, [`crate::movement::Mover::moved_at`]), any other's place
+    /// (`FUN_141196c10`).
+    #[must_use]
+    pub(crate) fn moved_vector(&self) -> GameVector {
+        GameVector::of_place(self.body.mover().map_or(self.position, |m| m.moved_at))
+    }
+
     /// The stand-in left in a list for a unit taken out of it ([`TAKEN_OUT`]).
     #[must_use]
     pub(crate) fn taken_out() -> Self {

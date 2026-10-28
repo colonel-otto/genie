@@ -286,10 +286,8 @@ pub fn header_divergences(
         run(&mut turns, &mut decoder, std::slice::from_ref(frame));
         let update = i + 1;
         for (k, &p) in players.iter().enumerate() {
-            if let (false, Some((tick, object, why))) =
-                (done[k], turns.players[p as usize].unsupported.as_ref())
-            {
-                out[k] = Followed::Stops(CensusStop::of(*tick, *object, why));
+            if let (false, Some(stop)) = (done[k], stop_of(&turns, p)) {
+                out[k] = Followed::Stops(stop);
                 done[k] = true;
             }
         }
@@ -309,8 +307,8 @@ pub fn header_divergences(
                 continue;
             }
             let differences = crate::object_field_differences(
-                &crate::object_rows(&turns, p as usize),
-                &crate::header_objects(&saved, p)?,
+                crate::object_rows(&turns, p as usize),
+                &crate::header_objects(&saved, p, masters)?,
             );
             if !differences.is_empty() {
                 out[k] = Followed::Leaves(Divergence {
@@ -322,6 +320,14 @@ pub fn header_divergences(
         }
     }
     Ok(out)
+}
+
+/// Player `p`'s stop, once the slice could not model one of its updates.
+pub(crate) fn stop_of(world: &World, p: u32) -> Option<CensusStop> {
+    world.players[p as usize]
+        .unsupported
+        .as_ref()
+        .map(|(tick, object, why)| CensusStop::of(*tick, *object, why))
 }
 
 /// The first update from `first` to `last` after which the world's next object id

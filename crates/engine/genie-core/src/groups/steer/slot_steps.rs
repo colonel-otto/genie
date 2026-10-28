@@ -3,7 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::SpecificMove;
-use crate::groups::motion::{moved_vector, passes_waypoint};
+use crate::groups::motion::passes_waypoint;
 use crate::groups::steer::{
     BUILDING_KIND, CATCH_UP, CATCH_UP_SPAN, LINKED_RADIUS, MOVES, SLOT_REACH,
 };
@@ -64,7 +64,7 @@ impl World {
         let solid = mover.stats.radius.iter().all(|&r| 0.0 < r);
         let found = if solid {
             let members: Vec<i32> = g.members.iter().map(|m| m.id).collect();
-            let at = moved_vector(u);
+            let at = u.moved_vector().xhy();
             let walker = mover.walker(id);
             let mut plan = crate::movement::Planning {
                 pathing: &mut self.pathing,
@@ -130,7 +130,7 @@ impl World {
             count: s.graphic.facets,
             flag_1: s.graphic.flags & 2 != 0,
         });
-        let at = moved_vector(u);
+        let at = u.moved_vector().xhy();
         let mover = u.body.mover_mut().expect(MOVES);
         let direction = mover.direction_to(at, to);
         let (turn, _) = mover.turn_toward(mover.forward, direction, mover.turn_dt(dt));
@@ -312,7 +312,7 @@ impl World {
         let Some((_, u)) = self.object(id) else {
             return false;
         };
-        let last = moved_vector(u);
+        let last = u.moved_vector().xhy();
         let own = &mut self.groups.get_mut(group).expect("held").members[index].specific_move;
         *own = if reason == -1 {
             SpecificMove {

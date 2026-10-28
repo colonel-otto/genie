@@ -18,6 +18,7 @@ use crate::gathering::hunt::{HuntSprites, HuntTask};
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait};
 use crate::objects::sprite::ActiveSprite;
+use genie_diff::Diff;
 
 mod point_walks;
 mod start;
@@ -121,7 +122,7 @@ pub(crate) const FARM_FOOD_SOLD: usize = 96;
 const FARM_FOOD_KIND: i16 = 16;
 
 /// The Gather action of a gatherer (`RGE_Action_Gather`, type 5), with the save's fields.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Diff)]
 pub struct GatherAction {
     /// The target object (`+0x20`, its id at `+0x30`), −1 for none.
     pub target: i32,
@@ -149,6 +150,7 @@ pub struct GatherAction {
     /// `+0x78`, `+0x7c`: `mLastStopX`, `mLastStopY`.
     pub last_stop: [f32; 2],
     /// `+0x80`: the gathering started (`set_state(7)`); not saved.
+    #[diff(unsaved)]
     pub worked: bool,
     /// `+0x84`, `+0x88`: `mFarmX`, `mFarmY`, a farm's place.
     pub farm: [f32; 2],
@@ -163,6 +165,9 @@ pub struct GatherAction {
     pub walk_to: Option<[f32; 3]>,
     /// That `MoveTo`'s range (`+0x68`): the task's, or for a walk to a point (states 11, 15 and
     /// 0xf2) the target's radius plus the task's.
+    #[diff(
+        gap = "the MoveTo's range (+0x68) is held per owning action; the save's sub-action holds one"
+    )]
     pub walk_range: f32,
     /// Its `MoveTo`'s wait after the motion step gave up.
     pub move_wait: MoveWait,
