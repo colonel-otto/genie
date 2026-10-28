@@ -1662,7 +1662,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     let centre = &mut t.players[1].objects[2];
     let mut attack = own_attack(-1, 1, 0.0);
     attack.arms.idle_sprite = Some(stand);
-    centre.attack = Some(attack);
+    centre.actions.set_attack(Some(attack));
     // its unit AI on the attack's action, which takes the Attack's invalidation
     centre.ai = Some(crate::unit_ai::UnitAi {
         current_action: 600,
@@ -1674,7 +1674,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     })
     .unwrap();
     let centre = &t.players[1].objects[2];
-    assert_eq!(centre.attack, None);
+    assert_eq!(centre.actions.attack().copied(), None);
     assert_eq!(
         (
             centre.sprite.map(|s| s.graphic.id),
@@ -1689,7 +1689,9 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
             .any(|n| n.kind == 0x1fb && n.p == [600, -1, 0])
     );
     let mut t = forage_world();
-    t.players[1].objects[0].attack = Some(own_attack(77, 1, 0.0));
+    t.players[1].objects[0]
+        .actions
+        .set_attack(Some(own_attack(77, 1, 0.0)));
     let at = t.players[1].objects[0].position;
     let r = in_update(&mut t, (1, 0), 50, |u, c, _| {
         u.attack_part(c, me(9175, at), None)

@@ -143,7 +143,7 @@ impl World {
         use crate::construction::build::DropSearch;
         let by = self.releaser(p, idx);
         let unit = &self.players[p].objects[idx];
-        let build = unit.build.as_ref().expect("the caller's Build");
+        let build = unit.actions.build().expect("the caller's Build");
         let (target, counted, task_range) = (build.target, build.added, build.task.range);
         let (amount, held, at) = (
             unit.life.amount,
@@ -174,7 +174,7 @@ impl World {
             group: unit.group.id,
             action_state: crate::construction::build::DROP,
         };
-        let build = unit.build.as_mut().expect("the caller's Build");
+        let build = unit.actions.build_mut().expect("the caller's Build");
         build.added = false;
         let mut walk = crate::movement::move_to::Walk {
             mover: unit.body.mover_mut(),

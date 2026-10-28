@@ -29,7 +29,9 @@ impl Unit {
         let Some(mut missile) = self.missile.take() else {
             return Ok(());
         };
-        let flown = self.fly_missile(&mut missile, c, others);
+        let mut action = self.actions.take_missile();
+        let flown = self.fly_missile(&mut missile, &mut action, c, others);
+        self.actions.set_missile(action);
         self.missile = Some(missile);
         flown
     }
@@ -87,6 +89,7 @@ impl Unit {
     pub(crate) fn fly_missile(
         &mut self,
         missile: &mut crate::combat::missile::Missile,
+        slot: &mut Option<crate::combat::missile::MissileAction>,
         c: &mut Context<'_>,
         others: &mut [Self],
     ) -> Result<(), GenieError> {
@@ -99,7 +102,7 @@ impl Unit {
         let stats = master.missile_stats.ok_or(GenieError::unsupported(
             "a missile whose master has no flight",
         ))?;
-        let Some(action) = missile.action.as_mut() else {
+        let Some(action) = slot.as_mut() else {
             return Ok(());
         };
         self.missile_ends(action, c, others)?;
@@ -150,7 +153,7 @@ impl Unit {
             self.missile_hits(action, &stats, fired, old, c, others)?;
         }
         if ground == at[2] {
-            self.missile_lands(missile, &stats, c, others)?;
+            self.missile_lands(missile, slot, &stats, c, others)?;
         }
         Ok(())
     }
@@ -431,7 +434,8 @@ impl Unit {
     /// shooter go; `FUN_14118f1e0`: its hit points 0 and state 7).
     pub(crate) fn missile_lands(
         &mut self,
-        missile: &mut crate::combat::missile::Missile,
+        missile: &crate::combat::missile::Missile,
+        slot: &mut Option<crate::combat::missile::MissileAction>,
         stats: &crate::combat::missile::MissileStats,
         c: &mut Context<'_>,
         others: &mut [Self],
@@ -441,7 +445,7 @@ impl Unit {
             by: missile.fired_from,
         };
         let charge = fired.charge;
-        let Some(action) = missile.action.as_mut() else {
+        let Some(action) = slot.as_mut() else {
             return Ok(());
         };
         if action.state != crate::combat::missile::DONE
@@ -496,7 +500,7 @@ impl Unit {
         }
         self.end_missile(action);
         if stats.vanish_mode & 2 == 0 {
-            if let Some(a) = missile.action.take() {
+            if let Some(a) = slot.take() {
                 let by = self.releaser(c);
                 c.releases.extend(
                     [a.target, a.fired_from]

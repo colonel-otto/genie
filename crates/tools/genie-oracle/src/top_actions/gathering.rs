@@ -25,12 +25,13 @@ pub(super) fn import_make(
     if base.sub_actions.entries().next().is_some() {
         return Err(GenieError::unsupported("a saved Make with a sub-action"));
     }
-    unit.make = Some(genie_core::gathering::make::MakeAction {
-        state: base.state,
-        remaining: base.timer,
-        total: make.work_timer,
-        task: saved.task(task_at)?,
-    });
+    unit.actions
+        .set_make(Some(genie_core::gathering::make::MakeAction {
+            state: base.state,
+            remaining: base.timer,
+            total: make.work_timer,
+            task: saved.task(task_at)?,
+        }));
     Ok(())
 }
 
@@ -112,7 +113,7 @@ pub(super) fn import_hunt(
             ));
         }
     }
-    unit.hunt = Some(hunt);
+    unit.actions.set_hunt(Some(hunt));
     Ok(())
 }
 
@@ -195,6 +196,6 @@ pub(super) fn import_gather(
         gather.walk_range = sub_range(sub)?;
         gather.move_wait = saved_move_wait(sub);
     }
-    unit.gather = Some(gather);
+    unit.actions.set_gather(Some(gather));
     Ok(())
 }

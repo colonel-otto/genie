@@ -23,7 +23,7 @@ impl Unit {
         me: Me,
         own: Option<Victim>,
     ) -> Result<(), GenieError> {
-        if let Some(attack) = self.attack.as_mut().filter(|a| a.target == -1) {
+        if let Some(attack) = self.actions.attack_mut().filter(|a| a.target == -1) {
             // the unit's own Attack after its target went ([`Attack::lost`])
             let master = c
                 .masters
@@ -44,7 +44,7 @@ impl Unit {
             if matches!(code, 1 | 3) {
                 self.delete_attack(c)?;
             }
-        } else if let Some(attack) = self.attack.as_mut() {
+        } else if let Some(attack) = self.actions.attack_mut() {
             // the unit's own Attack (slot 6, 0x140a82ae0), its notifies posted to its unit AI
             // (slot 0x328); codes 1 and 3 delete it (RGE_Action_Object::update)
             let master = c
@@ -169,7 +169,7 @@ impl Unit {
     /// The hunter or the attacker as a combat object, which its hits read and change: none for a
     /// unit without a Hunt or an Attack, or without its master.
     pub(crate) fn own_victim(&self, c: &Context<'_>) -> Option<Victim> {
-        (self.hunt.is_some() || self.attack.is_some())
+        (self.actions.hunt().is_some() || self.actions.attack().is_some())
             .then_some(())
             .and_then(|()| {
                 let master = c.masters?.get(self.life.master_id)?;

@@ -300,11 +300,11 @@ impl Unit {
             .ok_or(GenieError::unsupported(
                 "a bird of a master the slice does not have",
             ))?;
-        self.fly = Some(Fly::start(
+        self.actions.set_fly(Some(Fly::start(
             task,
             self.position,
             c.streams.get(Stream::Action),
-        ));
+        )));
         if fly_mode == 1 {
             self.position[2] = HEIGHT;
             c.spatial.set_position(self.id, self.position);

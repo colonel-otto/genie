@@ -157,7 +157,7 @@ pub(crate) fn meeting_target(
     if let Some(e) = t.unmodelled_action.clone() {
         return Err(e);
     }
-    let action_point = match (t.top_action_kind(), t.move_to) {
+    let action_point = match (t.top_action_kind(), t.actions.move_to().copied()) {
         (Some(crate::movement::move_to::MOVE_TO), Some(m)) => m
             .goal
             .or_else(|| t.body.mover().and_then(|v| v.move_to_point))
@@ -165,7 +165,8 @@ pub(crate) fn meeting_target(
             .ok_or(UNPLACED),
         // the Transport's point (+0x38, +0x3c), where it sails
         (Some(crate::garrison::transport::TRANSPORT), _) => t
-            .transport
+            .actions
+            .transport()
             .map(|tr| [tr.point[0], tr.point[1]])
             .ok_or(UNPLACED),
         _ => Err(UNPLACED),

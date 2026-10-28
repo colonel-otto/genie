@@ -207,7 +207,7 @@ impl World {
             }
             let (_, u) = self.object_mut(id).expect("found above");
             let held = u.life.amount;
-            let Some(make) = u.make.as_mut() else {
+            let Some(make) = u.actions.make_mut() else {
                 continue;
             };
             let f = held + make.remaining;

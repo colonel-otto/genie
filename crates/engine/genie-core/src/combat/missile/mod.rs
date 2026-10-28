@@ -142,7 +142,7 @@ pub struct MissileAction {
 }
 
 /// A missile object's own part.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Missile {
     /// `+0x990`: how far it flies at most (`max_range`).
     pub max_range: f32,
@@ -156,8 +156,6 @@ pub struct Missile {
     pub step: [f32; 3],
     /// `+0x900`: the firing object's attack count when fired.
     pub attack_count: i32,
-    /// Its action, until the action list goes (a dead missile's, or its destruction's).
-    pub action: Option<MissileAction>,
 }
 
 /// `FUN_141081020`'s place for a new missile: the firing object's place plus its master's weapon

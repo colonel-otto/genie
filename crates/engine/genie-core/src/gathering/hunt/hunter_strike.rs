@@ -38,9 +38,9 @@ impl Unit {
             "an attack's target the slice does not hold live",
         ))?;
         let own = own.take().ok_or(crate::world::HUNTER_MASTER)?;
-        let action = self.hunt.expect("the caller's test");
+        let action = self.actions.hunt().copied().expect("the caller's test");
         let herd = self.herd_for(c, others, &action, master, victim)?;
-        let hunt = self.hunt.as_mut().expect("the caller's test");
+        let hunt = self.actions.hunt_mut().expect("the caller's test");
         // the gatherer's view: the master's work rate (+0x798) plus the powerup (slot 0x6e8)
         let productivity = usize::try_from(hunt.task.productivity)
             .ok()
@@ -160,14 +160,16 @@ impl Unit {
             // of the unit; else set_state(3) with the target kept
             let tree = self.ai.as_ref().is_some_and(|ai| {
                 let class = if ai.target_type == -1 {
-                    self.hunt.map_or(-1, |h| i32::from(h.target_class))
+                    self.actions
+                        .hunt()
+                        .map_or(-1, |h| i32::from(h.target_class))
                 } else {
                     ai.target_type
                 };
                 class == crate::gathering::hunt::TREE_CLASS
             });
             if !(tree && self.hunt_tree_search(c, others, None, Some(TREE_NEAR))?) {
-                let hunt = self.hunt.as_mut().expect("above");
+                let hunt = self.actions.hunt_mut().expect("above");
                 hunt.tear_down(self.body.mover_mut())?;
                 hunt.state = crate::gathering::hunt::SEARCH;
                 self.hunt_search_state(c, others)?;

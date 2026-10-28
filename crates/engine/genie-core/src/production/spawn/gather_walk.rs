@@ -72,14 +72,15 @@ impl World {
         if villager {
             unit.town_bell.flag = false;
         }
-        unit.move_to = Some(crate::movement::move_to::MoveToAction {
-            run: false,
-            state: crate::movement::move_to::MoveTo::Start,
-            goal: Some(point),
-            target: -1,
-            range: 0.0,
-            wait: crate::movement::move_to::MoveWait::default(),
-        });
+        unit.actions
+            .set_move_to(Some(crate::movement::move_to::MoveToAction {
+                run: false,
+                state: crate::movement::move_to::MoveTo::Start,
+                goal: Some(point),
+                target: -1,
+                range: 0.0,
+                wait: crate::movement::move_to::MoveWait::default(),
+            }));
         Ok(())
     }
 

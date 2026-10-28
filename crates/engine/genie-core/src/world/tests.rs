@@ -11,6 +11,7 @@ use crate::math::rng::{Stream, Streams, Well512};
 use crate::movement::ai_moves::PointMove;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::{MoveTo, MoveToAction};
+use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::{count_class, storage_leaves};
 use crate::objects::lifecycle::{Class, Lifecycle, MasterData, seconds};
 use crate::objects::masters::{Master, Masters};
@@ -115,7 +116,7 @@ fn the_frame_seed_chains_through_two_world_draws() {
 #[test]
 fn artifacts_of_every_player_start_updating_in_the_second_tick() {
     let animal = |gaia| Unit {
-        artifact: Some(Artifact::new(gaia)),
+        actions: ActionList::default().with_artifact(Some(Artifact::new(gaia))),
         ..Unit::default()
     };
     let players = vec![
@@ -129,7 +130,14 @@ fn artifacts_of_every_player_start_updating_in_the_second_tick() {
         },
     ];
     let mut t = World::new(0, 1, 0, vec![0, 0], players);
-    let state = |t: &World, p: usize| t.players[p].objects[0].artifact.unwrap().state;
+    let state = |t: &World, p: usize| {
+        t.players[p].objects[0]
+            .actions
+            .artifact()
+            .copied()
+            .unwrap()
+            .state
+    };
     t.tick(50);
     assert_eq!((state(&t, 0), state(&t, 1)), (6, 6));
     t.tick(50);
@@ -1351,7 +1359,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     let builder = |i: usize| {
         (
             p.objects[i].life.master_id,
-            p.objects[i].build.map(|b| b.state),
+            p.objects[i].actions.build().map(|b| b.state),
         )
     };
     // the builder at the foundation works in its first update; the other asks for a path, for
@@ -1403,7 +1411,7 @@ fn a_direct_build_empties_its_builder_s_order_queue() {
     });
     let unit = |id: i32| t.object(id).map(|(_, u)| u).unwrap();
     let orders = |id: i32| unit(id).ai.as_ref().map_or(0, |ai| ai.orders.len());
-    assert!(unit(9175).build.is_some());
+    assert!(unit(9175).actions.build().is_some());
     // the builder's queue empties; the villager BUILD did not name keeps its own
     assert_eq!((orders(9175), orders(9181)), (0, 1));
 }
@@ -1641,7 +1649,7 @@ fn a_wait_for_a_foundation_switches_the_villager_and_holds_the_task() {
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
     assert_eq!(
-        v.wait_solidify,
+        v.actions.wait_solidify().copied(),
         Some(crate::construction::wait_solidify::WaitSolidify::new(
             task(101),
             10028
@@ -1815,7 +1823,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
         v.top_action_kind(),
         Some(crate::construction::repair::REPAIR)
     );
-    let r = v.repair.unwrap();
+    let r = v.actions.repair().copied().unwrap();
     assert_eq!(
         (r.target, r.state, r.range, r.task.id, r.task.work_value),
         (10028, 4, 0.5, 4, 0.5)
@@ -1829,9 +1837,17 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
             10028
         )
     );
-    t.players[1].objects[0].repair.as_mut().unwrap().state = 6;
+    t.players[1].objects[0].actions.repair_mut().unwrap().state = 6;
     t.order_work(1, 0, &work).unwrap();
-    assert_eq!(t.players[1].objects[0].repair.unwrap().state, 6);
+    assert_eq!(
+        t.players[1].objects[0]
+            .actions
+            .repair()
+            .copied()
+            .unwrap()
+            .state,
+        6
+    );
 }
 
 /// A work command on another damaged house while repairing (`FUN_140adb480`'s slot 0x68): a
@@ -1855,7 +1871,7 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
     };
     t.order_work(1, 0, &work(10028)).unwrap();
     {
-        let r = t.players[1].objects[0].repair.as_mut().unwrap();
+        let r = t.players[1].objects[0].actions.repair_mut().unwrap();
         (r.state, r.counted) = (7, true);
     }
     t.players[1].objects[1]
@@ -1864,7 +1880,7 @@ fn a_work_command_on_another_building_moves_the_repair_there() {
         .unwrap()
         .builders = 1;
     t.order_work(1, 0, &work(10031)).unwrap();
-    let r = t.players[1].objects[0].repair.unwrap();
+    let r = t.players[1].objects[0].actions.repair().copied().unwrap();
     assert_eq!(
         (r.target, r.state, r.counted, r.point),
         (10031, 4, false, [34.0, 88.0, 0.0])
@@ -1891,7 +1907,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
     assert_eq!(v.top_action_kind(), Some(crate::construction::build::BUILD));
-    let b = v.build.unwrap();
+    let b = v.actions.build().copied().unwrap();
     assert_eq!(
         (
             b.target,
@@ -1942,11 +1958,14 @@ fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() 
         notified: true,
     };
     t.order_work(1, 0, &work).unwrap();
-    t.players[1].objects[0].build.as_mut().unwrap().state = 6;
+    t.players[1].objects[0].actions.build_mut().unwrap().state = 6;
     t.order_work(1, 0, &work).unwrap();
-    assert_eq!(t.players[1].objects[0].build.map(|b| b.state), Some(6));
+    assert_eq!(
+        t.players[1].objects[0].actions.build().map(|b| b.state),
+        Some(6)
+    );
     {
-        let b = t.players[1].objects[0].build.as_mut().unwrap();
+        let b = t.players[1].objects[0].actions.build_mut().unwrap();
         (b.state, b.added, b.move_to) = (5, true, None);
     }
     t.players[1].objects[1]
@@ -1956,7 +1975,7 @@ fn a_work_command_on_the_build_s_own_foundation_keeps_the_work_or_walks_again() 
         .builders = 1;
     t.players[1].objects[0].position = [29.0, 88.0, 0.0];
     t.order_work(1, 0, &work).unwrap();
-    let b = t.players[1].objects[0].build.unwrap();
+    let b = t.players[1].objects[0].actions.build().copied().unwrap();
     assert_eq!(
         (b.state, b.added, b.move_to, b.target),
         (4, false, Some(MoveTo::Arrived), 10028)
@@ -2000,7 +2019,7 @@ fn a_work_command_on_another_foundation_moves_the_build_there() {
     };
     t.order_work(1, 0, &work(10028)).unwrap();
     {
-        let b = t.players[1].objects[0].build.as_mut().unwrap();
+        let b = t.players[1].objects[0].actions.build_mut().unwrap();
         (b.state, b.added) = (5, true);
     }
     t.players[1].objects[1]
@@ -2009,7 +2028,7 @@ fn a_work_command_on_another_foundation_moves_the_build_there() {
         .unwrap()
         .builders = 1;
     t.order_work(1, 0, &work(10031)).unwrap();
-    let b = t.players[1].objects[0].build.unwrap();
+    let b = t.players[1].objects[0].actions.build().copied().unwrap();
     assert_eq!(
         (b.target, b.state, b.added, b.point, b.walk_target),
         (10031, 4, false, [34.0, 88.0, 0.0], 10031)
@@ -2052,7 +2071,10 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
     t.order_on_target(1, 0, order(10028)).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
-    assert_eq!(v.build.map(|b| (b.target, b.state)), Some((10028, 4)));
+    assert_eq!(
+        v.actions.build().map(|b| (b.target, b.state)),
+        Some((10028, 4))
+    );
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.order_priority, ai.current_target),
@@ -2061,7 +2083,7 @@ fn a_queued_order_on_a_target_works_on_it_with_the_order_s_priority() {
     let mut t = sent_off_world(vec![]);
     t.order_on_target(1, 0, order(9175)).unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!(v.build, None);
+    assert_eq!(v.actions.build().copied(), None);
     assert_eq!(
         v.ai.as_ref()
             .map(|ai| (ai.current_order, ai.order_priority)),
@@ -2208,7 +2230,7 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 120);
     assert_eq!(v.top_action_kind(), Some(crate::gathering::gather::GATHER));
-    let g = v.gather.unwrap();
+    let g = v.actions.gather().copied().unwrap();
     assert_eq!(
         (
             g.target,
@@ -2237,7 +2259,7 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
     };
     assert_eq!(workers(&t), (1, 0));
     t.order_work(1, 0, &work(601)).unwrap();
-    let g = t.players[1].objects[0].gather.unwrap();
+    let g = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!((g.target, g.state, g.point), (601, 4, [36.5, 89.5, 0.0]));
     assert_eq!(workers(&t), (0, 1));
     assert_eq!(
@@ -2248,10 +2270,10 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
         Some(601)
     );
     // at work on it (state 7) the same command keeps the Gather as it is
-    t.players[1].objects[0].gather.as_mut().unwrap().state = 7;
-    let before = t.players[1].objects[0].gather;
+    t.players[1].objects[0].actions.gather_mut().unwrap().state = 7;
+    let before = t.players[1].objects[0].actions.gather().copied();
     t.order_work(1, 0, &work(601)).unwrap();
-    assert_eq!(t.players[1].objects[0].gather, before);
+    assert_eq!(t.players[1].objects[0].actions.gather().copied(), before);
     assert_eq!(workers(&t), (0, 1));
 }
 
@@ -2264,11 +2286,14 @@ fn the_unit_ai_s_gather_command_starts_a_gather_or_retargets_its_own() {
     t.gather_command(1, 0, 600).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 120);
-    let g = v.gather.unwrap();
+    let g = v.actions.gather().copied().unwrap();
     assert_eq!((g.target, g.state, g.task.id), (600, 4, 2));
     assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(-1));
     t.gather_command(1, 0, 601).unwrap();
-    assert_eq!(t.players[1].objects[0].gather.map(|g| g.target), Some(601));
+    assert_eq!(
+        t.players[1].objects[0].actions.gather().map(|g| g.target),
+        Some(601)
+    );
     assert_eq!(
         (
             t.players[0].objects[0].workers,
@@ -2303,7 +2328,7 @@ fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
     };
     let carries = |t: &World| {
         let v = &t.players[1].objects[0];
-        let g = v.gather.unwrap();
+        let g = v.actions.gather().copied().unwrap();
         (
             (g.target, g.carry_to, g.state, g.point),
             (v.life.attribute_type, v.life.amount),
@@ -2316,7 +2341,7 @@ fn a_loaded_forager_sent_to_its_town_centre_carries_its_load_there() {
     assert_eq!(carries(&t), carrying);
     let mut t = loaded();
     t.gather_command(1, 0, 600).unwrap();
-    t.players[1].objects[0].gather.as_mut().unwrap().state = 7;
+    t.players[1].objects[0].actions.gather_mut().unwrap().state = 7;
     t.order_work(1, 0, &work).unwrap();
     assert_eq!(carries(&t), carrying);
     assert_eq!(t.players[0].objects[0].workers, 0);
@@ -2338,7 +2363,7 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
     let mut t = forage_world();
     t.order_work(1, 0, &work(700)).unwrap();
     let v = &t.players[1].objects[0];
-    assert!(v.move_to.is_some());
+    assert!(v.actions.move_to().is_some());
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
@@ -2347,7 +2372,7 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
     let mut t = forage_world();
     t.order_work(1, 0, &work(-1)).unwrap();
     let v = &t.players[1].objects[0];
-    assert!(v.move_to.is_some());
+    assert!(v.actions.move_to().is_some());
     assert_eq!(
         v.ai.as_ref().map(|ai| ai.current_order),
         Some(crate::unit_ai::MOVE_ORDER)
@@ -2356,13 +2381,16 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
     t.players[1].objects[0].life.state = 1;
     t.order_work(1, 0, &work(700)).unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!(v.move_to, None);
+    assert_eq!(v.actions.move_to().copied(), None);
     assert_eq!(v.ai.as_ref().map(|ai| ai.current_order), Some(-1));
     let mut t = forage_world();
     t.masters[1].get_mut(120).unwrap().moving = None;
     let before = t.players[1].objects[0].clone();
     t.order_work(1, 0, &work(700)).unwrap();
-    assert_eq!(t.players[1].objects[0].move_to, before.move_to);
+    assert_eq!(
+        t.players[1].objects[0].actions.move_to().copied(),
+        before.actions.move_to().copied()
+    );
 }
 
 /// A move toward an object while gathering (`FUN_140a97730`, the Gather's slot 0x40,
@@ -2373,10 +2401,10 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
 fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
     let mut t = forage_world();
     t.gather_command(1, 0, 600).unwrap();
-    t.players[1].objects[0].gather.as_mut().unwrap().state = 7;
+    t.players[1].objects[0].actions.gather_mut().unwrap().state = 7;
     let point = [36.0, 89.0, 0.0];
     assert_eq!(t.move_to_object_with(1, 0, 601, point, false), Ok(true));
-    let g = t.players[1].objects[0].gather.unwrap();
+    let g = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!(
         (g.target, g.carry_to, g.state, g.point, g.walk_to),
         (-1, -1, 15, point, Some(point))
@@ -2394,7 +2422,7 @@ fn a_gather_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         t.move_to_object_with(1, 0, 700, [20.0, 89.5, 0.0], false),
         Ok(true)
     );
-    let g = t.players[1].objects[0].gather.unwrap();
+    let g = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!(
         (g.target, g.carry_to, g.state, g.point),
         (-1, 700, 8, [-1.0; 3])
@@ -2430,7 +2458,11 @@ fn a_drop_off_order_takes_a_forager_to_its_nearest_drop_site() {
     let world = t.clone();
     t.unit_order(1, &[9175], 6).unwrap();
     let v = &t.players[1].objects[0];
-    let g = v.gather.expect("a Gather to the drop site");
+    let g = v
+        .actions
+        .gather()
+        .copied()
+        .expect("a Gather to the drop site");
     assert_eq!((g.carry_to, g.state), (700, 8));
     assert_eq!(t.players[1].objects[2].workers, 1);
     // dropping at the dock too: the search without a seeker finds the same centre
@@ -2441,7 +2473,8 @@ fn a_drop_off_order_takes_a_forager_to_its_nearest_drop_site() {
     t.unit_order(1, &[9175], 6).unwrap();
     assert_eq!(
         t.players[1].objects[0]
-            .gather
+            .actions
+            .gather()
             .map(|g| (g.carry_to, g.state)),
         Some((700, 8))
     );
@@ -2451,7 +2484,7 @@ fn a_drop_off_order_takes_a_forager_to_its_nearest_drop_site() {
         t.players[1].objects[i].life.state = 1;
     }
     t.unit_order(1, &[9175], 6).unwrap();
-    assert_eq!(t.players[1].objects[0].gather, None);
+    assert_eq!(t.players[1].objects[0].actions.gather().copied(), None);
 }
 
 /// The Empire Wars start (`BaseWorld::update`'s first update) under the farm setting: the idle
@@ -2523,7 +2556,11 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
     );
     let world = t.clone();
     t.start_work(1).unwrap();
-    let g = t.players[1].objects[0].gather.expect("the farm's Gather");
+    let g = t.players[1].objects[0]
+        .actions
+        .gather()
+        .copied()
+        .expect("the farm's Gather");
     assert_eq!((g.target, g.task.id, g.point), (800, 3, [29.5, 89.5, 0.0]));
     assert_eq!(t.players[1].objects[3].workers, 1);
     let others = |t: &World| {
@@ -2553,7 +2590,7 @@ fn the_empire_wars_start_puts_a_villager_on_its_farm_to_work() {
             target_type: -1,
         });
     t.start_work(1).unwrap();
-    assert_eq!(t.players[1].objects[0].gather, None);
+    assert_eq!(t.players[1].objects[0].actions.gather().copied(), None);
     // a fishing ship finds no fish trap on its tile
     let mut t = world.clone();
     t.players[1].objects[0].life.master_id = 13;
@@ -2580,12 +2617,12 @@ fn the_unit_ai_s_explore_walks_to_its_point_or_asks_for_one() {
     use crate::unit_ai::Effect;
     let mut t = forage_world();
     with_effects(&mut t, vec![Effect::Explore([40.0, 90.0])]).unwrap();
-    let e = t.players[1].objects[0].explore.unwrap();
+    let e = t.players[1].objects[0].actions.explore().copied().unwrap();
     assert_eq!((e.state, e.point), (WALK, [40.0, 90.0, 0.0]));
     assert!(e.move_to.is_some());
     with_effects(&mut t, vec![Effect::Explore([-1.0, 90.0])]).unwrap();
     let v = &t.players[1].objects[0];
-    let e = v.explore.unwrap();
+    let e = v.actions.explore().copied().unwrap();
     assert_eq!((e.state, e.move_to), (WAIT, None));
     let notifies = &v.ai.as_ref().unwrap().notifies;
     assert_eq!(
@@ -2620,8 +2657,11 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
     )
     .unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!((v.gather, v.last_human_order), (None, 300));
-    assert!(v.move_to.is_some());
+    assert_eq!(
+        (v.actions.gather().copied(), v.last_human_order),
+        (None, 300)
+    );
+    assert!(v.actions.move_to().is_some());
     assert_eq!(t.players[0].objects[0].workers, 0);
     with_effects(
         &mut t,
@@ -2632,8 +2672,11 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
     )
     .unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!(v.gather.map(|g| (g.target, g.state)), Some((601, 4)));
-    assert_eq!(v.move_to, None);
+    assert_eq!(
+        v.actions.gather().map(|g| (g.target, g.state)),
+        Some((601, 4))
+    );
+    assert_eq!(v.actions.move_to().copied(), None);
     // a unit that does not move cannot be moved to an object
     t.players[1].objects[0].body.put_mover(None);
     assert!(
@@ -2660,14 +2703,17 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
     use crate::unit_ai::{AfterOrder, AiMove, Effect, QueuedOrder};
     let mut t = hunt_world();
     with_effects(&mut t, vec![Effect::HuntObject(500)]).unwrap();
-    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.target), Some(500));
+    assert_eq!(
+        t.players[1].objects[0].actions.hunt().map(|h| h.target),
+        Some(500)
+    );
     with_effects(&mut t, vec![Effect::Stop]).unwrap();
     assert_eq!(t.players[1].objects[0].top_action_kind(), None);
     let mut t = sent_off_world(vec![]);
     with_effects(&mut t, vec![Effect::BuildObject(10028)]).unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
-    assert_eq!(v.build.map(|b| b.target), Some(10028));
+    assert_eq!(v.actions.build().map(|b| b.target), Some(10028));
     let mut t = sent_off_world(vec![]);
     let order = QueuedOrder {
         issuer: 1,
@@ -2683,7 +2729,7 @@ fn the_unit_ai_s_hunt_build_and_target_orders_apply_after_its_run() {
     };
     with_effects(&mut t, vec![Effect::OrderOnTarget(order)]).unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!(v.build.map(|b| b.target), Some(10028));
+    assert_eq!(v.actions.build().map(|b| b.target), Some(10028));
     assert_eq!(v.ai.as_ref().map(|ai| ai.order_priority), Some(3));
     let mut t = sent_off_world(vec![]);
     let after = AfterOrder {
@@ -3017,7 +3063,7 @@ fn a_formation_s_units_on_a_new_foundation_move_off_together() {
             .iter()
             .all(|n| n.kind != crate::unit_ai::SENT_OFF_GROUP)
     );
-    assert!(v.move_to.is_some());
+    assert!(v.actions.move_to().is_some());
 }
 
 /// A built castle's death outside its update (`FUN_1411dbb70` to state 3 from 2,
@@ -3276,7 +3322,7 @@ fn a_work_command_on_another_deer_moves_the_hunt_there() {
     };
     t.order_work(1, 0, &work).unwrap();
     let v = &t.players[1].objects[0];
-    let h = v.hunt.unwrap();
+    let h = v.actions.hunt().copied().unwrap();
     assert_eq!((h.target, h.carry_to, h.target_class), (501, -1, 9));
     assert_eq!(
         (h.state, h.attack.map(|a| a.target)),
@@ -3306,7 +3352,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
     t.hunt_command(1, 0, 500).unwrap();
     let point = [36.0, 89.0, 0.0];
     assert_eq!(t.move_to_object_with(1, 0, 501, point, false), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!(
         (h.target, h.carry_to, h.state, h.point),
         (-1, -1, 15, point)
@@ -3324,7 +3370,7 @@ fn a_hunt_takes_a_move_toward_an_object_as_its_point_or_drop_site() {
         t.move_to_object_with(1, 0, 700, [20.0, 89.5, 0.0], false),
         Ok(true)
     );
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!(
         (h.target, h.carry_to, h.state, h.point, h.target_class),
         (-1, 700, 8, [-1.0; 3], 3)
@@ -3354,7 +3400,7 @@ pub(crate) fn in_update<R>(
 fn hunter_in(set: impl FnOnce(&mut crate::gathering::hunt::HuntAction)) -> World {
     let mut t = hunt_world();
     t.hunt_command(1, 0, 500).unwrap();
-    set(t.players[1].objects[0].hunt.as_mut().unwrap());
+    set(t.players[1].objects[0].actions.hunt_mut().unwrap());
     t
 }
 
@@ -3402,7 +3448,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     let mut t = wait(-0.5);
     t.players[1].objects[2].workers = 1;
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.carry_to), (DROP, 700));
     assert!((h.timer + 0.45).abs() < 1e-6);
     let mut t = wait(-0.01);
@@ -3410,7 +3456,7 @@ fn a_hunter_s_drop_off_waits_then_searches_its_drop_site_again() {
     t.players[1].objects[0].life.amount = 5.0;
     t.players[1].objects[2].workers = 1;
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.carry_to, h.timer), (DROP, 700, 0.0));
     // the centre let go, then taken again as the new drop site
     assert_eq!(t.players[1].objects[2].workers, 1);
@@ -3452,13 +3498,13 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.amount, 0.0);
     assert_eq!(t.players[1].resources[0], 5.0);
-    let h = v.hunt.unwrap();
+    let h = v.actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.target, h.carry_to), (ATTACK, 500, -1));
     let mut t = dropping(MoveTo::Failed);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
     let v = &t.players[1].objects[0];
     assert_eq!(v.body.anim_speed(), Some(0.0));
-    assert!(v.hunt.is_some_and(|h| h.timer < 0.0));
+    assert!(v.actions.hunt().is_some_and(|h| h.timer < 0.0));
     let mut t = dropping(MoveTo::Arrived);
     t.drop_sites.clear();
     assert!(hunt_part_of(&mut t, 50).is_err());
@@ -3476,7 +3522,7 @@ fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
     });
     assert_eq!(t.players[0].objects[0].workers, 1);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    assert_eq!(t.players[1].objects[0].hunt, None);
+    assert_eq!(t.players[1].objects[0].actions.hunt().copied(), None);
     assert_eq!(
         notified(&t, crate::unit_ai::ACTION_FAILED),
         [[crate::unit_ai::HUNT_ACTION, 0, 0]]
@@ -3501,11 +3547,11 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
     assert_eq!(notified(&t, SEARCH_NEEDED), [[0; 3]; 0]);
-    t.players[1].objects[0].hunt.as_mut().unwrap().timer = -0.01;
+    t.players[1].objects[0].actions.hunt_mut().unwrap().timer = -0.01;
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
     assert_eq!(notified(&t, SEARCH_NEEDED), [search]);
     assert_eq!(
-        t.players[1].objects[0].hunt.map(|h| h.timer),
+        t.players[1].objects[0].actions.hunt().map(|h| h.timer),
         Some(SEARCH_AGAIN)
     );
     let mut t = hunter_in(|h| {
@@ -3513,16 +3559,23 @@ fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
         h.attack = None;
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(SEARCH));
+    assert_eq!(
+        t.players[1].objects[0].actions.hunt().map(|h| h.state),
+        Some(SEARCH)
+    );
     assert_eq!(notified(&t, SEARCH_NEEDED), [search]);
     let mut t = hunter_in(|h| {
         h.state = IDLE;
         h.attack = None;
     });
-    let before = t.players[1].objects[0].hunt;
+    let before = t.players[1].objects[0].actions.hunt().copied();
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    assert_eq!(t.players[1].objects[0].hunt, before);
-    t.players[1].objects[0].hunt.as_mut().unwrap().target_class = 15;
+    assert_eq!(t.players[1].objects[0].actions.hunt().copied(), before);
+    t.players[1].objects[0]
+        .actions
+        .hunt_mut()
+        .unwrap()
+        .target_class = 15;
     assert!(hunt_part_of(&mut t, 50).is_err());
 }
 
@@ -3542,12 +3595,15 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
     };
     let mut t = walked(WALK_POINT);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.target, h.move_to), (IDLE, -1, None));
     assert_eq!(t.players[0].objects[0].workers, 0);
     let mut t = walked(WALK_SEARCH);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(SEARCH));
+    assert_eq!(
+        t.players[1].objects[0].actions.hunt().map(|h| h.state),
+        Some(SEARCH)
+    );
     assert_eq!(notified(&t, SEARCH_NEEDED).len(), 1);
     let mut t = hunter_in(|h| {
         (h.state, h.move_to) = (WALK_POINT, Some(MoveTo::Waiting));
@@ -3555,7 +3611,7 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
         h.attack = None;
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.move_to, h.state), (Some(MoveTo::Waiting), WALK_POINT));
     let mut t = hunter_in(|h| {
         (h.state, h.target, h.timer, h.move_to) = (WALK, -1, -0.01, None);
@@ -3564,7 +3620,7 @@ fn a_hunt_s_walk_to_a_point_ends_done_or_in_a_search() {
     });
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
     assert_eq!(
-        t.players[1].objects[0].hunt.map(|h| h.state),
+        t.players[1].objects[0].actions.hunt().map(|h| h.state),
         Some(WALK_SEARCH)
     );
 }
@@ -3581,7 +3637,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
     let mut t = hunter_in(|_| {});
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
     let v = &t.players[1].objects[0];
-    let h = v.hunt.unwrap();
+    let h = v.actions.hunt().copied().unwrap();
     assert_eq!(
         (h.state, h.attack.map(|a| (a.state, a.move_to))),
         (ATTACK, Some((4, Some(MoveTo::Moving))))
@@ -3612,10 +3668,13 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         t.players[0].objects[0].life.amount,
     );
     assert!((gained - 5.05).abs() < 1e-5 && (left - 99.95).abs() < 1e-4);
-    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(GATHER));
+    assert_eq!(
+        t.players[1].objects[0].actions.hunt().map(|h| h.state),
+        Some(GATHER)
+    );
     let mut t = gathering(9.99);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.carry_to), (DROP, 700));
     assert_eq!(t.players[1].objects[0].life.amount, 9.99);
     assert_eq!(t.players[0].objects[0].life.amount, 100.0);
@@ -3687,7 +3746,7 @@ fn shepherd_world(x: f32) -> World {
         ..DropSite::default()
     }];
     t.hunt_command(1, 0, 510).unwrap();
-    let h = t.players[1].objects[0].hunt.as_mut().unwrap();
+    let h = t.players[1].objects[0].actions.hunt_mut().unwrap();
     (h.move_to, h.attack) = (Some(MoveTo::Arrived), None);
     t
 }
@@ -3702,16 +3761,19 @@ fn a_hunter_leads_its_far_sheep_to_the_town_centre_and_slaughters_a_near_one() {
     use crate::gathering::hunt::{ATTACK, LEAD};
     let mut t = shepherd_world(30.2);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.target, h.drop_site), (LEAD, 510, 700));
-    assert!(t.players[1].objects[3].move_to.is_some());
+    assert!(t.players[1].objects[3].actions.move_to().is_some());
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    assert_eq!(t.players[1].objects[0].hunt.map(|h| h.state), Some(LEAD));
+    assert_eq!(
+        t.players[1].objects[0].actions.hunt().map(|h| h.state),
+        Some(LEAD)
+    );
     let mut t = shepherd_world(22.6);
     t.players[1].objects[0].position = [23.2, 89.5, 0.0];
     t.spatial.set_position(9175, [23.2, 89.5, 0.0]);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.state, h.attack.map(|a| a.target)), (ATTACK, Some(510)));
 }
 
@@ -3779,7 +3841,7 @@ fn lumber_world(near: f32) -> World {
     t.spatial.relations = vec![vec![0, 3], vec![3, 0]];
     t.hunt_command(1, 0, 500).unwrap();
     let v = &mut t.players[1].objects[0];
-    let h = v.hunt.as_mut().unwrap();
+    let h = v.actions.hunt_mut().unwrap();
     (h.target, h.target_class, h.attack, h.point) = (-1, 15, None, v.position);
     v.ai.as_mut().unwrap().target_type = 15;
     t
@@ -3798,11 +3860,11 @@ fn a_hunt_that_lost_its_tree_takes_the_next_one() {
     };
     let mut t = lumber_world(31.5);
     assert_eq!(search(&mut t, Some(8.0), None), Ok(true));
-    let h = t.players[1].objects[0].hunt.unwrap();
+    let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
     assert_eq!((h.target, h.attack.map(|a| a.target)), (520, Some(520)));
     assert_eq!(t.players[0].objects[2].workers, 1);
     let mut t = lumber_world(31.5);
-    t.players[1].objects[0].hunt.as_mut().unwrap().point = [40.0, 89.5, 0.0];
+    t.players[1].objects[0].actions.hunt_mut().unwrap().point = [40.0, 89.5, 0.0];
     assert_eq!(search(&mut t, Some(8.0), None), Ok(false));
     assert_eq!(search(&mut t, None, Some(1.5)), Ok(false));
     let mut t = lumber_world(31.5);
@@ -3858,7 +3920,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     t.tick(50);
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 156);
-    let r = v.repair.expect("the Repair");
+    let r = v.actions.repair().copied().expect("the Repair");
     assert_eq!((r.target, r.state, r.range, r.task.id), (10028, 4, 0.5, 4));
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
@@ -3868,7 +3930,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     let mut t = world(false);
     t.tick(50);
     let v = &t.players[1].objects[0];
-    assert_eq!((v.life.master_id, v.repair), (83, None));
+    assert_eq!((v.life.master_id, v.actions.repair().copied()), (83, None));
 }
 
 /// The world of [`sent_off_world`] with the queue `orders`, the house built and whole, taking
@@ -3938,15 +4000,35 @@ fn the_enter_command_enters_or_keeps_the_enter_on_its_target() {
     t.players[1].objects[0].position = [20.0, 80.0, 0.0];
     t.spatial.set_position(9175, [20.0, 80.0, 0.0]);
     assert_eq!(t.enter_command(1, 0, 4242, true), Ok(false));
-    assert_eq!(t.players[1].objects[0].enter, None);
+    assert_eq!(t.players[1].objects[0].actions.enter().copied(), None);
     assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
-    let first = t.players[1].objects[0].enter.expect("the Enter");
+    let first = t.players[1].objects[0]
+        .actions
+        .enter()
+        .copied()
+        .expect("the Enter");
     assert_eq!((first.target, first.state), (10028, 4));
-    t.players[1].objects[0].enter.as_mut().unwrap().timer = 7.0;
+    t.players[1].objects[0].actions.enter_mut().unwrap().timer = 7.0;
     assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
-    assert_eq!(t.players[1].objects[0].enter.unwrap().timer, 7.0);
+    assert_eq!(
+        t.players[1].objects[0]
+            .actions
+            .enter()
+            .copied()
+            .unwrap()
+            .timer,
+        7.0
+    );
     assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
-    assert_eq!(t.players[1].objects[0].enter.unwrap().timer, first.timer);
+    assert_eq!(
+        t.players[1].objects[0]
+            .actions
+            .enter()
+            .copied()
+            .unwrap()
+            .timer,
+        first.timer
+    );
 }
 
 /// The Enter's start (`FUN_140a86f20`) of a unit inside an object: `set_state(13)`, its
@@ -3958,7 +4040,10 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
     t.players[1].objects[0].life.inside = Some(4242);
     assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
     let v = &t.players[1].objects[0];
-    assert_eq!(v.enter.map(|e| e.state), Some(crate::garrison::FAILED));
+    assert_eq!(
+        v.actions.enter().map(|e| e.state),
+        Some(crate::garrison::FAILED)
+    );
     assert_eq!(
         v.ai.as_ref().unwrap().notifies,
         [Notify::own(
@@ -3999,7 +4084,7 @@ fn livestock_enter_world() -> World {
     }
     let v = &mut t.players[1].objects[0];
     v.life.master_id = 594;
-    v.artifact = Some(Artifact::new(false));
+    v.actions.set_artifact(Some(Artifact::new(false)));
     t
 }
 
@@ -4011,12 +4096,12 @@ fn livestock_s_enter_command_becomes_its_artifact_s_sub_action() {
     let mut t = livestock_enter_world();
     assert_eq!(t.enter_command(1, 0, 10028, false), Ok(true));
     let v = &t.players[1].objects[0];
-    assert_eq!(v.enter, None);
+    assert_eq!(v.actions.enter().copied(), None);
     assert_eq!(
         v.top_action_kind(),
         Some(crate::ownership::artifact::ARTIFACT_TYPE)
     );
-    let sub = v.artifact.unwrap().enter;
+    let sub = v.actions.artifact().copied().unwrap().enter;
     assert!(
         sub.is_some_and(|e| e.target == 10028) || v.life.inside == Some(10028),
         "{v:?}"
@@ -4034,7 +4119,7 @@ fn livestock_s_second_enter_command_stops_the_walk_and_lets_the_old_enter_s_targ
     let mut walking = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 0.0, 3);
     walking.move_to = Some(MoveTo::Moving);
     let v = &mut t.players[1].objects[0];
-    v.artifact.as_mut().unwrap().enter = Some(walking);
+    v.actions.artifact_mut().unwrap().enter = Some(walking);
     v.body.mover_mut().unwrap().velocity = Some(crate::movement::Velocity {
         velocity: [0.0, 0.0, 0.7],
         acceleration: [0.0, 0.0, f32::MAX],
@@ -4057,11 +4142,17 @@ fn an_inside_unit_s_update_deletes_its_top_action() {
     let mut t = enter_world(vec![], 5);
     t.players[1].objects[0].life.inside = Some(10028);
     t.spatial.go_inside(9175, [30.0, 88.0, 0.0]);
-    t.players[1].objects[0].move_to =
-        Some(MoveToAction::to_point([40.0, 80.0, 0.0], 0.0, false, None));
+    t.players[1].objects[0]
+        .actions
+        .set_move_to(Some(MoveToAction::to_point(
+            [40.0, 80.0, 0.0],
+            0.0,
+            false,
+            None,
+        )));
     t.tick(50);
     let v = &t.players[1].objects[0];
-    assert_eq!(v.move_to, None);
+    assert_eq!(v.actions.move_to().copied(), None);
     assert_eq!(v.top_action_kind(), None);
     assert_eq!(t.players[1].freezes, vec![]);
 }
@@ -4073,10 +4164,10 @@ fn an_entered_enter_of_a_unit_let_out_goes_at_its_update() {
     let mut t = enter_world(vec![], 5);
     let mut e = crate::garrison::EnterAction::new(10028, [30.0, 88.0, 0.0], 0.5, 3);
     e.state = crate::garrison::ENTERED;
-    t.players[1].objects[0].enter = Some(e);
+    t.players[1].objects[0].actions.set_enter(Some(e));
     t.tick(50);
     t.tick(50);
-    assert_eq!(t.players[1].objects[0].enter, None);
+    assert_eq!(t.players[1].objects[0].actions.enter().copied(), None);
     assert_eq!(t.players[1].freezes, vec![]);
 }
 
@@ -4104,7 +4195,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
     t.tick(50);
     let v = &t.players[1].objects[0];
     assert!(
-        v.enter.is_some_and(|e| e.target == 10028) || v.life.inside == Some(10028),
+        v.actions.enter().is_some_and(|e| e.target == 10028) || v.life.inside == Some(10028),
         "{:?}",
         t.players[1].freezes
     );
@@ -4116,7 +4207,10 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
     let mut t = enter_world(vec![order], 0);
     t.tick(50);
     let v = &t.players[1].objects[0];
-    assert_eq!((t.players[1].freezes.len(), v.enter), (0, None));
+    assert_eq!(
+        (t.players[1].freezes.len(), v.actions.enter().copied()),
+        (0, None)
+    );
     assert_ne!(
         v.ai.as_ref().unwrap().current_action,
         crate::garrison::ENTER_ACTION
@@ -4168,7 +4262,7 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     t.tick(50);
     assert_eq!(t.players[1].freezes, vec![]);
     let v = &t.players[1].objects[0];
-    assert_eq!(v.wait_solidify, None);
+    assert_eq!(v.actions.wait_solidify().copied(), None);
     assert_eq!(
         v.ai.as_ref().map(|ai| ai.current_action),
         Some(WAIT_SOLIDIFY_ACTION)
@@ -4213,7 +4307,7 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
     .unwrap();
     let v = &t.players[1].objects[0];
     assert_eq!(v.life.master_id, 118);
-    assert!(v.build.is_some());
+    assert!(v.actions.build().is_some());
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (
@@ -4299,10 +4393,10 @@ fn the_build_command_at_once_matches_the_one_after_the_update() {
     .unwrap();
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
     assert_eq!(b.life.master_id, 118);
-    assert!(b.build.is_some_and(|build| build.target == 10028));
+    assert!(b.actions.build().is_some_and(|build| build.target == 10028));
     assert_eq!(
-        (b.life.master_id, b.build, &b.sprite),
-        (a.life.master_id, a.build, &a.sprite)
+        (b.life.master_id, b.actions.build().copied(), &b.sprite),
+        (a.life.master_id, a.actions.build().copied(), &a.sprite)
     );
     assert_eq!(now.players[1].attributes, later.players[1].attributes);
     assert_eq!(now.streams, later.streams);
@@ -4398,10 +4492,13 @@ fn the_ai_move_at_once_matches_the_one_after_the_update() {
     })
     .unwrap();
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
-    assert_eq!(b.move_to.and_then(|mt| mt.goal), Some([35.0, 80.0, 0.0]));
     assert_eq!(
-        (b.move_to, &b.body, &b.sprite),
-        (a.move_to, &a.body, &a.sprite)
+        b.actions.move_to().copied().and_then(|mt| mt.goal),
+        Some([35.0, 80.0, 0.0])
+    );
+    assert_eq!(
+        (b.actions.move_to().copied(), &b.body, &b.sprite),
+        (a.actions.move_to().copied(), &a.body, &a.sprite)
     );
     assert_eq!(now.streams, later.streams);
 }
@@ -4472,10 +4569,20 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
     .unwrap();
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
     assert_eq!(b.life.master_id, 122);
-    assert!(b.hunt.is_some_and(|h| h.target == 500));
+    assert!(b.actions.hunt().is_some_and(|h| h.target == 500));
     assert_eq!(
-        (b.life.master_id, b.hunt, &b.sprite, &b.body),
-        (a.life.master_id, a.hunt, &a.sprite, &a.body)
+        (
+            b.life.master_id,
+            b.actions.hunt().copied(),
+            &b.sprite,
+            &b.body
+        ),
+        (
+            a.life.master_id,
+            a.actions.hunt().copied(),
+            &a.sprite,
+            &a.body
+        )
     );
     assert_eq!(now.players[1].attributes, later.players[1].attributes);
     assert_eq!(now.streams, later.streams);
@@ -4713,12 +4820,14 @@ fn livestock_without_actions_starts_its_artifact_again() {
     ];
     t.tick(50);
     let a = t.players[1].objects[0]
-        .artifact
+        .actions
+        .artifact()
+        .copied()
         .expect("the Artifact again");
     assert_eq!(a, Artifact::new(false));
     // its first update checks for a new owner, finds none and waits a second
     t.tick(50);
-    let a = t.players[1].objects[0].artifact.unwrap();
+    let a = t.players[1].objects[0].actions.artifact().copied().unwrap();
     assert_eq!((a.state, a.timer), (10, 1.0));
 }
 
@@ -4833,10 +4942,10 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
             hp: 7.0,
             ..Lifecycle::default()
         },
-        artifact: Some(Artifact {
+        actions: ActionList::default().with_artifact(Some(Artifact {
             state: crate::ownership::artifact::TO_GAIA,
             ..Artifact::new(false)
-        }),
+        })),
         ..Unit::default()
     };
     let player = |objects| Player {
@@ -4881,7 +4990,7 @@ fn an_artifact_in_state_100_hands_its_sheep_to_gaia() {
     let sheep = &t.players[0].objects[0];
     assert_eq!(sheep.id, 40);
     assert_eq!(
-        sheep.artifact.map(|a| a.state),
+        sheep.actions.artifact().map(|a| a.state),
         Some(crate::ownership::artifact::CHECK)
     );
 }
@@ -4915,7 +5024,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     t.masters = vec![Masters::new([farm_master()])];
     t.tick(104);
     let f = &t.players[0].objects[0];
-    let make = f.make.unwrap();
+    let make = f.actions.make().copied().unwrap();
     assert_eq!((make.state, make.remaining, make.total), (6, 175.0, 175.0));
     assert_eq!((f.life.attribute_type, f.life.amount), (16, 0.0));
     assert_eq!(
@@ -4929,7 +5038,7 @@ fn a_farm_starts_its_make_in_its_first_update_and_fills_from_the_next() {
     let f = &t.players[0].objects[0];
     let made = 0.4f32 * 1.0 * seconds(104);
     assert_eq!(
-        (f.life.amount, f.make.unwrap().remaining),
+        (f.life.amount, f.actions.make().copied().unwrap().remaining),
         (made, 175.0 - made)
     );
     assert!(t.players[0].unsupported.is_none());
@@ -5573,7 +5682,6 @@ fn the_forced_replay_s_removal_leaves_as_an_update_s_leave_does() {
             flying: true,
             step: [0.0; 3],
             attack_count: 0,
-            action: None,
         }),
         life: Lifecycle {
             master_id: 54,
@@ -6807,60 +6915,77 @@ fn teardown_world() -> World {
 #[test]
 fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     let mut t = teardown_world();
-    t.players[1].objects[0].artifact = Some(Artifact {
+    t.players[1].objects[0].actions.set_artifact(Some(Artifact {
         target: 9149,
         goal: Some([20.0, 20.0, 0.0]),
         walk_to: Some((crate::movement::move_to::Goal::Target(9149), 1.0)),
         move_to: Some(MoveTo::Moving),
         ..Artifact::new(false)
-    });
+    }));
     t.clear_actions(1, 0).unwrap();
     let sheep = &t.players[1].objects[0];
-    assert_eq!(sheep.artifact, None);
+    assert_eq!(sheep.actions.artifact().copied(), None);
     assert_eq!(sheep.body.mover().unwrap().animated.speed, 0.0);
     assert_eq!(t.players[1].objects[3].workers, 0);
     let bird = &mut t.players[1].objects[1];
-    bird.fly = Some(Fly {
+    bird.actions.set_fly(Some(Fly {
         state: 3,
         timer: 1.0,
         move_to: Some(MoveTo::Moving),
         goal: Some([12.0, 12.0, 0.0]),
         home: [10.0, 10.0],
         task: crate::objects::masters::Task::default(),
-    });
+    }));
     bird.body.mover_mut().unwrap().stats.speed = 1.3;
-    let flying = bird.fly;
+    let flying = bird.actions.fly().copied();
     t.clear_actions(1, 1).unwrap();
     let bird = &mut t.players[1].objects[1];
-    assert_eq!((bird.fly, bird.body.anim_speed()), (None, Some(0.0)));
-    bird.fly = flying.map(|f| Fly { move_to: None, ..f });
+    assert_eq!(
+        (bird.actions.fly().copied(), bird.body.anim_speed()),
+        (None, Some(0.0))
+    );
+    bird.actions
+        .set_fly(flying.map(|f| Fly { move_to: None, ..f }));
     t.clear_actions(1, 1).unwrap();
     let bird = &t.players[1].objects[1];
-    assert_eq!((bird.fly, bird.body.anim_speed()), (None, Some(1.3)));
+    assert_eq!(
+        (bird.actions.fly().copied(), bird.body.anim_speed()),
+        (None, Some(1.3))
+    );
     let villager = &mut t.players[1].objects[2];
-    villager.enter = Some(crate::garrison::EnterAction {
-        target: 9150,
-        state: 3,
-        move_to: None,
-        point: [20.0, 20.0, 0.0],
-        range: 0.0,
-        timer: 0.0,
-        retry: true,
-        task_class: 0,
-        move_wait: crate::movement::move_to::MoveWait::default(),
-    });
-    villager.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify::new(
-        crate::objects::masters::Task::default(),
-        10028,
+    villager
+        .actions
+        .set_enter(Some(crate::garrison::EnterAction {
+            target: 9150,
+            state: 3,
+            move_to: None,
+            point: [20.0, 20.0, 0.0],
+            range: 0.0,
+            timer: 0.0,
+            retry: true,
+            task_class: 0,
+            move_wait: crate::movement::move_to::MoveWait::default(),
+        }));
+    villager.actions.set_wait_solidify(Some(
+        crate::construction::wait_solidify::WaitSolidify::new(
+            crate::objects::masters::Task::default(),
+            10028,
+        ),
     ));
     // a walking villager: an Enter without a MoveTo does not stop it
     villager.body.set_anim_speed(1.0);
     t.clear_actions(1, 2).unwrap();
     let villager = &t.players[1].objects[2];
-    assert_eq!((villager.enter, villager.wait_solidify), (None, None));
+    assert_eq!(
+        (
+            villager.actions.enter().copied(),
+            villager.actions.wait_solidify().copied()
+        ),
+        (None, None)
+    );
     assert_ne!(villager.body.mover().unwrap().animated.speed, 0.0);
     assert_eq!(t.players[1].objects[4].workers, 0);
-    t.players[1].objects[2].build = Some(BuildAction {
+    t.players[1].objects[2].actions.set_build(Some(BuildAction {
         target: 10028,
         state: 3,
         move_to: None,
@@ -6879,7 +7004,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         move_wait: crate::movement::move_to::MoveWait::default(),
         site: -1,
         drop_range: 0.0,
-    });
+    }));
     t.clear_actions(1, 2).unwrap();
     let foundation = &t.players[2].objects[0];
     assert_eq!(foundation.workers, 0);
@@ -6960,9 +7085,16 @@ fn deaths_world() -> World {
     };
     let gather = crate::gathering::gather::GatherAction::new(chop, &tree, false, rate).unwrap();
     let mut villagers = vec![dead(40), dead(41), dead(42)];
-    villagers[0].gather = Some(crate::gathering::gather::GatherAction { state: 7, ..gather });
-    villagers[1].hunt = Some(crate::gathering::hunt::tests::hunting(60));
-    villagers[2].build = Some(BuildAction {
+    villagers[0]
+        .actions
+        .set_gather(Some(crate::gathering::gather::GatherAction {
+            state: 7,
+            ..gather
+        }));
+    villagers[1]
+        .actions
+        .set_hunt(Some(crate::gathering::hunt::tests::hunting(60)));
+    villagers[2].actions.set_build(Some(BuildAction {
         target: 10028,
         state: 7,
         move_to: None,
@@ -6981,7 +7113,7 @@ fn deaths_world() -> World {
         move_wait: crate::movement::move_to::MoveWait::default(),
         site: -1,
         drop_range: 0.0,
-    });
+    }));
     let gaia = vec![
         Unit {
             id: 50,
@@ -7185,7 +7317,10 @@ fn a_move_to_an_object_takes_it_and_lets_it_go_when_it_is_replaced_or_cleared() 
     assert_eq!(t.players[0].sleeping.len(), 0);
     let tree = &t.players[0].objects[0];
     assert_eq!((tree.id, tree.workers), (50, 1));
-    assert_eq!(t.players[1].objects[2].move_to.map(|m| m.target), Some(50));
+    assert_eq!(
+        t.players[1].objects[2].actions.move_to().map(|m| m.target),
+        Some(50)
+    );
     t.move_to_object(1, 2, 9149, [20.0, 10.5, 0.0]).unwrap();
     let tree = &t.players[0].objects[0];
     assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
@@ -7206,14 +7341,14 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         id,
         position: [11.5, 10.5, 0.0],
         body: crate::objects::layers::Body::Moving(mover.clone()),
-        move_to: Some(MoveToAction {
+        actions: ActionList::default().with_move_to(Some(MoveToAction {
             state: MoveTo::Arrived,
             goal: None,
             target: 50,
             range: 0.0,
             run: false,
             wait: crate::movement::move_to::MoveWait::default(),
-        }),
+        })),
         pasture: -1,
         my_pasture: -1,
         life: Lifecycle {
@@ -7256,8 +7391,8 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
         ),
         (None, None)
     );
-    assert_eq!(t.players[1].objects[0].move_to, None);
-    assert_eq!(t.players[1].objects[1].move_to, None);
+    assert_eq!(t.players[1].objects[0].actions.move_to().copied(), None);
+    assert_eq!(t.players[1].objects[1].actions.move_to().copied(), None);
     let tree = &t.players[0].objects[0];
     assert_eq!((tree.workers, tree.life.goto_sleep), (0, true));
 }
@@ -7282,7 +7417,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         id: 40,
         position: [10.5, 10.5, 0.0],
         body: crate::objects::layers::Body::Moving(walker),
-        hunt: Some(crate::gathering::hunt::tests::hunting(-1)),
+        actions: ActionList::default().with_hunt(Some(crate::gathering::hunt::tests::hunting(-1))),
         life: Lifecycle {
             master_id: 83,
             attribute_type: 0,
@@ -7348,7 +7483,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
         hunter.drop_off_in(world, &others)
     };
     assert_eq!(drop_off(&mut hunter, &mut t), Ok(Some(9149)));
-    let hunt = hunter.hunt.unwrap();
+    let hunt = hunter.actions.hunt().copied().unwrap();
     assert_eq!(
         (hunt.state, hunt.carry_to),
         (crate::gathering::hunt::DROP, 9149)
@@ -7376,7 +7511,7 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     };
     t.players[1].objects.push(site(2));
     // the dead hunter 41's Hunt walks its load to the town centre
-    t.players[1].objects[1].hunt.as_mut().unwrap().carry_to = 9149;
+    t.players[1].objects[1].actions.hunt_mut().unwrap().carry_to = 9149;
     t.tick(100);
     assert_eq!(
         (
@@ -7416,12 +7551,14 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     );
     let hunter = &mut t.players[1].objects[1];
     hunter.life.hp = 1.0;
-    hunter.hunt = Some(crate::gathering::hunt::HuntAction {
-        state: crate::gathering::hunt::SEARCH,
-        target: -1,
-        carry_to: 9149,
-        ..crate::gathering::hunt::tests::hunting(-1)
-    });
+    hunter
+        .actions
+        .set_hunt(Some(crate::gathering::hunt::HuntAction {
+            state: crate::gathering::hunt::SEARCH,
+            target: -1,
+            carry_to: 9149,
+            ..crate::gathering::hunt::tests::hunting(-1)
+        }));
     let mut gone = t.clone();
     gone.spatial = Spatial::default();
     t.tick(100);
@@ -7433,11 +7570,17 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
         (None, None)
     );
     assert_eq!(workers(&t), 0);
-    assert_eq!(t.players[1].objects[1].hunt.map(|h| h.carry_to), Some(-1));
+    assert_eq!(
+        t.players[1].objects[1].actions.hunt().map(|h| h.carry_to),
+        Some(-1)
+    );
     gone.tick(100);
     assert_eq!(workers(&gone), 1);
     assert_eq!(
-        gone.players[1].objects[1].hunt.map(|h| h.carry_to),
+        gone.players[1].objects[1]
+            .actions
+            .hunt()
+            .map(|h| h.carry_to),
         Some(-1)
     );
     // a failed hunt (state 13) is removed: its teardown lets the drop site go too
@@ -7446,16 +7589,18 @@ fn a_hunt_lets_its_drop_site_go_when_it_dies_or_the_hunter_does() {
     failed.spatial = t.spatial.clone();
     let hunter = &mut failed.players[1].objects[1];
     hunter.life.hp = 1.0;
-    hunter.hunt = Some(crate::gathering::hunt::HuntAction {
-        state: crate::gathering::hunt::FAILED,
-        target: -1,
-        carry_to: 9149,
-        ..crate::gathering::hunt::tests::hunting(-1)
-    });
+    hunter
+        .actions
+        .set_hunt(Some(crate::gathering::hunt::HuntAction {
+            state: crate::gathering::hunt::FAILED,
+            target: -1,
+            carry_to: 9149,
+            ..crate::gathering::hunt::tests::hunting(-1)
+        }));
     failed.tick(100);
     assert_eq!(failed.players[1].unsupported, None);
     assert_eq!(workers(&failed), 0);
-    assert_eq!(failed.players[1].objects[1].hunt, None);
+    assert_eq!(failed.players[1].objects[1].actions.hunt().copied(), None);
 }
 
 /// A Gather's and a Hunt's second target at the start of their updates (`0x140a8e1d0`,
@@ -7637,7 +7782,9 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
             },
         );
     }
-    t.players[1].objects[0].artifact = Some(Artifact::new(false));
+    t.players[1].objects[0]
+        .actions
+        .set_artifact(Some(Artifact::new(false)));
     t.artifact_take_object(1, 0, 9149).unwrap();
     assert_eq!(t.players[1].objects[3].workers, 2);
     t.artifact_take_object(1, 0, 9150).unwrap();
@@ -7648,7 +7795,7 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
         ],
         [1, 2]
     );
-    let a = t.players[1].objects[0].artifact.unwrap();
+    let a = t.players[1].objects[0].actions.artifact().copied().unwrap();
     assert_eq!((a.target, a.goal), (9150, Some([25.0, 20.0, 0.0])));
     assert_eq!(t.players[1].objects[0].body.anim_speed(), Some(0.0));
 }
@@ -7927,7 +8074,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
     walker.stats.speed = 0.8;
     walker.stats.stand_speed = 0.5;
     let sheep = Unit {
-        artifact: Some(Artifact::new(true)),
+        actions: ActionList::default().with_artifact(Some(Artifact::new(true))),
         body: crate::objects::layers::Body::Moving(walker),
         ai: None,
         ..hands_unit(9520, 705)
@@ -8014,7 +8161,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         Some(3.0)
     );
     assert_eq!(sheep.body.mover().map(|m| m.stats.speed), Some(0.5));
-    assert_eq!(sheep.artifact.map(|a| a.gaia), Some(false));
+    assert_eq!(sheep.actions.artifact().map(|a| a.gaia), Some(false));
     assert_eq!(t.players[1].attributes[16], 100.0);
     assert_eq!(t.spatial.get(9520).map(|p| p.player), Some(1));
 }
@@ -8556,14 +8703,14 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
             patrol_waypoint: 1,
             ..UnitAi::default()
         }),
-        move_to: Some(MoveToAction {
+        actions: ActionList::default().with_move_to(Some(MoveToAction {
             state: MoveTo::Moving,
             goal: None,
             target: 77,
             range: 0.0,
             run: false,
             wait: crate::movement::move_to::MoveWait::default(),
-        }),
+        })),
         ..Unit::default()
     };
     let run = u.restore_patrol().expect("the saved patrol's move");
@@ -8576,7 +8723,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         [[20.5, 0.5, 20.5], [30.5, 0.5, 20.25]]
     );
     assert_eq!(ai_move_of(&mut u, run, 6), Ok(vec![77]));
-    let move_to = u.move_to.unwrap();
+    let move_to = u.actions.move_to().copied().unwrap();
     assert_eq!(
         (move_to.goal, move_to.range, move_to.run),
         (Some([30.0, 20.25, 0.5]), 0.0, true)
@@ -9291,10 +9438,11 @@ fn forced(walk: bool) -> crate::unit_ai::AiMove {
 #[test]
 fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
     let mut u = mover_unit(123);
-    u.attack = Some(own_attack(9149, 9150, crate::combat::attack::DONE));
+    u.actions
+        .set_attack(Some(own_attack(9149, 9150, crate::combat::attack::DONE)));
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149, 9150]));
-    assert_eq!(u.attack, None);
-    let mt = u.move_to.expect("the AI's MoveTo");
+    assert_eq!(u.actions.attack().copied(), None);
+    let mt = u.actions.move_to().copied().expect("the AI's MoveTo");
     assert_eq!(
         (mt.state, mt.goal, mt.target, mt.range, mt.run),
         (MoveTo::Start, Some(AI_POINT), -1, 0.5, true)
@@ -9302,7 +9450,7 @@ fn an_ai_move_replaces_a_done_attack_with_a_move_to_the_point() {
     // walking: the master's walking sprite
     let mut u = mover_unit(123);
     assert_eq!(ai_move_of(&mut u, forced(true), 47), Ok(vec![]));
-    assert!(!u.move_to.unwrap().run);
+    assert!(!u.actions.move_to().copied().unwrap().run);
 }
 
 /// The Gather's slot 0x40 (`0x140a8b740`) takes a move to a point: the target goes (slot 0x68
@@ -9338,9 +9486,9 @@ fn an_ai_move_hands_the_point_to_the_gather() {
     let mut gather = crate::gathering::gather::GatherAction::new(task, &bush, false, rate).unwrap();
     gather.state = crate::gathering::gather::IDLE;
     let mut u = mover_unit(31139);
-    u.gather = Some(gather);
+    u.actions.set_gather(Some(gather));
     assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![28222]));
-    let g = u.gather.expect("the Gather stays");
+    let g = u.actions.gather().copied().expect("the Gather stays");
     assert_eq!(
         (g.state, g.target, g.point, g.walk_to),
         (
@@ -9351,7 +9499,7 @@ fn an_ai_move_hands_the_point_to_the_gather() {
         )
     );
     assert_eq!(g.move_to, Some(MoveTo::Start));
-    assert_eq!(u.move_to, None);
+    assert_eq!(u.actions.move_to().copied(), None);
 }
 
 /// The Hunt's slot 0x40 (`FUN_140ac52c0`) takes a point unless its task has a work range: its
@@ -9364,20 +9512,20 @@ fn an_ai_move_hands_the_point_to_a_hunt_without_a_work_range() {
     let mut hunt = crate::gathering::hunt::tests::hunting(9149);
     hunt.state = crate::gathering::hunt::IDLE;
     hunt.carry_to = 9150;
-    u.hunt = Some(hunt);
+    u.actions.set_hunt(Some(hunt));
     assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![9149]));
-    let h = u.hunt.expect("the Hunt stays");
+    let h = u.actions.hunt().copied().expect("the Hunt stays");
     assert_eq!(
         (h.state, h.target, h.carry_to, h.point, h.target_class),
         (crate::gathering::hunt::WALK_POINT, -1, 9150, AI_POINT, -1)
     );
-    assert_eq!(u.move_to, None);
+    assert_eq!(u.actions.move_to().copied(), None);
     let mut u = mover_unit(47);
     hunt.task.range = 1.0;
-    u.hunt = Some(hunt);
+    u.actions.set_hunt(Some(hunt));
     assert_eq!(ai_move_of(&mut u, forced(false), 4), Ok(vec![9149, 9150]));
-    assert_eq!(u.hunt, None);
-    assert_eq!(u.move_to.map(|m| m.goal), Some(Some(AI_POINT)));
+    assert_eq!(u.actions.hunt().copied(), None);
+    assert_eq!(u.actions.move_to().map(|m| m.goal), Some(Some(AI_POINT)));
 }
 
 /// Without the force a head `MoveTo` whose point (`+0x38`) is the move's stands, a point one or
@@ -9391,27 +9539,33 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
     };
     let old = MoveToAction::to_point(AI_POINT, 0.0, false, None);
     let mut u = mover_unit(5);
-    u.move_to = Some(old);
+    u.actions.set_move_to(Some(old));
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
-    assert_eq!(u.move_to, Some(old));
+    assert_eq!(u.actions.move_to().copied(), Some(old));
     let to_object = MoveToAction {
         goal: None,
         target: 9149,
         ..old
     };
-    u.move_to = Some(to_object);
+    u.actions.set_move_to(Some(to_object));
     u.body.mover_mut().unwrap().move_to_point = Some(AI_POINT);
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
-    assert_eq!(u.move_to, Some(to_object));
+    assert_eq!(u.actions.move_to().copied(), Some(to_object));
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149]));
-    assert_eq!(u.move_to.map(|m| (m.target, m.range)), Some((-1, 0.5)));
-    u.move_to = Some(old);
+    assert_eq!(
+        u.actions.move_to().map(|m| (m.target, m.range)),
+        Some((-1, 0.5))
+    );
+    u.actions.set_move_to(Some(old));
     let elsewhere = crate::unit_ai::AiMove {
         point: [1.0, 2.0, 0.0],
         ..unforced
     };
     assert_eq!(ai_move_of(&mut u, elsewhere, 47), Ok(vec![]));
-    assert_eq!(u.move_to.unwrap().goal, Some([1.0, 2.0, 0.0]));
+    assert_eq!(
+        u.actions.move_to().copied().unwrap().goal,
+        Some([1.0, 2.0, 0.0])
+    );
 }
 
 /// `FUN_141216c50`: an unpacked trebuchet (class 54) packs instead (not modelled); a packed one
@@ -9421,14 +9575,15 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
 fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
     let mut u = mover_unit(7);
     assert!(ai_move_of(&mut u, forced(false), 54).is_err());
-    assert_eq!(u.move_to, None);
+    assert_eq!(u.actions.move_to().copied(), None);
     assert_eq!(ai_move_of(&mut u, forced(false), 51), Ok(vec![]));
-    assert_eq!(u.move_to.map(|m| m.goal), Some(Some(AI_POINT)));
+    assert_eq!(u.actions.move_to().map(|m| m.goal), Some(Some(AI_POINT)));
     let mut u = mover_unit(7);
-    u.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify::new(
-        crate::objects::masters::Task::default(),
-        10028,
-    ));
+    u.actions
+        .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify::new(
+            crate::objects::masters::Task::default(),
+            10028,
+        )));
     assert_eq!(u.head_takes_point(AI_POINT, 1), Ok(PointMove::Declined));
     let mut u = mover_unit(7);
     u.unmodelled_action = Some(GenieError::unsupported("a test's action"));
@@ -9446,7 +9601,7 @@ fn an_ai_move_of_a_unit_without_speed_fails_at_its_start_standing() {
     m.stats.stand_speed = 0.0;
     u.body.set_anim_speed(1.0);
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![]));
-    assert_eq!(u.move_to.map(|m| m.state), Some(MoveTo::Failed));
+    assert_eq!(u.actions.move_to().map(|m| m.state), Some(MoveTo::Failed));
     assert_eq!(u.body.anim_speed(), Some(0.0));
 }
 
@@ -9486,25 +9641,25 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
         m.stats.stand_speed = 0.737;
         u.sprite = Some(crate::objects::sprite::ActiveSprite::start(walking, rng));
         u.body.set_anim_speed(1.0);
-        u.move_to = Some(MoveToAction::to_point(
+        u.actions.set_move_to(Some(MoveToAction::to_point(
             [119.5, 172.5, 0.0],
             0.0,
             false,
             None,
-        ));
+        )));
         u
     };
     let mut u = deer(&mut rng);
     u.own_move_gave_up(false, 0, (Some(&masters), &graphics, &mut rng))
         .unwrap();
-    assert_eq!(u.move_to.map(|m| m.state), Some(MoveTo::Failed));
+    assert_eq!(u.actions.move_to().map(|m| m.state), Some(MoveTo::Failed));
     assert_eq!(u.body.mover().map(|m| m.stats.speed), Some(0.737));
     assert_eq!(u.sprite.map(|s| s.graphic.id), Some(764));
     assert_eq!(u.body.anim_speed(), Some(0.0));
     let mut v = deer(&mut rng);
     v.own_move_gave_up(true, 0, (Some(&masters), &graphics, &mut rng))
         .unwrap();
-    assert_eq!(v.move_to.map(|m| m.state), Some(MoveTo::Waiting));
+    assert_eq!(v.actions.move_to().map(|m| m.state), Some(MoveTo::Waiting));
     assert_eq!(v.body.mover().map(|m| m.stats.speed), Some(1.4003));
     assert_eq!(v.sprite.map(|s| s.graphic.id), Some(765));
 }
@@ -9599,7 +9754,7 @@ fn scout_attack_on(
             standing, &mut rng,
         )),
         attack_timer: timer,
-        attack: own,
+        actions: ActionList::default().with_attack(own),
         life: Lifecycle {
             master_id: 448,
             inside,
@@ -9779,7 +9934,7 @@ fn attack_by(
             standing, &mut rng,
         )),
         attack_timer: timer,
-        attack: own,
+        actions: ActionList::default().with_attack(own),
         life: Lifecycle {
             master_id: attacker_master,
             inside,
@@ -9895,7 +10050,7 @@ fn a_villager_s_attack_command_switches_it_to_the_villager_first() {
     );
     assert_eq!(unit.life.master_id, 83);
     assert!(attacked.attacks);
-    assert!(unit.attack.is_some_and(|a| a.target == 50));
+    assert!(unit.actions.attack().is_some_and(|a| a.target == 50));
     assert_eq!(adds, [(4, -1.0), (4, 1.0)]);
     assert_eq!(promotions, [(123, 118, 83)]);
 }
@@ -9906,7 +10061,7 @@ fn helper_scout(helper: UnitAi, own: Option<crate::combat::attack::Attack>) -> U
     Unit {
         id: 124,
         position: [10.3, 10.0, 0.0],
-        attack: own,
+        actions: ActionList::default().with_attack(own),
         ai: Some(helper),
         life: Lifecycle {
             master_id: 448,
@@ -10173,13 +10328,13 @@ fn an_attack_command_on_its_own_attack_s_target_asks_that_attack_again() {
     };
     let (unit, attacked, takes) = scout_attack_on(0.0, None, Some(own(1)), true);
     assert_eq!((attacked.attacks, takes), (true, vec![]));
-    let a = unit.attack.expect("the scout's Attack");
+    let a = unit.actions.attack().copied().expect("the scout's Attack");
     assert_eq!((a.state, a.target, a.seen), (1, 50, [10.5, 10.0, 0.0]));
     let (unit, attacked, _) = scout_attack_on(0.0, None, Some(own(4)), true);
     assert!(attacked.attacks);
-    assert_eq!(unit.attack.map(|a| a.seen), Some([-1.0; 3]));
+    assert_eq!(unit.actions.attack().map(|a| a.seen), Some([-1.0; 3]));
     let (unit, _, _) = scout_attack_on(0.0, None, Some(own(1)), false);
-    assert_eq!(unit.attack.map(|a| a.seen), Some([-1.0; 3]));
+    assert_eq!(unit.actions.attack().map(|a| a.seen), Some([-1.0; 3]));
 }
 
 /// `FUN_141081a80`'s start (`0x140a7f8c0`) of a unit that cannot move (stance 2, no order) in
@@ -10193,14 +10348,14 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     let (unit, attacked, takes) = scout_attack(0.0, None);
     assert_eq!((attacked.attacks, attacked.posted), (true, vec![]));
     assert_eq!(takes, vec![50]);
-    let attack = unit.attack.expect("the scout's Attack");
+    let attack = unit.actions.attack().copied().expect("the scout's Attack");
     assert_eq!(
         (attack.state, attack.pending, attack.point),
         (crate::combat::attack::SWING, true, [10.5, 10.0, 0.0])
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(301));
     let (unit, _, _) = scout_attack(0.5, None);
-    let attack = unit.attack.expect("the scout's Attack");
+    let attack = unit.actions.attack().copied().expect("the scout's Attack");
     assert_eq!(
         (attack.state, attack.pending),
         (crate::combat::attack::READY, false)
@@ -10209,7 +10364,7 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
     let (unit, attacked, takes) = scout_attack(0.0, Some(9149));
     assert_eq!((attacked.attacks, takes), (true, vec![50]));
     assert_eq!(
-        unit.attack.map(|a| a.state),
+        unit.actions.attack().map(|a| a.state),
         Some(crate::combat::attack::FAILED)
     );
     assert_eq!(unit.body.anim_speed(), Some(1.0));
@@ -10481,7 +10636,7 @@ fn reseed_world() -> World {
             master_id: 259,
             ..Lifecycle::default()
         },
-        gather: Some(gather),
+        actions: ActionList::default().with_gather(Some(gather)),
         ai: Some(UnitAi {
             ai_type: 8,
             current_order: -1,
@@ -10533,8 +10688,8 @@ fn a_farmer_whose_farm_ran_out_reseeds_it_with_the_automatic_queue() {
     );
     let farmer = &p.objects[0];
     assert_eq!(farmer.life.master_id, 118);
-    assert_eq!(farmer.build.map(|b| b.target), Some(10028));
-    assert!(farmer.gather.is_none());
+    assert_eq!(farmer.actions.build().map(|b| b.target), Some(10028));
+    assert!(farmer.actions.gather().is_none());
 }
 
 /// Without the automatic queue the farm comes from the mill's queue (one less) unpaid; with
@@ -10562,7 +10717,7 @@ fn without_a_farm_to_make_the_farmer_idles() {
     let p = &t.players[1];
     assert_eq!(p.objects.len(), 1);
     assert_eq!(
-        p.objects[0].gather.map(|g| g.state),
+        p.objects[0].actions.gather().map(|g| g.state),
         Some(crate::gathering::gather::IDLE)
     );
     let mut t = reseed_world();
@@ -10573,7 +10728,7 @@ fn without_a_farm_to_make_the_farmer_idles() {
     let p = &t.players[1];
     assert_eq!((p.objects.len(), p.resources[1]), (1, 59.0));
     assert_eq!(
-        p.objects[0].gather.map(|g| g.state),
+        p.objects[0].actions.gather().map(|g| g.state),
         Some(crate::gathering::gather::DONE)
     );
 }
@@ -10594,9 +10749,9 @@ fn reseeded(setup: impl FnOnce(&mut World)) -> (Result<bool, GenieError>, usize)
 #[test]
 fn a_reseed_without_a_farm_to_make_makes_nothing() {
     let none: [fn(&mut World); 5] = [
-        |t| t.players[1].objects[0].gather = None,
+        |t| t.players[1].objects[0].actions.set_gather(None),
         |t| {
-            let g = t.players[1].objects[0].gather.as_mut().unwrap();
+            let g = t.players[1].objects[0].actions.gather_mut().unwrap();
             g.farm = [-1.0, -1.0];
         },
         |t| (t.players[1].farm_queue, t.players[1].fish_trap_queue) = (0, 1),
@@ -10680,7 +10835,7 @@ fn a_reseed_s_placement_passes_over_the_old_farm() {
                 obstruction: None,
             };
             t.spatial.insert(12557, at);
-            t.players[1].objects[0].gather.as_mut().unwrap().target = target;
+            t.players[1].objects[0].actions.gather_mut().unwrap().target = target;
         }
     };
     assert_eq!(reseeded(old_farm(12557)), (Ok(true), 3));
@@ -10903,7 +11058,7 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     t.tick(50);
     // its walk arrived at the house's edge: the next update of the Enter gets it in
     place(&mut t, [30.0, 89.1, 0.0]);
-    let art = t.players[1].objects[0].artifact.as_mut().unwrap();
+    let art = t.players[1].objects[0].actions.artifact_mut().unwrap();
     art.enter.as_mut().unwrap().move_to = Some(MoveTo::Arrived);
     t.tick(50);
     let v = &t.players[1].objects[0];
@@ -10913,10 +11068,13 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
         Some(crate::ownership::artifact::ARTIFACT_TYPE)
     );
     // inside at the next update's start: no Artifact step, the inside update deletes it
-    let before = v.artifact.map(|a| (a.state, a.timer));
+    let before = v.actions.artifact().map(|a| (a.state, a.timer));
     t.tick(50);
     let v = &t.players[1].objects[0];
-    assert_eq!((v.artifact, v.top_action_kind()), (None, None));
+    assert_eq!(
+        (v.actions.artifact().copied(), v.top_action_kind()),
+        (None, None)
+    );
     assert_eq!(t.players[1].freezes, vec![]);
     assert!(before.is_some());
 }
@@ -10930,14 +11088,14 @@ fn livestock_inside_gets_its_default_artifact_and_loses_it_by_turns() {
     let mut t = livestock_enter_world();
     let v = &mut t.players[1].objects[0];
     v.default_artifact = true;
-    v.artifact = None;
+    v.actions.set_artifact(None);
     v.life.inside = Some(10028);
     t.spatial.go_inside(9175, [30.0, 88.0, 0.0]);
     let mut kinds = Vec::new();
     for _ in 0..4 {
         t.tick(50);
         let v = &t.players[1].objects[0];
-        kinds.push(v.artifact.map(|a| a.state));
+        kinds.push(v.actions.artifact().map(|a| a.state));
     }
     assert_eq!(kinds, [Some(6), None, Some(6), None]);
     assert_eq!(t.players[1].freezes, vec![]);
@@ -10976,8 +11134,8 @@ fn a_build_of_another_player_s_builders_is_refused_and_theirs_are_left_out() {
     let p = &t.players[1];
     assert_eq!(p.resources, [200.0, 75.0, 200.0, 100.0]);
     assert_eq!(p.objects.last().map(|f| f.id), Some(10028));
-    assert_eq!(p.objects[0].build.map(|b| b.target), Some(10028));
-    assert_eq!(t.players[0].objects[0].build, None);
+    assert_eq!(p.objects[0].actions.build().map(|b| b.target), Some(10028));
+    assert_eq!(t.players[0].objects[0].actions.build().copied(), None);
 }
 
 /// The archer's master (4, 2 s reload, range 4, its missile 363 a tile up), its arrow (363,
@@ -11086,7 +11244,7 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> World {
     attack.arms.fire_frame = 5;
     attack.arms.sprite = Some(sprite(301));
     attack.arms.idle_sprite = Some(sprite(300));
-    archer.attack = Some(attack);
+    archer.actions.set_attack(Some(attack));
     let mut deer = unit(50, 65, 5.0);
     deer.position = [13.0, 10.0, 0.0];
     t.players[0].objects.push(deer);
@@ -11170,9 +11328,8 @@ fn a_ranged_swing_fires_its_missile_which_flies_to_the_target_and_hits_it() {
     assert_near(missiles(&t)[0].2, flown(4.0));
     assert_eq!(deer_hp(&t), 4.0);
     let action = t.players[1].objects[1]
-        .missile
-        .as_ref()
-        .and_then(|m| m.action.as_ref())
+        .actions
+        .missile()
         .map(|a| (a.state, a.result));
     assert_eq!(action, Some((crate::combat::missile::DONE, 1)));
     for _ in 0..3 {
@@ -11291,7 +11448,7 @@ fn a_volley_s_own_missiles_hit_without_the_shooter() {
     assert_eq!(masters, expected);
     let shooters: Vec<i32> = t.players[1].objects[1..]
         .iter()
-        .filter_map(|u| u.missile.as_ref()?.action.as_ref().map(|a| a.fired_from))
+        .filter_map(|u| u.actions.missile().map(|a| a.fired_from))
         .collect();
     let mut expected = vec![-1; usize::from(fired) - 1];
     expected.push(123);
@@ -11423,11 +11580,7 @@ fn a_missile_whose_target_died_flies_on_without_it_and_lands() {
     }
     t.players[0].objects[0].life.state = 3;
     t.tick(100);
-    let target = t.players[1].objects[1]
-        .missile
-        .as_ref()
-        .and_then(|m| m.action.as_ref())
-        .map(|a| a.target);
+    let target = t.players[1].objects[1].actions.missile().map(|a| a.target);
     assert_eq!(target, Some(-1));
     // the update the live deer took its hit in passes it by
     t.tick(100);
@@ -11491,7 +11644,7 @@ fn a_forager_fills_up_carries_its_berries_home_and_comes_back() {
     for _ in 0..1200 {
         forage_until(&mut t, 1, |_| false);
         let v = &t.players[1].objects[0];
-        let g = v.gather.unwrap();
+        let g = v.actions.gather().copied().unwrap();
         if states.last() != Some(&g.state) {
             states.push(g.state);
             if g.state == crate::gathering::gather::DROP {
@@ -11502,7 +11655,7 @@ fn a_forager_fills_up_carries_its_berries_home_and_comes_back() {
     }
     assert_eq!(states, [4, 6, 7, 8, 4, 6, 7]);
     assert_eq!(t.players[1].resources[0], 10.0);
-    let g = t.players[1].objects[0].gather.unwrap();
+    let g = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!((g.target, g.carry_to), (600, -1));
 }
 
@@ -11512,13 +11665,16 @@ fn a_forager_fills_up_carries_its_berries_home_and_comes_back() {
 #[test]
 fn a_forager_whose_bush_dies_lets_it_go_and_asks_for_a_search() {
     let mut t = foraging();
-    let working = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) == Some(7);
+    let working = |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) == Some(7);
     forage_until(&mut t, 200, working);
     assert_eq!(t.players[0].objects[0].workers, 1);
     t.players[0].objects[0].life.state = 7;
     forage_until(&mut t, 1, |_| false);
     let v = &t.players[1].objects[0];
-    assert_eq!(v.gather.map(|g| (g.state, g.target)), Some((3, -1)));
+    assert_eq!(
+        v.actions.gather().map(|g| (g.state, g.target)),
+        Some((3, -1))
+    );
     assert_eq!(t.players[0].objects[0].workers, 0);
     let heard: Vec<_> =
         v.ai.as_ref()
@@ -11562,14 +11718,19 @@ fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
                 },
             );
         }
-        let carries = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) == Some(8);
+        let carries =
+            |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) == Some(8);
         forage_until(&mut t, 800, carries);
         let _ = t.players[0].objects.remove(0);
         t.spatial.remove(600);
-        let dropped = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) != Some(8);
+        let dropped =
+            |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) != Some(8);
         forage_until(&mut t, 400, dropped);
         assert_eq!(t.players[1].resources[0], 10.0);
-        t.players[1].objects[0].gather.map(|g| (g.state, g.target))
+        t.players[1].objects[0]
+            .actions
+            .gather()
+            .map(|g| (g.state, g.target))
     };
     assert_eq!(carrying(true), Some((4, 601)));
     assert_eq!(carrying(false), Some((11, -1)));
@@ -11579,12 +11740,12 @@ fn a_forager_without_its_bush_after_the_drop_takes_the_next_one() {
 /// on the way, `setup` run before), after which the Gather's state follows.
 fn dropped_without_a_bush(setup: impl FnOnce(&mut World)) -> World {
     let mut t = foraging();
-    let carries = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) == Some(8);
+    let carries = |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) == Some(8);
     forage_until(&mut t, 800, carries);
     let _ = t.players[0].objects.remove(0);
     t.spatial.remove(600);
     setup(&mut t);
-    let dropped = |t: &World| t.players[1].objects[0].gather.map(|g| g.state) != Some(8);
+    let dropped = |t: &World| t.players[1].objects[0].actions.gather().map(|g| g.state) != Some(8);
     forage_until(&mut t, 400, dropped);
     assert_eq!(t.players[1].resources[0], 10.0);
     t
@@ -11597,10 +11758,10 @@ fn dropped_without_a_bush(setup: impl FnOnce(&mut World)) -> World {
 #[test]
 fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
     let pointless = |t: &mut World| {
-        t.players[1].objects[0].gather.as_mut().unwrap().point = [-1.0; 3];
+        t.players[1].objects[0].actions.gather_mut().unwrap().point = [-1.0; 3];
     };
     let t = dropped_without_a_bush(pointless);
-    let g = t.players[1].objects[0].gather.unwrap();
+    let g = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!(
         (g.state, g.target, g.carry_to, g.point),
         (2, -1, -1, [-1.0; 3])
@@ -11610,7 +11771,7 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
         pointless(t);
         t.players[1].computer = true;
     });
-    assert!(t.players[1].objects[0].gather.is_none());
+    assert!(t.players[1].objects[0].actions.gather().is_none());
     let order = |target| crate::unit_ai::QueuedOrder {
         issuer: 1,
         order: 0x2c5,
@@ -11628,14 +11789,14 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
     let _ = t.players[0].objects.remove(0);
     t.spatial.remove(600);
     let v = &mut t.players[1].objects[0];
-    v.gather.as_mut().unwrap().target = -1;
+    v.actions.gather_mut().unwrap().target = -1;
     v.ai.as_mut().unwrap().orders = vec![order(600), order(601)];
     in_update(&mut t, (1, 0), 50, |unit, c, others| {
         unit.gather_after_drop(c, others)
     })
     .unwrap();
     let v = &t.players[1].objects[0];
-    assert!(v.gather.is_none());
+    assert!(v.actions.gather().is_none());
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         ai.orders.iter().map(|o| o.target).collect::<Vec<_>>(),
@@ -11668,7 +11829,11 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
     type Followed = (Result<(), GenieError>, Vec<i32>, Option<i32>, Option<bool>);
     let follow = |next: Next, old: (i32, i32), built: Option<i32>| -> (World, Followed) {
         let mut t = foraging();
-        t.players[1].objects[0].gather.as_mut().unwrap().carry_to = 700;
+        t.players[1].objects[0]
+            .actions
+            .gather_mut()
+            .unwrap()
+            .carry_to = 700;
         let seen = in_update(&mut t, (1, 0), 50, |unit, c, others| {
             let by = unit.releaser(c);
             c.build_command = built;
@@ -11681,10 +11846,10 @@ fn what_follows_the_gather_s_update_lets_go_builds_or_reseeds() {
     };
     let (t, seen) = follow(Next::Done, (600, 700), None);
     assert_eq!(seen, (Ok(()), vec![600, 700], None, None));
-    assert!(t.players[1].objects[0].gather.is_none());
+    assert!(t.players[1].objects[0].actions.gather().is_none());
     let (t, seen) = follow(Next::Stay, (601, -1), None);
     assert_eq!(seen, (Ok(()), vec![601], None, None));
-    assert!(t.players[1].objects[0].gather.is_some());
+    assert!(t.players[1].objects[0].actions.gather().is_some());
     let (_, seen) = follow(Next::Stay, (600, 702), None);
     assert_eq!(seen, (Ok(()), vec![702], None, None));
     let (_, seen) = follow(Next::Build, (600, 700), None);
@@ -11704,19 +11869,19 @@ fn the_gather_s_update_ends_asks_again_and_walks_back() {
     use crate::gathering::gather::{DONE, SEARCH, WALK, WALK_BACK};
     let set = |state, timer| {
         let mut t = foraging();
-        let g = t.players[1].objects[0].gather.as_mut().unwrap();
+        let g = t.players[1].objects[0].actions.gather_mut().unwrap();
         (g.state, g.timer) = (state, timer);
         t
     };
     let mut t = set(DONE, 0.0);
     assert_eq!(t.players[0].objects[0].workers, 1);
     gather_step(&mut t).unwrap();
-    assert!(t.players[1].objects[0].gather.is_none());
+    assert!(t.players[1].objects[0].actions.gather().is_none());
     assert_eq!(t.players[0].objects[0].workers, 0);
     let mut t = set(SEARCH, -0.02);
     gather_step(&mut t).unwrap();
     let v = &t.players[1].objects[0];
-    assert_eq!(v.gather.map(|g| g.timer), Some(-10.0));
+    assert_eq!(v.actions.gather().map(|g| g.timer), Some(-10.0));
     let heard: Vec<i32> =
         v.ai.as_ref()
             .unwrap()
@@ -11727,11 +11892,21 @@ fn the_gather_s_update_ends_asks_again_and_walks_back() {
     assert_eq!(heard, [crate::unit_ai::REQUIRES_SEARCH]);
     let mut t = set(SEARCH, -0.2);
     gather_step(&mut t).unwrap();
-    assert!((t.players[1].objects[0].gather.unwrap().timer + 0.15).abs() < 1e-6);
+    assert!(
+        (t.players[1].objects[0]
+            .actions
+            .gather()
+            .copied()
+            .unwrap()
+            .timer
+            + 0.15)
+            .abs()
+            < 1e-6
+    );
     let mut t = set(WALK, -0.02);
     gather_step(&mut t).unwrap();
     assert_eq!(
-        t.players[1].objects[0].gather.map(|g| g.state),
+        t.players[1].objects[0].actions.gather().map(|g| g.state),
         Some(WALK_BACK)
     );
 }
@@ -11777,7 +11952,7 @@ fn build_drop_off_with(held: (i16, f32)) -> (u8, i32, f32, i32, Vec<i32>) {
     })
     .unwrap();
     let v = &t.players[1].objects[0];
-    let b = v.build.unwrap();
+    let b = v.actions.build().copied().unwrap();
     let heard =
         v.ai.as_ref()
             .unwrap()
@@ -11863,12 +12038,12 @@ fn a_drop_site_search_from_a_unit_takes_the_nearest_it_reaches() {
     assert_eq!(drop_site_sought(inside, (true, true, -1)), Ok(Some(701)));
     assert_eq!(drop_site_sought(inside, (false, true, -1)), Ok(Some(700)));
     let making = |t: &mut World| {
-        t.players[1].objects[2].make = Some(MakeAction {
+        t.players[1].objects[2].actions.set_make(Some(MakeAction {
             state: 2,
             remaining: 0.0,
             total: 0.0,
             task: crate::objects::masters::Task::default(),
-        });
+        }));
     };
     assert_eq!(drop_site_sought(making, (false, true, MAKE)), Ok(Some(701)));
     assert_eq!(drop_site_sought(making, (false, true, -1)), Ok(Some(700)));
@@ -11891,7 +12066,7 @@ fn own_move_world(m: MoveToAction) -> World {
     let mut t = forage_world();
     t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
     t.build_mesh();
-    t.players[1].objects[0].move_to = Some(m);
+    t.players[1].objects[0].actions.set_move_to(Some(m));
     t
 }
 
@@ -11911,7 +12086,7 @@ fn own_move(t: &mut World) -> OwnMoved {
             id: unit.id,
             position: unit.position,
             group: unit.group.id,
-            action_state: unit.move_to.map_or(0, |m| m.state.number()),
+            action_state: unit.actions.move_to().map_or(0, |m| m.state.number()),
         };
         unit.move_to_part(c, me)
     });
@@ -11919,7 +12094,12 @@ fn own_move(t: &mut World) -> OwnMoved {
     let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
         ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
     });
-    (r, v.move_to, heard, t.players[0].objects[0].workers)
+    (
+        r,
+        v.actions.move_to().copied(),
+        heard,
+        t.players[0].objects[0].workers,
+    )
 }
 
 /// The unit's own `MoveTo` in its update (`0x140aa2a70`): a start toward bush 600 asks for its
@@ -11984,14 +12164,14 @@ fn flown(move_to: MoveTo, flies_from_now: bool, setup: impl FnOnce(&mut Unit)) -
         ..crate::objects::masters::Task::default()
     };
     let v = &mut t.players[1].objects[0];
-    v.fly = Some(Fly {
+    v.actions.set_fly(Some(Fly {
         state: 4,
         timer: 2.0,
         move_to: Some(move_to),
         goal: Some([40.5, 89.5, 0.0]),
         home: [29.5, 89.5],
         task,
-    });
+    }));
     setup(v);
     let r = in_update(&mut t, (1, 0), 50, |unit, c, _| {
         let me = crate::movement::Me {
@@ -12006,7 +12186,7 @@ fn flown(move_to: MoveTo, flies_from_now: bool, setup: impl FnOnce(&mut Unit)) -
     let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
         ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
     });
-    (r, v.fly, heard)
+    (r, v.actions.fly().copied(), heard)
 }
 
 /// A bird's Fly in its update: a failed `MoveTo` ends the flight, its failure told to the unit
@@ -12037,7 +12217,7 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
     t.build_mesh();
     let (mut explore, _) = crate::movement::explore::ExploreAction::new([40.5, 89.5, 0.0]);
     set(&mut explore);
-    t.players[1].objects[0].explore = Some(explore);
+    t.players[1].objects[0].actions.set_explore(Some(explore));
     let r = in_update(&mut t, (1, 0), 50, |unit, c, _| {
         let me = crate::movement::Me {
             id: unit.id,
@@ -12051,7 +12231,7 @@ fn explored(set: impl FnOnce(&mut crate::movement::explore::ExploreAction)) -> E
     let heard = v.ai.as_ref().map_or_else(Vec::new, |ai| {
         ai.notifies.iter().map(|n| (n.kind, n.p)).collect()
     });
-    (r, v.explore, heard)
+    (r, v.actions.explore().copied(), heard)
 }
 
 /// What [`explored`] gives: the part's result, the Explore after it and the notifies heard.
@@ -12140,7 +12320,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
     let v = &mut t.players[1].objects[0];
     let at = v.position;
     v.body.mover_mut().unwrap().moved_at = at;
-    v.hunt.as_mut().unwrap().target = -1;
+    v.actions.hunt_mut().unwrap().target = -1;
     v.ai.as_mut().unwrap().target_type = -1;
     setup(v);
     in_update(&mut t, (1, 0), 50, |unit, c, others| {
@@ -12153,7 +12333,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
 /// The hunt's state, target and drop site after [`hunted_without_a_deer`], and the two deer's
 /// workers.
 fn hunt_after(t: &World) -> (Option<(u8, i32, i32)>, [i32; 2]) {
-    let h = t.players[1].objects[0].hunt;
+    let h = t.players[1].objects[0].actions.hunt().copied();
     let deer = &t.players[0].objects;
     (
         h.map(|h| (h.state, h.target, h.carry_to)),
@@ -12207,13 +12387,13 @@ fn a_hunter_with_a_queued_order_after_the_drop_ends_its_hunt() {
 #[test]
 fn a_hunter_that_finds_nothing_after_the_drop_walks_to_its_point() {
     for class in [10, 15] {
-        let t = hunted_without_a_deer(|v| v.hunt.as_mut().unwrap().target_class = class);
+        let t = hunted_without_a_deer(|v| v.actions.hunt_mut().unwrap().target_class = class);
         assert_eq!(
             hunt_after(&t),
             (Some((crate::gathering::hunt::WALK_SEARCH, -1, -1)), [0, 0]),
             "class {class}"
         );
-        let h = t.players[1].objects[0].hunt.unwrap();
+        let h = t.players[1].objects[0].actions.hunt().copied().unwrap();
         assert_eq!(h.point, [32.5, 89.5, 0.0]);
     }
 }
@@ -12300,7 +12480,7 @@ fn a_build_step_s_changes_reach_the_builder() {
         };
         assert_eq!(after_build(&mut t, step), none());
         assert_eq!(house_workers(&t), 0);
-        assert_eq!(t.players[1].objects[0].build.is_none(), done);
+        assert_eq!(t.players[1].objects[0].actions.build().is_none(), done);
     }
     let mut t = house_builder();
     let told = BuildStep {
@@ -12330,7 +12510,7 @@ fn a_build_step_s_changes_reach_the_builder() {
         ..BuildStep::default()
     };
     assert_eq!(after_build(&mut t, drop_off), none());
-    let b = t.players[1].objects[0].build.unwrap();
+    let b = t.players[1].objects[0].actions.build().copied().unwrap();
     assert_eq!((b.state, b.site), (crate::construction::build::DROP, 700));
 }
 
@@ -12348,7 +12528,7 @@ fn built_the_centre(setup: impl FnOnce(&mut World)) -> (World, BuildSearched) {
         masters.get_mut(109).unwrap().line_of_sight = 16.0;
     }
     t.drop_sites[0].auto_work = true;
-    let b = t.players[1].objects[0].build.as_mut().unwrap();
+    let b = t.players[1].objects[0].actions.build_mut().unwrap();
     (b.target, b.move_to) = (700, None);
     t.players[1].objects[2].workers = 1;
     setup(&mut t);
@@ -12379,7 +12559,10 @@ type BuildSearched = Result<(Option<(i32, [f32; 3])>, Vec<i32>), GenieError>;
 fn a_builder_finds_more_work_around_the_building_it_finished() {
     let (t, found) = built_the_centre(|_| ());
     assert_eq!(found, Ok((Some((600, [32.5, 89.5, 0.0])), vec![])));
-    assert_eq!(t.players[1].objects[0].build.map(|b| b.target), Some(700));
+    assert_eq!(
+        t.players[1].objects[0].actions.build().map(|b| b.target),
+        Some(700)
+    );
     let off: fn(&mut World) = |t| t.drop_sites[0].auto_work = false;
     let short: fn(&mut World) = |t| {
         for masters in &mut t.masters {
@@ -12389,7 +12572,7 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
     for setup in [off, short] {
         let (t, found) = built_the_centre(setup);
         assert_eq!(found, Ok((None, vec![SEARCH_NEEDED])));
-        let b = t.players[1].objects[0].build.unwrap();
+        let b = t.players[1].objects[0].actions.build().copied().unwrap();
         assert_eq!((b.state, b.target), (crate::construction::build::IDLE, -1));
         assert_eq!(t.players[1].objects[2].workers, 0);
     }
@@ -12674,7 +12857,7 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
         notified: true,
     };
     t.order_work(1, 0, &work).unwrap();
-    let mut states = vec![t.players[1].objects[0].repair.map(|r| r.state)];
+    let mut states = vec![t.players[1].objects[0].actions.repair().map(|r| r.state)];
     for _ in 0..n {
         in_update(t, (1, 0), 50, |unit, c, others| {
             let me = crate::movement::Me {
@@ -12686,7 +12869,7 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
             unit.repair_part(c, others, me)
         })
         .unwrap();
-        let state = t.players[1].objects[0].repair.map(|r| r.state);
+        let state = t.players[1].objects[0].actions.repair().map(|r| r.state);
         if states.last() != Some(&state) {
             states.push(state);
         }
@@ -12950,11 +13133,11 @@ fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
         count: 8,
         flag_1: false,
     });
-    v.build.as_mut().unwrap().task.work_value = 1.0;
+    v.actions.build_mut().unwrap().task.work_value = 1.0;
     let mut seen = Vec::new();
     for n in 0..520 {
         let _ = in_update(&mut t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
-        let b = t.players[1].objects[0].build.unwrap();
+        let b = t.players[1].objects[0].actions.build().copied().unwrap();
         let house = t.players[1].objects[1].life.state;
         let now = (b.state, b.move_to, house);
         if seen.last().is_none_or(|&(_, last)| last != now) {
@@ -12978,7 +13161,7 @@ fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
         (25.0, 0)
     );
     let v = &t.players[1].objects[0];
-    assert_eq!(v.build.unwrap().target, -1);
+    assert_eq!(v.actions.build().copied().unwrap().target, -1);
     let heard = v.ai.as_ref().unwrap().notifies.iter().map(|n| n.kind);
     assert_eq!(heard.collect::<Vec<_>>(), [SEARCH_NEEDED]);
 }
@@ -13017,7 +13200,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
     for n in 0..350 {
         let _ = in_update(&mut t, (1, 0), 50, |unit, c, others| unit.update(c, others)).unwrap();
         let v = &t.players[1].objects[0];
-        let b = v.build.unwrap();
+        let b = v.actions.build().copied().unwrap();
         let now = (b.state, b.move_to, b.site, v.life.amount);
         if seen.last().is_none_or(|&(_, last)| last != now) {
             seen.push((n, now));
@@ -13219,18 +13402,18 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     assert_eq!(
         (
             gatherer.top_action_kind(),
-            gatherer.gather.map(|g| (g.target, g.state))
+            gatherer.actions.gather().map(|g| (g.target, g.state))
         ),
         (Some(crate::gathering::gather::GATHER), Some((600, 4)))
     );
     assert_eq!(t.players[0].objects[0].workers, 1);
     assert_eq!(stay(&mut t, &|c| c.reseed = Some(true)), Ok(Step::Stay));
-    let gather = t.players[1].objects[0].gather.unwrap();
+    let gather = t.players[1].objects[0].actions.gather().copied().unwrap();
     assert_eq!((gather.target, gather.state), (-1, 2));
     assert_eq!(t.players[0].objects[0].workers, 0);
 
     let mut t = house_builder();
-    t.players[1].objects[0].build = None;
+    t.players[1].objects[0].actions.set_build(None);
     assert_eq!(
         stay(&mut t, &|c| c.build_command = Some(10028)),
         Ok(Step::Stay)
@@ -13239,7 +13422,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
     assert_eq!(
         (
             builder.top_action_kind(),
-            builder.build.as_ref().map(|b| b.target)
+            builder.actions.build().map(|b| b.target)
         ),
         (Some(crate::construction::build::BUILD), Some(10028))
     );
@@ -13260,7 +13443,7 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
         stay(&mut t, &|c| c.transport_moves.push((9175, meet))),
         Ok(Step::Stay)
     );
-    let ship = t.players[1].objects[0].move_to.as_ref().unwrap();
+    let ship = t.players[1].objects[0].actions.move_to().unwrap();
     assert_eq!((ship.goal, ship.range, ship.run), (Some(meet), 0.0, true));
     assert_eq!(
         stay(&mut t, &|c| c.transport_moves.push((4242, meet))),
@@ -13429,11 +13612,11 @@ fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
         count: 8,
         flag_1: false,
     });
-    v.build.as_mut().unwrap().task.work_value = 1.0;
+    v.actions.build_mut().unwrap().task.work_value = 1.0;
     let mut seen = Vec::new();
     for n in 0..520 {
         t.tick(50);
-        let b = t.players[1].objects[0].build.unwrap();
+        let b = t.players[1].objects[0].actions.build().copied().unwrap();
         let house = t.players[1].objects[1].life.state;
         let now = (b.state, b.move_to, house);
         if seen.last().is_none_or(|&(_, last)| last != now) {

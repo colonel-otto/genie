@@ -828,12 +828,13 @@ fn a_farm_food_change_grows_the_farms_food() {
     let mut farm = unit_of(5, 50, 480.0);
     farm.life.amount = 75.0;
     farm.construction = Some(built());
-    farm.make = Some(crate::gathering::make::MakeAction {
-        state: 1,
-        remaining: 100.0,
-        total: 175.0,
-        task: crate::objects::masters::Task::default(),
-    });
+    farm.actions
+        .set_make(Some(crate::gathering::make::MakeAction {
+            state: 1,
+            remaining: 100.0,
+            total: 175.0,
+            task: crate::objects::masters::Task::default(),
+        }));
     let player = Player {
         objects: vec![farm],
         attributes: vec![0.0; 300],
@@ -851,7 +852,15 @@ fn a_farm_food_change_grows_the_farms_food() {
         .unwrap();
     assert_eq!(t.players[0].attributes[36], 250.0);
     // (175 / 175)^1 × 75 + 175 − 75
-    assert_eq!(t.players[0].objects[0].make.unwrap().remaining, 175.0);
+    assert_eq!(
+        t.players[0].objects[0]
+            .actions
+            .make()
+            .copied()
+            .unwrap()
+            .remaining,
+        175.0
+    );
 }
 
 /// Cartography (resource 50, added): the allied vision turns on and the masks are rebuilt
@@ -1502,7 +1511,9 @@ fn a_standing_sprite_change_shows_on_the_master_s_idle_units() {
         u
     };
     let mut exploring = shown(3, 0);
-    exploring.explore = Some(crate::movement::explore::ExploreAction::new([5.0, 5.0, 0.0]).0);
+    exploring.actions.set_explore(Some(
+        crate::movement::explore::ExploreAction::new([5.0, 5.0, 0.0]).0,
+    ));
     let player = Player {
         objects: vec![shown(1, 0), shown(2, 1), exploring],
         ..Player::default()

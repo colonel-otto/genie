@@ -597,7 +597,7 @@ fn keshik(t: &mut World) {
         runs: true,
         same_owner: false,
     };
-    t.players[1].objects[0].attack = Some(attack);
+    t.players[1].objects[0].actions.set_attack(Some(attack));
     t.players[1].attributes[213] = 0.5;
     t.players[1].generated[3] = 0.999;
 }
@@ -615,7 +615,7 @@ fn a_keshik_makes_gold_while_it_fights_a_target_of_its_task_s_class() {
     assert_eq!(t.players[1].attributes[169], given);
     assert_eq!(t.players[1].generated[3], 0.0);
     // in another state, nothing
-    t.players[1].objects[0].attack.as_mut().unwrap().state = 6;
+    t.players[1].objects[0].actions.attack_mut().unwrap().state = 6;
     run(&mut t, 1, 60);
     assert_eq!(t.players[1].generated[3], 0.0);
 }

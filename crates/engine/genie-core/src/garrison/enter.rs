@@ -182,7 +182,7 @@ impl World {
         if sub {
             let by = self.releaser(player, idx);
             let unit = &mut self.players[player].objects[idx];
-            let art = unit.artifact.as_mut().ok_or(GenieError::unreachable(
+            let art = unit.actions.artifact_mut().ok_or(GenieError::unreachable(
                 "an Artifact on top without its action",
             ))?;
             let gone = art.hold_enter(action);
@@ -235,12 +235,14 @@ impl World {
         match walking {
             // the enter's set_state(1) reads the Enter as the unit's; a sub-action goes back
             Walking::Enter => {
-                self.players[player].objects[idx].enter = Some(action);
+                self.players[player].objects[idx]
+                    .actions
+                    .set_enter(Some(action));
                 let entered = self.enter_now(player, idx, target);
                 if sub {
                     let unit = &mut self.players[player].objects[idx];
-                    let e = unit.enter.take();
-                    if let (Some(e), Some(art)) = (e, unit.artifact.as_mut()) {
+                    let e = unit.actions.take_enter();
+                    if let (Some(e), Some(art)) = (e, unit.actions.artifact_mut()) {
                         art.enter = Some(e);
                     }
                 }

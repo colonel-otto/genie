@@ -82,7 +82,9 @@ impl Unit {
         if !m.force
             && self.top_action_kind() == Some(crate::movement::move_to::MOVE_TO)
             && self
-                .move_to
+                .actions
+                .move_to()
+                .copied()
                 .and_then(|mt| mt.point(self.body.mover()))
                 .is_some_and(|p| p == m.point)
         {
@@ -110,7 +112,7 @@ impl Unit {
         if move_to.shows_standing() {
             self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         }
-        self.move_to = Some(move_to);
+        self.actions.set_move_to(Some(move_to));
         Ok(false)
     }
 
@@ -157,8 +159,8 @@ impl Unit {
             ) => Ok(PointMove::Declined),
             Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
                 let gone = self
-                    .artifact
-                    .as_mut()
+                    .actions
+                    .artifact_mut()
                     .map(|a| a.take_point(point))
                     .unwrap_or_default();
                 if gone.stops {
@@ -172,7 +174,8 @@ impl Unit {
             }
             Some(crate::gathering::hunt::HUNT) => {
                 let (held, my_pasture) = (self.life.amount, self.my_pasture);
-                let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.body.mover_mut()) else {
+                let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut())
+                else {
                     return Err(GenieError::unsupported(
                         "a hunter without its hunt or movement state",
                     ));
@@ -185,7 +188,8 @@ impl Unit {
             }
             Some(crate::gathering::gather::GATHER) => {
                 let held = self.life.amount;
-                let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.body.mover_mut())
+                let (Some(gather), Some(mover)) =
+                    (self.actions.gather_mut(), self.body.mover_mut())
                 else {
                     return Err(GenieError::unsupported(
                         "a gatherer without its gather or movement state",
@@ -199,7 +203,7 @@ impl Unit {
             Some(crate::garrison::transport::TRANSPORT) => Ok(PointMove::Sails),
             // the Repair's (FUN_140ad9700): its point, slot 0x68 with none, set_state(11)
             Some(crate::construction::repair::REPAIR) => {
-                let repair = self.repair.as_mut().expect("the unit's top action");
+                let repair = self.actions.repair_mut().expect("the unit's top action");
                 let (old, counted) = repair.take_point(point, self.body.mover_mut())?;
                 Ok(PointMove::Repairs(
                     Some(old).filter(|&t| t != -1),
@@ -263,7 +267,7 @@ impl Unit {
         if move_to.shows_standing() {
             self.shows_standing_sprite(c.masters, c.graphics, c.streams.get(Stream::Sprite))?;
         }
-        self.move_to = Some(move_to);
+        self.actions.set_move_to(Some(move_to));
         Ok(())
     }
 
@@ -287,7 +291,7 @@ impl Unit {
             &mut Well512,
         ),
     ) -> Result<(), GenieError> {
-        let Some(m) = self.move_to.as_mut() else {
+        let Some(m) = self.actions.move_to_mut() else {
             return Ok(());
         };
         m.state = m.wait.give_up(waits, stance);

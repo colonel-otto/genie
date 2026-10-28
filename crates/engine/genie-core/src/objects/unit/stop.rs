@@ -118,9 +118,9 @@ impl Unit {
                 releases.push((t, by));
             }
         };
-        self.wait_solidify = None;
-        self.make = None;
-        if let Some(mut a) = self.artifact.take() {
+        self.actions.set_wait_solidify(None);
+        self.actions.set_make(None);
+        if let Some(mut a) = self.actions.take_artifact() {
             let (released, gone) = a.tear_down();
             if let Some(t) = released {
                 release(t);
@@ -130,19 +130,22 @@ impl Unit {
             }
             self.stop_if_moving(gone.stops)?;
         }
-        if let Some(f) = self.fly.take() {
+        if let Some(f) = self.actions.take_fly() {
             self.body
                 .set_anim_speed(self.body.mover().map_or(0.0, |m| m.stats.speed));
             self.stop_if_moving(f.move_to.is_some())?;
         }
-        if let Some(e) = self.enter.take() {
+        if let Some(e) = self.actions.take_enter() {
             self.stop_if_moving(e.move_to.is_some())?;
             release(e.target);
         }
         // the Transport's teardown: its MoveTo's stops the unit; it holds no target
-        let moves = self.transport.take().is_some_and(|t| t.move_to.is_some());
+        let moves = self
+            .actions
+            .take_transport()
+            .is_some_and(|t| t.move_to.is_some());
         self.stop_if_moving(moves)?;
-        if let Some(b) = self.build.take() {
+        if let Some(b) = self.actions.take_build() {
             if b.added {
                 builder_leaves.push(b.target);
             }
@@ -151,35 +154,38 @@ impl Unit {
         }
         // the Repair's destructor (FUN_140ad8fd0): a counted repairer leaves its target's
         // repairers, then the base teardown's sub-actions and target
-        if let Some(r) = self.repair.take() {
+        if let Some(r) = self.actions.take_repair() {
             if r.counted {
                 builder_leaves.push(r.target);
             }
             release(r.target);
             self.stop_if_moving(r.move_to.is_some())?;
         }
-        let moves = self.explore.take().is_some_and(|e| e.move_to.is_some());
+        let moves = self
+            .actions
+            .take_explore()
+            .is_some_and(|e| e.move_to.is_some());
         self.stop_if_moving(moves)?;
-        if let Some(mut h) = self.hunt.take() {
+        if let Some(mut h) = self.actions.take_hunt() {
             h.tear_down(self.body.mover_mut())?;
             release(h.target);
             release(h.carry_to);
         }
-        if let Some(mut g) = self.gather.take() {
+        if let Some(mut g) = self.actions.take_gather() {
             g.tear_down(self.body.mover_mut())?;
             release(g.target);
             release(g.carry_to);
         }
-        if let Some(mut a) = self.attack.take() {
+        if let Some(mut a) = self.actions.take_attack() {
             a.tear_down(self.body.mover_mut())?;
             release(a.target);
             release(a.target2);
         }
-        if let Some(old) = self.move_to.take() {
+        if let Some(old) = self.actions.take_move_to() {
             self.stop_if_moving(true)?;
             release(old.target);
         }
-        if let Some(a) = self.missile.as_mut().and_then(|m| m.action.take()) {
+        if let Some(a) = self.actions.take_missile() {
             release(a.target);
             release(a.fired_from);
         }

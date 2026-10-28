@@ -25,7 +25,7 @@ impl Unit {
         others: &mut [Self],
         me: Me,
     ) -> Result<(), GenieError> {
-        let Some(target) = self.repair.map(|r| r.target) else {
+        let Some(target) = self.actions.repair().map(|r| r.target) else {
             return Ok(());
         };
         let own = repair_master(c.every_masters, c.player, self)
@@ -91,7 +91,7 @@ impl Unit {
             can_path: &mut can_path,
             repair: &mut repair,
         };
-        let repair_action = self.repair.as_mut().expect("checked above");
+        let repair_action = self.actions.repair_mut().expect("checked above");
         let step = repair_action.update(c.walk(self.body.mover_mut(), me), view)?;
         repair_write_back(c, others, &set, &original);
         c.attribute_adds.extend(paid.adds);
@@ -154,8 +154,8 @@ impl Unit {
         if step.done {
             // the action list removes it; its destructor (FUN_140ad8fd0) finds it out of the
             // repairers (set_state left them) and lets the target it still holds go
-            let holds = self.repair.map_or(-1, |r| r.target);
-            self.repair = None;
+            let holds = self.actions.repair().map_or(-1, |r| r.target);
+            self.actions.set_repair(None);
             if holds != -1 {
                 if others.iter().any(|u| u.id == holds) {
                     release_own(others, c.masters, holds, by)?;

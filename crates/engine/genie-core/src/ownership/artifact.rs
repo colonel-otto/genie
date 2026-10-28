@@ -409,14 +409,16 @@ impl Unit {
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<(), GenieError> {
-        let Some(e) = self.artifact.as_mut().and_then(|a| a.enter.take()) else {
+        let Some(e) = self.actions.artifact_mut().and_then(|a| a.enter.take()) else {
             return Ok(());
         };
-        let own = self.enter.replace(e);
+        let own = self.actions.take_enter();
+        self.actions.set_enter(Some(e));
         let updated = self.enter_update(c, others, me);
-        let after = std::mem::replace(&mut self.enter, own);
+        let after = self.actions.take_enter();
+        self.actions.set_enter(own);
         updated?;
-        if let Some(art) = self.artifact.as_mut() {
+        if let Some(art) = self.actions.artifact_mut() {
             if let Some(e) = after {
                 art.enter = Some(e);
             } else {
@@ -442,7 +444,7 @@ impl Unit {
         me: Me,
         by: crate::objects::release::Releaser,
     ) -> Result<Option<Handover>, GenieError> {
-        let Some(artifact) = self.artifact.as_mut() else {
+        let Some(artifact) = self.actions.artifact_mut() else {
             return Ok(None);
         };
         let dt = c.dt;

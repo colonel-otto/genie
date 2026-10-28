@@ -186,7 +186,7 @@ impl Unit {
         c: &mut Context<'_>,
         makes_from_now: bool,
     ) -> Result<(), GenieError> {
-        if let Some(make) = self.make.as_mut().filter(|_| !makes_from_now) {
+        if let Some(make) = self.actions.make_mut().filter(|_| !makes_from_now) {
             let master = c.masters.and_then(|m| m.get(self.life.master_id)).ok_or(
                 GenieError::unsupported("a Make of a master the slice does not have"),
             )?;
@@ -215,7 +215,7 @@ impl Unit {
             }
             // the action list's result 1 removes it (FUN_140a98e20)
             if step.done {
-                self.make = None;
+                self.actions.set_make(None);
             }
         }
         Ok(())

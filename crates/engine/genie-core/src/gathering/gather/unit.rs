@@ -29,7 +29,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         use crate::construction::build::DropSearch;
         let by = self.releaser(c);
-        let build = self.build.as_ref().expect("the caller's Build");
+        let build = self.actions.build().expect("the caller's Build");
         let task_range = build.task.range;
         let search = if 0.0 < self.life.amount {
             let (masters, own) = c
@@ -98,7 +98,7 @@ impl Unit {
             DropSearch::Empty
         };
         let mut walk = c.walk(self.body.mover_mut(), me);
-        let build = self.build.as_mut().expect("the caller's Build");
+        let build = self.actions.build_mut().expect("the caller's Build");
         let out = build.set_drop(&mut walk, None, search)?;
         if out.let_go != -1 {
             c.releases.push((out.let_go, by));
@@ -130,7 +130,7 @@ impl Unit {
         let by = self.releaser(c);
         self.gather_check_targets(c, others, by)?;
         let view = self.gather_view(c)?;
-        if self.gather.as_ref().expect("the caller's gather").state
+        if self.actions.gather().expect("the caller's gather").state
             == crate::gathering::gather::DROP
         {
             return self.gather_drop_update(c, others, me, view, by);
@@ -147,7 +147,7 @@ impl Unit {
         others: &[Self],
         by: Releaser,
     ) -> Result<(), GenieError> {
-        let gather = self.gather.as_mut().expect("the caller's gather");
+        let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.target != -1 {
             let state = c
                 .victim
@@ -185,7 +185,7 @@ impl Unit {
     /// powerup (slot 0x6e8), its capacity and class, the task's productivity (1 for none or not
     /// above 0), the stance, and the player's farm settings.
     fn gather_view(&self, c: &Context<'_>) -> Result<GatherView, GenieError> {
-        let gather = self.gather.as_ref().expect("the caller's gather");
+        let gather = self.actions.gather().expect("the caller's gather");
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -243,10 +243,10 @@ impl Unit {
             .get_known(self.id)?
             .map(|p| (p.position, p.radius))
             .ok_or(GenieError::unsupported("a gatherer without a place"))?;
-        let carry_to = self.gather.as_ref().expect("the caller's gather").carry_to;
+        let carry_to = self.actions.gather().expect("the caller's gather").carry_to;
         let site = self.gather_site(c, carry_to, (position, radius))?;
         let attributes = c.attributes.len();
-        let gather = self.gather.as_mut().expect("the caller's gather");
+        let gather = self.actions.gather_mut().expect("the caller's gather");
         let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.body.mover_mut(), me);
         let mut work = view.gatherer(
             (&mut self.life.attribute_type, &mut self.life.amount),
@@ -330,7 +330,7 @@ impl Unit {
             kind,
             amount,
         )?;
-        let gather = self.gather.as_mut().expect("the caller's gather");
+        let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.target == -1 {
             return self.gather_after_drop(c, others);
         }
@@ -363,7 +363,7 @@ impl Unit {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let dt = c.dt_seconds;
-        let gather = self.gather.as_mut().expect("the caller's gather");
+        let gather = self.actions.gather_mut().expect("the caller's gather");
         let mut victim = c.victim.take();
         let old = (gather.target, gather.carry_to);
         let (next, posted, sold, anim_stopped) = {
@@ -418,7 +418,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         use crate::gathering::gather::Next;
         if next == Next::Done {
-            let g = self.gather.take().expect("the caller's gather");
+            let g = self.actions.take_gather().expect("the caller's gather");
             for t in [g.target, g.carry_to] {
                 if t != -1 {
                     c.releases.push((t, by));
@@ -426,7 +426,7 @@ impl Unit {
             }
             return Ok(());
         }
-        if let Some(g) = self.gather.as_ref() {
+        if let Some(g) = self.actions.gather() {
             for (old, new) in [(old_target, g.target), (old_second, g.carry_to)] {
                 if old != new && old != -1 {
                     c.releases.push((old, by));
@@ -437,7 +437,7 @@ impl Unit {
             Next::Drop => self.gather_drop_off(c, others)?,
             Next::Search => self.gather_search(c, others)?,
             Next::Build => {
-                let target = self.gather.as_ref().map_or(-1, |g| g.target);
+                let target = self.actions.gather().map_or(-1, |g| g.target);
                 if c.build_command.replace(target).is_some() {
                     return Err(GenieError::unsupported("two build commands in one update"));
                 }
@@ -458,7 +458,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), GenieError> {
-        let gather = self.gather.as_ref().expect("the caller's gather");
+        let gather = self.actions.gather().expect("the caller's gather");
         let (carry_to, target_type, state) = (gather.carry_to, gather.target_type, gather.state);
         let master = c
             .masters

@@ -430,7 +430,7 @@ impl Unit {
         c: &mut Context<'_>,
     ) -> Result<(), GenieError> {
         let at = [point[0], point[1], self.position[2]];
-        let owner = if let Some(e) = self.explore.as_mut() {
+        let owner = if let Some(e) = self.actions.explore_mut() {
             let walked = e.move_to.is_some();
             let owner = e.take_point(at);
             if walked {
@@ -444,7 +444,7 @@ impl Unit {
                 ));
             }
             let (e, owner) = ExploreAction::new(at);
-            self.explore = Some(e);
+            self.actions.set_explore(Some(e));
             owner
         };
         self.explore_owner(owner, c)

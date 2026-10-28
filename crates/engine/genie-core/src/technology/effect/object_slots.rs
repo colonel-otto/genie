@@ -346,17 +346,17 @@ pub(super) const fn shows_sprite(attribute: u8) -> bool {
 /// The object has an action in its list (`+0x880`'s first node; a building producing has its
 /// Make): the slice's top actions.
 pub(super) fn has_actions(u: &Unit) -> bool {
-    u.artifact.is_some()
-        || u.build.is_some()
-        || u.move_to.is_some()
-        || u.fly.is_some()
-        || u.hunt.is_some()
-        || u.gather.is_some()
-        || u.attack.is_some()
-        || u.explore.is_some()
-        || u.enter.is_some()
-        || u.transport.is_some()
+    u.actions.artifact().is_some()
+        || u.actions.build().is_some()
+        || u.actions.move_to().is_some()
+        || u.actions.fly().is_some()
+        || u.actions.hunt().is_some()
+        || u.actions.gather().is_some()
+        || u.actions.attack().is_some()
+        || u.actions.explore().is_some()
+        || u.actions.enter().is_some()
+        || u.actions.transport().is_some()
         || u.missile.is_some()
-        || u.make.is_some()
+        || u.actions.make().is_some()
         || u.production.as_ref().is_some_and(|q| q.action.is_some())
 }

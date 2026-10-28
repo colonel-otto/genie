@@ -5,6 +5,7 @@ use crate::combat::damage::Victim;
 use crate::map::spatial::Placed;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Master;
 use crate::objects::release::Releaser;
@@ -53,7 +54,7 @@ impl Unit {
     /// `MoveTo`'s stops the unit) and the base teardown (`FUN_140a73fc0`), which lets its target,
     /// then its second target go (slot 0x180).
     pub(crate) fn delete_attack(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        let Some(mut a) = self.attack.take() else {
+        let Some(mut a) = self.actions.take_attack() else {
             return Ok(());
         };
         a.tear_down(self.body.mover_mut())?;
@@ -522,8 +523,8 @@ impl Unit {
                 flying,
                 step: [0.0; 3],
                 attack_count: self.attack_count,
-                action: Some(action),
             }),
+            actions: ActionList::default().with_missile(Some(action)),
             attackable: true,
             pasture: -1,
             my_pasture: -1,

@@ -229,8 +229,11 @@ pub fn word9_terms(
         .iter()
         .map(|unit| Word9Terms {
             id: unit.id as u32,
-            action: unit.artifact.map_or(-1, |_| i32::from(ARTIFACT_TYPE)),
-            state: unit.artifact.map_or(0, |a| a.state),
+            action: unit
+                .actions
+                .artifact()
+                .map_or(-1, |_| i32::from(ARTIFACT_TYPE)),
+            state: unit.actions.artifact().map_or(0, |a| a.state),
             retarget: unit.ai.as_ref().map_or(0, |ai| ai.retarget_timer as i32),
         })
         .collect())

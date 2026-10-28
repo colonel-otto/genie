@@ -102,7 +102,7 @@ impl Unit {
     /// target, and its end (done or failed), which posts the notify, lets the target go and stops
     /// the unit.
     pub(crate) fn move_to_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
-        let step = match self.move_to.as_mut() {
+        let step = match self.actions.move_to_mut() {
             Some(move_to) => {
                 // its state 3 reads the unit's AI for the path it asks (0x140aa2a70), with its
                 // point: the goal, or the target's place (a target gone fails the update first)
@@ -148,7 +148,12 @@ impl Unit {
             };
             self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
             // ... and the base teardown (FUN_140a73fc0) lets its target go (slot 0x180)
-            if let Some(t) = self.move_to.take().map(|m| m.target).filter(|&t| t != -1) {
+            if let Some(t) = self
+                .actions
+                .take_move_to()
+                .map(|m| m.target)
+                .filter(|&t| t != -1)
+            {
                 c.releases.push((t, self.releaser(c)));
             }
             if let Some(m) = self.body.mover_mut() {
@@ -161,7 +166,7 @@ impl Unit {
     /// The unit's Explore in its update (`0x140a880c0`): its walk in state 11; states 1 (done) and
     /// 13 (failed) are not modelled, and the other states wait.
     pub(crate) fn explore_part(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
-        if let Some(explore) = self.explore.as_mut() {
+        if let Some(explore) = self.actions.explore_mut() {
             // 0x140a880c0: state 1 is done (the action list removes it, the default task's
             // restart is not modelled), 11 walks, 13 fails; the others wait
             match explore.state {
@@ -200,7 +205,7 @@ impl Unit {
                     )?;
                     let walked = explore.move_to.is_some();
                     let owner = explore.after_walk(code)?;
-                    if walked && self.explore.is_some_and(|e| e.move_to.is_none()) {
+                    if walked && self.actions.explore().is_some_and(|e| e.move_to.is_none()) {
                         self.stop_mover()?;
                     }
                     self.explore_owner(owner, c)?;
@@ -219,7 +224,7 @@ impl Unit {
         me: Me,
         flies_from_now: bool,
     ) -> Result<(), GenieError> {
-        if let Some(fly) = self.fly.as_mut().filter(|_| !flies_from_now) {
+        if let Some(fly) = self.actions.fly_mut().filter(|_| !flies_from_now) {
             let mover = self
                 .body
                 .mover_mut()

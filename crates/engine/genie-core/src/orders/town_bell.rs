@@ -562,7 +562,7 @@ mod tests {
         use crate::world::World;
 
         fn enter(t: &World, id: i32) -> Option<i32> {
-            t.object(id).unwrap().1.enter.map(|e| e.target)
+            t.object(id).unwrap().1.actions.enter().map(|e| e.target)
         }
 
         #[test]
@@ -627,7 +627,10 @@ mod tests {
             assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
             let goal = |t: &World, id: i32| {
                 let u = t.object(id).unwrap().1;
-                (u.move_to.and_then(|m| m.goal), u.town_bell.flag)
+                (
+                    u.actions.move_to().copied().and_then(|m| m.goal),
+                    u.town_bell.flag,
+                )
             };
             assert_eq!(goal(&t, 1001), (Some([3.5, 3.5, 0.0]), false));
             assert_eq!(goal(&t, 1002), (None, false));
@@ -670,7 +673,10 @@ mod tests {
             assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
             let u = t.object(1001).unwrap().1;
             assert_eq!(
-                (u.move_to.and_then(|m| m.goal), u.town_bell.flag),
+                (
+                    u.actions.move_to().copied().and_then(|m| m.goal),
+                    u.town_bell.flag
+                ),
                 (Some([3.5, 3.5, 0.0]), false)
             );
             // another player's command does nothing without the game's cheats

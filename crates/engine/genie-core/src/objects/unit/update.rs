@@ -85,26 +85,26 @@ impl Unit {
         let inside_at_start = self.life.inside.is_some();
         let captured = self.artifact_part(c, others, me, inside_at_start, started.artifact)?;
         self.build_part(c, others, me)?;
-        if self.repair.is_some() {
+        if self.actions.repair().is_some() {
             self.repair_part(c, others, me)?;
         }
         self.garrison_part(c, others, me, inside_at_start, started.any())?;
         // the wait for a foundation (FUN_140ae8b70) on its build points, none when the world
         // does not hold it; its 1 removes it (FUN_140a98e20: the base teardown lets no target go,
         // and no action follows it, the wait having replaced the list)
-        if let Some(w) = self.wait_solidify
+        if let Some(w) = self.actions.wait_solidify().copied()
             && w.update(wait_progress(w.target, others, c.foreign))
         {
-            self.wait_solidify = None;
+            self.actions.set_wait_solidify(None);
         }
-        if self.missile.as_ref().is_some_and(|m| m.action.is_some()) {
+        if self.actions.missile().is_some() {
             self.fly(c, others)?;
         }
         self.move_to_part(c, me)?;
         self.explore_part(c, me)?;
         self.fly_part(c, me, started.fly)?;
         self.make_part(c, started.make)?;
-        if self.gather.is_some() {
+        if self.actions.gather().is_some() {
             self.gather_update(c, others, me)?;
         }
         self.hunt_targets(c, others)?;

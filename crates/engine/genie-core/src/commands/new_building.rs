@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::construction::build::Construction;
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::actions::ActionList;
 use crate::objects::lifecycle::death_parts::count_class;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::masters::Master;
@@ -254,20 +255,16 @@ impl World {
                 ..Lifecycle::default()
             },
             ai,
-            artifact: None,
+            actions: ActionList::default(),
             unmodelled_action: None,
             production: None,
             gather_point: None,
-            build: None,
-            repair: None,
             builders: 0,
             // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
             body: crate::objects::layers::Body::new(
                 Some(crate::objects::layers::Animated::default()),
                 mover,
             ),
-            move_to: None,
-            fly: None,
             construction: Some(Construction {
                 progress,
                 desolid,
@@ -297,12 +294,6 @@ impl World {
             hp_powerups: [0.0; 2],
             regen_timer: 0.0,
             regen_powerups: [0.0; 2],
-            hunt: None,
-            gather: None,
-            attack: None,
-            explore: None,
-            enter: None,
-            transport: None,
             missile: None,
             attack_count: 0,
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire
@@ -333,8 +324,6 @@ impl World {
             default_fly: None,
             default_make,
             default_artifact: false,
-            make: None,
-            wait_solidify: None,
             stopped: false,
             sprite,
             attack_timer: 0.0,

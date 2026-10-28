@@ -171,10 +171,10 @@ impl World {
         };
         let (_, u) = self.object_mut(id).expect("found above");
         // a unit's own Attack's task (the work command's attack task) has no sprites
-        if let Some(attack) = u.attack.as_mut() {
+        if let Some(attack) = u.actions.attack_mut() {
             follow_master(&mut attack.arms, None, &sprites);
         }
-        if let Some(hunt) = u.hunt.as_mut() {
+        if let Some(hunt) = u.actions.hunt_mut() {
             let task = hunt.task.sprites;
             if let Some(attack) = hunt.attack.as_mut() {
                 follow_master(&mut attack.arms, Some(task), &sprites);

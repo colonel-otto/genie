@@ -31,7 +31,7 @@ fn livestock_starts_with_its_artifact() {
     let sheep = combat_object(5, 83);
     let u = unit(&sheep, &PlayerObjects::default(), &[], 0, Some(&table));
     assert_eq!(u.id, 5);
-    assert!(u.artifact.is_some() && u.default_artifact);
+    assert!(u.actions.artifact().is_some() && u.default_artifact);
     assert!(u.default_task.is_none());
     // a combat object's mover needs its master, which this save does not hold
     assert!(u.unmodelled_action.is_some());
@@ -48,7 +48,7 @@ fn without_a_table_the_default_task_is_reported() {
         None,
     );
     assert!(u.default_task.is_some());
-    assert!(u.artifact.is_none());
+    assert!(u.actions.artifact().is_none());
 }
 
 /// A saved action the slice does not model stops the object.

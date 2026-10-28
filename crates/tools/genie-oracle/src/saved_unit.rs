@@ -198,7 +198,7 @@ pub(super) fn unit(
         // an object without actions in a save: its default task's action (an Artifact exists
         // from the load on; a Fly starts in its first update)
         default_task(object, s, objects, civ, masters).map(|d| match d {
-            Some(DefaultStart::Artifact(a)) => unit.artifact = Some(a),
+            Some(DefaultStart::Artifact(a)) => unit.actions.set_artifact(Some(a)),
             Some(DefaultStart::Fly(task)) => unit.default_fly = Some(task),
             Some(DefaultStart::Make) => unit.default_make = true,
             None => {}
@@ -236,7 +236,6 @@ pub(super) fn unit(
             flying: true,
             step,
             attack_count: mo.rge_combat_object.attack_count,
-            action: None,
         });
     }
     let production = production(object).map(|p| unit.production = p);

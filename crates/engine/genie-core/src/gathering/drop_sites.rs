@@ -248,6 +248,7 @@ mod tests {
     use crate::construction::build::{BuildAction, BuildTask};
     use crate::map::spatial::Placed;
     use crate::math::rng::Well512;
+    use crate::objects::actions::ActionList;
     use crate::objects::lifecycle::Lifecycle;
     use crate::objects::masters::Master;
     use crate::pathing::Pathing;
@@ -302,7 +303,8 @@ mod tests {
             id: -1,
         };
         Unit {
-            build: target.map(|t| BuildAction::start(t, [20.0, 17.0, 0.0], 0.0, task)),
+            actions: ActionList::default()
+                .with_build(target.map(|t| BuildAction::start(t, [20.0, 17.0, 0.0], 0.0, task))),
             ..object(10, 83, [20.0, 20.0])
         }
     }

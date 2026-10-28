@@ -178,7 +178,7 @@ impl World {
                     self.streams.get(Stream::Sprite),
                 )?;
             }
-            unit.move_to = Some(move_to);
+            unit.actions.set_move_to(Some(move_to));
         }
         Ok(taken)
     }

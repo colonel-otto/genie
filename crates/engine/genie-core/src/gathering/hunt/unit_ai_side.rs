@@ -113,7 +113,7 @@ impl<'u> UnitView<'u> {
             unit.body.set_anim_speed(0.0);
         }
         let drops = hunt.target == -1 && hunt.carry_to == target;
-        unit.hunt = Some(hunt);
+        unit.actions.set_hunt(Some(hunt));
         if drops {
             self.takes.push((target, by));
             self.releases.push((target, by));

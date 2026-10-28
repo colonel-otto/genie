@@ -182,21 +182,22 @@ fn import_artifact(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError>
         Some(sub) if base.target_id != -1 => Some(artifact_walk(sub)?),
         _ => None,
     };
-    unit.artifact = Some(genie_core::ownership::artifact::Artifact {
-        state: base.state,
-        timer: base.timer,
-        gaia: saved.s.owner == 0,
-        move_to,
-        goal: if base.target_id == -1 {
-            move_to.and_then(|_| target_point(base))
-        } else {
-            // the target's place, `+0x38`
-            (base.target_x != -1.0).then_some(saved.point())
-        },
-        target: base.target_id,
-        walk_to,
-        enter: None,
-    });
+    unit.actions
+        .set_artifact(Some(genie_core::ownership::artifact::Artifact {
+            state: base.state,
+            timer: base.timer,
+            gaia: saved.s.owner == 0,
+            move_to,
+            goal: if base.target_id == -1 {
+                move_to.and_then(|_| target_point(base))
+            } else {
+                // the target's place, `+0x38`
+                (base.target_x != -1.0).then_some(saved.point())
+            },
+            target: base.target_id,
+            walk_to,
+            enter: None,
+        }));
     Ok(())
 }
 
@@ -218,7 +219,7 @@ fn artifact_walk(sub: &Action) -> Result<(Goal, f32), GenieError> {
 /// A `MoveTo` of its own (type 1): its state, goal, range, sprite and wait.
 fn import_move_to(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
     let base = saved.base;
-    unit.move_to = Some(MoveToAction {
+    unit.actions.set_move_to(Some(MoveToAction {
         state: move_to_state(base.state)?,
         goal: target_point(base),
         target: base.target_id,
@@ -235,7 +236,7 @@ fn import_move_to(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
             }),
         // its wait (`+0x6c`, `+0x70`, `+0x74`)
         wait: saved_move_wait(saved.action),
-    });
+    }));
     Ok(())
 }
 
@@ -274,7 +275,9 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
         flying: genie_core::combat::missile::LANDING < ma.distance,
         step: [moving.velocity_x, moving.velocity_y, moving.velocity_z],
         attack_count: mo.rge_combat_object.attack_count,
-        action: Some(genie_core::combat::missile::MissileAction {
+    });
+    unit.actions
+        .set_missile(Some(genie_core::combat::missile::MissileAction {
             state: base.state,
             target: base.target_id,
             fired_from: base.target2_id,
@@ -288,8 +291,7 @@ fn import_missile(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
             result: ma.interacted_with_agility,
             origin: genie_core::combat::missile::Origin::from_bytes(&ma.projectile_data),
             met: Vec::new(),
-        }),
-    });
+        }));
     Ok(())
 }
 
@@ -306,14 +308,14 @@ fn import_fly(
         ))?
         .and_then(Action::base);
     let move_to = sub.map(|b| move_to_state(b.state)).transpose()?;
-    unit.fly = Some(Fly {
+    unit.actions.set_fly(Some(Fly {
         state: base.state,
         timer: base.timer,
         move_to,
         goal: sub.and_then(target_point),
         home: [base.target_x, base.target_y],
         task: fly_task(saved.s.master_obj)?,
-    });
+    }));
     Ok(())
 }
 
@@ -333,7 +335,7 @@ fn import_build(
         Some(sub) if base.state == genie_core::construction::build::DROP => sub_range(sub)?,
         _ => task.range,
     };
-    unit.build = Some(BuildAction {
+    unit.actions.set_build(Some(BuildAction {
         target: base.target_id,
         state: base.state,
         move_to,
@@ -355,7 +357,7 @@ fn import_build(
         ),
         site: base.target2_id,
         drop_range,
-    });
+    }));
     Ok(())
 }
 
@@ -374,30 +376,31 @@ fn import_repair(
     let sub = saved.move_to_sub(OTHER_SUB_ACTION)?;
     let move_to = sub.map(sub_state).transpose()?;
     let t = saved.task(task_at)?;
-    unit.repair = Some(genie_core::construction::repair::RepairAction {
-        target: base.target_id,
-        state: base.state,
-        move_to,
-        move_wait: sub.map_or_else(
-            genie_core::movement::move_to::MoveWait::default,
-            saved_move_wait,
-        ),
-        // a MoveTo to a point has no target; its point is the action's target point
-        goal: sub.and_then(walk_point),
-        point: saved.point(),
-        timer: base.timer,
-        task: genie_core::construction::repair::RepairTask {
-            id: t.id,
-            work_value: t.work_val1,
-        },
-        range: saved
-            .objects
-            .master(saved.s.master_obj)
-            .and_then(combat_master)
-            .map_or(0.0, |c| c.weapon_range),
-        counted: part.added_to_num_builders != 0,
-        quiet: base.sub_action_value != 0,
-    });
+    unit.actions
+        .set_repair(Some(genie_core::construction::repair::RepairAction {
+            target: base.target_id,
+            state: base.state,
+            move_to,
+            move_wait: sub.map_or_else(
+                genie_core::movement::move_to::MoveWait::default,
+                saved_move_wait,
+            ),
+            // a MoveTo to a point has no target; its point is the action's target point
+            goal: sub.and_then(walk_point),
+            point: saved.point(),
+            timer: base.timer,
+            task: genie_core::construction::repair::RepairTask {
+                id: t.id,
+                work_value: t.work_val1,
+            },
+            range: saved
+                .objects
+                .master(saved.s.master_obj)
+                .and_then(combat_master)
+                .map_or(0.0, |c| c.weapon_range),
+            counted: part.added_to_num_builders != 0,
+            quiet: base.sub_action_value != 0,
+        }));
     Ok(())
 }
 
@@ -423,7 +426,7 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
         ));
     }
     let task = saved.task(task_at)?;
-    unit.enter = Some(EnterAction {
+    unit.actions.set_enter(Some(EnterAction {
         target: base.target_id,
         state: base.state,
         move_to,
@@ -436,7 +439,7 @@ fn import_enter(saved: &Saved<'_>, task_at: TaskAt<'_>, unit: &mut Unit) -> Resu
             genie_core::movement::move_to::MoveWait::default,
             saved_move_wait,
         ),
-    });
+    }));
     Ok(())
 }
 
@@ -448,16 +451,17 @@ fn import_transport(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError
     let sub = saved.move_to_sub(GenieError::unreachable(
         "a saved Transport with another sub-action",
     ))?;
-    unit.transport = Some(genie_core::garrison::transport::TransportAction {
-        state: base.state,
-        mode: base.target2_id,
-        point: saved.point(),
-        move_to: sub.map(sub_state).transpose()?,
-        retarget: false,
-        // the save writes the task's id, −1 for none
-        task: (base.short_val != -1)
-            .then_some(genie_core::objects::masters::TaskId(base.short_val)),
-    });
+    unit.actions
+        .set_transport(Some(genie_core::garrison::transport::TransportAction {
+            state: base.state,
+            mode: base.target2_id,
+            point: saved.point(),
+            move_to: sub.map(sub_state).transpose()?,
+            retarget: false,
+            // the save writes the task's id, −1 for none
+            task: (base.short_val != -1)
+                .then_some(genie_core::objects::masters::TaskId(base.short_val)),
+        }));
     Ok(())
 }
 
@@ -476,23 +480,24 @@ fn import_explore(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> 
             "a saved Explore in a state the slice does not model",
         ));
     }
-    unit.explore = Some(genie_core::movement::explore::ExploreAction {
-        state: base.state,
-        point: saved.point(),
-        move_to,
-        move_wait: sub.map(saved_move_wait).unwrap_or_default(),
-    });
+    unit.actions
+        .set_explore(Some(genie_core::movement::explore::ExploreAction {
+            state: base.state,
+            point: saved.point(),
+            move_to,
+            move_wait: sub.map(saved_move_wait).unwrap_or_default(),
+        }));
     Ok(())
 }
 
 /// The Attack (9) of its own; it reads and changes the unit's sprite from here on.
 fn import_attack(saved: &Saved<'_>, unit: &mut Unit) -> Result<(), GenieError> {
-    unit.attack = Some(saved_attack(
+    unit.actions.set_attack(Some(saved_attack(
         saved.action,
         saved.graphics,
         &move_to_state,
         saved.run_sprite(),
-    )?);
+    )?));
     unit.sprite = saved.graphics.and_then(|g| saved_sprite(saved.s, g));
     Ok(())
 }
@@ -520,7 +525,7 @@ fn import_wait_solidify(
     let mut wait =
         genie_core::construction::wait_solidify::WaitSolidify::new(saved.task(task_at)?, target);
     wait.set_state(saved.base.state);
-    unit.wait_solidify = Some(wait);
+    unit.actions.set_wait_solidify(Some(wait));
     Ok(())
 }
 

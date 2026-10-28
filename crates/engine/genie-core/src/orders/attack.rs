@@ -223,7 +223,9 @@ impl World {
         )?;
         let mut attack = self.settle_command(player, idx, commanded, start, &mut victim)?;
         attack.target2 = target;
-        self.players[player].objects[idx].attack = Some(attack);
+        self.players[player].objects[idx]
+            .actions
+            .set_attack(Some(attack));
         self.take(target, self.releaser(player, idx));
         Ok(())
     }
@@ -368,7 +370,8 @@ impl World {
         let quarry = self.quarry(player, target)?;
         let engagement = self.engagement(player, idx, target)?;
         let task = self.players[player].objects[idx]
-            .hunt
+            .actions
+            .hunt()
             .map(|h| h.task)
             .ok_or(GenieError::unsupported(
                 "a hunt's retarget without its hunt",
@@ -382,9 +385,9 @@ impl World {
             .iter()
             .any(|&d| Some(d) == target_master);
         let unit = &mut self.players[player].objects[idx];
-        let old = unit.hunt.map(|h| h.target).filter(|&t| t != -1);
+        let old = unit.actions.hunt().map(|h| h.target).filter(|&t| t != -1);
         let held = unit.life.amount;
-        let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.body.mover_mut()) else {
+        let (Some(hunt), Some(mover)) = (unit.actions.hunt_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));

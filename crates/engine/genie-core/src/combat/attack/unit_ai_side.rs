@@ -55,7 +55,7 @@ impl<'u> UnitView<'u> {
         let Some(t) = self.spatial.get_known(target)?.copied() else {
             return Ok(no());
         };
-        if unit.attack.is_some_and(|a| a.target == target) {
+        if unit.actions.attack().is_some_and(|a| a.target == target) {
             if force {
                 self.attack_again(target, &t, master, ai)?;
             }
@@ -124,7 +124,7 @@ impl<'u> UnitView<'u> {
         if unit.life.inside.is_some() {
             let mut attack = crate::combat::attack::Attack::own(target, &e, arms);
             attack.fail_at_start(&mut unit.sprite, &mut unit.body, self.sprite)?;
-            unit.attack = Some(attack);
+            unit.actions.set_attack(Some(attack));
             self.takes.push((target, by));
             return Ok(crate::unit_ai::Attacked {
                 attacks: true,
@@ -164,7 +164,7 @@ impl<'u> UnitView<'u> {
             mover.shows_standing();
             unit.shows_standing_sprite(self.masters, self.graphics, self.sprite)?;
         }
-        unit.attack = Some(attack);
+        unit.actions.set_attack(Some(attack));
         self.takes.push((target, by));
         Ok(crate::unit_ai::Attacked {
             attacks: true,
@@ -232,7 +232,7 @@ impl<'u> UnitView<'u> {
             radius: master.radius,
         };
         let can_move = ai.current_order != -1 || ai.stance <= 1;
-        let attack = unit.attack.as_mut().expect("the caller's own Attack");
+        let attack = unit.actions.attack_mut().expect("the caller's own Attack");
         let w = attack.work(Some(target_mark), main, &wielder, |_| can_move);
         let by = Releaser {
             id: unit.id,

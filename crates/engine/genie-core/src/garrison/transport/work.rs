@@ -35,7 +35,7 @@ impl crate::world::World {
         self.clear_actions(p, i)?;
         let mut t = TransportAction::on_task(Some(TaskId(task.id)), point);
         let changed = self.with_shore(p, i, |ship, shore| Ok(t.start(true, ship, shore)))?;
-        self.players[p].objects[i].transport = Some(t);
+        self.players[p].objects[i].actions.set_transport(Some(t));
         self.transport_changed(p, i, changed)
     }
 
@@ -59,16 +59,20 @@ impl crate::world::World {
     ) -> Result<bool, GenieError> {
         let unit = &self.players[p].objects[i];
         let on_task = unit.top_action_kind() == Some(TRANSPORT)
-            && unit.transport.and_then(|t| t.task) == Some(TaskId(task.id));
+            && unit.actions.transport().copied().and_then(|t| t.task) == Some(TaskId(task.id));
         if !on_task || self.trade_at_own_market((p, i), target)? {
             return Ok(false);
         }
         let by_self = target == unit.id;
-        let mut t = unit.transport.ok_or(GenieError::unreachable(
-            "a Transport on top without its action",
-        ))?;
+        let mut t = unit
+            .actions
+            .transport()
+            .copied()
+            .ok_or(GenieError::unreachable(
+                "a Transport on top without its action",
+            ))?;
         let changed = self.with_shore(p, i, |ship, shore| t.work(point, by_self, ship, shore))?;
-        self.players[p].objects[i].transport = Some(t);
+        self.players[p].objects[i].actions.set_transport(Some(t));
         self.transport_changed(p, i, changed)?;
         self.notify_transport((p, i), (target, point), clears)?;
         Ok(true)

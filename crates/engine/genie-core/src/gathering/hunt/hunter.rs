@@ -23,7 +23,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), GenieError> {
-        if let Some(target) = self.hunt.map(|h| h.target).filter(|&t| t != -1) {
+        if let Some(target) = self.actions.hunt().map(|h| h.target).filter(|&t| t != -1) {
             let state = c
                 .victim
                 .as_deref()
@@ -42,16 +42,16 @@ impl Unit {
                 if state.is_some() {
                     c.releases.push((target, self.releaser(c)));
                 }
-                if let Some(h) = self.hunt.as_mut() {
+                if let Some(h) = self.actions.hunt_mut() {
                     h.set_target(-1);
                 }
             }
         }
-        if let Some(site) = self.hunt.map(|h| h.carry_to) {
+        if let Some(site) = self.actions.hunt().map(|h| h.carry_to) {
             let held = c.spatial.get(site).is_some();
             let (kept, let_go) =
                 second_target_checked(site, held, state_of(site, others, c.foreign));
-            if let Some(h) = self.hunt.as_mut() {
+            if let Some(h) = self.actions.hunt_mut() {
                 h.carry_to = kept;
             }
             if let Some(t) = let_go {
@@ -65,13 +65,15 @@ impl Unit {
     /// whose `MoveTo` failed (code 3), and whose class is a tree's: it searches for the next tree
     /// (`FUN_140ac4670` with 8 and -1 both times).
     pub(crate) fn tree_lost(&self) -> bool {
-        self.hunt.as_ref().is_some_and(|h| {
+        self.actions.hunt().is_some_and(|h| {
             h.state == crate::gathering::hunt::WALK
                 && 0.0 <= h.timer
                 && ((h.target == -1 && h.move_to.is_some()) || h.move_to == Some(MoveTo::Failed))
         }) && self.ai.as_ref().is_some_and(|ai| {
             let class = if ai.target_type == -1 {
-                self.hunt.map_or(-1, |h| i32::from(h.target_class))
+                self.actions
+                    .hunt()
+                    .map_or(-1, |h| i32::from(h.target_class))
             } else {
                 ai.target_type
             };
@@ -98,8 +100,8 @@ impl Unit {
             DROP, FAILED, IDLE, LEAD, SEARCH, WALK, WALK_POINT, WALK_SEARCH,
         };
         let (state, timer, target) = self
-            .hunt
-            .as_ref()
+            .actions
+            .hunt()
             .map_or((None, 0.0, -1), |h| (Some(h.state), h.timer, h.target));
         match state {
             Some(DROP) if timer < 0.0 => self.hunt_drop_wait(c, others)?,
@@ -111,7 +113,7 @@ impl Unit {
             Some(WALK) if target == -1 && timer < 0.0 => self.hunt_wait_walk(c)?,
             Some(LEAD) if target == -1 => {
                 // state 10 without its target (0x140ac7a00 case 9): set_state(3), the search
-                self.hunt.as_mut().expect("above").state = SEARCH;
+                self.actions.hunt_mut().expect("above").state = SEARCH;
                 self.hunt_set_search(c, others)?;
             }
             // the hunt took the next tree (slot 0x48): its MoveTo's code 5 ends the update
@@ -131,7 +133,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         hunt.timer += c.dt_seconds;
         if 0.0 <= hunt.timer {
             hunt.timer = 0.0;
@@ -153,7 +155,7 @@ impl Unit {
         others: &mut [Self],
         me: Me,
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -224,7 +226,7 @@ impl Unit {
             }
             crate::gathering::hunt::Dropped::Again => {
                 // the drop site goes (FUN_140a7a190 with none), then set_state(8)
-                let hunt = self.hunt.as_mut().expect("above");
+                let hunt = self.actions.hunt_mut().expect("above");
                 let site = std::mem::replace(&mut hunt.carry_to, -1);
                 self.hunt_release(c, [site]);
                 self.hunt_drop_off(c, others)?;
@@ -246,7 +248,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &mut [Self],
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let hunt = self.actions.hunt().expect("the caller's hunt");
         let (target, site) = (hunt.target, hunt.carry_to);
         if hunt.attack.is_some() || hunt.move_to.is_some() {
             return Err(GenieError::unsupported("a failed hunt with a sub-action"));
@@ -255,7 +257,7 @@ impl Unit {
             crate::unit_ai::ACTION_FAILED,
             [crate::unit_ai::HUNT_ACTION, 0, 0],
         )?;
-        self.hunt = None;
+        self.actions.set_hunt(None);
         if target != -1 {
             if others.iter().any(|u| u.id == target) {
                 let by = self.releaser(c);
@@ -281,7 +283,7 @@ impl Unit {
         others: &[Self],
         me: Me,
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -317,7 +319,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.timer < 0.0 {
             hunt.timer += c.dt_seconds;
             if 0.0 <= hunt.timer {
@@ -331,7 +333,7 @@ impl Unit {
     /// State 2 (case 1): a done hunt waits; one of a tree's target class would search again
     /// (`set_state` 3), which is not modelled.
     pub(crate) fn hunt_idle(&self) -> Result<(), GenieError> {
-        if self.hunt.as_ref().is_some_and(|h| h.target_class == 15) {
+        if self.actions.hunt().is_some_and(|h| h.target_class == 15) {
             return Err(GenieError::unsupported(
                 "a done hunt of a tree's class (set_state 3)",
             ));
@@ -342,7 +344,7 @@ impl Unit {
     /// Case 3 waiting after a given-up `MoveTo`, its target gone: the timer runs by dt, then the
     /// walk to the point (`set_state` 11, [`crate::gathering::hunt::HuntAction::wait_then_walk`]).
     pub(crate) fn hunt_wait_walk(&mut self, c: &Context<'_>) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         hunt.wait_then_walk(c.dt_seconds, mover)
     }

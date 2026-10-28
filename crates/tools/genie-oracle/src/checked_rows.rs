@@ -417,7 +417,7 @@ impl ObjectRow {
             construction: unit
                 .construction
                 .map(|c| (c.desolid, c.progress, c.builders)),
-            build_added: unit.build.map(|b| b.added),
+            build_added: unit.actions.build().map(|b| b.added),
             ai: unit.ai.as_ref().map(|ai| AiRow::of(ai, unit.under_attack)),
             human_order: unit.last_human_order,
             gather: unit

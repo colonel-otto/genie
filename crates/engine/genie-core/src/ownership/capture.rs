@@ -63,7 +63,7 @@ impl Unit {
         class: i16,
     ) -> Result<(), GenieError> {
         let by = self.releaser(c);
-        if let Some(artifact) = self.artifact.as_mut() {
+        if let Some(artifact) = self.actions.artifact_mut() {
             let (gone, released) = artifact.stop();
             if gone.stops {
                 self.body

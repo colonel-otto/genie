@@ -39,8 +39,8 @@ impl World {
             ))?;
         let unit = &mut self.players[player].objects[idx];
         let (targets, gone) = unit
-            .artifact
-            .as_mut()
+            .actions
+            .artifact_mut()
             .map(|a| a.take_object((target, alive), at, to_building, to_town_centre))
             .unwrap_or_default();
         if let Some(t) = targets.released {
@@ -249,16 +249,16 @@ impl World {
         let top = if asks { unit.top_action_kind() } else { None };
         let (by, target, point, resource) = match top {
             Some(crate::gathering::gather::GATHER) => unit
-                .gather
-                .as_ref()
+                .actions
+                .gather()
                 .map(|g| (DropOffBy::Gather, g.target, g.point, g.task.resource)),
             Some(crate::construction::build::BUILD) => unit
-                .build
-                .as_ref()
+                .actions
+                .build()
                 .map(|b| (DropOffBy::Build, b.target, b.point, b.task.resource)),
             Some(HUNT) => unit
-                .hunt
-                .as_ref()
+                .actions
+                .hunt()
                 .map(|h| (DropOffBy::Hunt, h.target, h.point, h.task.resource)),
             _ => None,
         }?;

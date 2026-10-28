@@ -58,14 +58,15 @@ impl Unit {
                 .ok_or(GenieError::unsupported(
                     "a Make whose master the slice does not have",
                 ))?;
-            self.make = Some(crate::gathering::make::MakeAction::start(
-                task,
-                c.attributes,
-                &mut crate::gathering::make::Held {
-                    attribute_type: &mut self.life.attribute_type,
-                    amount: &mut self.life.amount,
-                },
-            ));
+            self.actions
+                .set_make(Some(crate::gathering::make::MakeAction::start(
+                    task,
+                    c.attributes,
+                    &mut crate::gathering::make::Held {
+                        attribute_type: &mut self.life.attribute_type,
+                        amount: &mut self.life.amount,
+                    },
+                )));
             makes_from_now = true;
         }
         let mut artifact_from_now = false;
@@ -74,7 +75,8 @@ impl Unit {
             && self.production.is_none()
             && self.default_artifact
         {
-            self.artifact = Some(Artifact::new(c.player == 0));
+            self.actions
+                .set_artifact(Some(Artifact::new(c.player == 0)));
             artifact_from_now = true;
         }
         if self.life.state == 2

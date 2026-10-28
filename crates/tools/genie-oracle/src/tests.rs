@@ -1,5 +1,6 @@
 use super::*;
 use genie_core::commands::Command;
+use genie_core::objects::actions::ActionList;
 
 /// Word 9 reads a building's production action's state over its top action's (records
 /// MarvinBlue/426048706's town centre 7150 after update 7499: its Attack in state 7 and its
@@ -32,13 +33,13 @@ fn a_building_s_production_state_comes_before_its_top_action_s() {
     };
     let kind = ARTIFACT_TYPE;
     let both = Unit {
-        artifact: Some(artifact),
+        actions: ActionList::default().with_artifact(Some(artifact)),
         production: Some(making.clone()),
         ..Unit::default()
     };
     assert_eq!(checkpoint_action(&both), Some(TopAction { kind, state: 6 }));
     let top = Unit {
-        artifact: Some(artifact),
+        actions: ActionList::default().with_artifact(Some(artifact)),
         ..Unit::default()
     };
     assert_eq!(checkpoint_action(&top), Some(TopAction { kind, state: 10 }));

@@ -1,6 +1,7 @@
 //! The town bell, a kept attack, the garrison task and the work command and its task.
 
 use crate::GenieError;
+use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
@@ -89,9 +90,10 @@ impl World {
         let (target, point) = found.map_or((-1, [unit.position[0], unit.position[1]]), |t| {
             (t.id, [t.position[0], t.position[1]])
         });
+        let actions = &unit.actions;
         let target_type = match unit.top_action_kind() {
-            Some(HUNT) => unit.hunt.map_or(-1, |h| i32::from(h.target_class)),
-            Some(crate::gathering::gather::GATHER) => unit.gather.map_or(-1, |g| g.target_type),
+            Some(HUNT) => actions.hunt().map_or(-1, |h| i32::from(h.target_class)),
+            Some(GATHER) => actions.gather().map_or(-1, |g| g.target_type),
             _ => -1,
         };
         let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
@@ -130,7 +132,8 @@ impl World {
         let unit = &self.players[player].objects[idx];
         let top = unit.top_action_kind();
         let attacking = unit
-            .attack
+            .actions
+            .attack()
             .filter(|a| top == Some(crate::combat::attack::ATTACK) && a.target == target);
         let Some(a) = attacking.filter(|_| matches!(filter, -1 | 9)) else {
             return Ok(false);
@@ -216,7 +219,7 @@ impl World {
             .master_of(player, self.players[player].objects[idx].life.master_id)?
             .class;
         let unit = &mut self.players[player].objects[idx];
-        if matches!(task.action_type, crate::gathering::gather::GATHER | HUNT) {
+        if matches!(task.action_type, GATHER | HUNT) {
             let (kind, held) = (task.attribute_type, unit.life.attribute_type);
             if held != kind && !(food(kind) && food(held)) {
                 unit.life.attribute_type = kind;
@@ -369,7 +372,7 @@ impl World {
     ) -> Result<bool, GenieError> {
         let unit = &self.players[player].objects[idx];
         let top = unit.top_action_kind();
-        Ok(match unit.hunt {
+        Ok(match unit.actions.hunt().copied() {
             Some(h) if task.action_type == HUNT && h.task.id == task.id => {
                 self.retarget_hunt_work(player, idx, (target, point, clears))?;
                 true
@@ -391,9 +394,9 @@ impl World {
                 self.retake_repair(player, idx, target, point, clears)?;
                 true
             }
-            _ if top == Some(crate::gathering::gather::GATHER)
-                && task.action_type == crate::gathering::gather::GATHER
-                && unit.gather.is_some_and(|g| g.task.id == task.id) =>
+            _ if top == Some(GATHER)
+                && task.action_type == GATHER
+                && unit.actions.gather().is_some_and(|g| g.task.id == task.id) =>
             {
                 self.retarget_gather_work(player, idx, (target, point, clears))?
             }
@@ -541,9 +544,7 @@ impl World {
             crate::construction::build::CART_TASK => {
                 self.work_move(player, idx, target, point, (clears, notified))
             }
-            crate::gathering::gather::GATHER => {
-                self.start_gather(player, idx, target, task, Some((point, clears)))
-            }
+            GATHER => self.start_gather(player, idx, target, task, Some((point, clears))),
             crate::garrison::transport::TRANSPORT => {
                 self.start_transport((player, idx), (target, point), task, clears)
             }

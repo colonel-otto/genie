@@ -2,15 +2,13 @@
 
 use crate::GenieError;
 use crate::commands::GatherPoint;
-use crate::construction::build::{BuildAction, Construction};
+use crate::construction::build::Construction;
 use crate::gathering::hunt::{HuntAction, HuntSprites};
-use crate::movement::fly::Fly;
-use crate::movement::move_to::MoveToAction;
+use crate::objects::actions::ActionList;
 use crate::objects::layers::Body;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::Master;
 use crate::objects::sprite::{ActiveSprite, Graphic};
-use crate::ownership::artifact::Artifact;
 use crate::ownership::capture::Captured;
 use crate::production::Production;
 use crate::unit_ai::UnitAi;
@@ -41,8 +39,6 @@ pub struct Unit {
     pub life: Lifecycle,
     /// Its unit AI, when it has one.
     pub ai: Option<UnitAi>,
-    /// The livestock default action, the object's top action.
-    pub artifact: Option<Artifact>,
     /// A default task other than the Artifact action. `RGE_Action_Object::update` (0x14106ac90)
     /// starts it in an object's first update if the object is still in state 2 after its static
     /// step; the slice does not model it, so that update stops the player.
@@ -51,10 +47,6 @@ pub struct Unit {
     pub production: Option<Production>,
     /// A building's gather point, which its new units go to.
     pub gather_point: Option<GatherPoint>,
-    /// A builder's Build action, its top action.
-    pub build: Option<BuildAction>,
-    /// A repairer's Repair action, its top action ([`crate::construction::repair`]).
-    pub repair: Option<crate::construction::repair::RepairAction>,
     /// `+0x9e8` (`num_builders`) of a combat object that is no building: the Repair actions
     /// counted among its repairers. A building's is its construction's
     /// ([`Construction::builders`]).
@@ -62,10 +54,9 @@ pub struct Unit {
     /// Its layers below the action layer ([`Body`]): the animated layer (`+0x7b8`, types 20 and
     /// up) and the moving one with its movement state (types 30 and up).
     pub body: Body,
-    /// A `MoveTo` as the object's own top action (a wandering animal).
-    pub move_to: Option<MoveToAction>,
-    /// A bird's Fly action, its top action.
-    pub fly: Option<Fly>,
+    /// Its action list (`RGE_Action_List`, [`ActionList`]): the actions it holds, its current one
+    /// first.
+    pub actions: ActionList,
     /// A building's construction.
     pub construction: Option<Construction>,
     /// `+0xa30`, `mWorkRatePowerup`: what the unit adds to its master's work rate.
@@ -101,18 +92,6 @@ pub struct Unit {
     ///
     /// [`regeneration_rate`]: crate::construction::building_update::regeneration_rate
     pub regen_powerups: [f32; 2],
-    /// A villager's Hunt action, its top action.
-    pub hunt: Option<HuntAction>,
-    /// A forager's Gather action, its top action.
-    pub gather: Option<crate::gathering::gather::GatherAction>,
-    /// Its own Attack (type 9, not a Hunt's), its top action: a boar's on its attacker.
-    pub attack: Option<crate::combat::attack::Attack>,
-    /// An auto scout's Explore action, its top action.
-    pub explore: Option<crate::movement::explore::ExploreAction>,
-    /// A unit's Enter action (a garrison), its top action.
-    pub enter: Option<crate::garrison::EnterAction>,
-    /// A unit's Transport action (an unload command's), its top action.
-    pub transport: Option<crate::garrison::transport::TransportAction>,
     /// A missile's own part with its action ([`crate::combat::missile`]).
     pub missile: Option<crate::combat::missile::Missile>,
     /// `+0x900`, `attack_count`: the swings that fired a missile (`FUN_141081020`).
@@ -210,11 +189,6 @@ pub struct Unit {
     /// action list is empty in state 2 (an animal out of a building whose Artifact went), its
     /// first update in the next tick, as a Fly's.
     pub default_artifact: bool,
-    /// A farm's or fish trap's Make action, its top action ([`crate::gathering::make`]).
-    pub make: Option<crate::gathering::make::MakeAction>,
-    /// A villager's wait for a foundation (`TRIBE_Action_Wait_Solidify`), its only action
-    /// ([`crate::construction::wait_solidify`]).
-    pub wait_solidify: Option<crate::construction::wait_solidify::WaitSolidify>,
     /// The slice could not model one of its updates: it freezes (its place is known only within
     /// its speed since) while the rest of its player's objects go on.
     pub stopped: bool,

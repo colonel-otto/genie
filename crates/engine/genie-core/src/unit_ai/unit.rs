@@ -230,7 +230,7 @@ impl Unit {
             } else {
                 Some(self.top_action().map_or(0, |a| a.state))
             },
-            attack_listed: self.attack.is_some(),
+            attack_listed: self.actions.attack().is_some(),
             units: self.named_units(c, view, master)?,
             group: c
                 .groups

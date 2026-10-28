@@ -146,7 +146,10 @@ impl World {
             .iter()
             .find(|o| o.id == id)
             .ok_or(GenieError::unsupported("a builder the slice does not have"))?;
-        if unit.artifact.is_some() || unit.production.is_some() || unit.fly.is_some() {
+        if unit.actions.artifact().is_some()
+            || unit.production.is_some()
+            || unit.actions.fly().is_some()
+        {
             return Err(GenieError::unsupported(
                 "a builder with an action (its replacement)",
             ));
@@ -279,7 +282,9 @@ impl World {
         // the install (slot 0x808): the action list clears (its actions' teardowns), then
         // holds the Build
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx].build = Some(build);
+        self.players[player].objects[idx]
+            .actions
+            .set_build(Some(build));
         Ok(())
     }
 
@@ -299,9 +304,12 @@ impl World {
             self.change_master(player, idx, master)?;
         }
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx].wait_solidify = Some(
-            crate::construction::wait_solidify::WaitSolidify::new(wait.task, wait.target),
-        );
+        self.players[player].objects[idx]
+            .actions
+            .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify::new(
+                wait.task,
+                wait.target,
+            )));
         Ok(())
     }
 
@@ -384,7 +392,9 @@ impl World {
         }
         self.take(foundation, self.releaser(player, idx));
         self.clear_actions(player, idx)?;
-        self.players[player].objects[idx].build = Some(build);
+        self.players[player].objects[idx]
+            .actions
+            .set_build(Some(build));
         Ok(true)
     }
 }

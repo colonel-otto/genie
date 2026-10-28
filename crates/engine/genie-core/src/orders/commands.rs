@@ -379,13 +379,13 @@ impl World {
     ) -> Result<(), GenieError> {
         use crate::movement::explore::{EXPLORE_ACTION, ExploreAction, Owner, WANTS_POINT};
         let unit = &mut self.players[p].objects[idx];
-        if unit.explore.is_some() || unit.top_action().is_some() {
+        if unit.actions.explore().is_some() || unit.top_action().is_some() {
             return Err(GenieError::unsupported(
                 "a command's explore of a unit with an action",
             ));
         }
         let (e, owner) = ExploreAction::new([point[0], point[1], unit.position[2]]);
-        unit.explore = Some(e);
+        unit.actions.set_explore(Some(e));
         match owner {
             Owner::Nothing => return Ok(()),
             Owner::WantsPoint => {

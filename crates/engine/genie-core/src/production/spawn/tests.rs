@@ -604,7 +604,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
     assert_eq!(ai.target_point, [40.0, 80.0, 0.0]);
     assert_eq!(ai.orders, []);
     assert_eq!(
-        u.move_to,
+        u.actions.move_to().copied(),
         Some(MoveToAction {
             run: false,
             state: MoveTo::Start,
@@ -616,7 +616,10 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
     );
     let unloaded = walked(false);
     assert_eq!(unloaded.ai.as_ref().unwrap().orders, [queued_move()]);
-    assert_eq!(unloaded.move_to, u.move_to);
+    assert_eq!(
+        unloaded.actions.move_to().copied(),
+        u.actions.move_to().copied()
+    );
 }
 
 /// A unit without speed only waits to move; one that already acts, or one not in state 2,
@@ -633,7 +636,7 @@ fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
     t.gather_move(1, 0, [40.0, 80.0, 0.0], true).unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(u.body.mover().unwrap().waiting, 1);
-    assert_eq!(u.move_to, None);
+    assert_eq!(u.actions.move_to().copied(), None);
     assert_eq!(u.ai.as_ref().unwrap().current_order, -1);
     // a second walk finds the first's `MoveTo`
     let mut t = crate::world::tests::forage_world();

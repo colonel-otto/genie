@@ -22,7 +22,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.target_class != 10 {
             let target = std::mem::replace(&mut hunt.target, -1);
             self.hunt_release(c, [target]);
@@ -39,7 +39,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let task = hunt.task;
         if hunt.target_class == 10 {
             // a human player's hunt is done (set_state 2), a computer player's ends (1)
@@ -99,7 +99,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let hunt = self.actions.hunt().expect("the caller's hunt");
         let (carry_to, class) = (hunt.carry_to, i32::from(hunt.target_class));
         let master = c
             .masters
@@ -123,7 +123,10 @@ impl Unit {
             };
             let (site, _) = self.drop_site(&mut w, others, -1, crate::gathering::hunt::SEARCH)?;
             if site == -1 {
-                self.hunt.as_mut().expect("the caller's hunt").target_class = -1;
+                self.actions
+                    .hunt_mut()
+                    .expect("the caller's hunt")
+                    .target_class = -1;
                 0
             } else {
                 site
@@ -160,7 +163,7 @@ impl Unit {
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::HUNTER_MASTER)?;
-        if self.hunt.as_ref().expect("the caller's hunt").target != -1 {
+        if self.actions.hunt().expect("the caller's hunt").target != -1 {
             return self.hunt_back_to_target(c);
         }
         if self.hunt_drop_orders(c)? {
@@ -178,7 +181,7 @@ impl Unit {
     /// with the hunter's engagement and arms). A chase that starts arrived, or fails, is not
     /// modelled.
     fn hunt_back_to_target(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let hunt = self.actions.hunt().expect("the caller's hunt");
         let master = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -219,13 +222,13 @@ impl Unit {
             .task
             .walk_sprite_id(self.life.attribute_type, self.life.amount);
         let arms = crate::combat::attack::arms(master, c.graphics, hunt.task.sprites, moving);
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let site = std::mem::replace(&mut hunt.carry_to, -1);
         let by = self.releaser(c);
         if site != -1 {
             c.releases.push((site, by));
         }
-        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.body.mover_mut()) else {
+        let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -268,7 +271,7 @@ impl Unit {
             return Ok(false);
         }
         ai.end_order_and_action()?;
-        let mut hunt = self.hunt.take().expect("the caller's hunt");
+        let mut hunt = self.actions.take_hunt().expect("the caller's hunt");
         hunt.tear_down(self.body.mover_mut())?;
         self.hunt_release(c, [hunt.target, hunt.carry_to]);
         Ok(true)
@@ -285,7 +288,7 @@ impl Unit {
         c: &mut Context<'_>,
         others: &[Self],
     ) -> Result<(i32, i8), GenieError> {
-        let hunt = self.hunt.as_ref().expect("the caller's hunt");
+        let hunt = self.actions.hunt().expect("the caller's hunt");
         let ai = self.ai.as_ref().ok_or(GenieError::unsupported(
             "a hunt without a unit AI after its drop-off",
         ))?;
@@ -354,7 +357,7 @@ impl Unit {
             id: self.id,
             position: self.position,
             group: self.group.id,
-            action_state: self.hunt.as_ref().expect("the caller's hunt").state,
+            action_state: self.actions.hunt().expect("the caller's hunt").state,
         };
         let spatial: &Spatial = c.spatial;
         let mut plan = Planning {
@@ -413,7 +416,7 @@ impl Unit {
                 "a computer player's hunt that found nothing after its drop-off (set_state 1)",
             ));
         }
-        let hunt = self.hunt.as_mut().expect("the caller's hunt");
+        let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         if hunt.point[0] == -1.0 || hunt.point[1] == -1.0 {
             return Err(GenieError::unsupported(
                 "a hunt without a point that found nothing after its drop-off (set_state 2)",
@@ -492,7 +495,7 @@ impl Unit {
             them,
             c.world_time,
         )?;
-        let (sprites, moving) = self.hunt.as_ref().map_or(([-1; 4], -1), |h| {
+        let (sprites, moving) = self.actions.hunt().map_or(([-1; 4], -1), |h| {
             let moving = h
                 .task
                 .walk_sprite_id(self.life.attribute_type, self.life.amount);
@@ -502,7 +505,7 @@ impl Unit {
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let held = self.life.amount;
         let by = self.releaser(c);
-        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.body.mover_mut()) else {
+        let (Some(hunt), Some(mover)) = (self.actions.hunt_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -542,8 +545,8 @@ impl Unit {
     /// a sprite takes its master's standing sprite (none in the data file is not modelled).
     fn hunt_failed_sprite(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         let failed = self
-            .hunt
-            .as_ref()
+            .actions
+            .hunt()
             .is_some_and(|h| h.state == crate::gathering::hunt::FAILED);
         if !failed {
             return Ok(());

@@ -72,7 +72,7 @@ impl World {
         let by = self.releaser(player, idx);
         // a stop farm's time per stop: the gatherer's work rate (its master's plus its powerup),
         // capacity and the task's productivity attribute (none: 1.0)
-        let productivity = unit.gather.map_or(-1, |g| g.task.productivity);
+        let productivity = unit.actions.gather().map_or(-1, |g| g.task.productivity);
         let rate = crate::gathering::gather::StopRate {
             work_rate: unit.work_rate_powerup + me.work_rate,
             capacity: f32::from(me.capacity),
@@ -83,7 +83,7 @@ impl World {
         };
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
-        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.body.mover_mut()) else {
+        let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
@@ -145,7 +145,7 @@ impl World {
         let by = self.releaser(player, idx);
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
-        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.body.mover_mut()) else {
+        let (Some(gather), Some(mover)) = (unit.actions.gather_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
@@ -214,7 +214,7 @@ impl World {
         let by = self.releaser(player, idx);
         let unit = &mut self.players[player].objects[idx];
         let (held, my_pasture) = (unit.life.amount, unit.my_pasture);
-        let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.body.mover_mut()) else {
+        let (Some(hunt), Some(mover)) = (unit.actions.hunt_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -364,7 +364,7 @@ impl World {
         let drops = gather.target == -1 && gather.carry_to == target;
         // a farm another farmer works: the start let it go (set_state 11, then slot 0x68)
         let waits = gather.target == -1 && gather.carry_to != target;
-        unit.gather = Some(gather);
+        unit.actions.set_gather(Some(gather));
         if drops {
             self.take(target, self.releaser(player, idx));
         }
@@ -483,7 +483,7 @@ impl World {
             unit.body.set_anim_speed(0.0);
         }
         let drops = hunt.target == -1 && hunt.carry_to == target;
-        unit.hunt = Some(hunt);
+        unit.actions.set_hunt(Some(hunt));
         // a load to its own drop site: the target taken as the second (FUN_140a7a190), then let
         // go as the first (slot 0x68 with none)
         if drops {

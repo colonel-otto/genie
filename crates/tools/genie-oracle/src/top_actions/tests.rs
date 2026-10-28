@@ -182,7 +182,12 @@ fn a_second_target_or_an_unknown_action_is_unsupported() {
 
 #[test]
 fn a_move_to_takes_its_state_point_range_and_wait() {
-    let m = imported(MOVE_TO, move_to(4, 0.5)).unwrap().move_to.unwrap();
+    let m = imported(MOVE_TO, move_to(4, 0.5))
+        .unwrap()
+        .actions
+        .move_to()
+        .copied()
+        .unwrap();
     assert_eq!(m.state, MoveTo::Moving);
     assert_eq!(m.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
     assert_eq!(
@@ -201,7 +206,9 @@ fn a_move_to_takes_its_state_point_range_and_wait() {
     ] {
         let m = imported(MOVE_TO, move_to(state, 0.5))
             .unwrap()
-            .move_to
+            .actions
+            .move_to()
+            .copied()
             .unwrap();
         assert_eq!(m.state, saved);
     }
@@ -233,7 +240,7 @@ fn a_move_to_runs_with_the_masters_running_sprite() {
             .rge_action
             .short_val_2 = sprite;
         let unit = import(&acting(MOVE_TO, action.clone()), &objects, Unit::default()).unwrap();
-        unit.move_to.unwrap().run
+        unit.actions.move_to().copied().unwrap().run
     };
     assert!(running(5));
     assert!(!running(4));
@@ -255,7 +262,9 @@ fn artifact(b: RgeAction) -> Action {
 fn an_artifact_waits_or_walks_to_its_target() {
     let a = imported(ARTIFACT_TYPE, artifact(base(1)))
         .unwrap()
-        .artifact
+        .actions
+        .artifact()
+        .copied()
         .unwrap();
     assert_eq!((a.state, a.target, a.move_to, a.goal), (1, -1, None, None));
     assert!(a.gaia && a.walk_to.is_none());
@@ -267,7 +276,9 @@ fn an_artifact_waits_or_walks_to_its_target() {
         artifact(with_sub(b.clone(), MOVE_TO, move_to(4, 0.5))),
     )
     .unwrap()
-    .artifact
+    .actions
+    .artifact()
+    .copied()
     .unwrap();
     assert_eq!(a.move_to, Some(MoveTo::Moving));
     assert_eq!(a.goal.map(bits3), Some(bits3([4.0, 2.0, 0.0])));
@@ -289,7 +300,9 @@ fn an_artifact_waits_or_walks_to_its_target() {
         artifact(with_sub(b.clone(), MOVE_TO, to_object)),
     )
     .unwrap()
-    .artifact
+    .actions
+    .artifact()
+    .copied()
     .unwrap();
     assert!(matches!(a.walk_to, Some((Goal::Target(9), _))));
     // the target's place is its goal however near the origin; an unset place (-1) is none
@@ -297,13 +310,17 @@ fn an_artifact_waits_or_walks_to_its_target() {
     near.target_id = 9;
     let a = imported(ARTIFACT_TYPE, artifact(near.clone()))
         .unwrap()
-        .artifact
+        .actions
+        .artifact()
+        .copied()
         .unwrap();
     assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
     near.target_x = -1.0;
     let a = imported(ARTIFACT_TYPE, artifact(near))
         .unwrap()
-        .artifact
+        .actions
+        .artifact()
+        .copied()
         .unwrap();
     assert_eq!(a.goal, None);
     // without a target the goal is the MoveTo's point, the action's own
@@ -312,7 +329,9 @@ fn an_artifact_waits_or_walks_to_its_target() {
         artifact(with_sub(base(5), MOVE_TO, move_to(4, 0.5))),
     )
     .unwrap()
-    .artifact
+    .actions
+    .artifact()
+    .copied()
     .unwrap();
     assert_eq!(a.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
     assert!(a.walk_to.is_none());
@@ -395,9 +414,9 @@ fn a_missile_flies_with_its_actions_course() {
     assert!(m.charge && !m.flying);
     let action = import(&missile(), &PlayerObjects::default(), Unit::default())
         .unwrap()
-        .missile
-        .unwrap()
-        .action
+        .actions
+        .missile()
+        .cloned()
         .unwrap();
     assert_eq!(
         (action.state, action.fired_from, action.hit_mode),
@@ -428,7 +447,12 @@ fn a_farms_make_takes_its_timers_and_task() {
     };
     let mut b = base(1);
     b.short_val = 3;
-    let m = imported(MAKE, make(b)).unwrap().make.unwrap();
+    let m = imported(MAKE, make(b))
+        .unwrap()
+        .actions
+        .make()
+        .copied()
+        .unwrap();
     assert_eq!((m.state, m.task.id), (1, 3));
     assert_eq!(
         (m.remaining.to_bits(), m.total.to_bits()),
@@ -448,12 +472,19 @@ fn a_farms_make_takes_its_timers_and_task() {
 fn a_birds_fly_takes_its_home_and_move_to() {
     use genie_core::movement::fly::FLY;
     let bird = |b: RgeAction| by_type(|t| t.rge_action_bird = Some(Box::new(b)));
-    let f = imported(FLY, bird(base(3))).unwrap().fly.unwrap();
+    let f = imported(FLY, bird(base(3)))
+        .unwrap()
+        .actions
+        .fly()
+        .copied()
+        .unwrap();
     assert_eq!((f.state, f.move_to, f.goal, f.task.id), (3, None, None, 8));
     assert_eq!(f.home.map(f32::to_bits), [1.0_f32, 2.0].map(f32::to_bits));
     let f = imported(FLY, bird(with_sub(base(3), MOVE_TO, move_to(4, 0.5))))
         .unwrap()
-        .fly
+        .actions
+        .fly()
+        .copied()
         .unwrap();
     assert_eq!(f.move_to, Some(MoveTo::Moving));
     assert_eq!(f.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
@@ -488,7 +519,9 @@ fn a_build_takes_its_task_move_to_and_drop_range() {
     let walking = with_sub(b.clone(), MOVE_TO, move_to(4, 0.75));
     let a = import(&acting(BUILD, build(walking)), &objects, unit.clone())
         .unwrap()
-        .build
+        .actions
+        .build()
+        .copied()
         .unwrap();
     assert_eq!(
         (a.target, a.site, a.walk_target, a.move_to),
@@ -504,10 +537,17 @@ fn a_build_takes_its_task_move_to_and_drop_range() {
     let dropping = with_sub(dropping, MOVE_TO, move_to(4, 0.75));
     let a = import(&acting(BUILD, build(dropping)), &objects, unit)
         .unwrap()
-        .build
+        .actions
+        .build()
+        .copied()
         .unwrap();
     assert_eq!(a.drop_range.to_bits(), 0.75_f32.to_bits());
-    let a = imported(BUILD, build(b.clone())).unwrap().build.unwrap();
+    let a = imported(BUILD, build(b.clone()))
+        .unwrap()
+        .actions
+        .build()
+        .copied()
+        .unwrap();
     assert_eq!((a.move_to, a.walk_target, a.goal), (None, -1, None));
     assert_eq!(
         imported(BUILD, build(with_sub(b, 4, explore(base(3))))).unwrap_err(),
@@ -537,7 +577,9 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
         repair(with_sub(b.clone(), MOVE_TO, move_to(4, 0.5))),
     )
     .unwrap()
-    .repair
+    .actions
+    .repair()
+    .copied()
     .unwrap();
     assert_eq!(
         (r.task.id, r.move_to, r.range.to_bits()),
@@ -545,7 +587,12 @@ fn a_repair_takes_its_task_and_counts_its_builder() {
     );
     assert!(r.counted && r.quiet);
     assert_eq!(r.goal.map(bits3), Some(bits3([1.0, 2.0, 0.0])));
-    let r = imported(REPAIR, repair(b.clone())).unwrap().repair.unwrap();
+    let r = imported(REPAIR, repair(b.clone()))
+        .unwrap()
+        .actions
+        .repair()
+        .copied()
+        .unwrap();
     assert_eq!((r.move_to, r.goal), (None, None));
     assert_eq!(
         imported(REPAIR, repair(with_sub(b, 4, explore(base(3))))).unwrap_err(),
@@ -577,7 +624,12 @@ fn hunt(b: RgeAction) -> Action {
 #[test]
 fn a_hunt_takes_its_task_lead_and_move_to() {
     use genie_core::gathering::hunt::{HUNT, IDLE, WALK};
-    let h = imported(HUNT, hunt(base(IDLE))).unwrap().hunt.unwrap();
+    let h = imported(HUNT, hunt(base(IDLE)))
+        .unwrap()
+        .actions
+        .hunt()
+        .copied()
+        .unwrap();
     assert_eq!((h.target_class, h.drop_site, h.task.id), (4, 40, 0));
     assert_eq!(h.walk_range.to_bits(), 2.0_f32.to_bits());
     assert!(h.lead.moved && h.attack.is_none() && h.move_to.is_none());
@@ -587,7 +639,9 @@ fn a_hunt_takes_its_task_lead_and_move_to() {
     );
     let h = imported(HUNT, hunt(with_sub(base(WALK), MOVE_TO, move_to(4, 0.75))))
         .unwrap()
-        .hunt
+        .actions
+        .hunt()
+        .copied()
         .unwrap();
     assert_eq!(
         (h.move_to, h.walk_range.to_bits()),
@@ -644,7 +698,9 @@ fn a_gather_takes_its_stops_and_move_to() {
     use genie_core::gathering::gather::{GATHER, WALK, WORK};
     let g = imported(GATHER, gather(base(WORK)))
         .unwrap()
-        .gather
+        .actions
+        .gather()
+        .copied()
         .unwrap();
     assert_eq!((g.target_type, g.stops, g.task.id), (5, 2, 0));
     assert!(g.worked && g.move_to.is_none() && g.walk_to.is_none());
@@ -654,7 +710,9 @@ fn a_gather_takes_its_stops_and_move_to() {
         gather(with_sub(base(WALK), MOVE_TO, move_to(4, 0.75))),
     )
     .unwrap()
-    .gather
+    .actions
+    .gather()
+    .copied()
     .unwrap();
     assert!(!g.worked);
     assert_eq!(g.move_to, Some(MoveTo::Moving));
@@ -694,7 +752,9 @@ fn an_enter_takes_its_task_and_retry() {
     b.short_val = 1;
     let e = imported(ENTER, enter(with_sub(b.clone(), MOVE_TO, move_to(4, 0.5))))
         .unwrap()
-        .enter
+        .actions
+        .enter()
+        .copied()
         .unwrap();
     assert_eq!(
         (e.state, e.move_to, e.task_class),
@@ -731,7 +791,9 @@ fn a_transport_takes_its_base_alone() {
         transport(with_sub(base(2), MOVE_TO, move_to(4, 0.5))),
     )
     .unwrap()
-    .transport
+    .actions
+    .transport()
+    .copied()
     .unwrap();
     assert_eq!((t.state, t.mode, t.move_to), (2, -1, Some(MoveTo::Moving)));
     assert!(!t.retarget);
@@ -746,7 +808,9 @@ fn an_explore_takes_its_move_to_and_wait() {
     use genie_core::movement::explore::{EXPLORE, WAIT, WALK};
     let e = imported(EXPLORE, explore(base(WAIT)))
         .unwrap()
-        .explore
+        .actions
+        .explore()
+        .copied()
         .unwrap();
     assert_eq!((e.state, e.move_to, e.move_wait.state), (WAIT, None, 0));
     let e = imported(
@@ -754,7 +818,9 @@ fn an_explore_takes_its_move_to_and_wait() {
         explore(with_sub(base(WALK), MOVE_TO, move_to(4, 0.5))),
     )
     .unwrap()
-    .explore
+    .actions
+    .explore()
+    .copied()
     .unwrap();
     assert_eq!((e.move_to, e.move_wait.state), (Some(MoveTo::Moving), 2));
     assert_eq!(
@@ -795,7 +861,9 @@ fn a_wait_solidify_waits_for_its_foundation() {
     b.short_val = 1;
     let w = imported(WAIT_SOLIDIFY, wait(b))
         .unwrap()
-        .wait_solidify
+        .actions
+        .wait_solidify()
+        .copied()
         .unwrap();
     assert_eq!((w.state, w.target, w.task.id), (2, 40, 1));
     assert_eq!(
@@ -857,7 +925,9 @@ fn an_attack_runs_with_the_masters_running_sprite() {
             Some(&sprites),
         )
         .unwrap()
-        .attack
+        .actions
+        .attack()
+        .copied()
         .unwrap()
         .runs
     };
@@ -895,7 +965,9 @@ fn a_hunts_swing_past_its_hit_rests_the_reload_less_the_swing() {
             Some(&sprites),
         )
         .unwrap()
-        .hunt
+        .actions
+        .hunt()
+        .copied()
         .unwrap()
         .attack
         .unwrap();

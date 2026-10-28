@@ -59,13 +59,13 @@ impl crate::world::World {
             ship.position,
         )?;
         let unit = &mut self.players[p].objects[i];
-        let changes = if let Some(t) = unit.transport.as_mut().filter(|_| existing) {
+        let changes = if let Some(t) = unit.actions.transport_mut().filter(|_| existing) {
             vec![t.work(ship.position, true, &ship, &mut shore)?]
         } else {
             let mut t = TransportAction::new(ship.position);
             let started = t.start(true, &ship, &mut shore);
             let worked = t.work(to, true, &ship, &mut shore)?;
-            unit.transport = Some(t);
+            unit.actions.set_transport(Some(t));
             vec![started, worked]
         };
         for c in changes {
@@ -135,7 +135,9 @@ impl crate::world::World {
     pub(crate) fn transport_unload(&mut self, p: usize, i: usize) -> Result<(), GenieError> {
         let unit = &self.players[p].objects[i];
         let t = unit
-            .transport
+            .actions
+            .transport()
+            .copied()
             .ok_or(GenieError::unreachable("an unload without its Transport"))?;
         let restriction = self.master_of(p, unit.life.master_id)?.terrain_restriction;
         let [x, y, _] = t.point;
@@ -171,8 +173,8 @@ impl crate::world::World {
                 ship.position,
             )?;
             let t = self.players[p].objects[i]
-                .transport
-                .as_mut()
+                .actions
+                .transport_mut()
                 .expect("read above");
             t.point[0] = point[0];
             t.point[1] = point[1];
@@ -193,8 +195,8 @@ impl crate::world::World {
             ship.position,
         )?;
         let t = self.players[p].objects[i]
-            .transport
-            .as_mut()
+            .actions
+            .transport_mut()
             .expect("read above");
         changes.push(t.unloaded(&ship, &mut shore));
         for c in changes {

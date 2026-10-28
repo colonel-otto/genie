@@ -172,7 +172,7 @@ impl<'u> UnitView<'u> {
         };
         self.takes.push((foundation, by));
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
-        unit.build = Some(build);
+        unit.actions.set_build(Some(build));
         Ok(())
     }
 

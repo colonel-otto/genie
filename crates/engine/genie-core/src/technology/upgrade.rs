@@ -551,10 +551,10 @@ impl World {
             Place::Live(q, i) => &mut self.players[q].objects[i],
             Place::Sleeping(q, i) => &mut self.players[q].sleeping[i],
         };
-        if let Some(attack) = u.attack.as_mut() {
+        if let Some(attack) = u.actions.attack_mut() {
             crate::technology::effect::follow_master(&mut attack.arms, None, &sprites);
         }
-        if let Some(hunt) = u.hunt.as_mut()
+        if let Some(hunt) = u.actions.hunt_mut()
             && let Some(t) = old_task(hunt.task.id).as_ref().and_then(find)
         {
             hunt.task = crate::gathering::hunt::HuntTask::of(&t);
@@ -563,27 +563,27 @@ impl World {
                 crate::technology::effect::follow_master(&mut attack.arms, Some(task), &sprites);
             }
         }
-        if let Some(gather) = u.gather.as_mut()
+        if let Some(gather) = u.actions.gather_mut()
             && let Some(t) = old_task(gather.task.id).as_ref().and_then(find)
         {
             gather.task = crate::gathering::hunt::HuntTask::of(&t);
         }
-        if let Some(make) = u.make.as_mut()
+        if let Some(make) = u.actions.make_mut()
             && let Some(t) = find(&make.task)
         {
             make.task = t;
         }
-        if let Some(fly) = u.fly.as_mut()
+        if let Some(fly) = u.actions.fly_mut()
             && let Some(t) = find(&fly.task)
         {
             fly.task = t;
         }
-        if let Some(w) = u.wait_solidify.as_mut()
+        if let Some(w) = u.actions.wait_solidify_mut()
             && let Some(t) = find(&w.task)
         {
             w.task = t;
         }
-        if let Some(r) = u.repair.as_mut()
+        if let Some(r) = u.actions.repair_mut()
             && let Some(t) = old_task(r.task.id).as_ref().and_then(find)
         {
             r.task = crate::construction::repair::RepairTask {
@@ -591,7 +591,7 @@ impl World {
                 work_value: t.work_val1,
             };
         }
-        if let Some(b) = u.build.as_mut()
+        if let Some(b) = u.actions.build_mut()
             && let Some(t) = old_task(b.task.id).as_ref().and_then(find)
         {
             b.task.id = t.id;
@@ -955,23 +955,32 @@ mod tests {
             resource: 17,
             id: 3,
         };
-        u.build = Some(BuildAction::start(10028, [30.0, 88.0, 0.0], 1.0, build));
-        u.make = Some(crate::gathering::make::MakeAction {
+        u.actions.set_build(Some(BuildAction::start(
+            10028,
+            [30.0, 88.0, 0.0],
+            1.0,
+            build,
+        )));
+        u.actions.set_make(Some(crate::gathering::make::MakeAction {
             state: 0,
             remaining: 0.0,
             total: 0.0,
             task: make,
-        });
-        u.wait_solidify = Some(crate::construction::wait_solidify::WaitSolidify {
-            state: 0,
-            task: waiting,
-            target: 10028,
-        });
+        }));
+        u.actions
+            .set_wait_solidify(Some(crate::construction::wait_solidify::WaitSolidify {
+                state: 0,
+                task: waiting,
+                target: 10028,
+            }));
         t.actions_take_master(Place::Live(1, 0), &old, &new);
         let u = &t.players[1].objects[0];
-        assert_eq!(u.gather.unwrap().task, HuntTask::of(&new.tasks[1]));
         assert_eq!(
-            u.build.unwrap().task,
+            u.actions.gather().copied().unwrap().task,
+            HuntTask::of(&new.tasks[1])
+        );
+        assert_eq!(
+            u.actions.build().copied().unwrap().task,
             BuildTask {
                 range: 1.5,
                 work_value: 3.0,
@@ -980,14 +989,22 @@ mod tests {
                 id: 7,
             }
         );
-        assert_eq!(u.make.unwrap().task, new.tasks[3]);
-        assert_eq!(u.wait_solidify.unwrap().task, waiting);
+        assert_eq!(u.actions.make().copied().unwrap().task, new.tasks[3]);
+        assert_eq!(u.actions.wait_solidify().copied().unwrap().task, waiting);
         // a Gather whose task the old master lacks keeps it
-        let gather = u.gather.unwrap().task;
+        let gather = u.actions.gather().copied().unwrap().task;
         let mut bare = old.clone();
         bare.tasks.clear();
         t.actions_take_master(Place::Live(1, 0), &bare, &new);
-        assert_eq!(t.players[1].objects[0].gather.unwrap().task, gather);
+        assert_eq!(
+            t.players[1].objects[0]
+                .actions
+                .gather()
+                .copied()
+                .unwrap()
+                .task,
+            gather
+        );
     }
 
     /// Player 0's world for `FUN_141657d10`'s modes: soldiers 10 and 11 and the sleeping 12 of
@@ -1093,12 +1110,12 @@ mod tests {
         let place = Place::Live(1, 0);
         let mut kept = t.clone();
         kept.upgrade_actions(place, (&old, &bare), true).unwrap();
-        assert!(kept.players[1].objects[0].gather.is_some());
+        assert!(kept.players[1].objects[0].actions.gather().is_some());
         let mut same = t.clone();
         same.upgrade_actions(place, (&old, &old), false).unwrap();
-        assert!(same.players[1].objects[0].gather.is_some());
+        assert!(same.players[1].objects[0].actions.gather().is_some());
         t.upgrade_actions(place, (&old, &bare), false).unwrap();
-        assert!(t.players[1].objects[0].gather.is_none());
+        assert!(t.players[1].objects[0].actions.gather().is_none());
     }
 
     /// `FUN_14114cb80`: an object showing the old master's walking sprite shows the new one's,

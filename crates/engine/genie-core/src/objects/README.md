@@ -9,6 +9,10 @@ missile. This folder holds the object itself and the parts that every object has
 - `sprite.rs` holds the object's active sprite and the clock that animates it. A hit lands on a
   frame of the attack sprite.
 - `facing.rs` holds the object's angle and its facet in the sprite.
+- `layers.rs` holds the object's layers below its actions (FD-045): static, animated with its
+  animation speed, or moving with its mover.
+- `actions.rs` holds the object's action list: one `Action` per kind it holds, the current one
+  first.
 - `release.rs` handles an object that leaves the world, and the release of a target by the
   action that held it.
 - `lines.rs` reads the unit lines from `unitlines.json`: the upgrade chains of the masters.
@@ -30,6 +34,7 @@ calls `Unit::update` (`unit/update.rs`), which runs the object's chain of update
 <!-- files -->
 | File | What it holds |
 | --- | --- |
+| [`actions.rs`](actions.rs) | The object's action list (`RGE_Action_List`, FD-045-D12): the actions it holds, its current one (the head) first, each a variant of `Action`. |
 | [`facing.rs`](facing.rs) | Where an object faces: its angle (`+0x7e8`, radians on the map, 0 to 2π) and its facet (`+0xe`), counted in its current sprite's facets (`+0x140` -> `+0xa`). |
 | [`layers.rs`](layers.rs) | The object's class chain (FD-045-D06): the game's object classes, each layer holding the one below it, as the save reads them (`RgeMovingObject` holds `rge_animated_object`). |
 | [`lines.rs`](lines.rs) | The unit lines (`resources/_common/dat/unitlines.json`): each line names the masters of one upgrade chain, its first master first. |

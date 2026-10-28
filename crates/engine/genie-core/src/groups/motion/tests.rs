@@ -1,4 +1,5 @@
 use super::*;
+use crate::objects::actions::ActionList;
 
 /// Slot 0x280 (`FUN_141082d60`) passes only a target id above -1 the world holds: a
 /// recycled object's negative id gives -1 like none.
@@ -8,7 +9,8 @@ fn a_top_target_below_minus_one_is_none() {
     use crate::world::Player;
     let hunter = |target: i32| Unit {
         id: 5,
-        hunt: Some(crate::gathering::hunt::tests::hunting(target)),
+        actions: ActionList::default()
+            .with_hunt(Some(crate::gathering::hunt::tests::hunting(target))),
         ..Unit::default()
     };
     let held = |id: i32| Unit {

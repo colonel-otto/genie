@@ -378,11 +378,13 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
         same_owner: false,
     };
     for (state, free) in [(2, false), (3, true), (13, true), (14, true), (4, false)] {
-        t.players[1].objects[0].attack = Some(attack(state));
+        t.players[1].objects[0]
+            .actions
+            .set_attack(Some(attack(state)));
         assert_eq!(t.member_idle(10).unwrap(), free, "{state}");
     }
     // a trade cart's state 2 is free, whatever its action
-    t.players[1].objects[0].attack = Some(attack(2));
+    t.players[1].objects[0].actions.set_attack(Some(attack(2)));
     for m in &mut t.masters {
         let mut master = m.get(4).unwrap().clone();
         master.class = 19;

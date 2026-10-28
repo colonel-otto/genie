@@ -30,7 +30,7 @@ impl Unit {
             let d = crate::math::fmath::sqrt(dx * dx + dz * dz + dy * dy);
             d.partial_cmp(&limit) != Some(std::cmp::Ordering::Less)
         };
-        let hunt = self.hunt.as_ref().expect("the caller's");
+        let hunt = self.actions.hunt().expect("the caller's");
         if let Some(within) = within
             && beyond(hunt.point, self.position, within)
         {
@@ -105,7 +105,7 @@ impl Unit {
             them,
             c.world_time,
         )?;
-        let hunt = self.hunt.as_mut().expect("the caller's");
+        let hunt = self.actions.hunt_mut().expect("the caller's");
         let old = hunt.target;
         let moving = hunt
             .task

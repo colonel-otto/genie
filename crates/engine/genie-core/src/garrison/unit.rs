@@ -29,7 +29,11 @@ impl Unit {
         others: &mut [Self],
         me: Me,
     ) -> Result<(), GenieError> {
-        let enter = self.enter.expect("checked by the caller");
+        let enter = self
+            .actions
+            .enter()
+            .copied()
+            .expect("checked by the caller");
         let found = others
             .iter()
             .find(|u| u.id == enter.target)
@@ -81,7 +85,7 @@ impl Unit {
             self.ai.as_ref().map_or(0, |ai| ai.stance),
         );
         let walk = c.walk(self.body.mover_mut(), me);
-        let step = self.enter.as_mut().expect("checked above").update(
+        let step = self.actions.enter_mut().expect("checked above").update(
             walk,
             building,
             walking,
@@ -155,7 +159,7 @@ impl Unit {
             // its 1 (an Enter that got the unit in, the unit out again before this update) or a
             // failed one's 3: the action list removes it, its teardown letting its building go
             // (slot 0x180)
-            if let Some(e) = self.enter.take() {
+            if let Some(e) = self.actions.take_enter() {
                 c.releases.push((e.target, self.releaser(c)));
             }
         }
@@ -181,7 +185,7 @@ impl Unit {
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::garrison::transport::NO_MASTER)?;
         let (radius, restriction) = (master.radius, master.terrain_restriction);
-        let t = self.transport.as_mut().expect("checked by the caller");
+        let t = self.actions.transport_mut().expect("checked by the caller");
         let ask = match t.move_to {
             Some(MoveTo::Start) => {
                 let (at, to) = ([me.position[0], me.position[1]], [t.point[0], t.point[1]]);
@@ -224,7 +228,7 @@ impl Unit {
             crate::unit_ai::alert_owner(c.computer)?;
         }
         if matches!(step.code, 1 | 3) {
-            self.transport = None;
+            self.actions.set_transport(None);
         }
         c.transport_unload = step.unload;
         Ok(())
@@ -262,8 +266,8 @@ impl Unit {
             self.position,
         )?;
         let t = self
-            .transport
-            .as_mut()
+            .actions
+            .transport_mut()
             .ok_or(GenieError::unreachable("a sail without its Transport"))?;
         let changed = t.move_to(point, &ship, &mut shore);
         if changed.stopped
@@ -279,9 +283,9 @@ impl Unit {
 
     /// The unit's new Enter: its own action, or with `sub` the sub-action of its Artifact on top.
     pub(crate) fn place_enter(&mut self, action: crate::garrison::EnterAction, sub: bool) {
-        match self.artifact.as_mut().filter(|_| sub) {
+        match self.actions.artifact_mut().filter(|_| sub) {
             Some(art) => art.enter = Some(action),
-            None => self.enter = Some(action),
+            None => self.actions.set_enter(Some(action)),
         }
     }
 
@@ -291,8 +295,8 @@ impl Unit {
     /// notify 0x1f9 with the enter action value.
     pub(crate) fn entered(&mut self, w: &mut EnterWorld<'_>) -> Result<(), GenieError> {
         let enter = self
-            .enter
-            .as_mut()
+            .actions
+            .enter_mut()
             .ok_or(GenieError::unsupported("an entered unit without its Enter"))?;
         if enter.move_to.take().is_some()
             && let Some(m) = self.body.mover_mut()
@@ -565,7 +569,7 @@ impl Unit {
         // takes the default task instead (its branch of the three): livestock inside makes its
         // Artifact in one update and loses it in the next
         if inside_at_start && !default_made {
-            if let Some(e) = self.enter.take() {
+            if let Some(e) = self.actions.take_enter() {
                 if e.move_to.is_some()
                     && let Some(m) = self.body.mover_mut()
                 {
@@ -576,7 +580,7 @@ impl Unit {
                 // the Artifact goes (FUN_140a73fc0): its target is let go, then its sub-actions
                 // go (an Enter's teardown lets its building go; a walking MoveTo's stops the
                 // unit)
-                let mut art = self.artifact.take().expect("its top action");
+                let mut art = self.actions.take_artifact().expect("its top action");
                 let by = self.releaser(c);
                 let (released, gone) = art.tear_down();
                 for t in [released, gone.released].into_iter().flatten() {
@@ -596,9 +600,9 @@ impl Unit {
                 let by = self.releaser(c);
                 self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
             }
-        } else if self.enter.is_some() {
+        } else if self.actions.enter().is_some() {
             self.enter_update(c, others, me)?;
-        } else if self.transport.is_some() {
+        } else if self.actions.transport().is_some() {
             self.transport_update(c, me)?;
         }
         Ok(())

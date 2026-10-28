@@ -49,14 +49,14 @@ impl Unit {
 
     /// The target of its hunt, which it attacks or gathers from.
     pub(crate) fn attack_target(&self) -> Option<i32> {
-        self.hunt
+        self.actions
+            .hunt()
             .map(|h| h.target)
-            .or_else(|| self.gather.map(|g| g.target).filter(|&t| t != -1))
-            .or_else(|| self.attack.map(|a| a.target))
+            .or_else(|| self.actions.gather().map(|g| g.target).filter(|&t| t != -1))
+            .or_else(|| self.actions.attack().map(|a| a.target))
             .or_else(|| {
-                self.missile
-                    .as_ref()
-                    .and_then(|m| m.action.as_ref())
+                self.actions
+                    .missile()
                     .map(|a| a.target)
                     .filter(|&t| t != -1)
             })
@@ -137,9 +137,10 @@ impl Unit {
         }
         match self.top_action_kind() {
             None => Ok(true),
-            Some(crate::ownership::artifact::ARTIFACT_TYPE) => {
-                Ok(self.artifact.is_some_and(|a| a.idle()))
-            }
+            Some(crate::ownership::artifact::ARTIFACT_TYPE) => Ok(self
+                .actions
+                .artifact()
+                .is_some_and(crate::ownership::artifact::Artifact::idle)),
             // a Make has no target, but its point (`+0x38`) is the base constructor's 0.0
             Some(crate::movement::move_to::MOVE_TO | crate::gathering::make::MAKE) => Ok(false),
             Some(_) => Err(GenieError::unsupported(
@@ -159,52 +160,69 @@ impl Unit {
     pub fn top_action(&self) -> Option<TopAction> {
         let action = |kind, state| TopAction { kind, state };
         None.or_else(|| {
-            self.artifact
+            self.actions
+                .artifact()
                 .map(|a| action(crate::ownership::artifact::ARTIFACT_TYPE, a.state))
         })
-        .or_else(|| self.build.map(|b| action(BUILD, b.state)))
+        .or_else(|| self.actions.build().map(|b| action(BUILD, b.state)))
         .or_else(|| {
-            self.repair
+            self.actions
+                .repair()
                 .map(|r| action(crate::construction::repair::REPAIR, r.state))
         })
         .or_else(|| {
-            self.move_to
+            self.actions
+                .move_to()
                 .map(|m| action(crate::movement::move_to::MOVE_TO, m.state.number()))
         })
-        .or_else(|| self.fly.map(|f| action(crate::movement::fly::FLY, f.state)))
         .or_else(|| {
-            self.hunt
+            self.actions
+                .fly()
+                .map(|f| action(crate::movement::fly::FLY, f.state))
+        })
+        .or_else(|| {
+            self.actions
+                .hunt()
                 .map(|h| action(crate::gathering::hunt::HUNT, h.state))
         })
         .or_else(|| {
-            self.gather
+            self.actions
+                .gather()
                 .map(|g| action(crate::gathering::gather::GATHER, g.state))
         })
         .or_else(|| {
-            self.attack
+            self.actions
+                .attack()
                 .map(|a| action(crate::combat::attack::ATTACK, a.state))
         })
         .or_else(|| {
-            self.explore
+            self.actions
+                .explore()
                 .map(|e| action(crate::movement::explore::EXPLORE, e.state))
         })
-        .or_else(|| self.enter.map(|e| action(crate::garrison::ENTER, e.state)))
         .or_else(|| {
-            self.transport
+            self.actions
+                .enter()
+                .map(|e| action(crate::garrison::ENTER, e.state))
+        })
+        .or_else(|| {
+            self.actions
+                .transport()
                 .map(|t| action(crate::garrison::transport::TRANSPORT, t.state))
         })
         .or_else(|| {
-            self.missile
-                .as_ref()
-                .and_then(|m| m.action.as_ref())
+            self.actions
+                .missile()
                 .map(|a| action(crate::combat::missile::MISSILE, a.state))
         })
         .or_else(|| {
-            self.make
+            self.actions
+                .make()
                 .map(|m| action(crate::gathering::make::MAKE, m.state))
         })
         .or_else(|| {
-            self.wait_solidify
+            self.actions
+                .wait_solidify()
                 .map(|w| action(crate::construction::wait_solidify::WAIT_SOLIDIFY, w.state))
         })
     }
@@ -221,7 +239,7 @@ impl Unit {
                 state: m.number(),
             })
         };
-        if let Some(a) = self.artifact {
+        if let Some(a) = self.actions.artifact().copied() {
             return walking(a.move_to).or_else(|| {
                 a.enter.map(|e| TopAction {
                     kind: crate::garrison::ENTER,
@@ -229,19 +247,19 @@ impl Unit {
                 })
             });
         }
-        if let Some(b) = self.build {
+        if let Some(b) = self.actions.build().copied() {
             return walking(b.move_to);
         }
-        if let Some(r) = self.repair {
+        if let Some(r) = self.actions.repair().copied() {
             return walking(r.move_to);
         }
-        if self.move_to.is_some() {
+        if self.actions.move_to().is_some() {
             return None;
         }
-        if let Some(f) = self.fly {
+        if let Some(f) = self.actions.fly().copied() {
             return walking(f.move_to);
         }
-        if let Some(h) = self.hunt {
+        if let Some(h) = self.actions.hunt().copied() {
             return h
                 .attack
                 .map(|a| TopAction {
@@ -250,19 +268,22 @@ impl Unit {
                 })
                 .or_else(|| walking(h.move_to));
         }
-        if let Some(g) = self.gather {
+        if let Some(g) = self.actions.gather().copied() {
             return walking(g.move_to);
         }
-        if let Some(a) = self.attack {
+        if let Some(a) = self.actions.attack().copied() {
             return walking(a.move_to);
         }
-        if let Some(e) = self.explore {
+        if let Some(e) = self.actions.explore().copied() {
             return walking(e.move_to);
         }
-        if let Some(e) = self.enter {
+        if let Some(e) = self.actions.enter().copied() {
             return walking(e.move_to);
         }
-        self.transport.and_then(|t| walking(t.move_to))
+        self.actions
+            .transport()
+            .copied()
+            .and_then(|t| walking(t.move_to))
     }
 
     /// The target of its top action ([`Unit::top_action`]), −1 for an action without one (an
@@ -270,27 +291,22 @@ impl Unit {
     /// the foundation at `+0x68`); None without an action the slice holds.
     #[must_use]
     pub fn top_target(&self) -> Option<i32> {
-        if let Some(a) = self.artifact {
+        if let Some(a) = self.actions.artifact().copied() {
             return Some(a.target);
         }
-        None.or_else(|| self.build.map(|b| b.target))
-            .or_else(|| self.repair.map(|r| r.target))
-            .or_else(|| self.move_to.map(|m| m.target))
-            .or_else(|| self.fly.map(|_| -1))
-            .or_else(|| self.hunt.map(|h| h.target))
-            .or_else(|| self.gather.map(|g| g.target))
-            .or_else(|| self.attack.map(|a| a.target))
-            .or_else(|| self.explore.map(|_| -1))
-            .or_else(|| self.enter.map(|e| e.target))
-            .or_else(|| self.transport.map(|_| -1))
-            .or_else(|| {
-                self.missile
-                    .as_ref()
-                    .and_then(|m| m.action.as_ref())
-                    .map(|a| a.target)
-            })
-            .or_else(|| self.make.map(|_| -1))
-            .or_else(|| self.wait_solidify.map(|_| -1))
+        None.or_else(|| self.actions.build().map(|b| b.target))
+            .or_else(|| self.actions.repair().map(|r| r.target))
+            .or_else(|| self.actions.move_to().map(|m| m.target))
+            .or_else(|| self.actions.fly().map(|_| -1))
+            .or_else(|| self.actions.hunt().map(|h| h.target))
+            .or_else(|| self.actions.gather().map(|g| g.target))
+            .or_else(|| self.actions.attack().map(|a| a.target))
+            .or_else(|| self.actions.explore().map(|_| -1))
+            .or_else(|| self.actions.enter().map(|e| e.target))
+            .or_else(|| self.actions.transport().map(|_| -1))
+            .or_else(|| self.actions.missile().map(|a| a.target))
+            .or_else(|| self.actions.make().map(|_| -1))
+            .or_else(|| self.actions.wait_solidify().map(|_| -1))
     }
 
     /// The second target of its top action (`+0x34`, `FUN_140a78430`), −1 for none: a Hunt's
@@ -299,14 +315,10 @@ impl Unit {
     #[must_use]
     pub fn top_second_target(&self) -> Option<i32> {
         match self.top_action_kind()? {
-            crate::gathering::hunt::HUNT => self.hunt.map(|h| h.carry_to),
-            crate::gathering::gather::GATHER => self.gather.map(|g| g.carry_to),
-            crate::combat::missile::MISSILE => self
-                .missile
-                .as_ref()
-                .and_then(|m| m.action.as_ref())
-                .map(|a| a.fired_from),
-            crate::combat::attack::ATTACK => self.attack.map(|a| a.target2),
+            crate::gathering::hunt::HUNT => self.actions.hunt().map(|h| h.carry_to),
+            crate::gathering::gather::GATHER => self.actions.gather().map(|g| g.carry_to),
+            crate::combat::missile::MISSILE => self.actions.missile().map(|a| a.fired_from),
+            crate::combat::attack::ATTACK => self.actions.attack().map(|a| a.target2),
             _ => Some(-1),
         }
     }
@@ -331,7 +343,8 @@ impl Unit {
             (_, 0 | 1 | 3 | 0xd | 0xe) => true,
             (_, 2) => kind != crate::combat::attack::ATTACK,
             (crate::ownership::artifact::ARTIFACT_TYPE, _) => self
-                .artifact
+                .actions
+                .artifact()
                 .is_some_and(|a| a.goal.is_none_or(|g| g[0] == -1.0)),
             _ => false,
         })

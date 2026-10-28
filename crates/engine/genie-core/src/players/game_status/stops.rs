@@ -145,7 +145,7 @@ impl World {
                 "a computer player's hunt stopped (set_state 1)",
             ));
         }
-        let hunt = unit.hunt.as_mut().expect("its top action");
+        let hunt = unit.actions.hunt_mut().expect("its top action");
         hunt.tear_down(unit.body.mover_mut())?;
         hunt.state = crate::gathering::hunt::IDLE;
         let sprite = crate::gathering::hunt::stand_sprite(
@@ -206,7 +206,7 @@ impl World {
             crate::construction::repair::REPAIR => self.halt_repair(p, idx)?,
             crate::combat::attack::ATTACK => {
                 let unit = &mut self.players[p].objects[idx];
-                let attack = unit.attack.as_mut().expect("its top action");
+                let attack = unit.actions.attack_mut().expect("its top action");
                 attack.halt(
                     &mut unit.body,
                     &mut unit.sprite,
@@ -234,7 +234,7 @@ impl World {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let gather = unit.gather.as_mut().expect("its top action");
+        let gather = unit.actions.gather_mut().expect("its top action");
         let stand = crate::gathering::hunt::stand_sprite(
             &gather.task,
             standing,
@@ -265,7 +265,7 @@ impl World {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let build = unit.build.as_mut().expect("its top action");
+        let build = unit.actions.build_mut().expect("its top action");
         let foundation = build.target;
         let (counted, targets) = build.halt(unit.body.mover_mut())?;
         if counted {
@@ -284,7 +284,7 @@ impl World {
     /// out of its target's repairers, the standing sprite; the target stays.
     pub(super) fn halt_repair(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let repair = unit.repair.as_mut().expect("its top action");
+        let repair = unit.actions.repair_mut().expect("its top action");
         let target = repair.target;
         if repair.halt(unit.body.mover_mut())? {
             self.leave_builders(target)?;
@@ -301,7 +301,7 @@ impl World {
         by: Releaser,
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        let artifact = unit.artifact.as_mut().expect("its top action");
+        let artifact = unit.actions.artifact_mut().expect("its top action");
         let (gone, released) = artifact.stop();
         if gone.stops {
             unit.body

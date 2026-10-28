@@ -52,7 +52,7 @@ impl Unit {
     ) -> Result<(), GenieError> {
         let looks = self.clearing_looks(c, others);
         let by = self.releaser(c);
-        let Some(action) = self.build else {
+        let Some(action) = self.actions.build().copied() else {
             return Ok(());
         };
         let target = action.target;
@@ -96,7 +96,7 @@ impl Unit {
             gone_orders: &reads.gone_orders,
             stack_made: reads.stack_made,
         };
-        let build = self.build.as_mut().expect("above");
+        let build = self.actions.build_mut().expect("above");
         let mut step = build.update(c.walk(self.body.mover_mut(), me), site, builder)?;
         record_build_step(c, others, target, &annex_ids, &mut step);
         self.after_build_step(c, others, me, (target, reads.built, by), step)
@@ -108,7 +108,9 @@ impl Unit {
     fn clearing_looks(&self, c: &Context<'_>, others: &[Self]) -> BTreeMap<i32, ClearLook> {
         let mut looks = BTreeMap::new();
         if let Some(f) = self
-            .build
+            .actions
+            .build()
+            .copied()
             .filter(|b| matches!(b.state, 6 | 222))
             .and_then(|b| others.iter().find(|u| u.id == b.target))
             .filter(|u| u.construction.is_some_and(|k| k.desolid))
@@ -288,8 +290,11 @@ impl Unit {
             // the action list removes it; its destructor (FUN_140aadbf0) finds it out of the
             // builders (set_state left them) and releases the foundation and the second
             // target it still holds (slot 0x180, FUN_140a73fc0)
-            let (holds, second) = self.build.map_or((false, -1), |b| (b.target != -1, b.site));
-            self.build = None;
+            let (holds, second) = self
+                .actions
+                .build()
+                .map_or((false, -1), |b| (b.target != -1, b.site));
+            self.actions.set_build(None);
             if holds {
                 release_own(others, masters, target, by)?;
             }
@@ -360,7 +365,7 @@ impl Unit {
         if let Some(work) = self.more_work(c, others, target, built)? {
             c.work_order = Some(work);
         } else {
-            if let Some(b) = self.build.as_mut() {
+            if let Some(b) = self.actions.build_mut() {
                 b.no_more_work()?;
             }
             release_own(others, c.masters, target, by)?;
