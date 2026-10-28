@@ -39,9 +39,10 @@ pub(crate) struct Context<'a> {
     /// blast at death), which its blast may reach, read as the update starts; each hit writes
     /// them back where it ran ([`crate::combat::victims::write_back`]).
     pub(crate) blasted: Vec<Victim>,
-    /// What the hits' write-backs left in the order the hits made it (a retaliation's kill of
-    /// the unit among them): the kills and razings, the caller's after the update
-    /// ([`World::kill_left`]).
+    /// The updating object's own kill (a retaliation's), which its slot's stand-in keeps from
+    /// the world until the step's end ([`crate::combat::victims::file_kill`]): the caller's
+    /// after the update ([`World::kill_left`]); another object's kill reaches the world at the
+    /// hit.
     pub(crate) kills: Vec<KillLeft>,
     /// What the unit's death leaves for the caller: the remains its dying sprite's end makes
     /// (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its

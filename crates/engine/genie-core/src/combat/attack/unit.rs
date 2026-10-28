@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::Strike;
 use crate::combat::damage::Victim;
-use crate::combat::victims::{KillLeft, victim, victim_of, write_struck};
+use crate::combat::victims::{KillLeft, file_kill, victim, victim_of, write_struck};
 use crate::combat::volley::{Aimed, armed};
 use crate::math::rng::Stream;
 use crate::movement::Me;
@@ -137,7 +137,7 @@ impl Unit {
         let posted = std::mem::take(&mut strike.posted);
         let (let_go, forgets) = (strike.let_go, strike.forgets);
         let sends_home = strike.sends_home;
-        let struck = write_struck(c, blasted, &mut victim)?;
+        write_struck(c, blasted, &mut victim)?;
         if let Some(t) = let_go {
             let by = self.releaser(c);
             crate::world::lets::release(c, t, by)?;
@@ -157,7 +157,10 @@ impl Unit {
         if let Some(target) = executed {
             self.post_own(ACTION_EXECUTED, [600, target, 0])?;
         }
-        struck.file(c, self.hit_back(own)?.map(|k| KillLeft::own(self.id, k)));
+        // the retaliation's kill of the unit itself, which follows its step
+        if let Some(k) = self.hit_back(own)? {
+            file_kill(c, KillLeft::own(self.id, k))?;
+        }
         if matches!(code, 1 | 3) {
             self.delete_attack(c)?;
         }

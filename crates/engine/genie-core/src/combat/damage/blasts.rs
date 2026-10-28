@@ -62,6 +62,7 @@ pub(super) fn damage(
         t.killed = Some(Kill {
             attacker: src.id,
             attacker_player: src.player,
+            attacker_class: src.class,
             to_gaia: t.kind == 70 && t.class == LIVESTOCK && t.player != 0,
         });
     }
@@ -388,6 +389,7 @@ pub(super) fn fixed_blast(
             t.killed = Some(Kill {
                 attacker: attacker.id,
                 attacker_player: attacker.player,
+                attacker_class: attacker.class,
                 to_gaia: false,
             });
             kill_bonus(a)?;

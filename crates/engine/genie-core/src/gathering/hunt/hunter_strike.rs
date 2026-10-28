@@ -4,7 +4,7 @@
 use crate::GenieError;
 use crate::combat::attack::Strike;
 use crate::combat::damage::Victim;
-use crate::combat::victims::{KillLeft, victim, write_struck};
+use crate::combat::victims::{KillLeft, file_kill, victim, write_struck};
 use crate::combat::volley::Aimed;
 use crate::gathering::drop_sites::nearest_drop_site;
 use crate::gathering::hunt::{Gatherer, Herd, HuntAction, HuntSprites};
@@ -136,7 +136,7 @@ impl Unit {
         let leads = gather.leads.map(|site| (hunt.target, site));
         let fired = strike.fire.map(|target| Aimed::at(target, strike.victim));
         let (executed, own) = (strike.executed, std::mem::take(&mut strike.own));
-        let struck = write_struck(c, blasted, &mut victim)?;
+        write_struck(c, blasted, &mut victim)?;
         if let Some(aimed) = fired {
             self.volley(c, aimed)?;
         }
@@ -146,7 +146,10 @@ impl Unit {
         for (kind, p) in posted {
             self.post_own(kind, p)?;
         }
-        struck.file(c, self.hit_back(own)?.map(|k| KillLeft::own(self.id, k)));
+        // the retaliation's kill of the unit itself, which follows its step
+        if let Some(k) = self.hit_back(own)? {
+            file_kill(c, KillLeft::own(self.id, k))?;
+        }
         if full {
             self.hunt_drop_off(c)?;
         }

@@ -138,8 +138,8 @@ impl World {
     }
 }
 
-/// What a hit's write-back ([`write_back`]) leaves the caller after the update
-/// ([`World::kill_left`]), in the order the hits made it: the object's kill and its razings.
+/// What a hit's write-back ([`write_back`]) leaves for the world ([`World::kill_left`], at the
+/// hit through [`file_kill`]), in the order the hits made it: the object's kill and its razings.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct KillLeft {
     /// The object.
@@ -269,41 +269,45 @@ pub(crate) fn write_back(
     Ok((left.kill.is_some() || !left.razed.is_empty()).then_some(left))
 }
 
-/// What a strike's write-back left ([`write_struck`]): the blast's objects' kills in their
-/// order, then the target's.
-pub(crate) struct Struck {
-    blast: Vec<KillLeft>,
-    target: Option<KillLeft>,
-}
-
-impl Struck {
-    /// Files the strike's kills with the update's, in the game's order: the blast's, the
-    /// updating unit's own (`own`, by its target's retaliation), the target's.
-    pub(crate) fn file(self, c: &mut Context<'_>, own: Option<KillLeft>) {
-        c.kills.extend(self.blast);
-        c.kills.extend(own);
-        c.kills.extend(self.target);
-    }
-}
-
-/// A strike's write-back where it ran ([`write_back`]): the blast's objects (`blasted`, which
-/// go back to the update's), then its target `v`.
+/// A hit's kill and razings where the hit runs (the damage slot `FUN_1412108e0` kills and counts
+/// at once: `FUN_141082e80`, slot 0x8b0): another object's reach the world now
+/// ([`World::kill_left`]); the updating object's own, its slot holding its stand-in, follow its
+/// step ([`Context::kills`]).
 ///
 /// # Errors
 ///
-/// A notify a unit AI's queue does not take.
+/// What the kill does not model, or an attribute a player lacks.
+pub(crate) fn file_kill(c: &mut Context<'_>, k: KillLeft) -> Result<(), GenieError> {
+    if k.id == c.me {
+        c.kills.push(k);
+        Ok(())
+    } else {
+        c.w.kill_left(&k)
+    }
+}
+
+/// A strike's write-back where it ran ([`write_back`]), each object's kill and razings right
+/// after it ([`file_kill`]): the blast's objects (`blasted`, which go back to the update's) in
+/// their order, then its target `v`.
+///
+/// # Errors
+///
+/// A notify a unit AI's queue does not take, or what a kill does not model.
 pub(crate) fn write_struck(
     c: &mut Context<'_>,
     mut blasted: Vec<Victim>,
     v: &mut Victim,
-) -> Result<Struck, GenieError> {
-    let mut blast = Vec::new();
+) -> Result<(), GenieError> {
     for b in &mut blasted {
-        blast.extend(write_back(c, b)?);
+        if let Some(k) = write_back(c, b)? {
+            file_kill(c, k)?;
+        }
     }
     c.blasted = blasted;
-    let target = write_back(c, v)?;
-    Ok(Struck { blast, target })
+    if let Some(k) = write_back(c, v)? {
+        file_kill(c, k)?;
+    }
+    Ok(())
 }
 
 /// A strike's write-back where it ran ([`write_struck`] on the update's `blasted`, then its
@@ -314,8 +318,7 @@ pub(crate) fn write_struck(
 /// A notify a unit AI's queue does not take.
 pub(crate) fn write_strike_back(c: &mut Context<'_>, v: &mut Victim) -> Result<(), GenieError> {
     let blasted = std::mem::take(&mut c.blasted);
-    write_struck(c, blasted, v)?.file(c, None);
-    Ok(())
+    write_struck(c, blasted, v)
 }
 
 impl World {
@@ -382,10 +385,8 @@ impl World {
             .clone();
         let ap = kill.attacker_player;
         if master.class == 4 {
-            let (bp, by) = self.object(kill.attacker).ok_or(GenieError::unsupported(
-                "a killed villager's attacker the slice does not hold",
-            ))?;
-            if matches!(self.master_of(bp, by.life.master_id)?.class, 9 | 10) {
+            // the attacker's class as the hit saw it: the attacker may be out for its update
+            if matches!(kill.attacker_class, 9 | 10) {
                 self.players[q].add_attribute(227, 1.0)?;
             }
             let by_kind = match self.players[ap].kind {

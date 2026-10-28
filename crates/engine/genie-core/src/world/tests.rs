@@ -8541,8 +8541,9 @@ fn an_object_changing_hands_takes_its_storage_and_class_counts_along() {
 
 /// `FUN_141082e80` before the kill's counts: a killed villager (class 4) counts for its owner an
 /// animal attacker (class 9 or 10) in attribute 227, and by the attacker's player type a human's
-/// in 229, Gaia's in 226, a computer's in 228 (type 0 none); a computer player's killed object
-/// (its AI is told) is not modelled, nor a villager's attacker the world does not hold.
+/// in 229, Gaia's in 226, a computer's in 228 (type 0 none), the attacker's class as the hit
+/// saw it (an attacker the world does not hold then, out for its update or gone, counts too); a
+/// computer player's killed object (its AI is told) is not modelled.
 #[test]
 fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
     let unit = |id, master_id| Unit {
@@ -8591,15 +8592,16 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
         t.masters = vec![masters; 3];
         t
     };
-    let by = |attacker, attacker_player| crate::combat::damage::Kill {
+    let by = |attacker, attacker_player, attacker_class| crate::combat::damage::Kill {
         attacker,
         attacker_player,
+        attacker_class,
         to_gaia: false,
     };
     let counts = |t: &World| [226, 227, 228, 229].map(|i| t.players[1].attributes[i]);
     // Gaia's wolf: an animal, Gaia's type
     let mut t = world(1);
-    t.killed(1, 0, by(50, 0)).unwrap();
+    t.killed(1, 0, by(50, 0, 9)).unwrap();
     assert_eq!(counts(&t), [1.0, 1.0, 0.0, 0.0]);
     // the archers of a human, a computer and the editor's phantom
     for (kind, seen) in [
@@ -8608,13 +8610,14 @@ fn a_killed_villager_counts_its_attacker_s_kind_and_player_type() {
         (0, [0.0; 4]),
     ] {
         let mut t = world(kind);
-        t.killed(1, 1, by(60, 2)).unwrap();
+        t.killed(1, 1, by(60, 2, 0)).unwrap();
         assert_eq!(counts(&t), seen);
     }
     let mut t = world(1);
-    assert!(t.killed(1, 0, by(99, 2)).is_err());
+    t.killed(1, 0, by(99, 2, 10)).unwrap();
+    assert_eq!(counts(&t), [0.0, 1.0, 0.0, 1.0]);
     t.players[1].computer = true;
-    assert!(t.killed(1, 0, by(60, 2)).is_err());
+    assert!(t.killed(1, 0, by(60, 2, 0)).is_err());
 }
 
 /// [`a_killed_sheep_goes_to_gaia`]'s world: player 1's town centre 10029 (`killer_last`: the
@@ -8682,6 +8685,7 @@ fn killed_sheep(killer_last: bool) -> (World, crate::combat::damage::Victim) {
     v.killed = Some(crate::combat::damage::Kill {
         attacker: 10029,
         attacker_player: 1,
+        attacker_class: 80,
         to_gaia: true,
     });
     (t, v)
@@ -8703,23 +8707,53 @@ fn a_killed_sheep_goes_to_gaia() {
     assert_eq!(t.players[0].attributes[16], 100.0);
 }
 
-/// The hit's kill after the step gives Gaia the sheep in slot 0 of its owner's list
-/// (`FUN_1411664a0`: the list's last object takes its slot): the town centre that stepped, the
-/// last, moves into it, and the step reports that slot for the list's loop to file it at.
+/// The hit's kill gives Gaia the sheep in slot 0 of its owner's list where the hit runs
+/// (`FUN_1411664a0`: the list's last object takes its slot): the town centre that steps, the
+/// last, moves into it while it is out, goes back there, and the step reports that slot for the
+/// list's loop to file it at.
 #[test]
-fn a_kill_after_the_step_reports_the_object_s_new_slot() {
+fn a_kill_in_the_step_reports_the_object_s_new_slot() {
     let (mut t, mut v) = killed_sheep(true);
     let frame = t.player_frame();
     let stepped = t
         .step_object((1, 1), (0, None, false), &frame, None, |_, c| {
-            let left = crate::combat::victims::write_back(c, &mut v)?;
-            c.kills.extend(left);
+            if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
+                crate::combat::victims::file_kill(c, k)?;
+            }
             Ok(crate::objects::unit::Step::Stay)
         })
         .unwrap();
     assert_eq!(stepped.slot, 0);
     assert_eq!(t.players[1].objects.position_of(10029), Some(0));
     assert_eq!(t.players[0].objects[0].id, 9520);
+}
+
+/// A hit's kill reaches the world where the hit runs (the damage slot `FUN_1412108e0` kills and
+/// counts at once: `FUN_141082e80`, slot 0x8b0): the update's later parts see the sheep Gaia's
+/// and the kill counted. The updating unit's own kill (its target's retaliation) waits for the
+/// step's end, its slot holding the stand-in.
+#[test]
+fn a_hit_s_kill_reaches_the_world_where_the_hit_runs() {
+    use crate::combat::victims::{KillLeft, file_kill};
+    let (mut t, mut v) = killed_sheep(false);
+    let seen = in_update(&mut t, (1, 0), 0, |_, c| {
+        if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
+            file_kill(c, k)?;
+        }
+        let gaia_s = c.w.players[0].objects.position_of(9520).is_some();
+        let counted = c.w.players[1].attributes[301];
+        let kill = crate::combat::damage::Kill {
+            attacker: 9520,
+            attacker_player: 0,
+            attacker_class: 58,
+            to_gaia: false,
+        };
+        file_kill(c, KillLeft::own(c.me, kill))?;
+        let waits = c.kills.len();
+        c.kills.clear();
+        Ok((gaia_s, counted, waits))
+    });
+    assert_eq!(seen.unwrap(), (true, 1.0, 1));
 }
 
 /// A world call in the step that moves the stepping object's stand-in (a removal from its list,
@@ -8849,6 +8883,7 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     v.killed = Some(crate::combat::damage::Kill {
         attacker: 9,
         attacker_player: 1,
+        attacker_class: 0,
         to_gaia: false,
     });
     let b = v.building.as_mut().unwrap();
@@ -8878,12 +8913,14 @@ fn a_razed_building_s_write_back_reaches_its_annexes_history_and_counts() {
     assert_eq!(event.data1, 2.0);
 }
 
-/// The hit `v` written back where it ran, in the update of object `i` of player `p` (through
-/// its view, [`crate::combat::victims::write_back`]); its kill and razings follow the update.
+/// The hit `v` written back where it ran, in the update of object `i` of player `p`
+/// ([`crate::combat::victims::write_back`]), its kill and razings with it
+/// ([`crate::combat::victims::file_kill`]).
 fn write_hit(t: &mut World, (p, i): (usize, usize), mut v: crate::combat::damage::Victim) {
     in_update(t, (p, i), 0, |_, c| {
-        let left = crate::combat::victims::write_back(c, &mut v)?;
-        c.kills.extend(left);
+        if let Some(k) = crate::combat::victims::write_back(c, &mut v)? {
+            crate::combat::victims::file_kill(c, k)?;
+        }
         Ok(())
     })
     .unwrap();

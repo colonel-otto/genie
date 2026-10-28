@@ -185,6 +185,7 @@ fn a_hunter_strikes_its_sheep_for_twelve() {
         Some(Kill {
             attacker: 10029,
             attacker_player: 1,
+            attacker_class: 4,
             to_gaia: true
         })
     );

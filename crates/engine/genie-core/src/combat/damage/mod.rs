@@ -239,6 +239,9 @@ pub struct Kill {
     pub attacker: i32,
     /// That object's player.
     pub attacker_player: usize,
+    /// That object's master's class as the hit saw it (`FUN_141082e80` reads it of the
+    /// attacker it gets: an animal's 9 or 10 counts a villager's loss).
+    pub attacker_class: i16,
     /// Gaia takes it: a player's livestock (`FUN_1412108e0`).
     pub to_gaia: bool,
 }

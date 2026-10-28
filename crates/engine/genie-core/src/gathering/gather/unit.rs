@@ -374,9 +374,10 @@ impl Unit {
         };
         let next = next?;
         // what the work changed on its target, where it ran
-        if let Some(v) = victim.as_mut() {
-            let left = write_back(c, v)?;
-            c.kills.extend(left);
+        if let Some(v) = victim.as_mut()
+            && let Some(k) = write_back(c, v)?
+        {
+            crate::combat::victims::file_kill(c, k)?;
         }
         for (kind, p) in posted {
             self.post_own(kind, p)?;

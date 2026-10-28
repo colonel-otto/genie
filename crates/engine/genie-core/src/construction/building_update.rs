@@ -579,8 +579,9 @@ impl Unit {
         )?;
         let mut blasted = std::mem::take(&mut c.blasted);
         for v in &mut blasted {
-            let left = write_back(c, v)?;
-            c.kills.extend(left);
+            if let Some(k) = write_back(c, v)? {
+                crate::combat::victims::file_kill(c, k)?;
+            }
         }
         c.blasted = blasted;
         let _ = self.hit_back(own)?;
