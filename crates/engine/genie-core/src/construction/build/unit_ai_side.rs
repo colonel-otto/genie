@@ -246,7 +246,7 @@ impl<'u> UnitView<'u> {
         };
         let spot = match self.spatial.get(site) {
             Some(placed) => {
-                let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+                let mover = unit.body.mover().ok_or(GenieError::unsupported(
                     "a unit sent off without movement state",
                 ))?;
                 self.spatial.spot_off(

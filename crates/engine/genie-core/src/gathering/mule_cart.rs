@@ -81,7 +81,7 @@ impl World {
             .ai
             .as_ref()
             .map_or(-1, |ai| ai.current_target);
-        if self.players[p].objects[idx].mover.is_none() {
+        if self.players[p].objects[idx].body.mover().is_none() {
             return Err(GenieError::unsupported(
                 "a mule cart's search without its movement state (a moving building's setup)",
             ));

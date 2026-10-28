@@ -42,7 +42,7 @@ pub fn old_pather_paths(
             )));
             continue;
         };
-        let Some(mover) = unit.mover.as_ref() else {
+        let Some(mover) = unit.body.mover() else {
             out.push(Err(GenieError::unsupported("a caller that does not move")));
             continue;
         };

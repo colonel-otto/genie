@@ -106,8 +106,8 @@ impl<'u> UnitView<'u> {
         };
         unit.tear_down_actions(self.releases, self.builder_leaves, by)?;
         let speed = unit
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .ok_or(crate::world::ATTACKER_UNMOVING)?
             .stats
             .speed;
@@ -123,7 +123,7 @@ impl<'u> UnitView<'u> {
         unit.attack_count = 0;
         if unit.life.inside.is_some() {
             let mut attack = crate::combat::attack::Attack::own(target, &e, arms);
-            attack.fail_at_start(&mut unit.sprite, &mut unit.anim_speed, self.sprite)?;
+            attack.fail_at_start(&mut unit.sprite, &mut unit.body, self.sprite)?;
             unit.attack = Some(attack);
             self.takes.push((target, by));
             return Ok(crate::unit_ai::Attacked {
@@ -132,7 +132,7 @@ impl<'u> UnitView<'u> {
             });
         }
         crate::combat::attack::set_sprite(&mut unit.sprite, standing, self.sprite);
-        let mover = unit.mover.as_mut().expect("its speed read above");
+        let mover = unit.body.mover_mut().expect("its speed read above");
         let crate::combat::attack::Commanded {
             mut attack,
             arrived,
@@ -148,16 +148,16 @@ impl<'u> UnitView<'u> {
             mover,
         )?;
         if failed_first {
-            unit.anim_speed = Some(1.0);
+            unit.body.set_anim_speed(1.0);
         }
         if failed {
-            attack.fail_at_start(&mut unit.sprite, &mut unit.anim_speed, self.sprite)?;
+            attack.fail_at_start(&mut unit.sprite, &mut unit.body, self.sprite)?;
         }
         if ready {
             posted.extend(self.ready_at_start(&mut attack, master, ai)?);
         }
         let unit = &mut *self.unit;
-        let mover = unit.mover.as_mut().expect("its speed read above");
+        let mover = unit.body.mover_mut().expect("its speed read above");
         if arrived {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): the master's standing
             // sprite with its speed, `+0x7b8` cleared; the next update's state 4 ends the MoveTo
@@ -227,7 +227,7 @@ impl<'u> UnitView<'u> {
         let unit = &mut *self.unit;
         let wielder = crate::combat::attack::Wielder {
             area_effect: master.area_effect,
-            speed: unit.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+            speed: unit.body.mover().map_or(0.0, |m| m.stats.speed),
             position: unit.position,
             radius: master.radius,
         };
@@ -310,7 +310,7 @@ impl<'u> UnitView<'u> {
             action_state: crate::combat::attack::READY,
         };
         let walk = Walk {
-            mover: unit.mover.as_mut(),
+            mover: unit.body.mover_mut(),
             me,
             dt: 0.0,
             world: self.spatial,
@@ -319,7 +319,6 @@ impl<'u> UnitView<'u> {
         let mut blasted = Vec::new();
         let mut strike = crate::combat::attack::Strike {
             sprite: &mut unit.sprite,
-            anim_speed: &mut unit.anim_speed,
             standing: self.graphics.get(&master.standing_sprite).copied(),
             volleys: self
                 .masters

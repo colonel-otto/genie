@@ -83,7 +83,7 @@ impl Unit {
             && self.top_action_kind() == Some(crate::movement::move_to::MOVE_TO)
             && self
                 .move_to
-                .and_then(|mt| mt.point(self.mover.as_ref()))
+                .and_then(|mt| mt.point(self.body.mover()))
                 .is_some_and(|p| p == m.point)
         {
             return Ok(false);
@@ -106,7 +106,7 @@ impl Unit {
             PointMove::Declined => {}
         }
         self.clear_own_actions(releases, builder_leaves, by)?;
-        let move_to = MoveToAction::to_point(m.point, m.range, !m.walk, self.mover.as_mut());
+        let move_to = MoveToAction::to_point(m.point, m.range, !m.walk, self.body.mover_mut());
         if move_to.shows_standing() {
             self.shows_standing_sprite(masters, graphics, sprite_rng)?;
         }
@@ -162,8 +162,8 @@ impl Unit {
                     .map(|a| a.take_point(point))
                     .unwrap_or_default();
                 if gone.stops {
-                    self.mover
-                        .as_mut()
+                    self.body
+                        .mover_mut()
                         .ok_or(crate::world::WALKER_UNMOVING)?
                         .stop()?;
                 }
@@ -172,7 +172,7 @@ impl Unit {
             }
             Some(crate::gathering::hunt::HUNT) => {
                 let (held, my_pasture) = (self.life.amount, self.my_pasture);
-                let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+                let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.body.mover_mut()) else {
                     return Err(GenieError::unsupported(
                         "a hunter without its hunt or movement state",
                     ));
@@ -185,7 +185,7 @@ impl Unit {
             }
             Some(crate::gathering::gather::GATHER) => {
                 let held = self.life.amount;
-                let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut())
+                let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.body.mover_mut())
                 else {
                     return Err(GenieError::unsupported(
                         "a gatherer without its gather or movement state",
@@ -200,7 +200,7 @@ impl Unit {
             // the Repair's (FUN_140ad9700): its point, slot 0x68 with none, set_state(11)
             Some(crate::construction::repair::REPAIR) => {
                 let repair = self.repair.as_mut().expect("the unit's top action");
-                let (old, counted) = repair.take_point(point, self.mover.as_mut())?;
+                let (old, counted) = repair.take_point(point, self.body.mover_mut())?;
                 Ok(PointMove::Repairs(
                     Some(old).filter(|&t| t != -1),
                     counted.then_some(old),
@@ -230,7 +230,7 @@ impl Unit {
                 "an AI move to an object of a unit with an action",
             ));
         }
-        if self.mover.is_none() {
+        if self.body.mover().is_none() {
             return Err(GenieError::unsupported(
                 "an AI move to an object of a unit that does not move",
             ));
@@ -251,7 +251,7 @@ impl Unit {
         self.clear_own_actions(&mut c.releases, &mut c.builder_leaves, by)?;
         let own = c.masters.and_then(|m| m.get(self.life.master_id));
         let range = crate::movement::move_to::object_range(range, own);
-        let mover = self.mover.as_mut().expect("tested above");
+        let mover = self.body.mover_mut().expect("tested above");
         let move_to = MoveToAction::to_object(
             c.spatial,
             self.position,
@@ -292,7 +292,7 @@ impl Unit {
         };
         m.state = m.wait.give_up(waits, stance);
         if m.state == MoveTo::Failed {
-            if let Some(mover) = self.mover.as_mut() {
+            if let Some(mover) = self.body.mover_mut() {
                 mover.shows_standing();
             }
             self.shows_standing_sprite(masters, graphics, sprite_rng)?;
@@ -319,9 +319,7 @@ impl Unit {
                 ))?;
             crate::combat::attack::set_sprite(&mut self.sprite, standing, sprite_rng);
         }
-        if let Some(a) = self.anim_speed.as_mut() {
-            *a = 0.0;
-        }
+        self.body.set_anim_speed(0.0);
         Ok(())
     }
 }

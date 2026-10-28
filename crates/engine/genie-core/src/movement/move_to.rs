@@ -87,6 +87,13 @@ pub struct Walk<'a> {
 }
 
 impl Walk<'_> {
+    /// Sets the walking unit's animation speed (`+0x7b8`, the animated layer in its mover).
+    pub fn set_anim_speed(&mut self, speed: f32) {
+        if let Some(m) = self.mover.as_deref_mut() {
+            m.animated.speed = speed;
+        }
+    }
+
     /// The same walk for a call that ends before this one is used again.
     pub fn reborrow(&mut self) -> Walk<'_> {
         Walk {

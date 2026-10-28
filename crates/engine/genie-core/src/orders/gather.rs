@@ -83,7 +83,7 @@ impl World {
         };
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
-        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.mover.as_mut()) else {
+        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
@@ -145,7 +145,7 @@ impl World {
         let by = self.releaser(player, idx);
         let unit = &mut self.players[player].objects[idx];
         let held = unit.life.amount;
-        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.mover.as_mut()) else {
+        let (Some(gather), Some(mover)) = (unit.gather.as_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
@@ -214,7 +214,7 @@ impl World {
         let by = self.releaser(player, idx);
         let unit = &mut self.players[player].objects[idx];
         let (held, my_pasture) = (unit.life.amount, unit.my_pasture);
-        let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.mover.as_mut()) else {
+        let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -352,8 +352,8 @@ impl World {
         let carry_rule = self.settings.carry_rule();
         let unit = &mut self.players[player].objects[idx];
         let mover = unit
-            .mover
-            .as_mut()
+            .body
+            .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let rng = self.streams.get(Stream::Action);
@@ -411,7 +411,7 @@ impl World {
             .spatial
             .get_known(target)?
             .ok_or(crate::world::TARGET_UNPLACED)?;
-        let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
         crate::combat::attack::engagement(
             unit.ai.as_ref(),
             speed,
@@ -457,7 +457,7 @@ impl World {
         let computer = self.players[player].computer;
         let carry_rule = self.settings.carry_rule();
         let unit = &mut self.players[player].objects[idx];
-        let mover = unit.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             task,
@@ -480,9 +480,7 @@ impl World {
                 g,
                 self.streams.get(Stream::Sprite),
             );
-            if let Some(a) = unit.anim_speed.as_mut() {
-                *a = 0.0;
-            }
+            unit.body.set_anim_speed(0.0);
         }
         let drops = hunt.target == -1 && hunt.carry_to == target;
         unit.hunt = Some(hunt);

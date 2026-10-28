@@ -27,7 +27,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
             current_target: -1,
             ..UnitAi::default()
         }),
-        mover: Some(mover),
+        body: crate::objects::layers::Body::Moving(mover),
         ..Unit::default()
     };
     u.life.master_id = 4;
@@ -108,7 +108,7 @@ fn widen(t: &mut World, r: f32) {
         *m = Masters::new(all);
     }
     for u in &mut t.players[1].objects {
-        if let Some(m) = u.mover.as_mut() {
+        if let Some(m) = u.body.mover_mut() {
             m.stats.radius[0] = r;
             m.stats.radius[1] = r;
         }
@@ -137,7 +137,7 @@ fn unit(t: &World, id: i32) -> &Unit {
 }
 
 fn mover(t: &World, id: i32) -> &crate::movement::Mover {
-    unit(t, id).mover.as_ref().unwrap()
+    unit(t, id).body.mover().unwrap()
 }
 
 fn state(t: &World, slot: usize) -> i32 {
@@ -221,11 +221,11 @@ fn a_member_in_place_or_failing_too_often() {
     );
     assert_eq!(own.consecutive_move_failures, 11);
     assert_eq!(g.flags & 0x200, 0x200);
-    assert!(mover(&t, 10).speed_stopped);
+    assert_eq!(mover(&t, 10).animated.speed, 0.0);
     assert_eq!(unit(&t, 10).ai.as_ref().unwrap().state_position, [0.0; 2]);
     // a NaN gap is not in place
     let mut t = world();
-    t.players[1].objects[0].mover.as_mut().unwrap().moved_at[0] = f32::NAN;
+    t.players[1].objects[0].body.mover_mut().unwrap().moved_at[0] = f32::NAN;
     let g = t.groups.get_mut(1).unwrap();
     g.current_formation.as_mut().unwrap().slots[0].state = 3;
     g.members[0].specific_move.consecutive_move_failures = 11;
@@ -255,7 +255,7 @@ fn a_busy_member_stops_and_its_slot_counts_it_there() {
                 .consecutive_move_failures,
             0
         );
-        assert!(mover(&t, 10).speed_stopped);
+        assert_eq!(mover(&t, 10).animated.speed, 0.0);
     }
 }
 
@@ -329,7 +329,7 @@ fn a_member_about_to_pass_its_slot_stops() {
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), 2);
     let m = mover(&t, 10);
-    assert!(m.speed_stopped);
+    assert_eq!(m.animated.speed, 0.0);
     assert_eq!(m.velocity.unwrap().velocity[2], 0.0);
     assert_eq!(m.stats.speed, 0.0);
 }
@@ -348,10 +348,15 @@ fn a_due_slot_takes_its_member() {
     s.state = 1;
     t.steer_to_slot(1, 0, 0, &[]).unwrap();
     assert_eq!(state(&t, 0), 3);
-    assert!(mover(&t, 10).speed_stopped);
+    assert_eq!(mover(&t, 10).animated.speed, 0.0);
     assert_eq!(unit(&t, 10).position, [5.0, 5.0, 0.0]);
     let mut t = world();
-    t.players[1].objects[0].mover.as_mut().unwrap().stats.radius[2] = 0.0;
+    t.players[1].objects[0]
+        .body
+        .mover_mut()
+        .unwrap()
+        .stats
+        .radius[2] = 0.0;
     t.spatial.insert(
         10,
         Placed {
@@ -467,8 +472,13 @@ fn a_slot_a_record_holds_takes_a_step_toward_it() {
 fn the_members_moves_end_wait_or_stop() {
     let mut t = world();
     t.spatial.insert(50, post(6.0, 7.0));
+    // the members walk: a stop clears their animation speed
+    for u in &mut t.players[1].objects {
+        u.body.set_anim_speed(1.0);
+    }
     let mut stray = member(12, 20.0, 20.0);
-    stray.mover.as_mut().unwrap().velocity = Some(crate::movement::Velocity {
+    stray.body.set_anim_speed(1.0);
+    stray.body.mover_mut().unwrap().velocity = Some(crate::movement::Velocity {
         velocity: [0.0, 0.0, 0.5],
         acceleration: [0.0; 3],
     });
@@ -505,8 +515,8 @@ fn the_members_moves_end_wait_or_stop() {
     assert_eq!(g.members[1].specific_move.timer, 1.0 - DT);
     assert_eq!(g.members[1].specific_move.reason, 0);
     assert_eq!(unit(&t, 11).ai.as_ref().unwrap().state_position, [0.0; 2]);
-    assert!(mover(&t, 12).speed_stopped);
-    assert!(!mover(&t, 11).speed_stopped);
+    assert_eq!(mover(&t, 12).animated.speed, 0.0);
+    assert_ne!(mover(&t, 11).animated.speed, 0.0);
     // the timer run out (or the distance at 0) ends the move, and the member steers on
     let mut t2 = world();
     t2.spatial.insert(50, post(6.0, 7.0));
@@ -520,7 +530,7 @@ fn the_members_moves_end_wait_or_stop() {
     assert_eq!(t2.members_to_slots(1, &[50]), Ok(()));
     let own = t2.groups.get(1).unwrap().members[1].specific_move;
     assert_eq!((own.active, own.path_id, own.reason), (0, -1, -1));
-    assert!(mover(&t2, 11).speed_stopped);
+    assert_eq!(mover(&t2, 11).animated.speed, 0.0);
     assert_eq!(
         unit(&t2, 11).ai.as_ref().unwrap().state_position,
         [6.0, 9.0]

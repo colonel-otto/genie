@@ -126,7 +126,7 @@ impl Unit {
     /// below type 80 leaves its remains (`FUN_1411a4e90`) with its facet (`+0xe`) as its angle
     /// left it ([`crate::objects::facing::facet_of_angle`]).
     pub(crate) fn dying_sprite_ended(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
-        self.anim_speed = Some(0.0);
+        self.body.set_anim_speed(0.0);
         let kind = c
             .masters
             .and_then(|m| m.get(self.life.master_id))
@@ -136,8 +136,8 @@ impl Unit {
             ))?;
         if kind < 80 && 0 <= self.life.remains {
             let facet = self
-                .mover
-                .as_ref()
+                .body
+                .mover()
                 .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
             c.remains = Some((self.life.remains, self.position, facet));
         }
@@ -157,8 +157,8 @@ impl Unit {
                 "a dead object of a master the slice does not have",
             ))?;
         let facet = self
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .map(|m| crate::objects::facing::facet_of_angle(m.angle, m.stats.facets).0);
         c.remains = Some((spawn, self.position, facet));
         Ok(())

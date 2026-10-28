@@ -1,5 +1,6 @@
 use crate::GenieError;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
+use crate::objects::layers::{Animated, Body};
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
@@ -44,18 +45,18 @@ fn a_static_object_flagged_to_sleep_ends_its_update() {
 #[test]
 fn the_movement_state_takes_the_sprite_s_facets() {
     let mut u = Unit {
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: Body::Moving(crate::gathering::hunt::tests::walker()),
         ..Unit::default()
     };
     u.take_sprite_facets();
-    assert_eq!(u.mover.as_ref().unwrap().sprite_facets, None);
+    assert_eq!(u.body.mover().unwrap().sprite_facets, None);
     u.sprite = Some(ActiveSprite::start(
         WALKING,
         &mut crate::math::rng::Well512::default(),
     ));
     u.take_sprite_facets();
     assert_eq!(
-        u.mover.as_ref().unwrap().sprite_facets,
+        u.body.mover().unwrap().sprite_facets,
         Some(crate::objects::facing::SpriteFacets {
             count: 16,
             flag_1: true,
@@ -67,14 +68,15 @@ fn the_movement_state_takes_the_sprite_s_facets() {
 /// update's dt; one without a speed stands still.
 #[test]
 fn an_animated_object_s_sprite_runs_by_the_update_s_dt() {
-    let animated = |speed| {
+    let animated = |speed: Option<f32>| {
         let mut t = forage_world();
         let u = &mut t.players[1].objects[0];
         u.sprite = Some(ActiveSprite::start(
             WALKING,
             &mut crate::math::rng::Well512::default(),
         ));
-        u.anim_speed = speed;
+        // a static object has no animation speed, so no clock
+        u.body = speed.map_or(Body::Static, |speed| Body::Animated(Animated { speed }));
         let before = u.sprite;
         in_update(&mut t, (1, 0), 50, |u, c, _| {
             u.animate(c);
@@ -107,7 +109,7 @@ fn an_object_past_state_2_loses_its_actions() {
     in_update(&mut t, (1, 0), 50, |u, c, _| u.actions_past_life(c)).unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(u.move_to, None);
-    assert!(u.mover.as_ref().unwrap().speed_stopped);
+    assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
     let mut t = forage_world();
     t.players[1].objects[0].unmodelled_action = Some(GenieError::unsupported("an action"));
     let r = in_update(&mut t, (1, 0), 50, |u, c, _| u.actions_past_life(c));
@@ -120,7 +122,7 @@ fn an_object_past_state_2_loses_its_actions() {
 fn after_its_actions_a_unit_takes_the_world_s_place_and_hands_its_pauses_on() {
     let mut t = forage_world();
     t.spatial.set_position(9175, [29.75, 89.5, 0.0]);
-    t.players[1].objects[0].mover.as_mut().unwrap().pauses = vec![(600, 0.5)];
+    t.players[1].objects[0].body.mover_mut().unwrap().pauses = vec![(600, 0.5)];
     let pauses = in_update(&mut t, (1, 0), 50, |u, c, _| {
         u.after_actions(c)?;
         Ok(c.pauses.clone())
@@ -129,8 +131,8 @@ fn after_its_actions_a_unit_takes_the_world_s_place_and_hands_its_pauses_on() {
     assert_eq!(pauses, [(600, 0.5)]);
     let u = &t.players[1].objects[0];
     assert_eq!(u.position, [29.75, 89.5, 0.0]);
-    assert_eq!(u.mover.as_ref().unwrap().pauses, []);
-    t.players[1].objects[0].mover.as_mut().unwrap().in_the_way = vec![600];
+    assert_eq!(u.body.mover().unwrap().pauses, []);
+    t.players[1].objects[0].body.mover_mut().unwrap().in_the_way = vec![600];
     let r = in_update(&mut t, (1, 0), 50, |u, c, _| u.after_actions(c));
     assert_eq!(
         r.unwrap_err().reason(),

@@ -30,12 +30,11 @@ impl Unit {
                 .and_then(|m| m.get(self.life.master_id))
                 .ok_or(crate::world::ATTACKER_MASTER)?;
             let armed = armed(master, self.firepower);
-            let (code, disarmed) =
-                attack.update_targetless(c.dt_seconds, armed, &mut self.anim_speed)?;
+            let (code, disarmed) = attack.update_targetless(c.dt_seconds, armed, &mut self.body)?;
             if disarmed {
                 let posted = attack.disarmed(
                     &mut self.sprite,
-                    &mut self.anim_speed,
+                    &mut self.body,
                     c.streams.get(Stream::Sprite),
                 )?;
                 if let Some((kind, p)) = posted {
@@ -74,10 +73,9 @@ impl Unit {
                 master,
                 c.graphics,
             );
-            let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+            let (walk, sprite_rng) = c.walk_and_sprites(self.body.mover_mut(), me);
             let mut strike = Strike {
                 sprite: &mut self.sprite,
-                anim_speed: &mut self.anim_speed,
                 standing,
                 volleys,
                 attack_timer: &mut self.attack_timer,

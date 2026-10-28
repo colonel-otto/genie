@@ -269,7 +269,7 @@ impl World {
         let id = self.players[player].objects[idx].id;
         self.leave_group_of(id, -1)?;
         let unit = &mut self.players[player].objects[idx];
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
         }
         let unit = &self.players[player].objects[idx];

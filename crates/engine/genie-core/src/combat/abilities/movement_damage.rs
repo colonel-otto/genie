@@ -160,8 +160,8 @@ impl World {
             return Ok(());
         }
         let moving = unit
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .and_then(|m| m.velocity.as_ref())
             .is_some_and(|v| 0.0 < fmath::length(v.velocity));
         if master.kind != COMBAT_KIND || !moving {

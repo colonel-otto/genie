@@ -71,8 +71,8 @@ pub(crate) fn closest_resource_of(
             ))?;
         let footprint = DOCKS.contains(&m.id) || {
             let restriction = unit
-                .mover
-                .as_ref()
+                .body
+                .mover()
                 .ok_or(GenieError::unsupported(
                     "a resource search without movement state",
                 ))?
@@ -105,7 +105,7 @@ pub(crate) fn closest_resource_of(
         .ok_or(GenieError::unsupported(
             "a searcher of a master the slice does not have",
         ))?;
-    let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+    let mover = unit.body.mover().ok_or(GenieError::unsupported(
         "a resource search without movement state",
     ))?;
     let mask = mover.stats.restriction_mask;

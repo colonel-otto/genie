@@ -446,9 +446,9 @@ impl Unit {
             return Ok(None);
         };
         let dt = c.dt;
-        let ended = artifact.walk(Some(c.walk(self.mover.as_mut(), me)))?;
+        let ended = artifact.walk(Some(c.walk(self.body.mover_mut(), me)))?;
         if ended.is_some()
-            && let Some(m) = self.mover.as_mut()
+            && let Some(m) = self.body.mover_mut()
         {
             m.stop()?;
         }
@@ -473,7 +473,7 @@ impl Unit {
                 c.releases.push((t, by));
             }
             if gone.stops
-                && let Some(m) = self.mover.as_mut()
+                && let Some(m) = self.body.mover_mut()
             {
                 m.stop()?;
             }

@@ -489,8 +489,8 @@ pub(crate) fn lock_gate(unit: &mut Unit, locked: bool, now: u32) -> Result<(), G
     ))?;
     gate.locked = locked;
     if locked {
-        unit.mover
-            .as_mut()
+        unit.body
+            .mover_mut()
             .ok_or(GenieError::unsupported(
                 "a locked gate without its moving part",
             ))?

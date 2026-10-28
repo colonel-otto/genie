@@ -309,7 +309,7 @@ impl Unit {
             self.position[2] = HEIGHT;
             c.spatial.set_position(self.id, self.position);
             // the position setter marks the move (`+0x824`, `+0x870`)
-            if let Some(m) = self.mover.as_mut() {
+            if let Some(m) = self.body.mover_mut() {
                 m.mark_move(self.position, c.world_time);
             }
         }

@@ -88,7 +88,7 @@ impl World {
             }
             let _ = self.groups.get_mut(group).expect("held").objects.remove(i);
             if let Some((_, u)) = self.object_mut(id)
-                && let Some(mover) = u.mover.as_mut()
+                && let Some(mover) = u.body.mover_mut()
             {
                 mover.stand()?;
             }
@@ -136,7 +136,7 @@ impl World {
         }
         !g.members.iter().any(|m| {
             matches!(self.world_object(m.id), Some(WorldObject::Unit(_, u))
-                if u.mover.as_ref().is_some_and(crate::movement::Mover::is_moving))
+                if u.body.mover().is_some_and(crate::movement::Mover::is_moving))
         })
     }
 
@@ -436,7 +436,7 @@ impl World {
         };
         let graphic = self.graphics.get(&sprite).copied();
         let (_, u) = self.object_mut(id).expect("found above");
-        if let Some(m) = u.mover.as_mut() {
+        if let Some(m) = u.body.mover_mut() {
             m.stats.speed = match shown {
                 Shown::Standing => m.stats.stand_speed,
                 Shown::Walking => m.stats.walk_speed,
@@ -476,8 +476,8 @@ impl World {
             };
             // the game's vector (x, height, y) of where it last moved to (x, y, height)
             let at = u
-                .mover
-                .as_ref()
+                .body
+                .mover()
                 .map_or([u.position[0], u.position[2], u.position[1]], |mv| {
                     [mv.moved_at[0], mv.moved_at[2], mv.moved_at[1]]
                 });

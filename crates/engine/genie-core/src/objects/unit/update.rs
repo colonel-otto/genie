@@ -39,7 +39,7 @@ impl Unit {
 
     /// `RGE_Static_Object::update` and the combat object's steps before the actions: the death
     /// blast, the sleep ([`Unit::go_to_sleep`], None), the sprite's facets, a gate's and a
-    /// building's update, the stopped speed, the attack timers, the motion, the life step (what
+    /// building's update, the attack timers, the motion, the life step (what
     /// the unit AI later reads of it), the animation and the actions past the unit's life.
     pub(crate) fn update_to_actions(
         &mut self,
@@ -54,7 +54,6 @@ impl Unit {
         self.gate_update(c, others)?;
         self.complete_on_update(c, others)?;
         self.building_seconds(c, others)?;
-        self.take_stopped_speed();
         self.run_down_attack_timers(c);
         self.motion_step(c)?;
         let leaves = self.life_step(c)?;
@@ -127,7 +126,7 @@ impl Unit {
         if !self.life.goto_sleep {
             return Ok(false);
         }
-        if self.life.class != Class::Static || self.mover.is_some() || self.ai.is_some() {
+        if self.life.class != Class::Static || self.body.mover().is_some() || self.ai.is_some() {
             return Err(GenieError::unsupported(
                 "an object above the static type goes to sleep",
             ));
@@ -138,7 +137,7 @@ impl Unit {
 
     /// The yaw and the facing read the current sprite's facets: the movement state takes them.
     pub(crate) const fn take_sprite_facets(&mut self) {
-        if let (Some(m), Some(s)) = (self.mover.as_mut(), self.sprite) {
+        if let (Some(m), Some(s)) = (self.body.mover_mut(), self.sprite) {
             m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
                 count: s.graphic.facets,
                 flag_1: s.graphic.flags & 2 != 0,
@@ -149,7 +148,7 @@ impl Unit {
     /// The animated object's update (`0x141071880`): its sprite's clock at its animation speed,
     /// then its idle swap, which reads the loop this update's clock made.
     pub(crate) fn animate(&mut self, c: &mut Context<'_>) {
-        if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.anim_speed) {
+        if let (Some(sprite), Some(speed)) = (self.sprite.as_mut(), self.body.anim_speed()) {
             sprite.update(c.dt_seconds, speed);
             if let Some(master) = c.masters.and_then(|m| m.get(self.life.master_id)) {
                 self.idle_swap(master, c.graphics, c.streams.get(Stream::Sprite));
@@ -182,7 +181,7 @@ impl Unit {
         if let Some(p) = c.spatial.get(self.id) {
             self.position = p.position;
         }
-        if let Some(m) = self.mover.as_mut() {
+        if let Some(m) = self.body.mover_mut() {
             c.pauses.append(&mut m.pauses);
             if !m.in_the_way.is_empty() {
                 return Err(crate::world::IN_THE_WAY);
@@ -200,7 +199,7 @@ impl Unit {
             .filter(|m| 40 <= m.kind)
             && let Some(p) = c.spatial.get(self.id).copied()
         {
-            let moving = self.mover.as_ref().is_some_and(Mover::is_moving);
+            let moving = self.body.mover().is_some_and(Mover::is_moving);
             c.pathing.refresh(self.id, &p, moving, m.outline);
         }
     }

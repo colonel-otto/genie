@@ -21,7 +21,7 @@ impl crate::world::World {
             radius: master.radius,
             loaded: !unit.garrison.is_empty(),
             map: self.spatial.map,
-            moves: unit.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
+            moves: unit.body.mover().is_some_and(|m| m.stats.speed != 0.0),
         })
     }
 
@@ -105,7 +105,7 @@ impl crate::world::World {
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[i];
         if c.stopped
-            && let Some(m) = unit.mover.as_mut()
+            && let Some(m) = unit.body.mover_mut()
         {
             m.stop()?;
         }
@@ -318,7 +318,7 @@ impl crate::world::World {
             placement: made.placement,
         };
         let unit = self.object(id).map(|(_, u)| u);
-        let (grow, mask) = unit.and_then(|u| u.mover.as_ref()).map_or_else(
+        let (grow, mask) = unit.and_then(|u| u.body.mover()).map_or_else(
             || (made.radius[0], terrain.restriction_mask(moving.restriction)),
             |m| (m.stats.radius[0], m.stats.restriction_mask),
         );

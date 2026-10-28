@@ -261,7 +261,11 @@ impl World {
             build: None,
             repair: None,
             builders: 0,
-            mover,
+            // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            body: crate::objects::layers::Body::new(
+                Some(crate::objects::layers::Animated::default()),
+                mover,
+            ),
             move_to: None,
             fly: None,
             construction: Some(Construction {
@@ -333,8 +337,6 @@ impl World {
             wait_solidify: None,
             stopped: false,
             sprite,
-            // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
-            anim_speed: Some(0.0),
             attack_timer: 0.0,
             abilities: crate::combat::abilities::Abilities::default(),
             reload_stinger: 0.0,

@@ -93,7 +93,7 @@ impl World {
             self.spatial.set_gait(m.id, gait);
             if self.member_idle(m.id)? {
                 if let Some((_, u)) = self.object_mut(m.id)
-                    && let Some(mover) = u.mover.as_mut()
+                    && let Some(mover) = u.body.mover_mut()
                 {
                     mover.stand()?;
                 }
@@ -160,7 +160,7 @@ impl World {
             };
             if leaves && self.remove_unit(group, id, -1, false)? {
                 if let Some((_, u)) = self.object_mut(id)
-                    && let Some(mover) = u.mover.as_mut()
+                    && let Some(mover) = u.body.mover_mut()
                 {
                     mover.stop()?;
                 }

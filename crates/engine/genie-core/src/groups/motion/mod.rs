@@ -226,7 +226,7 @@ impl World {
     /// What `BMotion` reads of the lead `id` (a unit with movement state), None without one.
     fn lead_view(&self, id: i32) -> Option<Lead> {
         let (p, u) = self.object(id)?;
-        let mover = u.mover.as_ref()?;
+        let mover = u.body.mover()?;
         let group = self.groups.get(u.group.id).map(|g| LeadGroup {
             flags: g.flags,
             members: g.members.iter().map(|m| m.id).collect(),

@@ -134,7 +134,7 @@ pub(crate) fn builder_9177() -> Mover {
         last_turn: 0.0,
         angle: 0.0,
         move_to_point: None,
-        speed_stopped: false,
+        animated: Animated::default(),
         pauses: Vec::new(),
         in_the_way: Vec::new(),
         sprite_facets: None,
@@ -471,6 +471,34 @@ fn a_kept_hit_on_the_target_alone_is_kept_and_reaches_the_waypoint() {
     assert_eq!((avoided.kept, avoided.pauses), (vec![9175], Vec::new()));
 }
 
+/// Slot 0x5d0 ([`Mover::stop`]): the unit's speed and acceleration along its forward vector, its
+/// wait to move and its ignore list go, and its animation speed (`+0x7b8`) is 0 within the call,
+/// so the rest of the object's update and the objects after it see it standing (425789782's
+/// villager 2785, stopped in update 404, which builder 2787 tests in update 405).
+#[test]
+fn a_stop_clears_the_animation_speed_within_the_call() {
+    let mut m = builder_9177();
+    m.animated.speed = 0.8;
+    m.waiting = 1;
+    m.ignore_units = vec![9175];
+    if let Some(v) = m.velocity.as_mut() {
+        (v.velocity[2], v.acceleration[2]) = (0.5, 0.1);
+    }
+    m.stop().unwrap();
+    assert_eq!(
+        (m.animated.speed, m.waiting, m.ignore_units.len()),
+        (0.0, 0, 0)
+    );
+    assert_eq!(
+        m.velocity.map(|v| (v.velocity[2], v.acceleration[2])),
+        Some((0.0, 0.0))
+    );
+    // a master whose move algorithm has bit 0 also resets the sprite, which is not modelled
+    let mut resets = builder_9177();
+    resets.stats.move_algorithm |= 1;
+    assert!(resets.stop().is_err());
+}
+
 /// The walk's kept hits ([`Mover::go_round`]): with a parent the walked level goes and its
 /// parent asks for a path again (state 2); a walk without one (a group member's own path,
 /// level 0 from slot 0x540) stops the unit (slot 0x5d0) and the step gives up (1).
@@ -492,11 +520,12 @@ fn kept_hits_replan_the_parent_or_stop_a_walk_without_one() {
     assert_eq!((m.paths.len(), m.paths[0].state), (1, 2));
     let mut lone = builder_9177();
     lone.paths.truncate(1);
+    lone.animated.speed = 1.0;
     assert!(matches!(
         lone.go_round(&me, &w, &[9175], false),
         Ok(Next::Done(Motion::Done))
     ));
-    assert!(lone.speed_stopped);
+    assert_eq!(lone.animated.speed, 0.0);
     assert_eq!(lone.velocity.map(|v| v.velocity[2]), Some(0.0));
 }
 
@@ -2329,7 +2358,7 @@ fn a_request_spends_a_try_and_gives_up_or_goes_on_without_more() {
     let mut m = last_try();
     assert_eq!(m.spend_try(), Ok(Some(Step::GaveUp)));
     assert_eq!((m.paths.len(), m.paths[0].state), (1, 6));
-    assert!(m.speed_stopped);
+    assert_eq!(m.animated.speed, 0.0);
     let mut m = last_try();
     m.paths[0].level = 2;
     assert_eq!(m.spend_try(), Ok(Some(Step::GaveUp)));

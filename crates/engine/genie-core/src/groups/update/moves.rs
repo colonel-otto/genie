@@ -333,7 +333,7 @@ impl World {
                 own.last_position = at;
                 continue;
             }
-            if let Some(mover) = u.mover.as_mut() {
+            if let Some(mover) = u.body.mover_mut() {
                 mover.stop()?;
             }
             self.show_standing(m.id)?;
@@ -348,7 +348,7 @@ impl World {
                     ..SpecificMove::default()
                 };
                 if let Some((_, u)) = self.object_mut(m.id)
-                    && let Some(mover) = u.mover.as_mut()
+                    && let Some(mover) = u.body.mover_mut()
                 {
                     mover.stand()?;
                 }
@@ -392,7 +392,7 @@ impl World {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let mover = unit.mover.as_mut().ok_or(crate::world::WALKER_UNMOVING)?;
+        let mover = unit.body.mover_mut().ok_or(crate::world::WALKER_UNMOVING)?;
         let mut plan = Planning {
             pathing: &mut self.pathing,
             now: self.world_time,

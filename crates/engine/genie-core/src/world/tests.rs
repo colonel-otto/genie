@@ -630,7 +630,7 @@ fn a_completed_pasture_puts_its_livestock_on_its_edges() {
             (50, 100.0, 0, true)
         );
         assert_eq!(u.life.state, 2);
-        assert!(u.sprite.is_some() && u.mover.is_some());
+        assert!(u.sprite.is_some() && u.body.mover().is_some());
     }
     assert_eq!(*t.streams.get(Stream::Object), e);
 }
@@ -1347,7 +1347,7 @@ fn a_build_pays_the_cost_and_tasks_the_builders_of_its_own_player() {
     );
     // an animated object's constructor (FUN_141070cf0) sets its animation speed (+0x7b8) to 0:
     // its sprite's clock runs from its first update (a dying sprite plays out)
-    assert_eq!(foundation.anim_speed, Some(0.0));
+    assert_eq!(foundation.body.anim_speed(), Some(0.0));
     let builder = |i: usize| {
         (
             p.objects[i].life.master_id,
@@ -2148,9 +2148,13 @@ pub(crate) fn forage_world() -> World {
             master_id: 109,
             ..Lifecycle::default()
         },
+        // a building is an animated object (type 80)
+        body: crate::objects::layers::Body::Animated(crate::objects::layers::Animated::default()),
         ..Unit::default()
     });
-    t.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
+    t.players[1].objects[0]
+        .body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
     t.players[1].objects[0].life.master_id = 120;
     open_map(&mut t);
     let placed = |x: f32, class, player, master, radius| Placed {
@@ -2631,7 +2635,7 @@ fn the_unit_ai_s_moves_and_works_apply_in_order() {
     assert_eq!(v.gather.map(|g| (g.target, g.state)), Some((601, 4)));
     assert_eq!(v.move_to, None);
     // a unit that does not move cannot be moved to an object
-    t.players[1].objects[0].mover = None;
+    t.players[1].objects[0].body.put_mover(None);
     assert!(
         with_effects(
             &mut t,
@@ -2877,7 +2881,7 @@ fn cart_world() -> World {
             master_id: 1808,
             ..Lifecycle::default()
         },
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         ai: Some(UnitAi {
             current_order: -1,
             current_action: -1,
@@ -2919,7 +2923,7 @@ fn a_mule_cart_finds_the_nearest_resource_of_its_task_s_class() {
     t.masters[1].get_mut(1808).unwrap().tasks[0].object_group = 99;
     assert_eq!(t.cart_find(1, 3), Ok((-1, [24.5, 89.5, 0.0])));
     let mut t = cart_world();
-    t.players[1].objects[3].mover = None;
+    t.players[1].objects[3].body.put_mover(None);
     assert!(t.cart_find(1, 3).is_err());
 }
 
@@ -2969,7 +2973,7 @@ fn the_units_on_a_new_foundation_are_sent_off_it() {
     t.evacuate(10028, &[9175, 600, 4444]).unwrap();
     assert_eq!(sent(&t), [[100, 100, 10028]]);
     let mut t = footprint_world();
-    t.players[1].objects[0].anim_speed = Some(1.0);
+    t.players[1].objects[0].body.set_anim_speed(1.0);
     t.evacuate(10028, &[9175]).unwrap();
     assert_eq!(sent(&t), Vec::<[i32; 3]>::new());
     let mut t = footprint_world();
@@ -3251,7 +3255,8 @@ pub(crate) fn hunt_world() -> World {
     t.spatial.insert(700, placed(20.0, 3, 1, 109, [2.0, 2.0]));
     let v = &mut t.players[1].objects[0];
     v.life.master_id = 122;
-    v.mover = Some(crate::gathering::hunt::tests::walker());
+    v.body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
     t
 }
 
@@ -3452,7 +3457,7 @@ fn a_hunter_drops_its_meat_at_the_town_centre_and_goes_back() {
     let mut t = dropping(MoveTo::Failed);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(true));
     let v = &t.players[1].objects[0];
-    assert_eq!(v.anim_speed, Some(0.0));
+    assert_eq!(v.body.anim_speed(), Some(0.0));
     assert!(v.hunt.is_some_and(|h| h.timer < 0.0));
     let mut t = dropping(MoveTo::Arrived);
     t.drop_sites.clear();
@@ -3581,7 +3586,7 @@ fn a_hunter_strikes_its_live_deer_and_gathers_the_dead_one_until_full() {
         (h.state, h.attack.map(|a| (a.state, a.move_to))),
         (ATTACK, Some((4, Some(MoveTo::Moving))))
     );
-    assert!(v.mover.as_ref().is_some_and(|m| !m.paths.is_empty()));
+    assert!(v.body.mover().is_some_and(|m| !m.paths.is_empty()));
     let gathering = |held: f32| {
         let mut t = hunter_in(|h| {
             (h.state, h.attack, h.move_to) = (GATHER, None, None);
@@ -3654,7 +3659,7 @@ fn shepherd_world(x: f32) -> World {
             amount: 100.0,
             ..Lifecycle::default()
         },
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         pasture: -1,
         my_pasture: -1,
         ..Unit::default()
@@ -3881,7 +3886,9 @@ fn enter_world(orders: Vec<crate::unit_ai::QueuedOrder>, room: u8) -> World {
         // it takes villagers in (bit 0)
         house.building.as_mut().unwrap().garrison_type = 1;
     }
-    t.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
+    t.players[1].objects[0]
+        .body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
     t.spatial = Spatial::with_tiles(
         [120, 120],
         crate::map::spatial::Tiles::new(120, 120, vec![4; 14400]),
@@ -4028,7 +4035,7 @@ fn livestock_s_second_enter_command_stops_the_walk_and_lets_the_old_enter_s_targ
     walking.move_to = Some(MoveTo::Moving);
     let v = &mut t.players[1].objects[0];
     v.artifact.as_mut().unwrap().enter = Some(walking);
-    v.mover.as_mut().unwrap().velocity = Some(crate::movement::Velocity {
+    v.body.mover_mut().unwrap().velocity = Some(crate::movement::Velocity {
         velocity: [0.0, 0.0, 0.7],
         acceleration: [0.0, 0.0, f32::MAX],
     });
@@ -4036,7 +4043,7 @@ fn livestock_s_second_enter_command_stops_the_walk_and_lets_the_old_enter_s_targ
     t.players[1].objects[1].workers = 1;
     assert_eq!(t.enter_command(1, 0, 10028, true), Ok(true));
     let v = &t.players[1].objects[0];
-    let velocity = v.mover.as_ref().unwrap().velocity.unwrap();
+    let velocity = v.body.mover().unwrap().velocity.unwrap();
     assert_eq!((velocity.velocity[2], velocity.acceleration[2]), (0.0, 0.0));
     assert_eq!(t.players[1].objects[1].workers, 1);
 }
@@ -4374,7 +4381,9 @@ fn a_unit_order_drop_off_takes_any_player_s_unit() {
 #[test]
 fn the_ai_move_at_once_matches_the_one_after_the_update() {
     let mut later = sent_off_world(vec![]);
-    later.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
+    later.players[1].objects[0]
+        .body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let mut now = later.clone();
     let m = crate::unit_ai::AiMove {
         point: [35.0, 80.0, 0.0],
@@ -4391,8 +4400,8 @@ fn the_ai_move_at_once_matches_the_one_after_the_update() {
     let (a, b) = (&later.players[1].objects[0], &now.players[1].objects[0]);
     assert_eq!(b.move_to.and_then(|mt| mt.goal), Some([35.0, 80.0, 0.0]));
     assert_eq!(
-        (b.move_to, &b.mover, &b.sprite),
-        (a.move_to, &a.mover, &a.sprite)
+        (b.move_to, &b.body, &b.sprite),
+        (a.move_to, &a.body, &a.sprite)
     );
     assert_eq!(now.streams, later.streams);
 }
@@ -4450,7 +4459,9 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
     };
     later.spatial.insert(9175, placed(29.5, 4, 1, 83));
     later.spatial.insert(500, placed(32.5, 9, 0, 65));
-    later.players[1].objects[0].mover = Some(crate::gathering::hunt::tests::walker());
+    later.players[1].objects[0]
+        .body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let mut now = later.clone();
     later.hunt_command(1, 0, 500).unwrap();
     let ai = now.players[1].objects[0].ai.clone().unwrap();
@@ -4463,8 +4474,8 @@ fn the_hunt_command_at_once_matches_the_one_after_the_update() {
     assert_eq!(b.life.master_id, 122);
     assert!(b.hunt.is_some_and(|h| h.target == 500));
     assert_eq!(
-        (b.life.master_id, b.hunt, &b.sprite, &b.mover),
-        (a.life.master_id, a.hunt, &a.sprite, &a.mover)
+        (b.life.master_id, b.hunt, &b.sprite, &b.body),
+        (a.life.master_id, a.hunt, &a.sprite, &a.body)
     );
     assert_eq!(now.players[1].attributes, later.players[1].attributes);
     assert_eq!(now.streams, later.streams);
@@ -4783,7 +4794,7 @@ fn a_dead_object_leaves_its_remains_and_its_death_spawn() {
         )
     };
     let v = forage_world().players[1].objects[0].clone();
-    let mover = v.mover.as_ref().unwrap();
+    let mover = v.body.mover().unwrap();
     let facet = crate::objects::facing::facet_of_angle(mover.angle, mover.stats.facets).0;
     assert_eq!(
         ended(70, 99).unwrap().1,
@@ -5323,7 +5334,8 @@ fn gate_world() -> World {
     };
     let mut gate = unit(27745, 88, 20.0, None);
     gate.gate = Some(Gate::default());
-    gate.mover = Some(crate::gathering::hunt::tests::walker());
+    gate.body
+        .put_mover(Some(crate::gathering::hunt::tests::walker()));
     let mut t = World::new(
         0,
         1,
@@ -5389,7 +5401,7 @@ fn a_gate_toggle_shuts_on_the_units_between_its_posts_or_opens() {
         let g = &t.players[1].objects[0];
         (
             g.life.master_id,
-            g.mover.as_ref().map(|m| m.last_move),
+            g.body.mover().map(|m| m.last_move),
             t.players[1].objects[3].life.hp,
         )
     };
@@ -6703,7 +6715,7 @@ fn teardown_world() -> World {
     let unit = |id, master| Unit {
         id,
         position: [10.5, 10.5, 0.0],
-        mover: Some(walker.clone()),
+        body: crate::objects::layers::Body::Moving(walker.clone()),
         life: Lifecycle {
             master_id: master,
             ..Lifecycle::default()
@@ -6787,7 +6799,8 @@ fn teardown_world() -> World {
 
 /// The action list's clearing (`FUN_140a98620`): the Artifact's teardown (`FUN_140aab0d0`)
 /// lets its town centre go and its `MoveTo`'s stops the sheep; the Fly's (`FUN_140a84750`)
-/// gives the bird its top speed as its animation speed, then its `MoveTo`'s stops it; the
+/// gives the bird its top speed as its animation speed, then the base teardown's `MoveTo`
+/// stops it (`+0x7b8` 0 at once; without a `MoveTo` the top speed stays); the
 /// Enter's lets its building go; a counted builder's Build leaves another player's
 /// foundation's builders (`World::leave_builders`) and lets it go; a wait for a foundation
 /// goes.
@@ -6804,7 +6817,7 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
     t.clear_actions(1, 0).unwrap();
     let sheep = &t.players[1].objects[0];
     assert_eq!(sheep.artifact, None);
-    assert!(sheep.mover.as_ref().unwrap().speed_stopped);
+    assert_eq!(sheep.body.mover().unwrap().animated.speed, 0.0);
     assert_eq!(t.players[1].objects[3].workers, 0);
     let bird = &mut t.players[1].objects[1];
     bird.fly = Some(Fly {
@@ -6815,11 +6828,15 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         home: [10.0, 10.0],
         task: crate::objects::masters::Task::default(),
     });
-    bird.mover.as_mut().unwrap().stats.speed = 1.3;
+    bird.body.mover_mut().unwrap().stats.speed = 1.3;
+    let flying = bird.fly;
+    t.clear_actions(1, 1).unwrap();
+    let bird = &mut t.players[1].objects[1];
+    assert_eq!((bird.fly, bird.body.anim_speed()), (None, Some(0.0)));
+    bird.fly = flying.map(|f| Fly { move_to: None, ..f });
     t.clear_actions(1, 1).unwrap();
     let bird = &t.players[1].objects[1];
-    assert_eq!((bird.fly, bird.anim_speed), (None, Some(1.3)));
-    assert!(bird.mover.as_ref().unwrap().speed_stopped);
+    assert_eq!((bird.fly, bird.body.anim_speed()), (None, Some(1.3)));
     let villager = &mut t.players[1].objects[2];
     villager.enter = Some(crate::garrison::EnterAction {
         target: 9150,
@@ -6836,10 +6853,12 @@ fn clearing_the_actions_tears_the_artifact_fly_enter_and_build_down() {
         crate::objects::masters::Task::default(),
         10028,
     ));
+    // a walking villager: an Enter without a MoveTo does not stop it
+    villager.body.set_anim_speed(1.0);
     t.clear_actions(1, 2).unwrap();
     let villager = &t.players[1].objects[2];
     assert_eq!((villager.enter, villager.wait_solidify), (None, None));
-    assert!(!villager.mover.as_ref().unwrap().speed_stopped);
+    assert_ne!(villager.body.mover().unwrap().animated.speed, 0.0);
     assert_eq!(t.players[1].objects[4].workers, 0);
     t.players[1].objects[2].build = Some(BuildAction {
         target: 10028,
@@ -7186,7 +7205,7 @@ fn a_move_to_an_object_lets_it_go_when_it_ends_or_its_unit_dies() {
     let walker = |id| Unit {
         id,
         position: [11.5, 10.5, 0.0],
-        mover: Some(mover.clone()),
+        body: crate::objects::layers::Body::Moving(mover.clone()),
         move_to: Some(MoveToAction {
             state: MoveTo::Arrived,
             goal: None,
@@ -7262,7 +7281,7 @@ fn a_hunter_s_drop_off_takes_the_drop_site_it_found() {
     let mut hunter = Unit {
         id: 40,
         position: [10.5, 10.5, 0.0],
-        mover: Some(walker),
+        body: crate::objects::layers::Body::Moving(walker),
         hunt: Some(crate::gathering::hunt::tests::hunting(-1)),
         life: Lifecycle {
             master_id: 83,
@@ -7631,13 +7650,7 @@ fn an_artifact_s_move_to_an_object_lets_the_old_one_go_and_takes_the_new() {
     );
     let a = t.players[1].objects[0].artifact.unwrap();
     assert_eq!((a.target, a.goal), (9150, Some([25.0, 20.0, 0.0])));
-    assert!(
-        t.players[1].objects[0]
-            .mover
-            .as_ref()
-            .unwrap()
-            .speed_stopped
-    );
+    assert_eq!(t.players[1].objects[0].body.anim_speed(), Some(0.0));
 }
 
 /// A building's slot 0x70 (`FUN_1411cd860`), as Aftermath's trade workshops change hands: Gaia's
@@ -7915,7 +7928,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
     walker.stats.stand_speed = 0.5;
     let sheep = Unit {
         artifact: Some(Artifact::new(true)),
-        mover: Some(walker),
+        body: crate::objects::layers::Body::Moving(walker),
         ai: None,
         ..hands_unit(9520, 705)
     };
@@ -8000,7 +8013,7 @@ fn a_gaia_sheep_a_player_stands_by_goes_to_it() {
         sheep.own_master.as_deref().map(|m| m.line_of_sight),
         Some(3.0)
     );
-    assert_eq!(sheep.mover.as_ref().map(|m| m.stats.speed), Some(0.5));
+    assert_eq!(sheep.body.mover().map(|m| m.stats.speed), Some(0.5));
     assert_eq!(sheep.artifact.map(|a| a.gaia), Some(false));
     assert_eq!(t.players[1].attributes[16], 100.0);
     assert_eq!(t.spatial.get(9520).map(|p| p.player), Some(1));
@@ -8537,7 +8550,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         flags: 7,
     };
     let mut u = Unit {
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         ai: Some(UnitAi {
             patrol_path: Some(saved),
             patrol_waypoint: 1,
@@ -8559,7 +8572,7 @@ fn a_restored_patrol_takes_its_points_and_runs_to_its_waypoint() {
         ([30.0, 20.25, 0.5], 0.0, true, false)
     );
     assert_eq!(
-        u.mover.as_ref().unwrap().user_waypoints,
+        u.body.mover().unwrap().user_waypoints,
         [[20.5, 0.5, 20.5], [30.5, 0.5, 20.25]]
     );
     assert_eq!(ai_move_of(&mut u, run, 6), Ok(vec![77]));
@@ -8846,7 +8859,7 @@ fn annexes_before_their_dying_foundation_die_in_the_next_update() {
         my_pasture: -1,
         annex_of,
         sprite: Some(crate::objects::sprite::ActiveSprite::at_rest(g(1751, 0), 0)),
-        anim_speed: Some(0.0),
+        body: crate::objects::layers::Body::Animated(crate::objects::layers::Animated::default()),
         life: Lifecycle {
             class: Class::Animated,
             master_id: m,
@@ -9195,7 +9208,7 @@ fn mover_unit(id: i32) -> Unit {
     Unit {
         id,
         position: [10.5, 10.5, 0.0],
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         my_pasture: -1,
         life: Lifecycle {
             master_id: 83,
@@ -9387,7 +9400,7 @@ fn an_unforced_ai_move_leaves_a_move_to_the_same_point() {
         ..old
     };
     u.move_to = Some(to_object);
-    u.mover.as_mut().unwrap().move_to_point = Some(AI_POINT);
+    u.body.mover_mut().unwrap().move_to_point = Some(AI_POINT);
     assert_eq!(ai_move_of(&mut u, unforced, 47), Ok(vec![]));
     assert_eq!(u.move_to, Some(to_object));
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![9149]));
@@ -9428,13 +9441,13 @@ fn an_ai_move_of_a_trebuchet_packs_and_the_base_slot_takes_nothing() {
 #[test]
 fn an_ai_move_of_a_unit_without_speed_fails_at_its_start_standing() {
     let mut u = mover_unit(8);
-    let m = u.mover.as_mut().unwrap();
+    let m = u.body.mover_mut().unwrap();
     m.stats.speed = 0.0;
     m.stats.stand_speed = 0.0;
-    u.anim_speed = Some(1.0);
+    u.body.set_anim_speed(1.0);
     assert_eq!(ai_move_of(&mut u, forced(false), 47), Ok(vec![]));
     assert_eq!(u.move_to.map(|m| m.state), Some(MoveTo::Failed));
-    assert_eq!(u.anim_speed, Some(0.0));
+    assert_eq!(u.body.anim_speed(), Some(0.0));
 }
 
 /// The motion step gave up on a unit's own `MoveTo` (`LAB_140aa320c`): any unit but a human's
@@ -9467,12 +9480,12 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
     let deer = |rng: &mut Well512| {
         let mut u = mover_unit(14064);
         u.life.master_id = 65;
-        let m = u.mover.as_mut().unwrap();
+        let m = u.body.mover_mut().unwrap();
         m.stats.speed = 1.4003;
         m.stats.walk_speed = 1.4003;
         m.stats.stand_speed = 0.737;
         u.sprite = Some(crate::objects::sprite::ActiveSprite::start(walking, rng));
-        u.anim_speed = Some(1.0);
+        u.body.set_anim_speed(1.0);
         u.move_to = Some(MoveToAction::to_point(
             [119.5, 172.5, 0.0],
             0.0,
@@ -9485,14 +9498,14 @@ fn an_own_move_to_that_gives_up_fails_standing_unless_a_villager_waits() {
     u.own_move_gave_up(false, 0, (Some(&masters), &graphics, &mut rng))
         .unwrap();
     assert_eq!(u.move_to.map(|m| m.state), Some(MoveTo::Failed));
-    assert_eq!(u.mover.as_ref().map(|m| m.stats.speed), Some(0.737));
+    assert_eq!(u.body.mover().map(|m| m.stats.speed), Some(0.737));
     assert_eq!(u.sprite.map(|s| s.graphic.id), Some(764));
-    assert_eq!(u.anim_speed, Some(0.0));
+    assert_eq!(u.body.anim_speed(), Some(0.0));
     let mut v = deer(&mut rng);
     v.own_move_gave_up(true, 0, (Some(&masters), &graphics, &mut rng))
         .unwrap();
     assert_eq!(v.move_to.map(|m| m.state), Some(MoveTo::Waiting));
-    assert_eq!(v.mover.as_ref().map(|m| m.stats.speed), Some(1.4003));
+    assert_eq!(v.body.mover().map(|m| m.stats.speed), Some(1.4003));
     assert_eq!(v.sprite.map(|s| s.graphic.id), Some(765));
 }
 
@@ -9581,7 +9594,7 @@ fn scout_attack_on(
     let mut unit = Unit {
         id: 123,
         position: [10.0, 10.0, 0.0],
-        mover: Some(walker),
+        body: crate::objects::layers::Body::Moving(walker),
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
             standing, &mut rng,
         )),
@@ -9761,7 +9774,7 @@ fn attack_by(
     let mut unit = Unit {
         id: 123,
         position: [10.0, 10.0, 0.0],
-        mover: Some(walker),
+        body: crate::objects::layers::Body::Moving(walker),
         sprite: Some(crate::objects::sprite::ActiveSprite::start(
             standing, &mut rng,
         )),
@@ -10199,7 +10212,7 @@ fn an_attack_command_of_a_unit_that_cannot_move_goes_ready_and_swings_at_once() 
         unit.attack.map(|a| a.state),
         Some(crate::combat::attack::FAILED)
     );
-    assert_eq!(unit.anim_speed, Some(1.0));
+    assert_eq!(unit.body.anim_speed(), Some(1.0));
 }
 
 /// A house's movement values: it never moves (speed 0).
@@ -10285,8 +10298,8 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
     let foundation = t.players[1].objects.last().unwrap();
     assert_eq!(foundation.id, 10028);
     let m = foundation
-        .mover
-        .as_ref()
+        .body
+        .mover()
         .expect("a building's movement state");
     assert_eq!(
         (m.forward, m.waiting, m.last_move, m.moved_at, m.paths.len()),
@@ -10391,13 +10404,13 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
     let foundation = t.players[1].objects.last().unwrap();
     let angle = crate::objects::facing::drawn_angle(facing, facets);
     assert_ne!(angle, 0.0);
-    assert_eq!(foundation.mover.as_ref().map(|m| m.angle), Some(angle));
+    assert_eq!(foundation.body.mover().map(|m| m.angle), Some(angle));
     // without sequence flag 2 only the powerup offset's
     let (mut t, mut before) = build(1);
     let _ = before.rand15();
     assert_eq!(t.streams.get(Stream::Object), &before);
     let foundation = t.players[1].objects.last().unwrap();
-    assert_eq!(foundation.mover.as_ref().map(|m| m.angle), Some(0.0));
+    assert_eq!(foundation.body.mover().map(|m| m.angle), Some(0.0));
 }
 
 /// [`builder_masters`] with the farmer (259, of the villagers' group 1, which builds as 118)
@@ -10875,7 +10888,7 @@ fn livestock_got_in_by_its_artifact_s_enter_keeps_the_artifact_to_its_next_updat
     let place = |t: &mut World, at: [f32; 3]| {
         let v = &mut t.players[1].objects[0];
         v.position = at;
-        let m = v.mover.as_mut().unwrap();
+        let m = v.body.mover_mut().unwrap();
         m.moved_at = at;
         m.velocity = Some(crate::movement::Velocity {
             velocity: [0.0; 3],
@@ -11060,7 +11073,7 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> World {
     t.masters = vec![masters.clone(), masters];
     walker(&mut t, 1, 123, 4, [10.0, 10.0]);
     let archer = &mut t.players[1].objects[0];
-    if let Some(m) = archer.mover.as_mut() {
+    if let Some(m) = archer.body.mover_mut() {
         m.sprite_facets = Some(crate::objects::facing::SpriteFacets {
             count: 8,
             flag_1: false,
@@ -11451,7 +11464,7 @@ fn a_queued_unit_goes_to_the_least_loaded_building_with_room() {
 /// place, the load's mesh built.
 fn foraging() -> World {
     let mut t = forage_world();
-    t.players[1].objects[0].mover.as_mut().unwrap().moved_at = [29.5, 89.5, 0.0];
+    t.players[1].objects[0].body.mover_mut().unwrap().moved_at = [29.5, 89.5, 0.0];
     t.gather_command(1, 0, 600).unwrap();
     t.build_mesh();
     t
@@ -12011,7 +12024,7 @@ fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
     assert_eq!(heard, [(ACTION_FAILED, [MOVE_ACTION, 0, 0])]);
     let (r, fly, heard) = flown(MoveTo::Failed, true, |_| ());
     assert_eq!((r, fly.map(|f| f.state), heard), (Ok(()), Some(4), vec![]));
-    let (r, _, _) = flown(MoveTo::Failed, false, |v| v.mover = None);
+    let (r, _, _) = flown(MoveTo::Failed, false, |v| v.body.put_mover(None));
     assert_eq!(r.unwrap_err().reason(), "a bird without movement state");
 }
 
@@ -12126,7 +12139,7 @@ fn hunted_without_a_deer(setup: impl FnOnce(&mut Unit)) -> World {
     t.players[0].objects[0].workers = 0;
     let v = &mut t.players[1].objects[0];
     let at = v.position;
-    v.mover.as_mut().unwrap().moved_at = at;
+    v.body.mover_mut().unwrap().moved_at = at;
     v.hunt.as_mut().unwrap().target = -1;
     v.ai.as_mut().unwrap().target_type = -1;
     setup(v);
@@ -12277,7 +12290,7 @@ fn a_build_step_s_changes_reach_the_builder() {
         after_build(&mut t, stopped),
         AfterBuild { released, ..none() }
     );
-    assert_eq!(t.players[1].objects[0].anim_speed, Some(0.0));
+    assert_eq!(t.players[1].objects[0].body.anim_speed(), Some(0.0));
     for (done, released) in [(true, false), (false, true)] {
         let mut t = house_builder();
         let step = BuildStep {
@@ -12644,7 +12657,7 @@ fn repairing(at: [f32; 3]) -> World {
     v.position = at;
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = at;
-    v.mover = Some(mover);
+    v.body.put_mover(Some(mover));
     t.players[1].resources = [100.0; 4];
     t.build_mesh();
     t
@@ -12707,7 +12720,7 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
     t.spatial.insert(9175, Placed { position: at, ..p });
     let v = &mut t.players[1].objects[0];
     v.position = at;
-    v.mover.as_mut().unwrap().moved_at = at;
+    v.body.mover_mut().unwrap().moved_at = at;
     assert_eq!(repair_for(&mut t, 400), [Some(4), Some(6), Some(7)]);
     let house = &t.players[1].objects[1];
     assert_eq!(
@@ -12856,7 +12869,7 @@ fn repaired_by(n: usize) -> [(f32, f32); 2] {
     {
         let mut v = t.players[1].objects[0].clone();
         (v.id, v.position) = (9185 + 10 * k as i32, at);
-        v.mover.as_mut().unwrap().moved_at = at;
+        v.body.mover_mut().unwrap().moved_at = at;
         let p = *t.spatial.get(9175).unwrap();
         t.spatial.insert(v.id, Placed { position: at, ..p });
         t.players[1].objects.push(v);
@@ -12931,7 +12944,7 @@ fn a_builder_walks_to_its_house_builds_it_and_waits_after() {
     t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
     t.build_mesh();
     let v = &mut t.players[1].objects[0];
-    let m = v.mover.as_mut().unwrap();
+    let m = v.body.mover_mut().unwrap();
     m.moved_at = v.position;
     m.stats.facets = Some(crate::objects::facing::SpriteFacets {
         count: 8,
@@ -12984,7 +12997,7 @@ fn a_loaded_builder_drops_its_food_at_the_centre_and_builds_on() {
     t.build_mesh();
     let v = &mut t.players[1].objects[0];
     (v.life.attribute_type, v.life.amount) = (17, 6.0);
-    let m = v.mover.as_mut().unwrap();
+    let m = v.body.mover_mut().unwrap();
     m.moved_at = v.position;
     m.stats.facets = Some(crate::objects::facing::SpriteFacets {
         count: 8,
@@ -13370,13 +13383,13 @@ fn a_step_s_pauses_and_deaths_reach_the_world() {
         .map_err(|e| e.reason().to_owned())
     };
     let mut t = house_builder();
-    let mover = t.players[1].objects[0].mover.as_mut().unwrap();
+    let mover = t.players[1].objects[0].body.mover_mut().unwrap();
     mover.paths.push(crate::movement::PathData::new(0));
     assert_eq!(
         stay(&mut t, &|c| c.pauses.push((9175, 1.5))),
         Ok(Step::Stay)
     );
-    let paths = &t.players[1].objects[0].mover.as_ref().unwrap().paths;
+    let paths = &t.players[1].objects[0].body.mover().unwrap().paths;
     assert_eq!(paths[0].pause_time, 1.5);
 
     let mut t = house_builder();
@@ -13410,7 +13423,7 @@ fn a_builder_s_house_completes_in_the_world_s_update_and_its_unit_ai_resumes() {
     t.pathing = Pathing::new([120, 120], vec![0; 120 * 120], vec![vec![1.0]; 8], 0);
     t.build_mesh();
     let v = &mut t.players[1].objects[0];
-    let m = v.mover.as_mut().unwrap();
+    let m = v.body.mover_mut().unwrap();
     m.moved_at = v.position;
     m.stats.facets = Some(crate::objects::facing::SpriteFacets {
         count: 8,

@@ -39,7 +39,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     }
 
     fn patrol_information(&self) -> Option<(crate::unit_ai::PatrolPath, i32)> {
-        patrol_information(self.unit.mover.as_ref())
+        patrol_information(self.unit.body.mover())
     }
 
     /// Slot 0x278 (`FUN_141158720`, [`Spatial::point_clear`]): the unit, of its radius and its
@@ -48,7 +48,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// [`Spatial::point_clear`]: crate::map::spatial::Spatial::point_clear
     fn can_stand(&mut self, point: [f32; 2]) -> Result<bool, GenieError> {
         let unit = &*self.unit;
-        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+        let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "a stand test of a unit without movement state",
         ))?;
         self.spatial.point_clear(
@@ -220,7 +220,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+        let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "a reach test of a unit that does not move",
         ))?;
         mover.reaches_object(
@@ -275,8 +275,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
             group: unit.group.id,
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
-        let (mover, master_id, spatial) =
-            (unit.mover.as_ref(), unit.life.master_id, &*self.spatial);
+        let (mover, master_id, spatial) = (unit.body.mover(), unit.life.master_id, &*self.spatial);
         let mut reach = |id: i32, range: f32| {
             let m = mover.ok_or(GenieError::unsupported(
                 "a reach test of a unit that does not move",
@@ -495,7 +494,7 @@ impl crate::unit_ai::UnitSide for UnitView<'_> {
     /// speeds up (slot 0x5a0: its forward acceleration above 0, `COMISS`/`JBE`) stops (slot
     /// 0x5d0).
     fn group_attack_stop(&mut self) -> Result<(), GenieError> {
-        let Some(m) = self.unit.mover.as_mut() else {
+        let Some(m) = self.unit.body.mover_mut() else {
             return Ok(());
         };
         let speeding = m.velocity.as_ref().is_some_and(|v| 0.0 < v.acceleration[2]);

@@ -87,7 +87,7 @@ impl World {
                     continue;
                 }
                 if let Some((_, u)) = self.object_mut(m.id)
-                    && let Some(mover) = u.mover.as_mut()
+                    && let Some(mover) = u.body.mover_mut()
                 {
                     mover.stand()?;
                 }
@@ -113,14 +113,14 @@ impl World {
         let (keeps_moving, _) = self.action_list(p, u)?;
         if keeps_moving
             || !u
-                .mover
-                .as_ref()
+                .body
+                .mover()
                 .is_some_and(crate::movement::Mover::is_moving)
         {
             return Ok(());
         }
         if let Some((_, u)) = self.object_mut(id)
-            && let Some(mover) = u.mover.as_mut()
+            && let Some(mover) = u.body.mover_mut()
         {
             mover.stop()?;
         }
@@ -172,7 +172,7 @@ impl World {
         grow: f32,
         ignore: &[i32],
     ) -> Result<bool, GenieError> {
-        let mover = u.mover.as_ref().expect(MOVES);
+        let mover = u.body.mover().expect(MOVES);
         let own = [u.id];
         let ignore = if ignore.is_empty() { &own[..] } else { ignore };
         // FUN_1411570c0 sets the manager's ignore list to it (FUN_1410562e0)
@@ -282,8 +282,8 @@ impl World {
         if !self.member_idle(id)? {
             let (keeps_moving, _) = self.action_list(p, u)?;
             if !keeps_moving
-                && u.mover
-                    .as_ref()
+                && u.body
+                    .mover()
                     .is_some_and(crate::movement::Mover::is_moving)
             {
                 self.stop_member(id)?;

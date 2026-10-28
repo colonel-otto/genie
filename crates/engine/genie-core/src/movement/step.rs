@@ -122,6 +122,8 @@ impl Mover {
         sprite_facets: Option<crate::objects::facing::SpriteFacets>,
     ) -> Self {
         Self {
+            // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            animated: crate::objects::layers::Animated { speed: 0.0 },
             forward: [1.0, 0.0, 0.0],
             right: [0.0, 0.0, crate::production::spawn::START_RIGHT_Z],
             velocity: None,
@@ -139,7 +141,6 @@ impl Mover {
             last_turn: 0.0,
             angle,
             move_to_point: None,
-            speed_stopped: false,
             pauses: Vec::new(),
             in_the_way: Vec::new(),
             sprite_facets,

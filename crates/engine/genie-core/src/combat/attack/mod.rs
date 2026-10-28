@@ -246,8 +246,6 @@ pub struct Strike<'a> {
     /// The unit's active sprite and animation speed (`+0x7b8`), None while the slice does not
     /// know them.
     pub sprite: &'a mut Option<ActiveSprite>,
-    /// The unit's animation speed (`+0x7b8`), None while the slice does not know it.
-    pub anim_speed: &'a mut Option<f32>,
     /// Its master's standing sprite (`+0x470`), which slot 0x68 shows for no sprite
     /// (`FUN_141158620`).
     pub standing: Option<Graphic>,

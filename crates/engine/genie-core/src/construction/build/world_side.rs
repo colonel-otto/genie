@@ -100,7 +100,7 @@ impl crate::world::World {
         if Construction::begin(
             id,
             c,
-            u.mover.as_mut(),
+            u.body.mover_mut(),
             &mut self.spatial,
             &mut self.pathing,
             now,
@@ -223,7 +223,7 @@ impl crate::world::World {
             id,
             life: &mut u.life,
             construction,
-            mover: u.mover.as_mut(),
+            mover: u.body.mover_mut(),
             firepower: Some(&mut u.firepower),
             roo_called: Some(&mut u.roo_called),
             store: Some(&mut u.store),
@@ -406,7 +406,7 @@ impl crate::world::World {
         }
         nu.life.hp -= stack.hp_lost;
         // the walks of this update read the last move time the lock set
-        if let Some(t) = nu.mover.as_ref().map(|m| m.last_move) {
+        if let Some(t) = nu.body.mover().map(|m| m.last_move) {
             self.spatial.set_last_move(new, t);
         }
         Ok(())

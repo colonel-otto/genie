@@ -112,7 +112,7 @@ impl World {
                         flag_1: g.flags & 2 != 0,
                     },
                 );
-                if let Some(m) = self.players[p].objects[new].mover.as_mut() {
+                if let Some(m) = self.players[p].objects[new].body.mover_mut() {
                     m.angle = crate::objects::facing::angle_of_facet(facet, own);
                 }
             }
@@ -301,12 +301,14 @@ impl World {
                 master_id: master,
                 master: made.life,
             },
-            mover: moving.map(|stats| Mover::new_object(stats, at, self.world_time, angle, facets)),
+            // an animated one's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            body: crate::objects::layers::Body::new(
+                (20 <= made.kind).then(crate::objects::layers::Animated::default),
+                moving.map(|stats| Mover::new_object(stats, at, self.world_time, angle, facets)),
+            ),
             attackable: true,
             pasture: -1,
             my_pasture: -1,
-            // an animated one's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
-            anim_speed: (20 <= made.kind).then_some(0.0),
             sprite: sprite.filter(|_| facing == Facing::Drawn),
             ..Unit::default()
         });

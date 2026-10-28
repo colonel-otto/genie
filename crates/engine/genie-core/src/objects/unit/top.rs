@@ -87,7 +87,7 @@ impl Unit {
     /// What the walk reads of it when it meets it ([`crate::map::spatial::Gait`]).
     #[must_use]
     pub fn gait(&self) -> Option<crate::map::spatial::Gait> {
-        let m = self.mover.as_ref()?;
+        let m = self.body.mover()?;
         Some(crate::map::spatial::Gait {
             moving: m
                 .velocity

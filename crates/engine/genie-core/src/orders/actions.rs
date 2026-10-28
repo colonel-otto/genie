@@ -230,8 +230,8 @@ impl World {
                 self.shut_in_gate(u)?;
             }
             self.players[player].objects[idx]
-                .mover
-                .as_mut()
+                .body
+                .mover_mut()
                 .ok_or(GenieError::unsupported(
                     "a shut gate without its moving part",
                 ))?
@@ -393,10 +393,10 @@ pub(crate) fn switch_master(
         }
         unit.life.master_id = new;
         let moving = unit
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .is_some_and(crate::movement::Mover::is_moving);
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.stats = next.moving.ok_or(GenieError::unsupported(
                 "a moving unit's new master does not move",
             ))?;

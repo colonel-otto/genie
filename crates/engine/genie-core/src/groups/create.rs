@@ -194,7 +194,7 @@ impl World {
                 crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
             };
             if u.group.id == group_id {
-                if !keep_moving && let Some(m) = u.mover.as_mut() {
+                if !keep_moving && let Some(m) = u.body.mover_mut() {
                     m.stand()?;
                 }
                 u.group.id = -1;
@@ -435,7 +435,7 @@ mod tests {
                 .unwrap_or(crate::movement::PathData::without_path()),
         ];
         mover.paths[0].state = 3;
-        walking.mover = Some(mover);
+        walking.body.put_mover(Some(mover));
         let player = Player {
             objects: vec![unit(10, 4, 1.0), walking, unit(12, 6, 3.0)],
             ..Player::default()
@@ -598,7 +598,7 @@ mod tests {
         assert_eq!((g.motion.lead, g.flags & 0x1_0002), (10, 0x1_0002));
         let u = &t.players[1].objects[1];
         assert_eq!(u.group.id, -1);
-        let m = u.mover.as_ref().unwrap();
+        let m = u.body.mover().unwrap();
         assert_eq!(m.paths[0].state, 0);
         // not a member, or a group the world does not hold
         assert!(!t.remove_unit(1, 11, -1, false).unwrap());
@@ -681,7 +681,7 @@ mod tests {
         let mut t = three();
         assert!(t.remove_unit(1, 11, -1, true).unwrap());
         assert_eq!(
-            t.players[1].objects[1].mover.as_ref().unwrap().paths[0].state,
+            t.players[1].objects[1].body.mover().unwrap().paths[0].state,
             3
         );
         let mut t = three();

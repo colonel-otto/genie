@@ -218,6 +218,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     let attack = add(Unit {
         id: 33,
         attack: Some(attack),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         ..Unit::default()
     });
     let artifact = add(Unit {
@@ -249,7 +250,7 @@ fn each_action_with_its_own_stop_halts_and_answers_true() {
     assert_eq!(objects[repair].repair.map(|r| r.state), Some(2));
     let a = &objects[attack];
     assert_eq!(a.attack.map(|a| a.state), Some(crate::combat::attack::DONE));
-    assert_eq!(a.anim_speed, Some(1.0));
+    assert_eq!(a.body.anim_speed(), Some(1.0));
     assert!(a.sprite.is_some());
     assert_eq!(objects[artifact].artifact.map(|a| a.state), Some(6));
     assert!(t.halt_other(1, gather, 99).is_err());

@@ -71,7 +71,7 @@ impl Attack {
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
     ) -> Result<(), GenieError> {
-        self.enter(SWING, walk, s)?;
+        self.enter(SWING, walk)?;
         let alternates = walk
             .mover
             .as_ref()
@@ -114,7 +114,7 @@ impl Attack {
         self.pending = true;
         let length = f32::from(g.frames) * g.frame_duration;
         self.rest = s.reload - length;
-        *s.anim_speed = Some(if self.rest < 0.0 && 0.0 < s.reload {
+        walk.set_anim_speed(if self.rest < 0.0 && 0.0 < s.reload {
             length / s.reload
         } else {
             1.0

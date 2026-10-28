@@ -138,7 +138,7 @@ impl HuntAction {
         match self.move_to {
             Some(MoveTo::Start) => self.walk_start(walk, strike, gather),
             Some(MoveTo::Moving) => self.walk_moving(walk, strike),
-            Some(MoveTo::Failed) => self.walk_failed(strike, gather),
+            Some(MoveTo::Failed) => self.walk_failed(walk, gather),
             Some(MoveTo::Waiting) => {
                 self.move_wait.timer += walk.dt;
                 if self.move_wait.delay <= self.move_wait.timer {
@@ -217,11 +217,7 @@ impl HuntAction {
     /// (`FUN_140c1c4f0`: 15, trees; the class its unit AI targets, else the hunt's: the caller's
     /// search, `Unit::hunt_tree_search`, which found none); then the hunt waits 3 seconds and the
     /// unit's animation stops (`FUN_141161850`).
-    fn walk_failed(
-        &mut self,
-        strike: &mut Strike<'_>,
-        gather: &Gatherer<'_>,
-    ) -> Result<(), GenieError> {
+    fn walk_failed(&mut self, mut walk: Walk<'_>, gather: &Gatherer<'_>) -> Result<(), GenieError> {
         if let Some(class) = gather.ai_class {
             let class = if class == -1 {
                 i32::from(self.target_class)
@@ -235,7 +231,7 @@ impl HuntAction {
             }
         }
         self.timer = -3.0;
-        *strike.anim_speed = Some(0.0);
+        walk.set_anim_speed(0.0);
         Ok(())
     }
 
@@ -337,7 +333,7 @@ impl HuntAction {
         self.state = ATTACK;
         let (a, arrived) = Attack::start(self.target, &herd.engagement, herd.arms, mover)?;
         if arrived {
-            a.arrived_sprite(strike)?;
+            a.arrived_sprite(strike, Some(mover))?;
         }
         self.attack = Some(a);
         Ok(())

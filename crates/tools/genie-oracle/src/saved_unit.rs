@@ -136,7 +136,15 @@ pub(super) fn unit(
             .combat()
             .map_or([0; 2], |c| [c.melee_armor_removed, c.pierce_armor_removed]),
         charge: object.combat().map_or(0.0, |c| c.charge),
-        anim_speed: object.animated_part().map(|a| a.current_speed),
+        // the animated layer (types 20 and up); a moving object's mover takes it below
+        body: genie_core::objects::layers::Body::new(
+            object
+                .animated_part()
+                .map(|a| genie_core::objects::layers::Animated {
+                    speed: a.current_speed,
+                }),
+            None,
+        ),
         // every animated object's current sprite, which slot 0x68 and the sprite list read
         sprite: masters.and_then(|t| saved_sprite(s, &t.graphics)),
         charge_hit: object
@@ -232,7 +240,7 @@ pub(super) fn unit(
         });
     }
     let production = production(object).map(|p| unit.production = p);
-    let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.mover = m);
+    let moving = mover(object, s, objects, paths, civ, masters).map(|m| unit.body.put_mover(m));
     unit.unmodelled_action = imported.and(production).and(moving).err();
     unit
 }

@@ -92,7 +92,7 @@ impl World {
             return false;
         };
         let unit = &self.players[p].objects[i];
-        let at = unit.mover.as_ref().map_or(unit.position, |m| m.moved_at);
+        let at = unit.body.mover().map_or(unit.position, |m| m.moved_at);
         let (x, y) = (
             crate::math::conversions::cvttss2si(at[0]),
             crate::math::conversions::cvttss2si(at[1]),
@@ -111,7 +111,7 @@ impl World {
         } else {
             (ONE, ONE)
         };
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.factor = factor;
         }
         unit.abilities.attack_rate = rate;

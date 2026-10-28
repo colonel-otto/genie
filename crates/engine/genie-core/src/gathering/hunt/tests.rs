@@ -68,6 +68,13 @@ fn a_decay_task_stops_its_target_s_decay_once() {
     assert_eq!(none.decay.to_bits(), 0);
 }
 
+/// [`walker`] in motion: its animation runs at speed 1 (`+0x7b8`), which a stop clears.
+pub(crate) fn walking() -> Mover {
+    let mut m = walker();
+    m.animated.speed = 1.0;
+    m
+}
+
 /// A villager walking at 0.8 tiles a second, radius 0.2.
 pub(crate) fn walker() -> Mover {
     Mover {
@@ -112,7 +119,7 @@ pub(crate) fn walker() -> Mover {
         last_turn: 0.0,
         angle: 0.0,
         move_to_point: None,
-        speed_stopped: false,
+        animated: crate::objects::layers::Animated::default(),
         pauses: Vec::new(),
         in_the_way: Vec::new(),
         sprite_facets: None,
@@ -741,12 +748,12 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         villager: true,
         stance: 0,
     };
-    let drop = |h: &mut HuntAction, rig: &mut WalkRig, anim: &mut Option<f32>| {
+    let drop = |h: &mut HuntAction, rig: &mut WalkRig| {
         let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         let (mut kind, mut held) = (1, 3.0);
         let shown = shown(&mut sprite, &mut rng);
         let walk = rig.walk(DROP);
-        h.update_drop(walk, &mut kind, &mut held, 230, None, shown, who, anim)
+        h.update_drop(walk, &mut kind, &mut held, 230, None, shown, who)
     };
     let dropping = |move_to| HuntAction {
         state: DROP,
@@ -754,33 +761,33 @@ fn a_hunter_walks_to_its_drop_site_and_to_its_point() {
         move_to,
         ..hunting(-1)
     };
-    let mut anim = Some(1.0);
     let mut rig = WalkRig::on_the_path();
     rig.mover.paths.clear();
     let mut h = dropping(Some(MoveTo::Start));
-    assert_eq!(drop(&mut h, &mut rig, &mut anim), Ok(Dropped::Going));
+    assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Moving));
     assert_eq!(rig.mover.paths.len(), 2);
     let mut rig = WalkRig::on_the_path();
     let mut h = dropping(Some(MoveTo::Moving));
-    assert_eq!(drop(&mut h, &mut rig, &mut anim), Ok(Dropped::Going));
+    assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Moving));
     rig.mover.move_to_point = Some([35.0, 88.0, 0.0]);
-    assert_eq!(drop(&mut h, &mut rig, &mut anim), Ok(Dropped::Going));
+    assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Start));
     let mut h = dropping(Some(MoveTo::Waiting));
     h.move_wait.delay = 0.05;
-    assert_eq!(drop(&mut h, &mut rig, &mut anim), Ok(Dropped::Going));
+    assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
     assert_eq!(h.move_to, Some(MoveTo::Start));
+    rig.mover.animated.speed = 1.0;
     let mut h = dropping(Some(MoveTo::Failed));
-    assert_eq!(drop(&mut h, &mut rig, &mut anim), Ok(Dropped::Going));
-    assert_eq!((h.timer, anim), (DROP_WAIT, Some(0.0)));
+    assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Going));
+    assert_eq!((h.timer, rig.mover.animated.speed), (DROP_WAIT, 0.0));
     h.timer = -0.05;
-    assert_eq!(drop(&mut h, &mut rig, &mut anim), Ok(Dropped::Again));
+    assert_eq!(drop(&mut h, &mut rig), Ok(Dropped::Again));
     assert_eq!(h.timer, 0.0);
-    assert!(drop(&mut dropping(None), &mut rig, &mut anim).is_err());
+    assert!(drop(&mut dropping(None), &mut rig).is_err());
     let mut h = dropping(Some(MoveTo::Arrived));
-    assert!(drop(&mut h, &mut rig, &mut anim).is_err());
+    assert!(drop(&mut h, &mut rig).is_err());
     // the walk to a point
     let point_walk = |h: &mut HuntAction, rig: &mut WalkRig, who| {
         let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
@@ -1286,7 +1293,6 @@ fn a_drop_off_gives_the_load_to_the_player() {
         villager: true,
         stance: 0,
     };
-    let mut anim = Some(1.0);
     let got = hunt
         .update_drop(
             walk(&mut mover, &mut world),
@@ -1296,7 +1302,6 @@ fn a_drop_off_gives_the_load_to_the_player() {
             Some(site),
             shown(&mut sprite, &mut rng),
             who,
-            &mut anim,
         )
         .unwrap();
     assert_eq!(got, Dropped::Load(1, 7.057_053_6));
@@ -1314,7 +1319,6 @@ fn a_drop_off_gives_the_load_to_the_player() {
             Some(site),
             shown(&mut sprite, &mut rng),
             who,
-            &mut anim,
         )
         .unwrap();
     assert_eq!(got, Dropped::Load(0, 2.0));
@@ -1332,7 +1336,6 @@ fn a_drop_off_gives_the_load_to_the_player() {
             Some(refused),
             shown(&mut sprite, &mut rng),
             who,
-            &mut anim,
         )
         .is_err()
     );
@@ -1343,7 +1346,7 @@ fn a_drop_off_gives_the_load_to_the_player() {
         gap_squared: 1.5,
         ..site
     };
-    let step = |hunt: &mut HuntAction, mover: &mut Mover, anim: &mut Option<f32>| {
+    let step = |hunt: &mut HuntAction, mover: &mut Mover| {
         let mut world = crate::map::spatial::Spatial::default();
         let (mut sprite, mut rng) = (None, crate::math::rng::Well512::default());
         hunt.update_drop(
@@ -1354,13 +1357,13 @@ fn a_drop_off_gives_the_load_to_the_player() {
             Some(far),
             shown(&mut sprite, &mut rng),
             who,
-            anim,
         )
         .unwrap()
     };
-    assert_eq!(step(&mut hunt, &mut mover, &mut anim), Dropped::Going);
-    assert_eq!((hunt.timer, anim), (DROP_WAIT, Some(0.0)));
+    mover.animated.speed = 1.0;
+    assert_eq!(step(&mut hunt, &mut mover), Dropped::Going);
+    assert_eq!((hunt.timer, mover.animated.speed), (DROP_WAIT, 0.0));
     hunt.timer = -0.01;
-    assert_eq!(step(&mut hunt, &mut mover, &mut anim), Dropped::Again);
+    assert_eq!(step(&mut hunt, &mut mover), Dropped::Again);
     assert_eq!(hunt.timer, 0.0);
 }

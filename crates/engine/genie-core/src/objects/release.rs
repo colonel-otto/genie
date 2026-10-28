@@ -164,7 +164,7 @@ impl World {
         else {
             return;
         };
-        if let Some(level) = u.mover.as_mut().and_then(|m| m.paths.first_mut()) {
+        if let Some(level) = u.body.mover_mut().and_then(|m| m.paths.first_mut()) {
             level.pause_time = pause;
             let gait = u.gait();
             self.spatial.set_gait(id, gait);

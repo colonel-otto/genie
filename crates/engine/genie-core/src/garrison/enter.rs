@@ -192,7 +192,7 @@ impl World {
             }
             let unit = &mut self.players[player].objects[idx];
             if gone.stops
-                && let Some(m) = unit.mover.as_mut()
+                && let Some(m) = unit.body.mover_mut()
             {
                 m.stop()?;
             }

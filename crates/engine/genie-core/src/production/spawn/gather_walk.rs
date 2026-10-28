@@ -35,7 +35,7 @@ impl World {
             .class
             == VILLAGER;
         let unit = &mut self.players[p].objects[new];
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.waiting = 1;
         }
         if unit.top_action_kind().is_some() {
@@ -44,7 +44,7 @@ impl World {
             ));
         }
         // a unit without speed takes nothing; one not in state 2 would notify without moving
-        if unit.mover.as_ref().map_or(0.0, |m| m.stats.speed) <= 0.0 {
+        if unit.body.mover().map_or(0.0, |m| m.stats.speed) <= 0.0 {
             return Ok(());
         }
         if unit.life.state != 2 {
@@ -195,7 +195,7 @@ impl World {
             "unreachable: a gather point's target found",
         ))?;
         let on_building = self.master_of(owner, t.life.master_id)?.kind == BUILDING;
-        if let Some(m) = self.players[p].objects[new].mover.as_mut() {
+        if let Some(m) = self.players[p].objects[new].body.mover_mut() {
             m.waiting = 1;
         }
         let garrison = finder

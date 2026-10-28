@@ -236,8 +236,8 @@ impl World {
             let g = self.groups.get(group).expect("the caller holds the group");
             let at = g.motion.position[0];
             let from = [u.position[0], u.position[1]];
-            let moved = u.mover.as_ref().map_or(u.position, |m| m.moved_at);
-            let restriction = u.mover.as_ref().map(|m| m.stats.restriction);
+            let moved = u.body.mover().map_or(u.position, |m| m.moved_at);
+            let restriction = u.body.mover().map(|m| m.stats.restriction);
             let tiles = self.spatial.tiles();
             if let Some(planner) = restriction.and_then(|r| self.pathing.planner(r, tiles)) {
                 let req = crate::pathing::tile_path::Request {
@@ -315,7 +315,7 @@ impl World {
         let kind = self.master_of(p, u.life.master_id)?.kind;
         self.leave_group_of(id, -1)?;
         let (_, u) = self.object_mut(id).expect("the unit found above");
-        if let Some(m) = u.mover.as_mut() {
+        if let Some(m) = u.body.mover_mut() {
             m.clear_user_waypoints();
             m.ignore_units.clear();
             m.waiting = 1;
@@ -330,7 +330,7 @@ impl World {
         let Some((&[lx, ly], before)) = kept.split_last() else {
             return Ok(());
         };
-        if let Some(m) = u.mover.as_mut() {
+        if let Some(m) = u.body.mover_mut() {
             for &[wx, wy] in before {
                 m.add_user_waypoint(wx, wy, z);
             }

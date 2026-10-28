@@ -251,6 +251,9 @@ pub(super) fn mover(
         .collect::<Result<Vec<_>, _>>()?;
     loaded_ignored(&mut levels, &s.temp_int);
     Ok(Some(Mover {
+        animated: genie_core::objects::layers::Animated {
+            speed: m.rge_animated_object.current_speed,
+        },
         forward: vec3(&m.orientation_forward_value),
         right: vec3(&m.orientation_right_value),
         velocity,
@@ -306,7 +309,6 @@ pub(super) fn mover(
         last_turn: m.turn_towards_time,
         angle: m.angle,
         move_to_point: saved_move_to_point(object),
-        speed_stopped: false,
         pauses: Vec::new(),
         in_the_way: Vec::new(),
         // the current sprite's, which the unit's update takes from its sprite

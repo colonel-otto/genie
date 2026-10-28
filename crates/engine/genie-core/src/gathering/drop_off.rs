@@ -62,7 +62,7 @@ impl Unit {
         }
         ai.end_order_and_action()?;
         let mut gather = self.gather.take().expect("the caller's gather");
-        gather.tear_down(self.mover.as_mut())?;
+        gather.tear_down(self.body.mover_mut())?;
         if gather.carry_to != -1 {
             c.releases.push((gather.carry_to, by));
         }
@@ -113,19 +113,19 @@ impl Unit {
             }
             // set_state(11) without a target: to the point within the task's range
             let mover = self
-                .mover
-                .as_mut()
+                .body
+                .mover_mut()
                 .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
             return gather.walk_back(0.0, mover);
         }
         let carry_to = gather.carry_to;
         if c.computer {
             let mut gather = self.gather.take().expect("the caller's gather");
-            gather.tear_down(self.mover.as_mut())?;
+            gather.tear_down(self.body.mover_mut())?;
         } else {
             let shows = self.idle_sprite(c)?;
             let gather = self.gather.as_mut().expect("the caller's gather");
-            gather.tear_down(self.mover.as_mut())?;
+            gather.tear_down(self.body.mover_mut())?;
             gather.state = crate::gathering::gather::IDLE;
             gather.timer = 0.0;
             gather.target = -1;
@@ -198,7 +198,7 @@ impl Unit {
                 c.attributes,
             ),
         };
-        let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
+        let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
@@ -323,7 +323,7 @@ impl Unit {
         let gather = self.gather.as_ref().expect("the caller's gather");
         let (carry_to, state) = (gather.carry_to, gather.state);
         let (site, gap) = self.drop_site(&mut c, others, carry_to, state)?;
-        let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.mover.as_mut()) else {
+        let (Some(gather), Some(mover)) = (self.gather.as_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a gatherer without its gather or movement state",
             ));
@@ -353,7 +353,7 @@ impl Unit {
                 "a hunt without a drop site (notify 0x203, set_state 2)",
             ));
         }
-        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -379,8 +379,8 @@ impl Unit {
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::GATHERER_MASTER)?;
         let mover = self
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let mut site = carry_to;
         if site == -1 && master.drop_sites.first().is_some_and(|&d| d != -1) {
@@ -451,8 +451,8 @@ impl Unit {
             .get(self.life.master_id)
             .ok_or(crate::world::GATHERER_MASTER)?;
         let mover = self
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let [w, h] = c.spatial.map;
         let terrain = c.spatial.terrain.as_ref().ok_or(GenieError::unsupported(

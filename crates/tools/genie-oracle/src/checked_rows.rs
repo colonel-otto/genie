@@ -392,7 +392,7 @@ impl ObjectRow {
             action_target: unit.top_target(),
             sub_action: unit.top_sub_action().map(|a| (a.kind, a.state)),
             retarget: unit.ai.as_ref().map(|ai| ai.retarget_timer as i32),
-            movement: unit.mover.as_ref().map(|m| MoveRow {
+            movement: unit.body.mover().map(|m| MoveRow {
                 forward: m.forward,
                 right: m.right,
                 velocity: m.velocity.as_ref().map(|v| (v.velocity, v.acceleration)),

@@ -171,7 +171,7 @@ impl World {
     ) -> Result<(i32, Option<i32>), GenieError> {
         let unit = &self.players[p].objects[i];
         let master = self.master_of(p, unit.life.master_id)?;
-        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+        let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "a resource search without movement state",
         ))?;
         let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(

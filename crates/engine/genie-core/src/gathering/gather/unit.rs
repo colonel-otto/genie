@@ -97,7 +97,7 @@ impl Unit {
         } else {
             DropSearch::Empty
         };
-        let mut walk = c.walk(self.mover.as_mut(), me);
+        let mut walk = c.walk(self.body.mover_mut(), me);
         let build = self.build.as_mut().expect("the caller's Build");
         let out = build.set_drop(&mut walk, None, search)?;
         if out.let_go != -1 {
@@ -247,7 +247,7 @@ impl Unit {
         let site = self.gather_site(c, carry_to, (position, radius))?;
         let attributes = c.attributes.len();
         let gather = self.gather.as_mut().expect("the caller's gather");
-        let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.mover.as_mut(), me);
+        let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.body.mover_mut(), me);
         let mut work = view.gatherer(
             (&mut self.life.attribute_type, &mut self.life.amount),
             &mut self.sprite,
@@ -260,8 +260,8 @@ impl Unit {
         for (kind, p) in posted {
             self.post_own(kind, p)?;
         }
-        if anim_stopped && let Some(a) = self.anim_speed.as_mut() {
-            *a = 0.0;
+        if anim_stopped {
+            self.body.set_anim_speed(0.0);
         }
         match dropped {
             Dropped::Going => Ok(()),
@@ -342,8 +342,8 @@ impl Unit {
             .ok_or(GenieError::unsupported("a gather's target without a place"))?;
         let gap = footprint_gap(self.position, radius, t.position, t.radius);
         let mover = self
-            .mover
-            .as_mut()
+            .body
+            .mover_mut()
             .ok_or(GenieError::unsupported("a gatherer without movement state"))?;
         let rng = c.streams.get(Stream::Action);
         gather.set_walk(t.position, t.radius, gap, mover, rng)
@@ -367,7 +367,7 @@ impl Unit {
         let mut victim = c.victim.take();
         let old = (gather.target, gather.carry_to);
         let (next, posted, sold, anim_stopped) = {
-            let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.mover.as_mut(), me);
+            let (walk, sprite_rng, action_rng) = c.walk_sprites_action(self.body.mover_mut(), me);
             let mut work = view.gatherer(
                 (&mut self.life.attribute_type, &mut self.life.amount),
                 &mut self.sprite,
@@ -388,8 +388,8 @@ impl Unit {
         for (kind, p) in posted {
             self.post_own(kind, p)?;
         }
-        if anim_stopped && let Some(a) = self.anim_speed.as_mut() {
-            *a = 0.0;
+        if anim_stopped {
+            self.body.set_anim_speed(0.0);
         }
         if 0.0 < sold {
             give_load(

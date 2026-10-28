@@ -70,7 +70,7 @@ impl WorldObject<'_> {
     /// animated or doppelganger object's `FUN_141071e30` (0).
     pub(crate) const fn moves(&self) -> bool {
         match *self {
-            Self::Unit(_, u) => u.mover.is_some(),
+            Self::Unit(_, u) => u.body.mover().is_some(),
             Self::Ghost(..) => false,
         }
     }
@@ -79,7 +79,7 @@ impl WorldObject<'_> {
     /// animated or doppelganger object's (0, 0, 0) (`FUN_141071e10`).
     pub(crate) fn forward(&self) -> crate::math::fmath::Vec3 {
         match *self {
-            Self::Unit(_, u) => u.mover.as_ref().map_or([0.0; 3], |m| m.forward),
+            Self::Unit(_, u) => u.body.mover().map_or([0.0; 3], |m| m.forward),
             Self::Ghost(..) => [0.0; 3],
         }
     }

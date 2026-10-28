@@ -126,8 +126,8 @@ impl Unit {
             self.life.hp = 0.0;
         }
         let mover = self
-            .mover
-            .as_mut()
+            .body
+            .mover_mut()
             .ok_or(GenieError::unsupported("a missile without its moving part"))?;
         let mut at = mover.set_position(to, [w, h]);
         let ground = c

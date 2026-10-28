@@ -763,7 +763,7 @@ fn a_speed_change_reaches_the_units_movement() {
     let mut walker = unit_of(1, 4, 25.0);
     let mover = crate::gathering::hunt::tests::walker();
     let stats = mover.stats;
-    walker.mover = Some(mover);
+    walker.body.put_mover(Some(mover));
     let player = Player {
         objects: vec![walker],
         ..Player::default()
@@ -775,7 +775,7 @@ fn a_speed_change_reaches_the_units_movement() {
     t.masters = vec![Masters::new([villager])];
     t.do_effect(0, &[attribute(5, -1, 4, 5, 1.1)], None)
         .unwrap();
-    let s = t.players[0].objects[0].mover.as_ref().unwrap().stats;
+    let s = t.players[0].objects[0].body.mover().unwrap().stats;
     // no graphics: the sprites' factors are 0, the speeds the master's
     let speed = 0.8_f32 * 1.1;
     assert_eq!(
@@ -788,7 +788,7 @@ fn a_speed_change_reaches_the_units_movement() {
         t.do_effect(0, &[attribute(5, -1, 4, 5, 1.1)], None)
             .is_err()
     );
-    let stats = t.players[0].objects[0].mover.as_ref().unwrap().stats;
+    let stats = t.players[0].objects[0].body.mover().unwrap().stats;
     assert_eq!(stats.speed, speed);
 }
 

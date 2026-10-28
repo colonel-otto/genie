@@ -62,7 +62,7 @@ pub(super) fn ready_at_start(
     let ai_order = ai.map(|ai| ai.current_order);
     let ai_type = ai.map(|ai| ai.ai_type);
     let walk = Walk {
-        mover: unit.mover.as_mut(),
+        mover: unit.body.mover_mut(),
         me,
         dt: 0.0,
         world: spatial,
@@ -71,7 +71,6 @@ pub(super) fn ready_at_start(
     let mut blasted = Vec::new();
     let mut strike = Strike {
         sprite: &mut unit.sprite,
-        anim_speed: &mut unit.anim_speed,
         standing: Some(start.standing),
         volleys: start.volleys,
         attack_timer: &mut unit.attack_timer,
@@ -186,8 +185,8 @@ impl World {
             "an attack's target the slice does not hold live",
         ))?;
         let speed = self.players[player].objects[idx]
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .map_or(0.0, |m| m.stats.speed);
         let e = crate::combat::attack::engagement(
             self.players[player].objects[idx].ai.as_ref(),
@@ -211,7 +210,10 @@ impl World {
             standing,
             self.streams.get(Stream::Sprite),
         );
-        let mover = unit.mover.as_mut().ok_or(crate::world::ATTACKER_UNMOVING)?;
+        let mover = unit
+            .body
+            .mover_mut()
+            .ok_or(crate::world::ATTACKER_UNMOVING)?;
         let commanded = Attack::command(
             (target, &self.spatial),
             &e,
@@ -250,7 +252,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         if failed_first {
             // readyToAttack's set_state(13) before the start's set_state(4)
-            unit.anim_speed = Some(1.0);
+            unit.body.set_anim_speed(1.0);
         }
         let (id, state) = (unit.id, unit.life.state);
         for (kind, p) in posted {
@@ -261,7 +263,7 @@ impl World {
         if failed {
             attack.fail_at_start(
                 &mut unit.sprite,
-                &mut unit.anim_speed,
+                &mut unit.body,
                 self.streams.get(Stream::Sprite),
             )?;
         }
@@ -280,7 +282,7 @@ impl World {
             // the MoveTo's start in state 1 (`0x140aa29e0`, not quiet): slot 0x68 with the
             // standing sprite (slot 0x798) at its speed, `+0x7b8` cleared; the next update's state
             // 4 ends the MoveTo
-            if let Some(m) = unit.mover.as_mut() {
+            if let Some(m) = unit.body.mover_mut() {
                 m.shows_standing();
             }
             unit.shows_standing_sprite(
@@ -382,7 +384,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         let old = unit.hunt.map(|h| h.target).filter(|&t| t != -1);
         let held = unit.life.amount;
-        let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.mover.as_mut()) else {
+        let (Some(hunt), Some(mover)) = (unit.hunt.as_mut(), unit.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -401,7 +403,7 @@ impl World {
                 crate::combat::attack::show_arrived(
                     &arms,
                     &mut unit.sprite,
-                    &mut unit.anim_speed,
+                    &mut unit.body,
                     self.streams.get(Stream::Sprite),
                 )?;
             }

@@ -188,7 +188,7 @@ impl World {
         // a unit out of its container no longer counts down to its raid (`+0x9a0` 0)
         unit.raider_countdown = 0;
         // the position setter's end: a place off where it last moved to is a move
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.mark_move(at, world_time);
         }
         let state = unit.life.state;
@@ -323,7 +323,7 @@ impl World {
         let world_time = self.world_time;
         let unit = &mut self.players[up].objects[ui];
         unit.position = at;
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.mark_move(at, world_time);
         }
         self.came_out(up, ui, made.class, rest)

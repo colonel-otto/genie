@@ -69,7 +69,7 @@ impl Unit {
         graphics: &std::collections::BTreeMap<i16, Graphic>,
         sprite: &mut Well512,
     ) -> Result<(), GenieError> {
-        if let Some(m) = self.mover.as_mut() {
+        if let Some(m) = self.body.mover_mut() {
             m.shows_standing();
         }
         if self.sprite.is_some() {
@@ -131,7 +131,8 @@ impl Unit {
             self.stop_if_moving(gone.stops)?;
         }
         if let Some(f) = self.fly.take() {
-            self.anim_speed = Some(self.mover.as_ref().map_or(0.0, |m| m.stats.speed));
+            self.body
+                .set_anim_speed(self.body.mover().map_or(0.0, |m| m.stats.speed));
             self.stop_if_moving(f.move_to.is_some())?;
         }
         if let Some(e) = self.enter.take() {
@@ -160,17 +161,17 @@ impl Unit {
         let moves = self.explore.take().is_some_and(|e| e.move_to.is_some());
         self.stop_if_moving(moves)?;
         if let Some(mut h) = self.hunt.take() {
-            h.tear_down(self.mover.as_mut())?;
+            h.tear_down(self.body.mover_mut())?;
             release(h.target);
             release(h.carry_to);
         }
         if let Some(mut g) = self.gather.take() {
-            g.tear_down(self.mover.as_mut())?;
+            g.tear_down(self.body.mover_mut())?;
             release(g.target);
             release(g.carry_to);
         }
         if let Some(mut a) = self.attack.take() {
-            a.tear_down(self.mover.as_mut())?;
+            a.tear_down(self.body.mover_mut())?;
             release(a.target);
             release(a.target2);
         }
@@ -192,7 +193,7 @@ impl Unit {
     ///
     /// The unit's stop that the motion step does not model.
     pub(super) fn stop_if_moving(&mut self, moves: bool) -> Result<(), GenieError> {
-        if moves && let Some(m) = self.mover.as_mut() {
+        if moves && let Some(m) = self.body.mover_mut() {
             m.stop()?;
         }
         Ok(())

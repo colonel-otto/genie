@@ -665,7 +665,7 @@ fn trampler(t: &mut World) {
         velocity: [1.0, 0.0, 0.0],
         acceleration: [0.0; 3],
     });
-    t.players[1].objects[0].mover = Some(mover);
+    t.players[1].objects[0].body.put_mover(Some(mover));
 }
 
 #[test]
@@ -691,7 +691,7 @@ fn a_moving_unit_s_movement_damage_hits_the_enemies_about_it() {
     assert_eq!(t.players[1].objects[0].abilities.movement_damage_timer, 2.5);
     // standing, no hit even when due
     t.players[1].objects[0].abilities.movement_damage_timer = 0.0;
-    t.players[1].objects[0].mover.as_mut().unwrap().velocity = None;
+    t.players[1].objects[0].body.mover_mut().unwrap().velocity = None;
     run(&mut t, 1, 10);
     assert_eq!(hp(&t, 20), 25.0);
 }
@@ -780,10 +780,10 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
     put(&mut t, 1, 70, 250, 100.0, [5.5, 6.5]);
     let mut mover = crate::gathering::hunt::tests::walker();
     mover.moved_at = [5.5, 6.5, 0.0];
-    t.players[1].objects[0].mover = Some(mover);
+    t.players[1].objects[0].body.put_mover(Some(mover));
     run(&mut t, 1, 70);
     let u = &t.players[1].objects[0];
-    assert_eq!(u.mover.as_ref().unwrap().factor, 0.35);
+    assert_eq!(u.body.mover().unwrap().factor, 0.35);
     assert_eq!(u.abilities.attack_rate, 1.0);
     assert_eq!(
         u.abilities.look,
@@ -797,10 +797,10 @@ fn a_longboat_takes_its_task_s_look_on_its_terrains_and_its_master_s_off_them() 
         })
     );
     // where it last moved to decides, not its place
-    t.players[1].objects[0].mover.as_mut().unwrap().moved_at = [5.5, 7.5, 0.0];
+    t.players[1].objects[0].body.mover_mut().unwrap().moved_at = [5.5, 7.5, 0.0];
     run(&mut t, 1, 70);
     let u = &t.players[1].objects[0];
-    assert_eq!(u.mover.as_ref().unwrap().factor, 1.0);
+    assert_eq!(u.body.mover().unwrap().factor, 1.0);
     assert_eq!((u.abilities.attack_rate, u.abilities.look), (1.0, None));
 }
 

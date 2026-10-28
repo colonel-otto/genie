@@ -131,7 +131,7 @@ impl Unit {
         let started = Construction::begin(
             self.id,
             construction,
-            self.mover.as_mut(),
+            self.body.mover_mut(),
             c.spatial,
             c.pathing,
             c.world_time,

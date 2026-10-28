@@ -55,8 +55,8 @@ impl World {
         }
         if gone.stops {
             self.players[player].objects[idx]
-                .mover
-                .as_mut()
+                .body
+                .mover_mut()
                 .ok_or(crate::world::WALKER_UNMOVING)?
                 .stop()?;
         }

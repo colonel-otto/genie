@@ -177,12 +177,12 @@ impl World {
                 unit,
                 // the game's vector (x, height, y) of where it last moved to (x, y, height)
                 at: u
-                    .mover
-                    .as_ref()
+                    .body
+                    .mover()
                     .map_or([u.position[0], u.position[2], u.position[1]], |m| {
                         [m.moved_at[0], m.moved_at[2], m.moved_at[1]]
                     }),
-                speed: u.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+                speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
                 range: weapon_range(master),
                 under_attack: u.under_attack,
                 attacking: ai.current_action == ATTACK_ACTION,
@@ -190,7 +190,7 @@ impl World {
             self.member_objects(id, &mut objects)?;
             if far && self.far_from_slot(group, &view, largest)? {
                 if self.remove_unit(group, id, -1, false)? {
-                    if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.mover.as_mut()) {
+                    if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.body.mover_mut()) {
                         m.stop()?;
                     }
                     // the index steps back: the next member takes this one's place
@@ -596,7 +596,7 @@ impl World {
         if !inside {
             return Ok(());
         }
-        if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.mover.as_mut()) {
+        if let Some(m) = self.object_mut(id).and_then(|(_, u)| u.body.mover_mut()) {
             m.stop()?;
         }
         Ok(())
@@ -940,8 +940,10 @@ mod tests {
             let mut stray = t.players[1].objects[0].clone();
             stray.id = 11;
             stray.position = [6.0, 6.0, 0.0];
-            stray.mover = Some(crate::gathering::hunt::tests::walker());
-            stray.mover.as_mut().unwrap().moved_at = [6.0, 6.0, 0.0];
+            stray
+                .body
+                .put_mover(Some(crate::gathering::hunt::tests::walker()));
+            stray.body.mover_mut().unwrap().moved_at = [6.0, 6.0, 0.0];
             stray.group.id = 1;
             t.players[1].objects[0].group.id = 1;
             t.players[1].objects.push(stray);
@@ -985,7 +987,7 @@ mod tests {
         assert_eq!(ids(&t), [10]);
         let u = t.object(11).unwrap().1;
         assert_eq!(u.group.id, -1);
-        assert!(u.mover.as_ref().unwrap().speed_stopped);
+        assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
         let g = t.groups.get(1).unwrap();
         assert_eq!(g.centroid, [5.0, 0.0, 5.0]);
         assert_eq!(g.largest_unit_radius, 0.2);

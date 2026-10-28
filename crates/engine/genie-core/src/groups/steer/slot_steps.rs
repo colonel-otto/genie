@@ -58,7 +58,7 @@ impl World {
     /// What the pathers and the position setter do not model.
     pub(super) fn try_slot(&mut self, group: i32, id: i32, to: Vec3) -> Result<bool, GenieError> {
         let (p, u) = self.object(id).expect("the member is held");
-        let mover = u.mover.as_ref().expect(MOVES);
+        let mover = u.body.mover().expect(MOVES);
         let g = self.groups.get(group).expect("held");
         let computer = self.players.get(p).is_some_and(|q| q.computer);
         let solid = mover.stats.radius.iter().all(|&r| 0.0 < r);
@@ -131,7 +131,7 @@ impl World {
             flag_1: s.graphic.flags & 2 != 0,
         });
         let at = moved_vector(u);
-        let mover = u.mover.as_mut().expect(MOVES);
+        let mover = u.body.mover_mut().expect(MOVES);
         let direction = mover.direction_to(at, to);
         let (turn, _) = mover.turn_toward(mover.forward, direction, mover.turn_dt(dt));
         let facets = facets.or_else(|| mover.facets());
@@ -146,7 +146,7 @@ impl World {
         if state == 2 {
             self.stop_member(id)?;
             let (_, u) = self.object(id).expect("held");
-            let paused = u.mover.as_ref().is_some_and(crate::movement::Mover::paused);
+            let paused = u.body.mover().is_some_and(crate::movement::Mover::paused);
             let g = self.groups.get(group).expect("held");
             let patrol = crate::groups::formation::top_path(&g.motion.paths)
                 .is_some_and(|p| p.path_flags & 1 != 0);
@@ -210,7 +210,7 @@ impl World {
     /// Slot 0x5d0 of member `id`: it stops ([`crate::movement::Mover::stop`]).
     pub(super) fn stop_member(&mut self, id: i32) -> Result<(), GenieError> {
         if let Some((_, u)) = self.object_mut(id)
-            && let Some(mover) = u.mover.as_mut()
+            && let Some(mover) = u.body.mover_mut()
         {
             mover.stop()?;
         }
@@ -220,7 +220,7 @@ impl World {
     /// Slot 0x598 of member `id` ([`crate::movement::Mover::set_speed`]).
     pub(super) fn set_member_speed(&mut self, id: i32, speed: f32) {
         if let Some((_, u)) = self.object_mut(id)
-            && let Some(mover) = u.mover.as_mut()
+            && let Some(mover) = u.body.mover_mut()
         {
             mover.set_speed(speed);
         }
@@ -232,7 +232,7 @@ impl World {
         let g = self.groups.get(group).expect("held");
         let [_, forward, up, _] = g.motion.position;
         if let Some((_, u)) = self.object_mut(id)
-            && let Some(mover) = u.mover.as_mut()
+            && let Some(mover) = u.body.mover_mut()
         {
             mover.set_orientation(forward, up);
         }
@@ -265,7 +265,7 @@ impl World {
             crate::orders::Place::Live(p, i) => &mut self.players[p].objects[i],
             crate::orders::Place::Sleeping(p, i) => &mut self.players[p].sleeping[i],
         };
-        let Some(mover) = u.mover.as_mut() else {
+        let Some(mover) = u.body.mover_mut() else {
             return Ok(());
         };
         let map = self.spatial.map;

@@ -594,7 +594,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
         t.players[1].objects.swap_remove(0)
     };
     let u = walked(true);
-    assert_eq!(u.mover.as_ref().unwrap().waiting, 1);
+    assert_eq!(u.body.mover().unwrap().waiting, 1);
     assert!(!u.town_bell.flag);
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
@@ -624,10 +624,15 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
 #[test]
 fn a_gather_point_s_walk_waits_without_speed_and_stops_at_the_unmodelled() {
     let mut t = crate::world::tests::forage_world();
-    t.players[1].objects[0].mover.as_mut().unwrap().stats.speed = 0.0;
+    t.players[1].objects[0]
+        .body
+        .mover_mut()
+        .unwrap()
+        .stats
+        .speed = 0.0;
     t.gather_move(1, 0, [40.0, 80.0, 0.0], true).unwrap();
     let u = &t.players[1].objects[0];
-    assert_eq!(u.mover.as_ref().unwrap().waiting, 1);
+    assert_eq!(u.body.mover().unwrap().waiting, 1);
     assert_eq!(u.move_to, None);
     assert_eq!(u.ai.as_ref().unwrap().current_order, -1);
     // a second walk finds the first's `MoveTo`
@@ -736,7 +741,7 @@ fn remains_take_their_storage_and_face_their_dead_object_s_facet() {
         flag_1: false,
     };
     assert_eq!(
-        u.mover.as_ref().map(|m| m.angle),
+        u.body.mover().map(|m| m.angle),
         Some(crate::objects::facing::angle_of_facet(2, facets))
     );
     let reason = |change: &dyn Fn(&mut crate::objects::masters::Master), facing| {

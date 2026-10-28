@@ -95,7 +95,7 @@ impl World {
         if serves {
             let now = self.world_time;
             if let Some((_, u)) = self.object_mut(id)
-                && let Some(m) = u.mover.as_mut()
+                && let Some(m) = u.body.mover_mut()
             {
                 m.take_record_path(way.record.points, way.record.length, now, way.planned);
             }
@@ -118,7 +118,7 @@ impl World {
     fn rounder<'d>(&self, id: i32, differentiators: &'d [i32]) -> Result<Rounder<'d>, GenieError> {
         let (p, u) = self.object(id).expect("the member is held");
         let master = self.master_of(p, u.life.master_id)?;
-        let mover = u.mover.as_ref().expect(MOVES);
+        let mover = u.body.mover().expect(MOVES);
         let grow = master.radius[0] * ROUND_RADIUS;
         Ok(Rounder {
             id,
@@ -336,7 +336,7 @@ impl World {
         to: Vec3,
     ) -> Result<(bool, Path), GenieError> {
         let (p, u) = self.object(id).expect("the member is held");
-        let mover = u.mover.as_ref().expect(MOVES);
+        let mover = u.body.mover().expect(MOVES);
         let computer = self.players.get(p).is_some_and(|q| q.computer);
         let walker = crate::movement::LongWalker {
             id,

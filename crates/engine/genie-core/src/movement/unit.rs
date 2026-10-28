@@ -27,15 +27,15 @@ impl Unit {
     pub(crate) fn motion_step(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         // RGE_Moving_Object::update counts the last human order time down before its velocity
         // step
-        if self.mover.is_some() {
+        if self.body.mover().is_some() {
             self.count_down_human_order(c.dt, c.spatial);
         }
         // the velocity step (FUN_140f9ba80) runs for a unit with velocity data (+0x868)
-        let group = match self.mover.as_ref().and_then(|m| m.velocity.as_ref()) {
+        let group = match self.body.mover().and_then(|m| m.velocity.as_ref()) {
             Some(_) => self.group_speed(c.groups, c.masters)?,
             None => None,
         };
-        if let Some(mover) = self.mover.as_mut() {
+        if let Some(mover) = self.body.mover_mut() {
             let at = mover.step_velocity(
                 self.position,
                 c.dt_seconds,
@@ -55,7 +55,7 @@ impl Unit {
                 let [x, y, z] = v.velocity;
                 let speed = crate::math::fmath::sqrt(x * x + y * y + z * z);
                 if SPEED_EPSILON < speed {
-                    self.anim_speed = Some(speed);
+                    self.body.set_anim_speed(speed);
                 }
             }
         }
@@ -117,7 +117,7 @@ impl Unit {
                     }
                     _ => crate::movement::PathAsk::default(),
                 };
-                move_to.update(c.walk(self.mover.as_mut(), me), ask)?
+                move_to.update(c.walk(self.body.mover_mut(), me), ask)?
             }
             None => crate::movement::move_to::MoveStep::default(),
         };
@@ -151,7 +151,7 @@ impl Unit {
             if let Some(t) = self.move_to.take().map(|m| m.target).filter(|&t| t != -1) {
                 c.releases.push((t, self.releaser(c)));
             }
-            if let Some(m) = self.mover.as_mut() {
+            if let Some(m) = self.body.mover_mut() {
                 m.stop()?;
             }
         }
@@ -193,7 +193,7 @@ impl Unit {
                     let goal = crate::movement::move_to::Goal::Point(explore.point);
                     let code = crate::movement::move_to::sub_move_to_update(
                         (&mut explore.move_to, &mut explore.move_wait),
-                        &mut c.walk(self.mover.as_mut(), me),
+                        &mut c.walk(self.body.mover_mut(), me),
                         goal,
                         (0.0, quiet),
                         (waits, stance),
@@ -221,8 +221,8 @@ impl Unit {
     ) -> Result<(), GenieError> {
         if let Some(fly) = self.fly.as_mut().filter(|_| !flies_from_now) {
             let mover = self
-                .mover
-                .as_mut()
+                .body
+                .mover_mut()
                 .ok_or(GenieError::unsupported("a bird without movement state"))?;
             let (speed, radius) = (
                 mover.stats.speed,

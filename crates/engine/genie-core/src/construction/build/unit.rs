@@ -97,7 +97,7 @@ impl Unit {
             stack_made: reads.stack_made,
         };
         let build = self.build.as_mut().expect("above");
-        let mut step = build.update(c.walk(self.mover.as_mut(), me), site, builder)?;
+        let mut step = build.update(c.walk(self.body.mover_mut(), me), site, builder)?;
         record_build_step(c, others, target, &annex_ids, &mut step);
         self.after_build_step(c, others, me, (target, reads.built, by), step)
     }
@@ -279,7 +279,7 @@ impl Unit {
         }
         // the unit's animation stopped (FUN_141161850), the second target let go
         if step.anim_stopped {
-            self.anim_speed = Some(0.0);
+            self.body.set_anim_speed(0.0);
         }
         if let Some(s) = step.site_let_go {
             c.releases.push((s, by));
@@ -442,7 +442,7 @@ fn build_site<'u>(
         starts.push(AnnexStart {
             id: u.id,
             construction,
-            mover: u.mover.as_mut(),
+            mover: u.body.mover_mut(),
             firepower: &mut u.firepower,
             volley: am.volley_fire,
         });
@@ -459,7 +459,7 @@ fn build_site<'u>(
             id: u.id,
             life: &mut u.life,
             construction: u.construction.as_mut()?,
-            mover: u.mover.as_mut(),
+            mover: u.body.mover_mut(),
             firepower: Some(&mut u.firepower),
             roo_called: Some(&mut u.roo_called),
             store: Some(&mut u.store),

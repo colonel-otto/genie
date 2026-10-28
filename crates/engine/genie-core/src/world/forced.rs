@@ -267,7 +267,7 @@ impl World {
         self.spatial.unfreeze(id);
         self.spatial.set_gait(id, forced.gait());
         if let Some(placed) = self.spatial.get(id).copied() {
-            let moving = forced.mover.as_ref().is_some_and(Mover::is_moving);
+            let moving = forced.body.mover().is_some_and(Mover::is_moving);
             self.pathing.moved(id, &placed, moving);
         }
         forced.stopped = false;

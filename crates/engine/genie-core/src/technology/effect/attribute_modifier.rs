@@ -431,7 +431,7 @@ impl World {
             .filter(|u| u.life.master_id == id)
         {
             ids.push(u.id);
-            if let Some(m) = u.mover.as_mut() {
+            if let Some(m) = u.body.mover_mut() {
                 master.follow_moving(&mut m.stats, attribute, &self.graphics, terrain);
             }
             match attribute {

@@ -31,11 +31,11 @@ impl World {
                 .as_ref()
                 .is_some_and(|ai| matches!(ai.current_action, AUTO_SCOUT_ACTION | EXPLORE_ACTION));
             if matches!(class, VILLAGER | FISHING_BOAT) || explorer {
-                if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
+                if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
                     m.ignore_units.clear();
                 }
                 self.object_stop(p, idx)?;
-                if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
+                if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
                     m.stand()?;
                 }
             }
@@ -146,7 +146,7 @@ impl World {
             ));
         }
         let hunt = unit.hunt.as_mut().expect("its top action");
-        hunt.tear_down(unit.mover.as_mut())?;
+        hunt.tear_down(unit.body.mover_mut())?;
         hunt.state = crate::gathering::hunt::IDLE;
         let sprite = crate::gathering::hunt::stand_sprite(
             &hunt.task,
@@ -208,8 +208,7 @@ impl World {
                 let unit = &mut self.players[p].objects[idx];
                 let attack = unit.attack.as_mut().expect("its top action");
                 attack.halt(
-                    unit.mover.as_mut(),
-                    &mut unit.anim_speed,
+                    &mut unit.body,
                     &mut unit.sprite,
                     self.streams.get(Stream::Sprite),
                 )?;
@@ -244,7 +243,7 @@ impl World {
             &self.graphics,
         );
         let released = gather.halt(
-            unit.mover.as_mut(),
+            unit.body.mover_mut(),
             stand,
             &mut unit.sprite,
             self.streams.get(Stream::Sprite),
@@ -268,7 +267,7 @@ impl World {
         let unit = &mut self.players[p].objects[idx];
         let build = unit.build.as_mut().expect("its top action");
         let foundation = build.target;
-        let (counted, targets) = build.halt(unit.mover.as_mut())?;
+        let (counted, targets) = build.halt(unit.body.mover_mut())?;
         if counted {
             self.leave_builders(foundation)?;
         }
@@ -287,7 +286,7 @@ impl World {
         let unit = &mut self.players[p].objects[idx];
         let repair = unit.repair.as_mut().expect("its top action");
         let target = repair.target;
-        if repair.halt(unit.mover.as_mut())? {
+        if repair.halt(unit.body.mover_mut())? {
             self.leave_builders(target)?;
         }
         self.standing_sprite(p, idx)
@@ -305,8 +304,8 @@ impl World {
         let artifact = unit.artifact.as_mut().expect("its top action");
         let (gone, released) = artifact.stop();
         if gone.stops {
-            unit.mover
-                .as_mut()
+            unit.body
+                .mover_mut()
                 .ok_or(GenieError::unsupported(
                     "a walking animal without movement state",
                 ))?

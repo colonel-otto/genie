@@ -92,7 +92,7 @@ impl Unit {
             repair: &mut repair,
         };
         let repair_action = self.repair.as_mut().expect("checked above");
-        let step = repair_action.update(c.walk(self.mover.as_mut(), me), view)?;
+        let step = repair_action.update(c.walk(self.body.mover_mut(), me), view)?;
         repair_write_back(c, others, &set, &original);
         c.attribute_adds.extend(paid.adds);
         self.after_repair_step(c, others, (target, target_kind, counted_in), step)
@@ -214,7 +214,7 @@ impl Unit {
             los: master.map_or(0.0, |m| m.line_of_sight),
             position: self.position,
             radius: master.map_or([0.0; 2], |m| m.radius),
-            speed: self.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+            speed: self.body.mover().map_or(0.0, |m| m.stats.speed),
             scenario,
             firepower: self.firepower,
             capture,
@@ -258,7 +258,7 @@ impl Unit {
             .and_then(|i| points.get(i))
             .copied()
             .unwrap_or([0.0; 3]);
-        if let Some(m) = self.mover.as_mut() {
+        if let Some(m) = self.body.mover_mut() {
             m.clear_user_waypoints();
             for p in &points {
                 m.add_user_waypoint(p[0], p[2], p[1]);

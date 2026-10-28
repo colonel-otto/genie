@@ -56,7 +56,7 @@ impl Unit {
         let Some(mut a) = self.attack.take() else {
             return Ok(());
         };
-        a.tear_down(self.mover.as_mut())?;
+        a.tear_down(self.body.mover_mut())?;
         let by = self.releaser(c);
         for t in [a.target, a.target2] {
             if t != -1 {
@@ -183,8 +183,8 @@ impl Unit {
             ));
         }
         let facing = self
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .map(|m| m.angle)
             .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
         let shot = Shot {
@@ -239,8 +239,8 @@ impl Unit {
                 "a ranged unit of a master the slice does not have",
             ))?;
         let facing = self
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .map(|m| m.angle)
             .ok_or(GenieError::unsupported("a ranged unit that does not move"))?;
         let building = master.class == crate::garrison::BUILDING_CLASS;
@@ -361,6 +361,7 @@ impl Unit {
             angle = crate::objects::facing::drawn_angle(r, f);
         }
         let mut mover = Mover {
+            animated: crate::objects::layers::Animated::default(),
             forward: [1.0, 0.0, 0.0],
             right: [0.0, 0.0, crate::production::spawn::START_RIGHT_Z],
             velocity: None,
@@ -378,7 +379,6 @@ impl Unit {
             last_turn: 0.0,
             angle,
             move_to_point: None,
-            speed_stopped: false,
             pauses: Vec::new(),
             in_the_way: Vec::new(),
             sprite_facets: facets,
@@ -514,7 +514,7 @@ impl Unit {
                 master_id: made.id,
                 master: made.life,
             },
-            mover: Some(mover),
+            body: crate::objects::layers::Body::new(None, Some(mover)),
             missile: Some(crate::combat::missile::Missile {
                 max_range: shot.reach,
                 fired_from: self.id,

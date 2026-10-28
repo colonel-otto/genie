@@ -173,7 +173,7 @@ impl Unit {
             id: self.id,
             life: &mut self.life,
             construction,
-            mover: self.mover.as_mut(),
+            mover: self.body.mover_mut(),
             firepower: Some(&mut self.firepower),
             roo_called: Some(&mut self.roo_called),
             store: Some(&mut self.store),
@@ -488,8 +488,8 @@ impl Unit {
             return;
         };
         if self
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .is_some_and(|m| m.stats.move_algorithm & 1 != 0)
         {
             return;

@@ -31,6 +31,7 @@ calls `Unit::update` (`unit/update.rs`), which runs the object's chain of update
 | File | What it holds |
 | --- | --- |
 | [`facing.rs`](facing.rs) | Where an object faces: its angle (`+0x7e8`, radians on the map, 0 to 2π) and its facet (`+0xe`), counted in its current sprite's facets (`+0x140` -> `+0xa`). |
+| [`layers.rs`](layers.rs) | The object's class chain (FD-045-D06): the game's object classes, each layer holding the one below it, as the save reads them (`RgeMovingObject` holds `rge_animated_object`). |
 | [`lines.rs`](lines.rs) | The unit lines (`resources/_common/dat/unitlines.json`): each line names the masters of one upgrade chain, its first master first. |
 | [`mod.rs`](mod.rs) | One object and what every object has and runs: the object the engine tracks (`unit::Unit`) with its update, its actions' holdings and stops, its life and death, its release, its sprite and facing, and the masters it is made from. |
 | [`release.rs`](release.rs) | An object's leave of the world and its release by the action that held it (slot 0x180); the update's regeneration and hit point check, and a walk's pause. |

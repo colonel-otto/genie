@@ -155,17 +155,14 @@ impl World {
                 kind: master.kind,
                 grouped: master.formation_category != 0,
                 flag_1: master.object_flags & 2 != 0,
-                speed: u.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+                speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
                 position: u.position,
-                moved_at: u
-                    .mover
-                    .as_ref()
-                    .map_or([u.position[0], u.position[1]], |m| {
-                        [m.moved_at[0], m.moved_at[1]]
-                    }),
+                moved_at: u.body.mover().map_or([u.position[0], u.position[1]], |m| {
+                    [m.moved_at[0], m.moved_at[1]]
+                }),
                 state: u.life.state,
                 radius: master.radius[0],
-                restriction: u.mover.as_ref().map(|m| m.stats.restriction),
+                restriction: u.body.mover().map(|m| m.stats.restriction),
             });
         }
         // the units in a group the world holds, with the order's other members of their group

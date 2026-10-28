@@ -470,7 +470,7 @@ impl Unit {
             Owner::WantsPoint => self.post_own(WANTS_POINT, [EXPLORE_ACTION, 0, 0])?,
             Owner::Standing => {}
         }
-        if let Some(m) = self.mover.as_mut() {
+        if let Some(m) = self.body.mover_mut() {
             m.shows_standing();
         }
         if self.sprite.is_some() {

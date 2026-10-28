@@ -82,7 +82,6 @@ impl HuntAction {
         site: Option<DropOff>,
         mut shown: Shown<'_>,
         who: PointWalker,
-        anim_speed: &mut Option<f32>,
     ) -> Result<Dropped, GenieError> {
         if self.timer < 0.0 {
             self.timer += walk.dt;
@@ -127,7 +126,7 @@ impl HuntAction {
             }
             Some(MoveTo::Failed) => {
                 self.timer = DROP_WAIT;
-                *anim_speed = Some(0.0);
+                walk.set_anim_speed(0.0);
                 return Ok(Dropped::Going);
             }
             Some(MoveTo::Arrived) => {
@@ -153,7 +152,7 @@ impl HuntAction {
         }
         if DROP_REACH < site.gap_squared {
             self.timer = DROP_WAIT;
-            *anim_speed = Some(0.0);
+            walk.set_anim_speed(0.0);
             return Ok(Dropped::Going);
         }
         let kind = resource_kind(*held_kind, attributes);

@@ -4,6 +4,7 @@ use crate::GenieError;
 use crate::combat::attack::{Arms, RELOAD_MS, Strike};
 use crate::math::rng::Well512;
 use crate::movement::Mover;
+use crate::objects::layers::Body;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 
 /// The sprites a swing of a unit (its terrain look `look`, its master `master`) takes before its
@@ -61,21 +62,19 @@ pub(crate) fn volleys(
 
 /// Slot 0x68 (`FUN_141217000`): the unit's sprite becomes `g` unless it is already; a new sprite
 /// starts a new instance (`FUN_1413b2ef0`).
-/// [`Attack::arrived_sprite`] for a caller that holds the unit's sprite and animation speed: the
-/// idle sprite of `arms` (slot 0x68), the speed `+0x7b8` cleared.
+/// [`Attack::arrived_sprite`] for a caller that holds the unit's sprite and body: the idle sprite
+/// of `arms` (slot 0x68), the animation speed `+0x7b8` cleared.
 ///
 /// [`Attack::arrived_sprite`]: crate::combat::attack::Attack::arrived_sprite
 pub(crate) fn show_arrived(
     arms: &Arms,
     sprite: &mut Option<ActiveSprite>,
-    anim_speed: &mut Option<f32>,
+    body: &mut Body,
     rng: &mut Well512,
 ) -> Result<(), GenieError> {
     let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
     set_sprite(sprite, g, rng);
-    if let Some(a) = anim_speed.as_mut() {
-        *a = 0.0;
-    }
+    body.set_anim_speed(0.0);
     Ok(())
 }
 

@@ -66,8 +66,8 @@ impl Unit {
         if let Some(artifact) = self.artifact.as_mut() {
             let (gone, released) = artifact.stop();
             if gone.stops {
-                self.mover
-                    .as_mut()
+                self.body
+                    .mover_mut()
                     .ok_or(GenieError::unsupported(
                         "a walking animal without movement state",
                     ))?

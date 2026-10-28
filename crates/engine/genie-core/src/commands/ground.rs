@@ -41,10 +41,10 @@ impl World {
             if master.kind < 30 || u.life.state != 2 || u.top_target() == Some(foundation) {
                 continue;
             }
-            let walking = u.anim_speed.is_some_and(|s| 0.0 < s);
+            let walking = u.body.anim_speed().is_some_and(|s| 0.0 < s);
             let level = u
-                .mover
-                .as_ref()
+                .body
+                .mover()
                 .and_then(|m| m.paths.first())
                 .map(|l| l.state);
             let stands = (owner == 0 && matches!(master.class, 9 | 10))
@@ -102,7 +102,7 @@ impl World {
         let (_, first) = self
             .object(units[0])
             .ok_or(GenieError::unsupported("a unit sent off that is gone"))?;
-        let mover = first.mover.as_ref().ok_or(GenieError::unsupported(
+        let mover = first.body.mover().ok_or(GenieError::unsupported(
             "a unit sent off without movement state",
         ))?;
         let spot = self.spatial.spot_off(

@@ -1187,7 +1187,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
     v.position = [12.5, 10.0, 0.0];
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
-    v.mover = Some(walker);
+    v.body.put_mover(Some(walker));
     v.group.id = 7;
     v.town_bell.flag = true;
     t.players[1].objects.push(v);
@@ -1226,7 +1226,7 @@ fn a_grouped_unit_that_enters_a_building_leaves_its_group() {
         .unwrap();
     let v = &t.players[1].objects[idx];
     assert_eq!((v.life.inside, v.group.id), (Some(100), -1));
-    assert!(v.mover.as_ref().unwrap().speed_stopped);
+    assert_eq!(v.body.mover().unwrap().animated.speed, 0.0);
     let members: Vec<i32> = t.groups.groups[0].members.iter().map(|m| m.id).collect();
     assert_eq!(members, [401]);
 }
@@ -1240,7 +1240,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
     v.position = [12.5, 10.0, 0.0];
     let mut walker = crate::gathering::hunt::tests::walker();
     walker.stats = standing();
-    v.mover = Some(walker);
+    v.body.put_mover(Some(walker));
     v.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 8,
         current_order: -1,
@@ -1448,7 +1448,7 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
     });
-    v.mover = Some(crate::movement::Mover {
+    v.body.put_mover(Some(crate::movement::Mover {
         forward: [1.0, 0.0, 0.0],
         right: [0.0, 0.0, -1.0],
         velocity: None,
@@ -1469,11 +1469,11 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
         last_turn: 0.0,
         angle: 0.0,
         move_to_point: None,
-        speed_stopped: false,
+        animated: crate::objects::layers::Animated::default(),
         pauses: Vec::new(),
         in_the_way: Vec::new(),
         sprite_facets: None,
-    });
+    }));
     t.players[p].objects.push(v);
     t.spatial.insert(
         id,
@@ -1721,13 +1721,13 @@ fn shore_world(at: [f32; 2], ship: [f32; 2]) -> World {
         ..standing()
     };
     mover.moved_at = [ship[0], ship[1], 0.0];
-    t.object_mut(200).unwrap().1.mover = Some(mover);
+    t.object_mut(200).unwrap().1.body.put_mover(Some(mover));
     walker(&mut t, 1, 1000, VILLAGER, at);
     t.object_mut(1000)
         .unwrap()
         .1
-        .mover
-        .as_mut()
+        .body
+        .mover_mut()
         .unwrap()
         .moved_at = [at[0], at[1], 0.0];
     t
@@ -1868,7 +1868,7 @@ fn coast_world(ship: [f32; 2]) -> World {
     mover.stats = sails;
     mover.moved_at = [ship[0], ship[1], 0.0];
     let s = t.object_mut(200).unwrap().1;
-    s.mover = Some(mover);
+    s.body.put_mover(Some(mover));
     s.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 11,
         current_order: -1,

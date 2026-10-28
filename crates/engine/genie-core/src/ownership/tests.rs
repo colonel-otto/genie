@@ -41,8 +41,8 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     let (u, released) = stopped(walking_forager(), 4).unwrap();
     assert_eq!(u.move_to, None);
     assert_eq!(released, []);
-    let m = u.mover.as_ref().unwrap();
-    assert!(m.speed_stopped);
+    let m = u.body.mover().unwrap();
+    assert_eq!(m.animated.speed, 0.0);
     assert_eq!(m.velocity.unwrap().velocity[2], 0.0);
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
@@ -81,11 +81,11 @@ fn a_capture_stop_keeps_the_artifact_and_lets_its_target_go() {
         (None, None, -1, crate::ownership::artifact::CHECK)
     );
     assert_eq!(released, [600]);
-    assert!(u.mover.as_ref().unwrap().speed_stopped);
+    assert_eq!(u.body.mover().unwrap().animated.speed, 0.0);
     let mut t = forage_world();
     let u = &mut t.players[1].objects[0];
     u.artifact = Some(artifact());
-    u.mover = None;
+    u.body.put_mover(None);
     assert_eq!(
         stopped(t, LIVESTOCK).unwrap_err().reason(),
         "a walking animal without movement state"

@@ -328,7 +328,7 @@ impl World {
             r.counted = false;
             r.target = taken;
             r.point = t_at;
-            r.walk_again(unit.mover.as_mut())?;
+            r.walk_again(unit.body.mover_mut())?;
             if counted {
                 self.leave_builders(target)?;
             }
@@ -401,7 +401,7 @@ impl World {
             // the task finder took the new target below state 3, which slot 0x68 keeps
             let _ = self.build_set_target(player, idx, (old.target, old.added), target)?;
             let unit = &mut self.players[player].objects[idx];
-            let (Some(build), mover) = (unit.build.as_mut(), unit.mover.as_mut()) else {
+            let (Some(build), mover) = (unit.build.as_mut(), unit.body.mover_mut()) else {
                 return Err(GenieError::unsupported(
                     "a Build's retarget without its Build",
                 ));
@@ -415,7 +415,7 @@ impl World {
         };
         let (mut build, mut mover) = {
             let unit = &mut self.players[player].objects[idx];
-            (unit.build.take(), unit.mover.take())
+            (unit.build.take(), unit.body.take_mover())
         };
         // FUN_140aaddb0's building: an annex's main building
         let counted = match self.counted_building(target)? {
@@ -432,7 +432,8 @@ impl World {
             computer,
         );
         let unit = &mut self.players[player].objects[idx];
-        (unit.build, unit.mover) = (build, mover);
+        unit.build = build;
+        unit.body.put_mover(mover);
         r?;
         Ok(class)
     }

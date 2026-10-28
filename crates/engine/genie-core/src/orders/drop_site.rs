@@ -177,7 +177,7 @@ impl World {
         let build = unit.build.as_mut().expect("the caller's Build");
         build.added = false;
         let mut walk = crate::movement::move_to::Walk {
-            mover: unit.mover.as_mut(),
+            mover: unit.body.mover_mut(),
             me,
             dt: 0.0,
             world: &mut self.spatial,

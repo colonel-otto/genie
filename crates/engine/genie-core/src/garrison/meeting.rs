@@ -160,7 +160,7 @@ pub(crate) fn meeting_target(
     let action_point = match (t.top_action_kind(), t.move_to) {
         (Some(crate::movement::move_to::MOVE_TO), Some(m)) => m
             .goal
-            .or_else(|| t.mover.as_ref().and_then(|v| v.move_to_point))
+            .or_else(|| t.body.mover().and_then(|v| v.move_to_point))
             .map(|p| [p[0], p[1]])
             .ok_or(UNPLACED),
         // the Transport's point (+0x38, +0x3c), where it sails
@@ -172,7 +172,7 @@ pub(crate) fn meeting_target(
     };
     Ok(MeetingTarget {
         room,
-        speed: t.mover.as_ref().map_or(0.0, |m| m.stats.speed),
+        speed: t.body.mover().map_or(0.0, |m| m.stats.speed),
         state: t.top_action().map_or(0, |a| a.state),
         class: tm.class,
         position: [t.position[0], t.position[1]],
@@ -286,12 +286,12 @@ pub(crate) fn enter_view(
     range: f32,
 ) -> Result<(EnterTarget, (f32, f32), Result<([f32; 2], u8), GenieError>), GenieError> {
     let building = tm.kind == BUILDING;
-    let mover = unit.mover.as_ref();
+    let mover = unit.body.mover();
     let stats = mover.map(|m| m.stats).ok_or(GenieError::unsupported(
         "an Enter's MoveTo of a unit without speed",
     ))?;
     let moved_at = mover.map_or(unit.position, |m| m.moved_at);
-    let target_mover = if building { None } else { t.mover.as_ref() };
+    let target_mover = if building { None } else { t.body.mover() };
     let in_reach = enter_reach(
         spatial,
         masters,
@@ -333,7 +333,7 @@ pub(crate) fn ship_reaches(
     plan: &mut crate::movement::Planning<'_>,
     to: [f32; 3],
 ) -> Result<bool, GenieError> {
-    let Some(m) = ship.mover.as_ref() else {
+    let Some(m) = ship.body.mover() else {
         return Ok(false);
     };
     let me = crate::movement::Me {

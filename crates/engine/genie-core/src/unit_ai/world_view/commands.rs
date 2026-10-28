@@ -187,7 +187,7 @@ impl UnitView<'_> {
             .ok_or(GenieError::unsupported(
                 "an auto scout of a master the slice does not have",
             ))?;
-        let mover = unit.mover.as_ref().ok_or(GenieError::unsupported(
+        let mover = unit.body.mover().ok_or(GenieError::unsupported(
             "an auto scout without movement state",
         ))?;
         let [w, h] = self.spatial.map;

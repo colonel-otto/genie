@@ -574,7 +574,7 @@ impl World {
                 ));
             };
             self.object_stop(p, idx)?;
-            if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
+            if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
                 m.stand()?;
             }
             let g = self.groups.get_mut(group).expect("the group found above");

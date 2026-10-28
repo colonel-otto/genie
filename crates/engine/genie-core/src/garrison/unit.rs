@@ -80,7 +80,7 @@ impl Unit {
             villager && !c.computer,
             self.ai.as_ref().map_or(0, |ai| ai.stance),
         );
-        let walk = c.walk(self.mover.as_mut(), me);
+        let walk = c.walk(self.body.mover_mut(), me);
         let step = self.enter.as_mut().expect("checked above").update(
             walk,
             building,
@@ -189,14 +189,14 @@ impl Unit {
             }
             _ => crate::movement::PathAsk::default(),
         };
-        let walked = t.walk(Some(c.walk(self.mover.as_mut(), me)), ask)?;
+        let walked = t.walk(Some(c.walk(self.body.mover_mut(), me)), ask)?;
         let position = c.spatial.get(self.id).map_or(self.position, |p| p.position);
         let ship = crate::garrison::transport::Ship {
             position,
             radius,
             loaded: !self.garrison.is_empty(),
             map: c.spatial.map,
-            moves: self.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
+            moves: self.body.mover().is_some_and(|m| m.stats.speed != 0.0),
         };
         let mut shore = crate::garrison::transport::MapShore::new(
             c.spatial,
@@ -207,7 +207,7 @@ impl Unit {
         )?;
         let step = t.update(walked, &ship, &mut shore)?;
         if step.changed.stopped
-            && let Some(m) = self.mover.as_mut()
+            && let Some(m) = self.body.mover_mut()
         {
             m.stop()?;
         }
@@ -251,7 +251,7 @@ impl Unit {
             radius: master.radius,
             loaded: !self.garrison.is_empty(),
             map: spatial.map,
-            moves: self.mover.as_ref().is_some_and(|m| m.stats.speed != 0.0),
+            moves: self.body.mover().is_some_and(|m| m.stats.speed != 0.0),
         };
         let restriction = master.terrain_restriction;
         let mut shore = crate::garrison::transport::MapShore::new(
@@ -267,7 +267,7 @@ impl Unit {
             .ok_or(GenieError::unreachable("a sail without its Transport"))?;
         let changed = t.move_to(point, &ship, &mut shore);
         if changed.stopped
-            && let Some(m) = self.mover.as_mut()
+            && let Some(m) = self.body.mover_mut()
         {
             m.stop()?;
         }
@@ -295,7 +295,7 @@ impl Unit {
             .as_mut()
             .ok_or(GenieError::unsupported("an entered unit without its Enter"))?;
         if enter.move_to.take().is_some()
-            && let Some(m) = self.mover.as_mut()
+            && let Some(m) = self.body.mover_mut()
         {
             m.stop()?;
         }
@@ -442,7 +442,7 @@ impl Unit {
         // building and 0, FUN_14102c160: the caller's, `left_group`), then stands (slot 0x560)
         if self.group.id != -1 {
             w.left_group = Some(self.group.id);
-            if let Some(m) = self.mover.as_mut() {
+            if let Some(m) = self.body.mover_mut() {
                 m.stand()?;
             }
         }
@@ -567,7 +567,7 @@ impl Unit {
         if inside_at_start && !default_made {
             if let Some(e) = self.enter.take() {
                 if e.move_to.is_some()
-                    && let Some(m) = self.mover.as_mut()
+                    && let Some(m) = self.body.mover_mut()
                 {
                     m.stop()?;
                 }
@@ -583,7 +583,7 @@ impl Unit {
                     c.releases.push((t, by));
                 }
                 if gone.stops
-                    && let Some(m) = self.mover.as_mut()
+                    && let Some(m) = self.body.mover_mut()
                 {
                     m.stop()?;
                 }

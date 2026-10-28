@@ -192,7 +192,7 @@ impl Unit {
             villager: master.class == 4,
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
-        let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+        let (walk, rng) = c.walk_and_sprites(self.body.mover_mut(), me);
         let shown = crate::gathering::hunt::Shown {
             sprite: &mut self.sprite,
             rng,
@@ -206,7 +206,6 @@ impl Unit {
             site,
             shown,
             who,
-            &mut self.anim_speed,
         )? {
             crate::gathering::hunt::Dropped::Going => {}
             crate::gathering::hunt::Dropped::Load(kind, amount) => {
@@ -293,7 +292,7 @@ impl Unit {
             stance: self.ai.as_ref().map_or(0, |ai| ai.stance),
         };
         let shows = hunt_walk_sprite(hunt, c.graphics, &self.life);
-        let (walk, rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+        let (walk, rng) = c.walk_and_sprites(self.body.mover_mut(), me);
         let shown = crate::gathering::hunt::Shown {
             sprite: &mut self.sprite,
             rng,
@@ -344,7 +343,7 @@ impl Unit {
     /// walk to the point (`set_state` 11, [`crate::gathering::hunt::HuntAction::wait_then_walk`]).
     pub(crate) fn hunt_wait_walk(&mut self, c: &Context<'_>) -> Result<(), GenieError> {
         let hunt = self.hunt.as_mut().expect("the caller's hunt");
-        let mover = self.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         hunt.wait_then_walk(c.dt_seconds, mover)
     }
 }

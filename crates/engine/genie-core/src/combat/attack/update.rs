@@ -9,6 +9,7 @@ use crate::combat::attack::{
 use crate::math::rng::Well512;
 use crate::movement::footprint_gap;
 use crate::movement::move_to::{Goal, MoveTo, Walk};
+use crate::objects::layers::Body;
 use crate::objects::sprite::ActiveSprite;
 
 impl Attack {
@@ -21,7 +22,7 @@ impl Attack {
         &mut self,
         dt: f32,
         armed: bool,
-        anim_speed: &mut Option<f32>,
+        body: &mut Body,
     ) -> Result<(u8, bool), GenieError> {
         self.timer += dt;
         if !armed {
@@ -33,7 +34,7 @@ impl Attack {
                 "an Attack without a target in a state but 1",
             ));
         }
-        *anim_speed = Some(0.0);
+        body.set_anim_speed(0.0);
         Ok((1, false))
     }
 
@@ -43,13 +44,13 @@ impl Attack {
     pub(crate) fn disarmed(
         &self,
         sprite: &mut Option<ActiveSprite>,
-        anim_speed: &mut Option<f32>,
+        body: &mut Body,
         rng: &mut Well512,
     ) -> Result<Option<(i32, [i32; 3])>, GenieError> {
         if self.move_to.is_some() {
             return Err(GenieError::unsupported("a building's Attack with a MoveTo"));
         }
-        *anim_speed = Some(1.0);
+        body.set_anim_speed(1.0);
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;
@@ -86,7 +87,7 @@ impl Attack {
         match self.state {
             // case 0: the unit's animation stops; the list deletes the Attack
             DONE => {
-                *s.anim_speed = Some(0.0);
+                walk.set_anim_speed(0.0);
                 Ok(1)
             }
             // case 3 (state 4) walks the MoveTo to the target, cases 4 and 10 (states 5 and
@@ -99,7 +100,7 @@ impl Attack {
             // unit's animation stops and the update returns 3
             FAILED => {
                 s.posted.push((crate::unit_ai::ACTION_FAILED, [600, 0, 0]));
-                *s.anim_speed = Some(0.0);
+                walk.set_anim_speed(0.0);
                 Ok(3)
             }
             // the states without a case (0, 3, 8 to 10, 12, 14 and above) return 0
@@ -300,9 +301,9 @@ impl Attack {
     pub(super) fn wait_at_seen(
         &mut self,
         walk: &mut Walk<'_>,
-        s: &mut Strike<'_>,
+        s: &Strike<'_>,
     ) -> Result<(), GenieError> {
-        self.enter(GOTO_SEEN, walk, s)?;
+        self.enter(GOTO_SEEN, walk)?;
         self.range = s.own.source.weapon_range;
         self.goto_point(walk)
     }
@@ -349,7 +350,7 @@ impl Attack {
             return Ok(0);
         }
         if self.state == GOTO_SEEN && s.own.player != 0 && SEEN_RANGE <= self.range && !s.computer {
-            self.enter(GOTO_POINT, walk, s)?;
+            self.enter(GOTO_POINT, walk)?;
             self.range = s.own.source.weapon_range;
             self.goto_point(walk)?;
             return Ok(0);

@@ -4,9 +4,9 @@ use crate::GenieError;
 use crate::commands::GatherPoint;
 use crate::construction::build::{BuildAction, Construction};
 use crate::gathering::hunt::{HuntAction, HuntSprites};
-use crate::movement::Mover;
 use crate::movement::fly::Fly;
 use crate::movement::move_to::MoveToAction;
+use crate::objects::layers::Body;
 use crate::objects::lifecycle::Lifecycle;
 use crate::objects::masters::Master;
 use crate::objects::sprite::{ActiveSprite, Graphic};
@@ -59,8 +59,9 @@ pub struct Unit {
     /// counted among its repairers. A building's is its construction's
     /// ([`Construction::builders`]).
     pub builders: u8,
-    /// A moving object's movement state (types 30 and up).
-    pub mover: Option<Mover>,
+    /// Its layers below the action layer ([`Body`]): the animated layer (`+0x7b8`, types 20 and
+    /// up) and the moving one with its movement state (types 30 and up).
+    pub body: Body,
     /// A `MoveTo` as the object's own top action (a wandering animal).
     pub move_to: Option<MoveToAction>,
     /// A bird's Fly action, its top action.
@@ -152,11 +153,9 @@ pub struct Unit {
     pub raider_countdown: i32,
     /// A building's gate lock ([`Gate`]).
     pub gate: Option<Gate>,
-    /// Its active sprite and animation speed (`+0x7b8`, the save's `current_speed`), held from
-    /// an attack's swing on; None while the slice does not know them.
+    /// Its active sprite, held from an attack's swing on; None while the slice does not know it.
+    /// Its clock runs at the animated layer's speed ([`Body::anim_speed`]).
     pub sprite: Option<ActiveSprite>,
-    /// Its animation speed (`+0x7b8`), held with its sprite.
-    pub anim_speed: Option<f32>,
     /// `+0x91c`, `attack_timer`: the time until it may attack again; `mReloadStinger` and
     /// `mReloadPowerup` (`+0xb40`, `+0xa28`), which change its reload time.
     pub attack_timer: f32,

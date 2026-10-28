@@ -9,6 +9,7 @@ use crate::combat::attack::{
 use crate::math::rng::Well512;
 use crate::movement::move_to::{MoveTo, MoveWait, Walk};
 use crate::movement::{Mover, footprint_gap, footprint_gap_squared};
+use crate::objects::layers::Body;
 use crate::objects::sprite::{ActiveSprite, Graphic};
 
 impl Attack {
@@ -230,11 +231,11 @@ impl Attack {
     pub fn fail_at_start(
         &mut self,
         sprite: &mut Option<ActiveSprite>,
-        anim_speed: &mut Option<f32>,
+        body: &mut Body,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
         self.state = FAILED;
-        *anim_speed = Some(1.0);
+        body.set_anim_speed(1.0);
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;

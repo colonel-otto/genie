@@ -163,7 +163,7 @@ fn a_unit_order_drop_off_sends_a_carrying_builder_to_the_table_s_drop_site() {
             amount: 5.0,
             ..crate::objects::lifecycle::Lifecycle::default()
         },
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         build: Some(crate::construction::build::BuildAction {
             state: 6,
             added: true,
@@ -330,8 +330,8 @@ fn a_work_attack_on_a_touching_target_starts_its_move_to_arrived() {
         )
     );
     assert_eq!(unit.sprite.map(|s| s.graphic.id), Some(300));
-    assert_eq!(unit.anim_speed, Some(0.0));
-    assert_eq!(unit.mover.as_ref().map(|m| m.stats.speed), Some(0.0));
+    assert_eq!(unit.body.anim_speed(), Some(0.0));
+    assert_eq!(unit.body.mover().map(|m| m.stats.speed), Some(0.0));
 }
 
 /// The attack task's aim (`FUN_141189b20`): Gaia's wolf aims at itself; a building annex at
@@ -587,7 +587,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     t.spatial.insert(50, placed(10.4, 10, 0, 126));
     let mut rng = Well512::default();
     let unit = &mut t.players[1].objects[0];
-    unit.mover = Some(walker);
+    unit.body.put_mover(Some(walker));
     unit.sprite = Some(crate::objects::sprite::ActiveSprite::start(
         Graphic {
             id: 302,
@@ -595,7 +595,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
         },
         &mut rng,
     ));
-    unit.anim_speed = Some(1.0);
+    unit.body.set_anim_speed(1.0);
     unit.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 6,
         current_order: -1,
@@ -877,7 +877,7 @@ fn an_order_to_another_player_s_unit_goes_to_its_queue_with_the_setting() {
         m.moving = Some(walker.stats);
     }
     let unit = &mut t.players[1].objects[0];
-    unit.mover = Some(walker);
+    unit.body.put_mover(Some(walker));
     unit.ai = Some(crate::unit_ai::UnitAi::default());
     assert_eq!(t.checked_units(2, &[11]), [11]);
     let order = MoveOrder {
@@ -1019,7 +1019,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     t.players[1].objects.push(Unit {
         id: 50,
         gate: Some(crate::world::Gate::default()),
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 79,
             state: 2,
@@ -1029,7 +1029,7 @@ fn a_gate_command_toggles_the_lock_of_a_building_of_its_player() {
     });
     let building = |t: &World| {
         let b = &t.players[1].objects[1];
-        (b.gate.unwrap().locked, b.mover.as_ref().unwrap().last_move)
+        (b.gate.unwrap().locked, b.body.mover().unwrap().last_move)
     };
     t.gate(1, 50).unwrap();
     assert_eq!(building(&t), (true, 401));
@@ -1138,7 +1138,7 @@ fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
         m.moving = Some(walker.stats);
     }
     let unit = &mut t.players[1].objects[0];
-    unit.mover = Some(walker);
+    unit.body.put_mover(Some(walker));
     (unit.pasture, unit.my_pasture) = (-1, -1);
     unit.ai = Some(crate::unit_ai::UnitAi {
         current_order: MOVE_ORDER,
@@ -1193,7 +1193,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
             m.moving = Some(walker.stats);
         }
         let unit = &mut t.players[1].objects[0];
-        unit.mover = Some(walker);
+        unit.body.put_mover(Some(walker));
         (unit.pasture, unit.my_pasture) = (-1, -1);
         unit.ai = Some(crate::unit_ai::UnitAi::default());
         t.spatial.map = [100, 100];
@@ -1205,7 +1205,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
     t.interact_unit(1, 11, &[12], Some([21.0, 20.0]), &interact)
         .unwrap();
     let u = &t.players[1].objects[0];
-    let m = u.mover.as_ref().unwrap();
+    let m = u.body.mover().unwrap();
     assert_eq!((m.waiting, &m.ignore_units[..]), (1, &[12][..]));
     let queued: Vec<_> =
         u.ai.as_ref()
@@ -1237,7 +1237,7 @@ fn an_interact_s_unit_queues_its_offset_point_and_takes_no_work_on_itself() {
     assert_eq!(u.ai.as_ref().unwrap().orders, []);
     assert_eq!(u.move_to, None);
     let mut t = mover();
-    t.players[1].objects[0].mover = None;
+    t.players[1].objects[0].body.put_mover(None);
     let reason = |t: &mut World| {
         t.interact_unit(1, 11, &[], None, &interact)
             .unwrap_err()
@@ -1728,7 +1728,7 @@ fn a_master_change_s_unmodelled_parts_fail() {
         "a master change that changes the damage sprites (FUN_1411859a0)"
     );
     let walking = Unit {
-        mover: Some(crate::gathering::hunt::tests::walker()),
+        body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         ..unit.clone()
     };
     assert_eq!(
@@ -1842,7 +1842,7 @@ fn followers() -> World {
         ..Master::default()
     }]);
     for u in &mut t.players[1].objects {
-        u.mover = Some(walker.clone());
+        u.body.put_mover(Some(walker.clone()));
         u.ai = Some(crate::unit_ai::UnitAi {
             current_order: -1,
             current_action: -1,
@@ -1946,7 +1946,7 @@ fn followers_side_by_side_take_their_offsets_from_the_target() {
             (MOVE_ORDER, crate::unit_ai::MOVE_ACTION)
         );
         assert_eq!((ai.current_target, ai.target_point), (30, [x, 20.0, 0.0]));
-        assert_eq!(unit.mover.as_ref().unwrap().ignore_units, [other]);
+        assert_eq!(unit.body.mover().unwrap().ignore_units, [other]);
         assert_eq!(unit.move_to.unwrap().target, 30);
     }
 }
@@ -2288,7 +2288,7 @@ fn a_led_sheep_takes_the_idle_livestock_about_it_to_the_drop_site() {
     let sheep = |id, x: f32, y: f32| Unit {
         id,
         position: [x, y, 0.0],
-        mover: Some(walker.clone()),
+        body: crate::objects::layers::Body::Moving(walker.clone()),
         life: crate::objects::lifecycle::Lifecycle {
             master_id: 594,
             state: 2,
@@ -2640,7 +2640,8 @@ fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
     let mut t = soldiers(units, members);
     t.dt = 100;
     for u in &mut t.players[1].objects {
-        u.mover = Some(crate::gathering::hunt::tests::walker());
+        u.body
+            .put_mover(Some(crate::gathering::hunt::tests::walker()));
         u.ai = Some(crate::unit_ai::UnitAi {
             ai_type: 13,
             current_order: -1,
@@ -2674,7 +2675,7 @@ fn a_lone_unit_patrols_to_its_waypoint() {
         (move_to.goal, move_to.target, move_to.range, move_to.run),
         (Some([30.0, 20.0, 1.5]), -1, 0.0, false)
     );
-    let m = u.mover.as_ref().unwrap();
+    let m = u.body.mover().unwrap();
     assert_eq!(
         (m.waiting, m.ignore_units.len(), m.user_waypoints.len()),
         (1, 0, 0)
@@ -2706,10 +2707,7 @@ fn a_lone_unit_s_waypoints_but_the_last_become_its_own() {
     t.patrol(1, &[11], &w, false).unwrap();
     let u = &t.players[1].objects[0];
     assert_eq!(u.move_to.unwrap().goal, Some([30.0, 20.0, 0.0]));
-    assert_eq!(
-        u.mover.as_ref().unwrap().user_waypoints,
-        [[25.5, 0.0, 20.5]]
-    );
+    assert_eq!(u.body.mover().unwrap().user_waypoints, [[25.5, 0.0, 20.5]]);
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(ai.target_point, [30.5, 20.5, 0.0]);
     assert!(ai.patrol_path.is_some());
@@ -2836,11 +2834,11 @@ fn loose_patrollers_ignore_each_other_and_one_at_its_waypoint_stays() {
     let [a, b] = &t.players[1].objects[..] else {
         panic!("two units")
     };
-    assert_eq!(a.mover.as_ref().unwrap().ignore_units, [12]);
-    assert_eq!(b.mover.as_ref().unwrap().ignore_units, [11]);
+    assert_eq!(a.body.mover().unwrap().ignore_units, [12]);
+    assert_eq!(b.body.mover().unwrap().ignore_units, [11]);
     assert!(a.move_to.is_some() && b.move_to.is_none());
     assert_eq!(b.ai.as_ref().unwrap().current_order, -1);
-    assert_eq!(b.mover.as_ref().unwrap().waiting, 1);
+    assert_eq!(b.body.mover().unwrap().waiting, 1);
 }
 
 /// `FUN_140fd9f40`: the splitter keeps group 5 (the order's 11 and 12 are all of it); the
@@ -2860,7 +2858,7 @@ fn a_kept_group_takes_the_loose_soldiers_about_it() {
     for u in &mut t.players[1].objects {
         let mut m = crate::gathering::hunt::tests::walker();
         m.moved_at = u.position;
-        u.mover = Some(m);
+        u.body.put_mover(Some(m));
     }
     t.groups.get_mut(5).unwrap().motion.position[0] = [21.0, 0.0, 20.0];
     let mut split = Split {
@@ -3281,7 +3279,7 @@ fn an_attack_task_settles_what_its_command_answered() {
             .unwrap();
         let unit = &mut t.players[1].objects[0];
         let attack = unit.attack.take().expect("the soldier's Attack");
-        unit.anim_speed = Some(0.5);
+        unit.body.set_anim_speed(0.5);
         let mut commanded = Commanded {
             attack,
             arrived: false,
@@ -3306,7 +3304,7 @@ fn an_attack_task_settles_what_its_command_answered() {
             .unwrap();
         let unit = &t.players[1].objects[0];
         let notifies = unit.ai.as_ref().map(|ai| ai.notifies.len());
-        (attack, shown_sprite(&t), unit.anim_speed, notifies)
+        (attack, shown_sprite(&t), unit.body.anim_speed(), notifies)
     };
     let (plain, sprite, speed, notifies) = settled(|_| {}, true);
     assert_eq!((sprite, speed), (Some(300), Some(0.5)));

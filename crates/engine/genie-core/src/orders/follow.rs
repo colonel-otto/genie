@@ -180,12 +180,13 @@ impl World {
                 "a FOLLOW of a sleeping object of a type of 30 or more",
             ));
         };
-        let mover = self.players[p].objects[idx]
-            .mover
-            .as_mut()
-            .ok_or(GenieError::unsupported(
-                "a followed unit without movement state",
-            ))?;
+        let mover =
+            self.players[p].objects[idx]
+                .body
+                .mover_mut()
+                .ok_or(GenieError::unsupported(
+                    "a followed unit without movement state",
+                ))?;
         mover.ignore_units.clear();
         mover.waiting = 1;
         for (k, &other) in loose.iter().enumerate() {
@@ -357,7 +358,7 @@ impl World {
         let master = self.master_of(player, self.players[player].objects[idx].life.master_id)?;
         let range = crate::movement::move_to::object_range(0.0, Some(master));
         let unit = &mut self.players[player].objects[idx];
-        let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
+        let mover = unit.body.mover_mut().ok_or(GenieError::unsupported(
             "a moved unit without movement state",
         ))?;
         let move_to = crate::movement::move_to::MoveToAction::to_object(

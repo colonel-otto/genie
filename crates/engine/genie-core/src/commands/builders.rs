@@ -81,7 +81,7 @@ impl World {
                     notified: true,
                 };
                 self.order_work(q, idx, &work)?;
-            } else if let Some(m) = self.players[q].objects[idx].mover.as_mut() {
+            } else if let Some(m) = self.players[q].objects[idx].body.mover_mut() {
                 m.ignore_units.clear();
             }
         }
@@ -213,7 +213,7 @@ impl World {
         position: [f32; 3],
     ) -> Result<(), GenieError> {
         let unit = &mut self.players[q].objects[idx];
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.ignore_units.clear();
         }
         let state = unit.life.state;
@@ -250,7 +250,7 @@ impl World {
         position: [f32; 3],
     ) -> Result<(), GenieError> {
         let site_class = i32::from(self.master_of(fp, master)?.class);
-        if let Some(m) = self.players[player].objects[idx].mover.as_mut() {
+        if let Some(m) = self.players[player].objects[idx].body.mover_mut() {
             m.ignore_units.clear();
         }
         // slot 0x128 -> slot 0x7e8 (task filter -1): the villager's town-bell record, its

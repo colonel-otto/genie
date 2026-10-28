@@ -3,6 +3,7 @@
 //! and facing, and the masters it is made from.
 
 pub mod facing;
+pub mod layers;
 pub mod lifecycle;
 pub mod lines;
 pub mod masters;

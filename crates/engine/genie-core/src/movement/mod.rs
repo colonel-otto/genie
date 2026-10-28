@@ -17,6 +17,7 @@ use self::path_points::{
 use crate::GenieError;
 use crate::map::spatial::{Placed, Spatial};
 use crate::math::fmath::{self, Vec3};
+use crate::objects::layers::Animated;
 use crate::objects::unit::Unit;
 
 pub(crate) mod ai_moves;
@@ -195,9 +196,12 @@ pub struct MoveStats {
     pub weapon_range: f32,
 }
 
-/// A moving unit's movement state.
+/// The moving object's own layer (`RGE_Moving_Object`, types 30 and up) with the animated layer
+/// below it ([`crate::objects::layers`]): a moving unit's movement state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Mover {
+    /// The animated layer below it (`+0x7b8`), which its stop clears ([`Mover::stop`]).
+    pub animated: Animated,
     /// `+0x830`, a unit vector on the ground.
     pub forward: Vec3,
     /// `+0x83c`.
@@ -242,9 +246,6 @@ pub struct Mover {
     /// the target reads ([`crate::movement::move_to::target_moved`]). A stop leaves it (the motion step's
     /// pause stops a unit whose `MoveTo` goes on); a new `MoveTo` sets it.
     pub move_to_point: Option<[f32; 3]>,
-    /// A stop (slot 0x5d0) cleared the object's animation speed (`+0x7b8`), which the unit
-    /// holds: [`crate::objects::unit::Unit`] takes it.
-    pub speed_stopped: bool,
     /// The pauses its walk gave units it met (slot 0x5f0 on each: the met unit's walked level's
     /// `+0x34`), for the caller to hand on.
     pub pauses: Vec<(i32, f32)>,
@@ -593,20 +594,10 @@ fn remove_point(points: &mut Vec<Vec3>, i: i32) -> bool {
 impl Unit {
     /// Slot 0x5d0 of a unit whose `MoveTo` went.
     pub(crate) fn stop_mover(&mut self) -> Result<(), GenieError> {
-        self.mover
-            .as_mut()
+        self.body
+            .mover_mut()
             .ok_or(crate::world::WALKER_UNMOVING)?
             .stop()
-    }
-
-    /// A stop since the last look cleared the animation speed (`+0x7b8`, [`Mover::speed_stopped`]).
-    ///
-    /// [`Mover::speed_stopped`]: crate::movement::Mover::speed_stopped
-    pub(crate) fn take_stopped_speed(&mut self) {
-        if let Some(m) = self.mover.as_mut().filter(|m| m.speed_stopped) {
-            m.speed_stopped = false;
-            self.anim_speed = Some(0.0);
-        }
     }
 }
 

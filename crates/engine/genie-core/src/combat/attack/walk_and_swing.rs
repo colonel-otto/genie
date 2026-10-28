@@ -132,9 +132,7 @@ impl Attack {
                     .idle_sprite
                     .ok_or(crate::world::NO_STANDING_SPRITE)?;
                 set_sprite(s.sprite, g, s.sprite_rng);
-                if let Some(a) = s.anim_speed.as_mut() {
-                    *a = 0.0;
-                }
+                walk.set_anim_speed(0.0);
             }
             return Ok(false);
         };
@@ -146,9 +144,7 @@ impl Attack {
                 .idle_sprite
                 .ok_or(crate::world::NO_STANDING_SPRITE)?;
             set_sprite(s.sprite, g, s.sprite_rng);
-            if let Some(a) = s.anim_speed.as_mut() {
-                *a = 0.0;
-            }
+            walk.set_anim_speed(0.0);
         }
         self.move_to = Some(state);
         Ok(true)
@@ -299,7 +295,7 @@ impl Attack {
         }
         self.pending = false;
         if s.victim.hp <= 0.0 {
-            return self.enter(KILLED, walk, s);
+            return self.enter(KILLED, walk);
         }
         let rest = s.reload - f32::from(sprite.graphic.frames) * sprite.graphic.frame_duration;
         self.rest = rest;
@@ -330,7 +326,7 @@ impl Attack {
             self.arms.fire_frame,
             sprite.frame,
         ) {
-            AfterHit::Done => return self.enter(KILLED, walk, s),
+            AfterHit::Done => return self.enter(KILLED, walk),
             AfterHit::Ready => return self.ready(walk, s),
             // readyToAttack with its third argument 0: a target out of reach is followed
             // (`set_state` 4); a ready unit only faces it; the swing goes on either way
@@ -365,7 +361,7 @@ impl Attack {
             if changed && let Some(current) = s.sprite.map(|sp| sp.graphic) {
                 let _ = reset_sprite(s.sprite, current);
             }
-            *s.anim_speed = Some(1.0);
+            walk.set_anim_speed(1.0);
         }
         self.ready(walk, s)
     }

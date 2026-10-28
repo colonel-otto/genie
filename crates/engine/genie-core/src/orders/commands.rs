@@ -92,7 +92,7 @@ impl World {
         let locked = unit.gate.is_some_and(|g| g.locked);
         lock_gate(unit, !locked, now)?;
         // the walks of this update read the last move time the lock set
-        if let Some(t) = unit.mover.as_ref().map(|m| m.last_move) {
+        if let Some(t) = unit.body.mover().map(|m| m.last_move) {
             self.spatial.set_last_move(id, t);
         }
         Ok(())
@@ -248,7 +248,7 @@ impl World {
                 ai.orders.clear();
                 ai.idle_timer = ai.adjusted_idle_timeout;
             }
-            if let Some(m) = u.mover.as_mut() {
+            if let Some(m) = u.body.mover_mut() {
                 m.ignore_units.clear();
             }
             // a sleeping object is of a type below 30 (only slot 0x180 puts one to sleep), whose
@@ -257,7 +257,7 @@ impl World {
                 continue;
             };
             self.object_stop(p, idx)?;
-            if let Some(m) = self.players[p].objects[idx].mover.as_mut() {
+            if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
                 m.stand()?;
             }
         }
@@ -413,7 +413,7 @@ impl World {
     /// slice holds it.
     pub(crate) fn standing_sprite(&mut self, p: usize, idx: usize) -> Result<(), GenieError> {
         let unit = &mut self.players[p].objects[idx];
-        if let Some(m) = unit.mover.as_mut() {
+        if let Some(m) = unit.body.mover_mut() {
             m.shows_standing();
         }
         if unit.sprite.is_none() {

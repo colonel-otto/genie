@@ -572,7 +572,7 @@ mod tests {
         let mut lead = unit(10, 15.0, 10.5);
         let mut mover = crate::gathering::hunt::tests::walker();
         mover.moved_at = lead.position;
-        lead.mover = Some(mover);
+        lead.body.put_mover(Some(mover));
         let units = vec![lead, unit(11, 10.2, 10.1)];
         let flanked = |t: &mut World| {
             t.groups.groups[0].formation_locked_type = crate::groups::formation::FLANKED;
@@ -602,7 +602,9 @@ mod tests {
             t.groups.groups[0].members.truncate(2);
         };
         let mut missile = unit(-1, 3.0, 3.0);
-        missile.mover = Some(crate::gathering::hunt::tests::walker());
+        missile
+            .body
+            .put_mover(Some(crate::gathering::hunt::tests::walker()));
         let mut t = front_world(vec![units[0].clone(), units[1].clone(), missile]);
         flanked(&mut t);
         t.move_position_to_front(1, 100.0).unwrap();
@@ -628,7 +630,7 @@ mod tests {
                     if let Some(f) = f {
                         let mut mover = crate::gathering::hunt::tests::walker();
                         mover.forward = *f;
-                        u.mover = Some(mover);
+                        u.body.put_mover(Some(mover));
                     }
                     u
                 })

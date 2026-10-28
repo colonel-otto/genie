@@ -206,7 +206,7 @@ impl Unit {
                 .get_known(v.id)?
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
-        let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,
@@ -225,7 +225,7 @@ impl Unit {
         if site != -1 {
             c.releases.push((site, by));
         }
-        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -269,7 +269,7 @@ impl Unit {
         }
         ai.end_order_and_action()?;
         let mut hunt = self.hunt.take().expect("the caller's hunt");
-        hunt.tear_down(self.mover.as_mut())?;
+        hunt.tear_down(self.body.mover_mut())?;
         self.hunt_release(c, [hunt.target, hunt.carry_to]);
         Ok(true)
     }
@@ -331,7 +331,7 @@ impl Unit {
             .masters
             .and_then(|m| m.get(self.life.master_id))
             .ok_or(crate::world::HUNTER_MASTER)?;
-        let mover = self.mover.as_ref().ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = self.body.mover().ok_or(crate::world::HUNTER_UNMOVING)?;
         let radius =
             crate::unit_ai::civilian_search_radius(master.line_of_sight, master.search_radius);
         let search = Search {
@@ -419,7 +419,7 @@ impl Unit {
                 "a hunt without a point that found nothing after its drop-off (set_state 2)",
             ));
         }
-        let mover = self.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = self.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         hunt.search_walk(mover)
     }
 
@@ -483,7 +483,7 @@ impl Unit {
                 .get_known(found)?
                 .ok_or(GenieError::unsupported("a hunt's target without a place"))?,
         );
-        let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,
@@ -502,7 +502,7 @@ impl Unit {
         let drops_here = master.drop_sites.contains(&t.life.master_id);
         let held = self.life.amount;
         let by = self.releaser(c);
-        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.mover.as_mut()) else {
+        let (Some(hunt), Some(mover)) = (self.hunt.as_mut(), self.body.mover_mut()) else {
             return Err(GenieError::unsupported(
                 "a hunter without its hunt or movement state",
             ));
@@ -520,7 +520,7 @@ impl Unit {
                 crate::combat::attack::show_arrived(
                     &arms,
                     &mut self.sprite,
-                    &mut self.anim_speed,
+                    &mut self.body,
                     c.streams.get(Stream::Sprite),
                 )?;
             }
@@ -548,7 +548,7 @@ impl Unit {
         if !failed {
             return Ok(());
         }
-        if let Some(m) = self.mover.as_mut() {
+        if let Some(m) = self.body.mover_mut() {
             m.shows_standing();
         }
         if self.sprite.is_some() {

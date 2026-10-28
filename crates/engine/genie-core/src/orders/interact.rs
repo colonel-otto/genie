@@ -60,7 +60,7 @@ impl World {
         let unit = &mut self.players[player].objects[idx];
         // its ignore list empties, it waits to move and lists the others; an object that does
         // not move holds no movement state, which only a walk reads
-        match unit.mover.as_mut() {
+        match unit.body.mover_mut() {
             Some(mover) => {
                 mover.ignore_units.clear();
                 mover.waiting = 1;

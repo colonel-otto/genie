@@ -1009,7 +1009,7 @@ mod stack_tests {
             .unwrap();
             let gate = t.players[1].objects.iter().find(|u| u.id == 8768).unwrap();
             assert_eq!(gate.gate.map(|g| g.locked), Some(locked));
-            let last_move = gate.mover.as_ref().map(|m| m.last_move);
+            let last_move = gate.body.mover().map(|m| m.last_move);
             assert_eq!(
                 last_move,
                 Some(if locked { 5001 } else { 5000 }),

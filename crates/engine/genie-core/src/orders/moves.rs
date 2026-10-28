@@ -59,7 +59,7 @@ impl World {
             .map(|(tp, t)| (t.life.master_id, tp));
         let unit = &mut self.players[player].objects[idx];
         // FUN_141197da0, then slot 0x2a0 with 1: it waits to move
-        let mover = unit.mover.as_mut().ok_or(GenieError::unsupported(
+        let mover = unit.body.mover_mut().ok_or(GenieError::unsupported(
             "a moved unit without movement state",
         ))?;
         mover.ignore_units.clear();
@@ -169,7 +169,7 @@ impl World {
                 point,
                 0.0,
                 false,
-                unit.mover.as_mut(),
+                unit.body.mover_mut(),
             );
             if move_to.shows_standing() {
                 unit.shows_standing_sprite(

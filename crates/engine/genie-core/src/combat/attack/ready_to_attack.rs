@@ -22,7 +22,7 @@ impl Attack {
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
     ) -> Result<(), GenieError> {
-        self.enter(READY, walk, s)?;
+        self.enter(READY, walk)?;
         if self.target == -1 && self.point[0] == NONE {
             if !self.sub_action {
                 s.posted
@@ -46,9 +46,9 @@ impl Attack {
         s: &mut Strike<'_>,
         gap: f32,
     ) -> Result<(), GenieError> {
-        self.enter(MOVE, walk, s)?;
+        self.enter(MOVE, walk)?;
         if self.moving(s.own.source.weapon_range, gap) {
-            self.arrived_sprite(s)?;
+            self.arrived_sprite(s, walk.mover.as_deref_mut())?;
         }
         Ok(())
     }

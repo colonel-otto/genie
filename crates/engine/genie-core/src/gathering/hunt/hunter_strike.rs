@@ -87,10 +87,9 @@ impl Unit {
             .is_some_and(|m| crate::combat::attack::volleys(master, m));
         let swing_sprites =
             crate::combat::attack::swing_sprites(self.abilities.look.as_ref(), master, c.graphics);
-        let (walk, sprite_rng) = c.walk_and_sprites(self.mover.as_mut(), me);
+        let (walk, sprite_rng) = c.walk_and_sprites(self.body.mover_mut(), me);
         let mut strike = Strike {
             sprite: &mut self.sprite,
-            anim_speed: &mut self.anim_speed,
             standing,
             volleys,
             attack_timer: &mut self.attack_timer,
@@ -169,7 +168,7 @@ impl Unit {
             });
             if !(tree && self.hunt_tree_search(c, others, None, Some(TREE_NEAR))?) {
                 let hunt = self.hunt.as_mut().expect("above");
-                hunt.tear_down(self.mover.as_mut())?;
+                hunt.tear_down(self.body.mover_mut())?;
                 hunt.state = crate::gathering::hunt::SEARCH;
                 self.hunt_search_state(c, others)?;
             }
@@ -203,7 +202,7 @@ impl Unit {
                 .ok_or(GenieError::unsupported("a hunt's object without a place"))
         };
         let (me_at, them) = (at(self.id)?, at(action.target)?);
-        let speed = self.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let speed = self.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             self.ai.as_ref(),
             speed,

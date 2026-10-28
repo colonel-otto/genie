@@ -369,8 +369,9 @@ impl World {
                 master: made.life,
             },
             ai,
-            // FUN_1411580a0: facing x (an immediate 1.0), its right -z, not waiting
-            mover: Some(Mover::new_object(
+            // FUN_1411580a0: facing x (an immediate 1.0), its right -z, not waiting; the animated
+            // object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
+            body: crate::objects::layers::Body::Moving(Mover::new_object(
                 moving,
                 position,
                 self.world_time,
@@ -384,8 +385,6 @@ impl World {
             // the TRIBE combat setup (FUN_14121df60): the master's volley fire
             firepower: made.volley_fire,
             sprite: Some(sprite),
-            // the animated object's constructor (FUN_141070cf0): animation speed (+0x7b8) 0
-            anim_speed: Some(0.0),
             // livestock's default task, the Artifact, starts once its action list is empty
             default_artifact: made
                 .default_task()

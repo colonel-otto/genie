@@ -9,19 +9,24 @@ use crate::combat::attack::{
 use crate::math::rng::Well512;
 use crate::movement::Mover;
 use crate::movement::move_to::{MoveTo, Walk};
+use crate::objects::layers::Body;
 use crate::objects::sprite::ActiveSprite;
 
 impl Attack {
     /// A `MoveTo` of the attack that starts arrived (its `set_state` 1, not quiet): the unit shows
     /// its idle sprite (slot 0x68) and its `+0x7b8` clears.
-    pub(crate) fn arrived_sprite(&self, s: &mut Strike<'_>) -> Result<(), GenieError> {
+    pub(crate) fn arrived_sprite(
+        &self,
+        s: &mut Strike<'_>,
+        mover: Option<&mut Mover>,
+    ) -> Result<(), GenieError> {
         let g = self
             .arms
             .idle_sprite
             .ok_or(crate::world::NO_STANDING_SPRITE)?;
         set_sprite(s.sprite, g, s.sprite_rng);
-        if let Some(a) = s.anim_speed.as_mut() {
-            *a = 0.0;
+        if let Some(m) = mover {
+            m.animated.speed = 0.0;
         }
         Ok(())
     }
@@ -78,20 +83,12 @@ impl Attack {
 
     /// The start of every `set_state` (`0x140a820c0`): the sub-actions go (a `MoveTo`'s teardown stops
     /// the unit and its animation, `+0x7b8`), then the state.
-    pub(super) fn enter(
-        &mut self,
-        state: u8,
-        walk: &mut Walk<'_>,
-        s: &mut Strike<'_>,
-    ) -> Result<(), GenieError> {
+    pub(super) fn enter(&mut self, state: u8, walk: &mut Walk<'_>) -> Result<(), GenieError> {
         if self.move_to.take().is_some() {
             walk.mover
                 .as_deref_mut()
                 .ok_or(crate::world::ATTACKER_UNMOVING)?
                 .stop()?;
-            if let Some(a) = s.anim_speed.as_mut() {
-                *a = 0.0;
-            }
         }
         self.state = state;
         Ok(())
@@ -183,19 +180,17 @@ impl Attack {
     /// An attacker walking without movement state, or without a standing sprite.
     pub(crate) fn halt(
         &mut self,
-        mover: Option<&mut Mover>,
-        anim_speed: &mut Option<f32>,
+        body: &mut Body,
         sprite: &mut Option<ActiveSprite>,
         rng: &mut Well512,
     ) -> Result<(), GenieError> {
         if self.move_to.take().is_some() {
-            mover.ok_or(crate::world::ATTACKER_UNMOVING)?.stop()?;
-            if let Some(a) = anim_speed.as_mut() {
-                *a = 0.0;
-            }
+            body.mover_mut()
+                .ok_or(crate::world::ATTACKER_UNMOVING)?
+                .stop()?;
         }
         self.state = DONE;
-        *anim_speed = Some(1.0);
+        body.set_anim_speed(1.0);
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;
@@ -210,8 +205,8 @@ impl Attack {
         walk: &mut Walk<'_>,
         s: &mut Strike<'_>,
     ) -> Result<(), GenieError> {
-        self.enter(state, walk, s)?;
-        *s.anim_speed = Some(1.0);
+        self.enter(state, walk)?;
+        walk.set_anim_speed(1.0);
         let idle = self.arms.idle_sprite.ok_or(GenieError::unsupported(
             "an Attack's unit without a standing sprite",
         ))?;

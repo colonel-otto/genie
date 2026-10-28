@@ -55,8 +55,8 @@ impl Unit {
             range: reach as i32 as i16,
         };
         let mover = self
-            .mover
-            .as_ref()
+            .body
+            .mover()
             .ok_or(GenieError::unsupported("a builder without movement state"))?;
         let restriction = mover.stats.restriction;
         let (player, me_id, foreign, every) = (c.player, self.id, c.foreign, c.every_masters);

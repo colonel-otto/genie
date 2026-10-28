@@ -389,8 +389,8 @@ impl Mover {
 
     /// Slot 0x5d0 (`FUN_14108c2f0` -> `FUN_141161730`): the unit stops: its speed and its
     /// acceleration along its forward vector go to 0 (slots 0x598 and 0x5a8, on velocity data it
-    /// has), it stops waiting to move (`+0x7f9`, slot 0x2a0) and its own ignore list (`+0x678`)
-    /// empties. `+0x7b8` is cleared too ([`Mover::speed_stopped`]); a master whose move
+    /// has), it stops waiting to move (`+0x7f9`, slot 0x2a0), its own ignore list (`+0x678`)
+    /// empties and its animated layer's speed (`+0x7b8`) is 0 at once. A master whose move
     /// algorithm has bit 0 also resets the unit's sprite (`+0x78c`, `+0x958`), which is not
     /// modelled.
     pub(crate) fn stop(&mut self) -> Result<(), GenieError> {
@@ -405,7 +405,7 @@ impl Mover {
         }
         self.waiting = 0;
         self.ignore_units.clear();
-        self.speed_stopped = true;
+        self.animated.speed = 0.0;
         Ok(())
     }
 

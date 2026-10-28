@@ -82,7 +82,7 @@ impl<'u> UnitView<'u> {
             .spatial
             .get(id)
             .ok_or(crate::world::ATTACKER_UNPLACED)?;
-        let speed = unit.mover.as_ref().map_or(0.0, |m| m.stats.speed);
+        let speed = unit.body.mover().map_or(0.0, |m| m.stats.speed);
         let engagement = crate::combat::attack::engagement(
             Some(ai),
             speed,
@@ -93,7 +93,7 @@ impl<'u> UnitView<'u> {
         )?;
         let moving = hunt_task.walk_sprite_id(unit.life.attribute_type, unit.life.amount);
         let arms = crate::combat::attack::arms(hunter, self.graphics, hunt_task.sprites, moving);
-        let mover = unit.mover.as_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
+        let mover = unit.body.mover_mut().ok_or(crate::world::HUNTER_UNMOVING)?;
         let mut held = (unit.life.attribute_type, unit.life.amount);
         let (hunt, arrived) = HuntAction::start(
             hunt_task,
@@ -110,9 +110,7 @@ impl<'u> UnitView<'u> {
         if arrived {
             let g = arms.idle_sprite.ok_or(crate::world::NO_STANDING_SPRITE)?;
             crate::combat::attack::set_sprite(&mut unit.sprite, g, self.sprite);
-            if let Some(a) = unit.anim_speed.as_mut() {
-                *a = 0.0;
-            }
+            unit.body.set_anim_speed(0.0);
         }
         let drops = hunt.target == -1 && hunt.carry_to == target;
         unit.hunt = Some(hunt);
