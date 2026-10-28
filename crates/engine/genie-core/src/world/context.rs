@@ -124,22 +124,6 @@ pub(crate) struct Context<'a> {
     /// ([`crate::vision::visibility::sight_taker`]).
     pub(crate) standard: bool,
     pub(crate) sight_takers: &'a [(bool, bool)],
-    /// The events the owner's history records from the object's update (a castle or a wonder it
-    /// completed, [`crate::construction::build::Built::history`]), which the caller adds after it.
-    pub(crate) history_events: Vec<u8>,
-    /// The technologies the owner researches from the object's update (a completed building's),
-    /// which the caller completes after the attributes ([`World::complete_research`]).
-    pub(crate) techs_done: Vec<i16>,
-    /// The pastures the object's update completed, whose livestock the caller makes after the
-    /// attributes ([`World::setup_pasture`]).
-    pub(crate) pastures: Vec<i32>,
-    /// The mule carts the object's update completed, whose search for resources the caller runs
-    /// after it ([`World::cart_search`]).
-    pub(crate) carts: Vec<(i32, u8)>,
-    /// The buildings the object's update completed with a stack unit or that disappear when
-    /// built: the caller makes the stack unit ([`World::stack_unit`]) before the technologies
-    /// and destroys the building (slot 0xd0) after them.
-    pub(crate) completions: Vec<(i32, Option<crate::construction::build::StackUnit>, bool)>,
     /// The work a builder found after its building (slot 0x7e8 from the Build's case 0xdf),
     /// which the caller gives after the update ([`World::order_work`]).
     pub(crate) work_order: Option<crate::orders::Work>,
@@ -186,8 +170,6 @@ pub(crate) struct ObjectOutputs {
         crate::unit_ai::QueuedOrder,
         Option<crate::unit_ai::AfterOrder>,
     )>,
-    /// [`Context`]'s `history_events`.
-    pub(in crate::world) history_events: Vec<u8>,
     /// [`Context`]'s `works`.
     pub(in crate::world) works: Vec<AiWork>,
     /// [`Context`]'s `leads`.
@@ -200,15 +182,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) move_aside: Vec<AiMove>,
     /// [`Context`]'s `starts`.
     pub(in crate::world) starts: Vec<AiStart>,
-    /// [`Context`]'s `techs_done`.
-    pub(in crate::world) techs_done: Vec<i16>,
-    /// [`Context`]'s `pastures`.
-    pub(in crate::world) pastures: Vec<i32>,
-    /// [`Context`]'s `carts`.
-    pub(in crate::world) carts: Vec<(i32, u8)>,
-    /// [`Context`]'s `completions`.
-    pub(in crate::world) completions:
-        Vec<(i32, Option<crate::construction::build::StackUnit>, bool)>,
     /// [`Context`]'s `work_order`.
     pub(in crate::world) work_order: Option<crate::orders::Work>,
     /// [`Context`]'s `transport_unload`.
@@ -245,17 +218,12 @@ impl Context<'_> {
     pub(in crate::world) fn outputs(&mut self, id: i32) -> ObjectOutputs {
         ObjectOutputs {
             ordered: self.order_on_target.take(),
-            history_events: std::mem::take(&mut self.history_events),
             works: std::mem::take(&mut self.works),
             leads: self.leads.take(),
             build_command: self.build_command.take(),
             reseed: self.reseed.take(),
             move_aside: std::mem::take(&mut self.move_aside),
             starts: std::mem::take(&mut self.starts),
-            techs_done: std::mem::take(&mut self.techs_done),
-            pastures: std::mem::take(&mut self.pastures),
-            carts: std::mem::take(&mut self.carts),
-            completions: std::mem::take(&mut self.completions),
             work_order: self.work_order.take(),
             transport_unload: std::mem::take(&mut self.transport_unload),
             kills: std::mem::take(&mut self.kills),

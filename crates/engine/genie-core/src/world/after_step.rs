@@ -48,11 +48,11 @@ fn take_at_least_zero(owner: &mut Player, kind: i16, amount: f32) -> Result<(), 
 impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its Context gathered, applied in the order the
-    /// game's update makes them (the gate, the completions, the attributes, the deaths and
-    /// remains, the regeneration, passive abilities and production of a full update, the unit
-    /// AI's works, moves, waits and order on a target, the own kill, the takes and releases). Returns the step, the resume of a
-    /// unit AI part the update stopped before, the tail after an order on a target and the
-    /// object's slot, which it looks up by id after each part that may move it.
+    /// game's update makes them (the gate, the deaths and remains, the regeneration, passive
+    /// abilities and production of a full update, the unit AI's works, moves, waits and order on
+    /// a target, the own kill, the takes and releases). Returns the step, the resume of a unit AI
+    /// part the update stopped before, the tail after an order on a target and the object's
+    /// slot, which it looks up by id after each part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
     /// runs (regeneration, passive abilities, production) do not.
     ///
@@ -72,8 +72,7 @@ impl World {
         let step = step?;
         // the tail after an order on a target, which stops the unit AI's rest
         let after_order = out.ordered.as_ref().and_then(|&(_, tail)| tail);
-        self.apply_object_writes((p, self.slot_of(p, id)?), &mut out)?;
-        self.apply_completions(p, &mut out)?;
+        self.apply_object_writes((p, self.slot_of(p, id)?), &out)?;
         self.apply_deaths(p, &mut out)?;
         let own_update = full && out.ai_resume.is_none();
         let at = (p, self.slot_of(p, id)?, id);
@@ -100,56 +99,15 @@ impl World {
         })
     }
 
-    /// The step's writes on other objects and on its own building: a repair's writes, the
-    /// gate and the history events.
+    /// The step's write on its own building: the gate.
     fn apply_object_writes(
         &mut self,
         (p, i): (usize, usize),
-        out: &mut ObjectOutputs,
+        out: &ObjectOutputs,
     ) -> Result<(), GenieError> {
         // the gate's player opens or shuts it, in the gate's update before the rest
         if out.gate_toggle {
             self.toggle_gate(p, i)?;
-        }
-        // a completed castle's or wonder's history event, the owner's id as data1
-        for kind in std::mem::take(&mut out.history_events) {
-            let now = self.world_time;
-            self.players[p]
-                .history
-                .add_event(kind, p as f32, 0.0, 0, now);
-        }
-        Ok(())
-    }
-
-    /// The owner's attribute changes and what a completion sets off: a pasture's livestock, a
-    /// mule cart's search, a building's stack unit, its technology, and a building that
-    /// disappears when built.
-    fn apply_completions(&mut self, p: usize, out: &mut ObjectOutputs) -> Result<(), GenieError> {
-        // a completed pasture's livestock (FUN_1411c8410 in FUN_1411c6bd0, after the farm's
-        // bonus)
-        for pasture in std::mem::take(&mut out.pastures) {
-            self.setup_pasture(p, pasture)?;
-        }
-        // a completed mule cart's search for resources (FUN_1411c6bd0's tail, before
-        // the completion's technology)
-        for (cart, state) in std::mem::take(&mut out.carts) {
-            self.cart_search(p, cart, state)?;
-        }
-        // a completed building's stack unit before its technology (FUN_1411dbb70)
-        let completions = std::mem::take(&mut out.completions);
-        for &(building, stack, _) in &completions {
-            if let Some(stack) = stack {
-                self.stack_unit(p, building, stack)?;
-            }
-        }
-        for t in std::mem::take(&mut out.techs_done) {
-            self.research_built(p, t)?;
-        }
-        // then a building that disappears when built is destroyed (slot 0xd0)
-        for (building, _, vanishes) in completions {
-            if vanishes {
-                self.destroy(p, building)?;
-            }
         }
         Ok(())
     }

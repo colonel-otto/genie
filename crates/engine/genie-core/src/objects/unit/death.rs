@@ -101,8 +101,9 @@ impl Unit {
 
     /// A foundation's death (`FUN_1411dbb70` to state 3 from state 0), before the combat
     /// object's: the completion's first part (`FUN_1411c6bd0`, [`crate::construction::build::completion_part`]:
-    /// a farm's bonus once its build points reached its build time, a mule cart's search for
-    /// resources, the caller's), then, as the state is still 0 and 3 lies within 1 to 6, its
+    /// a farm's bonus once its build points reached its build time, a pasture's livestock and a
+    /// mule cart's search for resources at once, the foundation lent to the world), then, as the
+    /// state is still 0 and 3 lies within 1 to 6, its
     /// construction's start (`FUN_1411e5670`, [`Construction::begin`]: a desolid one gets its
     /// record and sight, its missiles per volley its master's; its owner watches it at once,
     /// the foundation lent to the world).
@@ -137,12 +138,24 @@ impl Unit {
         );
         c.w.players[c.player].tracker.complete(self.id, k);
         c.w.players[c.player].add_attributes(part.attributes)?;
-        if part.pasture {
-            c.pastures.push(self.id);
+        // a pasture's livestock and a mule cart's search (from state 0), the foundation lent to
+        // the world for what they place and search
+        if part.pasture || part.cart {
+            let (p, id) = (c.player, self.id);
+            c.lend(self, |w| {
+                if part.pasture {
+                    w.setup_pasture(p, id)?;
+                }
+                if part.cart {
+                    w.cart_search(p, id, 0)?;
+                }
+                Ok(())
+            })?;
         }
-        if part.cart {
-            c.carts.push((self.id, 0));
-        }
+        let construction = self
+            .construction
+            .as_mut()
+            .ok_or(crate::construction::build::NO_CONSTRUCTION)?;
         let started = Construction::begin(
             self.id,
             construction,

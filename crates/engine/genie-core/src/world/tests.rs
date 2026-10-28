@@ -13586,6 +13586,49 @@ fn a_foundation_whose_build_points_reached_its_build_time_completes() {
     }
 }
 
+/// A building completing in its own update leaves its owner what the builder's completion
+/// leaves (`World::built`, the building lent to the world), within the update: a master that
+/// disappears when built is destroyed at once (state 7), and a castle's completion records its
+/// history event (castle built, the owner's id as data1).
+#[test]
+fn a_building_completing_in_its_own_update_leaves_what_a_builder_s_completion_leaves() {
+    let finish = |t: &mut World| {
+        let h = &mut t.players[1].objects[1];
+        let k = h.construction.as_mut().unwrap();
+        k.progress = f32::from(k.build_time);
+        in_update(t, (1, 1), 50, |unit, c| {
+            unit.complete_on_update(c)?;
+            let events: Vec<(u8, f32)> = c.w.players[1]
+                .history
+                .events
+                .iter()
+                .map(|e| (e.kind, e.data1))
+                .collect();
+            Ok((unit.life.state, events))
+        })
+        .map_err(|e| e.reason().to_owned())
+    };
+    let mut t = house_builder();
+    for masters in &mut t.masters {
+        let b = masters.get_mut(70).unwrap().building.as_mut().unwrap();
+        b.disappears_when_built = true;
+    }
+    assert_eq!(finish(&mut t), Ok((7, vec![])));
+    let mut t = house_builder();
+    t.players[1].history.entries.push([0, 0]);
+    t.players[1].attributes.resize(250, 0.0);
+    for masters in &mut t.masters {
+        let castle = Master {
+            id: 82,
+            ..masters.get(70).unwrap().clone()
+        };
+        *masters = Masters::new(masters.iter().cloned().chain([castle]));
+    }
+    t.players[1].objects[1].life.master_id = 82;
+    let castle_built = crate::players::history::CASTLE_BUILT;
+    assert_eq!(finish(&mut t), Ok((2, vec![(castle_built, 1.0)])));
+}
+
 /// A desolid foundation that dies (`FUN_1411dbb70` to state 3 from state 0) starts its
 /// construction ([`Unit::foundation_died`], [`Construction::begin`]): its owner watches it at
 /// once, the foundation lent to the world within its own update, and the start's flag clears.
@@ -14238,22 +14281,6 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
     );
 }
 
-/// What a step leaves in its Context for other objects reaches them after it: the owner's
-/// history gains the event (the owner as data1).
-#[test]
-fn a_step_s_writes_reach_the_objects_it_names() {
-    use crate::objects::unit::Step;
-    let mut t = house_builder();
-    t.players[1].history.entries.push([0, 0]);
-    let r = finished_with(&mut t, (1, 0), |c| {
-        c.history_events.push(6);
-        Ok(Step::Stay)
-    });
-    assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
-    let event = &t.players[1].history.events[0];
-    assert_eq!((event.kind, event.data1, event.world_time), (6, 1.0, 0));
-}
-
 /// The unit AI's orders of a step reach the unit and the units they name: a `GatherObject`'s
 /// gather command takes the bush, a reseed without a farm lets it go, a build command gives the
 /// builder its Build, a drop elsewhere sends the unit to the drop site with the order back to its
@@ -14340,58 +14367,61 @@ fn an_enter_s_transport_moves_to_the_meeting_point_where_the_unit_runs() {
     assert_eq!(moved(&mut t, 4242), Err(unreached));
 }
 
-/// A step that fails stops what follows it: the writes its Context gathered do not apply (the
-/// history event), and the first effect that fails stops the ones after it (an unmodelled gate
-/// toggle stops the history event).
+/// A step that fails stops what follows it: what its Context gathered does not apply (a dead
+/// unit's refund), and the first effect that fails stops the ones after it (an unmodelled gate
+/// toggle stops the refund); a step that holds applies it.
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Step;
     let mut t = house_builder();
-    t.players[1].history.entries.push([0, 0]);
+    t.players[1].attributes[98] = 10.0;
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.history_events.push(6);
+        c.refund = vec![(98, 5.0)];
         Err(GenieError::unsupported("the step's own gap"))
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
         Err("the step's own gap".to_owned())
     );
-    assert_eq!(t.players[1].history.events.len(), 0);
+    assert_eq!(t.players[1].attributes[98], 10.0);
 
     let mut t = house_builder();
-    t.players[1].history.entries.push([0, 0]);
+    t.players[1].attributes[98] = 10.0;
     t.players[1].objects[0].gate = Some(Gate {
         other_masters: true,
         ..Gate::default()
     });
     let r = finished_with(&mut t, (1, 0), |c| {
         c.gate_toggle = true;
-        c.history_events.push(6);
+        c.refund = vec![(98, 5.0)];
         Ok(Step::Stay)
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
         Err("a gate's toggle to a master of its own or its original owner's".to_owned())
     );
-    assert_eq!(t.players[1].history.events.len(), 0);
+    assert_eq!(t.players[1].attributes[98], 10.0);
+    let mut t = house_builder();
+    t.players[1].attributes[98] = 10.0;
+    let r = finished_with(&mut t, (1, 0), |c| {
+        c.refund = vec![(98, 5.0)];
+        Ok(Step::Stay)
+    });
+    assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
+    assert_eq!(t.players[1].attributes[98], 5.0);
 }
 
-/// What a step completed reaches its owner: a pasture puts its livestock on its edges, a
-/// building's stack unit is made at its place, a completion's technology is researched, and a
-/// building that disappears when built is destroyed. A completed mule cart with nothing to find
-/// keeps its state.
+/// What a completion leaves its owner ([`World::built`]): a pasture puts its livestock on its
+/// edges, a building's stack unit is made at its place, a completion's technology is
+/// researched, and a building that disappears when built is destroyed. A completed mule cart
+/// with nothing to find keeps its state.
 #[test]
-fn a_step_s_completions_reach_their_owner() {
-    use crate::construction::build::StackUnit;
+fn a_completion_s_parts_reach_their_owner() {
+    use crate::construction::build::{Built, StackUnit};
     use crate::gathering::pasture::LIVESTOCK;
-    use crate::objects::unit::Step;
     use crate::technology::{TechDef, TechState};
-    let stay = |t: &mut World, orders: &Orders<'_>| {
-        finished_with(t, (1, 0), |c| {
-            orders(c);
-            Ok(Step::Stay)
-        })
-        .map_err(|e| e.reason().to_owned())
+    let stay = |t: &mut World, id: i32, built: Built| {
+        t.built(1, id, built).map_err(|e| e.reason().to_owned())
     };
     let made = |t: &World| -> Vec<(i32, i16, [f32; 3])> {
         t.players[1].objects[1..]
@@ -14400,7 +14430,11 @@ fn a_step_s_completions_reach_their_owner() {
             .collect()
     };
     let mut t = pasture_game([60.0, 60.0, 0.0], 2.0, &LIVESTOCK);
-    assert_eq!(stay(&mut t, &|c| c.pastures.push(50)), Ok(Step::Stay));
+    let pasture = Built {
+        pasture: true,
+        ..Built::default()
+    };
+    assert_eq!(stay(&mut t, 50, pasture), Ok(()));
     assert_eq!(
         made(&t),
         [
@@ -14414,8 +14448,11 @@ fn a_step_s_completions_reach_their_owner() {
         at: [60.0, 60.0, 0.0],
         hp_lost: 0.0,
     };
-    let completed = |c: &mut context::Context<'_>| c.completions.push((50, Some(stack), false));
-    assert_eq!(stay(&mut t, &completed), Ok(Step::Stay));
+    let stacked = Built {
+        stack: Some(stack),
+        ..Built::default()
+    };
+    assert_eq!(stay(&mut t, 50, stacked), Ok(()));
     assert_eq!(made(&t), [(100, 1899, [60.0, 60.0, 0.0])]);
 
     let mut t = house_builder();
@@ -14426,17 +14463,26 @@ fn a_step_s_completions_reach_their_owner() {
         building_master: -1,
         ..TechState::default()
     }];
-    assert_eq!(stay(&mut t, &|c| c.techs_done.push(0)), Ok(Step::Stay));
+    let tech = Built {
+        tech: Some(0),
+        ..Built::default()
+    };
+    assert_eq!(stay(&mut t, 10028, tech), Ok(()));
     assert_eq!(t.players[1].techs[0].state, 3);
     let mut t = house_builder();
-    assert_eq!(
-        stay(&mut t, &|c| c.completions.push((10028, None, true))),
-        Ok(Step::Stay)
-    );
+    let vanishes = Built {
+        vanishes: true,
+        ..Built::default()
+    };
+    assert_eq!(stay(&mut t, 10028, vanishes), Ok(()));
     let house = &t.players[1].objects[1].life;
     assert_eq!((house.state, house.hp), (7, 0.0));
     let mut t = house_builder();
-    assert_eq!(stay(&mut t, &|c| c.carts.push((9175, 2))), Ok(Step::Stay));
+    let cart = Built {
+        cart: Some(2),
+        ..Built::default()
+    };
+    assert_eq!(stay(&mut t, 9175, cart), Ok(()));
     let cart = &t.players[1].objects[0];
     assert_eq!(
         (cart.life.state, cart.ai.as_ref().map(|a| a.current_target)),

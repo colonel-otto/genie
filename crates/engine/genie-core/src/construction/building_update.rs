@@ -155,8 +155,9 @@ impl Unit {
     /// [`Construction::complete`]); outside the walls' branch (class 27, master 70) only one that
     /// is not an annex (`+0xbb8`). A builder's work completes a foundation itself
     /// (`FUN_1411cc430`); this one completes a building made without a build time (a death
-    /// spawn's). The walls' branch's facet and the other branch's work before it are not modelled
-    /// for such a building.
+    /// spawn's). What the completion leaves its owner follows at once
+    /// ([`crate::world::World::built`], the building lent to the world). The walls' branch's facet
+    /// and the other branch's work before it are not modelled for such a building.
     pub(crate) fn complete_on_update(&mut self, c: &mut Context<'_>) -> Result<(), GenieError> {
         self.farm_stage(c)?;
         let due = self.life.state == 0
@@ -235,25 +236,10 @@ impl Unit {
             self.life.master_id,
         );
         c.w.players[c.player].tracker.complete(self.id, k);
-        c.w.players[c.player].add_attributes(built.attributes)?;
-        c.techs_done.extend(built.tech);
-        if built.pasture {
-            c.pastures.push(self.id);
-        }
-        if let Some(state) = built.cart {
-            c.carts.push((self.id, state));
-        }
-        if built.started {
-            if let Some(k) = self.construction.as_mut() {
-                k.started = false;
-            }
-            let (p, id) = (c.player, self.id);
-            c.lend(self, |w| w.watch_started(p, id))?;
-        }
-        if built.stack.is_some() || built.vanishes {
-            c.completions.push((self.id, built.stack, built.vanishes));
-        }
-        Ok(())
+        // what it leaves its owner, as a builder's completion does, the building lent to the
+        // world for the searches, effects and destroy among them
+        let (p, id) = (c.player, self.id);
+        c.lend(self, |w| w.built(p, id, built))
     }
 
     /// `TRIBE_Building_Object::update`'s whole seconds of a building in state 2 (`0x1411c9000`,
