@@ -91,10 +91,6 @@ pub(crate) struct Context<'a> {
     /// while the unit AI ran (the unit, its old master, its new one), the caller's after the
     /// update ([`World::track_promote`]).
     pub(crate) promotions: Vec<(i32, i16, i16)>,
-    /// The flares a hit on a player's object has that player make (master 112, its slot 0x1c0)
-    /// at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's
-    /// after the update ([`World::make_flare`]).
-    pub(crate) flares: Vec<(usize, [f32; 3], bool)>,
     /// The units on a foundation's footprint its builder's test met (the foundation, them):
     /// the caller sends off those the test would ([`World::evacuate`]).
     pub(crate) evacuations: Vec<(i32, Vec<i32>)>,
@@ -246,8 +242,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) remains: Option<(i16, [f32; 3], Option<u8>)>,
     /// [`Context`]'s `refund`.
     pub(in crate::world) refund: Vec<(i16, f32)>,
-    /// [`Context`]'s `flares`.
-    pub(in crate::world) flares: Vec<(usize, [f32; 3], bool)>,
     /// [`Context`]'s `promotions`.
     pub(in crate::world) promotions: Vec<(i32, i16, i16)>,
     /// [`Context`]'s `building_death`.
@@ -298,7 +292,6 @@ impl Context<'_> {
             kills: std::mem::take(&mut self.kills),
             remains: self.remains.take(),
             refund: std::mem::take(&mut self.refund),
-            flares: std::mem::take(&mut self.flares),
             promotions: std::mem::take(&mut self.promotions),
             building_death: self.building_death.take(),
             gate_toggle: std::mem::take(&mut self.gate_toggle),

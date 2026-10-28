@@ -5,7 +5,7 @@
 An object's update in the game changes other objects by direct calls (a notify through
 slot 0x38, a release through slot 0x180, a stop through slot 0x5d0). genie-core cannot
 change them from inside the update, so it hands such effects on to be done outside it.
-These are the channels it uses (FD-045): 32 world outputs, 15 unit AI effects and 48 hand-offs.
+These are the channels it uses (FD-045): 31 world outputs, 15 unit AI effects and 48 hand-offs.
 
 ## The world's outputs
 
@@ -33,7 +33,6 @@ the object's update by the functions named.
 | `kills` | `Vec<KillLeft>` | The updating object's own kill (a retaliation's), which its slot's stand-in keeps from the world until the step's end (`crate::combat::victims::file_kill`): the caller's after the update (`World::kill_left`); another object's kill reaches the world at the hit. |  | [`combat/victims.rs`](../crates/engine/genie-core/src/combat/victims.rs) | `apply_hits_and_releases` |
 | `remains` | `Option<(i16, [f32; 3], Option<u8>)>` | What the unit's death leaves for the caller: the remains its dying sprite's end makes (`FUN_1411a4e90`: the master, the place and the dead object's facet) and the paid cost its owner takes back (attributes 98 and 164). | `FUN_1411a4e90` | [`objects/unit/life_step.rs`](../crates/engine/genie-core/src/objects/unit/life_step.rs) | `apply_deaths` |
 | `refund` | `Vec<(i16, f32)>` | `Context`'s `refund`. |  | [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_deaths` |
-| `flares` | `Vec<(usize, [f32; 3], bool)>` | The flares a hit on a player's object has that player make (master 112, its slot 0x1c0) at the attacker's place, doubled in their amount for a trebuchet's hit, the caller's after the update (`World::make_flare`). | `slot 0x1c0` | [`combat/volley.rs`](../crates/engine/genie-core/src/combat/volley.rs) | `apply_object_writes` |
 | `promotions` | `Vec<(i32, i16, i16)>` | The tracker's promotions (`FUN_14104fb20`) of the owner's units whose master changed while the unit AI ran (the unit, its old master, its new one), the caller's after the update (`World::track_promote`). | `FUN_14104fb20` | [`unit_ai/unit.rs`](../crates/engine/genie-core/src/unit_ai/unit.rs) | `apply_object_writes` |
 | `building_death` | `Option<BuildingDeath>` | What a built building's death takes from its owner before its combat part's refund: the counts of the monastery, the wonder and the castle (slot 0xf8, then slot 0xf0 with 0 for a value below 0), and its master's technology (`+0x98c`) the caller withdraws when no other building of the master stands (`World::withdraw_tech`). | `slot 0xf8`, `slot 0xf0` | [`objects/unit/death.rs`](../crates/engine/genie-core/src/objects/unit/death.rs) | `apply_deaths` |
 | `gate_toggle` | `bool` | The gate's update asked its player to open or shut it (`World::toggle_gate`, the caller's after the update). |  | [`construction/building_update.rs`](../crates/engine/genie-core/src/construction/building_update.rs) | `apply_object_writes` |

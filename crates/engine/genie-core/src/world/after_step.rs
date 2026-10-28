@@ -101,7 +101,7 @@ impl World {
     }
 
     /// The step's writes on other objects and on its own building: a repair's writes, the
-    /// tracker's promotions, the flares, the gate and the history events.
+    /// tracker's promotions, the gate and the history events.
     fn apply_object_writes(
         &mut self,
         (p, i): (usize, usize),
@@ -110,10 +110,6 @@ impl World {
         // the tracker's promotions of the units whose master changed while their unit AI ran
         for (id, old, new) in std::mem::take(&mut out.promotions) {
             self.track_promote(p, id, old, new);
-        }
-        // the flares a hit on a player's object made for that player
-        for (q, at, doubled) in std::mem::take(&mut out.flares) {
-            self.make_flare(q, at, doubled)?;
         }
         // the gate's player opens or shuts it, in the gate's update before the rest
         if out.gate_toggle {

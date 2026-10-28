@@ -11814,6 +11814,40 @@ fn archer_world(hit_chance: i16, max_volley: u8, spread: f32) -> World {
     t
 }
 
+/// A hit's flare (master 112, the target's player's slot 0x1c0) is made where the volley runs,
+/// within the shooter's update: here for the shooter's own player, whose list holds the
+/// shooter's stand-in.
+#[test]
+fn a_hit_s_flare_is_made_where_the_volley_runs() {
+    let mut t = archer_world(100, 1, 0.0);
+    let flare = Master {
+        id: 112,
+        kind: crate::objects::masters::master_type::ANIMATED,
+        standing_sprite: -1,
+        storage: vec![(12, 1.0, 0)],
+        ..Master::default()
+    };
+    t.masters[1] = Masters::new(t.masters[1].iter().cloned().chain([flare]));
+    t.players[1].attributes = vec![0.0; 300];
+    let aimed = crate::combat::volley::Aimed {
+        target: 50,
+        position: [13.0, 10.0, 0.0],
+        radius: [0.2, 0.2, 1.0],
+        class: 10,
+        player: 1,
+    };
+    let seen = in_update(&mut t, (1, 0), 0, |unit, c| {
+        unit.volley(c, aimed)?;
+        let own = &c.w.players[1].objects;
+        Ok(own.iter().filter(|u| u.life.master_id == 112).count())
+    });
+    assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(1));
+    assert_eq!(
+        t.players[1].objects[0].id, 123,
+        "the shooter is back in its slot"
+    );
+}
+
 /// The missiles in player 1's list: id, master, place.
 fn missiles(t: &World) -> Vec<(i32, i16, [f32; 3])> {
     t.players[1]
@@ -14133,8 +14167,8 @@ fn the_unit_ai_s_orders_reach_the_unit_and_the_units_they_name() {
 }
 
 /// A step that fails stops what follows it: the writes its Context gathered do not apply (the
-/// history event), and the first effect that fails stops the ones after it (an unmodelled flare
-/// master stops the history event).
+/// history event), and the first effect that fails stops the ones after it (an unmodelled gate
+/// toggle stops the history event).
 #[test]
 fn a_step_that_fails_stops_what_follows_it() {
     use crate::objects::unit::Step;
@@ -14152,14 +14186,18 @@ fn a_step_that_fails_stops_what_follows_it() {
 
     let mut t = house_builder();
     t.players[1].history.entries.push([0, 0]);
+    t.players[1].objects[0].gate = Some(Gate {
+        other_masters: true,
+        ..Gate::default()
+    });
     let r = finished_with(&mut t, (1, 0), |c| {
-        c.flares.push((1, [25.0, 89.5, 0.0], true));
+        c.gate_toggle = true;
         c.history_events.push(6);
         Ok(Step::Stay)
     });
     assert_eq!(
         r.map_err(|e| e.reason().to_owned()),
-        Err("an object of a master the slice does not have".to_owned())
+        Err("a gate's toggle to a master of its own or its original owner's".to_owned())
     );
     assert_eq!(t.players[1].history.events.len(), 0);
 }

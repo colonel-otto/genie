@@ -78,7 +78,7 @@ impl Unit {
     /// `next_volley` 0. Of the missiles at a time, the first of a volley is its missile (none
     /// without one) and the others its extra missiles ([`Unit::volley_missile`]), each scattered
     /// by two draws. A target of a player but Gaia has its player make a flare at the attacker
-    /// ([`Context::flares`]). Not modelled: the self-destructing masters (527, 528, 1104,
+    /// ([`crate::world::World::make_flare`]). Not modelled: the self-destructing masters (527, 528, 1104,
     /// 2133..2135, classes 35 and 64 alive), a charge (charge types 6 and 7) and a target of a
     /// computer player (its notify 0x214). Not held: the local player's statistics
     /// (`FUN_140a4ba80`).
@@ -135,12 +135,11 @@ impl Unit {
         if missile || 0 < extra {
             // a target of a player but Gaia: its player makes a flare (master 112, slot 0x1c0)
             // at the attacker's place, which lasts twice as long from a trebuchet (class 54:
-            // its amount, +0x310, doubled); the caller's after the update
+            // its amount, +0x310, doubled)
+            let (trebuchet, [x_spread, y_spread, _]) = (master.class == 54, master.volley_spread);
             if 0 < aimed.player {
-                c.flares
-                    .push((aimed.player, self.position, master.class == 54));
+                c.w.make_flare(aimed.player, self.position, trebuchet)?;
             }
-            let [x_spread, y_spread, _] = master.volley_spread;
             for _ in 0..extra {
                 let object = c.w.streams.get(Stream::Object);
                 let (x, y) = (object.rand15(), object.rand15());
