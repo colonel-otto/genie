@@ -1,17 +1,19 @@
 //! The unit AI's order values as one type: the cases of its order handler (`FUN_140c5c170`,
-//! slot 0x230) and the shepherd's, each by its name, and the fallible conversion from a raw
-//! value.
+//! slot 0x230) and the three orders set without a case, each by its name, and the fallible
+//! conversion from a raw value.
 
 use crate::GenieError;
 use crate::unit_ai::ai_kinds;
 
 /// An order a unit AI holds: a case of its order handler (`FUN_140c5c170`, slot 0x230), named
 /// by the line the case logs (`ai_kinds`, generated) or, where it logs none, by what it does,
-/// and the shepherd's, which its action sets directly. The order setter's (`FUN_140c64b60`)
-/// callers give no other value (they pass these, −1, or an order saved before), so a save's or
-/// a script's raw value converts fallibly ([`OrderKind::try_from`]). The game also compares
-/// orders with `0x262`, `0x269`, `0x2cf`, `0x2d0`, `0x323`, `0x324` and `0x326` (the full
-/// update, the leash, `AddUnit`), which nothing sets: those tests never hold.
+/// and three orders no case names: the shepherd's, which its action sets directly, and the trade's
+/// and the hero power's, which the work command's notify sets (`FUN_14106e4e0`). The order
+/// setter's (`FUN_140c64b60`) 38 calls give no other value (these, −1, or an order saved or read
+/// before), and the handler's tail stores only its cases', so a save's or a script's raw value
+/// converts fallibly ([`OrderKind::try_from`]). The game also compares the current order with
+/// `0x262`, `0x269`, `0x2cf`, `0x2d0`, `0x323` and `0x324` (the full update, the leash,
+/// `AddUnit`), which nothing stores there: those tests never hold.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum OrderKind {
@@ -46,6 +48,9 @@ pub enum OrderKind {
     Hunt = ai_kinds::ORDER_HUNT,
     /// `0x2ca`: transport to the point (slot 0x128).
     Transport = ai_kinds::ORDER_TRANSPORT,
+    /// `0x2cb`: trade, with the action value `0x267`, which the work command's notify sets for a
+    /// trade action (type `0x6f`, `FUN_14106e4e0`); no case of the handler names it.
+    Trade = 0x2cb,
     /// `0x2cd`: enter the target (slot 0x110).
     Enter = ai_kinds::ORDER_ENTER,
     /// `0x2ce`: repair the target (slot 0xe8).
@@ -83,11 +88,15 @@ pub enum OrderKind {
     /// constructors (`FUN_140adb610`, `FUN_140adb7a0`) and an order on a target of action type
     /// 0x95 (`FUN_14121c890`) set; no case of the handler names it.
     Shepherd = 0x2dc,
+    /// `0x326`: the hero power, with the action value `0x2c2`, which the work command's notify
+    /// sets for an `ActionHeroPower` (type `0x7e`, `FUN_14106e4e0`); no case of the handler names
+    /// it.
+    HeroPower = 0x326,
 }
 
 impl OrderKind {
-    /// Every order: the handler's cases in its switch's order, then the shepherd's.
-    pub const ALL: [Self; 31] = [
+    /// Every order: the handler's cases in its switch's order, then the ones it names no case for.
+    pub const ALL: [Self; 33] = [
         Self::Attack,
         Self::Defend,
         Self::Build,
@@ -119,6 +128,8 @@ impl OrderKind {
         Self::AutoScout,
         Self::AutoBoarLuring,
         Self::Shepherd,
+        Self::Trade,
+        Self::HeroPower,
     ];
 
     /// Its value, as the unit AI's fields and the save hold it.
@@ -189,7 +200,7 @@ mod tests {
     use crate::ErrorKind;
     use crate::unit_ai::OrderKind;
 
-    /// Every order converts back from its value; the values are 31 distinct ones.
+    /// Every order converts back from its value; the values are 33 distinct ones.
     #[test]
     fn every_order_converts_back_from_its_value() {
         for o in OrderKind::ALL {
@@ -198,10 +209,14 @@ mod tests {
         let mut values: Vec<i32> = OrderKind::ALL.iter().map(|o| o.value()).collect();
         values.sort_unstable();
         values.dedup();
-        assert_eq!(values.len(), 31);
+        assert_eq!(values.len(), 33);
         assert_eq!(
             (OrderKind::Attack.value(), OrderKind::OnTarget2.value()),
             (700, 0x325)
+        );
+        assert_eq!(
+            (OrderKind::Trade.value(), OrderKind::HeroPower.value()),
+            (0x2cb, 0x326)
         );
     }
 

@@ -9460,10 +9460,29 @@ fn an_order_not_ready_stays_and_patrol_or_unnamed_orders_take_nothing() {
         ..queued(OrderKind::Move, -1)
     };
     assert_eq!(run_order(&mut u, waiting, 6, &mut side).0, Ok(0xe));
-    // "I don't know what to do with patrol orders" (an order no case names is no OrderKind)
-    let (r, fx, _) = run_order(&mut u, queued(OrderKind::Patrol, -1), 6, &mut side);
-    assert_eq!((r, fx), (Ok(0), Vec::new()));
+    // "I don't know what to do with patrol orders"; the trade's and the hero power's orders,
+    // which no case names
+    for order in [OrderKind::Patrol, OrderKind::Trade, OrderKind::HeroPower] {
+        let (r, fx, _) = run_order(&mut u, queued(order, -1), 6, &mut side);
+        assert_eq!((r, fx), (Ok(0), Vec::new()), "{order:?}");
+    }
     assert_eq!(u, idle(13));
+}
+
+/// The idle part's patrol branch (`0x140c67f0b`): a patrol or an attack-move order patrols, and
+/// so does a unit of a group that patrols, but not on the hero power's order (`0x326`).
+#[test]
+fn a_patrolling_group_s_unit_on_the_hero_power_does_not_patrol() {
+    let group = GroupState {
+        patrol: true,
+        ..GroupState::default()
+    };
+    let mut u = idle(13);
+    assert!(u.patrols(Some(group)) && !u.patrols(None));
+    u.current_order = Some(OrderKind::HeroPower);
+    assert!(!u.patrols(Some(group)));
+    u.current_order = Some(OrderKind::AttackMove);
+    assert!(u.patrols(None));
 }
 
 #[test]

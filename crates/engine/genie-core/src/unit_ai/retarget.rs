@@ -83,13 +83,12 @@ impl UnitAi {
     }
 
     /// The idle part's patrol branch (`0x140c67f0b`): a patrol order (`0x2c7`, `0x2dd`), or a
-    /// group that patrols ([`GroupState::patrol`]) off order `0x326`, which no order holds
-    /// ([`OrderKind`]).
+    /// group that patrols ([`GroupState::patrol`]) off the hero power's order (`0x326`).
     pub(super) fn patrols(&self, group: Option<GroupState>) -> bool {
         matches!(
             self.current_order,
             Some(OrderKind::Patrol | OrderKind::AttackMove)
-        ) || group.is_some_and(|g| g.patrol)
+        ) || group.is_some_and(|g| g.patrol && self.current_order != Some(OrderKind::HeroPower))
     }
 
     /// The idle part past slot 72's test of a unit of class 3 or 52 on the make action (`0x26b`,
