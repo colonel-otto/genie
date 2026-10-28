@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, HUNTED_LOADS, NO_POINT, Work, nearest_table_site};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -189,7 +190,7 @@ impl World {
         if out.notified {
             unit.post_own(
                 crate::unit_ai::NO_DROP_SITE,
-                [crate::unit_ai::BUILD_ACTION, 0, 0],
+                [ActionKind::Build.value(), 0, 0],
             )?;
         }
         if out.let_go != -1 {

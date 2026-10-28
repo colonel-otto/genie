@@ -9,7 +9,8 @@ use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::sprite::{ActiveSprite, Graphic};
 use crate::objects::unit::Unit;
 use crate::production::IN_PRODUCTION;
-use crate::production::spawn::{CURRENT_AGE, MAKE_ACTION, VILLAGER};
+use crate::production::spawn::{CURRENT_AGE, VILLAGER};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, NewObject, Notify, UnitAi};
 use crate::vision::visibility::{Seer, capture_kind};
 use crate::world::World;
@@ -87,7 +88,11 @@ impl World {
         let (building_id, state) = (owner.objects[i].id, owner.objects[i].life.state);
         if let Some(ai) = owner.objects[i].ai.as_mut() {
             ai.post(
-                Notify::own(building_id, ACTION_COMPLETED, [MAKE_ACTION, 0, 0]),
+                Notify::own(
+                    building_id,
+                    ACTION_COMPLETED,
+                    [ActionKind::Make.value(), 0, 0],
+                ),
                 state,
             )?;
         }

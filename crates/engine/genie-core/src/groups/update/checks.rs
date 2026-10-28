@@ -3,13 +3,14 @@
 
 use crate::GenieError;
 use crate::groups::update::{
-    ACTION_KIND, ATTACK_ACTION, BUILD, CHOSEN_ACTION, COMBAT_KIND, DELIVER_RELIC, FARTHEST,
-    MONASTERY, MOVING_KIND, NO_COMMAND, PICK_UP_RELIC, RELIC_ACTION, RELIC_CLASS,
-    RELIC_DELIVERY_ACTION, RELIC_PICKUP_ACTION, Shown, TRADE_BOAT, TRADE_CART, TRADE_CART_SPRITES,
+    ACTION_KIND, BUILD, COMBAT_KIND, DELIVER_RELIC, FARTHEST, MONASTERY, MOVING_KIND, NO_COMMAND,
+    PICK_UP_RELIC, RELIC_CLASS, RELIC_DELIVERY_ACTION, RELIC_PICKUP_ACTION, Shown, TRADE_BOAT,
+    TRADE_CART, TRADE_CART_SPRITES,
 };
 use crate::groups::{UnitGroup, WorldObject};
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -52,7 +53,7 @@ impl World {
             if let WorldObject::Unit(p, u) = object
                 && u.ai
                     .as_ref()
-                    .is_some_and(|ai| ai.current_action == ATTACK_ACTION)
+                    .is_some_and(|ai| ai.current_action == Some(ActionKind::Attack))
             {
                 let master = self.master_of(p, u.life.master_id)?;
                 let search = if master.kind < ACTION_KIND {
@@ -248,7 +249,7 @@ impl World {
             };
             if g.current_command == PICK_UP_RELIC
                 && (ai.current_order == Some(OrderKind::OnTarget)
-                    || ai.current_action == RELIC_ACTION)
+                    || ai.current_action == Some(ActionKind::OnTarget))
                 && ((picks && relic) || (delivers && (relic || target.is_none())))
             {
                 return Ok(true);
@@ -276,7 +277,7 @@ impl World {
                 .is_some_and(|t| t.master_id() == MONASTERY);
             if g.current_command == DELIVER_RELIC
                 && (ai.current_order == Some(OrderKind::OnTarget)
-                    || ai.current_action == RELIC_ACTION)
+                    || ai.current_action == Some(ActionKind::OnTarget))
                 && monastery
                 && (delivers || picks)
             {
@@ -338,7 +339,7 @@ impl World {
     /// state (slot 0x2b0; 0 without one, and for an object below type 40): above 1, state 2 is
     /// free for a trade cart (class 19) or a trade boat (2) and not for an Attack (slot 0x530,
     /// type 9), and states 3, 13 and 14 go on to the unit AI, any other is not free. A unit AI
-    /// whose action is not `0x2c0` ([`crate::unit_ai::GROUP_ASIDE_ACTION`]) is not free while
+    /// whose action is not `0x2c0` ([`ActionKind::GroupAside`]) is not free while
     /// its action (its order for action `0x25b`) is not -1; without a unit AI it is free.
     ///
     /// # Errors
@@ -525,12 +526,12 @@ impl Unit {
         }
         if let Some(ai) = u.ai.as_ref() {
             let action = ai.current_action;
-            if action != crate::unit_ai::GROUP_ASIDE_ACTION {
+            if action != Some(ActionKind::GroupAside) {
                 // on the chosen action the order decides
-                let busy = if action == CHOSEN_ACTION {
+                let busy = if action == Some(ActionKind::Heal) {
                     ai.current_order.is_some()
                 } else {
-                    action != -1
+                    action.is_some()
                 };
                 if busy {
                     return Ok(false);

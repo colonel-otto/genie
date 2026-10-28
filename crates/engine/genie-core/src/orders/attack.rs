@@ -9,6 +9,7 @@ use crate::movement::move_to::Walk;
 use crate::objects::sprite::Graphic;
 use crate::objects::unit::Unit;
 use crate::orders::BUILDING;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -339,7 +340,7 @@ impl World {
         let world_time = self.world_time;
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {
-            ai.set_action(600);
+            ai.set_action(Some(ActionKind::Attack));
             ai.set_target(aim.aimed, aim.aimed_class, aim.at);
         }
         self.take(target, self.releaser(player, idx));
@@ -348,13 +349,17 @@ impl World {
             ai.last_retarget_time = world_time;
             ai.notify_work(
                 Some(OrderKind::Attack),
-                600,
+                Some(ActionKind::Attack),
                 Some((target, aim.class)),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (Some(OrderKind::Attack), 600))?;
+            self.remember_order(
+                player,
+                idx,
+                (Some(OrderKind::Attack), Some(ActionKind::Attack)),
+            )?;
         }
         Ok(())
     }

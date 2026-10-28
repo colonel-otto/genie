@@ -4,6 +4,7 @@
 use crate::GenieError;
 use crate::production::spawn::{RESEARCH_TIME_MODIFIER, WORLD_EFFECT};
 use crate::production::{MakeObj, MakeTech, Making};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
 
@@ -170,7 +171,7 @@ impl World {
         }
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
-                Notify::own(id, ACTION_COMPLETED, [crate::world::RESEARCH_ACTION, 0, 0]),
+                Notify::own(id, ACTION_COMPLETED, [ActionKind::Research.value(), 0, 0]),
                 state,
             )?;
         }
@@ -225,7 +226,7 @@ impl World {
                     Notify::own(
                         id,
                         crate::unit_ai::ACTION_FAILED,
-                        [crate::world::RESEARCH_ACTION, 0, 0],
+                        [ActionKind::Research.value(), 0, 0],
                     ),
                     state,
                 )?;

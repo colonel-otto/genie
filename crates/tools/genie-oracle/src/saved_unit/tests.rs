@@ -106,3 +106,30 @@ fn a_missile_without_its_action_keeps_flying() {
     assert_eq!(flying.step[0].to_bits(), 0.5_f32.to_bits());
     assert_eq!(u.attack_count, 2);
 }
+
+/// The town bell's back-to-work records import with their actions; an action value none names
+/// is the object's unmodelled part, and the town bell stays the default.
+#[test]
+fn the_back_to_work_actions_import_as_their_kinds() {
+    use genie_core::unit_ai::ActionKind;
+    let mut object = combat_object(5, 4);
+    let c = combat_mut(&mut object);
+    c.town_bell_flag = 1;
+    c.back_to_work1_town_bell_action = 0x261;
+    let u = unit(&object, &PlayerObjects::default(), &[], 0, None);
+    assert!(u.town_bell.flag);
+    assert_eq!(
+        (u.town_bell.work.action, u.town_bell.before_building.action),
+        (Some(ActionKind::Gather), None)
+    );
+    combat_mut(&mut object).back_to_work2_town_bell_action = 0x2c6;
+    let u = unit(&object, &PlayerObjects::default(), &[], 0, None);
+    assert_eq!(
+        u.unmodelled_action.map(|e| e.kind()),
+        Some(genie_core::ErrorKind::InvalidInput)
+    );
+    assert_eq!(
+        u.town_bell,
+        genie_core::orders::town_bell::TownBell::default()
+    );
+}

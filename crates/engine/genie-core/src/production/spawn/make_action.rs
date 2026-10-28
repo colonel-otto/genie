@@ -1,8 +1,8 @@
 //! A building's production list and its make action (`TRIBE_Action_Make_Obj`).
 
 use crate::GenieError;
-use crate::production::spawn::MAKE_ACTION;
 use crate::production::{IN_PRODUCTION, MakeObj, Making, QUEUED, housed, population};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::{ACTION_COMPLETED, Notify};
 use crate::world::World;
 
@@ -80,7 +80,7 @@ impl World {
                     return Ok(());
                 }
                 if let Some(ai) = self.players[p].objects[i].ai.as_mut() {
-                    ai.set_action(MAKE_ACTION);
+                    ai.set_action(Some(ActionKind::Make));
                 }
                 Making::Unit(MakeObj::for_entry(&first))
             } else {
@@ -302,7 +302,7 @@ impl World {
         let (id, state) = (building.id, building.life.state);
         if let Some(ai) = building.ai.as_mut() {
             ai.post(
-                Notify::own(id, ACTION_COMPLETED, [MAKE_ACTION, 0, 0]),
+                Notify::own(id, ACTION_COMPLETED, [ActionKind::Make.value(), 0, 0]),
                 state,
             )?;
         }

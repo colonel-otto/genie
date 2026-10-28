@@ -1,120 +1,18 @@
-//! The town bell, a kept attack, the garrison task and the work command and its task.
+//! A kept attack, the garrison task and the work command and its task.
 
 use crate::GenieError;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::{HUNT, HuntTask};
 use crate::math::rng::Stream;
 use crate::objects::masters::Master;
-use crate::orders::{
-    ATTACK_TASK, BUILDING, GARRISON, MASTER_84, MASTER_1808, VILLAGER, Work, own_order_target,
-};
-use crate::unit_ai::HUNT_ACTION;
+use crate::orders::{ATTACK_TASK, BUILDING, MASTER_84, VILLAGER, Work};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::TaskWorld;
-use crate::unit_ai::task_finder::{Actor, Diplomacy, enabled};
+use crate::unit_ai::task_finder::{Actor, enabled};
 use crate::world::World;
 
 impl World {
-    /// `FUN_1412067f0` before slot 0x7e8's work command, for a villager or master 1808 and a
-    /// target the world holds: the town-bell record ([`World::record_town_bell`]); then, with the
-    /// garrison filter (3), the flag goes on for a building in state 2 of the player or an ally
-    /// whose master takes villagers (`garrison_type` bit 0), with any other filter it goes off.
-    /// The UI's flag for the viewing player's building (`+0x1874`) is not held.
-    pub(crate) fn town_bell_order(
-        &mut self,
-        player: usize,
-        idx: usize,
-        target: i32,
-        filter: i16,
-    ) -> Result<(), GenieError> {
-        let unit = &self.players[player].objects[idx];
-        let master = self.master_of(player, unit.life.master_id)?;
-        if !(master.class == VILLAGER || master.id == MASTER_1808) {
-            return Ok(());
-        }
-        let Some((tp, t)) = self.object(target) else {
-            return Ok(());
-        };
-        let takes = if filter == GARRISON {
-            let tm = self.master_of(tp, t.life.master_id)?;
-            let world = TaskWorld {
-                players: &self.players,
-                drop_sites: &self.drop_sites,
-            };
-            (tm.kind == BUILDING
-                && t.life.state == 2
-                && world.allied(player, tp, true)
-                && tm.building.is_some_and(|b| b.garrison_type & 1 != 0))
-            .then_some(true)
-        } else {
-            Some(false)
-        };
-        self.record_town_bell(player, idx)?;
-        if let Some(flag) = takes {
-            self.players[player].objects[idx].town_bell.flag = flag;
-        }
-        Ok(())
-    }
-
-    /// `FUN_141206a20`: the unit's present work as its town-bell record
-    /// ([`crate::orders::town_bell::TownBell::record`]): its top action's target (slot 400), or, for one
-    /// in a pasture the world holds, the pasture; without one the target of its unit AI's first
-    /// own queued order (`FUN_140c4da50`: issued by the unit, with a target), else none at its own
-    /// place. Then a Gather's or Hunt's target class (`+0x68`), its unit AI's current action
-    /// (`+0x44`) and the top action's second target (`FUN_140a78430`). The targets count only
-    /// where the world holds them.
-    pub(crate) fn record_town_bell(&mut self, player: usize, idx: usize) -> Result<(), GenieError> {
-        use crate::orders::town_bell::BackToWork;
-        let unit = &self.players[player].objects[idx];
-        if unit.town_bell.flag {
-            return Ok(());
-        }
-        if unit.unmodelled_action.is_some() {
-            return Err(GenieError::unsupported(
-                "a town-bell record of an action not held",
-            ));
-        }
-        let held = |id: i32| (0 <= id).then(|| self.object(id)).flatten();
-        let mut found = unit.top_target().and_then(held).map(|(_, t)| t);
-        if let Some(t) = found
-            && t.pasture != -1
-        {
-            found = held(t.pasture).map(|(_, p)| p);
-        }
-        if found.is_none() {
-            let own = unit
-                .ai
-                .as_ref()
-                .map_or(-1, |ai| own_order_target(ai, unit.id));
-            found = held(own).map(|(_, t)| t);
-        }
-        let (target, point) = found.map_or((-1, [unit.position[0], unit.position[1]]), |t| {
-            (t.id, [t.position[0], t.position[1]])
-        });
-        let actions = &unit.actions;
-        let target_type = match unit.top_action_kind() {
-            Some(HUNT) => actions.hunt().map_or(-1, |h| i32::from(h.target_class)),
-            Some(GATHER) => actions.gather().map_or(-1, |g| g.target_type),
-            _ => -1,
-        };
-        let ai = unit.ai.as_ref().ok_or(GenieError::unsupported(
-            "a town-bell record of a unit without a unit AI",
-        ))?;
-        let target2 = unit
-            .top_second_target()
-            .and_then(held)
-            .map_or(-1, |(_, t)| t.id);
-        let now = BackToWork {
-            target,
-            target_type,
-            action: ai.current_action,
-            target2,
-            point,
-        };
-        self.players[player].objects[idx].town_bell.record(now);
-        Ok(())
-    }
-
     /// The work command's check of the unit's top Attack (`FUN_14106ff70`): one on this very
     /// target, the filter none or 9, keeps it when its slot 9 (`FUN_140a841d0`, [`Attack::keeps`])
     /// does, and the unit AI hears of it as of a new one (slot 0x828: the attack order and
@@ -152,13 +50,17 @@ impl World {
             ai.last_retarget_time = world_time;
             ai.notify_work(
                 Some(OrderKind::Attack),
-                600,
+                Some(ActionKind::Attack),
                 Some((target, class)),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (Some(OrderKind::Attack), 600))?;
+            self.remember_order(
+                player,
+                idx,
+                (Some(OrderKind::Attack), Some(ActionKind::Attack)),
+            )?;
         }
         Ok(true)
     }
@@ -452,13 +354,13 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Hunt),
-                HUNT_ACTION,
+                Some(ActionKind::Hunt),
                 Some((target, class)),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (Some(OrderKind::Hunt), HUNT_ACTION))?;
+            self.remember_order(player, idx, (Some(OrderKind::Hunt), Some(ActionKind::Hunt)))?;
         }
         Ok(())
     }
@@ -485,7 +387,7 @@ impl World {
             if let Some(ai) = unit.ai.as_mut() {
                 ai.notify_work(
                     Some(OrderKind::Gather),
-                    crate::unit_ai::GATHER_ACTION,
+                    Some(ActionKind::Gather),
                     Some((target, class)),
                     point,
                     clears,
@@ -494,7 +396,7 @@ impl World {
                 self.remember_order(
                     player,
                     idx,
-                    (Some(OrderKind::Gather), crate::unit_ai::GATHER_ACTION),
+                    (Some(OrderKind::Gather), Some(ActionKind::Gather)),
                 )?;
             }
         }
@@ -586,9 +488,9 @@ impl World {
             ))
         };
         let (order, action) = if alive {
-            (Some(OrderKind::Move), crate::unit_ai::MOVE_ACTION)
+            (Some(OrderKind::Move), Some(ActionKind::Move))
         } else {
-            (None, -1)
+            (None, None)
         };
         let unit = &mut self.players[player].objects[idx];
         if let Some(ai) = unit.ai.as_mut() {

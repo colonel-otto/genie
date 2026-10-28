@@ -6,6 +6,7 @@ use crate::orders::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -301,7 +302,6 @@ impl World {
         waypoints: &[[f32; 2]],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
-        use crate::unit_ai::MOVE_ACTION;
         let id = loose[i];
         let Some((p, u)) = self.object(id) else {
             return Ok(());
@@ -364,7 +364,7 @@ impl World {
                 }),
                 rng,
             );
-            ai.set_action(MOVE_ACTION);
+            ai.set_action(Some(ActionKind::Move));
             ai.set_target(-1, -1, [shown[0], shown[1], z]);
         }
         Ok(())

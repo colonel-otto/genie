@@ -6,6 +6,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::unit::Unit;
 use crate::ownership::change::change_hands;
+use crate::unit_ai::ActionKind;
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
 
@@ -95,7 +96,7 @@ impl Unit {
         if class != LIVESTOCK
             && !trading
             && let Some(ai) = self.ai.as_mut()
-            && ai.current_action != CAPTURE_KEEPS_ACTION
+            && ai.current_action != Some(ActionKind::HeroPower)
         {
             let mut fx = Vec::new();
             let place = ([self.position[0], self.position[1]], class);
@@ -204,9 +205,6 @@ pub(crate) const HANDS_LEFT: GenieError = GenieError::unsupported(
 /// The trade action's type (slot 0x438), whose load keeps a captured unit's unit AI going
 /// (`FUN_14108c050`).
 pub(crate) const TRADE_ACTION: i32 = 0x6f;
-
-/// The unit AI's action that a capture's stop leaves alone (`FUN_14108c050`).
-pub(crate) const CAPTURE_KEEPS_ACTION: i32 = 0x2c2;
 
 /// `FUN_140aab570`'s scan after a livestock's capture: Gaia's livestock in state 2 whose tile
 /// the new owner sees (`FUN_141663500`), within 3 tiles of `at` (x outer, y inner); each is taken

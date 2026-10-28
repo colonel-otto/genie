@@ -3,11 +3,12 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::movement::PathAsk;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ARTIFACT_AI, ARTIFACT_IDLE_TIMEOUT, AiMove, BOAR_AI, CLASS_KING, COMPUTER_SOLDIER_IDLE_TIMEOUT,
     DESIRED_DISTANCE, Effect, Found, HUMAN_ORDER_CAP, HUNTED_IDLE_TIMEOUT, Home, Hunted,
-    IDLE_TIMEOUT, LION_IDLE_TIMEOUT, MOVE_ACTION, Memory, NewObject, ORDER_HISTORY, OrderRecord,
+    IDLE_TIMEOUT, LION_IDLE_TIMEOUT, Memory, NewObject, ORDER_HISTORY, OrderRecord,
     PATROL_TURN_REACH, PRIEST_IDLE_TIMEOUT, SIEGE_IDLE_TIMEOUT, SOLDIER_AI, SOLDIER_IDLE_TIMEOUT,
     Surroundings, TOWER_AI, TOWER_IDLE_TIMEOUT, UnitAi, UnitSeen, UnitSide, adjusted_idle_timeout,
     notify_capacity, siege_stance, soldier_stance,
@@ -129,14 +130,14 @@ impl UnitAi {
             ai_type,
             current_order: None,
             order_priority: -1,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             target_type: -1,
             target_point: [-1.0; 3],
             desired_distance: DESIRED_DISTANCE,
             defend_target: -1,
             last_order: None,
-            last_action: -1,
+            last_action: None,
             last_target: -1,
             last_target_type: -1,
             idle_timer: 0,
@@ -387,12 +388,12 @@ impl UnitAi {
         self.cap_patrol_secondary();
         self.last_order = self.current_order;
         self.current_order = None;
-        self.set_action(-1);
+        self.set_action(None);
         Ok(())
     }
 
     /// `FUN_140c64b50`.
-    pub(crate) const fn set_action(&mut self, action: i32) {
+    pub(crate) const fn set_action(&mut self, action: Option<ActionKind>) {
         self.last_action = self.current_action;
         self.current_action = action;
     }
@@ -429,7 +430,7 @@ impl UnitAi {
     pub fn notify_work(
         &mut self,
         order: Option<OrderKind>,
-        action: i32,
+        action: Option<ActionKind>,
         target: Option<(i32, i32)>,
         point: [f32; 3],
         clears: bool,
@@ -457,7 +458,7 @@ impl UnitAi {
     ) {
         if moved {
             self.set_order(Some(OrderKind::Move), ai);
-            self.set_action(MOVE_ACTION);
+            self.set_action(Some(ActionKind::Move));
             self.forget_targets();
         }
         let (id, class) = target.unwrap_or((-1, -1));
@@ -469,7 +470,7 @@ impl UnitAi {
     /// (`FUN_140c64be0`); the target it had becomes its last as [`UnitAi::set_target`] does.
     pub fn notify_grid_move(&mut self, cell: [f32; 2], ai: &mut Well512) {
         self.set_order(Some(OrderKind::Move), ai);
-        self.set_action(MOVE_ACTION);
+        self.set_action(Some(ActionKind::Move));
         self.set_target(-1, -1, [cell[0], cell[1], 0.0]);
     }
 
@@ -480,10 +481,10 @@ impl UnitAi {
     /// always gives 1, but for classes 51 and 54 (`FUN_141216c50`, their packing), which it
     /// does not run.
     pub(super) const fn move_to(&mut self, m: AiMove) -> Option<AiMove> {
-        if !m.force && self.current_action != -1 {
+        if !m.force && self.current_action.is_some() {
             return None;
         }
-        self.set_action(MOVE_ACTION);
+        self.set_action(Some(ActionKind::Move));
         // FUN_140c64c10 with -1: the world holds no object -1
         self.target_at(-1, None, m.point);
         Some(m)

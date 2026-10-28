@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::GatherPoint;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, UnitAi};
 
@@ -406,7 +407,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         p.objects[2].ai = Some(UnitAi {
             ai_type: 3,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..UnitAi::default()
         });
@@ -429,7 +430,7 @@ fn a_made_villager_spawns_beside_its_town_centre_and_takes_its_queue() {
         .unwrap()
         .notifies
         .iter()
-        .any(|n| n.kind == ACTION_COMPLETED && n.p == [MAKE_ACTION, 0, 0]);
+        .any(|n| n.kind == ACTION_COMPLETED && n.p == [ActionKind::Make.value(), 0, 0]);
     assert!(completed);
     // the centre's command queue goes to the new unit
     let mut t = world();
@@ -594,7 +595,7 @@ fn a_gather_point_without_a_target_walks_the_new_unit_there() {
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Move), crate::unit_ai::MOVE_ACTION, -1)
+        (Some(OrderKind::Move), Some(ActionKind::Move), -1)
     );
     assert_eq!(ai.target_point, [40.0, 80.0, 0.0]);
     assert_eq!(ai.orders, []);

@@ -3,11 +3,10 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
-    AiMove, BUILD_ACTION, CIVILIAN, DEFEND_ACTION, EXPLORE_ACTION, EXPLORE_DESTROY_ACTION,
-    EXPLORE_Z, Effect, FISHING_AI, FOLLOW_ACTION, Gatherable, QueuedOrder, ResourceSearch,
-    SEEK_ACTION, Seen, Surroundings, TRANSPORT_ACTION, UNLOAD_ACTION, UNLOAD_OVER_WALL_ACTION,
-    UnitAi, UnitCommand, UnitSide, WAIT_SOLIDIFY_ACTION, civilian_kind,
+    AiMove, CIVILIAN, EXPLORE_Z, Effect, FISHING_AI, Gatherable, QueuedOrder, ResourceSearch, Seen,
+    Surroundings, UnitAi, UnitCommand, UnitSide, civilian_kind,
 };
 
 impl UnitAi {
@@ -23,13 +22,13 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         let Some(t) = Self::world_object(target, at, side)? else {
             return Ok(false);
         };
-        self.set_action(DEFEND_ACTION);
+        self.set_action(Some(ActionKind::Defend));
         self.target_at(target, Some(i32::from(t.class)), t.position);
         self.desired_distance = range;
         self.defend_target = target;
@@ -47,10 +46,10 @@ impl UnitAi {
         force: bool,
         at: &Surroundings,
     ) -> bool {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return false;
         }
-        self.set_action(DEFEND_ACTION);
+        self.set_action(Some(ActionKind::Defend));
         self.target_at(-1, None, [point[0], point[1], at.position[2]]);
         self.desired_distance = range;
         self.defend_target = -1;
@@ -77,11 +76,11 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        if (!force && self.current_action == BUILD_ACTION) || !side.builds(target)? {
+        if (!force && self.current_action == Some(ActionKind::Build)) || !side.builds(target)? {
             return Ok(false);
         }
         fx.push(Effect::BuildObject(target));
-        self.set_action(BUILD_ACTION);
+        self.set_action(Some(ActionKind::Build));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class), t.position),
             None => self.set_target(target, -1, [0.0; 3]),
@@ -99,18 +98,18 @@ impl UnitAi {
         &mut self,
         target: i32,
         force: bool,
-        action: i32,
+        action: ActionKind,
         command: UnitCommand,
         at: &Surroundings,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action == action {
+        if !force && self.current_action == Some(action) {
             return Ok(false);
         }
         if !side.command(command)? {
             return Ok(false);
         }
-        self.set_action(action);
+        self.set_action(Some(action));
         match Self::world_object(target, at, side)? {
             Some(t) => self.set_target(target, i32::from(t.class), t.position),
             None => self.set_target(target, -1, [0.0; 3]),
@@ -177,13 +176,13 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         let Some(t) = Self::world_object(target, at, side)? else {
             return Ok(false);
         };
-        self.set_action(FOLLOW_ACTION);
+        self.set_action(Some(ActionKind::Follow));
         self.target_at(target, Some(i32::from(t.class)), t.position);
         self.desired_distance = range;
         if range * range < t.gap_squared {
@@ -214,13 +213,13 @@ impl UnitAi {
         if self.ai_type == CIVILIAN && held.is_none() {
             return Ok(false);
         }
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         if !side.command(UnitCommand::Enter(target))? {
             return Ok(false);
         }
-        self.set_action(crate::garrison::ENTER_ACTION);
+        self.set_action(Some(ActionKind::Enter));
         self.target_at(target, held.map(|t| i32::from(t.class)), [-1.0; 3]);
         Ok(true)
     }
@@ -235,13 +234,13 @@ impl UnitAi {
         force: bool,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         if !side.command(UnitCommand::Transport(point))? {
             return Ok(false);
         }
-        self.set_action(TRANSPORT_ACTION);
+        self.set_action(Some(ActionKind::Transport));
         self.target_at(-1, None, point);
         Ok(true)
     }
@@ -259,18 +258,18 @@ impl UnitAi {
         at: &Surroundings,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         let to = [point[0], point[1], at.position[2]];
         if !side.command(UnitCommand::Unload { to, over_wall })? {
             return Ok(false);
         }
-        self.set_action(if over_wall {
-            UNLOAD_OVER_WALL_ACTION
+        self.set_action(Some(if over_wall {
+            ActionKind::UnloadOverWall
         } else {
-            UNLOAD_ACTION
-        });
+            ActionKind::Unload
+        }));
         self.set_target(at.id, i32::from(at.class), at.position);
         Ok(true)
     }
@@ -288,13 +287,13 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         if !self.attack_command(target, force, at, side, fx)? {
             return Ok(false);
         }
-        self.set_action(SEEK_ACTION);
+        self.set_action(Some(ActionKind::SeekAndDestroy));
         let class = Self::world_object(target, at, side)?.map(|t| i32::from(t.class));
         self.target_at(target, class, [tile[0] as f32, tile[1] as f32, EXPLORE_Z]);
         Ok(true)
@@ -310,12 +309,12 @@ impl UnitAi {
         force: bool,
         fx: &mut Vec<Effect>,
     ) -> bool {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return false;
         }
         let point = [tile[0] as f32, tile[1] as f32];
         fx.push(Effect::Explore(point));
-        self.set_action(EXPLORE_DESTROY_ACTION);
+        self.set_action(Some(ActionKind::ExploreAndDestroy));
         self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
         true
     }
@@ -408,7 +407,7 @@ impl UnitAi {
 
     /// Slot 0x108 (`FUN_140c68a60`), with `force` (its argument 3) or without an action value:
     /// the unit's slot 0x388 on the foundation `target` ([`UnitSide::wait_solidify`]); on its 1
-    /// the action value becomes [`WAIT_SOLIDIFY_ACTION`], the old one the last. True when it
+    /// the action value becomes [`ActionKind::WaitSolidify`], the old one the last. True when it
     /// waits.
     pub(super) fn wait_for_foundation(
         &mut self,
@@ -416,13 +415,13 @@ impl UnitAi {
         force: bool,
         side: &mut dyn UnitSide,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         if !side.wait_solidify(target)? {
             return Ok(false);
         }
-        self.set_action(WAIT_SOLIDIFY_ACTION);
+        self.set_action(Some(ActionKind::WaitSolidify));
         Ok(true)
     }
 
@@ -431,12 +430,12 @@ impl UnitAi {
     /// then holds the explore's action value and the point without a target (`FUN_140c64c10`
     /// with −1, which leaves the target class), at height [`EXPLORE_Z`].
     pub(super) fn explore_at(&mut self, x: i32, y: i32, again: bool, fx: &mut Vec<Effect>) -> bool {
-        if !again && self.current_action != -1 {
+        if !again && self.current_action.is_some() {
             return false;
         }
         let point = [x as f32, y as f32];
         fx.push(Effect::Explore(point));
-        self.last_action = std::mem::replace(&mut self.current_action, EXPLORE_ACTION);
+        self.last_action = self.current_action.replace(ActionKind::Explore);
         self.target_at(-1, None, [point[0], point[1], EXPLORE_Z]);
         true
     }

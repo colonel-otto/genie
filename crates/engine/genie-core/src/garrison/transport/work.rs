@@ -2,11 +2,10 @@
 //! in the game's data) makes or retakes it.
 
 use crate::GenieError;
-use crate::garrison::transport::{
-    Changed, MapShore, Ship, TRANSPORT, TRANSPORT_ACTION, TransportAction,
-};
+use crate::garrison::transport::{Changed, MapShore, Ship, TRANSPORT, TransportAction};
 use crate::math::rng::Stream;
 use crate::objects::masters::{Task, TaskId};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 
 /// The market (`0x60f0` raw), whose own trade units the work command never retakes.
@@ -111,13 +110,17 @@ impl crate::world::World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Transport),
-                TRANSPORT_ACTION,
+                Some(ActionKind::Transport),
                 named,
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(p, i, (Some(OrderKind::Transport), TRANSPORT_ACTION))?;
+            self.remember_order(
+                p,
+                i,
+                (Some(OrderKind::Transport), Some(ActionKind::Transport)),
+            )?;
         }
         Ok(())
     }

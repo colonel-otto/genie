@@ -2,10 +2,11 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    AiMove, CLASS_18, ENDED_ACTIONS, Effect, GO_ON, MOVE_ACTION, Notify, PRODUCED, QueuedOrder,
-    Surroundings, UnitAi, UnitSide, WALK_BACK, point_gap_squared,
+    AiMove, CLASS_18, ENDED_ACTIONS, Effect, GO_ON, Notify, PRODUCED, QueuedOrder, Surroundings,
+    UnitAi, UnitSide, WALK_BACK, point_gap_squared,
 };
 
 impl UnitAi {
@@ -39,7 +40,9 @@ impl UnitAi {
                 ));
             }
         }
-        if p0 == 600 && (order == Some(OrderKind::Attack) || action == 600) {
+        let attack = ActionKind::Attack.value();
+        if p0 == attack && (order == Some(OrderKind::Attack) || action == Some(ActionKind::Attack))
+        {
             let produced = self.process_idle(at, computer, ai, side, fx)?;
             if produced {
                 return Ok(PRODUCED);
@@ -53,25 +56,26 @@ impl UnitAi {
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
-        let own = order.map_or(action == p0, |o| o.owns(action));
+        let own = order.map_or_else(|| ActionKind::field(action) == p0, |o| o.owns(action));
         if own {
             self.remove_target();
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
-        match (order, p0) {
-            (Some(OrderKind::GroupGather), 0x262) => {
+        let moved = p0 == ActionKind::Move.value();
+        match order {
+            Some(OrderKind::GroupGather) if moved => {
                 self.remove_target();
                 self.stop_current(false, at, fx)?;
                 return Ok(GO_ON);
             }
-            (Some(OrderKind::Defend), 0x262) => {
-                self.set_action(-1);
+            Some(OrderKind::Defend) if moved => {
+                self.set_action(None);
                 return Ok(GO_ON);
             }
             _ => {}
         }
-        if p0 == 600 {
+        if p0 == attack {
             self.remove_target();
             self.stop_current(true, at, fx)?;
         }
@@ -100,7 +104,8 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let (order, action, p0) = (self.current_order, self.current_action, n.p[0]);
-        if (order == Some(OrderKind::Attack) || n.p[2] == 0x202) && p0 == 600 {
+        let attack = ActionKind::Attack.value();
+        if (order == Some(OrderKind::Attack) || n.p[2] == 0x202) && p0 == attack {
             if self.retarget_disabled != 0 {
                 return Err(GenieError::unsupported(
                     "an invalidated attack with retargeting off (+0x1d6)",
@@ -120,16 +125,18 @@ impl UnitAi {
             return Ok(GO_ON);
         }
         let own = if order.is_none() {
-            action == p0
+            ActionKind::field(action) == p0
         } else {
-            if matches!(order, Some(OrderKind::GroupGather | OrderKind::Defend)) && p0 == 0x262 {
+            if matches!(order, Some(OrderKind::GroupGather | OrderKind::Defend))
+                && p0 == ActionKind::Move.value()
+            {
                 return Err(GenieError::unsupported(
                     "an invalidated action 0x262 on order 0x2d4 or 0x2bd",
                 ));
             }
             order.is_some_and(|o| o.owns(action))
         };
-        if own || p0 == 600 {
+        if own || p0 == attack {
             self.remove_target();
             self.stop_current(true, at, fx)?;
         }
@@ -160,14 +167,15 @@ impl UnitAi {
         if order.is_some() || at.group.is_some_and(|g| g.commanded) {
             self.state_position = [at.position[0], at.position[1]];
         }
+        let attack = ActionKind::Attack.value();
         if order.is_none() {
-            if action == p1 || p1 == 600 {
+            if ActionKind::field(action) == p1 || p1 == attack {
                 self.remove_target();
                 self.stop_current(true, at, fx)?;
             }
             return Ok(GO_ON);
         }
-        if order == Some(OrderKind::Attack) && p1 == 600 {
+        if order == Some(OrderKind::Attack) && p1 == attack {
             if self.process_idle(at, computer, ai_rng, side, fx)? {
                 return Ok(PRODUCED);
             }
@@ -175,28 +183,29 @@ impl UnitAi {
             self.stop_current(false, at, fx)?;
             return Ok(GO_ON);
         }
-        if action == p1 && order.is_some_and(|o| o.owns(action)) {
+        if ActionKind::field(action) == p1 && order.is_some_and(|o| o.owns(action)) {
             self.remove_target();
             self.stop_current(true, at, fx)?;
             return Ok(GO_ON);
         }
-        match (order, p1) {
-            (Some(OrderKind::GroupGather), MOVE_ACTION) => {
+        let moved = p1 == ActionKind::Move.value();
+        match order {
+            Some(OrderKind::GroupGather) if moved => {
                 self.remove_target();
                 self.stop_current(false, at, fx)?;
                 return Ok(GO_ON);
             }
-            (Some(OrderKind::Defend), MOVE_ACTION) => {
-                self.set_action(-1);
+            Some(OrderKind::Defend) if moved => {
+                self.set_action(None);
                 return Ok(GO_ON);
             }
-            (Some(OrderKind::Follow), MOVE_ACTION) if action == 0x2bf => {
-                self.set_action(-1);
+            Some(OrderKind::Follow) if moved && action == Some(ActionKind::MoveAside) => {
+                self.set_action(None);
                 return Ok(GO_ON);
             }
             _ => {}
         }
-        if p1 == 600 {
+        if p1 == attack {
             self.remove_target();
             self.stop_current(true, at, fx)?;
         }
@@ -276,7 +285,7 @@ impl UnitAi {
             }
         }
         fx.push(Effect::Stop);
-        self.current_action = -1;
+        self.current_action = None;
         self.stop_after_kill = false;
         Ok(())
     }
@@ -312,7 +321,7 @@ impl UnitAi {
             force: true,
             walk: false,
         }));
-        self.set_action(MOVE_ACTION);
+        self.set_action(Some(ActionKind::Move));
         self.commanded = true;
         true
     }
@@ -321,11 +330,14 @@ impl UnitAi {
     /// an action value of [`ENDED_ACTIONS`] goes; `0x2bf` of stance 2 also sets the state
     /// position.
     pub(super) fn reset_ended_action(&mut self, at: &Surroundings) {
-        if ENDED_ACTIONS.contains(&self.current_action) {
-            if self.current_action == 0x2bf && self.stance == 2 {
+        if self
+            .current_action
+            .is_some_and(|a| ENDED_ACTIONS.contains(&a))
+        {
+            if self.current_action == Some(ActionKind::MoveAside) && self.stance == 2 {
                 self.state_position = [at.position[0], at.position[1]];
             }
-            self.current_action = -1;
+            self.current_action = None;
         }
     }
 
@@ -397,7 +409,7 @@ impl UnitAi {
     /// update and `FUN_140c68980` pass as 0 and only the slot 4 of `FUN_140c2bd20` as 1) a unit
     /// that passes the test takes orders only with that task.
     pub(super) const fn can_order(&self, at: &Surroundings, task_only: bool) -> bool {
-        if at.task_0x99 && (at.target.is_some() || self.current_action != -1) {
+        if at.task_0x99 && (at.target.is_some() || self.current_action.is_some()) {
             return false;
         }
         !task_only || at.task_0x99
@@ -423,7 +435,7 @@ impl UnitAi {
         if !self.notifies.is_empty() || self.orders.is_empty() {
             return Ok(fx);
         }
-        if (self.current_action != -1 || at.busy) && !at.interruptible {
+        if (self.current_action.is_some() || at.busy) && !at.interruptible {
             return Ok(fx);
         }
         if self.can_order(at, false) {
@@ -488,7 +500,7 @@ impl UnitAi {
     ) -> Result<(), GenieError> {
         let mut k = 0;
         while k < self.orders.len() {
-            if self.current_action != -1 && self.orders[k].priority < 100 {
+            if self.current_action.is_some() && self.orders[k].priority < 100 {
                 return Ok(());
             }
             let order = self.orders[k];

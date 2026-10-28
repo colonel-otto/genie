@@ -2,6 +2,7 @@ use crate::groups::{Member, UnitGroup, UnitGroups};
 use crate::movement::GroupSpeed;
 use crate::objects::masters::{Master, Masters, Task};
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::{Player, World};
@@ -13,7 +14,7 @@ fn soldier(id: i32, x: f32, y: f32) -> Unit {
         position: [x, y, 0.0],
         ai: Some(UnitAi {
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -293,7 +294,7 @@ fn relic_carriers_keep_their_command_pending() {
     let mut m = soldier(41, 7.0, 7.0);
     m.life.master_id = 104;
     t.players[0].objects.extend([r, m]);
-    let ai = |t: &mut World, order: Option<OrderKind>, action: i32, target: i32| {
+    let ai = |t: &mut World, order: Option<OrderKind>, action: Option<ActionKind>, target: i32| {
         let a = t.players[1].objects[0].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
@@ -301,17 +302,17 @@ fn relic_carriers_keep_their_command_pending() {
     };
     t.groups.get_mut(1).unwrap().current_command = 0x84;
     set_masters(&mut t, vec![task(0x84)]);
-    ai(&mut t, Some(OrderKind::OnTarget), -1, 40);
+    ai(&mut t, Some(OrderKind::OnTarget), None, 40);
     assert!(t.target_pending(1).unwrap());
-    ai(&mut t, None, 0x277, 40);
+    ai(&mut t, None, Some(ActionKind::OnTarget), 40);
     assert!(t.target_pending(1).unwrap());
-    ai(&mut t, None, -1, 40);
+    ai(&mut t, None, None, 40);
     assert!(!t.target_pending(1).unwrap());
-    ai(&mut t, Some(OrderKind::OnTarget), -1, -1);
+    ai(&mut t, Some(OrderKind::OnTarget), None, -1);
     assert!(!t.target_pending(1).unwrap());
     set_masters(&mut t, vec![task(0x88)]);
     assert!(t.target_pending(1).unwrap());
-    ai(&mut t, Some(OrderKind::OnTarget), -1, 41);
+    ai(&mut t, Some(OrderKind::OnTarget), None, 41);
     assert!(!t.target_pending(1).unwrap());
     // the delivery: on the monastery, with either task
     t.groups.get_mut(1).unwrap().current_command = 0x88;
@@ -321,7 +322,7 @@ fn relic_carriers_keep_their_command_pending() {
     set_masters(&mut t, vec![task(5)]);
     assert!(!t.target_pending(1).unwrap());
     set_masters(&mut t, vec![task(0x88)]);
-    ai(&mut t, Some(OrderKind::OnTarget), -1, 40);
+    ai(&mut t, Some(OrderKind::OnTarget), None, 40);
     assert!(!t.target_pending(1).unwrap());
 }
 
@@ -332,20 +333,20 @@ fn a_member_is_free_by_its_action_and_its_unit_ai() {
     let mut t = world();
     assert!(t.member_idle(10).unwrap());
     assert!(!t.member_idle(99).unwrap());
-    let ai = |t: &mut World, order: Option<OrderKind>, action: i32| {
+    let ai = |t: &mut World, order: Option<OrderKind>, action: Option<ActionKind>| {
         let a = t.players[1].objects[0].ai.as_mut().unwrap();
         a.current_order = order;
         a.current_action = action;
     };
-    ai(&mut t, None, 0x2c6);
+    ai(&mut t, None, Some(ActionKind::Move));
     assert!(!t.member_idle(10).unwrap());
-    ai(&mut t, Some(OrderKind::Wait), 0x2c0);
+    ai(&mut t, Some(OrderKind::Wait), Some(ActionKind::GroupAside));
     assert!(t.member_idle(10).unwrap());
-    ai(&mut t, None, 0x25b);
+    ai(&mut t, None, Some(ActionKind::Heal));
     assert!(t.member_idle(10).unwrap());
-    ai(&mut t, Some(OrderKind::Move), 0x25b);
+    ai(&mut t, Some(OrderKind::Move), Some(ActionKind::Heal));
     assert!(!t.member_idle(10).unwrap());
-    ai(&mut t, None, -1);
+    ai(&mut t, None, None);
     t.players[1].objects[0].ai = None;
     assert!(t.member_idle(10).unwrap());
     // an Attack in state 2 is not free, in states 3 and 13 it is; a state 4 is not
@@ -430,7 +431,7 @@ fn kept_apart_units_leave_unless_busy() {
     free.body
         .put_mover(Some(crate::gathering::hunt::tests::walking()));
     let mut attacker = soldier(17, 7.0, 7.0);
-    attacker.ai.as_mut().unwrap().current_action = 600;
+    attacker.ai.as_mut().unwrap().current_action = Some(ActionKind::Attack);
     t.players[1].objects.extend([apart, free, attacker]);
     t.groups.get_mut(1).unwrap().objects = vec![99, 15, 16, 17];
     t.keep_apart(1).unwrap();
@@ -457,7 +458,7 @@ fn a_deleted_group_lets_its_members_go() {
         u.body
             .put_mover(Some(crate::gathering::hunt::tests::walking()));
     }
-    t.players[1].objects[1].ai.as_mut().unwrap().current_action = 0x2c6;
+    t.players[1].objects[1].ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
     t.players[1].objects[2].group.id = 7;
     t.delete_group(1).unwrap();
     assert!(t.groups.get(1).is_none());
@@ -831,7 +832,7 @@ fn a_standing_group_s_move_ends_or_goes_on() {
     // none in place but no free unit: the formation locks to its kind, the command ends
     let mut t = world();
     for u in &mut t.players[1].objects {
-        u.ai.as_mut().unwrap().current_action = 0x2c6;
+        u.ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
     }
     let g = t.groups.get_mut(1).unwrap();
     g.current_command = 1;
@@ -856,7 +857,7 @@ fn units_out_of_their_places_get_paths() {
         state,
         ..crate::groups::Slot::default()
     };
-    t.players[1].objects[1].ai.as_mut().unwrap().current_action = 0x2c6;
+    t.players[1].objects[1].ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
     t.groups.get_mut(1).unwrap().current_formation = Some(crate::groups::Formation {
         slots: vec![slot(-1, 0), slot(99, 0), slot(11, 0), slot(10, 3)],
         ..crate::groups::Formation::default()
@@ -896,7 +897,7 @@ fn a_member_moved_aside_waits_out_its_timer() {
     let g = t.groups.get_mut(1).unwrap();
     g.members[0].specific_move = aside;
     g.members[1].specific_move = aside;
-    t.players[1].objects[1].ai.as_mut().unwrap().current_action = 0x2c6;
+    t.players[1].objects[1].ai.as_mut().unwrap().current_action = Some(ActionKind::Move);
     t.specific_moves_step(1).unwrap();
     let g = t.groups.get(1).unwrap();
     assert_eq!(g.members[0].specific_move.timer, 0.25);
@@ -1178,7 +1179,7 @@ fn the_speed_slot_reads_the_group_that_steers_a_free_member() {
     moving.get_mut(1).unwrap().motion.velocity = [0.0, 0.0, 1.0];
     assert_eq!(of(&moving, 10), Ok(Some(GroupSpeed::Aside)));
     let mut busy = t.object(11).unwrap().1.clone();
-    busy.ai.as_mut().unwrap().current_action = 0x258;
+    busy.ai.as_mut().unwrap().current_action = Some(ActionKind::Attack);
     assert_eq!(busy.group_speed(&groups, masters), Ok(None));
     let mut gone = busy.clone();
     gone.group.id = 7;

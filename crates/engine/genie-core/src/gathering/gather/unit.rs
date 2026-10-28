@@ -8,7 +8,7 @@ use crate::movement::{Me, footprint_gap, footprint_gap_squared};
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, second_target_checked};
-use crate::unit_ai::BUILD_ACTION;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::unit_ai::world_view::DropWorld;
@@ -102,7 +102,10 @@ impl Unit {
             crate::world::lets::take(c, out.took, by);
         }
         if out.notified {
-            self.post_own(crate::unit_ai::NO_DROP_SITE, [BUILD_ACTION, 0, 0])?;
+            self.post_own(
+                crate::unit_ai::NO_DROP_SITE,
+                [ActionKind::Build.value(), 0, 0],
+            )?;
         }
         Ok(())
     }
@@ -464,7 +467,7 @@ impl Unit {
         };
         self.post_own(
             crate::unit_ai::REQUIRES_SEARCH,
-            [crate::unit_ai::GATHER_ACTION, target_type, site],
+            [ActionKind::Gather.value(), target_type, site],
         )
     }
 }

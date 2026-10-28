@@ -2,14 +2,14 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, AiMove, AttackAsk, BUILDING_KIND, CLASS_3, CLASS_20, CLASS_52, DEFEND_LEASH,
-    DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW,
-    GROUP_ASIDE_ACTION, GroupState, INVALID_POINT, MOVE_ACTION, MOVE_ASIDE_ACTION, Pick,
-    RETARGET_RANGE, RETARGET_REACH, RetargetSearch, SINGLE_VOLLEY, STAND_GROUND_PATROL_LEASH,
-    STAND_GROUND_SLACK, Search, Surroundings, UnitAi, UnitSide, group_lets_idle, held_action_state,
-    patrol_distance, point_gap_squared,
+    AiMove, AttackAsk, BUILDING_KIND, CLASS_3, CLASS_20, CLASS_52, DEFEND_LEASH,
+    DEFEND_PATROL_LEASH, DEFEND_SLACK, Effect, FOLLOW_SLACK_HIGH, FOLLOW_SLACK_LOW, GroupState,
+    INVALID_POINT, Pick, RETARGET_RANGE, RETARGET_REACH, RetargetSearch, SINGLE_VOLLEY,
+    STAND_GROUND_PATROL_LEASH, STAND_GROUND_SLACK, Search, Surroundings, UnitAi, UnitSide,
+    group_lets_idle, held_action_state, patrol_distance, point_gap_squared,
 };
 
 impl UnitAi {
@@ -33,7 +33,7 @@ impl UnitAi {
         let class_20 = busy && at.class == CLASS_20;
         if !class_20
             && self.adjusted_idle_timeout < self.idle_timer
-            && self.current_action == -1
+            && self.current_action.is_none()
             && (self.current_target == -1 || !busy)
             && group_lets_idle(group)
         {
@@ -45,7 +45,12 @@ impl UnitAi {
         if self.patrols(group) {
             return self.patrol_idle_part(at, computer, ai, side, fx);
         }
-        if matches!(at.class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
+        if matches!(at.class, CLASS_3 | CLASS_52)
+            && matches!(
+                self.current_action,
+                Some(ActionKind::Make | ActionKind::Research)
+            )
+        {
             return self.making_idle_part(at, computer, ai, side, fx);
         }
         self.idle_part_end(at.class, at.player, group)
@@ -133,19 +138,24 @@ impl UnitAi {
         if self.patrols(group) {
             return Err(GenieError::unsupported("a patrol order's idle part"));
         }
-        if matches!(class, CLASS_3 | CLASS_52) && matches!(self.current_action, 0x26b | 0x26c) {
+        if matches!(class, CLASS_3 | CLASS_52)
+            && matches!(
+                self.current_action,
+                Some(ActionKind::Make | ActionKind::Research)
+            )
+        {
             return Err(GenieError::unsupported(
                 "a unit of class 3 or 52 on action 0x26b/0x26c",
             ));
         }
-        if self.current_action == GROUP_ASIDE_ACTION {
+        if self.current_action == Some(ActionKind::GroupAside) {
             if group.is_none_or(|g| !g.moving) {
-                self.last_action = GROUP_ASIDE_ACTION;
-                self.current_action = -1;
+                self.last_action = Some(ActionKind::GroupAside);
+                self.current_action = None;
             }
             return Ok(());
         }
-        if (self.current_action != -1 || self.current_target != -1) && 0 < player {
+        if (self.current_action.is_some() || self.current_target != -1) && 0 < player {
             self.idle_timer = 0;
         }
         Ok(())
@@ -183,7 +193,7 @@ impl UnitAi {
         // without an order, the order whose own action the current one is (`action + 100`)
         let order = self
             .current_order
-            .or_else(|| OrderKind::of_action(self.current_action));
+            .or_else(|| self.current_action.and_then(ActionKind::order));
         if order == Some(OrderKind::Defend) && self.defend_misc(at, computer, ai, side, fx)? {
             return Ok(false);
         }
@@ -269,13 +279,16 @@ impl UnitAi {
         if leashed
             && self.stance == 2
             && self.patrol_path.is_none()
-            && !matches!(self.current_action, 0x2bf | 0x2c0)
+            && !matches!(
+                self.current_action,
+                Some(ActionKind::MoveAside | ActionKind::GroupAside)
+            )
         {
             // stand ground's: the squared gap against the range plus 0.25 (ADDSS, then COMISS
             // and JBE); a unit with an action value stops, forgets its target and walks back,
             // and slot 73 returns 10 ("We're too far out, returning.", "SO Call 40.")
             let gap = point_gap_squared(self.state_position, at.position, at.size);
-            if at.weapon_range + STAND_GROUND_SLACK < gap && self.current_action != -1 {
+            if at.weapon_range + STAND_GROUND_SLACK < gap && self.current_action.is_some() {
                 self.stop_current(true, at, fx)?;
                 self.remove_target();
                 let _ = self.walk_back(at, fx);
@@ -508,9 +521,13 @@ impl UnitAi {
             }
             defended = held;
         }
-        let toward_it = self.current_action == MOVE_ACTION
+        let toward_it = self.current_action == Some(ActionKind::Move)
             && self.top_target_live(at, fx, side)?.map_or(-1, |t| t.id) == self.defend_target;
-        if matches!(self.current_action, ATTACK_ACTION | MOVE_ASIDE_ACTION) || toward_it {
+        if matches!(
+            self.current_action,
+            Some(ActionKind::Attack | ActionKind::MoveAside)
+        ) || toward_it
+        {
             return Ok(false);
         }
         let gap = if let Some(t) = defended {
@@ -572,7 +589,10 @@ impl UnitAi {
                 return Ok(true);
             }
         };
-        if matches!(self.current_action, 0x2bf | 0x2c0) {
+        if matches!(
+            self.current_action,
+            Some(ActionKind::MoveAside | ActionKind::GroupAside)
+        ) {
             self.target_point[0] = -1.0;
             self.target_point[1] = -1.0;
             return Ok(false);
@@ -620,7 +640,7 @@ impl UnitAi {
             state,
             range,
         });
-        self.set_action(MOVE_ACTION);
+        self.set_action(Some(ActionKind::Move));
         self.target_at(id, Some(i32::from(class)), position);
     }
 

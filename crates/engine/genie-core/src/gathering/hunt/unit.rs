@@ -8,6 +8,7 @@ use crate::math::rng::Stream;
 use crate::movement::{Me, Planning};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::Search;
 use crate::unit_ai::world_view::DropWorld;
@@ -138,7 +139,7 @@ impl Unit {
                 site
             }
         };
-        self.post_own(SEARCH_NEEDED, [crate::unit_ai::HUNT_ACTION, class, site])
+        self.post_own(SEARCH_NEEDED, [ActionKind::Hunt.value(), class, site])
     }
 
     /// The hunt's state 8 after its load went (`0x140ac7a00` case 7, after `FUN_14119d310`): a

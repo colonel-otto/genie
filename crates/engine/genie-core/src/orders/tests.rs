@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::actions::ActionList;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 
 /// The object's own update knows its slot: it is taken while it still holds the object, and
@@ -393,7 +394,7 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     let ai = t.players[1].objects[0].ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Attack), 600, 61)
+        (Some(OrderKind::Attack), Some(ActionKind::Attack), 61)
     );
     assert_eq!((ai.target_type, ai.target_point), (52, [21.0, 21.0, 0.0]));
     assert_eq!(
@@ -403,7 +404,7 @@ fn an_attack_task_tells_its_unit_ai_the_order_the_action_and_the_target() {
     let record = ai.order_history.last().expect("the order history");
     assert_eq!(
         (record.order, record.action, record.time, record.target),
-        (Some(OrderKind::Attack), 600, 1730, 61)
+        (Some(OrderKind::Attack), Some(ActionKind::Attack), 1730, 61)
     );
     assert_eq!(t.players[0].objects[2].workers, 1);
     t.players[1].objects[0].ai = None;
@@ -614,7 +615,7 @@ fn work_attack(stance: u8) -> (World, crate::objects::masters::Task) {
     unit.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 6,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         stance,
         ..crate::unit_ai::UnitAi::default()
@@ -991,7 +992,7 @@ fn a_queued_move_s_new_group_takes_its_first_unit_s_target() {
     let units = [(11, 4, [20.0, 20.0]), (13, 4, [21.0, 20.0])];
     let ai = |target| crate::unit_ai::UnitAi {
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: target,
         ..crate::unit_ai::UnitAi::default()
     };
@@ -1155,7 +1156,7 @@ fn an_order_to_a_busy_unit_ai_readies_its_queue_and_stops_the_unit() {
     (unit.pasture, unit.my_pasture) = (-1, -1);
     unit.ai = Some(crate::unit_ai::UnitAi {
         current_order: Some(OrderKind::Move),
-        current_action: crate::unit_ai::MOVE_ACTION,
+        current_action: Some(ActionKind::Move),
         current_target: 99,
         orders: vec![crate::unit_ai::QueuedOrder {
             order: OrderKind::Move,
@@ -1403,7 +1404,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
     ]);
     let ai = crate::unit_ai::UnitAi {
         current_order: None,
-        current_action: -1,
+        current_action: None,
         ..crate::unit_ai::UnitAi::default()
     };
     let unit = |id| Unit {
@@ -1439,7 +1440,7 @@ fn an_auto_scout_reaches_any_player_s_scout_of_its_first_60_ids() {
 fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
     let attacking = crate::unit_ai::UnitAi {
         current_order: Some(OrderKind::Attack),
-        current_action: 600,
+        current_action: Some(ActionKind::Attack),
         current_target: 40,
         target_type: 6,
         ..crate::unit_ai::UnitAi::default()
@@ -1448,12 +1449,15 @@ fn no_attack_stops_an_attacking_unit_ai_and_forgets_its_target() {
     let mut fx = Vec::new();
     set_stance(&mut ai, 1, ([3.0, 4.0], 6), &mut fx).unwrap();
     assert_eq!((ai.stance, ai.state_position), (1, [3.0, 4.0]));
-    assert_eq!((ai.current_action, ai.current_target), (600, 40));
+    assert_eq!(
+        (ai.current_action, ai.current_target),
+        (Some(ActionKind::Attack), 40)
+    );
     assert_eq!(fx, []);
     set_stance(&mut ai, 3, ([3.0, 5.0], 6), &mut fx).unwrap();
     assert_eq!(ai.stance, 3);
     // order 700 is the action's (600 + 100): the stop ends it, the state position the place
-    assert_eq!((ai.current_order, ai.current_action), (None, -1));
+    assert_eq!((ai.current_order, ai.current_action), (None, None));
     assert_eq!((ai.current_target, ai.last_target), (-1, 40));
     assert_eq!(fx, [crate::unit_ai::Effect::Stop]);
 }
@@ -1861,7 +1865,7 @@ fn followers() -> World {
         u.body.put_mover(Some(walker.clone()));
         u.ai = Some(crate::unit_ai::UnitAi {
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..crate::unit_ai::UnitAi::default()
         });
@@ -1919,7 +1923,7 @@ fn a_guard_gives_its_units_the_defend_order_at_once() {
         let ai = t.players[1].objects[0].ai.as_ref().unwrap();
         assert_eq!(
             (ai.current_order, ai.current_action, ai.order_priority),
-            (Some(OrderKind::Defend), 0x259, 100)
+            (Some(OrderKind::Defend), Some(ActionKind::Defend), 100)
         );
         assert_eq!(
             (ai.current_target, ai.defend_target, ai.desired_distance),
@@ -1940,7 +1944,7 @@ fn a_follower_takes_the_follow_order_and_walks_to_its_target() {
     let ai = unit.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action),
-        (Some(OrderKind::Follow), crate::unit_ai::FOLLOW_ACTION)
+        (Some(OrderKind::Follow), Some(ActionKind::Follow))
     );
     assert_eq!((ai.current_target, ai.target_type), (30, 6));
     assert_eq!(ai.target_point, [40.0, 20.0, 0.0]);
@@ -1959,7 +1963,7 @@ fn followers_side_by_side_take_their_offsets_from_the_target() {
         let ai = unit.ai.as_ref().unwrap();
         assert_eq!(
             (ai.current_order, ai.current_action),
-            (Some(OrderKind::Move), crate::unit_ai::MOVE_ACTION)
+            (Some(OrderKind::Move), Some(ActionKind::Move))
         );
         assert_eq!((ai.current_target, ai.target_point), (30, [x, 20.0, 0.0]));
         assert_eq!(unit.body.mover().unwrap().ignore_units, [other]);
@@ -2671,7 +2675,7 @@ fn patrollers(units: &[(i32, i16, [f32; 2])], members: &[i32]) -> World {
         u.ai = Some(crate::unit_ai::UnitAi {
             ai_type: 13,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             target_type: -1,
             idle_timer: 400,
@@ -2709,7 +2713,7 @@ fn a_lone_unit_patrols_to_its_waypoint() {
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.last_order, ai.current_action),
-        (Some(OrderKind::Patrol), None, crate::unit_ai::MOVE_ACTION)
+        (Some(OrderKind::Patrol), None, Some(ActionKind::Move))
     );
     assert_eq!(
         (ai.current_target, ai.target_type, ai.target_point),
@@ -2749,18 +2753,18 @@ fn a_lone_unit_s_waypoints_but_the_last_become_its_own() {
 fn a_move_runs_the_stop_of_a_pending_completion_first() {
     let mut t = patrollers(&[(11, 4, [20.0, 20.0])], &[]);
     let ai = t.players[1].objects[0].ai.as_mut().unwrap();
-    ai.current_action = crate::unit_ai::MOVE_ACTION;
+    ai.current_action = Some(ActionKind::Move);
     ai.notifies = vec![crate::unit_ai::Notify::own(
         11,
         crate::unit_ai::ACTION_COMPLETED,
-        [crate::unit_ai::MOVE_ACTION, 0, 0],
+        [ActionKind::Move.value(), 0, 0],
     )];
     assert_eq!(t.move_to_point(1, 0, [30.0, 20.0, 0.0]), Ok(false));
     let u = &t.players[1].objects[0];
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.last_action, ai.notifies.len()),
-        (-1, crate::unit_ai::MOVE_ACTION, 0)
+        (None, Some(ActionKind::Move), 0)
     );
     assert_eq!(
         u.actions.move_to().copied().unwrap().goal,
@@ -2795,7 +2799,7 @@ fn a_lone_unit_attack_moves_to_its_waypoint() {
         (ai.current_order, ai.current_action, ai.target_point),
         (
             Some(OrderKind::AttackMove),
-            crate::unit_ai::MOVE_ACTION,
+            Some(ActionKind::Move),
             [30.0, 20.0, 0.0]
         )
     );
@@ -3402,7 +3406,6 @@ fn a_work_command_finds_its_master_and_task_on_a_target() {
 /// the other deer the hunter's Hunt: the unit AI hears the gather or hunt order on it.
 #[test]
 fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
-    use crate::unit_ai::{GATHER_ACTION, HUNT_ACTION};
     let mut t = crate::world::tests::forage_world();
     t.gather_command(1, 0, 600).unwrap();
     let took = t
@@ -3416,7 +3419,7 @@ fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Gather), GATHER_ACTION, 601)
+        (Some(OrderKind::Gather), Some(ActionKind::Gather), 601)
     );
     let mut t = crate::world::tests::hunt_world();
     t.hunt_command(1, 0, 500).unwrap();
@@ -3427,7 +3430,7 @@ fn a_work_command_retargets_a_gather_or_a_hunt_on_its_task() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Hunt), HUNT_ACTION, 501)
+        (Some(OrderKind::Hunt), Some(ActionKind::Hunt), 501)
     );
 }
 

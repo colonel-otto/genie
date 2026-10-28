@@ -3,11 +3,12 @@
 
 use crate::GenieError;
 use crate::garrison::{
-    ENTER, ENTER_ACTION, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, NO_MASTERS, UNPLACED,
-    UNREACHED, Walking, enter_view, ship_reaches,
+    ENTER, ENTER_SLEEPING, EnterAction, EnterTarget, FAILED, NO_MASTERS, UNPLACED, UNREACHED,
+    Walking, enter_view, ship_reaches,
 };
 use crate::objects::masters::Task;
 use crate::orders::{BUILDING, GARRISON};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -28,13 +29,17 @@ impl World {
         if let Some(ai) = self.players[player].objects[idx].ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Enter),
-                ENTER_ACTION,
+                Some(ActionKind::Enter),
                 Some((target, class)),
                 point,
                 clears,
                 self.streams.get(crate::math::rng::Stream::Ai),
             )?;
-            self.remember_order(player, idx, (Some(OrderKind::Enter), ENTER_ACTION))?;
+            self.remember_order(
+                player,
+                idx,
+                (Some(OrderKind::Enter), Some(ActionKind::Enter)),
+            )?;
         }
         self.install_enter(player, idx, target, action, task)
     }
@@ -219,7 +224,7 @@ impl World {
                 let n = crate::unit_ai::Notify::own(
                     id,
                     crate::unit_ai::ACTION_FAILED,
-                    [ENTER_ACTION, 0, 0],
+                    [ActionKind::Enter.value(), 0, 0],
                 );
                 ai.post(n, state)?;
             }

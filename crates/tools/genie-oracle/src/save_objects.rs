@@ -47,86 +47,92 @@ pub fn saved_objects(save: &[u8], id: u32) -> Result<Vec<ObjectRow>, Error> {
 pub(crate) fn header_objects(header: &Header, id: u32) -> Result<Vec<ObjectRow>, Error> {
     let sections = header.players();
     let section = sections.get(id as usize).ok_or(Error::NoSuchPlayer(id))?;
-    Ok(live(section)
-        .map(|(object, s)| ObjectRow {
-            id: s.id,
-            master: s.master_obj,
-            state: s.object_state,
-            hp: s.hp,
-            amount: s.attribute_amount_held,
-            position: [s.t_x, s.t_y, s.t_z],
-            action: object
-                .actions()
-                .and_then(|a| a.entries().next())
-                .map(|(kind, action)| (kind, action.base().map_or(0, |b| b.state))),
-            action_target: object
-                .actions()
-                .and_then(|a| a.entries().next())
-                .map(|(_, action)| action.base().map_or(-1, |b| b.target_id)),
-            sub_action: object
-                .actions()
-                .and_then(|a| a.entries().next())
-                .and_then(|(_, action)| action.base())
-                .and_then(|b| b.sub_actions.entries().next())
-                .map(|(kind, sub)| (kind, sub.base().map_or(0, |b| b.state))),
-            retarget: object
-                .combat()
-                .and_then(|c| c.unit_ai())
-                .map(|ai| ai.randomized_retarget_timer as i32),
-            movement: saved_movement(object, &header.world.base_world.path),
-            construction: object.tribe_building_object.as_deref().map(|b| {
-                (
-                    b.desolid_flag != 0,
-                    b.build_pts,
-                    b.tribe_combat_object.num_builders,
-                )
-            }),
-            build_added: object
-                .actions()
-                .and_then(|a| a.entries().next())
-                .filter(|&(kind, _)| kind == genie_core::construction::build::BUILD)
-                .and_then(|(_, a)| a.tribe_action_build.as_deref())
-                .map(|b| b.added_to_num_builders != 0),
-            ai: object.combat().and_then(|c| {
-                let elephant = c.tribe_elephant_unit_ai_module.as_deref();
-                c.unit_ai()
-                    .map(|ai| AiRow::saved(ai, elephant, s.under_attack_value != 0))
-            }),
-            human_order: s.last_human_order_time,
-            gather: gather_point(object).map(|g| ([g.point[0], g.point[1]], g.target)),
-            combat: object.combat().map(|c| {
-                (
-                    c.charge,
-                    c.rge_combat_object.hit_something_valid_for_charge_attack != 0,
-                    [c.hitpoints_powerup, c.hitpoints_max_powerup],
-                )
-            }),
-            gate: saved_gate(object),
-            town_bell: object.combat().map(town_bell),
-            volley: object.combat().map(|c| {
-                (
-                    c.next_volley,
-                    c.rge_combat_object.reload_worldtime.unwrap_or(0),
-                )
-            }),
-            group: group_link(s),
-            making: object.tribe_building_object.as_deref().and_then(|b| {
-                let (kind, action) = b.production_queue_actions.entries().next()?;
-                let state = action.base()?.state;
-                match kind {
-                    102 => Some((state, action.tribe_action_make_obj.as_deref()?.work_done)),
-                    103 => Some((
-                        state,
-                        action
-                            .tribe_action_make_tech
-                            .as_deref()?
-                            .m_research_progress,
-                    )),
-                    _ => None,
-                }
-            }),
+    live(section)
+        .map(|(object, s)| {
+            Ok(ObjectRow {
+                id: s.id,
+                master: s.master_obj,
+                state: s.object_state,
+                hp: s.hp,
+                amount: s.attribute_amount_held,
+                position: [s.t_x, s.t_y, s.t_z],
+                action: object
+                    .actions()
+                    .and_then(|a| a.entries().next())
+                    .map(|(kind, action)| (kind, action.base().map_or(0, |b| b.state))),
+                action_target: object
+                    .actions()
+                    .and_then(|a| a.entries().next())
+                    .map(|(_, action)| action.base().map_or(-1, |b| b.target_id)),
+                sub_action: object
+                    .actions()
+                    .and_then(|a| a.entries().next())
+                    .and_then(|(_, action)| action.base())
+                    .and_then(|b| b.sub_actions.entries().next())
+                    .map(|(kind, sub)| (kind, sub.base().map_or(0, |b| b.state))),
+                retarget: object
+                    .combat()
+                    .and_then(|c| c.unit_ai())
+                    .map(|ai| ai.randomized_retarget_timer as i32),
+                movement: saved_movement(object, &header.world.base_world.path),
+                construction: object.tribe_building_object.as_deref().map(|b| {
+                    (
+                        b.desolid_flag != 0,
+                        b.build_pts,
+                        b.tribe_combat_object.num_builders,
+                    )
+                }),
+                build_added: object
+                    .actions()
+                    .and_then(|a| a.entries().next())
+                    .filter(|&(kind, _)| kind == genie_core::construction::build::BUILD)
+                    .and_then(|(_, a)| a.tribe_action_build.as_deref())
+                    .map(|b| b.added_to_num_builders != 0),
+                ai: object.combat().and_then(|c| {
+                    let elephant = c.tribe_elephant_unit_ai_module.as_deref();
+                    c.unit_ai()
+                        .map(|ai| AiRow::saved(ai, elephant, s.under_attack_value != 0))
+                }),
+                human_order: s.last_human_order_time,
+                gather: gather_point(object).map(|g| ([g.point[0], g.point[1]], g.target)),
+                combat: object.combat().map(|c| {
+                    (
+                        c.charge,
+                        c.rge_combat_object.hit_something_valid_for_charge_attack != 0,
+                        [c.hitpoints_powerup, c.hitpoints_max_powerup],
+                    )
+                }),
+                gate: saved_gate(object),
+                town_bell: object
+                    .combat()
+                    .map(town_bell)
+                    .transpose()
+                    .map_err(Error::Unmodelled)?,
+                volley: object.combat().map(|c| {
+                    (
+                        c.next_volley,
+                        c.rge_combat_object.reload_worldtime.unwrap_or(0),
+                    )
+                }),
+                group: group_link(s),
+                making: object.tribe_building_object.as_deref().and_then(|b| {
+                    let (kind, action) = b.production_queue_actions.entries().next()?;
+                    let state = action.base()?.state;
+                    match kind {
+                        102 => Some((state, action.tribe_action_make_obj.as_deref()?.work_done)),
+                        103 => Some((
+                            state,
+                            action
+                                .tribe_action_make_tech
+                                .as_deref()?
+                                .m_research_progress,
+                        )),
+                        _ => None,
+                    }
+                }),
+            })
         })
-        .collect())
+        .collect()
 }
 
 /// An object's unit group link as saved (`mGroupID`, `mGroupFlag`).

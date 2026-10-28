@@ -38,8 +38,6 @@ const KILLS_OF: usize = 300;
 pub(crate) const LIVESTOCK: i16 = 58;
 /// The trade carts' class, which keep their actions while they carry goods (`FUN_14106a940`).
 const TRADE_CART: i16 = 19;
-/// The unit AI action value a stop leaves alone (`FUN_14108c050`).
-const KEPT_ACTION: i32 = 0x2c2;
 /// The trade action's type (`0x6f`), whose load keeps a stopped unit's AI going.
 const TRADE_ACTION: i16 = 0x6f;
 /// The action types whose stop keeps a value of the unit's (`+0x88a`, `FUN_14106fa60`).

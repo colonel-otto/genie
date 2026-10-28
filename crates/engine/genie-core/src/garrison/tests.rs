@@ -2,6 +2,7 @@ use super::*;
 use crate::commands::{GatherPoint, UnitList, UnloadCommand};
 use crate::objects::masters::BuildingMaster;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::Player;
 
@@ -1246,7 +1247,7 @@ fn enters_the_centre(setup: impl FnOnce(&mut World)) -> (Result<(), GenieError>,
     v.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 8,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
     });
@@ -1412,6 +1413,51 @@ fn back_to_work_lets_an_allys_villager_out_toward_its_record() {
     assert_eq!(t.players[2].objects[0].life.inside, Some(100));
 }
 
+/// `FUN_1412081e0` with no record object the world holds but a recorded action and target
+/// class: the unit AI takes the action and the unit asks it to search (notify 0x202 with the
+/// action, the class and the old target); without the action or the class it asks nothing.
+/// Either way the unit leaves toward the record's point.
+#[test]
+fn back_to_work_without_its_object_asks_the_unit_ai_to_search() {
+    use crate::orders::town_bell::BackToWork;
+    for (action, class, searches) in [
+        (Some(ActionKind::Gather), 5, true),
+        (None, 5, false),
+        (Some(ActionKind::Gather), -1, false),
+    ] {
+        let mut t = let_out_world();
+        inside_tc(&mut t, 1, 1000, VILLAGER);
+        let (_, v) = t.object_mut(1000).unwrap();
+        v.ai = Some(crate::unit_ai::UnitAi::default());
+        v.town_bell.work = BackToWork {
+            target: 7,
+            target_type: class,
+            action,
+            point: [4.5, 4.5],
+            ..BackToWork::NONE
+        };
+        assert!(t.back_to_work(Some((1, 0)), 1000).unwrap());
+        let ai = t.object(1000).unwrap().1.ai.as_ref().unwrap();
+        let heard: Vec<_> = ai.notifies.iter().map(|n| (n.kind, n.p)).collect();
+        if searches {
+            assert_eq!(ai.current_action, Some(ActionKind::Gather));
+            assert_eq!(
+                heard,
+                [(
+                    crate::unit_ai::REQUIRES_SEARCH,
+                    [ActionKind::Gather.value(), 5, 7]
+                )]
+            );
+        } else {
+            assert_eq!(
+                (ai.current_action, heard),
+                (None, Vec::new()),
+                "{action:?} {class}"
+            );
+        }
+    }
+}
+
 #[test]
 fn a_unit_ais_test_takes_a_building_or_transport_that_takes_its_unit_in() {
     // FUN_140c40e00: type below 70 none, else FUN_14120eb10 with 1, 1
@@ -1446,7 +1492,7 @@ pub(crate) fn walker(t: &mut World, p: usize, id: i32, m: i16, at: [f32; 2]) {
     v.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 8,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
     });
@@ -1758,7 +1804,7 @@ fn a_villager_sent_into_a_ship_meets_it_at_the_shore_on_the_way() {
     let ai = t.object(1000).unwrap().1.ai.clone().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Enter), ENTER_ACTION, 200)
+        (Some(OrderKind::Enter), Some(ActionKind::Enter), 200)
     );
 }
 
@@ -1888,7 +1934,7 @@ fn coast_world(ship: [f32; 2]) -> World {
     s.ai = Some(crate::unit_ai::UnitAi {
         ai_type: 11,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         ..crate::unit_ai::UnitAi::default()
     });
@@ -1956,7 +2002,7 @@ fn an_unload_command_sends_a_transport_toward_the_shore() {
     let ai = ship.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Unload), 0x26d, 200)
+        (Some(OrderKind::Unload), Some(ActionKind::Unload), 200)
     );
     // the villager inside stays there
     assert_eq!(t.object(1000).unwrap().1.life.inside, Some(200));
@@ -2075,7 +2121,7 @@ fn a_work_command_on_a_land_point_makes_a_transport_that_sails_there() {
     let ai = ship.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Transport), transport::TRANSPORT_ACTION, -1)
+        (Some(OrderKind::Transport), Some(ActionKind::Transport), -1)
     );
     t.order_work(1, idx, &work_at(-1, [18.5, 11.5, 0.0]))
         .unwrap();
@@ -2378,7 +2424,7 @@ fn a_villager_beside_a_ship_enters_it_at_once() {
         crate::orders::town_bell::BackToWork {
             target: 200,
             target_type: -1,
-            action: ENTER_ACTION,
+            action: Some(ActionKind::Enter),
             target2: -1,
             point: [5.5, 20.5],
         }
@@ -2543,7 +2589,7 @@ fn a_unit_let_out_toward_nothing_stops_and_keeps_its_stance() {
     inside_tc(&mut t, 1, 1000, VILLAGER);
     let v = t.object_mut(1000).unwrap().1;
     v.ai = Some(crate::unit_ai::UnitAi {
-        current_action: 0x261,
+        current_action: Some(ActionKind::Gather),
         current_target: 77,
         stance: 1,
         ..crate::unit_ai::UnitAi::default()
@@ -2562,7 +2608,7 @@ fn a_unit_let_out_toward_nothing_stops_and_keeps_its_stance() {
             ai.stance,
             ai.last_action
         ),
-        (-1, -1, 1, 0x261)
+        (None, -1, 1, Some(ActionKind::Gather))
     );
     assert_eq!(ai.state_position, [v.position[0], v.position[1]]);
 }
@@ -2679,7 +2725,7 @@ fn a_transport_s_update_unloads_beside_the_shore_and_ends_when_done_or_failed() 
         heard,
         [(
             crate::unit_ai::ACTION_FAILED,
-            [transport::TRANSPORT_ACTION, 0, 0]
+            [ActionKind::Transport.value(), 0, 0]
         )]
     );
     // off the shore its MoveTo starts: the walk the unit AI asked for moves on
@@ -2763,7 +2809,7 @@ fn let_out_beside_a_second_centre(
     let mut t = let_out_world();
     inside_tc(&mut t, 1, 1000, VILLAGER);
     t.object_mut(1000).unwrap().1.ai = Some(crate::unit_ai::UnitAi {
-        current_action: 0x261,
+        current_action: Some(ActionKind::Gather),
         current_target: 77,
         stance: 1,
         ..crate::unit_ai::UnitAi::default()

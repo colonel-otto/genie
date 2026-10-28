@@ -1,5 +1,6 @@
 use super::*;
 use crate::objects::layers::{Animated, Body};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 
 /// `FUN_140a82ae0` case 6 after the hit: a ranged unit whose attack timer ran out is done
@@ -1666,7 +1667,7 @@ fn a_disarmed_building_s_targetless_attack_ends_standing_and_posts_0x1fb() {
     centre.actions.set_attack(Some(attack));
     // its unit AI on the attack's action, which takes the Attack's invalidation
     centre.ai = Some(crate::unit_ai::UnitAi {
-        current_action: 600,
+        current_action: Some(ActionKind::Attack),
         ..crate::unit_ai::UnitAi::default()
     });
     let at = centre.position;

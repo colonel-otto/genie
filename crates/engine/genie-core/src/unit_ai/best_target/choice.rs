@@ -58,7 +58,10 @@ pub(super) fn tested(
     if gaia_taken && t.capture {
         return Ok(None);
     }
-    if !t.targetable || (!t.attackable && me.action == 600) || world.shuns(id)? {
+    if !t.targetable
+        || (!t.attackable && me.action == Some(crate::unit_ai::ActionKind::Attack))
+        || world.shuns(id)?
+    {
         return Ok(None);
     }
     Ok(kept_by_owner_and_class(me, ask, &t).then_some(t))

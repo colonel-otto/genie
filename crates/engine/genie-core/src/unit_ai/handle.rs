@@ -2,13 +2,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ARTIFACT_AI,
-    ARTIFACT_CARED, DAMAGED, Effect, FISHING_AI, GO_ON, GROUP_ASIDE_ACTION, IN_THE_WAY,
-    MISSILE_WARNING, Memory, NO_LONGER_ON_ME, Notify, OWNER_CHANGED, Pick, SENT_OFF,
-    SENT_OFF_GROUP, SIEGE_AI, SIEGE_TOWER_AI, Search, Surroundings, TARGET_MOVED, TRADE_AI, UnitAi,
-    UnitSide, search_radius,
+    ARTIFACT_CARED, DAMAGED, Effect, FISHING_AI, GO_ON, IN_THE_WAY, MISSILE_WARNING, Memory,
+    NO_LONGER_ON_ME, Notify, OWNER_CHANGED, Pick, SENT_OFF, SENT_OFF_GROUP, SIEGE_AI,
+    SIEGE_TOWER_AI, Search, Surroundings, TARGET_MOVED, TRADE_AI, UnitAi, UnitSide, search_radius,
 };
 
 impl UnitAi {
@@ -79,11 +79,12 @@ impl UnitAi {
             | 0x278
             | 699
             | 0x2be => false,
-            ACTION_FAILED | ACTION_COMPLETED | ACTION_INVALIDATED => self
-                .current_order
-                .map_or(self.current_action == n.p[0], |o| {
-                    o.owns(self.current_action)
-                }),
+            ACTION_FAILED | ACTION_COMPLETED | ACTION_INVALIDATED => {
+                self.current_order.map_or_else(
+                    || ActionKind::field(self.current_action) == n.p[0],
+                    |o| o.owns(self.current_action),
+                )
+            }
             // "Target is still visible.": the world holds the target, which its owner sees
             TARGET_MOVED => !at
                 .target
@@ -228,7 +229,7 @@ impl UnitAi {
             SENT_OFF => self.sent_off(n, side, fx),
             // a unit of a group sent off a footprint: the action value 0x2c0
             SENT_OFF_GROUP => {
-                self.set_action(GROUP_ASIDE_ACTION);
+                self.set_action(Some(ActionKind::GroupAside));
                 Ok(GO_ON)
             }
             // "Unit #%d is no longer doing an action on me.": an attacker leaves the set

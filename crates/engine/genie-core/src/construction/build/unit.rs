@@ -2,6 +2,7 @@
 //! foundation's annexes and main building, the builder and its unit AI's orders; the action's
 //! update; and what its step changes in the world.
 
+use crate::unit_ai::ActionKind;
 use std::collections::BTreeMap;
 
 use crate::GenieError;
@@ -18,7 +19,6 @@ use crate::objects::object_list::ObjectList;
 use crate::objects::release::Releaser;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{TAKEN_OUT, Unit};
-use crate::unit_ai::BUILD_ACTION;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
@@ -324,13 +324,19 @@ impl Unit {
     /// already built (`FUN_1411c5f70`'s new id) and the failure.
     fn post_build_notifies(&mut self, step: &BuildStep) -> Result<(), GenieError> {
         if step.notified {
-            self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
+            self.post_own(SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0])?;
         }
         if let Some(made) = step.pasture_made {
-            self.post_own(crate::unit_ai::PASTURE_BUILT, [BUILD_ACTION, made, 0])?;
+            self.post_own(
+                crate::unit_ai::PASTURE_BUILT,
+                [ActionKind::Build.value(), made, 0],
+            )?;
         }
         if step.failed {
-            self.post_own(crate::unit_ai::ACTION_FAILED, [BUILD_ACTION, 0, 0])?;
+            self.post_own(
+                crate::unit_ai::ACTION_FAILED,
+                [ActionKind::Build.value(), 0, 0],
+            )?;
         }
         Ok(())
     }
@@ -353,7 +359,7 @@ impl Unit {
                 b.no_more_work()?;
             }
             crate::world::lets::release(c, target, by)?;
-            self.post_own(SEARCH_NEEDED, [BUILD_ACTION, 0, 0])?;
+            self.post_own(SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0])?;
             self.show_standing(
                 c.w.masters.get(c.player),
                 &c.w.graphics,

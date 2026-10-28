@@ -1,5 +1,6 @@
 use super::*;
 use crate::movement::move_to::Walk;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 
 /// The two tiles beside a builder on a footprint's diagonal (`LAB_140aafc09`'s arguments), by
@@ -2354,7 +2355,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     world.insert(10028, house());
     let mut ai = UnitAi {
         current_order: Some(OrderKind::Build),
-        current_action: 602,
+        current_action: Some(ActionKind::Build),
         ..UnitAi::default()
     };
     let mut b = BuildAction {
@@ -2400,7 +2401,7 @@ fn a_human_builder_of_a_built_pasture_hands_it_over() {
     assert_eq!(step.dropped, Some((0, 7.0)));
     assert!(step.done && step.released && step.stands);
     assert_eq!((b.state, b.target, b.added), (DONE, -1, false));
-    assert_eq!((ai.current_order, ai.current_action), (None, -1));
+    assert_eq!((ai.current_order, ai.current_action), (None, None));
     assert_eq!(construction.builders, 0);
 }
 

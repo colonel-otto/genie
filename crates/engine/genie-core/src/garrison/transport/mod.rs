@@ -30,9 +30,6 @@ use crate::movement::PathAsk;
 
 /// The Transport action's type, which word 9 adds.
 pub const TRANSPORT: i16 = 12;
-/// The transport's action value (`0x266`), which its notifies carry and the unit AI holds while
-/// it transports or unloads.
-pub const TRANSPORT_ACTION: i32 = 0x266;
 
 /// The action's point while it has none (`DAT_14330ec20`).
 pub const NONE: f32 = crate::math::image::transport::NONE;
@@ -162,9 +159,9 @@ pub struct TransportStep {
     pub code: u8,
     /// What its state changes left ([`Changed`]).
     pub changed: Changed,
-    /// State 13: the unit's notify 0x1f9 with [`TRANSPORT_ACTION`] (slot 0x328, to its unit AI).
+    /// State 13: the unit's notify 0x1f9 with [`ActionKind::Transport`] (slot 0x328, to its unit AI).
     pub failed: bool,
-    /// The owner hears 0x207 (its slot 0x2e8 with [`TRANSPORT_ACTION`]): no unload there.
+    /// The owner hears 0x207 (its slot 0x2e8 with [`ActionKind::Transport`]): no unload there.
     pub cannot_unload: bool,
     /// The unload (`FUN_140aa3ba0`) is the caller's, then [`TransportAction::unloaded`].
     pub unload: bool,

@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
     BOAR_AI, FISHING_AI, HUNTED_SIGHT_GROWTH, LION_AI, LIVESTOCK_AI, PREDATOR_AI, PRIEST_AI,
     SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI, TRADE_BOAT_CLASS,
@@ -215,7 +216,14 @@ pub(crate) fn search_area(
 
 /// The action values that need a live target (the target block's mask `0x4002080d` over the
 /// value − `0x259`).
-pub(super) const LIVE_TARGET_ACTIONS: [i32; 6] = [0x259, 0x25b, 0x25c, 0x264, 0x26a, 0x277];
+pub(super) const LIVE_TARGET_ACTIONS: [ActionKind; 6] = [
+    ActionKind::Defend,
+    ActionKind::Heal,
+    ActionKind::Convert,
+    ActionKind::Follow,
+    ActionKind::Repair,
+    ActionKind::OnTarget,
+];
 
 /// The radius of the search `bestUnitToAttack` runs (`FUN_140c63e20`): the larger of the unit's
 /// search radius (slot 0x2c8) and its line of sight plus 1, plus `+0x1e8`, which no save holds (0

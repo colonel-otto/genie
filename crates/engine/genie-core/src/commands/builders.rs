@@ -6,7 +6,7 @@ use crate::commands::FOUNDATION_GONE;
 use crate::construction::build::{BUILD, BuildAction, BuildTask};
 use crate::math::rng::Stream;
 use crate::movement::footprint_gap;
-use crate::unit_ai::BUILD_ACTION;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{TaskWorld, point_terrain, task_search, task_target_with};
 use crate::unit_ai::task_finder::{Actor, TaskTarget};
@@ -271,13 +271,17 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.notify_work(
                 Some(OrderKind::Build),
-                BUILD_ACTION,
+                Some(ActionKind::Build),
                 Some((foundation, site_class)),
                 [position[0], position[1], 0.0],
                 true,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (Some(OrderKind::Build), BUILD_ACTION))?;
+            self.remember_order(
+                player,
+                idx,
+                (Some(OrderKind::Build), Some(ActionKind::Build)),
+            )?;
         }
         // the install (slot 0x808): the action list clears (its actions' teardowns), then
         // holds the Build

@@ -5,6 +5,7 @@ use crate::GenieError;
 use crate::map::spatial::Placed;
 use crate::objects::lifecycle::death_parts::clear_look_of;
 use crate::objects::masters::Master;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::Notify;
 use crate::vision::visibility::{BuildingSight, Seer, capture_kind};
 use crate::world::World;
@@ -52,7 +53,7 @@ impl World {
             let busy = u.ai.as_ref().is_none_or(|ai| {
                 matches!(
                     ai.current_action,
-                    crate::unit_ai::MOVE_ASIDE_ACTION | crate::unit_ai::GROUP_ASIDE_ACTION
+                    Some(ActionKind::MoveAside | ActionKind::GroupAside)
                 )
             });
             if !stands || busy {
@@ -122,7 +123,7 @@ impl World {
             };
             let z = self.players[q].objects[i].position[2];
             if let Some(ai) = self.players[q].objects[i].ai.as_mut() {
-                ai.set_action(crate::unit_ai::MOVE_ASIDE_ACTION);
+                ai.set_action(Some(ActionKind::MoveAside));
             }
             self.move_point_order(q, i, [x, y, z])?;
         }
@@ -133,7 +134,7 @@ impl World {
             let unit = &mut self.players[q].objects[i];
             let state = unit.life.state;
             if let Some(ai) = unit.ai.as_mut()
-                && ai.current_action != crate::unit_ai::MOVE_ASIDE_ACTION
+                && ai.current_action != Some(ActionKind::MoveAside)
             {
                 ai.post(
                     Notify::own(id, crate::unit_ai::SENT_OFF_GROUP, [0, 0, 0]),

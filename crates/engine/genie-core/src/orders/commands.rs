@@ -3,6 +3,7 @@
 use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::orders::{AUTO_SCOUT_CLASS, BUILDING, Place, lock_gate, set_stance};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -109,7 +110,7 @@ impl World {
     /// a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown at
     /// (−1, −1) and ready. Its sound and the UI's flags are not held.
     pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
-        use crate::unit_ai::{AUTO_SCOUT_ACTION, Effect, QueuedOrder};
+        use crate::unit_ai::{Effect, QueuedOrder};
         let cap = if self.players[player].computer {
             500
         } else {
@@ -149,7 +150,7 @@ impl World {
             let ai = unit.ai.as_mut().expect("checked above");
             let order = QueuedOrder {
                 issuer: p as i32,
-                order: if ai.current_action == AUTO_SCOUT_ACTION {
+                order: if ai.current_action == Some(ActionKind::AutoScout) {
                     OrderKind::Stop
                 } else {
                     OrderKind::AutoScout
@@ -377,7 +378,7 @@ impl World {
         idx: usize,
         point: [f32; 2],
     ) -> Result<(), GenieError> {
-        use crate::movement::explore::{EXPLORE_ACTION, ExploreAction, Owner, WANTS_POINT};
+        use crate::movement::explore::{ExploreAction, Owner, WANTS_POINT};
         let unit = &mut self.players[p].objects[idx];
         if unit.actions.explore().is_some() || unit.top_action().is_some() {
             return Err(GenieError::unsupported(
@@ -391,7 +392,11 @@ impl World {
             Owner::WantsPoint => {
                 let (id, state) = (unit.id, unit.life.state);
                 if let Some(ai) = unit.ai.as_mut() {
-                    let n = crate::unit_ai::Notify::own(id, WANTS_POINT, [EXPLORE_ACTION, 0, 0]);
+                    let n = crate::unit_ai::Notify::own(
+                        id,
+                        WANTS_POINT,
+                        [ActionKind::Explore.value(), 0, 0],
+                    );
                     ai.post(n, state)?;
                 }
             }

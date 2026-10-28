@@ -9,6 +9,7 @@ use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::{Unit, hunt_walk_sprite, second_target_checked};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Actor;
 use crate::unit_ai::task_finder::world::state_of;
 use crate::world::context::Context;
@@ -239,7 +240,7 @@ impl Unit {
         }
         self.post_own(
             crate::unit_ai::ACTION_FAILED,
-            [crate::unit_ai::HUNT_ACTION, 0, 0],
+            [ActionKind::Hunt.value(), 0, 0],
         )?;
         Ok(HeadCode::of(3))
     }

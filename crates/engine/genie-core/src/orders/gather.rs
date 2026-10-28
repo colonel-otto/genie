@@ -5,7 +5,7 @@ use crate::combat::attack::{Arms, Engagement};
 use crate::gathering::hunt::{HuntAction, HuntTask, Quarry};
 use crate::math::rng::Stream;
 use crate::orders::{BUILDING, GATHERED_BUILDING, MASTER_1893, MASTER_1897, PACK_ACTION};
-use crate::unit_ai::HUNT_ACTION;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -333,7 +333,7 @@ impl World {
         if let (Some(ai), Some((point, clears))) = (unit.ai.as_mut(), notify) {
             ai.notify_work(
                 Some(OrderKind::Gather),
-                crate::unit_ai::GATHER_ACTION,
+                Some(ActionKind::Gather),
                 Some((target, i32::from(resource.class))),
                 point,
                 clears,
@@ -342,7 +342,7 @@ impl World {
             self.remember_order(
                 player,
                 idx,
-                (Some(OrderKind::Gather), crate::unit_ai::GATHER_ACTION),
+                (Some(OrderKind::Gather), Some(ActionKind::Gather)),
             )?;
         }
         self.clear_actions(player, idx)?;
@@ -441,13 +441,13 @@ impl World {
         if let Some(ai) = unit.ai.as_mut().filter(|_| notify) {
             ai.notify_work(
                 Some(OrderKind::Hunt),
-                HUNT_ACTION,
+                Some(ActionKind::Hunt),
                 Some((target, i32::from(quarry.class))),
                 point,
                 clears,
                 self.streams.get(Stream::Ai),
             )?;
-            self.remember_order(player, idx, (Some(OrderKind::Hunt), HUNT_ACTION))?;
+            self.remember_order(player, idx, (Some(OrderKind::Hunt), Some(ActionKind::Hunt)))?;
         }
         self.clear_actions(player, idx)?;
         let engagement = self.engagement(player, idx, target)?;

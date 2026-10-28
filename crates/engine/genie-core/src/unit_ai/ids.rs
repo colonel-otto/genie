@@ -3,8 +3,8 @@
 use crate::GenieError;
 use crate::math::rng::Well512;
 use crate::unit_ai::{
-    ARTIFACT_AI, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder, SIEGE_AI,
-    SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
+    ARTIFACT_AI, ActionKind, AiMove, BOAR_AI, CIVILIAN, FISHING_AI, PRIEST_AI, QueuedOrder,
+    SIEGE_AI, SIEGE_TOWER_AI, SOLDIER_AI, Surroundings, TOWER_AI, TRADE_AI,
 };
 
 /// What slot 73 does for a factory type.
@@ -70,33 +70,20 @@ pub(super) const BOAR_WANDER: u32 = 7;
 pub(super) const BOAR_STEP: u32 = 6;
 pub(super) const BOAR_OFFSET: i32 = 3;
 pub(super) const AI_MOVE_RANGE: f32 = 0.5;
-/// `0x2bd`: the auto scout's action value, which the order's case sets after the explore's.
-pub const AUTO_SCOUT_ACTION: i32 = 0x2bd;
-/// `0x25d`: the explore's action value (slot 0x100).
-pub const EXPLORE_ACTION: i32 = crate::movement::explore::EXPLORE_ACTION;
 /// The height of the explore's target point (`FUN_140c4d910`, `DAT_14330eb8c`).
 pub(super) const EXPLORE_Z: f32 = crate::math::image::unit_ai::EXPLORE_Z;
 /// The villager's reach test of the foundation its search found (slot 0x3d0 in
 /// `FUN_140c22bf0`, `DAT_142eb5690`).
 pub(super) const FOUNDATION_REACH: f32 = crate::math::image::unit_ai::FOUNDATION_REACH;
-/// The move action value (`0x262`).
-pub const MOVE_ACTION: i32 = 0x262;
 
 /// A villager's notify, or a part of one, the slice does not model.
 pub(super) const VILLAGER_NOTIFY: GenieError =
     GenieError::unsupported("a villager's notify the slice does not model");
 
-/// The shepherd's action value (`0x278`), whose search the villager's case 0x202 runs.
-pub(super) const SHEPHERD_ACTION: i32 = 0x278;
-
 /// A villager's damage notify that reads its animation speed (slot 0x1f8) while the slice does
 /// not know it ([`Surroundings::anim_speed`]).
 pub(super) const NO_ANIM_SPEED: GenieError =
     GenieError::unsupported("a moving villager's damage notify without its animation speed");
-/// The follow action value (`0x264`).
-pub const FOLLOW_ACTION: i32 = 0x264;
-/// The defend's action value (`0x259`, slots 0x170 and 0x178).
-pub(super) const DEFEND_ACTION: i32 = 0x259;
 /// The target point's x that marks it unset (`DAT_14330ec20`, −1), which the defend order fills.
 pub(super) const INVALID_POINT: f32 = crate::math::image::unit_ai::INVALID_POINT;
 /// What the defend order adds to its desired distance before it follows (`DAT_14330eb8c`, 1).
@@ -123,28 +110,6 @@ pub(super) const fn order_move(o: &QueuedOrder) -> AiMove {
         walk: true,
     }
 }
-/// The heal's action value (`0x25b`, slot 0xe0).
-pub(super) const HEAL_ACTION: i32 = 0x25b;
-/// The conversion's action value (`0x25c`, slot 0xd8).
-pub(super) const CONVERT_ACTION: i32 = 0x25c;
-/// The repair's action value (`0x26a`, slot 0xe8).
-pub(super) const REPAIR_ACTION: i32 = 0x26a;
-/// The transport's action value (`0x266`, slot 0x128).
-pub(super) const TRANSPORT_ACTION: i32 = 0x266;
-/// The unload's action value (`0x26d`, slot 0x118).
-pub(super) const UNLOAD_ACTION: i32 = 0x26d;
-/// The unload over a wall's action value (700, slot 0x120).
-pub(super) const UNLOAD_OVER_WALL_ACTION: i32 = 700;
-/// Seek and destroy's action value (`0x26e`, slot 0x180).
-pub(super) const SEEK_ACTION: i32 = 0x26e;
-/// Explore and destroy's action value (`0x26f`, slot 0x188).
-pub(super) const EXPLORE_DESTROY_ACTION: i32 = 0x26f;
-/// The wait order's action value (`0x274`, slot 0x230's case 0x2d8).
-pub(super) const WAIT_ACTION: i32 = 0x274;
-/// The scout order's action value (`0x276`, after slot 0x100).
-pub(super) const SCOUT_ACTION: i32 = 0x276;
-/// The auto boar luring's action value (`0x2be`, after slot 0xc8).
-pub(super) const BOAR_LURING_ACTION: i32 = 0x2be;
 /// The trebuchet's classes (`-0xe79`, `-0xe76` raw: packed and unpacked), whose attack move on
 /// a target attacks it.
 pub(super) const TREBUCHET_CLASS: i16 = 51;
@@ -189,12 +154,18 @@ pub(super) const KING_UNLED: i16 = 704;
 pub(super) const WALK_BACK: f32 = crate::math::image::unit_ai::RUN_ONE;
 
 /// The action values the full update resets once the unit's actions ended (`0x140c66b10`, the
-/// unit's slot 0x430 false): attack, `0x261`, move, hunt, `0x269`, `0x26b`, `0x26c`, build and
-/// `0x2bf`.
-pub(super) const ENDED_ACTIONS: [i32; 9] =
-    [600, 0x261, 0x262, 0x265, 0x269, 0x26b, 0x26c, 0x2be, 0x2bf];
-/// The attack action value.
-pub(super) const ATTACK_ACTION: i32 = 600;
+/// unit's slot 0x430 false).
+pub(super) const ENDED_ACTIONS: [ActionKind; 9] = [
+    ActionKind::Attack,
+    ActionKind::Gather,
+    ActionKind::Move,
+    ActionKind::Hunt,
+    ActionKind::Enter,
+    ActionKind::Make,
+    ActionKind::Research,
+    ActionKind::BoarLuring,
+    ActionKind::MoveAside,
+];
 /// A human player's unit on the attack order with a range above this does not retarget
 /// (processMisc).
 pub(super) const RETARGET_RANGE: f32 = crate::math::image::unit_ai::RETARGET_RANGE;

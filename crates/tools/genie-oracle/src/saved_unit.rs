@@ -8,6 +8,8 @@ use crate::{
 };
 use genie_core::GenieError;
 use genie_core::objects::unit::Unit;
+use genie_core::orders::town_bell::TownBell;
+use genie_core::unit_ai::{ActionKind, UnitAi};
 use genie_save::generated::world::{Path, PlayerObjects, RgeStaticObject};
 
 /// The slice's view of one saved object: its lifecycle, its unit AI and its actions. A save from
@@ -31,10 +33,10 @@ pub(super) fn unit(
     let saved = object
         .actions()
         .is_some_and(|a| a.entries().next().is_some());
-    // an order value no order holds: the object's first unmodelled part
-    let (ai, ai_read) = match unit_ai(object) {
-        Ok(ai) => (ai, Ok(())),
-        Err(e) => (None, Err(e)),
+    // an order or action value no order or action holds: the object's first unmodelled part
+    let ((ai, town_bell), ai_read) = match ai_parts(object) {
+        Ok(parts) => (parts, Ok(())),
+        Err(e) => ((None, TownBell::default()), Err(e)),
     };
     let mut unit = Unit {
         id: s.id,
@@ -72,7 +74,7 @@ pub(super) fn unit(
         }),
         workers: s.worker_num,
         last_human_order: s.last_human_order_time,
-        town_bell: object.combat().map(town_bell).unwrap_or_default(),
+        town_bell,
         combat: object.combat().is_some(),
         next_volley: object.combat().map_or(0, |c| c.next_volley),
         raider_countdown: object.combat().map_or(0, |c| c.raider_build_countdown),
@@ -249,17 +251,32 @@ pub(super) fn unit(
     unit
 }
 
+/// The parts of a saved object that hold its unit AI's order and action values: the unit AI
+/// and the town bell (none for an object without a combat part).
+///
+/// # Errors
+///
+/// A value no order or action holds.
+fn ai_parts(object: &genie_save::Object) -> Result<(Option<UnitAi>, TownBell), GenieError> {
+    let bell = object.combat().map(town_bell).transpose()?;
+    Ok((unit_ai(object)?, bell.unwrap_or_default()))
+}
+
 /// A combat object's town-bell flag and back-to-work records.
-pub(super) const fn town_bell(
+///
+/// # Errors
+///
+/// A record's action value no action holds ([`ActionKind::try_from`]).
+pub(super) fn town_bell(
     c: &genie_save::generated::world::TribeCombatObject,
-) -> genie_core::orders::town_bell::TownBell {
-    use genie_core::orders::town_bell::{BackToWork, TownBell};
-    TownBell {
+) -> Result<TownBell, GenieError> {
+    use genie_core::orders::town_bell::BackToWork;
+    Ok(TownBell {
         flag: c.town_bell_flag != 0,
         work: BackToWork {
             target: c.back_to_work1_town_bell_target_id,
             target_type: c.back_to_work1_town_bell_target_type,
-            action: c.back_to_work1_town_bell_action,
+            action: ActionKind::of_field(c.back_to_work1_town_bell_action)?,
             target2: c.back_to_work1_town_bell_target_id2,
             point: [
                 c.back_to_work1_town_bell_target_x,
@@ -269,14 +286,14 @@ pub(super) const fn town_bell(
         before_building: BackToWork {
             target: c.back_to_work2_town_bell_target_id,
             target_type: c.back_to_work2_town_bell_target_type,
-            action: c.back_to_work2_town_bell_action,
+            action: ActionKind::of_field(c.back_to_work2_town_bell_action)?,
             target2: c.back_to_work2_town_bell_target_id2,
             point: [
                 c.back_to_work2_town_bell_target_x,
                 c.back_to_work2_town_bell_target_y,
             ],
         },
-    }
+    })
 }
 
 /// A saved building's gate state ([`genie_core::world::Gate`]): its lock, first update and close

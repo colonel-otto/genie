@@ -8,10 +8,15 @@ use genie_save::generated::world::{
     RgeVictoryConditions, TribeCombatObject, WorldPlayer,
 };
 
-/// A combat object (type 70), its id `id` and master `master`.
+/// A combat object (type 70), its id `id` and master `master`; its town bell holds no
+/// back-to-work action (−1, as the game's saves do).
 pub(crate) fn combat_object(id: i32, master: i16) -> Object {
     let mut object = Object {
-        tribe_combat_object: Some(Box::default()),
+        tribe_combat_object: Some(Box::new(TribeCombatObject {
+            back_to_work1_town_bell_action: -1,
+            back_to_work2_town_bell_action: -1,
+            ..TribeCombatObject::default()
+        })),
         ..Object::default()
     };
     let s = static_mut(&mut object);

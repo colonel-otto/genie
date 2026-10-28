@@ -8,6 +8,7 @@ use crate::movement::Me;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::AiMove;
 use crate::world::World;
 use crate::world::context::Context;
@@ -136,7 +137,7 @@ impl Unit {
             crate::world::lets::release(c, target, by)?;
         }
         for kind in &step.notifies {
-            self.post_own(*kind, [crate::construction::repair::REPAIR_ACTION, 0, 0])?;
+            self.post_own(*kind, [ActionKind::Repair.value(), 0, 0])?;
         }
         if step.stands {
             self.show_standing(

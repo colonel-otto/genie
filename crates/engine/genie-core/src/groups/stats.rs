@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::groups::create::FormationUnit;
+use crate::unit_ai::ActionKind;
 use crate::world::World;
 
 /// A group whose `mGroupFlags` bit 9 is set moves at its slowest member's speed divided by this
@@ -21,9 +22,6 @@ const WIDE_RADIUS: f32 = crate::math::image::group::WIDE_RADIUS;
 const ACTION_KIND: u8 = 40;
 /// The objects of the members' searches a group keeps at most (`FUN_140c65c60`'s `0x46`).
 const MOST_OBJECTS: usize = 70;
-/// The current action of attacking (600): a member in it has attacked just now
-/// (`mSecondsSinceAttacking` 0).
-const ATTACK_ACTION: i32 = 600;
 
 /// The members' views in the members' order, each with the index the member has then.
 type MemberViews = Vec<(usize, MemberView)>;
@@ -185,7 +183,7 @@ impl World {
                 speed: u.body.mover().map_or(0.0, |m| m.stats.speed),
                 range: weapon_range(master),
                 under_attack: u.under_attack,
-                attacking: ai.current_action == ATTACK_ACTION,
+                attacking: ai.current_action == Some(ActionKind::Attack),
             };
             self.member_objects(id, &mut objects)?;
             if far && self.far_from_slot(group, &view, largest)? {

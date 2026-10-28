@@ -2,11 +2,11 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, AiMove, BREAK, BUILD_ACTION, CLASS_22, CLASS_KING, CLASS_VILLAGER, DEAD,
-    EVADE_EDGE, EVASIVE_NEAR, EXPLORE_ACTION, Effect, FOUNDATION_REACH, GATHER_ACTION, GO_ON,
-    HUNT_ACTION, Memory, Notify, Pick, REQUIRES_SEARCH, RUN_DRAW_SCALE, RUN_EPSILON, RUN_LEASH,
-    RUN_ONE, RUN_REACH, SHEPHERD_ACTION, SIEGE_AI, Search, Surroundings, UnitAi, UnitSide,
+    AiMove, BREAK, CLASS_22, CLASS_KING, CLASS_VILLAGER, DEAD, EVADE_EDGE, EVASIVE_NEAR, Effect,
+    FOUNDATION_REACH, GO_ON, Memory, Notify, Pick, REQUIRES_SEARCH, RUN_DRAW_SCALE, RUN_EPSILON,
+    RUN_LEASH, RUN_ONE, RUN_REACH, SIEGE_AI, Search, Surroundings, UnitAi, UnitSide,
     VILLAGER_NOTIFY, alert_owner, closest_undiscovered_tile, search_area,
 };
 
@@ -40,7 +40,9 @@ impl UnitAi {
         }
         let _ = self.add_attacker(n.caller);
         side.set_under_attack(true);
-        let uncon = !(matches!(self.current_action, 0x25f | 0x268) || at.class == CLASS_KING);
+        // the game also tests the action values 0x25f and 0x268 here, which no unit AI holds
+        // ([`ActionKind`])
+        let uncon = at.class != CLASS_KING;
         let _ = self.run_away(uncon, at, computer, ai_rng, side, fx)?;
         Ok(BREAK)
     }
@@ -78,7 +80,7 @@ impl UnitAi {
         if matches!(self.stance, 2 | 3) && at.player != 0 {
             return Ok(false);
         }
-        if !uncon && self.current_action != -1 {
+        if !uncon && self.current_action.is_some() {
             return Ok(false);
         }
         let [x, y, z] = at.position;
@@ -141,7 +143,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        if !uncon && self.current_action != -1 {
+        if !uncon && self.current_action.is_some() {
             return Ok(false);
         }
         let near = |p: f32, own: f32| {
@@ -223,7 +225,7 @@ impl UnitAi {
             return Ok(GO_ON);
         };
         let villager = attacker.class == CLASS_VILLAGER;
-        let furious = if self.current_action == ATTACK_ACTION {
+        let furious = if self.current_action == Some(ActionKind::Attack) {
             let _ = self.attack_object(target, false, false, at, side, fx)?;
             true
         } else {
@@ -314,10 +316,12 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match self.current_action {
-            HUNT_ACTION => return self.hunter_search(n, at, computer, side, fx),
-            SHEPHERD_ACTION => return Err(VILLAGER_NOTIFY.with("action", SHEPHERD_ACTION)),
-            GATHER_ACTION => return self.gatherer_search(n, at, computer, side, fx),
-            BUILD_ACTION => {
+            Some(ActionKind::Hunt) => return self.hunter_search(n, at, computer, side, fx),
+            Some(ActionKind::Shepherd) => {
+                return Err(VILLAGER_NOTIFY.with("action", ActionKind::Shepherd.value()));
+            }
+            Some(ActionKind::Gather) => return self.gatherer_search(n, at, computer, side, fx),
+            Some(ActionKind::Build) => {
                 let found = side.foundation_search()?;
                 if found != -1 && side.reaches(found, FOUNDATION_REACH)? {
                     let _ = self.build_object(found, true, at, side, fx)?;
@@ -331,13 +335,20 @@ impl UnitAi {
                 fx.push(Effect::Stop);
                 return Ok(BREAK);
             }
-            EXPLORE_ACTION => closest_undiscovered_tile()?,
+            Some(ActionKind::Explore) => closest_undiscovered_tile()?,
             _ => {}
         }
-        if matches!(n.p[0], GATHER_ACTION | HUNT_ACTION) && n.p[1] != 10 {
+        if (n.p[0] == ActionKind::Gather.value() || n.p[0] == ActionKind::Hunt.value())
+            && n.p[1] != 10
+        {
             return Err(VILLAGER_NOTIFY.with("notify", format!("{:#x} {:?}", n.kind, n.p)));
         }
-        if n.kind != REQUIRES_SEARCH && !matches!(self.current_action, SHEPHERD_ACTION | 0x26a) {
+        if n.kind != REQUIRES_SEARCH
+            && !matches!(
+                self.current_action,
+                Some(ActionKind::Shepherd | ActionKind::Repair)
+            )
+        {
             self.remove_target();
             self.stop_current(true, at, fx)?;
         }

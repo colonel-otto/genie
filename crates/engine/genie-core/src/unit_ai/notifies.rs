@@ -2,9 +2,10 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, Effect, GO_ON, MOVE_ACTION, NO_LONGER_ON_ME,
-    Notify, PRODUCED, Surroundings, UnitAi, UnitSide,
+    ACTION_COMPLETED, ACTION_INVALIDATED, BREAK, DEAD, Effect, GO_ON, NO_LONGER_ON_ME, Notify,
+    PRODUCED, Surroundings, UnitAi, UnitSide,
 };
 
 impl UnitAi {
@@ -61,7 +62,7 @@ impl UnitAi {
         let completed = self.notifies.iter().any(|n| {
             n.kind == ACTION_COMPLETED
                 && self.current_order.is_none()
-                && self.current_action == n.p[0]
+                && ActionKind::field(self.current_action) == n.p[0]
         });
         if completed {
             self.remove_target();
@@ -131,10 +132,16 @@ impl UnitAi {
         let taken = match n.kind {
             // "That unit is not attacking me, so I'm ignoring it."
             NO_LONGER_ON_ME => self.attackers.binary_search(&n.caller).is_ok(),
-            ACTION_INVALIDATED => n.p[0] == action,
+            ACTION_INVALIDATED => n.p[0] == ActionKind::field(action),
             ACTION_COMPLETED => {
                 // ignored (and handled) for a non-movement action
-                if n.p[0] == MOVE_ACTION && !matches!(action, 0x262 | 0x268 | 0x2bf | 0x2c0) {
+                // the game's list also holds 0x268, which no unit AI holds ([`ActionKind`])
+                if n.p[0] == ActionKind::Move.value()
+                    && !matches!(
+                        action,
+                        Some(ActionKind::Move | ActionKind::MoveAside | ActionKind::GroupAside)
+                    )
+                {
                     return true;
                 }
                 true

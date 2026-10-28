@@ -1,6 +1,6 @@
 use crate::checked_rows::{AiRow, MoveRow, Same};
 use genie_core::movement::PathData;
-use genie_core::unit_ai::{OrderKind, QueuedOrder, UnitAi};
+use genie_core::unit_ai::{ActionKind, OrderKind, QueuedOrder, UnitAi};
 
 /// A path level with a value in every field.
 fn path() -> PathData {
@@ -125,8 +125,8 @@ fn field(row: &AiRow, name: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The slice's orders read as the save holds them: none as the field's −1, a queued order as
-/// its record.
+/// The slice's orders and actions read as the save holds them: none as the field's −1, a queued
+/// order as its record.
 #[test]
 fn an_ai_row_names_the_orders_as_the_save_does() {
     let mut record = [0u8; 52];
@@ -134,17 +134,27 @@ fn an_ai_row_names_the_orders_as_the_save_does() {
     let saved = genie_save::generated::world::UnitAiModule {
         current_order_value: -1,
         last_order_value: 0x2c9,
+        current_action_value: 0x265,
+        last_action_value: -1,
         temp_order: vec![record],
         ..Default::default()
     };
     let ai = UnitAi {
         current_order: None,
         last_order: Some(OrderKind::Hunt),
+        current_action: Some(ActionKind::Hunt),
+        last_action: None,
         orders: vec![QueuedOrder::from_bytes(&record).unwrap()],
         ..UnitAi::default()
     };
     let (row, save) = (AiRow::of(&ai, false), AiRow::saved(&saved, None, false));
-    for name in ["current_order", "last_order", "orders"] {
+    for name in [
+        "current_order",
+        "last_order",
+        "current_action",
+        "last_action",
+        "orders",
+    ] {
         assert_eq!(field(&row, name), field(&save, name), "{name}");
     }
     assert_eq!(field(&save, "current_order"), "-1");

@@ -8,7 +8,7 @@ use crate::orders::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
     Place, TOO_CLOSE, VILLAGER, Work, ignore_unit, packs, readiness, work_reach,
 };
-use crate::unit_ai::HUNT_ACTION;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -385,7 +385,7 @@ impl World {
             let search = crate::unit_ai::Notify::own(
                 id,
                 crate::unit_ai::REQUIRES_SEARCH,
-                [HUNT_ACTION, i32::from(PASTURE_CLASS), -1],
+                [ActionKind::Hunt.value(), i32::from(PASTURE_CLASS), -1],
             );
             let _ = ai.accept(search, state);
         }

@@ -2,7 +2,8 @@ use crate::GenieError;
 use crate::movement::move_to::{MoveTo, MoveToAction, MoveWait};
 use crate::objects::unit::Unit;
 use crate::ownership::artifact::Artifact;
-use crate::ownership::capture::{CAPTURE_KEEPS_ACTION, LIVESTOCK};
+use crate::ownership::capture::LIVESTOCK;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 use crate::world::others::OthersRef;
@@ -22,7 +23,8 @@ fn walking_forager() -> World {
         wait: MoveWait::default(),
     }));
     let ai = u.ai.as_mut().unwrap();
-    (ai.current_order, ai.current_action, ai.current_target) = (Some(OrderKind::Move), 510, 600);
+    (ai.current_order, ai.current_action, ai.current_target) =
+        (Some(OrderKind::Move), Some(ActionKind::Move), 600);
     t
 }
 
@@ -55,11 +57,11 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     let ai = u.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (None, -1, -1)
+        (None, None, -1)
     );
     assert_eq!(
         (ai.last_order, ai.last_action),
-        (Some(OrderKind::Move), 510)
+        (Some(OrderKind::Move), Some(ActionKind::Move))
     );
     // livestock's unit AI, and one on action 0x2c2, keep their order and target
     let (u, _) = stopped(walking_forager(), LIVESTOCK).unwrap();
@@ -67,7 +69,7 @@ fn a_capture_stop_tears_the_actions_down_and_stops_the_unit_ai() {
     let kept = |ai: &crate::unit_ai::UnitAi| (ai.current_order, ai.current_target);
     assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
     let mut t = walking_forager();
-    t.players[1].objects[0].ai.as_mut().unwrap().current_action = CAPTURE_KEEPS_ACTION;
+    t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::HeroPower);
     let (u, _) = stopped(t, 4).unwrap();
     assert_eq!(kept(u.ai.as_ref().unwrap()), (Some(OrderKind::Move), 600));
 }

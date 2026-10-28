@@ -170,7 +170,7 @@ impl Watch {
             order: u.ai.as_ref().map(|ai| {
                 [
                     crate::unit_ai::OrderKind::field(ai.current_order),
-                    ai.current_action,
+                    crate::unit_ai::ActionKind::field(ai.current_action),
                     ai.current_target,
                 ]
             }),

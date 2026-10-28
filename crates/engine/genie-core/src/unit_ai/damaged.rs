@@ -3,13 +3,13 @@
 use crate::GenieError;
 use crate::math::image::unit_ai::{ATTACKER_FAR, ATTACKER_TIE};
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ACTION_COMPLETED, BREAK, BUILD_ACTION, CLASS_10, DEAD, EXPLORE_ACTION, Effect,
-    FISHING_BUILD_FAR, FISHING_BUILDS, FISHING_CARED, FOUNDATION_REACH, GO_ON, HUNT_ACTION,
-    MOVE_ACTION, Memory, NO_ANIM_SPEED, Notify, Pick, QueuedOrder, SIEGE_TOWER_AI, Search,
-    Surroundings, TRADE_ACTION, UnitAi, UnitSeen, UnitSide, alert_owner, civilian_search_radius,
-    closest_undiscovered_tile, held_action_state,
+    ACTION_COMPLETED, BREAK, CLASS_10, DEAD, Effect, FISHING_BUILD_FAR, FISHING_BUILDS,
+    FISHING_CARED, FOUNDATION_REACH, GO_ON, Memory, NO_ANIM_SPEED, Notify, Pick, QueuedOrder,
+    SIEGE_TOWER_AI, Search, Surroundings, UnitAi, UnitSeen, UnitSide, alert_owner,
+    civilian_search_radius, closest_undiscovered_tile, held_action_state,
 };
 
 impl UnitAi {
@@ -74,7 +74,9 @@ impl UnitAi {
             // UCOMISS: a NaN keeps moving): the current order goes to the queue's end (slot 0x30
             // neither immediate nor in front), the action stops (slot 0xb0 with 1) and it runs
             // from its attackers (slot 0x160 with 1 and no unit)
-            if self.current_action == MOVE_ACTION && at.anim_speed.ok_or(NO_ANIM_SPEED)? != 0.0 {
+            if self.current_action == Some(ActionKind::Move)
+                && at.anim_speed.ok_or(NO_ANIM_SPEED)? != 0.0
+            {
                 return Ok(BREAK);
             }
             self.queue_current(at)?;
@@ -205,12 +207,12 @@ impl UnitAi {
         at: &Surroundings,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
-        if self.current_action == TRADE_ACTION {
+        if self.current_action == Some(ActionKind::Trade) {
             return Err(GenieError::unsupported(
                 "a trader's search for another dock or market (slot 0xf8, its Trade action)",
             ));
         }
-        if self.current_action == EXPLORE_ACTION {
+        if self.current_action == Some(ActionKind::Explore) {
             closest_undiscovered_tile()?;
         }
         self.remove_target();
@@ -256,7 +258,7 @@ impl UnitAi {
         if self.current_order.is_some() {
             return Ok(GO_ON);
         }
-        if self.current_action != MOVE_ACTION {
+        if self.current_action != Some(ActionKind::Move) {
             self.queue_current(at)?;
             self.stop_current(true, at, fx)?;
         }
@@ -295,7 +297,7 @@ impl UnitAi {
         if self.current_order.is_some() {
             return Ok(GO_ON);
         }
-        if self.current_action != MOVE_ACTION {
+        if self.current_action != Some(ActionKind::Move) {
             self.queue_current(at)?;
             self.stop_current(true, at, fx)?;
             let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
@@ -347,7 +349,7 @@ impl UnitAi {
         }
         if computer {
             self.post(
-                Notify::own(at.id, ACTION_COMPLETED, [BUILD_ACTION, 0, 0]),
+                Notify::own(at.id, ACTION_COMPLETED, [ActionKind::Build.value(), 0, 0]),
                 at.state,
             )?;
         }
@@ -459,7 +461,7 @@ impl UnitAi {
             ));
         }
         fx.push(Effect::HuntObject(target));
-        self.set_action(HUNT_ACTION);
+        self.set_action(Some(ActionKind::Hunt));
         self.set_target(target, class, point);
         self.commanded = true;
         Ok(())

@@ -1,6 +1,7 @@
 //! Which object a unit may attack: the attack search, its picks and each type's rules.
 
 use crate::GenieError;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
     ARTIFACT_AI, BOAR_AI, BUILDING_AI, CIVILIAN, FISHING_AI, OrderRecord, SIEGE_AI, SIEGE_TOWER_AI,
@@ -227,7 +228,7 @@ pub struct Seeker {
     /// `+0x3c`.
     pub order: Option<OrderKind>,
     /// `+0x44`.
-    pub action: i32,
+    pub action: Option<ActionKind>,
     /// `+0x48`.
     pub target: i32,
     /// `+0x4c`.

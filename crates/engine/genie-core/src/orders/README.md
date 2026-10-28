@@ -44,7 +44,7 @@ The files hold the orders by kind:
 | [`tests.rs`](tests.rs) | Tests. |
 | [`town_bell.rs`](town_bell.rs) | A villager's town-bell record (`+0x9ac`..`+0x9dc`): what it worked on when an order to a target took it off its work (`FUN_141206a20`), which a later back-to-work order sends it back to, and the flag a garrison order sets (`FUN_1412067f0`). |
 | [`unit_order.rs`](unit_order.rs) | An artifact's and a herd's take, an order's cancel and a unit's order. |
-| [`work.rs`](work.rs) | The town bell, a kept attack, the garrison task and the work command and its task. |
+| [`work.rs`](work.rs) | A kept attack, the garrison task and the work command and its task. |
 <!-- /files -->
 
 ## How it connects

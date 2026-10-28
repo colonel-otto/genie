@@ -3,6 +3,7 @@ use crate::groups::{Formation, Member, Slot, UnitGroup, UnitGroups};
 use crate::map::spatial::{Obstruction, Placed, Spatial, Tiles};
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Player;
 
@@ -23,7 +24,7 @@ fn member(id: i32, x: f32, y: f32) -> Unit {
         position: [x, y, 0.0],
         ai: Some(UnitAi {
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -243,7 +244,7 @@ fn a_member_in_place_or_failing_too_often() {
 fn a_busy_member_stops_and_its_slot_counts_it_there() {
     for (before, after) in [(1, 3), (2, 3), (0, 0), (4, 4)] {
         let mut t = world();
-        t.players[1].objects[0].ai.as_mut().unwrap().current_action = 600;
+        t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::Attack);
         let g = t.groups.get_mut(1).unwrap();
         g.current_formation.as_mut().unwrap().slots[0].state = before;
         g.members[0].specific_move.consecutive_move_failures = 3;

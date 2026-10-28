@@ -68,9 +68,6 @@ const GATE: i16 = 39;
 const RELIC: i16 = 285;
 /// The villager class, whose new units count in attribute 248.
 pub(crate) const VILLAGER: i16 = 4;
-/// The make action's unit-AI action value (`0x26b`), which its constructor sets and its end
-/// notifies.
-pub(crate) const MAKE_ACTION: i32 = 0x26b;
 
 /// A new moving object's right vector's z (`FUN_1411580a0` reads `DAT_14330ec20`).
 pub(crate) const START_RIGHT_Z: f32 = crate::math::image::spawn::START_RIGHT_Z;

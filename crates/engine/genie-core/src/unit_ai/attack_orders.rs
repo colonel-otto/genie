@@ -2,10 +2,11 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ARTIFACT_AI, ATTACK_ACTION, CIVILIAN, Effect, Notify, PENDING_BEFORE_ATTACK, QueuedOrder,
-    SIEGE_AI, SIEGE_TOWER_AI, Surroundings, UnitAi, UnitSide, civilian_may_attack, lion_may_attack,
+    ARTIFACT_AI, CIVILIAN, Effect, Notify, PENDING_BEFORE_ATTACK, QueuedOrder, SIEGE_AI,
+    SIEGE_TOWER_AI, Surroundings, UnitAi, UnitSide, civilian_may_attack, lion_may_attack,
 };
 
 impl UnitAi {
@@ -90,7 +91,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<bool, GenieError> {
-        if !force && self.current_action != -1 {
+        if !force && self.current_action.is_some() {
             return Ok(false);
         }
         let Some((class, position)) = self.attack_check(target, any, at, side)? else {
@@ -99,7 +100,7 @@ impl UnitAi {
         if !self.attack_command(target, force, at, side, fx)? {
             return Ok(false);
         }
-        self.set_action(ATTACK_ACTION);
+        self.set_action(Some(ActionKind::Attack));
         self.target_at(target, Some(i32::from(class)), position);
         Ok(true)
     }

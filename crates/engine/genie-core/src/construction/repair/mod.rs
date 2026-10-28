@@ -26,8 +26,6 @@ use crate::movement::move_to::Walk;
 
 /// The Repair action's type, which word 9 adds, and its tasks' action type.
 pub const REPAIR: i16 = 0x6a;
-/// The repair's action value (`0x26a`), which its notifies to the unit AI carry.
-pub const REPAIR_ACTION: i32 = 0x26a;
 
 /// The gap within which a repairer reaches its target (`DAT_142eb5690`).
 pub const REACH: f32 = crate::math::image::repair::REACH;
@@ -173,7 +171,7 @@ pub struct RepairStep {
     /// the target's slot 0x180): the caller's.
     pub released: bool,
     /// The notifies the unit's slot 0x328 posts to its unit AI, each with the repair's action
-    /// value ([`REPAIR_ACTION`], 0, 0), in order: 0x1fa its end, 0x202 its search, 0x1f9 its
+    /// value ([`ActionKind::Repair`], 0, 0), in order: 0x1fa its end, 0x202 its search, 0x1f9 its
     /// failure, 0x1fb the player's want of resources.
     pub notifies: Vec<i32>,
     /// The unit takes its master's standing sprite (slot 0x68 with `+0x470`): the caller's.

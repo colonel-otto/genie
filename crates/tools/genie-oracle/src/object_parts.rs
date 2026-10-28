@@ -4,7 +4,7 @@ use crate::masters::MasterTable;
 use crate::vec3;
 use genie_core::GenieError;
 use genie_core::objects::lifecycle::{Class, Lifecycle, MasterData};
-use genie_core::unit_ai::OrderKind;
+use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_save::generated::world::{
     PlayerObjects, RgeStaticObject, TribeCombatObject, UnitAiModule,
 };
@@ -87,8 +87,8 @@ pub(super) fn lifecycle(
 ///
 /// # Errors
 ///
-/// An order value no order holds ([`OrderKind::try_from`]), in the current or last order, the
-/// history or a queue.
+/// An order or action value no order or action holds ([`OrderKind::try_from`],
+/// [`ActionKind::try_from`]), in the current or last one, the history or a queue.
 pub(super) fn unit_ai(
     object: &genie_save::Object,
 ) -> Result<Option<genie_core::unit_ai::UnitAi>, GenieError> {
@@ -99,7 +99,7 @@ pub(super) fn unit_ai(
         ai_type: combat.need_unit_ai as u32,
         current_order: OrderKind::of_field(ai.current_order_value)?,
         order_priority: ai.current_order_priority_value,
-        current_action: ai.current_action_value,
+        current_action: ActionKind::of_field(ai.current_action_value)?,
         current_target: ai.current_target_value,
         target_type: ai.current_target_type_value,
         target_point: [
@@ -110,7 +110,7 @@ pub(super) fn unit_ai(
         desired_distance: ai.desired_target_distance_value,
         defend_target: ai.defend_target_value,
         last_order: OrderKind::of_field(ai.last_order_value)?,
-        last_action: ai.last_action_value,
+        last_action: ActionKind::of_field(ai.last_action_value)?,
         last_target: ai.last_target_value,
         last_target_type: ai.last_target_type_value,
         idle_timer: ai.idle_timer_value,
@@ -189,14 +189,14 @@ fn home(combat: &TribeCombatObject) -> Option<genie_core::unit_ai::Home> {
 ///
 /// # Errors
 ///
-/// A record's order value no order holds.
+/// A record's order or action value no order or action holds.
 fn order_history(ai: &UnitAiModule) -> Result<Vec<genie_core::unit_ai::OrderRecord>, GenieError> {
     ai.oh
         .iter()
         .map(|e| {
             Ok(genie_core::unit_ai::OrderRecord {
                 order: OrderKind::of_field(e.new_oh_order)?,
-                action: e.new_oh_action,
+                action: ActionKind::of_field(e.new_oh_action)?,
                 time: e.new_oh_time,
                 position: vec3(&e.new_oh_position),
                 target: e.new_oh_target_id,

@@ -4,8 +4,9 @@ use crate::GenieError;
 use crate::commands::gather_point::GatherPointCommand;
 use crate::commands::research::ResearchCommand;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
-use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, RESEARCH_ACTION, World};
+use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, World};
 
 impl World {
     /// SET GATHER POINT's handler ([`GatherPointCommand`]).
@@ -282,7 +283,7 @@ impl World {
             }
             let building = &mut self.players[player].objects[i];
             if let Some(ai) = building.ai.as_mut() {
-                ai.set_action(RESEARCH_ACTION);
+                ai.set_action(Some(ActionKind::Research));
             }
         }
         Ok(())

@@ -3,6 +3,7 @@ use crate::objects::actions::ActionList;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
 use crate::world::Player;
@@ -42,7 +43,7 @@ fn game() -> World {
         id: 9,
         ai: Some(UnitAi {
             current_order: None,
-            current_action: 0x26b,
+            current_action: Some(ActionKind::Make),
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -270,7 +271,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
         id: 20,
         ai: Some(UnitAi {
             current_order: Some(OrderKind::Hunt),
-            current_action: 0x265,
+            current_action: Some(ActionKind::Hunt),
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -315,7 +316,7 @@ fn a_stopped_hunter_keeps_its_halted_hunt() {
     t.object_stop(1, idx).unwrap();
     let u = &t.players[1].objects[idx];
     assert_eq!(u.actions.hunt().copied(), None);
-    assert_eq!(u.ai.as_ref().unwrap().current_action, -1);
+    assert_eq!(u.ai.as_ref().unwrap().current_action, None);
     // without a unit AI the halted Hunt stays
     without_ai.players[1].objects[idx].ai = None;
     without_ai.object_stop(1, idx).unwrap();
@@ -660,7 +661,10 @@ fn a_resignation_cancels_the_queues_and_the_last_side_wins() {
     assert!(production.queue.entries().is_empty() && production.action.is_none());
     assert_eq!((production.queue.total, production.queue.changes), (0, 1));
     let ai = tc.ai.as_ref().unwrap();
-    assert_eq!((ai.current_action, ai.last_action), (-1, 0x26b));
+    assert_eq!(
+        (ai.current_action, ai.last_action),
+        (None, Some(ActionKind::Make))
+    );
     assert_eq!(ai.notifies.len(), 1);
     assert_eq!(t.game_state, 0);
     t.victory_check();

@@ -3,7 +3,7 @@
 
 use crate::{listed, path_level, top_action, vec3};
 use genie_core::objects::unit::Unit;
-use genie_core::unit_ai::OrderKind;
+use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_core::world::World;
 use genie_save::generated::world::Path;
 
@@ -86,17 +86,17 @@ impl AiRow {
         let f = |v: &dyn std::fmt::Debug| format!("{v:?}");
         Self {
             fields: vec![
-                // the orders as the save holds them, none as −1
+                // the orders and actions as the save holds them, none as −1
                 ("current_order", f(&OrderKind::field(ai.current_order))),
                 ("current_order_priority", f(&ai.order_priority)),
-                ("current_action", f(&ai.current_action)),
+                ("current_action", f(&ActionKind::field(ai.current_action))),
                 ("current_target", f(&ai.current_target)),
                 ("current_target_type", f(&ai.target_type)),
                 ("current_target_point", f(&ai.target_point)),
                 ("desired_target_distance", f(&ai.desired_distance)),
                 ("defend_target", f(&ai.defend_target)),
                 ("last_order", f(&OrderKind::field(ai.last_order))),
-                ("last_action", f(&ai.last_action)),
+                ("last_action", f(&ActionKind::field(ai.last_action))),
                 ("last_target", f(&ai.last_target)),
                 ("last_target_type", f(&ai.last_target_type)),
                 ("idle_timer", f(&ai.idle_timer)),

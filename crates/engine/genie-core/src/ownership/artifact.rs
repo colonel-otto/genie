@@ -15,6 +15,7 @@ use crate::objects::actions::Action;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::ownership::capture::Captured;
+use crate::unit_ai::ActionKind;
 use crate::world::context::Context;
 
 /// What the Artifact's slot 0x68 (the base's `FUN_140a7a230`) did to its targets, for the
@@ -481,7 +482,7 @@ impl Unit {
             }
         }
         if let Some(kind) = ended.and_then(|e| e.notify) {
-            self.post_own(kind, [crate::unit_ai::MOVE_ACTION, 0, 0])?;
+            self.post_own(kind, [ActionKind::Move.value(), 0, 0])?;
         }
         Ok(new)
     }

@@ -3,10 +3,10 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, AUTO_SCOUT_ACTION, AiMove, AttackAsk, BREAK, DEAD, EXPLORE_ACTION, Effect,
-    GO_ON, MOVE_ACTION, MOVE_ASIDE_ACTION, NEVER_KILLED, Named, Notify, PREY_CLASS, Pick,
+    AiMove, AttackAsk, BREAK, DEAD, Effect, GO_ON, NEVER_KILLED, Named, Notify, PREY_CLASS, Pick,
     QueuedOrder, RADIUS_SCALE, STILL, Search, Surroundings, UnitAi, UnitSeen, UnitSide,
     VILLAGER_CLASS, alert_owner, closest_undiscovered_tile, top_target_after,
 };
@@ -99,7 +99,7 @@ impl UnitAi {
         if self.best_this_update == -1
             && self.current_target == -1
             && self.current_order.is_none()
-            && self.current_action == -1
+            && self.current_action.is_none()
         {
             // "BUTA returned -1 and I'm idle without a target": COMISS, JBE (a NaN runs)
             if at.speed < STILL {
@@ -125,7 +125,9 @@ impl UnitAi {
         computer: bool,
         held_by_group: bool,
     ) -> bool {
-        if self.current_action == ATTACK_ACTION && self.current_target == attacker_id {
+        if matches!(self.current_action, Some(ActionKind::Attack))
+            && self.current_target == attacker_id
+        {
             return true;
         }
         if !computer
@@ -203,7 +205,7 @@ impl UnitAi {
             if reaches {
                 return self.strike_back(attacker_id, at, ai_rng, side, fx);
             }
-            if self.current_action != MOVE_ACTION {
+            if self.current_action != Some(ActionKind::Move) {
                 let _ = self.run_away(true, at, computer, ai_rng, side, fx)?;
             }
             return Ok(BREAK);
@@ -381,26 +383,32 @@ impl UnitAi {
     /// Slot 0x148 (`FUN_140c4d0d0`), the move off a footprint: with its force flag (`m.force`)
     /// or without an action value, the unit's slot 0x340 takes the move with the same
     /// arguments ([`Effect::MoveAside`], which the caller runs after the update); on its 1 the
-    /// action value becomes [`MOVE_ASIDE_ACTION`], the old one the last, and the target stays.
+    /// action value becomes [`ActionKind::MoveAside`], the old one the last, and the target stays.
     /// The caller's slot 0x340 is `FUN_1410866e0`, which always gives 1, but for classes 51 and
     /// 54 (`FUN_141216c50`, their packing), which it does not run. The move gives the unit its
     /// `MoveTo` at once: the update's later checks see it busy. True when it moves.
     pub(super) fn move_aside(&mut self, m: AiMove, fx: &mut Vec<Effect>) -> bool {
-        if !m.force && self.current_action != -1 {
+        if !m.force && self.current_action.is_some() {
             return false;
         }
         fx.push(Effect::MoveAside(m));
-        self.set_action(MOVE_ASIDE_ACTION);
+        self.set_action(Some(ActionKind::MoveAside));
         self.commanded = true;
         true
     }
 
-    /// The action values of an explorer (the base handler's case 0x202): 605, 623 and 630, and
-    /// the auto scout's `0x2bd`.
+    /// The action values of an explorer (the base handler's case 0x202, a bit test of the action
+    /// less 605): 605, 623 and 630, and the auto scout's `0x2bd`.
     pub(super) const fn explorer(&self) -> bool {
-        let a = self.current_action;
-        let k = a.wrapping_sub(EXPLORE_ACTION) as u32;
-        (k < 0x1a && (0x204_0001u32 >> (k & 0x1f)) & 1 != 0) || a == AUTO_SCOUT_ACTION
+        matches!(
+            self.current_action,
+            Some(
+                ActionKind::Explore
+                    | ActionKind::ExploreAndDestroy
+                    | ActionKind::Scout
+                    | ActionKind::AutoScout
+            )
+        )
     }
 
     /// The base handler's case 0x202 for an explorer ("I'm an explorer, looking for the closest
@@ -428,7 +436,7 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         let action = self.current_action;
-        if action != AUTO_SCOUT_ACTION {
+        if action != Some(ActionKind::AutoScout) {
             closest_undiscovered_tile()?;
         }
         if let Some([x, y]) = side.seek_unexplored(self, ai_rng)? {
@@ -448,14 +456,14 @@ impl UnitAi {
                     // FUN_14162dab0: no case for it but the old short pather's hulled area, a
                     // computer player's AI would hear it); processing breaks
                     side.make_scout_map()?;
-                    if computer && self.current_action == AUTO_SCOUT_ACTION {
+                    if computer && self.current_action == Some(ActionKind::AutoScout) {
                         return Err(GenieError::unsupported(
                             "a computer player's AI told its scout found nothing (0x202)",
                         ));
                     }
                     return Ok(BREAK);
                 };
-                if self.current_action == AUTO_SCOUT_ACTION {
+                if self.current_action == Some(ActionKind::AutoScout) {
                     let _ = self.explore_at(x, y, true, fx);
                 }
                 self.current_action = action;

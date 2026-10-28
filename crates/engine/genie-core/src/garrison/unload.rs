@@ -7,6 +7,7 @@ use crate::garrison::{
     WHOLE_SHARE_CLASS,
 };
 use crate::orders::BUILDING;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -384,14 +385,18 @@ impl World {
         };
         let (found, record) = bell.back_to_work(&lookup);
         self.players[up].objects[ui].town_bell = bell;
-        if found.is_none() && 0 <= record.target_type && 0 <= record.action {
+        if found.is_none() && 0 <= record.target_type && record.action.is_some() {
             let unit = &mut self.players[up].objects[ui];
             if let Some(ai) = unit.ai.as_mut() {
                 ai.set_action(record.action);
             }
             unit.post_own(
                 crate::unit_ai::REQUIRES_SEARCH,
-                [record.action, record.target_type, record.target],
+                [
+                    ActionKind::field(record.action),
+                    record.target_type,
+                    record.target,
+                ],
             )?;
         }
         let Some((p, building)) = from else {

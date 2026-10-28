@@ -11,6 +11,7 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::movement::move_to::MoveTo;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::context::Context;
 
@@ -34,8 +35,6 @@ const NO_POINT: f32 = crate::math::image::explore::NO_POINT;
 /// The action's notify to its unit AI when it waits for a point (state 3): 0x202 with the
 /// explore action value 605.
 pub const WANTS_POINT: i32 = 0x202;
-/// The explore action value (605).
-pub const EXPLORE_ACTION: i32 = 0x25d;
 
 /// What an Explore's `set_state` asks of its owner besides its own fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -466,7 +465,7 @@ impl Unit {
                     "an Explore's set_state 2 (slots 0x68)",
                 ));
             }
-            Owner::WantsPoint => self.post_own(WANTS_POINT, [EXPLORE_ACTION, 0, 0])?,
+            Owner::WantsPoint => self.post_own(WANTS_POINT, [ActionKind::Explore.value(), 0, 0])?,
             Owner::Standing => {}
         }
         if let Some(m) = self.body.mover_mut() {

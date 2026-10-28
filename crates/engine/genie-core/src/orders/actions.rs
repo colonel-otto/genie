@@ -7,6 +7,7 @@ use crate::objects::masters::Master;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -62,7 +63,7 @@ impl World {
         &mut self,
         player: usize,
         idx: usize,
-        (order, action): (Option<OrderKind>, i32),
+        (order, action): (Option<OrderKind>, Option<ActionKind>),
     ) -> Result<(), GenieError> {
         let u = &self.players[player].objects[idx];
         let Some(target) = u.ai.as_ref().map(|a| a.current_target).filter(|&t| 0 <= t) else {

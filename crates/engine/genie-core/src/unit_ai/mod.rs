@@ -15,6 +15,7 @@
 //! ([`QueuedOrder`]), on its owner's turn and between turns ([`UnitAi::off_turn`]). What the AI
 //! does to its unit comes back as [`Effect`]s, in order.
 
+mod action_kind;
 mod actions;
 pub mod ai_kinds;
 mod attack_orders;
@@ -43,6 +44,7 @@ pub(crate) mod unit;
 mod update;
 pub(crate) mod world_view;
 
+pub use self::action_kind::ActionKind;
 pub(crate) use self::attack_pick::spares_friends;
 pub use self::attack_pick::{
     AttackAsk, AttackPicker, Attacker, Memory, NoAttack, Pick, Search, Seeker, Target, can_attack,
@@ -78,24 +80,18 @@ pub(crate) use self::cared::{search_area, search_radius};
 #[cfg(test)]
 use self::ids::DEFENSIVE_MASTERS;
 use self::ids::{
-    AI_MOVE_RANGE, ARTIFACT_IDLE_TIMEOUT, ATTACK_ACTION, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW,
-    BOAR_LURING_ACTION, BOAR_OFFSET, BOAR_STEP, BOAR_WANDER, CLASS_KING, CLASS_VILLAGER,
-    COMPUTER_SOLDIER_IDLE_TIMEOUT, CONVERT_ACTION, DEFEND_ACTION, DEFEND_SLACK, DEFENDLESS_MASTER,
-    DESIRED_DISTANCE, ENDED_ACTIONS, EXPLORE_DESTROY_ACTION, EXPLORE_Z, FOLLOW_SLACK_HIGH,
-    FOLLOW_SLACK_LOW, FOUNDATION_REACH, HEAL_ACTION, HUNTED_HOME, HUNTED_IDLE_TIMEOUT,
-    HUNTED_SIGHT_GROWTH, HUNTED_STEP, IDLE_TIMEOUT, INVALID_POINT, KING_UNLED,
-    LION_ATTACKED_TIMEOUT, LION_IDLE_TIMEOUT, LION_SIGHT_DIVISOR, LION_SIGHT_SHARE, NO_ANIM_SPEED,
-    OUTSIDE_ORDER, PRIEST_IDLE_TIMEOUT, REPAIR_ACTION, RETARGET_RANGE, RETARGET_REACH, Retarget,
-    RetargetSearch, SCOUT_ACTION, SEEK_ACTION, SHEPHERD_ACTION, SIEGE_IDLE_TIMEOUT,
-    SOLDIER_IDLE_MASTER, SOLDIER_IDLE_TIMEOUT, TOWER_IDLE_TIMEOUT, TRANSPORT_ACTION,
-    TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS, UNLOAD_ACTION, UNLOAD_OVER_WALL_ACTION,
-    VILLAGER_NOTIFY, WAIT_ACTION, WALK_BACK, closest_undiscovered_tile, dodges, held_action_state,
-    order_move, retarget_kind, siege_stance, soldier_stance,
+    AI_MOVE_RANGE, ARTIFACT_IDLE_TIMEOUT, BOAR_HOME, BOAR_LEASH, BOAR_LEASH_DRAW, BOAR_OFFSET,
+    BOAR_STEP, BOAR_WANDER, CLASS_KING, CLASS_VILLAGER, COMPUTER_SOLDIER_IDLE_TIMEOUT,
+    DEFEND_SLACK, DEFENDLESS_MASTER, DESIRED_DISTANCE, ENDED_ACTIONS, EXPLORE_Z, FOLLOW_SLACK_HIGH,
+    FOLLOW_SLACK_LOW, FOUNDATION_REACH, HUNTED_HOME, HUNTED_IDLE_TIMEOUT, HUNTED_SIGHT_GROWTH,
+    HUNTED_STEP, IDLE_TIMEOUT, INVALID_POINT, KING_UNLED, LION_ATTACKED_TIMEOUT, LION_IDLE_TIMEOUT,
+    LION_SIGHT_DIVISOR, LION_SIGHT_SHARE, NO_ANIM_SPEED, OUTSIDE_ORDER, PRIEST_IDLE_TIMEOUT,
+    RETARGET_RANGE, RETARGET_REACH, Retarget, RetargetSearch, SIEGE_IDLE_TIMEOUT,
+    SOLDIER_IDLE_MASTER, SOLDIER_IDLE_TIMEOUT, TOWER_IDLE_TIMEOUT, TREBUCHET_CLASS,
+    TREBUCHET_PACKED_CLASS, VILLAGER_NOTIFY, WALK_BACK, closest_undiscovered_tile, dodges,
+    held_action_state, order_move, retarget_kind, siege_stance, soldier_stance,
 };
-pub use self::ids::{
-    AUTO_SCOUT_ACTION, EXPLORE_ACTION, FOLLOW_ACTION, HUMAN_ORDER_CAP, MOVE_ACTION, NewObject,
-    factory_type,
-};
+pub use self::ids::{HUMAN_ORDER_CAP, NewObject, factory_type};
 pub(crate) use self::ids::{alert_owner, helper_answers};
 pub use self::order_kind::OrderKind;
 pub(crate) use self::side::UNMODELLED_COMMAND;
@@ -193,9 +189,6 @@ pub const NO_LONGER_ON_ME: i32 = ai_kinds::NOTIFY_NO_LONGER_ON_ME;
 pub const SENT_OFF: i32 = 0x216;
 /// A unit sent off a footprint with a group (`FUN_14123bb20`'s group move).
 pub const SENT_OFF_GROUP: i32 = 0x21b;
-/// The action value of a unit moving off a footprint (slot 0x148, `FUN_140c4d0d0`), and of one
-/// moving off with a group (the base handler's case 0x21b).
-pub const MOVE_ASIDE_ACTION: i32 = 0x2bf;
 /// An attack command after effects the unit AI's run left pending that the slice cannot run
 /// before it (a hunt command, a move, …): their unit parts would precede the command.
 pub(crate) const PENDING_BEFORE_ATTACK: GenieError =
@@ -207,11 +200,6 @@ const MISSILE_WARNING: i32 = 0x20f;
 const STILL: f32 = crate::math::image::unit_ai::STILL;
 /// The damage case's kill time of an object the unit cannot harm (`DAT_142efe41c`, 25000).
 const NEVER_KILLED: f32 = crate::math::image::unit_ai::NEVER_KILLED;
-/// The action value of a unit moving off a footprint with a group.
-pub const GROUP_ASIDE_ACTION: i32 = 0x2c0;
-/// The action value of a unit waiting for a foundation (slot 0x108, `FUN_140c68a60`, and the
-/// order switch's case 0x2de); the full update's reset of ended actions leaves it.
-pub const WAIT_SOLIDIFY_ACTION: i32 = 0x27a;
 /// [`SENT_OFF`]'s radii are hundredths (`DAT_14330ebcc`).
 const RADIUS_SCALE: f32 = crate::math::image::unit_ai::RADIUS_SCALE;
 /// The prey animals' class, whose move off a footprint runs (slot 0x148's seventh argument).
@@ -261,8 +249,6 @@ const FISHING_AI: u32 = 0xc;
 /// The trade boat's class (`-0xeaa` raw): its cared classes and its trade partner are not the
 /// trade cart's.
 const TRADE_BOAT_CLASS: i16 = 2;
-/// The trade action value (`0x267`, which slot 0xf8 `FUN_140c651f0` sets).
-const TRADE_ACTION: i32 = 0x267;
 /// A computer player's ship evades the object its idle check found by its speed times this
 /// (`FUN_140c21930`, `FUN_140c1eab0`: `DAT_142ec9eb8`).
 const SHIP_EVADE_REACH: f32 = crate::math::image::unit_ai::SHIP_EVADE_REACH;
@@ -460,7 +446,7 @@ pub struct UnitAi {
     /// `+0x40`, the current order's priority (−1 for none): a queued order sets it.
     pub order_priority: i32,
     /// `+0x44`, −1 for none.
-    pub current_action: i32,
+    pub current_action: Option<ActionKind>,
     /// `+0x48`, −1 for none.
     pub current_target: i32,
     /// `+0x4c`, the target's class (−1 for none), and `+0x50`..`+0x58`, its point.
@@ -476,7 +462,7 @@ pub struct UnitAi {
     /// current ones.
     pub last_order: Option<OrderKind>,
     /// `+0x68`: the action before the current one.
-    pub last_action: i32,
+    pub last_action: Option<ActionKind>,
     /// `+0x6c`: the target before the current one.
     pub last_target: i32,
     /// `+0x70`: that target's class.
@@ -571,8 +557,8 @@ pub struct UnitAi {
 pub struct OrderRecord {
     /// The order (`mOrder`), None for the −1 of an order recorded without one.
     pub order: Option<OrderKind>,
-    /// The action (`mAction`).
-    pub action: i32,
+    /// The action (`mAction`), None for −1.
+    pub action: Option<ActionKind>,
     /// The world time it was given (`mTime`).
     pub time: u32,
     /// The unit's place then (slot 0x520, `mPosition`).
@@ -602,13 +588,6 @@ pub struct Hunted {
 
 /// The engine's error ([`genie_error::GenieError`]), here for the modules' imports.
 use crate::GenieError;
-
-/// The build action value (`0x25a`).
-pub const BUILD_ACTION: i32 = 602;
-/// The hunt action value (`0x265`).
-pub const HUNT_ACTION: i32 = 613;
-/// The gather action value (`0x261`), which a Gather's notifies carry.
-pub const GATHER_ACTION: i32 = 0x261;
 
 #[cfg(test)]
 mod tests;

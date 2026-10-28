@@ -1,7 +1,7 @@
 use crate::fixtures::{combat_mut, combat_object};
 use crate::object_parts::unit_ai;
 use genie_core::ErrorKind;
-use genie_core::unit_ai::OrderKind;
+use genie_core::unit_ai::{ActionKind, OrderKind};
 use genie_save::generated::world::{TribeTowerUnitAiModule, UnitAiModule, UnitAiModuleEntry1};
 
 /// A saved queue record holding order value `order`.
@@ -9,6 +9,27 @@ fn record(order: i32) -> [u8; 52] {
     let mut b = [0; 52];
     b[4..8].copy_from_slice(&order.to_le_bytes());
     b
+}
+
+/// A saved unit AI without an order or an action (−1 in each field, as the game's saves hold
+/// none).
+fn idle() -> UnitAiModule {
+    UnitAiModule {
+        current_order_value: -1,
+        last_order_value: -1,
+        current_action_value: -1,
+        last_action_value: -1,
+        ..UnitAiModule::default()
+    }
+}
+
+/// A history record of order `order` and action `action`.
+fn history(order: i32, action: i32) -> UnitAiModuleEntry1 {
+    UnitAiModuleEntry1 {
+        new_oh_order: order,
+        new_oh_action: action,
+        ..UnitAiModuleEntry1::default()
+    }
 }
 
 /// A combat object whose unit AI is `ai`.
@@ -27,19 +48,16 @@ fn an_object_without_a_unit_ai_imports_none() {
     );
 }
 
-/// The orders import as their kinds: a field's −1 as none, the history's and the queue's
-/// records as theirs.
+/// The orders and actions import as their kinds: a field's −1 as none, the history's and the
+/// queue's records as theirs.
 #[test]
-fn the_saved_orders_import_as_their_kinds() {
+fn the_saved_orders_and_actions_import_as_their_kinds() {
     let ai = unit_ai(&with_ai(UnitAiModule {
-        current_order_value: -1,
         last_order_value: 0x2c5,
-        oh: vec![UnitAiModuleEntry1 {
-            new_oh_order: 0x2c9,
-            ..UnitAiModuleEntry1::default()
-        }],
+        current_action_value: 0x261,
+        oh: vec![history(0x2c9, 0x265), history(-1, -1)],
         temp_order: vec![record(0x2c6)],
-        ..UnitAiModule::default()
+        ..idle()
     }))
     .unwrap()
     .unwrap();
@@ -47,7 +65,22 @@ fn the_saved_orders_import_as_their_kinds() {
         (ai.current_order, ai.last_order),
         (None, Some(OrderKind::Gather))
     );
-    assert_eq!(ai.order_history[0].order, Some(OrderKind::Hunt));
+    assert_eq!(
+        (ai.current_action, ai.last_action),
+        (Some(ActionKind::Gather), None)
+    );
+    let records: Vec<_> = ai
+        .order_history
+        .iter()
+        .map(|r| (r.order, r.action))
+        .collect();
+    assert_eq!(
+        records,
+        [
+            (Some(OrderKind::Hunt), Some(ActionKind::Hunt)),
+            (None, None)
+        ]
+    );
     assert_eq!(ai.orders[0].order, OrderKind::Move);
     assert_eq!(ai.building_orders, []);
 }
@@ -57,11 +90,7 @@ fn the_saved_orders_import_as_their_kinds() {
 fn a_tower_s_saved_orders_import() {
     let mut object = combat_object(5, 4);
     combat_mut(&mut object).tribe_tower_unit_ai_module = Some(Box::new(TribeTowerUnitAiModule {
-        unit_ai_module: UnitAiModule {
-            current_order_value: -1,
-            last_order_value: -1,
-            ..UnitAiModule::default()
-        },
+        unit_ai_module: idle(),
         saved_order: vec![record(700)],
         ..TribeTowerUnitAiModule::default()
     }));
@@ -69,33 +98,37 @@ fn a_tower_s_saved_orders_import() {
     assert_eq!(ai.building_orders[0].order, OrderKind::Attack);
 }
 
-/// An order value no case names fails the import, wherever the save holds it.
+/// An order or action value none names fails the import, wherever the save holds it.
 #[test]
-fn an_order_no_case_names_fails_the_import() {
+fn a_value_none_names_fails_the_import() {
     let saves = [
         UnitAiModule {
             current_order_value: 0x262,
-            ..UnitAiModule::default()
+            ..idle()
         },
         UnitAiModule {
-            current_order_value: -1,
             last_order_value: 0x2cf,
-            ..UnitAiModule::default()
+            ..idle()
         },
         UnitAiModule {
-            current_order_value: -1,
-            last_order_value: -1,
-            oh: vec![UnitAiModuleEntry1 {
-                new_oh_order: 0x269,
-                ..UnitAiModuleEntry1::default()
-            }],
-            ..UnitAiModule::default()
+            oh: vec![history(0x269, -1)],
+            ..idle()
         },
         UnitAiModule {
-            current_order_value: -1,
-            last_order_value: -1,
             temp_order: vec![record(0x323)],
-            ..UnitAiModule::default()
+            ..idle()
+        },
+        UnitAiModule {
+            current_action_value: 0x2c6,
+            ..idle()
+        },
+        UnitAiModule {
+            last_action_value: 0x25f,
+            ..idle()
+        },
+        UnitAiModule {
+            oh: vec![history(-1, 0x268)],
+            ..idle()
         },
     ];
     for save in saves {

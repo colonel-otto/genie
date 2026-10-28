@@ -5,9 +5,9 @@ use crate::GenieError;
 use crate::math::rng::Stream;
 use crate::objects::release::Releaser;
 use crate::players::game_status::{
-    FISHING_BOAT, KEEPING_TYPES, KEPT_ACTION, LIVESTOCK, TRADE_ACTION, TRADE_CART,
-    UNSTOPPED_BUILDINGS, VILLAGER,
+    FISHING_BOAT, KEEPING_TYPES, LIVESTOCK, TRADE_ACTION, TRADE_CART, UNSTOPPED_BUILDINGS, VILLAGER,
 };
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::Effect;
 use crate::world::World;
 
@@ -20,16 +20,16 @@ impl World {
     /// back its queue ([`World::cancel_queue`]); every unit AI's orders go (`FUN_140c5e010`). The
     /// slice holds no unit groups (`+0x6d0`).
     pub(super) fn stop_everything(&mut self, p: usize) -> Result<(), GenieError> {
-        use crate::movement::explore::EXPLORE_ACTION;
-        use crate::unit_ai::AUTO_SCOUT_ACTION;
         for idx in 0..self.players[p].objects.len() {
             let unit = &self.players[p].objects[idx];
             let master = self.master_of(p, unit.life.master_id)?;
             let (class, id) = (master.class, master.id);
-            let explorer = unit
-                .ai
-                .as_ref()
-                .is_some_and(|ai| matches!(ai.current_action, AUTO_SCOUT_ACTION | EXPLORE_ACTION));
+            let explorer = unit.ai.as_ref().is_some_and(|ai| {
+                matches!(
+                    ai.current_action,
+                    Some(ActionKind::AutoScout | ActionKind::Explore)
+                )
+            });
             if matches!(class, VILLAGER | FISHING_BOAT) || explorer {
                 if let Some(m) = self.players[p].objects[idx].body.mover_mut() {
                     m.ignore_units.clear();
@@ -92,7 +92,7 @@ impl World {
         let Some(ai) = unit.ai.as_mut() else {
             return Ok(());
         };
-        if class == LIVESTOCK || ai.current_action == KEPT_ACTION || trading {
+        if class == LIVESTOCK || ai.current_action == Some(ActionKind::HeroPower) || trading {
             return Ok(());
         }
         let mut fx = Vec::new();

@@ -28,6 +28,7 @@ use crate::objects::unit::{Unit, loses_actions};
 use crate::ownership::artifact::Artifact;
 use crate::ownership::capture::LIVESTOCK;
 use crate::ownership::change::change_hands;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::world::{
     SideWorld, TaskWorld, task_search, task_target_with, wait_progress,
@@ -58,7 +59,7 @@ fn building() -> UnitAi {
     UnitAi {
         ai_type: 17,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         adjusted_idle_timeout: 3000,
         look_around_timeout: 1000,
@@ -452,9 +453,9 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
     let table = Masters::new([master(74, 6), master(4, 0)]);
     t.masters = vec![table.clone(), table.clone(), table];
     t.world_time = 4321;
-    t.remember_order(1, 0, (Some(OrderKind::Attack), 600))
+    t.remember_order(1, 0, (Some(OrderKind::Attack), Some(ActionKind::Attack)))
         .unwrap();
-    t.remember_order(1, 1, (Some(OrderKind::Attack), 600))
+    t.remember_order(1, 1, (Some(OrderKind::Attack), Some(ActionKind::Attack)))
         .unwrap();
     let history = |i: usize| {
         t.players[1].objects[i]
@@ -468,7 +469,7 @@ fn an_order_on_a_target_joins_the_unit_ai_s_history() {
         history(0),
         [crate::unit_ai::OrderRecord {
             order: Some(OrderKind::Attack),
-            action: 600,
+            action: Some(ActionKind::Attack),
             time: 4321,
             position: [10.0, 11.0, 0.0],
             target: 2,
@@ -1306,7 +1307,7 @@ fn build_world() -> World {
         ai: Some(UnitAi {
             ai_type: 8,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -1488,7 +1489,7 @@ fn a_queued_build_queues_its_order_for_another_player_s_villager() {
         ai: Some(UnitAi {
             ai_type: 8,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -1560,7 +1561,7 @@ pub(crate) fn sent_off_world(orders: Vec<crate::unit_ai::QueuedOrder>) -> World 
         ai: Some(UnitAi {
             ai_type: crate::unit_ai::CIVILIAN,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             last_target: -1,
             orders,
@@ -1886,11 +1887,7 @@ fn a_work_command_on_a_damaged_building_starts_a_repair() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (
-            Some(OrderKind::Repair),
-            crate::construction::repair::REPAIR_ACTION,
-            10028
-        )
+        (Some(OrderKind::Repair), Some(ActionKind::Repair), 10028)
     );
     t.players[1].objects[0].actions.repair_mut().unwrap().state = 6;
     t.order_work(1, 0, &work).unwrap();
@@ -1994,7 +1991,7 @@ fn a_work_command_on_a_foundation_starts_a_build_as_its_builder() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Build), crate::unit_ai::BUILD_ACTION, 10028)
+        (Some(OrderKind::Build), Some(ActionKind::Build), 10028)
     );
     assert_eq!(t.players[1].objects[1].workers, 1);
 }
@@ -2300,7 +2297,7 @@ fn a_work_command_on_a_bush_starts_a_gather_and_another_moves_it() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Gather), crate::unit_ai::GATHER_ACTION, 600)
+        (Some(OrderKind::Gather), Some(ActionKind::Gather), 600)
     );
     let workers = |t: &World| {
         (
@@ -2418,7 +2415,7 @@ fn a_work_command_without_a_task_moves_the_unit_there() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Move), crate::unit_ai::MOVE_ACTION, 700)
+        (Some(OrderKind::Move), Some(ActionKind::Move), 700)
     );
     let mut t = forage_world();
     t.order_work(1, 0, &work(-1)).unwrap();
@@ -2664,7 +2661,7 @@ fn with_effects(t: &mut World, effects: Vec<crate::unit_ai::Effect>) -> Result<(
 /// not modelled.
 #[test]
 fn the_unit_ai_s_explore_walks_to_its_point_or_asks_for_one() {
-    use crate::movement::explore::{EXPLORE_ACTION, WAIT, WALK, WANTS_POINT};
+    use crate::movement::explore::{WAIT, WALK, WANTS_POINT};
     use crate::unit_ai::Effect;
     let mut t = forage_world();
     with_effects(&mut t, vec![Effect::Explore([40.0, 90.0])]).unwrap();
@@ -2678,7 +2675,7 @@ fn the_unit_ai_s_explore_walks_to_its_point_or_asks_for_one() {
     let notifies = &v.ai.as_ref().unwrap().notifies;
     assert_eq!(
         notifies.last().map(|n| (n.kind, n.p)),
-        Some((WANTS_POINT, [EXPLORE_ACTION, 0, 0]))
+        Some((WANTS_POINT, [ActionKind::Explore.value(), 0, 0]))
     );
     let mut t = forage_world();
     t.gather_command(1, 0, 600).unwrap();
@@ -2981,7 +2978,7 @@ fn cart_world() -> World {
         body: crate::objects::layers::Body::Moving(crate::gathering::hunt::tests::walker()),
         ai: Some(UnitAi {
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -3074,7 +3071,7 @@ fn the_units_on_a_new_foundation_are_sent_off_it() {
     t.evacuate(10028, &[9175]).unwrap();
     assert_eq!(sent(&t), Vec::<[i32; 3]>::new());
     let mut t = footprint_world();
-    t.players[1].objects[0].ai.as_mut().unwrap().current_action = crate::unit_ai::MOVE_ASIDE_ACTION;
+    t.players[1].objects[0].ai.as_mut().unwrap().current_action = Some(ActionKind::MoveAside);
     t.evacuate(10028, &[9175]).unwrap();
     assert_eq!(sent(&t), Vec::<[i32; 3]>::new());
     let mut t = footprint_world();
@@ -3108,7 +3105,7 @@ fn a_formation_s_units_on_a_new_foundation_move_off_together() {
     t.evacuate(10028, &[9175]).unwrap();
     let v = &t.players[1].objects[0];
     let ai = v.ai.as_ref().unwrap();
-    assert_eq!(ai.current_action, crate::unit_ai::MOVE_ASIDE_ACTION);
+    assert_eq!(ai.current_action, Some(ActionKind::MoveAside));
     assert!(
         ai.notifies
             .iter()
@@ -3384,7 +3381,7 @@ fn a_work_command_on_another_deer_moves_the_hunt_there() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_order, ai.current_action, ai.current_target),
-        (Some(OrderKind::Hunt), crate::unit_ai::HUNT_ACTION, 501)
+        (Some(OrderKind::Hunt), Some(ActionKind::Hunt), 501)
     );
     assert_eq!(
         (
@@ -3579,7 +3576,7 @@ fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
     assert_eq!(t.players[1].objects[0].actions.hunt().copied(), None);
     assert_eq!(
         notified(&t, crate::unit_ai::ACTION_FAILED),
-        [[crate::unit_ai::HUNT_ACTION, 0, 0]]
+        [[ActionKind::Hunt.value(), 0, 0]]
     );
     assert_eq!(t.players[0].objects[0].workers, 0);
     assert_eq!(hunt_part_of(&mut t, 50), Ok(()));
@@ -3594,7 +3591,7 @@ fn a_failed_hunt_tells_its_unit_ai_and_lets_its_target_go() {
 #[test]
 fn a_searching_hunt_asks_its_unit_ai_again_after_ten_seconds() {
     use crate::gathering::hunt::{IDLE, LEAD, SEARCH};
-    let search = [crate::unit_ai::HUNT_ACTION, 9, 700];
+    let search = [ActionKind::Hunt.value(), 9, 700];
     let mut t = hunter_in(|h| {
         (h.state, h.timer) = (SEARCH, -0.5);
         h.attack = None;
@@ -4250,7 +4247,7 @@ fn the_unit_ai_s_repair_order_switches_a_villager_to_the_repairer() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.current_target),
-        (crate::construction::repair::REPAIR_ACTION, 10028)
+        (Some(ActionKind::Repair), 10028)
     );
     let mut t = world(false);
     t.tick(50);
@@ -4374,7 +4371,7 @@ fn an_enter_of_a_unit_inside_an_object_fails_at_its_start() {
         [Notify::own(
             9175,
             crate::unit_ai::ACTION_FAILED,
-            [crate::garrison::ENTER_ACTION, 0, 0]
+            [ActionKind::Enter.value(), 0, 0]
         )]
     );
 }
@@ -4572,7 +4569,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
     let ai = v.ai.as_ref().unwrap();
     assert_eq!(
         (ai.current_action, ai.current_target),
-        (crate::garrison::ENTER_ACTION, 10028)
+        (Some(ActionKind::Enter), 10028)
     );
     let mut t = enter_world(vec![order], 0);
     t.tick(50);
@@ -4583,7 +4580,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
     );
     assert_ne!(
         v.ai.as_ref().unwrap().current_action,
-        crate::garrison::ENTER_ACTION
+        Some(ActionKind::Enter)
     );
 }
 
@@ -4594,7 +4591,7 @@ fn the_unit_ai_s_enter_order_gives_the_unit_an_enter() {
 /// wait, the unit AI's action value staying 0x27a.
 #[test]
 fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
-    use crate::unit_ai::{QueuedOrder, WAIT_SOLIDIFY_ACTION};
+    use crate::unit_ai::QueuedOrder;
     let order = QueuedOrder {
         issuer: 1,
         order: OrderKind::Foundation,
@@ -4617,8 +4614,8 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     assert_eq!(
         (ai.current_action, ai.last_action, ai.current_order),
         (
-            WAIT_SOLIDIFY_ACTION,
-            WAIT_SOLIDIFY_ACTION,
+            Some(ActionKind::WaitSolidify),
+            Some(ActionKind::WaitSolidify),
             Some(OrderKind::Foundation)
         )
     );
@@ -4638,8 +4635,8 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
     let v = &t.players[1].objects[0];
     assert_eq!(v.actions.wait_solidify().copied(), None);
     assert_eq!(
-        v.ai.as_ref().map(|ai| ai.current_action),
-        Some(WAIT_SOLIDIFY_ACTION)
+        v.ai.as_ref().and_then(|ai| ai.current_action),
+        Some(ActionKind::WaitSolidify)
     );
 }
 
@@ -4648,7 +4645,7 @@ fn a_villager_sent_off_a_foundation_waits_for_it_as_a_builder() {
 /// order: its secondary timer capped at 750 and an adjusted idle timeout of 750 redrawn.
 #[test]
 fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
-    use crate::unit_ai::{BUILD_ACTION, QueuedOrder};
+    use crate::unit_ai::QueuedOrder;
     let order = QueuedOrder {
         issuer: 1,
         order: OrderKind::Build,
@@ -4690,7 +4687,7 @@ fn a_queued_build_order_builds_and_leaves_a_patrol_order() {
             ai.current_action,
             ai.current_target
         ),
-        (Some(OrderKind::Build), 100, BUILD_ACTION, 10028)
+        (Some(OrderKind::Build), 100, Some(ActionKind::Build), 10028)
     );
     assert_eq!(ai.secondary_timer, 750);
     assert_ne!(ai.adjusted_idle_timeout, 750);
@@ -4789,7 +4786,7 @@ fn the_way_back_after_a_drop_off_queues_the_order_on_the_recorded_work() {
     let work = BackToWork {
         target: 10028,
         target_type: 3,
-        action: 0x25a,
+        action: Some(ActionKind::Build),
         target2: -1,
         point: [1.0, 2.0],
     };
@@ -6563,7 +6560,7 @@ fn a_research_queues_at_an_alive_location_after_its_costs_come_off_the_debit() {
     assert_eq!(queued(&t), 1);
     assert_eq!(t.players[0].pending_debit, [-50.0, 0.0, 0.0, 0.0]);
     let ai = t.players[0].objects[0].ai.as_ref().unwrap();
-    assert_eq!(ai.current_action, RESEARCH_ACTION);
+    assert_eq!(ai.current_action, Some(ActionKind::Research));
     let untouched = research_world();
     for (tech, target) in [(5, 9), (6, -1), (-1, -1)] {
         let mut t = research_world();
@@ -8249,7 +8246,7 @@ fn a_gaia_building_with_the_artifact_s_unit_ai_changes_hands_whole() {
         ai: Some(UnitAi {
             ai_type: crate::unit_ai::ARTIFACT_AI,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             idle_timeout: 5000,
             adjusted_idle_timeout: 4000,
@@ -8388,7 +8385,7 @@ fn a_gaia_torch_goes_to_the_one_player_near_it() {
         ai: Some(UnitAi {
             ai_type: crate::unit_ai::ARTIFACT_AI,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             idle_timeout: 5000,
             adjusted_idle_timeout: 4000,
@@ -9242,7 +9239,7 @@ fn a_command_queue_takes_the_gather_point_first_then_the_steps() {
     tc.ai = Some(UnitAi {
         ai_type: 17,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         last_target: -1,
         ..UnitAi::default()
@@ -10916,7 +10913,7 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
     let idle = UnitAi {
         ai_type: 13,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         stance: 0,
         ..UnitAi::default()
@@ -10924,7 +10921,7 @@ fn ask_for_help_asks_only_an_idle_helper_that_may_attack() {
     assert!(helper_free(idle.clone(), None));
     let busy = [
         UnitAi {
-            current_action: 600,
+            current_action: Some(ActionKind::Attack),
             ..idle.clone()
         },
         UnitAi {
@@ -10952,14 +10949,14 @@ fn a_helper_in_a_group_answers_only_while_its_group_patrols() {
     let idle = UnitAi {
         ai_type: 13,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         stance: 0,
         ..UnitAi::default()
     };
     let busy = UnitAi {
         current_order: Some(OrderKind::Attack),
-        current_action: 600,
+        current_action: Some(ActionKind::Attack),
         ..idle.clone()
     };
     let groups = crate::groups::UnitGroups {
@@ -11099,7 +11096,7 @@ fn a_build_command_s_foundation_holds_its_movement_state() {
                     ai: Some(UnitAi {
                         ai_type: 8,
                         current_order: None,
-                        current_action: -1,
+                        current_action: None,
                         current_target: -1,
                         ..UnitAi::default()
                     }),
@@ -11183,7 +11180,7 @@ fn a_build_command_s_foundation_draws_its_facing_before_its_powerup_offset() {
                         ai: Some(UnitAi {
                             ai_type: 8,
                             current_order: None,
-                            current_action: -1,
+                            current_action: None,
                             current_target: -1,
                             ..UnitAi::default()
                         }),
@@ -11320,7 +11317,7 @@ fn reseed_world() -> World {
         ai: Some(UnitAi {
             ai_type: 8,
             current_order: None,
-            current_action: -1,
+            current_action: None,
             current_target: -1,
             ..UnitAi::default()
         }),
@@ -11554,7 +11551,7 @@ fn a_committing_build_or_wall_to_a_busy_builder_readies_its_queue() {
                     ai: Some(UnitAi {
                         ai_type: 8,
                         current_order: Some(OrderKind::Move),
-                        current_action: -1,
+                        current_action: None,
                         current_target: -1,
                         orders: vec![unready],
                         ..UnitAi::default()
@@ -12431,7 +12428,7 @@ fn a_forager_whose_bush_dies_lets_it_go_and_asks_for_a_search() {
         heard,
         [(
             crate::unit_ai::REQUIRES_SEARCH,
-            crate::unit_ai::GATHER_ACTION,
+            ActionKind::Gather.value(),
             7
         )]
     );
@@ -12547,7 +12544,7 @@ fn a_forager_with_nothing_found_after_the_drop_idles_or_is_done() {
         ai.orders.iter().map(|o| o.target).collect::<Vec<_>>(),
         [601]
     );
-    assert_eq!((ai.current_order, ai.current_action), (None, -1));
+    assert_eq!((ai.current_order, ai.current_action), (None, None));
 }
 
 /// The forager's Gather update alone (`gather_update`, 50 ms).
@@ -12869,7 +12866,7 @@ fn own_move(t: &mut World) -> OwnMoved {
 /// left the point the walk goes to (more than half a tile) makes it tell 0x1fc.
 #[test]
 fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
-    use crate::unit_ai::{ACTION_COMPLETED, ACTION_FAILED, MOVE_ACTION, TARGET_MOVED};
+    use crate::unit_ai::{ACTION_COMPLETED, ACTION_FAILED, TARGET_MOVED};
     let to_bush = |state| MoveToAction {
         state,
         goal: None,
@@ -12895,11 +12892,14 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
         t.players[1].objects[0].ai.as_mut().unwrap().current_action = action;
         own_move(&mut t)
     };
-    let (r, m, heard, workers) = arrived(MOVE_ACTION);
+    let (r, m, heard, workers) = arrived(Some(ActionKind::Move));
     assert_eq!((r, m, workers), (Ok(()), None, 0));
-    assert_eq!(heard, [(ACTION_COMPLETED, [MOVE_ACTION, 0, 0])]);
+    assert_eq!(
+        heard,
+        [(ACTION_COMPLETED, [ActionKind::Move.value(), 0, 0])]
+    );
     // the unit AI on another action ignores the move's completion (FUN_140c556d0)
-    assert_eq!(arrived(0x261).2, []);
+    assert_eq!(arrived(Some(ActionKind::Gather)).2, []);
     let to_point = MoveToAction {
         goal: Some([40.5, 89.5, 0.0]),
         target: -1,
@@ -12907,7 +12907,7 @@ fn a_unit_s_own_move_to_walks_tells_its_end_and_lets_its_target_go() {
     };
     let (r, m, heard, _) = own_move(&mut own_move_world(to_point));
     assert_eq!((r, m), (Ok(()), None));
-    assert_eq!(heard, [(ACTION_FAILED, [MOVE_ACTION, 0, 0])]);
+    assert_eq!(heard, [(ACTION_FAILED, [ActionKind::Move.value(), 0, 0])]);
 }
 
 /// The result of a bird's Fly part, its Fly after it and what its unit AI heard.
@@ -12954,13 +12954,13 @@ fn flown(move_to: MoveTo, setup: impl FnOnce(&mut Unit)) -> Flown {
 /// time left and the rest; a bird without movement state is not modelled.
 #[test]
 fn a_bird_s_failed_flight_tells_its_unit_ai_and_rests() {
-    use crate::unit_ai::{ACTION_FAILED, MOVE_ACTION};
+    use crate::unit_ai::ACTION_FAILED;
     let (r, fly, heard) = flown(MoveTo::Failed, |_| ());
     assert_eq!(r, Ok(()));
     let fly = fly.unwrap();
     assert_eq!((fly.state, fly.move_to), (2, None));
     assert_eq!(fly.timer, 2.0 - seconds(50) + 2.0);
-    assert_eq!(heard, [(ACTION_FAILED, [MOVE_ACTION, 0, 0])]);
+    assert_eq!(heard, [(ACTION_FAILED, [ActionKind::Move.value(), 0, 0])]);
     let (r, _, _) = flown(MoveTo::Failed, |v| v.body.put_mover(None));
     assert_eq!(r.unwrap_err().reason(), "a bird without movement state");
 }
@@ -13005,13 +13005,13 @@ type Explored = (
 /// not modelled.
 #[test]
 fn an_explore_walks_to_its_point_then_asks_for_the_next() {
-    use crate::movement::explore::{EXPLORE_ACTION, WAIT, WALK, WANTS_POINT};
+    use crate::movement::explore::{WAIT, WALK, WANTS_POINT};
     let (r, e, heard) = explored(|_| ());
     assert_eq!(r, Ok(()));
     let e = e.unwrap();
     assert_eq!((e.state, e.move_to), (WALK, Some(MoveTo::Moving)));
     assert_eq!(heard, []);
-    let asked = vec![(WANTS_POINT, [EXPLORE_ACTION, 0, 0])];
+    let asked = vec![(WANTS_POINT, [ActionKind::Explore.value(), 0, 0])];
     for end in [MoveTo::Arrived, MoveTo::Failed] {
         let (r, e, heard) = explored(|e| e.move_to = Some(end));
         assert_eq!(r, Ok(()));
@@ -13200,7 +13200,7 @@ struct AfterBuild {
 /// AI; a drop-off searches the drop site for the load.
 #[test]
 fn a_build_step_s_changes_reach_the_builder() {
-    use crate::unit_ai::{ACTION_FAILED, BUILD_ACTION, PASTURE_BUILT};
+    use crate::unit_ai::{ACTION_FAILED, PASTURE_BUILT};
     let none = || AfterBuild {
         released: vec![],
         work: None,
@@ -13254,9 +13254,9 @@ fn a_build_step_s_changes_reach_the_builder() {
         AfterBuild {
             work: Some((10028, [30.0, 88.0, 0.0])),
             heard: vec![
-                (SEARCH_NEEDED, [BUILD_ACTION, 0, 0]),
-                (PASTURE_BUILT, [BUILD_ACTION, 5, 0]),
-                (ACTION_FAILED, [BUILD_ACTION, 0, 0]),
+                (SEARCH_NEEDED, [ActionKind::Build.value(), 0, 0]),
+                (PASTURE_BUILT, [ActionKind::Build.value(), 5, 0]),
+                (ACTION_FAILED, [ActionKind::Build.value(), 0, 0]),
             ],
             ..none()
         }
@@ -13889,7 +13889,6 @@ fn repair_for(t: &mut World, n: usize) -> Vec<Option<u8>> {
 /// and repairs (7), the house gaining hit points.
 #[test]
 fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
-    use crate::construction::repair::REPAIR_ACTION;
     let mut t = repairing([29.5, 89.5, 0.0]);
     assert_eq!(repair_for(&mut t, 10), [Some(4), Some(13), None]);
     let house = &t.players[1].objects[1];
@@ -13900,7 +13899,10 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
     let heard = &t.players[1].objects[0].ai.as_ref().unwrap().notifies;
     assert_eq!(
         heard.iter().map(|n| (n.kind, n.p)).collect::<Vec<_>>(),
-        [(crate::unit_ai::ACTION_FAILED, [REPAIR_ACTION, 0, 0])]
+        [(
+            crate::unit_ai::ACTION_FAILED,
+            [ActionKind::Repair.value(), 0, 0]
+        )]
     );
     let at = [30.0, 89.2, 0.0];
     let p = *t.spatial.get(9175).unwrap();
@@ -13997,7 +13999,7 @@ fn a_repair_pays_ends_at_full_hit_points_and_reaches_an_ally_s_house() {
     let heard = &t.players[1].objects[0].ai.as_ref().unwrap().notifies;
     assert_eq!(
         heard.iter().map(|n| (n.kind, n.p)).collect::<Vec<_>>(),
-        [(0x1fa, [crate::construction::repair::REPAIR_ACTION, 0, 0])]
+        [(0x1fa, [ActionKind::Repair.value(), 0, 0])]
     );
     // player 0's house, the players allied: repaired, then repaired to full
     let allied = |hp: f32| {
@@ -15247,7 +15249,7 @@ fn a_call_for_help_walks_the_lists_for_a_free_helper_in_reach() {
     let idle = UnitAi {
         ai_type: 13,
         current_order: None,
-        current_action: -1,
+        current_action: None,
         current_target: -1,
         stance: 0,
         ..UnitAi::default()

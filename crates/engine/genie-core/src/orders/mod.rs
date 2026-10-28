@@ -11,6 +11,7 @@
 use crate::GenieError;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::task_finder::TaskTarget;
 use crate::world::World;
@@ -113,7 +114,6 @@ const TOWN_CENTRE: i16 = 109;
 /// `DAT_143e55e20`).
 const HERD_MOST: usize = 16;
 const MASTER_84: i16 = 84;
-const MASTER_1808: i16 = 1808;
 const MASTER_1893: i16 = 1893;
 /// The class of the farms and a pasture's livestock (`0x31`), which a full pasture's search
 /// names.
@@ -472,7 +472,10 @@ pub(crate) fn set_stance(
 ) -> Result<(), GenieError> {
     ai.stance = state;
     ai.state_position = place.0;
-    if state == 3 && (ai.current_order == Some(OrderKind::Attack) || ai.current_action == 600) {
+    if state == 3
+        && (ai.current_order == Some(OrderKind::Attack)
+            || ai.current_action == Some(ActionKind::Attack))
+    {
         ai.stop_with(true, Some(place), fx)?;
         ai.remove_target();
     }

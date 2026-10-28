@@ -2,12 +2,12 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, AUTO_SCOUT_ACTION, BOAR_LURING_ACTION, CIVILIAN, CLASS_18, CONVERT_ACTION,
-    DEFENDLESS_MASTER, Effect, HEAL_ACTION, LiveTop, OUTSIDE_ORDER, PendingTop, QueuedOrder,
-    REPAIR_ACTION, SCOUT_ACTION, SOLDIER_AI, Surroundings, TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS,
-    UnitAi, UnitCommand, UnitSeen, UnitSide, WAIT_ACTION, WAIT_SOLIDIFY_ACTION, order_move,
+    CIVILIAN, CLASS_18, DEFENDLESS_MASTER, Effect, LiveTop, OUTSIDE_ORDER, PendingTop, QueuedOrder,
+    SOLDIER_AI, Surroundings, TREBUCHET_CLASS, TREBUCHET_PACKED_CLASS, UnitAi, UnitCommand,
+    UnitSeen, UnitSide, order_move,
 };
 
 impl UnitAi {
@@ -121,14 +121,14 @@ impl UnitAi {
             OrderKind::Wait => {
                 // case 0x2d8: the wait's action value, leaving a patrol order, then the order
                 // itself; the tail finds it the AI's already
-                self.current_action = WAIT_ACTION;
+                self.current_action = Some(ActionKind::Wait);
                 self.leave_patrol_timers(ai);
                 self.current_order = Some(OrderKind::Wait);
                 true
             }
             OrderKind::Scout => {
                 let explored = self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx);
-                self.set_action(SCOUT_ACTION);
+                self.set_action(Some(ActionKind::Scout));
                 explored
             }
             OrderKind::OnTarget | OrderKind::OnTarget2 => {
@@ -137,7 +137,7 @@ impl UnitAi {
             }
             OrderKind::AutoScout => {
                 let explored = self.explore_at(tile(o.point[0]), tile(o.point[1]), true, fx);
-                self.set_action(AUTO_SCOUT_ACTION);
+                self.set_action(Some(ActionKind::AutoScout));
                 explored
             }
             // the patrol order (0x2c7) and the orders the switch has no case for
@@ -209,9 +209,9 @@ impl UnitAi {
             OrderKind::Build => self.build_object(o.target, true, at, side, fx)?,
             OrderKind::Heal | OrderKind::Convert | OrderKind::Repair => {
                 let (action, command) = match o.order {
-                    OrderKind::Heal => (HEAL_ACTION, UnitCommand::Heal(o.target)),
-                    OrderKind::Convert => (CONVERT_ACTION, UnitCommand::Convert(o.target)),
-                    _ => (REPAIR_ACTION, UnitCommand::Repair(o.target)),
+                    OrderKind::Heal => (ActionKind::Heal, UnitCommand::Heal(o.target)),
+                    OrderKind::Convert => (ActionKind::Convert, UnitCommand::Convert(o.target)),
+                    _ => (ActionKind::Repair, UnitCommand::Repair(o.target)),
                 };
                 self.work_object(o.target, true, action, command, at, side)?
             }
@@ -219,13 +219,13 @@ impl UnitAi {
             OrderKind::Hunt | OrderKind::AutoBoarLuring => {
                 let hunts = self.hunt_order(o.target, at, side, fx)?;
                 if o.order == OrderKind::AutoBoarLuring {
-                    self.set_action(BOAR_LURING_ACTION);
+                    self.set_action(Some(ActionKind::BoarLuring));
                 }
                 hunts
             }
             OrderKind::Foundation => {
                 let waits = self.wait_for_foundation(o.target, true, side)?;
-                self.set_action(WAIT_SOLIDIFY_ACTION);
+                self.set_action(Some(ActionKind::WaitSolidify));
                 waits
             }
             _ => false,
@@ -449,13 +449,13 @@ impl UnitAi {
         let Some((class, position)) = self.attack_check(target, false, at, side)? else {
             return Ok(false);
         };
-        if self.current_action != -1 && !side.reaches(target, at.weapon_range)? {
+        if self.current_action.is_some() && !side.reaches(target, at.weapon_range)? {
             return Ok(false);
         }
         if !self.attack_command(target, true, at, side, fx)? {
             return Ok(false);
         }
-        self.set_action(ATTACK_ACTION);
+        self.set_action(Some(ActionKind::Attack));
         self.target_at(target, Some(i32::from(class)), position);
         Ok(true)
     }

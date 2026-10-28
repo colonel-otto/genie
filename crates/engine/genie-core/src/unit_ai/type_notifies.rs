@@ -3,13 +3,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, ATTACK_ACTION, BREAK,
-    BUILD_ACTION, DAMAGED, DEAD, Effect, GO_ON, HUNT_ACTION, LION_ATTACKED_TIMEOUT,
-    MISSILE_WARNING, MOVE_ASIDE_ACTION, NO_LONGER_ON_ME, Notify, OTHER_LOAD, PACKED_UNIT_CLASS,
-    PASTURE_BUILT, REQUIRES_SEARCH, SENT_OFF, Surroundings, TARGET_MOVED, UnitAi, UnitSide,
-    VILLAGER_NOTIFY, alert_owner, back_up, dodges, top_target_after,
+    ACTION_COMPLETED, ACTION_EXECUTED, ACTION_FAILED, ACTION_INVALIDATED, BREAK, DAMAGED, DEAD,
+    Effect, GO_ON, LION_ATTACKED_TIMEOUT, MISSILE_WARNING, NO_LONGER_ON_ME, Notify, OTHER_LOAD,
+    PACKED_UNIT_CLASS, PASTURE_BUILT, REQUIRES_SEARCH, SENT_OFF, Surroundings, TARGET_MOVED,
+    UnitAi, UnitSide, VILLAGER_NOTIFY, alert_owner, back_up, dodges, top_target_after,
 };
 
 impl UnitAi {
@@ -53,7 +53,7 @@ impl UnitAi {
         match n.kind {
             DAMAGED => self.boar_damaged(n, time, at, ai_rng, side, fx),
             ACTION_COMPLETED => {
-                if self.current_action == MOVE_ASIDE_ACTION {
+                if self.current_action == Some(ActionKind::MoveAside) {
                     self.idle_timeout = self.adjusted_idle_timeout.wrapping_add(1);
                     self.remove_target();
                     if let Some(home) = self.home.as_mut() {
@@ -84,7 +84,7 @@ impl UnitAi {
     ) -> Result<u32, GenieError> {
         match n.kind {
             ACTION_COMPLETED => {
-                if n.p[0] == ATTACK_ACTION {
+                if n.p[0] == ActionKind::Attack.value() {
                     // FUN_140c41bc0 with 1000: the idle timeout, then slot 0x1a8
                     self.set_idle_timeout(LION_ATTACKED_TIMEOUT, ai_rng);
                     self.remove_target();
@@ -166,10 +166,11 @@ impl UnitAi {
     ) -> Result<u32, GenieError> {
         match n.kind {
             ACTION_INVALIDATED | TARGET_MOVED | REQUIRES_SEARCH
-                if self.current_action == ATTACK_ACTION =>
+                if self.current_action == Some(ActionKind::Attack) =>
             {
                 if n.kind == TARGET_MOVED && self.stop_after_kill {
-                    let failed = Notify::own(at.id, ACTION_FAILED, [ATTACK_ACTION, 0, 0]);
+                    let failed =
+                        Notify::own(at.id, ACTION_FAILED, [ActionKind::Attack.value(), 0, 0]);
                     self.post(failed, at.state)?;
                     return Ok(GO_ON);
                 }
@@ -180,7 +181,7 @@ impl UnitAi {
             }
             // a completion or a failure of its action (0x1fa, 0x1f9) stops it
             ACTION_COMPLETED | ACTION_FAILED => {
-                if self.current_action == n.p[0] {
+                if ActionKind::field(self.current_action) == n.p[0] {
                     self.remove_target();
                     self.stop_current(true, at, fx)?;
                 }
@@ -220,7 +221,7 @@ impl UnitAi {
         side: &mut dyn UnitSide,
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
-        if matches!(n.p[0], BUILD_ACTION | HUNT_ACTION)
+        if (n.p[0] == ActionKind::Build.value() || n.p[0] == ActionKind::Hunt.value())
             && let Some(made) = Self::world_object(n.p[1], at, side)?
         {
             fx.push(Effect::WorkOn {
@@ -306,7 +307,7 @@ impl UnitAi {
         fx: &mut Vec<Effect>,
     ) -> Result<u32, GenieError> {
         match n.kind {
-            REQUIRES_SEARCH if self.current_action == BUILD_ACTION => {
+            REQUIRES_SEARCH if self.current_action == Some(ActionKind::Build) => {
                 self.fishing_builder_search(at, computer, side, fx)
             }
             MISSILE_WARNING if dodges(at, ai_rng) => Ok(GO_ON),
@@ -338,7 +339,7 @@ impl UnitAi {
             }
             0x1fe => back_up(),
             ACTION_EXECUTED if computer && self.keeps_distance(at, ai_rng) => {
-                if self.current_action == ATTACK_ACTION {
+                if self.current_action == Some(ActionKind::Attack) {
                     back_up()
                 } else {
                     Ok(GO_ON)
@@ -393,7 +394,7 @@ impl UnitAi {
             ACTION_EXECUTED | 0x20f if computer => {
                 Err(GenieError::unsupported("a computer soldier's notify"))
             }
-            0x202 if self.current_action == 0x25b => {
+            0x202 if self.current_action == Some(ActionKind::Heal) => {
                 Err(GenieError::unsupported("a healer's search notify"))
             }
             _ => self.base_notify(n, time, at, computer, ai_rng, side, fx),
@@ -496,7 +497,7 @@ impl UnitAi {
                 "a livestock's notify 0x202 (its settings' test)",
             )),
             _ => {
-                self.set_action(-1);
+                self.set_action(None);
                 Ok(BREAK)
             }
         }

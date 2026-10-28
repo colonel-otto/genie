@@ -3,6 +3,7 @@
 
 use crate::GenieError;
 use crate::groups::{Member, SpecificMove, UnitGroup, UnitTypeStatistic};
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -19,7 +20,11 @@ const MAX_MEMBERS: usize = 70;
 const FIRST_CAPACITY: i32 = 10;
 /// The unit AI's actions and orders `AddUnit` clears (`FUN_1410083c0`): actions 0x259, 0x2bf and
 /// 0x2c0, the defend order (and orders 0x323 and 0x324, which no order holds, [`OrderKind`]).
-const CLEARED_ACTIONS: [i32; 3] = [0x259, 0x2bf, 0x2c0];
+const CLEARED_ACTIONS: [ActionKind; 3] = [
+    ActionKind::Defend,
+    ActionKind::MoveAside,
+    ActionKind::GroupAside,
+];
 
 /// What a group reads of a unit's master for its formation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -361,10 +366,12 @@ impl World {
         };
         u.group.id = group;
         if let Some(ai) = u.ai.as_mut() {
-            if CLEARED_ACTIONS.contains(&ai.current_action)
+            if ai
+                .current_action
+                .is_some_and(|a| CLEARED_ACTIONS.contains(&a))
                 || ai.current_order == Some(OrderKind::Defend)
             {
-                ai.set_action(-1);
+                ai.set_action(None);
                 ai.set_order(None, ai_rng);
             }
             ai.orders.clear();

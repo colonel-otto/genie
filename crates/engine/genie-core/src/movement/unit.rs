@@ -7,6 +7,7 @@ use crate::movement::move_to::MoveTo;
 use crate::movement::{GroupSpeed, Me};
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{ACTION_COMPLETED, TARGET_MOVED, UnitAi};
 use crate::world::SPEED_EPSILON;
@@ -173,7 +174,7 @@ impl Unit {
         } else {
             ACTION_COMPLETED
         };
-        self.post_own(notify, [crate::unit_ai::MOVE_ACTION, 0, 0])
+        self.post_own(notify, [ActionKind::Move.value(), 0, 0])
     }
 
     /// The unit's Explore in its update (`0x140a880c0`): its walk in state 11; states 1 (done) and
@@ -260,7 +261,7 @@ impl Unit {
             if step.failed {
                 self.post_own(
                     crate::unit_ai::ACTION_FAILED,
-                    [crate::unit_ai::MOVE_ACTION, 0, 0],
+                    [ActionKind::Move.value(), 0, 0],
                 )?;
             }
         }

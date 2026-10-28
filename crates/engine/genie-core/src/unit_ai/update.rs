@@ -3,13 +3,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Well512;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::{
-    ATTACK_ACTION, AfterOrder, AiMove, BOAR_LURING_ACTION, BREAK, CIVILIAN_CARED, COMBAT_KIND,
-    DEAD, Effect, GATHER_ACTION, GO_ON, Gatherable, GroupState, HUNT_ACTION, LIVE_TARGET_ACTIONS,
-    Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget, Search, Surroundings, TRADE_ACTION,
-    UnitAi, UnitSide, changes_actions, civilian_kind, civilian_search_radius, retarget_kind,
-    top_target_after,
+    AfterOrder, AiMove, BREAK, CIVILIAN_CARED, COMBAT_KIND, DEAD, Effect, GO_ON, Gatherable,
+    GroupState, LIVE_TARGET_ACTIONS, Memory, NO_POINT, Notify, Pick, ResourceSearch, Retarget,
+    Search, Surroundings, UnitAi, UnitSide, changes_actions, civilian_kind, civilian_search_radius,
+    retarget_kind, top_target_after,
 };
 
 impl UnitAi {
@@ -69,7 +69,7 @@ impl UnitAi {
             }
         }
         let interruptible = at.interruptible || stopped;
-        if self.current_action == -1
+        if self.current_action.is_none()
             && (!busy || interruptible)
             && result != 0xd
             && self.can_order(at, false)
@@ -208,13 +208,13 @@ impl UnitAi {
         let captured_again =
             at.player == 0 && t.owner == 0 && COMBAT_KIND <= t.kind && t.capture == 2;
         let action = if captured_again {
-            -1
+            None
         } else {
             self.current_action
         };
         let untargeted = t.pasture == -1
-            && (t.untargetable || (!t.attackable && action == ATTACK_ACTION))
-            && action != TRADE_ACTION;
+            && (t.untargetable || (!t.attackable && action == Some(ActionKind::Attack)))
+            && action != Some(ActionKind::Trade);
         if deferred && (captured_again || untargeted) {
             return Err(GenieError::unsupported(
                 "a stop of the full update's tail after a command the caller gives later",
@@ -304,22 +304,25 @@ impl UnitAi {
         match at.target {
             None => {
                 self.current_target = -1;
-                if action == ATTACK_ACTION {
+                if action == Some(ActionKind::Attack) {
                     self.idle_timer = self.idle_timeout;
                 }
             }
             Some(t) => {
                 if at.state == 2 && 2 < t.state && t.kind != 80 {
-                    let attack_over = action == ATTACK_ACTION
+                    let attack_over = action == Some(ActionKind::Attack)
                         && at.action_state.ok_or(GenieError::unsupported(
                             "an attack whose target died, its top action not held",
                         ))? != 2;
-                    if self.stop_after_kill || LIVE_TARGET_ACTIONS.contains(&action) || attack_over
+                    if self.stop_after_kill
+                        || action.is_some_and(|a| LIVE_TARGET_ACTIONS.contains(&a))
+                        || attack_over
                     {
                         self.stop_after_kill = false;
-                        if action == ATTACK_ACTION {
+                        if action == Some(ActionKind::Attack) {
                             self.next_after_kill(at, computer, ai, side, fx)?;
-                        } else if action != HUNT_ACTION && action != BOAR_LURING_ACTION {
+                        } else if !matches!(action, Some(ActionKind::Hunt | ActionKind::BoarLuring))
+                        {
                             self.remove_target();
                             self.stop_current(true, at, fx)?;
                         }
@@ -342,7 +345,7 @@ impl UnitAi {
                 // target's distance: no order holds 0x262 ([`OrderKind`])
             }
         }
-        if self.current_action == BOAR_LURING_ACTION {
+        if self.current_action == Some(ActionKind::BoarLuring) {
             return Err(GenieError::unsupported("action 0x2be's target check"));
         }
         Ok(())
@@ -530,7 +533,7 @@ impl UnitAi {
     /// target with its class and place (the last ones kept), and the AI counts as commanded.
     pub(super) fn gather_object(&mut self, found: Gatherable, fx: &mut Vec<Effect>) {
         fx.push(Effect::GatherObject(found.id));
-        self.set_action(GATHER_ACTION);
+        self.set_action(Some(ActionKind::Gather));
         self.set_target(found.id, i32::from(found.class), found.position);
         self.commanded = true;
     }

@@ -133,8 +133,6 @@ const LEAVES_ITS_LIST: GenieError =
 /// until the `.dat`'s `time_slice` replaces it.
 pub const HISTORY_PERIOD: i32 = 25;
 
-/// The building unit AI's action value a research it queued sets (`FUN_140c64b50` with 0x26c).
-pub(crate) const RESEARCH_ACTION: i32 = 0x26c;
 /// The building top actions that keep RESEARCH from a building (`FUN_141227a00`: 0x7b to 0x7d).
 pub(crate) const BLOCKS_RESEARCH: std::ops::RangeInclusive<i16> = 0x7b..=0x7d;
 /// The building master type RESEARCH asks for (`'P'`, 80).
@@ -230,7 +228,7 @@ pub(crate) const TREE_SEARCH_WITHIN: f32 = crate::math::image::turn::TREE_SEARCH
 /// found counts within this of the unit.
 pub(crate) const TREE_NEAR: f32 = crate::math::image::hunt::TREE_NEAR;
 /// The notify "Action %d has been invalidated or requires a search." (0x202) with the action's
-/// value: a Build waiting without work posts it ([`BUILD_ACTION`]), a searching Hunt too.
+/// value: a Build waiting without work posts it ([`ActionKind::Build`]), a searching Hunt too.
 pub(crate) const SEARCH_NEEDED: i32 = 0x202;
 /// A velocity longer than this sets the animation speed (`DAT_142eb0c60`).
 pub(crate) const SPEED_EPSILON: f32 = crate::math::image::turn::SPEED_EPSILON;

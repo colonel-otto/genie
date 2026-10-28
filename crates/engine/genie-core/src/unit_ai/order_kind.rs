@@ -3,7 +3,7 @@
 //! conversion from a raw value.
 
 use crate::GenieError;
-use crate::unit_ai::ai_kinds;
+use crate::unit_ai::{ActionKind, ai_kinds};
 
 /// An order a unit AI holds: a case of its order handler (`FUN_140c5c170`, slot 0x230), named
 /// by the line the case logs (`ai_kinds`, generated) or, where it logs none, by what it does,
@@ -139,17 +139,10 @@ impl OrderKind {
     }
 
     /// Whether `action` is the order's own action value, the order's less 100 (the notify
-    /// handlers' `action + 100 == order`, a 32-bit add).
+    /// handlers' `action + 100 == order`; no action, −1, is no order's).
     #[must_use]
-    pub const fn owns(self, action: i32) -> bool {
-        action.wrapping_add(100) == self.value()
-    }
-
-    /// The order whose own action `action` is ([`OrderKind::owns`]), None for an action of no
-    /// order's.
-    #[must_use]
-    pub fn of_action(action: i32) -> Option<Self> {
-        Self::ALL.into_iter().find(|o| o.owns(action))
+    pub fn owns(self, action: Option<ActionKind>) -> bool {
+        action.and_then(ActionKind::order) == Some(self)
     }
 
     /// The order of a raw field that holds −1 for none (`+0x3c`, `+0x64`).
@@ -198,7 +191,7 @@ impl Default for OrderKind {
 #[cfg(test)]
 mod tests {
     use crate::ErrorKind;
-    use crate::unit_ai::OrderKind;
+    use crate::unit_ai::{ActionKind, OrderKind};
 
     /// Every order converts back from its value; the values are 33 distinct ones.
     #[test]
@@ -236,13 +229,13 @@ mod tests {
     }
 
     /// An order's own action value is its value less 100: the move's `0x262`, the follow's
-    /// `0x264`; a sum past `i32::MAX` wraps as the game's add does.
+    /// `0x264`; no action is no order's.
     #[test]
     fn an_order_owns_the_action_100_below_it() {
-        assert!(OrderKind::Move.owns(0x262) && OrderKind::Follow.owns(0x264));
-        assert!(!OrderKind::Move.owns(0x264) && !OrderKind::Attack.owns(-1));
-        assert!(!OrderKind::Attack.owns(i32::MAX));
-        assert_eq!(OrderKind::of_action(0x259), Some(OrderKind::Defend));
-        assert_eq!(OrderKind::of_action(-1), None);
+        assert!(OrderKind::Move.owns(Some(ActionKind::Move)));
+        assert!(OrderKind::Follow.owns(Some(ActionKind::Follow)));
+        assert!(!OrderKind::Move.owns(Some(ActionKind::Follow)));
+        assert!(!OrderKind::Attack.owns(None));
+        assert!(OrderKind::Defend.owns(Some(ActionKind::Defend)));
     }
 }

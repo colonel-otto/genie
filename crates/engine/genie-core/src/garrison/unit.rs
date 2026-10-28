@@ -11,6 +11,7 @@ use crate::objects::sprite::Graphic;
 use crate::objects::teardown::HeadCode;
 use crate::objects::unit::Unit;
 use crate::pathing::Pathing;
+use crate::unit_ai::ActionKind;
 use crate::unit_ai::UnitAi;
 use crate::unit_ai::task_finder::{Actor, DropSite};
 use crate::world::context::Context;
@@ -164,7 +165,7 @@ impl Unit {
             // update's
             self.post_own(
                 crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
-                [crate::garrison::ENTER_ACTION, 0, 0],
+                [ActionKind::Enter.value(), 0, 0],
             )?;
             self.entered(&mut w)?;
             self.entered(&mut w)?;
@@ -244,7 +245,7 @@ impl Unit {
         if step.failed {
             self.post_own(
                 crate::unit_ai::ACTION_FAILED,
-                [crate::garrison::transport::TRANSPORT_ACTION, 0, 0],
+                [ActionKind::Transport.value(), 0, 0],
             )?;
         }
         if step.cannot_unload {
@@ -327,7 +328,7 @@ impl Unit {
         self.shows_standing_sprite(w.masters, w.graphics, w.sprite_rng)?;
         self.post_own(
             crate::unit_ai::ai_kinds::NOTIFY_ACTION_FAILED,
-            [crate::garrison::ENTER_ACTION, 0, 0],
+            [ActionKind::Enter.value(), 0, 0],
         )
     }
 
@@ -422,7 +423,7 @@ impl Unit {
         self.go_inside(building, (masters, me, bm), w)?;
         self.post_own(
             crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
-            [crate::garrison::ENTER_ACTION, 0, 0],
+            [ActionKind::Enter.value(), 0, 0],
         )?;
         self.entered(w)?;
         Ok(true)
