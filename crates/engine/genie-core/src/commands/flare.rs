@@ -1,6 +1,9 @@
 //! FLARE (0x73): a flare for the player's allies.
 
 use crate::GenieError;
+use crate::map::Point;
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// FLARE (0x73, `0x140e7bfd0`): every player from 1 below `players` (`+0x10`, at most the
@@ -9,11 +12,11 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlareCommand {
     /// The player who sent it.
-    pub player: usize,
+    pub player: PlayerId,
     /// The object it is on, −1 for none.
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// Its point without a target.
-    pub point: [f32; 2],
+    pub point: Point,
     /// The players the command counts (`+0x10`).
     pub players: u8,
     /// `+0x11..`: one byte for each player the command counts, whether that player sees the

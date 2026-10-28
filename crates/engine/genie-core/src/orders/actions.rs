@@ -3,10 +3,13 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
+use crate::objects::masters::MasterId;
 use crate::objects::release::Releaser;
 use crate::objects::unit::Unit;
 use crate::orders::{LIVESTOCK, Place, TROPHIES, TROPHY, clear_powerups, damage_share};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -120,10 +123,13 @@ impl World {
     /// with 0, the building's ([`World::transform_building`]).
     pub(crate) fn transform_object(
         &mut self,
-        player: usize,
-        id: i32,
-        master: i16,
+        player: PlayerId,
+        id: ObjectId,
+        master: MasterId,
     ) -> Result<(), GenieError> {
+        let player = player.index();
+        let id = id.get();
+        let master = master.get();
         let Some(Place::Live(p, idx)) = self.place(id) else {
             return Ok(());
         };

@@ -3,6 +3,8 @@ use crate::objects::actions::ActionList;
 use crate::objects::masters::{Master, Masters};
 use crate::objects::unit::Unit;
 use crate::production::{Entry, MakeObj, MakeTech, Making, Production, Queue};
+use crate::test_ids::object_ids;
+use crate::test_ids::player_id;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::unit_ai::UnitAi;
@@ -339,7 +341,7 @@ fn a_cancel_gives_back_one_queued_unit() {
     let tc = t.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[villager(83, 1, 46.0), villager(83, 1, 45.0)]);
     t.players[1].attributes[80] = 2.0;
-    t.cancel_order(&[9], 1, false).unwrap();
+    t.cancel_order(&object_ids([9]), 1, false).unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (45.0, 1.0));
     let production = p.objects[0].production.as_ref().unwrap();
@@ -347,9 +349,9 @@ fn a_cancel_gives_back_one_queued_unit() {
     assert_eq!((q.count, q.total, q.changes), (1, 1, 1));
     assert!(production.action.is_some());
     assert_eq!(p.tracker.queued, -1);
-    t.cancel_order(&[9], 5, false).unwrap();
+    t.cancel_order(&object_ids([9]), 5, false).unwrap();
     assert_eq!(t.players[1].resources[0], 45.0);
-    t.cancel_order(&[9], 0, false).unwrap();
+    t.cancel_order(&object_ids([9]), 0, false).unwrap();
     let p = &t.players[1];
     assert_eq!(
         (p.resources[0], p.attributes[80], p.attributes[81]),
@@ -357,7 +359,7 @@ fn a_cancel_gives_back_one_queued_unit() {
     );
     let production = p.objects[0].production.as_ref().unwrap();
     assert!(production.queue.entries().is_empty() && production.action.is_none());
-    assert!(t.cancel_order(&[9], 0, true).is_ok());
+    assert!(t.cancel_order(&object_ids([9]), 0, true).is_ok());
 }
 
 /// One unit of an entry of three goes: the entry keeps two, and the first unit's cancel
@@ -398,7 +400,7 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
             ..t.master_of(1, 83).unwrap().clone()
         },
     ]);
-    t.cancel_order(&[9], 0, true).unwrap();
+    t.cancel_order(&object_ids([9]), 0, true).unwrap();
     let p = &t.players[1];
     assert_eq!((p.resources[0], p.attributes[80]), (5.0 * 46.0, 2.0));
     let production = p.objects[0].production.as_ref().unwrap();
@@ -416,7 +418,7 @@ fn a_cancel_of_all_takes_five_villagers_of_both_sexes() {
     let tc = t2.players[1].objects[0].production.as_mut().unwrap();
     tc.queue = queue(&[villager(83, 3, 46.0), villager(293, 4, 46.0)]);
     t2.players[1].attributes[80] = 7.0;
-    t2.cancel_order(&[9], 1, true).unwrap();
+    t2.cancel_order(&object_ids([9]), 1, true).unwrap();
     let production = t2.players[1].objects[0].production.as_ref().unwrap();
     assert_eq!(
         (production.queue.count, production.queue.slots[0].count),
@@ -533,7 +535,7 @@ fn researching(progress: f32) -> World {
 #[test]
 fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
     let mut t = researching(10.0);
-    t.cancel_order(&[9], 0, true).unwrap();
+    t.cancel_order(&object_ids([9]), 0, true).unwrap();
     let p = &t.players[1];
     assert_eq!(p.resources[3], 150.0);
     let s = &p.techs[22];
@@ -548,7 +550,7 @@ fn a_cancel_of_all_researches_gives_back_the_entry_s_three() {
     // one research of the second unit: 50 gold, the technology in state 1 though two stay
     // queued, the research going on
     let mut t = researching(10.0);
-    t.cancel_order(&[9], 1, false).unwrap();
+    t.cancel_order(&object_ids([9]), 1, false).unwrap();
     let p = &t.players[1];
     assert_eq!(
         (p.resources[3], p.techs[22].state, p.techs[22].pending),
@@ -635,7 +637,7 @@ fn a_cancel_in_game_mode_16_clears_the_military_flag() {
         }]));
         let tc = t.players[1].objects[0].production.as_mut().unwrap();
         tc.queue = queue(&[villager(83, 1, 46.0), villager(4, 1, 0.0)]);
-        t.cancel_order(&[9], 1, false).unwrap();
+        t.cancel_order(&object_ids([9]), 1, false).unwrap();
         t.players[1].one_military_queued
     };
     assert!(!run(1.0));
@@ -651,7 +653,7 @@ fn a_cancel_in_game_mode_16_clears_the_military_flag() {
 #[test]
 fn a_resignation_cancels_the_queues_and_the_last_side_wins() {
     let mut t = game();
-    t.resign(1, false).unwrap();
+    t.resign(player_id(1), false).unwrap();
     let p = &t.players[1];
     assert_eq!((p.game_status, p.resigned, p.dropped), (LOST, true, false));
     assert_eq!(p.resources[0], 46.0);
@@ -685,7 +687,7 @@ fn a_make_action_the_queue_did_not_pay_for_refunds_its_master_s_costs() {
     {
         make.paid = false;
     }
-    t.resign(1, false).unwrap();
+    t.resign(player_id(1), false).unwrap();
     assert_eq!(t.players[1].resources[0], 92.0);
 }
 
@@ -693,7 +695,7 @@ fn a_make_action_the_queue_did_not_pay_for_refunds_its_master_s_costs() {
 fn early_in_the_game_a_resignation_leaves_the_objects_alone() {
     let mut t = game();
     t.world_time = 60_000;
-    t.resign(1, true).unwrap();
+    t.resign(player_id(1), true).unwrap();
     assert_eq!((t.players[1].resigned, t.players[1].dropped), (true, true));
     assert_eq!(t.players[1].resources[0], 0.0);
 }

@@ -568,7 +568,10 @@ pub struct Masters {
 }
 
 pub mod attribute;
+mod master_id;
 pub mod master_type;
+
+pub use self::master_id::MasterId;
 
 #[cfg(test)]
 mod tests;

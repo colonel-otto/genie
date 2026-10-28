@@ -12,7 +12,7 @@ impl World {
     pub(crate) fn run(&mut self, command: &Command) {
         if let Err(e) = command.run(self) {
             let player = command.stopped_player(self.players.len());
-            self.stop_player(player, e);
+            self.stop_player(player.index(), e);
         }
     }
 

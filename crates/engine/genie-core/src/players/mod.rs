@@ -6,7 +6,10 @@ pub mod diplomacy;
 pub mod game_status;
 pub mod history;
 pub mod market;
+mod player_id;
 pub mod tracker;
 pub mod treason;
 pub mod tribute;
 pub mod world_player;
+
+pub use self::player_id::PlayerId;

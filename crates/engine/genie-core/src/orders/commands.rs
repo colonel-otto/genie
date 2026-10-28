@@ -2,7 +2,9 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::orders::{AUTO_SCOUT_CLASS, BUILDING, Place, lock_gate, set_stance};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -15,10 +17,12 @@ impl World {
     /// slot, masters 42 and 331). The UI's flag is not held.
     pub(crate) fn unit_ai_state(
         &mut self,
-        player: usize,
-        ids: &[i32],
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
         state: u8,
     ) -> Result<(), GenieError> {
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };
@@ -78,7 +82,9 @@ impl World {
     /// The object, live or sleeping (`FUN_1415417a0`), of a master of type 80 toggles its gate
     /// lock: slot 0x670 ([`lock_gate`]) with slot 0x668's value negated. Its sound (slot 0x4c0)
     /// and the UI's flag are not held.
-    pub(crate) fn gate(&mut self, player: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn gate(&mut self, player: PlayerId, id: ObjectId) -> Result<(), GenieError> {
+        let player = player.index();
+        let id = id.get();
         let Some((p, unit)) = self.object(id) else {
             return Ok(());
         };
@@ -109,8 +115,14 @@ impl World {
     /// scout's already, else the auto scout order, from the object's owner (`+0x718`), without
     /// a target, at the point (−1, −1) at the unit's height, range 1, priority 100, shown at
     /// (−1, −1) and ready. Its sound and the UI's flags are not held.
-    pub(crate) fn auto_scout(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
+    pub(crate) fn auto_scout(
+        &mut self,
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
         use crate::unit_ai::{Effect, QueuedOrder};
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
         let cap = if self.players[player].computer {
             500
         } else {
@@ -200,7 +212,13 @@ impl World {
     /// (`FUN_141197da0`), the object stops (slot 0x148, [`World::object_stop`]) and its movement
     /// stands (slot 0x560, `FUN_1411616f0`: slot 0x5d0, then `FUN_140f98e80` on its walked
     /// level).
-    pub(crate) fn stop_command(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
+    pub(crate) fn stop_command(
+        &mut self,
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
         let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };

@@ -3,6 +3,7 @@
 
 use crate::Frame;
 use genie_core::commands::{Command, Order, OrderCommand};
+use genie_core::objects::ObjectId;
 
 /// Decodes the recorded commands, in their order ([`genie_command_codec::decode`]). An order's
 /// count of `0xffff` names the comm player's last commanded units, which the world keeps as the
@@ -43,7 +44,7 @@ impl Decoder {
         {
             let _ = self
                 .last_commanded
-                .insert(*player, units.first(usize::MAX).to_vec());
+                .insert(player.index(), ObjectId::fields(units.first(usize::MAX)));
         }
         Some(command)
     }

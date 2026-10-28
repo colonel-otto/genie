@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `AUTO_SCOUT` (0x26, `FUN_140e666f0`): each unit the packet lists (the count at `+0x4`, the
@@ -10,7 +11,7 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AutoScoutCommand {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its units.
     pub units: UnitList,
 }

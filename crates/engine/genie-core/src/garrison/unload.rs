@@ -6,7 +6,9 @@ use crate::garrison::{
     BUILDING_CLASS, COMBAT_KIND, MASTER_1808, SIEGE_CLASS, SIEGE_UNLOAD, VILLAGER_CLASS,
     WHOLE_SHARE_CLASS,
 };
+use crate::objects::ObjectId;
 use crate::orders::BUILDING;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -36,7 +38,12 @@ impl World {
     ///   bell (`+0x9dc`).
     ///
     /// The local player's interface flag (`FUN_141663f50`) is not held.
-    pub(crate) fn unload(&mut self, u: &UnloadCommand, ids: &[i32]) -> Result<(), GenieError> {
+    pub(crate) fn unload(
+        &mut self,
+        u: &UnloadCommand,
+        ids: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
+        let ids: &[i32] = &ObjectId::fields(ids);
         let UnloadCommand {
             player,
             point,
@@ -45,6 +52,7 @@ impl World {
             sound,
             ..
         } = *u;
+        let (player, point) = (player.index(), point.xy());
         let Some(checked) = self.unload_check(player, ids, flag, unit_type) else {
             return Ok(());
         };
@@ -310,7 +318,13 @@ impl World {
     /// order each other's, [`crate::world::settings::Settings::cheats_enabled`]; the cheat `+0xb12` is not held): a building
     /// lets out, from the last in, each unit inside of type 70 or more that is a villager (class
     /// 4) or of master 1808, back to its work ([`World::back_to_work`]).
-    pub(crate) fn go_back_to_work(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
+    pub(crate) fn go_back_to_work(
+        &mut self,
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
         for id in self.checked_units(player, ids) {
             let Some((p, _)) = self.object(id) else {
                 continue;

@@ -2,6 +2,8 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::objects::masters::MasterId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// QUEUE (0x81, the player's queue `FUN_141614450`, the building's `FUN_1411cbc40`): `amount`
@@ -9,13 +11,13 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueueCommand {
     /// The player who queues.
-    pub player: usize,
+    pub player: PlayerId,
     /// The buildings the packet lists (the count at `+0x4`, the ids from `+0x14`).
     pub buildings: UnitList,
     /// `+0xa`, the formatter's `bId`: the buildings' master, which the handler does not read.
-    pub building_master: i16,
+    pub building_master: MasterId,
     /// The master to train (`+0xc`; 0x712 for the villager).
-    pub unit: i16,
+    pub unit: MasterId,
     /// How many (`+0xe`, which the handler takes as an int).
     pub amount: i16,
     /// `button_location_id`: the train button, −1 for none.

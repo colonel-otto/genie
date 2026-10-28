@@ -4,6 +4,8 @@
 //! [`World::run`]: crate::world::World::run
 
 use crate::GenieError;
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 pub mod all_back_to_work;
@@ -198,7 +200,7 @@ impl Command {
     /// sub-command's target, else its issuer ([`GameCommand::target`]); any other command's
     /// issuing player.
     #[must_use]
-    pub fn stopped_player(&self, players: usize) -> usize {
+    pub fn stopped_player(&self, players: usize) -> PlayerId {
         match self {
             Self::Game(g) => g.target(players).unwrap_or(g.issuer),
             other => other.player(),
@@ -207,7 +209,7 @@ impl Command {
 
     /// The issuing player (GAME's issuer).
     #[must_use]
-    pub const fn player(&self) -> usize {
+    pub const fn player(&self) -> PlayerId {
         match self {
             Self::Build(c) => c.player,
             Self::BuildWall(c) => c.player,
@@ -283,8 +285,8 @@ impl World {
     pub(crate) fn command_units(&self, player: usize, units: &UnitList) -> Vec<i32> {
         let inside = player == 0 || self.players.len() <= player;
         match units.names_last_commanded() {
-            false if inside => units.first(usize::MAX).to_vec(),
-            false => units.first(self.most_units(player)).to_vec(),
+            false if inside => ObjectId::fields(units.first(usize::MAX)),
+            false => ObjectId::fields(units.first(self.most_units(player))),
             true if inside => Vec::new(),
             true => self.last_commanded.get(player).cloned().unwrap_or_default(),
         }

@@ -8,8 +8,11 @@ pub mod layers;
 pub mod lifecycle;
 pub mod lines;
 pub mod masters;
+mod object_id;
 pub mod object_list;
 pub(crate) mod release;
 pub mod sprite;
 pub(crate) mod teardown;
 pub mod unit;
+
+pub use self::object_id::ObjectId;

@@ -9,6 +9,8 @@
 //! the target ([`crate::unit_ai::task_finder`]), and the task's action replaces its action list.
 
 use crate::GenieError;
+use crate::map::Point;
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::objects::unit::Unit;
 use crate::unit_ai::ActionKind;
@@ -41,10 +43,10 @@ use crate::gathering::hunt::HUNT;
 /// INTERACT's fields past its units (`+0x4`..`+0x16`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Interact {
-    /// `t_id` (`+0x4`): the target object, -1 for a point.
-    pub target: i32,
+    /// `t_id` (`+0x4`): the target object, none for a point.
+    pub target: Option<ObjectId>,
     /// `x`, `y` (`+0x8`, `+0xc`).
-    pub point: [f32; 2],
+    pub point: Point,
     /// `+0x12`: the work command's carried-resource test.
     pub carry_test: bool,
     /// `+0x13`: the order is queued.
@@ -60,10 +62,10 @@ pub struct Interact {
 /// MOVE's fields past its units (`+0x4`..`+0x15`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MoveOrder {
-    /// `t_id` (`+0x4`): an object to follow, -1 for the point.
-    pub target: i32,
+    /// `t_id` (`+0x4`): an object to follow, none for the point.
+    pub target: Option<ObjectId>,
     /// `x`, `y` (`+0x8`, `+0xc`).
-    pub point: [f32; 2],
+    pub point: Point,
     /// `+0x13`: queued; `+0x14`: a unit with a unit AI takes it at once; `+0x15`: the last human
     /// order time is set.
     pub queued: bool,

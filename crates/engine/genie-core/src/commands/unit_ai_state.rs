@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `UNIT_AI_STATE` (0x12, `FUN_140e6a7c0`): the unit AIs of the units the packet lists (the
@@ -9,7 +10,7 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnitAiStateCommand {
     /// The player whose units take it.
-    pub player: usize,
+    pub player: PlayerId,
     /// The units.
     pub units: UnitList,
     /// The stance.

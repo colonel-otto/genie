@@ -2,6 +2,9 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::map::Point;
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `UNIT_ORDER`'s action (`+0x1c`, the switch of `FUN_14161e370`).
@@ -69,13 +72,13 @@ impl UnitOrderAction {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitOrderCommand {
     /// The player whose units take it.
-    pub player: usize,
+    pub player: PlayerId,
     /// The units.
     pub units: UnitList,
     /// `tId`: the target object's id.
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// `+0xc`, `+0x10`: the point, which the actions modelled do not read.
-    pub point: [f32; 2],
+    pub point: Point,
     /// `+0x14`, the formatter's `qId`, which the actions modelled do not read.
     pub q_id: i32,
     /// `+0x1d`: a garrison goes through the units' unit AIs (their slot 0x30); a cancel cancels
@@ -102,7 +105,7 @@ impl UnitOrderCommand {
             return Ok(());
         };
         if self.human {
-            w.human_order(ids);
+            w.human_order(&ObjectId::fields(ids));
         }
         match self.action {
             UnitOrderAction::Garrison => {

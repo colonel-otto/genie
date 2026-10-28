@@ -1,6 +1,9 @@
 //! `TRANSFORM_OBJECT` (0x29): an object of the player takes another master.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `TRANSFORM_OBJECT` (0x29, `RGE_Command::do_command`'s case): the player's object `id` takes
@@ -8,16 +11,16 @@ use crate::world::World;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TransformObjectCommand {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// The object (`+8`).
-    pub id: i32,
+    pub id: ObjectId,
     /// The new master (`+4`).
-    pub master: i16,
+    pub master: MasterId,
 }
 
 impl TransformObjectCommand {
     /// Its handler ([`World::transform_object`]).
-    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+    pub(crate) fn run(self, w: &mut World) -> Result<(), GenieError> {
         w.transform_object(self.player, self.id, self.master)
     }
 }

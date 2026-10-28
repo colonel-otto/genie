@@ -39,6 +39,7 @@ calls `Unit::update` (`unit/update.rs`), which runs the object's chain of update
 | [`layers.rs`](layers.rs) | The object's class chain (FD-045-D06): the game's object classes, each layer holding the one below it, as the save reads them (`RgeMovingObject` holds `rge_animated_object`). |
 | [`lines.rs`](lines.rs) | The unit lines (`resources/_common/dat/unitlines.json`): each line names the masters of one upgrade chain, its first master first. |
 | [`mod.rs`](mod.rs) | One object and what every object has and runs: the object the engine tracks (`unit::Unit`) with its update, its actions' holdings and stops, its life and death, its release, its sprite and facing, and the masters it is made from. |
+| [`object_id.rs`](object_id.rs) | An object's id as one type: the id that names an object across ticks, as the commands, their unit lists and their targets hold it. |
 | [`object_list.rs`](object_list.rs) | One of a player's object lists (FD-045-D11, D20): its objects in update order and the place of each by id, which the game's table by id (`FUN_1415417a0`, `world+0x168` and `+0x178`) answers. |
 | [`release.rs`](release.rs) | An object's leave of the world and its release by the action that held it (slot 0x180); the update's regeneration and hit point check, and a walk's pause. |
 | [`sprite.rs`](sprite.rs) | An object's active sprite: the frame of its sprite (a `.dat` graphic) and, for a graphic that animates, the clock that advances it. |

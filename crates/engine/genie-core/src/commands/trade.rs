@@ -1,5 +1,7 @@
 //! `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b): the player trades at the market.
 
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `SELL_COMMODITY` (0x7a) and `BUY_COMMODITY` (0x7b), `do_command`'s cases: the player trades
@@ -9,13 +11,14 @@ use crate::world::World;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TradeCommand {
     /// The player who trades.
-    pub player: usize,
+    pub player: PlayerId,
     /// `+0x4`: the commodity (the dispatcher reads its low byte).
     pub attribute: u16,
     /// `+0x6`: how many lots.
     pub times: u16,
-    /// `+0x8`: the market, which the check (`FUN_140e6f3f0`) reads.
-    pub market: i32,
+    /// `+0x8`: the market, which the check (`FUN_140e6f3f0`) reads; none for −1, which a
+    /// recorded trade can hold.
+    pub market: Option<ObjectId>,
     /// A purchase, else a sale.
     pub buy: bool,
 }

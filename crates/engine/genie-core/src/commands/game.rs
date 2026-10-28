@@ -7,14 +7,15 @@
 
 use crate::GenieError;
 use crate::gathering::farm_queue::{FARM, PASTURE};
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// GAME's packet as `FUN_140e7c330` reads it: the sub-command at `+4` and its arguments.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GameCommand {
     /// Byte 1, the comm player who sent it (`FUN_140e6b210` maps it to a world player; the
     /// slice takes the two as equal).
-    pub issuer: usize,
+    pub issuer: PlayerId,
     /// `+4`: the sub-command ([`sub`]).
     pub sub: u16,
     /// `+8`: the world player it is for.
@@ -80,8 +81,11 @@ impl GameCommand {
 
     /// `+8` as a world player of `count` players (`FUN_14152fe40`: none outside 0 to count − 1).
     #[must_use]
-    pub fn target(&self, count: usize) -> Option<usize> {
-        usize::try_from(self.player).ok().filter(|&p| p < count)
+    pub fn target(&self, count: usize) -> Option<PlayerId> {
+        u8::try_from(self.player)
+            .ok()
+            .map(PlayerId::from)
+            .filter(|p| p.index() < count)
     }
 }
 
@@ -93,11 +97,11 @@ impl World {
     /// run. The world's `+0xb12` (the disable-verification cheat), which would let either
     /// through, is not held.
     pub(crate) fn game_allowed(&self, g: &GameCommand) -> bool {
-        if self.players.get(g.issuer).is_none() {
+        if self.players.get(g.issuer.index()).is_none() {
             return false;
         }
         matches!(g.sub, sub::SPEED | sub::QUICK_BUILD | sub::OPEN_0XF)
-            || i32::from(g.player) == g.issuer as i32
+            || g.player == i16::from(g.issuer.get())
             || self.settings.cheats_enabled
     }
 
@@ -141,7 +145,7 @@ impl World {
             return Ok(());
         }
         let n = self.players.len();
-        let target = g.target(n);
+        let target = g.target(n).map(PlayerId::index);
         match g.sub {
             sub::DIPLOMACY if self.alliance_locked == 0 => {
                 if let Some(p) = target {
@@ -300,6 +304,7 @@ const TREASON_COST: f32 = crate::math::image::turn::TREASON_COST;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::player_id;
     use crate::world::Player;
 
     /// Gaia and three players with 300 attributes each.
@@ -318,9 +323,9 @@ mod tests {
         )
     }
 
-    fn game(issuer: usize, sub: u16, player: i16, a: i16, value: u32) -> GameCommand {
+    fn game(issuer: u8, sub: u16, player: i16, a: i16, value: u32) -> GameCommand {
         GameCommand {
-            issuer,
+            issuer: player_id(issuer),
             sub,
             player,
             a,

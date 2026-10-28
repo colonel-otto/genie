@@ -11,30 +11,39 @@ use genie_core::commands::{
     TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
     UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
+use genie_core::map::Point;
+use genie_core::objects::ObjectId;
+use genie_core::objects::masters::MasterId;
 use genie_core::orders::{Interact, MoveOrder};
+use genie_core::players::PlayerId;
 use genie_core::players::tribute::Gift;
 use genie_rec::de::command::{self as packets, Command as Packet};
 
 /// The command a packet holds.
 ///
-/// A packet of a kind the engine does not run, one that fits no layout, and one whose command
-/// would not write back its bytes ([`encode`]) stay raw: an [`UnmodelledCommand`] whose run
-/// stops the issuing player.
+/// A packet of a kind the engine does not run, one that fits no layout, one holding a value its
+/// command's types refuse (a negative master, −1 for an object the command needs), and one
+/// whose command would not write back its bytes ([`encode`]) stay raw: an
+/// [`UnmodelledCommand`] whose run stops the issuing player.
 ///
 /// # Errors
 ///
 /// A packet too short for its player byte (byte 1).
 pub fn decode(packet: &[u8]) -> Result<Command, GenieError> {
-    let player = usize::from(*packet.get(1).ok_or(GenieError::invalid_input(
+    let player = PlayerId::from(*packet.get(1).ok_or(GenieError::invalid_input(
         "a command packet without its player byte",
     ))?);
     let decoded = Packet::decode(packet);
-    let Some(command) = typed(&decoded) else {
-        return Ok(raw(
-            player,
-            packet,
-            GenieError::unsupported(unmodelled_command(&decoded)),
-        ));
+    let command = match typed(&decoded) {
+        Ok(Some(command)) => command,
+        Ok(None) => {
+            let why = GenieError::unsupported(unmodelled_command(&decoded));
+            return Ok(raw(player, packet, why));
+        }
+        Err(why) => {
+            let why = why.with("command", unmodelled_command(&decoded));
+            return Ok(raw(player, packet, why));
+        }
     };
     if encode(&command).is_ok_and(|bytes| bytes == packet) {
         return Ok(command);
@@ -48,7 +57,7 @@ pub fn decode(packet: &[u8]) -> Result<Command, GenieError> {
 }
 
 /// The packet kept as it is, with why it does not run.
-fn raw(player: usize, packet: &[u8], why: GenieError) -> Command {
+fn raw(player: PlayerId, packet: &[u8], why: GenieError) -> Command {
     Command::Unmodelled(UnmodelledCommand {
         player,
         packet: packet.to_vec(),
@@ -62,28 +71,36 @@ const fn short(word: i32) -> i16 {
     i16::from_le_bytes([low, high])
 }
 
-/// A packet's unit list: its count and every id it holds (the runs read the first `count`).
+/// A packet's unit list: its count and every id it holds, none for −1 (the runs read the first
+/// `count`).
 fn listed(count: u16, ids: &[i32]) -> UnitList {
     UnitList {
         count,
-        ids: ids.to_vec(),
+        ids: object_ids(ids),
     }
 }
 
+/// A packet's ids, none for −1.
+fn object_ids(ids: &[i32]) -> Vec<Option<ObjectId>> {
+    ids.iter().map(|&id| ObjectId::of_field(id)).collect()
+}
+
 /// The command of a packet the engine runs, None for any other.
-fn typed(packet: &Packet) -> Option<Command> {
-    orders(packet)
-        .or_else(|| listed_command(packet))
-        .or_else(|| building_command(packet))
-        .or_else(|| single_command(packet))
+fn typed(packet: &Packet) -> Result<Option<Command>, GenieError> {
+    for kind in [orders, listed_command, building_command, single_command] {
+        if let Some(command) = kind(packet)? {
+            return Ok(Some(command));
+        }
+    }
+    Ok(None)
 }
 
 /// INTERACT's layout, which WORK and RETREAT share: the target, the point and the flags.
 macro_rules! interact {
     ($c:expr) => {
         Interact {
-            target: $c.t_id,
-            point: [$c.x, $c.y],
+            target: ObjectId::of_field($c.t_id),
+            point: Point::new($c.x, $c.y),
             carry_test: $c.field_0x12 != 0,
             queued: $c.field_0x13 != 0,
             direct: $c.field_0x14 != 0,
@@ -95,7 +112,7 @@ macro_rules! interact {
 
 /// INTERACT, WORK, MOVE and RETREAT, whose units the orders' reader reads (`FUN_140e6b290`),
 /// and FOLLOW and GUARD, which list theirs.
-fn orders(packet: &Packet) -> Option<Command> {
+fn orders(packet: &Packet) -> Result<Option<Command>, GenieError> {
     let (player, units, order) = match packet {
         Packet::Interact(c) => (
             c.commp_id,
@@ -110,8 +127,8 @@ fn orders(packet: &Packet) -> Option<Command> {
         ),
         Packet::Move(c) => {
             let order = MoveOrder {
-                target: c.t_id,
-                point: [c.x, c.y],
+                target: ObjectId::of_field(c.t_id),
+                point: Point::new(c.x, c.y),
                 queued: c.field_0x13 != 0,
                 direct: c.field_0x14 != 0,
                 human: c.field_0x15 == 1,
@@ -119,52 +136,60 @@ fn orders(packet: &Packet) -> Option<Command> {
             };
             (c.commp_id, listed(c.num, &c.ids), Order::Move(order))
         }
-        Packet::Follow(c) => (c.commp_id, listed(c.num, &c.ids), Order::Follow(c.target)),
-        Packet::Guard(c) => (c.commp_id, listed(c.num, &c.ids), Order::Guard(c.target)),
-        _ => return None,
+        Packet::Follow(c) => (
+            c.commp_id,
+            listed(c.num, &c.ids),
+            Order::Follow(ObjectId::try_from(c.target)?),
+        ),
+        Packet::Guard(c) => (
+            c.commp_id,
+            listed(c.num, &c.ids),
+            Order::Guard(ObjectId::try_from(c.target)?),
+        ),
+        _ => return Ok(None),
     };
-    Some(Command::Order(OrderCommand {
-        player: usize::from(player),
+    Ok(Some(Command::Order(OrderCommand {
+        player: PlayerId::from(player),
         units,
         order,
-    }))
+    })))
 }
 
 /// The commands to the objects listed that do not go through the orders' reader.
-fn listed_command(packet: &Packet) -> Option<Command> {
-    Some(match packet {
+fn listed_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
+    Ok(Some(match packet {
         Packet::Stop(c) => Command::Stop(StopCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
         }),
         Packet::UnitAiState(c) => Command::UnitAiState(UnitAiStateCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
             state: c.state,
         }),
         Packet::AutoScout(c) => Command::AutoScout(AutoScoutCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.field_0x04, &c.ids),
         }),
         Packet::SeekShelter(c) => Command::SeekShelter(SeekShelterCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
         }),
         Packet::Patrol(c) => patrol(c),
         Packet::AttackMove(c) => attack_move(c),
         Packet::Unload(c) => Command::Unload(UnloadCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
-            point: [c.x, c.y],
+            point: Point::new(c.x, c.y),
             flag: c.flag,
             unit_type: c.unit_type,
             sound: c.field_0x18 != 0,
         }),
         Packet::UnitOrder(c) => Command::UnitOrder(UnitOrderCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
-            target: c.t_id,
-            point: [c.x, c.y],
+            target: ObjectId::of_field(c.t_id),
+            point: Point::new(c.x, c.y),
             q_id: c.q_id,
             through_ai: c.field_0x1d != 0,
             nearby: c.field_0x1e != 0,
@@ -172,12 +197,17 @@ fn listed_command(packet: &Packet) -> Option<Command> {
             param: c.param.cast_unsigned(),
             human: c.field_0x20 == 1,
         }),
-        Packet::GoBackToWork2(c) => Command::GoBackToWork2(GoBackToWork2Command {
-            player: usize::from(c.commp_id),
-            units: go_back_to_work_units(&c.rest)?,
-        }),
-        _ => return None,
-    })
+        Packet::GoBackToWork2(c) => {
+            let Some(units) = go_back_to_work_units(&c.rest) else {
+                return Ok(None);
+            };
+            Command::GoBackToWork2(GoBackToWork2Command {
+                player: PlayerId::from(c.commp_id),
+                units,
+            })
+        }
+        _ => return Ok(None),
+    }))
 }
 
 /// PATROL (0x15): the units, the waypoints' count (`+0xb`) and slots (x from `+0xc`, each an
@@ -208,11 +238,11 @@ fn patrol(c: &packets::Patrol) -> Command {
         c.field_0x58,
     ];
     Command::Patrol(PatrolCommand {
-        player: usize::from(c.commp_id),
+        player: PlayerId::from(c.commp_id),
         units: listed(c.num, &c.ids),
         waypoints: Waypoints {
             count: c.waypoints_count,
-            points: std::array::from_fn(|i| [f32::from_bits(xs[i]), ys[i]]),
+            points: std::array::from_fn(|i| Point::new(f32::from_bits(xs[i]), ys[i])),
         },
         reset: c.field_0x08 != 0,
     })
@@ -223,14 +253,14 @@ fn patrol(c: &packets::Patrol) -> Command {
 fn attack_move(c: &packets::AttackMove) -> Command {
     let word = |b: &[u8; 36], i: usize| f32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]);
     let points = std::array::from_fn(|i| match i {
-        0 => [f32::from_bits(c.field_0x0c), c.field_0x34],
-        _ => [
+        0 => Point::new(f32::from_bits(c.field_0x0c), c.field_0x34),
+        _ => Point::new(
             word(&c.gap_0x10, 4 * (i - 1)),
             word(&c.gap_0x38, 4 * (i - 1)),
-        ],
+        ),
     });
     Command::AttackMove(AttackMoveCommand {
-        player: usize::from(c.commp_id),
+        player: PlayerId::from(c.commp_id),
         units: listed(c.num, &c.ids),
         waypoints: Waypoints {
             count: c.waypoints_count,
@@ -248,21 +278,19 @@ fn attack_move(c: &packets::AttackMove) -> Command {
 fn go_back_to_work_units(rest: &[u8]) -> Option<UnitList> {
     let count = u16::from_le_bytes([*rest.first()?, *rest.get(1)?]);
     let (ids, _) = rest.get(4..)?.as_chunks::<4>();
-    Some(UnitList {
-        count,
-        ids: ids.iter().map(|b| i32::from_le_bytes(*b)).collect(),
-    })
+    let ids: Vec<i32> = ids.iter().map(|b| i32::from_le_bytes(*b)).collect();
+    Some(listed(count, &ids))
 }
 
 /// The commands that place or queue at buildings: BUILD, `BUILD_WALL`, QUEUE, RESEARCH, SET
 /// GATHER POINT and `BUILDING_COMMAND_QUEUE`.
-fn building_command(packet: &Packet) -> Option<Command> {
-    Some(match packet {
+fn building_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
+    Ok(Some(match packet {
         Packet::Build(c) => Command::Build(BuildCommand {
-            player: usize::from(c.commp_id),
-            master: short(c.o_id),
-            position: [c.x, c.y],
-            target: c.q_id,
+            player: PlayerId::from(c.commp_id),
+            master: MasterId::try_from(short(c.o_id))?,
+            position: Point::new(c.x, c.y),
+            q_id: c.q_id,
             sprite_override: c.field_0x18.cast_signed(),
             builders: listed(c.num, &c.ids),
             queued: c.field_0x1e != 0,
@@ -270,90 +298,90 @@ fn building_command(packet: &Packet) -> Option<Command> {
             frame: c.frame,
         }),
         Packet::BuildWall(c) => Command::BuildWall(BuildWallCommand {
-            player: usize::from(c.commp_id),
-            master: short(c.o_id),
+            player: PlayerId::from(c.commp_id),
+            master: MasterId::try_from(short(c.o_id))?,
             from: [c.x1, c.y1],
             to: [c.x2, c.y2],
-            target: c.q_id,
+            q_id: c.q_id,
             builders: listed(c.num, &c.ids),
             queued: c.field_0x1a != 0,
             commits: c.field_0x1b == 0,
         }),
         Packet::MultiQueue(c) => Command::Queue(QueueCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             buildings: listed(c.num, &c.ids),
-            building_master: c.b_id,
-            unit: c.t_id,
+            building_master: MasterId::try_from(c.b_id)?,
+            unit: MasterId::try_from(c.t_id)?,
             amount: c.count,
             button: c.button_location_id,
         }),
         Packet::Research(c) => Command::Research(ResearchCommand {
-            player: usize::from(c.commp_id),
-            building: c.u_id,
+            player: PlayerId::from(c.commp_id),
+            building: ObjectId::of_field(c.u_id),
             count: c.field_0x08.cast_signed(),
-            buildings: c.ids.clone(),
+            buildings: object_ids(&c.ids),
             tech: c.t_id,
-            target: c.q_id,
+            q_id: c.q_id,
             shift: c.field_0x10 != 0,
         }),
         Packet::SetGatherPoint(c) => Command::GatherPoint(GatherPointCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
-            point: [c.x, c.y],
-            target: c.t_id,
-            target_master: short(c.tm_id),
+            point: Point::new(c.x, c.y),
+            target: ObjectId::of_field(c.t_id),
+            target_master: MasterId::of_field(short(c.tm_id))?,
             own: c.field_0x18 != 0,
         }),
         Packet::BuildingCommandQueue(c) => Command::CommandQueue(BuildingQueueCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             units: listed(c.num, &c.ids),
-            target: c.t_id,
-            point: [c.x, c.y],
+            target: ObjectId::of_field(c.t_id),
+            point: Point::new(c.x, c.y),
         }),
-        _ => return None,
-    })
+        _ => return Ok(None),
+    }))
 }
 
 /// The commands of one object, one player or the game.
-fn single_command(packet: &Packet) -> Option<Command> {
-    Some(match packet {
+fn single_command(packet: &Packet) -> Result<Option<Command>, GenieError> {
+    Ok(Some(match packet {
         Packet::Resign(c) => Command::Resign(ResignCommand {
-            player: usize::from(c.commp_id),
+            player: PlayerId::from(c.commp_id),
             dropped: c.dropped != 0,
         }),
         Packet::TransformObject(c) => Command::TransformObject(TransformObjectCommand {
-            player: usize::from(c.commp_id),
-            id: c.field_0x08.cast_signed(),
-            master: short(c.field_0x04),
+            player: PlayerId::from(c.commp_id),
+            id: ObjectId::try_from(c.field_0x08.cast_signed())?,
+            master: MasterId::try_from(short(c.field_0x04))?,
         }),
         Packet::CancelBuild(c) => Command::Delete(DeleteCommand {
-            player: usize::from(c.commp_id),
-            id: c.u_id,
+            player: PlayerId::from(c.commp_id),
+            id: ObjectId::try_from(c.u_id)?,
         }),
         Packet::GoBackToWork(c) => Command::GoBackToWork(GoBackToWorkCommand {
-            player: usize::from(c.commp_id),
-            id: c.u_id,
+            player: PlayerId::from(c.commp_id),
+            id: ObjectId::try_from(c.u_id)?,
         }),
         Packet::AllBackToWork(c) => Command::AllBackToWork(AllBackToWorkCommand {
-            player: usize::from(c.commp_id),
-            id: c.u_id,
+            player: PlayerId::from(c.commp_id),
+            id: ObjectId::try_from(c.u_id)?,
         }),
         Packet::TownBell(c) => Command::TownBell(TownBellCommand {
-            player: usize::from(c.commp_id),
-            id: c.u_id,
+            player: PlayerId::from(c.commp_id),
+            id: ObjectId::try_from(c.u_id)?,
             activate: c.activate != 0,
         }),
         Packet::Gate(c) => Command::Gate(GateCommand {
-            player: usize::from(c.commp_id),
-            id: c.u_id,
+            player: PlayerId::from(c.commp_id),
+            id: ObjectId::try_from(c.u_id)?,
         }),
         Packet::TribeGiveAttributes(c) => tribute(c),
         Packet::SellCommodity(c) => trade(c.commp_id, c.attr, c.amt, c.u_id, false),
         Packet::BuyCommodity(c) => trade(c.commp_id, c.attr, c.amt, c.u_id, true),
         Packet::Flare(c) => Command::Flare(FlareCommand {
-            player: usize::from(c.commp_id),
-            target: c.field_0x04.cast_signed(),
-            point: [c.field_0x08, c.field_0x0c],
+            player: PlayerId::from(c.commp_id),
+            target: ObjectId::of_field(c.field_0x04.cast_signed()),
+            point: Point::new(c.field_0x08, c.field_0x0c),
             players: c.field_0x10,
             shown: [c.gap_0x11[0], c.field_0x12, c.field_0x13]
                 .iter()
@@ -362,25 +390,25 @@ fn single_command(packet: &Packet) -> Option<Command> {
                 .collect(),
         }),
         Packet::Game(g) => Command::Game(GameCommand {
-            issuer: usize::from(g.commp_id),
+            issuer: PlayerId::from(g.commp_id),
             sub: g.field_0x04,
             player: g.field_0x08,
             a: g.field_0x0a,
             speed: g.field_0x0c,
             value: g.field_0x10,
         }),
-        _ => return None,
-    })
+        _ => return Ok(None),
+    }))
 }
 
 /// `SELL_COMMODITY` (0x7a) or `BUY_COMMODITY` (0x7b): the attribute (`+0x4`), the lots
 /// (`+0x6`) and the market (`+0x8`).
 fn trade(player: u8, attribute: u16, times: u16, market: i32, buy: bool) -> Command {
     Command::Trade(TradeCommand {
-        player: usize::from(player),
+        player: PlayerId::from(player),
         attribute,
         times,
-        market,
+        market: ObjectId::of_field(market),
         buy,
     })
 }
@@ -394,8 +422,8 @@ fn tribute(c: &packets::TribeGiveAttributes) -> Command {
         fee,
     };
     Command::Tribute(TributeCommand {
-        player: usize::from(c.commp_id),
-        to: usize::from(c.to),
+        player: PlayerId::from(c.commp_id),
+        to: PlayerId::from(c.to),
         gifts: [
             gift(c.attr, c.amt, c.cost),
             gift(c.field_0x26, c.field_0x08, c.field_0x18),

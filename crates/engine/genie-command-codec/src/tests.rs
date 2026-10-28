@@ -10,10 +10,39 @@ use genie_core::commands::{
     TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
     UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
+use genie_core::map::Point;
+use genie_core::objects::ObjectId;
+use genie_core::objects::masters::MasterId;
 use genie_core::orders::{Interact, MoveOrder};
+use genie_core::players::PlayerId;
 use genie_core::players::tribute::Gift;
 use genie_core::{ErrorKind, GenieError};
 use genie_rec::de::command as packets;
+
+/// The object id `value` (not −1).
+fn object_id(value: i32) -> ObjectId {
+    ObjectId::try_from(value).expect("a test's object id is not −1")
+}
+
+/// The entries of a list of ids of `values`, −1 for none.
+fn object_ids(values: impl IntoIterator<Item = i32>) -> Vec<Option<ObjectId>> {
+    values.into_iter().map(ObjectId::of_field).collect()
+}
+
+/// The unit list of `ids`, its count theirs (fewer than `0xffff`).
+fn unit_list(ids: Vec<Option<ObjectId>>) -> UnitList {
+    UnitList::try_from(ids).expect("a test's unit list is shorter than 0xffff ids")
+}
+
+/// The player `number`.
+fn player_id(number: u8) -> PlayerId {
+    PlayerId::from(number)
+}
+
+/// The master `value` (0 or more).
+fn master_id(value: i16) -> MasterId {
+    MasterId::try_from(value).expect("a test's master is 0 or more")
+}
 
 /// The command of a packet, which writes the packet back.
 fn round_trip(packet: &[u8]) -> Command {
@@ -32,7 +61,7 @@ fn raw(packet: &[u8]) -> GenieError {
     assert_eq!(encode(&command).expect("its own bytes"), packet);
     match command {
         Command::Unmodelled(UnmodelledCommand { player, why, .. }) => {
-            assert_eq!(player, usize::from(packet[1]));
+            assert_eq!(player, PlayerId::from(packet[1]));
             why
         }
         other => panic!("{other:?} is modelled"),
@@ -62,8 +91,8 @@ fn interact(num: u16, human: u8, ids: Vec<i32>) -> Vec<u8> {
 #[test]
 fn an_interact_keeps_its_order_and_units() {
     let order = Interact {
-        target: 500,
-        point: [1.0, 2.0],
+        target: Some(object_id(500)),
+        point: Point::new(1.0, 2.0),
         carry_test: true,
         queued: false,
         direct: true,
@@ -73,10 +102,10 @@ fn an_interact_keeps_its_order_and_units() {
     assert_eq!(
         round_trip(&interact(2, 1, vec![10, 11, 12])),
         Command::Order(OrderCommand {
-            player: 2,
+            player: player_id(2),
             units: UnitList {
                 count: 2,
-                ids: vec![10, 11, 12],
+                ids: object_ids([10, 11, 12]),
             },
             order: Order::Interact(order),
         })
@@ -84,7 +113,7 @@ fn an_interact_keeps_its_order_and_units() {
     assert_eq!(
         round_trip(&interact(UnitList::LAST_COMMANDED, 1, vec![])),
         Command::Order(OrderCommand {
-            player: 2,
+            player: player_id(2),
             units: UnitList::last_commanded(),
             order: Order::Interact(order),
         })
@@ -104,15 +133,15 @@ fn an_interact_keeps_its_order_and_units() {
     }
     .encode();
     let worked = Interact {
-        target: 600,
+        target: Some(object_id(600)),
         queued: true,
         ..Interact::default()
     };
     assert_eq!(
         round_trip(&work),
         Command::Order(OrderCommand {
-            player: 4,
-            units: UnitList::of(vec![20]),
+            player: player_id(4),
+            units: unit_list(object_ids([20])),
             order: Order::Work(worked),
         })
     );
@@ -133,9 +162,10 @@ fn an_interact_keeps_its_order_and_units() {
     assert_eq!(
         round_trip(&retreat),
         Command::Order(OrderCommand {
-            player: 1,
-            units: UnitList::of(vec![7]),
+            player: player_id(1),
+            units: unit_list(object_ids([7])),
             order: Order::Retreat(Interact {
+                target: Some(object_id(0)),
                 filter: -1,
                 ..Interact::default()
             }),
@@ -164,11 +194,11 @@ fn move_follow_and_guard_keep_their_orders() {
     assert_eq!(
         round_trip(&moved),
         Command::Order(OrderCommand {
-            player: 1,
-            units: UnitList::of(many),
+            player: player_id(1),
+            units: unit_list(object_ids(many)),
             order: Order::Move(MoveOrder {
-                target: -1,
-                point: [5.0, 6.0],
+                target: None,
+                point: Point::new(5.0, 6.0),
                 queued: true,
                 direct: false,
                 human: true,
@@ -194,13 +224,13 @@ fn move_follow_and_guard_keep_their_orders() {
     .encode();
     let ordered = |order| {
         Command::Order(OrderCommand {
-            player: 1,
-            units: UnitList::of(vec![8]),
+            player: player_id(1),
+            units: unit_list(object_ids([8])),
             order,
         })
     };
-    assert_eq!(round_trip(&follow), ordered(Order::Follow(900)));
-    assert_eq!(round_trip(&guard), ordered(Order::Guard(901)));
+    assert_eq!(round_trip(&follow), ordered(Order::Follow(object_id(900))));
+    assert_eq!(round_trip(&guard), ordered(Order::Guard(object_id(901))));
 }
 
 /// SET GATHER POINT and `BUILDING_COMMAND_QUEUE` keep their count and every id the packet
@@ -222,14 +252,14 @@ fn the_buildings_lists_keep_their_counted_ids() {
     assert_eq!(
         round_trip(&gather),
         Command::GatherPoint(GatherPointCommand {
-            player: 3,
+            player: player_id(3),
             units: UnitList {
                 count: 1,
-                ids: vec![30, 31],
+                ids: object_ids([30, 31]),
             },
-            point: [1.0, 2.0],
-            target: 40,
-            target_master: 83,
+            point: Point::new(1.0, 2.0),
+            target: Some(object_id(40)),
+            target_master: Some(master_id(83)),
             own: true,
         })
     );
@@ -246,10 +276,10 @@ fn the_buildings_lists_keep_their_counted_ids() {
     assert_eq!(
         round_trip(&queue),
         Command::CommandQueue(BuildingQueueCommand {
-            player: 3,
-            units: UnitList::of(vec![32, 33]),
-            target: 41,
-            point: [3.0, 4.0],
+            player: player_id(3),
+            units: unit_list(object_ids([32, 33])),
+            target: Some(object_id(41)),
+            point: Point::new(3.0, 4.0),
         })
     );
 }
@@ -270,8 +300,8 @@ fn the_unit_lists_keep_their_counted_ids() {
     assert_eq!(
         round_trip(&state),
         Command::UnitAiState(UnitAiStateCommand {
-            player: 3,
-            units: UnitList::of(vec![34]),
+            player: player_id(3),
+            units: unit_list(object_ids([34])),
             state: 2,
         })
     );
@@ -285,8 +315,8 @@ fn the_unit_lists_keep_their_counted_ids() {
     assert_eq!(
         round_trip(&scout),
         Command::AutoScout(AutoScoutCommand {
-            player: 3,
-            units: UnitList::of(vec![35]),
+            player: player_id(3),
+            units: unit_list(object_ids([35])),
         })
     );
     let shelter = packets::SeekShelter {
@@ -299,8 +329,8 @@ fn the_unit_lists_keep_their_counted_ids() {
     assert_eq!(
         round_trip(&shelter),
         Command::SeekShelter(SeekShelterCommand {
-            player: 3,
-            units: UnitList::of(vec![36]),
+            player: player_id(3),
+            units: unit_list(object_ids([36])),
         })
     );
     let stop = packets::Stop {
@@ -314,10 +344,10 @@ fn the_unit_lists_keep_their_counted_ids() {
     assert_eq!(
         round_trip(&stop),
         Command::Stop(StopCommand {
-            player: 2,
+            player: player_id(2),
             units: UnitList {
                 count: 2,
-                ids: vec![50],
+                ids: object_ids([50]),
             },
         })
     );
@@ -364,8 +394,11 @@ fn patrol_and_attack_move_keep_every_waypoint_slot() {
         panic!("a patrol")
     };
     assert!(reset);
-    assert_eq!(waypoints.used(), Some(&[[1.5, 2.5], [3.5, 4.5]][..]));
-    assert_eq!(waypoints.points[2], [9.0, 0.0]);
+    assert_eq!(
+        waypoints.used(),
+        Some(&[Point::new(1.5, 2.5), Point::new(3.5, 4.5)][..])
+    );
+    assert_eq!(waypoints.points[2], Point::new(9.0, 0.0));
 
     let mut gap_0x10 = [0; 36];
     gap_0x10[..4].copy_from_slice(&7.0_f32.to_le_bytes());
@@ -389,15 +422,15 @@ fn patrol_and_attack_move_keep_every_waypoint_slot() {
     assert_eq!(
         round_trip(&attack),
         Command::AttackMove(AttackMoveCommand {
-            player: 1,
-            units: UnitList::of(vec![5]),
+            player: player_id(1),
+            units: unit_list(object_ids([5])),
             waypoints: Waypoints {
                 count: 2,
                 points: std::array::from_fn(|i| match i {
-                    0 => [1.0, 2.0],
-                    1 => [7.0, 0.0],
-                    9 => [0.0, 8.0],
-                    _ => [0.0, 0.0],
+                    0 => Point::new(1.0, 2.0),
+                    1 => Point::new(7.0, 0.0),
+                    9 => Point::new(0.0, 8.0),
+                    _ => Point::new(0.0, 0.0),
                 }),
             },
             reset: false,
@@ -429,9 +462,9 @@ fn unload_and_unit_order_keep_their_lists_and_counts() {
     assert_eq!(
         round_trip(&unload(1)),
         Command::Unload(UnloadCommand {
-            player: 2,
-            units: UnitList::of(vec![60]),
-            point: [1.0, 1.0],
+            player: player_id(2),
+            units: unit_list(object_ids([60])),
+            point: Point::new(1.0, 1.0),
             flag: 1,
             unit_type: -1,
             sound: true,
@@ -460,10 +493,10 @@ fn unload_and_unit_order_keep_their_lists_and_counts() {
     assert_eq!(
         round_trip(&order(1)),
         Command::UnitOrder(UnitOrderCommand {
-            player: 2,
-            units: UnitList::of(vec![61]),
-            target: 70,
-            point: [3.0, 4.0],
+            player: player_id(2),
+            units: unit_list(object_ids([61])),
+            target: Some(object_id(70)),
+            point: Point::new(3.0, 4.0),
             q_id: 71,
             through_ai: true,
             nearby: false,
@@ -487,10 +520,10 @@ fn go_back_to_work_2_keeps_its_counted_ids() {
     assert_eq!(
         round_trip(&packet),
         Command::GoBackToWork2(GoBackToWork2Command {
-            player: 1,
+            player: player_id(1),
             units: UnitList {
                 count: 2,
-                ids: vec![80, 81, 82],
+                ids: object_ids([80, 81, 82]),
             },
         })
     );
@@ -530,12 +563,12 @@ fn build_and_build_wall_keep_their_fields() {
     assert_eq!(
         round_trip(&build),
         Command::Build(BuildCommand {
-            player: 1,
-            master: 70,
-            position: [10.5, 11.5],
-            target: -1,
+            player: player_id(1),
+            master: master_id(70),
+            position: Point::new(10.5, 11.5),
+            q_id: -1,
             sprite_override: 0x2c9,
-            builders: UnitList::of(vec![9]),
+            builders: unit_list(object_ids([9])),
             queued: true,
             commits: false,
             frame: 3,
@@ -560,12 +593,12 @@ fn build_and_build_wall_keep_their_fields() {
     assert_eq!(
         round_trip(&wall),
         Command::BuildWall(BuildWallCommand {
-            player: 1,
-            master: 72,
+            player: player_id(1),
+            master: master_id(72),
             from: [1, 2],
             to: [3, 4],
-            target: -1,
-            builders: UnitList::of(vec![9]),
+            q_id: -1,
+            builders: unit_list(object_ids([9])),
             queued: false,
             commits: true,
         })
@@ -589,10 +622,10 @@ fn queue_and_research_keep_their_fields() {
     assert_eq!(
         round_trip(&queue),
         Command::Queue(QueueCommand {
-            player: 1,
-            buildings: UnitList::of(vec![9]),
-            building_master: 109,
-            unit: 83,
+            player: player_id(1),
+            buildings: unit_list(object_ids([9])),
+            building_master: master_id(109),
+            unit: master_id(83),
             amount: 5,
             button: 2,
         })
@@ -610,12 +643,12 @@ fn queue_and_research_keep_their_fields() {
     assert_eq!(
         round_trip(&research),
         Command::Research(ResearchCommand {
-            player: 1,
-            building: 90,
+            player: player_id(1),
+            building: Some(object_id(90)),
             count: 1,
-            buildings: vec![90],
+            buildings: object_ids([90]),
             tech: 22,
-            target: -1,
+            q_id: -1,
             shift: true,
         })
     );
@@ -632,7 +665,7 @@ fn the_object_commands_keep_their_fields() {
             }
             .encode(),
             Command::Resign(ResignCommand {
-                player: 2,
+                player: player_id(2),
                 dropped: true,
             }),
         ),
@@ -644,9 +677,9 @@ fn the_object_commands_keep_their_fields() {
             }
             .encode(),
             Command::TransformObject(TransformObjectCommand {
-                player: 2,
-                id: 91,
-                master: 83,
+                player: player_id(2),
+                id: object_id(91),
+                master: master_id(83),
             }),
         ),
         (
@@ -655,7 +688,10 @@ fn the_object_commands_keep_their_fields() {
                 u_id: 92,
             }
             .encode(),
-            Command::Delete(DeleteCommand { player: 2, id: 92 }),
+            Command::Delete(DeleteCommand {
+                player: player_id(2),
+                id: object_id(92),
+            }),
         ),
         (
             packets::GoBackToWork {
@@ -663,7 +699,10 @@ fn the_object_commands_keep_their_fields() {
                 u_id: 93,
             }
             .encode(),
-            Command::GoBackToWork(GoBackToWorkCommand { player: 2, id: 93 }),
+            Command::GoBackToWork(GoBackToWorkCommand {
+                player: player_id(2),
+                id: object_id(93),
+            }),
         ),
         (
             packets::AllBackToWork {
@@ -671,7 +710,10 @@ fn the_object_commands_keep_their_fields() {
                 u_id: 93,
             }
             .encode(),
-            Command::AllBackToWork(AllBackToWorkCommand { player: 2, id: 93 }),
+            Command::AllBackToWork(AllBackToWorkCommand {
+                player: player_id(2),
+                id: object_id(93),
+            }),
         ),
         (
             packets::TownBell {
@@ -681,8 +723,8 @@ fn the_object_commands_keep_their_fields() {
             }
             .encode(),
             Command::TownBell(TownBellCommand {
-                player: 2,
-                id: 94,
+                player: player_id(2),
+                id: object_id(94),
                 activate: true,
             }),
         ),
@@ -692,7 +734,10 @@ fn the_object_commands_keep_their_fields() {
                 u_id: 95,
             }
             .encode(),
-            Command::Gate(GateCommand { player: 2, id: 95 }),
+            Command::Gate(GateCommand {
+                player: player_id(2),
+                id: object_id(95),
+            }),
         ),
     ];
     for (packet, command) in commands {
@@ -718,9 +763,9 @@ fn flare_trade_and_game_keep_their_fields() {
             }
             .encode(),
             Command::Flare(FlareCommand {
-                player: 2,
-                target: -1,
-                point: [7.0, 8.0],
+                player: player_id(2),
+                target: None,
+                point: Point::new(7.0, 8.0),
                 players: 4,
                 shown: vec![true, false, true, false, true],
             }),
@@ -734,10 +779,10 @@ fn flare_trade_and_game_keep_their_fields() {
             }
             .encode(),
             Command::Trade(TradeCommand {
-                player: 2,
+                player: player_id(2),
                 attribute: 1,
                 times: 2,
-                market: 96,
+                market: Some(object_id(96)),
                 buy: true,
             }),
         ),
@@ -750,10 +795,10 @@ fn flare_trade_and_game_keep_their_fields() {
             }
             .encode(),
             Command::Trade(TradeCommand {
-                player: 2,
+                player: player_id(2),
                 attribute: 0x0102,
                 times: 1,
-                market: 97,
+                market: Some(object_id(97)),
                 buy: false,
             }),
         ),
@@ -769,7 +814,7 @@ fn flare_trade_and_game_keep_their_fields() {
             }
             .encode(),
             Command::Game(GameCommand {
-                issuer: 2,
+                issuer: player_id(2),
                 sub: 1,
                 player: 3,
                 a: -1,
@@ -811,8 +856,8 @@ fn a_tribute_keeps_its_four_gifts() {
     assert_eq!(
         round_trip(&tribute),
         Command::Tribute(TributeCommand {
-            player: 1,
-            to: 2,
+            player: player_id(1),
+            to: player_id(2),
             gifts: [
                 gift(3, 100.0, 30.0),
                 gift(0, 0.0, 0.0),
@@ -846,6 +891,62 @@ fn a_packet_its_command_does_not_write_back_stays_raw() {
     assert_eq!(raw(&queue).kind(), ErrorKind::InvalidInput);
 }
 
+/// A packet holding a value its command's types refuse stays raw, the reason the type's and
+/// the command's name: a negative master to build, −1 for the object a command needs (the one
+/// deleted, a FOLLOW's target). Where the command works without one, an object id's −1 is none
+/// and decodes: in a unit list (a computer's BUILD without builders lists −1), as a target.
+#[test]
+fn a_packet_of_a_value_its_types_refuse_stays_raw() {
+    let build = |o_id| {
+        packets::Build {
+            commp_id: 1,
+            num: 1,
+            gap_0x06: [0; 2],
+            x: 1.0,
+            y: 2.0,
+            o_id,
+            q_id: -1,
+            field_0x18: u32::MAX,
+            frame: 0,
+            gap_0x1d: [0],
+            field_0x1e: 0,
+            field_0x1f: 0,
+            ids: vec![-1],
+        }
+        .encode()
+    };
+    let why = raw(&build(-5));
+    assert_eq!(why.kind(), ErrorKind::InvalidInput);
+    assert_eq!(why.reason(), "a negative master id, which no master has");
+    let Command::Build(BuildCommand { builders, .. }) = round_trip(&build(70)) else {
+        panic!("a build")
+    };
+    assert_eq!(builders.ids, [None]);
+    let Command::Order(OrderCommand { units, .. }) = round_trip(&interact(2, 1, vec![-1, 5]))
+    else {
+        panic!("an interact")
+    };
+    assert_eq!(units.ids, object_ids([-1, 5]));
+    let delete = packets::CancelBuild {
+        commp_id: 1,
+        u_id: -1,
+    }
+    .encode();
+    let follow = packets::Follow {
+        commp_id: 1,
+        num: 1,
+        gap_0x06: [0; 2],
+        target: -1,
+        ids: vec![5],
+    }
+    .encode();
+    for needed in [delete, follow] {
+        let why = raw(&needed);
+        assert_eq!(why.kind(), ErrorKind::InvalidInput);
+        assert_eq!(why.reason(), "an object id of −1, which names none");
+    }
+}
+
 /// A kind the engine does not run, and a packet that fits no layout, stay raw; a packet without
 /// its player byte is an error.
 #[test]
@@ -869,28 +970,30 @@ fn an_unmodelled_packet_stays_raw() {
     );
 }
 
-/// A command whose values its packet cannot hold is an error: a player past a byte, a FLARE of
-/// fewer than three players' bytes, more ids than a packet's size holds.
+/// A command whose values its packet cannot hold is an error: a FLARE of fewer than three
+/// players' bytes, more ids than a packet's size holds (a player is a byte by its type).
 #[test]
 fn a_command_its_packet_cannot_hold_is_an_error() {
     let stop = |player, ids: Vec<i32>| {
         Command::Stop(StopCommand {
             player,
-            units: UnitList::of(ids),
+            units: unit_list(object_ids(ids)),
         })
     };
     let refused = |c: &Command| encode(c).map_err(|e| e.kind());
-    assert_eq!(refused(&stop(256, vec![1])), Err(ErrorKind::InvalidInput));
     let most = (usize::from(u16::MAX) + 4 - packets::Stop::FIXED) / 4;
-    assert_eq!(encode(&stop(1, vec![0; most])).map(|p| p.len()), Ok(65536));
     assert_eq!(
-        refused(&stop(1, vec![0; most + 1])),
+        encode(&stop(player_id(1), vec![0; most])).map(|p| p.len()),
+        Ok(65536)
+    );
+    assert_eq!(
+        refused(&stop(player_id(1), vec![0; most + 1])),
         Err(ErrorKind::InvalidInput)
     );
     let flare = Command::Flare(FlareCommand {
-        player: 1,
-        target: -1,
-        point: [0.0; 2],
+        player: player_id(1),
+        target: None,
+        point: Point::new(0.0, 0.0),
         players: 2,
         shown: vec![true, false],
     });

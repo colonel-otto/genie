@@ -7,6 +7,7 @@
 
 use crate::math::conversions::cvttss2si;
 use crate::math::fmath::{at_most_or_unordered, below_or_unordered, maxss};
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The commodities: food, wood and stone (the commands' only ones) and the ore (attribute
@@ -150,7 +151,8 @@ impl World {
     /// with 1 and 1: the gold counts as gathered too, [`World::add_resource`]) and the lot goes
     /// (slot 0xf8 with 0 and 1). Not held: the statistics (`FUN_141778560`) and the local
     /// player's telemetry (`FUN_14097daf0`).
-    pub(crate) fn sell(&mut self, p: usize, attribute: u8, times: u16) {
+    pub(crate) fn sell(&mut self, p: PlayerId, attribute: u8, times: u16) {
+        let p = p.index();
         for _ in 0..times {
             let volume = self.players[p].commodity_volume;
             let held = self.players[p]
@@ -180,7 +182,8 @@ impl World {
     /// 0xf8 with 0 and 1), then the price rises ([`Market::trade`]) and the lot comes in. Not
     /// held: the statistics (`FUN_141778560`) and the local player's telemetry
     /// (`FUN_14097daf0`).
-    pub(crate) fn buy(&mut self, p: usize, attribute: u8, times: u16) {
+    pub(crate) fn buy(&mut self, p: PlayerId, attribute: u8, times: u16) {
+        let p = p.index();
         for _ in 0..times {
             let volume = self.players[p].commodity_volume;
             if volume < 1 {
@@ -208,6 +211,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_ids::player_id;
     use crate::world::Player;
 
     fn market() -> Market {
@@ -304,7 +308,7 @@ mod tests {
     #[test]
     fn a_sale_gives_the_lot_s_worth_less_the_fee_at_the_old_price() {
         let mut t = trading();
-        t.sell(1, WOOD, 2);
+        t.sell(player_id(1), WOOD, 2);
         let p = &t.players[1];
         assert_eq!(p.resources, [100.0, 0.0, 100.0, 170.0]);
         assert_eq!((p.attributes[49], p.attributes[169]), (70.0, 70.0));
@@ -321,7 +325,7 @@ mod tests {
     fn a_purchase_costs_the_lot_s_worth_and_the_fee_at_least_21() {
         let mut t = trading();
         t.players[1].resources[GOLD] = 170.0;
-        t.buy(1, FOOD, 2);
+        t.buy(player_id(1), FOOD, 2);
         let p = &t.players[1];
         assert_eq!(p.resources, [200.0, 100.0, 100.0, 21.0]);
         assert_eq!((p.attributes[49], p.attributes[169]), (0.0, 0.0));
@@ -331,11 +335,11 @@ mod tests {
         );
         let mut t = trading();
         t.players[1].commodity_volume = 10;
-        t.buy(1, WOOD, 1);
+        t.buy(player_id(1), WOOD, 1);
         assert_eq!(t.players[1].resources[GOLD], 100.0 - 21.0);
         // no volume, no purchase
         t.players[1].commodity_volume = 0;
-        t.buy(1, WOOD, 1);
+        t.buy(player_id(1), WOOD, 1);
         assert_eq!(t.players[1].resources[GOLD], 79.0);
     }
 }

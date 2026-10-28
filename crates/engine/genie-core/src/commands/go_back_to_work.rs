@@ -3,6 +3,8 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `GO_BACK_TO_WORK` (0x80): the player's building (`+4`) lets its villagers back out to work
@@ -10,19 +12,19 @@ use crate::world::World;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GoBackToWorkCommand {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its building.
-    pub id: i32,
+    pub id: ObjectId,
 }
 
 impl GoBackToWorkCommand {
     /// `do_command`'s check leaves only the player's own building (or any with the setting
     /// `+0x1074`); the handler (`FUN_141625590`) runs on it ([`World::go_back_to_work`]).
-    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        if w.players.get(self.player).is_none() {
+    pub(crate) fn run(self, w: &mut World) -> Result<(), GenieError> {
+        if w.players.get(self.player.index()).is_none() {
             return Ok(());
         }
-        w.go_back_to_work(self.player, &[self.id])
+        w.go_back_to_work(self.player, &[Some(self.id)])
     }
 }
 
@@ -31,7 +33,7 @@ impl GoBackToWorkCommand {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GoBackToWork2Command {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its buildings.
     pub units: UnitList,
 }

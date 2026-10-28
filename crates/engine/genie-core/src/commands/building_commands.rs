@@ -4,6 +4,10 @@ use crate::GenieError;
 use crate::commands::gather_point::GatherPointCommand;
 use crate::commands::research::ResearchCommand;
 use crate::commands::{CASTLE_AGE, CASTLE_AGE_MODE, GatherPoint};
+use crate::map::Point;
+use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::{BLOCKS_RESEARCH, BUILDING_KIND, World};
@@ -13,19 +17,21 @@ impl World {
     pub(crate) fn gather_point(
         &mut self,
         g: &GatherPointCommand,
-        ids: &[i32],
+        ids: &[Option<ObjectId>],
     ) -> Result<(), GenieError> {
         let GatherPointCommand {
             player,
-            point: [x, y],
+            point,
             target,
             target_master,
             own,
             ..
         } = *g;
+        let (player, [x, y]) = (player.index(), point.xy());
         for &id in ids {
             // another player's object (the game clears its id) or one that is gone
-            let Some(i) = self.players[player].objects.position_of(id) else {
+            let Some(i) = id.and_then(|id| self.players[player].objects.position_of(id.get()))
+            else {
                 continue;
             };
             let unit = &self.players[player].objects[i];
@@ -47,13 +53,13 @@ impl World {
                     target: unit.id,
                     target_master: unit.life.master_id,
                 })
-            } else if target == -1 && x == -1.0 && y == -1.0 {
+            } else if target.is_none() && x == -1.0 && y == -1.0 {
                 None
             } else {
                 Some(GatherPoint {
                     point: [x, y, z],
-                    target,
-                    target_master,
+                    target: ObjectId::field(target),
+                    target_master: MasterId::field(target_master),
                 })
             };
             let unit = &mut self.players[player].objects[i];
@@ -76,11 +82,12 @@ impl World {
     /// held.
     pub(crate) fn command_queue(
         &mut self,
-        player: usize,
-        ids: &[i32],
-        target: i32,
-        [x, y]: [f32; 2],
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+        target: Option<ObjectId>,
+        point: Point,
     ) -> Result<(), GenieError> {
+        let (player, target, [x, y]) = (player.index(), ObjectId::field(target), point.xy());
         let step = |turns: &Self,
                     t: i32,
                     at: [f32; 2]|
@@ -111,7 +118,7 @@ impl World {
                 target_type: class,
             })
         };
-        for &id in ids {
+        for id in ObjectId::fields(ids) {
             let Some(crate::orders::Place::Live(p, i)) = self.place(id) else {
                 if self.place(id).is_some() {
                     return Err(GenieError::unsupported(
@@ -156,16 +163,16 @@ impl World {
     /// (`+4`), when the world holds it, must be the player's own, or any while players may order
     /// each other's (the setting `+0x1074`), and listed alone it must be held; with more listed,
     /// the listed ones (`+0x11..`) as the unit commands' ([`World::command_check`]). None for a
-    /// refused one, else the list with −1 for the ones left out. The packet's size tests are the
+    /// refused one, else the list with none for the ones left out. The packet's size tests are the
     /// decoder's, and the world's `+0xb12` cheat is not held.
-    pub(crate) fn research_check(&self, r: &ResearchCommand) -> Option<Vec<i32>> {
-        let player = r.player;
+    pub(crate) fn research_check(&self, r: &ResearchCommand) -> Option<Vec<Option<ObjectId>>> {
+        let player = r.player.index();
         let listed = usize::try_from(r.count).unwrap_or(0);
         if listed == 0 {
             return None;
         }
         let own = self
-            .object(r.building)
+            .object(ObjectId::field(r.building))
             .map(|(p, _)| p == player || self.settings.cheats_enabled);
         match own {
             Some(false) => return None,
@@ -176,12 +183,17 @@ impl World {
             return Some(r.buildings.clone());
         }
         let n = listed.min(r.buildings.len());
-        let mut checked = self.command_check(player, &r.buildings[..n])?;
-        checked.extend_from_slice(&r.buildings[n..]);
-        Some(checked)
+        let checked = self.command_check(player, &ObjectId::fields(&r.buildings[..n]))?;
+        Some(
+            checked
+                .into_iter()
+                .map(ObjectId::of_field)
+                .chain(r.buildings[n..].iter().copied())
+                .collect(),
+        )
     }
 
-    /// RESEARCH (`0x140e7e270`) for `player`: a target other than −1, or a technology the tree
+    /// RESEARCH (`0x140e7e270`) for `player`: a `qId` other than −1, or a technology the tree
     /// has not got, does nothing. The costs it lists (`FUN_1413d4a00`) come off the pending
     /// debit (`FUN_141630d10`). The building is the packet's (the least loaded of several,
     /// `FUN_1411d0e90`, and the shared kind's every building, `FUN_1411c3fd0`, are not modelled);
@@ -194,10 +206,14 @@ impl World {
     /// local player's statistics flag. Not modelled: the computer players' parts (`player+0x7a8`, `FUN_1411d5520`), the player's
     /// `+0x648` (0 for every player probed), Castle Age queued in game mode 16 (the world's treaty
     /// monitor's `+0x17`; no other game mode marks it).
-    pub(crate) fn research(&mut self, r: &ResearchCommand) -> Result<(), GenieError> {
-        let player = r.player;
+    pub(crate) fn research(
+        &mut self,
+        r: &ResearchCommand,
+        buildings: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
+        let player = r.player.index();
         let owner = &self.players[player];
-        if r.target != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
+        if r.q_id != -1 || r.tech < 0 || owner.techs.len() <= r.tech as usize {
             return Ok(());
         }
         let tech = r.tech as usize;
@@ -224,7 +240,7 @@ impl World {
                 "RESEARCH of the shared kind (FUN_1411c3fd0 over the packet's buildings)",
             ));
         }
-        let building_id = self.least_loaded(r);
+        let building_id = self.least_loaded(r, buildings);
         if self.linked_techs.contains_key(&r.tech) {
             return Err(GenieError::unsupported(
                 "RESEARCH of a linked technology (FUN_140f3a0f0, FUN_140f39e80)",

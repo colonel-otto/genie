@@ -233,6 +233,7 @@ mod tests {
     use super::*;
     use crate::commands::{Command, UnmodelledCommand};
     use crate::objects::lifecycle::{Class, Lifecycle, MasterData};
+    use crate::test_ids::player_id;
     use crate::world::{Player, World};
     use std::fmt::Write;
     use std::sync::{Arc, Mutex};
@@ -411,7 +412,7 @@ mod tests {
             t.tick_with(
                 104,
                 &[Command::Unmodelled(UnmodelledCommand {
-                    player: 0,
+                    player: player_id(0),
                     packet: Vec::new(),
                     why,
                 })],

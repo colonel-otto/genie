@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::orders::{
     CLASS_54, Interact, MOVING, MoveOrder, Place, Split, Work, grid_point, ignore_unit,
     offset_point, readiness, set_differentiator_groups,
@@ -49,13 +50,13 @@ impl World {
         if still {
             // an object that does not move takes slot 0x128 at once with 1 (no carried-resource
             // test, any task) at the order's point, z 0; a queued order then goes on as a mover's
-            self.order_at_once(player, idx, order.target, order.point)?;
+            self.order_at_once(player, idx, ObjectId::field(order.target), order.point.xy())?;
             if !order.queued {
                 return Ok(());
             }
         }
         let target = self
-            .object(order.target)
+            .object(ObjectId::field(order.target))
             .map(|(tp, t)| (t.life.master_id, tp));
         let map = self.spatial.map;
         let unit = &mut self.players[player].objects[idx];
@@ -77,8 +78,13 @@ impl World {
             }
         }
         let point = match centroid {
-            None => order.point,
-            Some(c) => offset_point([unit.position[0], unit.position[1]], c, order.point, map),
+            None => order.point.xy(),
+            Some(c) => offset_point(
+                [unit.position[0], unit.position[1]],
+                c,
+                order.point.xy(),
+                map,
+            ),
         };
         let takes_it = unit
             .ai
@@ -91,12 +97,12 @@ impl World {
             if let Some(ai) = unit.ai.as_mut() {
                 ai.orders.clear();
             }
-            if order.target == id {
+            if ObjectId::field(order.target) == id {
                 return Ok(());
             }
             let at = [point[0], point[1], 0.0];
             let work = Work {
-                target: order.target,
+                target: ObjectId::field(order.target),
                 point: at,
                 carry_test: order.carry_test,
                 filter: order.filter,
@@ -110,11 +116,15 @@ impl World {
             issuer: issuer as i32,
             order: OrderKind::OnTarget,
             priority: 100,
-            target: if target.is_some() { order.target } else { -1 },
+            target: if target.is_some() {
+                ObjectId::field(order.target)
+            } else {
+                -1
+            },
             target_owner,
             point: [point[0], point[1], 0.0],
             range: 0.0,
-            shown: order.point,
+            shown: order.point.xy(),
             ready: order.direct,
             target_type,
         };
@@ -230,7 +240,7 @@ impl World {
             }
             &[id] if !order.control => {
                 self.groups.count_command();
-                self.leave_groups(player, &[id], order.target)?;
+                self.leave_groups(player, &[id], ObjectId::field(order.target))?;
                 return self.move_unit(player, id, &[], None, order);
             }
             _ => {
@@ -239,7 +249,7 @@ impl World {
                     .and_then(|mut s| self.move_groups(&mut s, order).map(|()| s.loose));
                 self.groups.count_command();
                 let loose = loose?;
-                self.leave_groups(player, &loose, order.target)?;
+                self.leave_groups(player, &loose, ObjectId::field(order.target))?;
                 loose
             }
         };
@@ -258,7 +268,7 @@ impl World {
                 .filter(|&(j, _)| j != i)
                 .map(|(_, &u)| u)
                 .collect();
-            let cell = narrow.then(|| grid_point(i, loose.len(), order.point, map));
+            let cell = narrow.then(|| grid_point(i, loose.len(), order.point.xy(), map));
             self.move_unit(player, id, &others, cell, order)?;
         }
         Ok(())
@@ -308,7 +318,7 @@ impl World {
                 id
             } else {
                 // FUN_140e6b820's target: the order's object while the world holds it
-                if self.world_object(order.target).is_some() {
+                if self.world_object(ObjectId::field(order.target)).is_some() {
                     return Err(GenieError::unsupported(
                         "a MOVE of a group the splitter keeps (FUN_140fd9f40)",
                     ));
@@ -334,8 +344,12 @@ impl World {
             {
                 let _ = self.group_command(id, target, at, (false, true))?;
             }
-            let _ =
-                self.group_command(id, order.target, order.point, (order.queued, order.direct))?;
+            let _ = self.group_command(
+                id,
+                ObjectId::field(order.target),
+                order.point.xy(),
+                (order.queued, order.direct),
+            )?;
         }
         let list: Vec<u32> = listed.iter().map(|&g| g as u32).collect();
         for &id in &listed {

@@ -4,6 +4,7 @@
 
 use crate::GenieError;
 use crate::math::fmath::maxss;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The masters one of which a player needs to pay tribute (`FUN_1416259e0`: its tracker's count
@@ -75,10 +76,12 @@ impl World {
     /// An attribute a player does not have, and a computer player's receipt.
     pub(crate) fn tribute(
         &mut self,
-        from: usize,
-        to: usize,
+        from: PlayerId,
+        to: PlayerId,
         gifts: &[Gift; 4],
     ) -> Result<(), GenieError> {
+        let from = from.index();
+        let to = to.index();
         if from == to || !self.pays_tribute(from) {
             return Ok(());
         }
@@ -112,6 +115,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::objects::masters::{Master, Masters};
+    use crate::test_ids::player_id;
     use crate::world::Player;
 
     fn gift(attribute: u16, amount: f32, fee: f32) -> Gift {
@@ -191,7 +195,7 @@ mod tests {
             gift(0, 0.0, 0.3),
         ];
         let mut t = world(true);
-        t.tribute(1, 2, &gifts).unwrap();
+        t.tribute(player_id(1), player_id(2), &gifts).unwrap();
         let (giver, receiver) = (&t.players[1], &t.players[2]);
         assert_eq!(
             giver.resources,
@@ -214,7 +218,7 @@ mod tests {
         for (from, to, market) in [(1, 2, false), (1, 1, true)] {
             let mut t = world(market);
             let before = t.players.clone();
-            t.tribute(from, to, &gifts).unwrap();
+            t.tribute(player_id(from), player_id(to), &gifts).unwrap();
             assert_eq!(t.players, before);
         }
     }
@@ -224,6 +228,9 @@ mod tests {
     fn a_computer_player_s_receipt_is_not_modelled() {
         let mut t = world(true);
         t.players[2].computer = true;
-        assert!(t.tribute(1, 2, &[gift(1, 10.0, 0.3); 4]).is_err());
+        assert!(
+            t.tribute(player_id(1), player_id(2), &[gift(1, 10.0, 0.3); 4])
+                .is_err()
+        );
     }
 }

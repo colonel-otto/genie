@@ -20,6 +20,7 @@ vision and the unit AI's searches read it.
 | File | What it holds |
 | --- | --- |
 | [`mod.rs`](mod.rs) | The map: the terrain of each tile and where the world's objects stand (their positions, radii, footprints and the grid that finds them). |
+| [`point.rs`](point.rs) | A point on the map as one type: where a command sends its units, builds, unloads or flares. |
 | [`terrain.rs`](terrain.rs) | The map's terrain per tile (`RGE_Map`'s tiles, 0x40 bytes each: `+0x9` the terrain, `+0xa` the terrain to restore, `+0xc` the layer) and what the `.dat` says of each terrain, as far as the slice reads them: a completed building's snow check and its foundation terrain (`FUN_1411dbb70`, `FUN_1411ddd90`). |
 | [`spatial/`](spatial/) | Where the world's objects are, as movement reads them: each live object's position, radii and class, and the obstruction record the game keeps for it in its obstruction manager (`DAT_143f0a088`, queried by `FUN_141051900`). |
 <!-- /files -->

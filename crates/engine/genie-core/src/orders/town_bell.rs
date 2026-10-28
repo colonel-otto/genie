@@ -7,7 +7,9 @@ use crate::GenieError;
 use crate::gathering::gather::GATHER;
 use crate::gathering::hunt::HUNT;
 use crate::movement::footprint_gap_squared;
+use crate::objects::ObjectId;
 use crate::orders::{GARRISON, VILLAGER, own_order_target};
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::task_finder::Diplomacy;
 use crate::unit_ai::task_finder::world::TaskWorld;
@@ -193,10 +195,12 @@ impl World {
     /// not simulation.
     pub(crate) fn town_bell(
         &mut self,
-        player: usize,
-        id: i32,
+        player: PlayerId,
+        id: ObjectId,
         activate: bool,
     ) -> Result<(), GenieError> {
+        let player = player.index();
+        let id = id.get();
         let Some((owner, _)) = (id != -1).then(|| self.object(id)).flatten() else {
             return Ok(());
         };
@@ -308,7 +312,13 @@ impl World {
     /// work, from the last in; then the units its owner's tracker files under class 4 and master
     /// 1808 not inside another go back from where they are. The game screen's flag (`+0x1874`) is
     /// not simulation.
-    pub(crate) fn all_back_to_work(&mut self, player: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn all_back_to_work(
+        &mut self,
+        player: PlayerId,
+        id: ObjectId,
+    ) -> Result<(), GenieError> {
+        let player = player.index();
+        let id = id.get();
         let Some((owner, _)) = self.object(id) else {
             return Ok(());
         };
@@ -673,6 +683,8 @@ mod tests {
         use crate::garrison::tests::{
             ARCHER, VILLAGER, inside_tc, let_out_world, sized_world, tracked, walker,
         };
+        use crate::test_ids::object_id;
+        use crate::test_ids::player_id;
         use crate::world::World;
 
         fn enter(t: &World, id: i32) -> Option<i32> {
@@ -687,7 +699,7 @@ mod tests {
             walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
             walker(&mut t, 1, 1001, VILLAGER, [45.5, 45.5]);
             walker(&mut t, 1, 1002, ARCHER, [6.5, 5.5]);
-            t.town_bell(1, 100, true).unwrap();
+            t.town_bell(player_id(1), object_id(100), true).unwrap();
             assert_eq!(
                 [1000, 1001, 1002].map(|id| enter(&t, id)),
                 [Some(100), None, None]
@@ -700,16 +712,16 @@ mod tests {
             let mut t = let_out_world();
             walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
             // player 2 rings player 1's centre: refused
-            t.town_bell(2, 100, true).unwrap();
+            t.town_bell(player_id(2), object_id(100), true).unwrap();
             assert_eq!(enter(&t, 1000), None);
             t.settings.cheats_enabled = true;
-            t.town_bell(2, 100, true).unwrap();
+            t.town_bell(player_id(2), object_id(100), true).unwrap();
             assert_eq!(enter(&t, 1000), Some(100));
             // an object that is no town centre rings nothing; nor does an id the world lacks
             let mut t = let_out_world();
             walker(&mut t, 1, 1000, VILLAGER, [5.5, 5.5]);
-            t.town_bell(1, 1000, true).unwrap();
-            t.town_bell(1, -1, true).unwrap();
+            t.town_bell(player_id(1), object_id(1000), true).unwrap();
+            t.town_bell(player_id(1), object_id(4242), true).unwrap();
             assert_eq!(enter(&t, 1000), None);
         }
 
@@ -735,7 +747,7 @@ mod tests {
             t.object_mut(1003).unwrap().1.town_bell.flag = true;
             t.object_mut(1003).unwrap().1.town_bell.work.point = [1.5, 1.5];
             tracked(&mut t, VILLAGER, &[1000, 1001, 1002]);
-            t.town_bell(1, 100, false).unwrap();
+            t.town_bell(player_id(1), object_id(100), false).unwrap();
             assert!(!t.object(100).unwrap().1.town_bell.flag);
             let v = t.object(1000).unwrap().1;
             assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
@@ -756,7 +768,7 @@ mod tests {
             v.flag = true;
             v.work.point = [3.5, -1.0];
             tracked(&mut t, VILLAGER, &[1001]);
-            t.town_bell(1, 100, false).unwrap();
+            t.town_bell(player_id(1), object_id(100), false).unwrap();
             assert_eq!(goal(&t, 1001), (None, true));
         }
         #[test]
@@ -781,7 +793,7 @@ mod tests {
                 t
             };
             let mut t = world();
-            t.all_back_to_work(1, 100).unwrap();
+            t.all_back_to_work(player_id(1), object_id(100)).unwrap();
             assert!(t.object(100).unwrap().1.town_bell.flag);
             let v = t.object(1000).unwrap().1;
             assert_eq!((v.life.inside, v.town_bell.flag), (None, false));
@@ -795,7 +807,7 @@ mod tests {
             );
             // another player's command does nothing without the game's cheats
             let mut t = world();
-            t.all_back_to_work(2, 100).unwrap();
+            t.all_back_to_work(player_id(2), object_id(100)).unwrap();
             assert_eq!(t.object(1000).unwrap().1.life.inside, Some(100));
         }
     }

@@ -2,6 +2,8 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::map::Point;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The waypoints of PATROL and `ATTACK_MOVE`: their count (`+0xb`) and the packet's ten slots
@@ -11,7 +13,7 @@ pub struct Waypoints {
     /// How many of the slots the command uses.
     pub count: u8,
     /// The slots.
-    pub points: [[f32; 2]; 10],
+    pub points: [Point; 10],
 }
 
 impl Waypoints {
@@ -21,8 +23,8 @@ impl Waypoints {
     ///
     /// More than ten points.
     #[must_use]
-    pub fn of(points: &[[f32; 2]]) -> Self {
-        let mut slots = [[0.0; 2]; 10];
+    pub fn of(points: &[Point]) -> Self {
+        let mut slots = [Point::default(); 10];
         slots[..points.len()].copy_from_slice(points);
         Self {
             count: u8::try_from(points.len()).expect("at most ten waypoints"),
@@ -33,7 +35,7 @@ impl Waypoints {
     /// The waypoints the handlers read (`FUN_140e69cc0`, `FUN_140e66200`): the first `count`;
     /// None without 1 to 10, where they do nothing.
     #[must_use]
-    pub fn used(&self) -> Option<&[[f32; 2]]> {
+    pub fn used(&self) -> Option<&[Point]> {
         (1..=10)
             .contains(&self.count)
             .then(|| &self.points[..usize::from(self.count)])
@@ -46,7 +48,7 @@ impl Waypoints {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PatrolCommand {
     /// The player whose units patrol.
-    pub player: usize,
+    pub player: PlayerId,
     /// The units.
     pub units: UnitList,
     /// The waypoints.

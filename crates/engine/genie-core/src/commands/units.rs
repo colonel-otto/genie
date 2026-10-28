@@ -1,9 +1,13 @@
 //! The units a command's packet lists: its count and the ids after the packet's fixed part.
 
+use crate::GenieError;
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The units a command's packet lists: its count (a `u16`, `+0x4` in most packets) and the
-/// ids that follow the packet's fixed part. The handlers read the first `count` of them, at
+/// ids that follow the packet's fixed part, −1 for none (a computer's BUILD without builders,
+/// an UNLOAD's), which no object has. The handlers read the first `count` of them, at
 /// most 60 (500 for a computer player, `FUN_140e6b250`); most checks refuse a count past the
 /// ids the packet holds ([`UnitList::overruns`]). The orders' reader (`FUN_140e6b290`) takes a
 /// count of [`UnitList::LAST_COMMANDED`] as the comm player's last commanded units.
@@ -11,27 +15,13 @@ use crate::world::World;
 pub struct UnitList {
     /// How many units the command names.
     pub count: u16,
-    /// The ids the packet holds.
-    pub ids: Vec<i32>,
+    /// The ids the packet holds, none for −1.
+    pub ids: Vec<Option<ObjectId>>,
 }
 
 impl UnitList {
     /// The count that names the comm player's last commanded units (`UNIT_NUM_USE_LAST`).
     pub const LAST_COMMANDED: u16 = 0xffff;
-
-    /// A list of `ids`, its count theirs.
-    ///
-    /// # Panics
-    ///
-    /// More than `u16::MAX - 1` ids, which no packet holds.
-    #[must_use]
-    pub fn of(ids: Vec<i32>) -> Self {
-        let count = u16::try_from(ids.len())
-            .ok()
-            .filter(|&c| c != Self::LAST_COMMANDED)
-            .expect("a command lists fewer than 0xffff units");
-        Self { count, ids }
-    }
 
     /// The comm player's last commanded units: the count `0xffff` and no ids.
     #[must_use]
@@ -57,9 +47,29 @@ impl UnitList {
 
     /// The first `count` ids, at most `most` of them.
     #[must_use]
-    pub fn first(&self, most: usize) -> &[i32] {
+    pub fn first(&self, most: usize) -> &[Option<ObjectId>] {
         let n = usize::from(self.count).min(most).min(self.ids.len());
         &self.ids[..n]
+    }
+}
+
+impl TryFrom<Vec<Option<ObjectId>>> for UnitList {
+    type Error = GenieError;
+
+    /// A list of `ids`, its count theirs.
+    ///
+    /// # Errors
+    ///
+    /// `0xffff` ids or more, which no packet's count names.
+    fn try_from(ids: Vec<Option<ObjectId>>) -> Result<Self, GenieError> {
+        let count = u16::try_from(ids.len())
+            .ok()
+            .filter(|&c| c != Self::LAST_COMMANDED)
+            .ok_or_else(|| {
+                GenieError::invalid_input("a unit list of 0xffff ids or more, which no count names")
+                    .with("ids", ids.len())
+            })?;
+        Ok(Self { count, ids })
     }
 }
 
@@ -71,7 +81,12 @@ impl World {
     /// [`OrderCommand`] reads as the last commanded units).
     ///
     /// [`OrderCommand`]: crate::commands::OrderCommand
-    pub(crate) fn read_units<'u>(&self, player: usize, units: &'u UnitList) -> Option<&'u [i32]> {
+    pub(crate) fn read_units<'u>(
+        &self,
+        player: PlayerId,
+        units: &'u UnitList,
+    ) -> Option<&'u [Option<ObjectId>]> {
+        let player = player.index();
         (player < self.players.len() && !units.overruns())
             .then(|| units.first(self.most_units(player)))
     }
@@ -79,7 +94,14 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    use crate::ErrorKind;
     use crate::commands::{BuildCommand, Command, StopCommand, UnitList};
+    use crate::map::Point;
+    use crate::objects::ObjectId;
+    use crate::test_ids::master_id;
+    use crate::test_ids::object_ids;
+    use crate::test_ids::player_id;
+    use crate::test_ids::unit_list;
     use crate::world::{Player, World};
 
     /// Gaia, a human player and a computer player.
@@ -100,9 +122,17 @@ mod tests {
     #[test]
     fn a_handler_reads_60_units_of_a_human_and_500_of_a_computer() {
         let w = world();
-        let many = UnitList::of((0..600).collect());
-        assert_eq!(w.read_units(1, &many).map(<[i32]>::len), Some(60));
-        assert_eq!(w.read_units(2, &many).map(<[i32]>::len), Some(500));
+        let many = unit_list(object_ids(0..600));
+        assert_eq!(
+            w.read_units(player_id(1), &many)
+                .map(<[Option<ObjectId>]>::len),
+            Some(60)
+        );
+        assert_eq!(
+            w.read_units(player_id(2), &many)
+                .map(<[Option<ObjectId>]>::len),
+            Some(500)
+        );
     }
 
     #[test]
@@ -110,12 +140,21 @@ mod tests {
         let w = world();
         let short = UnitList {
             count: 2,
-            ids: vec![7],
+            ids: object_ids([7]),
         };
-        assert_eq!(w.read_units(1, &short), None);
-        assert_eq!(w.read_units(1, &UnitList::last_commanded()), None);
-        assert_eq!(w.read_units(3, &UnitList::of(vec![7])), None);
-        assert_eq!(w.read_units(1, &UnitList::of(vec![7])), Some(&[7][..]));
+        assert_eq!(w.read_units(player_id(1), &short), None);
+        assert_eq!(
+            w.read_units(player_id(1), &UnitList::last_commanded()),
+            None
+        );
+        assert_eq!(
+            w.read_units(player_id(3), &unit_list(object_ids([7]))),
+            None
+        );
+        assert_eq!(
+            w.read_units(player_id(1), &unit_list(object_ids([7]))),
+            Some(&object_ids([7])[..])
+        );
     }
 
     #[test]
@@ -124,10 +163,10 @@ mod tests {
         let before = w.clone();
         // BUILD of the last commanded units: its count overruns the packet (do_command's 0x66)
         w.run(&Command::Build(BuildCommand {
-            player: 1,
-            master: 70,
-            position: [1.0, 1.0],
-            target: -1,
+            player: player_id(1),
+            master: master_id(70),
+            position: Point::new(1.0, 1.0),
+            q_id: -1,
             sprite_override: -1,
             builders: UnitList::last_commanded(),
             queued: false,
@@ -135,10 +174,10 @@ mod tests {
             frame: 0,
         }));
         w.run(&Command::Stop(StopCommand {
-            player: 1,
+            player: player_id(1),
             units: UnitList {
                 count: 3,
-                ids: vec![7],
+                ids: object_ids([7]),
             },
         }));
         assert_eq!(w, before);
@@ -148,10 +187,10 @@ mod tests {
     fn a_list_reads_its_first_count_ids_at_most_the_cap() {
         let list = UnitList {
             count: 3,
-            ids: vec![1, 2, 3, 4],
+            ids: object_ids([1, 2, 3, 4]),
         };
-        assert_eq!(list.first(60), &[1, 2, 3]);
-        assert_eq!(list.first(2), &[1, 2]);
+        assert_eq!(ObjectId::fields(list.first(60)), [1, 2, 3]);
+        assert_eq!(ObjectId::fields(list.first(2)), [1, 2]);
         assert!(!list.overruns());
     }
 
@@ -159,10 +198,10 @@ mod tests {
     fn a_count_past_the_ids_overruns_and_reads_what_the_packet_holds() {
         let list = UnitList {
             count: 5,
-            ids: vec![1, 2],
+            ids: object_ids([1, 2]),
         };
         assert!(list.overruns());
-        assert_eq!(list.first(60), &[1, 2]);
+        assert_eq!(ObjectId::fields(list.first(60)), [1, 2]);
         assert!(UnitList::last_commanded().overruns());
         assert!(UnitList::last_commanded().names_last_commanded());
     }
@@ -170,12 +209,28 @@ mod tests {
     #[test]
     fn a_list_of_ids_counts_them() {
         assert_eq!(
-            UnitList::of(vec![7, 8]),
+            unit_list(object_ids([7, 8])),
             UnitList {
                 count: 2,
-                ids: vec![7, 8]
+                ids: object_ids([7, 8])
             }
         );
-        assert!(!UnitList::of(vec![7]).names_last_commanded());
+        assert!(!unit_list(object_ids([7])).names_last_commanded());
+    }
+
+    /// A list of `0xffff` ids or more is an error: no count names it (`0xffff` names the last
+    /// commanded units); `0xfffe` ids are a list.
+    #[test]
+    fn a_list_no_count_names_is_an_error() {
+        let ids = |n: usize| vec![None; n];
+        assert_eq!(
+            UnitList::try_from(ids(0xffff)).map_err(|e| e.kind()),
+            Err(ErrorKind::InvalidInput)
+        );
+        assert_eq!(
+            UnitList::try_from(ids(0x1_0000)).map_err(|e| e.kind()),
+            Err(ErrorKind::InvalidInput)
+        );
+        assert_eq!(UnitList::try_from(ids(0xfffe)).map(|l| l.count), Ok(0xfffe));
     }
 }

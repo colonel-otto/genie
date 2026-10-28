@@ -8,8 +8,10 @@
 
 use crate::GenieError;
 use crate::construction::build::held;
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::orders::Place;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The classes no delete takes (`DAT_142f925c0`, and `FUN_14120f620`'s own test): livestock,
@@ -46,14 +48,14 @@ pub(crate) const LIVESTOCK: i16 = 58;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeleteCommand {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// The object.
-    pub id: i32,
+    pub id: ObjectId,
 }
 
 impl DeleteCommand {
     /// Its handler ([`World::delete`]).
-    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+    pub(crate) fn run(self, w: &mut World) -> Result<(), GenieError> {
         w.delete(self.player, self.id)
     }
 }
@@ -70,7 +72,9 @@ impl World {
     /// # Errors
     ///
     /// What the deletes do not model.
-    pub(crate) fn delete(&mut self, player: usize, id: i32) -> Result<(), GenieError> {
+    pub(crate) fn delete(&mut self, player: PlayerId, id: ObjectId) -> Result<(), GenieError> {
+        let player = player.index();
+        let id = id.get();
         let Some((owner, unit)) = self.object(id) else {
             return Ok(());
         };
@@ -548,6 +552,8 @@ mod tests {
     use crate::map::spatial::Obstruction;
     use crate::objects::masters::{Master, Masters};
     use crate::objects::unit::Unit;
+    use crate::test_ids::object_id;
+    use crate::test_ids::player_id;
     use crate::world::Player;
 
     /// Gaia and two players: player 1's villager 10, house foundation 11 (build time 25, cost 25
@@ -643,9 +649,9 @@ mod tests {
     #[test]
     fn a_delete_takes_a_unit_s_hit_points_but_not_another_player_s_or_livestock() {
         let mut t = game(0.0, true);
-        t.delete(1, 10).unwrap();
-        t.delete(1, 20).unwrap();
-        t.delete(1, 12).unwrap();
+        t.delete(player_id(1), object_id(10)).unwrap();
+        t.delete(player_id(1), object_id(20)).unwrap();
+        t.delete(player_id(1), object_id(12)).unwrap();
         let hp = |t: &World, p: usize, i: usize| t.players[p].objects[i].life.hp;
         assert_eq!(
             (hp(&t, 1, 0), hp(&t, 2, 0), hp(&t, 1, 2)),
@@ -653,12 +659,12 @@ mod tests {
         );
         // the setting +0x1074 lets a player delete another's
         t.settings.cheats_enabled = true;
-        t.delete(1, 20).unwrap();
+        t.delete(player_id(1), object_id(20)).unwrap();
         assert_eq!(hp(&t, 2, 0), 0.0);
         // a unit whose deletion is disabled stays
         let mut t = game(0.0, true);
         t.players[1].objects[0].undeletable = true;
-        t.delete(1, 10).unwrap();
+        t.delete(player_id(1), object_id(10)).unwrap();
         assert_eq!(hp(&t, 1, 0), 25.0);
     }
 
@@ -666,7 +672,7 @@ mod tests {
     fn a_deleted_foundation_gives_back_what_its_build_time_has_still_to_go() {
         // no builder started it: all of its paid cost, and it is destroyed at once (state 7)
         let mut t = game(0.0, true);
-        t.delete(1, 11).unwrap();
+        t.delete(player_id(1), object_id(11)).unwrap();
         let house = &t.players[1].objects[1].life;
         assert_eq!(
             (t.players[1].resources[1], house.hp, house.state),
@@ -675,7 +681,7 @@ mod tests {
         // 10 of its 25 seconds of work done: 15/25 of the wood (in f32: 15.000001); it dies in
         // its own update
         let mut t = game(10.0, false);
-        t.delete(1, 11).unwrap();
+        t.delete(player_id(1), object_id(11)).unwrap();
         let house = &t.players[1].objects[1].life;
         let share = (25.0_f32 - 10.0) / 25.0;
         assert_eq!(
@@ -700,14 +706,14 @@ mod tests {
         };
         let mut t = game(0.0, true);
         town_centre(&mut t);
-        t.delete(1, 11).unwrap();
+        t.delete(player_id(1), object_id(11)).unwrap();
         let tc = &t.players[1].objects[1].life;
         assert_eq!((t.players[1].resources[1], tc.hp, tc.state), (25.0, 0.0, 7));
         let mut t = game(0.0, true);
         town_centre(&mut t);
         t.settings.treaty_length = 10;
         assert_eq!(
-            t.delete(1, 11),
+            t.delete(player_id(1), object_id(11)),
             Err(GenieError::unsupported(
                 "a deleted town centre 621 during a treaty (its owner's treaty zones)"
             ))

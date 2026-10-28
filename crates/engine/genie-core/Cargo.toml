@@ -9,6 +9,9 @@ repository.workspace = true
 [dependencies]
 # the error every crate returns: its kind, reason, place and context
 genie-error = { path = "../../base/genie-error" }
+# the getters of the newtypes (an object id, a player, a master, a point): their values are
+# private, so only the constructors that check them set them (FD-001-D23)
+getset.workspace = true
 # floorf, which the game imports from the CRT (api-ms-win-crt-math): an exact operation, so libm's
 # gives its bits (src/objects/facing.rs); the image's own math routines are ported in
 # src/math/fmath/, and tests/crt_math.rs's ignored sweeps check them against libm

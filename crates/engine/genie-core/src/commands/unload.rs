@@ -2,6 +2,8 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::map::Point;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// UNLOAD (0x6f, `FUN_14161f410`): the units the packet lists (the count at `+0x4`, the ids
@@ -11,11 +13,11 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnloadCommand {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// Its objects.
     pub units: UnitList,
     /// Where they go.
-    pub point: [f32; 2],
+    pub point: Point,
     /// Which units leave (`FUN_14118a610`'s switch).
     pub flag: u8,
     /// The unit type or object the flag reads.

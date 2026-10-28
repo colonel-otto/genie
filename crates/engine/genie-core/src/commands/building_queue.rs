@@ -2,6 +2,9 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::map::Point;
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `BUILDING_COMMAND_QUEUE` (0x2d, `0x140e64310`): the objects the packet lists (the count at
@@ -10,13 +13,13 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuildingQueueCommand {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// The objects of the packet.
     pub units: UnitList,
     /// The object the step is on, −1 for none.
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// Its point.
-    pub point: [f32; 2],
+    pub point: Point,
 }
 
 impl BuildingQueueCommand {

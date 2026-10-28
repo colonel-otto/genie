@@ -2,6 +2,7 @@
 //! and the world's victory check.
 
 use crate::GenieError;
+use crate::players::PlayerId;
 use crate::players::game_status::{
     BATTLE_ROYALE, Count, DEFEAT_IDS, KILLS_OF, LOST, PLAYING, STOP_AFTER_MS, WON,
 };
@@ -42,7 +43,8 @@ impl World {
     /// once every comm player of its world player has (one each in the slice's games), the
     /// world player's slot 3 (`FUN_1416610f0`): `+0x8c` takes the drop, `+0x8b` is set and the
     /// status becomes lost ([`World::set_status`]); its message is the interface's.
-    pub(crate) fn resign(&mut self, player: usize, dropped: bool) -> Result<(), GenieError> {
+    pub(crate) fn resign(&mut self, player: PlayerId, dropped: bool) -> Result<(), GenieError> {
+        let player = player.index();
         let p = self.players.get_mut(player).ok_or(GenieError::unsupported(
             "RESIGN of a player the slice does not have",
         ))?;

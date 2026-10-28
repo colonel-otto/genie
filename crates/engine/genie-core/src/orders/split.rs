@@ -1,6 +1,7 @@
 //! INTERACT and the order splitter: which units move loose and which form groups.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
 use crate::orders::{
     Interact, MAX_UNGROUPED, MOVING, Split, Splittable, centroid, splits_together,
 };
@@ -27,7 +28,7 @@ impl World {
         let loose = self.loose_units(units);
         self.groups.count_command();
         let loose = loose?;
-        self.leave_groups(player, &loose, order.target)?;
+        self.leave_groups(player, &loose, ObjectId::field(order.target))?;
         // FUN_140d61870: a player whose lobby entry is of type 4, which a human's is not
         if 1 < loose.len() && self.players[player].computer {
             return Err(GenieError::unsupported(

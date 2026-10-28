@@ -3,7 +3,9 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::objects::ObjectId;
 use crate::orders::{Interact, MoveOrder};
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// WORK's and RETREAT's runs (`FUN_140e6a9f0`, `FUN_140e69f00`).
@@ -17,9 +19,9 @@ pub enum Order {
     /// MOVE: walk to a point.
     Move(MoveOrder),
     /// FOLLOW's target (`+0x8`).
-    Follow(i32),
+    Follow(ObjectId),
     /// GUARD's target (`+0x8`).
-    Guard(i32),
+    Guard(ObjectId),
     /// WORK: its units' work on a target (`FUN_140e6a9f0`), which is not modelled. Its packet
     /// has INTERACT's layout (the formatter prints the same fields).
     Work(Interact),
@@ -37,7 +39,7 @@ pub enum Order {
 #[derive(Clone, Debug, PartialEq)]
 pub struct OrderCommand {
     /// The player who orders.
-    pub player: usize,
+    pub player: PlayerId,
     /// The units of the packet (the count at `+0x10` for INTERACT, WORK, MOVE and RETREAT, whose
     /// count `0xffff` names the last commanded units, `+0x4` for FOLLOW and GUARD).
     pub units: UnitList,
@@ -52,7 +54,7 @@ impl OrderCommand {
     /// (`+0x15`, `FUN_140e5e780`; FOLLOW's when a unit the world holds belongs to a player who
     /// is not a computer, `FUN_141659cf0`), then the order runs.
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        let (player, order) = (self.player, self.order);
+        let (player, order) = (self.player.index(), self.order);
         let Some(units) = self.units(w) else {
             return Ok(());
         };
@@ -60,7 +62,7 @@ impl OrderCommand {
             return Err(ORDER_UNMODELLED);
         }
         if let Order::Follow(target) | Order::Guard(target) = order
-            && w.object(target).is_none()
+            && w.object(target.get()).is_none()
         {
             return Ok(());
         }
@@ -79,8 +81,8 @@ impl OrderCommand {
         match order {
             Order::Interact(o) => w.interact(player, &units, &o),
             Order::Move(o) => w.move_order(player, &units, &o),
-            Order::Follow(target) => w.follow(player, &units, target),
-            Order::Guard(target) => w.guard(player, &units, target),
+            Order::Follow(target) => w.follow(player, &units, target.get()),
+            Order::Guard(target) => w.guard(player, &units, target.get()),
             Order::Work(_) | Order::Retreat(_) => Err(ORDER_UNMODELLED),
         }
     }
@@ -98,14 +100,15 @@ impl OrderCommand {
     /// of their packet (500 for a computer, [`World::read_units`]); GUARD's check is BUILD's
     /// builders' ([`World::command_check`]), FOLLOW's runs in [`World::follow`].
     fn units(&self, w: &mut World) -> Option<Vec<i32>> {
-        let (player, source, order) = (self.player, &self.units, self.order);
+        let (source, order) = (&self.units, self.order);
         if let Order::Follow(_) | Order::Guard(_) = order {
-            let ids = w.read_units(player, source)?;
+            let ids = ObjectId::fields(w.read_units(self.player, source)?);
             return match order {
-                Order::Guard(_) => w.command_check(player, ids),
-                _ => Some(ids.to_vec()),
+                Order::Guard(_) => w.command_check(self.player.index(), &ids),
+                _ => Some(ids),
             };
         }
+        let player = self.player.index();
         let last = source.names_last_commanded();
         if source.overruns() && !last {
             return None;

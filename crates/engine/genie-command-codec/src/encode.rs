@@ -6,6 +6,8 @@ use genie_core::commands::{
     OrderCommand, PatrolCommand, QueueCommand, ResearchCommand, TradeCommand, TributeCommand,
     UnitList, UnitOrderCommand, UnloadCommand,
 };
+use genie_core::objects::ObjectId;
+use genie_core::objects::masters::MasterId;
 use genie_rec::de::command::{self as packets, Command as Packet};
 
 /// The bytes the client writes at `BUILDING_COMMAND_QUEUE`'s `+0x12..+0x18`, which no code
@@ -20,19 +22,12 @@ const UNIT_ORDER_GAP: [u8; 1] = [1];
 ///
 /// # Errors
 ///
-/// A value its packet's field cannot hold: a player above 255, a unit list or a FLARE's players
-/// too long for the packet.
+/// A value its packet's field cannot hold: a unit list or a FLARE's players too long for the
+/// packet.
 pub fn encode(command: &Command) -> Result<Vec<u8>, GenieError> {
     Ok(match command {
         Command::Unmodelled(c) => c.packet.clone(),
         other => packet(other)?.encode(),
-    })
-}
-
-/// The comm player byte of a command's player.
-fn comm(player: usize) -> Result<u8, GenieError> {
-    u8::try_from(player).map_err(|_| {
-        GenieError::invalid_input("a command's player past a packet's byte").with("player", player)
     })
 }
 
@@ -52,8 +47,10 @@ fn within<T>(tail: &[T], fixed: usize) -> Result<&[T], GenieError> {
 }
 
 /// The ids after a fixed part of `fixed` bytes, if the packet's size holds them.
-fn ids(ids: &[i32], fixed: usize) -> Result<Vec<i32>, GenieError> {
-    within(ids, fixed).map(<[i32]>::to_vec)
+fn ids(ids: &[Option<ObjectId>], fixed: usize) -> Result<Vec<i32>, GenieError> {
+    let raw = ObjectId::fields(ids);
+    let _ = within(&raw, fixed)?;
+    Ok(raw)
 }
 
 /// A command's layout in genie-rec.
@@ -88,21 +85,21 @@ fn building(command: &Command) -> Result<Packet, GenieError> {
         Command::Queue(c) => queue(c)?,
         Command::Research(c) => research(c)?,
         Command::GatherPoint(c) => Packet::SetGatherPoint(packets::SetGatherPoint {
-            commp_id: comm(c.player)?,
+            commp_id: c.player.get(),
             num: c.units.count,
             gap_0x06: [0; 2],
-            x: c.point[0],
-            y: c.point[1],
-            t_id: c.target,
-            tm_id: i32::from(c.target_master),
+            x: c.point.x(),
+            y: c.point.y(),
+            t_id: ObjectId::field(c.target),
+            tm_id: i32::from(MasterId::field(c.target_master)),
             field_0x18: u8::from(c.own),
             ids: ids(&c.units.ids, packets::SetGatherPoint::FIXED)?,
         }),
         Command::CommandQueue(c) => Packet::BuildingCommandQueue(packets::BuildingCommandQueue {
-            commp_id: comm(c.player)?,
-            t_id: c.target,
-            x: c.point[0],
-            y: c.point[1],
+            commp_id: c.player.get(),
+            t_id: ObjectId::field(c.target),
+            x: c.point.x(),
+            y: c.point.y(),
             num: c.units.count,
             gap_0x12: COMMAND_QUEUE_GAP,
             ids: ids(&c.units.ids, packets::BuildingCommandQueue::FIXED)?,
@@ -115,13 +112,13 @@ fn building(command: &Command) -> Result<Packet, GenieError> {
 fn listed(command: &Command) -> Result<Packet, GenieError> {
     Ok(match command {
         Command::Stop(c) => Packet::Stop(packets::Stop {
-            commp_id: comm(c.player)?,
+            commp_id: c.player.get(),
             num: c.units.count,
             gap_0x06: [0; 2],
             ids: ids(&c.units.ids, packets::Stop::FIXED)?,
         }),
         Command::UnitAiState(c) => Packet::UnitAiState(packets::UnitAiState {
-            commp_id: comm(c.player)?,
+            commp_id: c.player.get(),
             num: c.units.count,
             gap_0x06: [0; 2],
             state: c.state,
@@ -129,13 +126,13 @@ fn listed(command: &Command) -> Result<Packet, GenieError> {
             ids: ids(&c.units.ids, packets::UnitAiState::FIXED)?,
         }),
         Command::AutoScout(c) => Packet::AutoScout(packets::AutoScout {
-            commp_id: comm(c.player)?,
+            commp_id: c.player.get(),
             field_0x04: c.units.count,
             gap_0x06: [0; 2],
             ids: ids(&c.units.ids, packets::AutoScout::FIXED)?,
         }),
         Command::SeekShelter(c) => Packet::SeekShelter(packets::SeekShelter {
-            commp_id: comm(c.player)?,
+            commp_id: c.player.get(),
             num: c.units.count,
             gap_0x06: [0; 2],
             ids: ids(&c.units.ids, packets::SeekShelter::FIXED)?,
@@ -145,7 +142,7 @@ fn listed(command: &Command) -> Result<Packet, GenieError> {
         Command::Unload(c) => unload(c)?,
         Command::UnitOrder(c) => unit_order(c)?,
         Command::GoBackToWork2(c) => Packet::GoBackToWork2(packets::GoBackToWork2 {
-            commp_id: comm(c.player)?,
+            commp_id: c.player.get(),
             rest: go_back_to_work_rest(&c.units)?,
         }),
         other => return elsewhere(other),
@@ -163,39 +160,39 @@ fn elsewhere(command: &Command) -> Result<Packet, GenieError> {
 fn single(command: &Command) -> Result<Packet, GenieError> {
     Ok(match command {
         Command::Resign(c) => Packet::Resign(packets::Resign {
-            commp_id: comm(c.player)?,
+            commp_id: c.player.get(),
             dropped: u8::from(c.dropped),
         }),
         Command::TransformObject(c) => Packet::TransformObject(packets::TransformObject {
-            commp_id: comm(c.player)?,
-            field_0x04: i32::from(c.master),
-            field_0x08: c.id.cast_unsigned(),
+            commp_id: c.player.get(),
+            field_0x04: i32::from(c.master.get()),
+            field_0x08: c.id.get().cast_unsigned(),
         }),
         Command::Delete(c) => Packet::CancelBuild(packets::CancelBuild {
-            commp_id: comm(c.player)?,
-            u_id: c.id,
+            commp_id: c.player.get(),
+            u_id: c.id.get(),
         }),
         Command::GoBackToWork(c) => Packet::GoBackToWork(packets::GoBackToWork {
-            commp_id: comm(c.player)?,
-            u_id: c.id,
+            commp_id: c.player.get(),
+            u_id: c.id.get(),
         }),
         Command::AllBackToWork(c) => Packet::AllBackToWork(packets::AllBackToWork {
-            commp_id: comm(c.player)?,
-            u_id: c.id,
+            commp_id: c.player.get(),
+            u_id: c.id.get(),
         }),
         Command::TownBell(c) => Packet::TownBell(packets::TownBell {
-            commp_id: comm(c.player)?,
-            u_id: c.id,
+            commp_id: c.player.get(),
+            u_id: c.id.get(),
             activate: u8::from(c.activate),
         }),
         Command::Gate(c) => Packet::Gate(packets::Gate {
-            commp_id: comm(c.player)?,
-            u_id: c.id,
+            commp_id: c.player.get(),
+            u_id: c.id.get(),
         }),
-        Command::Tribute(c) => tribute(c)?,
-        Command::Trade(c) => trade(c)?,
+        Command::Tribute(c) => tribute(c),
+        Command::Trade(c) => trade(c),
         Command::Flare(c) => flare(c)?,
-        Command::Game(c) => game(c)?,
+        Command::Game(c) => game(c),
         other => return elsewhere(other),
     })
 }
@@ -205,9 +202,9 @@ macro_rules! interact_packet {
     ($kind:ident, $player:expr, $units:expr, $o:expr) => {
         Packet::$kind(packets::$kind {
             commp_id: $player,
-            t_id: $o.target,
-            x: $o.point[0],
-            y: $o.point[1],
+            t_id: ObjectId::field($o.target),
+            x: $o.point.x(),
+            y: $o.point.y(),
             num: $units.count,
             field_0x12: u8::from($o.carry_test),
             field_0x13: u8::from($o.queued),
@@ -221,16 +218,16 @@ macro_rules! interact_packet {
 
 /// INTERACT, WORK, MOVE, RETREAT, FOLLOW and GUARD.
 fn order(c: &OrderCommand) -> Result<Packet, GenieError> {
-    let (player, units) = (comm(c.player)?, &c.units);
+    let (player, units) = (c.player.get(), &c.units);
     Ok(match c.order {
         Order::Interact(o) => interact_packet!(Interact, player, units, o),
         Order::Work(o) => interact_packet!(Work, player, units, o),
         Order::Retreat(o) => interact_packet!(Retreat, player, units, o),
         Order::Move(o) => Packet::Move(packets::Move {
             commp_id: player,
-            t_id: o.target,
-            x: o.point[0],
-            y: o.point[1],
+            t_id: ObjectId::field(o.target),
+            x: o.point.x(),
+            y: o.point.y(),
             num: units.count,
             field_0x12: u8::from(o.control),
             field_0x13: u8::from(o.queued),
@@ -243,14 +240,14 @@ fn order(c: &OrderCommand) -> Result<Packet, GenieError> {
             commp_id: player,
             num: units.count,
             gap_0x06: [0; 2],
-            target,
+            target: target.get(),
             ids: ids(&units.ids, packets::Follow::FIXED)?,
         }),
         Order::Guard(target) => Packet::Guard(packets::Guard {
             commp_id: player,
             num: units.count,
             gap_0x06: [0; 2],
-            target,
+            target: target.get(),
             ids: ids(&units.ids, packets::Guard::FIXED)?,
         }),
     })
@@ -259,13 +256,13 @@ fn order(c: &OrderCommand) -> Result<Packet, GenieError> {
 /// BUILD (0x66).
 fn build(c: &BuildCommand) -> Result<Packet, GenieError> {
     Ok(Packet::Build(packets::Build {
-        commp_id: comm(c.player)?,
+        commp_id: c.player.get(),
         num: c.builders.count,
         gap_0x06: [0; 2],
-        x: c.position[0],
-        y: c.position[1],
-        o_id: i32::from(c.master),
-        q_id: c.target,
+        x: c.position.x(),
+        y: c.position.y(),
+        o_id: i32::from(c.master.get()),
+        q_id: c.q_id,
         field_0x18: c.sprite_override.cast_unsigned(),
         frame: c.frame,
         gap_0x1d: [0; 1],
@@ -278,15 +275,15 @@ fn build(c: &BuildCommand) -> Result<Packet, GenieError> {
 /// `BUILD_WALL` (0x69).
 fn build_wall(c: &BuildWallCommand) -> Result<Packet, GenieError> {
     Ok(Packet::BuildWall(packets::BuildWall {
-        commp_id: comm(c.player)?,
+        commp_id: c.player.get(),
         num: c.builders.count,
         gap_0x06: [0; 2],
         x1: c.from[0],
         y1: c.from[1],
         x2: c.to[0],
         y2: c.to[1],
-        o_id: i32::from(c.master),
-        q_id: c.target,
+        o_id: i32::from(c.master.get()),
+        q_id: c.q_id,
         gap_0x18: [0; 2],
         field_0x1a: u8::from(c.queued),
         field_0x1b: u8::from(!c.commits),
@@ -297,11 +294,11 @@ fn build_wall(c: &BuildWallCommand) -> Result<Packet, GenieError> {
 /// QUEUE (0x81, `MULTI_QUEUE`).
 fn queue(c: &QueueCommand) -> Result<Packet, GenieError> {
     Ok(Packet::MultiQueue(packets::MultiQueue {
-        commp_id: comm(c.player)?,
+        commp_id: c.player.get(),
         num: c.buildings.count,
         gap_0x06: [0; 4],
-        b_id: c.building_master,
-        t_id: c.unit,
+        b_id: c.building_master.get(),
+        t_id: c.unit.get(),
         count: c.amount,
         button_location_id: c.button,
         ids: ids(&c.buildings.ids, packets::MultiQueue::FIXED)?,
@@ -311,11 +308,11 @@ fn queue(c: &QueueCommand) -> Result<Packet, GenieError> {
 /// RESEARCH (0x65).
 fn research(c: &ResearchCommand) -> Result<Packet, GenieError> {
     Ok(Packet::Research(packets::Research {
-        commp_id: comm(c.player)?,
-        u_id: c.building,
+        commp_id: c.player.get(),
+        u_id: ObjectId::field(c.building),
         field_0x08: c.count.cast_unsigned(),
         t_id: c.tech,
-        q_id: c.target,
+        q_id: c.q_id,
         field_0x10: u8::from(c.shift),
         ids: ids(&c.buildings, packets::Research::FIXED)?,
     }))
@@ -323,10 +320,10 @@ fn research(c: &ResearchCommand) -> Result<Packet, GenieError> {
 
 /// PATROL (0x15): x as each slot's f32 bits.
 fn patrol(c: &PatrolCommand) -> Result<Packet, GenieError> {
-    let x = |i: usize| c.waypoints.points[i][0].to_bits();
-    let y = |i: usize| c.waypoints.points[i][1];
+    let x = |i: usize| c.waypoints.points[i].x().to_bits();
+    let y = |i: usize| c.waypoints.points[i].y();
     Ok(Packet::Patrol(packets::Patrol {
-        commp_id: comm(c.player)?,
+        commp_id: c.player.get(),
         num: c.units.count,
         gap_0x06: [0; 2],
         field_0x08: u8::from(c.reset),
@@ -362,21 +359,21 @@ fn attack_move(c: &AttackMoveCommand) -> Result<Packet, GenieError> {
     let tail = |axis: usize| -> [u8; 36] {
         let mut out = [0; 36];
         for (i, p) in points[1..].iter().enumerate() {
-            out[4 * i..4 * i + 4].copy_from_slice(&p[axis].to_le_bytes());
+            out[4 * i..4 * i + 4].copy_from_slice(&p.xy()[axis].to_le_bytes());
         }
         out
     };
     Ok(Packet::AttackMove(packets::AttackMove {
-        commp_id: comm(c.player)?,
+        commp_id: c.player.get(),
         num: c.units.count,
         gap_0x06: [0; 2],
         field_0x08: u8::from(c.reset),
         field_0x09: u8::from(c.queued),
         field_0x0a: u8::from(c.ignore_pending),
         waypoints_count: c.waypoints.count,
-        field_0x0c: points[0][0].to_bits(),
+        field_0x0c: points[0].x().to_bits(),
         gap_0x10: tail(0),
-        field_0x34: points[0][1],
+        field_0x34: points[0].y(),
         gap_0x38: tail(1),
         ids: ids(&c.units.ids, packets::AttackMove::FIXED)?,
     }))
@@ -385,11 +382,11 @@ fn attack_move(c: &AttackMoveCommand) -> Result<Packet, GenieError> {
 /// UNLOAD (0x6f).
 fn unload(c: &UnloadCommand) -> Result<Packet, GenieError> {
     Ok(Packet::Unload(packets::Unload {
-        commp_id: comm(c.player)?,
+        commp_id: c.player.get(),
         num: c.units.count,
         gap_0x06: [0; 2],
-        x: c.point[0],
-        y: c.point[1],
+        x: c.point.x(),
+        y: c.point.y(),
         unit_type: c.unit_type,
         flag: c.flag,
         gap_0x15: [0; 3],
@@ -401,12 +398,12 @@ fn unload(c: &UnloadCommand) -> Result<Packet, GenieError> {
 /// `UNIT_ORDER` (0x75).
 fn unit_order(c: &UnitOrderCommand) -> Result<Packet, GenieError> {
     Ok(Packet::UnitOrder(packets::UnitOrder {
-        commp_id: comm(c.player)?,
+        commp_id: c.player.get(),
         num: c.units.count,
         gap_0x06: [0; 2],
-        t_id: c.target,
-        x: c.point[0],
-        y: c.point[1],
+        t_id: ObjectId::field(c.target),
+        x: c.point.x(),
+        y: c.point.y(),
         q_id: c.q_id,
         param: c.param.cast_signed(),
         action: c.action.byte(),
@@ -429,10 +426,10 @@ fn go_back_to_work_rest(units: &UnitList) -> Result<Vec<u8>, GenieError> {
 }
 
 /// GIVE ATTRIBUTES (0xc4).
-fn tribute(c: &TributeCommand) -> Result<Packet, GenieError> {
+fn tribute(c: &TributeCommand) -> Packet {
     let [first, second, third, fourth] = &c.gifts;
-    Ok(Packet::TribeGiveAttributes(packets::TribeGiveAttributes {
-        commp_id: comm(c.player)?,
+    Packet::TribeGiveAttributes(packets::TribeGiveAttributes {
+        commp_id: c.player.get(),
         amt: first.amount,
         field_0x08: second.amount,
         field_0x0c: third.amount,
@@ -445,28 +442,28 @@ fn tribute(c: &TributeCommand) -> Result<Packet, GenieError> {
         field_0x26: second.attribute,
         field_0x28: third.attribute,
         field_0x2a: fourth.attribute,
-        to: comm(c.to)?,
-    }))
+        to: c.to.get(),
+    })
 }
 
 /// `SELL_COMMODITY` (0x7a) or `BUY_COMMODITY` (0x7b).
-fn trade(c: &TradeCommand) -> Result<Packet, GenieError> {
-    let player = comm(c.player)?;
-    Ok(if c.buy {
+fn trade(c: &TradeCommand) -> Packet {
+    let player = c.player.get();
+    if c.buy {
         Packet::BuyCommodity(packets::BuyCommodity {
             commp_id: player,
             attr: c.attribute,
             amt: c.times,
-            u_id: c.market,
+            u_id: ObjectId::field(c.market),
         })
     } else {
         Packet::SellCommodity(packets::SellCommodity {
             commp_id: player,
             attr: c.attribute,
             amt: c.times,
-            u_id: c.market,
+            u_id: ObjectId::field(c.market),
         })
-    })
+    }
 }
 
 /// FLARE (0x73): the players' bytes from `+0x11`, of which the layout's fixed part holds three.
@@ -479,10 +476,10 @@ fn flare(c: &FlareCommand) -> Result<Packet, GenieError> {
         .with("players", c.shown.len()));
     };
     Ok(Packet::Flare(packets::Flare {
-        commp_id: comm(c.player)?,
-        field_0x04: c.target.cast_unsigned(),
-        field_0x08: c.point[0],
-        field_0x0c: c.point[1],
+        commp_id: c.player.get(),
+        field_0x04: ObjectId::field(c.target).cast_unsigned(),
+        field_0x08: c.point.x(),
+        field_0x0c: c.point.y(),
         field_0x10: c.players,
         gap_0x11: [*first],
         field_0x12: *second,
@@ -492,14 +489,14 @@ fn flare(c: &FlareCommand) -> Result<Packet, GenieError> {
 }
 
 /// GAME (0x67).
-fn game(c: &GameCommand) -> Result<Packet, GenieError> {
-    Ok(Packet::Game(packets::Game {
-        commp_id: comm(c.issuer)?,
+fn game(c: &GameCommand) -> Packet {
+    Packet::Game(packets::Game {
+        commp_id: c.issuer.get(),
         field_0x04: c.sub,
         gap_0x06: [0; 2],
         field_0x08: c.player,
         field_0x0a: c.a,
         field_0x0c: c.speed,
         field_0x10: c.value,
-    }))
+    })
 }

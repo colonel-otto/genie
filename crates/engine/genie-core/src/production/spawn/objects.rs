@@ -2,9 +2,11 @@
 //! building a death makes.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::map::spatial::{Obstruction, Placed};
 use crate::math::rng::Stream;
 use crate::movement::Mover;
+use crate::objects::ObjectId;
 use crate::objects::lifecycle::{Class, Lifecycle};
 use crate::objects::sprite::ActiveSprite;
 use crate::objects::unit::Unit;
@@ -327,12 +329,14 @@ impl World {
     /// the sound and the minimap.
     pub(crate) fn flare(
         &mut self,
-        target: i32,
-        point: [f32; 2],
+        target: Option<ObjectId>,
+        point: Point,
         players: u8,
     ) -> Result<(), GenieError> {
         /// The flare's master (`0x112`, FLARE2).
         const FLARE: i16 = 274;
+        let target = ObjectId::field(target);
+        let point = point.xy();
         if self.players.len() < usize::from(players) {
             return Ok(());
         }

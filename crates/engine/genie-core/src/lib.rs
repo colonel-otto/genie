@@ -50,6 +50,8 @@ pub mod pathing;
 pub mod players;
 pub mod production;
 pub mod technology;
+#[cfg(test)]
+mod test_ids;
 pub mod trace;
 pub mod unit_ai;
 pub mod vision;

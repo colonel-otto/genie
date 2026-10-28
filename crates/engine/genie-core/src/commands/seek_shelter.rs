@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `SEEK_SHELTER` (0x2c, `FUN_140e6a3a0`): the villagers the packet lists (the count at `+0x4`,
@@ -9,7 +10,7 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SeekShelterCommand {
     /// The player whose units seek shelter.
-    pub player: usize,
+    pub player: PlayerId,
     /// The units.
     pub units: UnitList,
 }

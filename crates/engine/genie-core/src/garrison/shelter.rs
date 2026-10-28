@@ -7,7 +7,9 @@ use crate::garrison::{
     TRANSPORTED, VILLAGER_CLASS, VILLAGER_KIND, class_has_flags, has_garrison_task,
 };
 use crate::movement::footprint_gap_squared;
+use crate::objects::ObjectId;
 use crate::orders::{BUILDING, GARRISON, Work};
+use crate::players::PlayerId;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
 
@@ -47,12 +49,15 @@ impl World {
     /// [`UnitLines::base`]: crate::objects::lines::UnitLines::base
     pub(crate) fn garrison_order(
         &mut self,
-        player: usize,
-        ids: &[i32],
-        target: i32,
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+        target: Option<ObjectId>,
         through_ai: bool,
         nearby: bool,
     ) -> Result<(), GenieError> {
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
+        let target = ObjectId::field(target);
         let Some((tp, t)) = self.object(target) else {
             return Ok(());
         };
@@ -101,7 +106,13 @@ impl World {
     /// another (`+0x2f0`, `FUN_141188da0`), whose master's `garrison_type` has bit 0
     /// (`FUN_1411ccb60` with 1), each with its count ([`World::garrisoned`]); then
     /// [`World::shelter`] (`FUN_141622450`).
-    pub(crate) fn seek_shelter(&mut self, player: usize, ids: &[i32]) -> Result<(), GenieError> {
+    pub(crate) fn seek_shelter(
+        &mut self,
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
         let cap = if self.players[player].computer {
             COMPUTER_IDS
         } else {

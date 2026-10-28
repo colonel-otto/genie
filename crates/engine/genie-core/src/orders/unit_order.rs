@@ -3,7 +3,9 @@
 use crate::GenieError;
 use crate::gathering::hunt::HUNT;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::orders::{BUILDING, HERD_MOST, LIVESTOCK, NO_POINT, Place, TOWN_CENTRE};
+use crate::players::PlayerId;
 use crate::world::World;
 
 impl World {
@@ -160,10 +162,11 @@ impl World {
     /// ([`World::cancel_tail`]).
     pub(crate) fn cancel_order(
         &mut self,
-        ids: &[i32],
+        ids: &[Option<ObjectId>],
         index: u32,
         all: bool,
     ) -> Result<(), GenieError> {
+        let ids: &[i32] = &ObjectId::fields(ids);
         for &id in ids {
             let Some(place) = self.place(id) else {
                 continue;
@@ -194,10 +197,11 @@ impl World {
     /// [`HuntAction::drop_off_asked`]: crate::gathering::hunt::HuntAction::drop_off_asked
     pub(crate) fn unit_order(
         &mut self,
-        _player: usize,
-        ids: &[i32],
+        _player: PlayerId,
+        ids: &[Option<ObjectId>],
         action: u8,
     ) -> Result<(), GenieError> {
+        let ids: &[i32] = &ObjectId::fields(ids);
         if !matches!(action, 6..=8) {
             return Err(GenieError::unsupported(
                 "a UNIT_ORDER other than the garrison (5) and the drop-offs (6 to 8)",

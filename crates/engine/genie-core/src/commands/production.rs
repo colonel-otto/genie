@@ -6,6 +6,7 @@ use crate::commands::queue::QueueCommand;
 use crate::commands::research::ResearchCommand;
 use crate::commands::{CURRENT_AGE, ONE_UNIT_AGE};
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::Masters;
 use crate::orders::Place;
 use crate::production::Production;
@@ -44,16 +45,20 @@ impl World {
     /// # Errors
     ///
     /// A sleeping object the unit trains at, and what the parts do not model.
-    pub(crate) fn queue(&mut self, q: &QueueCommand, buildings: &[i32]) -> Result<(), GenieError> {
-        let player = q.player;
-        let Some(ids) = self.command_check(player, buildings) else {
+    pub(crate) fn queue(
+        &mut self,
+        q: &QueueCommand,
+        buildings: &[Option<ObjectId>],
+    ) -> Result<(), GenieError> {
+        let (player, unit_id) = (q.player.index(), q.unit.get());
+        let Some(ids) = self.command_check(player, &ObjectId::fields(buildings)) else {
             return Ok(());
         };
         let owner = &self.players[player];
         let limit = if owner.computer { 500 } else { 60 };
         let empty = Masters::default();
         let masters = self.masters.get(player).unwrap_or(&empty);
-        let Some(unit) = masters.get(q.unit) else {
+        let Some(unit) = masters.get(unit_id) else {
             return Ok(());
         };
         let mut found = Vec::new();
@@ -66,7 +71,7 @@ impl World {
             let listed = building
                 .production
                 .as_ref()
-                .is_some_and(|p| p.available_units.contains(&q.unit));
+                .is_some_and(|p| p.available_units.contains(&unit_id));
             if unit.available || listed {
                 found.push(place);
             }
@@ -126,7 +131,7 @@ impl World {
         // (its key's +9) is queued one at a time, the player's +0x1378 its flag
         if self.settings.game_mode == ONE_UNIT_GAME
             && crate::technology::Attributes::get(owner, CURRENT_AGE)? <= ONE_UNIT_AGE
-            && self.tracker_key(player, q.unit).military
+            && self.tracker_key(player, unit_id).military
         {
             if owner.one_military_queued {
                 return Ok(());
@@ -156,7 +161,7 @@ impl World {
                         "QUEUE at a sleeping object the unit trains at",
                     ));
                 };
-                let _ = self.queue_at(p, i, q.unit, counts[k], -1, q.button)?;
+                let _ = self.queue_at(p, i, unit_id, counts[k], -1, q.button)?;
             }
         }
         Ok(())
@@ -174,9 +179,10 @@ impl World {
     /// than one listed (`+0x8` as a short; at most 60, 500 for a computer player,
     /// `FUN_140e6b250`), each listed one the world holds (`+0x11..`, `FUN_140e6bad0`) whose load
     /// ([`World::production_load`]) is below the one taken (`COMISS`, `JBE`: a NaN keeps it)
-    /// takes its place. −1 for none.
-    pub(crate) fn least_loaded(&self, r: &ResearchCommand) -> i32 {
-        let player = r.player;
+    /// takes its place, of `buildings`, the listed ones the check left (none for the others).
+    /// −1 for none.
+    pub(crate) fn least_loaded(&self, r: &ResearchCommand, buildings: &[Option<ObjectId>]) -> i32 {
+        let player = r.player.index();
         let load = |id: i32| {
             self.object(id)
                 .map_or(0.0, |(q, u)| self.production_load(q, u))
@@ -189,7 +195,8 @@ impl World {
                     .is_some_and(|m| m.kind == BUILDING_KIND)
             })
         };
-        let mut chosen = (is_building(r.building)).then_some(r.building);
+        let building = ObjectId::field(r.building);
+        let mut chosen = is_building(building).then_some(building);
         if 1 < r.count {
             let limit = if self.players[player].computer {
                 500
@@ -197,8 +204,8 @@ impl World {
                 60
             };
             let n = usize::from(r.count as u16).min(limit);
-            for &id in r.buildings.iter().take(n) {
-                if id == -1 || self.object(id).is_none() {
+            for id in buildings.iter().take(n).flatten().map(ObjectId::get) {
+                if self.object(id).is_none() {
                     continue;
                 }
                 if chosen.is_none_or(|c| load(c) > load(id)) {

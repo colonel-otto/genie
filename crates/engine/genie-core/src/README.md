@@ -21,6 +21,7 @@ Start with these files:
 | File | What it holds |
 | --- | --- |
 | [`lib.rs`](lib.rs) | Deterministic simulation core of the genie engine reimplementation. |
+| [`test_ids.rs`](test_ids.rs) | The tests' newtypes: an object id, a player or a master of a value the test knows is one, and a list of ids, through the types' checked constructors. |
 | [`trace.rs`](trace.rs) | What the engine tells a `tracing` subscriber while it runs, for debugging. |
 | [`combat/`](combat/) | Combat: attacks, hits and missiles. |
 | [`commands/`](commands/) | The commands (`Command`) and their dispatch (`World::run`): the handlers of the players' orders, the buildings' placement and the production queue's. |

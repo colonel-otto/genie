@@ -1,6 +1,8 @@
 //! `TOWN_BELL` (0x7f): a town centre's bell.
 
 use crate::GenieError;
+use crate::objects::ObjectId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `TOWN_BELL` (0x7f, `do_command` case 0x7f): the town centre `id` rings its owner's bell
@@ -8,16 +10,16 @@ use crate::world::World;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TownBellCommand {
     /// The player.
-    pub player: usize,
+    pub player: PlayerId,
     /// The town centre.
-    pub id: i32,
+    pub id: ObjectId,
     /// Ring (1) or end (0).
     pub activate: bool,
 }
 
 impl TownBellCommand {
     /// Its handler ([`World::town_bell`]).
-    pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
+    pub(crate) fn run(self, w: &mut World) -> Result<(), GenieError> {
         w.town_bell(self.player, self.id, self.activate)
     }
 }

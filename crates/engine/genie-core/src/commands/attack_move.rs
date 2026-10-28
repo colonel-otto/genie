@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::{UnitList, Waypoints};
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// `ATTACK_MOVE` (0x21, `FUN_140e66200`): the units the packet lists (the count at `+0x4`, the
@@ -12,7 +13,7 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq)]
 pub struct AttackMoveCommand {
     /// The player whose units attack-move.
-    pub player: usize,
+    pub player: PlayerId,
     /// The units.
     pub units: UnitList,
     /// The waypoints.

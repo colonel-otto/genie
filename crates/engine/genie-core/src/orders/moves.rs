@@ -2,7 +2,9 @@
 
 use crate::GenieError;
 use crate::combat::attack::gaps;
+use crate::map::Point;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::objects::masters::Master;
 use crate::orders::{
     BUILDING, CLASS_54, LIVESTOCK, MASTER_1893, MASTER_1897, MOVING, MoveOrder, PASTURE_CLASS,
@@ -30,7 +32,7 @@ impl World {
         cell: Option<[f32; 2]>,
         order: &MoveOrder,
     ) -> Result<(), GenieError> {
-        let point2 = cell.unwrap_or(order.point);
+        let point2 = cell.unwrap_or_else(|| order.point.xy());
         let Some(place) = self.place(id) else {
             return Ok(());
         };
@@ -56,7 +58,7 @@ impl World {
             return Ok(());
         }
         let target = self
-            .object(order.target)
+            .object(ObjectId::field(order.target))
             .map(|(tp, t)| (t.life.master_id, tp));
         let unit = &mut self.players[player].objects[idx];
         // FUN_141197da0, then slot 0x2a0 with 1: it waits to move
@@ -84,11 +86,15 @@ impl World {
                 issuer: issuer as i32,
                 order: OrderKind::Move,
                 priority: 100,
-                target: if target.is_some() { order.target } else { -1 },
+                target: if target.is_some() {
+                    ObjectId::field(order.target)
+                } else {
+                    -1
+                },
                 target_owner,
                 point: [point2[0], point2[1], 0.0],
                 range: 0.0,
-                shown: order.point,
+                shown: order.point.xy(),
                 ready: order.direct,
                 target_type,
             };
@@ -105,17 +111,17 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             ai.orders.clear();
         }
-        if order.target == id {
+        if ObjectId::field(order.target) == id {
             return Ok(());
         }
-        if order.target != -1 {
+        if ObjectId::field(order.target) != -1 {
             return Err(GenieError::unsupported("a move that follows an object"));
         }
         let order = &MoveOrder {
-            point: point2,
+            point: Point::new(point2[0], point2[1]),
             ..*order
         };
-        let taken = self.move_to_point(player, idx, [order.point[0], order.point[1], 0.0])?;
+        let taken = self.move_to_point(player, idx, [order.point.x(), order.point.y(), 0.0])?;
         // the order handler's notify: a unit that took the move as a MoveTo gets the move order
         // and action, its target forgotten (FUN_140c4dcb0); every unit then the point
         // (FUN_140c64be0); in a grid every unit gets the order, the action and its cell, its
@@ -124,7 +130,7 @@ impl World {
         if let Some(ai) = unit.ai.as_mut() {
             let ai_stream = self.streams.get(Stream::Ai);
             match cell {
-                None => ai.notify_move(!taken, None, order.point, ai_stream),
+                None => ai.notify_move(!taken, None, order.point.xy(), ai_stream),
                 Some(c) => ai.notify_grid_move(c, ai_stream),
             }
         }

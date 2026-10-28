@@ -2,6 +2,10 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::map::Point;
+use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// BUILD (0x66, `FUN_140e7a400`): the player places a foundation of `master` at `position` (state
@@ -12,14 +16,14 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq)]
 pub struct BuildCommand {
     /// The player who places it.
-    pub player: usize,
+    pub player: PlayerId,
     /// The foundation's master (`+0x10`, an int the handler compares as one).
-    pub master: i16,
+    pub master: MasterId,
     /// Where it is placed (`+0x8`, `+0xc`); the game sets its height from the ground.
-    pub position: [f32; 2],
+    pub position: Point,
     /// `+0x14`, the formatter's `qId`: a human player's BUILD with one other than −1 does
     /// nothing (`FUN_140e7a400`'s first test).
-    pub target: i32,
+    pub q_id: i32,
     /// `+0x18`: the foundation's sprite override (`+0x788`, `FUN_141189e70`), which a house
     /// (master 70) of civ 12 keeps from 0x2c9 to 0x2ce; any other is −1.
     pub sprite_override: i32,
@@ -38,30 +42,30 @@ pub struct BuildCommand {
 impl BuildCommand {
     /// `do_command`'s case checks the builders first (a count past the packet's ids refuses it,
     /// [`World::read_units`]; another player's become −1; a human's BUILD left without one is
-    /// refused). The handler (`FUN_140e7a400`) does nothing for a human's BUILD with a target
-    /// (`+0x14`). A farm on rice terrain takes its rice master; then the pending debit
+    /// refused). The handler (`FUN_140e7a400`) does nothing for a human's BUILD with a `qId`
+    /// (`+0x14`) other than −1. A farm on rice terrain takes its rice master; then the pending debit
     /// (`FUN_141630d10` with 0), the builders' test, the placement test and the payment: a
     /// refused BUILD places nothing. The foundation takes its sprite override
     /// ([`BuildCommand::sprite_override_of`]) and the command's frame (`+0xc54`) before its
     /// builders get their tasks.
     pub(crate) fn run(&self, w: &mut World) -> Result<(), GenieError> {
-        let player = self.player;
-        let Some(listed) = w.read_units(player, &self.builders) else {
+        let Some(listed) = w.read_units(self.player, &self.builders) else {
             return Ok(());
         };
-        let Some(builders) = w.command_check(player, listed) else {
+        let player = self.player.index();
+        let Some(builders) = w.command_check(player, &ObjectId::fields(listed)) else {
             return Ok(());
         };
-        if self.target != -1 && !w.players[player].computer {
+        if self.q_id != -1 && !w.players[player].computer {
             return Ok(());
         }
-        let [x, y] = self.position;
-        let master = w.farm_on_rice_terrain(self.master, [x, y, 0.0]);
+        let [x, y] = self.position.xy();
+        let master = w.farm_on_rice_terrain(self.master.get(), [x, y, 0.0]);
         w.debit_listed(player, master)?;
         if !w.build_has_builder(player, master, &builders)? {
             return Ok(());
         }
-        if !w.build_allowed(player, master, self.position)? {
+        if !w.build_allowed(player, master, self.position.xy())? {
             return Ok(());
         }
         let (id, position) = w.found(player, master, [x, y, 0.0])?;
@@ -85,11 +89,11 @@ impl BuildCommand {
     /// The sprite override the handler gives the foundation (`FUN_141189e70`): the packet's
     /// `+0x18` for a house (master 70) of civ 12 when it is 0x2c9 to 0x2ce, else −1.
     #[must_use]
-    pub const fn sprite_override_of(&self, civ: u8) -> i32 {
+    pub fn sprite_override_of(&self, civ: u8) -> i32 {
         const HOUSE: i16 = 0x46;
         const CIV: u8 = 0xc;
         let kept = self.sprite_override.wrapping_sub(0x2c9).cast_unsigned() <= 5;
-        if self.sprite_override != -1 && kept && self.master == HOUSE && civ == CIV {
+        if self.sprite_override != -1 && kept && self.master.get() == HOUSE && civ == CIV {
             self.sprite_override
         } else {
             -1

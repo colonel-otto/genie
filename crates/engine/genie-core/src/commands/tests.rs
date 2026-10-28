@@ -7,11 +7,29 @@ use crate::commands::{
     GatherPointCommand, GoBackToWork2Command, GoBackToWorkCommand, Order, OrderCommand,
     PatrolCommand, QueueCommand, ResearchCommand, ResignCommand, SeekShelterCommand, StopCommand,
     TownBellCommand, TradeCommand, TransformObjectCommand, TributeCommand, UnitAiStateCommand,
-    UnitList, UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
+    UnitOrderAction, UnitOrderCommand, UnloadCommand, UnmodelledCommand, Waypoints,
 };
+use crate::map::Point;
+use crate::test_ids::master_id;
+use crate::test_ids::object_id;
+use crate::test_ids::object_ids;
+use crate::test_ids::player_id;
+use crate::test_ids::unit_list;
+
+/// A GAME command of `issuer`'s for player 0, its operands 0.
+fn game_of(issuer: u8) -> GameCommand {
+    GameCommand {
+        issuer: player_id(issuer),
+        sub: 0,
+        player: 0,
+        a: 0,
+        speed: 0.0,
+        value: 0,
+    }
+}
 
 /// One command of each kind, issued by player `p`.
-fn one_of_each(p: usize) -> Vec<Command> {
+fn one_of_each(p: u8) -> Vec<Command> {
     let ids = vec![7];
     let gift = crate::players::tribute::Gift {
         attribute: 0,
@@ -20,153 +38,165 @@ fn one_of_each(p: usize) -> Vec<Command> {
     };
     vec![
         Command::Build(BuildCommand {
-            player: p,
-            master: 70,
-            position: [0.0; 2],
-            target: -1,
+            player: player_id(p),
+            master: master_id(70),
+            position: Point::new(0.0, 0.0),
+            q_id: -1,
             sprite_override: -1,
-            builders: UnitList::of(ids.clone()),
+            builders: unit_list(object_ids(ids.clone())),
             queued: false,
             commits: true,
             frame: 0,
         }),
         Command::BuildWall(BuildWallCommand {
-            player: p,
-            master: 72,
+            player: player_id(p),
+            master: master_id(72),
             from: [0, 0],
             to: [1, 1],
-            target: -1,
-            builders: UnitList::of(ids.clone()),
+            q_id: -1,
+            builders: unit_list(object_ids(ids.clone())),
             queued: false,
             commits: true,
         }),
         Command::GatherPoint(GatherPointCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
-            point: [0.0; 2],
-            target: -1,
-            target_master: -1,
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
+            point: Point::new(0.0, 0.0),
+            target: None,
+            target_master: None,
             own: false,
         }),
         Command::Queue(QueueCommand {
-            player: p,
-            buildings: UnitList::of(ids.clone()),
-            building_master: -1,
-            unit: 83,
+            player: player_id(p),
+            buildings: unit_list(object_ids(ids.clone())),
+            building_master: master_id(109),
+            unit: master_id(83),
             amount: 1,
             button: -1,
         }),
         Command::Research(ResearchCommand {
-            player: p,
-            building: 7,
+            player: player_id(p),
+            building: Some(object_id(7)),
             count: 1,
             buildings: vec![],
             tech: 22,
-            target: -1,
+            q_id: -1,
             shift: false,
         }),
         Command::Unmodelled(UnmodelledCommand {
-            player: p,
+            player: player_id(p),
             packet: Vec::new(),
             why: GenieError::unsupported("a test's"),
         }),
         // a sub-command for no player of the world
         Command::Game(GameCommand {
-            issuer: p,
+            issuer: player_id(p),
             player: -1,
-            ..GameCommand::default()
+            ..game_of(0)
         }),
         Command::CommandQueue(BuildingQueueCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
-            target: -1,
-            point: [0.0; 2],
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
+            target: None,
+            point: Point::new(0.0, 0.0),
         }),
-        Command::GoBackToWork(GoBackToWorkCommand { player: p, id: 7 }),
+        Command::GoBackToWork(GoBackToWorkCommand {
+            player: player_id(p),
+            id: object_id(7),
+        }),
         Command::GoBackToWork2(GoBackToWork2Command {
-            player: p,
-            units: UnitList::of(ids.clone()),
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
         }),
-        Command::AllBackToWork(AllBackToWorkCommand { player: p, id: 7 }),
+        Command::AllBackToWork(AllBackToWorkCommand {
+            player: player_id(p),
+            id: object_id(7),
+        }),
         Command::TownBell(TownBellCommand {
-            player: p,
-            id: 7,
+            player: player_id(p),
+            id: object_id(7),
             activate: true,
         }),
-        Command::Delete(DeleteCommand { player: p, id: 7 }),
+        Command::Delete(DeleteCommand {
+            player: player_id(p),
+            id: object_id(7),
+        }),
         Command::Flare(FlareCommand {
-            player: p,
-            target: -1,
-            point: [0.0; 2],
+            player: player_id(p),
+            target: None,
+            point: Point::new(0.0, 0.0),
             players: 2,
             shown: Vec::new(),
         }),
         Command::Tribute(TributeCommand {
-            player: p,
-            to: 1,
+            player: player_id(p),
+            to: player_id(1),
             gifts: [gift; 4],
         }),
         Command::Trade(TradeCommand {
-            player: p,
+            player: player_id(p),
             attribute: 0,
             times: 1,
-            market: -1,
+            market: None,
             buy: true,
         }),
-        Command::Gate(GateCommand { player: p, id: 7 }),
+        Command::Gate(GateCommand {
+            player: player_id(p),
+            id: object_id(7),
+        }),
         Command::Unload(UnloadCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
-            point: [-1.0; 2],
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
+            point: Point::new(-1.0, -1.0),
             flag: 0,
             unit_type: -1,
             sound: false,
         }),
         Command::TransformObject(TransformObjectCommand {
-            player: p,
-            id: 7,
-            master: 83,
+            player: player_id(p),
+            id: object_id(7),
+            master: master_id(83),
         }),
         Command::Resign(ResignCommand {
-            player: p,
+            player: player_id(p),
             dropped: false,
         }),
         Command::AutoScout(AutoScoutCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
         }),
         Command::Stop(StopCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
         }),
         Command::Patrol(PatrolCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
-            waypoints: Waypoints::of(&[[1.0, 1.0]]),
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
+            waypoints: Waypoints::of(&[Point::new(1.0, 1.0)]),
             reset: false,
         }),
         Command::AttackMove(AttackMoveCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
-            waypoints: Waypoints::of(&[[1.0, 1.0]]),
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
+            waypoints: Waypoints::of(&[Point::new(1.0, 1.0)]),
             reset: false,
             queued: false,
             ignore_pending: false,
         }),
         Command::SeekShelter(SeekShelterCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
         }),
         Command::UnitAiState(UnitAiStateCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
             state: 1,
         }),
         Command::UnitOrder(UnitOrderCommand {
-            player: p,
-            units: UnitList::of(ids.clone()),
-            target: -1,
-            point: [-1.0, -1.0],
+            player: player_id(p),
+            units: unit_list(object_ids(ids.clone())),
+            target: None,
+            point: Point::new(-1.0, -1.0),
             q_id: -1,
             through_ai: false,
             nearby: false,
@@ -175,8 +205,8 @@ fn one_of_each(p: usize) -> Vec<Command> {
             human: false,
         }),
         Command::Order(OrderCommand {
-            player: p,
-            units: UnitList::of(ids),
+            player: player_id(p),
+            units: unit_list(object_ids(ids)),
             order: Order::Retreat(crate::orders::Interact::default()),
         }),
     ]
@@ -190,22 +220,29 @@ fn a_command_names_the_player_whose_lane_it_stops() {
     let commands = one_of_each(3);
     assert_eq!(commands.len(), 28);
     for c in &commands {
-        assert_eq!((c.player(), c.stopped_player(8)), (3, 3), "{c:?}");
+        assert_eq!(
+            (c.player(), c.stopped_player(8)),
+            (player_id(3), player_id(3)),
+            "{c:?}"
+        );
     }
     let game = Command::Game(GameCommand {
-        issuer: 3,
         player: 5,
-        ..GameCommand::default()
+        ..game_of(3)
     });
-    assert_eq!((game.player(), game.stopped_player(8)), (3, 5));
-    assert_eq!(game.stopped_player(4), 3);
+    assert_eq!(
+        (game.player(), game.stopped_player(8)),
+        (player_id(3), player_id(5))
+    );
+    assert_eq!(game.stopped_player(4), player_id(3));
 }
 
 /// The waypoints the handlers read: the first of their count, none without 1 to 10.
 #[test]
 fn a_patrol_reads_one_to_ten_waypoints() {
-    let two = Waypoints::of(&[[1.0, 2.0], [3.0, 4.0]]);
-    assert_eq!(two.used(), Some(&[[1.0, 2.0], [3.0, 4.0]][..]));
+    let points = [Point::new(1.0, 2.0), Point::new(3.0, 4.0)];
+    let two = Waypoints::of(&points);
+    assert_eq!(two.used(), Some(&points[..]));
     assert_eq!(Waypoints::default().used(), None);
     let eleven = Waypoints { count: 11, ..two };
     assert_eq!(eleven.used(), None);
@@ -219,10 +256,10 @@ fn a_trade_of_another_commodity_does_nothing() {
     let before = w.clone();
     for attribute in [3, 0x0103] {
         TradeCommand {
-            player: 1,
+            player: player_id(1),
             attribute,
             times: 1,
-            market: -1,
+            market: None,
             buy: true,
         }
         .run(&mut w);

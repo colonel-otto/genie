@@ -2,6 +2,10 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::map::Point;
+use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// SET GATHER POINT (0x78, `FUN_140e7e9a0`): each of the player's objects the packet lists (the
@@ -15,15 +19,15 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq)]
 pub struct GatherPointCommand {
     /// The player whose objects take it.
-    pub player: usize,
+    pub player: PlayerId,
     /// The objects of the packet.
     pub units: UnitList,
     /// The point.
-    pub point: [f32; 2],
+    pub point: Point,
     /// The object the point is on, −1 for none.
-    pub target: i32,
+    pub target: Option<ObjectId>,
     /// That object's master.
-    pub target_master: i16,
+    pub target_master: Option<MasterId>,
     /// The building itself is the gather point (`+0x18`).
     pub own: bool,
 }

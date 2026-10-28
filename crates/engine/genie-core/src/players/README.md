@@ -27,6 +27,7 @@ A player has more than its objects. This folder holds the rest:
 | [`history.rs`](history.rs) | The player's history (`TRIBE_History_Info`, TribeHistoryInfo.cpp; player `+0xdb8`, saved with the player): a population entry each history period and a list of events, newest first. |
 | [`market.rs`](market.rs) | The market: the world's commodity prices (`+0x868`..`+0x8a0`, saved) and the two commands that trade at them, `TRIBE_COMMAND_SELL_COMMODITY` (0x7a, `FUN_141639310`) and `TRIBE_COMMAND_BUY_COMMODITY` (0x7b, `FUN_141618390`). |
 | [`mod.rs`](mod.rs) | The players beside their objects: their game status (playing, won, lost), diplomacy, tribute, treason, the market, their history, their object trackers, and the world player's own update. |
+| [`player_id.rs`](player_id.rs) | A player's number as one type: the player a command comes from or names, and the index of the world's players. |
 | [`tracker.rs`](tracker.rs) | The player's object tracker (`player+0x18`, the "Object Tracker"): lists of the player's object ids by key, in the order the ids came in. |
 | [`treason.rs`](treason.rs) | Treason (GAME's sub-command 0xa, the old Spies): a player with a castle pays gold to have its allies see the kings of the players it is not allied with, a flare at each king for each of them. |
 | [`tribute.rs`](tribute.rs) | A player's tribute: `TRIBE_COMMAND_GIVE_ATTRIBUTES` (0xc4, `TRIBE_Command::do_command`'s case, `FUN_140e7d040`). |
@@ -38,5 +39,5 @@ A player has more than its objects. This folder holds the rest:
 
 <!-- uses -->
 - Uses: [`combat`](../combat/), [`construction`](../construction/), [`garrison`](../garrison/), [`gathering`](../gathering/), [`map`](../map/), [`math`](../math/), [`movement`](../movement/), [`objects`](../objects/), [`ownership`](../ownership/), [`production`](../production/), [`technology`](../technology/), [`unit_ai`](../unit_ai/), [`world`](../world/).
-- Used by: [`combat`](../combat/), [`commands`](../commands/), [`construction`](../construction/), [`map`](../map/), [`objects`](../objects/), [`orders`](../orders/), [`technology`](../technology/), [`world`](../world/).
+- Used by: [`combat`](../combat/), [`commands`](../commands/), [`construction`](../construction/), [`garrison`](../garrison/), [`map`](../map/), [`objects`](../objects/), [`orders`](../orders/), [`technology`](../technology/), [`world`](../world/).
 <!-- /uses -->

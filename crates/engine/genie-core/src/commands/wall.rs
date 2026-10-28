@@ -16,7 +16,10 @@
 use crate::GenieError;
 use crate::commands::UnitList;
 use crate::construction::build::BuildAction;
+use crate::objects::ObjectId;
+use crate::objects::masters::MasterId;
 use crate::orders::Place;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// The snap's half tile and its step up (`FUN_141123ac0`).
@@ -45,15 +48,15 @@ const INSERTION_SORT_MAX: usize = 32;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuildWallCommand {
     /// The player who places it.
-    pub player: usize,
+    pub player: PlayerId,
     /// The wall's master (`+0x10`).
-    pub master: i16,
+    pub master: MasterId,
     /// The line's first tile (`+0x8`, `+0xa`).
     pub from: [u16; 2],
     /// The line's last tile (`+0xc`, `+0xe`).
     pub to: [u16; 2],
     /// `+0x14`: anything but −1 and the command does nothing.
-    pub target: i32,
+    pub q_id: i32,
     /// The units told to build it, in packet order (the count at `+0x4`, the ids from `+0x1c`).
     pub builders: UnitList,
     /// `+0x1a`: queued (a builder with a unit AI takes the line as orders in its queue).
@@ -71,7 +74,7 @@ impl BuildWallCommand {
         let Some(listed) = w.read_units(self.player, &self.builders) else {
             return Ok(());
         };
-        let Some(builders) = w.command_check(self.player, listed) else {
+        let Some(builders) = w.command_check(self.player.index(), &ObjectId::fields(listed)) else {
             return Ok(());
         };
         w.build_wall(self, &builders)
@@ -200,7 +203,7 @@ pub fn share(i: usize, capable: usize, placed: usize) -> Option<usize> {
 }
 
 impl World {
-    /// `BUILD_WALL` ([`BuildWallCommand`]) for its player: a target other than −1, a master the player has not
+    /// `BUILD_WALL` ([`BuildWallCommand`]) for its player: a `qId` other than −1, a master the player has not
     /// got or not a building does nothing, and so does a human's line without a builder that can
     /// build it ([`World::builds`]). The foundations go down tile by tile (the placement
     /// test with the explored test on, then the payment's, [`World::found`]); then each builder
@@ -217,11 +220,11 @@ impl World {
         w: &BuildWallCommand,
         builders: &[i32],
     ) -> Result<(), GenieError> {
-        let player = w.player;
-        if w.target != -1 {
+        let (player, master) = (w.player.index(), w.master.get());
+        if w.q_id != -1 {
             return Ok(());
         }
-        let Some(site) = self.masters.get(player).and_then(|m| m.get(w.master)) else {
+        let Some(site) = self.masters.get(player).and_then(|m| m.get(master)) else {
             return Ok(());
         };
         if site.kind != BUILDING {
@@ -236,7 +239,7 @@ impl World {
         };
         let mut capable = 0;
         for &id in builders {
-            if self.builds((w.master, &trained_at), id)? {
+            if self.builds((master, &trained_at), id)? {
                 capable += 1;
             }
         }
@@ -271,19 +274,19 @@ impl World {
         w: &BuildWallCommand,
         radius: [f32; 2],
     ) -> Result<Vec<(i32, [f32; 3])>, GenieError> {
-        let player = w.player;
+        let (player, master) = (w.player.index(), w.master.get());
         let ([x1, y1], [x2, y2]) = (w.from.map(i32::from), w.to.map(i32::from));
         let mut placed: Vec<(i32, [f32; 3])> = Vec::new();
         for (a, b) in segments([x1, y1], [x2, y2]) {
             for [tx, ty] in tiles(a, b)? {
                 let at = snap(radius, self.spatial.map, [tx as f32, ty as f32]);
-                if self.placement_code(player, w.master, at, true)? != 0 {
+                if self.placement_code(player, master, at, true)? != 0 {
                     continue;
                 }
-                if !self.affords(player, w.master)? {
+                if !self.affords(player, master)? {
                     break;
                 }
-                placed.push(self.found(player, w.master, [at[0], at[1], 0.0])?);
+                placed.push(self.found(player, master, [at[0], at[1], 0.0])?);
             }
         }
         Ok(placed)
@@ -302,7 +305,7 @@ impl World {
         builders: &[i32],
     ) -> Result<Vec<(i32, f32)>, GenieError> {
         let mut sorted = Vec::new();
-        for id in self.checked_units(w.player, builders) {
+        for id in self.checked_units(w.player.index(), builders) {
             let Some((owner, u)) = self.object(id) else {
                 continue;
             };
@@ -340,7 +343,7 @@ impl World {
         placed: &[(i32, [f32; 3])],
         (foundation, at): (i32, [f32; 3]),
     ) -> Result<(), GenieError> {
-        let player = w.player;
+        let (player, master) = (w.player.index(), w.master.get());
         let Some(Place::Live(q, idx)) = self.place(id) else {
             return Err(GenieError::unsupported(
                 "a wall builder the slice does not have",
@@ -352,11 +355,11 @@ impl World {
             .is_none_or(|ai| !w.queued && (!w.commits || !ai.has_unready_order()));
         if direct {
             let task: (i16, BuildAction) =
-                self.build_task(q, id, (player, foundation, w.master), at)?;
-            self.build_directly(q, idx, task, (player, foundation, w.master), at)?;
+                self.build_task(q, id, (player, foundation, master), at)?;
+            self.build_directly(q, idx, task, (player, foundation, master), at)?;
         } else {
             for &(f, p) in placed {
-                self.queue_build(q, idx, (player, f, w.master), p)?;
+                self.queue_build(q, idx, (player, f, master), p)?;
             }
             if w.commits
                 && let Some(ai) = self.players[q].objects[idx].ai.as_mut()

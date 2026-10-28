@@ -2,6 +2,7 @@
 
 use crate::GenieError;
 use crate::commands::UnitList;
+use crate::players::PlayerId;
 use crate::world::World;
 
 /// STOP (0x01, `FUN_14161e200`): the units the packet lists (the count at `+0x4`, the ids from
@@ -9,7 +10,7 @@ use crate::world::World;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StopCommand {
     /// The player whose units stop.
-    pub player: usize,
+    pub player: PlayerId,
     /// The units.
     pub units: UnitList,
 }

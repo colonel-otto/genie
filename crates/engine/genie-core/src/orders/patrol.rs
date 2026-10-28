@@ -1,11 +1,14 @@
 //! PATROL, the attack move and their sweep, and the group the splitter keeps.
 
 use crate::GenieError;
+use crate::map::Point;
 use crate::math::rng::Stream;
+use crate::objects::ObjectId;
 use crate::orders::{
     ATTACK_MOVE_QUEUED, Place, Split, Sweep, ignore_unit, patrol_timeout,
     set_differentiator_groups, waypoints_from,
 };
+use crate::players::PlayerId;
 use crate::unit_ai::ActionKind;
 use crate::unit_ai::OrderKind;
 use crate::world::World;
@@ -19,11 +22,14 @@ impl World {
     /// ([`World::patrol_order`]).
     pub(crate) fn patrol(
         &mut self,
-        player: usize,
-        ids: &[i32],
-        waypoints: &[[f32; 2]],
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+        waypoints: &[Point],
         reset: bool,
     ) -> Result<(), GenieError> {
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
+        let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
         let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };
@@ -47,11 +53,14 @@ impl World {
     /// What the order does not model.
     pub(crate) fn attack_move(
         &mut self,
-        player: usize,
-        ids: &[i32],
-        waypoints: &[[f32; 2]],
+        player: PlayerId,
+        ids: &[Option<ObjectId>],
+        waypoints: &[Point],
         sweep: Sweep,
     ) -> Result<(), GenieError> {
+        let player = player.index();
+        let ids: &[i32] = &ObjectId::fields(ids);
+        let waypoints: &[[f32; 2]] = &waypoints.iter().map(|p| p.xy()).collect::<Vec<_>>();
         let Some(ids) = self.command_check(player, ids) else {
             return Ok(());
         };
