@@ -13204,8 +13204,9 @@ fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
 /// footprint, a construction that started (its owner watches it once: the flag clears), the work
 /// an annex's main building takes (at once, `World::work_building`: the house's state, hit points
 /// and build points); and the completion, taken out of the step: the house leaves its
-/// pending tracker list for its done one and its owner gains what it brings (its history event,
-/// attributes, technology, pasture, cart, and the vanishing). A step of nothing changes nothing.
+/// pending tracker list for its done one and its owner gains what it brings at once
+/// (`World::built`: here its history event and attributes; the start's watch is the loop's). A
+/// step of nothing changes nothing.
 #[test]
 fn a_build_step_s_changes_reach_the_world() {
     use crate::construction::build::unit::record_build_step;
@@ -13214,14 +13215,9 @@ fn a_build_step_s_changes_reach_the_world() {
     let recorded = |t: &mut World, step: &mut BuildStep| {
         in_update(t, (1, 0), 50, |_, c| {
             record_build_step(c, 10028, &[], step)?;
-            let built = (
-                take(&mut c.history_events),
-                take(&mut c.attribute_adds),
-                take(&mut c.techs_done),
-                take(&mut c.pastures),
-                take(&mut c.carts),
-                take(&mut c.completions),
-            );
+            let owner = &c.w.players[1];
+            let events: Vec<u8> = owner.history.events.iter().map(|e| e.kind).collect();
+            let built = (events, owner.attributes[4]);
             Ok((
                 c.w.object(601).map(|(_, u)| site_of(u)),
                 take(&mut c.evacuations),
@@ -13233,6 +13229,7 @@ fn a_build_step_s_changes_reach_the_world() {
         .unwrap()
     };
     let mut t = house_builder();
+    t.players[1].history.entries.push([0, 0]);
     let mut quiet = BuildStep::default();
     let nothing = recorded(&mut t, &mut quiet);
     assert_eq!(
@@ -13242,7 +13239,7 @@ fn a_build_step_s_changes_reach_the_world() {
             vec![],
             vec![],
             Some((0, 1.0, Some(0.0))),
-            (vec![], vec![], vec![], vec![], vec![], vec![])
+            (vec![], 0.0)
         )
     );
     t.players[1].objects[1]
@@ -13258,12 +13255,12 @@ fn a_build_step_s_changes_reach_the_world() {
     let built = Built {
         attributes: vec![(4, 5.0)],
         history: Some(6),
-        tech: Some(7),
-        cart: Some(0),
+        tech: None,
+        cart: None,
         stack: None,
-        vanishes: true,
-        started: false,
-        pasture: true,
+        vanishes: false,
+        started: true,
+        pasture: false,
     };
     let mut step = BuildStep {
         cleared: vec![cleared],
@@ -13280,17 +13277,12 @@ fn a_build_step_s_changes_reach_the_world() {
             vec![(10028, vec![9175])],
             vec![10028],
             Some((0, 56.0, Some(2.5))),
-            (
-                vec![6],
-                vec![(4, 5.0)],
-                vec![7],
-                vec![10028],
-                vec![(10028, 0)],
-                vec![(10028, None, true)]
-            )
+            (vec![6], 5.0)
         )
     );
     assert_eq!(step.completed, None);
+    let watched = t.players[1].watched.iter().filter(|w| w.id == 10028);
+    assert_eq!(watched.count(), 1, "the start's watch once, the loop's");
     let house = &t.players[1].objects[1];
     assert!(!house.construction.unwrap().started);
     let k = crate::players::tracker::key(t.masters.get(1), &t.lines, 70);

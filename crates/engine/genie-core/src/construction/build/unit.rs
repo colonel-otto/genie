@@ -498,14 +498,15 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 }
 
 /// What the Build's step changes of the world beside the builder: the cleared objects and the
-/// footprint's removals (at once, through the world), its occupants, the constructions that started (its annexes'
-/// first: their owner watches each, `FUN_1411e5670`), the work an annex's main building takes
-/// (at once, [`World::work_building`]), and the completion (taken out of the step) with its annexes' state (at once, through the
-/// world), its tracker part and its standing sprite.
+/// footprint's removals (at once, through the world), its occupants, the constructions that
+/// started (its annexes' first: their owner watches each, `FUN_1411e5670`), the work an annex's
+/// main building takes (at once, [`World::work_building`]), and the completion (taken out of
+/// the step) with its annexes' state, its tracker part, its standing sprite and what it leaves
+/// its owner (at once, [`World::set_state`] and [`World::built`]).
 ///
 /// # Errors
 ///
-/// What an annex's `set_state` does not model.
+/// What an annex's `set_state` and the completion's outputs do not model.
 pub(crate) fn record_build_step(
     c: &mut Context<'_>,
     target: i32,
@@ -577,18 +578,13 @@ pub(crate) fn record_build_step(
                 );
             }
         }
-        c.history_events.extend(built.history);
-        c.attribute_adds.extend(built.attributes);
-        c.techs_done.extend(built.tech);
-        if built.pasture {
-            c.pastures.push(target);
-        }
-        if let Some(state) = built.cart {
-            c.carts.push((target, state));
-        }
-        if built.stack.is_some() || built.vanishes {
-            c.completions.push((target, built.stack, built.vanishes));
-        }
+        // what it leaves its owner, at once and in the game's order; the start's watch is the
+        // started loop's above, which cleared the flag
+        let built = crate::construction::build::Built {
+            started: false,
+            ..built
+        };
+        c.w.built(p, target, built)?;
     }
     Ok(())
 }
