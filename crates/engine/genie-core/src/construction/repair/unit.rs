@@ -36,7 +36,9 @@ impl Unit {
             usize::try_from(own.terrain_restriction).ok(),
             self.work_rate_powerup + own.work_rate,
         );
-        let (player, resources, pace) = (c.player, c.resources, c.pace());
+        let (player, pace) = (c.player, c.pace());
+        // what the owner holds now: the update may have paid or gained before the repair
+        let resources = c.w.players[player].resources;
         let (scenario, now, computer) = (c.scenario, c.world_time, c.computer);
         let (my_id, stance) = (self.id, self.ai.as_ref().map_or(0, |ai| ai.stance));
         let repair_action = self.actions.repair_mut().expect("checked above");
@@ -96,7 +98,7 @@ impl Unit {
             repair: &mut repair,
         };
         let step = repair_action.update(walk, view)?;
-        c.attribute_adds.extend(paid.adds);
+        c.w.players[player].add_attributes(paid.adds)?;
         repair_write_back(c.w, &set, &original);
         self.after_repair_step(c, (target, target_kind, counted_in), step)
     }

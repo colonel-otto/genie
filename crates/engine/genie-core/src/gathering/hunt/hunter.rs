@@ -5,7 +5,6 @@
 use crate::GenieError;
 use crate::combat::damage::Victim;
 use crate::combat::victims::readable;
-use crate::gathering::gather::unit::give_load;
 use crate::movement::move_to::MoveTo;
 use crate::movement::{Me, footprint_gap_squared};
 use crate::objects::unit::{Unit, hunt_walk_sprite, second_target_checked};
@@ -137,9 +136,9 @@ impl Unit {
 
     /// State 8, which has no target: its drop site (the second target) is what it walks to
     /// ([`crate::gathering::hunt::HuntAction::update_drop`]); a load dropped goes to the player
-    /// ([`give_load`]) and the hunt walks back ([`Unit::hunt_after_drop`]); a drop site that does
-    /// not take it goes and the drop-off searches again. Its idling (`set_state` 2) is not
-    /// modelled.
+    /// at once ([`Context::give_load`]) and the hunt walks back ([`Unit::hunt_after_drop`]); a
+    /// drop site that does not take it goes and the drop-off searches again. Its idling
+    /// (`set_state` 2) is not modelled.
     pub(crate) fn hunt_drop_walk(&mut self, c: &mut Context<'_>, me: Me) -> Result<(), GenieError> {
         let hunt = self.actions.hunt_mut().expect("the caller's hunt");
         let master =
@@ -206,13 +205,7 @@ impl Unit {
                 // gathered total (166 to 168; gold's 49 and 169); the statistics (slot 0xb8) and
                 // the local player's tracker (FUN_14097daf0) are not held; a sharing player's
                 // allies' share (+0x1426) is not modelled
-                give_load(
-                    (&c.w.spatial.relations, c.sharing),
-                    c.player,
-                    &mut c.attribute_adds,
-                    kind,
-                    amount,
-                )?;
+                c.give_load(kind, amount)?;
                 self.hunt_after_drop(c)?;
             }
             crate::gathering::hunt::Dropped::Again => {

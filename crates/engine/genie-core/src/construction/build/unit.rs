@@ -9,7 +9,6 @@ use crate::construction::build::{
     AnnexStart, BUILD_ORDER, BuildAction, BuildStep, Builder, ClearLook, Completion, DROP,
     DROPPED_ORDERS, Looks, MainWork, NO_CONSTRUCTION, NOT_HELD, Site, WorkChain,
 };
-use crate::gathering::gather::unit::give_load;
 use crate::gathering::hunt::DropOff;
 use crate::map::spatial::Spatial;
 use crate::math::rng::Stream;
@@ -265,13 +264,7 @@ impl Unit {
         // the load dropped at the end of the work (FUN_140aadc50: the player's slot 0xf8 with
         // 1 and 1, then the builder carries nothing, FUN_14119d310)
         if let Some((kind, amount)) = step.dropped {
-            give_load(
-                (&c.w.spatial.relations, c.sharing),
-                c.player,
-                &mut c.attribute_adds,
-                kind,
-                amount,
-            )?;
+            c.give_load(kind, amount)?;
             self.life.attribute_type = -1;
             self.life.amount = 0.0;
         }

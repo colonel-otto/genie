@@ -56,8 +56,7 @@ impl World {
         let player = &self.players[p];
         let (computer, construction_rate, civ) =
             (player.computer, player.construction_rate, player.civ);
-        let (ai_settings, sharing, resources) =
-            (player.ai_settings, player.sharing, player.resources);
+        let (ai_settings, sharing) = (player.ai_settings, player.sharing);
         let settings = &self.settings;
         let (farm_stops, predator_hunts_end) =
             (settings.walkable_farms, settings.predator_hunts_end());
@@ -94,7 +93,6 @@ impl World {
             sharing,
             farm_stops,
             predator_hunts_end,
-            resources,
             attribute_97: &frame.attribute_97,
             game_status: &frame.game_status,
             player_turn,
@@ -107,7 +105,6 @@ impl World {
             scenario: scenario_mode(game_mode),
             standard: standard_mode(game_mode),
             sight_takers: &frame.sight_takers,
-            attribute_adds: Vec::new(),
             history_events: Vec::new(),
             techs_done: Vec::new(),
             pastures: Vec::new(),

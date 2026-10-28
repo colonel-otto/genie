@@ -262,6 +262,21 @@ impl Player {
             }
         }
     }
+
+    /// [`Player::add_attribute`] for each of `adds`, in order.
+    ///
+    /// # Errors
+    ///
+    /// The first add [`Player::add_attribute`] fails on; the adds before it hold.
+    pub fn add_attributes(
+        &mut self,
+        adds: impl IntoIterator<Item = (i16, f32)>,
+    ) -> Result<(), GenieError> {
+        for (kind, amount) in adds {
+            self.add_attribute(kind, amount)?;
+        }
+        Ok(())
+    }
 }
 
 /// The population's resource, which a cost check skips (`FUN_141618db0` with its fifth argument

@@ -280,6 +280,9 @@ impl Unit {
     ) -> Result<R, GenieError> {
         let mut ai = self.ai.take().expect("a unit with a unit AI");
         let (p, me, world_time) = (c.player, c.me, c.world_time);
+        // what its master change gives or takes of the owner's attributes, the owner's after
+        // the side's call (the task search reads the attributes as the call starts)
+        let mut adds = Vec::new();
         let World {
             players,
             spatial,
@@ -351,7 +354,7 @@ impl Unit {
                     builder_leaves: &mut c.builder_leaves,
                 },
                 starts: &mut c.starts,
-                attribute_adds: &mut c.attribute_adds,
+                attribute_adds: &mut adds,
                 relations: &relations,
                 attributes: &attributes,
                 civ: view.civ,
@@ -363,7 +366,9 @@ impl Unit {
             f(&mut ai, &mut side, ai_stream)
         };
         self.ai = Some(ai);
-        result
+        let answer = result?;
+        c.w.players[p].add_attributes(adds)?;
+        Ok(answer)
     }
 
     /// The unit's AI run outside its update (a command's immediate order): `f` gets the AI, what

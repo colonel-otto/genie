@@ -204,8 +204,8 @@ impl Unit {
                 },
                 farm,
             );
-            if let Some(add) = step.to_player {
-                c.attribute_adds.push(add);
+            if let Some((kind, amount)) = step.to_player {
+                c.w.players[c.player].add_attribute(kind, amount)?;
             }
             // slot 0xd8 (FUN_14118f580): no hit points left; the object is in its list, so not
             // asleep, and the special-object list (+0x30c bit 0) is not held

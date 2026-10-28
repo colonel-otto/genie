@@ -5177,12 +5177,38 @@ fn life_part(
             .chain([master, left]),
     );
     in_update(&mut t, (1, 0), 50, |unit, c| {
+        let before = attribute_values(c.w, 1);
         part(unit, c)?;
-        Ok((c.attribute_adds.clone(), c.remains))
+        Ok((gained(c.w, 1, &before), c.remains))
     })
 }
 
-/// What [`life_part`] gives: the Context's attribute changes and its remains.
+/// Player `p`'s food, wood, stone and gold, then its attributes from 4 on: every attribute's
+/// value in attribute order.
+fn attribute_values(t: &World, p: usize) -> Vec<f32> {
+    let owner = &t.players[p];
+    owner
+        .resources
+        .iter()
+        .chain(owner.attributes.iter().skip(4))
+        .copied()
+        .collect()
+}
+
+/// What player `p`'s attributes changed by since `before` ([`attribute_values`]): each changed
+/// attribute and its change, in attribute order.
+fn gained(t: &World, p: usize, before: &[f32]) -> Vec<(i16, f32)> {
+    let now = attribute_values(t, p);
+    let changed = now
+        .iter()
+        .zip(before)
+        .enumerate()
+        .filter(|(_, (a, b))| a != b);
+    changed.map(|(i, (a, b))| (i as i16, a - b)).collect()
+}
+
+/// What [`life_part`] gives: the owner's attribute changes within the update and the
+/// Context's remains.
 type LifeLeft = (Vec<(i16, f32)>, Option<(i16, [f32; 3], Option<u8>)>);
 
 /// The life cycle's `set_state(3)` storage (`FUN_1411a56c0` with 0): a live object below one
@@ -5196,10 +5222,7 @@ fn a_dying_object_gives_back_its_storage_of_kinds_2_and_16() {
                 m.storage = vec![(4, 1.0, 2), (11, 5.0, 16), (9, 1.0, 1), (-1, 1.0, 2)];
                 (v.life.state, v.life.hp) = (2, hp);
             },
-            |u, c| {
-                u.dying_storage_leaves(c);
-                Ok(())
-            },
+            |u, c| u.dying_storage_leaves(c),
         )
         .unwrap()
         .0
@@ -13048,8 +13071,8 @@ fn a_hunter_that_finds_nothing_after_the_drop_walks_to_its_point() {
 }
 
 /// [`Unit::after_build_step`] of [`house_builder`]'s forager for `step`, with what the step leaves
-/// in its context: the objects let go, the work command and the attributes added; and the
-/// notifies its unit AI heard.
+/// in its context: the objects let go and the work command; the attributes its owner gained
+/// within the update; and the notifies its unit AI heard.
 fn after_build(t: &mut World, step: BuildStep) -> AfterBuild {
     in_update(t, (1, 0), 50, |unit, c| {
         let me = crate::movement::Me {
@@ -13059,13 +13082,14 @@ fn after_build(t: &mut World, step: BuildStep) -> AfterBuild {
             action_state: unit.top_action().map_or(0, |a| a.state),
         };
         let by = unit.releaser(c);
+        let before = attribute_values(c.w, 1);
         unit.after_build_step(c, me, (10028, Some(70), by), step)?;
         let released = c.releases.iter().map(|&(id, _)| id).collect();
         let heard = unit.ai.as_ref().unwrap().notifies.iter();
         Ok(AfterBuild {
             released,
             work: c.work_order.map(|w| (w.target, w.point)),
-            added: c.attribute_adds.clone(),
+            added: gained(c.w, 1, &before),
             heard: heard.map(|n| (n.kind, n.p)).collect(),
         })
     })
@@ -13515,8 +13539,8 @@ fn a_building_s_later_state_reaches_its_annexes_where_it_runs() {
     assert_eq!(seen.map_err(|e| e.reason().to_owned()), Ok(Some(7)));
 }
 
-/// What [`completed_house`]'s completion left: the attributes added and how often its owner
-/// watches the house within the update.
+/// What [`completed_house`]'s completion left within the update: the attributes its owner
+/// gained and how often it watches the house.
 type Completed = (Vec<(i16, f32)>, usize);
 
 /// [`house_builder`]'s house 10028 (player 1's object 1) with its build points at its build
@@ -13530,11 +13554,9 @@ fn completed_house(setup: fn(&mut Unit)) -> (World, Completed) {
     k.progress = f32::from(k.build_time);
     setup(h);
     let r = in_update(&mut t, (1, 1), 50, |unit, c| {
+        let before = attribute_values(c.w, 1);
         unit.complete_on_update(c)?;
-        Ok((
-            std::mem::take(&mut c.attribute_adds),
-            watches(c.w, 1, 10028),
-        ))
+        Ok((gained(c.w, 1, &before), watches(c.w, 1, 10028)))
     })
     .unwrap();
     (t, r)
@@ -13762,6 +13784,31 @@ fn a_repairer_out_of_reach_fails_and_one_within_reach_repairs() {
         (309.922_58, 1, 1)
     );
     assert_eq!(t.players[1].resources, [100.0; 4]);
+}
+
+/// A repair pays from what its owner holds when it pays, within the update (`FUN_141618db0` on
+/// the player's attributes): wood spent earlier in the same update is not there to pay with, so
+/// the house gains no hit points and the wood stays at 0.
+#[test]
+fn a_repair_pays_from_what_its_owner_holds_at_the_payment() {
+    let mut t = repairing([30.0, 89.2, 0.0]);
+    t.players[1].attributes.resize(300, 0.0);
+    t.players[1].attributes[crate::construction::repair::BUILDING_REPAIR_COST] = 1.0;
+    assert_eq!(repair_for(&mut t, 100), [Some(4), Some(6), Some(7)]);
+    let hp = t.players[1].objects[1].life.hp;
+    in_update(&mut t, (1, 0), 50, |unit, c| {
+        c.w.players[1].resources[1] = 0.0;
+        let me = crate::movement::Me {
+            id: unit.id,
+            position: unit.position,
+            group: unit.group.id,
+            action_state: unit.top_action().map_or(0, |a| a.state),
+        };
+        unit.repair_part(c, me)
+    })
+    .unwrap();
+    let house = &t.players[1].objects[1];
+    assert_eq!((house.life.hp, t.players[1].resources[1]), (hp, 0.0));
 }
 
 /// The Repair's payment, its end and another player's target ([`Unit::repair_part`]): with a

@@ -14,7 +14,7 @@ impl Unit {
     /// the sight, the remains and the death spawn. [`Step::Leave`] when the object leaves the
     /// world.
     pub(crate) fn life_step(&mut self, c: &mut Context<'_>) -> Result<Step, GenieError> {
-        self.dying_storage_leaves(c);
+        self.dying_storage_leaves(c)?;
         let before = self.life.state;
         if before == 4 && self.sprite.is_none() {
             return Err(GenieError::unsupported(
@@ -40,11 +40,15 @@ impl Unit {
 
     /// `set_state(3)`'s storage (`FUN_1411a56c0` with 0) for a live object below one hit point:
     /// each of kinds 2 and 16 of an attribute leaves the player (its slot 0xf8 with the amount
-    /// negated, [`Context::attribute_adds`]).
-    pub(crate) fn dying_storage_leaves(&self, c: &mut Context<'_>) {
+    /// negated, at once).
+    ///
+    /// # Errors
+    ///
+    /// An attribute the player does not have.
+    pub(crate) fn dying_storage_leaves(&self, c: &mut Context<'_>) -> Result<(), GenieError> {
         // a NaN hit point is not below one
         if !(self.life.is_alive() && self.life.hp < 1.0) {
-            return;
+            return Ok(());
         }
         if let Some(m) =
             c.w.masters
@@ -53,10 +57,11 @@ impl Unit {
         {
             for &(attribute, amount, kind) in &m.storage {
                 if matches!(kind, 2 | 16) && 0 <= attribute {
-                    c.attribute_adds.push((attribute, -amount));
+                    c.w.players[c.player].add_attribute(attribute, -amount)?;
                 }
             }
         }
+        Ok(())
     }
 
     /// The `set_state`s of the life cycle's step from `before` to the state it left

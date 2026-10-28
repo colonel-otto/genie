@@ -149,11 +149,9 @@ pub fn repair_unit(
 }
 
 /// A repairer's player's attributes as its repair pays from them ([`crate::construction::repair::Payer`]):
-/// the resources (`Player::resources`) and the other attributes as the update reads them, each
-/// payment kept as an add for the caller ([`Context::attribute_adds`]: a subtraction, so the
-/// player's value comes out as the repair saw it).
-///
-/// [`Context::attribute_adds`]: crate::world::context::Context::attribute_adds
+/// the resources (`Player::resources`) and the other attributes as the repair reads them, each
+/// payment kept as an add the caller makes the owner's right after the repair's step (a
+/// subtraction, so the player's value comes out as the repair saw it).
 pub(crate) struct PaidAttributes {
     pub(super) values: Vec<f32>,
     pub(crate) adds: Vec<(i16, f32)>,

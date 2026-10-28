@@ -15,6 +15,11 @@ use crate::unit_ai::task_finder::{Actor, DropSite};
 use crate::world::context::Context;
 use crate::world::others::OthersRef;
 
+/// The units inside object `id`, any player's (its slot 0x498).
+fn units_inside(others: OthersRef<'_>, id: i32) -> usize {
+    others.every().filter(|u| u.life.inside == Some(id)).count()
+}
+
 impl Unit {
     /// The Enter's update ([`crate::garrison::EnterAction::update`]) with what it reads of its
     /// target, one of its own player's (another player's is not modelled): room for the unit (its
@@ -31,10 +36,6 @@ impl Unit {
             .copied()
             .expect("checked by the caller");
         let found = OthersRef::of(&c.w.players, c.player).find(enter.target);
-        // the units inside the target, any player's (its slot 0x498)
-        let inside_of = |others: OthersRef<'_>, id: i32| {
-            others.every().filter(|u| u.life.inside == Some(id)).count()
-        };
         let (building, walking, meeting) = match found {
             Some((tp, t)) => {
                 let master =
@@ -44,7 +45,7 @@ impl Unit {
                         .ok_or(GenieError::unsupported(
                             "an Enter's building of a master the slice lacks",
                         ))?;
-                let room = inside_of(OthersRef::of(&c.w.players, c.player), t.id)
+                let room = units_inside(OthersRef::of(&c.w.players, c.player), t.id)
                     < usize::from(master.garrison);
                 let (mut view, walking, meeting) = crate::garrison::enter_view(
                     &c.w.spatial,
@@ -107,50 +108,7 @@ impl Unit {
             )?;
         }
         if step.enter {
-            let (tp, building) = OthersRef::of(&c.w.players, c.player)
-                .find(enter.target)
-                .expect("the update found it");
-            let inside = inside_of(OthersRef::of(&c.w.players, c.player), enter.target);
-            let mut w = EnterWorld {
-                spatial: &mut c.w.spatial,
-                pathing: &mut c.w.pathing,
-                masters: c.w.masters.get(c.player),
-                target_masters: c.w.masters.get(tp),
-                graphics: &c.w.graphics,
-                sprite_rng: c.w.streams.get(Stream::Sprite),
-                drop_sites: &c.w.drop_sites,
-                attributes: &c.w.players[c.player].attributes,
-                civ: c.civ,
-                sharing: c.sharing,
-                player: c.player,
-                attribute_adds: &mut c.attribute_adds,
-                firepower: 0.0,
-                left_group: None,
-            };
-            if !self.enter_building(building, inside, &mut w)? {
-                return Err(GenieError::unsupported(
-                    "an Enter that did not get in (state 2)",
-                ));
-            }
-            // the update's own set_state(1) after the enter's
-            self.entered(&mut w)?;
-            if step.again {
-                // FUN_140a867b0 on the unit inside: notify 0x1fa and its set_state(1), then the
-                // update's
-                self.post_own(
-                    crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
-                    [crate::garrison::ENTER_ACTION, 0, 0],
-                )?;
-                self.entered(&mut w)?;
-                self.entered(&mut w)?;
-            }
-            let firepower = w.firepower;
-            c.left_group = w.left_group.map(|g| (g, enter.target));
-            // its building, any player's, gains the unit at once (the enter's slot 0x1c0)
-            if let Some((_, b)) = c.w.object_mut(enter.target) {
-                b.firepower += firepower;
-                b.garrison.push(self.id);
-            }
+            self.enter_in_update(c, enter.target, step.again)?;
         }
         if step.done {
             // its 1 (an Enter that got the unit in, the unit out again before this update) or a
@@ -160,6 +118,68 @@ impl Unit {
                 let by = self.releaser(c);
                 crate::world::lets::release(c, e.target, by)?;
             }
+        }
+        Ok(())
+    }
+
+    /// The Enter's enter in its update (`FUN_140a867b0` into `target`, [`Unit::enter_building`],
+    /// then the update's own `set_state(1)`; `again` an enter again,
+    /// [`crate::garrison::EnterStep::again`]): the load the building took goes to the owner, the
+    /// building gains the unit and its firepower at once, and the unit group it left is the
+    /// caller's ([`Context::left_group`]).
+    fn enter_in_update(
+        &mut self,
+        c: &mut Context<'_>,
+        target: i32,
+        again: bool,
+    ) -> Result<(), GenieError> {
+        let (tp, building) = OthersRef::of(&c.w.players, c.player)
+            .find(target)
+            .expect("the update found it");
+        let inside = units_inside(OthersRef::of(&c.w.players, c.player), target);
+        let mut adds = Vec::new();
+        let mut w = EnterWorld {
+            spatial: &mut c.w.spatial,
+            pathing: &mut c.w.pathing,
+            masters: c.w.masters.get(c.player),
+            target_masters: c.w.masters.get(tp),
+            graphics: &c.w.graphics,
+            sprite_rng: c.w.streams.get(Stream::Sprite),
+            drop_sites: &c.w.drop_sites,
+            attributes: &c.w.players[c.player].attributes,
+            civ: c.civ,
+            sharing: c.sharing,
+            player: c.player,
+            attribute_adds: &mut adds,
+            firepower: 0.0,
+            left_group: None,
+        };
+        if !self.enter_building(building, inside, &mut w)? {
+            return Err(GenieError::unsupported(
+                "an Enter that did not get in (state 2)",
+            ));
+        }
+        // the update's own set_state(1) after the enter's
+        self.entered(&mut w)?;
+        if again {
+            // FUN_140a867b0 on the unit inside: notify 0x1fa and its set_state(1), then the
+            // update's
+            self.post_own(
+                crate::unit_ai::ai_kinds::NOTIFY_ACTION_COMPLETED,
+                [crate::garrison::ENTER_ACTION, 0, 0],
+            )?;
+            self.entered(&mut w)?;
+            self.entered(&mut w)?;
+        }
+        let firepower = w.firepower;
+        c.left_group = w.left_group.map(|g| (g, target));
+        // the load the building took, the owner's within the enter (nothing after it in the
+        // enter reads the attributes)
+        c.w.players[c.player].add_attributes(adds)?;
+        // its building, any player's, gains the unit at once (the enter's slot 0x1c0)
+        if let Some((_, b)) = c.w.object_mut(target) {
+            b.firepower += firepower;
+            b.garrison.push(self.id);
         }
         Ok(())
     }

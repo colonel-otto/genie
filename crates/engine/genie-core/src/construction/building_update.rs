@@ -235,7 +235,7 @@ impl Unit {
             self.life.master_id,
         );
         c.w.players[c.player].tracker.complete(self.id, k);
-        c.attribute_adds.extend(built.attributes);
+        c.w.players[c.player].add_attributes(built.attributes)?;
         c.techs_done.extend(built.tech);
         if built.pasture {
             c.pastures.push(self.id);

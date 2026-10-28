@@ -313,13 +313,7 @@ impl Unit {
         (kind, amount): (i16, f32),
         radius: [f32; 2],
     ) -> Result<(), GenieError> {
-        give_load(
-            (&c.w.spatial.relations, c.sharing),
-            c.player,
-            &mut c.attribute_adds,
-            kind,
-            amount,
-        )?;
+        c.give_load(kind, amount)?;
         let gather = self.actions.gather_mut().expect("the caller's gather");
         if gather.target == -1 {
             return self.gather_after_drop(c);
@@ -386,13 +380,7 @@ impl Unit {
             self.body.set_anim_speed(0.0);
         }
         if 0.0 < sold {
-            give_load(
-                (&c.w.spatial.relations, c.sharing),
-                c.player,
-                &mut c.attribute_adds,
-                0,
-                sold,
-            )?;
+            c.give_load(0, sold)?;
         }
         self.gather_next(c, next, old, by)
     }
@@ -482,7 +470,7 @@ impl Unit {
 }
 
 /// The player's slot 0xf8 (`FUN_141616820`) with 1 and 1 on a unit's load: the resource and its
-/// gathered total (166 to 168; gold's 49 and 169), which the caller adds after the update; the
+/// gathered total (166 to 168; gold's 49 and 169) in `adds`, which the caller gives the player; the
 /// statistics (slot 0xb8) and the local player's tracker (`FUN_14097daf0`) are not held. With 1
 /// the resources would go to the allies too when the player shares (`sharing`, `+0x1426`,
 /// `FUN_14165d040`): a sharing player with allies is not modelled.

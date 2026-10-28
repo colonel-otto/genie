@@ -50,7 +50,7 @@ impl Unit {
             }
             if before == 2 {
                 let death = built_death(self, master, c.computer)?;
-                c.attribute_adds.extend(death.adds);
+                c.w.players[c.player].add_attributes(death.adds)?;
                 c.unwatched.push(self.id);
                 if let (Some(v), Some(at)) = (c.w.spatial.sight.as_mut(), death.unlink) {
                     v.unlink_building(at, master.radius);
@@ -136,7 +136,7 @@ impl Unit {
             self.life.master_id,
         );
         c.w.players[c.player].tracker.complete(self.id, k);
-        c.attribute_adds.extend(part.attributes);
+        c.w.players[c.player].add_attributes(part.attributes)?;
         if part.pasture {
             c.pastures.push(self.id);
         }

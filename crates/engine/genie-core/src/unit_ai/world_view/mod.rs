@@ -239,7 +239,8 @@ pub(crate) struct UnitView<'u, 'o> {
     pub(crate) lets: Lets<'u>,
     /// The actions its slots 0x388 and 0x378 gave ([`AiStart`]), the caller's.
     pub(crate) starts: &'u mut Vec<AiStart>,
-    /// What its master change (slot 0x90) gives or takes of its owner's attributes, the caller's.
+    /// What its master change (slot 0x90) gives or takes of its owner's attributes, the owner's
+    /// after the side's call ([`crate::objects::unit::Unit::with_side`]).
     pub(crate) attribute_adds: &'u mut Vec<(i16, f32)>,
     /// What its task search reads of its owner: its diplomacy, attributes and civ, and the drop
     /// sites.

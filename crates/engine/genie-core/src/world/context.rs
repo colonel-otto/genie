@@ -87,10 +87,6 @@ pub(crate) struct Context<'a> {
     pub(crate) unwatched: Vec<i32>,
     /// The game's setting at `+0x680` is 1 ([`World::mode_680`]).
     pub(crate) mode_1: bool,
-    /// The owner's food, wood, stone and gold ([`Player::resources`]), which a repair pays from.
-    ///
-    /// [`Player::resources`]: crate::world::player::Player::resources
-    pub(crate) resources: [f32; 4],
     /// The owner's id and civ (`player+0x738`).
     pub(crate) player: usize,
     pub(crate) civ: u8,
@@ -128,9 +124,6 @@ pub(crate) struct Context<'a> {
     /// ([`crate::vision::visibility::sight_taker`]).
     pub(crate) standard: bool,
     pub(crate) sight_takers: &'a [(bool, bool)],
-    /// The attributes the owner gains from the object's update (a building it completed), which
-    /// the caller adds after it.
-    pub(crate) attribute_adds: Vec<(i16, f32)>,
     /// The events the owner's history records from the object's update (a castle or a wonder it
     /// completed, [`crate::construction::build::Built::history`]), which the caller adds after it.
     pub(crate) history_events: Vec<u8>,
@@ -188,8 +181,6 @@ pub(crate) struct Context<'a> {
 /// ([`crate::world::World::step_object`]): the Context's fields of the same meaning; the left
 /// group carries the unit's id.
 pub(crate) struct ObjectOutputs {
-    /// [`Context`]'s `attribute_adds`.
-    pub(in crate::world) adds: Vec<(i16, f32)>,
     /// [`Context`]'s `order_on_target`.
     pub(in crate::world) ordered: Option<(
         crate::unit_ai::QueuedOrder,
@@ -253,7 +244,6 @@ impl Context<'_> {
     /// unit's.
     pub(in crate::world) fn outputs(&mut self, id: i32) -> ObjectOutputs {
         ObjectOutputs {
-            adds: std::mem::take(&mut self.attribute_adds),
             ordered: self.order_on_target.take(),
             history_events: std::mem::take(&mut self.history_events),
             works: std::mem::take(&mut self.works),
@@ -361,6 +351,26 @@ impl Context<'_> {
         })?;
         *me = own.take_out(i);
         answer
+    }
+
+    /// The owner's slot 0xf8 with 1 and 1 on a unit's load (`FUN_141616820`,
+    /// [`give_load`]): the owner gains the resource and its gathered total at once.
+    ///
+    /// [`give_load`]: crate::gathering::gather::unit::give_load
+    ///
+    /// # Errors
+    ///
+    /// [`give_load`]'s, or an attribute the owner does not have.
+    pub(crate) fn give_load(&mut self, kind: i16, amount: f32) -> Result<(), GenieError> {
+        let mut adds = Vec::new();
+        crate::gathering::gather::unit::give_load(
+            (&self.w.spatial.relations, self.sharing),
+            self.player,
+            &mut adds,
+            kind,
+            amount,
+        )?;
+        self.w.players[self.player].add_attributes(adds)
     }
 
     /// What a walk takes of the update beside the world ([`World::walk_beside`]).

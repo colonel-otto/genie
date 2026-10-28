@@ -125,9 +125,6 @@ impl World {
     /// mule cart's search, a building's stack unit, its technology, and a building that
     /// disappears when built.
     fn apply_completions(&mut self, p: usize, out: &mut ObjectOutputs) -> Result<(), GenieError> {
-        for (kind, amount) in std::mem::take(&mut out.adds) {
-            self.players[p].add_attribute(kind, amount)?;
-        }
         // a completed pasture's livestock (FUN_1411c8410 in FUN_1411c6bd0, after the farm's
         // bonus)
         for pasture in std::mem::take(&mut out.pastures) {
