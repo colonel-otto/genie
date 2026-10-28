@@ -499,8 +499,8 @@ fn drop_site_master(c: &Context<'_>, built: Option<i16>) -> bool {
 
 /// What the Build's step changes of the world beside the builder (the caller's): the cleared
 /// objects, the footprint's removals and occupants, the constructions that started (its annexes'
-/// first: their owner watches each, `FUN_1411e5670`), the work an annex's main building takes,
-/// and the completion (taken out of the step) with its annexes' state (at once, through the
+/// first: their owner watches each, `FUN_1411e5670`), the work an annex's main building takes
+/// (at once, [`World::work_building`]), and the completion (taken out of the step) with its annexes' state (at once, through the
 /// world), its tracker part and its standing sprite.
 ///
 /// # Errors
@@ -528,8 +528,9 @@ pub(crate) fn record_build_step(
             c.started.push(id);
         }
     }
+    // the work the annex leaves its main building (FUN_1411cc430), where the builder's runs
     if let Some(amount) = step.main_work {
-        c.main_works.push((target, amount));
+        c.w.work_building(target, amount)?;
     }
     if let Some(built) = step.completed.take() {
         // its set_state(2) took its annexes along (FUN_1411dbb70: their slot 0xa0), which the

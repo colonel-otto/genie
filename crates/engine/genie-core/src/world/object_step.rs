@@ -132,7 +132,6 @@ impl World {
             move_aside: Vec::new(),
             transport_moves: Vec::new(),
             starts: Vec::new(),
-            main_works: Vec::new(),
             leads: None,
         };
         let mut result = f(&mut unit, &mut c);

@@ -13158,10 +13158,16 @@ fn a_builder_finds_more_work_around_the_building_it_finished() {
     );
 }
 
+/// A site's state, hit points and build points.
+fn site_of(u: &Unit) -> (u8, f32, Option<f32>) {
+    (u.life.state, u.life.hp, u.construction.map(|c| c.progress))
+}
+
 /// What a Build's step changes beside its builder (`record_build_step`, the caller's after the
 /// step): the cleared objects, the foundation another player's marks lie on, the occupants of the
 /// footprint, a construction that started (its owner watches it once: the flag clears), the work
-/// an annex's main building takes; and the completion, taken out of the step: the house leaves its
+/// an annex's main building takes (at once, `World::work_building`: the house's state, hit points
+/// and build points); and the completion, taken out of the step: the house leaves its
 /// pending tracker list for its done one and its owner gains what it brings (its history event,
 /// attributes, technology, pasture, cart, and the vanishing). A step of nothing changes nothing.
 #[test]
@@ -13185,7 +13191,7 @@ fn a_build_step_s_changes_reach_the_world() {
                 take(&mut c.site_removals),
                 take(&mut c.evacuations),
                 take(&mut c.started),
-                take(&mut c.main_works),
+                c.w.object(10028).map(|(_, u)| site_of(u)),
                 built,
             ))
         })
@@ -13201,7 +13207,7 @@ fn a_build_step_s_changes_reach_the_world() {
             vec![],
             vec![],
             vec![],
-            vec![],
+            Some((0, 1.0, Some(0.0))),
             (vec![], vec![], vec![], vec![], vec![], vec![])
         )
     );
@@ -13240,7 +13246,7 @@ fn a_build_step_s_changes_reach_the_world() {
             vec![4444],
             vec![(10028, vec![9175])],
             vec![10028],
-            vec![(10028, 2.5)],
+            Some((0, 56.0, Some(2.5))),
             (
                 vec![6],
                 vec![(4, 5.0)],
@@ -13995,8 +14001,7 @@ fn a_dying_building_lets_its_annexes_go_in_its_own_update() {
 
 /// What a step leaves in its Context for other objects reaches them after it: the owner's
 /// history gains the event (the owner as data1), the tracker files a promoted unit under its
-/// new master; the work for an annex goes to it, and the footprint clearing's objects are
-/// destroyed. A human owner's foundation that another
+/// new master, and the footprint clearing's objects are destroyed. A human owner's foundation that another
 /// player's marks stand on goes; a computer's stays.
 #[test]
 fn a_step_s_writes_reach_the_objects_it_names() {
@@ -14034,8 +14039,6 @@ fn a_step_s_writes_reach_the_objects_it_names() {
         assert_eq!(r.map_err(|e| e.reason().to_owned()), Ok(Step::Stay));
         t
     };
-    let t = after(|_| (), &|c| c.main_works.push((10028, 5.0)));
-    assert_eq!(site(&t, 10028), (0, 111.0, Some(5.0)));
     let cleared = crate::construction::build::Cleared {
         id: 601,
         wall: false,

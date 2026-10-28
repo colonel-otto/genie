@@ -203,10 +203,6 @@ pub(crate) struct Context<'a> {
     /// The actions the unit's slots 0x388 and 0x378 gave while its unit AI ran ([`AiStart`]),
     /// which the caller makes the unit's after the update, in order.
     pub(crate) starts: Vec<AiStart>,
-    /// The work a builder gave an annex whose main building takes it (the foundation, the
-    /// seconds; [`crate::construction::build::Worked::Main`]), which the caller runs after the update
-    /// ([`World::work_building`]).
-    pub(crate) main_works: Vec<(i32, f32)>,
     /// The livestock a hunt sends to a drop site with its herd, which the caller sends after the
     /// update ([`World::lead_herd`]).
     pub(crate) leads: Option<(i32, i32)>,
@@ -266,8 +262,6 @@ pub(crate) struct ObjectOutputs {
     pub(in crate::world) flares: Vec<(usize, [f32; 3], bool)>,
     /// [`Context`]'s `promotions`.
     pub(in crate::world) promotions: Vec<(i32, i16, i16)>,
-    /// [`Context`]'s `main_works`.
-    pub(in crate::world) main_works: Vec<(i32, f32)>,
     /// [`Context`]'s `building_death`.
     pub(in crate::world) building_death: Option<BuildingDeath>,
     /// [`Context`]'s `gate_toggle`.
@@ -320,7 +314,6 @@ impl Context<'_> {
             site_removals: std::mem::take(&mut self.site_removals),
             flares: std::mem::take(&mut self.flares),
             promotions: std::mem::take(&mut self.promotions),
-            main_works: std::mem::take(&mut self.main_works),
             building_death: self.building_death.take(),
             gate_toggle: std::mem::take(&mut self.gate_toggle),
             ai_resume: self.ai_resume.take(),

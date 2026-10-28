@@ -48,9 +48,9 @@ fn take_at_least_zero(owner: &mut Player, kind: i16, amount: f32) -> Result<(), 
 impl World {
     /// An object's step ([`World::run_object`], `f`: the unit's update, or one part of its unit
     /// AI for a command) and what follows it: what its Context gathered, applied in the order the
-    /// game's update makes them (the gate, the main buildings' work, the completions, the attributes, the deaths and remains, the regeneration, passive
-    /// abilities and production of a full update, the unit AI's works, moves, waits and order on
-    /// a target, the hits' kills, the takes and releases). Returns the step, the resume of a
+    /// game's update makes them (the gate, the completions, the attributes, the deaths and
+    /// remains, the regeneration, passive abilities and production of a full update, the unit
+    /// AI's works, moves, waits and order on a target, the own kill, the takes and releases). Returns the step, the resume of a
     /// unit AI part the update stopped before, the tail after an order on a target and the
     /// object's slot, which it looks up by id after each part that may move it.
     /// Without `full` (a unit AI run outside the object's update) the parts that only its update
@@ -101,8 +101,8 @@ impl World {
     }
 
     /// The step's writes on other objects and on its own building: a repair's writes, the
-    /// tracker's promotions, the flares, the gate, the annexes' work for their main buildings, a
-    /// builder's footprint clearing and foundation removals, and the history events.
+    /// tracker's promotions, the flares, the gate, a builder's footprint clearing and foundation
+    /// removals, and the history events.
     fn apply_object_writes(
         &mut self,
         (p, i): (usize, usize),
@@ -119,10 +119,6 @@ impl World {
         // the gate's player opens or shuts it, in the gate's update before the rest
         if out.gate_toggle {
             self.toggle_gate(p, i)?;
-        }
-        // the work a builder gave an annex goes to its main building (FUN_1411cc430)
-        for (annex, amount) in std::mem::take(&mut out.main_works) {
-            self.work_building(annex, amount)?;
         }
         // the objects a builder's footprint clearing deleted (FUN_1415c3620)
         for cl in std::mem::take(&mut out.cleared) {
