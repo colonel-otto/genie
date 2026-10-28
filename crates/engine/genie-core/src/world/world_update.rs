@@ -1,9 +1,8 @@
-//! One world update (`BaseWorld::update`): the command phase, the moving objects and the
-//! players' relations, each player's frame and the update with its commands.
+//! The world update's parts ([`crate::world::schedule`] runs them): the command phase, the
+//! moving objects and the players' relations, each player's frame and its objects' updates.
 
 use crate::GenieError;
 use crate::commands::Command;
-use crate::math::rng::Stream;
 use crate::objects::lifecycle::seconds;
 use crate::objects::unit::{Step, Unit};
 use crate::ownership::capture::Captured;
@@ -20,7 +19,8 @@ impl World {
     /// `RGE_Command__do_commands`, before `FUN_141552990`): the update's count and the world's
     /// time go on by `dt`, the streams take the frame seed and `commands` run; no player updates.
     /// For a check of the commands against the game's state there (the tick oracle's
-    /// `snapshot_at` at `0x141552990`); [`World::tick_with`] runs it first.
+    /// `snapshot_at` at `0x141552990`); the schedule's first step
+    /// ([`crate::world::schedule::WorldStep::Commands`]).
     pub fn command_phase(&mut self, dt: u32, commands: &[Command]) {
         self.ticks += 1;
         self.world_time = self.world_time.wrapping_add(dt);
@@ -138,100 +138,12 @@ impl World {
 }
 
 impl World {
-    /// One world update of `dt` game milliseconds, with the commands recorded in it.
-    ///
-    /// # Panics
-    ///
-    /// Never: each player updates in turn, so the one it splits off exists.
-    pub fn tick_with(&mut self, dt: u32, commands: &[Command]) {
-        let _update = tracing::debug_span!(
-            target: crate::trace::UPDATE,
-            "update",
-            tick = self.ticks + 1,
-            world_time = self.world_time.wrapping_add(dt)
-        )
-        .entered();
-        self.command_phase(dt, commands);
-        // which players' gates are open (BaseWorld::update's flags)
-        let mut gates_open = vec![false; self.players.len()];
-        // the Empire Wars start's pass, once (the world's +0x6c6 set before the players update)
-        let start_work = std::mem::take(&mut self.start_work_due);
-        for p in 0..self.players.len() {
-            let _player =
-                tracing::debug_span!(target: crate::trace::UPDATE, "player", player = p).entered();
-            self.player_time[p] = self.player_time[p].wrapping_add(dt);
-            let turn = (p == self.player_turn).then_some(self.player_time[p]);
-            if let Err(e) = self.open_gates(p, &mut gates_open) {
-                self.stop_player(p, e);
-            }
-            if start_work && let Err(e) = self.start_work(p) {
-                self.stop_player(p, e);
-            }
-            self.pathing.tiles_changed(self.spatial.take_changes());
-            // the player's groups (BaseWorld::update at 0x141551796), then its own update (slot
-            // 0x100 at 0x1415518f0): the world player's or Gaia's
-            // ([`crate::players::world_player`]), then WorldPlayerBase::update: its plans start over
-            // (`+0x67c`), then its objects update (FUN_141166550 on its list)
-            if let Err(e) = self.update_groups(p) {
-                self.stop_player(p, e);
-            }
-            if let Err(e) = self.update_world_player(p) {
-                self.stop_player(p, e);
-            }
-            self.pathing.reset_plans(p);
-            self.update_objects(p, (dt, turn));
-            // the end of the player's own update: the tiles its map explored give their
-            // resources
-            if let Err(e) = self.process_new_tiles(p) {
-                self.stop_player(p, e);
-            }
-            // the world player's update after WorldPlayerBase::update: its scout map
-            self.world_player_tail(p);
-            self.close_gates(p, &mut gates_open);
-            // its tile list empties (FUN_141661030)
-            if let Some(v) = self.spatial.sight.as_mut() {
-                v.clear_new_tiles(p);
-            }
-        }
-        self.spatial.grow_unknown(seconds(dt));
-        let s1 = self.streams.get(Stream::World).rand15();
-        // every player's ghosts (FUN_141166550 on +0x40), then every player's watched list
-        // (FUN_1410905e0); the objects' visibility masks (FUN_14107d280 on +0x80, before the
-        // draw) are the registry's, kept as the objects update
-        for p in 0..self.players.len() {
-            if let Err(e) = self.update_ghosts(p) {
-                self.stop_player(p, e);
-            }
-        }
-        for p in 0..self.players.len() {
-            if let Err(e) = self.watch_pass(p) {
-                self.stop_player(p, e);
-            }
-        }
-        self.streams.seed_all(s1);
-        self.player_time[self.player_turn] = 0;
-        self.player_turn = (self.player_turn + 1) % self.players.len();
-        self.victory_check();
-        self.frame_seed = self.streams.get(Stream::World).rand15();
-        // setLastRandoms (0x140d3ce20): the multiplayer sync's draws
-        let _ = self.streams.set_last_randoms();
-        // World::update's last step (0x1415e9266), whatever dt: the world's slot 0x78 with 1
-        // (FUN_1415e92b0): the players' masks again and the town centres' flares
-        // (FUN_141552df0, [`World::rebuild_vision`]); its UI refresh is not simulation. Masks the
-        // slice cannot rebuild leave every player's sight in doubt, as after the load
-        if let Err(e) = self.rebuild_vision() {
-            for p in 0..self.players.len() {
-                self.stop_player(p, e.clone());
-            }
-        }
-    }
-
     /// The updates of player `p`'s objects in its list's order (`FUN_141166550`): each one's
     /// step and what follows it ([`World::step_object`]), then its filing by the step
     /// ([`World::file_step`]). An object whose update is not modelled freezes, and so do all live
     /// objects of a player a command stopped; dead objects still run their state steps, which
     /// draw nothing and depend on nothing the stop changed.
-    fn update_objects(&mut self, p: usize, (dt, turn): (u32, Option<u32>)) {
+    pub(super) fn update_objects(&mut self, p: usize, (dt, turn): (u32, Option<u32>)) {
         let frame = self.player_frame();
         // the loop's count, which goes on past each object but one that leaves
         let mut i = 0;

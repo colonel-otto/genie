@@ -11,7 +11,7 @@ find a behaviour.
 
 Start with these files:
 
-- [`world/world_update.rs`](world/world_update.rs): one tick of the world, step by step.
+- [`world/schedule.rs`](world/schedule.rs): one tick of the world, its steps in the game's order.
 - [`objects/unit/update.rs`](objects/unit/update.rs): one object's update.
 - [`world/mod.rs`](world/mod.rs): the `World` type, which holds the whole game state.
 

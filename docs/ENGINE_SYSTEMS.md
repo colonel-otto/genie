@@ -29,30 +29,44 @@ Each folder of [`crates/engine/genie-core/src/`](../crates/engine/genie-core/src
 
 ## One tick
 
-`World::tick_with` (`world/world_update.rs`) runs one tick. The steps run in the game's order,
-because every random draw and every list order shows in the result.
+`World::tick_with` (`world/schedule.rs`) runs one tick as a declared schedule (FD-045-D13): the
+steps before the players', then each player's steps player by player (Gaia first, then players
+1 to 8), then the steps after them. The steps run in the game's order, because every random draw
+and every list order shows in the result. `World::tick_observed` runs the same steps and shows
+the world after each one; the harness compares that world with the game's state at the same
+point (`harness steps`).
 
-1. **The command phase** (`world/`). The tick count and the world time go on by `dt`. All random
-   streams take the frame seed. Then the tick's commands run, one after the other
-   (`World::run`, `commands/`).
-2. **The player loop.** Gaia goes first, then players 1 to 8. For each player:
-   1. The gates of the player open for its own units (`construction/gates.rs`).
-   2. In an Empire Wars game, the first tick puts every idle villager to work
-      (`orders/start_work.rs`).
-   3. The player's unit groups update (`groups/update/`).
-   4. The player's own update runs: the per-second economy, the trickles, the defeat check
-      (`players/world_player/`).
-   5. Every live object of the player updates, in list order (`world/object_step.rs`, then
-      `Unit::update`). The next section lists what one update does.
-   6. Objects that died, fell asleep or changed owner leave the list. The swap-remove of the
-      list skips the object that moves into the free place until the next tick, as in the game.
-   7. The tiles that the player's sight explored in this tick give it their resources
-      (`vision/explored.rs`).
-   8. The gates close again.
-3. **After the loop.** The world stream draws an intermediate seed. Every player's fog ghosts
-   update (`vision/ghost.rs`). All streams take the intermediate seed. The turn passes to the
-   next player, the victory check runs (`players/game_status/`), and the world stream draws the
-   next frame seed. Last, the players' vision masks are rebuilt (`vision/`).
+The schedule, generated from `world/schedule.rs` (`just schedule`):
+
+<!-- schedule -->
+| # | Step | Runs | What it does |
+| ---: | --- | --- | --- |
+| 1 | `Commands` | once | The command phase: the update's count and the world's time go on, the streams take the frame seed and the players' commands run (`BaseWorld::update` up to `RGE_Command__do_commands`, before `FUN_141552990`). |
+| 2 | `Clock` | for each player | The player's time goes on by the update's milliseconds (`BaseWorld::update`, `world+0x18c`). |
+| 3 | `OpenGates` | for each player | The gates of the players allied with the player open for its units (slot 0x318). |
+| 4 | `StartWork` | for each player | In the first update of an Empire Wars game the player's idle villagers go to work (`BaseWorld::update` with the world's `+0x6c6`). |
+| 5 | `Groups` | for each player | The player's unit groups update (`FUN_14103d910`); before them the pathing takes the tiles whose static marks changed (genie's own cache). |
+| 6 | `WorldPlayer` | for each player | The player's own update up to its objects: a world player's seconds or Gaia's time (`WorldPlayer::update`, slot 0x100), then its plans start over (`WorldPlayerBase::update`, `+0x67c`). |
+| 7 | `Objects` | for each player | The player's objects update in their list's order (`FUN_141166550` on the player's list). |
+| 8 | `NewTiles` | for each player | The tiles the player's map explored give their resources (`Process_New_Tiles`, `FUN_1412899a0`). |
+| 9 | `ScoutMap` | for each player | A world player's scout map takes the tiles of its tile list (`WorldPlayer::update` after `WorldPlayerBase::update`). |
+| 10 | `CloseGates` | for each player | The gates the player opened close again (slot 0x320). |
+| 11 | `ClearTiles` | for each player | The player's tile list empties (`FUN_141661030` on `+0x180`). |
+| 12 | `Draw` | once | The world stream draws the seed that `Reseed` gives the streams (`rand15` at `0x141551aca`); before it the frozen objects' unknown places grow by the update (genie's own, for the forced replay). |
+| 13 | `Ghosts` | once | Every player's ghosts update, Gaia first (`FUN_141166550` on each player's `+0x40`). |
+| 14 | `Watched` | once | Every player's watched list, Gaia first (`FUN_1410905e0` on each player's `+0x78`). |
+| 15 | `Reseed` | once | All streams take the drawn seed (`SeedAll`, `0x140efe4f0`). |
+| 16 | `Turn` | once | The turn passes to the next player, and the time of the player whose turn ends starts over (`BaseWorld::update`, `world+0x188`). |
+| 17 | `Victory` | once | The victory check (`TRIBE_World` slot 0x68, `FUN_1415c9480`). |
+| 18 | `FrameSeed` | once | The world stream draws the next update's frame seed (`rand15` at `0x141551bd7`). |
+| 19 | `LastRandoms` | once | The multiplayer sync's draws of four streams (`setLastRandoms`, `0x140d3ce20`). |
+| 20 | `Vision` | once | The players' vision masks again (`World::update`'s slot 0x78, `FUN_1415e92b0`). |
+<!-- /schedule -->
+
+In the `Objects` step every live object of the player updates, in list order
+(`world/object_step.rs`, then `Unit::update`); the next section lists what one update does.
+Objects that died, fell asleep or changed owner leave the list. The swap-remove of the list
+skips the object that moves into the free place until the next tick, as in the game.
 
 Only one player's unit AIs run their full update in a tick: the player whose turn it is. The
 other players' unit AIs only take their orders and notifications.

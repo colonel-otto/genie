@@ -6,8 +6,11 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 `World` in their own folders.
 
 - `setup.rs` builds the world from the save in a recording's header.
-- `world_update.rs` is one tick: the command phase, the player loop and the steps after it. Read
-  it first: it calls every system in the game's order.
+- `schedule.rs` is one tick as a declared schedule: the command phase, each player's steps and
+  the steps after them, each with the game routine it ports. Read it first: it calls every
+  system in the game's order.
+- `world_update.rs` holds the tick's parts: the command phase, the players' frame and the update
+  of a player's objects.
 - `object_step.rs` runs one object's update with its context.
 - `after_step.rs` applies what the update collected, in the order of the game's update.
 - `context.rs` holds the `Context`: what one object's update reads and writes of the world.
@@ -38,10 +41,11 @@ moves it on. The behaviours that a tick runs live in their systems. Many of them
 | [`object_step.rs`](object_step.rs) | One object's step with its context (`World::run_object`) and a unit AI run outside its update. |
 | [`others.rs`](others.rs) | The world's objects by id as an update reaches them (FD-045-D19, D28): `OthersRef` to read them (the owner's live list and the other players' lists), `Others` to change them while the unit AI runs, and the world's own lookups for the update itself, which holds the world (`World::locate`, `World::wake_sleeper`, `World::take_out_own`). |
 | [`player.rs`](player.rs) | A player (`Player`): its objects, attributes and formations, and the stop of its update. |
+| [`schedule.rs`](schedule.rs) | The world update as a declared schedule (FD-045-D13): its steps in the game's order, each with the game routine it ports, and the update that runs them with an observer. |
 | [`settings.rs`](settings.rs) | The game options the simulation reads: the object `FUN_140c87b90` returns (`GameOptions`, 0x1088 bytes), which the header saves and its load `FUN_141305310` fills. |
 | [`setup.rs`](setup.rs) | The world as the header save holds it (`World::new`): the next object id, the planners and the shape mesh the game's load builds. |
 | [`tests.rs`](tests.rs) | Tests. |
-| [`world_update.rs`](world_update.rs) | One world update (`BaseWorld::update`): the command phase, the moving objects and the players' relations, each player's frame and the update with its commands. |
+| [`world_update.rs`](world_update.rs) | The world update's parts (`crate::world::schedule` runs them): the command phase, the moving objects and the players' relations, each player's frame and its objects' updates. |
 <!-- /files -->
 
 ## How it connects

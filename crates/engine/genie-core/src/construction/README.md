@@ -14,8 +14,8 @@ work and a building's own update:
 ## How the tick reaches it
 
 The world opens a player's gates before the player's objects update, and closes them after
-(`world/world_update.rs`). The object's update runs a building's own steps first, then the
-builder's or repairer's action.
+(the schedule's `OpenGates` and `CloseGates`, `world/schedule.rs`). The object's update runs a
+building's own steps first, then the builder's or repairer's action.
 
 ## In the game
 

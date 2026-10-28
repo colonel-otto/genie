@@ -371,11 +371,19 @@ mod tests {
             ..Unit::default()
         }]);
         let lines = heard(|| t.tick(10));
+        // each step of the schedule in its span, the player's in the player's
         assert_eq!(
-            lines[..3],
+            lines[..10],
             [
                 "DEBUG genie_core::update update tick=1 world_time=10",
+                "TRACE genie_core::update step step=Commands",
                 "DEBUG genie_core::update player player=0",
+                "TRACE genie_core::update step step=Clock",
+                "TRACE genie_core::update step step=OpenGates",
+                "TRACE genie_core::update step step=StartWork",
+                "TRACE genie_core::update step step=Groups",
+                "TRACE genie_core::update step step=WorldPlayer",
+                "TRACE genie_core::update step step=Objects",
                 "TRACE genie_core::update object id=7 master=-1",
             ]
         );
@@ -418,7 +426,8 @@ mod tests {
                 })],
             );
         });
-        assert!(lines[1].starts_with("DEBUG genie_core::update command command=Unmodelled"));
+        assert_eq!(lines[1], "TRACE genie_core::update step step=Commands");
+        assert!(lines[2].starts_with("DEBUG genie_core::update command command=Unmodelled"));
         assert!(lines.contains(&format!(
             "WARN genie_core::unsupported a player stops tick=1 player=0 \
              why=\"QUEUE at two buildings\" at={at}"

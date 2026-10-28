@@ -63,6 +63,9 @@ jobs:
       # scripts/effects.py: docs/EFFECTS.md, the inventory of what an object's update hands on
       # (the world's outputs, the unit AI's effects, the hand-offs; FD-045), current with the code
       - run: scripts/effects.py crates/engine/genie-core/src --check
+      # scripts/schedule.py: docs/ENGINE_SYSTEMS.md's table of the update's steps, current with
+      # genie-core's world/schedule.rs (FD-045-D13)
+      - run: scripts/schedule.py crates/engine/genie-core/src --check
 
   dependencies:
     name: Format crates do not depend on engine or tool crates

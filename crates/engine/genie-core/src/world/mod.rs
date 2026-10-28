@@ -41,6 +41,7 @@ pub use crate::world::player::{AiSettings, Formations, Player};
 mod after_step;
 mod forced;
 mod object_step;
+pub mod schedule;
 pub mod settings;
 mod setup;
 mod world_update;

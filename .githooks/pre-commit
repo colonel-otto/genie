@@ -15,4 +15,5 @@ cargo clippy --locked --workspace --all-targets -- -D warnings
 scripts/file_size.py
 scripts/readmes.py crates/engine/genie-core/src --check
 scripts/effects.py crates/engine/genie-core/src --check
+scripts/schedule.py crates/engine/genie-core/src --check
 scripts/crap.sh
